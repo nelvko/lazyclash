@@ -404,6 +404,12 @@ func (a *App) Snapshot(ctx context.Context) (Snapshot, error) {
 				out.ServiceError = err.Error()
 			}
 		}
+		if out.Installed && a.Service != nil && out.ServiceError == "" {
+			bin, config, data := a.paths()
+			if err := a.Service.Verify(ctx, bin, config, data); err != nil {
+				out.ServiceError = err.Error()
+			}
+		}
 		profilesDir := filepath.Join(a.Home, "profiles")
 		if err := existingDir(profilesDir); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
@@ -419,7 +425,9 @@ func (a *App) Snapshot(ctx context.Context) (Snapshot, error) {
 			}
 		}
 		sort.Strings(out.Profiles[1:])
-		if out.Installed && out.Service.Active {
+		if out.Installed && out.ServiceError != "" {
+			out.APIError = "Managed service is unavailable; resolve the service diagnostic first"
+		} else if out.Installed && out.Service.Active {
 			out.Groups, err = a.client(m).Groups(ctx)
 			if err != nil {
 				out.APIError = err.Error()
@@ -607,7 +615,18 @@ func (a *App) source(ctx context.Context, source string) ([]byte, error) {
 		defer tr.CloseIdleConnections()
 		client := &http.Client{Timeout: 45 * time.Second, Transport: tr}
 		if a.HTTP != nil {
-			client = a.HTTP
+			copied := *a.HTTP
+			client = &copied
+		}
+		client.CheckRedirect = func(next *http.Request, via []*http.Request) error {
+			next.Header.Del("Referer")
+			if len(via) >= 10 {
+				return errors.New("too many subscription redirects")
+			}
+			if via[0].URL.Scheme == "https" && next.URL.Scheme != "https" {
+				return errors.New("subscription redirect would downgrade HTTPS")
+			}
+			return nil
 		}
 		resp, err := client.Do(req)
 		if err != nil {

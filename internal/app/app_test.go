@@ -514,3 +514,37 @@ func TestControlFailureAfterAcceptedJobRestoresOnlyInitiallyStoppedService(t *te
 		})
 	}
 }
+
+func TestSnapshotRejectsChangedUnitBeforeUsingAPI(t *testing.T) {
+	a, s := installedApp(t)
+	s.active = true
+	s.verifyErr = errors.New("unit was modified")
+	a.HTTP = &http.Client{Transport: fixtureTransport(func(*http.Request) (*http.Response, error) {
+		t.Error("API must not be called")
+		return nil, errors.New("unexpected API")
+	})}
+	snapshot, err := a.Snapshot(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if snapshot.ServiceError != "unit was modified" || snapshot.APIError == "" || len(snapshot.Groups) != 0 {
+		t.Fatalf("%+v", snapshot)
+	}
+}
+func TestSubscriptionRedirectDoesNotForwardTokenInReferer(t *testing.T) {
+	a, _ := testApp(t)
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Referer") != "" {
+			t.Error("subscription URL leaked through Referer")
+		}
+		_, _ = w.Write([]byte("fixture"))
+	}))
+	defer target.Close()
+	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, target.URL, http.StatusFound) }))
+	defer source.Close()
+	a.HTTP = nil
+	raw, err := a.source(t.Context(), source.URL+"/token-in-path?token=private")
+	if err != nil || string(raw) != "fixture" {
+		t.Fatal(string(raw), err)
+	}
+}
