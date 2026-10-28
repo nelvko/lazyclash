@@ -1,8 +1,13 @@
-# Roadmap
+# 路线图
 
-1. Complete first-install, subscription, service and node-selection loop with recovery and real Linux verification.
-2. Connections, rules and redacted log inspection.
-3. Deliberate configuration overrides, themes and localization.
-4. Evaluate sing-box only when a concrete product requirement exists.
+已完成首阶段：首次安装引导、官方校验下载和本地二进制安装、有效默认配置、Mihomo YAML 保存/校验/应用及回滚、用户服务生命周期、控制 API 和节点选择。模型测试、真实 Linux、真实 PTY 与 Mihomo/systemd 端到端具有独立验证入口。
 
-Deferred: system services, privileged TUN/DNS/routing, autostart/linger management, uninstall UI, updates, subscription refresh scheduling and shell startup-file editing. No placeholder backends or legacy compatibility commands are provided.
+后续按实际需求逐项增加：
+
+1. 连接查看与操作，然后是规则查看。
+2. 有边界、可取消、脱敏的日志查看。
+3. 明确的配置覆盖机制、端口设置、订阅刷新和更新/卸载流程。
+4. 主题与多语言。
+5. 有具体需求后再评估 sing-box。
+
+暂不实现系统级服务、特权 TUN/DNS/路由、其他平台服务、自动 enable/linger 或 Shell 启动文件修改。没有占位后端、插件框架、旧命令兼容或迁移层。
