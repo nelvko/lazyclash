@@ -25,6 +25,7 @@ import (
 	"github.com/nelvko/lazyclash/internal/mihomo"
 	"github.com/nelvko/lazyclash/internal/service"
 	"github.com/nelvko/lazyclash/internal/store"
+	"gopkg.in/yaml.v3"
 )
 
 const DefaultService = "lazyclash-mihomo"
@@ -458,6 +459,13 @@ func (a *App) Snapshot(ctx context.Context) (Snapshot, error) {
 			out.RunningVersion, err = a.client(m).Version(ctx)
 			if err != nil {
 				out.APIError = err.Error()
+			} else if !prefs.HasRun {
+				// An owned, authenticated running engine is also evidence of a
+				// completed first run, including starts performed outside this CLI.
+				if err := a.markHasRunLocked(ctx); err != nil {
+					return err
+				}
+				out.HasRun = true
 			}
 			out.Groups, err = a.client(m).Groups(ctx)
 			if err != nil {
@@ -738,6 +746,8 @@ func (a *App) Add(ctx context.Context, name, source string) error {
 			if err := a.validateConfig(ctx, m, effective); err != nil {
 				return err
 			}
+		} else if err := validateProfileStructure(effective); err != nil {
+			return err
 		}
 		if err := ctx.Err(); err != nil {
 			return err
@@ -899,6 +909,13 @@ func (a *App) Control(ctx context.Context, action string) error {
 				return err
 			}
 		}
+		if action == "stop" && status.Active {
+			// Remember the observed history even if its control API is unavailable;
+			// an intentional stop must not bring back first-run setup.
+			if err := a.markHasRunLocked(ctx); err != nil {
+				return err
+			}
+		}
 		if err := a.Service.Action(ctx, action); err != nil {
 			// systemctl can be cancelled after its job was accepted. Restore the
 			// stopped state with a fresh context rather than leaving a new daemon.
@@ -972,4 +989,48 @@ func (a *App) clearValidationMarker(name string) error {
 		return errors.New("configuration applied, but validation marker changed; preserving it")
 	}
 	return os.Remove(marker)
+}
+
+// This catches malformed Mihomo containers before an executable is available;
+// full field semantics and outbound references still require engine validation.
+func validateProfileStructure(effective []byte) error {
+	var cfg map[string]any
+	if yaml.Unmarshal(effective, &cfg) != nil {
+		return errors.New("invalid Mihomo YAML structure")
+	}
+	for _, key := range []string{"proxies", "proxy-groups", "rules"} {
+		value := cfg[key]
+		if value == nil {
+			continue
+		}
+		items, ok := value.([]any)
+		if !ok {
+			return fmt.Errorf("Mihomo %s must be a YAML list", key)
+		}
+		for _, item := range items {
+			if key == "rules" {
+				if _, ok := item.(string); !ok {
+					return errors.New("Mihomo rules must contain strings")
+				}
+				continue
+			}
+			entry, ok := item.(map[string]any)
+			if !ok {
+				return fmt.Errorf("Mihomo %s entries must be mappings", key)
+			}
+			name, nameOK := entry["name"].(string)
+			kind, kindOK := entry["type"].(string)
+			if !nameOK || !kindOK || name == "" || kind == "" {
+				return fmt.Errorf("Mihomo %s entries require a name and type", key)
+			}
+		}
+	}
+	for _, key := range []string{"proxy-providers", "rule-providers"} {
+		if value := cfg[key]; value != nil {
+			if _, ok := value.(map[string]any); !ok {
+				return fmt.Errorf("Mihomo %s must be a mapping", key)
+			}
+		}
+	}
+	return nil
 }

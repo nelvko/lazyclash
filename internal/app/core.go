@@ -178,6 +178,7 @@ func (a *App) prepareInstallLocked(ctx context.Context, release mihomo.Release, 
 			block(errors.New("installation destination write probe could not be cleaned up"))
 		}
 	}
+	p.guard = digest([]byte(a.Home + "\x00" + a.Name + "\x00" + p.guard))
 	p.seal = planSeal(p)
 	return p, nil
 }

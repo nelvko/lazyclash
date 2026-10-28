@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/x509"
 	"encoding/binary"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -237,7 +238,14 @@ func TestRealSOCKS5AndSOCKS5HProxy(t *testing.T) {
 				}
 				defer upstream.Close()
 				_, _ = conn.Write([]byte{5, 0, 0, 1, 127, 0, 0, 1, 0, 0})
-				go func() { _, _ = io.Copy(upstream, conn); upstream.Close() }()
+				go func() {
+					_, _ = io.Copy(upstream, conn)
+					// EOF from the client only closes the upstream write half;
+					// pending response bytes must remain readable downstream.
+					if tcp, ok := upstream.(*net.TCPConn); ok {
+						_ = tcp.CloseWrite()
+					}
+				}()
 				_, err = io.Copy(conn, upstream)
 				finished <- err
 			}()
@@ -258,7 +266,8 @@ func TestRealSOCKS5AndSOCKS5HProxy(t *testing.T) {
 			}
 			select {
 			case err := <-finished:
-				if err != nil {
+				// The verified response may close either side of the tunnel first.
+				if err != nil && !errors.Is(err, net.ErrClosed) {
 					t.Fatal(err)
 				}
 			case <-time.After(3 * time.Second):
@@ -280,5 +289,42 @@ func TestRequestErrorsWithholdCredentialsAndBodies(t *testing.T) {
 		if !strings.Contains(err.Error(), "HTTP") {
 			t.Fatal(err)
 		}
+	}
+}
+
+func TestProxyConnectAuthenticationAndOriginAuthenticationRemainDistinct(t *testing.T) {
+	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodConnect {
+			t.Errorf("expected CONNECT, got %s", r.Method)
+		}
+		w.Header().Set("Proxy-Authenticate", "Basic realm=private-realm")
+		w.WriteHeader(http.StatusProxyAuthRequired)
+		_, _ = io.WriteString(w, "private-proxy-response-body")
+	}))
+	defer proxy.Close()
+	client, err := NewClient(Config{ProxyMode: "custom", ProxyURL: proxy.URL}, 3*time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.CloseIdleConnections()
+	_, err = client.Get("https://origin.example.invalid/private-url-token")
+	if err == nil {
+		t.Fatal("CONNECT authentication failure was accepted")
+	}
+	safe := Failure(t.Context(), "official version query", err)
+	var category *Error
+	if !errors.As(safe, &category) || category.Kind != "proxy authentication" || category.StatusCode != 407 {
+		t.Fatalf("CONNECT response category lost: %v", safe)
+	}
+	if strings.Contains(safe.Error(), "private-") || strings.Contains(safe.Error(), proxy.URL) {
+		t.Fatal("proxy error leaked source material", safe)
+	}
+	origin := HTTPError("official version query", http.StatusUnauthorized)
+	if !errors.As(origin, &category) || category.Kind != "HTTP response" || category.StatusCode != 401 {
+		t.Fatalf("origin 401 was confused with proxy authentication: %v", origin)
+	}
+	socks := Failure(t.Context(), "release-file download", &net.OpError{Op: "socks connect", Net: "tcp", Err: errors.New("private-socks-error")})
+	if !errors.As(socks, &category) || category.Kind != "proxy connection" || strings.Contains(socks.Error(), "private-") {
+		t.Fatalf("SOCKS connection was not safely classified: %v", socks)
 	}
 }

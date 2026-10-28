@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -91,6 +92,38 @@ func TestCoreUpdatePreservesRunningInodeConfigurationAndService(t *testing.T) {
 	if len(backups) != 0 {
 		t.Fatalf("backup files leaked: %v", backups)
 	}
+}
+
+func TestCoreUpdateWithUnavailableRunningAPIStillRequiresRestart(t *testing.T) {
+	a, svc := coreFixture(t)
+	if err := a.Install(t.Context(), "", nil); err != nil {
+		t.Fatal(err)
+	}
+	svc.active = true
+	a.HTTP = &http.Client{Transport: fixtureTransport(func(*http.Request) (*http.Response, error) {
+		return nil, errors.New("API unavailable")
+	})}
+	p, err := a.PrepareInstall(t.Context(), mihomo.Release{Version: "v1.20.0"}, "", false)
+	if err != nil || !p.ServiceActive || p.RunningVersion != "" || len(p.Warnings) == 0 {
+		t.Fatalf("plan=%+v err=%v", p, err)
+	}
+	r, err := a.InstallCore(t.Context(), p, downloadnet.Config{}, nil)
+	if err != nil || !r.RestartRequired || len(svc.actions) != 0 || !svc.active {
+		t.Fatalf("result=%+v error=%v actions=%v", r, err, svc.actions)
+	}
+}
+
+func TestInstallationPlanIsBoundToItsReviewedNamespace(t *testing.T) {
+	a, _ := coreFixture(t)
+	b, _ := coreFixture(t)
+	p, err := a.PrepareInstall(t.Context(), mihomo.Release{Version: "v1.20.0"}, "", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := b.InstallCore(t.Context(), p, downloadnet.Config{}, nil); err == nil {
+		t.Fatal("plan for another home was accepted")
+	}
+	assertMissing(t, filepath.Join(b.Home, "installation"))
 }
 
 func TestCoreSameVersionIsNoOpUnlessReinstallWasRequested(t *testing.T) {

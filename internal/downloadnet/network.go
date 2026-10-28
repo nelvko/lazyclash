@@ -3,6 +3,8 @@ package downloadnet
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"net"
@@ -149,23 +151,91 @@ func (e *Error) Error() string {
 }
 func (e *Error) Unwrap() error { return e.cause }
 func Failure(ctx context.Context, operation string, err error) error {
-	if ctx.Err() != nil {
-		return &Error{Kind: "canceled or timed out", Operation: operation, cause: ctx.Err()}
+	cause := ctx.Err()
+	if cause == nil {
+		switch {
+		case errors.Is(err, context.Canceled):
+			cause = context.Canceled
+		case errors.Is(err, context.DeadlineExceeded):
+			cause = context.DeadlineExceeded
+		}
 	}
-	var n net.Error
-	if errors.As(err, &n) && n.Timeout() {
+	if cause != nil {
+		kind := "canceled"
+		if errors.Is(cause, context.DeadlineExceeded) {
+			kind = "timeout"
+		}
+		return &Error{Kind: kind, Operation: operation, cause: cause}
+	}
+	var safe *Error
+	if errors.As(err, &safe) {
+		return &Error{Kind: safe.Kind, Operation: operation, StatusCode: safe.StatusCode}
+	}
+	var dns *net.DNSError
+	if errors.As(err, &dns) {
+		return &Error{Kind: "DNS lookup", Operation: operation}
+	}
+	if certificateFailure(err) {
+		return &Error{Kind: "TLS certificate", Operation: operation}
+	}
+	var record tls.RecordHeaderError
+	var alert tls.AlertError
+	var ech *tls.ECHRejectionError
+	if errors.As(err, &record) || errors.As(err, &alert) || errors.As(err, &ech) {
+		return &Error{Kind: "TLS handshake", Operation: operation}
+	}
+	if timedOut(err) {
 		return &Error{Kind: "timeout", Operation: operation}
 	}
 	var op *net.OpError
-	if errors.As(err, &op) && strings.Contains(op.Op, "proxy") {
+	if errors.As(err, &op) && (strings.Contains(op.Op, "proxy") || strings.HasPrefix(op.Op, "socks")) {
 		return &Error{Kind: "proxy connection", Operation: operation}
 	}
 	return &Error{Kind: "network connection", Operation: operation}
 }
+
+// url.Error and other net.Error wrappers can report Timeout=false when their
+// immediate cause is a fmt wrapper. Inspect the complete error tree instead of
+// letting the first matching wrapper hide a typed inner transport timeout.
+func timedOut(err error) bool {
+	if n, ok := err.(net.Error); ok && n.Timeout() {
+		return true
+	}
+	switch e := err.(type) {
+	case interface{ Unwrap() []error }:
+		for _, cause := range e.Unwrap() {
+			if timedOut(cause) {
+				return true
+			}
+		}
+	case interface{ Unwrap() error }:
+		return timedOut(e.Unwrap())
+	}
+	return false
+}
+
+func certificateFailure(err error) bool {
+	var verification *tls.CertificateVerificationError
+	var unknown x509.UnknownAuthorityError
+	var hostname x509.HostnameError
+	var invalid x509.CertificateInvalidError
+	var roots x509.SystemRootsError
+	var insecure x509.InsecureAlgorithmError
+	var constraint x509.ConstraintViolationError
+	return errors.As(err, &verification) || errors.As(err, &unknown) ||
+		errors.As(err, &hostname) || errors.As(err, &invalid) ||
+		errors.As(err, &roots) || errors.As(err, &insecure) || errors.As(err, &constraint)
+}
+
 func HTTPError(operation string, status int) error {
 	kind := "HTTP response"
-	if status == http.StatusProxyAuthRequired {
+	switch status {
+	case http.StatusProxyAuthRequired:
 		kind = "proxy authentication"
+	case http.StatusTooManyRequests:
+		kind = "rate limit"
+	case http.StatusForbidden:
+		kind = "permission denied or rate limit"
 	}
 	return &Error{Kind: kind, Operation: operation, StatusCode: status}
 }
@@ -180,6 +250,18 @@ func NewClient(cfg Config, timeout time.Duration) (*http.Client, error) {
 	tr.DialContext = (&net.Dialer{Timeout: 15 * time.Second, KeepAlive: 30 * time.Second}).DialContext
 	tr.TLSHandshakeTimeout = 15 * time.Second
 	tr.ResponseHeaderTimeout = 30 * time.Second
+	// Preserve the numeric CONNECT response before net/http turns a rejection
+	// into plain status text. No proxy body, headers or credentials are retained.
+	tr.OnProxyConnectResponse = func(_ context.Context, _ *url.URL, _ *http.Request, response *http.Response) error {
+		if response.StatusCode == http.StatusOK {
+			return nil
+		}
+		classified := HTTPError("connection proxy", response.StatusCode).(*Error)
+		if classified.Kind == "HTTP response" {
+			classified.Kind = "proxy connection"
+		}
+		return classified
+	}
 	switch cfg.ProxyMode {
 	case "environment":
 		tr.Proxy = environmentProxy()

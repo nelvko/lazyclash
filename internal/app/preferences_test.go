@@ -83,6 +83,11 @@ func TestImportBeforeInstallationIsPrivateAndNotAutomaticallyApplied(t *testing.
 	if err := a.Add(t.Context(), "imported", source); err != nil {
 		t.Fatal(err)
 	}
+	write(t, source, []byte("proxies: private-token-scalar\n"))
+	if err := a.Add(t.Context(), "bad-structure", source); err == nil || strings.Contains(err.Error(), "private-token") {
+		t.Fatalf("invalid Mihomo structure accepted or echoed: %v", err)
+	}
+	write(t, source, []byte("proxies: []\nrules: ['MATCH,DIRECT']\n"))
 	assertMissing(t, filepath.Join(a.Home, "installation"))
 	snapshot, err := a.Snapshot(t.Context())
 	if err != nil || snapshot.Installed || len(snapshot.UnvalidatedProfiles) != 1 || snapshot.UnvalidatedProfiles[0] != "imported" {
@@ -127,5 +132,26 @@ func TestInvalidPreferencesArePreserved(t *testing.T) {
 	}
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
 		t.Fatal("user preferences removed")
+	}
+}
+
+func TestObservedOwnedRunningEngineKeepsHistoryAfterAnIntentionalStop(t *testing.T) {
+	a, svc := installedApp(t)
+	// Model an existing installation started with systemctl rather than Control.
+	svc.active = true
+	snapshot, err := a.Snapshot(t.Context())
+	if err != nil || !snapshot.Service.Active || !snapshot.HasRun {
+		t.Fatalf("observed running engine=%+v err=%v", snapshot, err)
+	}
+	if err := a.Control(t.Context(), "stop"); err != nil {
+		t.Fatal(err)
+	}
+	snapshot, err = a.Snapshot(t.Context())
+	if err != nil || snapshot.Service.Active || !snapshot.HasRun {
+		t.Fatalf("history disappeared after stop: %+v err=%v", snapshot, err)
+	}
+	prefs, err := a.LoadPreferences(t.Context())
+	if err != nil || !prefs.HasRun {
+		t.Fatalf("history was not persisted: %+v err=%v", prefs, err)
 	}
 }
