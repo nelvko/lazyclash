@@ -5,7 +5,7 @@ import (
 	"os"
 	"syscall"
 
-	"github.com/charmbracelet/fang"
+	"charm.land/fang/v2"
 	"github.com/nelvko/lazyclash/internal/cli"
 )
 
