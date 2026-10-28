@@ -2,14 +2,15 @@ package main
 
 import (
 	"context"
-	"github.com/charmbracelet/fang"
-	"github.com/spf13/cobra"
 	"os"
+	"syscall"
+
+	"github.com/charmbracelet/fang"
+	"github.com/nelvko/lazyclash/internal/cli"
 )
 
 func main() {
-	root := &cobra.Command{Use: "lazyclash", Short: "A terminal UI for managing Mihomo"}
-	if err := fang.Execute(context.Background(), root, fang.WithVersion("0.1.0-dev")); err != nil {
+	if err := fang.Execute(context.Background(), cli.New(), fang.WithVersion("0.1.0-dev"), fang.WithNotifySignal(os.Interrupt, syscall.SIGTERM)); err != nil {
 		os.Exit(1)
 	}
 }
