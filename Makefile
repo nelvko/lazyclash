@@ -1,6 +1,6 @@
 .PHONY: build test check race
 build:
-	go build -o bin/lazyclash ./cmd/lazyclash
+	go build -o bin/lazyclash .
 test:
 	go test ./...
 check:
