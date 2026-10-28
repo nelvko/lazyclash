@@ -91,17 +91,22 @@ func (c Client) request(ctx context.Context, method, path string, body []byte) (
 }
 
 func (c Client) Ping(ctx context.Context) error {
+	_, err := c.Version(ctx)
+	return err
+}
+
+func (c Client) Version(ctx context.Context) (string, error) {
 	raw, err := c.request(ctx, http.MethodGet, "/version", nil)
 	if err != nil {
-		return err
+		return "", err
 	}
 	var v struct {
 		Version string `json:"version"`
 	}
 	if json.Unmarshal(raw, &v) != nil || v.Version == "" {
-		return errors.New("local listener did not return a Mihomo version")
+		return "", errors.New("local listener did not return a Mihomo version")
 	}
-	return nil
+	return v.Version, nil
 }
 
 func (c Client) Groups(ctx context.Context) ([]Group, error) {

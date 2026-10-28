@@ -37,13 +37,7 @@ func New() *cobra.Command {
 		}
 		return tui.Run(cmd.Context(), backend)
 	}
-	install := &cobra.Command{Use: "install", Short: "Install Mihomo and its systemd user service", Args: cobra.NoArgs}
-	var bin string
-	install.Flags().StringVar(&bin, "bin", "", "Install a local Mihomo binary instead of downloading")
-	install.RunE = func(cmd *cobra.Command, args []string) error {
-		return backend.Install(cmd.Context(), bin, func(s string) { fmt.Fprintln(cmd.ErrOrStderr(), safe(s)) })
-	}
-	root.AddCommand(install)
+	root.AddCommand(newInstallCommand(func() *app.App { return backend }))
 	status := &cobra.Command{Use: "status", Short: "Print installation, service and API status as JSON", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		s, err := backend.Snapshot(cmd.Context())
 		if err != nil {

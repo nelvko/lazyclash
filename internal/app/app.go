@@ -21,6 +21,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nelvko/lazyclash/internal/downloadnet"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 	"github.com/nelvko/lazyclash/internal/service"
 	"github.com/nelvko/lazyclash/internal/store"
@@ -43,23 +44,32 @@ type App struct {
 	Service       Services
 	PlatformError error
 	// Replacements are narrow seams for deterministic business/HTTP tests.
-	Download   func(context.Context, string, func(string)) error
-	Version    func(context.Context, string) (string, error)
-	Validate   func(context.Context, string, string, string) error
-	HTTP       *http.Client
-	CheckPorts func(controller string, mixedPort int) error
+	Download        func(context.Context, string, func(string)) error
+	Version         func(context.Context, string) (string, error)
+	Validate        func(context.Context, string, string, string) error
+	HTTP            *http.Client
+	CheckPorts      func(controller string, mixedPort int) error
+	Resolve         func(context.Context, string, downloadnet.Config) (mihomo.Release, error)
+	DownloadRelease func(context.Context, string, mihomo.Release, downloadnet.Config, func(mihomo.Progress)) error
+	TestFile        func(context.Context, mihomo.Release, downloadnet.Config) error
+	DiskSpace       func(string) (uint64, error)
 }
 
 type Snapshot struct {
-	Installed    bool
-	Version      string
-	Service      service.Status
-	ServiceError string
-	Controller   string
-	Applied      string
-	Profiles     []string
-	Groups       []mihomo.Group
-	APIError     string
+	Installed           bool
+	Version             string
+	RunningVersion      string
+	ConfigReady         bool
+	HasRun              bool
+	GuideDismissed      bool
+	UnvalidatedProfiles []string
+	Service             service.Status
+	ServiceError        string
+	Controller          string
+	Applied             string
+	Profiles            []string
+	Groups              []mihomo.Group
+	APIError            string
 }
 
 type manifest struct {
@@ -301,6 +311,9 @@ func installationTree(base string) (map[string]string, error) {
 }
 
 func (a *App) recover(ctx context.Context) error {
+	if err := a.recoverCore(ctx); err != nil {
+		return err
+	}
 	// A pending apply is always rolled back after interruption. The old complete
 	// generation remains available until the new service has passed readiness.
 	path := filepath.Join(a.Home, "apply-pending.json")
@@ -382,12 +395,19 @@ func (a *App) recoverInstall(ctx context.Context) error {
 func (a *App) Snapshot(ctx context.Context) (Snapshot, error) {
 	var out Snapshot
 	err := a.locked(ctx, func() error {
+		prefs, _, err := a.loadPreferencesLocked()
+		if err != nil {
+			return err
+		}
+		out.HasRun = prefs.HasRun
+		out.GuideDismissed = prefs.GuideDismissed
 		m, _, err := a.load()
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
 		if err == nil {
 			out.Installed = true
+			out.ConfigReady = true
 			out.Version = m.Version
 			out.Controller = m.Controller
 			out.Applied = m.Applied
@@ -425,9 +445,20 @@ func (a *App) Snapshot(ctx context.Context) (Snapshot, error) {
 			}
 		}
 		sort.Strings(out.Profiles[1:])
+		for _, name := range out.Profiles[1:] {
+			if _, err := os.Lstat(filepath.Join(profilesDir, name+".unvalidated")); err == nil || !out.Installed {
+				out.UnvalidatedProfiles = append(out.UnvalidatedProfiles, name)
+			} else if !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+		}
 		if out.Installed && out.ServiceError != "" {
 			out.APIError = "Managed service is unavailable; resolve the service diagnostic first"
 		} else if out.Installed && out.Service.Active {
+			out.RunningVersion, err = a.client(m).Version(ctx)
+			if err != nil {
+				out.APIError = err.Error()
+			}
 			out.Groups, err = a.client(m).Groups(ctx)
 			if err != nil {
 				out.APIError = err.Error()
@@ -496,113 +527,114 @@ func (a *App) checkPorts(m manifest) error {
 	return nil
 }
 func (a *App) Install(ctx context.Context, local string, progress func(string)) error {
-	return a.locked(ctx, func() (result error) {
-		if err := a.requireService(); err != nil {
-			return err
+	return a.locked(ctx, func() error { return a.installFreshLocked(ctx, local, progress) })
+}
+func (a *App) installFreshLocked(ctx context.Context, local string, progress func(string)) (result error) {
+	if err := a.requireService(); err != nil {
+		return err
+	}
+	if err := a.Service.Check(ctx); err != nil {
+		return err
+	}
+	if err := a.Service.Available(ctx); err != nil {
+		return err
+	}
+	final := filepath.Join(a.Home, "installation")
+	if _, err := os.Lstat(final); !errors.Is(err, os.ErrNotExist) {
+		return errors.New("installation path already exists; refusing to overwrite")
+	}
+	m := manifest{ID: randomID(), Service: a.Name, Controller: "127.0.0.1:9097", Secret: randomID() + randomID(), Port: 7897, Applied: "default"}
+	if err := a.checkPorts(m); err != nil {
+		return err
+	}
+	stage, err := os.MkdirTemp(a.Home, ".install-*")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(stage)
+	report := func(s string) {
+		if progress != nil {
+			progress(s)
 		}
-		if err := a.Service.Check(ctx); err != nil {
-			return err
-		}
-		if err := a.Service.Available(ctx); err != nil {
-			return err
-		}
-		final := filepath.Join(a.Home, "installation")
-		if _, err := os.Lstat(final); !errors.Is(err, os.ErrNotExist) {
-			return errors.New("installation path already exists; refusing to overwrite")
-		}
-		m := manifest{ID: randomID(), Service: a.Name, Controller: "127.0.0.1:9097", Secret: randomID() + randomID(), Port: 7897, Applied: "default"}
-		if err := a.checkPorts(m); err != nil {
-			return err
-		}
-		stage, err := os.MkdirTemp(a.Home, ".install-*")
-		if err != nil {
-			return err
-		}
-		defer os.RemoveAll(stage)
-		report := func(s string) {
-			if progress != nil {
-				progress(s)
+	}
+	bin := filepath.Join(stage, "mihomo")
+	if local == "" {
+		err = a.Download(ctx, bin, progress)
+	} else {
+		report("Copying and validating local Mihomo binary…")
+		err = copyBinary(ctx, local, bin)
+	}
+	if err != nil {
+		return err
+	}
+	m.Version, err = a.Version(ctx, bin)
+	if err != nil {
+		return err
+	}
+	m.BinarySHA, err = fileDigest(bin)
+	if err != nil {
+		return err
+	}
+	cfg, err := mihomo.Default(m.Controller, m.Secret, m.Port)
+	if err != nil {
+		return err
+	}
+	target, err := a.writeGeneration(stage, m, cfg)
+	if err != nil {
+		return err
+	}
+	if err := store.Dir(filepath.Join(stage, "runtime")); err != nil {
+		return err
+	}
+	report("Validating default configuration…")
+	if err := a.Validate(ctx, bin, filepath.Join(stage, target, "config.yaml"), filepath.Join(stage, "runtime")); err != nil {
+		return err
+	}
+	if err := store.Switch(filepath.Join(stage, "current"), target, ""); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	tree, err := installationTree(stage)
+	if err != nil {
+		return err
+	}
+	raw, _ := json.Marshal(installJournal{manifest: m, Tree: tree})
+	journal := filepath.Join(a.Home, "install-pending.json")
+	if err := store.Replace(journal, raw, nil, 0600); err != nil {
+		return err
+	}
+	if err := os.Rename(stage, final); err != nil {
+		return errors.Join(err, os.Remove(journal))
+	}
+	installed := false
+	defer func() {
+		if !installed {
+			c, cancel := cleanupContext()
+			defer cancel()
+			if err := a.recoverInstall(c); err != nil {
+				result = errors.Join(result, fmt.Errorf("installation recovery remains pending: %w", err))
 			}
 		}
-		bin := filepath.Join(stage, "mihomo")
-		if local == "" {
-			err = a.Download(ctx, bin, progress)
-		} else {
-			report("Copying and validating local Mihomo binary…")
-			err = copyBinary(ctx, local, bin)
-		}
-		if err != nil {
-			return err
-		}
-		m.Version, err = a.Version(ctx, bin)
-		if err != nil {
-			return err
-		}
-		m.BinarySHA, err = fileDigest(bin)
-		if err != nil {
-			return err
-		}
-		cfg, err := mihomo.Default(m.Controller, m.Secret, m.Port)
-		if err != nil {
-			return err
-		}
-		target, err := a.writeGeneration(stage, m, cfg)
-		if err != nil {
-			return err
-		}
-		if err := store.Dir(filepath.Join(stage, "runtime")); err != nil {
-			return err
-		}
-		report("Validating default configuration…")
-		if err := a.Validate(ctx, bin, filepath.Join(stage, target, "config.yaml"), filepath.Join(stage, "runtime")); err != nil {
-			return err
-		}
-		if err := store.Switch(filepath.Join(stage, "current"), target, ""); err != nil {
-			return err
-		}
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		tree, err := installationTree(stage)
-		if err != nil {
-			return err
-		}
-		raw, _ := json.Marshal(installJournal{manifest: m, Tree: tree})
-		journal := filepath.Join(a.Home, "install-pending.json")
-		if err := store.Replace(journal, raw, nil, 0600); err != nil {
-			return err
-		}
-		if err := os.Rename(stage, final); err != nil {
-			return errors.Join(err, os.Remove(journal))
-		}
-		installed := false
-		defer func() {
-			if !installed {
-				c, cancel := cleanupContext()
-				defer cancel()
-				if err := a.recoverInstall(c); err != nil {
-					result = errors.Join(result, fmt.Errorf("installation recovery remains pending: %w", err))
-				}
-			}
-		}()
-		if err := store.SyncDir(a.Home); err != nil {
-			return err
-		}
-		actualBin, config, data := a.paths()
-		report("Installing systemd user service…")
-		if err := a.Service.Install(ctx, actualBin, config, data); err != nil {
-			return err
-		}
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if err := os.Remove(journal); err != nil {
-			return err
-		}
-		installed = true
-		report("Mihomo installed. Start the service to view PROXY nodes.")
-		return nil
-	})
+	}()
+	if err := store.SyncDir(a.Home); err != nil {
+		return err
+	}
+	actualBin, config, data := a.paths()
+	report("Installing systemd user service…")
+	if err := a.Service.Install(ctx, actualBin, config, data); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := os.Remove(journal); err != nil {
+		return err
+	}
+	installed = true
+	report("Mihomo installed. Start the service to view PROXY nodes.")
+	return nil
 }
 func (a *App) source(ctx context.Context, source string) ([]byte, error) {
 	if strings.HasPrefix(source, "https://") || strings.HasPrefix(source, "http://") {
@@ -679,8 +711,12 @@ func (a *App) Add(ctx context.Context, name, source string) error {
 	}
 	return a.locked(ctx, func() error {
 		m, _, err := a.load()
-		if err != nil {
+		installed := err == nil
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
+		}
+		if !installed {
+			m = manifest{Controller: "127.0.0.1:9097", Secret: "structure-validation-only", Port: 7897}
 		}
 		profiles := filepath.Join(a.Home, "profiles")
 		if err := store.Dir(profiles); err != nil {
@@ -698,11 +734,23 @@ func (a *App) Add(ctx context.Context, name, source string) error {
 		if err != nil {
 			return err
 		}
-		if err := a.validateConfig(ctx, m, effective); err != nil {
-			return err
+		if installed {
+			if err := a.validateConfig(ctx, m, effective); err != nil {
+				return err
+			}
 		}
 		if err := ctx.Err(); err != nil {
 			return err
+		}
+		if !installed {
+			marker := filepath.Join(profiles, name+".unvalidated")
+			if err := store.Replace(marker, []byte(digest(raw)), nil, 0600); err != nil {
+				return err
+			}
+			if err := store.Replace(path, raw, nil, 0600); err != nil {
+				return errors.Join(err, os.Remove(marker))
+			}
+			return nil
 		}
 		return store.Replace(path, raw, nil, 0600)
 	})
@@ -791,7 +839,7 @@ func (a *App) Apply(ctx context.Context, name string) error {
 			return rollback(err)
 		}
 		committed = true
-		return nil
+		return a.clearValidationMarker(name)
 	})
 }
 func (a *App) waitReady(ctx context.Context, m manifest) error {
@@ -879,7 +927,7 @@ func (a *App) Control(ctx context.Context, action string) error {
 			}
 			return err
 		}
-		return nil
+		return a.markHasRunLocked(ctx)
 	})
 }
 func (a *App) Select(ctx context.Context, group, node string) error {
@@ -902,4 +950,26 @@ func (a *App) Port(ctx context.Context) (int, error) {
 	var port int
 	err := a.locked(ctx, func() error { m, _, err := a.load(); port = m.Port; return err })
 	return port, err
+}
+
+func (a *App) clearValidationMarker(name string) error {
+	if name == "default" {
+		return nil
+	}
+	marker := filepath.Join(a.Home, "profiles", name+".unvalidated")
+	expected, err := store.Read(marker)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	raw, err := store.Read(filepath.Join(a.Home, "profiles", name+".yaml"))
+	if err != nil {
+		return err
+	}
+	if string(expected) != digest(raw) {
+		return errors.New("configuration applied, but validation marker changed; preserving it")
+	}
+	return os.Remove(marker)
 }

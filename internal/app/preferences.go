@@ -1,0 +1,139 @@
+package app
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/nelvko/lazyclash/internal/downloadnet"
+	"github.com/nelvko/lazyclash/internal/store"
+)
+
+// Preferences never contains controller credentials or subscription URLs.
+type Preferences struct {
+	Network        downloadnet.Config
+	GuideDismissed bool
+	HasRun         bool
+}
+
+func defaultPreferences() Preferences {
+	return Preferences{Network: downloadnet.Config{Source: "official", ProxyMode: "none"}}
+}
+
+func (a *App) loadPreferencesLocked() (Preferences, []byte, error) {
+	path := filepath.Join(a.Home, "preferences.json")
+	raw, err := store.Read(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return defaultPreferences(), nil, nil
+	}
+	if err != nil {
+		return Preferences{}, nil, err
+	}
+	var p Preferences
+	if json.Unmarshal(raw, &p) != nil {
+		return p, nil, errors.New("invalid preferences file; preserving it for inspection")
+	}
+	if err := rememberableNetwork(p.Network); err != nil {
+		return p, nil, errors.New("stored download settings are invalid or contain credentials; file preserved")
+	}
+	return p, raw, nil
+}
+
+func (a *App) LoadPreferences(ctx context.Context) (Preferences, error) {
+	unlock, err := store.Lock(ctx, a.Home)
+	if err != nil {
+		return Preferences{}, err
+	}
+	defer unlock()
+	p, _, err := a.loadPreferencesLocked()
+	return p, err
+}
+
+func rememberableNetwork(cfg downloadnet.Config) error {
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
+	for _, text := range []string{cfg.Prefix, cfg.Mirror, cfg.ProxyURL} {
+		if text == "" {
+			continue
+		}
+		u, err := url.Parse(text)
+		if err != nil || u.Hostname() == "" || u.Opaque != "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+			return errors.New("download settings containing credentials or query parameters are session-only and cannot be remembered")
+		}
+		// Restrict remembered path components to public release/proxy vocabulary.
+		// Arbitrary paths (which may themselves be tokens) remain session-only.
+		for _, part := range strings.Split(u.Path, "/") {
+			switch part {
+			case "", "proxy", "github", "github.com", "gh", "MetaCubeX", "mihomo", "releases", "release", "download", "downloads", "{version}", "{asset}":
+			default:
+				return errors.New("download URLs containing private or unrecognized path components are session-only and cannot be remembered")
+			}
+		}
+	}
+	return nil
+}
+
+func (a *App) savePreferencesLocked(p Preferences, old []byte) error {
+	raw, err := json.MarshalIndent(p, "", "  ")
+	if err != nil {
+		return err
+	}
+	return store.Replace(filepath.Join(a.Home, "preferences.json"), raw, old, 0600)
+}
+
+func (a *App) editPreferences(ctx context.Context, edit func(*Preferences) error) error {
+	unlock, err := store.Lock(ctx, a.Home)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	p, old, err := a.loadPreferencesLocked()
+	if err != nil {
+		return err
+	}
+	if err := edit(&p); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return a.savePreferencesLocked(p, old)
+}
+
+func (a *App) SaveNetworkPreferences(ctx context.Context, cfg downloadnet.Config) error {
+	cfg = cfg.Normalized()
+	if cfg.Source != "prefix" {
+		cfg.Prefix = ""
+	}
+	if cfg.Source != "mirror" {
+		cfg.Mirror = ""
+	}
+	if cfg.ProxyMode != "custom" {
+		cfg.ProxyURL = ""
+	}
+	if err := rememberableNetwork(cfg); err != nil {
+		return err
+	}
+	return a.editPreferences(ctx, func(p *Preferences) error { p.Network = cfg; return nil })
+}
+
+func (a *App) SetGuideDismissed(ctx context.Context, dismissed bool) error {
+	return a.editPreferences(ctx, func(p *Preferences) error { p.GuideDismissed = dismissed; return nil })
+}
+
+func (a *App) markHasRunLocked(ctx context.Context) error {
+	p, old, err := a.loadPreferencesLocked()
+	if err != nil || p.HasRun {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	p.HasRun = true
+	return a.savePreferencesLocked(p, old)
+}
