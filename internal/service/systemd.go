@@ -172,7 +172,7 @@ func unitContent(bin, config, data string) (string, error) {
 			return "", err
 		}
 	}
-	return managedHeader + "[Unit]\nDescription=lazyclash Mihomo user service\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=:" + paths[0] + " -d " + paths[2] + " -f " + paths[1] + "\nRestart=on-failure\nRestartSec=2s\nUMask=0077\nNoNewPrivileges=true\n\n[Install]\nWantedBy=default.target\n", nil
+	return managedHeader + "[Unit]\nDescription=lazyclash Mihomo user service\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=:" + paths[0] + " -d " + paths[2] + " -f " + paths[1] + "\nRestart=on-failure\nRestartSec=2s\nStandardOutput=null\nStandardError=null\nUMask=0077\nNoNewPrivileges=true\n\n[Install]\nWantedBy=default.target\n", nil
 }
 
 // Install publishes a complete unit atomically without replacing any file.
@@ -321,6 +321,15 @@ func (s *Systemd) remove(ctx context.Context, expected string) error {
 			return nil
 		}
 		return err
+	}
+	status, err := s.Inspect(ctx)
+	if err != nil {
+		return fmt.Errorf("check service before removal: %w", err)
+	}
+	switch status.State {
+	case "inactive", "failed", "not-found":
+	default:
+		return errors.New("service is running or changing state; refusing to remove its installation")
 	}
 	if err := ctx.Err(); err != nil {
 		return err

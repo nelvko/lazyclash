@@ -266,7 +266,7 @@ func TestRemoveOwnedAllowsAbsentAndRemovesExactUnit(t *testing.T) {
 		t.Fatal(err)
 	}
 	s.run = func(context.Context, string, ...string) ([]byte, error) {
-		return []byte("FragmentPath=" + path + "\nDropInPaths=\n"), nil
+		return []byte("FragmentPath=" + path + "\nDropInPaths=\nLoadState=loaded\nActiveState=inactive\n"), nil
 	}
 	if err := s.Remove(context.Background()); err == nil {
 		t.Fatal("unrelated operation could remove unit")
@@ -276,5 +276,30 @@ func TestRemoveOwnedAllowsAbsentAndRemovesExactUnit(t *testing.T) {
 	}
 	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("unit was not removed: %v", err)
+	}
+}
+
+func TestRemoveOwnedPreservesRunningOrTransitioningService(t *testing.T) {
+	for _, state := range []string{"active", "activating", "deactivating", "reloading", "unknown"} {
+		t.Run(state, func(t *testing.T) {
+			s, _ := testManager(t)
+			path := filepath.Join(s.UnitDir, s.Name+".service")
+			content, err := unitContent("/mihomo", "/config", "/data")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+				t.Fatal(err)
+			}
+			s.run = func(_ context.Context, _ string, args ...string) ([]byte, error) {
+				return []byte("FragmentPath=" + path + "\nDropInPaths=\nLoadState=loaded\nActiveState=" + state + "\n"), nil
+			}
+			if err := s.RemoveOwned(context.Background(), "/mihomo", "/config", "/data"); err == nil {
+				t.Fatal("removed service which could still own a process")
+			}
+			if _, err := os.Stat(path); err != nil {
+				t.Fatal("running service definition was removed")
+			}
+		})
 	}
 }
