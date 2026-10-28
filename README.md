@@ -9,6 +9,8 @@
 ```sh
 make build
 ./bin/lazyclash
+# 或在源码根目录直接运行
+go run .
 ```
 
 服务与内核安装当前支持 **Linux/systemd 用户服务、arm64 与 amd64**。macOS 可构建、运行 TUI、配置下载网络及查询 Linux 发布信息，但预检查会明确阻止安装和服务管理，没有 macOS 空后端。
@@ -122,6 +124,6 @@ orb list
 
 普通测试仅用临时目录、fixture 与 fake 服务，不创建 VM 或修改真实代理。真实 Linux、PTY 与 Mihomo/systemd 测试显式执行，使用临时目录、随机专用 unit、冲突检查和失败清理，详情见 [验证说明](docs/verification.md)。未实测平台不得由交叉编译推断为已通过。
 
-主要代码：`internal/tui` 交互与响应式渲染；`internal/app` 共用用例与存储事务；`internal/downloadnet` 来源与连接；`internal/mihomo` 发布、下载、校验和控制 API；`internal/service` 用户 systemd；`internal/cli` 自动化及 Shell。
+程序入口为根目录 `main.go`。`internal/cli` 保留 Cobra 子命令与 Shell 集成，`internal/tui` 负责交互与响应式渲染；二者直接调用 `internal/app` 的共用用例。`internal/downloadnet` 负责来源与连接，`internal/mihomo` 负责发布、下载、校验和控制 API，`internal/service` 负责 systemd 用户服务，`internal/store` 负责原子文件与进程锁。具体边界见 [代码结构](docs/architecture.md)。
 
 [路线图](docs/roadmap.md)。参考旧项目仅用于只读研究，不读取旧运行配置，不继承历史、提供旧别名或实现迁移层。
