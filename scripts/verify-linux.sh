@@ -17,17 +17,20 @@ case "$machine_arch" in
   *) printf 'Unsupported VM architecture: %s\n' "$machine_arch" >&2; exit 1 ;;
 esac
 host_stage=$(mktemp -d "${TMPDIR:-/tmp}/lazyclash-linux.XXXXXX")
-linux_stage=$(orb -m "$vm" mktemp -d /tmp/lazyclash-linux.XXXXXX)
+linux_stage=
 mkdir -p .test-artifacts
 exec > >(tee .test-artifacts/linux-tests.log) 2>&1
 cleanup() {
   result=$?
   trap - EXIT
-  orb -m "$vm" rm -rf -- "$linux_stage" || result=1
+  if [[ -n $linux_stage ]]; then
+    orb -m "$vm" rm -rf -- "$linux_stage" || result=1
+  fi
   rm -rf -- "$host_stage"
   exit "$result"
 }
 trap cleanup EXIT
+linux_stage=$(orb -m "$vm" mktemp -d /tmp/lazyclash-linux.XXXXXX)
 index=0
 go list ./... > "$host_stage/packages"
 while IFS= read -r package <&3; do
