@@ -1,0 +1,5 @@
+/proxyctl/
+/.idea/
+/bin/
+/.test-artifacts/
+*.test
