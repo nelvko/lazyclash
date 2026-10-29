@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -13,7 +14,7 @@ import (
 	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/downloadnet"
@@ -92,6 +93,8 @@ type Model struct {
 	width, height         int
 	targets               []hitRegion
 	screen                string
+	colorProfile          colorprofile.Profile
+	noColor               bool
 	wizard                wizardState
 	runtime               runtimeState
 	connections           connectionsState
@@ -104,6 +107,7 @@ func New(ctx context.Context, backend Backend) Model {
 	}
 	input := textinput.New()
 	input.CharLimit = 8192
+	styleInput(&input, inputBackground, false)
 	spin := spinner.New()
 	spin.Spinner = spinner.Dot
 	opCtx, cancel := context.WithCancel(ctx)
@@ -114,6 +118,11 @@ func New(ctx context.Context, backend Backend) Model {
 	m.rules.search = textinput.New()
 	m.rules.search.CharLimit = 512
 	m.rules.search.Placeholder = "Type, payload, proxy or order"
+	styleInput(&m.connections.search, bg, false)
+	styleInput(&m.rules.search, bg, false)
+	m.colorProfile = colorprofile.Env(os.Environ())
+	m.noColor = os.Getenv("NO_COLOR") != ""
+	m.colorProfile = themeProfile(os.Environ(), m.colorProfile)
 	m.layout()
 	return m
 }
@@ -212,6 +221,8 @@ func (m *Model) cancelTask(quit bool) {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	switch v := msg.(type) {
+	case tea.ColorProfileMsg:
+		m.colorProfile = v.Profile
 	case rulesResultMsg:
 		cmd = m.acceptRules(v)
 	case rulesTickMsg:
@@ -674,7 +685,14 @@ func (m Model) pageBody(width int) (string, []hitRegion) {
 		if m.focus == id {
 			s = "> " + clean(label)
 		}
-		lines = append(lines, themed(cellCrop(s, width), text, bg, false))
+		foreground, background := text, bg
+		if m.hover == id {
+			background = hoverBackground
+		}
+		if m.focus == id {
+			foreground = focus
+		}
+		lines = append(lines, themed(cellCrop(s, width), foreground, background, false))
 		hits = append(hits, hitRegion{ID: id, Y: row, W: width, H: 1})
 	}
 	if m.page == "connections" {
@@ -684,7 +702,7 @@ func (m Model) pageBody(width int) (string, []hitRegion) {
 		return m.rulesBody(width)
 	}
 	if m.page == "profiles" {
-		lines = append(lines, themed("Saved configurations", purple, bg, false), "URL subscription and local YAML use the same validation and apply flow.", "")
+		lines = append(lines, themed("Saved configurations", text, bg, false), "URL subscription and local YAML use the same validation and apply flow.", "")
 		add("add", "Add subscription / Import config")
 		if !m.snapshot.Installed {
 			lines = append(lines, strings.Split(wrapText("You may import now. Engine validation runs before application after core installation.", width), "\n")...)
@@ -703,7 +721,7 @@ func (m Model) pageBody(width int) (string, []hitRegion) {
 			add(fmt.Sprintf("profile.%d", i), name+mark)
 		}
 	} else {
-		lines = append(lines, themed("Proxy groups and nodes", purple, bg, false), "Enter a group to expand; select a node in a Selector group.", "")
+		lines = append(lines, themed("Proxy groups and nodes", text, bg, false), "Enter a group to expand; select a node in a Selector group.", "")
 		if m.snapshot.APIError != "" {
 			lines = append(lines, strings.Split(wrapText("API unavailable: "+clean(m.snapshot.APIError), width), "\n")...)
 		}
@@ -736,6 +754,9 @@ func (m *Model) layout() {
 	m.rules.search.SetWidth(max(1, dashboardBodyWidth(o)-2))
 	o.Body, o.BodyTargets = m.pageBody(dashboardBodyWidth(o))
 	base, hits, total := renderDashboard(o)
+	if o.Dim {
+		base = themed(base, backdropText, sidebarBackground, true)
+	}
 	m.total = total
 	m.scroll = min(m.scroll, max(0, total-max(0, m.height-7)))
 	m.screen, m.targets = base, hits
@@ -746,11 +767,15 @@ func (m *Model) layout() {
 	}
 }
 func (m Model) View() tea.View {
-	view := tea.NewView(m.screen)
+	profile := m.colorProfile
+	if m.noColor {
+		profile = colorprofile.ASCII
+	}
+	// Style the canvas cells only. View's foreground/background properties emit
+	// OSC 10/11 and change the terminal's default palette, which we do not own.
+	view := tea.NewView(terminalTheme(themed(m.screen, text, bg, false), profile))
 	view.AltScreen = true
 	view.MouseMode = tea.MouseModeAllMotion
-	view.BackgroundColor = lipgloss.Color(bg)
-	view.ForegroundColor = lipgloss.Color(text)
 	return view
 }
 func clean(s string) string {

@@ -259,10 +259,10 @@ func (m Model) connectionsBody(width int) (string, []hitRegion) {
 			s = "> " + s
 		}
 		hits = append(hits, hitRegion{ID: id, Y: len(lines), W: min(width, ansi.StringWidth(s)), H: 1})
-		lines = append(lines, themed(cellCrop(s, width), purple, bg, false))
+		lines = append(lines, cellCrop(dashboardButton(id, label, dashboardOptions{Focus: m.focus, Hover: m.hover}, false), width))
 	}
 	if c := m.connections.detail; c != nil {
-		addText("Connection details", purple)
+		addText("Connection details", text)
 		if m.detailActive() {
 			addText("Active", text)
 		} else {
@@ -292,12 +292,12 @@ func (m Model) connectionsBody(width int) (string, []hitRegion) {
 		}
 		return strings.Join(lines, "\n"), hits
 	}
-	addText("Active connections", purple)
+	addText("Active connections", text)
 	status := runtimeStatus(m.runtime.snapshot, m.runtime.received, m.runtime.pending, m.snapshot.Installed)
 	addText(status, muted)
 	if m.connections.editing {
 		m.connections.search.SetWidth(max(1, width-2))
-		addText("Search connections (Enter / Esc finish)", purple)
+		addText("Search connections (Enter / Esc finish)", accent)
 		hits = append(hits, hitRegion{ID: "conn.search", Y: len(lines), W: width, H: 1})
 		lines = append(lines, cellCrop(m.connections.search.View(), width))
 	} else {
@@ -307,10 +307,10 @@ func (m Model) connectionsBody(width int) (string, []hitRegion) {
 	addText("Enter Details · x Close selected · ↑↓ Select · / Search", muted)
 	lines = append(lines, "")
 	if err := m.runtime.snapshot.Error; err != "" {
-		addText(err, warning)
+		addText(err, errorColor)
 	}
 	if err := m.runtime.snapshot.ConnectionsError; err != "" {
-		addText(err, warning)
+		addText(err, errorColor)
 	}
 	list := m.filteredConnections()
 	if len(list) == 0 {
@@ -331,7 +331,7 @@ func (m Model) connectionsBody(width int) (string, []hitRegion) {
 		row := len(lines)
 		foreground := text
 		if m.focus == "connection."+c.ID {
-			foreground = purple
+			foreground = focus
 		}
 		// Each item is exactly two clipped rows; detailed long values remain available in Details.
 		lines = append(lines, themed(cellCrop(prefix+connectionDestination(c)+" · "+clean(c.Metadata.Network), width), foreground, bg, false))

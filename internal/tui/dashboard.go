@@ -73,7 +73,7 @@ func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
 		}
 	}
 	if o.Height < 7 || o.Width < 20 {
-		put(0, 0, themed(cellCrop("lazyclash / "+pageTitle(o.Page), o.Width), purple, bg, o.Dim))
+		put(0, 0, themed(cellCrop("lazyclash / "+pageTitle(o.Page), o.Width), accent, bg, o.Dim))
 		if o.Height > 1 {
 			put(0, o.Height-1, themed(cellCrop("Menu · q Quit", o.Width), muted, bg, o.Dim))
 			add(hitRegion{ID: "menu", X: 0, Y: o.Height - 1, W: min(4, o.Width), H: 1})
@@ -82,7 +82,7 @@ func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
 	}
 	header := lipgloss.NewStyle().Bold(true).Render("lazyclash")
 	if g.sidebar {
-		put(2, 1, themed(header, purple, bg, o.Dim))
+		put(2, 1, themed(header, muted, bg, o.Dim))
 		put(g.x, 1, themed(lipgloss.NewStyle().Bold(true).Render(pageTitle(o.Page)), text, bg, o.Dim))
 	} else {
 		label := dashboardButton("menu", "Menu", o, false)
@@ -131,7 +131,7 @@ func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
 		if scroll+g.height >= total {
 			marker = "↑"
 		}
-		put(min(o.Width-1, g.x+g.width), g.y+g.height-1, themed(marker, purple, bg, o.Dim))
+		put(min(o.Width-1, g.x+g.width), g.y+g.height-1, themed(marker, accent, bg, o.Dim))
 	}
 
 	if g.sidebar {
@@ -153,7 +153,7 @@ func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
 	color := muted
 	if o.Failure != "" {
 		status = "Error: " + clean(o.Failure)
-		color = warning
+		color = errorColor
 	}
 	if status == "" {
 		if !o.Snapshot.Installed {
@@ -170,9 +170,9 @@ func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
 		help = "Tab Focus  Enter Open  ↑↓ Scroll"
 	}
 	quit := "q Quit"
-	put(2, o.Height-1, themed(cellCrop(help, max(1, o.Width-len(quit)-6)), muted, bg, o.Dim))
+	put(2, o.Height-1, helpText(cellCrop(help, max(1, o.Width-len(quit)-6)), bg, o.Dim))
 	if o.Width >= 16 {
-		put(o.Width-len(quit)-2, o.Height-1, themed(quit, muted, bg, o.Dim))
+		put(o.Width-len(quit)-2, o.Height-1, helpText(quit, bg, o.Dim))
 	}
 	return strings.Join(rows, "\n"), targets, total
 }
@@ -211,13 +211,11 @@ func drawSidebar(rows []string, o dashboardOptions, popup bool) []hitRegion {
 	if width < 4 || end < 4 {
 		return targets
 	}
-	if popup {
-		for y := 3; y < end; y++ {
-			putRows(rows, 0, y, themed(strings.Repeat(" ", width), text, panel, o.Dim), o.Width)
-		}
+	for y := 3; y < end; y++ {
+		putRows(rows, 0, y, themed(strings.Repeat(" ", width), text, sidebarBackground, o.Dim), o.Width)
 	}
 	for y := 3; y < end; y++ {
-		putRows(rows, width-1, y, themed("│", border, bg, o.Dim), o.Width)
+		putRows(rows, width-1, y, themed("│", divider, sidebarBackground, o.Dim), o.Width)
 	}
 	for i, page := range []string{"overview", "nodes", "profiles", "settings", "connections", "rules"} {
 		y := 4 + i*2
@@ -226,20 +224,20 @@ func drawSidebar(rows []string, o dashboardOptions, popup bool) []hitRegion {
 		}
 		id := "nav." + page
 		label := fmt.Sprintf("%d %s", i+1, pageTitle(page))
-		background, foreground := bg, muted
-		if popup {
-			background = panel
-		}
+		background, foreground := sidebarBackground, muted
 		if page == o.Page {
-			background, foreground = selectedPanel, purple
+			background, foreground = selectionBackground, selectionForeground
+			label += " •"
 		}
 		if o.Hover == id && o.Focus != id {
 			foreground = text
-			background = panel
+			background = hoverBackground
 		}
 		if o.Focus == id {
 			label = "› " + label
-			foreground = purple
+			if page != o.Page {
+				foreground = focus
+			}
 		}
 		label = cellPad(cellCrop(label, width-4), width-4)
 		if o.Focus == id {
@@ -249,19 +247,19 @@ func drawSidebar(rows []string, o dashboardOptions, popup bool) []hitRegion {
 		targets = append(targets, hitRegion{ID: id, X: 1, Y: y, W: width - 2, H: 1})
 	}
 	if end >= 20 {
-		status, color := "Not installed", warning
+		status, color := "Not installed", muted
 		if o.Snapshot.Installed {
 			status, color = "Stopped", muted
 			if o.Snapshot.Service.Active {
-				status, color = "Running", purple
+				status, color = "Running", success
 			}
 			if o.Snapshot.ServiceError != "" {
-				status, color = "Unavailable", warning
+				status, color = "Unavailable", errorColor
 			}
 		}
-		putRows(rows, 2, end-4, themed(strings.Repeat("─", width-5), border, bg, o.Dim), o.Width)
-		putRows(rows, 2, end-3, themed("Core", muted, bg, o.Dim), o.Width)
-		putRows(rows, 2, end-2, themed(status, color, bg, o.Dim), o.Width)
+		putRows(rows, 2, end-4, themed(strings.Repeat("─", width-5), divider, sidebarBackground, o.Dim), o.Width)
+		putRows(rows, 2, end-3, themed("Core", muted, sidebarBackground, o.Dim), o.Width)
+		putRows(rows, 2, end-2, themed(status, color, sidebarBackground, o.Dim), o.Width)
 	}
 	return targets
 }
@@ -269,17 +267,19 @@ func drawSidebar(rows []string, o dashboardOptions, popup bool) []hitRegion {
 func dashboardButton(id, label string, o dashboardOptions, primary bool) string {
 	foreground, background := text, panel
 	if primary {
-		foreground, background = bg, purple
+		foreground, background = primaryButtonForeground, primaryButtonBackground
 	}
 	value := "[ " + label + " ]"
 	if o.Hover == id && o.Focus != id {
-		foreground = purple
-		value = lipgloss.NewStyle().Italic(true).Render(value)
+		if !primary {
+			foreground, background = text, hoverBackground
+		}
 	}
 	if o.Focus == id {
+		value = "›" + value
 		value = lipgloss.NewStyle().Underline(true).Bold(true).Render(value)
 		if !primary {
-			foreground, background = purple, selectedPanel
+			foreground, background = focus, panel
 		}
 	}
 	return themed(value, foreground, background, o.Dim)
@@ -311,15 +311,15 @@ func panelFrame(lines []string, width, height int, o dashboardOptions) []string 
 	}
 	height = max(height, len(lines)+2)
 	result := make([]string, height)
-	result[0] = themed("┌"+strings.Repeat("─", width-2)+"┐", border, panel, o.Dim)
+	result[0] = themed("┌"+strings.Repeat("─", width-2)+"┐", divider, panel, o.Dim)
 	for i := 1; i < height-1; i++ {
 		content := ""
 		if i-1 < len(lines) {
 			content = lines[i-1]
 		}
-		result[i] = themed("│ ", border, panel, o.Dim) + themed(cellPad(content, width-4), text, panel, o.Dim) + themed(" │", border, panel, o.Dim)
+		result[i] = themed("│ ", divider, panel, o.Dim) + themed(cellPad(content, width-4), text, panel, o.Dim) + themed(" │", divider, panel, o.Dim)
 	}
-	result[height-1] = themed("└"+strings.Repeat("─", width-2)+"┘", border, panel, o.Dim)
+	result[height-1] = themed("└"+strings.Repeat("─", width-2)+"┘", divider, panel, o.Dim)
 	return result
 }
 
@@ -386,7 +386,7 @@ func getStarted(o dashboardOptions, width int) dashboardBlock {
 		}
 	}
 	inner := max(1, width-4)
-	heading := themed("Get started", purple, panel, o.Dim)
+	heading := themed(lipgloss.NewStyle().Bold(true).Render("Get started"), text, panel, o.Dim)
 	steps := fmt.Sprintf("%d / 3 · Core > Config > Start", step)
 	if inner >= 55 {
 		heading = cellPad(heading, inner-ansi.StringWidth(steps)) + themed(steps, muted, panel, o.Dim)
@@ -432,7 +432,7 @@ func getStarted(o dashboardOptions, width int) dashboardBlock {
 func overviewCards(o dashboardOptions) [][]string {
 	s := o.Snapshot
 	style := func(value, color string) string { return themed(clean(value), color, panel, o.Dim) }
-	title := func(value string) string { return style(value, purple) }
+	title := func(value string) string { return lipgloss.NewStyle().Bold(true).Render(style(value, text)) }
 	label := func(name, value string) string { return style(cellPad(name, 20), muted) + style(value, text) }
 	configured, active := "Not configured", "None"
 	if s.ConfigReady {
@@ -448,7 +448,7 @@ func overviewCards(o dashboardOptions) [][]string {
 			saved++
 		}
 	}
-	subscription := []string{title("Current subscription"), style(configured, warning), "", label("Active profile", active), label("Saved profiles", fmt.Sprint(saved)), style("Add or import a configuration", dim)}
+	subscription := []string{title("Current subscription"), style(configured, text), "", label("Active profile", active), label("Saved profiles", fmt.Sprint(saved)), style("Add or import a configuration", muted)}
 	groupName, node, groupStatus := "--", "--", "No active core"
 	if s.Service.Active {
 		groupStatus = "No proxy groups"
@@ -490,7 +490,7 @@ func overviewCards(o dashboardOptions) [][]string {
 	} else if s.Service.Active && s.APIError != "" {
 		groupName, node, groupStatus = "--", "--", "API unavailable"
 	}
-	groups := []string{title("Selected proxy group"), style(groupStatus, muted), "", label("Group", groupName), label("Current node", node), style("Open Nodes to browse proxy groups", dim)}
+	groups := []string{title("Selected proxy group"), style(groupStatus, muted), "", label("Group", groupName), label("Current node", node), style("Open Nodes to browse proxy groups", muted)}
 	observed := o.Runtime
 	status := runtimeStatus(observed, o.RuntimeReceived, o.RuntimePending, s.Installed)
 	connections, rate, totals, memory := "--", "--", "--", "--"
@@ -506,21 +506,21 @@ func overviewCards(o dashboardOptions) [][]string {
 			memory = formatBytes(int64(*observed.Memory))
 		}
 	}
-	traffic := []string{title("Traffic statistics"), style(status, muted), "", label("Connections", connections), label("Upload / download", rate), label("Since core start", totals), label("Core memory", memory), style("Totals reset when the core restarts", dim)}
+	traffic := []string{title("Traffic statistics"), style(status, muted), "", label("Connections", connections), label("Upload / download", rate), label("Since core start", totals), label("Core memory", memory), style("Totals reset when the core restarts", muted)}
 	for _, issue := range []string{observed.Error, observed.ConnectionsError, observed.TrafficError, observed.MemoryError} {
 		if issue != "" {
-			traffic = append(traffic, style(issue, warning))
+			traffic = append(traffic, style(issue, errorColor))
 			break
 		}
 	}
-	coreStatus, color := "Not installed", warning
+	coreStatus, color := "Not installed", muted
 	if s.Installed {
 		coreStatus, color = "Stopped", muted
 		if s.Service.Active {
-			coreStatus, color = "Running", purple
+			coreStatus, color = "Running", success
 		}
 		if s.ServiceError != "" {
-			coreStatus, color = "Unavailable", warning
+			coreStatus, color = "Unavailable", errorColor
 		}
 	}
 	kernel := []string{title("Kernel and environment"), style(coreStatus, color), "", label("Platform", runtime.GOOS+"/"+runtime.GOARCH), label("System proxy", "Unchanged"), label("TUN", "Off")}
@@ -541,7 +541,8 @@ func settingsContent(o dashboardOptions, width int) (string, []hitRegion) {
 	var b dashboardBlock
 	inner := max(1, width-4)
 	label := func(s string) string { return themed(s, muted, panel, o.Dim) }
-	lines := []string{themed("Core and configuration", purple, panel, o.Dim)}
+	lines := []string{themed(lipgloss.NewStyle().Bold(true).Render("Core and configuration"), text, panel, o.Dim)}
+	lines = append(lines, label("Theme: "+themeName))
 	info := "Install Mihomo, manage its configuration, and control the user service."
 	lines = append(lines, strings.Split(wrapText(label(info), inner), "\n")...)
 	lines = append(lines, "")
@@ -565,7 +566,7 @@ func settingsContent(o dashboardOptions, width int) (string, []hitRegion) {
 		lines = append(lines, strings.Split(wrapText(label("Controller: "+clean(o.Snapshot.Controller)), inner), "\n")...)
 	}
 	if o.Snapshot.ServiceError != "" {
-		lines = append(lines, strings.Split(wrapText(themed(clean(o.Snapshot.ServiceError), warning, panel, o.Dim), inner), "\n")...)
+		lines = append(lines, strings.Split(wrapText(themed(clean(o.Snapshot.ServiceError), errorColor, panel, o.Dim), inner), "\n")...)
 	}
 	if o.Snapshot.Installed && !o.Snapshot.Service.Linger {
 		lines = append(lines, strings.Split(wrapText(label("Linger is disabled; the user service may stop after logout."), inner), "\n")...)

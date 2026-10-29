@@ -291,10 +291,10 @@ func (m Model) rulesBody(width int) (string, []hitRegion) {
 			value = "> " + value
 		}
 		hits = append(hits, hitRegion{ID: id, Y: len(lines), W: min(width, ansi.StringWidth(value)), H: 1})
-		lines = append(lines, themed(cellCrop(value, width), purple, bg, false))
+		lines = append(lines, cellCrop(dashboardButton(id, label, dashboardOptions{Focus: m.focus, Hover: m.hover}, false), width))
 	}
 	if r := m.rules.detail; r != nil {
-		addText("Rule details", purple)
+		addText("Rule details", text)
 		if m.ruleCurrent(*r) {
 			addText("Current API observation · Read only", muted)
 		} else {
@@ -328,11 +328,11 @@ func (m Model) rulesBody(width int) (string, []hitRegion) {
 		addText("Loaded by the core; matching order applies in Rule mode. Read only.", muted)
 		return strings.Join(lines, "\n"), hits
 	}
-	addText("Effective rules", purple)
+	addText("Effective rules", text)
 	addText(m.rulesStatus(), muted)
-	addText("Loaded by the core; matching order applies in Rule mode. Read only.", dim)
+	addText("Loaded by the core; matching order applies in Rule mode. Read only.", muted)
 	if m.rules.editing {
-		addText("Search rules (Enter / Esc finish)", purple)
+		addText("Search rules (Enter / Esc finish)", accent)
 		lines = append(lines, cellCrop(m.rules.search.View(), width))
 		hits = append(hits, hitRegion{ID: "rules.search", Y: len(lines) - 1, W: width, H: 1})
 	} else {
@@ -341,7 +341,7 @@ func (m Model) rulesBody(width int) (string, []hitRegion) {
 	addButton("rules.retry", "Refresh / Retry")
 	addText("↑↓ Select · Enter Details · / Search · g Refresh", muted)
 	if m.rules.snapshot.Error != "" && m.rules.received {
-		addText(m.rules.snapshot.Error, warning)
+		addText(m.rules.snapshot.Error, errorColor)
 	}
 	list := m.filteredRules()
 	if m.rules.received && m.rules.snapshot.State == "ready" && len(list) == 0 {
@@ -357,7 +357,7 @@ func (m Model) rulesBody(width int) (string, []hitRegion) {
 			prefix = "› "
 		}
 		if m.focus == "rule."+strconv.Itoa(r.Index) {
-			color = purple
+			color = focus
 		}
 		label := fmt.Sprintf("%s#%d %s · %s → %s", prefix, r.Index+1, clean(r.Type), clean(r.Payload), clean(r.Proxy))
 		if r.Extra != nil && r.Extra.Disabled {

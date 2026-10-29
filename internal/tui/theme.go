@@ -3,28 +3,46 @@ package tui
 import (
 	"strings"
 
+	"charm.land/bubbles/v2/textinput"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 )
 
 const (
-	bg            = "#131524"
-	panel         = "#1c1e33"
-	purple        = "#b296ff"
-	text          = "#dedfed"
-	muted         = "#9a9db5"
-	border        = "#383a55"
-	dim           = "#55586f"
-	warning       = "#e6bb70"
-	selectedPanel = "#302843"
+	// Mariana is the sole built-in theme. Source expressions and the small
+	// readability adaptations are recorded in docs/theme-mariana.md.
+	themeID                 = "mariana"
+	themeName               = "Mariana"
+	bg                      = "#303841"
+	panel                   = "#2b323a"
+	raised                  = "#3a424a"
+	sidebarBackground       = "#1d2227"
+	inputBackground         = "#282b2f"
+	text                    = "#d8dee9"
+	muted                   = "#a9afbc"
+	disabled                = "#7b8896"
+	backdropText            = disabled
+	border                  = "#647382"
+	divider                 = "#444c54"
+	accent                  = "#85b3e0"
+	focus                   = "#f9ae58"
+	selectionBackground     = "#4c5864"
+	selectionForeground     = text
+	hoverBackground         = "#3c444c"
+	primaryButtonBackground = "#5c99d6"
+	primaryButtonForeground = sidebarBackground
+	success                 = "#99c794"
+	warning                 = focus
+	errorColor              = "#f28d92"
+	info                    = accent
 )
 
 func themed(s, foreground, background string, dimmed bool) string {
 	if dimmed {
-		foreground = dim
-		if background == purple || background == selectedPanel {
-			background = panel
-		}
+		// A real, opaque backdrop: flatten nested components before rendering
+		// the active modal. No terminal transparency or faint attribute needed.
+		s = ansi.Strip(s)
+		foreground, background = backdropText, sidebarBackground
 	}
 	style := lipgloss.NewStyle().Foreground(lipgloss.Color(foreground)).Background(lipgloss.Color(background))
 	// Nested spans reset all SGR attributes. Restore the enclosing surface after
@@ -35,6 +53,37 @@ func themed(s, foreground, background string, dimmed bool) string {
 		s = strings.NewReplacer("\x1b[0m", "\x1b[0m"+open, "\x1b[m", "\x1b[m"+open).Replace(s)
 	}
 	return style.Render(s)
+}
+
+// styleInput replaces Bubbles' independent default palette, including its
+// placeholder, suggestion and cursor styles. Input geometry stays unchanged.
+func styleInput(input *textinput.Model, background string, invalid bool) {
+	style := func(fg string) lipgloss.Style {
+		return lipgloss.NewStyle().Foreground(lipgloss.Color(fg)).Background(lipgloss.Color(background))
+	}
+	s := textinput.Styles{}
+	s.Blurred = textinput.StyleState{Text: style(text), Placeholder: style(muted), Suggestion: style(muted), Prompt: style(muted)}
+	s.Focused = s.Blurred
+	s.Focused.Prompt = style(focus)
+	if invalid {
+		s.Focused.Prompt, s.Blurred.Prompt = style(errorColor), style(errorColor)
+	}
+	s.Cursor = textinput.CursorStyle{Color: lipgloss.Color(focus), Blink: true}
+	input.SetStyles(s)
+}
+
+func helpText(s, background string, dimmed bool) string {
+	// Keep key names brighter than explanations without changing cell geometry.
+	parts := strings.Fields(s)
+	keys := map[string]bool{"Tab": true, "Enter": true, "Esc": true, "Ctrl+C": true, "↑↓": true, "?": true, "q": true}
+	for i, word := range parts {
+		color := muted
+		if keys[word] {
+			color = text
+		}
+		parts[i] = themed(word, color, background, dimmed)
+	}
+	return strings.Join(parts, themed(" ", muted, background, dimmed))
 }
 
 // cellCrop and wrapText operate on display cells rather than bytes or runes.

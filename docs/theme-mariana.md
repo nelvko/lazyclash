@@ -1,0 +1,134 @@
+# Mariana 默认主题
+
+LazyClash 的稳定主题标识为 `mariana`，显示名称为 Mariana。它以 Mariana 的正文配色和 Adaptive 的界面层次为参考，适配终端字符单元；不是 Sublime Text 的像素复刻。此前没有可保存的主题选项，因此本次直接更新默认配色，不增加主题选择器或更改已有偏好文件。
+
+## 原始资源与版本
+
+本次直接只读检查本机 Sublime Text 4 **Build 4215** 随附资源，没有读取 Sublime 用户偏好或自定义覆盖文件：
+
+- `/Applications/Sublime Text.app/Contents/Info.plist`：`CFBundleVersion=4215`。
+- `Contents/MacOS/Packages/Color Scheme - Default.sublime-package` 内 `Mariana.sublime-color-scheme`，作者字段：Sublime HQ Pty Ltd, Dmitri Voronianski。
+- `Contents/MacOS/Packages/Theme - Default.sublime-package` 内 **`Adaptive.sublime-theme`**。包名称包含 Default，但读取的界面主题是 Adaptive，不是 Default 或 Default Dark。
+
+SHA-256：
+
+| 对象 | SHA-256 |
+| --- | --- |
+| Mariana 资源内容 | `b26ba885408a51cda462d5fa890e45252b3f440f1cbf3f94f1e6888bd6d42db9` |
+| Adaptive 资源内容 | `4f54692826579f1c1ca04c1c134916c6674717b9f7f4a5e087b8d0bf6f612a95` |
+| Color Scheme - Default 包 | `b9ad09699425506b40562398fc6136c91996a7ae86b922d8a85403a0b673e5cf` |
+| Theme - Default 包 | `26d648cdfd1781e005e89dab96244a5a9a04d72300f993c0534efa00eb3a84f5` |
+
+原始值来自这些资源，官方文档仅用于解释规则：[配色方案](https://www.sublimetext.com/docs/color_schemes.html)、[主题与亮度属性](https://www.sublimetext.com/docs/themes.html#luminosity)、[minihtml 颜色运算](https://www.sublimetext.com/docs/minihtml.html#color-mod-function)。Sublime 文档指向的 [2016 年 CSS 草案](https://www.w3.org/TR/2016/WD-css-color-4-20160705/#blend-adjuster) 解释了 blend 权重方向。
+
+## 换算规则
+
+A：原资源直接提供的不透明颜色，HSL 到 RGB 仅转换表示方式。B：按原资源运算或透明度合成得到的不透明色。C：为终端用途、对比度或统一状态所作的明确适配。
+
+HSL 使用标准 sRGB HSL 转换。中间步骤保留浮点精度，最终 0–255 通道四舍五入，恰好半值向上。例如 `hsl(210, 60%, 70%)` 绿色通道为 178.5，取 179。色值可能因此与提前取整的网络色板差一个通道单位。
+
+`color(base blend(other p%))` 在未指定色彩空间时使用 RGB：`result = p × base + (1-p) × other`，这里 p 是保留 **base** 的比例。它与“不透明度 p 的 other 覆盖 base”含义相反。透明覆盖使用 `result = alpha × foreground + (1-alpha) × background`；若 layer 另有 opacity，则乘入 alpha。终端输出全部为不透明颜色，无真实透明遮罩。
+
+Mariana 的背景变量 `blue3 = hsl(210, 15%, 22%)` 未取整 RGB 为 `(47.685, 56.1, 64.515)`。其 HSV V 为 0.253，因此根据 Sublime 文档属于 `file_medium_dark`；Adaptive 的 sidebar 和 quick_panel 使用 `medium_dark_bg`。
+
+原始界面关系也核对了以下规则：
+
+| 原始位置 | 原始表达式 | 在 Mariana 背景上换算 |
+| --- | --- | --- |
+| 正文背景 / 正文 | `var(blue3)` / `var(white3)` | `#303841` / `#d8dee9` |
+| 注释 / 次要文字参考 | `var(blue6) = hsl(221, 12%, 69%)` | `#a6acb9` |
+| 文本选区 | `var(blue2) = hsla(210, 13%, 40%, 0.7)` | 覆盖正文背景得到 `#4c5864`；未指定 selection_foreground，继承正文 |
+| 选区边界 | `var(blue4) = hsl(210, 13%, 45%)` | `#647382` |
+| 侧边栏 / quick_panel | `medium_dark_bg = color(var(--background) blend(black 60%))` | `#1d2227` |
+| 侧边栏普通文字 / 选中文字 | `color(var(--background) blend(white 20%))` / `white` | `#d6d7d9` / `#ffffff` |
+| 侧边栏 heading | `color(var(--background) blend(white 45%))` | `#a2a5a9` |
+| 侧边栏悬停 | white `a(0.06)`，layer opacity 1 | 覆盖侧边栏得到 `#2a2f34` |
+| 侧边栏选中 | white `a(0.18)`，layer opacity 0.6 | 有效 alpha 0.108，覆盖侧边栏得到 `#353a3e` |
+| 弹出列表选中 | white，layer opacity 0.15 | 参考透明叠加关系；LazyClash 统一使用文本选区角色，避免每种列表另设颜色 |
+| 输入控件 modifier | `l(- 5%) s(* 50%)` | 若作用于 Mariana 背景：HSL `(210, 7.5%, 17%)` → `#282b2f` |
+| Adaptive 浅层底色 | `light_bg = color(var(--background) blend(black 90%))` | `#2b323a` |
+| auto-complete 暗色表面 tint | white `a(0.05)` | 覆盖正文背景得到 `#3a424a` |
+
+输入 modifier 在原主题中受 inactive sheet 规则约束；LazyClash 将计算结果复用于所有输入框。`light_bg` 是原资源变量名，并不表示 LazyClash 新增浅色主题。卡片、弹窗等角色的复用见下表；没有声称它们与 Sublime 每个控件完全相同。
+
+## LazyClash 语义映射
+
+所有值集中在 `internal/tui/theme.go`，不在业务页面定义十六进制颜色。不同语义允许共用值，但不将“成功”“焦点”“普通标题”混为同一角色。
+
+| LazyClash Token | 最终值 | 类别与依据 |
+| --- | --- | --- |
+| `bg` | `#303841` | A，Mariana `background=var(blue3)` |
+| `panel` | `#2b323a` | B 计算 / C 用途，Adaptive `light_bg`，用于克制的卡片底色 |
+| `raised` | `#3a424a` | B 计算 / C 用途，Adaptive white alpha .05 覆盖正文背景，用于弹窗 |
+| `sidebarBackground` | `#1d2227` | B，Adaptive `medium_dark_bg` |
+| `inputBackground` | `#282b2f` | B 计算 / C 用途，Adaptive 输入 modifier 作用于 Mariana 背景 |
+| `text` | `#d8dee9` | A，Mariana `foreground=var(white3)=hsl(219,28%,88%)` |
+| `muted` | `#a9afbc` | C，`blue6` 亮度 69% → 70%；原值在 raised 上仅 4.481:1，为说明文字达到 4.5:1 而提高 1 个百分点 |
+| `disabled`、`backdropText` | `#7b8896` | C，终端禁用及非交互背景弱化色；不用于正常说明、路径、版本或错误 |
+| `border` | `#647382` | A，Mariana `selection_border=var(blue4)`，用作控件边界 |
+| `divider` | `#444c54` | B 计算 / C 用途，Adaptive black/white tint 体系，white alpha .10 覆盖正文背景，用作装饰分隔线 |
+| `selectionBackground` | `#4c5864` | B，Mariana 的半透明选区覆盖正文背景；TUI 统一列表、侧边栏当前项使用该不透明结果 |
+| `selectionForeground` | `#d8dee9` | A，Mariana 正文；明确配对，不继承任意终端颜色 |
+| `hoverBackground` | `#3c444c` | B 计算 / C 用途，Adaptive sidebar hover white alpha .06 覆盖正文背景；TUI 跨表面统一使用 |
+| `accent`、`info` | `#85b3e0` | C，原 `blue-vibrant=hsl(210,60%,60%)` 亮度提高到 70%，使交互提示在 raised 上可读 |
+| `focus` | `#f9ae58` | A 颜色 / C 用途，Mariana caret 的 `orange=hsl(32,93%,66%)`，用于键盘焦点 |
+| `primaryButtonBackground` | `#5c99d6` | A，Mariana 原始 `accent=blue-vibrant` |
+| `primaryButtonForeground` | `#1d2227` | B 颜色 / C 用途，与按钮底色配对，以深色正文保证对比 |
+| `success` | `#99c794` | A 颜色 / C 语义，Mariana `green=hsl(114,31%,68%)` |
+| `warning` | `#f9ae58` | A 颜色 / C 语义，Mariana `orange`；通过警告文字与焦点符号区分用途 |
+| `errorColor` | `#f28d92` | C，Mariana `red=hsl(357,79%,65%)` 亮度提高到 75%，保证错误原因在 raised 上可读 |
+
+未安装、未配置、没有数据使用中性色与文字，不等同错误。成功、失败、进行中均保留文字。当前页选中和键盘焦点采用独立角色与非颜色标记。Modal 弱化只改变实际输出的前景与背景，不混合真实终端画面。
+
+## 可读性与终端限制
+
+按 WCAG sRGB 相对亮度公式，对真正使用的前景/背景配对计算 `(L高+0.05)/(L低+0.05)`。这是辅助设计检查，不能代替真实终端观察。
+
+| 配对 | 对比度（约） |
+| --- | --- |
+| 正文 `#d8dee9` / 背景 `#303841` | 8.79:1 |
+| 说明 `#a9afbc` / 卡片 `#2b323a` | 5.89:1 |
+| 说明 `#a9afbc` / raised `#3a424a` | 4.64:1 |
+| 选中文字 `#d8dee9` / 选区 `#4c5864` | 5.38:1 |
+| 主按钮字 `#1d2227` / 按钮 `#5c99d6` | 5.33:1 |
+| 错误 `#f28d92` / 输入底色 `#282b2f` | 6.09:1 |
+| 提示 `#85b3e0` / raised `#3a424a` | 4.63:1 |
+| 焦点 `#f9ae58` / raised `#3a424a` | 5.45:1 |
+| 成功 `#99c794` / raised `#3a424a` | 5.32:1 |
+
+低对比的装饰线、已禁用内容和 Modal 后的不可操作页面不按普通正文处理。必要控件仍有文字、焦点标记和边界。256 色和低色终端使用专门的语义回退，避免自动量化将蓝灰底色变成纯蓝。True Color/256 色之外的基本 ANSI 调色板受用户终端设置影响，不能保证不同终端像素一致。`NO_COLOR` 时仍保留导航、步骤、状态文字和焦点标记；不修改终端全局配色或 Shell 设置。
+
+本次不引入浅色主题、系统主题跟随、主题市场或主题编辑器。
+
+
+## 终端色彩能力与备用配色
+
+Bubble Tea v2 在启动时通过当前输出终端、环境变量、terminfo 及适用时的 tmux 信息检测色彩能力，并发送 `ColorProfileMsg`。LazyClash 在该消息到达前用当前环境给出初值，随后按检测结果重绘；操作步骤、焦点、输入和安装任务均不重置。没有按操作系统选择色彩模式，也没有无条件强制真彩色。
+
+本次不主动发送 RGB/Tc 能力查询：固定版本 Bubble Tea 的 `termcap.go` 明确提示，部分终端（例如 Apple Terminal）可能错误响应该查询并破坏输出。真正支持真彩色但连接链路只声明 256 色的终端，会使用下表中的明确备用配色；用户仍可在确知终端支持时为单次进程声明 `COLORTERM=truecolor`。
+
+下面的数字分别是标准 xterm 256 色索引和 ANSI 16 色索引，属于 C 类终端适配。256 色表使用 16 以上的固定索引，避免依赖用户自定义的前十六色；16 色表不可避免地受终端主题影响。低色模式合并部分背景层次，继续依靠边框、文字和非颜色的当前项/焦点标记区分状态。
+
+| 语义角色 | ANSI256 | ANSI16 |
+| --- | --- | --- |
+| `bg` | 236 | 0（黑） |
+| `panel` | 235 | 0 |
+| `raised` | 237 | 0 |
+| `sidebarBackground`、`primaryButtonForeground` | 234 | 0 |
+| `inputBackground` | 235 | 0 |
+| `text`、`selectionForeground` | 253 | 15（亮白） |
+| `muted` | 249 | 7（浅灰） |
+| `disabled`、`backdropText` | 245 | 8（亮黑） |
+| `selectionBackground` | 240 | 4（海军蓝，仅用于小范围选中项） |
+| `hoverBackground` | 238 | 0 |
+| `border` | 244 | 8 |
+| `divider` | 238 | 8 |
+| `accent`、`info` | 110 | 14（亮青） |
+| `focus`、`warning` | 215 | 11（亮黄） |
+| `primaryButtonBackground` | 68 | 14（亮青） |
+| `success` | 114 | 10（亮绿） |
+| `errorColor` | 210 | 9（亮红） |
+
+`NO_COLOR` 采用非空即禁用颜色的语义，迟到的真彩色能力消息也不能覆盖这个选择。无颜色模式移除颜色和装饰，保留原有文字、边框、当前步骤方括号、`›` 焦点标记与键盘操作。主题只输出应用字符单元的 SGR 样式，不写 Shell 配置或终端调色板；`tea.View` 的终端默认前景/背景字段保持为空，避免通过 OSC10/11 改变终端默认颜色。
+
+`internal/tui/theme_profile_test.go` 检查 True Color 与 ANSI256 下正文、说明、选区、按钮、错误、焦点的实际配对均达到 4.5:1 目标，并检查无颜色、低色模式和窗口缩放期间的内容、布局、任务与焦点保留。这些自动检查不代表已在所有终端模拟器上观察通过。

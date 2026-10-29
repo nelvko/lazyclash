@@ -58,6 +58,7 @@ func newWizard() wizardState {
 	input := func(hint string, hidden bool) textinput.Model {
 		v := textinput.New()
 		v.CharLimit = 8192
+		styleInput(&v, inputBackground, false)
 		v.Placeholder = hint
 		if hidden {
 			v.EchoMode = textinput.EchoPassword

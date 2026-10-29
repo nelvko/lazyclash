@@ -229,7 +229,7 @@ func TestInstallResultCarriesFinalProgressBeforeErrorClassification(t *testing.T
 func TestV2ViewFlagsPasteMouseAndKeyboardReleaseSemantics(t *testing.T) {
 	m := ready(&fakeBackend{})
 	view := m.View()
-	if !view.AltScreen || view.MouseMode != tea.MouseModeAllMotion || view.DisableBracketedPasteMode || view.Content != m.screen {
+	if !view.AltScreen || view.MouseMode != tea.MouseModeAllMotion || view.DisableBracketedPasteMode || ansi.Strip(view.Content) != ansi.Strip(m.screen) {
 		t.Fatal("v2 View did not request terminal capabilities")
 	}
 	m, _ = update(m, tea.PasteMsg{Content: "q"})
