@@ -27,7 +27,7 @@ if [[ ${1:-} != --linux ]]; then
     result=$?
     trap - EXIT
     if [[ -n $linux_stage ]]; then
-    for file in pty-empty.txt pty-install-local.txt pty-installed.txt pty-runtime.txt pty-rules.txt cleanup.txt; do
+    for file in pty-empty.txt pty-install-local.txt pty-installed.txt pty-runtime.txt pty-rules.txt pty-logs.txt cleanup.txt; do
       if orb -m "$vm" test -f "$linux_stage/$file"; then
         orb -m "$vm" cat "$linux_stage/$file" > ".test-artifacts/$file" || result=1
       fi
@@ -255,7 +255,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/invalid"):
             self.wfile.write(b"proxies: [broken yaml\n")
         else:
-            self.wfile.write(b'mode: rule\nproxies: []\nproxy-groups:\n - name: PROXY\n   type: select\n   proxies: [DIRECT, REJECT]\nrules:\n - DOMAIN-SUFFIX,example.invalid,PROXY\n - DOMAIN,needle.example.invalid,REJECT\n - MATCH,PROXY\n')
+            self.wfile.write(b'mode: rule\nlog-level: info\nproxies: []\nproxy-groups:\n - name: PROXY\n   type: select\n   proxies: [DIRECT, REJECT]\nrules:\n - DOMAIN-SUFFIX,example.invalid,PROXY\n - DOMAIN,needle.example.invalid,REJECT\n - MATCH,PROXY\n')
     def do_POST(self):
         if self.path != "/stream":
             self.send_error(404)
@@ -333,6 +333,48 @@ python3 - "$home/installation/current/config.yaml" "$rules_config_hash" <<'PY'
 import hashlib, sys
 assert hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest() == sys.argv[2], "read-only rule inspection changed configuration"
 print("Rule inspection left configuration bytes unchanged")
+PY
+
+# Collect real live logs through the shared CLI use case. The selected fixture
+# profile enables info events only for this private installation; the product's
+# default log level and service stdout policy are left unchanged.
+python3 - "$app" "$home" "$service_name" "$fixture_port" <<'PY'
+from http.client import HTTPConnection
+import json, subprocess, sys, time
+command = [sys.argv[1], "--home", sys.argv[2], "--service-name", sys.argv[3],
+           "logs", "--lines", "3", "--duration", "4s"]
+process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+try:
+    for _ in range(12):
+        if process.poll() is not None:
+            break
+        connection = HTTPConnection("127.0.0.1", 7897, timeout=5)
+        try:
+            connection.request("GET", "http://127.0.0.1:%s/log-event" % sys.argv[4])
+            response = connection.getresponse()
+            assert response.status == 200, "dedicated log traffic fixture failed"
+            response.read()
+        finally:
+            connection.close()
+        time.sleep(.15)
+    output, error = process.communicate(timeout=10)
+    assert process.returncode == 0, "live-log CLI observation failed"
+    entries = json.loads(output)
+    assert 0 < len(entries) <= 3, "bounded live-log observation was empty or exceeded its limit"
+    assert any("[TCP]" in entry["message"] for entry in entries), "actual Mihomo traffic event was not captured"
+    assert all(entry["time"] and entry["level"] and len(entry["message"].encode()) < 4200 for entry in entries)
+    assert b"fixture-private-token" not in output, "subscription credential appeared in logs"
+    print("Real live-log CLI collected bounded, timestamped Mihomo events")
+finally:
+    if process.poll() is None:
+        process.kill()
+        process.communicate()
+PY
+python3 "$work/pty-smoke.py" --binary "$app" --home "$home" --service-name "$service_name" --mode logs --fixture-port "$fixture_port" --output "$work/pty-logs.txt"
+python3 - "$home/installation/current/config.yaml" "$rules_config_hash" <<'PY'
+import hashlib, sys
+assert hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest() == sys.argv[2], "read-only log viewing changed configuration"
+print("Log inspection left configuration bytes unchanged")
 PY
 
 # Generate actual proxy traffic against our own loopback fixture. Two active

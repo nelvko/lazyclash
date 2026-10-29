@@ -70,7 +70,9 @@ def exercise(binary, output, profile):
                    "--home", str(home), "--service-name", service]
         try:
             terminal = SMOKE.Terminal(command)
-            terminal.wait("State refreshed")
+            terminal.wait("Overview")
+            terminal.wait_absent("Loading state")
+            terminal.wait("1–7 Pages")
             mark = len(terminal.text())
             terminal.resize(160, 45)
             terminal.wait("Kernel and environment", after=mark)

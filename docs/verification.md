@@ -146,3 +146,20 @@ python3 scripts/pty-smoke.py --help
 - `scripts/theme-preview.py`：导出真实模型 ANSI View，以 Menlo 实际字体生成独立 PNG，逐页检查首页、宽窄向导、网络结果、输入错误、下载、取消、成功/失败及256色回退。它们是模型排版预览，不能作为真实内核运行或服务验证证据。
 
 证据位于忽略目录 `.test-artifacts/mariana/`；PTY 使用独立临时 home 和随机服务名，没有查询版本、安装内核或创建服务，临时进程/文件已清理。本轮主题修改未重跑真实 Mihomo/systemd 安装生命周期 E2E；此前记录单独保留。未逐一实测 Termius、iTerm2 等原生终端前端，16色仍受终端基础调色板影响。
+
+
+## 七页导航、紧凑布局与实时日志（2026-10-29）
+
+导航与实际单键快捷键统一为 `1 Overview`、`2 Proxies`、`3 Profiles`、`4 Connections`、`5 Rules`、`6 Logs`、`7 Settings`。侧栏数字为右侧提示，不属于页面名称；输入、搜索和帮助层中的数字按当前控件语义处理。当前页与键盘焦点保持独立，侧栏/列表各自作为焦点组。
+
+本轮实际运行通过：
+
+- `scripts/verify-linux.sh lazyclash-e2e`：在已有专用 OrbStack Debian 12/arm64 VM 中实际执行全部 Linux 测试二进制，普通 uid 501，systemd 252 用户 manager 正常；包含新日志协议、脱敏、取消、身份变化及布局/焦点测试。
+- `scripts/e2e.sh lazyclash-e2e --proxy-mode environment`：完整 Mihomo/systemd E2E 通过（包含服务停止及恢复后的顶栏状态断言），仍由产品下载并验证官方 v1.19.32/v1.19.33；保留安装、更新、重装、配置、规则、连接及六种真实 PTY 场景。
+- 新 Logs 实测：私有 fixture 配置显式启用 info 事件，经自有 loopback HTTP 流量产生真实 Mihomo TCP 日志；CLI 在条数/时间边界内输出日志，TUI 验证暂停、数字与 q 搜索、帮助层隔离、缩放、重连，以及停止/启动后收集包含新 source port 的真实事件。读取前后配置 SHA256 不变；没有启用系统 journal 或修改产品默认日志级别。
+- `scripts/theme-pty.py`：macOS/arm64 和所选 Debian 12/arm64 的真实 controlling PTY，True Color、ANSI256、NO_COLOR 各覆盖 160×45、120×32、80×24、60×20、120×18，确认新布局不破坏网络草稿、焦点和返回。
+- 现有 Python VT 协议四项测试、Python 语法检查、Bash 语法检查和差异空白检查通过。
+
+证据单独保存到忽略目录 `.test-artifacts/ui-layout/`，包括 `linux-tests.log`、`e2e.log`、`pty-logs.txt`、`cleanup.txt` 和主机/Linux 颜色 PTY 记录。E2E 清理确认 dedicated unit 为 not-found、两个监听端口释放、`resources released=1`、exit=0；主机/Linux 测试与 PTY 暂存文件、进程已清理。没有读取 proxyctl 运行配置，没有修改 macOS 代理、DNS、路由或 Shell 文件。
+
+日志行为与边界见 [实时日志查看](logs.md)。这些日志仅为当前会话实时观察，暂停或离页期间没有历史补采。未实际验证 Linux/amd64、其他发行版或其他 init 系统；没有把 macOS PTY 或交叉编译当作 macOS 服务支持证明。

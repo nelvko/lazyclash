@@ -306,8 +306,9 @@ def main():
     parser.add_argument("--binary", required=True)
     parser.add_argument("--home", required=True)
     parser.add_argument("--service-name", required=True)
-    parser.add_argument("--mode", choices=["empty", "installed", "install-local", "runtime", "rules"], required=True)
+    parser.add_argument("--mode", choices=["empty", "installed", "install-local", "runtime", "rules", "logs"], required=True)
     parser.add_argument("--mihomo-bin")
+    parser.add_argument("--fixture-port", type=int, help="Dedicated loopback HTTP fixture port for live log events")
     parser.add_argument("--connection-id", help="Dedicated active fixture connection UUID for runtime mode")
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
@@ -318,7 +319,9 @@ def main():
     terminal = Terminal(command)
     terminals = [terminal]
     try:
-        terminal.wait("State refreshed")
+        terminal.wait("Overview")
+        terminal.wait_absent("Loading state")
+        terminal.wait("1–7 Pages")
         if args.mode == "empty":
             terminal.wait("Install your first proxy core")
             terminal.key(b"a")
@@ -387,7 +390,9 @@ def main():
             # context and let rollback finish before Bubble Tea tears down.
             signal_terminal = Terminal(command)
             terminals.append(signal_terminal)
-            signal_terminal.wait("State refreshed")
+            signal_terminal.wait("Overview")
+            signal_terminal.wait_absent("Loading state")
+            signal_terminal.wait("1–7 Pages")
             counter.unlink()
             signal_terminal.local_confirm(slow)
             signal_terminal.key(b"\r")
@@ -417,7 +422,7 @@ def main():
                     raise AssertionError("Dedicated rule-test CLI action returned unexpected status: " + " ".join(arguments[:2]))
                 return completed.stdout
 
-            terminal.key(b"6")
+            terminal.key(b"5")
             terminal.wait("Effective rules")
             terminal.wait("Rules loaded")
             terminal.key(b"/")
@@ -453,6 +458,88 @@ def main():
             terminal.wait("Rules loaded")
             terminal.wait("needle.example.invalid")
             terminal.exit()
+        elif args.mode == "logs":
+            if not args.fixture_port or not 1024 <= args.fixture_port <= 65535:
+                parser.error("--fixture-port must be the dedicated loopback fixture's unprivileged port")
+
+            def cli(*arguments, success=True):
+                completed = subprocess.run(command + list(arguments), stdout=subprocess.PIPE,
+                                           stderr=subprocess.PIPE, timeout=20)
+                if (completed.returncode == 0) != success:
+                    raise AssertionError("Dedicated log-test CLI action returned unexpected status: " + " ".join(arguments[:2]))
+                return completed.stdout
+
+            def log_event():
+                # Explicit HTTP proxy traffic to our own fixture emits a real
+                # Mihomo TCP event; no external DNS or private URL is involved.
+                from http.client import HTTPConnection
+                connection = HTTPConnection("127.0.0.1", 7897, timeout=5)
+                try:
+                    connection.connect()
+                    source_port = connection.sock.getsockname()[1]
+                    connection.request("GET", "http://127.0.0.1:%d/log-event" % args.fixture_port)
+                    response = connection.getresponse()
+                    if response.status != 200:
+                        raise AssertionError("Dedicated log traffic fixture returned an unexpected status")
+                    response.read()
+                    return source_port
+                finally:
+                    connection.close()
+
+            terminal.key(b"6")
+            terminal.wait("Mihomo logs")
+            terminal.wait("live events")
+            # Establishment is asynchronous; repeat only our local fixture event
+            # until it has actually been observed through the API log stream.
+            for _ in range(10):
+                log_event()
+                terminal.read(0.15)
+                if "[TCP]" in terminal.screen.text():
+                    break
+            terminal.wait("[TCP]")
+            terminal.key(b"\t")  # navigation group -> log capture controls
+            terminal.key(b"f")
+            terminal.wait("Paused")
+            mark = len(terminal.text())
+            terminal.resize(60, 20)
+            terminal.wait("Mihomo logs", after=mark)
+            mark = len(terminal.text())
+            terminal.resize(120, 40)
+            terminal.wait("Paused", after=mark)
+
+            terminal.key(b"/")
+            terminal.wait("Search retained entries · Enter / Esc finish")
+            terminal.key(b"123q7")
+            terminal.wait("123q7")
+            terminal.wait("Mihomo logs")
+            terminal.key(b"\x05\x15")
+            terminal.key(b"\r")
+            terminal.wait_absent("Search retained entries · Enter / Esc finish")
+            terminal.wait("[TCP]")
+            terminal.key(b"?")
+            terminal.wait("Current page: Logs")
+            terminal.key(b"1234567")
+            terminal.wait("Current page: Logs")
+            terminal.key(b"\x1b")
+            terminal.wait_absent("Current page: Logs")
+            terminal.key(b"\x1b[F")  # End: reconnect and follow newest entries
+            terminal.wait("Capturing live events")
+            terminal.wait("Capture resumed")
+
+            cli("service", "stop")
+            cli("logs", "--lines", "1", "--duration", "1s", success=False)
+            terminal.wait("Capture unavailable")
+            terminal.wait("Mihomo · Stopped")
+            cli("service", "start")
+            terminal.key(b"g")
+            terminal.wait("Capturing live events")
+            terminal.wait("Mihomo · Running")
+            recovered_source = None
+            for _ in range(5):
+                recovered_source = log_event()
+                terminal.read(0.15)
+            terminal.wait("127.0.0.1:%s" % recovered_source)
+            terminal.exit()
         elif args.mode == "runtime":
             if not args.connection_id:
                 parser.error("--connection-id is required for runtime mode")
@@ -466,7 +553,7 @@ def main():
 
             terminal.wait("Since core start")
             terminal.wait("Live")
-            terminal.key(b"5")
+            terminal.key(b"4")
             terminal.wait("Active connections")
             terminal.wait("Live")
             terminal.key(b"/")
@@ -505,16 +592,17 @@ def main():
             terminal.exit()
         else:
             terminal.wait("Running")
-            # SGR mouse press/release on the sidebar Nodes entry.
-            terminal.key(b"\x1b[<0;5;7M\x1b[<0;5;7m")
-            terminal.wait("Proxy groups and nodes")
+            # SGR mouse press/release on the compact sidebar Proxies entry.
+            terminal.key(b"\x1b[<0;5;5M\x1b[<0;5;5m")
+            terminal.wait("Proxy groups and options")
             terminal.wait("PROXY")
-            terminal.key(b"\x1b[Z")  # nav.nodes -> nav.overview
-            terminal.key(b"\x1b[Z")  # nav.overview -> PROXY group
+            terminal.key(b"\t")  # navigation group -> first group (GLOBAL)
+            terminal.key(b"\x1b[B")  # next group: PROXY
+            terminal.wait("> PROXY [Selector]")
             terminal.key(b"\r")
             terminal.wait("REJECT")
-            terminal.key(b"\t")  # DIRECT
-            terminal.key(b"\t")  # REJECT
+            terminal.key(b"\x1b[B")  # DIRECT
+            terminal.key(b"\x1b[B")  # REJECT
             terminal.key(b"\r")
             terminal.wait("Node selected")
             terminal.wait("PROXY [Selector] → REJECT")
