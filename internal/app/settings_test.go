@@ -41,7 +41,11 @@ func availableSettings(t *testing.T) RuntimeSettings {
 
 func TestRuntimeSettingsPreserveAppliedConfigurationAndSources(t *testing.T) {
 	a, svc := installedApp(t)
-	addFixtureProfile(t, a, "custom")
+	source := filepath.Join(t.TempDir(), "custom.yaml")
+	write(t, source, []byte("mode: rule\nproxy-groups: [{name: custom, type: select, proxies: [DIRECT, REJECT]}]\nrules: ['MATCH,custom']\n"))
+	if err := a.AddSubscription(t.Context(), "custom", source); err != nil {
+		t.Fatal(err)
+	}
 	if err := a.Apply(t.Context(), "custom"); err != nil {
 		t.Fatal(err)
 	}
@@ -50,9 +54,14 @@ func TestRuntimeSettingsPreserveAppliedConfigurationAndSources(t *testing.T) {
 		t.Fatal(err)
 	}
 	oldConfig := read(t, filepath.Join(a.Home, "installation", old, "config.yaml"))
-	source := filepath.Join(a.Home, "profiles", "custom.yaml")
-	write(t, source, []byte("mode: direct\nrules: [MATCH,REJECT]\n"))
-	rawSource := read(t, source)
+	write(t, source, []byte("mode: direct\nrules: ['MATCH,REJECT']\n"))
+	if err := a.Refresh(t.Context(), "custom"); err != nil {
+		t.Fatal(err)
+	}
+	snapshotPath := savedSourcePath(t, a, "custom")
+	rawSource := read(t, snapshotPath)
+	libraryPath := filepath.Join(a.Home, "configuration", "library.json")
+	libraryBefore := read(t, libraryPath)
 	proposed := availableSettings(t)
 	plan, err := a.PrepareRuntimeSettings(t.Context(), proposed)
 	if err != nil {
@@ -78,7 +87,7 @@ func TestRuntimeSettingsPreserveAppliedConfigurationAndSources(t *testing.T) {
 		delete(previous, key)
 		delete(next, key)
 	}
-	if !reflect.DeepEqual(previous, next) || string(read(t, source)) != string(rawSource) || len(svc.actions) != 0 || svc.installs != 1 || svc.active {
+	if !reflect.DeepEqual(previous, next) || string(read(t, snapshotPath)) != string(rawSource) || string(read(t, libraryPath)) != string(libraryBefore) || len(svc.actions) != 0 || svc.installs != 1 || svc.active {
 		t.Fatal("changing ports modified routing, raw source or the stopped service")
 	}
 	settings, err := a.GetRuntimeSettings(t.Context())

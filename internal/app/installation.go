@@ -18,16 +18,17 @@ import (
 )
 
 type manifest struct {
-	ID         string `json:"id"`
-	Service    string `json:"service"`
-	Version    string `json:"version"`
-	Controller string `json:"controller"`
-	Secret     string `json:"secret"`
-	Port       int    `json:"mixed_port"`
-	Applied    string `json:"applied"`
-	Mode       string `json:"mode,omitempty"`
-	SHA        string `json:"config_sha256"`
-	BinarySHA  string `json:"binary_sha256"`
+	Build      *buildRecord `json:"build,omitempty"`
+	ID         string       `json:"id"`
+	Service    string       `json:"service"`
+	Version    string       `json:"version"`
+	Controller string       `json:"controller"`
+	Secret     string       `json:"secret"`
+	Port       int          `json:"mixed_port"`
+	Applied    string       `json:"applied"`
+	Mode       string       `json:"mode,omitempty"`
+	SHA        string       `json:"config_sha256"`
+	BinarySHA  string       `json:"binary_sha256"`
 }
 
 var generationName = regexp.MustCompile(`^generations/g-[a-f0-9]{24}$`)
@@ -132,6 +133,9 @@ func (a *App) writeGeneration(base string, m manifest, config []byte) (string, e
 	raw, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return "", err
+	}
+	if len(raw) > 16<<20 {
+		return "", errors.New("configuration build record exceeds the managed file size limit")
 	}
 	if err := store.Replace(filepath.Join(dir, "config.yaml"), config, nil, 0600); err != nil {
 		return "", err

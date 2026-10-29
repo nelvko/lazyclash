@@ -11,17 +11,15 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/nelvko/lazyclash/internal/store"
 )
 
-func TestRememberedSubscriptionRefreshPreservesRuntimeAndPrivateSource(t *testing.T) {
+func TestRememberedSubscriptionRefreshPreservesRuntimeAndOverrides(t *testing.T) {
 	a, svc := installedApp(t)
 	a.HTTP = &http.Client{}
-	content := "mode: rule\nrules: [MATCH,DIRECT]\n"
+	content := "rules: ['MATCH,DIRECT']\n"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("token") != "private-subscription-token" {
-			t.Error("remembered source lost its credentials")
+			t.Error("source lost its credentials")
 		}
 		_, _ = w.Write([]byte(content))
 	}))
@@ -30,117 +28,135 @@ func TestRememberedSubscriptionRefreshPreservesRuntimeAndPrivateSource(t *testin
 	if err := a.AddSubscription(t.Context(), "remote", source); err != nil {
 		t.Fatal(err)
 	}
+	custom := []byte("prepend-rules: ['DOMAIN,custom.example,REJECT']\n")
+	if err := a.SetProfileOverrides(t.Context(), "remote", custom); err != nil {
+		t.Fatal(err)
+	}
 	if err := a.Apply(t.Context(), "remote"); err != nil {
 		t.Fatal(err)
 	}
 	svc.active = true
 	before, _ := installationTree(filepath.Join(a.Home, "installation"))
-	content = "mode: direct\nrules: [MATCH,REJECT]\n"
+	previous, _, _ := a.library().Load()
+	content = "mode: direct\nrules: ['MATCH,REJECT']\n"
 	if err := a.Refresh(t.Context(), "remote"); err != nil {
 		t.Fatal(err)
 	}
 	after, _ := installationTree(filepath.Join(a.Home, "installation"))
 	if !maps.Equal(before, after) || !svc.active || len(svc.actions) != 0 {
-		t.Fatal("refresh applied a profile or affected the running service")
+		t.Fatal("refresh changed running generation or service")
 	}
-	profile := filepath.Join(a.Home, "profiles", "remote.yaml")
-	metadataPath := filepath.Join(a.Home, "profiles", "remote.source.json")
-	if string(read(t, profile)) != content {
-		t.Fatal("new subscription bytes were not saved")
+	lib, _, err := a.library().Load()
+	if err != nil {
+		t.Fatal(err)
 	}
-	var metadata subscriptionSource
-	if json.Unmarshal(read(t, metadataPath), &metadata) != nil || metadata.Source != source || metadata.SHA != digest([]byte(content)) {
-		t.Fatal("private source metadata does not match the refreshed profile")
+	metadata := lib.Subscriptions["remote"]
+	raw, err := a.library().Read(metadata.Revision)
+	if err != nil || string(raw) != content || metadata.Address != source || metadata.Revision != digest(raw) {
+		t.Fatal("snapshot metadata mismatch", err)
 	}
-	for _, path := range []string{profile, metadataPath} {
+	if lib.Profiles["remote"].Spec.Overrides != string(custom) {
+		t.Fatal("refresh overwrote user rules")
+	}
+	old, err := a.library().Read(previous.Subscriptions["remote"].Revision)
+	if err != nil || string(old) != "rules: ['MATCH,DIRECT']\n" {
+		t.Fatal("previous snapshot lost", err)
+	}
+	info, err := a.ProfileDetails(t.Context(), "remote")
+	if err != nil || !info.Pending {
+		t.Fatal("source change not shown as pending", info, err)
+	}
+	for _, path := range []string{filepath.Join(a.Home, "configuration", "library.json"), filepath.Join(a.Home, "configuration", "snapshots", metadata.Revision+".yaml")} {
 		info, err := os.Stat(path)
 		if err != nil || info.Mode().Perm() != 0600 {
-			t.Fatal("subscription files are not private")
+			t.Fatal("subscription files are not private", err)
 		}
+	}
+	public, err := a.ListSources(t.Context())
+	encoded, _ := json.Marshal(public)
+	if err != nil || strings.Contains(string(encoded), "private-subscription-token") || strings.Contains(string(encoded), server.URL) {
+		t.Fatal("public source listing exposed credentials", err)
 	}
 }
 
-func TestUnrememberedSourceIsNotStored(t *testing.T) {
+func TestOneTimeImportDoesNotRememberAddress(t *testing.T) {
 	a, _ := installedApp(t)
 	source := filepath.Join(t.TempDir(), "source.yaml")
-	write(t, source, []byte("rules: [MATCH,DIRECT]\n"))
+	write(t, source, []byte("rules: ['MATCH,DIRECT']\n"))
 	if err := a.Add(t.Context(), "local", source); err != nil {
 		t.Fatal(err)
 	}
-	assertMissing(t, filepath.Join(a.Home, "profiles", "local.source.json"))
-	if err := a.Refresh(t.Context(), "local"); err == nil || !strings.Contains(err.Error(), "remember") {
-		t.Fatal("refresh silently assumed a source", err)
+	lib, _, _ := a.library().Load()
+	if lib.Subscriptions["local"].Address != "" {
+		t.Fatal("address remembered without opt-in")
+	}
+	if err := a.Refresh(t.Context(), "local"); err == nil || !strings.Contains(err.Error(), "remembered") {
+		t.Fatal("refresh assumed a source", err)
 	}
 }
 
-func TestSubscriptionRefreshProtectsLocalEditsAndInterruptedMetadata(t *testing.T) {
-	for _, scenario := range []string{"local-edit", "interrupted-metadata", "validation-failure", "changed-during-validation", "cancel-validation"} {
+func TestRefreshFailureNeverCommitsCandidateIndexOrControlsService(t *testing.T) {
+	for _, scenario := range []string{"corrupt-snapshot", "invalid-yaml", "validation-failure", "concurrent-index-edit", "cancel-validation", "override-reference"} {
 		t.Run(scenario, func(t *testing.T) {
 			a, svc := installedApp(t)
 			source := filepath.Join(t.TempDir(), "source.yaml")
-			original := []byte("rules: [MATCH,DIRECT]\n")
+			original := []byte("proxy-groups: [{name: ROUTE, type: select, proxies: [DIRECT]}]\nrules: ['MATCH,ROUTE']\n")
 			write(t, source, original)
 			if err := a.AddSubscription(t.Context(), "saved", source); err != nil {
 				t.Fatal(err)
 			}
-			profile := filepath.Join(a.Home, "profiles", "saved.yaml")
-			metadataPath := filepath.Join(a.Home, "profiles", "saved.source.json")
-			metadataBefore := read(t, metadataPath)
-			write(t, source, []byte("rules: [MATCH,REJECT]\n"))
+			index := filepath.Join(a.Home, "configuration", "library.json")
+			before := read(t, index)
+			write(t, source, []byte("rules: ['MATCH,REJECT']\n"))
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			switch scenario {
-			case "local-edit":
-				write(t, profile, []byte("# user edit\nrules: [MATCH,DIRECT]\n"))
-			case "interrupted-metadata":
-				var metadata subscriptionSource
-				_ = json.Unmarshal(metadataBefore, &metadata)
-				metadata.SHA = digest([]byte("future-profile"))
-				updated, _ := json.Marshal(metadata)
-				write(t, metadataPath, updated)
+			case "corrupt-snapshot":
+				lib, _, _ := a.library().Load()
+				write(t, filepath.Join(a.Home, "configuration", "snapshots", lib.Subscriptions["saved"].Revision+".yaml"), []byte("# manual corruption\nrules: ['MATCH,DIRECT']\n"))
+			case "invalid-yaml":
+				write(t, source, []byte("sensitive-token: ["))
 			case "validation-failure":
-				a.Validate = func(context.Context, string, string, string) error { return errors.New("engine rejected subscription") }
-			case "changed-during-validation":
-				a.Validate = func(context.Context, string, string, string) error {
-					write(t, profile, []byte("# concurrent user edit\nrules: [MATCH,DIRECT]\n"))
-					return nil
-				}
+				a.Validate = func(context.Context, string, string, string) error { return errors.New("engine rejected candidate") }
+			case "concurrent-index-edit":
+				a.Validate = func(context.Context, string, string, string) error { write(t, index, append(before, ' ')); return nil }
 			case "cancel-validation":
 				a.Validate = func(context.Context, string, string, string) error { cancel(); return context.Canceled }
+			case "override-reference":
+				if err := a.SetProfileOverrides(t.Context(), "saved", []byte("prepend-rules: ['DOMAIN,custom.example,ROUTE']")); err != nil {
+					t.Fatal(err)
+				}
+				before = read(t, index)
 			}
-			before := read(t, profile)
-			metaExpected := read(t, metadataPath)
 			if err := a.Refresh(ctx, "saved"); err == nil {
-				t.Fatal("unsafe refresh reported success")
+				t.Fatal("unsafe refresh succeeded")
 			}
-			if scenario != "changed-during-validation" && string(read(t, profile)) != string(before) {
-				t.Fatal("failed refresh changed the saved profile")
+			want := string(before)
+			if scenario == "concurrent-index-edit" {
+				want += " "
 			}
-			if scenario == "changed-during-validation" && !strings.Contains(string(read(t, profile)), "concurrent user edit") {
-				t.Fatal("refresh overwrote a concurrent local edit")
+			if string(read(t, index)) != want || len(svc.actions) != 0 {
+				t.Fatal("failed refresh changed published index or service")
 			}
-			if string(read(t, metadataPath)) != string(metaExpected) || len(svc.actions) != 0 {
-				t.Fatal("failed refresh changed remembered metadata or controlled the service")
-			}
+			assertMissing(t, filepath.Join(a.Home, "apply-pending.json"))
 		})
 	}
 }
 
-func TestSubscriptionRefreshBeforeInstallationRemainsUnvalidated(t *testing.T) {
+func TestRefreshBeforeInstallationDoesNotClaimEngineValidation(t *testing.T) {
 	a, _ := testApp(t)
 	source := filepath.Join(t.TempDir(), "source.yaml")
-	write(t, source, []byte("rules: [MATCH,DIRECT]\n"))
+	write(t, source, []byte("rules: ['MATCH,DIRECT']\n"))
 	if err := a.AddSubscription(t.Context(), "saved", source); err != nil {
 		t.Fatal(err)
 	}
-	next := []byte("rules: [MATCH,REJECT]\n")
-	write(t, source, next)
+	write(t, source, []byte("rules: ['MATCH,REJECT']\n"))
 	if err := a.Refresh(t.Context(), "saved"); err != nil {
 		t.Fatal(err)
 	}
-	marker := filepath.Join(a.Home, "profiles", "saved.unvalidated")
-	if string(read(t, marker)) != digest(next) {
-		t.Fatal("structurally validated refresh lost its full-validation marker")
+	lib, _, _ := a.library().Load()
+	if lib.Profiles["saved"].Validated {
+		t.Fatal("claimed engine validation without an installed core")
 	}
 	if err := a.Install(t.Context(), "", nil); err != nil {
 		t.Fatal(err)
@@ -148,7 +164,10 @@ func TestSubscriptionRefreshBeforeInstallationRemainsUnvalidated(t *testing.T) {
 	if err := a.Refresh(t.Context(), "saved"); err != nil {
 		t.Fatal(err)
 	}
-	assertMissing(t, marker)
+	lib, _, _ = a.library().Load()
+	if !lib.Profiles["saved"].Validated {
+		t.Fatal("successful engine validation was not recorded")
+	}
 }
 
 func TestSubscriptionErrorsWithholdSourceCredentials(t *testing.T) {
@@ -157,7 +176,7 @@ func TestSubscriptionErrorsWithholdSourceCredentials(t *testing.T) {
 	status := 200
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(status)
-		_, _ = w.Write([]byte("rules: [MATCH,DIRECT]\n"))
+		_, _ = w.Write([]byte("rules: ['MATCH,DIRECT']\n"))
 	}))
 	defer server.Close()
 	if err := a.AddSubscription(t.Context(), "saved", server.URL+"/?secret=private-token"); err != nil {
@@ -169,20 +188,25 @@ func TestSubscriptionErrorsWithholdSourceCredentials(t *testing.T) {
 	}
 }
 
-func TestProfileWriteRollbackPreservesChangedFiles(t *testing.T) {
-	a, _ := testApp(t)
-	if err := store.Dir(filepath.Join(a.Home, "profiles")); err != nil {
+func TestSourceRefreshValidatesAllDependentProfilesAtomically(t *testing.T) {
+	a, _ := installedApp(t)
+	source := filepath.Join(t.TempDir(), "source.yaml")
+	write(t, source, []byte("proxies: [{name: NODE, type: direct}]\nrules: ['MATCH,DIRECT']"))
+	if err := a.AddSubscription(t.Context(), "shared", source); err != nil {
 		t.Fatal(err)
 	}
-	profile := filepath.Join(a.Home, "profiles", "saved.yaml")
-	write(t, profile, []byte("user-profile"))
-	metadata := subscriptionSource{Source: "/private/source", SHA: digest([]byte("new"))}
-	if err := a.writeProfileLocked("saved", []byte("new"), nil, &metadata, nil, true); err == nil {
-		t.Fatal("existing profile was overwritten")
+	lib, _, _ := a.library().Load()
+	spec := lib.Profiles["shared"].Spec
+	spec.Overrides = "prepend-rules: ['DOMAIN,custom.example,NODE']"
+	if err := a.CreateProfile(t.Context(), "custom", spec); err != nil {
+		t.Fatal(err)
 	}
-	if string(read(t, profile)) != "user-profile" {
-		t.Fatal("existing profile was changed")
+	before := read(t, filepath.Join(a.Home, "configuration", "library.json"))
+	write(t, source, []byte("proxies: [{name: OTHER, type: direct}]\nrules: ['MATCH,DIRECT']"))
+	if err := a.RefreshSource(t.Context(), "shared"); err == nil {
+		t.Fatal("refresh invalidated dependent custom recipe")
 	}
-	assertMissing(t, filepath.Join(a.Home, "profiles", "saved.source.json"))
-	assertMissing(t, filepath.Join(a.Home, "profiles", "saved.unvalidated"))
+	if string(read(t, filepath.Join(a.Home, "configuration", "library.json"))) != string(before) {
+		t.Fatal("partial refresh committed")
+	}
 }

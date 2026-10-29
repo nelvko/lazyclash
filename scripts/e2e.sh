@@ -45,8 +45,8 @@ if [[ ${1:-} != --linux ]]; then
   trap cleanup_host EXIT
   linux_stage=$(orb -m "$vm" mktemp -d /tmp/lazyclash-e2e.XXXXXX)
   CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" go build -o "$host_stage/lazyclash" .
-  cp scripts/e2e.sh scripts/pty-smoke.py scripts/ports-e2e.py scripts/lifecycle-e2e.py "$host_stage/"
-  COPYFILE_DISABLE=1 tar --no-xattrs -C "$host_stage" -cf - lazyclash e2e.sh pty-smoke.py ports-e2e.py lifecycle-e2e.py | orb -m "$vm" tar -xf - -C "$linux_stage"
+  cp scripts/e2e.sh scripts/pty-smoke.py scripts/ports-e2e.py scripts/lifecycle-e2e.py scripts/configuration-e2e.py "$host_stage/"
+  COPYFILE_DISABLE=1 tar --no-xattrs -C "$host_stage" -cf - lazyclash e2e.sh pty-smoke.py ports-e2e.py lifecycle-e2e.py configuration-e2e.py | orb -m "$vm" tar -xf - -C "$linux_stage"
   # Captured output deliberately excludes raw configuration, journal and URLs.
   if orb -m "$vm" bash "$linux_stage/e2e.sh" --linux "$linux_stage" "$proxy_mode" > .test-artifacts/e2e.log 2>&1; then
     sed '/^download: [0-9]/d' .test-artifacts/e2e.log
@@ -336,7 +336,11 @@ if lp profile add invalid "http://127.0.0.1:$fixture_port/invalid?token=fixture-
   printf 'Invalid YAML was accepted\n' >&2
   exit 1
 fi
-[[ ! -e "$home/profiles/invalid.yaml" ]]
+lp profile list > "$work/profiles-after-invalid.json"
+python3 - "$work/profiles-after-invalid.json" <<'PY'
+import json, sys
+assert all(profile["name"] != "invalid" for profile in json.load(open(sys.argv[1]))), "rejected profile entered the library"
+PY
 [[ $(readlink "$home/installation/current") == "$before" ]]
 if grep -Fq fixture-private-token "$work/invalid.log"; then
   printf 'Subscription credential appeared in diagnostics\n' >&2
@@ -355,6 +359,7 @@ assert any(g["name"] == "PROXY" and g["now"] == "REJECT" for g in json.load(open
 print("Subscription validate/save/apply and real API node selection passed")
 PY
 lp select PROXY DIRECT
+python3 "$work/configuration-e2e.py" --binary "$app" --home "$home" --service-name "$service_name"
 
 # Read the core's actual ordered rules, then exercise the read-only page in a
 # controlling terminal. The domains are reserved fixtures and are never fetched.

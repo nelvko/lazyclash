@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 
 	"github.com/nelvko/lazyclash/internal/mihomo"
 	"github.com/nelvko/lazyclash/internal/service"
@@ -24,8 +23,11 @@ type Snapshot struct {
 	Service             service.Status
 	ServiceError        string
 	Controller          string
+	ProfilePending      bool
+	Generation          string
 	Applied             string
 	Profiles            []string
+	Sources             []SourceInfo
 	Groups              []mihomo.Group
 	APIError            string
 	Desired             DesiredState
@@ -45,7 +47,7 @@ func (a *App) Snapshot(ctx context.Context) (Snapshot, error) {
 		}
 		out.HasRun = prefs.HasRun
 		out.GuideDismissed = prefs.GuideDismissed
-		m, _, err := a.load()
+		m, generation, err := a.load()
 		if err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err
 		}
@@ -55,6 +57,7 @@ func (a *App) Snapshot(ctx context.Context) (Snapshot, error) {
 			out.Version = m.Version
 			out.Controller = m.Controller
 			out.Applied = m.Applied
+			out.Generation = generation
 			r, _, err := a.loadRuntimeRecord(m)
 			if err != nil {
 				return err
@@ -94,27 +97,30 @@ func (a *App) Snapshot(ctx context.Context) (Snapshot, error) {
 				out.ServiceError = err.Error()
 			}
 		}
-		profilesDir := filepath.Join(a.Home, "profiles")
-		if err := existingDir(profilesDir); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
-		entries, err := os.ReadDir(profilesDir)
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
+		lib, _, err := a.library().Load()
+		if err != nil {
 			return err
 		}
 		out.Profiles = []string{"default"}
-		for _, e := range entries {
-			if !e.IsDir() && strings.HasSuffix(e.Name(), ".yaml") {
-				out.Profiles = append(out.Profiles, strings.TrimSuffix(e.Name(), ".yaml"))
+		out.Sources = []SourceInfo{}
+		for name, source := range lib.Subscriptions {
+			out.Sources = append(out.Sources, SourceInfo{Name: name, Format: source.Format, Revision: source.Revision, Refreshable: source.Address != "", UpdatedAt: source.UpdatedAt})
+		}
+		sort.Slice(out.Sources, func(i, j int) bool { return out.Sources[i].Name < out.Sources[j].Name })
+		for name, entry := range lib.Profiles {
+			out.Profiles = append(out.Profiles, name)
+			if !entry.Validated {
+				out.UnvalidatedProfiles = append(out.UnvalidatedProfiles, name)
 			}
 		}
 		sort.Strings(out.Profiles[1:])
-		for _, name := range out.Profiles[1:] {
-			if _, err := os.Lstat(filepath.Join(profilesDir, name+".unvalidated")); err == nil || !out.Installed {
-				out.UnvalidatedProfiles = append(out.UnvalidatedProfiles, name)
-			} else if !errors.Is(err, os.ErrNotExist) {
+		sort.Strings(out.UnvalidatedProfiles)
+		if out.Installed {
+			info, err := a.profileInfo(lib, m.Applied, m, true)
+			if err != nil {
 				return err
 			}
+			out.ProfilePending = info.Pending
 		}
 		if out.Installed && out.ServiceError != "" {
 			out.APIError = "Managed service is unavailable; resolve the service diagnostic first"

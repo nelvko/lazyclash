@@ -51,8 +51,12 @@ func TestRemoveCorePreservesProfilesSourcesAndPreferences(t *testing.T) {
 	}
 	removalRecord(t, a)
 	write(t, filepath.Join(a.Home, "preferences.json"), []byte(`{"Network":{"Source":"official","ProxyMode":"none"}}`))
-	profile := read(t, filepath.Join(a.Home, "profiles", "saved.yaml"))
-	metadata := read(t, filepath.Join(a.Home, "profiles", "subscription.source.json"))
+	profilePath := savedSourcePath(t, a, "saved")
+	profile := read(t, profilePath)
+	metadataPath := filepath.Join(a.Home, "configuration", "library.json")
+	metadata := read(t, metadataPath)
+	subscriptionPath := savedSourcePath(t, a, "subscription")
+	subscription := read(t, subscriptionPath)
 	if err := a.RemoveCore(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -61,10 +65,10 @@ func TestRemoveCorePreservesProfilesSourcesAndPreferences(t *testing.T) {
 	if s.removes != 1 || len(s.actions) != 0 {
 		t.Fatal("uninstall changed lifecycle or failed to remove the owned unit")
 	}
-	if string(read(t, filepath.Join(a.Home, "profiles", "saved.yaml"))) != string(profile) {
+	if string(read(t, profilePath)) != string(profile) {
 		t.Fatal("profile was changed")
 	}
-	if string(read(t, filepath.Join(a.Home, "profiles", "subscription.source.json"))) != string(metadata) {
+	if string(read(t, metadataPath)) != string(metadata) || string(read(t, subscriptionPath)) != string(subscription) {
 		t.Fatal("subscription source was changed")
 	}
 	if _, err := os.Stat(filepath.Join(a.Home, "preferences.json")); err != nil {

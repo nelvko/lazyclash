@@ -27,6 +27,11 @@ type fakeBackend struct {
 	install         func(context.Context, app.InstallPlan, downloadnet.Config, func(mihomo.Progress)) (app.InstallResult, error)
 	save            func(context.Context, downloadnet.Config) error
 	add             func(context.Context, string, string) error
+	addSubscription func(context.Context, string, string) error
+	refreshSource   func(context.Context, string) error
+	deleteSource    func(context.Context, string) error
+	deleteProfile   func(context.Context, string) error
+	setOverrides    func(context.Context, string, []byte) error
 	control         func(context.Context, string) error
 	autostart       func(context.Context, bool) error
 	mode            func(context.Context, string) error
@@ -121,6 +126,36 @@ func (f *fakeBackend) Add(ctx context.Context, name, source string) error {
 		return f.add(ctx, name, source)
 	}
 	return nil
+}
+func (f *fakeBackend) AddSubscription(ctx context.Context, name, source string) error {
+	if f.addSubscription != nil {
+		return f.addSubscription(ctx, name, source)
+	}
+	return ctx.Err()
+}
+func (f *fakeBackend) RefreshSource(ctx context.Context, name string) error {
+	if f.refreshSource != nil {
+		return f.refreshSource(ctx, name)
+	}
+	return ctx.Err()
+}
+func (f *fakeBackend) DeleteSource(ctx context.Context, name string) error {
+	if f.deleteSource != nil {
+		return f.deleteSource(ctx, name)
+	}
+	return ctx.Err()
+}
+func (f *fakeBackend) DeleteProfile(ctx context.Context, name string) error {
+	if f.deleteProfile != nil {
+		return f.deleteProfile(ctx, name)
+	}
+	return ctx.Err()
+}
+func (f *fakeBackend) SetProfileOverrides(ctx context.Context, name string, raw []byte) error {
+	if f.setOverrides != nil {
+		return f.setOverrides(ctx, name, raw)
+	}
+	return ctx.Err()
 }
 func (f *fakeBackend) Apply(context.Context, string) error { return nil }
 func (f *fakeBackend) Control(ctx context.Context, action string) error {

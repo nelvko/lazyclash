@@ -32,7 +32,12 @@ listeners: [{name: extra, type: http, port: 8080}]
 tunnels: [{network: tcp, address: 0.0.0.0:2000, target: example.org:80}]
 tun: {enable: false, auto-route: true}
 profile: {store-selected: false, store-fake-ip: true}
-dns: {enable: true, listen: 0.0.0.0:53}
+dns:
+  enable: true
+  listen: 0.0.0.0:53
+  nameserver: [https://resolver.example/dns-query]
+  proxy-server-nameserver: [tls://node-resolver.example]
+  nameserver-policy: {"+.internal": 192.0.2.53}
 iptables: {enable: true}
 `)
 	out, err := Effective(raw, "127.0.0.1:19090", "managed-secret", 17890)
@@ -54,10 +59,14 @@ iptables: {enable: true}
 			t.Fatalf("%s remains enabled", key)
 		}
 	}
-	for _, key := range []string{"tun", "dns", "iptables", "ntp", "tuic-server"} {
+	for _, key := range []string{"tun", "iptables", "ntp", "tuic-server"} {
 		if cfg[key].(map[string]any)["enable"] != false {
 			t.Fatalf("%s remains enabled", key)
 		}
+	}
+	dns := cfg["dns"].(map[string]any)
+	if dns["listen"] != "" || dns["enable"] != true || dns["nameserver"].([]any)[0] != "https://resolver.example/dns-query" || dns["proxy-server-nameserver"].([]any)[0] != "tls://node-resolver.example" || dns["nameserver-policy"].(map[string]any)["+.internal"] != "192.0.2.53" {
+		t.Fatal("DNS resolver policy lost or DNS listener remains enabled")
 	}
 	for _, key := range []string{"listeners", "tunnels"} {
 		if len(cfg[key].([]any)) != 0 {
@@ -70,6 +79,29 @@ iptables: {enable: true}
 	profile := cfg["profile"].(map[string]any)
 	if profile["store-selected"] != true || profile["store-fake-ip"] != true {
 		t.Fatal("selection persistence disabled or other cache settings lost")
+	}
+}
+
+func TestEffectiveDNSDefaultsAndDisabledResolver(t *testing.T) {
+	for _, raw := range []string{
+		"rules: [\"MATCH,DIRECT\"]\n",
+		"dns: {enable: false, listen: '0.0.0.0:53', nameserver: [192.0.2.53]}\n",
+	} {
+		out, err := Effective([]byte(raw), "127.0.0.1:19090", "managed-secret", 17890)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var cfg map[string]any
+		if err := yaml.Unmarshal(out, &cfg); err != nil {
+			t.Fatal(err)
+		}
+		dns := cfg["dns"].(map[string]any)
+		if dns["enable"] != false || dns["listen"] != "" {
+			t.Fatal("DNS default or disabled state changed")
+		}
+		if strings.Contains(raw, "nameserver") && dns["nameserver"].([]any)[0] != "192.0.2.53" {
+			t.Fatal("disabled resolver policy lost")
+		}
 	}
 }
 
@@ -129,7 +161,7 @@ func TestDefaultContainsOneValidMatchRule(t *testing.T) {
 }
 
 func TestEffectiveRejectsInvalidInputWithoutEchoingSecrets(t *testing.T) {
-	for _, raw := range []string{"", "# comment", "[]", "private-token: [", "a: 1\na: 2", "a: 1\n---\nb: 2", "null"} {
+	for _, raw := range []string{"", "# comment", "[]", "private-token: [", "a: 1\na: 2", "a: 1\n---\nb: 2", "null", "dns: private-token", "dns: [private-token]", "dns: null"} {
 		_, err := Effective([]byte(raw), "127.0.0.1:19090", "managed-secret", 17890)
 		if err == nil {
 			t.Fatalf("accepted %q", raw)

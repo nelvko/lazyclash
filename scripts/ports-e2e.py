@@ -73,7 +73,10 @@ def main():
             connection.request("GET", "http://127.0.0.1:%d/port-check" % args.fixture_port)
             response = connection.getresponse()
             if response.status != 200:
-                raise AssertionError("New proxy listener could not reach the dedicated loopback fixture")
+                current = status()
+                selections = [(group["name"], group["now"]) for group in current["Groups"]]
+                raise AssertionError("Dedicated loopback proxy request failed: HTTP=%s mode=%s selections=%s" %
+                                     (response.status, current["Mode"]["actual"], selections))
             response.read()
         finally:
             connection.close()
@@ -134,8 +137,10 @@ def main():
     config_path = args.home / "installation" / "current" / "config.yaml"
     baseline_config = config_path.read_bytes()
     baseline_other = without_ports(baseline_config)
-    profile = args.home / "profiles" / "fixture.yaml"
+    profile = args.home / "configuration" / "library.json"
     saved_profile = profile.read_bytes()
+    saved_overrides = json.loads(saved_profile)["profiles"]["fixture"]["spec"].get("overrides", "")
+    override_file = args.home.parent / "ports-overrides.yaml"
     unit_hash = digest(args.unit)
     pointer = os.readlink(args.home / "installation" / "current")
     pid = status()["Service"]["PID"]
@@ -173,10 +178,12 @@ def main():
 
         # A saved profile may differ from the currently applied generation.
         # Runtime settings must preserve the running generation's other keys.
-        edited_profile = saved_profile.replace(b"mode: rule", b"mode: direct", 1)
-        if edited_profile == saved_profile:
-            raise AssertionError("Fixture cannot exercise changed saved-profile preservation")
-        profile.write_bytes(edited_profile)
+        override_file.write_text("prepend-rules: ['DOMAIN,pending-config.invalid,REJECT']\n")
+        override_file.chmod(0o600)
+        cli("profile", "override", "fixture", str(override_file))
+        edited_profile = profile.read_bytes()
+        if edited_profile == saved_profile or not status()["ProfilePending"]:
+            raise AssertionError("Fixture cannot exercise unapplied profile-override preservation")
         change(mixed_a, control_a, "--restart")
         if settings() != {"mixed_port": mixed_a, "controller_port": control_a} or not status()["Service"]["Active"]:
             raise AssertionError("Running port move did not commit and restart successfully")
@@ -221,7 +228,8 @@ def main():
         invariant(edited_profile)
         free_after_move(mixed_b)
         free_after_move(control_b)
-        profile.write_bytes(saved_profile)
+        override_file.write_text(saved_overrides)
+        cli("profile", "override", "fixture", str(override_file))
         cli("profile", "apply", "fixture")
         if settings() != {"mixed_port": mixed_a, "controller_port": control_a} or status()["Service"]["Active"]:
             raise AssertionError("Profile application discarded the new ports or started the stopped core")

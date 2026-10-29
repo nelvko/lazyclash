@@ -8,6 +8,7 @@ internal/
   cli/                  Cobra 命令、参数、输出与父 Shell 集成
   tui/                  页面、布局、焦点与异步任务消息
   app/                  CLI/TUI 共享用例、安装事务和失败恢复
+  configuration/        订阅快照、Profile 配方与原子关系索引
   mihomo/               发布解析、下载校验、配置及控制 API
   service/              systemd 用户服务操作
   downloadnet/          下载来源、连接代理及脱敏
@@ -26,7 +27,9 @@ scripts/                显式运行的 Linux、PTY 和端到端验证
 - `install.go`：首次安装的文件准备、发布、服务注册及提交编排。
 - `installation.go`：安装记录、配置代际、文件树和所属关系。
 - `recovery.go`：首次安装和配置应用的恢复日志与回滚。
-- `profiles.go`：保存订阅或本地 YAML、校验、应用及回滚编排。
+- `profiles.go`：构建并校验 Profile，发布独立运行代际、应用及回滚编排。
+- `configuration.go`：Full/Managed 配方、用户覆写、依赖构建及安全的配置状态查询。
+- `source.go`：有界订阅下载和与实际 core home 一致的内核校验上下文。
 - `runtime.go`：端口检查、启动/停止/重启、API 就绪及节点选择。
 - `monitor.go`：有超时的运行采样、活动连接列表与按 ID 关闭；网络采样期间不持有应用锁。
 - `rules.go`：读取当前内核的规则，保留匹配顺序，查询前后校验服务及安装身份；不把规则加入高频监控快照。
@@ -35,10 +38,12 @@ scripts/                显式运行的 Linux、PTY 和端到端验证
 - `preferences.go`：引导历史和非敏感偏好。
 - `state.go`：绑定安装的运行意图、自启动偏好、操作状态与差异；Stop 优先于配置恢复。
 - `mode.go`、`capabilities.go`：模式持久化/动态应用和用户服务能力边界。
-- `subscriptions.go`：显式保存来源、摘要保护的订阅刷新，不隐式应用。
+- `subscriptions.go`：独立来源添加/刷新/删除，验证依赖配方并提交来源 revision，不隐式应用。
 - `removal.go`：验证停止、禁用与所属关系后移除内核，保留用户数据。
 
 ## 内核文件与服务注册
+
+`configuration` 保存与服务生命周期无关的配置输入：Subscription 指向按内容摘要寻址的原始快照，Profile 引用来源并保存用户模板和显式覆写；`library.json` 原子提交这些关系。Mihomo 的组合、字段所有权和引用语义由 `mihomo` 包实现，`app` 编排构建、内核校验与运行代际提交。运行 generation 固定配方和来源 SHA，来源刷新或用户编辑不会改变已应用配置。竞品源码证据与方案比较见 [订阅与配置调研](subscription-research.md)，领域模型、操作状态变化和扩展边界见 [配置设计](subscription-design.md)，本次执行结果见 [验证记录](subscription-verification.md)。
 
 首次安装分为文件准备、发布和服务注册。文件准备生成默认配置并完成 Mihomo 验证，不操作服务；应用用例在同一个进程锁和恢复日志保护下发布文件，再注册指向已发布路径的服务，最后提交安装记录。注册失败或取消时执行所属关系检查与恢复，不删除用户后来修改的文件。更新继续使用原子部署，保持旧运行进程和配置。
 

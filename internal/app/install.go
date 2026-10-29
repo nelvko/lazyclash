@@ -155,6 +155,7 @@ func (a *App) stageFreshInstallation(ctx context.Context, m manifest, local stri
 	if err != nil {
 		return stagedInstallation{}, err
 	}
+	m.Build = &buildRecord{Profile: "default"}
 	cfg, err := mihomo.Default(m.Controller, m.Secret, m.Port)
 	if err != nil {
 		return stagedInstallation{}, err

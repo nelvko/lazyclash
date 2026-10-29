@@ -372,8 +372,11 @@ def main():
             terminal.wait("Subscription URL or local YAML path")
             terminal.key(os.fsencode(config) + b"\r")
             terminal.wait("Configuration saved")
-            if not (home / "profiles" / "preimport.yaml").exists():
-                raise AssertionError("pre-install import was not saved")
+            imported = subprocess.run(command + ["profile", "show", "preimport"],
+                                      check=True, capture_output=True, timeout=15)
+            saved = json.loads(imported.stdout)
+            if saved["name"] != "preimport" or saved["validated"]:
+                raise AssertionError("pre-install import was not saved as awaiting engine validation")
 
             terminal.key(b"i")
             terminal.resize(24, 8)

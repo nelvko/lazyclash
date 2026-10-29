@@ -107,7 +107,7 @@ func TestImportBeforeInstallationIsPrivateAndNotAutomaticallyApplied(t *testing.
 	if err != nil || snapshot.Applied != "imported" || len(snapshot.UnvalidatedProfiles) != 0 {
 		t.Fatalf("after apply=%+v err=%v", snapshot, err)
 	}
-	info, err := os.Stat(filepath.Join(a.Home, "profiles", "imported.yaml"))
+	info, err := os.Stat(savedSourcePath(t, a, "imported"))
 	if err != nil || info.Mode().Perm() != 0600 {
 		t.Fatalf("permissions=%v err=%v", info, err)
 	}

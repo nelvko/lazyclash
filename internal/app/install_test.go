@@ -50,7 +50,7 @@ func TestFirstInstallationRegistersValidatedPublishedPathsBeforeCommitting(t *te
 		t.Run(outcome, func(t *testing.T) {
 			a, svc := testApp(t)
 			addFixtureProfile(t, a, "saved")
-			profile := filepath.Join(a.Home, "profiles", "saved.yaml")
+			profile := savedSourcePath(t, a, "saved")
 			before := string(read(t, profile))
 			ctx, cancel := context.WithCancel(t.Context())
 			defer cancel()

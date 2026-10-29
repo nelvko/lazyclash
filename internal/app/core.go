@@ -303,12 +303,9 @@ func (a *App) replaceCoreLocked(ctx context.Context, newBin, version string) (re
 	if err != nil {
 		return err
 	}
-	validateDir, err := os.MkdirTemp(a.Home, ".core-validate-*")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(validateDir)
-	if err := a.Validate(ctx, newBin, config, validateDir); err != nil {
+	// The replacement core must resolve providers and local assets in the same
+	// stable home as the running service, just like ordinary configuration apply.
+	if err := a.Validate(ctx, newBin, config, data); err != nil {
 		return err
 	}
 	oldSHA := m.BinarySHA

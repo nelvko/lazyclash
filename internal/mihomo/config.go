@@ -74,9 +74,21 @@ func Effective(raw []byte, controller, secret string, mixedPort int) ([]byte, er
 		}
 		cfg[k] = []any{}
 	}
-	for _, k := range []string{"tun", "dns", "tuic-server", "iptables", "ntp"} {
+	for _, k := range []string{"tun", "tuic-server", "iptables", "ntp"} {
 		cfg[k] = map[string]any{"enable": false}
 	}
+	// Resolver settings may be required to reach the subscription's nodes even
+	// without a public DNS listener. Own the listener, not the resolver policy.
+	dns := map[string]any{"enable": false}
+	if value, exists := cfg["dns"]; exists {
+		var ok bool
+		dns, ok = value.(map[string]any)
+		if !ok {
+			return nil, errors.New("invalid Mihomo DNS configuration: expected a mapping")
+		}
+	}
+	dns["listen"] = ""
+	cfg["dns"] = dns
 	cfg["external-controller-cors"] = map[string]any{"allow-origins": []string{}, "allow-private-network": false}
 	// Mihomo owns this cache in its stable -d directory. API selections then
 	// survive both configuration generations and systemd crash recovery.

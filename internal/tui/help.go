@@ -12,7 +12,7 @@ func (m Model) helpLines(width int) []string {
 	case "proxies":
 		lines = append(lines, "Enter a proxy group to expand its choices. Enter an option in a Selector group to apply it.", "DIRECT and REJECT are valid choices; automatic groups choose their own option.")
 	case "profiles":
-		lines = append(lines, "a: add a subscription URL or import a local YAML file", "Enter a saved profile to validate and apply it.", "Profiles includes subscriptions, local files and the built-in default.")
+		lines = append(lines, "a: one-time import from a URL or local YAML file", "Add subscription remembers the private source URL/path for later refresh.", "Refresh sources and import overrides without changing the running configuration; apply the profile to load changes.", "Delete a recipe or source by entering its name. Referenced sources and the selected profile are protected.", "Advanced managed profiles and templates are created with the CLI.")
 	case "connections":
 		lines = append(lines, "/: search · Enter: details · x: review closing one connection", "Closing requires confirmation of the displayed connection; other connections stay active.")
 	case "rules":

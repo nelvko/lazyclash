@@ -2,147 +2,234 @@ package app
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"os"
-	"path/filepath"
+	"sort"
+	"time"
 
+	"github.com/nelvko/lazyclash/internal/configuration"
 	"github.com/nelvko/lazyclash/internal/mihomo"
-	"github.com/nelvko/lazyclash/internal/store"
 )
 
-// This metadata is private for the same reason as raw profiles: source URLs may
-// include subscription tokens. It is only created through explicit opt-in.
-type subscriptionSource struct {
-	Source string `json:"source"`
-	SHA    string `json:"profile_sha256"`
+type SourceInfo struct {
+	Name        string    `json:"name"`
+	Format      string    `json:"format"`
+	Revision    string    `json:"revision"`
+	Refreshable bool      `json:"refreshable"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
-// Refresh updates a saved source profile after full validation. Applying it is
-// a separate user operation; the running generation and service remain intact.
-func (a *App) Refresh(ctx context.Context, name string) error {
-	if !profileName.MatchString(name) || name == "default" {
-		return errors.New("choose a saved subscription profile; default cannot be refreshed")
+func (a *App) ListSources(ctx context.Context) ([]SourceInfo, error) {
+	out := []SourceInfo{}
+	err := a.locked(ctx, func() error {
+		lib, _, err := a.library().Load()
+		if err != nil {
+			return err
+		}
+		for name, source := range lib.Subscriptions {
+			out = append(out, SourceInfo{Name: name, Format: source.Format, Revision: source.Revision, Refreshable: source.Address != "", UpdatedAt: source.UpdatedAt})
+		}
+		sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+		return nil
+	})
+	return out, err
+}
+
+// Add is a one-time import and a full recipe. AddSubscription additionally
+// remembers its private address for refresh; neither operation selects it.
+func (a *App) Add(ctx context.Context, name, source string) error {
+	return a.addSource(ctx, name, source, false, true)
+}
+func (a *App) AddSubscription(ctx context.Context, name, source string) error {
+	return a.addSource(ctx, name, source, true, true)
+}
+
+// AddSource creates an independent reusable source. It may be a full Mihomo
+// document or an inline-proxies payload. Only a Profile defines its use.
+func (a *App) AddSource(ctx context.Context, name, source string) error {
+	return a.addSource(ctx, name, source, true, false)
+}
+
+func (a *App) addSource(ctx context.Context, name, address string, remember, fullProfile bool) error {
+	if !configuration.ValidName(name) {
+		return errors.New("name must use 1–48 letters, digits, _ or -; default is reserved")
 	}
 	return a.locked(ctx, func() error {
-		base := filepath.Join(a.Home, "profiles")
-		if err := existingDir(base); err != nil {
-			return err
-		}
-		oldMetadata, err := store.Read(filepath.Join(base, name+".source.json"))
-		if errors.Is(err, os.ErrNotExist) {
-			return errors.New("this profile has no remembered source; re-import with --remember-source under a new name")
-		}
-		if err != nil {
-			return errors.New("cannot read private subscription source metadata")
-		}
-		var metadata subscriptionSource
-		if json.Unmarshal(oldMetadata, &metadata) != nil || metadata.Source == "" || len(metadata.SHA) != 64 {
-			return errors.New("invalid subscription source metadata; preserving it for inspection")
-		}
-		oldProfile, err := store.Read(filepath.Join(base, name+".yaml"))
-		if err != nil {
-			return errors.New("cannot read the saved subscription profile")
-		}
-		if digest(oldProfile) != metadata.SHA {
-			return errors.New("saved profile differs from its remembered source metadata; preserving local edits or interrupted refresh; re-import under a new name")
-		}
-		m, _, err := a.load()
-		installed := err == nil
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
-		if !installed {
-			m = manifest{Controller: "127.0.0.1:9097", Secret: "structure-validation-only", Port: 7897}
-		}
-		raw, err := a.source(ctx, metadata.Source)
+		lib, old, err := a.library().Load()
 		if err != nil {
 			return err
 		}
-		effective, err := mihomo.Effective(raw, m.Controller, m.Secret, m.Port)
+		if _, ok := lib.Subscriptions[name]; ok {
+			return errors.New("subscription already exists; choose a new name")
+		}
+		if _, ok := lib.Profiles[name]; fullProfile && ok {
+			return errors.New("profile already exists; choose a new name")
+		}
+		raw, err := a.source(ctx, address)
 		if err != nil {
 			return err
 		}
-		if installed {
-			if err := a.requireService(); err != nil {
+		if err := mihomo.ValidateSource(raw); err != nil {
+			return err
+		}
+		revision, err := a.library().Put(raw)
+		if err != nil {
+			return err
+		}
+		source := configuration.Subscription{Format: "mihomo", Revision: revision, UpdatedAt: time.Now().UTC()}
+		if remember {
+			source.Address = address
+		}
+		lib.Subscriptions[name] = source
+		if fullProfile {
+			entry := configuration.ProfileRecord{Spec: configuration.Profile{Core: "mihomo", Mode: "full", Source: name}}
+			lib.Profiles[name] = entry
+			m, installed, err := a.buildContext()
+			if err != nil {
 				return err
 			}
-			if err := a.validateConfig(ctx, m, effective); err != nil {
+			if _, _, err := a.buildProfile(ctx, lib, name, m, installed); err != nil {
 				return err
 			}
-		} else if err := validateProfileStructure(effective); err != nil {
-			return err
+			entry.Validated = installed
+			lib.Profiles[name] = entry
 		}
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		metadata.SHA = digest(raw)
-		return a.writeProfileLocked(name, raw, oldProfile, &metadata, oldMetadata, !installed)
+		return a.library().Save(lib, old)
 	})
 }
 
-// writeProfileLocked publishes metadata before the raw bytes. CAS checks protect
-// changes made outside this process. On interruption their hashes cannot match,
-// so later refreshes refuse to overwrite either file. No network source is ever
-// adopted silently and no active configuration pointer changes here.
-func (a *App) writeProfileLocked(name string, raw, oldProfile []byte, metadata *subscriptionSource, oldMetadata []byte, unvalidated bool) error {
-	base := filepath.Join(a.Home, "profiles")
-	markerPath := filepath.Join(base, name+".unvalidated")
-	oldMarker, err := store.Read(markerPath)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
+// Refresh is the full-profile convenience command. Managed profiles can reuse
+// several sources; refresh each source explicitly through RefreshSource.
+func (a *App) Refresh(ctx context.Context, name string) error {
+	return a.refresh(ctx, name, true)
+}
+func (a *App) RefreshSource(ctx context.Context, name string) error {
+	return a.refresh(ctx, name, false)
+}
+func (a *App) refresh(ctx context.Context, name string, profile bool) error {
+	if !configuration.ValidName(name) {
+		return errors.New("invalid or reserved subscription name")
 	}
-	if oldProfile == nil && oldMarker != nil {
-		return errors.New("profile validation marker already exists; preserving it for inspection")
-	}
-	if oldProfile == nil {
-		if _, err := os.Lstat(filepath.Join(base, name+".source.json")); !errors.Is(err, os.ErrNotExist) {
-			return errors.New("subscription source metadata already exists; preserving it for inspection")
-		}
-	}
-	var newMarker []byte
-	markerWritten := false
-	if unvalidated {
-		newMarker = []byte(digest(raw))
-		if err := store.Replace(markerPath, newMarker, oldMarker, 0600); err != nil {
+	return a.locked(ctx, func() error {
+		lib, old, err := a.library().Load()
+		if err != nil {
 			return err
 		}
-		markerWritten = true
-	}
-	rollbackMarker := func() error {
-		if !markerWritten {
-			return nil
+		if profile {
+			entry, ok := lib.Profiles[name]
+			if !ok || entry.Spec.Mode != "full" {
+				return errors.New("choose a full profile, or refresh a managed profile's individual subscriptions")
+			}
+			name = entry.Spec.Source
 		}
-		if oldMarker != nil {
-			return store.Replace(markerPath, oldMarker, newMarker, 0600)
+		source, ok := lib.Subscriptions[name]
+		if !ok {
+			return errors.New("subscription does not exist")
 		}
-		return store.Remove(markerPath, newMarker)
-	}
-	metadataPath := filepath.Join(base, name+".source.json")
-	var newMetadata []byte
-	if metadata != nil {
-		newMetadata, _ = json.MarshalIndent(metadata, "", "  ")
-		if err := store.Replace(metadataPath, newMetadata, oldMetadata, 0600); err != nil {
-			return errors.Join(err, rollbackMarker())
+		if source.Address == "" {
+			return errors.New("this import has no remembered source; add a subscription with explicit source retention")
 		}
-	}
-	if err := store.Replace(filepath.Join(base, name+".yaml"), raw, oldProfile, 0600); err != nil {
-		var rollbackMetadata error
-		if metadata != nil {
-			if oldMetadata != nil {
-				rollbackMetadata = store.Replace(metadataPath, oldMetadata, newMetadata, 0600)
-			} else {
-				rollbackMetadata = store.Remove(metadataPath, newMetadata)
+		// Verify the previously published revision before fetching. A changed
+		// immutable snapshot is corruption, never a new editable user layer.
+		if _, err := a.library().Read(source.Revision); err != nil {
+			return err
+		}
+		raw, err := a.source(ctx, source.Address)
+		if err != nil {
+			return err
+		}
+		if err := mihomo.ValidateSource(raw); err != nil {
+			return err
+		}
+		revision, err := a.library().Put(raw)
+		if err != nil {
+			return err
+		}
+		source.Revision, source.UpdatedAt = revision, time.Now().UTC()
+		lib.Subscriptions[name] = source
+		m, installed, err := a.buildContext()
+		if err != nil {
+			return err
+		}
+		// Validate every dependent recipe against the candidate. A source
+		// refresh never silently invalidates saved custom rules or group refs.
+		for _, profileName := range sortedProfileNames(lib) {
+			entry := lib.Profiles[profileName]
+			for _, dependency := range entry.Spec.SourceNames() {
+				if dependency != name {
+					continue
+				}
+				if _, _, err := a.buildProfile(ctx, lib, profileName, m, installed); err != nil {
+					return err
+				}
+				entry.Validated = installed
+				lib.Profiles[profileName] = entry
+				break
 			}
 		}
-		return errors.Join(err, rollbackMetadata, rollbackMarker())
-	}
-	// A refreshed profile that passed engine validation no longer needs its
-	// previous structural-validation marker. Remove it only if still unchanged.
-	if !unvalidated && oldMarker != nil {
-		if err := store.Remove(markerPath, oldMarker); err != nil {
-			return errors.New("profile refreshed and validated, but its validation marker changed; inspect it before applying")
+		if err := ctx.Err(); err != nil {
+			return err
 		}
+		return a.library().Save(lib, old)
+	})
+}
+
+func sortedProfileNames(lib configuration.Library) []string {
+	names := make([]string, 0, len(lib.Profiles))
+	for name := range lib.Profiles {
+		names = append(names, name)
 	}
-	return nil
+	sort.Strings(names)
+	return names
+}
+
+// DeleteSource refuses referenced sources. Historical snapshot blobs remain so
+// already committed generations keep their pinned inputs after library edits.
+func (a *App) DeleteSource(ctx context.Context, name string) error {
+	if !configuration.ValidName(name) {
+		return errors.New("invalid or reserved subscription name")
+	}
+	return a.locked(ctx, func() error {
+		lib, old, err := a.library().Load()
+		if err != nil {
+			return err
+		}
+		if _, ok := lib.Subscriptions[name]; !ok {
+			return errors.New("subscription does not exist")
+		}
+		for _, entry := range lib.Profiles {
+			for _, dependency := range entry.Spec.SourceNames() {
+				if dependency == name {
+					return errors.New("subscription is referenced by a profile; delete that profile first")
+				}
+			}
+		}
+		delete(lib.Subscriptions, name)
+		return a.library().Save(lib, old)
+	})
+}
+
+// markProfileValidated records a successful apply without modifying its recipe.
+// A failed metadata write does not undo the already committed runtime change.
+func (a *App) markProfileValidated(name string) error {
+	if name == "default" {
+		return nil
+	}
+	lib, old, err := a.library().Load()
+	if err != nil {
+		return err
+	}
+	entry, ok := lib.Profiles[name]
+	if !ok {
+		return os.ErrNotExist
+	}
+	if entry.Validated {
+		return nil
+	}
+	entry.Validated = true
+	lib.Profiles[name] = entry
+	return a.library().Save(lib, old)
 }

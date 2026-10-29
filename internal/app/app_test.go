@@ -133,6 +133,31 @@ func assertMissing(t *testing.T, path string) {
 		t.Fatalf("path remains %s: %v", path, err)
 	}
 }
+func savedSourcePath(t *testing.T, a *App, name string) string {
+	t.Helper()
+	lib, _, err := a.library().Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	source, ok := lib.Subscriptions[name]
+	if !ok {
+		t.Fatalf("subscription %q was not saved", name)
+	}
+	return filepath.Join(a.Home, "configuration", "snapshots", source.Revision+".yaml")
+}
+func assertLibraryEntryMissing(t *testing.T, a *App, name string) {
+	t.Helper()
+	lib, _, err := a.library().Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := lib.Profiles[name]; exists {
+		t.Fatal("rejected profile was published")
+	}
+	if _, exists := lib.Subscriptions[name]; exists {
+		t.Fatal("rejected subscription was published")
+	}
+}
 func addFixtureProfile(t *testing.T, a *App, name string) {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "subscription.yaml")
@@ -266,7 +291,7 @@ func TestHTTPAddValidatesBeforeSavingAndDoesNotApply(t *testing.T) {
 	if err := a.Add(t.Context(), "good", server.URL+"/private-token"); err != nil {
 		t.Fatal(err)
 	}
-	if !bytes.Equal(read(t, filepath.Join(a.Home, "profiles", "good.yaml")), valid) {
+	if !bytes.Equal(read(t, savedSourcePath(t, a, "good")), valid) {
 		t.Fatal("source was not preserved")
 	}
 	if !bytes.Equal(before, read(t, filepath.Join(a.Home, "installation", "current", "config.yaml"))) || len(s.actions) != 0 {
@@ -276,12 +301,12 @@ func TestHTTPAddValidatesBeforeSavingAndDoesNotApply(t *testing.T) {
 	if err := a.Add(t.Context(), "bad-yaml", server.URL); err == nil || strings.Contains(err.Error(), "private-token") {
 		t.Fatalf("unsafe invalid YAML error: %v", err)
 	}
-	assertMissing(t, filepath.Join(a.Home, "profiles", "bad-yaml.yaml"))
+	assertLibraryEntryMissing(t, a, "bad-yaml")
 	fixture.Store([]byte("mode: reject-engine\n"))
 	if err := a.Add(t.Context(), "bad-engine", server.URL); err == nil {
 		t.Fatal("invalid engine configuration saved")
 	}
-	assertMissing(t, filepath.Join(a.Home, "profiles", "bad-engine.yaml"))
+	assertLibraryEntryMissing(t, a, "bad-engine")
 	if validations != 2 {
 		t.Fatalf("validator count=%d", validations)
 	}
@@ -310,7 +335,7 @@ func TestAddCancellationAfterResponseHeadersIsPreserved(t *testing.T) {
 	if err := <-done; !errors.Is(err, context.Canceled) {
 		t.Fatalf("body cancellation lost: %v", err)
 	}
-	assertMissing(t, filepath.Join(a.Home, "profiles", "cancelled.yaml"))
+	assertLibraryEntryMissing(t, a, "cancelled")
 }
 
 func TestApplyStoppedOnlyStagesAndActiveFailureRestoresConfigAndSelection(t *testing.T) {

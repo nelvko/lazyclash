@@ -7,7 +7,6 @@ import (
 	"io"
 	"maps"
 	"net/http"
-	"os"
 	"path/filepath"
 	"reflect"
 	"strings"
@@ -144,9 +143,7 @@ func TestUserServiceTUNBoundary(t *testing.T) {
 	if err := a.Add(t.Context(), "tun", profile); err == nil || !strings.Contains(err.Error(), "TUN") {
 		t.Fatal("privileged profile was silently imported", err)
 	}
-	if _, err := os.Stat(filepath.Join(a.Home, "profiles", "tun.yaml")); !errors.Is(err, os.ErrNotExist) {
-		t.Fatal("rejected TUN profile was saved")
-	}
+	assertLibraryEntryMissing(t, a, "tun")
 }
 
 func TestTUNOffConfirmsActualState(t *testing.T) {

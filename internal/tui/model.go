@@ -33,6 +33,11 @@ type Backend interface {
 	PrepareInstall(context.Context, mihomo.Release, string, bool) (app.InstallPlan, error)
 	InstallCore(context.Context, app.InstallPlan, downloadnet.Config, func(mihomo.Progress)) (app.InstallResult, error)
 	Add(context.Context, string, string) error
+	AddSubscription(context.Context, string, string) error
+	RefreshSource(context.Context, string) error
+	DeleteSource(context.Context, string) error
+	DeleteProfile(context.Context, string) error
+	SetProfileOverrides(context.Context, string, []byte) error
 	Apply(context.Context, string) error
 	Control(context.Context, string) error
 	Select(context.Context, string, string) error
@@ -94,6 +99,7 @@ type Model struct {
 	scroll, total         int
 	sidebarOpen           bool
 	form, name            string
+	rememberSource        bool
 	input                 textinput.Model
 	spinner               spinner.Model
 	width, height         int
@@ -610,6 +616,7 @@ func (m *Model) openWizard(local bool) {
 	m.wizard.reveal = true
 }
 func (m *Model) openForm() tea.Cmd {
+	m.rememberSource = false
 	m.form = "name"
 	m.name = ""
 	m.input.Reset()
@@ -619,8 +626,12 @@ func (m *Model) openForm() tea.Cmd {
 	return textinput.Blink
 }
 func (m *Model) formKey(k tea.KeyPressMsg) tea.Cmd {
+	if handled, cmd := m.profileFormKey(k); handled {
+		return cmd
+	}
 	key := k.String()
 	if key == "esc" {
+		m.rememberSource = false
 		m.form = ""
 		m.input.Reset()
 		m.input.Blur()
@@ -641,11 +652,17 @@ func (m *Model) formKey(k tea.KeyPressMsg) tea.Cmd {
 			m.input.Placeholder = "HTTPS URL or absolute YAML path"
 			return nil
 		}
-		name, source := m.name, value
+		name, source, remember := m.name, value, m.rememberSource
+		m.rememberSource = false
 		m.form = ""
 		m.input.Reset()
 		m.input.Blur()
-		return m.begin("Fetching and validating configuration…", "Configuration saved; apply it from Profiles", func(ctx context.Context) error { return m.backend.Add(ctx, name, source) })
+		return m.begin("Fetching and validating configuration…", "Configuration saved; apply it from Profiles", func(ctx context.Context) error {
+			if remember {
+				return m.backend.AddSubscription(ctx, name, source)
+			}
+			return m.backend.Add(ctx, name, source)
+		})
 	}
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(k)
@@ -659,6 +676,9 @@ func (m *Model) serviceAction(action string) tea.Cmd {
 	return m.begin("Service: "+action+"…", "Service "+action+" completed", func(ctx context.Context) error { return m.backend.Control(ctx, action) })
 }
 func (m *Model) activate(id string) tea.Cmd {
+	if handled, cmd := m.profileAction(id); handled {
+		return cmd
+	}
 	if id == "runtime-settings" {
 		return m.openPorts()
 	}
@@ -871,24 +891,7 @@ func (m Model) pageBody(width int) (string, []hitRegion) {
 		return m.logsBody(width)
 	}
 	if m.page == "profiles" {
-		lines = append(lines, themed("Saved configurations", text, bg, false), "URL subscription and local YAML use the same validation and apply flow.", "")
-		add("add", "Add subscription / Import config")
-		if !m.snapshot.Installed {
-			lines = append(lines, strings.Split(wrapText("You may import now. Engine validation runs before application after core installation.", width), "\n")...)
-		}
-		for i, name := range m.profiles() {
-			mark := ""
-			if name == m.snapshot.Applied {
-				mark = " [applied]"
-			}
-			for _, pending := range m.snapshot.UnvalidatedProfiles {
-				if pending == name {
-					mark += " [engine validation pending]"
-					break
-				}
-			}
-			add(fmt.Sprintf("profile.%d", i), name+mark)
-		}
+		return m.profilesBody(width)
 	} else {
 		lines = append(lines, themed("Proxy groups and options", text, bg, false), "Enter a group to expand; select a node in a Selector group.", "")
 		if m.snapshot.APIError != "" {
@@ -942,7 +945,11 @@ func (m *Model) layout() {
 	} else if m.wizard.open || m.wizard.networkOpen {
 		m.screen, m.targets = m.renderWizard(base)
 	} else if m.form != "" {
-		m.screen, m.targets = m.renderImport(base)
+		if m.rememberSource || m.profileEditForm() {
+			m.screen, m.targets = m.renderProfileForm(base)
+		} else {
+			m.screen, m.targets = m.renderImport(base)
+		}
 	}
 }
 func (m Model) View() tea.View {
