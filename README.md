@@ -15,6 +15,8 @@ go run .
 
 服务与内核安装当前支持 **Linux/systemd 用户服务、arm64 与 amd64**。macOS 可构建、运行 TUI、配置下载网络及查询 Linux 发布信息，但预检查会明确阻止安装和服务管理，没有 macOS 空后端。
 
+在 macOS 终端执行 `./scripts/dev.sh` 可构建并进入现有的专用 OrbStack 虚拟机；进入后直接输入 `lazyclash`。脚本自动选择唯一的 `lazyclash` / `lazyclash-*` 虚拟机并检测其架构，构建产物为 `bin/linux-架构/lazyclash`，仅向当前虚拟机 Shell 的 PATH 添加该目录。程序使用正常默认数据目录和服务名，安装及启动由你在 TUI 中操作。多个专用虚拟机时可用 `./scripts/dev.sh VM_NAME` 选择；`exit` 返回 macOS。
+
 ## 首页与安装向导
 
 默认进入带侧边导航的 Overview，不强制打开安装向导。顶部 Get started 按真实状态提供 Install、Import 或首次 Start；可以 Dismiss，随后仍可从 Settings 打开内核管理和网络设置。成功运行后主动停止不会重新显示首次启动引导。
