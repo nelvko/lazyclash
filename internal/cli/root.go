@@ -47,6 +47,7 @@ func New() *cobra.Command {
 		newStatsCommand(current),
 		newConnectionsCommand(current),
 		newRulesCommand(current),
+		newLogsCommand(current),
 	)
 	return root
 }
