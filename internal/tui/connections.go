@@ -177,7 +177,7 @@ func (m *Model) connectionKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 func (m *Model) revealConnection(_ int) {
 	width := dashboardBodyWidth(dashboardOptions{Width: m.width, Height: m.height})
 	_, hits := m.connectionsBody(width)
-	height := max(1, m.height-7)
+	height := max(1, m.height-5)
 	for _, hit := range hits {
 		if hit.ID != "connection."+m.connections.selected {
 			continue

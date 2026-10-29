@@ -24,15 +24,29 @@ func themeSample(name string) Model {
 	switch name {
 	case "overview-empty", "sidebar-focus", "sidebar-hover":
 		if name == "sidebar-focus" {
-			m.focus = "nav.nodes"
+			m.focus = "nav.proxies"
 		} else if name == "sidebar-hover" {
-			m.hover = "nav.nodes"
+			m.hover = "nav.proxies"
 		}
 	case "overview-running":
 		m.snapshot = app.Snapshot{Installed: true, ConfigReady: true, HasRun: true, Version: "v1.19.33", RunningVersion: "v1.19.33", Applied: "example", Profiles: []string{"default", "example"}, Groups: []mihomo.Group{{Name: "PROXY", Type: "Selector", Now: "Example node"}}, Service: service.Status{Active: true, State: "active"}}
 		memory := uint64(48 << 20)
 		m.runtime.received = true
 		m.runtime.snapshot = app.RuntimeSnapshot{State: "ready", Traffic: &mihomo.Traffic{Up: 4096, Down: 128 << 10}, Memory: &memory, Connections: &mihomo.ConnectionSnapshot{UploadTotal: 16 << 20, DownloadTotal: 256 << 20}}
+	case "overview-dismissed":
+		m.snapshot.GuideDismissed = true
+		m.focus = "nav.overview"
+	case "help":
+		m.helpOpen = true
+	case "logs":
+		m.snapshot = app.Snapshot{Installed: true, ConfigReady: true, Version: "v1.19.33", Service: service.Status{Active: true, State: "active"}}
+		m.page, m.focus = "logs", "logs.follow"
+		m.logs.paused = true
+		m.logs.entries = []mihomo.LogEntry{
+			{Level: "info", Message: "[TCP] example.invalid:443 uses PROXY[Example node]"},
+			{Level: "warning", Message: "Download unavailable: [URL redacted]"},
+			{Level: "gap", Message: "Capture paused; logs during this interval are not collected."},
+		}
 	default:
 		m.openWizard(false)
 		switch name {
@@ -108,13 +122,13 @@ func TestMarianaPagesAcrossSizesAndProfiles(t *testing.T) {
 }
 
 func TestMarianaSidebarCurrentHoverAndFocusAreIndependent(t *testing.T) {
-	o := dashboardOptions{Width: 160, Height: 45, Page: "overview", Focus: "nav.nodes", Hover: "nav.rules"}
+	o := dashboardOptions{Width: 160, Height: 45, Page: "overview", Focus: "nav.proxies", Hover: "nav.rules"}
 	screen, _, _ := renderDashboard(o)
 	plain := ansi.Strip(screen)
-	if !strings.Contains(plain, "1 Overview •") || !strings.Contains(plain, "› 2 Nodes") {
+	if !strings.Contains(plain, "Overview •") || !strings.Contains(plain, "› Proxies") {
 		t.Fatal("current page and keyboard focus lost their independent text markers")
 	}
-	if !strings.Contains(screen, themed(" "+cellPad("6 Rules", 18)+" ", text, hoverBackground, false)) {
+	if !strings.Contains(screen, themed("  "+cellPad("Rules", 15), text, hoverBackground, false)) {
 		t.Fatal("hover did not use its own surface")
 	}
 }
@@ -151,6 +165,11 @@ func TestExportMarianaViews(t *testing.T) {
 	}{
 		{"overview-empty", 160, 45, colorprofile.TrueColor},
 		{"overview-running", 120, 32, colorprofile.TrueColor},
+		{"overview-dismissed", 160, 45, colorprofile.TrueColor},
+		{"overview-dismissed", 120, 32, colorprofile.TrueColor},
+		{"overview-dismissed", 80, 24, colorprofile.TrueColor},
+		{"logs", 120, 32, colorprofile.TrueColor},
+		{"help", 80, 24, colorprofile.TrueColor},
 		{"core", 120, 32, colorprofile.TrueColor},
 		{"version-input", 80, 24, colorprofile.TrueColor},
 		{"input-error", 80, 24, colorprofile.TrueColor},

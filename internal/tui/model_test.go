@@ -30,7 +30,16 @@ type fakeBackend struct {
 	control         func(context.Context, string) error
 	runtime         func(context.Context) (app.RuntimeSnapshot, error)
 	rules           func(context.Context) (app.RuleSnapshot, error)
+	streamLogs      func(context.Context, func(mihomo.LogEntry)) error
 	closeConnection func(context.Context, string) error
+}
+
+func (f *fakeBackend) StreamLogs(ctx context.Context, emit func(mihomo.LogEntry)) error {
+	if f.streamLogs != nil {
+		return f.streamLogs(ctx, emit)
+	}
+	<-ctx.Done()
+	return ctx.Err()
 }
 
 func (f *fakeBackend) Snapshot(context.Context) (app.Snapshot, error) {
@@ -183,7 +192,7 @@ func TestInitialOverviewAndExplicitInstallFlow(t *testing.T) {
 	if m.page != "overview" || m.wizard.open || m.wizard.networkOpen {
 		t.Fatal("startup must leave the dashboard browsable")
 	}
-	for _, label := range []string{"Get started", "Current subscription", "Kernel and environment"} {
+	for _, label := range []string{"Get started", "Current profile", "Kernel and environment"} {
 		// On the default short viewport the last card is below the fold.
 		if label == "Kernel and environment" {
 			continue

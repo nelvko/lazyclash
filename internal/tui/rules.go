@@ -42,7 +42,7 @@ func (m *Model) stopRules() {
 	m.rules.active, m.rules.pending, m.rules.received = false, false, false
 }
 func (m Model) rulesVisible() bool {
-	return m.page == "rules" && !m.busy && !m.quitting && !m.wizard.open && !m.wizard.networkOpen && m.form == "" && m.ctx.Err() == nil
+	return m.page == "rules" && !m.busy && !m.quitting && !m.helpOpen && !m.wizard.open && !m.wizard.networkOpen && m.form == "" && m.ctx.Err() == nil
 }
 func (m *Model) syncRules() tea.Cmd {
 	if !m.rulesVisible() {
@@ -159,7 +159,7 @@ func (m *Model) reconcileRules() {
 func (m *Model) revealRule() {
 	width := dashboardBodyWidth(dashboardOptions{Width: m.width, Height: m.height})
 	_, hits := m.rulesBody(width)
-	height := max(1, m.height-7)
+	height := max(1, m.height-5)
 	for _, r := range m.filteredRules() {
 		if ruleIdentity(r) != m.rules.selected {
 			continue

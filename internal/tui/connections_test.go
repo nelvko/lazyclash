@@ -179,9 +179,9 @@ func TestConnectionsLayoutAndFocusedRowSurviveResize(t *testing.T) {
 	}
 }
 
-func TestConnectionsNavigationPreservesExistingPageShortcuts(t *testing.T) {
+func TestConnectionsNavigationMatchesMenuPageShortcuts(t *testing.T) {
 	m := runtimeModel(t, &fakeBackend{})
-	for _, item := range []struct{ key, page string }{{"2", "nodes"}, {"3", "profiles"}, {"4", "settings"}, {"5", "connections"}, {"1", "overview"}, {"c", "connections"}} {
+	for _, item := range []struct{ key, page string }{{"2", "proxies"}, {"3", "profiles"}, {"4", "connections"}, {"5", "rules"}, {"1", "overview"}, {"c", "connections"}} {
 		m, _ = update(m, key(item.key))
 		if m.page != item.page {
 			t.Fatalf("%s opened %s instead of %s", item.key, m.page, item.page)

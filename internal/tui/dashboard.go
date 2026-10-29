@@ -25,11 +25,12 @@ type dashboardOptions struct {
 	Scroll                          int
 	Dim                             bool
 	Message, Failure                string
+	Help                            string
 	SidebarOpen                     bool
 	Runtime                         app.RuntimeSnapshot
 	RuntimeReceived, RuntimePending bool
 	// Body and its targets are relative to the first content row beneath the
-	// page header. They are used for Nodes and Subscriptions pages only.
+	// page header. They are used by the Proxies, Profiles, Connections, Rules and Logs pages.
 	Body        string
 	BodyTargets []hitRegion
 }
@@ -48,8 +49,7 @@ func dashboardGeometry(o dashboardOptions) dashboardLayout {
 		left = 24
 	}
 	width := min(112, available)
-	left += (available - width) / 2
-	return dashboardLayout{x: left, width: width, y: 4, height: max(0, o.Height-7), sidebar: sidebar}
+	return dashboardLayout{x: left, width: width, y: 3, height: max(0, o.Height-5), sidebar: sidebar}
 }
 func dashboardBodyWidth(o dashboardOptions) int { return dashboardGeometry(o).width }
 
@@ -81,20 +81,27 @@ func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
 		return strings.Join(rows, "\n"), targets, 0
 	}
 	header := lipgloss.NewStyle().Bold(true).Render("lazyclash")
+	titleX := g.x
+	titleText := pageTitle(o.Page)
 	if g.sidebar {
-		put(2, 1, themed(header, muted, bg, o.Dim))
-		put(g.x, 1, themed(lipgloss.NewStyle().Bold(true).Render(pageTitle(o.Page)), text, bg, o.Dim))
+		put(2, 0, themed(header, muted, bg, o.Dim))
 	} else {
 		label := dashboardButton("menu", "Menu", o, false)
-		put(1, 1, label)
-		add(hitRegion{ID: "menu", X: 1, Y: 1, W: ansi.StringWidth(label), H: 1})
-		put(10, 1, themed(cellCrop("lazyclash / "+pageTitle(o.Page), max(0, o.Width-12)), text, bg, o.Dim))
+		put(1, 0, label)
+		add(hitRegion{ID: "menu", X: 1, Y: 0, W: ansi.StringWidth(label), H: 1})
+		titleX = 12
+		if o.Width >= 50 {
+			titleText = "lazyclash / " + titleText
+		}
 	}
-	platform := "LOCAL / " + runtime.GOOS + "/" + runtime.GOARCH
-	if g.sidebar || o.Width >= 90 {
-		put(max(g.x+len(pageTitle(o.Page))+3, o.Width-2-len(platform)), 1, themed(platform, muted, bg, o.Dim))
+	put(titleX, 0, themed(cellCrop(titleText, max(1, o.Width-titleX-2)), text, bg, o.Dim))
+	status, statusColor := coreSummary(o.Snapshot)
+	status = "Mihomo · " + status
+	statusX := o.Width - 2 - ansi.StringWidth(status)
+	if statusX > titleX+ansi.StringWidth(titleText)+2 {
+		put(statusX, 0, themed(status, statusColor, bg, o.Dim))
 	}
-	put(1, 2, themed(strings.Repeat("─", max(0, o.Width-2)), border, bg, o.Dim))
+	put(1, 1, themed(strings.Repeat("─", max(0, o.Width-2)), divider, bg, o.Dim))
 
 	var body string
 	var bodyTargets []hitRegion
@@ -142,56 +149,70 @@ func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
 		// Underlying buttons must not receive a click through the navigation menu.
 		kept := targets[:0]
 		for _, r := range targets {
-			if !regionsOverlap(r, hitRegion{X: 0, Y: 3, W: sidebarWidth, H: max(0, o.Height-6)}) {
+			if !regionsOverlap(r, hitRegion{X: 0, Y: 2, W: sidebarWidth, H: max(0, o.Height-4)}) {
 				kept = append(kept, r)
 			}
 		}
 		targets = append(kept, drawSidebar(rows, o, true)...)
 	}
-	put(1, o.Height-3, themed(strings.Repeat("─", max(0, o.Width-2)), border, bg, o.Dim))
-	status := o.Message
+	status = o.Message
 	color := muted
+	if status == "State refreshed" {
+		status = ""
+	}
 	if o.Failure != "" {
 		status = "Error: " + clean(o.Failure)
 		color = errorColor
 	}
-	if status == "" {
-		if !o.Snapshot.Installed {
-			status = "You can explore the app before completing setup."
-		} else if o.Snapshot.Service.Active {
-			status = "Mihomo is running. Select a group in Nodes to switch its node."
-		} else {
-			status = "Core is stopped. Start it from Overview or Settings."
-		}
-	}
 	put(2, o.Height-2, themed(cellCrop(clean(status), max(1, o.Width-4)), color, bg, o.Dim))
-	help := "Tab Focus  Enter Open  ↑↓ Scroll  ? Help"
-	if o.Width < 60 {
-		help = "Tab Focus  Enter Open  ↑↓ Scroll"
+	help := o.Help
+	if help == "" {
+		help = "Tab Focus · Enter Open · ? Help"
 	}
 	quit := "q Quit"
 	put(2, o.Height-1, helpText(cellCrop(help, max(1, o.Width-len(quit)-6)), bg, o.Dim))
 	if o.Width >= 16 {
 		put(o.Width-len(quit)-2, o.Height-1, helpText(quit, bg, o.Dim))
 	}
+
 	return strings.Join(rows, "\n"), targets, total
+}
+
+// navPages defines both visible order and the 1–7 page shortcuts.
+func navPages() []string {
+	return []string{"overview", "proxies", "profiles", "connections", "rules", "logs", "settings"}
 }
 
 func pageTitle(page string) string {
 	switch page {
-	case "nodes":
-		return "Nodes"
+	case "proxies":
+		return "Proxies"
 	case "profiles":
-		return "Subscriptions"
+		return "Profiles"
 	case "settings":
 		return "Settings"
 	case "rules":
 		return "Rules"
 	case "connections":
 		return "Connections"
+	case "logs":
+		return "Logs"
 	default:
 		return "Overview"
 	}
+}
+
+func coreSummary(s app.Snapshot) (string, string) {
+	if !s.Installed {
+		return "Not installed", muted
+	}
+	if s.ServiceError != "" {
+		return "Unavailable", errorColor
+	}
+	if s.Service.Active {
+		return "Running", success
+	}
+	return "Stopped", muted
 }
 
 func clipRegion(r hitRegion, x, y, w, h int) (hitRegion, bool) {
@@ -206,60 +227,83 @@ func regionsOverlap(a, b hitRegion) bool {
 
 func drawSidebar(rows []string, o dashboardOptions, popup bool) []hitRegion {
 	width := min(22, o.Width)
-	end := o.Height - 3
+	end := o.Height - 2
 	var targets []hitRegion
 	if width < 4 || end < 4 {
 		return targets
 	}
-	for y := 3; y < end; y++ {
+	for y := 2; y < end; y++ {
 		putRows(rows, 0, y, themed(strings.Repeat(" ", width), text, sidebarBackground, o.Dim), o.Width)
-	}
-	for y := 3; y < end; y++ {
 		putRows(rows, width-1, y, themed("│", divider, sidebarBackground, o.Dim), o.Width)
 	}
-	for i, page := range []string{"overview", "nodes", "profiles", "settings", "connections", "rules"} {
-		y := 4 + i*2
+	pages := navPages()
+	availableRows := max(0, end-3)
+	if availableRows == 0 {
+		return targets
+	}
+	grouped := availableRows >= len(pages)+2
+	first, last := 0, len(pages)
+	if availableRows < len(pages) {
+		selected := 0
+		for i, page := range pages {
+			if o.Page == page {
+				selected = i
+			}
+		}
+		for i, page := range pages {
+			if o.Focus == "nav."+page {
+				selected = i
+			}
+		}
+		// Keep the focused item visible without changing its real shortcut.
+		first = max(0, min(selected-availableRows/2, len(pages)-availableRows))
+		last = first + availableRows
+	}
+	y := 3
+	for i := first; i < last; i++ {
+		page := pages[i]
+		if grouped && (i == 3 || i == 6) {
+			y++
+		}
 		if y >= end {
 			break
 		}
 		id := "nav." + page
-		label := fmt.Sprintf("%d %s", i+1, pageTitle(page))
+		label := pageTitle(page)
 		background, foreground := sidebarBackground, muted
 		if page == o.Page {
 			background, foreground = selectionBackground, selectionForeground
 			label += " •"
 		}
 		if o.Hover == id && o.Focus != id {
-			foreground = text
-			background = hoverBackground
+			foreground, background = text, hoverBackground
 		}
+		marker := "  "
 		if o.Focus == id {
-			label = "› " + label
+			marker = "› "
 			if page != o.Page {
 				foreground = focus
 			}
-		}
-		label = cellPad(cellCrop(label, width-4), width-4)
-		if o.Focus == id {
 			label = lipgloss.NewStyle().Underline(true).Render(label)
 		}
-		putRows(rows, 1, y, themed(" "+label+" ", foreground, background, o.Dim), o.Width)
-		targets = append(targets, hitRegion{ID: id, X: 1, Y: y, W: width - 2, H: 1})
-	}
-	if end >= 20 {
-		status, color := "Not installed", muted
-		if o.Snapshot.Installed {
-			status, color = "Stopped", muted
-			if o.Snapshot.Service.Active {
-				status, color = "Running", success
-			}
-			if o.Snapshot.ServiceError != "" {
-				status, color = "Unavailable", errorColor
-			}
+		// Numeric hints are a separate, muted right-aligned column; they are
+		// shortcuts, not part of a page's title or keyboard focus marker.
+		nameWidth := max(1, width-7)
+		value := themed(marker+cellPad(label, nameWidth), foreground, background, o.Dim)
+		hintColor := muted
+		if background == selectionBackground {
+			hintColor = selectionForeground
 		}
-		putRows(rows, 2, end-4, themed(strings.Repeat("─", width-5), divider, sidebarBackground, o.Dim), o.Width)
-		putRows(rows, 2, end-3, themed("Core", muted, sidebarBackground, o.Dim), o.Width)
-		putRows(rows, 2, end-2, themed(status, color, sidebarBackground, o.Dim), o.Width)
+		value += themed(" "+fmt.Sprint(i+1)+" ", hintColor, background, o.Dim)
+		putRows(rows, 1, y, value, o.Width)
+		targets = append(targets, hitRegion{ID: id, X: 1, Y: y, W: width - 2, H: 1})
+		y++
+	}
+	if first > 0 {
+		putRows(rows, width-2, 2, themed("↑", muted, sidebarBackground, o.Dim), o.Width)
+	}
+	if last < len(pages) {
+		putRows(rows, width-2, end-1, themed("↓", muted, sidebarBackground, o.Dim), o.Width)
 	}
 	return targets
 }
@@ -341,14 +385,46 @@ func overviewContent(o dashboardOptions, width int) (string, []hitRegion) {
 		cardWidth = (width - 2) / 2
 	}
 	content := make([][]string, len(cards))
-	height := 8
 	for i, c := range cards {
 		for _, line := range c {
 			content[i] = append(content[i], strings.Split(wrapText(line, max(1, cardWidth-4)), "\n")...)
 		}
-		height = max(height, len(content[i])+2)
 	}
 	for i := 0; i < len(cards); i += columns {
+		var actions []hitRegion
+		for column := 0; column < columns; column++ {
+			index := i + column
+			actionID, label := "", ""
+			switch index {
+			case 0:
+				actionID, label = "card.import", "Import config"
+			case 1:
+				if s.Service.Active && len(s.Groups) > 0 {
+					actionID, label = "card.proxies", "Open Proxies"
+				}
+			case 3:
+				actionID, label = "card.install", "Install core"
+				if s.Installed {
+					actionID, label = "card.install", "Manage core"
+					if !s.Service.Active && s.ServiceError == "" {
+						actionID, label = "card.start", "Start core"
+					}
+				}
+			}
+			if actionID != "" {
+				value := cellCrop(dashboardButton(actionID, label, o, false), max(1, cardWidth-4))
+				content[index] = append(content[index], "", value)
+				actions = append(actions, hitRegion{ID: actionID, X: 2 + column*(cardWidth+2), Y: 1 + len(content[index]) - 1, W: max(1, ansi.StringWidth(value)), H: 1})
+			}
+		}
+		height := len(content[i]) + 2
+		if columns == 2 {
+			height = max(height, len(content[i+1])+2)
+		}
+		for _, action := range actions {
+			action.Y += len(body.lines)
+			body.targets = append(body.targets, action)
+		}
 		left := panelFrame(content[i], cardWidth, height, o)
 		if columns == 1 {
 			body.lines = append(body.lines, left...)
@@ -362,8 +438,6 @@ func overviewContent(o dashboardOptions, width int) (string, []hitRegion) {
 			body.blank()
 		}
 	}
-	body.blank()
-	body.lines = append(body.lines, themed(cellCrop("You can explore the app before completing setup.", width), muted, bg, o.Dim))
 	return strings.Join(body.lines, "\n"), body.targets
 }
 
@@ -449,7 +523,12 @@ func overviewCards(o dashboardOptions) [][]string {
 			saved++
 		}
 	}
-	subscription := []string{title("Current subscription"), style(configured, text), "", label("Active profile", active), label("Saved profiles", fmt.Sprint(saved)), style("Add or import a configuration", muted)}
+	profile := []string{title("Current profile"), style(configured, text)}
+	if s.ConfigReady || saved > 0 {
+		profile = append(profile, "", label("Active profile", active), label("Saved profiles", fmt.Sprint(saved)))
+	} else {
+		profile = append(profile, style("Import a subscription URL or local YAML.", muted))
+	}
 	groupName, node, groupStatus := "--", "--", "No active core"
 	if s.Service.Active {
 		groupStatus = "No proxy groups"
@@ -491,7 +570,12 @@ func overviewCards(o dashboardOptions) [][]string {
 	} else if s.Service.Active && s.APIError != "" {
 		groupName, node, groupStatus = "--", "--", "API unavailable"
 	}
-	groups := []string{title("Selected proxy group"), style(groupStatus, muted), "", label("Group", groupName), label("Current node", node), style("Open Nodes to browse proxy groups", muted)}
+	groups := []string{title("Selected proxy group"), style(groupStatus, muted)}
+	if groupName != "--" {
+		groups = append(groups, "", label("Group", groupName), label("Current node", node))
+	} else if !s.Service.Active {
+		groups = append(groups, style("Start the core to browse Proxies.", muted))
+	}
 	observed := o.Runtime
 	status := runtimeStatus(observed, o.RuntimeReceived, o.RuntimePending, s.Installed)
 	connections, rate, totals, memory := "--", "--", "--", "--"
@@ -508,22 +592,16 @@ func overviewCards(o dashboardOptions) [][]string {
 		}
 	}
 	traffic := []string{title("Traffic statistics"), style(status, muted), "", label("Connections", connections), label("Upload / download", rate), label("Since core start", totals), label("Core memory", memory), style("Totals reset when the core restarts", muted)}
+	if !o.RuntimeReceived || observed.State != "ready" {
+		traffic = []string{title("Traffic statistics"), style(status, muted), style("Runtime data appears after the core starts.", muted)}
+	}
 	for _, issue := range []string{observed.Error, observed.ConnectionsError, observed.TrafficError, observed.MemoryError} {
 		if issue != "" {
 			traffic = append(traffic, style(issue, errorColor))
 			break
 		}
 	}
-	coreStatus, color := "Not installed", muted
-	if s.Installed {
-		coreStatus, color = "Stopped", muted
-		if s.Service.Active {
-			coreStatus, color = "Running", success
-		}
-		if s.ServiceError != "" {
-			coreStatus, color = "Unavailable", errorColor
-		}
-	}
+	coreStatus, color := coreSummary(s)
 	kernel := []string{title("Kernel and environment"), style(coreStatus, color), "", label("Platform", runtime.GOOS+"/"+runtime.GOARCH), label("System proxy", "Unchanged"), label("TUN", "Off")}
 	if s.Installed {
 		kernel = append(kernel, label("Installed version", s.Version))
@@ -535,7 +613,7 @@ func overviewCards(o dashboardOptions) [][]string {
 			kernel = append(kernel, label("Running version", running))
 		}
 	}
-	return [][]string{subscription, groups, traffic, kernel}
+	return [][]string{profile, groups, traffic, kernel}
 }
 
 func settingsContent(o dashboardOptions, width int) (string, []hitRegion) {

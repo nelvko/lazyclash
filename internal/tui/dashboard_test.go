@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/mihomo"
@@ -45,7 +46,7 @@ func TestDashboardResponsiveCanvas(t *testing.T) {
 	long := strings.Repeat("中文路径长字符串/", 20)
 	snapshot := app.Snapshot{Installed: true, ConfigReady: true, Version: long, Controller: "http://127.0.0.1:9090/" + long, Applied: long, Profiles: []string{"default", long}, Groups: []mihomo.Group{{Name: long, Type: "Selector", Now: long}}, Service: service.Status{Active: true, State: "active"}}
 	for _, size := range sizes {
-		for _, page := range []string{"overview", "nodes", "profiles", "settings"} {
+		for _, page := range []string{"overview", "proxies", "profiles", "settings"} {
 			for _, scroll := range []int{0, 3, 10000} {
 				t.Run(fmt.Sprintf("%dx%d/%s/%d", size[0], size[1], page, scroll), func(t *testing.T) {
 					options := dashboardOptions{Width: size[0], Height: size[1], Page: page, Snapshot: snapshot, Scroll: scroll, Body: wrapText(long, max(1, size[0]-4)), BodyTargets: []hitRegion{{ID: "test", X: 0, Y: 0, W: 4, H: 1}}}
@@ -62,17 +63,17 @@ func TestOverviewUninitializedIsBrowsable(t *testing.T) {
 	options := dashboardOptions{Width: 160, Height: 45, Page: "overview"}
 	value, targets, total := renderDashboard(options)
 	plain := ansi.Strip(value)
-	for _, part := range []string{"Get started", "Install your first proxy core", "Current subscription", "Selected proxy group", "Traffic statistics", "Kernel and environment", "Core not installed", "LOCAL /"} {
+	for _, part := range []string{"Get started", "Install your first proxy core", "Current profile", "Selected proxy group", "Traffic statistics", "Kernel and environment", "Core not installed", "Mihomo · Not installed"} {
 		if !strings.Contains(plain, part) {
 			t.Errorf("missing %q", part)
 		}
 	}
-	for _, id := range []string{"install", "import", "dismiss", "nav.overview", "nav.nodes", "nav.profiles", "nav.settings", "nav.rules"} {
+	for _, id := range []string{"install", "import", "dismiss", "nav.overview", "nav.proxies", "nav.profiles", "nav.connections", "nav.rules", "nav.logs", "nav.settings"} {
 		if !hasAction(targets, id) {
 			t.Errorf("missing action %s", id)
 		}
 	}
-	for _, part := range []string{"Logs", "sing-box"} {
+	for _, part := range []string{"sing-box"} {
 		if strings.Contains(plain, part) {
 			t.Errorf("unexpected placeholder navigation %q", part)
 		}
@@ -88,6 +89,108 @@ func TestOverviewUninitializedIsBrowsable(t *testing.T) {
 	}
 	if !hasAction(targets, "nav.settings") {
 		t.Fatal("dismiss removed permanent navigation")
+	}
+	if !hasAction(targets, "card.import") || !hasAction(targets, "card.install") {
+		t.Fatal("dismiss removed the profile or core card action")
+	}
+}
+
+func TestDashboardContentStaysNearNavigationAndReservesUsableRows(t *testing.T) {
+	for _, width := range []int{160, 240, 320} {
+		g := dashboardGeometry(dashboardOptions{Width: width, Height: 45})
+		if g.x != 24 || g.width != 112 || g.y != 3 || g.height != 40 {
+			t.Fatalf("wide content drifted away from the navigation: %+v", g)
+		}
+	}
+	g := dashboardGeometry(dashboardOptions{Width: 80, Height: 24})
+	if g.sidebar || g.x != 2 || g.height != 19 {
+		t.Fatalf("compact frame wasted content space: %+v", g)
+	}
+}
+
+func TestDashboardSidebarHasSevenGroupedNamesAndAlignedShortcuts(t *testing.T) {
+	o := dashboardOptions{Width: 160, Height: 45, Page: "profiles", Focus: "nav.connections"}
+	screen, targets, _ := renderDashboard(o)
+	rows := strings.Split(screen, "\n")
+	previousY, numberX := -1, -1
+	for i, page := range navPages() {
+		var hit hitRegion
+		for _, target := range targets {
+			if target.ID == "nav."+page {
+				hit = target
+				break
+			}
+		}
+		if hit.W == 0 {
+			t.Fatalf("missing navigation for %s", page)
+		}
+		value := ansi.Strip(ansi.Cut(rows[hit.Y], hit.X, hit.X+hit.W))
+		if !strings.Contains(value, pageTitle(page)) || !strings.HasSuffix(strings.TrimRight(value, " "), fmt.Sprint(i+1)) {
+			t.Fatalf("wrong page label or shortcut: %q", value)
+		}
+		x := ansi.StringWidth(value[:strings.LastIndex(value, fmt.Sprint(i+1))])
+		if numberX >= 0 && x != numberX {
+			t.Fatal("numeric hints are not in the same column")
+		}
+		numberX = x
+		if i > 0 {
+			gap := 1
+			if i == 3 || i == 6 {
+				gap = 2
+			}
+			if hit.Y-previousY != gap {
+				t.Fatal("sidebar grouping is not compact 3 / 3 / 1")
+			}
+		}
+		previousY = hit.Y
+	}
+	plain := ansi.Strip(screen)
+	if strings.Contains(plain, "1 Overview") || strings.Contains(plain, "LOCAL /") || strings.Contains(plain, "\n  Core") {
+		t.Fatal("sidebar names or global frame still contain old chrome")
+	}
+}
+
+func TestDashboardFooterUsesContextAndDoesNotKeepRefreshNotice(t *testing.T) {
+	o := dashboardOptions{Width: 120, Height: 32, Page: "overview", Message: "State refreshed", Help: "↑↓ Navigate · Enter Open · Tab Content"}
+	screen, _, _ := renderDashboard(o)
+	plain := ansi.Strip(screen)
+	if strings.Contains(plain, "State refreshed") || !strings.Contains(plain, "↑↓ Navigate") {
+		t.Fatal("footer retained an idle refresh message or lost context")
+	}
+	o.Failure = "permission denied"
+	screen, _, _ = renderDashboard(o)
+	if !strings.Contains(ansi.Strip(screen), "Error: permission denied") {
+		t.Fatal("necessary failure feedback was hidden")
+	}
+}
+
+func TestOverviewRowsSizeIndependentlyAndEmptyMetricsStayClear(t *testing.T) {
+	o := dashboardOptions{Width: 160, Height: 45, Page: "overview", GuideDismissed: true}
+	body, _, _ := renderDashboard(o)
+	plain := ansi.Strip(body)
+	if strings.Contains(plain, "Connections         --") || strings.Contains(plain, "You can explore") {
+		t.Fatal("empty cards retained unavailable metric rows or setup filler")
+	}
+	// The first row has no dependency on the second row's potentially long
+	// runtime details; a lengthy error must not stretch both pairs of cards.
+	_, _, shortHeight := renderDashboard(o)
+	o.Runtime = app.RuntimeSnapshot{State: "unavailable", Error: strings.Repeat("runtime diagnostic ", 50)}
+	_, _, tallHeight := renderDashboard(o)
+	if tallHeight <= shortHeight {
+		t.Fatal("long diagnostic was not retained in the scrollable card")
+	}
+	shortBody, _ := overviewContent(dashboardOptions{Height: 45, GuideDismissed: true}, 112)
+	tallBody, _ := overviewContent(o, 112)
+	firstTraffic := func(value string) int {
+		for i, row := range strings.Split(ansi.Strip(value), "\n") {
+			if strings.Contains(row, "Traffic statistics") {
+				return i
+			}
+		}
+		return -1
+	}
+	if firstTraffic(shortBody) != firstTraffic(tallBody) {
+		t.Fatal("a second-row diagnostic stretched the first card row")
 	}
 }
 
@@ -143,7 +246,7 @@ func TestDashboardMouseCoordinatesFollowScrolling(t *testing.T) {
 	}
 	o.SidebarOpen = true
 	value, regions, _ = renderDashboard(o)
-	for _, id := range []string{"nav.overview", "nav.nodes", "nav.profiles", "nav.settings"} {
+	for _, id := range []string{"nav.overview", "nav.proxies", "nav.profiles", "nav.settings"} {
 		if !hasAction(regions, id) {
 			t.Errorf("menu action missing: %s", id)
 		}
@@ -178,7 +281,7 @@ func TestSettingsOnlyOffersAvailableActions(t *testing.T) {
 }
 
 func TestBodyTargetTranslationAndClip(t *testing.T) {
-	o := dashboardOptions{Width: 80, Height: 24, Page: "nodes", Body: strings.Repeat("row\n", 30), BodyTargets: []hitRegion{{ID: "node.first", X: 3, Y: 0, W: 8, H: 1}, {ID: "node.last", X: 3, Y: 29, W: 8, H: 1}}}
+	o := dashboardOptions{Width: 80, Height: 24, Page: "proxies", Body: strings.Repeat("row\n", 30), BodyTargets: []hitRegion{{ID: "node.first", X: 3, Y: 0, W: 8, H: 1}, {ID: "node.last", X: 3, Y: 29, W: 8, H: 1}}}
 	_, regions, _ := renderDashboard(o)
 	g := dashboardGeometry(o)
 	for _, r := range regions {
@@ -213,12 +316,46 @@ func TestCellWrappingOverlayAndFocus(t *testing.T) {
 	selected, _, _ := renderDashboard(o)
 	o.Focus = "nav.overview"
 	focused, _, _ := renderDashboard(o)
-	if selected == focused || !strings.Contains(ansi.Strip(focused), "› 1 Overview") {
+	if selected == focused || !strings.Contains(ansi.Strip(focused), "› Overview") {
 		t.Fatal("focus is indistinguishable from selected navigation")
 	}
 	o.Dim = true
 	dimmed, _, _ := renderDashboard(o)
 	if !strings.Contains(ansi.Strip(dimmed), "Get started") || !strings.Contains(ansi.Strip(dimmed), "Overview") {
 		t.Fatal("dimmed backdrop lost underlying page")
+	}
+}
+
+func TestShortCompactNavigationKeepsFocusedLastItemVisible(t *testing.T) {
+	for _, size := range [][2]int{{80, 12}, {60, 10}} {
+		t.Run(fmt.Sprintf("%dx%d", size[0], size[1]), func(t *testing.T) {
+			m := ready(&fakeBackend{})
+			m.width, m.height = size[0], size[1]
+			m.sidebarOpen, m.focus = true, "nav.settings"
+			m.layout()
+			check := func(id, label, number string) {
+				t.Helper()
+				hit := findTarget(t, m, id)
+				line := strings.Split(m.screen, "\n")[hit.Y]
+				visible := ansi.Strip(ansi.Cut(line, hit.X, hit.X+hit.W))
+				if !strings.Contains(visible, "› "+label) || !strings.Contains(visible, number) {
+					t.Fatalf("focused menu item/shortcut is hidden: %q", visible)
+				}
+				assertCanvas(t, m.screen, size[0], size[1])
+				assertRegions(t, m.targets, size[0], size[1])
+			}
+			check("nav.settings", "Settings", "7")
+			if size[1] == 12 {
+				for _, page := range navPages() {
+					findTarget(t, m, "nav."+page)
+				}
+			}
+			before := m.scroll
+			m, _ = update(m, special(tea.KeyUp))
+			if m.focus != "nav.logs" || m.scroll != before {
+				t.Fatal("arrow did not move back inside compact navigation")
+			}
+			check("nav.logs", "Logs", "6")
+		})
 	}
 }

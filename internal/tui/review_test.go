@@ -149,7 +149,7 @@ func TestNetworkSaveLocksDraftAgainstKeyboardPasteAndMouse(t *testing.T) {
 func TestWrappedPageBodyTargetsMatchTheirPaintedRows(t *testing.T) {
 	for _, width := range []int{18, 25, 40} {
 		m := ready(&fakeBackend{snapshot: app.Snapshot{APIError: strings.Repeat("API unavailable 中文 ", 20), Groups: []mihomo.Group{{Name: "alpha", Type: "Selector", Now: "DIRECT", All: []string{"DIRECT"}}}}})
-		m.page = "nodes"
+		m.page = "proxies"
 		body, hits := m.pageBody(width)
 		lines := strings.Split(body, "\n")
 		found := false

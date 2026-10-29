@@ -37,6 +37,7 @@ type Backend interface {
 	Runtime(context.Context) (app.RuntimeSnapshot, error)
 	CloseConnection(context.Context, string) error
 	Rules(context.Context) (app.RuleSnapshot, error)
+	StreamLogs(context.Context, func(mihomo.LogEntry)) error
 }
 
 type parentCanceledMsg struct{}
@@ -95,10 +96,15 @@ type Model struct {
 	screen                string
 	colorProfile          colorprofile.Profile
 	noColor               bool
+	helpOpen              bool
+	helpScroll            int
+	statusGeneration      uint64
+	statusCancel          context.CancelFunc
 	wizard                wizardState
 	runtime               runtimeState
 	connections           connectionsState
 	rules                 rulesState
+	logs                  logsState
 }
 
 func New(ctx context.Context, backend Backend) Model {
@@ -118,6 +124,7 @@ func New(ctx context.Context, backend Backend) Model {
 	m.rules.search = textinput.New()
 	m.rules.search.CharLimit = 512
 	m.rules.search.Placeholder = "Type, payload, proxy or order"
+	m.logs = newLogsState()
 	styleInput(&m.connections.search, bg, false)
 	styleInput(&m.rules.search, bg, false)
 	m.colorProfile = colorprofile.Env(os.Environ())
@@ -153,6 +160,8 @@ func (m Model) snapshotCmd(id uint64, ctx context.Context, initial bool) tea.Cmd
 func (m *Model) newJob(kind string) context.Context {
 	m.stopRuntime()
 	m.stopRules()
+	m.stopLogs()
+	m.stopCoreStatus()
 	if m.cancel != nil {
 		m.cancel()
 	}
@@ -208,6 +217,8 @@ func waitProgress(ctx context.Context, updates <-chan progressMsg) tea.Cmd {
 func (m *Model) cancelTask(quit bool) {
 	m.stopRuntime()
 	m.stopRules()
+	m.stopLogs()
+	m.stopCoreStatus()
 	if m.cancel != nil {
 		m.cancel()
 	}
@@ -221,10 +232,32 @@ func (m *Model) cancelTask(quit bool) {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	switch v := msg.(type) {
+	case logsResultMsg:
+		accepted := m.logs.active && v.generation == m.logs.generation
+		refreshStatus := accepted && v.done && v.err != nil && !errors.Is(v.err, context.Canceled)
+		cmd = m.acceptLogs(v)
+		if accepted && !v.done && len(v.entries) > 0 {
+			m.observeCoreState("ready")
+		}
+		if refreshStatus {
+			cmd = tea.Batch(cmd, m.refreshCoreStatus())
+		}
+	case coreStatusMsg:
+		if v.generation == m.statusGeneration {
+			if v.err == nil {
+				m.snapshot = v.snapshot
+			} else if !errors.Is(v.err, context.Canceled) {
+				m.snapshot.ServiceError = "Service status unavailable; refresh or check doctor"
+			}
+		}
 	case tea.ColorProfileMsg:
 		m.colorProfile = v.Profile
 	case rulesResultMsg:
+		accepted := m.rules.active && v.generation == m.rules.generation
 		cmd = m.acceptRules(v)
+		if accepted && v.err == nil {
+			m.observeCoreState(v.snapshot.State)
+		}
 	case rulesTickMsg:
 		if m.rules.active && v.generation == m.rules.generation && m.rulesVisible() {
 			cmd = m.rulesCmd()
@@ -238,6 +271,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case parentCanceledMsg:
 		m.stopRuntime()
 		m.stopRules()
+		m.stopLogs()
+		m.stopCoreStatus()
 		if m.busy {
 			m.cancelTask(true)
 		} else {
@@ -324,7 +359,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.PasteMsg:
 		// Bracketed paste is text input, never a global command. In particular a
 		// pasted q or digit cannot quit or navigate out of a form.
-		if m.wizard.open || m.wizard.networkOpen {
+		if m.helpOpen {
+			break
+		} else if m.wizard.open || m.wizard.networkOpen {
 			cmd = m.updateWizardInput(v)
 		} else if m.form != "" {
 			m.input, cmd = m.input.Update(v)
@@ -334,18 +371,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else if m.rules.editing {
 			m.rules.search, cmd = m.rules.search.Update(v)
 			m.reconcileRules()
+		} else if m.logs.editing {
+			m.pauseLogs()
+			m.logs.search, cmd = m.logs.search.Update(v)
+			m.scroll = 0
 		}
 	case tea.KeyPressMsg:
 		key := v.String()
 		if key == "ctrl+c" {
 			m.stopRuntime()
 			m.stopRules()
+			m.stopLogs()
+			m.stopCoreStatus()
 			if m.busy {
 				m.cancelTask(true)
 			} else {
 				m.quitting = true
 				return m, tea.Quit
 			}
+			break
+		}
+		if m.helpOpen {
+			cmd = m.helpKey(v)
 			break
 		}
 		if m.wizard.open || m.wizard.networkOpen {
@@ -364,9 +411,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.ruleSearchKey(v)
 			break
 		}
+		if m.page == "logs" && m.logs.editing {
+			cmd = m.logsSearchKey(v)
+			break
+		}
 		if key == "q" {
 			m.stopRuntime()
 			m.stopRules()
+			m.stopLogs()
+			m.stopCoreStatus()
 			if m.busy {
 				m.cancelTask(true)
 			} else {
@@ -381,6 +434,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			break
 		}
+		if m.navigationKey(v) {
+			break
+		}
+		if m.sidebarOpen {
+			// The compact navigation popup owns input until a page is opened or
+			// it is dismissed. Page searches must not activate behind the menu.
+			allowed := false
+			switch key {
+			case "1", "2", "3", "4", "5", "6", "7", "enter", "space", " ", "esc", "tab", "shift+tab", "?":
+				allowed = true
+			}
+			if !allowed {
+				break
+			}
+		}
 		if m.page == "connections" {
 			if handled, next := m.connectionKey(v); handled {
 				cmd = next
@@ -393,10 +461,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 		}
+		if m.page == "logs" {
+			if handled, next := m.logsKey(v); handled {
+				cmd = next
+				break
+			}
+		}
+		if m.bodyListKey(v) {
+			break
+		}
 		switch key {
-		case "6":
-			m.navigate("rules")
-		case "5", "c":
+		case "1", "2", "3", "4", "5", "6", "7":
+			n, _ := strconv.Atoi(key)
+			m.navigate(navPages()[n-1])
+		case "c":
 			m.navigate("connections")
 		case "i":
 			m.openWizard(false)
@@ -410,8 +488,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "s", "x", "r":
 			action := map[string]string{"s": "start", "x": "stop", "r": "restart"}[key]
 			cmd = m.serviceAction(action)
-		case "1", "2", "3", "4":
-			m.navigate(map[string]string{"1": "overview", "2": "nodes", "3": "profiles", "4": "settings"}[key])
 		case "tab":
 			m.cycleFocus(1)
 		case "shift+tab":
@@ -423,24 +499,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "up", "k":
 			m.scroll = max(0, m.scroll-1)
 		case "pgdown":
-			m.scroll += max(1, m.height-9)
+			m.scroll += max(1, m.height-6)
 		case "pgup":
-			m.scroll = max(0, m.scroll-max(1, m.height-9))
+			m.scroll = max(0, m.scroll-max(1, m.height-6))
 		case "home":
 			m.scroll = 0
 		case "end":
 			m.scroll = m.total
 		case "esc":
 			m.sidebarOpen = false
+			if m.width < 100 || m.height < 20 {
+				m.focus = "menu"
+			}
 		case "g", "ctrl+r":
 			cmd = m.refresh()
 		case "?":
-			m.message = "i Install · n Network · a Import/Add · s/x/r Service · 1–6 Pages · c Connections · Tab Focus · Enter Open · Esc Back"
+			m.helpOpen, m.helpScroll = true, 0
 		}
 	default:
 		// Forward cursor/clipboard messages to the focused Bubbles input. The
 		// child model ignores messages it does not own, including key releases.
-		if m.wizard.open || m.wizard.networkOpen {
+		if m.helpOpen {
+			break
+		} else if m.wizard.open || m.wizard.networkOpen {
 			cmd = m.updateWizardInput(msg)
 		} else if m.form != "" {
 			m.input, cmd = m.input.Update(msg)
@@ -448,27 +529,37 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.connections.search, cmd = m.connections.search.Update(msg)
 		} else if m.rules.editing {
 			m.rules.search, cmd = m.rules.search.Update(msg)
+		} else if m.logs.editing {
+			m.logs.search, cmd = m.logs.search.Update(msg)
 		}
 	}
 	next := m.syncRuntime()
 	nextRules := m.syncRules()
+	nextLogs := m.syncLogs()
 	m.layout()
-	if next != nil || nextRules != nil {
-		return m, tea.Batch(cmd, next, nextRules)
+	if next != nil || nextRules != nil || nextLogs != nil {
+		return m, tea.Batch(cmd, next, nextRules, nextLogs)
 	}
 	return m, cmd
 }
 func (m *Model) navigate(page string) {
 	m.stopRuntime()
 	m.stopRules()
+	m.stopLogs()
+	m.stopCoreStatus()
 	m.connections.editing = false
 	m.connections.search.Blur()
 	m.rules.editing = false
 	m.rules.search.Blur()
+	m.logs.editing = false
+	m.logs.search.Blur()
 	m.page = page
 	m.scroll = 0
 	m.focus = "nav." + page
 	m.sidebarOpen = false
+	if m.width < 100 || m.height < 20 {
+		m.focus = "menu"
+	}
 }
 func (m *Model) openWizard(local bool) {
 	m.wizard.open = true
@@ -524,7 +615,7 @@ func (m *Model) formKey(k tea.KeyPressMsg) tea.Cmd {
 		m.form = ""
 		m.input.Reset()
 		m.input.Blur()
-		return m.begin("Fetching and validating configuration…", "Configuration saved; apply it from Subscriptions", func(ctx context.Context) error { return m.backend.Add(ctx, name, source) })
+		return m.begin("Fetching and validating configuration…", "Configuration saved; apply it from Profiles", func(ctx context.Context) error { return m.backend.Add(ctx, name, source) })
 	}
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(k)
@@ -538,7 +629,21 @@ func (m *Model) serviceAction(action string) tea.Cmd {
 	return m.begin("Service: "+action+"…", "Service "+action+" completed", func(ctx context.Context) error { return m.backend.Control(ctx, action) })
 }
 func (m *Model) activate(id string) tea.Cmd {
+	switch id {
+	case "card.import":
+		return m.openForm()
+	case "card.install":
+		m.openWizard(false)
+		return nil
+	case "card.start":
+		return m.serviceAction("start")
+	case "card.proxies":
+		m.navigate("proxies")
+		return nil
+	}
 	switch {
+	case strings.HasPrefix(id, "logs."):
+		return m.logsActivate(id)
 	case strings.HasPrefix(id, "rule.") || strings.HasPrefix(id, "rules."):
 		return m.ruleActivate(id)
 	case strings.HasPrefix(id, "connection.") || strings.HasPrefix(id, "conn."):
@@ -547,6 +652,11 @@ func (m *Model) activate(id string) tea.Cmd {
 		m.navigate(strings.TrimPrefix(id, "nav."))
 	case id == "menu":
 		m.sidebarOpen = !m.sidebarOpen
+		if m.sidebarOpen {
+			m.focus = "nav." + m.page
+		} else {
+			m.focus = "menu"
+		}
 	case id == "install":
 		m.openWizard(false)
 	case id == "network":
@@ -596,7 +706,7 @@ func (m *Model) activate(id string) tea.Cmd {
 	return nil
 }
 func (m *Model) cycleFocus(delta int) {
-	targets := m.targets
+	targets := m.focusTargets()
 	if len(targets) == 0 {
 		return
 	}
@@ -623,6 +733,18 @@ func (m *Model) cycleFocus(delta int) {
 }
 func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 	k := event.Mouse()
+	if m.helpOpen {
+		return m.helpMouse(event)
+	}
+	if m.sidebarOpen && !m.wizard.open && !m.wizard.networkOpen && m.form == "" {
+		if _, wheel := event.(tea.MouseWheelMsg); wheel {
+			return nil
+		}
+		if _, clicked := event.(tea.MouseClickMsg); clicked && k.Button == tea.MouseLeft && k.X >= min(22, m.width) {
+			m.sidebarOpen, m.focus = false, "menu"
+			return nil
+		}
+	}
 	if _, wheel := event.(tea.MouseWheelMsg); wheel {
 		if k.Button != tea.MouseWheelUp && k.Button != tea.MouseWheelDown {
 			return nil
@@ -633,6 +755,8 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 		}
 		if m.wizard.open || m.wizard.networkOpen {
 			m.wizard.scroll = max(0, m.wizard.scroll+d)
+		} else if m.page == "logs" && m.form == "" {
+			m.logsScroll(d)
 		} else if m.form == "" {
 			m.scroll = max(0, m.scroll+d)
 		}
@@ -701,6 +825,9 @@ func (m Model) pageBody(width int) (string, []hitRegion) {
 	if m.page == "rules" {
 		return m.rulesBody(width)
 	}
+	if m.page == "logs" {
+		return m.logsBody(width)
+	}
 	if m.page == "profiles" {
 		lines = append(lines, themed("Saved configurations", text, bg, false), "URL subscription and local YAML use the same validation and apply flow.", "")
 		add("add", "Add subscription / Import config")
@@ -721,7 +848,7 @@ func (m Model) pageBody(width int) (string, []hitRegion) {
 			add(fmt.Sprintf("profile.%d", i), name+mark)
 		}
 	} else {
-		lines = append(lines, themed("Proxy groups and nodes", text, bg, false), "Enter a group to expand; select a node in a Selector group.", "")
+		lines = append(lines, themed("Proxy groups and options", text, bg, false), "Enter a group to expand; select a node in a Selector group.", "")
 		if m.snapshot.APIError != "" {
 			lines = append(lines, strings.Split(wrapText("API unavailable: "+clean(m.snapshot.APIError), width), "\n")...)
 		}
@@ -749,7 +876,13 @@ func (m Model) pageBody(width int) (string, []hitRegion) {
 	return strings.Join(expanded, "\n"), hits
 }
 func (m *Model) layout() {
-	o := dashboardOptions{Width: m.width, Height: m.height, Page: m.page, SelectedGroup: m.wizard.expanded, Snapshot: m.snapshot, Focus: m.focus, Hover: m.hover, GuideDismissed: m.snapshot.GuideDismissed, Scroll: m.scroll, Dim: m.wizard.open || m.wizard.networkOpen || m.form != "", Message: m.message, Failure: m.failure, SidebarOpen: m.sidebarOpen, Runtime: m.runtime.snapshot, RuntimeReceived: m.runtime.received, RuntimePending: m.runtime.pending}
+	if m.width >= 100 && m.height >= 20 {
+		m.sidebarOpen = false
+	} else if strings.HasPrefix(m.focus, "nav.") && !m.wizard.open && !m.wizard.networkOpen && m.form == "" && !m.helpOpen && m.width >= 20 && m.height >= 12 {
+		// Preserve a focused navigation item when its persistent sidebar folds.
+		m.sidebarOpen = true
+	}
+	o := dashboardOptions{Width: m.width, Height: m.height, Page: m.page, SelectedGroup: m.wizard.expanded, Snapshot: m.snapshot, Focus: m.focus, Hover: m.hover, Help: m.contextHelp(), GuideDismissed: m.snapshot.GuideDismissed, Scroll: m.scroll, Dim: m.helpOpen || m.wizard.open || m.wizard.networkOpen || m.form != "", Message: m.message, Failure: m.failure, SidebarOpen: m.sidebarOpen, Runtime: m.runtime.snapshot, RuntimeReceived: m.runtime.received, RuntimePending: m.runtime.pending}
 	m.connections.search.SetWidth(max(1, dashboardBodyWidth(o)-2))
 	m.rules.search.SetWidth(max(1, dashboardBodyWidth(o)-2))
 	o.Body, o.BodyTargets = m.pageBody(dashboardBodyWidth(o))
@@ -758,9 +891,11 @@ func (m *Model) layout() {
 		base = themed(base, backdropText, sidebarBackground, true)
 	}
 	m.total = total
-	m.scroll = min(m.scroll, max(0, total-max(0, m.height-7)))
+	m.scroll = min(m.scroll, max(0, total-max(0, m.height-5)))
 	m.screen, m.targets = base, hits
-	if m.wizard.open || m.wizard.networkOpen {
+	if m.helpOpen {
+		m.screen, m.targets = m.renderHelp(base)
+	} else if m.wizard.open || m.wizard.networkOpen {
 		m.screen, m.targets = m.renderWizard(base)
 	} else if m.form != "" {
 		m.screen, m.targets = m.renderImport(base)

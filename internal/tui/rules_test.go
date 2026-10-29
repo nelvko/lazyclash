@@ -229,7 +229,7 @@ func TestRulesKeyboardMouseAndResponsiveFocus(t *testing.T) {
 				t.Fatal("selected rule scrolled outside the viewport")
 			}
 			if size == [2]int{100, 20} {
-				if !hasAction(m.targets, "nav.rules") || !strings.Contains(ansi.Strip(m.screen), "6 Rules") {
+				if !hasAction(m.targets, "nav.rules") || !strings.Contains(ansi.Strip(m.screen), "Rules") {
 					t.Fatal("sidebar core summary covered Rules navigation")
 				}
 			}
@@ -253,9 +253,9 @@ func TestRulesKeyboardMouseAndResponsiveFocus(t *testing.T) {
 	}
 }
 
-func TestRulesNavigationKeepsExistingShortcuts(t *testing.T) {
+func TestRulesNavigationMatchesMenuShortcuts(t *testing.T) {
 	m := rulesModel(t, &fakeBackend{})
-	for _, item := range []struct{ key, page string }{{"1", "overview"}, {"2", "nodes"}, {"3", "profiles"}, {"4", "settings"}, {"5", "connections"}, {"6", "rules"}} {
+	for _, item := range []struct{ key, page string }{{"1", "overview"}, {"2", "proxies"}, {"3", "profiles"}, {"4", "connections"}, {"5", "rules"}, {"6", "logs"}, {"7", "settings"}} {
 		m, _ = update(m, key(item.key))
 		if m.page != item.page {
 			t.Fatalf("%s went to %s", item.key, m.page)
