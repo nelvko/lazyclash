@@ -17,17 +17,19 @@ import (
 )
 
 type fakeBackend struct {
-	snapshot    app.Snapshot
-	snapshotErr error
-	prefs       app.Preferences
-	prefsErr    error
-	resolve     func(context.Context, string, downloadnet.Config) (mihomo.Release, error)
-	testFile    func(context.Context, mihomo.Release, downloadnet.Config) error
-	prepare     func(context.Context, mihomo.Release, string, bool) (app.InstallPlan, error)
-	install     func(context.Context, app.InstallPlan, downloadnet.Config, func(mihomo.Progress)) (app.InstallResult, error)
-	save        func(context.Context, downloadnet.Config) error
-	add         func(context.Context, string, string) error
-	control     func(context.Context, string) error
+	snapshot        app.Snapshot
+	snapshotErr     error
+	prefs           app.Preferences
+	prefsErr        error
+	resolve         func(context.Context, string, downloadnet.Config) (mihomo.Release, error)
+	testFile        func(context.Context, mihomo.Release, downloadnet.Config) error
+	prepare         func(context.Context, mihomo.Release, string, bool) (app.InstallPlan, error)
+	install         func(context.Context, app.InstallPlan, downloadnet.Config, func(mihomo.Progress)) (app.InstallResult, error)
+	save            func(context.Context, downloadnet.Config) error
+	add             func(context.Context, string, string) error
+	control         func(context.Context, string) error
+	runtime         func(context.Context) (app.RuntimeSnapshot, error)
+	closeConnection func(context.Context, string) error
 }
 
 func (f *fakeBackend) Snapshot(context.Context) (app.Snapshot, error) {
@@ -81,6 +83,19 @@ func (f *fakeBackend) Control(ctx context.Context, action string) error {
 	return nil
 }
 func (f *fakeBackend) Select(context.Context, string, string) error { return nil }
+
+func (f *fakeBackend) Runtime(ctx context.Context) (app.RuntimeSnapshot, error) {
+	if f.runtime != nil {
+		return f.runtime(ctx)
+	}
+	return app.RuntimeSnapshot{State: "stopped"}, ctx.Err()
+}
+func (f *fakeBackend) CloseConnection(ctx context.Context, id string) error {
+	if f.closeConnection != nil {
+		return f.closeConnection(ctx, id)
+	}
+	return ctx.Err()
+}
 
 func testRelease() mihomo.Release {
 	return mihomo.Release{Version: "v1.19.33", Asset: "mihomo-linux-arm64-v1.19.33.gz", URL: "https://github.com/MetaCubeX/mihomo/releases/download/v1.19.33/mihomo-linux-arm64-v1.19.33.gz", SHA256: strings.Repeat("a", 64), ChecksumSource: "official API", Platform: "linux/arm64", Size: 1024}

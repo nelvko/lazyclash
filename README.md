@@ -23,12 +23,27 @@ go run .
 - `b`：打开本地可执行文件安装选项，同样经过版本检查与确认。
 - `n` 或 Settings → **Network settings**：在查询版本前配置下载网络。
 - `a` 或 **Import config**：添加订阅 URL 或本地 Mihomo YAML；可在安装内核前保存，标记等待内核校验。
-- `1/2/3/4`：Overview / Nodes / Subscriptions / Settings；窄窗口可用 Menu。
+- `1/2/3/4`：Overview / Nodes / Subscriptions / Settings；`5` 或 `c` 打开 Connections，窄窗口可用 Menu。
 - `Tab / Shift+Tab` 切换焦点，方向键选择选项，`Enter` 激活，`Space` 切换选项；`PgUp/PgDn` 和滚轮滚动。
 - `Esc` 返回或取消；任务取消会显示清理状态，等待安全边界后才结束。`Ctrl+C` 同样等待清理后退出。
 - 输入框拥有正常字符与粘贴事件，`q` 和数字不会被全局快捷键抢走。鼠标可点击按钮、选项、输入框和导航；Modal 不向背景传递操作。
 
-首页保留 Current subscription、Selected proxy group、Traffic statistics、Kernel and environment 四张卡片。未实现的流量采集明确显示 Unavailable，不模拟数字，也不提供无效业务入口。
+首页保留 Current subscription、Selected proxy group、Traffic statistics、Kernel and environment 四张卡片。运行后自动展示实际上传/下载速率、活动连接数、本次内核运行累计流量及内核 RSS；未安装、停止、正在连接、部分数据不可用和 API 不可达分别反馈，不把缺失数据显示为零。
+
+## 运行监控与连接
+
+Overview 和 Connections 可见时自动采样；每轮并行读取真实 API，完成后间隔一秒再采样，不堆积并发请求。Mihomo 的 `/memory` 首帧为人工零，跳过首帧取得真实内存，正常一轮约两秒，因此页面通常约三秒更新一次。切换至其他页面、打开向导、执行操作和退出会取消采样；旧结果不覆盖当前任务。采样前后检查服务归属、状态与进程 ID，停止或重启期间的旧数据会丢弃并重新连接。
+
+`Upload / download` 来自 `/traffic` 最近一秒的字节样本，按 B/s 展示。`Since core start` 直接读取 `/connections` 的 `uploadTotal`、`downloadTotal`，包含已关闭连接的已记录流量；只统计 Mihomo 纳入计数的流量，不是整台机器的网络用量。内核重启或统计被清零时归零，关闭 TUI 不清零。当前不持久化跨重启、每日或每月流量，也不通过速率积分推算累计值。
+
+Connections 显示当前活动连接，可搜索目标域名/IP/端口、进程、规则或连接 ID：
+
+- `/` 或 Search：输入搜索，`Enter` 完成，输入中的 `q`、数字不触发全局操作。
+- `↑/↓` 选择连接，`Enter` 查看来源、目标、规则、代理链、进程和字节详情；长内容可滚动。
+- `x` 请求关闭选中连接，明确确认后 `y` 执行，默认选择取消；`Esc` 返回。关闭绑定显示的连接 ID，刷新重排不会切换关闭目标。
+- `g` / `Ctrl+R` 或 Refresh / Retry：重新采样；暂不可用时持续重试。关闭后重新读取 API，不根据本地列表推测成功。
+
+连接关闭仅提供单条操作。连接已消失时会明确反馈，不关闭其他连接。
 
 响应式规则以字符列/行数为准：至少 **110×30** 使用最大 **86×33** 的居中 Modal；否则使用当前终端区域中的同一单列向导。至少 **100×20** 显示常驻侧栏，否则使用 Menu。首页正文最大 112 列；正文至少 76 列且终端至少 24 行时卡片双列，否则单列。标题、正文滚动区和底部操作分开。极小窗口显示扩大终端提示，仍可返回或取消。缩放不重置选项或重启任务。
 
@@ -90,6 +105,9 @@ lazyclash service stop
 lazyclash service restart
 lazyclash nodes
 lazyclash select PROXY DIRECT
+lazyclash stats                  # 单次采样；停止/未安装时输出明确 State 和 null 指标
+lazyclash connections            # 运行中的活动连接 JSON
+lazyclash connections close ID   # 明确请求关闭一条连接
 lazyclash status
 lazyclash doctor
 ```
@@ -124,6 +142,6 @@ orb list
 
 普通测试仅用临时目录、fixture 与 fake 服务，不创建 VM 或修改真实代理。真实 Linux、PTY 与 Mihomo/systemd 测试显式执行，使用临时目录、随机专用 unit、冲突检查和失败清理，详情见 [验证说明](docs/verification.md)。未实测平台不得由交叉编译推断为已通过。
 
-程序入口为根目录 `main.go`。`internal/cli` 保留 Cobra 子命令与 Shell 集成，`internal/tui` 负责交互与响应式渲染；二者直接调用 `internal/app` 的共用用例。`internal/downloadnet` 负责来源与连接，`internal/mihomo` 负责发布、下载、校验和控制 API，`internal/service` 负责 systemd 用户服务，`internal/store` 负责原子文件与进程锁。具体边界见 [代码结构](docs/architecture.md)。
+程序入口为根目录 `main.go`。`internal/cli` 保留 Cobra 子命令与 Shell 集成，`internal/tui` 负责交互与响应式渲染；二者直接调用 `internal/app` 的共用用例，包括运行采样和单连接关闭。`internal/downloadnet` 负责来源与连接，`internal/mihomo` 负责发布、下载、校验和控制 API，`internal/service` 负责 systemd 用户服务，`internal/store` 负责原子文件与进程锁。具体边界见 [代码结构](docs/architecture.md)。
 
 [路线图](docs/roadmap.md)。参考旧项目仅用于只读研究，不读取旧运行配置，不继承历史、提供旧别名或实现迁移层。

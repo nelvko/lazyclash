@@ -33,6 +33,8 @@ type Backend interface {
 	Apply(context.Context, string) error
 	Control(context.Context, string) error
 	Select(context.Context, string, string) error
+	Runtime(context.Context) (app.RuntimeSnapshot, error)
+	CloseConnection(context.Context, string) error
 }
 
 type parentCanceledMsg struct{}
@@ -90,6 +92,8 @@ type Model struct {
 	targets               []hitRegion
 	screen                string
 	wizard                wizardState
+	runtime               runtimeState
+	connections           connectionsState
 }
 
 func New(ctx context.Context, backend Backend) Model {
@@ -102,6 +106,9 @@ func New(ctx context.Context, backend Backend) Model {
 	spin.Spinner = spinner.Dot
 	opCtx, cancel := context.WithCancel(ctx)
 	m := Model{ctx: ctx, backend: backend, busy: true, id: 1, cancel: cancel, opCtx: opCtx, job: "refresh", message: "Loading state…", page: "overview", focus: "install", input: input, spinner: spin, width: 80, height: 24, wizard: newWizard()}
+	m.connections.search = textinput.New()
+	m.connections.search.CharLimit = 256
+	m.connections.search.Placeholder = "Host, IP, port, process or rule"
 	m.layout()
 	return m
 }
@@ -130,6 +137,7 @@ func (m Model) snapshotCmd(id uint64, ctx context.Context, initial bool) tea.Cmd
 	}
 }
 func (m *Model) newJob(kind string) context.Context {
+	m.stopRuntime()
 	if m.cancel != nil {
 		m.cancel()
 	}
@@ -183,6 +191,7 @@ func waitProgress(ctx context.Context, updates <-chan progressMsg) tea.Cmd {
 	}
 }
 func (m *Model) cancelTask(quit bool) {
+	m.stopRuntime()
 	if m.cancel != nil {
 		m.cancel()
 	}
@@ -196,7 +205,14 @@ func (m *Model) cancelTask(quit bool) {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	switch v := msg.(type) {
+	case runtimeResultMsg:
+		cmd = m.acceptRuntime(v)
+	case runtimeTickMsg:
+		if m.runtime.active && v.generation == m.runtime.generation && m.runtimeVisible() {
+			cmd = m.runtimeCmd()
+		}
 	case parentCanceledMsg:
+		m.stopRuntime()
 		if m.busy {
 			m.cancelTask(true)
 		} else {
@@ -205,6 +221,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = max(1, v.Width), max(1, v.Height)
 		m.wizard.reveal = true
+		if m.page == "connections" && m.connections.detail == nil && strings.HasPrefix(m.focus, "connection.") {
+			m.revealConnection(0)
+		}
 	case resultMsg:
 		if v.id != m.id {
 			return m, nil
@@ -281,13 +300,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.updateWizardInput(v)
 		} else if m.form != "" {
 			m.input, cmd = m.input.Update(v)
+		} else if m.connections.editing {
+			m.connections.search, cmd = m.connections.search.Update(v)
+			m.reconcileConnections()
 		}
 	case tea.KeyPressMsg:
 		key := v.String()
 		if key == "ctrl+c" {
+			m.stopRuntime()
 			if m.busy {
 				m.cancelTask(true)
 			} else {
+				m.quitting = true
 				return m, tea.Quit
 			}
 			break
@@ -300,10 +324,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.formKey(v)
 			break
 		}
+		if m.page == "connections" && m.connections.editing {
+			cmd = m.connectionSearchKey(v)
+			break
+		}
 		if key == "q" {
+			m.stopRuntime()
 			if m.busy {
 				m.cancelTask(true)
 			} else {
+				m.quitting = true
 				return m, tea.Quit
 			}
 			break
@@ -314,7 +344,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			break
 		}
+		if m.page == "connections" {
+			if handled, next := m.connectionKey(v); handled {
+				cmd = next
+				break
+			}
+		}
 		switch key {
+		case "5", "c":
+			m.navigate("connections")
 		case "i":
 			m.openWizard(false)
 		case "b":
@@ -352,7 +390,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "g", "ctrl+r":
 			cmd = m.refresh()
 		case "?":
-			m.message = "i Install · n Network · a Import/Add · s/x/r Service · 1–4 Pages · Tab Focus · Enter Open · Esc Back"
+			m.message = "i Install · n Network · a Import/Add · s/x/r Service · 1–5 Pages · c Connections · Tab Focus · Enter Open · Esc Back"
 		}
 	default:
 		// Forward cursor/clipboard messages to the focused Bubbles input. The
@@ -361,12 +399,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.updateWizardInput(msg)
 		} else if m.form != "" {
 			m.input, cmd = m.input.Update(msg)
+		} else if m.connections.editing {
+			m.connections.search, cmd = m.connections.search.Update(msg)
 		}
 	}
+	next := m.syncRuntime()
 	m.layout()
+	if next != nil {
+		return m, tea.Batch(cmd, next)
+	}
 	return m, cmd
 }
 func (m *Model) navigate(page string) {
+	m.stopRuntime()
+	m.connections.editing = false
+	m.connections.search.Blur()
 	m.page = page
 	m.scroll = 0
 	m.focus = "nav." + page
@@ -441,6 +488,8 @@ func (m *Model) serviceAction(action string) tea.Cmd {
 }
 func (m *Model) activate(id string) tea.Cmd {
 	switch {
+	case strings.HasPrefix(id, "connection.") || strings.HasPrefix(id, "conn."):
+		return m.connectionActivate(id)
 	case strings.HasPrefix(id, "nav."):
 		m.navigate(strings.TrimPrefix(id, "nav."))
 	case id == "menu":
@@ -507,6 +556,9 @@ func (m *Model) cycleFocus(delta int) {
 	}
 	current = (current + delta + len(targets)) % len(targets)
 	m.focus = targets[current].ID
+	if strings.HasPrefix(m.focus, "connection.") {
+		m.connections.selected = strings.TrimPrefix(m.focus, "connection.")
+	}
 }
 func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 	k := event.Mouse()
@@ -531,6 +583,9 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 		if k.X >= r.X && k.X < r.X+r.W && k.Y >= r.Y && k.Y < r.Y+r.H {
 			m.hover = r.ID
 			if pressed && k.Button == tea.MouseLeft {
+				if m.page == "connections" && m.connections.confirming && r.ID != "conn.cancel" && r.ID != "conn.confirm" {
+					return nil
+				}
 				if m.wizard.open || m.wizard.networkOpen {
 					m.wizard.focus = r.ID
 					return m.wizardActivate(r.ID)
@@ -571,6 +626,9 @@ func (m Model) pageBody(width int) (string, []hitRegion) {
 		}
 		lines = append(lines, themed(cellCrop(s, width), text, bg, false))
 		hits = append(hits, hitRegion{ID: id, Y: row, W: width, H: 1})
+	}
+	if m.page == "connections" {
+		return m.connectionsBody(width)
 	}
 	if m.page == "profiles" {
 		lines = append(lines, themed("Saved configurations", purple, bg, false), "URL subscription and local YAML use the same validation and apply flow.", "")
@@ -620,7 +678,8 @@ func (m Model) pageBody(width int) (string, []hitRegion) {
 	return strings.Join(expanded, "\n"), hits
 }
 func (m *Model) layout() {
-	o := dashboardOptions{Width: m.width, Height: m.height, Page: m.page, SelectedGroup: m.wizard.expanded, Snapshot: m.snapshot, Focus: m.focus, Hover: m.hover, GuideDismissed: m.snapshot.GuideDismissed, Scroll: m.scroll, Dim: m.wizard.open || m.wizard.networkOpen || m.form != "", Message: m.message, Failure: m.failure, SidebarOpen: m.sidebarOpen}
+	o := dashboardOptions{Width: m.width, Height: m.height, Page: m.page, SelectedGroup: m.wizard.expanded, Snapshot: m.snapshot, Focus: m.focus, Hover: m.hover, GuideDismissed: m.snapshot.GuideDismissed, Scroll: m.scroll, Dim: m.wizard.open || m.wizard.networkOpen || m.form != "", Message: m.message, Failure: m.failure, SidebarOpen: m.sidebarOpen, Runtime: m.runtime.snapshot, RuntimeReceived: m.runtime.received, RuntimePending: m.runtime.pending}
+	m.connections.search.SetWidth(max(1, dashboardBodyWidth(o)-2))
 	o.Body, o.BodyTargets = m.pageBody(dashboardBodyWidth(o))
 	base, hits, total := renderDashboard(o)
 	m.total = total

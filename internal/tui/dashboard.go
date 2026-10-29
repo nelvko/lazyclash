@@ -15,17 +15,19 @@ type hitRegion struct {
 	X, Y, W, H int
 }
 type dashboardOptions struct {
-	Width, Height    int
-	Page             string
-	SelectedGroup    string
-	Snapshot         app.Snapshot
-	Focus            string
-	Hover            string
-	GuideDismissed   bool
-	Scroll           int
-	Dim              bool
-	Message, Failure string
-	SidebarOpen      bool
+	Width, Height                   int
+	Page                            string
+	SelectedGroup                   string
+	Snapshot                        app.Snapshot
+	Focus                           string
+	Hover                           string
+	GuideDismissed                  bool
+	Scroll                          int
+	Dim                             bool
+	Message, Failure                string
+	SidebarOpen                     bool
+	Runtime                         app.RuntimeSnapshot
+	RuntimeReceived, RuntimePending bool
 	// Body and its targets are relative to the first content row beneath the
 	// page header. They are used for Nodes and Subscriptions pages only.
 	Body        string
@@ -183,6 +185,8 @@ func pageTitle(page string) string {
 		return "Subscriptions"
 	case "settings":
 		return "Settings"
+	case "connections":
+		return "Connections"
 	default:
 		return "Overview"
 	}
@@ -213,7 +217,7 @@ func drawSidebar(rows []string, o dashboardOptions, popup bool) []hitRegion {
 	for y := 3; y < end; y++ {
 		putRows(rows, width-1, y, themed("│", border, bg, o.Dim), o.Width)
 	}
-	for i, page := range []string{"overview", "nodes", "profiles", "settings"} {
+	for i, page := range []string{"overview", "nodes", "profiles", "settings", "connections"} {
 		y := 4 + i*2
 		if y >= end {
 			break
@@ -248,6 +252,9 @@ func drawSidebar(rows []string, o dashboardOptions, popup bool) []hitRegion {
 			status, color = "Stopped", muted
 			if o.Snapshot.Service.Active {
 				status, color = "Running", purple
+			}
+			if o.Snapshot.ServiceError != "" {
+				status, color = "Unavailable", warning
 			}
 		}
 		putRows(rows, 2, end-4, themed(strings.Repeat("─", width-5), border, bg, o.Dim), o.Width)
@@ -476,13 +483,42 @@ func overviewCards(o dashboardOptions) [][]string {
 			groupName, node, groupStatus = g.Name, g.Now, "Ready to select"
 		}
 	}
+	if s.ServiceError != "" {
+		groupName, node, groupStatus = "--", "--", "Service unavailable"
+	} else if s.Service.Active && s.APIError != "" {
+		groupName, node, groupStatus = "--", "--", "API unavailable"
+	}
 	groups := []string{title("Selected proxy group"), style(groupStatus, muted), "", label("Group", groupName), label("Current node", node), style("Open Nodes to browse proxy groups", dim)}
-	traffic := []string{title("Traffic statistics"), style("Unavailable", muted), "", label("Connections", "--"), label("Upload / download", "--"), label("Core memory", "--")}
+	observed := o.Runtime
+	status := runtimeStatus(observed, o.RuntimeReceived, o.RuntimePending, s.Installed)
+	connections, rate, totals, memory := "--", "--", "--", "--"
+	if o.RuntimeReceived && observed.State == "ready" {
+		if observed.Connections != nil {
+			connections = fmt.Sprint(len(observed.Connections.Connections))
+			totals = "↑ " + formatBytes(observed.Connections.UploadTotal) + "  ↓ " + formatBytes(observed.Connections.DownloadTotal)
+		}
+		if observed.Traffic != nil {
+			rate = "↑ " + formatBytes(observed.Traffic.Up) + "/s  ↓ " + formatBytes(observed.Traffic.Down) + "/s"
+		}
+		if observed.Memory != nil {
+			memory = formatBytes(int64(*observed.Memory))
+		}
+	}
+	traffic := []string{title("Traffic statistics"), style(status, muted), "", label("Connections", connections), label("Upload / download", rate), label("Since core start", totals), label("Core memory", memory), style("Totals reset when the core restarts", dim)}
+	for _, issue := range []string{observed.Error, observed.ConnectionsError, observed.TrafficError, observed.MemoryError} {
+		if issue != "" {
+			traffic = append(traffic, style(issue, warning))
+			break
+		}
+	}
 	coreStatus, color := "Not installed", warning
 	if s.Installed {
 		coreStatus, color = "Stopped", muted
 		if s.Service.Active {
 			coreStatus, color = "Running", purple
+		}
+		if s.ServiceError != "" {
+			coreStatus, color = "Unavailable", warning
 		}
 	}
 	kernel := []string{title("Kernel and environment"), style(coreStatus, color), "", label("Platform", runtime.GOOS+"/"+runtime.GOARCH), label("System proxy", "Unchanged"), label("TUN", "Off")}

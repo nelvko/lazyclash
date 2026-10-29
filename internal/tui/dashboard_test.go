@@ -62,7 +62,7 @@ func TestOverviewUninitializedIsBrowsable(t *testing.T) {
 	options := dashboardOptions{Width: 160, Height: 45, Page: "overview"}
 	value, targets, total := renderDashboard(options)
 	plain := ansi.Strip(value)
-	for _, part := range []string{"Get started", "Install your first proxy core", "Current subscription", "Selected proxy group", "Traffic statistics", "Kernel and environment", "Unavailable", "LOCAL /"} {
+	for _, part := range []string{"Get started", "Install your first proxy core", "Current subscription", "Selected proxy group", "Traffic statistics", "Kernel and environment", "Core not installed", "LOCAL /"} {
 		if !strings.Contains(plain, part) {
 			t.Errorf("missing %q", part)
 		}
