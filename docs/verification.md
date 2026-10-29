@@ -34,7 +34,7 @@ orb -m "$VM" sh -c 'id; uname -m; ps -p 1 -o comm=; systemctl --user is-system-r
 python3 scripts/pty-smoke.py --help
 ```
 
-`empty` 模式仅操作专用的未安装数据目录，检查默认首页、网络草稿的隐藏输入与放弃、安装前导入、宽屏 Modal/紧凑布局、安装阶段取消和 SIGTERM。`install-local` 模式通过完整 TUI 向导安装明确的本地 Mihomo 二进制并确认未启动服务；`installed` 模式使用已启动的专用服务，以鼠标和键盘切换 PROXY 节点，并通过实际 API 回读确认。`runtime` 模式使用专用流量连接，验证实时卡片、按 UUID 搜索/详情/确认关闭、缩放和停止/启动后的自动恢复。完整的目录、服务、前置检查和清理由下一入口安排，建议通过它执行全部模式。
+`empty` 模式仅操作专用的未安装数据目录，检查默认首页、网络草稿的隐藏输入与放弃、安装前导入、宽屏 Modal/紧凑布局、安装阶段取消和 SIGTERM。`install-local` 模式通过完整 TUI 向导安装明确的本地 Mihomo 二进制并确认未启动服务；`installed` 模式使用已启动的专用服务，以鼠标和键盘切换 PROXY 节点，并通过实际 API 回读确认。`runtime` 模式使用专用流量连接，验证实时卡片、按 UUID 搜索/详情/确认关闭、缩放和停止/启动后的自动恢复。`runtime-settings` 模式验证端口输入、取消草稿、占用后的纠正、确认重启、宽窄切换及各控制 API 页面的重新连接。完整的目录、服务、前置检查和清理由下一入口安排，建议通过它执行全部模式。
 
 ## 4. 真实 Mihomo + systemd 端到端
 
@@ -163,3 +163,22 @@ python3 scripts/pty-smoke.py --help
 证据单独保存到忽略目录 `.test-artifacts/ui-layout/`，包括 `linux-tests.log`、`e2e.log`、`pty-logs.txt`、`cleanup.txt` 和主机/Linux 颜色 PTY 记录。E2E 清理确认 dedicated unit 为 not-found、两个监听端口释放、`resources released=1`、exit=0；主机/Linux 测试与 PTY 暂存文件、进程已清理。没有读取 proxyctl 运行配置，没有修改 macOS 代理、DNS、路由或 Shell 文件。
 
 日志行为与边界见 [实时日志查看](logs.md)。这些日志仅为当前会话实时观察，暂停或离页期间没有历史补采。未实际验证 Linux/amd64、其他发行版或其他 init 系统；没有把 macOS PTY 或交叉编译当作 macOS 服务支持证明。
+
+## 运行端口设置（2026-10-29）
+
+共享读取、预检查与事务应用用例，以及 TUI/CLI 操作见 [运行端口设置](runtime-settings.md)。普通测试使用临时目录、替代服务和本地 HTTP fixture；真实服务验证仍是显式入口。
+
+本轮实际运行：
+
+- 宿主 macOS/arm64、Go 1.27.1：最终源代码的 `make check`（全包测试与 vet）、`make race`、`make build` 通过。
+- `scripts/verify-linux.sh lazyclash-e2e` 在最终源代码上重新构建并实际执行全部 Linux/arm64 测试，通过；包含普通 Start 的 UDP-only 冲突、占用默认端口安装提示、冲突后纠正和迟到消息不能提前退出清理等新增回归。
+- `scripts/e2e.sh lazyclash-e2e --proxy-mode environment` 完整通过。在专用 OrbStack Debian 12/arm64、普通 uid 501、systemd 252 用户 manager 中，使用官方下载并校验的 Mihomo v1.19.32/v1.19.33；未读取已有代理配置，也未修改网络环境。
+- 安装向导在自有 TCP/UDP fixture 占用默认端口时仍可安装，服务保持停止；明确 Start 因冲突失败，原 fixture 仍存活。
+- CLI 分别验证 mixed TCP/UDP 和 controller TCP 冲突不修改文件或停止进程、dry-run、运行态重启确认、无变更不重启、运行态移动与自有端口互换、停止态保持停止。端口动态分配并记录供失败清理，不停止任何外部占用者。
+- 端口变更以当前已应用 YAML 为基础：刻意修改已保存但未重新应用的 profile，证明配置其余字节、原始 profile、安装身份、API key 和 unit 保持不变；之后明确 Apply profile 仍保留新端口。实际请求验证新代理端口、新认证 API、`env` 输出和旧端口释放。
+- `runtime-settings` 真实 controlling PTY 验证取消草稿、数字/q 输入、端口冲突后纠正、审阅不提前提交、明确 Apply & restart、120×32 / 80×24 / 60×20 / 120×18 / 120×40 缩放保留草稿，并在 Proxies、Rules、Logs、Overview 重新连接新端口；实际 HTTP 流量生成日志，未使用假数据。
+- Python 四项 VT 回归、Python/Bash 语法检查通过。首次端口 PTY 运行暴露测试脚本的错误焦点假设：预检查失败已返回首个输入框，脚本仍发送 Shift+Tab；修复后增加新输入可见及错误清除的当前屏幕断言，完整端到端复跑通过。
+
+证据在忽略的 `.test-artifacts/`：`e2e.log`、`pty-runtime-settings.txt`、`cleanup.txt`。最终清理为 `resources released=1`、`exit=0`，专用 unit 为 not-found，默认和动态 TCP/UDP 测试端口释放；额外检查专用测试目录及进程已消失。应用失败、取消、恢复失败和用户修改保护由可控模型/应用测试验证，未声称真实 VM 中注入过全部故障。实测平台未扩大到 Linux/amd64、其他发行版或其他 init。
+
+完整 E2E 的二进制构建早于最后两项小修：将普通 Start 的端口检查统一扩展到 UDP、清除已结束预检查的底栏消息。两项都包含在随后最终源代码的 Linux 全包测试中；未因此重复声称又跑了一轮完整 E2E。

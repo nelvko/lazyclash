@@ -260,6 +260,16 @@ class Terminal:
         self.send(data)
         self.read(0.08)
 
+    def click_text(self, label):
+        self.wait(label)
+        for y, line in enumerate(self.screen.text().splitlines()):
+            if label in line:
+                # Test labels are ASCII, so their indexes are terminal cells.
+                x = line.index(label) + 1
+                self.key(("\x1b[<0;%d;%dM\x1b[<0;%d;%dm" % (x + 1, y + 1, x + 1, y + 1)).encode())
+                return
+        raise AssertionError("Current PTY screen has no clickable text: " + label)
+
     def local_confirm(self, source):
         self.key(b"b")
         self.wait("Local Mihomo executable")
@@ -306,10 +316,13 @@ def main():
     parser.add_argument("--binary", required=True)
     parser.add_argument("--home", required=True)
     parser.add_argument("--service-name", required=True)
-    parser.add_argument("--mode", choices=["empty", "installed", "install-local", "runtime", "rules", "logs"], required=True)
+    parser.add_argument("--mode", choices=["empty", "installed", "install-local", "runtime", "rules", "logs", "runtime-settings"], required=True)
     parser.add_argument("--mihomo-bin")
     parser.add_argument("--fixture-port", type=int, help="Dedicated loopback HTTP fixture port for live log events")
     parser.add_argument("--connection-id", help="Dedicated active fixture connection UUID for runtime mode")
+    parser.add_argument("--mixed-port", type=int, help="Dedicated free replacement proxy port for runtime-settings mode")
+    parser.add_argument("--controller-port", type=int, help="Dedicated free replacement API port for runtime-settings mode")
+    parser.add_argument("--conflict-port", type=int, help="Occupied dedicated TCP fixture port for runtime-settings mode")
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
     home = Path(args.home)
@@ -413,6 +426,105 @@ def main():
             terminal.wait(str(home / "installation" / "mihomo"), after=mark)
             terminal.wait("Service remains stopped", after=mark)
             terminal.key(b"\r")
+            terminal.exit()
+        elif args.mode == "runtime-settings":
+            if not all(value and 1024 <= value <= 65535 for value in
+                       (args.mixed_port, args.controller_port, args.conflict_port, args.fixture_port)):
+                parser.error("runtime-settings requires explicit unprivileged test/fixture ports")
+
+            def cli(*arguments):
+                completed = subprocess.run(command + list(arguments), stdout=subprocess.PIPE,
+                                           stderr=subprocess.PIPE, timeout=60)
+                if completed.returncode:
+                    raise AssertionError("Dedicated settings-test CLI action failed: " + " ".join(arguments[:2]))
+                return completed.stdout
+
+            initial = json.loads(cli("settings", "show"))
+            initial_status = json.loads(cli("status"))
+            initial_pointer = os.readlink(home / "installation" / "current")
+
+            def open_ports():
+                terminal.key(b"7")
+                terminal.wait("Runtime settings / Ports")
+                terminal.click_text("Runtime settings / Ports")
+                terminal.wait("Edit ports")
+                terminal.wait("Proxy port")
+
+            def replace_input(value):
+                terminal.key(b"\x05\x15" + str(value).encode("ascii"))
+
+            open_ports()
+            replace_input("123q7")
+            terminal.wait("123q7")
+            terminal.wait("Edit ports")
+            terminal.key(b"\x1b")
+            terminal.wait_absent("Edit ports")
+            if json.loads(cli("settings", "show")) != initial or os.readlink(home / "installation" / "current") != initial_pointer:
+                raise AssertionError("Canceling the runtime settings draft changed the installation")
+
+            open_ports()
+            replace_input(args.conflict_port)
+            terminal.key(b"\t")  # controller input
+            replace_input(args.controller_port)
+            terminal.key(b"\r")  # asynchronous review from the input
+            terminal.wait("unavailable")
+            if json.loads(cli("status"))["Service"]["PID"] != initial_status["Service"]["PID"]:
+                raise AssertionError("TUI conflict precheck stopped the running core")
+            if json.loads(cli("settings", "show")) != initial:
+                raise AssertionError("TUI conflict precheck changed runtime settings")
+            # Failed preflight returns focus to the first editable field.
+            # Do not assume the controller retains the focus it had at submit.
+            replace_input(args.mixed_port)
+            terminal.wait(str(args.mixed_port))
+            terminal.wait_absent("unavailable")
+            terminal.key(b"\t")
+            for columns, rows in ((120, 32), (80, 24), (60, 20), (120, 18), (120, 40)):
+                mark = len(terminal.text())
+                terminal.resize(columns, rows)
+                terminal.wait("Control API port", after=mark)
+                terminal.wait(str(args.controller_port))
+            terminal.key(b"\r")
+            terminal.wait("Review changes")
+            terminal.wait("Apply & restart")
+            terminal.wait("active connections will be interrupted")
+            if json.loads(cli("settings", "show")) != initial:
+                raise AssertionError("Reviewing runtime settings applied them before confirmation")
+            terminal.key(b"\r")
+            terminal.wait("Runtime settings applied")
+            terminal.wait(str(args.controller_port))
+            terminal.key(b"\r")
+            terminal.wait_absent("Back to Settings")
+            expected = {"mixed_port": args.mixed_port, "controller_port": args.controller_port}
+            if json.loads(cli("settings", "show")) != expected:
+                raise AssertionError("TUI did not commit the reviewed runtime ports")
+
+            # Every major API consumer must use the new authenticated endpoint.
+            terminal.key(b"2")
+            terminal.wait("Proxy groups and options")
+            terminal.wait("PROXY")
+            terminal.key(b"5")
+            terminal.wait("Rules loaded")
+            terminal.key(b"6")
+            terminal.wait("live events")
+            from http.client import HTTPConnection
+            for _ in range(10):
+                connection = HTTPConnection("127.0.0.1", args.mixed_port, timeout=5)
+                try:
+                    connection.request("GET", "http://127.0.0.1:%d/runtime-settings" % args.fixture_port)
+                    response = connection.getresponse()
+                    if response.status != 200:
+                        raise AssertionError("New TUI proxy port could not reach its dedicated fixture")
+                    response.read()
+                finally:
+                    connection.close()
+                terminal.read(.15)
+                if "[TCP]" in terminal.screen.text():
+                    break
+            terminal.wait("[TCP]")
+            terminal.key(b"1")
+            terminal.wait("Traffic statistics")
+            terminal.wait("Live")
+            terminal.wait("Mihomo · Running")
             terminal.exit()
         elif args.mode == "rules":
             def cli(*arguments, success=True):

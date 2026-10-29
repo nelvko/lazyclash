@@ -57,6 +57,12 @@ Logs 通过当前 Mihomo 的认证本机控制 API 获取实时事件，默认�
 
 CLI 使用同一日志用例，例如 `lazyclash logs --lines 50 --duration 5s`，在有界时间内采集最多指定条数并输出 JSON。日志来源、容量、取消和脱敏边界见 [日志查看](docs/logs.md)。
 
+## 运行端口设置
+
+已安装 Mihomo 后，在 **Settings → Runtime settings / Ports** 修改本机 HTTP/SOCKS 代理端口和控制 API 端口。先检查并审阅，再确认应用；运行中显示 **Apply & restart** 并说明连接中断，停止状态提交后仍保持停止。两个端口必须不同，范围为 1024–65535；检查代理 TCP/UDP 与控制 API TCP 冲突，不停止占用端口的其他进程。
+
+CLI 使用同一事务用例：`lazyclash settings show` 查看，`lazyclash settings ports --mixed-port 17897 --controller-port 19097 --dry-run` 预检查；运行中应用需显式加 `--restart`。失败或取消执行回滚；恢复失败则保留恢复记录并报告。API 密钥、原始 profile 和其他配置保留。父 Shell 已导出的代理变量需重新求值 `lazyclash env`。详细操作与恢复边界见 [运行端口设置](docs/runtime-settings.md)。
+
 ## 版本、确认与安装
 
 Latest stable 每次从官方 GitHub API 解析为具体版本；Specific version 可输入稳定标签，例如 `v1.19.33`。尚未支持 pre-release 和其他内核，因此不展示可进入的占位流程。

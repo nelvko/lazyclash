@@ -27,7 +27,7 @@ if [[ ${1:-} != --linux ]]; then
     result=$?
     trap - EXIT
     if [[ -n $linux_stage ]]; then
-    for file in pty-empty.txt pty-install-local.txt pty-installed.txt pty-runtime.txt pty-rules.txt pty-logs.txt cleanup.txt; do
+    for file in pty-empty.txt pty-install-local.txt pty-installed.txt pty-runtime.txt pty-rules.txt pty-logs.txt pty-runtime-settings.txt cleanup.txt; do
       if orb -m "$vm" test -f "$linux_stage/$file"; then
         orb -m "$vm" cat "$linux_stage/$file" > ".test-artifacts/$file" || result=1
       fi
@@ -45,8 +45,8 @@ if [[ ${1:-} != --linux ]]; then
   trap cleanup_host EXIT
   linux_stage=$(orb -m "$vm" mktemp -d /tmp/lazyclash-e2e.XXXXXX)
   CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" go build -o "$host_stage/lazyclash" .
-  cp scripts/e2e.sh scripts/pty-smoke.py "$host_stage/"
-  COPYFILE_DISABLE=1 tar --no-xattrs -C "$host_stage" -cf - lazyclash e2e.sh pty-smoke.py | orb -m "$vm" tar -xf - -C "$linux_stage"
+  cp scripts/e2e.sh scripts/pty-smoke.py scripts/ports-e2e.py "$host_stage/"
+  COPYFILE_DISABLE=1 tar --no-xattrs -C "$host_stage" -cf - lazyclash e2e.sh pty-smoke.py ports-e2e.py | orb -m "$vm" tar -xf - -C "$linux_stage"
   # Captured output deliberately excludes raw configuration, journal and URLs.
   if orb -m "$vm" bash "$linux_stage/e2e.sh" --linux "$linux_stage" "$proxy_mode" > .test-artifacts/e2e.log 2>&1; then
     sed '/^download: [0-9]/d' .test-artifacts/e2e.log
@@ -73,6 +73,7 @@ unit_dir="${XDG_CONFIG_HOME:-$(getent passwd "$(id -u)" | cut -d: -f6)/.config}/
 unit="$unit_dir/$service_name.service"
 fixture_pid=
 traffic_pid=
+port_blocker_pid=
 owned=no
 local_owned=no
 local_home=
@@ -81,6 +82,10 @@ cleanup_linux() {
   result=$?
   trap - EXIT
   cleanup_failed=0
+  if [[ -n "$port_blocker_pid" ]]; then
+    kill "$port_blocker_pid" 2>/dev/null || true
+    wait "$port_blocker_pid" 2>/dev/null || true
+  fi
   if [[ -n "$traffic_pid" ]]; then
     kill "$traffic_pid" 2>/dev/null || true
     wait "$traffic_pid" 2>/dev/null || true
@@ -123,16 +128,23 @@ cleanup_linux() {
   fi
   # Check listener ownership through process termination, never free a conflict
   # by stopping somebody else's service.
-  python3 - <<'PY' >> "$work/cleanup.txt" || cleanup_failed=1
-import socket
-for port in (9097, 7897):
-    s = socket.socket()
-    # Match Go's TCP listener: TIME_WAIT from a closed fixture is harmless,
-    # while an existing listener still prevents this bind (no SO_REUSEPORT).
-    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    s.bind(("127.0.0.1", port))
-    s.close()
-print("Both dedicated test listeners are released")
+  python3 - "$work/runtime-ports.json" <<'PY' >> "$work/cleanup.txt" || cleanup_failed=1
+import json, socket, sys
+from pathlib import Path
+extra = Path(sys.argv[1])
+ports = {9097, 7897}
+if extra.exists():
+    ports.update(json.loads(extra.read_text()))
+for port in ports:
+    for kind in (socket.SOCK_STREAM, socket.SOCK_DGRAM):
+        s = socket.socket(socket.AF_INET, kind)
+        # Match Go's TCP listener: TIME_WAIT from a closed fixture is harmless,
+        # while an existing listener still prevents this bind (no SO_REUSEPORT).
+        if kind == socket.SOCK_STREAM:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind(("127.0.0.1", port))
+        s.close()
+print("All dedicated default and runtime-setting TCP/UDP listeners are released")
 PY
   if [[ $cleanup_failed == 0 ]]; then
     touch "$work/.cleanup-complete"
@@ -150,14 +162,16 @@ PY
 python3 - <<'PY'
 import socket
 for port in (9097, 7897):
-    s = socket.socket()
-    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    try:
-        s.bind(("127.0.0.1", port))
-    except OSError:
-        raise SystemExit("Test port conflict: %d; no process was stopped" % port)
-    finally:
-        s.close()
+    for kind in (socket.SOCK_STREAM, socket.SOCK_DGRAM):
+        s = socket.socket(socket.AF_INET, kind)
+        if kind == socket.SOCK_STREAM:
+            s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            s.bind(("127.0.0.1", port))
+        except OSError:
+            raise SystemExit("Test port conflict: %d; no process was stopped" % port)
+        finally:
+            s.close()
 print("Port and unit conflict preflight passed")
 PY
 trap cleanup_linux EXIT
@@ -186,7 +200,41 @@ local_unit="$unit_dir/$local_name.service"
 [[ ! -e "$local_unit" && ! -L "$local_unit" ]]
 [[ $(systemctl --user show "$local_name.service" --property=LoadState --value) == not-found ]]
 local_owned=yes
+# The second installation must remain possible when default ports are occupied:
+# installation does not listen or start the service, and Settings provides a
+# supported way to choose other ports before the first explicit start.
+python3 - "$work/default-ports-blocked" <<'PY' &
+from pathlib import Path
+import signal, socket, sys
+held = []
+for port, kind in ((7897, socket.SOCK_STREAM), (9097, socket.SOCK_STREAM), (7897, socket.SOCK_DGRAM)):
+    sock = socket.socket(socket.AF_INET, kind)
+    if kind == socket.SOCK_STREAM:
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind(("127.0.0.1", port))
+    if kind == socket.SOCK_STREAM:
+        sock.listen(1)
+    held.append(sock)
+Path(sys.argv[1]).write_text("ready")
+signal.pause()
+PY
+port_blocker_pid=$!
+for ((attempt=0; attempt<50; attempt++)); do
+  [[ -f "$work/default-ports-blocked" ]] && break
+  kill -0 "$port_blocker_pid" 2>/dev/null || { printf 'Dedicated default-port fixture exited early\n' >&2; exit 1; }
+  sleep 0.1
+done
+[[ -f "$work/default-ports-blocked" ]]
 python3 "$work/pty-smoke.py" --binary "$app" --home "$local_home" --service-name "$local_name" --mode install-local --mihomo-bin "$home/installation/mihomo" --output "$work/pty-install-local.txt"
+if "$app" --home "$local_home" --service-name "$local_name" service start > "$work/blocked-start.log" 2>&1; then
+  printf 'Stopped local service unexpectedly started on occupied default ports\n' >&2
+  exit 1
+fi
+kill -0 "$port_blocker_pid"
+kill "$port_blocker_pid"
+wait "$port_blocker_pid" 2>/dev/null || true
+port_blocker_pid=
+printf 'First installation accepted occupied defaults; explicit start rejected the conflict\n'
 "$app" --home "$local_home" --service-name "$local_name" install --bin "$home/installation/mihomo" > "$work/local-result.json"
 python3 - "$work/local-result.json" <<'PY'
 import json, sys
@@ -475,6 +523,9 @@ assert sample["State"] == "ready" and sample["Memory"] > 0
 assert sample["Connections"]["uploadTotal"] == 0 and sample["Connections"]["downloadTotal"] == 0, "core restart did not reset its counters"
 print("Core restart resets in-memory cumulative counters and monitoring reconnects")
 PY
+python3 "$work/ports-e2e.py" --binary "$app" --home "$home" --service-name "$service_name" \
+  --unit "$unit" --fixture-port "$fixture_port" --pty-script "$work/pty-smoke.py" \
+  --output "$work/pty-runtime-settings.txt"
 lp service restart
 lp service stop
 lp service status
