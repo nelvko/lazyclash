@@ -23,6 +23,7 @@ type Status struct {
 	Active bool
 	State  string
 	Linger bool
+	PID    int
 }
 
 // Name excludes the .service suffix. UnitDir is the systemd user unit directory.
@@ -117,7 +118,7 @@ func (s *Systemd) Inspect(ctx context.Context) (Status, error) {
 	if err != nil {
 		return Status{}, err
 	}
-	out, err := s.command(ctx, "systemctl", "--user", "show", name, "--property=LoadState,ActiveState")
+	out, err := s.command(ctx, "systemctl", "--user", "show", name, "--property=LoadState,ActiveState,MainPID")
 	if err != nil {
 		return Status{}, fmt.Errorf("inspect service: %w", err)
 	}
@@ -133,6 +134,12 @@ func (s *Systemd) Inspect(ctx context.Context) (Status, error) {
 			load = value
 		case "ActiveState":
 			status.State = value
+		case "MainPID":
+			pid, err := strconv.Atoi(value)
+			if err != nil || pid < 0 {
+				return Status{}, errors.New("systemd returned an invalid process ID")
+			}
+			status.PID = pid
 		}
 	}
 	if load == "not-found" {

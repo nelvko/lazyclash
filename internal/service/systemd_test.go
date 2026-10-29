@@ -25,6 +25,33 @@ func testManager(t *testing.T) (*Systemd, *[]string) {
 	return s, &calls
 }
 
+func TestInspectReportsProcessIdentityAndRejectsInvalidPID(t *testing.T) {
+	for _, pid := range []string{"4321", "0", "-1", "not-a-pid"} {
+		t.Run(pid, func(t *testing.T) {
+			s, _ := testManager(t)
+			s.run = func(_ context.Context, command string, args ...string) ([]byte, error) {
+				if command == "loginctl" {
+					return []byte("yes\n"), nil
+				}
+				if !strings.Contains(strings.Join(args, " "), "MainPID") {
+					t.Fatal("process identity was not requested")
+				}
+				return []byte("LoadState=loaded\nActiveState=active\nMainPID=" + pid + "\n"), nil
+			}
+			status, err := s.Inspect(t.Context())
+			if pid == "-1" || pid == "not-a-pid" {
+				if err == nil {
+					t.Fatal("invalid process identity accepted")
+				}
+				return
+			}
+			if err != nil || !status.Active || !status.Linger || (pid == "4321" && status.PID != 4321) || (pid == "0" && status.PID != 0) {
+				t.Fatalf("status=%+v err=%v", status, err)
+			}
+		})
+	}
+}
+
 func TestInstallIsAtomicAndDoesNotEnable(t *testing.T) {
 	s, calls := testManager(t)
 	if err := s.Install(context.Background(), "/tmp/my bin/mihomo", "/tmp/config.yaml", "/tmp/data"); err != nil {

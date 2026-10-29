@@ -27,7 +27,9 @@ type Group struct {
 	All  []string `json:"all"`
 }
 
-func (c Client) request(ctx context.Context, method, path string, body []byte) ([]byte, error) {
+// open keeps buffered requests and streaming samples on the same authenticated,
+// loopback-only transport. The returned body owns the private transport cleanup.
+func (c Client) open(ctx context.Context, method, path string, body []byte) (io.ReadCloser, error) {
 	base, err := url.Parse(c.BaseURL)
 	if err != nil || (base.Scheme != "http" && base.Scheme != "https") || base.User != nil || base.RawQuery != "" || base.Fragment != "" || (base.Path != "" && base.Path != "/") {
 		return nil, errors.New("invalid local controller URL")
@@ -39,24 +41,26 @@ func (c Client) request(ctx context.Context, method, path string, body []byte) (
 	if c.HTTP != nil {
 		*cl = *c.HTTP
 	}
-	if cl.Timeout == 0 {
+	if cl.Timeout <= 0 {
 		cl.Timeout = 5 * time.Second
 	}
 	transport := cl.Transport
 	if transport == nil {
 		transport = http.DefaultTransport
 	}
+	closeIdle := func() {}
 	if tr, ok := transport.(*http.Transport); ok {
 		tr = tr.Clone()
 		tr.Proxy = nil
 		transport = tr
-		defer tr.CloseIdleConnections()
+		closeIdle = tr.CloseIdleConnections
 	}
 	cl.Transport = transport
 	// Never follow redirects: the bearer token belongs to this local listener.
 	cl.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(c.BaseURL, "/")+path, bytes.NewReader(body))
 	if err != nil {
+		closeIdle()
 		return nil, errors.New("cannot construct local controller request")
 	}
 	req.Header.Set("Authorization", "Bearer "+c.Secret)
@@ -65,19 +69,41 @@ func (c Client) request(ctx context.Context, method, path string, body []byte) (
 	}
 	resp, err := cl.Do(req)
 	if err != nil {
+		closeIdle()
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
 		return nil, errors.New("cannot reach local Mihomo API; check the service and controller port")
 	}
-	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		_ = resp.Body.Close()
+		closeIdle()
 		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
 			return nil, fmt.Errorf("Mihomo API returned HTTP %d; verify the managed listener and credentials", resp.StatusCode)
 		}
 		return nil, fmt.Errorf("Mihomo API returned HTTP %d", resp.StatusCode)
 	}
-	data, err := io.ReadAll(io.LimitReader(resp.Body, MaxConfigSize+1))
+	return apiBody{ReadCloser: resp.Body, closeIdle: closeIdle}, nil
+}
+
+type apiBody struct {
+	io.ReadCloser
+	closeIdle func()
+}
+
+func (b apiBody) Close() error {
+	err := b.ReadCloser.Close()
+	b.closeIdle()
+	return err
+}
+
+func (c Client) request(ctx context.Context, method, path string, body []byte) ([]byte, error) {
+	response, err := c.open(ctx, method, path, body)
+	if err != nil {
+		return nil, err
+	}
+	defer response.Close()
+	data, err := io.ReadAll(io.LimitReader(response, MaxConfigSize+1))
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()

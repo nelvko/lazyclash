@@ -44,6 +44,8 @@ func New() *cobra.Command {
 		newEnvCommand(current),
 		newInitCommand(&home, &name),
 		newDoctorCommand(current),
+		newStatsCommand(current),
+		newConnectionsCommand(current),
 	)
 	return root
 }
