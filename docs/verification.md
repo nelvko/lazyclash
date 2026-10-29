@@ -116,3 +116,18 @@ python3 scripts/pty-smoke.py --help
 初次回归发现两处测试工具问题并已修复：端口探测使用与 Go 监听一致的 `SO_REUSEADDR`，容许已关闭连接的 TIME_WAIT，另行验证仍拒绝现存 listener；VT 屏幕解析补齐渲染器使用的滚动区域、插入/删除行、滚动和反向制表指令，保留当前屏幕断言。修复后完整端到端复跑通过，没有改用历史输出匹配掩盖显示问题。
 
 本轮未实测 Linux/amd64、其他发行版、真实注销/重启后的持久运行或最低 Go 1.26 工具链。仅支持 Linux/systemd 用户服务，累计流量不跨内核重启持久化。
+
+## 只读规则查看（2026-10-29）
+
+已运行并通过：
+
+- 宿主 macOS/arm64、Go 1.27.1：`make check`、`make race`、`make build`，以及 4 个 Python VT 协议测试和脚本语法检查。
+- API fixture：真实规则 schema、原始顺序与不同 index 的重复规则、空 MATCH 条件、`size=-1/0`、可选统计、有效空数组、HTML/无效字段/HTTP 错误/超限/取消和脱敏。
+- 应用用例：服务不可用时不访问 API，查询不持锁阻塞停止，跨停止/进程/安装身份/归属变化的旧规则被拒绝；CLI 输出顺序一致，查询不改配置或服务。
+- TUI 模型：独立查询/五秒复查、重试及迟到消息、搜索文本、规则详情身份、索引复用、键鼠和窗口尺寸矩阵；额外检查 100×20 时第六导航不会被 Core 摘要覆盖。
+- `scripts/verify-linux.sh lazyclash-e2e`：在显式选定的专用 Debian 12/arm64 VM 内实际执行全部 Go 测试。
+- `scripts/e2e.sh lazyclash-e2e --proxy-mode environment`：真实官方 Mihomo v1.19.32/v1.19.33、systemd 和全部 PTY 模式通过。新增 rules 模式实际验证规则先后顺序、原 index、空 MATCH、搜索/详情/60×20 缩放/刷新、停止后隐藏旧列表与重启恢复；配置 hash 前后相同，无订阅默认配置的单条 Match 也可读取。
+
+新增脱敏终端记录为 `.test-artifacts/pty-rules.txt`。本轮完整端到端首次执行通过，`cleanup.txt` 为 `resources released=1`、`exit=0`，专用 unit 为 `not-found`；额外检查确认临时目录、测试进程和监听端口已清理。
+
+未扩大平台支持和实测范围。规则编辑、启用/禁用、提供器展开与配置覆盖仍未实现；列表显示内核已加载的规则，匹配顺序仅在 Rule 模式适用。

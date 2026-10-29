@@ -27,7 +27,7 @@ if [[ ${1:-} != --linux ]]; then
     result=$?
     trap - EXIT
     if [[ -n $linux_stage ]]; then
-    for file in pty-empty.txt pty-install-local.txt pty-installed.txt pty-runtime.txt cleanup.txt; do
+    for file in pty-empty.txt pty-install-local.txt pty-installed.txt pty-runtime.txt pty-rules.txt cleanup.txt; do
       if orb -m "$vm" test -f "$linux_stage/$file"; then
         orb -m "$vm" cat "$linux_stage/$file" > ".test-artifacts/$file" || result=1
       fi
@@ -255,7 +255,7 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/invalid"):
             self.wfile.write(b"proxies: [broken yaml\n")
         else:
-            self.wfile.write(b'mode: rule\nproxies: []\nproxy-groups:\n - name: PROXY\n   type: select\n   proxies: [DIRECT, REJECT]\nrules: ["MATCH,PROXY"]\n')
+            self.wfile.write(b'mode: rule\nproxies: []\nproxy-groups:\n - name: PROXY\n   type: select\n   proxies: [DIRECT, REJECT]\nrules:\n - DOMAIN-SUFFIX,example.invalid,PROXY\n - DOMAIN,needle.example.invalid,REJECT\n - MATCH,PROXY\n')
     def do_POST(self):
         if self.path != "/stream":
             self.send_error(404)
@@ -308,6 +308,32 @@ assert any(g["name"] == "PROXY" and g["now"] == "REJECT" for g in json.load(open
 print("Subscription validate/save/apply and real API node selection passed")
 PY
 lp select PROXY DIRECT
+
+# Read the core's actual ordered rules, then exercise the read-only page in a
+# controlling terminal. The domains are reserved fixtures and are never fetched.
+lp rules > "$work/rules.json"
+python3 - "$work/rules.json" <<'PY'
+import json, sys
+rules = json.load(open(sys.argv[1]))
+assert [(r["index"], r["type"], r["payload"], r["proxy"]) for r in rules] == [
+    (0, "DomainSuffix", "example.invalid", "PROXY"),
+    (1, "Domain", "needle.example.invalid", "REJECT"),
+    (2, "Match", "", "PROXY"),
+], "effective rules lost matching order, original indexes or empty MATCH payload"
+assert all(r["size"] == -1 for r in rules), "non-group rule size was changed"
+print("Actual ordered rules and MATCH payload verified through CLI")
+PY
+rules_config_hash=$(python3 - "$home/installation/current/config.yaml" <<'PY'
+import hashlib, sys
+print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())
+PY
+)
+python3 "$work/pty-smoke.py" --binary "$app" --home "$home" --service-name "$service_name" --mode rules --output "$work/pty-rules.txt"
+python3 - "$home/installation/current/config.yaml" "$rules_config_hash" <<'PY'
+import hashlib, sys
+assert hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest() == sys.argv[2], "read-only rule inspection changed configuration"
+print("Rule inspection left configuration bytes unchanged")
+PY
 
 # Generate actual proxy traffic against our own loopback fixture. Two active
 # connections prove that both CLI and TUI close only their requested UUID.
@@ -412,6 +438,13 @@ lp service stop
 lp service status
 lp profile apply default
 lp service start
+lp rules > "$work/default-rules.json"
+python3 - "$work/default-rules.json" <<'PY'
+import json, sys
+rules = json.load(open(sys.argv[1]))
+assert len(rules) == 1 and rules[0]["index"] == 0 and rules[0]["type"] == "Match" and rules[0]["payload"] == "" and rules[0]["proxy"] == "PROXY", "default configuration did not expose its actual MATCH rule"
+print("Built-in configuration exposes rules without a subscription")
+PY
 lp doctor
 lp service stop
 printf 'Real Mihomo + systemd + PTY end-to-end scenarios passed\n'

@@ -306,7 +306,7 @@ def main():
     parser.add_argument("--binary", required=True)
     parser.add_argument("--home", required=True)
     parser.add_argument("--service-name", required=True)
-    parser.add_argument("--mode", choices=["empty", "installed", "install-local", "runtime"], required=True)
+    parser.add_argument("--mode", choices=["empty", "installed", "install-local", "runtime", "rules"], required=True)
     parser.add_argument("--mihomo-bin")
     parser.add_argument("--connection-id", help="Dedicated active fixture connection UUID for runtime mode")
     parser.add_argument("--output", required=True)
@@ -408,6 +408,50 @@ def main():
             terminal.wait(str(home / "installation" / "mihomo"), after=mark)
             terminal.wait("Service remains stopped", after=mark)
             terminal.key(b"\r")
+            terminal.exit()
+        elif args.mode == "rules":
+            def cli(*arguments, success=True):
+                completed = subprocess.run(command + list(arguments), stdout=subprocess.PIPE,
+                                           stderr=subprocess.PIPE, timeout=20)
+                if (completed.returncode == 0) != success:
+                    raise AssertionError("Dedicated rule-test CLI action returned unexpected status: " + " ".join(arguments[:2]))
+                return completed.stdout
+
+            terminal.key(b"6")
+            terminal.wait("Effective rules")
+            terminal.wait("Rules loaded")
+            terminal.key(b"/")
+            terminal.wait("Search rules")
+            terminal.key(b"needle.example.invalid")
+            terminal.key(b"\r")
+            terminal.key(b"\r")
+            terminal.wait("Rule details")
+            terminal.wait("needle.example.invalid")
+            terminal.wait("REJECT")
+            terminal.resize(60, 20)
+            terminal.wait("Rule details")
+            terminal.resize(120, 40)
+            terminal.key(b"\x1b")
+            terminal.wait_absent("Rule details")
+            terminal.key(b"g")
+            terminal.wait("Rules loaded")
+
+            # Clear the query before checking that unavailable data is hidden:
+            # a remembered search value is not a stale effective-rule row.
+            terminal.key(b"/")
+            terminal.wait("Search rules")
+            terminal.key(b"\x05\x15")  # Ctrl+E, Ctrl+U
+            terminal.key(b"\r")
+            terminal.wait("needle.example.invalid")
+            cli("service", "stop")
+            cli("rules", success=False)
+            terminal.key(b"g")
+            terminal.wait("Core stopped")
+            terminal.wait_absent("needle.example.invalid")
+            cli("service", "start")
+            terminal.key(b"g")
+            terminal.wait("Rules loaded")
+            terminal.wait("needle.example.invalid")
             terminal.exit()
         elif args.mode == "runtime":
             if not args.connection_id:
