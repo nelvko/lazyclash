@@ -135,6 +135,7 @@ lazyclash_off  # 清除环境，不停止服务
 make check
 make race
 make build
+python3 -m unittest discover -s scripts -p 'test_*.py'
 orb list
 ./scripts/verify-linux.sh "$VM"
 ./scripts/e2e.sh "$VM"

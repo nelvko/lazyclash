@@ -8,6 +8,7 @@ import argparse
 import codecs
 import errno
 import fcntl
+import json
 import os
 from pathlib import Path
 import pty
@@ -15,6 +16,7 @@ import re
 import select
 import signal
 import struct
+import subprocess
 import sys
 import termios
 import time
@@ -34,6 +36,7 @@ class Screen:
         self.columns, self.rows = columns, rows
         self.cells = [[" "] * columns for _ in range(rows)]
         self.x = self.y = 0
+        self.top, self.bottom = 0, rows - 1
         self.saved = (0, 0)
         self.synchronized = False
         self.state, self.sequence = "text", ""
@@ -44,13 +47,19 @@ class Screen:
         self.cells.extend([[" "] * columns for _ in range(rows - len(self.cells))])
         self.columns, self.rows = columns, rows
         self.x, self.y = min(self.x, columns - 1), min(self.y, rows - 1)
+        self.top, self.bottom = 0, rows - 1
+
+    def scroll(self, top, bottom, count):
+        count = max(-(bottom - top + 1), min(count, bottom - top + 1))
+        region = self.cells[top:bottom + 1]
+        blank = [[" "] * self.columns for _ in range(abs(count))]
+        self.cells[top:bottom + 1] = (region[count:] + blank) if count >= 0 else (blank + region[:count])
 
     def newline(self):
-        self.y += 1
-        if self.y >= self.rows:
-            self.cells.pop(0)
-            self.cells.append([" "] * self.columns)
-            self.y = self.rows - 1
+        if self.y == self.bottom:
+            self.scroll(self.top, self.bottom, 1)
+        else:
+            self.y = min(self.rows - 1, self.y + 1)
 
     def feed(self, chunk):
         for char in self.decoder.decode(chunk):
@@ -80,6 +89,11 @@ class Screen:
                     self.x, self.y = self.saved
                 elif char == "D":
                     self.newline()
+                elif char == "M":
+                    if self.y == self.top:
+                        self.scroll(self.top, self.bottom, -1)
+                    else:
+                        self.y = max(0, self.y - 1)
                 elif char == "E":
                     self.x = 0
                     self.newline()
@@ -122,6 +136,7 @@ class Screen:
             if final == "h" and sequence in ("?1049", "?1047"):
                 self.cells = [[" "] * self.columns for _ in range(self.rows)]
                 self.x = self.y = 0
+                self.top, self.bottom = 0, self.rows - 1
             return
         values = sequence.split(";")
         numbers = [int(value) if value.isdigit() else 0 for value in values]
@@ -137,6 +152,7 @@ class Screen:
         elif final == "F": self.y, self.x = max(0, self.y - n), 0
         elif final in ("G", "`"): self.x = min(self.columns - 1, n - 1)
         elif final == "d": self.y = min(self.rows - 1, n - 1)
+        elif final == "Z": self.x = max(0, ((min(self.x, self.columns - 1) - 1) // 8 - (n - 1)) * 8)
         elif final == "J":
             mode = numbers[0]
             if mode in (2, 3):
@@ -158,6 +174,17 @@ class Screen:
             self.cells[self.y] = (self.cells[self.y][:self.x] + self.cells[self.y][self.x + n:] + [" "] * n)[:self.columns]
         elif final == "@":
             self.cells[self.y] = (self.cells[self.y][:self.x] + [" "] * n + self.cells[self.y][self.x:])[:self.columns]
+        elif final in ("L", "M"):
+            if self.top <= self.y <= self.bottom:
+                self.scroll(self.y, self.bottom, -n if final == "L" else n)
+        elif final in ("S", "T"):
+            self.scroll(self.top, self.bottom, n if final == "S" else -n)
+        elif final == "r":
+            top = (numbers[0] or 1) - 1
+            bottom = (numbers[1] if len(numbers) > 1 and numbers[1] else self.rows) - 1
+            if 0 <= top < bottom < self.rows:
+                self.top, self.bottom = top, bottom
+                self.x = self.y = 0
         elif final == "s": self.saved = self.x, self.y
         elif final == "u": self.x, self.y = self.saved
 
@@ -279,8 +306,9 @@ def main():
     parser.add_argument("--binary", required=True)
     parser.add_argument("--home", required=True)
     parser.add_argument("--service-name", required=True)
-    parser.add_argument("--mode", choices=["empty", "installed", "install-local"], required=True)
+    parser.add_argument("--mode", choices=["empty", "installed", "install-local", "runtime"], required=True)
     parser.add_argument("--mihomo-bin")
+    parser.add_argument("--connection-id", help="Dedicated active fixture connection UUID for runtime mode")
     parser.add_argument("--output", required=True)
     args = parser.parse_args()
     home = Path(args.home)
@@ -380,6 +408,56 @@ def main():
             terminal.wait(str(home / "installation" / "mihomo"), after=mark)
             terminal.wait("Service remains stopped", after=mark)
             terminal.key(b"\r")
+            terminal.exit()
+        elif args.mode == "runtime":
+            if not args.connection_id:
+                parser.error("--connection-id is required for runtime mode")
+
+            def cli(*arguments):
+                completed = subprocess.run(command + list(arguments), stdout=subprocess.PIPE,
+                                           stderr=subprocess.PIPE, timeout=20)
+                if completed.returncode:
+                    raise AssertionError("Dedicated test CLI action failed: " + " ".join(arguments[:2]))
+                return completed.stdout
+
+            terminal.wait("Since core start")
+            terminal.wait("Live")
+            terminal.key(b"5")
+            terminal.wait("Active connections")
+            terminal.wait("Live")
+            terminal.key(b"/")
+            terminal.wait("Search connections")
+            terminal.key(args.connection_id.encode("ascii"))
+            terminal.key(b"\r")  # finish search and focus its exact match
+            terminal.key(b"\r")
+            terminal.wait("Connection details")
+            terminal.wait(args.connection_id)
+            terminal.resize(60, 20)
+            terminal.wait("Connection details")
+            terminal.resize(120, 40)
+            terminal.key(b"x")
+            terminal.wait("Close this connection?")
+            terminal.key(b"y")
+            terminal.wait("Connection close requested")
+            current = json.loads(cli("connections"))
+            if any(item["id"] == args.connection_id for item in (current["connections"] or [])):
+                raise AssertionError("TUI reported close success but the real connection still exists")
+            # Closing the final fixture connection must retain already counted
+            # bytes; the active list is not a substitute for cumulative totals.
+            closed = json.loads(cli("stats"))
+            if closed["Connections"]["uploadTotal"] <= 0 or closed["Connections"]["downloadTotal"] <= 0:
+                raise AssertionError("Closing connections lost their cumulative bytes")
+
+            terminal.key(b"1")
+            terminal.wait("Traffic statistics")
+            cli("service", "stop")
+            terminal.wait("Stopped")
+            stopped = json.loads(cli("stats"))
+            if stopped["State"] != "stopped" or stopped["Traffic"] is not None:
+                raise AssertionError("Stopped core retained live telemetry")
+            cli("service", "start")
+            terminal.wait("Live")
+            terminal.wait("Since core start")
             terminal.exit()
         else:
             terminal.wait("Running")

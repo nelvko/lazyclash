@@ -8,6 +8,7 @@
 make check
 make race
 make build
+python3 -m unittest discover -s scripts -p 'test_*.py'
 ```
 
 覆盖原子写和锁取消、下载校验及失败清理、控制 API HTTP fixture、配置生成、服务归属和命令失败、安装与应用回滚、恢复日志和用户修改保护。TUI 模型测试独立验证异步操作、取消、过期结果与显示状态；模型测试不等于真实终端验证。
@@ -33,7 +34,7 @@ orb -m "$VM" sh -c 'id; uname -m; ps -p 1 -o comm=; systemctl --user is-system-r
 python3 scripts/pty-smoke.py --help
 ```
 
-`empty` 模式仅操作专用的未安装数据目录，检查默认首页、网络草稿的隐藏输入与放弃、安装前导入、宽屏 Modal/紧凑布局、安装阶段取消和 SIGTERM。`install-local` 模式通过完整 TUI 向导安装明确的本地 Mihomo 二进制并确认未启动服务；`installed` 模式使用已启动的专用服务，以鼠标和键盘切换 PROXY 节点，并通过实际 API 回读确认。完整的目录、服务、前置检查和清理由下一入口安排，建议通过它执行两种模式。
+`empty` 模式仅操作专用的未安装数据目录，检查默认首页、网络草稿的隐藏输入与放弃、安装前导入、宽屏 Modal/紧凑布局、安装阶段取消和 SIGTERM。`install-local` 模式通过完整 TUI 向导安装明确的本地 Mihomo 二进制并确认未启动服务；`installed` 模式使用已启动的专用服务，以鼠标和键盘切换 PROXY 节点，并通过实际 API 回读确认。`runtime` 模式使用专用流量连接，验证实时卡片、按 UUID 搜索/详情/确认关闭、缩放和停止/启动后的自动恢复。完整的目录、服务、前置检查和清理由下一入口安排，建议通过它执行全部模式。
 
 ## 4. 真实 Mihomo + systemd 端到端
 
@@ -100,3 +101,18 @@ python3 scripts/pty-smoke.py --help
 - 清理返回 `resources released=1`、`exit=0`，专用 unit 为 `not-found`；额外检查确认临时目录、测试进程已清除，7897/9097 可重新绑定。
 
 服务范围仍为 Linux/systemd 用户服务。未新增 unisvc 依赖或其他平台后端，未扩大已实测平台范围。
+
+## 运行监控与 Connections（2026-10-29）
+
+本轮实际通过：
+
+- macOS/arm64、Go 1.27.1：`make check`、`make race`、`make build`。业务测试使用临时目录和本地 HTTP fixture，验证真实累计来源、指标独立失败、取消关闭请求、采样不阻塞停止、停止/PID 变化/归属变化后丢弃旧样本及精确 ID 关闭。TUI 模型覆盖单任务刷新、迟到消息、搜索输入、列表重排和焦点、关闭确认、故障恢复以及既有尺寸矩阵。
+- `python3 -m unittest discover -s scripts -p 'test_*.py'`：4 个 VT 协议回归测试，不启动子进程、服务或 VM。
+- `scripts/verify-linux.sh lazyclash-e2e`：在本次显式选择的 Debian 12/arm64 专用 VM 内实际执行所有 Go 测试。普通用户、用户 systemd 可用，Linger=yes。
+- `scripts/e2e.sh lazyclash-e2e --proxy-mode environment`：官方 Mihomo v1.19.32/v1.19.33 的下载/校验/安装/更新，以及 empty、install-local、installed、runtime 四类真实 PTY 场景通过。仍使用显式所选 VM 的既有标准代理变量，不读取旧代理配置或修改网络设置。
+- 专用本地 HTTP fixture 接收经 Mihomo mixed 端口的两条独立连接，每条上传 256 KiB 并持续下载；断言实际正速率、累计增长和 RSS。CLI 关闭第一条时第二条仍存活，TUI 按完整 UUID 搜索、查看和确认关闭第二条，再从真实 API 回读；关闭后累计保留，内核停止后指标不可用，重新启动后累计为零且 TUI 自动恢复。
+- 最终 `cleanup.txt` 为 `resources released=1`、`exit=0`，专用 unit 为 `not-found`，测试进程和目录清除，监听端口释放。诊断保存在忽略的 `.test-artifacts/`。
+
+初次回归发现两处测试工具问题并已修复：端口探测使用与 Go 监听一致的 `SO_REUSEADDR`，容许已关闭连接的 TIME_WAIT，另行验证仍拒绝现存 listener；VT 屏幕解析补齐渲染器使用的滚动区域、插入/删除行、滚动和反向制表指令，保留当前屏幕断言。修复后完整端到端复跑通过，没有改用历史输出匹配掩盖显示问题。
+
+本轮未实测 Linux/amd64、其他发行版、真实注销/重启后的持久运行或最低 Go 1.26 工具链。仅支持 Linux/systemd 用户服务，累计流量不跨内核重启持久化。

@@ -27,7 +27,7 @@ if [[ ${1:-} != --linux ]]; then
     result=$?
     trap - EXIT
     if [[ -n $linux_stage ]]; then
-    for file in pty-empty.txt pty-install-local.txt pty-installed.txt cleanup.txt; do
+    for file in pty-empty.txt pty-install-local.txt pty-installed.txt pty-runtime.txt cleanup.txt; do
       if orb -m "$vm" test -f "$linux_stage/$file"; then
         orb -m "$vm" cat "$linux_stage/$file" > ".test-artifacts/$file" || result=1
       fi
@@ -72,6 +72,7 @@ app="$work/lazyclash"
 unit_dir="${XDG_CONFIG_HOME:-$(getent passwd "$(id -u)" | cut -d: -f6)/.config}/systemd/user"
 unit="$unit_dir/$service_name.service"
 fixture_pid=
+traffic_pid=
 owned=no
 local_owned=no
 local_home=
@@ -80,6 +81,10 @@ cleanup_linux() {
   result=$?
   trap - EXIT
   cleanup_failed=0
+  if [[ -n "$traffic_pid" ]]; then
+    kill "$traffic_pid" 2>/dev/null || true
+    wait "$traffic_pid" 2>/dev/null || true
+  fi
   # Preflight proves absence, then the unit must refer to this run's private
   # temporary installation. Never touch a pre-existing or replaced unit.
   if [[ $owned == yes && -f "$unit" && ! -L "$unit" ]] && grep -Fq "$home/installation/mihomo" "$unit"; then
@@ -122,6 +127,9 @@ cleanup_linux() {
 import socket
 for port in (9097, 7897):
     s = socket.socket()
+    # Match Go's TCP listener: TIME_WAIT from a closed fixture is harmless,
+    # while an existing listener still prevents this bind (no SO_REUSEPORT).
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     s.bind(("127.0.0.1", port))
     s.close()
 print("Both dedicated test listeners are released")
@@ -143,6 +151,7 @@ python3 - <<'PY'
 import socket
 for port in (9097, 7897):
     s = socket.socket()
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     try:
         s.bind(("127.0.0.1", port))
     except OSError:
@@ -236,9 +245,9 @@ PY
 
 # Local HTTP fixture exercises subscriptions without private data or live URLs.
 cat > "$work/fixture.py" <<'PY'
-from http.server import BaseHTTPRequestHandler, HTTPServer
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-import sys
+import sys, time
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -247,8 +256,27 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.write(b"proxies: [broken yaml\n")
         else:
             self.wfile.write(b'mode: rule\nproxies: []\nproxy-groups:\n - name: PROXY\n   type: select\n   proxies: [DIRECT, REJECT]\nrules: ["MATCH,PROXY"]\n')
+    def do_POST(self):
+        if self.path != "/stream":
+            self.send_error(404)
+            return
+        length = int(self.headers.get("Content-Length", "0"))
+        if not 0 < length <= 1024 * 1024 or len(self.rfile.read(length)) != length:
+            self.send_error(400)
+            return
+        self.send_response(200)
+        self.send_header("Content-Type", "application/octet-stream")
+        self.send_header("Content-Length", str(8192 * 1200))
+        self.end_headers()
+        try:
+            for _ in range(1200):
+                self.wfile.write(b"x" * 8192)
+                self.wfile.flush()
+                time.sleep(0.1)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
     def log_message(self, *args): pass
-server = HTTPServer(("127.0.0.1", 0), Handler)
+server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
 Path(sys.argv[1]).write_text(str(server.server_port))
 server.serve_forever()
 PY
@@ -280,6 +308,105 @@ assert any(g["name"] == "PROXY" and g["now"] == "REJECT" for g in json.load(open
 print("Subscription validate/save/apply and real API node selection passed")
 PY
 lp select PROXY DIRECT
+
+# Generate actual proxy traffic against our own loopback fixture. Two active
+# connections prove that both CLI and TUI close only their requested UUID.
+lp stats > "$work/stats-before.json"
+cat > "$work/traffic.py" <<'PY'
+from http.client import HTTPConnection, IncompleteRead
+from pathlib import Path
+import json, sys, threading, time
+
+ready = [threading.Event(), threading.Event()]
+ports = [None, None]
+errors = []
+def transfer(index):
+    client = HTTPConnection("127.0.0.1", 7897, timeout=10)
+    try:
+        client.connect()
+        ports[index] = str(client.sock.getsockname()[1])
+        # Explicit absolute-form HTTP through Mihomo; environment proxy and
+        # localhost bypass settings cannot silently turn this into a direct test.
+        client.request("POST", "http://127.0.0.1:%s/stream" % sys.argv[1], b"u" * (256 * 1024))
+        response = client.getresponse()
+        if response.status != 200 or not response.read(32768):
+            raise RuntimeError("stream fixture did not return proxy data")
+        ready[index].set()
+        while response.read(8192):
+            pass
+    except (IncompleteRead, ConnectionResetError, BrokenPipeError):
+        if not ready[index].is_set():
+            errors.append("connection failed before transferring fixture bytes")
+    except Exception:
+        errors.append("proxy traffic fixture failed")
+    finally:
+        client.close()
+        ready[index].set()
+
+threads = [threading.Thread(target=transfer, args=(i,), daemon=True) for i in range(2)]
+for thread in threads: thread.start()
+for event in ready:
+    if not event.wait(20):
+        raise SystemExit("proxy traffic fixture did not become ready")
+if errors or any(port is None for port in ports):
+    raise SystemExit("proxy traffic fixture could not establish both connections")
+path = Path(sys.argv[2])
+temporary = path.with_suffix(".tmp")
+temporary.write_text(json.dumps(ports))
+temporary.replace(path)
+for thread in threads: thread.join(120)
+if any(thread.is_alive() for thread in threads) or errors:
+    raise SystemExit("proxy traffic fixture did not finish cleanly")
+PY
+python3 "$work/traffic.py" "$fixture_port" "$work/traffic-ready.json" &
+traffic_pid=$!
+for ((attempt=0; attempt<200; attempt++)); do
+  [[ -f "$work/traffic-ready.json" ]] && break
+  kill -0 "$traffic_pid" 2>/dev/null || { printf 'Proxy traffic fixture exited early\n' >&2; exit 1; }
+  sleep 0.1
+done
+[[ -f "$work/traffic-ready.json" ]]
+lp connections > "$work/connections-before.json"
+lp stats > "$work/stats-live.json"
+python3 - "$work/traffic-ready.json" "$work/connections-before.json" "$work/stats-before.json" "$work/stats-live.json" "$work/connection-ids" <<'PY'
+import json, sys
+ports = json.load(open(sys.argv[1]))
+connections = json.load(open(sys.argv[2]))
+before = json.load(open(sys.argv[3]))
+live = json.load(open(sys.argv[4]))
+assert live["State"] == "ready" and live["Memory"] > 0, "runtime sample lacks a running core and real RSS"
+assert live["Traffic"]["down"] > 0, "real proxy transfer produced no sampled download rate"
+assert live["Connections"]["uploadTotal"] > before["Connections"]["uploadTotal"], "uploaded bytes did not increase the core counter"
+assert live["Connections"]["downloadTotal"] > before["Connections"]["downloadTotal"], "downloaded bytes did not increase the core counter"
+ids = []
+for port in ports:
+    matches = [c["id"] for c in connections["connections"] if c["metadata"]["sourcePort"] == port]
+    assert len(matches) == 1, "fixture connection was not uniquely visible through the real API"
+    ids.append(matches[0])
+with open(sys.argv[5], "w") as output:
+    output.write("\n".join(ids) + "\n")
+print("Real runtime API reports positive traffic rates, cumulative bytes and RSS")
+PY
+mapfile -t connection_ids < "$work/connection-ids"
+lp connections close "${connection_ids[0]}"
+lp connections > "$work/connections-after-cli.json"
+python3 - "$work/connections-after-cli.json" "${connection_ids[0]}" "${connection_ids[1]}" <<'PY'
+import json, sys
+ids = {c["id"] for c in json.load(open(sys.argv[1]))["connections"]}
+assert sys.argv[2] not in ids and sys.argv[3] in ids, "CLI did not close exactly the selected connection"
+print("CLI closed exactly one requested connection")
+PY
+python3 "$work/pty-smoke.py" --binary "$app" --home "$home" --service-name "$service_name" --mode runtime --connection-id "${connection_ids[1]}" --output "$work/pty-runtime.txt"
+wait "$traffic_pid"
+traffic_pid=
+lp stats > "$work/stats-restarted.json"
+python3 - "$work/stats-restarted.json" <<'PY'
+import json, sys
+sample = json.load(open(sys.argv[1]))
+assert sample["State"] == "ready" and sample["Memory"] > 0
+assert sample["Connections"]["uploadTotal"] == 0 and sample["Connections"]["downloadTotal"] == 0, "core restart did not reset its counters"
+print("Core restart resets in-memory cumulative counters and monitoring reconnects")
+PY
 lp service restart
 lp service stop
 lp service status
