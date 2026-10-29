@@ -119,6 +119,20 @@ func TestMarianaSidebarCurrentHoverAndFocusAreIndependent(t *testing.T) {
 	}
 }
 
+func TestThemedToolbarHitRegionsFollowRenderedButtons(t *testing.T) {
+	for _, page := range []string{"connections", "rules"} {
+		m := ready(&fakeBackend{})
+		m.page = page
+		m.focus = map[string]string{"connections": "conn.retry", "rules": "rules.retry"}[page]
+		body, targets := m.pageBody(80)
+		for _, target := range targets {
+			if target.ID == m.focus && target.W != ansi.StringWidth(strings.Split(body, "\n")[target.Y]) {
+				t.Fatalf("%s focused button hit width does not match its rendered cells", page)
+			}
+		}
+	}
+}
+
 func TestExportMarianaViews(t *testing.T) {
 	dir := os.Getenv("LAZYCLASH_THEME_PREVIEW_DIR")
 	if dir == "" {

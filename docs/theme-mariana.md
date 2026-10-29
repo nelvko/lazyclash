@@ -100,6 +100,30 @@ Mariana 的背景变量 `blue3 = hsl(210, 15%, 22%)` 未取整 RGB 为 `(47.685,
 
 本次不引入浅色主题、系统主题跟随、主题市场或主题编辑器。
 
+## 验证与页面预览
+
+日常检查仍为 `make check`、`make race`、`make build`，不会创建虚拟机或安装服务。模型检查覆盖未配置/运行中首页、侧边栏选中/焦点/悬停、Core/Version/Confirm、输入错误、网络独立测试结果、下载、取消清理禁用态及成功/失败结果。尺寸覆盖 160×45、120×32、80×24、60×20、120×18 及极小窗口；每种状态检查 True Color、ANSI256、ANSI16 和无色输出，保持原断点。
+
+只验证真实终端交互与色彩输出，可以在 macOS 或 Linux 对已构建二进制运行：
+
+```sh
+python3 scripts/theme-pty.py --binary "$(pwd)/bin/lazyclash" \
+  --output .test-artifacts/mariana/pty
+```
+
+此入口使用 Python 标准库和已有 VT 当前屏幕还原器，分别启动真彩、256 色和 `NO_COLOR` 会话。每个会话使用独立临时 home 和随机服务名称；验证首页、网络草稿、焦点、缩放和返回，不查询版本、不安装内核或服务。检查输出没有 OSC10/11 颜色设置；256 色不含 RGB，无色模式不含非 reset 的 SGR。它不能证明所有终端模拟器的实际 RGB 显示一致。
+
+导出实际 Go View 并用真实等宽字体排版为单页面 PNG：
+
+```sh
+# 使用已安装 Pillow 的 Python；默认查找 Menlo 或 DejaVu Sans Mono。
+python3 scripts/theme-preview.py .test-artifacts/mariana
+# 其他环境可显式指定等宽 TTF/TTC：
+python3 scripts/theme-preview.py .test-artifacts/mariana --font /path/to/monospace.ttf
+```
+
+这些预览是 **模型 fixture + 实际 ANSI View + 真实字体** 的排版检查，不是运行中 Mihomo、原生终端截图或服务实测。每张 PNG 对应独立页面/状态；下载数字、运行数据属于明确的模型样本。没有使用生成式效果图。已有来源/代理选项使用左右循环选择控件，本次没有新增独立下拉组件。
+
 
 ## 终端色彩能力与备用配色
 

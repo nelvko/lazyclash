@@ -131,3 +131,18 @@ python3 scripts/pty-smoke.py --help
 新增脱敏终端记录为 `.test-artifacts/pty-rules.txt`。本轮完整端到端首次执行通过，`cleanup.txt` 为 `resources released=1`、`exit=0`，专用 unit 为 `not-found`；额外检查确认临时目录、测试进程和监听端口已清理。
 
 未扩大平台支持和实测范围。规则编辑、启用/禁用、提供器展开与配置覆盖仍未实现；列表显示内核已加载的规则，匹配顺序仅在 Rule 模式适用。
+
+
+## Mariana + Adaptive 默认主题（2026-10-29）
+
+来源、计算和颜色回退见 [主题映射](theme-mariana.md)。使用本机 Sublime Text 4 Build 4215 随附的 Mariana 与 Adaptive 资源；没有读取 Sublime 用户偏好。
+
+本轮实际通过：
+
+- macOS/arm64、Go 1.27.1：`make check`、`make race`、`make build`，Python VT 四项协议回归及新增预览/PTY 脚本语法检查。
+- 模型：全部向导阶段、两种首页、网络结果、输入错误、禁用/选中/悬停/焦点；True Color、ANSI256、ANSI16、无色，指定尺寸及极小窗口。真实颜色配对检查正文、说明、选区、主按钮、错误和焦点的对比度。
+- `scripts/theme-pty.py`：macOS/arm64 与显式选择的 OrbStack `lazyclash-e2e`（Debian 12/arm64，普通用户）的真实 controlling PTY。真彩、256 色、NO_COLOR 三种模式均完成五种尺寸、网络隐藏草稿、Tab 焦点、缩放保持、Esc 放弃与返回。输出检查无 OSC10/11 设置、256 色无 RGB、无色无实际 SGR 样式。
+- `scripts/verify-linux.sh lazyclash-e2e`：Linux 全包测试二进制实际执行通过，暂存目录清理完成。
+- `scripts/theme-preview.py`：导出真实模型 ANSI View，以 Menlo 实际字体生成独立 PNG，逐页检查首页、宽窄向导、网络结果、输入错误、下载、取消、成功/失败及256色回退。它们是模型排版预览，不能作为真实内核运行或服务验证证据。
+
+证据位于忽略目录 `.test-artifacts/mariana/`；PTY 使用独立临时 home 和随机服务名，没有查询版本、安装内核或创建服务，临时进程/文件已清理。本轮主题修改未重跑真实 Mihomo/systemd 安装生命周期 E2E；此前记录单独保留。未逐一实测 Termius、iTerm2 等原生终端前端，16色仍受终端基础调色板影响。

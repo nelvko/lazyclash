@@ -274,6 +274,7 @@ func dashboardButton(id, label string, o dashboardOptions, primary bool) string 
 		if !primary {
 			foreground, background = text, hoverBackground
 		}
+		value = lipgloss.NewStyle().Underline(true).Render(value)
 	}
 	if o.Focus == id {
 		value = "›" + value

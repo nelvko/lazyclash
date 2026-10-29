@@ -254,12 +254,9 @@ func (m Model) connectionsBody(width int) (string, []hitRegion) {
 		lines = append(lines, strings.Split(wrapText(themed(clean(s), color, bg, false), max(1, width)), "\n")...)
 	}
 	addButton := func(id, label string) {
-		s := "[ " + label + " ]"
-		if m.focus == id {
-			s = "> " + s
-		}
+		s := dashboardButton(id, label, dashboardOptions{Focus: m.focus, Hover: m.hover}, false)
 		hits = append(hits, hitRegion{ID: id, Y: len(lines), W: min(width, ansi.StringWidth(s)), H: 1})
-		lines = append(lines, cellCrop(dashboardButton(id, label, dashboardOptions{Focus: m.focus, Hover: m.hover}, false), width))
+		lines = append(lines, cellCrop(s, width))
 	}
 	if c := m.connections.detail; c != nil {
 		addText("Connection details", text)

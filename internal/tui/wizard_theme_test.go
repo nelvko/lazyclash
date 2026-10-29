@@ -43,3 +43,11 @@ func TestWizardFocusAndCurrentStepRemainVisibleWithoutColor(t *testing.T) {
 		}
 	}
 }
+
+func TestWizardFailureHasOnePrimaryAction(t *testing.T) {
+	m := themeSample("failure")
+	screen, _ := m.renderWizard("")
+	if strings.Contains(screen, themed("  [ Back to overview ]", primaryButtonForeground, primaryButtonBackground, false)) {
+		t.Fatal("failure page made both retry and return primary actions")
+	}
+}

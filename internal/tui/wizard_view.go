@@ -472,8 +472,12 @@ func (m *Model) renderWizard(base string) (string, []hitRegion) {
 		label := "  [ " + b.Label + " ]"
 		foreground, background := text, raised
 		switch b.ID {
-		case "continue", "install", "apply-network", "retry", "done":
+		case "continue", "install", "apply-network", "retry":
 			foreground, background = primaryButtonForeground, primaryButtonBackground
+		case "done":
+			if w.err == "" {
+				foreground, background = primaryButtonForeground, primaryButtonBackground
+			}
 		}
 		style := lipgloss.NewStyle()
 		if m.hover == b.ID && w.focus != b.ID {

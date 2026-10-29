@@ -286,12 +286,9 @@ func (m Model) rulesBody(width int) (string, []hitRegion) {
 		lines = append(lines, strings.Split(wrapText(themed(clean(value), color, bg, false), max(1, width)), "\n")...)
 	}
 	addButton := func(id, label string) {
-		value := "[ " + label + " ]"
-		if m.focus == id {
-			value = "> " + value
-		}
+		value := dashboardButton(id, label, dashboardOptions{Focus: m.focus, Hover: m.hover}, false)
 		hits = append(hits, hitRegion{ID: id, Y: len(lines), W: min(width, ansi.StringWidth(value)), H: 1})
-		lines = append(lines, cellCrop(dashboardButton(id, label, dashboardOptions{Focus: m.focus, Hover: m.hover}, false), width))
+		lines = append(lines, cellCrop(value, width))
 	}
 	if r := m.rules.detail; r != nil {
 		addText("Rule details", text)
