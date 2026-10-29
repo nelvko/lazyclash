@@ -67,9 +67,9 @@ Mariana 的背景变量 `blue3 = hsl(210, 15%, 22%)` 未取整 RGB 为 `(47.685,
 | `disabled`、`backdropText` | `#7b8896` | C，终端禁用及非交互背景弱化色；不用于正常说明、路径、版本或错误 |
 | `border` | `#647382` | A，Mariana `selection_border=var(blue4)`，用作控件边界 |
 | `divider` | `#444c54` | B 计算 / C 用途，Adaptive black/white tint 体系，white alpha .10 覆盖正文背景，用作装饰分隔线 |
-| `selectionBackground` | `#4c5864` | B，Mariana 的半透明选区覆盖正文背景；TUI 统一列表、侧边栏当前项使用该不透明结果 |
+| `selectionBackground` | `#4c5864` | B，Mariana 的半透明选区覆盖正文背景；列表及弹出菜单当前项使用该不透明结果 |
 | `selectionForeground` | `#d8dee9` | A，Mariana 正文；明确配对，不继承任意终端颜色 |
-| `hoverBackground` | `#3c444c` | B 计算 / C 用途，Adaptive sidebar hover white alpha .06 覆盖正文背景；TUI 跨表面统一使用 |
+| `hoverBackground` | `#3c444c` | B 计算 / C 用途，Adaptive sidebar hover white alpha .06 覆盖正文背景；用于按钮、列表及弹出菜单悬停 |
 | `accent`、`info` | `#85b3e0` | C，原 `blue-vibrant=hsl(210,60%,60%)` 亮度提高到 70%，使交互提示在 raised 上可读 |
 | `focus` | `#f9ae58` | A 颜色 / C 用途，Mariana caret 的 `orange=hsl(32,93%,66%)`，用于键盘焦点 |
 | `primaryButtonBackground` | `#5c99d6` | A，Mariana 原始 `accent=blue-vibrant` |
@@ -79,6 +79,12 @@ Mariana 的背景变量 `blue3 = hsl(210, 15%, 22%)` 未取整 RGB 为 `(47.685,
 | `errorColor` | `#f28d92` | C，Mariana `red=hsl(357,79%,65%)` 亮度提高到 75%，保证错误原因在 raised 上可读 |
 
 未安装、未配置、没有数据使用中性色与文字，不等同错误。成功、失败、进行中均保留文字。当前页选中和键盘焦点采用独立角色与非颜色标记。Modal 弱化只改变实际输出的前景与背景，不混合真实终端画面。
+
+Logo 使用加粗和 `accent` 强调色，与普通菜单文字形成层级；沿用终端字符尺寸。常驻侧栏 Logo 区使用 `sidebarBackground` 深色背景，右侧标题区（页面标题与内核状态）及窄窗口 Menu 按钮使用与底栏一致的正文 `bg`。Logo 与标题共用高度与文字基线，上下留白对称。常驻侧栏第一项菜单直接接在 Logo 区底边；右侧标题分隔线采用贴字符格顶部的 `▔`，与该底边对齐，正文在分隔线下保留一行留白。弹出菜单保留内部滚动提示区，不覆盖顶栏。侧栏底部的配置摘要使用中性色标签与正文色数值，只在菜单下方留白足够时显示。
+
+常驻侧栏通过背景色差与正文分区，不绘制竖向分隔线。当前页使用正文 `bg` 并整行延伸到右侧边缘，菜单名加粗；未选中项悬停仅提亮文字并加下划线，保留侧栏原底色，避免与当前页之间形成额外色带。键盘焦点仍保留箭头与下划线。窄窗口弹出菜单保留右边框、独立选区及悬停背景。无色模式继续使用文字标记区分当前页与键盘焦点。
+
+菜单项等高并连续排列，相邻点击区域共用边界，不设置项间或分组空行。空间充足时的三行高度只包含菜单内部的上下留白，短窗口统一收为单行。
 
 ## 可读性与终端限制
 

@@ -75,7 +75,7 @@ def exercise(binary, output, profile):
             terminal.wait("1–7 Pages")
             mark = len(terminal.text())
             terminal.resize(160, 45)
-            terminal.wait("Kernel and environment", after=mark)
+            terminal.wait("Routing mode", after=mark)
             terminal.wait("Get started")
             save_screen(terminal, output, profile, "overview")
             terminal.key(b"i")

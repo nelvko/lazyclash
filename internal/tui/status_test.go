@@ -21,7 +21,8 @@ func TestRulesObservedStopUpdatesGlobalHeader(t *testing.T) {
 	var cmd tea.Cmd
 	m, cmd = update(m, rulesResultMsg{generation: 4, snapshot: app.RuleSnapshot{State: "stopped"}})
 	m, _ = update(m, commandBatch(t, cmd)[1]())
-	if m.snapshot.Service.Active || !strings.Contains(ansi.Strip(strings.Split(m.screen, "\n")[0]), "Mihomo · Stopped") {
+	header := strings.Split(m.screen, "\n")[dashboardGeometry(dashboardOptions{Width: m.width, Height: m.height}).headerY]
+	if m.snapshot.Service.Active || !strings.Contains(ansi.Strip(header), "Mihomo · Stopped") {
 		t.Fatal("Rules kept a stale Running header after observing a stopped core")
 	}
 }

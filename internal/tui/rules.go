@@ -157,9 +157,9 @@ func (m *Model) reconcileRules() {
 	}
 }
 func (m *Model) revealRule() {
-	width := dashboardBodyWidth(dashboardOptions{Width: m.width, Height: m.height})
-	_, hits := m.rulesBody(width)
-	height := max(1, m.height-5)
+	g := dashboardGeometry(dashboardOptions{Width: m.width, Height: m.height, Page: m.page})
+	_, hits := m.rulesBody(g.width)
+	height := max(1, g.height)
 	for _, r := range m.filteredRules() {
 		if ruleIdentity(r) != m.rules.selected {
 			continue

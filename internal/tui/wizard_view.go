@@ -451,7 +451,7 @@ func (m *Model) renderWizard(base string) (string, []hitRegion) {
 		y = (m.height - boxH) / 2
 	}
 	if boxW < 34 || boxH < 10 {
-		lines := []string{themed(cellCrop("lazyclash · "+string(w.step), boxW), text, raised, false), cellCrop("Please enlarge terminal", boxW), cellCrop("Esc Back / Cancel · Ctrl+C Quit", boxW)}
+		lines := []string{themed(cellCrop(logo+" · "+string(w.step), boxW), text, raised, false), cellCrop("Please enlarge terminal", boxW), cellCrop("Esc Back / Cancel · Ctrl+C Quit", boxW)}
 		if w.cancelling {
 			lines = append(lines, cellCrop("Cancelling / Cleaning up…", boxW))
 		}

@@ -22,7 +22,7 @@ func (m Model) helpLines(width int) []string {
 	case "logs":
 		lines = append(lines, "f: pause/resume · End: follow · /: search · g: reconnect", "Only live logs are available. Pausing disconnects; events during a pause are not retained.", "The view retains at most 200 redacted entries in memory. No raw log history is written.")
 	default:
-		lines = append(lines, "i: install/manage core · b: install a local executable", "n: download network settings · a: add/import profile")
+		lines = append(lines, "i: install/manage core · b: install a local executable", "n: download network settings · a: add/import profile", "Core: start, stop or restart; routing mode: Rule / Global / Direct.", "Controls refresh the observed state after the operation.", "TUN and system proxy controls are unavailable in this release.")
 	}
 	lines = append(lines, "", "Core and configuration", "s: start · x: stop · r: restart (Connections uses x for one connection)", "g / Ctrl+R: refresh current data", "Quitting closes this interface; systemd continues to own Mihomo.", "", "Forms and dialogs", "Tab / Shift+Tab: change controls · Enter: activate · Esc: back", "Printable keys, including q and 1–7, belong to the active input.", "Modal dialogs capture input and restore the previous page on close.", "", "Messages", "Progress stays visible while work runs. Errors remain until the next action or refresh.", "Installation and network configuration use the same application use cases as the CLI.")
 	var wrapped []string

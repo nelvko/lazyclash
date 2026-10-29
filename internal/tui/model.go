@@ -533,9 +533,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "up", "k":
 			m.scroll = max(0, m.scroll-1)
 		case "pgdown":
-			m.scroll += max(1, m.height-6)
+			g := dashboardGeometry(dashboardOptions{Width: m.width, Height: m.height})
+			m.scroll += max(1, g.height-1)
 		case "pgup":
-			m.scroll = max(0, m.scroll-max(1, m.height-6))
+			g := dashboardGeometry(dashboardOptions{Width: m.width, Height: m.height})
+			m.scroll = max(0, m.scroll-max(1, g.height-1))
 		case "home":
 			m.scroll = 0
 		case "end":
@@ -669,8 +671,19 @@ func (m *Model) formKey(k tea.KeyPressMsg) tea.Cmd {
 	return cmd
 }
 func (m *Model) serviceAction(action string) tea.Cmd {
-	if !m.snapshot.Installed {
-		m.failure = "Mihomo is not installed"
+	if m.busy || m.quitting {
+		return nil
+	}
+	if action != "start" && action != "stop" && action != "restart" {
+		m.failure = "Unsupported service action"
+		return nil
+	}
+	issue := runtimeControlIssue(m.snapshot)
+	if action == "stop" {
+		issue = runtimeStopIssue(m.snapshot)
+	}
+	if issue != "" {
+		m.failure = issue
 		return nil
 	}
 	return m.begin("Service: "+action+"…", "Service "+action+" completed", func(ctx context.Context) error { return m.backend.Control(ctx, action) })
@@ -685,11 +698,13 @@ func (m *Model) activate(id string) tea.Cmd {
 	switch id {
 	case "card.import":
 		return m.openForm()
-	case "card.install":
+	case "card.install", "core.install":
 		m.openWizard(false)
 		return nil
 	case "card.start":
 		return m.serviceAction("start")
+	case "core.start", "core.stop", "core.restart":
+		return m.serviceAction(strings.TrimPrefix(id, "core."))
 	case "card.proxies":
 		m.navigate("proxies")
 		return nil
@@ -724,7 +739,18 @@ func (m *Model) activate(id string) tea.Cmd {
 		enabled := id == "autostart-enable"
 		return m.begin("Updating service autostart…", "Service autostart updated", func(ctx context.Context) error { return m.backend.SetAutostart(ctx, enabled) })
 	case strings.HasPrefix(id, "mode."):
+		if m.busy || m.quitting {
+			return nil
+		}
 		mode := strings.TrimPrefix(id, "mode.")
+		if !mihomo.ValidMode(mode) {
+			m.failure = "Proxy mode must be rule, global or direct"
+			return nil
+		}
+		if issue := runtimeControlIssue(m.snapshot); issue != "" {
+			m.failure = issue
+			return nil
+		}
 		return m.begin("Applying routing mode…", "Routing mode saved", func(ctx context.Context) error { return m.backend.SetMode(ctx, mode) })
 	case strings.HasPrefix(id, "profile."):
 		n, err := strconv.Atoi(strings.TrimPrefix(id, "profile."))
@@ -802,7 +828,7 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 		if _, wheel := event.(tea.MouseWheelMsg); wheel {
 			return nil
 		}
-		if _, clicked := event.(tea.MouseClickMsg); clicked && k.Button == tea.MouseLeft && k.X >= min(22, m.width) {
+		if _, clicked := event.(tea.MouseClickMsg); clicked && k.Button == tea.MouseLeft && k.X >= min(sidebarWidth, m.width) {
 			m.sidebarOpen, m.focus = false, "menu"
 			return nil
 		}
@@ -927,16 +953,17 @@ func (m *Model) layout() {
 		// Preserve a focused navigation item when its persistent sidebar folds.
 		m.sidebarOpen = true
 	}
-	o := dashboardOptions{Width: m.width, Height: m.height, Page: m.page, SelectedGroup: m.wizard.expanded, Snapshot: m.snapshot, Focus: m.focus, Hover: m.hover, Help: m.contextHelp(), GuideDismissed: m.snapshot.GuideDismissed, Scroll: m.scroll, Dim: m.ports.open || m.helpOpen || m.wizard.open || m.wizard.networkOpen || m.form != "", Message: m.message, Failure: m.failure, SidebarOpen: m.sidebarOpen, Runtime: m.runtime.snapshot, RuntimeReceived: m.runtime.received, RuntimePending: m.runtime.pending}
-	m.connections.search.SetWidth(max(1, dashboardBodyWidth(o)-2))
-	m.rules.search.SetWidth(max(1, dashboardBodyWidth(o)-2))
-	o.Body, o.BodyTargets = m.pageBody(dashboardBodyWidth(o))
+	o := dashboardOptions{Width: m.width, Height: m.height, Page: m.page, SelectedGroup: m.wizard.expanded, Snapshot: m.snapshot, Focus: m.focus, Hover: m.hover, Help: m.contextHelp(), GuideDismissed: m.snapshot.GuideDismissed, Scroll: m.scroll, Dim: m.ports.open || m.helpOpen || m.wizard.open || m.wizard.networkOpen || m.form != "", Message: m.message, Failure: m.failure, SidebarOpen: m.sidebarOpen, Runtime: m.runtime.snapshot, RuntimeReceived: m.runtime.received, RuntimePending: m.runtime.pending, Busy: m.busy}
+	g := dashboardGeometry(o)
+	m.connections.search.SetWidth(max(1, g.width-2))
+	m.rules.search.SetWidth(max(1, g.width-2))
+	o.Body, o.BodyTargets = m.pageBody(g.width)
 	base, hits, total := renderDashboard(o)
 	if o.Dim {
 		base = themed(base, backdropText, sidebarBackground, true)
 	}
 	m.total = total
-	m.scroll = min(m.scroll, max(0, total-max(0, m.height-5)))
+	m.scroll = min(m.scroll, max(0, total-g.height))
 	m.screen, m.targets = base, hits
 	if m.ports.open {
 		m.screen, m.targets = m.renderPorts(base)

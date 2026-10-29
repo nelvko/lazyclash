@@ -707,8 +707,11 @@ def main():
             terminal.exit()
         else:
             terminal.wait("Running")
-            # SGR mouse press/release on the compact sidebar Proxies entry.
-            terminal.key(b"\x1b[<0;5;5M\x1b[<0;5;5m")
+            # Locate the sidebar entry so mouse coverage follows its spacing.
+            terminal.wait("Settings")
+            proxies_row = next(row for row, line in enumerate(terminal.screen.text().splitlines(), 1)
+                               if re.match(r"^[ ›]*Proxies\b", line))
+            terminal.key(f"\x1b[<0;5;{proxies_row}M\x1b[<0;5;{proxies_row}m".encode("ascii"))
             terminal.wait("Proxy groups and options")
             terminal.wait("PROXY")
             terminal.key(b"\t")  # navigation group -> first group (GLOBAL)

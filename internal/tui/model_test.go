@@ -264,9 +264,9 @@ func TestInitialOverviewAndExplicitInstallFlow(t *testing.T) {
 	if m.page != "overview" || m.wizard.open || m.wizard.networkOpen {
 		t.Fatal("startup must leave the dashboard browsable")
 	}
-	for _, label := range []string{"Get started", "Current profile", "Kernel and environment"} {
+	for _, label := range []string{"Get started", "Core", "Kernel information"} {
 		// On the default short viewport the last card is below the fold.
-		if label == "Kernel and environment" {
+		if label == "Kernel information" {
 			continue
 		}
 		if !strings.Contains(ansi.Strip(m.View().Content), label) {

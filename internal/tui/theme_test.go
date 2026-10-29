@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
@@ -28,11 +29,22 @@ func themeSample(name string) Model {
 		} else if name == "sidebar-hover" {
 			m.hover = "nav.proxies"
 		}
-	case "overview-running":
-		m.snapshot = app.Snapshot{Installed: true, ConfigReady: true, HasRun: true, Version: "v1.19.33", RunningVersion: "v1.19.33", Applied: "example", Profiles: []string{"default", "example"}, Groups: []mihomo.Group{{Name: "PROXY", Type: "Selector", Now: "Example node"}}, Service: service.Status{Active: true, State: "active"}}
+	case "overview-running", "sidebar-connected":
+		m.snapshot = app.Snapshot{Installed: true, ConfigReady: true, HasRun: true, Version: "v1.19.33", RunningVersion: "v1.19.33", Applied: "example", Profiles: []string{"default", "example"}, Groups: []mihomo.Group{{Name: "PROXY", Type: "Selector", Now: "Example node"}}, Service: service.Status{Active: true, State: "active"}, Mode: app.ModeStatus{Desired: "rule", Actual: "rule", Running: true}}
+		m.snapshot.Capabilities = app.Capabilities{Scope: "user", Runtime: app.Capability{Supported: true}}
+		m.snapshot.Service.EnableState = "enabled"
 		memory := uint64(48 << 20)
 		m.runtime.received = true
 		m.runtime.snapshot = app.RuntimeSnapshot{State: "ready", Traffic: &mihomo.Traffic{Up: 4096, Down: 128 << 10}, Memory: &memory, Connections: &mihomo.ConnectionSnapshot{UploadTotal: 16 << 20, DownloadTotal: 256 << 20}}
+		if name == "sidebar-connected" {
+			m.page, m.focus = "proxies", "nav.proxies"
+		}
+	case "overview-stopped":
+		m.snapshot = app.Snapshot{Installed: true, ConfigReady: true, HasRun: true, Version: "v1.19.33", Applied: "example", Profiles: []string{"default", "example"}, Service: service.Status{State: "inactive"}, Mode: app.ModeStatus{Desired: "rule"}}
+		m.snapshot.Capabilities = app.Capabilities{Scope: "user", Runtime: app.Capability{Supported: true}}
+		m.snapshot.Service.EnableState = "disabled"
+		m.runtime.received = true
+		m.runtime.snapshot = app.RuntimeSnapshot{State: "stopped", Service: m.snapshot.Service}
 	case "overview-dismissed":
 		m.snapshot.GuideDismissed = true
 		m.focus = "nav.overview"
@@ -95,7 +107,7 @@ func themeSample(name string) Model {
 }
 
 func TestMarianaPagesAcrossSizesAndProfiles(t *testing.T) {
-	names := []string{"overview-empty", "overview-running", "sidebar-focus", "sidebar-hover", "core", "version-input", "input-error", "network", "confirm", "installing", "disabled", "success", "failure"}
+	names := []string{"overview-empty", "overview-running", "overview-stopped", "sidebar-focus", "sidebar-hover", "core", "version-input", "input-error", "network", "confirm", "installing", "disabled", "success", "failure"}
 	for _, name := range names {
 		for _, size := range [][2]int{{160, 45}, {120, 32}, {80, 24}, {60, 20}, {120, 18}, {20, 7}} {
 			for _, profile := range []colorprofile.Profile{colorprofile.TrueColor, colorprofile.ANSI256, colorprofile.ANSI, colorprofile.ASCII} {
@@ -128,8 +140,14 @@ func TestMarianaSidebarCurrentHoverAndFocusAreIndependent(t *testing.T) {
 	if !strings.Contains(plain, "Overview •") || !strings.Contains(plain, "› Proxies") {
 		t.Fatal("current page and keyboard focus lost their independent text markers")
 	}
-	if !strings.Contains(screen, themed("  "+cellPad("Rules", 15), text, hoverBackground, false)) {
-		t.Fatal("hover did not use its own surface")
+	hoverLabel := lipgloss.NewStyle().Underline(true).Render("Rules")
+	if !strings.Contains(screen, themed(cellPad(strings.Repeat(" ", 10)+hoverLabel, sidebarWidth-2), text, sidebarBackground, false)) {
+		t.Fatal("persistent hover lost its text emphasis or changed the sidebar background")
+	}
+	o.Width, o.Height, o.SidebarOpen = 80, 24, true
+	popup, _, _ := renderDashboard(o)
+	if !strings.Contains(popup, themed(cellPad(strings.Repeat(" ", 10)+"Rules", sidebarWidth-2), text, hoverBackground, false)) {
+		t.Fatal("compact menu lost its hover surface")
 	}
 }
 
@@ -164,7 +182,17 @@ func TestExportMarianaViews(t *testing.T) {
 		profile colorprofile.Profile
 	}{
 		{"overview-empty", 160, 45, colorprofile.TrueColor},
+		{"overview-empty", 216, 55, colorprofile.TrueColor},
+		{"overview-empty", 120, 32, colorprofile.TrueColor},
+		{"overview-running", 160, 45, colorprofile.TrueColor},
+		{"overview-running", 216, 55, colorprofile.TrueColor},
 		{"overview-running", 120, 32, colorprofile.TrueColor},
+		{"overview-running", 80, 24, colorprofile.TrueColor},
+		{"sidebar-connected", 160, 45, colorprofile.TrueColor},
+		{"sidebar-connected", 80, 24, colorprofile.TrueColor},
+		{"sidebar-hover", 160, 45, colorprofile.TrueColor},
+		{"overview-stopped", 160, 45, colorprofile.TrueColor},
+		{"overview-stopped", 120, 32, colorprofile.TrueColor},
 		{"overview-dismissed", 160, 45, colorprofile.TrueColor},
 		{"overview-dismissed", 120, 32, colorprofile.TrueColor},
 		{"overview-dismissed", 80, 24, colorprofile.TrueColor},

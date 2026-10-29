@@ -109,7 +109,7 @@ func (m *Model) bodyListKey(k tea.KeyPressMsg) bool {
 	default:
 		return false
 	}
-	_, hits := m.pageBody(dashboardBodyWidth(dashboardOptions{Width: m.width, Height: m.height}))
+	_, hits := m.pageBody(dashboardBodyWidth(dashboardOptions{Width: m.width, Height: m.height, Page: m.page}))
 	var list []hitRegion
 	index := -1
 	for _, hit := range hits {
@@ -131,7 +131,7 @@ func (m *Model) bodyListKey(k tea.KeyPressMsg) bool {
 }
 
 func (m *Model) revealBodyTarget(hit hitRegion) {
-	height := max(1, m.height-5)
+	height := max(1, dashboardGeometry(dashboardOptions{Width: m.width, Height: m.height}).height)
 	if hit.Y < m.scroll {
 		m.scroll = hit.Y
 	}

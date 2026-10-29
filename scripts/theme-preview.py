@@ -93,7 +93,11 @@ def render(source, font_path, font_size):
                 continue
             cells = 2 if unicodedata.east_asian_width(c) in "WF" else 1
             draw.rectangle((x, y, x + cells * cell_w - 1, y + cell_h - 1), fill=bg)
-            draw.text((x, y + 1), c, font=bold_font if bold else font, fill=fg)
+            if c == "▔":
+                # Terminals draw the upper one-eighth block at the cell edge.
+                draw.rectangle((x, y, x + cell_w - 1, y + max(1, round(cell_h / 8)) - 1), fill=fg)
+            else:
+                draw.text((x, y + 1), c, font=bold_font if bold else font, fill=fg)
             if underline and c != " ":
                 draw.line((x, y + ascent + 2, x + cells * cell_w - 1, y + ascent + 2), fill=fg)
             x += cells * cell_w
