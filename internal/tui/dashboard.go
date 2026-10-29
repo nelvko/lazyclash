@@ -185,6 +185,8 @@ func pageTitle(page string) string {
 		return "Subscriptions"
 	case "settings":
 		return "Settings"
+	case "rules":
+		return "Rules"
 	case "connections":
 		return "Connections"
 	default:
@@ -217,7 +219,7 @@ func drawSidebar(rows []string, o dashboardOptions, popup bool) []hitRegion {
 	for y := 3; y < end; y++ {
 		putRows(rows, width-1, y, themed("│", border, bg, o.Dim), o.Width)
 	}
-	for i, page := range []string{"overview", "nodes", "profiles", "settings", "connections"} {
+	for i, page := range []string{"overview", "nodes", "profiles", "settings", "connections", "rules"} {
 		y := 4 + i*2
 		if y >= end {
 			break
@@ -246,7 +248,7 @@ func drawSidebar(rows []string, o dashboardOptions, popup bool) []hitRegion {
 		putRows(rows, 1, y, themed(" "+label+" ", foreground, background, o.Dim), o.Width)
 		targets = append(targets, hitRegion{ID: id, X: 1, Y: y, W: width - 2, H: 1})
 	}
-	if end >= 16 {
+	if end >= 20 {
 		status, color := "Not installed", warning
 		if o.Snapshot.Installed {
 			status, color = "Stopped", muted

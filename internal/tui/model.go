@@ -35,6 +35,7 @@ type Backend interface {
 	Select(context.Context, string, string) error
 	Runtime(context.Context) (app.RuntimeSnapshot, error)
 	CloseConnection(context.Context, string) error
+	Rules(context.Context) (app.RuleSnapshot, error)
 }
 
 type parentCanceledMsg struct{}
@@ -94,6 +95,7 @@ type Model struct {
 	wizard                wizardState
 	runtime               runtimeState
 	connections           connectionsState
+	rules                 rulesState
 }
 
 func New(ctx context.Context, backend Backend) Model {
@@ -109,6 +111,9 @@ func New(ctx context.Context, backend Backend) Model {
 	m.connections.search = textinput.New()
 	m.connections.search.CharLimit = 256
 	m.connections.search.Placeholder = "Host, IP, port, process or rule"
+	m.rules.search = textinput.New()
+	m.rules.search.CharLimit = 512
+	m.rules.search.Placeholder = "Type, payload, proxy or order"
 	m.layout()
 	return m
 }
@@ -138,6 +143,7 @@ func (m Model) snapshotCmd(id uint64, ctx context.Context, initial bool) tea.Cmd
 }
 func (m *Model) newJob(kind string) context.Context {
 	m.stopRuntime()
+	m.stopRules()
 	if m.cancel != nil {
 		m.cancel()
 	}
@@ -192,6 +198,7 @@ func waitProgress(ctx context.Context, updates <-chan progressMsg) tea.Cmd {
 }
 func (m *Model) cancelTask(quit bool) {
 	m.stopRuntime()
+	m.stopRules()
 	if m.cancel != nil {
 		m.cancel()
 	}
@@ -205,6 +212,12 @@ func (m *Model) cancelTask(quit bool) {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	switch v := msg.(type) {
+	case rulesResultMsg:
+		cmd = m.acceptRules(v)
+	case rulesTickMsg:
+		if m.rules.active && v.generation == m.rules.generation && m.rulesVisible() {
+			cmd = m.rulesCmd()
+		}
 	case runtimeResultMsg:
 		cmd = m.acceptRuntime(v)
 	case runtimeTickMsg:
@@ -213,6 +226,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case parentCanceledMsg:
 		m.stopRuntime()
+		m.stopRules()
 		if m.busy {
 			m.cancelTask(true)
 		} else {
@@ -223,6 +237,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.wizard.reveal = true
 		if m.page == "connections" && m.connections.detail == nil && strings.HasPrefix(m.focus, "connection.") {
 			m.revealConnection(0)
+		}
+		if m.page == "rules" && m.rules.detail == nil && strings.HasPrefix(m.focus, "rule.") {
+			m.revealRule()
 		}
 	case resultMsg:
 		if v.id != m.id {
@@ -303,11 +320,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else if m.connections.editing {
 			m.connections.search, cmd = m.connections.search.Update(v)
 			m.reconcileConnections()
+		} else if m.rules.editing {
+			m.rules.search, cmd = m.rules.search.Update(v)
+			m.reconcileRules()
 		}
 	case tea.KeyPressMsg:
 		key := v.String()
 		if key == "ctrl+c" {
 			m.stopRuntime()
+			m.stopRules()
 			if m.busy {
 				m.cancelTask(true)
 			} else {
@@ -328,8 +349,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.connectionSearchKey(v)
 			break
 		}
+		if m.page == "rules" && m.rules.editing {
+			cmd = m.ruleSearchKey(v)
+			break
+		}
 		if key == "q" {
 			m.stopRuntime()
+			m.stopRules()
 			if m.busy {
 				m.cancelTask(true)
 			} else {
@@ -350,7 +376,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 		}
+		if m.page == "rules" {
+			if handled, next := m.ruleKey(v); handled {
+				cmd = next
+				break
+			}
+		}
 		switch key {
+		case "6":
+			m.navigate("rules")
 		case "5", "c":
 			m.navigate("connections")
 		case "i":
@@ -390,7 +424,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "g", "ctrl+r":
 			cmd = m.refresh()
 		case "?":
-			m.message = "i Install · n Network · a Import/Add · s/x/r Service · 1–5 Pages · c Connections · Tab Focus · Enter Open · Esc Back"
+			m.message = "i Install · n Network · a Import/Add · s/x/r Service · 1–6 Pages · c Connections · Tab Focus · Enter Open · Esc Back"
 		}
 	default:
 		// Forward cursor/clipboard messages to the focused Bubbles input. The
@@ -401,19 +435,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.input, cmd = m.input.Update(msg)
 		} else if m.connections.editing {
 			m.connections.search, cmd = m.connections.search.Update(msg)
+		} else if m.rules.editing {
+			m.rules.search, cmd = m.rules.search.Update(msg)
 		}
 	}
 	next := m.syncRuntime()
+	nextRules := m.syncRules()
 	m.layout()
-	if next != nil {
-		return m, tea.Batch(cmd, next)
+	if next != nil || nextRules != nil {
+		return m, tea.Batch(cmd, next, nextRules)
 	}
 	return m, cmd
 }
 func (m *Model) navigate(page string) {
 	m.stopRuntime()
+	m.stopRules()
 	m.connections.editing = false
 	m.connections.search.Blur()
+	m.rules.editing = false
+	m.rules.search.Blur()
 	m.page = page
 	m.scroll = 0
 	m.focus = "nav." + page
@@ -488,6 +528,8 @@ func (m *Model) serviceAction(action string) tea.Cmd {
 }
 func (m *Model) activate(id string) tea.Cmd {
 	switch {
+	case strings.HasPrefix(id, "rule.") || strings.HasPrefix(id, "rules."):
+		return m.ruleActivate(id)
 	case strings.HasPrefix(id, "connection.") || strings.HasPrefix(id, "conn."):
 		return m.connectionActivate(id)
 	case strings.HasPrefix(id, "nav."):
@@ -558,6 +600,14 @@ func (m *Model) cycleFocus(delta int) {
 	m.focus = targets[current].ID
 	if strings.HasPrefix(m.focus, "connection.") {
 		m.connections.selected = strings.TrimPrefix(m.focus, "connection.")
+	}
+	if strings.HasPrefix(m.focus, "rule.") {
+		for _, r := range m.filteredRules() {
+			if m.focus == "rule."+strconv.Itoa(r.Index) {
+				m.rules.selected = ruleIdentity(r)
+				break
+			}
+		}
 	}
 }
 func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
@@ -630,6 +680,9 @@ func (m Model) pageBody(width int) (string, []hitRegion) {
 	if m.page == "connections" {
 		return m.connectionsBody(width)
 	}
+	if m.page == "rules" {
+		return m.rulesBody(width)
+	}
 	if m.page == "profiles" {
 		lines = append(lines, themed("Saved configurations", purple, bg, false), "URL subscription and local YAML use the same validation and apply flow.", "")
 		add("add", "Add subscription / Import config")
@@ -680,6 +733,7 @@ func (m Model) pageBody(width int) (string, []hitRegion) {
 func (m *Model) layout() {
 	o := dashboardOptions{Width: m.width, Height: m.height, Page: m.page, SelectedGroup: m.wizard.expanded, Snapshot: m.snapshot, Focus: m.focus, Hover: m.hover, GuideDismissed: m.snapshot.GuideDismissed, Scroll: m.scroll, Dim: m.wizard.open || m.wizard.networkOpen || m.form != "", Message: m.message, Failure: m.failure, SidebarOpen: m.sidebarOpen, Runtime: m.runtime.snapshot, RuntimeReceived: m.runtime.received, RuntimePending: m.runtime.pending}
 	m.connections.search.SetWidth(max(1, dashboardBodyWidth(o)-2))
+	m.rules.search.SetWidth(max(1, dashboardBodyWidth(o)-2))
 	o.Body, o.BodyTargets = m.pageBody(dashboardBodyWidth(o))
 	base, hits, total := renderDashboard(o)
 	m.total = total

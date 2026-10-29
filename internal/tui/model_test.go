@@ -29,6 +29,7 @@ type fakeBackend struct {
 	add             func(context.Context, string, string) error
 	control         func(context.Context, string) error
 	runtime         func(context.Context) (app.RuntimeSnapshot, error)
+	rules           func(context.Context) (app.RuleSnapshot, error)
 	closeConnection func(context.Context, string) error
 }
 
@@ -89,6 +90,12 @@ func (f *fakeBackend) Runtime(ctx context.Context) (app.RuntimeSnapshot, error) 
 		return f.runtime(ctx)
 	}
 	return app.RuntimeSnapshot{State: "stopped"}, ctx.Err()
+}
+func (f *fakeBackend) Rules(ctx context.Context) (app.RuleSnapshot, error) {
+	if f.rules != nil {
+		return f.rules(ctx)
+	}
+	return app.RuleSnapshot{State: "stopped"}, ctx.Err()
 }
 func (f *fakeBackend) CloseConnection(ctx context.Context, id string) error {
 	if f.closeConnection != nil {

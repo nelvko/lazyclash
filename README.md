@@ -23,7 +23,7 @@ go run .
 - `b`：打开本地可执行文件安装选项，同样经过版本检查与确认。
 - `n` 或 Settings → **Network settings**：在查询版本前配置下载网络。
 - `a` 或 **Import config**：添加订阅 URL 或本地 Mihomo YAML；可在安装内核前保存，标记等待内核校验。
-- `1/2/3/4`：Overview / Nodes / Subscriptions / Settings；`5` 或 `c` 打开 Connections，窄窗口可用 Menu。
+- `1/2/3/4`：Overview / Nodes / Subscriptions / Settings；`5` 或 `c` 打开 Connections，`6` 打开 Rules；窄窗口可用 Menu。
 - `Tab / Shift+Tab` 切换焦点，方向键选择选项，`Enter` 激活，`Space` 切换选项；`PgUp/PgDn` 和滚轮滚动。
 - `Esc` 返回或取消；任务取消会显示清理状态，等待安全边界后才结束。`Ctrl+C` 同样等待清理后退出。
 - 输入框拥有正常字符与粘贴事件，`q` 和数字不会被全局快捷键抢走。鼠标可点击按钮、选项、输入框和导航；Modal 不向背景传递操作。
@@ -44,6 +44,8 @@ Connections 显示当前活动连接，可搜索目标域名/IP/端口、进程�
 - `g` / `Ctrl+R` 或 Refresh / Retry：重新采样；暂不可用时持续重试。关闭后重新读取 API，不根据本地列表推测成功。
 
 连接关闭仅提供单条操作。连接已消失时会明确反馈，不关闭其他连接。
+
+Rules 只读展示内核加载的规则并保留匹配顺序，支持搜索、详情、独立异步刷新与重试。Rule 模式才按此顺序匹配；不会编辑或启用/禁用规则。操作与数据含义见 [规则查看](docs/rules.md)。
 
 响应式规则以字符列/行数为准：至少 **110×30** 使用最大 **86×33** 的居中 Modal；否则使用当前终端区域中的同一单列向导。至少 **100×20** 显示常驻侧栏，否则使用 Menu。首页正文最大 112 列；正文至少 76 列且终端至少 24 行时卡片双列，否则单列。标题、正文滚动区和底部操作分开。极小窗口显示扩大终端提示，仍可返回或取消。缩放不重置选项或重启任务。
 
@@ -108,6 +110,7 @@ lazyclash select PROXY DIRECT
 lazyclash stats                  # 单次采样；停止/未安装时输出明确 State 和 null 指标
 lazyclash connections            # 运行中的活动连接 JSON
 lazyclash connections close ID   # 明确请求关闭一条连接
+lazyclash rules                  # 当前内核规则，JSON 按原顺序输出
 lazyclash status
 lazyclash doctor
 ```

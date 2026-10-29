@@ -67,12 +67,12 @@ func TestOverviewUninitializedIsBrowsable(t *testing.T) {
 			t.Errorf("missing %q", part)
 		}
 	}
-	for _, id := range []string{"install", "import", "dismiss", "nav.overview", "nav.nodes", "nav.profiles", "nav.settings"} {
+	for _, id := range []string{"install", "import", "dismiss", "nav.overview", "nav.nodes", "nav.profiles", "nav.settings", "nav.rules"} {
 		if !hasAction(targets, id) {
 			t.Errorf("missing action %s", id)
 		}
 	}
-	for _, part := range []string{"Rules", "Logs", "sing-box"} {
+	for _, part := range []string{"Logs", "sing-box"} {
 		if strings.Contains(plain, part) {
 			t.Errorf("unexpected placeholder navigation %q", part)
 		}
