@@ -74,9 +74,8 @@ func (a *App) installFreshLocked(ctx context.Context, local string, progress fun
 		return errors.New("installation path already exists; refusing to overwrite")
 	}
 	m := manifest{ID: randomID(), Service: a.Name, Controller: "127.0.0.1:9097", Secret: randomID() + randomID(), Port: 7897, Applied: "default"}
-	if err := a.checkPorts(m); err != nil {
-		return err
-	}
+	// Installation writes and validates files but does not open runtime ports.
+	// Occupied defaults can be changed in Settings before the first start.
 	stage, err := a.stageFreshInstallation(ctx, m, local, progress)
 	if err != nil {
 		return err

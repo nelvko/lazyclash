@@ -112,7 +112,9 @@ func (a *App) prepareInstallLocked(ctx context.Context, release mihomo.Release, 
 		if a.Service != nil {
 			block(a.Service.Available(ctx))
 		}
-		block(a.checkPorts(manifest{Controller: "127.0.0.1:9097", Port: 7897}))
+		if err := a.checkPorts(manifest{Controller: "127.0.0.1:9097", Port: 7897}); err != nil {
+			p.Warnings = append(p.Warnings, "Default runtime ports are unavailable. Installation keeps the service stopped; change ports in Settings before starting it.")
+		}
 	} else if err != nil {
 		block(err)
 	} else {

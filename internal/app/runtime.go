@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
 	"time"
 
 	"github.com/nelvko/lazyclash/internal/mihomo"
@@ -38,15 +37,7 @@ func (a *App) checkPorts(m manifest) error {
 	if a.CheckPorts != nil {
 		return a.CheckPorts(m.Controller, m.Port)
 	}
-	ports := []string{m.Controller, fmt.Sprintf("127.0.0.1:%d", m.Port)}
-	for _, addr := range ports {
-		l, err := net.Listen("tcp", addr)
-		if err != nil {
-			return fmt.Errorf("local port %s is unavailable; no existing service was stopped", addr)
-		}
-		l.Close()
-	}
-	return nil
+	return checkRuntimePorts(context.Background(), m, manifestSettings(m), false)
 }
 
 func (a *App) waitReady(ctx context.Context, m manifest) error {

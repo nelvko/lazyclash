@@ -19,8 +19,9 @@ type installJournal struct {
 }
 
 type pending struct {
-	Old, New string
-	Active   bool
+	Old, New           string
+	Active             bool
+	OldGuard, NewGuard string `json:",omitempty"`
 }
 
 func cleanupContext() (context.Context, context.CancelFunc) {
@@ -47,6 +48,24 @@ func (a *App) recover(ctx context.Context) error {
 	}
 	if err := a.requireService(); err != nil {
 		return err
+	}
+	if p.OldGuard != "" || p.NewGuard != "" {
+		if len(p.OldGuard) != 64 || len(p.NewGuard) != 64 || p.Old == p.New {
+			return errors.New("invalid guarded recovery journal; manual inspection required")
+		}
+		if _, _, err := a.load(); err != nil {
+			return fmt.Errorf("recovery installation changed; preserving files and journal: %w", err)
+		}
+		for target, expected := range map[string]string{p.Old: p.OldGuard, p.New: p.NewGuard} {
+			actual, err := a.generationGuard(target)
+			if err != nil || actual != expected {
+				return errors.New("recovery generation changed; preserving files and journal for manual inspection")
+			}
+		}
+		bin, config, data := a.paths()
+		if err := a.Service.Verify(ctx, bin, config, data); err != nil {
+			return err
+		}
 	}
 	current := filepath.Join(a.Home, "installation", "current")
 	target, err := os.Readlink(current)
