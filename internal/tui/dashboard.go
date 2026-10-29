@@ -628,7 +628,7 @@ func settingsContent(o dashboardOptions, width int) (string, []hitRegion) {
 	controls := []struct {
 		id, label string
 		enabled   bool
-	}{{"install", map[bool]string{false: "Install core", true: "Manage / Update core"}[o.Snapshot.Installed], true}, {"network", "Network settings", true}, {"import", "Import config", true}, {"start", "Start", o.Snapshot.Installed && !o.Snapshot.Service.Active}, {"stop", "Stop", o.Snapshot.Installed && o.Snapshot.Service.Active}, {"restart", "Restart", o.Snapshot.Installed}}
+	}{{"install", map[bool]string{false: "Install core", true: "Manage / Update core"}[o.Snapshot.Installed], true}, {"network", "Network settings", true}, {"import", "Import config", true}, {"runtime-settings", "Runtime settings / Ports", o.Snapshot.Installed}, {"start", "Start", o.Snapshot.Installed && !o.Snapshot.Service.Active}, {"stop", "Stop", o.Snapshot.Installed && o.Snapshot.Service.Active}, {"restart", "Restart", o.Snapshot.Installed}}
 	for _, control := range controls {
 		if !control.enabled {
 			continue

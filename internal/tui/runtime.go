@@ -33,7 +33,7 @@ func (m *Model) stopRuntime() {
 	m.runtime.received = false
 }
 func (m *Model) runtimeVisible() bool {
-	return m.snapshot.Installed && (m.page == "overview" || m.page == "connections") && !m.busy && !m.quitting && !m.helpOpen && !m.wizard.open && !m.wizard.networkOpen && m.form == "" && m.ctx.Err() == nil
+	return m.snapshot.Installed && (m.page == "overview" || m.page == "connections") && !m.busy && !m.quitting && !m.helpOpen && !m.ports.open && !m.wizard.open && !m.wizard.networkOpen && m.form == "" && m.ctx.Err() == nil
 }
 func (m *Model) syncRuntime() tea.Cmd {
 	if !m.runtimeVisible() {

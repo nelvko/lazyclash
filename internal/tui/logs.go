@@ -61,7 +61,7 @@ func (m *Model) stopLogs() {
 }
 
 func (m Model) logsVisible() bool {
-	return m.page == "logs" && !m.busy && !m.quitting && !m.helpOpen && !m.wizard.open && !m.wizard.networkOpen && m.form == "" && m.ctx.Err() == nil
+	return m.page == "logs" && !m.busy && !m.quitting && !m.helpOpen && !m.ports.open && !m.wizard.open && !m.wizard.networkOpen && m.form == "" && m.ctx.Err() == nil
 }
 
 // One owner reads a bounded channel; the stream blocks at that boundary until

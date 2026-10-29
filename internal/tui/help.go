@@ -17,6 +17,8 @@ func (m Model) helpLines(width int) []string {
 		lines = append(lines, "/: search · Enter: details · x: review closing one connection", "Closing requires confirmation of the displayed connection; other connections stay active.")
 	case "rules":
 		lines = append(lines, "/: search · Enter: details · g / Ctrl+R: refresh", "Rules are read only and remain in the core's matching order.")
+	case "settings":
+		lines = append(lines, "Runtime settings / Ports: edit local proxy and control API ports.", "Review changed listeners and restart impact before applying; existing API credentials remain private.")
 	case "logs":
 		lines = append(lines, "f: pause/resume · End: follow · /: search · g: reconnect", "Only live logs are available. Pausing disconnects; events during a pause are not retained.", "The view retains at most 200 redacted entries in memory. No raw log history is written.")
 	default:

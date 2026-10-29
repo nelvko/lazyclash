@@ -38,6 +38,9 @@ type Backend interface {
 	CloseConnection(context.Context, string) error
 	Rules(context.Context) (app.RuleSnapshot, error)
 	StreamLogs(context.Context, func(mihomo.LogEntry)) error
+	GetRuntimeSettings(context.Context) (app.RuntimeSettings, error)
+	PrepareRuntimeSettings(context.Context, app.RuntimeSettings) (app.RuntimeSettingsPlan, error)
+	ApplyRuntimeSettings(context.Context, app.RuntimeSettingsPlan) (app.RuntimeSettingsResult, error)
 }
 
 type parentCanceledMsg struct{}
@@ -105,6 +108,7 @@ type Model struct {
 	connections           connectionsState
 	rules                 rulesState
 	logs                  logsState
+	ports                 portsState
 }
 
 func New(ctx context.Context, backend Backend) Model {
@@ -228,10 +232,21 @@ func (m *Model) cancelTask(quit bool) {
 		m.wizard.cancelling = true
 		m.wizard.progress.Detail = "Waiting for safe cleanup before leaving"
 	}
+	if m.ports.open {
+		m.ports.cancelling = true
+	}
 }
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	switch v := msg.(type) {
+	case portsMsg:
+		if v.id != m.id || !m.ports.open {
+			return m, nil
+		}
+		m.acceptPorts(v)
+		if m.quitting && !m.busy {
+			return m, tea.Quit
+		}
 	case logsResultMsg:
 		accepted := m.logs.active && v.generation == m.logs.generation
 		refreshStatus := accepted && v.done && v.err != nil && !errors.Is(v.err, context.Canceled)
@@ -281,6 +296,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width, m.height = max(1, v.Width), max(1, v.Height)
 		m.wizard.reveal = true
+		m.ports.reveal = true
 		if m.page == "connections" && m.connections.detail == nil && strings.HasPrefix(m.focus, "connection.") {
 			m.revealConnection(0)
 		}
@@ -359,7 +375,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.PasteMsg:
 		// Bracketed paste is text input, never a global command. In particular a
 		// pasted q or digit cannot quit or navigate out of a form.
-		if m.helpOpen {
+		if m.ports.open {
+			cmd = m.updatePortsInput(v)
+		} else if m.helpOpen {
 			break
 		} else if m.wizard.open || m.wizard.networkOpen {
 			cmd = m.updateWizardInput(v)
@@ -389,6 +407,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.quitting = true
 				return m, tea.Quit
 			}
+			break
+		}
+		if m.ports.open {
+			cmd = m.portsKey(v)
 			break
 		}
 		if m.helpOpen {
@@ -519,7 +541,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	default:
 		// Forward cursor/clipboard messages to the focused Bubbles input. The
 		// child model ignores messages it does not own, including key releases.
-		if m.helpOpen {
+		if m.ports.open {
+			cmd = m.updatePortsInput(msg)
+		} else if m.helpOpen {
 			break
 		} else if m.wizard.open || m.wizard.networkOpen {
 			cmd = m.updateWizardInput(msg)
@@ -629,6 +653,9 @@ func (m *Model) serviceAction(action string) tea.Cmd {
 	return m.begin("Service: "+action+"…", "Service "+action+" completed", func(ctx context.Context) error { return m.backend.Control(ctx, action) })
 }
 func (m *Model) activate(id string) tea.Cmd {
+	if id == "runtime-settings" {
+		return m.openPorts()
+	}
 	switch id {
 	case "card.import":
 		return m.openForm()
@@ -733,6 +760,9 @@ func (m *Model) cycleFocus(delta int) {
 }
 func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 	k := event.Mouse()
+	if m.ports.open {
+		return m.portsMouse(event)
+	}
 	if m.helpOpen {
 		return m.helpMouse(event)
 	}
@@ -878,11 +908,11 @@ func (m Model) pageBody(width int) (string, []hitRegion) {
 func (m *Model) layout() {
 	if m.width >= 100 && m.height >= 20 {
 		m.sidebarOpen = false
-	} else if strings.HasPrefix(m.focus, "nav.") && !m.wizard.open && !m.wizard.networkOpen && m.form == "" && !m.helpOpen && m.width >= 20 && m.height >= 12 {
+	} else if strings.HasPrefix(m.focus, "nav.") && !m.ports.open && !m.wizard.open && !m.wizard.networkOpen && m.form == "" && !m.helpOpen && m.width >= 20 && m.height >= 12 {
 		// Preserve a focused navigation item when its persistent sidebar folds.
 		m.sidebarOpen = true
 	}
-	o := dashboardOptions{Width: m.width, Height: m.height, Page: m.page, SelectedGroup: m.wizard.expanded, Snapshot: m.snapshot, Focus: m.focus, Hover: m.hover, Help: m.contextHelp(), GuideDismissed: m.snapshot.GuideDismissed, Scroll: m.scroll, Dim: m.helpOpen || m.wizard.open || m.wizard.networkOpen || m.form != "", Message: m.message, Failure: m.failure, SidebarOpen: m.sidebarOpen, Runtime: m.runtime.snapshot, RuntimeReceived: m.runtime.received, RuntimePending: m.runtime.pending}
+	o := dashboardOptions{Width: m.width, Height: m.height, Page: m.page, SelectedGroup: m.wizard.expanded, Snapshot: m.snapshot, Focus: m.focus, Hover: m.hover, Help: m.contextHelp(), GuideDismissed: m.snapshot.GuideDismissed, Scroll: m.scroll, Dim: m.ports.open || m.helpOpen || m.wizard.open || m.wizard.networkOpen || m.form != "", Message: m.message, Failure: m.failure, SidebarOpen: m.sidebarOpen, Runtime: m.runtime.snapshot, RuntimeReceived: m.runtime.received, RuntimePending: m.runtime.pending}
 	m.connections.search.SetWidth(max(1, dashboardBodyWidth(o)-2))
 	m.rules.search.SetWidth(max(1, dashboardBodyWidth(o)-2))
 	o.Body, o.BodyTargets = m.pageBody(dashboardBodyWidth(o))
@@ -893,7 +923,9 @@ func (m *Model) layout() {
 	m.total = total
 	m.scroll = min(m.scroll, max(0, total-max(0, m.height-5)))
 	m.screen, m.targets = base, hits
-	if m.helpOpen {
+	if m.ports.open {
+		m.screen, m.targets = m.renderPorts(base)
+	} else if m.helpOpen {
 		m.screen, m.targets = m.renderHelp(base)
 	} else if m.wizard.open || m.wizard.networkOpen {
 		m.screen, m.targets = m.renderWizard(base)

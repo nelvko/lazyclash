@@ -32,6 +32,29 @@ type fakeBackend struct {
 	rules           func(context.Context) (app.RuleSnapshot, error)
 	streamLogs      func(context.Context, func(mihomo.LogEntry)) error
 	closeConnection func(context.Context, string) error
+	getSettings     func(context.Context) (app.RuntimeSettings, error)
+	prepareSettings func(context.Context, app.RuntimeSettings) (app.RuntimeSettingsPlan, error)
+	applySettings   func(context.Context, app.RuntimeSettingsPlan) (app.RuntimeSettingsResult, error)
+}
+
+func (f *fakeBackend) GetRuntimeSettings(ctx context.Context) (app.RuntimeSettings, error) {
+	if f.getSettings != nil {
+		return f.getSettings(ctx)
+	}
+	return app.RuntimeSettings{MixedPort: 7897, ControllerPort: 9097}, ctx.Err()
+}
+func (f *fakeBackend) PrepareRuntimeSettings(ctx context.Context, settings app.RuntimeSettings) (app.RuntimeSettingsPlan, error) {
+	if f.prepareSettings != nil {
+		return f.prepareSettings(ctx, settings)
+	}
+	current := app.RuntimeSettings{MixedPort: 7897, ControllerPort: 9097}
+	return app.RuntimeSettingsPlan{Current: current, Proposed: settings, ControllerHost: "127.0.0.1", Active: f.snapshot.Service.Active, Changed: current != settings, AppliedProfile: f.snapshot.Applied}, ctx.Err()
+}
+func (f *fakeBackend) ApplyRuntimeSettings(ctx context.Context, plan app.RuntimeSettingsPlan) (app.RuntimeSettingsResult, error) {
+	if f.applySettings != nil {
+		return f.applySettings(ctx, plan)
+	}
+	return app.RuntimeSettingsResult{Settings: plan.Proposed, Controller: fmt.Sprintf("%s:%d", plan.ControllerHost, plan.Proposed.ControllerPort), Changed: plan.Changed, Restarted: plan.Active && plan.Changed}, ctx.Err()
 }
 
 func (f *fakeBackend) StreamLogs(ctx context.Context, emit func(mihomo.LogEntry)) error {
