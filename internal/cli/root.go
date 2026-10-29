@@ -4,6 +4,7 @@ package cli
 import (
 	"errors"
 	"os"
+	"runtime"
 
 	"github.com/charmbracelet/x/term"
 	"github.com/nelvko/lazyclash/internal/app"
@@ -28,6 +29,9 @@ func New() *cobra.Command {
 		return err
 	}
 	root.RunE = func(cmd *cobra.Command, args []string) error {
+		if err := requireUnprivilegedTUI(runtime.GOOS, os.Geteuid()); err != nil {
+			return err
+		}
 		if !term.IsTerminal(os.Stdin.Fd()) || !term.IsTerminal(os.Stdout.Fd()) {
 			return errors.New("TUI requires a terminal; use status, doctor or --help for automation")
 		}
@@ -36,6 +40,7 @@ func New() *cobra.Command {
 	current := func() *app.App { return backend }
 	root.AddCommand(
 		newInstallCommand(current),
+		newUninstallCommand(current),
 		newStatusCommand(current),
 		newServiceCommand(current),
 		newProfileCommand(current),
@@ -49,6 +54,15 @@ func New() *cobra.Command {
 		newRulesCommand(current),
 		newLogsCommand(current),
 		newSettingsCommand(current),
+		newModeCommand(func() runtimeOptionsBackend { return current() }),
+		newTUNCommand(func() runtimeOptionsBackend { return current() }),
 	)
 	return root
+}
+
+func requireUnprivilegedTUI(goos string, euid int) error {
+	if goos == "linux" && euid == 0 {
+		return errors.New("run lazyclash as your normal user without sudo; the current runtime uses an unprivileged systemd user service")
+	}
+	return nil
 }

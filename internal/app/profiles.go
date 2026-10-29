@@ -90,6 +90,16 @@ func (a *App) validateConfig(ctx context.Context, m manifest, config []byte) err
 	return a.Validate(ctx, bin, path, stage)
 }
 func (a *App) Add(ctx context.Context, name, source string) error {
+	return a.add(ctx, name, source, false)
+}
+
+// AddSubscription explicitly remembers a private source, which can contain URL
+// credentials. Ordinary Add only stores the imported configuration bytes.
+func (a *App) AddSubscription(ctx context.Context, name, source string) error {
+	return a.add(ctx, name, source, true)
+}
+
+func (a *App) add(ctx context.Context, name, source string, remember bool) error {
 	if !profileName.MatchString(name) || name == "default" {
 		return errors.New("profile name must use 1–48 letters, digits, _ or -; default is reserved")
 	}
@@ -119,6 +129,9 @@ func (a *App) Add(ctx context.Context, name, source string) error {
 			return err
 		}
 		if installed {
+			if err := a.requireService(); err != nil {
+				return err
+			}
 			if err := a.validateConfig(ctx, m, effective); err != nil {
 				return err
 			}
@@ -128,17 +141,11 @@ func (a *App) Add(ctx context.Context, name, source string) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		if !installed {
-			marker := filepath.Join(profiles, name+".unvalidated")
-			if err := store.Replace(marker, []byte(digest(raw)), nil, 0600); err != nil {
-				return err
-			}
-			if err := store.Replace(path, raw, nil, 0600); err != nil {
-				return errors.Join(err, os.Remove(marker))
-			}
-			return nil
+		var metadata *subscriptionSource
+		if remember {
+			metadata = &subscriptionSource{Source: source, SHA: digest(raw)}
 		}
-		return store.Replace(path, raw, nil, 0600)
+		return a.writeProfileLocked(name, raw, nil, metadata, nil, !installed)
 	})
 }
 func (a *App) Apply(ctx context.Context, name string) error {
@@ -161,6 +168,9 @@ func (a *App) Apply(ctx context.Context, name string) error {
 		if err != nil {
 			return err
 		}
+		if status.State == "activating" || status.State == "deactivating" || status.State == "reloading" {
+			return errors.New("service is changing state; wait before applying a profile")
+		}
 		var cfg []byte
 		if name == "default" {
 			cfg, err = mihomo.Default(m.Controller, m.Secret, m.Port)
@@ -176,6 +186,12 @@ func (a *App) Apply(ctx context.Context, name string) error {
 		}
 		if err != nil {
 			return err
+		}
+		if m.Mode != "" {
+			cfg, err = mihomo.WithMode(cfg, m.Mode)
+			if err != nil {
+				return err
+			}
 		}
 		if err := a.validateConfig(ctx, m, cfg); err != nil {
 			return err
@@ -195,7 +211,27 @@ func (a *App) Apply(ctx context.Context, name string) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		p := pending{Old: old, New: next, Active: status.Active}
+		oldGuard, err := a.generationGuard(old)
+		if err != nil {
+			return err
+		}
+		newGuard, err := a.generationGuard(next)
+		if err != nil {
+			return err
+		}
+		// Validation can take time. Do not restart an instance that stopped,
+		// recovered or otherwise changed while preparing the new profile.
+		observed, err := a.Service.Inspect(ctx)
+		if err != nil {
+			return err
+		}
+		if status.Active != observed.Active || status.State != observed.State || status.PID != observed.PID {
+			return errors.New("service changed while validating the profile; retry the operation")
+		}
+		if err := a.Service.Verify(ctx, bin, config, data); err != nil {
+			return err
+		}
+		p := pending{Old: old, New: next, Active: status.Active, OldGuard: oldGuard, NewGuard: newGuard}
 		raw, _ := json.Marshal(p)
 		journal := filepath.Join(a.Home, "apply-pending.json")
 		if err := store.Replace(journal, raw, nil, 0600); err != nil {

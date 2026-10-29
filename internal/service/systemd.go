@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/nelvko/lazyclash/internal/store"
 )
 
 const managedHeader = "# Managed by lazyclash.\n"
@@ -20,10 +22,17 @@ const managedHeader = "# Managed by lazyclash.\n"
 var validName = regexp.MustCompile(`^lazyclash-[A-Za-z0-9-]+$`)
 
 type Status struct {
-	Active bool
-	State  string
-	Linger bool
-	PID    int
+	Active      bool
+	State       string
+	SubState    string
+	Result      string
+	ExitCode    int
+	Restarts    uint64
+	Enabled     bool
+	EnableState string
+	Linger      bool
+	LingerKnown bool
+	PID         int
 }
 
 // Name excludes the .service suffix. UnitDir is the systemd user unit directory.
@@ -40,6 +49,9 @@ func New(name string) (*Systemd, error) {
 	}
 	if !validName.MatchString(name) {
 		return nil, errors.New("service name must match lazyclash-[A-Za-z0-9-]+")
+	}
+	if os.Geteuid() == 0 {
+		return nil, errors.New("lazyclash manages an unprivileged user service; run it as a normal user, without sudo")
 	}
 	config := os.Getenv("XDG_CONFIG_HOME")
 	if config == "" {
@@ -91,6 +103,38 @@ func (s *Systemd) Check(ctx context.Context) error {
 	return nil
 }
 
+// CheckPersistent refuses to promise logout independence until logind confirms
+// linger. Enabling linger is an explicit administrator/user action, never a
+// hidden side effect of opening lazyclash or starting a proxy.
+func (s *Systemd) CheckPersistent(ctx context.Context) error {
+	if err := s.Check(ctx); err != nil {
+		return err
+	}
+	known, enabled := s.linger(ctx)
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if !known || !enabled {
+		return fmt.Errorf("persistent user service requires linger; run loginctl enable-linger %d (administrator authorization may be required), then retry", os.Getuid())
+	}
+	return nil
+}
+
+func (s *Systemd) linger(ctx context.Context) (known, enabled bool) {
+	out, err := s.command(ctx, "loginctl", "show-user", strconv.Itoa(os.Getuid()), "--property=Linger", "--value")
+	if err != nil {
+		return false, false
+	}
+	switch strings.TrimSpace(string(out)) {
+	case "yes":
+		return true, true
+	case "no":
+		return true, false
+	default:
+		return false, false
+	}
+}
+
 // Available rejects units in any user manager search directory, including
 // vendor-supplied user units, and local dangling symlinks.
 func (s *Systemd) Available(ctx context.Context) error {
@@ -114,11 +158,21 @@ func (s *Systemd) Available(ctx context.Context) error {
 }
 
 func (s *Systemd) Inspect(ctx context.Context) (Status, error) {
+	status, err := s.inspect(ctx)
+	if err != nil {
+		return status, err
+	}
+	// Linger is diagnostic here: lack of loginctl must not prevent a stop.
+	status.LingerKnown, status.Linger = s.linger(ctx)
+	return status, ctx.Err()
+}
+
+func (s *Systemd) inspect(ctx context.Context) (Status, error) {
 	name, err := s.unit()
 	if err != nil {
 		return Status{}, err
 	}
-	out, err := s.command(ctx, "systemctl", "--user", "show", name, "--property=LoadState,ActiveState,MainPID")
+	out, err := s.command(ctx, "systemctl", "--user", "show", name, "--property=LoadState,ActiveState,SubState,MainPID,Result,ExecMainStatus,NRestarts,UnitFileState")
 	if err != nil {
 		return Status{}, fmt.Errorf("inspect service: %w", err)
 	}
@@ -134,6 +188,25 @@ func (s *Systemd) Inspect(ctx context.Context) (Status, error) {
 			load = value
 		case "ActiveState":
 			status.State = value
+		case "SubState":
+			status.SubState = value
+		case "Result":
+			status.Result = value
+		case "ExecMainStatus":
+			exit, err := strconv.Atoi(value)
+			if err != nil || exit < 0 {
+				return Status{}, errors.New("systemd returned an invalid exit status")
+			}
+			status.ExitCode = exit
+		case "NRestarts":
+			restarts, err := strconv.ParseUint(value, 10, 64)
+			if err != nil {
+				return Status{}, errors.New("systemd returned an invalid restart count")
+			}
+			status.Restarts = restarts
+		case "UnitFileState":
+			status.EnableState = value
+			status.Enabled = value == "enabled"
 		case "MainPID":
 			pid, err := strconv.Atoi(value)
 			if err != nil || pid < 0 {
@@ -146,10 +219,6 @@ func (s *Systemd) Inspect(ctx context.Context) (Status, error) {
 		status.State = "not-found"
 	}
 	status.Active = status.State == "active"
-	// Linger is diagnostic: lack of loginctl must not prevent service control.
-	if out, err := s.command(ctx, "loginctl", "show-user", strconv.Itoa(os.Getuid()), "--property=Linger", "--value"); err == nil {
-		status.Linger = strings.TrimSpace(string(out)) == "yes"
-	}
 	if err := ctx.Err(); err != nil {
 		return Status{}, err
 	}
@@ -170,7 +239,7 @@ func quoteArg(path string) (string, error) {
 	return `"` + path + `"`, nil
 }
 
-func unitContent(bin, config, data string) (string, error) {
+func legacyUnitContent(bin, config, data string) (string, error) {
 	paths := []string{bin, config, data}
 	for i := range paths {
 		var err error
@@ -180,6 +249,18 @@ func unitContent(bin, config, data string) (string, error) {
 		}
 	}
 	return managedHeader + "[Unit]\nDescription=lazyclash Mihomo user service\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=:" + paths[0] + " -d " + paths[2] + " -f " + paths[1] + "\nRestart=on-failure\nRestartSec=2s\nStandardOutput=null\nStandardError=null\nUMask=0077\nNoNewPrivileges=true\n\n[Install]\nWantedBy=default.target\n", nil
+}
+
+// unitContent adds explicit recovery bounds. Raw core output remains discarded
+// because it may contain provider credentials; status retains exit diagnostics.
+func unitContent(bin, config, data string) (string, error) {
+	content, err := legacyUnitContent(bin, config, data)
+	if err != nil {
+		return "", err
+	}
+	content = strings.Replace(content, "After=network.target\n", "After=network.target\nStartLimitIntervalSec=60s\nStartLimitBurst=5\n", 1)
+	content = strings.Replace(content, "RestartSec=2s\nStandardOutput=null\nStandardError=null\n", "RestartSec=2s\nTimeoutStopSec=15s\nKillMode=control-group\nStandardOutput=null\nStandardError=null\n", 1)
+	return content, nil
 }
 
 // Install publishes a complete unit atomically without replacing any file.
@@ -247,9 +328,12 @@ func (s *Systemd) Verify(ctx context.Context, bin, config, data string) error {
 	}
 	path := filepath.Join(s.UnitDir, name)
 	if err := verifyFile(path, expected); err != nil {
-		return err
+		legacy, legacyErr := legacyUnitContent(bin, config, data)
+		if legacyErr != nil || verifyFile(path, legacy) != nil {
+			return err
+		}
 	}
-	out, err := s.command(ctx, "systemctl", "--user", "show", name, "--property=FragmentPath,DropInPaths")
+	out, err := s.command(ctx, "systemctl", "--user", "show", name, "--property=FragmentPath,DropInPaths,NeedDaemonReload")
 	if err != nil {
 		return fmt.Errorf("verify loaded service ownership: %w", err)
 	}
@@ -262,6 +346,10 @@ func (s *Systemd) Verify(ctx context.Context, bin, config, data string) error {
 		switch key {
 		case "FragmentPath":
 			fragment = value
+		case "NeedDaemonReload":
+			if value == "yes" {
+				return errors.New("service definition changed without daemon-reload; refusing to control an unverified loaded unit")
+			}
 		case "DropInPaths":
 			if value != "" {
 				return errors.New("service has additional drop-ins; refusing to control a modified unit")
@@ -305,6 +393,13 @@ func (s *Systemd) RemoveOwned(ctx context.Context, bin, config, data string) err
 	if err != nil {
 		return err
 	}
+	path := filepath.Join(s.UnitDir, s.Name+".service")
+	if verifyFile(path, expected) != nil {
+		expected, err = legacyUnitContent(bin, config, data)
+		if err != nil {
+			return err
+		}
+	}
 	return s.remove(ctx, expected)
 }
 
@@ -333,12 +428,24 @@ func (s *Systemd) remove(ctx context.Context, expected string) error {
 	if err != nil {
 		return fmt.Errorf("check service before removal: %w", err)
 	}
+	if status.PID != 0 {
+		return errors.New("service still owns a process; refusing to remove its installation")
+	}
 	switch status.State {
 	case "inactive", "failed", "not-found":
 	default:
 		return errors.New("service is running or changing state; refusing to remove its installation")
 	}
 	if err := ctx.Err(); err != nil {
+		return err
+	}
+	// Remove activation links before deleting the owned definition. Leaving a
+	// dangling wants/ link could silently enable a later installation of the
+	// same name. disable never stops or starts the already verified service.
+	if _, err := s.command(ctx, "systemctl", "--user", "disable", name); err != nil {
+		return fmt.Errorf("disable activation before removing service: %w", err)
+	}
+	if err := verifyFile(path, expected); err != nil {
 		return err
 	}
 	if err := os.Remove(path); err != nil {
@@ -363,6 +470,90 @@ func (s *Systemd) Action(ctx context.Context, action string) error {
 	}
 	if _, err := s.command(ctx, "systemctl", "--user", action, name); err != nil {
 		return fmt.Errorf("%s service %s: %w", action, name, err)
+	}
+	if action == "stop" {
+		waitCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+		defer cancel()
+		for {
+			status, err := s.inspect(waitCtx)
+			if err != nil {
+				return fmt.Errorf("confirm service stop: %w", err)
+			}
+			if status.PID == 0 && (status.State == "inactive" || status.State == "failed" || status.State == "not-found") {
+				return nil
+			}
+			select {
+			case <-waitCtx.Done():
+				return fmt.Errorf("service did not stop: %w", waitCtx.Err())
+			case <-time.After(100 * time.Millisecond):
+			}
+		}
+	}
+	return nil
+}
+
+// UpgradeOwned migrates only the exact previously generated unit, after checking
+// loaded ownership. Read-only status calls never rewrite a service definition.
+func (s *Systemd) UpgradeOwned(ctx context.Context, bin, config, data string) error {
+	if err := s.Verify(ctx, bin, config, data); err != nil {
+		return err
+	}
+	content, err := unitContent(bin, config, data)
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(s.UnitDir, s.Name+".service")
+	if verifyFile(path, content) == nil {
+		return nil
+	}
+	legacy, err := legacyUnitContent(bin, config, data)
+	if err != nil {
+		return err
+	}
+	if err := verifyFile(path, legacy); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := store.Replace(path, []byte(content), []byte(legacy), 0600); err != nil {
+		return err
+	}
+	if _, err := s.command(ctx, "systemctl", "--user", "daemon-reload"); err != nil {
+		// A cancelled reload may still have reached the manager. Roll back only
+		// our exact new bytes and reload using a fresh bounded context.
+		rollbackErr := store.Replace(path, []byte(legacy), []byte(content), 0600)
+		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		_, reloadErr := s.command(cleanupCtx, "systemctl", "--user", "daemon-reload")
+		return errors.Join(fmt.Errorf("upgrade owned service: %w", err), rollbackErr, reloadErr)
+	}
+	return nil
+}
+
+// SetEnabled changes only boot/login activation; it never starts or stops the
+// process. The application verifies installation ownership before calling it.
+func (s *Systemd) SetEnabled(ctx context.Context, enabled bool) error {
+	name, err := s.unit()
+	if err != nil {
+		return err
+	}
+	action := "disable"
+	if enabled {
+		if err := s.CheckPersistent(ctx); err != nil {
+			return err
+		}
+		action = "enable"
+	}
+	if _, err := s.command(ctx, "systemctl", "--user", action, name); err != nil {
+		return fmt.Errorf("%s service activation: %w", action, err)
+	}
+	status, err := s.inspect(ctx)
+	if err != nil {
+		return err
+	}
+	if status.Enabled != enabled || status.EnableState == "" {
+		return errors.New("systemd did not confirm the requested service activation setting")
 	}
 	return nil
 }

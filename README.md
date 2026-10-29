@@ -103,6 +103,12 @@ Back 放弃草稿；Apply 仅应用到当前会话；从失败状态进入时提
 
 TLS 验证始终开启。元数据必须来自官方 API，不接受 HTML、挑战页或其他重定向作为官方摘要；GitHub API 受限时明确报错，不因镜像文件可达而声称网络全部正常。下载必须有明确来源的预期 SHA256；缺失或不匹配时拒绝安装。摘要来自官方 API 的信任边界有明确标注，不把镜像文件自身 hash 描述成官方真实性证明。
 
+## 持久运行与权限
+
+当前交付 Linux + systemd 用户服务 + Mihomo 本机 HTTP/SOCKS 代理。启动要求已明确启用 linger；TUI 退出或终端挂断不发送 Stop。运行意图、模式、节点缓存和显式订阅来源持久保存，状态展示实际 systemd/API 及差异。`service enable/disable` 独立控制自启动，`mode`、`profile refresh`、`uninstall` 复用共享用例。详细行为和验收见 [持久运行](docs/runtime-lifecycle.md)。
+
+本版不提供特权 TUN、系统级服务或系统代理接管，开启请求会明确失败；不要求整个 TUI 以 root 运行，也不对用户可写 Mihomo 设置 capabilities。方案比较与后续安全条件见 [权限管理](docs/permissions.md)。
+
 ## CLI 与 Shell
 
 CLI 和 TUI 共享 `ResolveRelease → PrepareInstall → InstallCore`，以及网络客户端、预检查、配置验证、原子部署与恢复。TUI 不启动自身 CLI，安装业务不在 shell 脚本中。
@@ -142,7 +148,7 @@ lazyclash_on   # 启动成功后设置当前 Shell 环境
 lazyclash_off  # 清除环境，不停止服务
 ```
 
-服务名为用户级 `lazyclash-mihomo.service`，不提权、不自动 enable 或修改 linger。API `127.0.0.1:9097`、mixed `127.0.0.1:7897`；安装和启动前检查冲突，不停止已有服务腾位置。API 密钥自动生成和注入，状态不输出密钥。服务 stdout/stderr 暂时丢弃，避免 provider URL 凭据进入 journal。
+服务名为用户级 `lazyclash-mihomo.service`，不提权、不自动 enable 或修改 linger；Start/Restart 要求 linger 已启用，显式 `service enable/disable` 管理自启动。API `127.0.0.1:9097`、mixed `127.0.0.1:7897`；安装和启动前检查冲突，不停止已有服务腾位置。API 密钥自动生成和注入，状态不输出密钥。服务 stdout/stderr 丢弃，避免 provider URL 凭据进入 journal；退出原因通过 systemd Result、退出状态和重启计数查询。
 
 默认数据目录 `$XDG_DATA_HOME/lazyclash`（或 `~/.local/share/lazyclash`）。`--home ABS` / `LAZYCLASH_HOME` 隔离数据；`--service-name lazyclash-NAME` / `LAZYCLASH_SERVICE` 隔离 unit，仍需避免端口冲突。私有目录和 `0600` 文件保护配置、原始订阅、偏好与恢复日志；进程锁等待可取消，锁文件不删除。检测到用户修改的文件或 unit 时保留现场并报错。
 

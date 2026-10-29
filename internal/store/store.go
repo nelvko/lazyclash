@@ -116,6 +116,26 @@ func Replace(path string, data, expected []byte, mode os.FileMode) error {
 	return SyncDir(filepath.Dir(path))
 }
 
+// Remove only deletes the unchanged regular file observed by the caller.
+// Like Replace, this is guarded against accidental edits, not a hostile process
+// running under the same UID.
+func Remove(path string, expected []byte) error {
+	if expected == nil {
+		return errors.New("refusing to remove a file without expected contents")
+	}
+	actual, err := Read(path)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(actual, expected) {
+		return errors.New("managed file was modified; refusing to remove")
+	}
+	if err := os.Remove(path); err != nil {
+		return err
+	}
+	return SyncDir(filepath.Dir(path))
+}
+
 func SyncDir(path string) error {
 	f, err := os.Open(path)
 	if err != nil {

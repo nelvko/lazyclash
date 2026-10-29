@@ -28,6 +28,8 @@ type fakeBackend struct {
 	save            func(context.Context, downloadnet.Config) error
 	add             func(context.Context, string, string) error
 	control         func(context.Context, string) error
+	autostart       func(context.Context, bool) error
+	mode            func(context.Context, string) error
 	runtime         func(context.Context) (app.RuntimeSnapshot, error)
 	rules           func(context.Context) (app.RuleSnapshot, error)
 	streamLogs      func(context.Context, func(mihomo.LogEntry)) error
@@ -78,6 +80,18 @@ func (f *fakeBackend) SaveNetworkPreferences(ctx context.Context, cfg downloadne
 	return nil
 }
 func (f *fakeBackend) SetGuideDismissed(context.Context, bool) error { return nil }
+func (f *fakeBackend) SetAutostart(ctx context.Context, enabled bool) error {
+	if f.autostart != nil {
+		return f.autostart(ctx, enabled)
+	}
+	return ctx.Err()
+}
+func (f *fakeBackend) SetMode(ctx context.Context, mode string) error {
+	if f.mode != nil {
+		return f.mode(ctx, mode)
+	}
+	return ctx.Err()
+}
 func (f *fakeBackend) ResolveRelease(ctx context.Context, selection string, cfg downloadnet.Config) (mihomo.Release, error) {
 	if f.resolve != nil {
 		return f.resolve(ctx, selection, cfg)

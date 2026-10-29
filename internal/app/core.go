@@ -71,6 +71,12 @@ func (a *App) PrepareInstall(ctx context.Context, release mihomo.Release, local 
 func (a *App) prepareInstallLocked(ctx context.Context, release mihomo.Release, local string, reinstall bool) (InstallPlan, error) {
 	bin, config, data := a.paths()
 	p := InstallPlan{Release: release, Local: local, ActualPath: bin, Operation: "install", reinstall: reinstall}
+	// A local version probe executes that file. Never do this before checking
+	// that the application has an authorized runtime (in particular as root).
+	if err := a.requireService(); err != nil && local != "" {
+		p.BlockedReason = err.Error()
+		return p, nil
+	}
 	if local != "" {
 		if !filepath.IsAbs(local) {
 			return p, errors.New("local Mihomo path must be absolute")

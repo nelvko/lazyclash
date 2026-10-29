@@ -45,8 +45,8 @@ if [[ ${1:-} != --linux ]]; then
   trap cleanup_host EXIT
   linux_stage=$(orb -m "$vm" mktemp -d /tmp/lazyclash-e2e.XXXXXX)
   CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" go build -o "$host_stage/lazyclash" .
-  cp scripts/e2e.sh scripts/pty-smoke.py scripts/ports-e2e.py "$host_stage/"
-  COPYFILE_DISABLE=1 tar --no-xattrs -C "$host_stage" -cf - lazyclash e2e.sh pty-smoke.py ports-e2e.py | orb -m "$vm" tar -xf - -C "$linux_stage"
+  cp scripts/e2e.sh scripts/pty-smoke.py scripts/ports-e2e.py scripts/lifecycle-e2e.py "$host_stage/"
+  COPYFILE_DISABLE=1 tar --no-xattrs -C "$host_stage" -cf - lazyclash e2e.sh pty-smoke.py ports-e2e.py lifecycle-e2e.py | orb -m "$vm" tar -xf - -C "$linux_stage"
   # Captured output deliberately excludes raw configuration, journal and URLs.
   if orb -m "$vm" bash "$linux_stage/e2e.sh" --linux "$linux_stage" "$proxy_mode" > .test-artifacts/e2e.log 2>&1; then
     sed '/^download: [0-9]/d' .test-artifacts/e2e.log
@@ -193,7 +193,7 @@ assert "preimport" in s["UnvalidatedProfiles"], s
 print("Pinned Mihomo installed with valid default configuration")
 PY
 # A second --bin install uses a separate unit while both services are stopped.
-# Its definition is removed immediately, without an uninstall product feature.
+# Explicit removal must preserve raw profiles and user preferences.
 local_name="$service_name-local"
 local_home="$work/local-home"
 local_unit="$unit_dir/$local_name.service"
@@ -241,14 +241,9 @@ import json, sys
 assert json.load(open(sys.argv[1]))["Operation"] == "use existing"
 print("TUI local installation and CLI same-version reuse passed")
 PY
-if [[ -f "$local_unit" && ! -L "$local_unit" ]] && grep -Fq "$local_home/installation/mihomo" "$local_unit"; then
-  rm -- "$local_unit"
-  systemctl --user daemon-reload
-  local_owned=no
-else
-  printf 'Local installation ownership check failed\n' >&2
-  exit 1
-fi
+"$app" --home "$local_home" --service-name "$local_name" uninstall
+[[ ! -d "$local_home/installation" ]]
+local_owned=no
 [[ $(systemctl --user show "$local_name.service" --property=LoadState --value) == not-found ]]
 printf 'Local --bin installation passed and dedicated unit cleaned\n'
 
@@ -335,7 +330,7 @@ for ((attempt=0; attempt<50; attempt++)); do
   sleep 0.1
 done
 fixture_port=$(cat "$work/fixture-port")
-lp profile add fixture "http://127.0.0.1:$fixture_port/config?token=fixture-private-token"
+lp profile add fixture --remember-source "http://127.0.0.1:$fixture_port/config?token=fixture-private-token"
 before=$(readlink "$home/installation/current")
 if lp profile add invalid "http://127.0.0.1:$fixture_port/invalid?token=fixture-private-token" > "$work/invalid.log" 2>&1; then
   printf 'Invalid YAML was accepted\n' >&2
@@ -347,6 +342,10 @@ if grep -Fq fixture-private-token "$work/invalid.log"; then
   printf 'Subscription credential appeared in diagnostics\n' >&2
   exit 1
 fi
+refresh_pid=$(systemctl --user show "$service_name.service" --property=MainPID --value)
+lp profile refresh fixture
+[[ $(readlink "$home/installation/current") == "$before" ]]
+[[ $(systemctl --user show "$service_name.service" --property=MainPID --value) == "$refresh_pid" ]]
 lp profile apply fixture
 lp select PROXY REJECT
 lp nodes > "$work/nodes.json"
@@ -540,4 +539,5 @@ print("Built-in configuration exposes rules without a subscription")
 PY
 lp doctor
 lp service stop
+python3 "$work/lifecycle-e2e.py" --binary "$app" --home "$home" --service-name "$service_name"
 printf 'Real Mihomo + systemd + PTY end-to-end scenarios passed\n'

@@ -71,6 +71,7 @@ func (m *Model) acceptRuntime(v runtimeResultMsg) tea.Cmd {
 	m.runtime.pending = false
 	m.runtime.received = true
 	previousError := m.runtime.snapshot.Error
+	previousState, previousService := m.runtime.snapshot.State, m.snapshot.Service
 	if v.err != nil {
 		m.runtime.snapshot = app.RuntimeSnapshot{State: "unavailable", Error: clean(v.err.Error())}
 		m.snapshot.ServiceError = "Service status is unavailable; retry runtime monitoring"
@@ -108,7 +109,13 @@ func (m *Model) acceptRuntime(v runtimeResultMsg) tea.Cmd {
 		m.reconcileConnections()
 	}
 	id := m.runtime.generation
-	return tea.Tick(time.Second, func(time.Time) tea.Msg { return runtimeTickMsg{generation: id} })
+	tick := tea.Tick(time.Second, func(time.Time) tea.Msg { return runtimeTickMsg{generation: id} })
+	if v.err == nil && m.statusCancel == nil && (previousState != v.snapshot.State || previousService.State != m.snapshot.Service.State || previousService.PID != m.snapshot.Service.PID || previousService.Enabled != m.snapshot.Service.Enabled) {
+		// A different client or systemd recovery can change persistent settings
+		// and active profiles. Refresh them after a runtime transition as well.
+		return tea.Batch(tick, m.refreshCoreStatus())
+	}
+	return tick
 }
 func (m *Model) retryRuntime() tea.Cmd {
 	m.stopRuntime()
@@ -124,6 +131,14 @@ func runtimeStatus(s app.RuntimeSnapshot, received, pending bool, installed bool
 			return "Connecting…"
 		}
 		return "Waiting for runtime data"
+	}
+	switch s.Service.State {
+	case "activating":
+		return "Core starting"
+	case "deactivating":
+		return "Core stopping"
+	case "failed":
+		return "Core failed; check service diagnostics"
 	}
 	switch s.State {
 	case "stopped":

@@ -83,7 +83,15 @@ func (a *App) recover(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if p.Active {
+	stopped, err := a.stopIntent()
+	if err != nil {
+		return err
+	}
+	intent, _, err := a.loadRuntimeRecord(m)
+	if err != nil && stopped == nil {
+		return err
+	}
+	if stopped == nil && p.Active && (!intent.Desired.Known || intent.Desired.Running) {
 		if err := a.restartReady(ctx, m); err != nil {
 			return fmt.Errorf("configuration restored but service recovery failed: %w", err)
 		}

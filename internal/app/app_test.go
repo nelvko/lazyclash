@@ -87,6 +87,7 @@ func testApp(t *testing.T) (*App, *fakeService) {
 	a.Service = s
 	a.PlatformError = nil
 	a.CheckPorts = func(string, int) error { return nil }
+	a.ProbeProxy = func(context.Context, int) error { return nil }
 	a.Download = func(ctx context.Context, dest string, progress func(string)) error {
 		if err := ctx.Err(); err != nil {
 			return err
@@ -479,7 +480,7 @@ func TestCancelledLockWaitDoesNotMutateState(t *testing.T) {
 	assertMissing(t, filepath.Join(a.Home, "apply-pending.json"))
 }
 
-func TestControlFailureAfterAcceptedJobRestoresOnlyInitiallyStoppedService(t *testing.T) {
+func TestControlCancellationAfterAcceptedJobPreservesManagedService(t *testing.T) {
 	for _, active := range []bool{false, true} {
 		t.Run(map[bool]string{false: "stopped", true: "running"}[active], func(t *testing.T) {
 			a, s := installedApp(t)
@@ -501,15 +502,16 @@ func TestControlFailureAfterAcceptedJobRestoresOnlyInitiallyStoppedService(t *te
 			if !errors.Is(err, context.Canceled) {
 				t.Fatalf("cancellation lost: %v", err)
 			}
-			if s.active != active {
-				t.Fatalf("initial state changed: got active=%v", s.active)
+			if !s.active || len(s.actions) != 1 || s.actions[0] != "start" {
+				t.Fatalf("cancelled observer undid the managed start: active=%v actions=%v", s.active, s.actions)
 			}
-			expected := 1
-			if !active {
-				expected = 2
+			m, _, err := a.load()
+			if err != nil {
+				t.Fatal(err)
 			}
-			if len(s.actions) != expected {
-				t.Fatalf("actions=%v", s.actions)
+			r, _, err := a.loadRuntimeRecord(m)
+			if err != nil || !r.Desired.Running || r.Operation.State != "pending" {
+				t.Fatalf("lost submitted intent: %+v %v", r, err)
 			}
 		})
 	}

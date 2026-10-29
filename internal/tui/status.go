@@ -36,22 +36,27 @@ func (m *Model) refreshCoreStatus() tea.Cmd {
 	}
 }
 
-func (m *Model) observeCoreState(state string) {
+func (m *Model) observeCoreState(state string) tea.Cmd {
+	// API events can arrive after a process exits. Only an application snapshot
+	// may replace systemd state; keep at most one such observation in flight.
+	if m.statusCancel != nil {
+		return nil
+	}
 	switch state {
 	case "stopped":
-		m.snapshot.Service.Active = false
-		m.snapshot.Service.State = "inactive"
-		m.snapshot.ServiceError = ""
 		m.snapshot.Groups = nil
+		if m.snapshot.Service.Active || m.snapshot.Service.State != "inactive" || m.snapshot.ServiceError != "" {
+			return m.refreshCoreStatus()
+		}
 	case "uninstalled":
-		m.snapshot.Installed, m.snapshot.ConfigReady = false, false
-		m.snapshot.Service.Active = false
-		m.snapshot.ServiceError = ""
 		m.snapshot.Groups = nil
+		if m.snapshot.Installed {
+			return m.refreshCoreStatus()
+		}
 	case "ready":
-		m.snapshot.Installed, m.snapshot.HasRun = true, true
-		m.snapshot.Service.Active = true
-		m.snapshot.Service.State = "active"
-		m.snapshot.ServiceError = ""
+		if !m.snapshot.Service.Active || m.snapshot.ServiceError != "" {
+			return m.refreshCoreStatus()
+		}
 	}
+	return nil
 }

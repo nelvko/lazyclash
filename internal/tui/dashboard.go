@@ -212,6 +212,18 @@ func coreSummary(s app.Snapshot) (string, string) {
 	if s.Service.Active {
 		return "Running", success
 	}
+	switch s.Service.State {
+	case "activating":
+		return "Starting", warning
+	case "deactivating":
+		return "Stopping", warning
+	case "reloading":
+		return "Reloading", warning
+	case "failed":
+		return "Failed", errorColor
+	case "unknown", "unsupported":
+		return "Unavailable", errorColor
+	}
 	return "Stopped", muted
 }
 
@@ -602,7 +614,7 @@ func overviewCards(o dashboardOptions) [][]string {
 		}
 	}
 	coreStatus, color := coreSummary(s)
-	kernel := []string{title("Kernel and environment"), style(coreStatus, color), "", label("Platform", runtime.GOOS+"/"+runtime.GOARCH), label("System proxy", "Unchanged"), label("TUN", "Off")}
+	kernel := []string{title("Kernel and environment"), style(coreStatus, color), "", label("Platform", runtime.GOOS+"/"+runtime.GOARCH), label("System proxy", "Unchanged"), label("TUN", "Unsupported in user service")}
 	if s.Installed {
 		kernel = append(kernel, label("Installed version", s.Version))
 		if s.Service.Active {
@@ -611,6 +623,16 @@ func overviewCards(o dashboardOptions) [][]string {
 				running = "Unavailable"
 			}
 			kernel = append(kernel, label("Running version", running))
+		}
+		if s.Desired.Known {
+			desired := "Stopped"
+			if s.Desired.Running {
+				desired = "Running"
+			}
+			kernel = append(kernel, label("Desired state", desired))
+		}
+		if s.Drift != "" {
+			kernel = append(kernel, style(clean(s.Drift), warning))
 		}
 	}
 	return [][]string{profile, groups, traffic, kernel}
@@ -625,10 +647,21 @@ func settingsContent(o dashboardOptions, width int) (string, []hitRegion) {
 	info := "Install Mihomo, manage its configuration, and control the user service."
 	lines = append(lines, strings.Split(wrapText(label(info), inner), "\n")...)
 	lines = append(lines, "")
-	controls := []struct {
+	type settingControl struct {
 		id, label string
 		enabled   bool
-	}{{"install", map[bool]string{false: "Install core", true: "Manage / Update core"}[o.Snapshot.Installed], true}, {"network", "Network settings", true}, {"import", "Import config", true}, {"runtime-settings", "Runtime settings / Ports", o.Snapshot.Installed}, {"start", "Start", o.Snapshot.Installed && !o.Snapshot.Service.Active}, {"stop", "Stop", o.Snapshot.Installed && o.Snapshot.Service.Active}, {"restart", "Restart", o.Snapshot.Installed}}
+	}
+	controls := []settingControl{{"install", map[bool]string{false: "Install core", true: "Manage / Update core"}[o.Snapshot.Installed], true}, {"network", "Network settings", true}, {"import", "Import config", true}, {"runtime-settings", "Runtime settings / Ports", o.Snapshot.Installed}, {"start", "Start", o.Snapshot.Installed && !o.Snapshot.Service.Active}, {"stop", "Stop", o.Snapshot.Installed && (o.Snapshot.Service.Active || o.Snapshot.Desired.Running)}, {"restart", "Restart", o.Snapshot.Installed}}
+	if o.Snapshot.Installed {
+		autostartID, autostartLabel := "autostart-enable", "Enable autostart"
+		if o.Snapshot.Service.Enabled {
+			autostartID, autostartLabel = "autostart-disable", "Disable autostart"
+		}
+		controls = append(controls, settingControl{autostartID, autostartLabel, true})
+		for _, mode := range []string{"rule", "global", "direct"} {
+			controls = append(controls, settingControl{"mode." + mode, "Use " + mode + " mode", true})
+		}
+	}
 	for _, control := range controls {
 		if !control.enabled {
 			continue
@@ -643,12 +676,28 @@ func settingsContent(o dashboardOptions, width int) (string, []hitRegion) {
 			lines = append(lines, label("Running: "+clean(o.Snapshot.RunningVersion)))
 		}
 		lines = append(lines, strings.Split(wrapText(label("Controller: "+clean(o.Snapshot.Controller)), inner), "\n")...)
+		lines = append(lines, label("Mode: desired "+clean(o.Snapshot.Mode.Desired)))
+		if o.Snapshot.Mode.Actual != "" {
+			lines = append(lines, label("Mode: actual "+clean(o.Snapshot.Mode.Actual)))
+		}
+		lines = append(lines, label("TUN: unsupported in the unprivileged user service"))
+		lines = append(lines, strings.Split(wrapText(label("Remove core: stop and disable autostart, then run lazyclash uninstall. Saved profiles are retained."), inner), "\n")...)
+		if o.Snapshot.Service.Result != "" && o.Snapshot.Service.Result != "success" {
+			lines = append(lines, label(fmt.Sprintf("Last service result: %s (exit %d)", clean(o.Snapshot.Service.Result), o.Snapshot.Service.ExitCode)))
+		}
+		if o.Snapshot.Drift != "" {
+			lines = append(lines, strings.Split(wrapText(themed(clean(o.Snapshot.Drift), warning, panel, o.Dim), inner), "\n")...)
+		}
 	}
 	if o.Snapshot.ServiceError != "" {
 		lines = append(lines, strings.Split(wrapText(themed(clean(o.Snapshot.ServiceError), errorColor, panel, o.Dim), inner), "\n")...)
 	}
 	if o.Snapshot.Installed && !o.Snapshot.Service.Linger {
-		lines = append(lines, strings.Split(wrapText(label("Linger is disabled; the user service may stop after logout."), inner), "\n")...)
+		issue := "Linger is disabled; enable it with loginctl enable-linger to keep Mihomo running after logout."
+		if !o.Snapshot.Service.LingerKnown {
+			issue = "Linger status is unknown; run lazyclash doctor before relying on operation after logout."
+		}
+		lines = append(lines, strings.Split(wrapText(label(issue), inner), "\n")...)
 	}
 	b.lines = panelFrame(lines, width, len(lines)+2, o)
 	return strings.Join(b.lines, "\n"), b.targets

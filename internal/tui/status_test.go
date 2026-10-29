@@ -13,10 +13,14 @@ import (
 )
 
 func TestRulesObservedStopUpdatesGlobalHeader(t *testing.T) {
-	m := ready(&fakeBackend{snapshot: app.Snapshot{Installed: true, Service: service.Status{Active: true, State: "active"}}})
+	b := &fakeBackend{snapshot: app.Snapshot{Installed: true, Service: service.Status{Active: true, State: "active"}}}
+	m := ready(b)
+	b.snapshot.Service = service.Status{State: "inactive"}
 	m.width, m.height, m.page = 120, 32, "rules"
 	m.rules.active, m.rules.pending, m.rules.generation = true, true, 4
-	m, _ = update(m, rulesResultMsg{generation: 4, snapshot: app.RuleSnapshot{State: "stopped"}})
+	var cmd tea.Cmd
+	m, cmd = update(m, rulesResultMsg{generation: 4, snapshot: app.RuleSnapshot{State: "stopped"}})
+	m, _ = update(m, commandBatch(t, cmd)[1]())
 	if m.snapshot.Service.Active || !strings.Contains(ansi.Strip(strings.Split(m.screen, "\n")[0]), "Mihomo · Stopped") {
 		t.Fatal("Rules kept a stale Running header after observing a stopped core")
 	}
@@ -54,13 +58,25 @@ func TestLogFailureRefreshesStatusWithoutBlockingOrRestartingCapture(t *testing.
 	}
 }
 
-func TestNewLiveLogObservationRepairsStoppedHeader(t *testing.T) {
-	m := ready(&fakeBackend{snapshot: app.Snapshot{Installed: true}})
+func TestLogEventsRefreshSystemdStateWithoutInventingRunningState(t *testing.T) {
+	b := &fakeBackend{snapshot: app.Snapshot{Installed: true, Service: service.Status{State: "inactive"}}}
+	m := ready(b)
 	m.page = "logs"
 	m.logs.active, m.logs.generation = true, 9
-	m, _ = update(m, logsResultMsg{generation: 9, entries: []mihomo.LogEntry{{Level: "info", Message: "Live event from the owned core"}}})
+	var cmd tea.Cmd
+	m, cmd = update(m, logsResultMsg{generation: 9, entries: []mihomo.LogEntry{{Level: "info", Message: "Buffered event from the owned core"}}})
+	if m.snapshot.Service.Active {
+		t.Fatal("buffered log event invented a running systemd process")
+	}
+	m, _ = update(m, commandBatch(t, cmd)[1]())
+	if m.snapshot.Service.Active {
+		t.Fatal("systemd observation was overridden by a buffered API event")
+	}
+	b.snapshot.Service = service.Status{Active: true, State: "active"}
+	m, cmd = update(m, logsResultMsg{generation: 9, entries: []mihomo.LogEntry{{Level: "info", Message: "Fresh event"}}})
+	m, _ = update(m, commandBatch(t, cmd)[1]())
 	if !m.snapshot.Service.Active || m.snapshot.Service.State != "active" {
-		t.Fatal("fresh live log observation kept a stale Stopped header")
+		t.Fatal("confirmed systemd state kept a stale Stopped header")
 	}
 }
 

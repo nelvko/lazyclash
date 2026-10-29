@@ -13,7 +13,7 @@ import (
 
 func TestAPIGroupsSelectionAndEscapedPath(t *testing.T) {
 	group := "PROXY /?中文"
-	selected := ""
+	selected := "DIRECT"
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer private-api-secret" {
 			t.Error("missing credentials")
@@ -22,7 +22,7 @@ func TestAPIGroupsSelectionAndEscapedPath(t *testing.T) {
 		case r.URL.Path == "/version":
 			_, _ = w.Write([]byte(`{"version":"v1.19.33","meta":true}`))
 		case r.URL.Path == "/proxies":
-			_ = json.NewEncoder(w).Encode(map[string]any{"proxies": map[string]any{group: Group{Type: "Selector", Now: "DIRECT", All: []string{"DIRECT", "REJECT"}}, "DIRECT": map[string]any{"type": "Direct"}}})
+			_ = json.NewEncoder(w).Encode(map[string]any{"proxies": map[string]any{group: Group{Type: "Selector", Now: selected, All: []string{"DIRECT", "REJECT"}}, "DIRECT": map[string]any{"type": "Direct"}}})
 		case r.Method == http.MethodPut && r.URL.Path == "/proxies/"+group:
 			if !strings.Contains(r.URL.EscapedPath(), "%2F") || r.URL.RawQuery != "" {
 				t.Error("group name was not path escaped")

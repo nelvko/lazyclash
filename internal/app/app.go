@@ -36,6 +36,7 @@ type App struct {
 	Validate        func(context.Context, string, string, string) error
 	HTTP            *http.Client
 	CheckPorts      func(controller string, mixedPort int) error
+	ProbeProxy      func(context.Context, int) error
 	Resolve         func(context.Context, string, downloadnet.Config) (mihomo.Release, error)
 	DownloadRelease func(context.Context, string, mihomo.Release, downloadnet.Config, func(mihomo.Progress)) error
 	TestFile        func(context.Context, mihomo.Release, downloadnet.Config) error

@@ -30,11 +30,16 @@ func newDoctorCommand(backend func() *app.App) *cobra.Command {
 		if s.ServiceError != "" {
 			return errors.New(s.ServiceError)
 		}
-		if !s.Service.Linger {
+		if !s.Service.LingerKnown {
+			fmt.Fprintln(cmd.ErrOrStderr(), "Linger status is unknown: inspect loginctl show-user before relying on operation after logout.")
+		} else if !s.Service.Linger {
 			fmt.Fprintln(cmd.ErrOrStderr(), "Linger is disabled: service lifetime may depend on your login session. To keep it running after logout, review: loginctl enable-linger \"$(id -un)\"")
 		}
 		if s.APIError != "" {
 			fmt.Fprintln(cmd.ErrOrStderr(), safe(s.APIError))
+		}
+		if s.Service.State == "failed" {
+			return fmt.Errorf("Mihomo service failed: %s (exit %d); inspect the systemd journal", safe(s.Service.Result), s.Service.ExitCode)
 		}
 		return nil
 	}}

@@ -30,7 +30,8 @@ allow-lan: true
 ss-config: ss://private-token
 listeners: [{name: extra, type: http, port: 8080}]
 tunnels: [{network: tcp, address: 0.0.0.0:2000, target: example.org:80}]
-tun: {enable: true, auto-route: true}
+tun: {enable: false, auto-route: true}
+profile: {store-selected: false, store-fake-ip: true}
 dns: {enable: true, listen: 0.0.0.0:53}
 iptables: {enable: true}
 `)
@@ -65,6 +66,45 @@ iptables: {enable: true}
 	}
 	if cfg["ss-config"] != "" {
 		t.Fatal("SS inbound remains enabled")
+	}
+	profile := cfg["profile"].(map[string]any)
+	if profile["store-selected"] != true || profile["store-fake-ip"] != true {
+		t.Fatal("selection persistence disabled or other cache settings lost")
+	}
+}
+
+func TestEffectiveRejectsPrivilegedTUNRequests(t *testing.T) {
+	for _, raw := range []string{
+		"tun: {enable: true, auto-route: true}\n",
+		"listeners: [{name: network, type: tun}]\n",
+	} {
+		_, err := Effective([]byte(raw), "127.0.0.1:19090", "managed-secret", 17890)
+		if err == nil || !strings.Contains(err.Error(), "TUN") || !strings.Contains(err.Error(), "user service") {
+			t.Fatalf("TUN request did not report the permission boundary: %v", err)
+		}
+	}
+}
+
+func TestConfigModePreservesOtherSettings(t *testing.T) {
+	raw, err := Default("127.0.0.1:19090", "managed-secret", 17890)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, mode := range []string{"rule", "global", "direct"} {
+		next, err := WithMode(raw, mode)
+		if err != nil {
+			t.Fatal(err)
+		}
+		actual, err := ConfigMode(next)
+		if err != nil || actual != mode || !strings.Contains(string(next), "MATCH,PROXY") || !strings.Contains(string(next), "store-selected: true") {
+			t.Fatalf("mode mutation changed unrelated settings: %s %v", next, err)
+		}
+	}
+	if _, err := WithMode(raw, "invalid"); err == nil {
+		t.Fatal("invalid mode accepted")
+	}
+	if on, err := ConfigTUN(raw); err != nil || on {
+		t.Fatalf("generated TUN state is invalid: %v %v", on, err)
 	}
 }
 

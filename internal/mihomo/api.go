@@ -197,5 +197,59 @@ func (c Client) Select(ctx context.Context, group, node string) error {
 	}
 	payload, _ := json.Marshal(map[string]string{"name": node})
 	_, err = c.request(ctx, http.MethodPut, "/proxies/"+url.PathEscape(group), payload)
-	return err
+	if err != nil {
+		return err
+	}
+	groups, err = c.Groups(ctx)
+	if err != nil {
+		return fmt.Errorf("node selection was accepted but could not be confirmed: %w", err)
+	}
+	for _, g := range groups {
+		if g.Name == group && g.Now == node {
+			return nil
+		}
+	}
+	return errors.New("Mihomo did not apply the requested node selection; refresh the nodes page")
+}
+
+type Configuration struct {
+	Mode string
+	TUN  bool
+}
+
+// Configuration returns observed engine settings, never an optimistic copy of
+// the most recent PATCH request.
+func (c Client) Configuration(ctx context.Context) (Configuration, error) {
+	raw, err := c.request(ctx, http.MethodGet, "/configs", nil)
+	if err != nil {
+		return Configuration{}, err
+	}
+	var cfg struct {
+		Mode string `json:"mode"`
+		TUN  *struct {
+			Enable *bool `json:"enable"`
+		} `json:"tun"`
+	}
+	if json.Unmarshal(raw, &cfg) != nil || !ValidMode(cfg.Mode) || cfg.TUN == nil || cfg.TUN.Enable == nil {
+		return Configuration{}, errors.New("invalid Mihomo runtime configuration response")
+	}
+	return Configuration{Mode: cfg.Mode, TUN: *cfg.TUN.Enable}, nil
+}
+
+func (c Client) SetMode(ctx context.Context, mode string) error {
+	if !ValidMode(mode) {
+		return errors.New("Mihomo mode must be rule, global or direct")
+	}
+	payload, _ := json.Marshal(map[string]string{"mode": mode})
+	if _, err := c.request(ctx, http.MethodPatch, "/configs", payload); err != nil {
+		return err
+	}
+	cfg, err := c.Configuration(ctx)
+	if err != nil {
+		return fmt.Errorf("mode update was accepted but could not be confirmed: %w", err)
+	}
+	if cfg.Mode != mode {
+		return errors.New("Mihomo did not apply the requested mode")
+	}
+	return nil
 }

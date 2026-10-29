@@ -26,6 +26,8 @@ type Backend interface {
 	LoadPreferences(context.Context) (app.Preferences, error)
 	SaveNetworkPreferences(context.Context, downloadnet.Config) error
 	SetGuideDismissed(context.Context, bool) error
+	SetAutostart(context.Context, bool) error
+	SetMode(context.Context, string) error
 	ResolveRelease(context.Context, string, downloadnet.Config) (mihomo.Release, error)
 	TestReleaseFile(context.Context, mihomo.Release, downloadnet.Config) error
 	PrepareInstall(context.Context, mihomo.Release, string, bool) (app.InstallPlan, error)
@@ -252,13 +254,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		refreshStatus := accepted && v.done && v.err != nil && !errors.Is(v.err, context.Canceled)
 		cmd = m.acceptLogs(v)
 		if accepted && !v.done && len(v.entries) > 0 {
-			m.observeCoreState("ready")
+			cmd = tea.Batch(cmd, m.observeCoreState("ready"))
 		}
 		if refreshStatus {
 			cmd = tea.Batch(cmd, m.refreshCoreStatus())
 		}
 	case coreStatusMsg:
 		if v.generation == m.statusGeneration {
+			if m.statusCancel != nil {
+				m.statusCancel()
+				m.statusCancel = nil
+			}
 			if v.err == nil {
 				m.snapshot = v.snapshot
 			} else if !errors.Is(v.err, context.Canceled) {
@@ -271,7 +277,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		accepted := m.rules.active && v.generation == m.rules.generation
 		cmd = m.acceptRules(v)
 		if accepted && v.err == nil {
-			m.observeCoreState(v.snapshot.State)
+			cmd = tea.Batch(cmd, m.observeCoreState(v.snapshot.State))
 		}
 	case rulesTickMsg:
 		if m.rules.active && v.generation == m.rules.generation && m.rulesVisible() {
@@ -694,6 +700,12 @@ func (m *Model) activate(id string) tea.Cmd {
 		return m.begin("Saving guide preference…", "Guide dismissed; Install and Network remain in Settings", func(ctx context.Context) error { return m.backend.SetGuideDismissed(ctx, true) })
 	case id == "start" || id == "stop" || id == "restart":
 		return m.serviceAction(id)
+	case id == "autostart-enable" || id == "autostart-disable":
+		enabled := id == "autostart-enable"
+		return m.begin("Updating service autostart…", "Service autostart updated", func(ctx context.Context) error { return m.backend.SetAutostart(ctx, enabled) })
+	case strings.HasPrefix(id, "mode."):
+		mode := strings.TrimPrefix(id, "mode.")
+		return m.begin("Applying routing mode…", "Routing mode saved", func(ctx context.Context) error { return m.backend.SetMode(ctx, mode) })
 	case strings.HasPrefix(id, "profile."):
 		n, err := strconv.Atoi(strings.TrimPrefix(id, "profile."))
 		profiles := m.profiles()

@@ -182,3 +182,21 @@ python3 scripts/pty-smoke.py --help
 证据在忽略的 `.test-artifacts/`：`e2e.log`、`pty-runtime-settings.txt`、`cleanup.txt`。最终清理为 `resources released=1`、`exit=0`，专用 unit 为 not-found，默认和动态 TCP/UDP 测试端口释放；额外检查专用测试目录及进程已消失。应用失败、取消、恢复失败和用户修改保护由可控模型/应用测试验证，未声称真实 VM 中注入过全部故障。实测平台未扩大到 Linux/amd64、其他发行版或其他 init。
 
 完整 E2E 的二进制构建早于最后两项小修：将普通 Start 的端口检查统一扩展到 UDP、清除已结束预检查的底栏消息。两项都包含在随后最终源代码的 Linux 全包测试中；未因此重复声称又跑了一轮完整 E2E。
+
+## 持久生命周期与权限边界（2026-10-29）
+
+本轮实现范围为 Linux/systemd 用户服务/Mihomo 的普通本机代理，不包含特权 TUN 或系统级服务。设计和可重复步骤见 [持久运行](runtime-lifecycle.md) 与 [权限方案](permissions.md)。
+
+最终源代码验证：
+
+- 宿主 macOS/arm64：`make check`（全包测试及 vet）、`make race`、`make build` 全部通过；Python 四项 VT 回归、Python/Bash 语法检查与 `git diff --check` 通过。
+- 复用已运行的专用 `lazyclash-e2e` Debian 12/arm64 VM：uid 501 普通用户，systemd 252，用户 manager running、Linger=yes。`verify-linux.sh lazyclash-e2e` 重新构建并实际执行全部 Linux 测试二进制，通过。
+- `e2e.sh lazyclash-e2e --proxy-mode environment` 完整通过。使用官方 SHA256 校验的 Mihomo v1.19.32/v1.19.33；保留安装、更新、重装、订阅、配置、节点、连接、规则、日志、端口和真实 PTY 场景，增加记住来源后的 Refresh、不改变活动配置的刷新、停止态卸载和保留用户数据。
+- 新 `lifecycle-e2e.py` 实测：真实 controlling PTY 发送 SIGHUP 后内核 PID 不变；模式通过动态 API 应用不重启；配置应用和显式重启恢复模式/节点；对已验证自有 PID 发送 SIGKILL 后 systemd 自动恢复，新 PID、恢复计数、模式与节点均实际读回；Enable/Disable 不改变当前 PID；明确 Stop 超过 RestartSec 后仍为 PID=0 和 inactive。
+- Linux 文件 capabilities 用例因普通测试用户没有设置 `security.capability` 的权限明确 skip。setuid/setgid 拒绝路径实测通过，不能声称已对带真实 file capabilities 的二进制完成本轮运行验证。
+
+真实 E2E 首轮暴露“API 可达但代理监听尚未准备好”的启动窗口，已在应用就绪检查增加 mixed TCP 监听探测并增加回归，最终端口互换与全套 E2E 通过。Mihomo 恢复时节点缓存加载可能晚于 API 首次可读，恢复验收在 15 秒内等待实际期望节点出现，未将首次快照中的默认选择直接视作持久化成功或缓存丢失。
+
+记录保存在忽略目录 `.test-artifacts/`：`e2e.log`、`linux-lifecycle-tests.log`、各 `pty-*.txt` 和 `cleanup.txt`。最终清理确认专用 unit 为 not-found、默认及动态 TCP/UDP 监听均释放、`resources released=1`、`exit=0`。未修改主机系统代理、DNS、路由、Shell 配置或 VM 的 linger 策略。
+
+未实测最后一个真实 SSH 登录会话退出、机器重启和 Linux/amd64 运行；单元测试、PTY SIGHUP、linger 检查和交叉编译都不能替代这些验收。文档提供专用机器上的 SSH/logout/boot 步骤。TUN、路由/DNS 接管、系统级部署及其停止清理尚未实现，不存在“模拟测试通过所以真实 TUN 已通过”的结论。

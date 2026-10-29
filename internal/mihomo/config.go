@@ -44,14 +44,14 @@ func Effective(raw []byte, controller, secret string, mixedPort int) ([]byte, er
 	if apiPort == strconv.Itoa(mixedPort) {
 		return nil, errors.New("controller and proxy ports must differ")
 	}
-	var cfg map[string]any
-	d := yaml.NewDecoder(bytes.NewReader(raw))
-	if err := d.Decode(&cfg); err != nil || cfg == nil {
-		return nil, errors.New("invalid Mihomo YAML: expected one mapping with unique keys")
+	cfg, err := decodeConfig(raw)
+	if err != nil {
+		return nil, err
 	}
-	var extra any
-	if err := d.Decode(&extra); err != io.EOF {
-		return nil, errors.New("invalid Mihomo YAML: multiple documents are not supported")
+	if tun, ok := cfg["tun"].(map[string]any); ok {
+		if tun["enable"] == true {
+			return nil, errors.New("this profile enables TUN, which is unavailable in the managed unprivileged user service; disable tun.enable before importing")
+		}
 	}
 	cfg["external-controller"], cfg["secret"] = controller, secret
 	cfg["mixed-port"], cfg["allow-lan"], cfg["bind-address"] = mixedPort, false, "127.0.0.1"
@@ -63,17 +63,118 @@ func Effective(raw []byte, controller, secret string, mixedPort int) ([]byte, er
 		cfg[k] = ""
 	}
 	for _, k := range []string{"listeners", "tunnels"} {
+		if k == "listeners" {
+			if listeners, ok := cfg[k].([]any); ok {
+				for _, listener := range listeners {
+					if entry, ok := listener.(map[string]any); ok && entry["type"] == "tun" {
+						return nil, errors.New("this profile contains a TUN listener, which is unavailable in the managed unprivileged user service")
+					}
+				}
+			}
+		}
 		cfg[k] = []any{}
 	}
 	for _, k := range []string{"tun", "dns", "tuic-server", "iptables", "ntp"} {
 		cfg[k] = map[string]any{"enable": false}
 	}
 	cfg["external-controller-cors"] = map[string]any{"allow-origins": []string{}, "allow-private-network": false}
+	// Mihomo owns this cache in its stable -d directory. API selections then
+	// survive both configuration generations and systemd crash recovery.
+	profile, _ := cfg["profile"].(map[string]any)
+	if profile == nil {
+		profile = make(map[string]any)
+	}
+	profile["store-selected"] = true
+	cfg["profile"] = profile
 	out, err := yaml.Marshal(cfg)
 	if err != nil {
 		return nil, errors.New("cannot encode Mihomo YAML")
 	}
 	return out, nil
+}
+
+func decodeConfig(raw []byte) (map[string]any, error) {
+	if len(bytes.TrimSpace(raw)) == 0 || len(raw) > MaxConfigSize {
+		return nil, errors.New("Mihomo YAML must be nonempty and at most 8 MiB")
+	}
+	var cfg map[string]any
+	d := yaml.NewDecoder(bytes.NewReader(raw))
+	if err := d.Decode(&cfg); err != nil || cfg == nil {
+		return nil, errors.New("invalid Mihomo YAML: expected one mapping with unique keys")
+	}
+	var extra any
+	if err := d.Decode(&extra); err != io.EOF {
+		return nil, errors.New("invalid Mihomo YAML: multiple documents are not supported")
+	}
+	return cfg, nil
+}
+
+func ValidMode(mode string) bool {
+	return mode == "rule" || mode == "global" || mode == "direct"
+}
+
+func ConfigMode(raw []byte) (string, error) {
+	cfg, err := decodeConfig(raw)
+	if err != nil {
+		return "", err
+	}
+	if cfg["mode"] == nil {
+		return "rule", nil
+	}
+	mode, ok := cfg["mode"].(string)
+	if !ok || !ValidMode(mode) {
+		return "", errors.New("Mihomo mode must be rule, global or direct")
+	}
+	return mode, nil
+}
+
+// WithMode changes only the operation mode; listener and routing ownership
+// remain with the effective configuration that the application already built.
+func WithMode(raw []byte, mode string) ([]byte, error) {
+	if !ValidMode(mode) {
+		return nil, errors.New("Mihomo mode must be rule, global or direct")
+	}
+	cfg, err := decodeConfig(raw)
+	if err != nil {
+		return nil, err
+	}
+	cfg["mode"] = mode
+	return yaml.Marshal(cfg)
+}
+
+func ConfigTUN(raw []byte) (bool, error) {
+	cfg, err := decodeConfig(raw)
+	if err != nil {
+		return false, err
+	}
+	tun, ok := cfg["tun"].(map[string]any)
+	if !ok && cfg["tun"] != nil {
+		return false, errors.New("invalid Mihomo TUN configuration")
+	}
+	enabled, ok := tun["enable"].(bool)
+	if !ok && tun["enable"] != nil {
+		return false, errors.New("invalid Mihomo TUN enable setting")
+	}
+	return enabled, nil
+}
+
+func ConfigSelectionPersistence(raw []byte) (bool, error) {
+	cfg, err := decodeConfig(raw)
+	if err != nil {
+		return false, err
+	}
+	profile, ok := cfg["profile"].(map[string]any)
+	if !ok && cfg["profile"] != nil {
+		return false, errors.New("invalid Mihomo profile cache configuration")
+	}
+	if profile["store-selected"] == nil {
+		return true, nil // Mihomo's native default.
+	}
+	enabled, ok := profile["store-selected"].(bool)
+	if !ok {
+		return false, errors.New("invalid Mihomo selection cache setting")
+	}
+	return enabled, nil
 }
 
 func loopbackAddress(address string) error {
@@ -108,6 +209,12 @@ func (w *limitedOutput) Write(p []byte) (int, error) {
 var versionPattern = regexp.MustCompile(`(?m)\bMihomo\b[^\r\n]*?\b(v[0-9][^\s]*)`)
 
 func BinaryVersion(ctx context.Context, bin string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
+	if err := SafeExecutable(bin); err != nil {
+		return "", err
+	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, bin, "-v")
@@ -130,6 +237,12 @@ func BinaryVersion(ctx context.Context, bin string) (string, error) {
 // Validate intentionally keeps engine output private: parser errors may include
 // full subscription URLs, passwords or control API credentials.
 func Validate(ctx context.Context, bin, config, data string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := SafeExecutable(bin); err != nil {
+		return err
+	}
 	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, bin, "-t", "-d", data, "-f", config)

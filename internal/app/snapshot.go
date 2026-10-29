@@ -10,6 +10,7 @@ import (
 
 	"github.com/nelvko/lazyclash/internal/mihomo"
 	"github.com/nelvko/lazyclash/internal/service"
+	"github.com/nelvko/lazyclash/internal/store"
 )
 
 type Snapshot struct {
@@ -27,11 +28,17 @@ type Snapshot struct {
 	Profiles            []string
 	Groups              []mihomo.Group
 	APIError            string
+	Desired             DesiredState
+	Operation           OperationState
+	Drift               string
+	Mode                ModeStatus
+	Capabilities        Capabilities
 }
 
 func (a *App) Snapshot(ctx context.Context) (Snapshot, error) {
 	var out Snapshot
 	err := a.locked(ctx, func() error {
+		out.Capabilities = a.Capabilities()
 		prefs, _, err := a.loadPreferencesLocked()
 		if err != nil {
 			return err
@@ -48,6 +55,26 @@ func (a *App) Snapshot(ctx context.Context) (Snapshot, error) {
 			out.Version = m.Version
 			out.Controller = m.Controller
 			out.Applied = m.Applied
+			r, _, err := a.loadRuntimeRecord(m)
+			if err != nil {
+				return err
+			}
+			out.Desired, out.Operation = r.Desired, r.Operation
+			stopped, err := a.stopIntent()
+			if err != nil {
+				return err
+			}
+			if stopped != nil {
+				out.Desired.Known, out.Desired.Running = true, false
+			}
+			config, err := store.Read(filepath.Join(a.Home, "installation", "current", "config.yaml"))
+			if err != nil {
+				return err
+			}
+			out.Mode.Desired, err = mihomo.ConfigMode(config)
+			if err != nil {
+				return err
+			}
 		}
 		if a.Service == nil {
 			out.Service.State = "unsupported"
@@ -107,8 +134,22 @@ func (a *App) Snapshot(ctx context.Context) (Snapshot, error) {
 			if err != nil {
 				out.APIError = err.Error()
 			}
+			out.Mode.Running = true
+			cfg, err := a.client(m).Configuration(ctx)
+			if err != nil {
+				out.Mode.Error = err.Error()
+			} else {
+				out.Mode.Actual = cfg.Mode
+				if cfg.TUN {
+					out.Mode.Error = "Mihomo reports TUN enabled outside the managed user-service policy; stop and inspect the service"
+				}
+			}
 		} else if out.Installed {
 			out.APIError = "Start the service to view proxy groups"
+		}
+		out.Drift = runtimeDrift(out.Desired, out.Service, out.APIError)
+		if out.Drift == "" && out.Mode.Actual != "" && out.Mode.Desired != out.Mode.Actual {
+			out.Drift = "The running mode differs from the saved configuration; apply the desired mode again"
 		}
 		return ctx.Err()
 	})

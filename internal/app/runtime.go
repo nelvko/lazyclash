@@ -4,9 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
+	"strconv"
 	"time"
 
 	"github.com/nelvko/lazyclash/internal/mihomo"
+	"github.com/nelvko/lazyclash/internal/store"
 )
 
 func (a *App) requireService() error {
@@ -40,6 +43,18 @@ func (a *App) checkPorts(m manifest) error {
 	return checkRuntimePorts(context.Background(), m, manifestSettings(m), false)
 }
 
+func (a *App) probeProxy(ctx context.Context, port int) error {
+	if a.ProbeProxy != nil {
+		return a.ProbeProxy(ctx, port)
+	}
+	dialer := net.Dialer{Timeout: 200 * time.Millisecond}
+	conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
+	if err != nil {
+		return errors.New("Mihomo mixed proxy listener is not ready")
+	}
+	return conn.Close()
+}
+
 func (a *App) waitReady(ctx context.Context, m manifest) error {
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
@@ -49,11 +64,15 @@ func (a *App) waitReady(ctx context.Context, m manifest) error {
 		if err := ctx.Err(); err != nil {
 			return fmt.Errorf("Mihomo API did not become ready: %w", err)
 		}
-		if a.client(m).Ping(ctx) == nil {
-			status, err := a.Service.Inspect(ctx)
-			if err == nil && status.Active {
-				return nil
-			}
+		status, err := a.Service.Inspect(ctx)
+		if err != nil {
+			return err
+		}
+		if status.State == "failed" {
+			return fmt.Errorf("Mihomo service failed (result=%s, exit=%d); inspect status before retrying", status.Result, status.ExitCode)
+		}
+		if status.Active && a.client(m).Ping(ctx) == nil && a.probeProxy(ctx, m.Port) == nil {
+			return nil
 		}
 		select {
 		case <-ctx.Done():
@@ -72,10 +91,89 @@ func (a *App) restartReady(ctx context.Context, m manifest) error {
 	}
 	return a.waitReady(ctx, m)
 }
+
+// Control records intent before handing a job to systemd. Once submitted, a
+// cancelled UI observation must never turn into an implicit stop request.
 func (a *App) Control(ctx context.Context, action string) error {
 	if action != "start" && action != "stop" && action != "restart" {
 		return errors.New("unsupported service action")
 	}
+	unlock, err := store.Lock(ctx, a.Home)
+	if err != nil {
+		return err
+	}
+	defer unlock()
+	if err := a.requireService(); err != nil {
+		return err
+	}
+	if action == "stop" {
+		return a.stopLocked(ctx)
+	}
+	if err := a.recover(ctx); err != nil {
+		return err
+	}
+	m, _, err := a.load()
+	if err != nil {
+		return err
+	}
+	bin, config, data := a.paths()
+	if err := a.Service.Verify(ctx, bin, config, data); err != nil {
+		return err
+	}
+	status, err := a.Service.Inspect(ctx)
+	if err != nil {
+		return err
+	}
+	if err := a.checkPersistent(ctx); err != nil {
+		return err
+	}
+	configBytes, err := store.Read(config)
+	if err != nil {
+		return err
+	}
+	if err := a.validateConfig(ctx, m, configBytes); err != nil {
+		return err
+	}
+	status, err = a.Service.Inspect(ctx)
+	if err != nil {
+		return err
+	}
+	if status.State == "deactivating" || status.State == "reloading" {
+		return errors.New("service is changing state; wait before starting or restarting it")
+	}
+	if !status.Active && status.State != "activating" {
+		if err := a.checkPorts(m); err != nil {
+			return err
+		}
+	}
+	r, old, err := a.loadRuntimeRecord(m)
+	if err != nil {
+		return err
+	}
+	if !r.Desired.Known {
+		r.Desired.Autostart = status.Enabled
+	}
+	r.Desired.Known, r.Desired.Running = true, true
+	r.Operation = OperationState{Action: action, State: "pending", UpdatedAt: time.Now().UTC()}
+	raw, err := a.saveRuntimeRecord(r, old)
+	if err != nil {
+		return err
+	}
+	if err := a.upgradeService(ctx); err != nil {
+		return a.finishOperation(r, raw, err)
+	}
+	if err := a.clearStop(); err != nil {
+		return a.finishOperation(r, raw, err)
+	}
+	if err := a.Service.Action(ctx, action); err != nil {
+		return a.finishOperation(r, raw, err)
+	}
+	if err := a.waitReady(ctx, m); err != nil {
+		return a.finishOperation(r, raw, err)
+	}
+	return a.finishOperation(r, raw, a.markHasRunLocked(ctx))
+}
+func (a *App) Select(ctx context.Context, group, node string) error {
 	return a.locked(ctx, func() error {
 		if err := a.requireService(); err != nil {
 			return err
@@ -92,61 +190,19 @@ func (a *App) Control(ctx context.Context, action string) error {
 		if err != nil {
 			return err
 		}
-		if action != "stop" && !status.Active {
-			if err := a.checkPorts(m); err != nil {
-				return err
-			}
+		if !status.Active {
+			return errors.New("start the managed service before selecting a node")
 		}
-		if action == "stop" && status.Active {
-			// Remember the observed history even if its control API is unavailable;
-			// an intentional stop must not bring back first-run setup.
-			if err := a.markHasRunLocked(ctx); err != nil {
-				return err
-			}
-		}
-		if err := a.Service.Action(ctx, action); err != nil {
-			// systemctl can be cancelled after its job was accepted. Restore the
-			// stopped state with a fresh context rather than leaving a new daemon.
-			if action != "stop" && !status.Active {
-				c, cancel := cleanupContext()
-				defer cancel()
-				return errors.Join(err, a.Service.Action(c, "stop"))
-			}
-			return err
-		}
-		if action == "stop" {
-			s, err := a.Service.Inspect(ctx)
-			if err != nil {
-				return err
-			}
-			if s.Active {
-				return errors.New("service is still active")
-			}
-			return nil
-		}
-		if err := a.waitReady(ctx, m); err != nil {
-			if !status.Active {
-				c, cancel := cleanupContext()
-				defer cancel()
-				return errors.Join(err, a.Service.Action(c, "stop"))
-			}
-			return err
-		}
-		return a.markHasRunLocked(ctx)
-	})
-}
-func (a *App) Select(ctx context.Context, group, node string) error {
-	return a.locked(ctx, func() error {
-		if err := a.requireService(); err != nil {
-			return err
-		}
-		m, _, err := a.load()
+		raw, err := store.Read(config)
 		if err != nil {
 			return err
 		}
-		bin, config, data := a.paths()
-		if err := a.Service.Verify(ctx, bin, config, data); err != nil {
+		persistent, err := mihomo.ConfigSelectionPersistence(raw)
+		if err != nil {
 			return err
+		}
+		if !persistent {
+			return errors.New("this legacy configuration disables selection persistence; reapply the current profile before selecting a node")
 		}
 		return a.client(m).Select(ctx, group, node)
 	})

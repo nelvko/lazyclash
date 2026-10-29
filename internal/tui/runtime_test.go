@@ -201,3 +201,19 @@ func TestRuntimeUnknownServiceStateIsNeverShownAsStopped(t *testing.T) {
 		t.Fatal("recovered runtime retained its old unavailability diagnostic")
 	}
 }
+
+func TestRuntimeTransitionRefreshesPersistentIntentAndActiveProfile(t *testing.T) {
+	b := &fakeBackend{}
+	m := runtimeModel(t, b)
+	m.runtime.snapshot = liveRuntime()
+	b.snapshot.Desired = app.DesiredState{Known: true, Running: false}
+	b.snapshot.Applied = "changed-from-cli"
+	b.snapshot.Service = service.Status{State: "inactive"}
+	m.syncRuntime()
+	m, cmd := update(m, runtimeResultMsg{generation: m.runtime.generation, snapshot: app.RuntimeSnapshot{State: "stopped", Service: service.Status{State: "inactive"}}})
+	commands := commandBatch(t, cmd)
+	m, _ = update(m, commands[1]())
+	if !m.snapshot.Desired.Known || m.snapshot.Desired.Running || m.snapshot.Applied != "changed-from-cli" || m.snapshot.Service.Active {
+		t.Fatal("runtime transition retained another client's old intent or active profile")
+	}
+}

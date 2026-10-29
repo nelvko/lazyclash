@@ -33,6 +33,10 @@ scripts/                显式运行的 Linux、PTY 和端到端验证
 - `logs.go`：验证归属与当前运行进程后，订阅认证控制 API 的实时日志；持续校验进程身份，取消时关闭流，不启用原始日志落盘。
 - `snapshot.go`：供界面和 CLI 使用的运行及安装状态。
 - `preferences.go`：引导历史和非敏感偏好。
+- `state.go`：绑定安装的运行意图、自启动偏好、操作状态与差异；Stop 优先于配置恢复。
+- `mode.go`、`capabilities.go`：模式持久化/动态应用和用户服务能力边界。
+- `subscriptions.go`：显式保存来源、摘要保护的订阅刷新，不隐式应用。
+- `removal.go`：验证停止、禁用与所属关系后移除内核，保留用户数据。
 
 ## 内核文件与服务注册
 
@@ -49,3 +53,5 @@ scripts/                显式运行的 Linux、PTY 和端到端验证
 当前仅维护 `lazyclash-mihomo.service` 的 systemd 用户服务实现，不自动启动、enable、修改 linger 或提权。没有其他平台或 init 系统的占位实现。
 
 后续增加真实平台需求时，通过已有应用层服务接口接入并验证相应适配器，优先评估现有库；不把第三方库类型暴露给 CLI/TUI。平台的权限、用户/系统服务范围及注销后的生命周期需要单独验证，不能由统一接口推断支持。当前不依赖尚未完成的 unisvc，也不使用平级目录的永久 `replace`。
+
+持久生命周期、用户/实际/操作状态与恢复策略见 [持久运行](runtime-lifecycle.md)，权限方案比较及扩展条件见 [权限边界](permissions.md)。当前没有常驻 daemon、特权 helper 或系统级 backend；未来新增平台扩展 service，新增内核扩展 mihomo 适配边界，根据真实差异调整应用接口，不预先创建空实现。

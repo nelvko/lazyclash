@@ -25,6 +25,7 @@ type manifest struct {
 	Secret     string `json:"secret"`
 	Port       int    `json:"mixed_port"`
 	Applied    string `json:"applied"`
+	Mode       string `json:"mode,omitempty"`
 	SHA        string `json:"config_sha256"`
 	BinarySHA  string `json:"binary_sha256"`
 }
@@ -80,6 +81,9 @@ func (a *App) load() (manifest, string, error) {
 	var m manifest
 	if json.Unmarshal(raw, &m) != nil || m.ID == "" || m.Secret == "" || m.Service != a.Name {
 		return m, "", errors.New("invalid installation manifest or service name mismatch")
+	}
+	if m.Mode != "" && !mihomo.ValidMode(m.Mode) {
+		return m, "", errors.New("invalid persisted proxy mode")
 	}
 	cfg, err := store.Read(filepath.Join(dir, target, "config.yaml"))
 	if err != nil {

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -326,6 +327,222 @@ func TestRemoveOwnedPreservesRunningOrTransitioningService(t *testing.T) {
 			}
 			if _, err := os.Stat(path); err != nil {
 				t.Fatal("running service definition was removed")
+			}
+		})
+	}
+}
+
+func TestPersistentRuntimeRequiresConfirmedLingerAndNeverEnablesIt(t *testing.T) {
+	for _, value := range []string{"yes", "no", "", "unknown", "unavailable"} {
+		t.Run(value, func(t *testing.T) {
+			s, _ := testManager(t)
+			s.run = func(_ context.Context, command string, args ...string) ([]byte, error) {
+				if command == "systemctl" {
+					if !reflect.DeepEqual(args, []string{"--user", "show", "--property=SystemState", "--value"}) {
+						t.Fatalf("unexpected service mutation: %v", args)
+					}
+					return []byte("running\n"), nil
+				}
+				if command != "loginctl" || args[0] != "show-user" {
+					t.Fatalf("unexpected privilege operation: %s %v", command, args)
+				}
+				if value == "unavailable" {
+					return nil, errors.New("no logind")
+				}
+				return []byte(value + "\n"), nil
+			}
+			err := s.CheckPersistent(t.Context())
+			if (err == nil) != (value == "yes") {
+				t.Fatalf("linger=%s error=%v", value, err)
+			}
+			if err != nil && !strings.Contains(err.Error(), "loginctl enable-linger") {
+				t.Fatalf("missing actionable diagnostic: %v", err)
+			}
+		})
+	}
+}
+
+func TestInspectRetainsFailureAndActivationDiagnostics(t *testing.T) {
+	s, _ := testManager(t)
+	s.run = func(_ context.Context, command string, args ...string) ([]byte, error) {
+		if command == "loginctl" {
+			return nil, errors.New("unavailable")
+		}
+		return []byte("LoadState=loaded\nActiveState=failed\nSubState=failed\nMainPID=0\nResult=start-limit-hit\nExecMainStatus=1\nNRestarts=5\nUnitFileState=enabled\n"), nil
+	}
+	status, err := s.Inspect(t.Context())
+	if err != nil || status.Active || status.State != "failed" || status.SubState != "failed" || status.Result != "start-limit-hit" || status.ExitCode != 1 || status.Restarts != 5 || !status.Enabled || status.LingerKnown {
+		t.Fatalf("lost actual service diagnostics: %+v %v", status, err)
+	}
+}
+
+func TestUnitRecoveryAndDirectSupervision(t *testing.T) {
+	content, err := unitContent("/bin/mihomo", "/config.yaml", "/data")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, directive := range []string{"Type=simple", `ExecStart=:"/bin/mihomo" -d "/data" -f "/config.yaml"`, "Restart=on-failure", "StartLimitIntervalSec=60s", "StartLimitBurst=5", "TimeoutStopSec=15s", "KillMode=control-group", "StandardOutput=null", "StandardError=null", "NoNewPrivileges=true"} {
+		if !strings.Contains(content, directive+"\n") {
+			t.Fatalf("missing supervision policy: %s", directive)
+		}
+	}
+}
+
+func TestStopWaitsUntilProcessAndTransitionHaveEnded(t *testing.T) {
+	s, calls := testManager(t)
+	inspections := 0
+	s.run = func(_ context.Context, command string, args ...string) ([]byte, error) {
+		*calls = append(*calls, command+" "+strings.Join(args, " "))
+		if args[1] == "stop" {
+			return nil, nil
+		}
+		inspections++
+		if inspections == 1 {
+			return []byte("LoadState=loaded\nActiveState=deactivating\nMainPID=4321\n"), nil
+		}
+		return []byte("LoadState=loaded\nActiveState=inactive\nMainPID=0\n"), nil
+	}
+	if err := s.Action(t.Context(), "stop"); err != nil {
+		t.Fatal(err)
+	}
+	if inspections != 2 {
+		t.Fatalf("stop was not confirmed: %v", *calls)
+	}
+	for _, call := range *calls {
+		if strings.Contains(call, "start ") || strings.Contains(call, "loginctl") {
+			t.Fatalf("stop started a service or depended on logind: %v", *calls)
+		}
+	}
+}
+
+func TestStopDoesNotClaimSuccessWhileProcessRemains(t *testing.T) {
+	s, _ := testManager(t)
+	s.run = func(_ context.Context, _ string, args ...string) ([]byte, error) {
+		if args[1] == "stop" {
+			return nil, nil
+		}
+		return []byte("LoadState=loaded\nActiveState=inactive\nMainPID=4321\n"), nil
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
+	defer cancel()
+	if err := s.Action(ctx, "stop"); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("unconfirmed stop accepted: %v", err)
+	}
+}
+
+func TestSetEnabledUsesUserScopeAndConfirmsResultWithoutStarting(t *testing.T) {
+	for _, enabled := range []bool{true, false} {
+		t.Run(strconv.FormatBool(enabled), func(t *testing.T) {
+			s, _ := testManager(t)
+			calls := []string{}
+			s.run = func(_ context.Context, command string, args ...string) ([]byte, error) {
+				calls = append(calls, command+" "+strings.Join(args, " "))
+				if command == "loginctl" {
+					return []byte("yes\n"), nil
+				}
+				if args[0] != "--user" {
+					t.Fatalf("system scope touched: %v", args)
+				}
+				state := "disabled"
+				if enabled {
+					state = "enabled"
+				}
+				return []byte("LoadState=loaded\nActiveState=inactive\nMainPID=0\nUnitFileState=" + state + "\n"), nil
+			}
+			if err := s.SetEnabled(t.Context(), enabled); err != nil {
+				t.Fatal(err)
+			}
+			for _, call := range calls {
+				if strings.Contains(call, " start ") || strings.Contains(call, " stop ") || strings.Contains(call, "--now") {
+					t.Fatalf("activation setting changed process lifecycle: %v", calls)
+				}
+			}
+		})
+	}
+}
+
+func TestOwnedLegacyUnitMigratesOnlyOnExplicitUpgrade(t *testing.T) {
+	for _, reloadFails := range []bool{false, true} {
+		t.Run(strconv.FormatBool(reloadFails), func(t *testing.T) {
+			s, _ := testManager(t)
+			path := filepath.Join(s.UnitDir, s.Name+".service")
+			legacy, _ := legacyUnitContent("/mihomo", "/config", "/data")
+			current, _ := unitContent("/mihomo", "/config", "/data")
+			if err := os.WriteFile(path, []byte(legacy), 0600); err != nil {
+				t.Fatal(err)
+			}
+			reloads := 0
+			s.run = func(_ context.Context, _ string, args ...string) ([]byte, error) {
+				if args[1] == "daemon-reload" {
+					reloads++
+					if reloadFails && reloads == 1 {
+						return nil, errors.New("manager unavailable")
+					}
+					return nil, nil
+				}
+				return []byte("FragmentPath=" + path + "\nDropInPaths=\nNeedDaemonReload=no\n"), nil
+			}
+			if err := s.Verify(t.Context(), "/mihomo", "/config", "/data"); err != nil {
+				t.Fatal(err)
+			}
+			before, _ := os.ReadFile(path)
+			if string(before) != legacy || reloads != 0 {
+				t.Fatal("read-only ownership check migrated the service")
+			}
+			err := s.UpgradeOwned(t.Context(), "/mihomo", "/config", "/data")
+			if (err != nil) != reloadFails {
+				t.Fatalf("upgrade error=%v failure=%v", err, reloadFails)
+			}
+			want := current
+			if reloadFails {
+				want = legacy
+				if reloads != 2 {
+					t.Fatalf("rollback did not invalidate manager cache: %d", reloads)
+				}
+			}
+			after, _ := os.ReadFile(path)
+			if string(after) != want {
+				t.Fatal("service did not commit/roll back expected exact contents")
+			}
+		})
+	}
+}
+
+func TestRemoveOwnedClearsActivationBeforeDeletingUnit(t *testing.T) {
+	for _, disableFails := range []bool{false, true} {
+		t.Run(strconv.FormatBool(disableFails), func(t *testing.T) {
+			s, _ := testManager(t)
+			path := filepath.Join(s.UnitDir, s.Name+".service")
+			content, _ := unitContent("/mihomo", "/config", "/data")
+			if err := os.WriteFile(path, []byte(content), 0600); err != nil {
+				t.Fatal(err)
+			}
+			disabled := false
+			s.run = func(_ context.Context, command string, args ...string) ([]byte, error) {
+				if command == "loginctl" {
+					return []byte("no\n"), nil
+				}
+				if args[1] == "disable" {
+					if _, err := os.Stat(path); err != nil {
+						t.Fatal("unit was removed before clearing activation")
+					}
+					disabled = true
+					if disableFails {
+						return nil, errors.New("cannot disable")
+					}
+				}
+				if args[1] == "daemon-reload" && !disabled {
+					t.Fatal("removed unit before clearing activation")
+				}
+				return []byte("FragmentPath=" + path + "\nDropInPaths=\nLoadState=loaded\nActiveState=inactive\nMainPID=0\n"), nil
+			}
+			err := s.RemoveOwned(t.Context(), "/mihomo", "/config", "/data")
+			if (err != nil) != disableFails || !disabled {
+				t.Fatalf("remove=%v disabled=%v", err, disabled)
+			}
+			_, statErr := os.Stat(path)
+			if disableFails && statErr != nil || !disableFails && !os.IsNotExist(statErr) {
+				t.Fatalf("unit was not preserved/removed correctly: %v", statErr)
 			}
 		})
 	}
