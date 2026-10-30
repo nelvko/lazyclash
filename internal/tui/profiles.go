@@ -11,68 +11,97 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/store"
 )
 
-func (m Model) profilesBody(width int) (string, []hitRegion) {
-	var lines []string
-	var hits []hitRegion
-	explain := func(value string) {
-		lines = append(lines, strings.Split(wrapText(value, max(1, width)), "\n")...)
+type profilesState struct {
+	url       textinput.Model
+	editing   bool
+	detail    string
+	importing bool
+}
+
+func newProfilesState() profilesState {
+	input := textinput.New()
+	input.CharLimit = 8192
+	input.Placeholder = "Paste subscription URL"
+	styleInput(&input, inputBackground, false)
+	return profilesState{url: input}
+}
+
+func (m *Model) profileURLKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
+	if m.page != "profiles" || m.focus != "profiles.url" || m.form != "" || m.sidebarOpen || m.busy || m.quitting {
+		return false, nil
 	}
-	add := func(id, label string) {
-		row := len(lines)
-		prefix, foreground, background := "  ", text, bg
-		if m.focus == id {
-			prefix, foreground = "> ", focus
+	m.profilesUI.editing = true
+	m.profilesUI.url.Focus()
+	switch k.String() {
+	case "tab", "shift+tab":
+		m.profilesUI.editing = false
+		m.profilesUI.url.Blur()
+		return false, nil
+	case "esc":
+		m.profilesUI.editing = false
+		m.profilesUI.url.Blur()
+		m.focus = "profiles.add"
+		return true, nil
+	case "enter":
+		return true, m.beginProfileURLImport()
+	}
+	var cmd tea.Cmd
+	m.profilesUI.url, cmd = m.profilesUI.url.Update(k)
+	return true, cmd
+}
+
+func (m *Model) beginProfileURLImport() tea.Cmd {
+	source := strings.TrimSpace(m.profilesUI.url.Value())
+	if source == "" {
+		m.focus, m.profilesUI.editing = "profiles.url", true
+		return m.profilesUI.url.Focus()
+	}
+	m.profilesUI.editing = false
+	m.profilesUI.url.Blur()
+	m.profilesUI.importing = true
+	m.focus = "profiles.add"
+	return m.begin("Fetching and validating subscription…", "Subscription saved; select its card to apply", func(ctx context.Context) error {
+		return m.backend.AddSubscription(ctx, "", source)
+	})
+}
+
+func (m *Model) focusProfileControl(id string) {
+	m.focus = id
+	_, hits := m.pageBody(dashboardBodyWidth(dashboardOptions{Width: m.width, Height: m.height, Page: m.page}))
+	for _, hit := range hits {
+		if hit.ID == id {
+			m.revealBodyTarget(hit)
+			break
 		}
-		if m.hover == id {
-			background = hoverBackground
+	}
+}
+
+// Detail actions follow a profile's identity when another interface changes the
+// library order. A stale numeric focus must never apply a different profile.
+func (m *Model) reconcileProfiles() {
+	name := m.profilesUI.detail
+	if name == "" {
+		return
+	}
+	for i, profile := range m.profiles() {
+		if profile != name {
+			continue
 		}
-		lines = append(lines, themed(cellCrop(prefix+clean(label), width), foreground, background, false))
-		hits = append(hits, hitRegion{ID: id, Y: row, W: width, H: 1})
-	}
-	explain("Saved configurations")
-	add("add", "One-time import (URL or local YAML)")
-	add("subscription.add", "Add subscription (remember source)")
-	explain("Add subscription saves the private URL/path for refresh. Imports and edits do not activate a profile.")
-	if !m.snapshot.Installed {
-		explain("You may import now. Engine validation runs before application after core installation.")
-	}
-	lines = append(lines, "")
-	for i, name := range m.profiles() {
-		mark := ""
-		if name == m.snapshot.Applied {
-			mark = " [applied]"
-			if m.snapshot.ProfilePending {
-				mark += " [changes pending; apply to load]"
+		for _, prefix := range []string{"profiles.apply.", "profiles.update.", "profiles.rename.", "profiles.url-edit.", "profiles.overrides.", "profiles.delete."} {
+			if strings.HasPrefix(m.focus, prefix) {
+				m.focus = fmt.Sprintf("%s%d", prefix, i)
 			}
 		}
-		for _, pending := range m.snapshot.UnvalidatedProfiles {
-			if pending == name {
-				mark += " [engine validation pending]"
-				break
-			}
-		}
-		add(fmt.Sprintf("profile.%d", i), name+mark+" · Apply")
-		if name != "default" {
-			add(fmt.Sprintf("profile.overrides.%d", i), "    Import overrides from file · "+name)
-			add(fmt.Sprintf("profile.delete.%d", i), "    Delete recipe · "+name)
-		}
+		return
 	}
-	lines = append(lines, "")
-	explain("Subscription sources")
-	if len(m.snapshot.Sources) == 0 {
-		explain("No subscription sources saved.")
+	m.profilesUI.detail = ""
+	if m.page == "profiles" && strings.HasPrefix(m.focus, "profiles.") {
+		m.focusProfileControl("profile.0")
 	}
-	for i, source := range m.snapshot.Sources {
-		explain(clean(source.Name))
-		if source.Refreshable {
-			add(fmt.Sprintf("profile.source.refresh.%d", i), "    Refresh source · "+source.Name)
-		}
-		add(fmt.Sprintf("profile.source.delete.%d", i), "    Delete source · "+source.Name)
-	}
-	return strings.Join(lines, "\n"), hits
 }
 
 func profileActionIndex(id, prefix string, size int) (int, bool) {
@@ -84,42 +113,85 @@ func profileActionIndex(id, prefix string, size int) (int, bool) {
 }
 
 // profileAction routes interface actions into shared app use cases. It does
-// not recreate source-reference, schema or active-profile validation.
+// not recreate schema or active-profile validation.
 func (m *Model) profileAction(id string) (bool, tea.Cmd) {
-	if id != "subscription.add" && !strings.HasPrefix(id, "profile.overrides.") &&
-		!strings.HasPrefix(id, "profile.delete.") && !strings.HasPrefix(id, "profile.source.") {
+	index, card := profileActionIndex(id, "profile.", len(m.profiles()))
+	if !card && id != "subscription.add" && !strings.HasPrefix(id, "profiles.") &&
+		!strings.HasPrefix(id, "profile.overrides.") && !strings.HasPrefix(id, "profile.delete.") {
 		return false, nil
 	}
 	if m.busy || m.quitting {
 		return true, nil
 	}
-	if id == "subscription.add" {
+	if id == "profiles.url" {
+		m.focus, m.profilesUI.editing = id, true
+		return true, m.profilesUI.url.Focus()
+	}
+	m.profilesUI.editing = false
+	m.profilesUI.url.Blur()
+	if card {
+		name := m.profiles()[index]
+		m.profilesUI.detail = name
+		target := fmt.Sprintf("profiles.apply.%d", index)
+		if !m.snapshot.Installed {
+			target = "profiles.close"
+		}
+		m.focusProfileControl(target)
+		return true, nil
+	}
+	switch id {
+	case "profiles.add":
+		return true, m.beginProfileURLImport()
+	case "subscription.add":
 		cmd := m.openForm()
 		m.rememberSource = true
 		m.failure = ""
 		return true, cmd
-	}
-	if i, ok := profileActionIndex(id, "profile.source.refresh.", len(m.snapshot.Sources)); ok {
-		name := m.snapshot.Sources[i].Name
-		return true, m.begin("Refreshing subscription source…", "Source refreshed; apply a profile to load changes", func(ctx context.Context) error {
-			return m.backend.RefreshSource(ctx, name)
-		})
-	}
-	if i, ok := profileActionIndex(id, "profile.source.delete.", len(m.snapshot.Sources)); ok {
-		return true, m.openProfileEdit("source-delete", m.snapshot.Sources[i].Name)
+	case "profiles.update-all":
+		return true, m.begin("Updating profiles…", "Profiles updated; apply a profile to load changes", m.backend.RefreshAllProfiles)
+	case "profiles.close":
+		name := m.profilesUI.detail
+		m.profilesUI.detail = ""
+		for i, profile := range m.profiles() {
+			if profile == name {
+				m.focusProfileControl(fmt.Sprintf("profile.%d", i))
+				break
+			}
+		}
+		return true, nil
 	}
 	profiles := m.profiles()
-	if i, ok := profileActionIndex(id, "profile.overrides.", len(profiles)); ok {
-		return true, m.openProfileEdit("profile-overrides", profiles[i])
-	}
-	if i, ok := profileActionIndex(id, "profile.delete.", len(profiles)); ok {
-		return true, m.openProfileEdit("profile-delete", profiles[i])
+	for _, action := range []struct{ prefix, operation string }{
+		{"profiles.apply.", "apply"}, {"profiles.refresh.", "refresh"}, {"profiles.update.", "refresh"},
+		{"profiles.overrides.", "overrides"}, {"profile.overrides.", "overrides"},
+		{"profiles.rename.", "rename"}, {"profiles.url-edit.", "url-edit"},
+		{"profiles.delete.", "delete"}, {"profile.delete.", "delete"},
+	} {
+		i, ok := profileActionIndex(id, action.prefix, len(profiles))
+		if !ok {
+			continue
+		}
+		name := profiles[i]
+		switch action.operation {
+		case "apply":
+			return true, m.begin("Validating and applying configuration…", "Configuration applied", func(ctx context.Context) error { return m.backend.Apply(ctx, name) })
+		case "refresh":
+			return true, m.begin("Updating profile…", "Profile updated; apply the profile to load changes", func(ctx context.Context) error { return m.backend.Refresh(ctx, name) })
+		case "overrides":
+			return true, m.openProfileEdit("profile-overrides", name)
+		case "rename":
+			return true, m.openProfileEdit("profile-rename", name)
+		case "url-edit":
+			return true, m.openProfileEdit("profile-url", name)
+		case "delete":
+			return true, m.openProfileEdit("profile-delete", name)
+		}
 	}
 	return true, nil
 }
 
 func (m Model) profileEditForm() bool {
-	return m.form == "profile-overrides" || m.form == "profile-delete" || m.form == "source-delete"
+	return m.form == "profile-rename" || m.form == "profile-url" || m.form == "profile-overrides" || m.form == "profile-delete"
 }
 
 func (m *Model) openProfileEdit(form, name string) tea.Cmd {
@@ -128,6 +200,13 @@ func (m *Model) openProfileEdit(form, name string) tea.Cmd {
 	m.input.Reset()
 	m.input.EchoMode = textinput.EchoNormal
 	m.input.Placeholder = "Enter the exact name to confirm deletion"
+	if form == "profile-rename" {
+		m.input.Placeholder = "Display name"
+		m.input.SetValue(m.profileInfo(name).Name)
+	}
+	if form == "profile-url" {
+		m.input.Placeholder = "New HTTP(S) URL or absolute YAML path"
+	}
 	if form == "profile-overrides" {
 		m.input.Placeholder = "Absolute path to overrides YAML"
 	}
@@ -157,12 +236,20 @@ func (m *Model) profileFormKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 			return true, nil
 		}
 		form, name := m.form, m.name
-		if form != "profile-overrides" && value != name {
+		expected := name
+		if form == "profile-delete" {
+			expected = m.profileInfo(name).Name
+		}
+		if form == "profile-delete" && value != expected {
 			m.failure = "Enter the exact name to confirm deletion"
 			return true, nil
 		}
 		m.closeProfileForm()
 		switch form {
+		case "profile-rename":
+			return true, m.begin("Renaming profile…", "Profile name saved", func(ctx context.Context) error { return m.backend.RenameProfile(ctx, name, value) })
+		case "profile-url":
+			return true, m.begin("Updating subscription address…", "Subscription saved; apply the profile to load changes", func(ctx context.Context) error { return m.backend.UpdateProfileAddress(ctx, name, value) })
 		case "profile-overrides":
 			return true, m.begin("Importing profile overrides…", "Overrides saved; apply the profile to load changes", func(ctx context.Context) error {
 				raw, err := readProfileOverrides(value)
@@ -174,10 +261,6 @@ func (m *Model) profileFormKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 		case "profile-delete":
 			return true, m.begin("Deleting profile recipe…", "Profile recipe deleted", func(ctx context.Context) error {
 				return m.backend.DeleteProfile(ctx, name)
-			})
-		case "source-delete":
-			return true, m.begin("Deleting subscription source…", "Subscription source deleted", func(ctx context.Context) error {
-				return m.backend.DeleteSource(ctx, name)
 			})
 		}
 	}
@@ -206,33 +289,43 @@ func (m *Model) renderProfileForm(base string) (string, []hitRegion) {
 	if boxW < 24 || boxH < 7 {
 		return overlay("", "Enlarge terminal · Esc Back", 0, 0, m.width, m.height), nil
 	}
-	title, label, hint := "Add subscription", "Configuration name", "The private source URL/path will be saved for refresh."
-	if m.form == "source" {
-		label = "Subscription URL or local YAML path (hidden)"
+	title, label, hint := "Add subscription", "Subscription URL or local YAML path", "The private source URL/path will be saved for refresh."
+	if m.form == "source" && !m.rememberSource {
+		title, hint = "Import configuration", "Imports a copy; the original file is left unchanged."
 	}
 	switch m.form {
+	case "profile-rename":
+		title, label = "Rename profile · "+clean(m.profileInfo(m.name).Name), "Display name"
+		hint = "Your name is retained when the subscription updates."
+	case "profile-url":
+		title, label = "Edit subscription · "+clean(m.profileInfo(m.name).Name), "New subscription URL or local YAML path"
+		hint = "Downloads and validates before saving; apply changes separately."
 	case "profile-overrides":
-		title, label = "Import overrides · "+clean(m.name), "Absolute path to overrides YAML"
+		title, label = "Import overrides · "+clean(m.profileInfo(m.name).Name), "Absolute path to overrides YAML"
 		hint = "Saves a draft; apply the profile separately to load it."
 	case "profile-delete":
-		title, label = "Delete recipe · "+clean(m.name), "Enter the exact profile name to confirm"
+		title, label = "Delete recipe · "+clean(m.profileInfo(m.name).Name), "Enter the exact profile name to confirm"
 		hint = "The selected profile is protected by the application."
-	case "source-delete":
-		title, label = "Delete source · "+clean(m.name), "Enter the exact source name to confirm"
-		hint = "Sources referenced by a profile cannot be deleted."
 	}
-	m.input.SetWidth(max(1, boxW-8))
+	m.input.SetWidth(max(1, boxW-7-ansi.StringWidth(m.input.Prompt)))
+	m.input.SetCursor(m.input.Position())
 	styleInput(&m.input, inputBackground, m.failure != "")
 	lines := []string{
 		themed(cellCrop(title, boxW-4), text, raised, false),
 		themed(cellCrop(hint, boxW-4), muted, raised, false),
 		cellCrop(label, boxW-4), "",
-		themed("› "+m.input.View(), text, inputBackground, false), "",
-		themed(cellCrop("Enter Continue / Save · Esc Cancel", boxW-4), muted, raised, false),
+		themed(m.input.View(), text, inputBackground, false),
 	}
+	inputRow := 5
+	if boxH < 10 {
+		lines = []string{themed(cellCrop(title, boxW-4), text, raised, false), themed(m.input.View(), text, inputBackground, false)}
+		inputRow = 2
+	}
+	footer := "Enter Continue / Save · Esc Cancel"
+	lines = append(lines, "", themed(cellCrop(footer, boxW-4), muted, raised, false))
 	if m.failure != "" {
 		lines = append(lines, themed(cellCrop(m.failure, boxW-4), errorColor, raised, false))
 	}
-	box := lipgloss.NewStyle().Background(lipgloss.Color(raised)).Border(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color(focus)).Width(boxW-2).Height(boxH-2).Padding(0, 1).Render(strings.Join(lines, "\n"))
-	return overlay(base, themed(box, text, raised, false), x, y, m.width, m.height), []hitRegion{{ID: "import-input", X: x + 2, Y: y + 5, W: max(1, boxW-4), H: 1}}
+	box := lipgloss.NewStyle().Background(lipgloss.Color(raised)).Border(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color(focus)).Width(boxW).Height(boxH).Padding(0, 1).Render(strings.Join(lines, "\n"))
+	return overlay(base, themed(box, text, raised, false), x, y, m.width, m.height), []hitRegion{{ID: "import-input", X: x + 2, Y: y + inputRow, W: max(1, boxW-4), H: 1}}
 }

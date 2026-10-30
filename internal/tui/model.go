@@ -34,8 +34,10 @@ type Backend interface {
 	InstallCore(context.Context, app.InstallPlan, downloadnet.Config, func(mihomo.Progress)) (app.InstallResult, error)
 	Add(context.Context, string, string) error
 	AddSubscription(context.Context, string, string) error
-	RefreshSource(context.Context, string) error
-	DeleteSource(context.Context, string) error
+	RenameProfile(context.Context, string, string) error
+	UpdateProfileAddress(context.Context, string, string) error
+	Refresh(context.Context, string) error
+	RefreshAllProfiles(context.Context) error
 	DeleteProfile(context.Context, string) error
 	SetProfileOverrides(context.Context, string, []byte) error
 	Apply(context.Context, string) error
@@ -90,6 +92,7 @@ type Model struct {
 	ctx                   context.Context
 	backend               Backend
 	snapshot              app.Snapshot
+	snapshotReady         bool
 	busy, quitting        bool
 	id                    uint64
 	cancel                context.CancelFunc
@@ -100,6 +103,7 @@ type Model struct {
 	sidebarOpen           bool
 	form, name            string
 	rememberSource        bool
+	profilesUI            profilesState
 	input                 textinput.Model
 	spinner               spinner.Model
 	width, height         int
@@ -129,7 +133,7 @@ func New(ctx context.Context, backend Backend) Model {
 	spin := spinner.New()
 	spin.Spinner = spinner.Dot
 	opCtx, cancel := context.WithCancel(ctx)
-	m := Model{ctx: ctx, backend: backend, busy: true, id: 1, cancel: cancel, opCtx: opCtx, job: "refresh", message: "Loading state…", page: "overview", focus: "install", input: input, spinner: spin, width: 80, height: 24, wizard: newWizard()}
+	m := Model{ctx: ctx, backend: backend, busy: true, id: 1, cancel: cancel, opCtx: opCtx, job: "refresh", message: "Loading state…", page: "overview", focus: "install", input: input, spinner: spin, width: 80, height: 24, wizard: newWizard(), profilesUI: newProfilesState()}
 	m.connections.search = textinput.New()
 	m.connections.search.CharLimit = 256
 	m.connections.search.Placeholder = "Host, IP, port, process or rule"
@@ -273,6 +277,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			if v.err == nil {
 				m.snapshot = v.snapshot
+				m.snapshotReady = true
 			} else if !errors.Is(v.err, context.Canceled) {
 				m.snapshot.ServiceError = "Service status unavailable; refresh or check doctor"
 			}
@@ -315,6 +320,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.page == "rules" && m.rules.detail == nil && strings.HasPrefix(m.focus, "rule.") {
 			m.revealRule()
 		}
+		if m.page == "profiles" && !m.sidebarOpen {
+			m.focusProfileControl(m.focus)
+		}
 	case resultMsg:
 		if v.id != m.id {
 			return m, nil
@@ -326,6 +334,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.job = ""
 		if v.hasSnapshot {
 			m.snapshot = v.snapshot
+			m.snapshotReady = true
+		}
+		if m.profilesUI.importing {
+			if v.err == nil {
+				m.profilesUI.url.Reset()
+			}
+			m.profilesUI.importing = false
 		}
 		if v.prefs != nil {
 			m.wizard.cfg = v.prefs.Network.Normalized()
@@ -356,6 +371,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.job = ""
 		if v.hasSnapshot {
 			m.snapshot = v.snapshot
+			m.snapshotReady = true
 		}
 		cmd = m.handleWizardResult(v)
 		if m.quitting {
@@ -395,6 +411,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.updateWizardInput(v)
 		} else if m.form != "" {
 			m.input, cmd = m.input.Update(v)
+		} else if m.page == "profiles" && m.focus == "profiles.url" && !m.busy && !m.quitting && !m.sidebarOpen {
+			m.profilesUI.editing = true
+			m.profilesUI.url.Focus()
+			m.profilesUI.url, cmd = m.profilesUI.url.Update(v)
 		} else if m.connections.editing {
 			m.connections.search, cmd = m.connections.search.Update(v)
 			m.reconcileConnections()
@@ -435,6 +455,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.form != "" {
 			cmd = m.formKey(v)
+			break
+		}
+		if handled, next := m.profileURLKey(v); handled {
+			cmd = next
 			break
 		}
 		if m.page == "connections" && m.connections.editing {
@@ -501,6 +525,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 		}
+		if m.profileGridKey(v) {
+			break
+		}
 		if m.bodyListKey(v) {
 			break
 		}
@@ -518,7 +545,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "n":
 			m.openNetwork(false)
 		case "a":
-			cmd = m.openForm()
+			if m.page == "profiles" {
+				cmd = m.activate("profiles.url")
+			} else {
+				cmd = m.openForm()
+			}
 		case "s", "x", "r":
 			action := map[string]string{"s": "start", "x": "stop", "r": "restart"}[key]
 			cmd = m.serviceAction(action)
@@ -533,10 +564,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "up", "k":
 			m.scroll = max(0, m.scroll-1)
 		case "pgdown":
-			g := dashboardGeometry(dashboardOptions{Width: m.width, Height: m.height})
+			g := dashboardGeometry(dashboardOptions{Width: m.width, Height: m.height, Page: m.page})
 			m.scroll += max(1, g.height-1)
 		case "pgup":
-			g := dashboardGeometry(dashboardOptions{Width: m.width, Height: m.height})
+			g := dashboardGeometry(dashboardOptions{Width: m.width, Height: m.height, Page: m.page})
 			m.scroll = max(0, m.scroll-max(1, g.height-1))
 		case "home":
 			m.scroll = 0
@@ -563,6 +594,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.updateWizardInput(msg)
 		} else if m.form != "" {
 			m.input, cmd = m.input.Update(msg)
+		} else if m.page == "profiles" && m.focus == "profiles.url" {
+			m.profilesUI.url, cmd = m.profilesUI.url.Update(msg)
 		} else if m.connections.editing {
 			m.connections.search, cmd = m.connections.search.Update(msg)
 		} else if m.rules.editing {
@@ -571,6 +604,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.logs.search, cmd = m.logs.search.Update(msg)
 		}
 	}
+	m.reconcileProfiles()
 	next := m.syncRuntime()
 	nextRules := m.syncRules()
 	nextLogs := m.syncLogs()
@@ -581,6 +615,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 func (m *Model) navigate(page string) {
+	m.profilesUI.editing = false
+	m.profilesUI.url.Blur()
 	m.stopRuntime()
 	m.stopRules()
 	m.stopLogs()
@@ -619,11 +655,11 @@ func (m *Model) openWizard(local bool) {
 }
 func (m *Model) openForm() tea.Cmd {
 	m.rememberSource = false
-	m.form = "name"
+	m.form = "source"
 	m.name = ""
 	m.input.Reset()
 	m.input.EchoMode = textinput.EchoNormal
-	m.input.Placeholder = "profile name"
+	m.input.Placeholder = "HTTPS URL or absolute YAML path"
 	m.input.Focus()
 	return textinput.Blink
 }
@@ -646,24 +682,17 @@ func (m *Model) formKey(k tea.KeyPressMsg) tea.Cmd {
 			m.failure = "A value is required"
 			return nil
 		}
-		if m.form == "name" {
-			m.name = value
-			m.form = "source"
-			m.input.Reset()
-			m.input.EchoMode = textinput.EchoPassword
-			m.input.Placeholder = "HTTPS URL or absolute YAML path"
-			return nil
-		}
-		name, source, remember := m.name, value, m.rememberSource
+		source := value
+		remember := m.rememberSource
 		m.rememberSource = false
 		m.form = ""
 		m.input.Reset()
 		m.input.Blur()
 		return m.begin("Fetching and validating configuration…", "Configuration saved; apply it from Profiles", func(ctx context.Context) error {
 			if remember {
-				return m.backend.AddSubscription(ctx, name, source)
+				return m.backend.AddSubscription(ctx, "", source)
 			}
-			return m.backend.Add(ctx, name, source)
+			return m.backend.Add(ctx, "", source)
 		})
 	}
 	var cmd tea.Cmd
@@ -698,6 +727,11 @@ func (m *Model) activate(id string) tea.Cmd {
 	switch id {
 	case "card.import":
 		return m.openForm()
+	case "page.refresh":
+		if !m.busy && !m.quitting {
+			return m.refresh()
+		}
+		return nil
 	case "card.install", "core.install":
 		m.openWizard(false)
 		return nil
@@ -752,13 +786,6 @@ func (m *Model) activate(id string) tea.Cmd {
 			return nil
 		}
 		return m.begin("Applying routing mode…", "Routing mode saved", func(ctx context.Context) error { return m.backend.SetMode(ctx, mode) })
-	case strings.HasPrefix(id, "profile."):
-		n, err := strconv.Atoi(strings.TrimPrefix(id, "profile."))
-		profiles := m.profiles()
-		if err == nil && n >= 0 && n < len(profiles) {
-			name := profiles[n]
-			return m.begin("Validating and applying configuration…", "Configuration applied", func(ctx context.Context) error { return m.backend.Apply(ctx, name) })
-		}
 	case strings.HasPrefix(id, "group."):
 		n, err := strconv.Atoi(strings.TrimPrefix(id, "group."))
 		if err == nil && n >= 0 && n < len(m.snapshot.Groups) {
@@ -804,6 +831,16 @@ func (m *Model) cycleFocus(delta int) {
 	}
 	current = (current + delta + len(targets)) % len(targets)
 	m.focus = targets[current].ID
+	if m.page == "profiles" {
+		m.focusProfileControl(m.focus)
+	}
+	if m.focus == "profiles.url" {
+		m.profilesUI.editing = true
+		m.profilesUI.url.Focus()
+	} else {
+		m.profilesUI.editing = false
+		m.profilesUI.url.Blur()
+	}
 	if strings.HasPrefix(m.focus, "connection.") {
 		m.connections.selected = strings.TrimPrefix(m.focus, "connection.")
 	}
@@ -954,7 +991,9 @@ func (m *Model) layout() {
 		m.sidebarOpen = true
 	}
 	o := dashboardOptions{Width: m.width, Height: m.height, Page: m.page, SelectedGroup: m.wizard.expanded, Snapshot: m.snapshot, Focus: m.focus, Hover: m.hover, Help: m.contextHelp(), GuideDismissed: m.snapshot.GuideDismissed, Scroll: m.scroll, Dim: m.ports.open || m.helpOpen || m.wizard.open || m.wizard.networkOpen || m.form != "", Message: m.message, Failure: m.failure, SidebarOpen: m.sidebarOpen, Runtime: m.runtime.snapshot, RuntimeReceived: m.runtime.received, RuntimePending: m.runtime.pending, Busy: m.busy}
+	o.StateUnavailable = !m.snapshotReady
 	g := dashboardGeometry(o)
+	o.Header = m.pageHeader()
 	m.connections.search.SetWidth(max(1, g.width-2))
 	m.rules.search.SetWidth(max(1, g.width-2))
 	o.Body, o.BodyTargets = m.pageBody(g.width)
@@ -972,11 +1011,7 @@ func (m *Model) layout() {
 	} else if m.wizard.open || m.wizard.networkOpen {
 		m.screen, m.targets = m.renderWizard(base)
 	} else if m.form != "" {
-		if m.rememberSource || m.profileEditForm() {
-			m.screen, m.targets = m.renderProfileForm(base)
-		} else {
-			m.screen, m.targets = m.renderImport(base)
-		}
+		m.screen, m.targets = m.renderProfileForm(base)
 	}
 }
 func (m Model) View() tea.View {

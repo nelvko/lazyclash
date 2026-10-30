@@ -162,7 +162,7 @@ func TestDismissedGuideKeepsCardOperationsUsable(t *testing.T) {
 	findTarget(t, m, "card.import")
 	findTarget(t, m, "card.install")
 	m, _ = update(m, m.activate("card.import"))
-	if m.form != "name" || added {
+	if m.form != "source" || added {
 		t.Fatal("card import did not open the existing form")
 	}
 }

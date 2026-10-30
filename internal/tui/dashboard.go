@@ -36,6 +36,8 @@ type dashboardOptions struct {
 	Help                            string
 	SidebarOpen                     bool
 	Busy                            bool
+	StateUnavailable                bool
+	Header                          pageHeader
 	Runtime                         app.RuntimeSnapshot
 	RuntimeReceived, RuntimePending bool
 	// Body and its targets are relative to the first content row beneath the
@@ -69,6 +71,9 @@ func dashboardGeometry(o dashboardOptions) dashboardLayout {
 	headerY, bodyY := 0, 3
 	if o.Height >= 24 {
 		headerY, bodyY = 1, 5
+	}
+	if o.Width < 70 && o.Height < 24 && o.Page != "" && o.Page != "overview" {
+		bodyY++
 	}
 	return dashboardLayout{x: left, width: width, y: bodyY, height: max(0, o.Height-bodyY-2), headerY: headerY, headerHeight: bodyY - 2, sidebar: sidebar}
 }
@@ -113,11 +118,10 @@ func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
 		}
 	}
 	put(titleX, g.headerY, themed(cellCrop(titleText, max(1, g.x+g.width-titleX)), text, bg, o.Dim))
-	status, statusColor := coreSummary(o.Snapshot)
-	status = "Mihomo · " + status
-	statusX := g.x + g.width - ansi.StringWidth(status)
-	if statusX > titleX+ansi.StringWidth(titleText)+2 {
-		put(statusX, g.headerY, themed(status, statusColor, bg, o.Dim))
+	header, headerX, headerY, headerTargets := renderPageHeader(o, g, titleX, ansi.StringWidth(titleText))
+	put(headerX, headerY, header)
+	for _, hit := range headerTargets {
+		add(hit)
 	}
 	// A top-edge stroke aligns with the sidebar's background boundary.
 	put(g.x, g.headerHeight, themed(strings.Repeat("▔", g.width), divider, bg, o.Dim))
@@ -174,7 +178,7 @@ func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
 		}
 		targets = append(kept, drawSidebar(rows, o, true)...)
 	}
-	status = o.Message
+	status := o.Message
 	color := muted
 	if status == "State refreshed" {
 		status = ""
@@ -392,6 +396,13 @@ func sidebarSummary(o dashboardOptions, width int) []string {
 		return themed(value, color, sidebarBackground, o.Dim)
 	}
 	lines := []string{style(strings.Repeat("─", inner), divider)}
+	if o.StateUnavailable {
+		status := "State unavailable"
+		if o.Busy {
+			status = "Loading state…"
+		}
+		return append(lines, style(cellPad(status, inner), muted))
+	}
 	if !s.Installed {
 		return append(lines, style(cellPad("Mihomo not installed", inner), muted))
 	}
@@ -400,7 +411,7 @@ func sidebarSummary(o dashboardOptions, width int) []string {
 		gap := max(1, inner-ansi.StringWidth(label)-ansi.StringWidth(value))
 		return style(label, muted) + style(strings.Repeat(" ", gap)+value, text)
 	}
-	profile := clean(s.Applied)
+	profile := clean(snapshotProfileName(s, s.Applied))
 	if profile == "" {
 		profile = "Not configured"
 		if s.ConfigReady {
@@ -826,7 +837,7 @@ func overviewCards(o dashboardOptions) [][]string {
 	configured, active := "Not configured", "None"
 	if s.ConfigReady {
 		configured = "Configuration ready"
-		active = s.Applied
+		active = snapshotProfileName(s, s.Applied)
 		if active == "" {
 			active = "default"
 		}
@@ -950,7 +961,7 @@ func settingsContent(o dashboardOptions, width int) (string, []hitRegion) {
 		}
 	}
 	for _, control := range controls {
-		if !control.enabled {
+		if !control.enabled || o.Header.owns(control.id) {
 			continue
 		}
 		value := dashboardButton(control.id, control.label, o, control.id == "install")

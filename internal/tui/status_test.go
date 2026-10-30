@@ -12,7 +12,7 @@ import (
 	"github.com/nelvko/lazyclash/internal/service"
 )
 
-func TestRulesObservedStopUpdatesGlobalHeader(t *testing.T) {
+func TestRulesObservedStopUpdatesSharedStateAndPageStatus(t *testing.T) {
 	b := &fakeBackend{snapshot: app.Snapshot{Installed: true, Service: service.Status{Active: true, State: "active"}}}
 	m := ready(b)
 	b.snapshot.Service = service.Status{State: "inactive"}
@@ -21,9 +21,8 @@ func TestRulesObservedStopUpdatesGlobalHeader(t *testing.T) {
 	var cmd tea.Cmd
 	m, cmd = update(m, rulesResultMsg{generation: 4, snapshot: app.RuleSnapshot{State: "stopped"}})
 	m, _ = update(m, commandBatch(t, cmd)[1]())
-	header := strings.Split(m.screen, "\n")[dashboardGeometry(dashboardOptions{Width: m.width, Height: m.height}).headerY]
-	if m.snapshot.Service.Active || !strings.Contains(ansi.Strip(header), "Mihomo · Stopped") {
-		t.Fatal("Rules kept a stale Running header after observing a stopped core")
+	if m.snapshot.Service.Active || !strings.Contains(ansi.Strip(m.screen), "Core stopped") {
+		t.Fatal("Rules kept stale running state after observing a stopped core")
 	}
 }
 

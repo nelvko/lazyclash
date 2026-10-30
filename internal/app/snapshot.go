@@ -26,8 +26,9 @@ type Snapshot struct {
 	ProfilePending      bool
 	Generation          string
 	Applied             string
+	AppliedName         string
 	Profiles            []string
-	Sources             []SourceInfo
+	ProfileDetails      []ProfileInfo
 	Groups              []mihomo.Group
 	APIError            string
 	Desired             DesiredState
@@ -102,11 +103,6 @@ func (a *App) Snapshot(ctx context.Context) (Snapshot, error) {
 			return err
 		}
 		out.Profiles = []string{"default"}
-		out.Sources = []SourceInfo{}
-		for name, source := range lib.Subscriptions {
-			out.Sources = append(out.Sources, SourceInfo{Name: name, Format: source.Format, Revision: source.Revision, Refreshable: source.Address != "", UpdatedAt: source.UpdatedAt})
-		}
-		sort.Slice(out.Sources, func(i, j int) bool { return out.Sources[i].Name < out.Sources[j].Name })
 		for name, entry := range lib.Profiles {
 			out.Profiles = append(out.Profiles, name)
 			if !entry.Validated {
@@ -115,12 +111,16 @@ func (a *App) Snapshot(ctx context.Context) (Snapshot, error) {
 		}
 		sort.Strings(out.Profiles[1:])
 		sort.Strings(out.UnvalidatedProfiles)
-		if out.Installed {
-			info, err := a.profileInfo(lib, m.Applied, m, true)
+		for _, name := range out.Profiles {
+			info, err := a.profileInfo(lib, name, m, out.Installed)
 			if err != nil {
 				return err
 			}
-			out.ProfilePending = info.Pending
+			out.ProfileDetails = append(out.ProfileDetails, info)
+			if name == out.Applied {
+				out.ProfilePending = info.Pending
+				out.AppliedName = info.Name
+			}
 		}
 		if out.Installed && out.ServiceError != "" {
 			out.APIError = "Managed service is unavailable; resolve the service diagnostic first"

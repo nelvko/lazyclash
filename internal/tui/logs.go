@@ -184,12 +184,16 @@ func (m *Model) resumeLogs() tea.Cmd {
 		m.logs.gap = true
 	}
 	m.logs.offset, m.scroll = 0, 0
-	// Reconnecting must also refresh the service summary when the new core is
-	// quiet; waiting for its first event would leave a previous Stopped header.
+	// A quiet core may emit no events, so reconnect also refreshes the shared
+	// service observation used by Overview and other pages.
 	return tea.Batch(m.syncLogs(), m.refreshCoreStatus())
 }
 
 func (m *Model) logsActivate(id string) tea.Cmd {
+	if id != "logs.search" {
+		m.logs.editing = false
+		m.logs.search.Blur()
+	}
 	switch id {
 	case "logs.follow":
 		if m.logs.active {
@@ -295,12 +299,6 @@ func (m Model) logsBody(width int) (string, []hitRegion) {
 	if !m.logs.observedAt.IsZero() {
 		add("Last observed locally: "+m.logs.observedAt.Local().Format("15:04:05"), muted)
 	}
-	follow := "Pause capture (f)"
-	if !m.logs.active {
-		follow = "Resume capture (f)"
-	}
-	button("logs.follow", follow)
-	button("logs.retry", "Reconnect / Retry (g)")
 	if m.logs.editing {
 		add("Search retained entries · Enter / Esc finish", info)
 		m.logs.search.SetWidth(max(1, width-2))
@@ -344,7 +342,7 @@ func (m Model) logsBody(width int) (string, []hitRegion) {
 		}
 		rows = append(rows, strings.Split(wrapText(themed(message, muted, bg, false), max(1, width)), "\n")...)
 	}
-	height := dashboardGeometry(dashboardOptions{Width: m.width, Height: m.height}).height
+	height := dashboardGeometry(dashboardOptions{Width: m.width, Height: m.height, Page: m.page}).height
 	capacity := max(1, height-len(lines)-1)
 	tail := max(0, len(rows)-capacity)
 	start := max(0, min(tail, tail-max(0, m.logs.offset)))

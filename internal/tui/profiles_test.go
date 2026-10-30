@@ -2,7 +2,6 @@ package tui
 
 import (
 	"context"
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -31,19 +30,35 @@ func finishProfileJob(t *testing.T, m Model, cmd tea.Cmd) Model {
 	return m
 }
 
-func submitImport(t *testing.T, m Model, name, source string) (Model, tea.Cmd) {
+func submitImport(t *testing.T, m Model, source string) (Model, tea.Cmd) {
 	t.Helper()
-	m.input.SetValue(name)
-	m, _ = update(m, special(tea.KeyEnter))
-	if m.form != "source" || m.input.EchoMode != textinput.EchoPassword {
-		t.Fatal("source input was not hidden")
+	if m.form != "source" || m.input.EchoMode != textinput.EchoNormal {
+		t.Fatal("source input is not editable as visible text")
 	}
 	m.input.SetValue(source)
 	m.layout()
-	if strings.Contains(ansi.Strip(m.View().Content), source) {
-		t.Fatal("source address leaked in the import dialog")
+	if !strings.Contains(ansi.Strip(m.View().Content), source) {
+		t.Fatal("source address is not visible in the import dialog")
 	}
 	return update(m, special(tea.KeyEnter))
+}
+
+func TestProfileSourceInputScrollsLongPathOnOneLine(t *testing.T) {
+	for _, action := range []string{"add", "subscription.add"} {
+		for _, width := range []int{160, 80, 60, 40} {
+			m := ready(&fakeBackend{})
+			m.width, m.height = width, 24
+			m.page = "profiles"
+			m.activate(action)
+			m.input.SetValue("/tmp/" + strings.Repeat("long-directory/", 20) + "config-visible.yaml")
+			m.layout()
+			view := ansi.Strip(m.View().Content)
+			if !strings.Contains(view, "config-visible.yaml") {
+				t.Fatalf("%s at width %d wrapped or hid the path tail:\n%s", action, width, view)
+			}
+			assertCanvas(t, m.View().Content, width, 24)
+		}
+	}
 }
 
 func TestProfileImportExplicitlyRemembersOnlySubscriptionAction(t *testing.T) {
@@ -51,14 +66,14 @@ func TestProfileImportExplicitlyRemembersOnlySubscriptionAction(t *testing.T) {
 	b := &fakeBackend{
 		add: func(_ context.Context, name, source string) error {
 			imports++
-			if name != "copied" || source != "https://example.com/private-token" {
+			if name != "" || source != "https://example.com/private-token" {
 				t.Fatal("one-time import arguments changed")
 			}
 			return nil
 		},
 		addSubscription: func(_ context.Context, name, source string) error {
 			remembered++
-			if name != "refreshable" || source != "https://example.com/private-token" {
+			if name != "" || source != "https://example.com/private-token" {
 				t.Fatal("remembered import arguments changed")
 			}
 			return nil
@@ -71,7 +86,7 @@ func TestProfileImportExplicitlyRemembersOnlySubscriptionAction(t *testing.T) {
 	if !m.rememberSource || !strings.Contains(ansi.Strip(m.View().Content), "private source URL/path will be saved") {
 		t.Fatal("remembered import did not disclose private source persistence")
 	}
-	m, cmd := submitImport(t, m, "refreshable", "https://example.com/private-token")
+	m, cmd := submitImport(t, m, "https://example.com/private-token")
 	m = finishProfileJob(t, m, cmd)
 	if remembered != 1 || imports != 0 || m.rememberSource || m.form != "" || m.input.Value() != "" {
 		t.Fatal("remembered import was not submitted and cleared")
@@ -82,42 +97,10 @@ func TestProfileImportExplicitlyRemembersOnlySubscriptionAction(t *testing.T) {
 		t.Fatal("cancel retained remember-source state")
 	}
 	m.activate("add")
-	m, cmd = submitImport(t, m, "copied", "https://example.com/private-token")
+	m, cmd = submitImport(t, m, "https://example.com/private-token")
 	m = finishProfileJob(t, m, cmd)
 	if remembered != 1 || imports != 1 || m.failure != "" {
 		t.Fatal("one-time import inherited remember-source behavior", m.failure)
-	}
-}
-
-func TestProfileSourceRefreshAndConfirmedDeletionUseSharedBackend(t *testing.T) {
-	var refreshed, deleted string
-	b := &fakeBackend{
-		snapshot:      app.Snapshot{Sources: []app.SourceInfo{{Name: "airport", Refreshable: true}}},
-		refreshSource: func(_ context.Context, name string) error { refreshed = name; return nil },
-		deleteSource: func(_ context.Context, name string) error {
-			deleted = name
-			return errors.New("subscription is referenced by a profile")
-		},
-	}
-	backend := &profileBackend{fakeBackend: b}
-	m := ready(b)
-	m.backend = backend
-	m.page = "profiles"
-	cmd := m.activate("profile.source.refresh.0")
-	m = finishProfileJob(t, m, cmd)
-	if refreshed != "airport" || backend.applied != 0 || !strings.Contains(m.message, "apply a profile") {
-		t.Fatal("source refresh selected or applied a profile")
-	}
-	m.activate("profile.source.delete.0")
-	m.input.SetValue("wrong")
-	if cmd := m.formKey(special(tea.KeyEnter)); cmd != nil || deleted != "" || m.form != "source-delete" {
-		t.Fatal("source deletion skipped exact-name confirmation")
-	}
-	m.input.SetValue("airport")
-	cmd = m.formKey(special(tea.KeyEnter))
-	m = finishProfileJob(t, m, cmd)
-	if deleted != "airport" || !strings.Contains(m.failure, "referenced") || backend.applied != 0 {
-		t.Fatal("source deletion did not preserve backend protection", m.failure)
 	}
 }
 
@@ -130,7 +113,7 @@ func TestProfileOverridesSaveDraftAndRecipeDeletionRequiresName(t *testing.T) {
 	var savedName, deletedName string
 	var saved []byte
 	b := &fakeBackend{
-		snapshot: app.Snapshot{Profiles: []string{"work"}},
+		snapshot: app.Snapshot{Profiles: []string{"work"}, ProfileDetails: profileFixtures("default", "work")},
 		setOverrides: func(_ context.Context, name string, data []byte) error {
 			savedName, saved = name, data
 			return nil
@@ -161,7 +144,7 @@ func TestProfileOverridesSaveDraftAndRecipeDeletionRequiresName(t *testing.T) {
 	}
 }
 
-func TestProfileOverridesRejectRelativeSymlinkAndOversizedFiles(t *testing.T) {
+func TestProfileOverridesRejectSymlinkAndOversizedFiles(t *testing.T) {
 	if _, err := readProfileOverrides("relative.yaml"); err == nil {
 		t.Fatal("accepted relative override path")
 	}
@@ -184,47 +167,92 @@ func TestProfileOverridesRejectRelativeSymlinkAndOversizedFiles(t *testing.T) {
 	}
 	calls := 0
 	b := &fakeBackend{
-		snapshot:     app.Snapshot{Profiles: []string{"work"}},
+		snapshot:     app.Snapshot{Profiles: []string{"work"}, ProfileDetails: profileFixtures("default", "work")},
 		setOverrides: func(context.Context, string, []byte) error { calls++; return nil },
 	}
 	m := ready(b)
 	m.activate("profile.overrides.1")
-	m.input.SetValue("relative.yaml")
+	m.input.SetValue(link)
 	cmd := m.formKey(special(tea.KeyEnter))
 	m = finishProfileJob(t, m, cmd)
-	if calls != 0 || !strings.Contains(m.failure, "absolute") {
+	if calls != 0 || !strings.Contains(m.failure, "cannot read overrides") {
 		t.Fatal("invalid file reached the application", m.failure)
 	}
 }
 
-func TestProfilePageShowsPendingSourcesAndAccurateActionRows(t *testing.T) {
+func TestProfilePageShowsPendingChangesAndAccurateActionRows(t *testing.T) {
 	m := ready(&fakeBackend{snapshot: app.Snapshot{
 		Installed: true, Profiles: []string{"work"}, Applied: "work", ProfilePending: true,
-		Sources: []app.SourceInfo{{Name: "refreshable", Refreshable: true}, {Name: "copy"}},
+		ProfileDetails: []app.ProfileInfo{{ID: "default", Name: "default", Validated: true}, {ID: "work", Name: "work", Validated: true, Pending: true}},
 	}})
 	m.page = "profiles"
+	m.profilesUI.detail = "work"
 	body, hits := m.pageBody(150)
 	plain := ansi.Strip(body)
-	for _, text := range []string{"One-time import", "Add subscription (remember source)", "work [applied] [changes pending; apply to load]", "Import overrides from file", "Subscription sources", "refreshable", "copy"} {
+	for _, text := range []string{"Paste subscription URL", "Add", "Import", "CHANGES PENDING", "Apply to load", "Apply changes", "Overrides"} {
 		if !strings.Contains(plain, text) {
 			t.Fatalf("missing %q in profiles page", text)
 		}
 	}
 	for _, hit := range hits {
-		if hit.ID == "profile.overrides.0" || hit.ID == "profile.delete.0" || hit.ID == "profile.source.refresh.1" {
-			t.Fatal("built-in edit/delete or nonrefreshable source action was offered", hit.ID)
+		if hit.ID == "profiles.overrides.0" || hit.ID == "profiles.delete.0" {
+			t.Fatal("built-in edit/delete action was offered", hit.ID)
 		}
 	}
 	for _, width := range []int{18, 25, 40} {
 		body, hits := m.pageBody(width)
 		rows := strings.Split(body, "\n")
 		for _, hit := range hits {
-			if hit.Y < 0 || hit.Y >= len(rows) || ansi.StringWidth(rows[hit.Y]) > width || hit.W != width {
+			if hit.Y < 0 || hit.H < 1 || hit.Y+hit.H > len(rows) || hit.X < 0 || hit.X+hit.W > width || ansi.StringWidth(rows[hit.Y]) > width {
 				t.Fatalf("invalid action row at width %d: %+v", width, hit)
 			}
 		}
 	}
-	if handled, cmd := m.profileAction("profile.source.refresh.99"); !handled || cmd != nil {
-		t.Fatal("stale source action was not ignored")
+}
+
+func TestProfileDisplayNameEditsKeepActionsOnStableID(t *testing.T) {
+	const id = "p-stable-id"
+	var renamedID, renamed, updatedID, address, deletedID string
+	snapshot := app.Snapshot{Installed: true, Applied: "default", Profiles: []string{id},
+		ProfileDetails: []app.ProfileInfo{{ID: "default", Name: "default", Validated: true}, {ID: id, Name: "机场 A", Validated: true}}}
+	b := &fakeBackend{snapshot: snapshot,
+		renameProfile: func(_ context.Context, profileID, name string) error {
+			renamedID, renamed = profileID, name
+			return nil
+		},
+		updateProfileAddress: func(_ context.Context, profileID, source string) error {
+			updatedID, address = profileID, source
+			return nil
+		},
+		deleteProfile: func(_ context.Context, profileID string) error { deletedID = profileID; return nil },
+	}
+	m := profileInteractionsModel(b, 120, 32)
+	if card := ansi.Strip(strings.Join(m.profileCard(1, 60).lines, "\n")); !strings.Contains(card, "机场 A") || strings.Contains(card, id) {
+		t.Fatal("profile card displayed its storage ID instead of its display name")
+	}
+	m.activate("profile.1")
+	m.activate("profiles.rename.1")
+	if m.input.Value() != "机场 A" || m.name != id {
+		t.Fatal("Rename did not prefill the display name and retain the stable ID")
+	}
+	m.input.SetValue("我的订阅")
+	m, cmd := update(m, special(tea.KeyEnter))
+	m = finishProfileJob(t, m, cmd)
+	if renamedID != id || renamed != "我的订阅" || m.profilesUI.detail != id {
+		t.Fatal("Rename targeted a display name or lost the open profile identity")
+	}
+	m.activate("profiles.url-edit.1")
+	m.input.SetValue("https://example.invalid/new-source")
+	m, cmd = update(m, special(tea.KeyEnter))
+	m = finishProfileJob(t, m, cmd)
+	if updatedID != id || address != "https://example.invalid/new-source" {
+		t.Fatal("Edit URL did not use the stable profile ID")
+	}
+	m.activate("profiles.delete.1")
+	m.input.SetValue("机场 A")
+	m, cmd = update(m, special(tea.KeyEnter))
+	m = finishProfileJob(t, m, cmd)
+	if deletedID != id {
+		t.Fatal("display-name delete confirmation changed its backend identity")
 	}
 }

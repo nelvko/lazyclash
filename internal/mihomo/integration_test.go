@@ -76,12 +76,6 @@ rules: ["MATCH,PROXY"]
 	if err != nil {
 		t.Fatal(err)
 	}
-	opts.Base = []byte("proxy-groups: [{name: PROXY, type: select, proxies: [fixture-node, DIRECT, REJECT]}]\nrules: [\"MATCH,PROXY\"]\n")
-	opts.NodeSources = []NodeSource{{Name: "fixture", Raw: source}}
-	managed, err := Build(opts)
-	if err != nil {
-		t.Fatal(err)
-	}
 	defaultConfig, err := Default(controller, secret, mixedPort)
 	if err != nil {
 		t.Fatal(err)
@@ -90,7 +84,7 @@ rules: ["MATCH,PROXY"]
 	for _, fixture := range []struct {
 		name string
 		raw  []byte
-	}{{"full", full}, {"patched", patched}, {"managed", managed}, {"default", defaultConfig}} {
+	}{{"full", full}, {"patched", patched}, {"default", defaultConfig}} {
 		paths[fixture.name] = write(fixture.name, fixture.raw)
 		// Both ports are deliberately still occupied: -t checks configuration
 		// semantics, not whether listeners can actually bind at startup.

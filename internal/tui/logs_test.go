@@ -31,15 +31,15 @@ func TestLogsRetainBoundedEventsWithFixedControlsAndScrollableHistory(t *testing
 	for _, size := range [][2]int{{160, 45}, {120, 32}, {80, 24}, {60, 20}, {120, 18}} {
 		m.width, m.height = size[0], size[1]
 		m.logs.offset = 0
-		body, hits := m.logsBody(dashboardBodyWidth(dashboardOptions{Width: m.width, Height: m.height}))
+		body, hits := m.logsBody(dashboardBodyWidth(dashboardOptions{Width: m.width, Height: m.height, Page: m.page}))
 		plain := ansi.Strip(body)
-		if !strings.Contains(plain, "event-299") || strings.Contains(plain, "event-100") || !strings.Contains(plain, "Resume capture") {
-			t.Fatalf("%v did not retain newest rows and visible controls", size)
+		if !strings.Contains(plain, "event-299") || strings.Contains(plain, "event-100") {
+			t.Fatalf("%v did not retain newest rows", size)
 		}
-		if len(strings.Split(body, "\n")) > dashboardGeometry(dashboardOptions{Width: m.width, Height: m.height}).height {
+		if len(strings.Split(body, "\n")) > dashboardGeometry(dashboardOptions{Width: m.width, Height: m.height, Page: m.page}).height {
 			t.Fatalf("%v log viewport exceeded its available height", size)
 		}
-		assertRegions(t, hits, dashboardBodyWidth(dashboardOptions{Width: m.width, Height: m.height}), m.height)
+		assertRegions(t, hits, dashboardBodyWidth(dashboardOptions{Width: m.width, Height: m.height, Page: m.page}), m.height)
 	}
 	for n := 0; n < 64; n++ {
 		m.logsKey(special(tea.KeyHome))
@@ -130,7 +130,7 @@ func TestLogsFailureDoesNotLoopAndKeepsObservedEntriesClearlyMarked(t *testing.T
 		t.Fatal("failed stream immediately restarted in a tight loop")
 	}
 	body, _ := m.logsBody(80)
-	for _, part := range []string{"last observed", "Mihomo is not running", "observed earlier", "Reconnect / Retry"} {
+	for _, part := range []string{"last observed", "Mihomo is not running", "observed earlier"} {
 		if !strings.Contains(ansi.Strip(body), part) {
 			t.Fatalf("missing failure observation %q", part)
 		}

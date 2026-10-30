@@ -149,6 +149,7 @@ func (m *Model) acceptPorts(msg portsMsg) {
 	}
 	if msg.hasSnapshot {
 		m.snapshot = msg.snapshot
+		m.snapshotReady = true
 	}
 	switch msg.kind {
 	case "load":
@@ -350,7 +351,7 @@ func (m *Model) portsDocument(width int) (wizardDocument, []wizardButton, string
 		d.pair("Proxy port", fmt.Sprintf("%d → %d", p.plan.Current.MixedPort, p.plan.Proposed.MixedPort))
 		d.pair("Control API port", fmt.Sprintf("%d → %d", p.plan.Current.ControllerPort, p.plan.Proposed.ControllerPort))
 		d.pair("Listen address", p.plan.ControllerHost+" (loopback only)")
-		d.pair("Current profile", p.plan.AppliedProfile)
+		d.pair("Current profile", snapshotProfileName(m.snapshot, p.plan.AppliedProfile))
 		d.pair("API key", "Existing managed key retained; never displayed")
 		d.space()
 		label := "Apply settings"

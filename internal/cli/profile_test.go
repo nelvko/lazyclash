@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -38,115 +40,96 @@ func configDigest(raw string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func TestProfileRememberSourceAndExplicitRefreshPreserveStoppedCore(t *testing.T) {
-	a, service := installBackend(t)
-	initial := "mode: rule\nproxies: []\nproxy-groups: []\nrules: ['MATCH,DIRECT']\n"
-	source := writeCLIConfig(t, initial)
-	if _, err := runProfileCLI(t, a, "add", "saved", source, "--remember-source"); err != nil {
+func storedCLIProfileRevision(t *testing.T, a *app.App, id string) string {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(a.Home, "configuration", "library.json"))
+	if err != nil {
 		t.Fatal(err)
 	}
-	sources, err := a.ListSources(t.Context())
-	if err != nil || len(sources) != 1 || !sources[0].Refreshable || sources[0].Revision != configDigest(initial) {
-		t.Fatalf("remembered source: %+v %v", sources, err)
+	var library struct {
+		Profiles map[string]struct{ Spec struct{ Revision string } }
 	}
-	updated := "mode: direct\nproxies: []\nproxy-groups: []\nrules: ['MATCH,DIRECT']\n"
+	if err := json.Unmarshal(raw, &library); err != nil {
+		t.Fatal(err)
+	}
+	return library.Profiles[id].Spec.Revision
+}
+
+func TestProfileRememberAddressAndExplicitRefreshPreserveStoppedCore(t *testing.T) {
+	a, service := installBackend(t)
+	initial := "rules: ['MATCH,DIRECT']\n"
+	source := writeCLIConfig(t, initial)
+	if _, err := runProfileCLI(t, a, "add", source, "--name", "saved", "--remember-source"); err != nil {
+		t.Fatal(err)
+	}
+	profile, err := a.ProfileDetails(t.Context(), "saved")
+	if err != nil || !profile.Refreshable || storedCLIProfileRevision(t, a, "saved") != configDigest(initial) {
+		t.Fatal("remembered profile metadata is incorrect", profile, err)
+	}
+	updated := "rules: ['MATCH,REJECT']\n"
 	if err := os.WriteFile(source, []byte(updated), 0600); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := runProfileCLI(t, a, "refresh", "saved"); err != nil {
 		t.Fatal(err)
 	}
-	sources, err = a.ListSources(t.Context())
-	if err != nil || len(sources) != 1 || sources[0].Revision != configDigest(updated) {
-		t.Fatalf("refresh did not publish the new source revision: %+v %v", sources, err)
+	if storedCLIProfileRevision(t, a, "saved") != configDigest(updated) {
+		t.Fatal("refresh did not publish the profile revision")
 	}
 	if service.installs != 0 || service.actions != 0 {
-		t.Fatal("subscription command installed or started a core")
+		t.Fatal("profile refresh touched the core lifecycle")
 	}
 }
 
-func TestProfileImportDoesNotRememberSourceByDefault(t *testing.T) {
+func TestProfileImportDoesNotRememberAddressByDefault(t *testing.T) {
 	a, service := installBackend(t)
-	source := writeCLIConfig(t, "proxies: []\nrules: ['MATCH,DIRECT']\n")
-	if _, err := runProfileCLI(t, a, "add", "copied", source); err != nil {
+	source := writeCLIConfig(t, "rules: ['MATCH,DIRECT']\n")
+	if _, err := runProfileCLI(t, a, "add", source, "--name", "copied"); err != nil {
 		t.Fatal(err)
 	}
-	sources, err := a.ListSources(t.Context())
-	if err != nil || len(sources) != 1 || sources[0].Refreshable {
-		t.Fatalf("ordinary import remembered its source: %+v %v", sources, err)
+	profile, err := a.ProfileDetails(t.Context(), "copied")
+	if err != nil || profile.Refreshable {
+		t.Fatal("one-time import retained its address", profile, err)
 	}
 	if _, err := runProfileCLI(t, a, "refresh", "copied"); err == nil {
-		t.Fatal("refresh accepted a source that was not remembered")
+		t.Fatal("one-time import was refreshed")
 	}
-	if service.actions != 0 || service.installs != 0 {
-		t.Fatal("import touched the core service")
+	if service.installs != 0 || service.actions != 0 {
+		t.Fatal("import touched the core lifecycle")
 	}
 }
 
-func TestProfileRecipesOverridesAndReferenceSafeDeletionWithoutInstallation(t *testing.T) {
+func TestProfileOverridesAndDeletionWithoutInstallation(t *testing.T) {
 	a, service := installBackend(t)
-	for _, name := range []string{"first", "second"} {
-		raw := "proxies:\n  - name: " + name + "\n    type: ss\n    server: example.com\n    port: 443\n    cipher: aes-128-gcm\n    password: private-node-password\n"
-		if _, err := runSubscriptionCLI(t, a, "add", name, writeCLIConfig(t, raw)); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if _, err := runProfileCLI(t, a, "create", "full", "--source", "first"); err != nil {
+	source := writeCLIConfig(t, "proxies: [{name: first, type: direct}]\nrules: ['MATCH,DIRECT']\n")
+	if _, err := runProfileCLI(t, a, "add", source, "--name", "work"); err != nil {
 		t.Fatal(err)
 	}
-	template := writeCLIConfig(t, "proxy-groups:\n  - name: Proxy\n    type: select\n    include-all: true\nrules: ['MATCH,Proxy']\n")
-	if _, err := runProfileCLI(t, a, "create", "combined", "--managed", "--sources", "first,second", "--template", template); err != nil {
+	override := writeCLIConfig(t, "prepend-rules: ['DOMAIN,local.example,DIRECT']\n")
+	if _, err := runProfileCLI(t, a, "override", "work", override); err != nil {
 		t.Fatal(err)
 	}
-	override := writeCLIConfig(t, "set:\n  dns:\n    enable: true\n    nameserver: ['https://dns.example/dns-query']\nprepend-rules: ['DOMAIN,local.example,DIRECT']\n")
-	if _, err := runProfileCLI(t, a, "override", "combined", override); err != nil {
+	output, err := runProfileCLI(t, a, "show", "work")
+	var profile app.ProfileInfo
+	if err != nil || json.Unmarshal([]byte(output), &profile) != nil || profile.ID != "work" || !profile.HasOverrides || profile.Core != "mihomo" {
+		t.Fatal("profile details omitted metadata", output, err)
+	}
+	if strings.Contains(output, "local.example") || strings.Contains(output, source) {
+		t.Fatal("public profile metadata leaked configuration content")
+	}
+	if _, err := runProfileCLI(t, a, "delete", "work"); err != nil {
 		t.Fatal(err)
 	}
-	output, err := runProfileCLI(t, a, "show", "combined")
-	var detail app.ProfileInfo
-	if err != nil || json.Unmarshal([]byte(output), &detail) != nil || detail.Name != "combined" || detail.Mode != "managed" || detail.Core != "mihomo" || len(detail.Sources) != 2 {
-		t.Fatalf("profile details: %s %v", output, err)
+	profiles, err := a.ListProfiles(t.Context())
+	if err != nil || len(profiles) != 1 {
+		t.Fatal("profile deletion left a saved entry", profiles, err)
 	}
-	if strings.Contains(output, "private-node-password") || strings.Contains(output, "dns.example") {
-		t.Fatal("show exposed configuration content")
-	}
-	output, err = runProfileCLI(t, a, "list")
-	var profiles []app.ProfileInfo
-	if err != nil || json.Unmarshal([]byte(output), &profiles) != nil || len(profiles) != 3 {
-		t.Fatalf("profile list without installation: %s %v", output, err)
-	}
-	if _, err := runSubscriptionCLI(t, a, "delete", "first"); err == nil {
-		t.Fatal("deleted a referenced subscription")
-	}
-	for _, name := range []string{"full", "combined"} {
-		if _, err := runProfileCLI(t, a, "delete", name); err != nil {
-			t.Fatal(err)
-		}
-	}
-	for _, name := range []string{"first", "second"} {
-		if _, err := runSubscriptionCLI(t, a, "delete", name); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if service.actions != 0 || service.installs != 0 {
-		t.Fatal("recipe editing touched the core service")
+	if service.installs != 0 || service.actions != 0 {
+		t.Fatal("profile metadata edit touched the core lifecycle")
 	}
 }
 
-func TestProfileCreateRejectsAmbiguousFlagsAndUnsafeInputFiles(t *testing.T) {
-	a, _ := installBackend(t)
-	for _, args := range [][]string{
-		{"create", "full"},
-		{"create", "full", "--source", "one", "--sources", "two"},
-		{"create", "managed", "--managed", "--source", "one", "--sources", "two", "--template", "/unused"},
-		{"create", "managed", "--managed", "--sources", "one"},
-		{"create", "managed", "--managed", "--sources", "one", "--template", "relative.yaml"},
-		{"override", "full", "relative.yaml"},
-	} {
-		if _, err := runProfileCLI(t, a, args...); err == nil {
-			t.Fatalf("accepted invalid arguments %v", args)
-		}
-	}
+func TestProfileInputRejectsUnsafeFiles(t *testing.T) {
 	file := writeCLIConfig(t, "set: {}\n")
 	link := filepath.Join(t.TempDir(), "link.yaml")
 	if err := os.Symlink(file, link); err != nil {
@@ -155,8 +138,64 @@ func TestProfileCreateRejectsAmbiguousFlagsAndUnsafeInputFiles(t *testing.T) {
 	if _, err := readProfileInput(link); err == nil {
 		t.Fatal("accepted symlink input")
 	}
+	if _, err := readProfileInput("relative.yaml"); err == nil {
+		t.Fatal("accepted relative input")
+	}
 	large := writeCLIConfig(t, strings.Repeat("a", (8<<20)+1))
 	if _, err := readProfileInput(large); err == nil {
 		t.Fatal("accepted oversized input")
+	}
+}
+
+func TestProfileCLIAutomaticNamesRenameAndURLKeepStableID(t *testing.T) {
+	a, service := installBackend(t)
+	providerName := "Airport A"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("profile-title", providerName)
+		_, _ = w.Write([]byte("rules: ['MATCH,DIRECT']\n"))
+	}))
+	defer server.Close()
+	if _, err := runProfileCLI(t, a, "add", server.URL+"/subscription", "--remember-source"); err != nil {
+		t.Fatal(err)
+	}
+	profiles, err := a.ListProfiles(t.Context())
+	if err != nil || len(profiles) != 2 || profiles[1].Name != providerName || profiles[1].NameSource != "provider" || profiles[1].ID == "" {
+		t.Fatalf("automatic CLI name: %+v %v", profiles, err)
+	}
+	id := profiles[1].ID
+	if _, err := runProfileCLI(t, a, "rename", id, "我的机场"); err != nil {
+		t.Fatal(err)
+	}
+	providerName = "Airport B"
+	if _, err := runProfileCLI(t, a, "refresh", id); err != nil {
+		t.Fatal(err)
+	}
+	detail, err := a.ProfileDetails(t.Context(), id)
+	if err != nil || detail.ID != id || detail.Name != "我的机场" || detail.NameSource != "custom" {
+		t.Fatalf("custom CLI name was overwritten: %+v %v", detail, err)
+	}
+	if _, err := runProfileCLI(t, a, "url", id, server.URL+"/replacement"); err != nil {
+		t.Fatal(err)
+	}
+	detail, err = a.ProfileDetails(t.Context(), id)
+	if err != nil || detail.ID != id || detail.Name != "我的机场" {
+		t.Fatalf("URL edit changed profile identity: %+v %v", detail, err)
+	}
+	if _, err := runProfileCLI(t, a, "add", server.URL+"/other", "--name", "Manual name"); err != nil {
+		t.Fatal(err)
+	}
+	profiles, err = a.ListProfiles(t.Context())
+	custom := false
+	for _, profile := range profiles {
+		custom = custom || profile.Name == "Manual name" && profile.NameSource == "custom"
+	}
+	if err != nil || !custom {
+		t.Fatalf("--name was not marked custom: %+v %v", profiles, err)
+	}
+	if _, err := runProfileCLI(t, a, "add", "legacy", server.URL); err == nil {
+		t.Fatal("accepted the removed two-positional-argument syntax")
+	}
+	if service.actions != 0 || service.installs != 0 {
+		t.Fatal("metadata commands changed the core lifecycle")
 	}
 }

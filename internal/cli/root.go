@@ -44,7 +44,6 @@ func New() *cobra.Command {
 		newStatusCommand(current),
 		newServiceCommand(current),
 		newProfileCommand(current),
-		newSubscriptionCommand(current),
 		newNodesCommand(current),
 		newSelectCommand(current),
 		newEnvCommand(current),

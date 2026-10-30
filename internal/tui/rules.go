@@ -298,7 +298,6 @@ func (m Model) rulesBody(width int) (string, []hitRegion) {
 			addText("Last observed rule · no longer confirmed current", warning)
 		}
 		addButton("rules.back", "Back to rules")
-		addButton("rules.retry", "Refresh / Retry")
 		addText(fmt.Sprintf("Order: #%d (API index %d)", r.Index+1, r.Index), text)
 		addText("Type: "+r.Type, text)
 		payload := r.Payload
@@ -335,7 +334,6 @@ func (m Model) rulesBody(width int) (string, []hitRegion) {
 	} else {
 		addButton("rules.search", "Search rules (/): "+clean(m.rules.search.Value()))
 	}
-	addButton("rules.retry", "Refresh / Retry")
 	addText("↑↓ Select · Enter Details · / Search · g Refresh", muted)
 	if m.rules.snapshot.Error != "" && m.rules.received {
 		addText(m.rules.snapshot.Error, errorColor)

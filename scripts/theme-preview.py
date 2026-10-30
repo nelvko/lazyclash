@@ -96,6 +96,9 @@ def render(source, font_path, font_size):
             if c == "▔":
                 # Terminals draw the upper one-eighth block at the cell edge.
                 draw.rectangle((x, y, x + cell_w - 1, y + max(1, round(cell_h / 8)) - 1), fill=fg)
+            elif c == "▌":
+                # Terminal block elements span the complete cell height.
+                draw.rectangle((x, y, x + max(1, round(cell_w / 2)) - 1, y + cell_h - 1), fill=fg)
             else:
                 draw.text((x, y + 1), c, font=bold_font if bold else font, fill=fg)
             if underline and c != " ":

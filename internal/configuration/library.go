@@ -3,10 +3,12 @@
 package configuration
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -16,57 +18,37 @@ import (
 )
 
 const MaxDocumentSize = 8 << 20
+const LibraryVersion = 3
 
 var namePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,47}$`)
 var revisionPattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
 
 func ValidName(name string) bool { return namePattern.MatchString(name) && name != "default" }
 
-// Subscription is a download source, not an enabled configuration. Address is
-// optional for one-time imports and must never be included in public listings.
-type Subscription struct {
-	Format    string    `json:"format"`
-	Address   string    `json:"address,omitempty"`
-	Revision  string    `json:"revision"`
-	UpdatedAt time.Time `json:"updated_at"`
-}
-
-// Profile is a recipe. Full uses exactly one complete source. Managed uses a
-// user template and extracts only inline proxies from the ordered sources.
-// Overrides are user data; downloaded snapshots are never edited in place.
+// Profile pins one complete downloaded or imported configuration. Overrides
+// are user data; the original snapshot is never edited in place.
 type Profile struct {
-	Core      string   `json:"core"`
-	Mode      string   `json:"mode"`
-	Source    string   `json:"source,omitempty"`
-	Sources   []string `json:"sources,omitempty"`
-	Template  string   `json:"template,omitempty"`
-	Overrides string   `json:"overrides,omitempty"`
-}
-
-func (p Profile) SourceNames() []string {
-	if p.Mode == "full" {
-		return []string{p.Source}
-	}
-	return append([]string(nil), p.Sources...)
+	Core      string `json:"core"`
+	Revision  string `json:"revision"`
+	Overrides string `json:"overrides,omitempty"`
 }
 
 type ProfileRecord struct {
-	Spec      Profile `json:"spec"`
-	Validated bool    `json:"validated"` // engine validation, not network readiness
+	Spec       Profile   `json:"spec"`
+	Validated  bool      `json:"validated"` // engine validation, not network readiness
+	Name       string    `json:"name"`
+	NameSource string    `json:"name_source"`
+	NameBase   string    `json:"name_base"`
+	Address    string    `json:"address,omitempty"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
-// One atomic index commits relationships and revisions together. Blobs are
-// written first; an interrupted write can leave an unreferenced private blob,
-// but cannot publish half of an updated subscription or a dangling recipe.
+// One atomic index commits each profile's name, address and revision together.
+// Blobs are written first; interrupted writes may leave an unreferenced private
+// blob, but cannot publish only part of a profile update.
 type Library struct {
-	Version       int                      `json:"version"`
-	Subscriptions map[string]Subscription  `json:"subscriptions"`
-	Profiles      map[string]ProfileRecord `json:"profiles"`
-}
-
-type Revision struct {
-	Name   string `json:"name"`
-	SHA256 string `json:"sha256"`
+	Version  int                      `json:"version"`
+	Profiles map[string]ProfileRecord `json:"profiles"`
 }
 
 type Repository struct{ Root string }
@@ -77,7 +59,7 @@ func Hash(raw []byte) string {
 }
 
 func (r Repository) Load() (Library, []byte, error) {
-	lib := Library{Version: 1, Subscriptions: map[string]Subscription{}, Profiles: map[string]ProfileRecord{}}
+	lib := Library{Version: LibraryVersion, Profiles: map[string]ProfileRecord{}}
 	info, err := os.Lstat(r.Root)
 	if errors.Is(err, os.ErrNotExist) {
 		return lib, nil, nil
@@ -95,53 +77,42 @@ func (r Repository) Load() (Library, []byte, error) {
 	if err != nil {
 		return lib, nil, err
 	}
-	if json.Unmarshal(raw, &lib) != nil || lib.validate() != nil {
+	var saved Library
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&saved) != nil || saved.validate() != nil || decoder.Decode(new(any)) != io.EOF {
 		return Library{}, nil, errors.New("invalid configuration library; preserving it for inspection")
 	}
-	return lib, raw, nil
+	return saved, raw, nil
 }
 
 func (l Library) validate() error {
 	invalid := errors.New("invalid configuration library")
-	if l.Version != 1 || l.Subscriptions == nil || l.Profiles == nil {
+	if l.Version != LibraryVersion || l.Profiles == nil {
 		return invalid
 	}
-	for name, source := range l.Subscriptions {
-		if !ValidName(name) || source.Format == "" || !revisionPattern.MatchString(source.Revision) {
-			return invalid
-		}
-	}
+	used := map[string]bool{NameKey("default"): true}
 	for name, record := range l.Profiles {
 		p := record.Spec
-		if !ValidName(name) || p.Core == "" || len(p.Template) > MaxDocumentSize || len(p.Overrides) > MaxDocumentSize {
+		if !ValidName(name) || p.Core == "" || !revisionPattern.MatchString(p.Revision) || len(p.Overrides) > MaxDocumentSize {
 			return invalid
 		}
-		switch p.Mode {
-		case "full":
-			if p.Source == "" || len(p.Sources) != 0 || p.Template != "" {
-				return invalid
-			}
-		case "managed":
-			if p.Source != "" || len(p.Sources) == 0 || p.Template == "" {
-				return invalid
-			}
+		if record.Name == "" || record.NameBase == "" || record.Name != CleanName(record.Name) || record.NameBase != CleanName(record.NameBase) || used[NameKey(record.Name)] {
+			return invalid
+		}
+		switch record.NameSource {
+		case NameCustom, NameProvider, NameURL, NameFallback:
 		default:
 			return invalid
 		}
-		seen := map[string]bool{}
-		for _, source := range p.SourceNames() {
-			if _, ok := l.Subscriptions[source]; !ok || seen[source] {
-				return invalid
-			}
-			seen[source] = true
-		}
+		used[NameKey(record.Name)] = true
 	}
 	return nil
 }
 
-// Save publishes an index after the caller has Put/Read the referenced input
-// revisions and validated affected recipes. It deliberately does not read every
-// blob: unrelated corruption must not prevent removing its library references.
+// Save publishes an index after the caller has Put/Read its snapshots and
+// validated affected profiles. It does not read every blob: unrelated corruption
+// must not prevent removing a profile from the library.
 func (r Repository) Save(lib Library, expected []byte) error {
 	if err := lib.validate(); err != nil {
 		return err
@@ -161,7 +132,7 @@ func (r Repository) Save(lib Library, expected []byte) error {
 
 func (r Repository) Put(raw []byte) (string, error) {
 	if len(raw) == 0 || len(raw) > MaxDocumentSize {
-		return "", errors.New("source must be nonempty and at most 8 MiB")
+		return "", errors.New("configuration must be nonempty and at most 8 MiB")
 	}
 	if err := store.Dir(r.Root); err != nil {
 		return "", err
@@ -175,7 +146,7 @@ func (r Repository) Put(raw []byte) (string, error) {
 	old, err := store.Read(path)
 	if err == nil {
 		if Hash(old) != revision {
-			return "", errors.New("source snapshot was modified; preserving it")
+			return "", errors.New("configuration snapshot was modified; preserving it")
 		}
 		return revision, nil
 	}
@@ -187,7 +158,7 @@ func (r Repository) Put(raw []byte) (string, error) {
 
 func (r Repository) Read(revision string) ([]byte, error) {
 	if !revisionPattern.MatchString(revision) {
-		return nil, errors.New("invalid source revision")
+		return nil, errors.New("invalid configuration revision")
 	}
 	for _, path := range []string{r.Root, filepath.Join(r.Root, "snapshots")} {
 		info, err := os.Lstat(path)
@@ -195,7 +166,7 @@ func (r Repository) Read(revision string) ([]byte, error) {
 			return nil, err
 		}
 		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			return nil, errors.New("source snapshot directory is unsafe")
+			return nil, errors.New("configuration snapshot directory is unsafe")
 		}
 	}
 	raw, err := store.Read(filepath.Join(r.Root, "snapshots", revision+".yaml"))
@@ -203,7 +174,7 @@ func (r Repository) Read(revision string) ([]byte, error) {
 		return nil, err
 	}
 	if len(raw) > MaxDocumentSize || Hash(raw) != revision {
-		return nil, errors.New("source snapshot was modified; preserving it")
+		return nil, errors.New("configuration snapshot was modified; preserving it")
 	}
 	return raw, nil
 }

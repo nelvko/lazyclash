@@ -20,6 +20,7 @@ func runtimeModel(t *testing.T, b *fakeBackend) Model {
 	b.snapshot.Service = service.Status{Active: true, State: "active"}
 	m := New(t.Context(), b)
 	m.snapshot = b.snapshot
+	m.snapshotReady = true
 	m.busy, m.job = false, ""
 	m.width, m.height = 120, 32
 	m.layout()

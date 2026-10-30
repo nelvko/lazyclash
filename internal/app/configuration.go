@@ -5,20 +5,21 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"sort"
+	"time"
 
 	"github.com/nelvko/lazyclash/internal/configuration"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
 
-// buildRecord pins the exact recipe and immutable source revisions used by a
-// generation. Later source/override edits cannot change its restart behavior.
+// buildRecord pins a profile's content and overrides for one generation.
+// Later downloads, renames and address edits cannot change its restart inputs.
 type buildRecord struct {
-	Profile string                   `json:"profile"`
-	Recipe  *configuration.Profile   `json:"recipe,omitempty"`
-	Sources []configuration.Revision `json:"sources,omitempty"`
+	Profile string                 `json:"profile"`
+	Recipe  *configuration.Profile `json:"recipe,omitempty"`
 }
 
 func (r buildRecord) fingerprint() string { raw, _ := json.Marshal(r); return digest(raw) }
@@ -49,13 +50,6 @@ func recipeRecord(lib configuration.Library, name string) (buildRecord, error) {
 		return record, errors.New("this profile requires an unsupported core")
 	}
 	record.Recipe = &p
-	for _, name := range p.SourceNames() {
-		source, ok := lib.Subscriptions[name]
-		if !ok || source.Format != "mihomo" {
-			return record, errors.New("profile references a missing or incompatible subscription")
-		}
-		record.Sources = append(record.Sources, configuration.Revision{Name: name, SHA256: source.Revision})
-	}
 	return record, nil
 }
 
@@ -65,23 +59,8 @@ func (a *App) recipeInputs(lib configuration.Library, name string) (mihomo.Build
 		return mihomo.BuildOptions{}, record, err
 	}
 	p := record.Recipe
-	opts := mihomo.BuildOptions{Overrides: []byte(p.Overrides)}
-	if p.Mode == "managed" {
-		opts.Base = []byte(p.Template)
-		opts.NodeSources = []mihomo.NodeSource{}
-	}
-	for _, source := range record.Sources {
-		raw, err := a.library().Read(source.SHA256)
-		if err != nil {
-			return opts, record, err
-		}
-		if p.Mode == "full" {
-			opts.Base = raw
-		} else {
-			opts.NodeSources = append(opts.NodeSources, mihomo.NodeSource{Name: source.Name, Raw: raw})
-		}
-	}
-	return opts, record, nil
+	raw, err := a.library().Read(p.Revision)
+	return mihomo.BuildOptions{Base: raw, Overrides: []byte(p.Overrides)}, record, err
 }
 
 func (a *App) buildProfile(ctx context.Context, lib configuration.Library, name string, m manifest, engine bool) ([]byte, buildRecord, error) {
@@ -109,12 +88,18 @@ func (a *App) buildProfile(ctx context.Context, lib configuration.Library, name 
 }
 
 type ProfileInfo struct {
-	Name      string   `json:"name"`
-	Core      string   `json:"core"`
-	Mode      string   `json:"mode"`
-	Sources   []string `json:"sources"`
-	Pending   bool     `json:"pending"`
-	Validated bool     `json:"validated"`
+	ID           string    `json:"id"`
+	Name         string    `json:"name"`
+	NameSource   string    `json:"name_source"`
+	NameBase     string    `json:"name_base"`
+	Core         string    `json:"core"`
+	Refreshable  bool      `json:"refreshable"`
+	Kind         string    `json:"kind"`
+	Origin       string    `json:"origin"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	Pending      bool      `json:"pending"`
+	Validated    bool      `json:"validated"`
+	HasOverrides bool      `json:"has_overrides"`
 }
 
 func (a *App) profileInfo(lib configuration.Library, name string, m manifest, installed bool) (ProfileInfo, error) {
@@ -122,10 +107,20 @@ func (a *App) profileInfo(lib configuration.Library, name string, m manifest, in
 	if err != nil {
 		return ProfileInfo{}, err
 	}
-	info := ProfileInfo{Name: name, Core: "mihomo", Mode: "full", Sources: []string{}, Validated: installed && name == "default"}
+	info := ProfileInfo{ID: name, Name: name, NameSource: configuration.NameCustom, NameBase: name, Core: "mihomo", Kind: "builtin", Origin: "Built-in", Validated: installed && name == "default"}
 	if record.Recipe != nil {
-		info.Core, info.Mode, info.Sources = record.Recipe.Core, record.Recipe.Mode, record.Recipe.SourceNames()
-		info.Validated = lib.Profiles[name].Validated
+		entry := lib.Profiles[name]
+		info.Name, info.NameSource, info.NameBase = entry.Name, entry.NameSource, entry.NameBase
+		info.Core, info.Refreshable, info.UpdatedAt = entry.Spec.Core, entry.Address != "", entry.UpdatedAt
+		info.Kind, info.Origin = "imported", "Imported file"
+		if entry.Address != "" {
+			info.Kind, info.Origin = "local", "Local file"
+			if address, err := url.Parse(entry.Address); err == nil && (address.Scheme == "http" || address.Scheme == "https") {
+				info.Kind, info.Origin = "remote", address.Hostname()
+			}
+		}
+		info.Validated = entry.Validated
+		info.HasOverrides = record.Recipe.Overrides != ""
 	}
 	info.Pending = installed && m.Applied == name && (m.Build == nil || m.Build.fingerprint() != record.fingerprint())
 	return info, nil
@@ -170,45 +165,14 @@ func (a *App) ProfileDetails(ctx context.Context, name string) (ProfileInfo, err
 		if err != nil {
 			return err
 		}
-		info, err = a.profileInfo(lib, name, m, installed)
+		id, err := resolveProfileID(lib, name)
+		if err != nil {
+			return err
+		}
+		info, err = a.profileInfo(lib, id, m, installed)
 		return err
 	})
 	return info, err
-}
-
-// CreateProfile saves a validated recipe without selecting or starting it.
-func (a *App) CreateProfile(ctx context.Context, name string, spec configuration.Profile) error {
-	if !configuration.ValidName(name) {
-		return errors.New("invalid or reserved profile name")
-	}
-	if spec.Core == "" {
-		spec.Core = "mihomo"
-	}
-	if spec.Mode == "" {
-		spec.Mode = "full"
-	}
-	return a.locked(ctx, func() error {
-		lib, old, err := a.library().Load()
-		if err != nil {
-			return err
-		}
-		if _, ok := lib.Profiles[name]; ok {
-			return errors.New("profile already exists")
-		}
-		lib.Profiles[name] = configuration.ProfileRecord{Spec: spec}
-		m, installed, err := a.buildContext()
-		if err != nil {
-			return err
-		}
-		if _, _, err = a.buildProfile(ctx, lib, name, m, installed); err != nil {
-			return err
-		}
-		lib.Profiles[name] = configuration.ProfileRecord{Spec: spec, Validated: installed}
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		return a.library().Save(lib, old)
-	})
 }
 
 // SetProfileOverrides edits a draft. The currently applied generation is a
@@ -219,6 +183,10 @@ func (a *App) SetProfileOverrides(ctx context.Context, name string, raw []byte) 
 	}
 	return a.locked(ctx, func() error {
 		lib, old, err := a.library().Load()
+		if err != nil {
+			return err
+		}
+		name, err = resolveProfileID(lib, name)
 		if err != nil {
 			return err
 		}
@@ -245,11 +213,12 @@ func (a *App) SetProfileOverrides(ctx context.Context, name string, raw []byte) 
 }
 
 func (a *App) DeleteProfile(ctx context.Context, name string) error {
-	if !configuration.ValidName(name) {
-		return errors.New("invalid or reserved profile name")
-	}
 	return a.locked(ctx, func() error {
 		lib, old, err := a.library().Load()
+		if err != nil {
+			return err
+		}
+		name, err = resolveProfileID(lib, name)
 		if err != nil {
 			return err
 		}

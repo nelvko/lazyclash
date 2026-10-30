@@ -2,17 +2,19 @@ package configuration
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func publishedRepository(t *testing.T) (Repository, Library, []byte, []byte) {
 	t.Helper()
 	r := Repository{Root: filepath.Join(t.TempDir(), "configuration")}
 	lib, old, err := r.Load()
-	if err != nil || old != nil || len(lib.Subscriptions) != 0 || len(lib.Profiles) != 0 {
+	if err != nil || old != nil || len(lib.Profiles) != 0 {
 		t.Fatal("fresh repository is not empty", err)
 	}
 	snapshot := []byte("proxies: [{name: initial, type: direct}]\n")
@@ -20,8 +22,7 @@ func publishedRepository(t *testing.T) (Repository, Library, []byte, []byte) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	lib.Subscriptions["source"] = Subscription{Format: "mihomo", Address: "https://source.invalid/private-token", Revision: revision}
-	lib.Profiles["primary"] = ProfileRecord{Spec: Profile{Core: "mihomo", Mode: "full", Source: "source"}}
+	lib.Profiles["primary"] = ProfileRecord{Spec: Profile{Core: "mihomo", Revision: revision}, Name: "Primary", NameSource: NameCustom, NameBase: "Primary", Address: "https://example.invalid/private-token", UpdatedAt: time.Date(2026, 10, 30, 0, 0, 0, 0, time.UTC)}
 	if err := r.Save(lib, old); err != nil {
 		t.Fatal(err)
 	}
@@ -32,13 +33,13 @@ func publishedRepository(t *testing.T) (Repository, Library, []byte, []byte) {
 	return r, lib, old, snapshot
 }
 
-func TestRepositoryStaleEditCannotReplaceNewerRelationships(t *testing.T) {
+func TestRepositoryStaleEditCannotReplaceNewerProfiles(t *testing.T) {
 	r, stale, staleIndex, _ := publishedRepository(t)
 	latest, expected, err := r.Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	latest.Profiles["secondary"] = ProfileRecord{Spec: Profile{Core: "mihomo", Mode: "full", Source: "source"}}
+	latest.Profiles["secondary"] = ProfileRecord{Spec: Profile{Core: "mihomo", Revision: latest.Profiles["primary"].Spec.Revision}, Name: "Secondary", NameSource: NameCustom, NameBase: "Secondary"}
 	if err := r.Save(latest, expected); err != nil {
 		t.Fatal(err)
 	}
@@ -47,12 +48,11 @@ func TestRepositoryStaleEditCannotReplaceNewerRelationships(t *testing.T) {
 		t.Fatal(err)
 	}
 	delete(stale.Profiles, "primary")
-	delete(stale.Subscriptions, "source")
 	if err := r.Save(stale, staleIndex); err == nil {
-		t.Fatal("stale editor discarded a newer profile and its dependency")
+		t.Fatal("stale editor discarded a newer profile")
 	}
 	reopened, actual, err := r.Load()
-	if err != nil || !bytes.Equal(actual, committed) || len(reopened.Profiles) != 2 || len(reopened.Subscriptions) != 1 {
+	if err != nil || !bytes.Equal(actual, committed) || len(reopened.Profiles) != 2 {
 		t.Fatal("failed stale edit changed the committed library", err)
 	}
 }
@@ -76,7 +76,7 @@ func TestRepositoryExternalIndexEditIsPreserved(t *testing.T) {
 	}
 }
 
-func TestUncommittedSnapshotDoesNotPublishAnUpdatedSubscription(t *testing.T) {
+func TestUncommittedSnapshotDoesNotPublishAnUpdatedProfile(t *testing.T) {
 	r, lib, oldIndex, original := publishedRepository(t)
 	next := []byte("proxies: [{name: candidate, type: direct}]\n")
 	revision, err := r.Put(next)
@@ -86,10 +86,10 @@ func TestUncommittedSnapshotDoesNotPublishAnUpdatedSubscription(t *testing.T) {
 	// Simulate interruption after the durable blob write, before index commit.
 	// A new repository instance must observe only the last complete relationship.
 	reopened, index, err := (Repository{Root: r.Root}).Load()
-	if err != nil || !bytes.Equal(index, oldIndex) || reopened.Subscriptions["source"].Revision != lib.Subscriptions["source"].Revision {
-		t.Fatal("uncommitted blob changed the published subscription", err)
+	if err != nil || !bytes.Equal(index, oldIndex) || reopened.Profiles["primary"].Spec.Revision != lib.Profiles["primary"].Spec.Revision {
+		t.Fatal("uncommitted blob changed the published profile", err)
 	}
-	published, err := r.Read(reopened.Subscriptions["source"].Revision)
+	published, err := r.Read(reopened.Profiles["primary"].Spec.Revision)
 	if err != nil || !bytes.Equal(published, original) {
 		t.Fatal("interruption lost the last usable snapshot", err)
 	}
@@ -107,7 +107,7 @@ func TestUncommittedSnapshotDoesNotPublishAnUpdatedSubscription(t *testing.T) {
 
 func TestCorruptedSnapshotCannotBeReadOrSilentlyRepaired(t *testing.T) {
 	r, lib, oldIndex, original := publishedRepository(t)
-	revision := lib.Subscriptions["source"].Revision
+	revision := lib.Profiles["primary"].Spec.Revision
 	path := filepath.Join(r.Root, "snapshots", revision+".yaml")
 	damaged := []byte("private-token: externally-modified\n")
 	if err := os.WriteFile(path, damaged, 0600); err != nil {
@@ -125,45 +125,85 @@ func TestCorruptedSnapshotCannotBeReadOrSilentlyRepaired(t *testing.T) {
 	}
 	_, index, err := r.Load()
 	if err != nil || !bytes.Equal(index, oldIndex) {
-		t.Fatal("snapshot corruption rewrote committed source relationships", err)
+		t.Fatal("snapshot corruption rewrote committed profiles", err)
 	}
 }
 
-func TestRepositoryRejectsInvalidProfileRelationshipsBeforePublishing(t *testing.T) {
+func TestRepositoryRejectsInvalidProfileMetadataBeforePublishing(t *testing.T) {
 	for _, tc := range []struct {
 		name string
-		edit func(*Library)
+		edit func(*ProfileRecord)
 	}{
-		{"deleted-dependency", func(lib *Library) { delete(lib.Subscriptions, "source") }},
-		{"missing-dependency", func(lib *Library) {
-			lib.Profiles["primary"] = ProfileRecord{Spec: Profile{Core: "mihomo", Mode: "full", Source: "missing"}}
-		}},
-		{"duplicate-managed-source", func(lib *Library) {
-			lib.Profiles["primary"] = ProfileRecord{Spec: Profile{Core: "mihomo", Mode: "managed", Sources: []string{"source", "source"}, Template: "rules: ['MATCH,DIRECT']"}}
-		}},
-		{"mixed-mode-fields", func(lib *Library) {
-			lib.Profiles["primary"] = ProfileRecord{Spec: Profile{Core: "mihomo", Mode: "full", Source: "source", Template: "rules: ['MATCH,DIRECT']"}}
-		}},
-		{"managed-without-template", func(lib *Library) {
-			lib.Profiles["primary"] = ProfileRecord{Spec: Profile{Core: "mihomo", Mode: "managed", Sources: []string{"source"}}}
-		}},
-		{"unknown-mode", func(lib *Library) {
-			lib.Profiles["primary"] = ProfileRecord{Spec: Profile{Core: "mihomo", Mode: "other", Source: "source"}}
-		}},
-		{"invalid-revision", func(lib *Library) {
-			lib.Subscriptions["source"] = Subscription{Format: "mihomo", Revision: "../private-token"}
-		}},
+		{"missing-core", func(record *ProfileRecord) { record.Spec.Core = "" }},
+		{"missing-revision", func(record *ProfileRecord) { record.Spec.Revision = "" }},
+		{"invalid-revision", func(record *ProfileRecord) { record.Spec.Revision = "../private-token" }},
+		{"oversized-overrides", func(record *ProfileRecord) { record.Spec.Overrides = strings.Repeat("x", MaxDocumentSize+1) }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r, lib, original, _ := publishedRepository(t)
-			tc.edit(&lib)
+			record := lib.Profiles["primary"]
+			tc.edit(&record)
+			lib.Profiles["primary"] = record
 			if err := r.Save(lib, original); err == nil || strings.Contains(err.Error(), "private-token") {
-				t.Fatal("invalid relationship was published or sensitive input leaked", err)
+				t.Fatal("invalid metadata was published or sensitive input leaked", err)
 			}
 			_, actual, err := r.Load()
 			if err != nil || !bytes.Equal(actual, original) {
-				t.Fatal("rejected relationship changed the committed index", err)
+				t.Fatal("rejected metadata changed the committed index", err)
 			}
 		})
+	}
+}
+
+func TestRepositoryRejectsUnknownFieldsWithoutRewritingTheIndex(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		edit func(map[string]any)
+	}{
+		{"independent sources", func(value map[string]any) { value["subscriptions"] = map[string]any{} }},
+		{"composition mode", func(value map[string]any) {
+			value["profiles"].(map[string]any)["primary"].(map[string]any)["spec"].(map[string]any)["mode"] = "managed"
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r, _, original, _ := publishedRepository(t)
+			var value map[string]any
+			if err := json.Unmarshal(original, &value); err != nil {
+				t.Fatal(err)
+			}
+			tc.edit(value)
+			invalid, err := json.Marshal(value)
+			if err != nil {
+				t.Fatal(err)
+			}
+			path := filepath.Join(r.Root, "library.json")
+			if err := os.WriteFile(path, invalid, 0600); err != nil {
+				t.Fatal(err)
+			}
+			if _, _, err := r.Load(); err == nil {
+				t.Fatal("unsupported structure was accepted")
+			}
+			actual, err := os.ReadFile(path)
+			if err != nil || !bytes.Equal(actual, invalid) {
+				t.Fatal("unsupported structure was rewritten", err)
+			}
+		})
+	}
+}
+
+func TestDeletingProfilePreservesItsPinnedSnapshot(t *testing.T) {
+	r, lib, expected, original := publishedRepository(t)
+	revision := lib.Profiles["primary"].Spec.Revision
+	delete(lib.Profiles, "primary")
+	if err := r.Save(lib, expected); err != nil {
+		t.Fatal(err)
+	}
+	reopened, _, err := r.Load()
+	if err != nil || len(reopened.Profiles) != 0 {
+		t.Fatal("deleted profile remains in the library", err)
+	}
+	snapshot, err := r.Read(revision)
+	if err != nil || !bytes.Equal(snapshot, original) {
+		t.Fatal("removing a profile destroyed a historical runtime input", err)
 	}
 }

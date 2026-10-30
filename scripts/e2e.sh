@@ -330,9 +330,9 @@ for ((attempt=0; attempt<50; attempt++)); do
   sleep 0.1
 done
 fixture_port=$(cat "$work/fixture-port")
-lp profile add fixture --remember-source "http://127.0.0.1:$fixture_port/config?token=fixture-private-token"
+lp profile add --name fixture --remember-source "http://127.0.0.1:$fixture_port/config?token=fixture-private-token"
 before=$(readlink "$home/installation/current")
-if lp profile add invalid "http://127.0.0.1:$fixture_port/invalid?token=fixture-private-token" > "$work/invalid.log" 2>&1; then
+if lp profile add --name invalid "http://127.0.0.1:$fixture_port/invalid?token=fixture-private-token" > "$work/invalid.log" 2>&1; then
   printf 'Invalid YAML was accepted\n' >&2
   exit 1
 fi

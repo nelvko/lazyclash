@@ -17,31 +17,33 @@ import (
 )
 
 type fakeBackend struct {
-	snapshot        app.Snapshot
-	snapshotErr     error
-	prefs           app.Preferences
-	prefsErr        error
-	resolve         func(context.Context, string, downloadnet.Config) (mihomo.Release, error)
-	testFile        func(context.Context, mihomo.Release, downloadnet.Config) error
-	prepare         func(context.Context, mihomo.Release, string, bool) (app.InstallPlan, error)
-	install         func(context.Context, app.InstallPlan, downloadnet.Config, func(mihomo.Progress)) (app.InstallResult, error)
-	save            func(context.Context, downloadnet.Config) error
-	add             func(context.Context, string, string) error
-	addSubscription func(context.Context, string, string) error
-	refreshSource   func(context.Context, string) error
-	deleteSource    func(context.Context, string) error
-	deleteProfile   func(context.Context, string) error
-	setOverrides    func(context.Context, string, []byte) error
-	control         func(context.Context, string) error
-	autostart       func(context.Context, bool) error
-	mode            func(context.Context, string) error
-	runtime         func(context.Context) (app.RuntimeSnapshot, error)
-	rules           func(context.Context) (app.RuleSnapshot, error)
-	streamLogs      func(context.Context, func(mihomo.LogEntry)) error
-	closeConnection func(context.Context, string) error
-	getSettings     func(context.Context) (app.RuntimeSettings, error)
-	prepareSettings func(context.Context, app.RuntimeSettings) (app.RuntimeSettingsPlan, error)
-	applySettings   func(context.Context, app.RuntimeSettingsPlan) (app.RuntimeSettingsResult, error)
+	snapshot             app.Snapshot
+	snapshotErr          error
+	prefs                app.Preferences
+	prefsErr             error
+	resolve              func(context.Context, string, downloadnet.Config) (mihomo.Release, error)
+	testFile             func(context.Context, mihomo.Release, downloadnet.Config) error
+	prepare              func(context.Context, mihomo.Release, string, bool) (app.InstallPlan, error)
+	install              func(context.Context, app.InstallPlan, downloadnet.Config, func(mihomo.Progress)) (app.InstallResult, error)
+	save                 func(context.Context, downloadnet.Config) error
+	add                  func(context.Context, string, string) error
+	addSubscription      func(context.Context, string, string) error
+	renameProfile        func(context.Context, string, string) error
+	updateProfileAddress func(context.Context, string, string) error
+	refresh              func(context.Context, string) error
+	refreshAllProfiles   func(context.Context) error
+	deleteProfile        func(context.Context, string) error
+	setOverrides         func(context.Context, string, []byte) error
+	control              func(context.Context, string) error
+	autostart            func(context.Context, bool) error
+	mode                 func(context.Context, string) error
+	runtime              func(context.Context) (app.RuntimeSnapshot, error)
+	rules                func(context.Context) (app.RuleSnapshot, error)
+	streamLogs           func(context.Context, func(mihomo.LogEntry)) error
+	closeConnection      func(context.Context, string) error
+	getSettings          func(context.Context) (app.RuntimeSettings, error)
+	prepareSettings      func(context.Context, app.RuntimeSettings) (app.RuntimeSettingsPlan, error)
+	applySettings        func(context.Context, app.RuntimeSettingsPlan) (app.RuntimeSettingsResult, error)
 }
 
 func (f *fakeBackend) GetRuntimeSettings(ctx context.Context) (app.RuntimeSettings, error) {
@@ -133,18 +135,34 @@ func (f *fakeBackend) AddSubscription(ctx context.Context, name, source string) 
 	}
 	return ctx.Err()
 }
-func (f *fakeBackend) RefreshSource(ctx context.Context, name string) error {
-	if f.refreshSource != nil {
-		return f.refreshSource(ctx, name)
+
+func (f *fakeBackend) RenameProfile(ctx context.Context, id, name string) error {
+	if f.renameProfile != nil {
+		return f.renameProfile(ctx, id, name)
 	}
 	return ctx.Err()
 }
-func (f *fakeBackend) DeleteSource(ctx context.Context, name string) error {
-	if f.deleteSource != nil {
-		return f.deleteSource(ctx, name)
+
+func (f *fakeBackend) UpdateProfileAddress(ctx context.Context, id, source string) error {
+	if f.updateProfileAddress != nil {
+		return f.updateProfileAddress(ctx, id, source)
 	}
 	return ctx.Err()
 }
+
+func (f *fakeBackend) Refresh(ctx context.Context, name string) error {
+	if f.refresh != nil {
+		return f.refresh(ctx, name)
+	}
+	return ctx.Err()
+}
+func (f *fakeBackend) RefreshAllProfiles(ctx context.Context) error {
+	if f.refreshAllProfiles != nil {
+		return f.refreshAllProfiles(ctx)
+	}
+	return ctx.Err()
+}
+
 func (f *fakeBackend) DeleteProfile(ctx context.Context, name string) error {
 	if f.deleteProfile != nil {
 		return f.deleteProfile(ctx, name)
@@ -206,6 +224,13 @@ func ready(b *fakeBackend) Model {
 	m := New(context.Background(), b)
 	m, _ = update(m, m.snapshotCmd(m.id, m.opCtx, true)())
 	return m
+}
+func profileFixtures(ids ...string) []app.ProfileInfo {
+	profiles := make([]app.ProfileInfo, 0, len(ids))
+	for _, id := range ids {
+		profiles = append(profiles, app.ProfileInfo{ID: id, Name: id, Core: "mihomo", Validated: true})
+	}
+	return profiles
 }
 func commandBatch(t *testing.T, cmd tea.Cmd) tea.BatchMsg {
 	t.Helper()
@@ -657,7 +682,7 @@ func TestFailedInstallSurvivesNetworkBackAndDraftEdits(t *testing.T) {
 	}
 }
 
-func TestTextInputOwnsQAndDigitsAndSourcesStayHidden(t *testing.T) {
+func TestTextInputOwnsQAndDigitsAndSourceEditingIsVisible(t *testing.T) {
 	m := ready(&fakeBackend{})
 	m, _ = update(m, key("i"))
 	m.wizard.step = stepVersion
@@ -679,11 +704,10 @@ func TestTextInputOwnsQAndDigitsAndSourcesStayHidden(t *testing.T) {
 	if m.input.Value() != "q1234" || m.page != "overview" || m.quitting {
 		t.Fatal("global shortcuts intercepted import text")
 	}
-	m, _ = update(m, special(tea.KeyEnter))
 	m.input.SetValue("https://secret.example/private-token?q=super-secret")
 	m.layout()
-	if view := ansi.Strip(m.View().Content); strings.Contains(view, "super-secret") || strings.Contains(view, "private-token") || strings.Contains(view, "secret.example") {
-		t.Fatal("subscription source leaked")
+	if view := ansi.Strip(m.View().Content); !strings.Contains(view, "https://secret.example/private-token?q=super-secret") {
+		t.Fatal("subscription source is not visible for editing")
 	}
 	m, _ = update(m, special(tea.KeyEsc))
 	if m.form != "" || m.input.Value() != "" {

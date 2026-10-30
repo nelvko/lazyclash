@@ -2,13 +2,18 @@ package tui
 
 import (
 	"sort"
+	"strconv"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
 )
 
 func listTarget(id string) bool {
-	for _, prefix := range []string{"connection.", "rule.", "profile.", "group.", "node."} {
+	if strings.HasPrefix(id, "profile.") {
+		_, err := strconv.Atoi(strings.TrimPrefix(id, "profile."))
+		return err == nil
+	}
+	for _, prefix := range []string{"connection.", "rule.", "group.", "node."} {
 		if strings.HasPrefix(id, prefix) {
 			return true
 		}
@@ -21,7 +26,30 @@ func listTarget(id string) bool {
 func (m Model) focusTargets() []hitRegion {
 	var nav, list []hitRegion
 	var controls []hitRegion
-	for _, r := range m.targets {
+	targets := m.targets
+	if m.page == "profiles" && m.form == "" && !m.helpOpen && !m.ports.open && !m.wizard.open && !m.wizard.networkOpen && !m.sidebarOpen && m.width >= 20 && m.height >= 7 {
+		// Keyboard focus can reach controls below the fold. Mouse targets stay
+		// clipped to the viewport; cycleFocus reveals the chosen body control.
+		targets = nil
+		for _, target := range m.targets {
+			if strings.HasPrefix(target.ID, "nav.") || target.ID == "menu" {
+				targets = append(targets, target)
+			}
+		}
+		g := dashboardGeometry(dashboardOptions{Width: m.width, Height: m.height, Page: m.page})
+		for _, target := range m.targets {
+			if target.ID != "menu" && !strings.HasPrefix(target.ID, "nav.") && target.Y < g.y {
+				targets = append(targets, target)
+			}
+		}
+		_, body := m.pageBody(g.width)
+		for _, target := range body {
+			target.X += g.x
+			target.Y += g.y
+			targets = append(targets, target)
+		}
+	}
+	for _, r := range targets {
 		switch {
 		case strings.HasPrefix(r.ID, "nav."):
 			nav = append(nav, r)
@@ -97,7 +125,7 @@ func (m *Model) navigationKey(k tea.KeyPressMsg) bool {
 }
 
 func (m *Model) bodyListKey(k tea.KeyPressMsg) bool {
-	if m.page != "proxies" && m.page != "profiles" || strings.HasPrefix(m.focus, "nav.") {
+	if m.page != "proxies" || strings.HasPrefix(m.focus, "nav.") {
 		return false
 	}
 	delta := 0
@@ -131,7 +159,7 @@ func (m *Model) bodyListKey(k tea.KeyPressMsg) bool {
 }
 
 func (m *Model) revealBodyTarget(hit hitRegion) {
-	height := max(1, dashboardGeometry(dashboardOptions{Width: m.width, Height: m.height}).height)
+	height := max(1, dashboardGeometry(dashboardOptions{Width: m.width, Height: m.height, Page: m.page}).height)
 	if hit.Y < m.scroll {
 		m.scroll = hit.Y
 	}
@@ -150,6 +178,20 @@ func (m Model) contextHelp() string {
 	if m.focus == "menu" {
 		return "Enter Menu · 1–7 Pages · Tab Content · ? Help"
 	}
+	if m.pageHeader().owns(m.focus) {
+		switch m.focus {
+		case "profiles.update-all":
+			return "Enter Update profiles · Tab Content · ? Help"
+		case "logs.follow":
+			return "Enter Pause/Resume capture · Tab Content · ? Help"
+		case "logs.retry":
+			return "Enter Reconnect · Tab Content · ? Help"
+		case "network":
+			return "Enter Network settings · Tab Content · ? Help"
+		default:
+			return "Enter Refresh · Tab Content · ? Help"
+		}
+	}
 	switch m.page {
 	case "connections":
 		return "↑↓ Select · Enter Details · / Search · x Close · ? Help"
@@ -157,7 +199,9 @@ func (m Model) contextHelp() string {
 		return "↑↓ Select · Enter Details · / Search · g Refresh · ? Help"
 	case "logs":
 		return "↑↓ Scroll/Pause · End Follow · f Pause · / Search · ? Help"
-	case "proxies", "profiles":
+	case "profiles":
+		return "↑↓←→ Select · Enter Details · a Add · Tab Actions · ? Help"
+	case "proxies":
 		return "↑↓ Select · Enter Apply/Open · Tab Focus · ? Help"
 	default:
 		return "Tab Focus · Enter Open · 1–7 Pages · ? Help"

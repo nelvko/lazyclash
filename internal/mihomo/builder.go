@@ -8,20 +8,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// NodeSource supplies inline proxies to a managed profile. Its rules, groups,
-// providers, DNS and hosts are intentionally not imported into the template.
-type NodeSource struct {
-	Name string
-	Raw  []byte
-}
-
 // BuildOptions describes reproducible inputs, independent of service state.
-// A nil NodeSources uses Base as a full profile; a nonnil list selects managed
-// mode and must contain at least one source. Overrides uses the small schema
+// Base is one complete configuration. Overrides uses the small schema
 // set/prepend-rules/append-rules, never an implicit YAML deep merge.
 type BuildOptions struct {
 	Base               []byte
-	NodeSources        []NodeSource
 	Overrides          []byte
 	Controller, Secret string
 	MixedPort          int
@@ -34,32 +25,6 @@ func Build(opts BuildOptions) ([]byte, error) {
 	cfg, err := decodeConfig(opts.Base)
 	if err != nil {
 		return nil, err
-	}
-	if opts.NodeSources != nil {
-		if len(opts.NodeSources) == 0 {
-			return nil, errors.New("managed profile requires at least one node source")
-		}
-		proxies, err := configEntries(cfg, "proxies")
-		if err != nil {
-			return nil, err
-		}
-		seenSources := make(map[string]bool)
-		for i, source := range opts.NodeSources {
-			if source.Name == "" || seenSources[source.Name] {
-				return nil, fmt.Errorf("node source %d has an empty or duplicate identifier", i+1)
-			}
-			seenSources[source.Name] = true
-			if err := ValidateSource(source.Raw); err != nil {
-				return nil, fmt.Errorf("node source %d: %w", i+1, err)
-			}
-			raw, _ := decodeConfig(source.Raw) // ValidateSource checked decoding.
-			nodes, _ := configEntries(raw, "proxies")
-			if len(nodes) == 0 {
-				return nil, fmt.Errorf("node source %d has no inline proxies; provider-only sources cannot be extracted", i+1)
-			}
-			proxies = append(proxies, nodes...)
-		}
-		cfg["proxies"] = proxies
 	}
 	if len(opts.Overrides) != 0 {
 		if err := applyOverrides(cfg, opts.Overrides); err != nil {
@@ -89,9 +54,8 @@ func Build(opts BuildOptions) ([]byte, error) {
 	return out, nil
 }
 
-// ValidateSource checks a downloaded document without treating its routing as
-// the selected profile. In managed mode, dangling source-group references are
-// irrelevant because only its inline proxies are consumed.
+// ValidateSource checks that a downloaded document contains Mihomo fields.
+// Build checks its complete routing and the application's runtime constraints.
 func ValidateSource(raw []byte) error {
 	cfg, err := decodeConfig(raw)
 	if err != nil {
@@ -99,7 +63,7 @@ func ValidateSource(raw []byte) error {
 	}
 	// Mihomo ignores unknown YAML fields, so -t alone accepts an API error
 	// object or another core's document as an empty, direct-routing profile.
-	// Identify source format without imposing this restriction on user templates.
+	// Identify the downloaded format before building an effective configuration.
 	hasRouting := false
 	for _, key := range []string{"proxies", "proxy-groups", "proxy-providers", "rules", "rule-providers"} {
 		if _, exists := cfg[key]; exists {
@@ -402,8 +366,8 @@ func validateReferences(cfg map[string]any) error {
 	if hasReferenceCycle(edges) {
 		return errors.New("proxy-groups contain a reference cycle")
 	}
-	// A source node may dial through a source group that was deliberately not
-	// extracted. Validate the assembled namespace, including node-to-node loops.
+	// Nodes may dial through groups or other nodes. Validate the complete
+	// namespace, including node-to-node loops.
 	for _, item := range nodes {
 		node := item.(map[string]any)
 		value, exists := node["dialer-proxy"]

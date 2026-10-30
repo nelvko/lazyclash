@@ -300,7 +300,6 @@ func (m Model) connectionsBody(width int) (string, []hitRegion) {
 	} else {
 		addButton("conn.search", "Search connections (/): "+clean(m.connections.search.Value()))
 	}
-	addButton("conn.retry", "Refresh / Retry")
 	addText("Enter Details · x Close selected · ↑↓ Select · / Search", muted)
 	lines = append(lines, "")
 	if err := m.runtime.snapshot.Error; err != "" {

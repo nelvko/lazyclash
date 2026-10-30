@@ -15,11 +15,16 @@ import (
 	"github.com/nelvko/lazyclash/internal/store"
 )
 
-func (a *App) source(ctx context.Context, source string) ([]byte, error) {
+type downloadedSource struct {
+	Raw     []byte
+	Headers http.Header
+}
+
+func (a *App) downloadSource(ctx context.Context, source string) (downloadedSource, error) {
 	if strings.HasPrefix(source, "https://") || strings.HasPrefix(source, "http://") {
 		req, err := http.NewRequestWithContext(ctx, "GET", source, nil)
 		if err != nil {
-			return nil, errors.New("invalid subscription URL")
+			return downloadedSource{}, errors.New("invalid subscription URL")
 		}
 		tr := http.DefaultTransport.(*http.Transport).Clone()
 		tr.Proxy = nil
@@ -42,34 +47,34 @@ func (a *App) source(ctx context.Context, source string) ([]byte, error) {
 		resp, err := client.Do(req)
 		if err != nil {
 			if ctx.Err() != nil {
-				return nil, ctx.Err()
+				return downloadedSource{}, ctx.Err()
 			}
-			return nil, errors.New("subscription download failed (URL withheld)")
+			return downloadedSource{}, errors.New("subscription download failed (URL withheld)")
 		}
 		defer resp.Body.Close()
 		if resp.StatusCode != 200 {
-			return nil, fmt.Errorf("subscription download returned HTTP %d", resp.StatusCode)
+			return downloadedSource{}, fmt.Errorf("subscription download returned HTTP %d", resp.StatusCode)
 		}
 		raw, err := io.ReadAll(io.LimitReader(resp.Body, configuration.MaxDocumentSize+1))
 		if err != nil {
 			if ctx.Err() != nil {
-				return nil, ctx.Err()
+				return downloadedSource{}, ctx.Err()
 			}
-			return nil, errors.New("cannot read subscription response")
+			return downloadedSource{}, errors.New("cannot read subscription response")
 		}
 		if len(raw) > configuration.MaxDocumentSize {
-			return nil, errors.New("subscription exceeds 8 MiB")
+			return downloadedSource{}, errors.New("subscription exceeds 8 MiB")
 		}
-		return raw, nil
+		return downloadedSource{Raw: raw, Headers: resp.Header.Clone()}, nil
 	}
 	if !filepath.IsAbs(source) {
-		return nil, errors.New("subscription source must be an HTTP(S) URL or absolute file path")
+		return downloadedSource{}, errors.New("subscription source must be an HTTP(S) URL or absolute file path")
 	}
 	raw, err := store.Read(source)
 	if err != nil {
-		return nil, errors.New("cannot read subscription file")
+		return downloadedSource{}, errors.New("cannot read subscription file")
 	}
-	return raw, nil
+	return downloadedSource{Raw: raw}, nil
 }
 func (a *App) validateConfig(ctx context.Context, m manifest, config []byte) error {
 	bin, _, data := a.paths()

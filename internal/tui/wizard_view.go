@@ -590,23 +590,3 @@ func (m *Model) renderWizard(base string) (string, []hitRegion) {
 	}
 	return overlay(base, box, x, y, m.width, m.height), hits
 }
-func (m *Model) renderImport(base string) (string, []hitRegion) {
-	boxW := min(76, m.width)
-	boxH := min(12, m.height)
-	x, y := (m.width-boxW)/2, (m.height-boxH)/2
-	if boxW < 24 || boxH < 7 {
-		return overlay("", "Enlarge terminal · Esc Back", 0, 0, m.width, m.height), nil
-	}
-	m.input.SetWidth(max(1, boxW-8))
-	styleInput(&m.input, inputBackground, m.failure != "")
-	label := "Configuration name"
-	if m.form == "source" {
-		label = "Subscription URL or local YAML path (hidden)"
-	}
-	lines := []string{themed("Import configuration", text, raised, false), "", cellCrop(label, boxW-4), "", themed("› "+m.input.View(), text, inputBackground, false), "", themed(cellCrop("Enter Continue / Save · Esc Cancel", boxW-4), muted, raised, false)}
-	if m.failure != "" {
-		lines = append(lines, themed(cellCrop(m.failure, boxW-4), errorColor, raised, false))
-	}
-	box := lipgloss.NewStyle().Background(lipgloss.Color(raised)).Border(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color(focus)).Width(boxW-2).Height(boxH-2).Padding(0, 1).Render(strings.Join(lines, "\n"))
-	return overlay(base, themed(box, text, raised, false), x, y, m.width, m.height), []hitRegion{{ID: "import-input", X: x + 2, Y: y + 5, W: max(1, boxW-4), H: 1}}
-}

@@ -8,14 +8,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/nelvko/lazyclash/internal/configuration"
 	"github.com/nelvko/lazyclash/internal/store"
 )
 
 func (a *App) Apply(ctx context.Context, name string) error {
-	if name != "default" && !configuration.ValidName(name) {
-		return errors.New("invalid profile name")
-	}
 	return a.locked(ctx, func() error {
 		if err := a.requireService(); err != nil {
 			return err
@@ -36,6 +32,10 @@ func (a *App) Apply(ctx context.Context, name string) error {
 			return errors.New("service is changing state; wait before applying a profile")
 		}
 		lib, _, err := a.library().Load()
+		if err != nil {
+			return err
+		}
+		name, err = resolveProfileID(lib, name)
 		if err != nil {
 			return err
 		}

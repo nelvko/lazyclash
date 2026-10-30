@@ -139,11 +139,11 @@ func savedSourcePath(t *testing.T, a *App, name string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	source, ok := lib.Subscriptions[name]
+	profile, ok := lib.Profiles[name]
 	if !ok {
-		t.Fatalf("subscription %q was not saved", name)
+		t.Fatalf("profile %q was not saved", name)
 	}
-	return filepath.Join(a.Home, "configuration", "snapshots", source.Revision+".yaml")
+	return filepath.Join(a.Home, "configuration", "snapshots", profile.Spec.Revision+".yaml")
 }
 func assertLibraryEntryMissing(t *testing.T, a *App, name string) {
 	t.Helper()
@@ -153,9 +153,6 @@ func assertLibraryEntryMissing(t *testing.T, a *App, name string) {
 	}
 	if _, exists := lib.Profiles[name]; exists {
 		t.Fatal("rejected profile was published")
-	}
-	if _, exists := lib.Subscriptions[name]; exists {
-		t.Fatal("rejected subscription was published")
 	}
 }
 func addFixtureProfile(t *testing.T, a *App, name string) {
@@ -570,8 +567,8 @@ func TestSubscriptionRedirectDoesNotForwardTokenInReferer(t *testing.T) {
 	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, target.URL, http.StatusFound) }))
 	defer source.Close()
 	a.HTTP = nil
-	raw, err := a.source(t.Context(), source.URL+"/token-in-path?token=private")
-	if err != nil || string(raw) != "fixture" {
-		t.Fatal(string(raw), err)
+	download, err := a.downloadSource(t.Context(), source.URL+"/token-in-path?token=private")
+	if err != nil || string(download.Raw) != "fixture" {
+		t.Fatal(string(download.Raw), err)
 	}
 }

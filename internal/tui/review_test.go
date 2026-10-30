@@ -167,18 +167,20 @@ func TestWrappedPageBodyTargetsMatchTheirPaintedRows(t *testing.T) {
 		m.page = "profiles"
 		m.snapshot.Profiles = []string{"work"}
 		m.snapshot.UnvalidatedProfiles = []string{"work"}
+		m.snapshot.ProfileDetails = []app.ProfileInfo{{ID: "default", Name: "default"}, {ID: "work", Name: "work"}}
 		body, hits = m.pageBody(width)
 		lines = strings.Split(body, "\n")
 		for _, r := range hits {
-			if r.ID == "profile.1" && !strings.Contains(ansi.Strip(lines[r.Y]), "work") {
+			if r.ID == "profile.1" && (r.Y+r.H > len(lines) || !strings.Contains(ansi.Strip(lines[r.Y+1]), "work")) {
 				t.Fatalf("wrapped import explanation shifted profile target: %+v", r)
 			}
 		}
 	}
-	m := ready(&fakeBackend{snapshot: app.Snapshot{Installed: true, Profiles: []string{"work"}, UnvalidatedProfiles: []string{"work"}}})
+	m := ready(&fakeBackend{snapshot: app.Snapshot{Installed: true, Profiles: []string{"work"}, UnvalidatedProfiles: []string{"work"},
+		ProfileDetails: []app.ProfileInfo{{ID: "default", Name: "default", Validated: true}, {ID: "work", Name: "work"}}}})
 	m.page = "profiles"
 	body, _ := m.pageBody(100)
-	if !strings.Contains(ansi.Strip(body), "work [engine validation pending]") {
+	if !strings.Contains(ansi.Strip(body), "work") || !strings.Contains(ansi.Strip(body), "Engine validation pending") {
 		t.Fatal("preimported profile lost its validation status after installation")
 	}
 }

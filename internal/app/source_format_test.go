@@ -56,7 +56,7 @@ func TestSubscriptionErrorResponsesNeverReplacePublishedInputsOrRuntime(t *testi
 			operations := []func() error{
 				func() error { return a.Refresh(t.Context(), "saved") },
 				func() error { return a.Add(t.Context(), "rejected-profile", address) },
-				func() error { return a.AddSource(t.Context(), "rejected-source", address) },
+				func() error { return a.AddSubscription(t.Context(), "rejected-subscription", address) },
 			}
 			for _, operation := range operations {
 				err := operation()
@@ -73,7 +73,7 @@ func TestSubscriptionErrorResponsesNeverReplacePublishedInputsOrRuntime(t *testi
 				t.Fatal("error response changed published or immutable input data", err)
 			}
 			assertLibraryEntryMissing(t, a, "rejected-profile")
-			assertLibraryEntryMissing(t, a, "rejected-source")
+			assertLibraryEntryMissing(t, a, "rejected-subscription")
 		})
 	}
 }
