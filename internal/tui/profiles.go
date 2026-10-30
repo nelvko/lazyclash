@@ -198,6 +198,7 @@ func (m *Model) openProfileEdit(form, name string) tea.Cmd {
 	m.form, m.name, m.rememberSource = form, name, false
 	m.failure = ""
 	m.input.Reset()
+	m.paths.reset()
 	m.input.EchoMode = textinput.EchoNormal
 	m.input.Placeholder = "Enter the exact name to confirm deletion"
 	if form == "profile-rename" {
@@ -236,6 +237,14 @@ func (m *Model) profileFormKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 			return true, nil
 		}
 		form, name := m.form, m.name
+		if m.pathForm() {
+			var err error
+			value, err = resolveLocalPath(value)
+			if err != nil {
+				m.failure = clean(err.Error())
+				return true, nil
+			}
+		}
 		expected := name
 		if form == "profile-delete" {
 			expected = m.profileInfo(name).Name
@@ -285,6 +294,9 @@ func readProfileOverrides(path string) ([]byte, error) {
 
 func (m *Model) renderProfileForm(base string) (string, []hitRegion) {
 	boxW, boxH := min(76, m.width), min(12, m.height)
+	if m.pathForm() {
+		boxH = min(18, m.height)
+	}
 	x, y := (m.width-boxW)/2, (m.height-boxH)/2
 	if boxW < 24 || boxH < 7 {
 		return overlay("", "Enlarge terminal · Esc Back", 0, 0, m.width, m.height), nil
@@ -322,6 +334,17 @@ func (m *Model) renderProfileForm(base string) (string, []hitRegion) {
 		inputRow = 2
 	}
 	footer := "Enter Continue / Save · Esc Cancel"
+	if m.pathForm() {
+		rows := max(0, boxH-len(lines)-5)
+		lines = append(lines, m.paths.view(boxW-4, rows)...)
+		footer = "↑↓ Select · Tab Complete · Enter Save · Esc Cancel"
+		if boxW < 60 {
+			footer = "↑↓ Select · Tab Fill · Enter · Esc"
+		}
+		if boxW < 36 {
+			footer = "Tab Fill · ↵ · Esc"
+		}
+	}
 	lines = append(lines, "", themed(cellCrop(footer, boxW-4), muted, raised, false))
 	if m.failure != "" {
 		lines = append(lines, themed(cellCrop(m.failure, boxW-4), errorColor, raised, false))

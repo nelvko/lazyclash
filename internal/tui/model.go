@@ -105,6 +105,7 @@ type Model struct {
 	rememberSource        bool
 	profilesUI            profilesState
 	input                 textinput.Model
+	paths                 pathCompletion
 	spinner               spinner.Model
 	width, height         int
 	targets               []hitRegion
@@ -398,6 +399,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.busy {
 			m.spinner, cmd = m.spinner.Update(v)
 		}
+	case pathMatchesMsg:
+		if m.pathForm() {
+			m.paths.update(v)
+		}
 	case tea.MouseMsg:
 		cmd = m.mouse(v)
 	case tea.PasteMsg:
@@ -605,12 +610,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 	m.reconcileProfiles()
+	var completion tea.Cmd
+	if m.pathForm() {
+		completion = m.paths.request(m.input.Value())
+	} else {
+		m.paths.reset()
+	}
 	next := m.syncRuntime()
 	nextRules := m.syncRules()
 	nextLogs := m.syncLogs()
 	m.layout()
-	if next != nil || nextRules != nil || nextLogs != nil {
-		return m, tea.Batch(cmd, next, nextRules, nextLogs)
+	if completion != nil || next != nil || nextRules != nil || nextLogs != nil {
+		return m, tea.Batch(cmd, completion, next, nextRules, nextLogs)
 	}
 	return m, cmd
 }
@@ -658,12 +669,16 @@ func (m *Model) openForm() tea.Cmd {
 	m.form = "source"
 	m.name = ""
 	m.input.Reset()
+	m.paths.reset()
 	m.input.EchoMode = textinput.EchoNormal
-	m.input.Placeholder = "HTTPS URL or absolute YAML path"
+	m.input.Placeholder = "HTTPS URL, ~/config.yaml or ./config.yaml"
 	m.input.Focus()
 	return textinput.Blink
 }
 func (m *Model) formKey(k tea.KeyPressMsg) tea.Cmd {
+	if handled, cmd := m.pathFormKey(k); handled {
+		return cmd
+	}
 	if handled, cmd := m.profileFormKey(k); handled {
 		return cmd
 	}
@@ -682,7 +697,11 @@ func (m *Model) formKey(k tea.KeyPressMsg) tea.Cmd {
 			m.failure = "A value is required"
 			return nil
 		}
-		source := value
+		source, err := resolveLocalPath(value)
+		if err != nil {
+			m.failure = clean(err.Error())
+			return nil
+		}
 		remember := m.rememberSource
 		m.rememberSource = false
 		m.form = ""

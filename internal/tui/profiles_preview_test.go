@@ -84,4 +84,20 @@ func TestExportProfilesViews(t *testing.T) {
 			}
 		}
 	}
+	for _, size := range [][2]int{{80, 24}, {40, 16}, {24, 7}} {
+		m := profilesPreview(false)
+		m.openForm()
+		m.input.SetValue("~/configs/con")
+		m.paths = pathCompletion{active: true, query: m.input.Value(), index: 1, matches: []pathMatch{
+			{path: "~/configs/config folder/", label: "config folder/", directory: true},
+			{path: "~/configs/config.yaml", label: "config.yaml"},
+			{path: "~/configs/config.yml", label: "config.yml"},
+		}}
+		m.width, m.height = size[0], size[1]
+		m.layout()
+		name := fmt.Sprintf("profiles-import-%dx%d.ansi", size[0], size[1])
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(m.View().Content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
