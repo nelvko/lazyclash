@@ -1,5 +1,32 @@
-/proxyctl/
-/.idea/
+# Go binaries and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Go test and coverage output
+*.test
+*.out
+*.coverprofile
+coverage.out
+coverage.html
+
+# Go workspace files
+go.work
+go.work.sum
+
+# Project build and test artifacts
 /bin/
 /.test-artifacts/
-*.test
+
+# IDE and editor metadata
+/.idea/
+/.vscode/
+*.iml
+
+# Local environment and OS files
+.env
+.env.*
+!.env.example
+.DS_Store
