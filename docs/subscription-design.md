@@ -1,191 +1,151 @@
-# 订阅与配置系统设计
+# Profile 与运行配置设计
 
-状态：2026-10-29 已实现 Linux / systemd 用户服务 / Mihomo 路径。调研依据、固定提交源码和方案比较见 [竞品调研](subscription-research.md)，本次验证见 [验证记录](subscription-verification.md)。
+状态：2026-10-30，当前支持 Linux / systemd 用户服务 / Mihomo。源码调研及方案比较见 [调研记录](subscription-research.md)，实际验证范围见 [验证记录](subscription-verification.md)。当前实现以本文为准。
 
-## 选择与边界
+## 产品模型
 
-采用“独立订阅来源 + Profile 配方 + 显式操作的 Builder + 不可变运行代”的方案。完整配置是默认产品路径；同时实现范围受限的 Managed Profile，供自行维护策略组、解析策略和规则的用户组合多个节点来源。两者共享下载、快照、校验、提交和失败恢复，使用不同的配置构建语义。
+用户只管理 Profile：从订阅 URL 下载，或导入本地完整配置；每个 Profile 自己保存名称、下载地址、更新时间、内容版本和用户覆写。没有独立的 Sources 列表、来源 ID、共享引用关系或 `subscription` CLI。
 
-不把订阅限定为节点列表，也不把所有订阅都视作可直接启用的完整配置。来源先以 Mihomo YAML 保存；要求至少具有可识别的业务字段，拒绝明显的错误响应 mapping 和 sing-box 外核配置。Mihomo 自身对未知字段很宽容，单靠 `-t` 会把一些错误 JSON 当成无节点配置接受。具体哪些部分参与运行，由 Profile 的模式决定。多个完整配置各自的组名、引用和规则顺序没有普遍合理的自动合并结果，因此本版不提供“合并多个完整 YAML”功能，也不默认把用户数据发送到第三方订阅转换服务。
+当前只支持完整 Mihomo 配置。不实现独立节点来源、多订阅抽取组合、Managed 配方、模板创建或脚本执行。多个完整配置具有各自的组名、引用和规则顺序，不能通过通用 YAML 合并得到可靠结果。后续确有组合需求时再设计用户行为和配置语义，不预先保留管理接口或抽象。
 
-不新增常驻 daemon、脚本执行器、通用 Patch DSL、多内核中间表示或未使用的平台接口。现有原子存储、安装代际、systemd 归属校验、运行意图和恢复代码有实际价值，予以保留；旧的同名 raw/metadata/marker 多文件订阅提交被替换。
+| 概念 | 职责 |
+| --- | --- |
+| Profile | 稳定 ID、显示名称及命名来源、可选私密地址、更新时间、内容 revision、覆写与校验记录 |
+| Application Settings | 应用受管端口、控制密钥及显式 mode；运行意图和界面偏好另存 |
+| Runtime Configuration | 经 Builder 和内核验证的完整 YAML，连同固定构建输入组成不可变 generation |
+| Core Runtime State | 真实 systemd/PID/API 状态；与用户期望运行状态分别记录 |
 
-## 领域模型
-
-| 概念 | 负责什么 | 不承担什么 |
-| --- | --- | --- |
-| Subscription | 名称、格式、可选私密来源地址、更新时间、当前已接受的内容摘要 | 不表示已选中，不保存用户规则，不决定运行模式 |
-| Profile | 内核种类、full/managed、来源引用、Managed 模板、Profile 专属覆写 | 不拥有进程，不修改下载快照 |
-| Application Settings | 受管回环端口、控制密钥、显式全局 mode；运行意图/自启动及界面偏好各自保存 | 不存订阅规则，不从订阅自动接管主机网络 |
-| User Configuration | 作为 Profile 的 template/overrides 保存，具有独立于来源的生命周期 | 暂不引入额外全局 Mixin 实体；避免切源后组名失配 |
-| Runtime Configuration | 已构建、经内核解析校验的完整 YAML 与构建依据，组成不可变 generation | 不是用户编辑入口；不是所有远程 provider 内容的版本快照 |
-| Core Runtime State | systemd 状态/PID、认证 API、mode/节点观察；用户意图和操作记录独立持久化 | 不从磁盘摘要推断内核正在使用完全相同的配置 |
-
-Subscription 与 Profile 是多对多引用关系的受限形式：Full 恰好引用一个来源；Managed 有序引用多个来源；多个 Profile 可复用同一来源并各有覆写。内建 `default` 不需要订阅。一次性导入也保存内容快照，但 Address 为空，不能假定原 URL/路径仍可用于刷新。
+原始配置与用户覆写仍然分开，避免下载更新覆盖手工规则。订阅 URL 是 Profile 的属性。同一 URL 导入两次得到两个独立 Profile；刷新、改地址或删除其中一个，不影响另一个。
 
 ```mermaid
 flowchart LR
-  URL[URL 或本地文件] --> S[不可变来源快照]
-  S --> F[Full 单来源]
-  S --> M[Managed 有序节点抽取]
-  T[用户模板] --> M
-  F --> B[Mihomo Builder]
-  M --> B
-  O[Profile 专属覆写] --> B
+  I[订阅 URL / 本地文件] --> P[Profile 私有快照]
+  P --> B[Mihomo Builder]
+  O[Profile 用户覆写] --> B
   A[应用受管设置] --> B
-  B --> V[结构与引用检查 + mihomo -t]
-  V --> G[新 generation + 构建记录]
-  G --> P[恢复日志 + current 原子切换]
-  P --> R[运行中重启 / 停止时仅提交]
-  R --> K[systemd 独立管理内核]
+  B --> V[结构/引用校验 + mihomo -t]
+  V --> G[不可变 generation]
+  G --> R[提交与失败恢复]
+  R --> S[systemd 独立管理内核]
 ```
 
-## 存储与版本
+## 存储与身份
 
 ```text
 HOME/
   configuration/
-    library.json                 # 一个原子索引：来源、revision、Profile 配方及历史校验标记
-    snapshots/<sha256>.yaml      # 下载原文，内容寻址、只新增、0600
+    library.json                 # v3：单一 profiles 索引
+    snapshots/<sha256>.yaml      # 原文私有快照，只新增、内容寻址
   installation/
     mihomo
     generations/g-<id>/
       config.yaml                # 最终运行配置
-      manifest.json              # 应用设置、配置/二进制摘要、配方与来源 revision
+      manifest.json              # 设置、Profile ID、revision、覆写及文件摘要
     current -> generations/g-<id>
-    runtime/                     # 稳定的 Mihomo -d；选择缓存、隔离后的 HTTP providers、本地资产
-  apply-pending.json             # 尚未提交的配置变更，含两代 guard
-  runtime-state.json             # 用户 running/autostart 意图与操作状态
-  stop-intent.json               # 独立的 Stop 优先记录
-  preferences.json               # 非敏感偏好
+    runtime/                     # 稳定 Mihomo -d：选择缓存、Provider 缓存、本地资产
+  apply-pending.json             # 带两代 guard 的未完成配置事务
+  runtime-state.json             # 用户运行意图与操作状态
+  stop-intent.json               # Stop 优先记录
+  preferences.json
 ```
 
-快照先写，索引后写。来源 revision、Profile 引用及校验记录在一次索引替换中提交；中断最多留下未引用快照，不再出现旧实现“source.json 已更新、raw 未更新、以后只能手工重导入”的中间状态。应用锁序列化 CLI/TUI 操作，文件比较保护外部编辑；损坏索引或快照明确报错，不自动重置。
+`configuration.Profile` 仅保存 `core`、`revision`、`overrides`，作为运行构建依据。`ProfileRecord` 在其外保存 `name`、`name_source`、`name_base`、可选 `address`、`updated_at`、`validated`。地址和名称不进入运行配置或构建指纹，改名不会产生 Pending 或重新生成配置。
 
-生成代保存所用配方和来源摘要，设置调整与 mode 调整继续使用已经应用的配置及这份构建记录，不意外采用刚刷新的订阅或未应用覆写。后续再次 Apply 才读取最新配方。启动与重启使用已提交 generation，来源网站不可用也不需要重新下载。
+快照先写，Profile 索引后原子提交；中断最多留下未引用私密快照，不会发布一半的新名称、地址或内容。CLI/TUI 共用应用锁，CAS 拒绝覆盖外部修改。库只接受当前完整结构，不迁移或补齐开发期旧数据；损坏文件明确报错保留。
 
-当前保留旧 generations 和来源快照，尚无自动 GC；删除来源/配方删除索引关系，不立即销毁历史原文。这样可以保留恢复和审计依据，但磁盘会增长，历史内容仍是敏感数据。未来 GC 必须同时考虑当前代、恢复日志、历史代的引用和明确保留策略。
+Profile ID、显示名称、服务端文件名和磁盘路径分离。ID 稳定；原文始终使用内容摘要寻址，运行文件位于 generation 的 `config.yaml`，服务端文件名不会作为路径。
 
-本次不自动迁移早期 `profiles/*.yaml`、`.source.json`、`.unvalidated` 格式，也不静默删除这些文件。已有开发数据应先备份原始 YAML，再用导入命令建立新库；旧运行产物仍由服务生命周期代码管理。新增 `profile list` 输出安全详情对象，不再仅输出名称数组。
+运行代固定当时的 revision 与覆写。下载刷新、改地址和编辑覆写只保存草稿，Start/Restart 使用已提交代；网站不可用也不重新下载。改端口和 mode 继续使用已应用配置，不意外采用新草稿。
 
-## 构建语义与字段所有权
+删除 Profile 一次移除其名称、地址和当前内容引用，不留下独立来源记录或后续下载任务。旧 generation 和快照暂不自动回收，以保留恢复依据；GC 需另行考虑当前代、恢复日志和历史代。历史原文仍是敏感数据。
 
-构建顺序：解析单一 YAML mapping → Managed 可选节点抽取 → 执行 Profile 覆写 → 检查容器与命名 → Provider 缓存路径隔离 → 引用检查 → 最终强制应用受管设置 → 应用显式全局 mode → Mihomo `-t`。
+## 订阅显示名称
 
-| 内容 | 行为 |
+一次下载同时获得配置原文与 HTTP 响应头，不为名称额外请求。解析、清理和去重集中在 `configuration/names.go`，与 Mihomo 配置语义无关。
+
+首次导入优先级：用户明确指定 → `profile-title` → `Content-Disposition` 的 `filename*` → `filename` → URL 最后一段有效路径 → Host → `Remote Subscription`。
+
+支持 UTF-8、`base64:` 标题、RFC 5987 文件名及传统 `filename`。无效或空白头部继续回退，不使有效下载失败。URL 忽略查询与 Fragment，处理百分号编码、末尾斜杠，可移除 `.yaml` / `.yml`。文件名只取末段；显示文本清除 ANSI、控制和方向字符，折叠空白、NFC 规范化，限制到 128 个 Unicode 码点。
+
+名称来源为 `custom` / `provider` / `url` / `fallback`；`name_base` 保存去重前候选。比较时统一空白、NFC 和 Unicode case fold，与其他 Profile 或内建 `default` 重复时添加 ` (1)`、` (2)`。刷新从新候选重新计算，不累加旧后缀；删除其他 Profile 不主动整理名称。
+
+| 操作 | 名称行为 |
 | --- | --- |
-| Full 基础 | 保留来源节点、策略组、规则、providers、hosts、解析策略及未知原生字段 |
-| Managed 基础 | 用户模板；依声明顺序追加各来源的 inline proxies；不导入来源组、规则、hosts、DNS 或 providers |
-| `overrides.set` | 明确的顶层字段整体替换；map、list 都不 Deep Merge，不按数组索引合并，不按 name 静默覆盖 |
-| `prepend-rules` | 前插，保持输入顺序，重复规则保留 |
-| `append-rules` | 后插；已有可确定终止的 MATCH,DIRECT/REJECT/REJECT-DROP 时拒绝，用户可替换规则列表或改为前插 |
-| proxies / groups | 拒绝重复或保留名称；检查组的 proxies/use 引用、显式循环和节点 dialer-proxy 依赖 |
-| 规则 | 简单规则检查目标和 RULE-SET 引用；逻辑表达式、sub-rules 等由 Mihomo 最终解释；不自行排序、去重或误判 MATCH,PASS 一类原生语义 |
-| HTTP Provider | 根据类别、名称及除 path 外的完整定义确定缓存摘要；URL/header/behavior 变化会使用不同缓存，避免同名旧缓存串来源 |
-| File Provider | 保留相对于稳定 runtime 目录的本地资产语义，拒绝绝对路径和上级目录穿越；本版不会随导入自动复制本地资产 |
-| 控制接口/监听 | 应用最后指定回环 API + 密钥 + mixed-port，关闭订阅的其他入站、LAN、UI、DoH listener 等 |
-| DNS | 保留 resolver 配置，只强制清空 dns.listen；不能通过覆写启用外部 DNS 监听 |
-| TUN/路由/特权功能 | systemd 用户服务不支持；Full 的 TUN 请求明确报错，Managed 不消费的源 TUN 字段不影响节点抽取 |
-| 节点选择 | 强制 Mihomo `profile.store-selected=true`，稳定 `-d` 保留选择缓存 |
+| URL Add / Import | 自动解析，不弹名称表单 |
+| CLI --name / Rename | 标记 custom，刷新保护用户名称 |
+| 刷新有有效名称头 | 非 custom 名称同步，可由 URL/fallback 升级为 provider |
+| 刷新缺失或无效名称头 | 保留原名称及来源 |
+| Edit URL | 自动名称按新响应/URL 重算，custom 保留 |
+| 下载或校验失败 | 不发布候选名称、地址或 revision |
 
-受管字段出现在用户 `set` 中会被拒绝，避免用户以为覆写已生效。模式通过 `mode set` 改，不通过 Profile 覆写设置；订阅原有 mode 在没有应用显式 mode 时仍可作为基础值。null 不作为自定义删除语法；需要清空字段时显式使用空 list/map。原生来源中的空节点/规则容器允许为 null。
+TUI 用 ID 绑定卡片、详情和动作，用名称显示。CLI 优先解析精确 ID，其次解析唯一显示名称；脚本使用列表返回的 `id`。
 
-Managed 不是完整配置的无损转换。节点可能依赖来源 hosts、DNS 或 dialer-proxy；模板必须提供所需解析与引用。显式 dialer 依赖会检查，但真实域名解析/远程可达不能由构建器证明。只包含 proxy-providers 的来源不能被当成 inline 节点来源，明确拒绝；未来 provider 模式应另定义资源下载和快照责任。
+## 构建语义
 
-HTTP provider 的顶层定义虽然固定，其内容仍可能由 Mihomo 自行刷新；顶层配置摘要不能表示所有节点/规则内容版本。Managed 的受控 inline 快照提供更强的输入可重现性。需要完全锁定 Full 的远程资源时，未来应把 provider 内容也纳入应用快照，不能只增加一个“已应用 SHA”。
+顺序：单一 YAML mapping → Profile 覆写 → 容器/命名检查 → Provider 缓存隔离 → 引用检查 → 应用受管字段 → 显式全局 mode → 当前 Mihomo `-t`。
 
-## 校验、发布和失败恢复
+| 字段 | 处理方式 |
+| --- | --- |
+| 基础配置 | 保留节点、组、规则、providers、hosts、DNS 和未知原生字段；拒绝明显错误响应或 sing-box 配置 |
+| overrides.set | 顶层字段整体替换，map/list 不 Deep Merge，不按 name 静默合并 |
+| prepend-rules | 前插并保留顺序、重复项 |
+| append-rules | 后插；已有可确定终止的 MATCH,DIRECT/REJECT/REJECT-DROP 时拒绝 |
+| 节点/组 | 拒绝重复或保留名称，检查组、use、dialer-proxy 引用和显式循环 |
+| 规则 | 检查简单目标和 RULE-SET 引用；复杂表达式由 Mihomo 解释，不排序去重 |
+| HTTP Provider | 按类别、名称及完整定义摘要隔离缓存，URL/header 改变不会串用旧缓存 |
+| File Provider | 保留稳定 runtime 相对路径语义，拒绝绝对路径和上级穿越，不自动复制本地资产 |
+| 监听/API | 最后强制回环 API、密钥、mixed-port，关闭其他入站、LAN、UI、DoH listener 等 |
+| DNS | 保留 resolver，强制清空 dns.listen |
+| TUN | 用户服务不支持，请求明确报错 |
+| 节点选择 | 强制 profile.store-selected=true，稳定 -d 保留缓存 |
 
-所有应用都重新生成候选并运行当前已安装内核的 `-t`。候选位于 runtime 内的私有临时目录，`-d` 使用与服务相同的稳定 runtime，避免相对 provider、rule 与本地资产在校验和实际运行中含义不同。更新内核验证现有配置时同样使用此上下文。
+用户 set 指定受管字段时拒绝，不让其误以为已生效；mode 通过独立设置用例修改。null 不作为自定义删除语法，清空使用空 list/map；原生空节点/规则容器允许 null。
 
-本地结构校验不替代内核校验；安装前可保存通过结构/引用检查的配方，`validated=false`。安装、保存、刷新或应用时运行过内核校验的标记只是历史解析记录，Apply/Start 仍重新校验，不把它当网络可用承诺。
+未安装内核时可通过结构/引用检查保存，validated=false。历史内核校验标记不代表网络可用，Apply/Start 仍校验。远程 Provider 内容可由 Mihomo 自行刷新，顶层摘要不能证明所有远程资源版本相同。
 
-运行中 Apply 的事务：
+## 操作、提交与恢复
 
-1. 验证所属 unit，记录原状态/PID；生成与校验候选，保持旧运行代。
-2. 写完整新代，再次检查状态/PID，防止准备期间外部停止或重启。
-3. 写恢复日志，包含 old/new 两代的配置和文件树 guard；原子切换 current。
-4. 若原本运行，则请求 systemd 重启，检查 owned service active、认证 API 和回环 mixed TCP 监听。
-5. 成功后持久删除 journal，记录校验标记；失败或取消使用独立短时清理 context 恢复旧指针和原运行状态。保存的订阅/覆写草稿保留，供用户修复或重试。
+| 操作 | 持久化与校验 | 内核影响 |
+| --- | --- | --- |
+| 添加订阅 | 新 Profile、私密地址、快照及名称；构建并在已安装时 -t | 不应用、不启动 |
+| 一次性导入 | 新 Profile 和快照，不保存原地址；校验同上 | 不应用，原文件不变 |
+| 刷新 | 验证旧快照后下载，以现有覆写校验新内容，原子提交该 Profile | 不加载草稿 |
+| Update all | 逐个更新可刷新 Profile，失败保留其他成功，取消停止后续任务 | 不加载草稿 |
+| Rename | 仅名称元数据及去重 | 不生成配置或 Pending |
+| Edit URL | 校验后一起提交地址、内容及自动名称 | 不加载草稿 |
+| 编辑覆写 | 候选与原文一起校验后保存 | 显式 Apply 后使用 |
+| 删除 | 拒绝已应用项，其余删除整条 Profile | 不停止服务，不再被批量下载 |
+| Apply | 新 generation、构建记录和 applied ID 一起提交 | 原本运行才重启；停止时保持停止 |
+| Start/Restart | 使用已应用代，验证归属、配置和就绪 | systemd 独立管理 |
+| Stop | 持久停止意图优先于恢复 | 回滚不隐式启动 |
+| 退出界面/SSH | 不写 Stop、不删除运行数据 | 已运行状态保持；SSH 注销要求 linger |
 
-本版配置加载采用受控重启，会中断当前连接。Mihomo 支持 PUT /configs，但源码显示 Parse 成功后 ApplyConfig 的若干子系统错误只写日志，GET /configs 又不能返回完整配置摘要。当前不引入第二套“HTTP 204 即提交”路径。将来做热加载时，需要统一现有发布 journal、部分失败和超时的不确定结果，不能简单替换一行 restart。
+运行中 Apply 记录所属 unit/PID，构建并写新代，再复检服务状态。写两代恢复日志，原子切换 current，原本运行才重启，检查 systemd、认证 API 和 mixed TCP 监听。失败/取消以独立短时清理 context 恢复旧代和原状态；恢复失败保留日志和现场，下次操作重试。外部文件、binary 或 unit 改动会阻止盲目覆盖。
 
-恢复失败会保留 journal 与两代，下一次共享应用用例首先重试恢复；检测到用户文件、二进制、unit 变化则保留并报错。显式 Stop 优先于恢复，不能因为回滚而把用户已停止的内核重新启动。服务仍由 systemd 管理，退出 TUI/关闭终端不发 Stop；运行中的普通操作取消会完成必要恢复。
+当前采用受控重启，会中断连接。Mihomo 热加载的部分子系统失败不能仅由 HTTP 204 证明，没有第二条加载路径。磁盘与服务无法跨进程原子提交，中断后下次操作保守恢复旧代；没有额外恢复 daemon。就绪不保证全部代理、DNS 或远程 Provider 可达。
 
-磁盘切换与服务启动不可能跨进程原子提交。强杀控制进程或掉电发生在事务中间时，journal 表示未确认结果，下一次控制操作保守恢复旧代；当前没有额外 daemon 在无人操作时立即执行恢复。成功提交后的工作不依赖 TUI 存活。真实 SSH 最后会话退出和系统启动还依赖用户 manager 的 linger、自启动策略，见 [持久运行](runtime-lifecycle.md)。
+## 界面与命令
 
-就绪检查证明本地进程/API/监听可用，不能证明所有代理、远程 provider、DNS 或路由都成功。`Snapshot.Generation` 是应用提交的磁盘代标识，`ProfilePending` 表示当前配方与该代输入不同；它们都不是从内核读取的完整配置身份。外部 API 改动只能对已观察字段报告漂移，不声称能检测任意原生字段变化。
+标题栏提供 Update all，正文顶部提供 URL、Add、Import。卡片用背景和间距分组，已应用项显示蓝色左条，焦点使用 `›` 与底色，待应用更改用橙色。Enter 打开详情，显式 Use profile / Apply changes 才加载。名称、安全 Host/文件类型、更新时间及覆写状态直接取 Profile 元数据，没有独立来源管理页。
 
-## 操作与状态变化
+Import 使用 Bubbles textinput 编辑路径，异步读取当前目录并显示匹配列表。支持绝对/相对/`~/` 路径、中文和空格、无扩展名文件；↑↓ 选择、Tab 补全，Enter 在目录中继续浏览，在文件路径上导入。URL 不扫描文件系统，过期结果不会覆盖新输入或关闭的表单。最多扫描 4096 项、保留 200 候选，超限提示缩小路径；只读取目录项，不读取候选内容。
 
-| 操作 | 持久化变化 | 是否生成/校验 | 对运行中内核的影响 |
-| --- | --- | --- | --- |
-| subscription add | 新来源、快照，无 Profile | 来源结构检查 | 无，不选择、不启动 |
-| profile add/import | 同时新来源和 Full 配方；记源需明确选择 | 构建；已安装则 `-t` | 无 |
-| profile create | 新配方，可复用来源 | 构建；已安装则 `-t` | 无 |
-| refresh source / full profile | 先准备快照，所有引用它的配方通过后原子更新索引 | 检查所有依赖，已安装则 `-t` | 无；选中配方显示 pending |
-| 保存覆写/规则 | 更新 Profile 覆写，来源不变 | 候选构建/校验后保存 | 无；需显式 Apply |
-| Apply / 切换 Profile | 新代、构建记录和 applied 一起提交 | 始终重新构建及 `-t` | 原本运行才重启；失败恢复旧代 |
-| 停止期间 Apply | 提交下一次启动使用的代 | 同上 | 保持停止 |
-| 改端口 | 用当前已应用产物生成新代；设置与代同时提交 | 校验、端口冲突检查 | 原本运行则受控停止/重启；失败恢复 |
-| 改 mode | 当前代和持久 mode 一起更新 | 校验，并验证 API 设置/readback | 使用既有 mode PATCH；失败按 journal 恢复 |
-| 选择节点 | Mihomo 稳定目录中的选择缓存 | 通过认证 API 选择 | 即时生效，跨界面退出和重启保存 |
-| 删除 Profile | 删除非选中配方；来源与历史快照保留 | 检查选中关系 | 无；选中者需先切换 |
-| 删除 Subscription | 删除无引用来源的索引项 | 检查全部 Profile 引用 | 无；有引用就拒绝 |
-| Start / Restart | 运行意图与操作状态持久化 | 验证已提交产物，不重新抓取来源 | systemd 执行，检查就绪 |
-| Stop | 持久停止意图，必要时恢复文件 | 先验证 unit 所属 | 停止并阻止恢复隐式重新启动 |
-| 退出 TUI / SSH | 不写停止意图、不删除运行数据 | 无 | 成功运行状态继续；SSH 注销要求 linger |
-| 下载/构建/校验失败 | 原索引、配方和当前代不变；可能保留未引用私密 blob | 返回脱敏错误 | 无 |
-| 已生成但加载失败 | 恢复旧代；保存的新来源/覆写仍为 pending | 恢复失败保留 journal | 尽力恢复此前运行状态，失败明确报告 |
-
-无后台定时刷新。本版每次刷新一个来源；Managed 的多个来源不是一次远程下载事务，组合由明确的快照集合表示。输入暂限 Mihomo 配置/inline proxies 文档，不提供 URI/base64 订阅转换；订阅获取当前使用有界直连请求，安装下载页面的网络偏好尚未复用到订阅获取。任何一个依赖配方校验失败都会拒绝该次 source revision 更新；用户应先修复引用关系，而非让系统静默丢弃规则。
-
-## 使用入口
+首次读取状态失败显示不可用和 Retry，不伪装成空库或未安装；已成功读取后刷新失败保留上次快照。
 
 ```sh
-# 完整订阅：便捷创建来源和同名配方；默认只保存，显式选择后才运行
-lazyclash profile add airport https://example.invalid/sub --remember-source
-lazyclash profile override airport /absolute/path/airport-overrides.yaml
-lazyclash profile apply airport
-lazyclash profile refresh airport
-lazyclash profile show airport        # pending=true 时再次 Apply 才加载更新
-
-# 同一来源可复用，Managed 仅使用其 inline proxies
-lazyclash subscription add second /absolute/path/second.yaml
-lazyclash profile create mine --managed --sources airport,second --template /absolute/path/template.yaml
-lazyclash profile apply mine
-lazyclash subscription list
+lazyclash profile add https://example.invalid/sub --remember-source
+lazyclash profile add /absolute/config.yaml --name local
 lazyclash profile list
+lazyclash profile rename PROFILE_ID '我的配置'
+lazyclash profile url PROFILE_ID https://example.invalid/new-sub
+lazyclash profile override PROFILE_ID /absolute/overrides.yaml
+lazyclash profile refresh PROFILE_ID
+lazyclash profile apply PROFILE_ID
+lazyclash profile delete PROFILE_ID
 ```
 
-Managed 模板示例：
+## 扩展边界
 
-```yaml
-proxy-groups:
-  - name: PROXY
-    type: select
-    include-all-proxies: true
-    proxies: [DIRECT, REJECT]
-rules:
-  - MATCH,PROXY
-```
+Profile 的 ID、名称、地址和快照不依赖内核；支持 sing-box 时增加原生 Builder 与校验/控制适配。平台生命周期继续由 service/OS 边界负责，CLI/TUI 不直接操作 systemd。
 
-Profile 覆写示例（`set.dns` 整体替换，需写全期望的解析策略）：
-
-```yaml
-set:
-  log-level: warning
-  dns:
-    enable: true
-    nameserver: [https://dns.example.invalid/dns-query]
-prepend-rules:
-  - DOMAIN,blocked.example.invalid,REJECT
-```
-
-TUI Profiles 页支持一次性导入、明确记源订阅导入、应用、来源刷新、覆写文件导入和名称确认删除；显示待应用更改，不显示私密地址。Managed 模板/多源配方创建先通过 CLI；创建后可在同一 TUI 列表应用。两种界面调用同一个 app 用例，不分别执行 YAML 合并或内核生命周期逻辑。
-
-## 扩展方向
-
-来源库和内容寻址存储不依赖 Mihomo。未来新增 sing-box 时增加明确的 format/core 兼容判断及原生 Builder、校验/控制适配；不会把 Mihomo groups/rules 强行映射为一个假想通用格式。新 service/OS 适配继续接入应用生命周期边界，界面不操作 systemd。
-
-后续优先级：订阅下载的显式代理/UA 策略；Linux 特权系统服务/TUN 的权限与网络副作用恢复；受 journal 保护的热加载与更多实际就绪观察；provider 内容快照/资产导入；可编辑 Managed 模板和来源组合的 TUI；带引用的 GC/历史回退命令；必要时由 systemd timer 调用共享刷新用例。自动刷新何时应用应是显式产品策略，不与“下载成功”绑定。
+后续需求包括订阅下载网络/UA策略、Provider 内容快照、本地资产导入、GC、受日志保护的热加载和 Linux 特权服务/TUN。多订阅组合待产品交互和配置语义明确后再实现；当前不保留来源注册表、空接口或旧格式兼容。

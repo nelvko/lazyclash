@@ -49,11 +49,19 @@ Connections 显示当前活动连接，可搜索目标域名/IP/端口、进程�
 
 Rules 只读展示内核加载的规则并保留匹配顺序，支持搜索、详情、独立异步刷新与重试。Rule 模式才按此顺序匹配；不会编辑或启用/禁用规则。操作与数据含义见 [规则查看](docs/rules.md)。
 
-响应式规则以字符列/行数为准：至少 **110×30** 使用最大 **86×33** 的居中 Modal；否则使用当前终端区域中的同一单列向导。至少 **100×20** 显示 28 列宽的常驻侧栏，否则使用 Menu。常驻侧栏 Logo 区使用深色背景，右侧标题区与底栏使用相同的正文背景色，标题分隔线与 Logo 区底边对齐；Logo 使用加粗强调色，与页面标题保持同一基线，终端至少 24 行时顶栏增加对称的上下留白。常驻侧栏第一项菜单紧接顶栏底边，右侧正文在标题分隔线下保留一行留白。菜单连续等高排列，项间不留空行。常驻侧栏在终端至少 26 行时每项高 3 行，文字上下各留 1 行；较矮窗口使用单行菜单，保证页面可达。常驻侧栏底部在空间充足时显示当前配置、保存模式与已安装版本；未安装时显示提示，空间不足时隐藏，不挤占菜单。Overview 使用侧栏右侧的全部可用宽度，其他页面正文最大 112 列；顶栏显示页面与真实内核状态，并对齐正文右缘，底栏根据焦点显示可用快捷键，不常驻刷新成功消息。Overview 控制区优先展示内核和模式，按可用宽度显示一、二或四列；配置、代理组及信息区在正文至少 76 列且终端至少 24 行时双列，否则单列。标题、正文滚动区和底部操作分开。极小窗口显示扩大终端提示，仍可返回或取消。缩放不重置选项或重启任务。
+响应式规则以字符列/行数为准：至少 **110×30** 使用最大 **86×33** 的居中 Modal；否则使用当前终端区域中的同一单列向导。至少 **100×20** 显示 28 列宽的常驻侧栏，否则使用 Menu。常驻侧栏 Logo 区使用深色背景，右侧标题区与底栏使用相同的正文背景色，标题分隔线与 Logo 区底边对齐；Logo 使用加粗强调色，与页面标题保持同一基线，终端至少 24 行时顶栏增加对称的上下留白。常驻侧栏第一项菜单紧接顶栏底边，右侧正文在标题分隔线下保留一行留白。菜单连续等高排列，项间不留空行。常驻侧栏在终端至少 26 行时每项高 3 行，文字上下各留 1 行；较矮窗口使用单行菜单，保证页面可达。常驻侧栏底部在空间充足时显示当前配置、保存模式与已安装版本；未安装时显示提示，空间不足时隐藏，不挤占菜单。Overview 使用侧栏右侧的全部可用宽度，其他页面正文最大 112 列；顶栏对齐正文右缘并展示页面专属内容：Overview 显示真实内核状态；Profiles 提供 Update all，Proxies、Connections、Rules 提供刷新与可用数据计数，Logs 提供采集控制，Settings 提供网络设置入口。标题栏操作保持可见，窄窗口使用短标签或单独一行，底栏根据焦点显示可用快捷键，不常驻刷新成功消息。Overview 控制区优先展示内核和模式，按可用宽度显示一、二或四列；配置、代理组及信息区在正文至少 76 列且终端至少 24 行时双列，否则单列。标题、正文滚动区和底部操作分开。极小窗口显示扩大终端提示，仍可返回或取消。缩放不重置选项或重启任务。
 
 ## Profiles 与实时日志
 
-Proxies 包含代理组及其选项，DIRECT、REJECT 也属于有效选择；Profiles 包含订阅 URL、本地 YAML 和默认配置，订阅只是来源之一。现有 CLI `nodes`、`profile` 等业务命令保留原有职责。
+Proxies 包含代理组及其选项，DIRECT、REJECT 也属于有效选择；Profiles 统一管理订阅下载、本地 YAML 和默认配置。每个 Profile 自己保存地址与内容版本，不需要另行管理来源。现有 CLI `nodes`、`profile` 等业务命令保留原有职责。
+
+Profiles 顶部提供 URL 输入、Add、一次性 Import 与 Update all。订阅 URL 和本地导入路径在编辑时正常显示，方便检查与修改；保存后的卡片仅显示来源标签。配置以响应式卡片展示来源、更新时间、覆写和待应用状态；正文至少 86 列时双列，否则单列。`a` 聚焦订阅 URL，方向键或 `hjkl` 按卡片位置移动，`Enter` 打开详情，显式选择 Use profile / Apply changes 才加载配置。`Tab` 可访问并滚动到所有操作，`Esc` 关闭详情。更新和导入覆写仅保存草稿；卡片和详情可更新该配置，所有配置操作直接针对 Profile。页面仅展示已有元数据，不显示未经获取的流量配额或到期时间。
+
+Import 支持绝对路径、`~/` 和相对路径。输入本地路径时实时列出当前目录中匹配的文件与文件夹，`↑↓` 选择、`Tab` 补全、`Enter` 提交；目录只继续浏览，不提交为配置。普通文件不限制扩展名，本地导入保存副本，不修改原文件或自动应用。路径属于 lazyclash 进程运行环境，SSH 中指远程主机的文件。
+
+Profiles 卡片用底色与间距分组，已应用配置显示蓝色左侧条，键盘焦点使用 `›` 与底色变化，待应用更改使用橙色文字。
+
+输入 URL 后选择 Add 即下载并保存，不再要求填写名称。名称依次采用用户明确指定的名称、`profile-title`、`Content-Disposition` 文件名、URL 路径、Host 或固定兜底值；重复名称添加 ` (1)`、` (2)`。自动名称随有效的服务端名称更新，缺失名称头时保留原名；详情中的 Rename 标记为自定义，后续刷新不覆盖。Edit URL 会下载并校验新来源，自动名称重新推导，自定义名称保留。显示名称与稳定 ID、磁盘文件路径分离，改名不重新生成或应用配置。完整规则见 [配置设计](docs/subscription-design.md#订阅显示名称)。
 
 Logs 通过当前 Mihomo 的认证本机控制 API 获取实时事件，默认只在内存保留最近 200 条脱敏记录，不启用原始 journal、不落盘保存日志。`f` 暂停/继续，向上滚动或搜索会暂停采集，`End` 恢复跟随，`g` 重连。暂停、离页期间的事件不会补回，重新采集显示间隔提示。需要内核运行且 API 可用；没有历史启动日志。
 
@@ -75,7 +83,7 @@ Latest stable 每次从官方 GitHub API 解析为具体版本；Specific versio
 
 安装、更新和显式重装均**不会自动启动或重启服务、修改系统代理、启用 TUN 或设置自启动**。同版本默认 Use existing，只有明确选择 Reinstall 才替换。更新先暂存并验证，再原子替换路径；正在运行的进程继续持有旧 inode。配置、API secret 与 unit 不因更新而覆盖。结果和首页分别显示已安装版本与实际运行版本，切换运行版本需要显式重启。
 
-没有订阅也可启动：默认 `PROXY` 选择组包含 `DIRECT` 和 `REJECT`，不依赖 Geo 数据，也不会凭空提供远程节点。添加配置只校验保存，不自动应用；同名文件拒绝覆盖。应用前执行内核校验，运行状态下应用失败恢复旧配置和原服务，停止状态下应用不隐式启动。
+没有订阅也可启动：默认 `PROXY` 选择组包含 `DIRECT` 和 `REJECT`，不依赖 Geo 数据，也不会凭空提供远程节点。添加配置只校验保存，不自动应用；重复显示名称会去重，新导入不会覆盖已有配置。应用前执行内核校验，运行状态下应用失败恢复旧配置和原服务，停止状态下应用不隐式启动。
 
 ## 下载网络：来源与代理独立
 
@@ -122,8 +130,13 @@ lazyclash install --bin /absolute/mihomo
 lazyclash install --core-version v1.19.33 --reinstall
 lazyclash install --download-source prefix --download-prefix https://accelerator.example.invalid/ \
   --proxy-mode custom --proxy-url http://127.0.0.1:7890
-lazyclash profile add local /absolute/config.yaml
+lazyclash profile add /absolute/config.yaml --name local
 lazyclash profile apply local
+lazyclash profile add https://example.invalid/sub --remember-source  # 自动命名
+lazyclash profile add https://example.invalid/sub --name '我的机场' --remember-source
+lazyclash profile list                 # 查看 id、name、name_source
+lazyclash profile rename PROFILE_ID '新名称'
+lazyclash profile url PROFILE_ID https://example.invalid/new-sub
 lazyclash service start
 lazyclash service stop
 lazyclash service restart

@@ -42,7 +42,7 @@ unit 使用 `Restart=on-failure`、两秒重试、60 秒内最多五次启动、
 lazyclash mode direct
 lazyclash mode
 lazyclash select PROXY DIRECT
-lazyclash profile add office 'https://example.invalid/subscription' --remember-source
+lazyclash profile add 'https://example.invalid/subscription' --name office --remember-source
 lazyclash profile refresh office  # 校验并保存来源更新，不 apply、不重启
 lazyclash profile apply office
 lazyclash service enable
@@ -51,7 +51,7 @@ lazyclash service stop
 lazyclash uninstall               # 要求停止且禁用；保留 Profile、来源和偏好
 ```
 
-默认 Add 不保存来源；明确 `--remember-source` 才把来源 URL/绝对路径与原始内容摘要保存在私有 `0600` 元数据中，URL 可能含凭据，应保护数据目录。Refresh 检测手工修改、来源变化和无效新内容；不会覆盖摘要不匹配的用户文件。更新中断导致元数据与 raw 不匹配时拒绝刷新、保留现场，使用新名称重新导入确认后的来源。未提供后台订阅调度；TUI 现有导入可保存及应用，记住来源/刷新目前通过 CLI。
+默认 Add 是一次性导入；明确 `--remember-source` 才将 URL/绝对路径保存在该 Profile 的私有 `0600` 元数据中。Profile 直接拥有名称、地址、更新时间与内容 revision，没有独立来源管理。Refresh 验证旧快照、下载新内容并结合用户覆写校验，成功后原子提交；失败保持旧记录和当前运行配置。TUI 的 URL Add、卡片 Update 和 Update all 调用相同用例，显式 Apply 才加载草稿。删除 Profile 同时删除其地址与当前内容引用，不留下下载任务；未提供后台订阅调度。
 
 原始订阅、配置、API secret、来源和偏好均不因 Stop 丢失。卸载验证所有代际及文件归属，只删除安装目录和绑定的运行意图；用户新增/改动的非缓存安装文件会阻止删除（runtime/ 中自有缓存随内核移除）。若 unit 已删而后续文件清理失败，错误明确标注需要手工清理，不声称完整成功；当前不提供卸载事务的崩溃自动续跑。
 
