@@ -4,13 +4,13 @@
 
 ## 产品模型
 
-用户只管理 Profile：从订阅 URL 下载，或导入本地完整配置；每个 Profile 自己保存名称、下载地址、更新时间、内容版本和用户覆写。没有独立的 Sources 列表、来源 ID、共享引用关系或 `subscription` CLI。
+用户只管理 Profile：从订阅 URL 下载，或导入本地完整配置；每个 Profile 自己保存名称、描述、下载地址、更新时间、内容版本和用户覆写。没有独立的 Sources 列表、来源 ID、共享引用关系或 `subscription` CLI。
 
 当前只支持完整 Mihomo 配置。不实现独立节点来源、多订阅抽取组合、Managed 配方、模板创建或脚本执行。多个完整配置具有各自的组名、引用和规则顺序，不能通过通用 YAML 合并得到可靠结果。后续确有组合需求时再设计用户行为和配置语义，不预先保留管理接口或抽象。
 
 | 概念 | 职责 |
 | --- | --- |
-| Profile | 稳定 ID、显示名称及命名来源、可选私密地址、更新时间、内容 revision、覆写与校验记录 |
+| Profile | 稳定 ID、显示名称及命名来源、描述、可选私密地址、更新时间、内容 revision、覆写与校验记录 |
 | Application Settings | 应用受管端口、控制密钥及显式 mode；运行意图和界面偏好另存 |
 | Runtime Configuration | 经 Builder 和内核验证的完整 YAML，连同固定构建输入组成不可变 generation |
 | Core Runtime State | 真实 systemd/PID/API 状态；与用户期望运行状态分别记录 |
@@ -34,7 +34,7 @@ flowchart LR
 ```text
 HOME/
   configuration/
-    library.json                 # v3：单一 profiles 索引
+    library.json                 # v4：单一 profiles 索引
     snapshots/<sha256>.yaml      # 原文私有快照，只新增、内容寻址
   installation/
     mihomo
@@ -49,7 +49,7 @@ HOME/
   preferences.json
 ```
 
-`configuration.Profile` 仅保存 `core`、`revision`、`overrides`，作为运行构建依据。`ProfileRecord` 在其外保存 `name`、`name_source`、`name_base`、可选 `address`、`updated_at`、`validated`。地址和名称不进入运行配置或构建指纹，改名不会产生 Pending 或重新生成配置。
+`configuration.Profile` 仅保存 `core`、`revision`、`overrides`，作为运行构建依据。`ProfileRecord` 在其外保存 `name`、`name_source`、`name_base`、`description`、可选 `address`、`updated_at`、`validated`。地址、名称和描述不进入运行配置或构建指纹，修改元数据不会产生 Pending 或重新生成配置。
 
 快照先写，Profile 索引后原子提交；中断最多留下未引用私密快照，不会发布一半的新名称、地址或内容。CLI/TUI 共用应用锁，CAS 拒绝覆盖外部修改。库只接受当前完整结构，不迁移或补齐开发期旧数据；损坏文件明确报错保留。
 
@@ -67,11 +67,14 @@ Profile ID、显示名称、服务端文件名和磁盘路径分离。ID 稳定�
 
 支持 UTF-8、`base64:` 标题、RFC 5987 文件名及传统 `filename`。无效或空白头部继续回退，不使有效下载失败。URL 忽略查询与 Fragment，处理百分号编码、末尾斜杠，可移除 `.yaml` / `.yml`。文件名只取末段；显示文本清除 ANSI、控制和方向字符，折叠空白、NFC 规范化，限制到 128 个 Unicode 码点。
 
+本地来源按真实文件名推导显示名称，`#`、`?` 和 `%20` 等字符按字面保留，不按 URL 查询、Fragment 或转义解释；同样移除 YAML 后缀并执行名称清理。
+
 名称来源为 `custom` / `provider` / `url` / `fallback`；`name_base` 保存去重前候选。比较时统一空白、NFC 和 Unicode case fold，与其他 Profile 或内建 `default` 重复时添加 ` (1)`、` (2)`。刷新从新候选重新计算，不累加旧后缀；删除其他 Profile 不主动整理名称。
 
 | 操作 | 名称行为 |
 | --- | --- |
-| URL Add / Import | 自动解析，不弹名称表单 |
+| URL Add | 自动解析，不弹名称表单 |
+| New profile | 可填写名称、描述；支持 HTTPS URL 或本地路径并保存来源 |
 | CLI --name / Rename | 标记 custom，刷新保护用户名称 |
 | 刷新有有效名称头 | 非 custom 名称同步，可由 URL/fallback 升级为 provider |
 | 刷新缺失或无效名称头 | 保留原名称及来源 |
@@ -113,6 +116,7 @@ TUI 用 ID 绑定卡片、详情和动作，用名称显示。CLI 优先解析�
 | Update all | 逐个更新可刷新 Profile，失败保留其他成功，取消停止后续任务 | 不加载草稿 |
 | Rename | 仅名称元数据及去重 | 不生成配置或 Pending |
 | Edit URL | 校验后一起提交地址、内容及自动名称 | 不加载草稿 |
+| 编辑描述 | 仅保存 Profile 元数据 | 不生成配置或 Pending |
 | 编辑覆写 | 候选与原文一起校验后保存 | 显式 Apply 后使用 |
 | 删除 | 拒绝已应用项，其余删除整条 Profile | 不停止服务，不再被批量下载 |
 | Apply | 新 generation、构建记录和 applied ID 一起提交 | 原本运行才重启；停止时保持停止 |
@@ -126,9 +130,17 @@ TUI 用 ID 绑定卡片、详情和动作，用名称显示。CLI 优先解析�
 
 ## 界面与命令
 
-标题栏提供 Update all，正文顶部提供 URL、Add、Import。卡片用背景和间距分组，已应用项显示蓝色左条，焦点使用 `›` 与底色，待应用更改用橙色。Enter 打开详情，显式 Use profile / Apply changes 才加载。名称、安全 Host/文件类型、更新时间及覆写状态直接取 Profile 元数据，没有独立来源管理页。
+卡片操作菜单可通过右键、右上角 `⋯` 或聚焦后的 `m` / `Shift+F10` 打开。菜单提供应用、更新、重命名、编辑描述、修改地址、覆写导入、详情和删除；按当前状态禁用不适用的操作并说明原因，内建配置不提供修改或删除。更新不加载草稿，删除仍经过名称确认。菜单绑定稳定 Profile ID，异步重排不改变目标，目标删除后自动关闭；选择操作时再次验证可用性，防止使用过期状态。
 
-Import 使用 Bubbles textinput 编辑路径，异步读取当前目录并显示匹配列表。支持绝对/相对/`~/` 路径、中文和空格、无扩展名文件；↑↓ 选择、Tab 补全，Enter 在目录中继续浏览，在文件路径上导入。URL 不扫描文件系统，过期结果不会覆盖新输入或关闭的表单。最多扫描 4096 项、保留 200 候选，超限提示缩小路径；只读取目录项，不读取候选内容。
+`action_menu.go` 是与 Profile 无关的展示/输入组件，复用 Bubbles key 与现有主题、画布叠加能力；`profiles_menu.go` 提供菜单项并将动作交给已有共享用例。菜单支持鼠标、方向键和 Enter，Esc / Tab / 外部点击关闭，事件不穿透到底层；尺寸不足时裁切宽度并滚动选项。菜单遮挡通知并优先接收输入，关闭后恢复原卡片焦点；通知自身遮挡的卡片区域不响应右键。
+
+标题栏提供 Update all，正文顶部提供来源输入、Add subscription、New profile。卡片用背景和间距分组，已应用项显示蓝色左条，焦点使用 `›` 与底色，待应用更改用橙色。左键单击卡片调用共享 Apply 用例，点击当前项仅在有待应用更改时重新加载；未安装内核时打开安装提示，停止期间应用保持停止。键盘 Enter 打开详情，详情中仍提供 Use profile / Apply changes。卡片的更新按钮仅下载草稿，不切换配置；切换失败保留此前已提交的选择并显示错误。名称、描述、安全 Host/文件类型、更新时间及覆写状态直接取 Profile 元数据，没有独立来源管理页。
+
+New profile 使用 Bubbles textinput 编辑名称、描述和来源，来源字段异步读取当前目录并显示匹配列表。支持 HTTPS URL、绝对/相对/`~/` 路径、中文和空格、无扩展名文件；↑↓ 选择、Tab 补全，Enter 在目录中继续浏览，在文件路径上创建。URL 不扫描文件系统，过期结果不会覆盖新输入或关闭的表单。最多扫描 4096 项、保留 200 候选，超限提示缩小路径；只读取目录项，不读取候选内容。
+
+来源类型根据输入自动识别。名称和描述均可留空；留空名称采用统一自动命名规则，显式名称标记为 custom。显示名称不改变磁盘路径。Tab / Shift+Tab 可访问输入字段及创建、取消按钮，路径已完成时 Tab 继续移到创建按钮。描述可从右键菜单修改或清空。
+
+提交期间冻结表单并阻止重复提交，Esc 请求取消且等待当前操作安全结束。创建失败或取消保留草稿；创建成功关闭草稿，即使随后的状态回读失败，也同时显示已创建的结果和刷新错误，避免再次创建同一配置。较短窗口优先保留输入、操作及错误提示，缩减路径候选和辅助说明；极小窗口提示放大并移除鼠标操作区。
 
 首次读取状态失败显示不可用和 Retry，不伪装成空库或未安装；已成功读取后刷新失败保留上次快照。
 

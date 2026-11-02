@@ -1,5 +1,7 @@
 # 持久运行与当前交付范围
 
+项目目标是 root 与普通用户拥有独立实例：root 默认使用 system backend，普通用户默认使用 user backend，经 sudo 授权后可为同一实例启用 system/TUN。普通代理可并存，同一网络命名空间内的 TUN 管理权独占，覆盖范围另行配置。实例身份、backend 切换与 TUN 显式交接见 [服务 scope 与权限模型](service-scopes.md)。本页描述现有运行时，不表示 system scope 或 TUN 已实现；重构不承诺兼容现有 unit 或数据格式。
+
 当前可用组合是 **Linux + systemd 用户服务 + Mihomo 的本机 HTTP/SOCKS 代理**。TUI 为主要控制入口，CLI 使用相同应用用例。没有 lazyclash daemon；systemd 直接启动 Mihomo，TUI 关闭、终端挂断及 CLI 返回均不发送 Stop。系统级服务、特权 TUN、路由/DNS 接管及自动系统代理尚未实现，不能把基本代理可用解释为这些能力已经交付。权限选择与后续条件见 [权限边界](permissions.md)。
 
 ## 部署与作用域
@@ -51,7 +53,7 @@ lazyclash service stop
 lazyclash uninstall               # 要求停止且禁用；保留 Profile、来源和偏好
 ```
 
-默认 Add 是一次性导入；明确 `--remember-source` 才将 URL/绝对路径保存在该 Profile 的私有 `0600` 元数据中。Profile 直接拥有名称、地址、更新时间与内容 revision，没有独立来源管理。Refresh 验证旧快照、下载新内容并结合用户覆写校验，成功后原子提交；失败保持旧记录和当前运行配置。TUI 的 URL Add、卡片 Update 和 Update all 调用相同用例，显式 Apply 才加载草稿。删除 Profile 同时删除其地址与当前内容引用，不留下下载任务；未提供后台订阅调度。
+默认 CLI Add 是一次性导入；明确 `--remember-source` 才将 URL/绝对路径保存在该 Profile 的私有 `0600` 元数据中。TUI 的 Add subscription 继续快速自动命名，New profile 可填写名称、描述并保存 URL/绝对路径来源。Profile 直接拥有名称、描述、地址、更新时间与内容 revision，没有独立来源管理。Refresh 验证旧快照、下载新内容并结合用户覆写校验，成功后原子提交；失败保持旧记录和当前运行配置。TUI 的 URL Add、New profile、卡片 Update 和 Update all 调用相同用例，显式 Apply 才加载草稿。删除 Profile 同时删除其地址与当前内容引用，不留下下载任务；未提供后台订阅调度。
 
 原始订阅、配置、API secret、来源和偏好均不因 Stop 丢失。卸载验证所有代际及文件归属，只删除安装目录和绑定的运行意图；用户新增/改动的非缓存安装文件会阻止删除（runtime/ 中自有缓存随内核移除）。若 unit 已删而后续文件清理失败，错误明确标注需要手工清理，不声称完整成功；当前不提供卸载事务的崩溃自动续跑。
 

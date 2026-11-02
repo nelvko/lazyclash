@@ -2,6 +2,22 @@
 
 普通构建/单元测试不会调用 OrbStack、安装服务或修改系统配置。以下三类运行验证均为显式入口，不由 `go test` 自动触发。
 
+## 新建配置表单（2026-11-02）
+
+本轮第二个按钮使用 New profile / 新建配置，统一创建远程 URL 或本地文件配置，并接受可选显示名称、描述。已验证：
+
+- 宿主 macOS/arm64：全包 `go test ./...`、`go vet ./...`、构建，以及新增 HTTPS 创建/取消/失败原子性、描述清空业务测试通过。TLS 使用本地 fixture 的受信客户端，不关闭产品证书校验。
+- `./scripts/verify-linux.sh lazyclash-e2e` 在现有专用 Debian 12/arm64 VM 内实际运行全部测试二进制通过，包含新增配置创建业务测试和表单模型测试。
+- `scripts/profiles-pty.py` 通过真实 controlling PTY 验证本地路径匹配/Tab 补全、已完成路径到创建按钮的焦点切换、远程名称与描述、忙碌期间防重复提交、一次下载、保留来源更新、退出重开元数据持久化，以及现有卡片菜单和命名回归。
+- 表单模型覆盖 120×30、80×24、60×20、40×16、40×14，操作按钮命中区与错误保持可见。中英文实际 PTY 屏幕另检查 120×32、80×24、60×20、40×16、40×14，保存屏幕文字及按 VT 单元格重绘的 PNG；PNG 为终端状态预览，不是原生终端应用截图。
+- Python 终端屏幕解析测试通过。脱敏结果位于忽略的 `.test-artifacts/profile-create-20261102-final/`，表单预览在 `.test-artifacts/profile-create-20261102/previews/`。
+
+本轮 PTY 使用临时未安装目录和 loopback HTTP fixture，不安装或启动内核；没有重跑真实 Mihomo/systemd 的完整 E2E，也不把测试中的假服务视为真实服务验证。
+
+分批提交复核：每个代码批次均单独导出 Git 暂存树，以 `go test -mod=readonly ./...` 验证其不依赖后续未提交文件；完整代码树另通过 vet 与构建。主题 PTY 已按当前首次引导、导航层级和通知行为更新，并在 Truecolor、256 色、NO_COLOR 的 160×45、120×32、80×24、60×20、120×18 下通过，结果位于 `.test-artifacts/commit-theme-20261102/`。
+
+`scripts/i18n-pty.py` 同时通过实际语言切换、退出重开后的偏好持久化、中文鼠标命中、帮助、网络表单和缩放检查，记录在 `.test-artifacts/commit-i18n-20261102/`；Python 屏幕解析单元测试、全部 Python 脚本语法及 E2E Shell 语法检查通过。
+
 ## 1. 单元、HTTP fixture、模型与静态检查（macOS 或 Linux）
 
 ```sh
@@ -200,3 +216,86 @@ python3 scripts/pty-smoke.py --help
 记录保存在忽略目录 `.test-artifacts/`：`e2e.log`、`linux-lifecycle-tests.log`、各 `pty-*.txt` 和 `cleanup.txt`。最终清理确认专用 unit 为 not-found、默认及动态 TCP/UDP 监听均释放、`resources released=1`、`exit=0`。未修改主机系统代理、DNS、路由、Shell 配置或 VM 的 linger 策略。
 
 未实测最后一个真实 SSH 登录会话退出、机器重启和 Linux/amd64 运行；单元测试、PTY SIGHUP、linger 检查和交叉编译都不能替代这些验收。文档提供专用机器上的 SSH/logout/boot 步骤。TUN、路由/DNS 接管、系统级部署及其停止清理尚未实现，不存在“模拟测试通过所以真实 TUN 已通过”的结论。
+
+## 顶部通知条（2026-10-31）
+
+- 宿主 macOS/arm64：`make check`、`make race`、`make build` 和四项 Python VT 回归通过。模型测试覆盖新旧通知计时隔离、同文案重复反馈、任务取消、弹窗去重、表单校验取消、Esc 优先级与关闭后的焦点恢复。
+- `scripts/verify-linux.sh proxyctl-e2e`：先检查已有专用 Debian 12/arm64 VM 的普通用户、systemd 用户 manager 和 Linger 状态，再在 VM 内实际执行全部包测试，通过。
+- `scripts/theme-pty.py`：在隔离数据目录和随机服务名下，使用真实 controlling PTY 验证错误超过五秒仍保留、鼠标/Esc 关闭、相同错误再次出现、输入取消提示自动收起，以及既有向导和隐藏输入。真彩、256 色和 NO_COLOR 三种模式均覆盖 160×45、120×32、80×24、60×20、120×18；当前屏幕记录保存在忽略目录 `.test-artifacts/notifications-pty/`。
+- 通知模型另覆盖中文长文案、三行裁切及 20×7、10×4、1×1 极小窗口；`scripts/theme-preview.py` 导出的宽窄通知 PNG 用于检查字体排版，属于模型预览。
+
+本轮未重跑真实 Mihomo 安装及 systemd 生命周期 E2E；PTY 使用未安装实例，不创建服务、不查询发布版本或修改系统网络。
+
+## Toast 浮层（2026-10-31）
+
+全局通知改为右上角 Toast，不再挤占正文高度。宿主 `make check`、`make build`、四项 Python VT 回归，以及 `scripts/verify-linux.sh proxyctl-e2e` 的 Linux 全包运行测试通过。新增回归验证正文几何、总行数和滚动位置稳定，覆盖区域不接收底层点击，订阅 URL 和搜索输入的避让，以及输入框部分滚出视口、短页面越界滚动裁切后的反馈。
+
+更新后的 `scripts/theme-pty.py` 在真彩、256 色和 NO_COLOR 三种模式下通过 160×45、120×32、80×24、60×20、120×18 的真实终端验证，覆盖持久错误、键鼠关闭、重复反馈和自动收起；记录保存在 `.test-artifacts/toast-pty/`。宽窄 PNG 仍为模型预览。本次未重跑真实 Mihomo/systemd 生命周期 E2E。
+
+## 多条 Toast 与底部空间回收（2026-11-01）
+
+通知固定从页头右侧展开，宽屏最多两条、紧凑窗口最多一条；溢出进入有边界的列表，详情使用 Charm Bubbles viewport。正文回收原底部状态栏预留的一行，按键提示固定在终端最后一行，侧栏、紧凑导航遮挡区域和滚动边界同步。
+
+本轮最终源代码验证：
+
+- 宿主 macOS/arm64：`make check`（全部 Go 测试与 vet）、`make race`、`make build` 通过；Python 四项 VT 协议回归、脚本语法与 `git diff --check` 通过。
+- 模型覆盖独立操作身份、同操作进度/结果/重试、相同错误不合并、按条目关闭、旧定时器隔离、成功 3 秒与信息 4 秒、隐藏/溢出/弹窗暂停计时、错误跨页保留、输入校验留在局部，以及通知列表、完整详情、键盘焦点和鼠标遮挡。受控故障测试覆盖恢复失败、最终状态回读失败时显示未知、弹窗关闭后保留严重错误，以及端口已提交但回读失败时仍保留已应用结果。
+- 新底部布局回归覆盖 160×45、120×32、100×20、80×24、60×20、120×18、30×12、20×7，断言正文/滚动指示/鼠标命中到达倒数第二行、末行按键提示独立、侧栏填满正文高度、紧凑导航末行不能点击穿透；另检查 120×25 的侧栏边界。
+- `scripts/verify-linux.sh proxyctl-e2e`：复用已有专用 Debian 12/arm64 VM，普通 uid 501、systemd 用户 manager running、Linger=yes；实际执行全部 Linux Go 测试通过，包含最终两项底部布局回归的全部尺寸。最终记录为 `.test-artifacts/notification-stack/footer-linux-tests.log`，此前通知集合验证为同目录 `linux-tests.log`。
+- `scripts/theme-pty.py`：真彩、ANSI256、NO_COLOR × 160×45、120×32、80×24、60×20、120×18 的真实 controlling PTY 通过，覆盖独立同文案操作、顺序与溢出、Ctrl+N/鼠标展开、指定关闭、跨页保留、局部校验修改与离页、弹窗后计时及既有焦点和草稿行为。最终布局复跑逐一检查 15 份当前屏幕，确认 `q Quit` 固定末行，滚动标记位于倒数第二行。证据分别为 `.test-artifacts/notification-stack/pty/` 与 `footer-pty/`，隔离暂存资源已清理。
+- 以最终实际 `Model.View()` 导出 ANSI，使用 Menlo 重新渲染并检查 120×32 的多条 Toast、局部输入校验和 60×20 的紧凑 Toast PNG。它们是模型排版预览，不作为真实服务运行证据。
+
+本轮未重跑真实 Mihomo/systemd 生命周期 E2E；PTY 使用隔离的未安装实例，不安装内核或创建服务。恢复和状态回读故障来自受控模型测试，没有声称在 VM 内注入所有真实故障。实测平台范围未扩大。
+
+## 侧栏 Logo 首版呼吸与点击彩蛋（2026-11-02）
+
+初始状态、实际终端尺寸与色彩能力就绪约 200ms 后，常驻侧栏 Logo 以青色轻呼吸一次，约 800ms 内渐亮再恢复，不显示梦泡。每次启动仅一次，不因切页、缩放或关闭弹窗而重播；初始紧凑布局、加载失败、遮挡、无色及 16 色模式跳过。点击仍播放约 1.6 秒的原位变化与上方梦泡，字标宽度及菜单位置固定，20～23 行省略梦泡。没有适合此类品牌帧动画的 Bubbles 组件，使用封装的 Bubble Tea 定时消息；播放结束或被打断后不再安排动画消息。
+
+本轮实际通过：
+
+- 宿主 macOS/arm64：`make check`（全包测试与 vet）、`make build`、4 项 Python VT 协议回归及 Logo 验证脚本语法检查。
+- 模型回归：首次尺寸、颜色和加载结果的六种到达顺序，200ms 等待与 800ms 呼吸、颜色升降、自然结束及各类跳过/打断后的不补播，等待和呼吸中的点击抢占、过期帧丢弃；另保留点击剧情的固定字标与梦泡坐标、总时长、重复点击重播、宽窄缩放，以及忙碌、退出、帮助、表单、通知列表和操作菜单打断。Logo 可点击但不增加 Tab 停靠点。
+- `scripts/verify-linux.sh lazyclash-e2e`：在已有专用 Debian 12/arm64 VM 内实际执行全部可运行的 Go 测试，未启用需显式环境变量的真实 Mihomo 集成测试。
+- `scripts/logo-demo.py`：macOS/arm64 与所选 Linux/arm64 的真实 controlling PTY 均验证 160×45、120×24、100×20，分别捕获 14、14、7 帧；检查 `la` 与 `yClash` 的字符格位置不变、没有尾部追加文字、梦泡逐格移动及最终恢复静态。
+- `scripts/logo-intro-pty.py`：最终实现分别在 macOS/arm64 与所选 Linux/arm64 真实 controlling PTY 通过 160×45、120×24、100×20；实际采样 SGR 前景色，观察到基色与 20 帧变化，约 213～231ms 首次变亮、约 979～1021ms 恢复基色，峰值为 `#b7e5f7`，字符始终不变且没有进场梦泡。切页、缩放、关闭帮助后不重播，随后点击剧情完整通过；另验证 80×24 启动的静态标题 Logo 扩大到 160×45 后不补播。
+
+可重复的宿主 PTY 入口：
+
+```sh
+make build
+python3 scripts/logo-demo.py --binary bin/lazyclash \
+  --output .test-artifacts/logo-wake-dream-pty \
+  --size 160x45 --size 120x24 --size 100x20
+python3 scripts/logo-intro-pty.py --binary bin/lazyclash \
+  --output .test-artifacts/logo-intro/macos
+```
+
+最终进场验证的主机检查与 Linux 全包测试日志保存在 `.test-artifacts/logo-intro/`，其中 `macos/` 与 `linux/` 保存各尺寸的颜色观察、当前屏幕和原始 ANSI；每次脚本运行生成独立目录。此前点击剧情记录保留在 `.test-artifacts/logo-wake-dream/` 与 `.test-artifacts/logo-wake-dream-pty/`。PTY 使用隔离的未安装数据目录，VM 临时目录已清理；本轮未重跑 Mihomo/systemd 安装生命周期 E2E。
+
+## Logo 原位翻身进场（2026-11-02）
+
+进场在界面就绪约 200ms 后播放一次约 800ms 的“翻个身，接着睡”：原 emoji 的两格依次显示 `z `、` Z`、💤，两侧文字固定，同时青色渐亮至 `#c5efff` 再恢复。使用 40ms 帧间隔，总时长保持 800ms；进场不冒梦泡，点击仍播放完整的 1.6 秒惊醒与梦泡剧情。首次显示条件、取消与只播放一次的规则沿用首版。
+
+本轮实际通过：
+
+- 宿主 `make check`、`make build`、4 项 Python VT 协议回归及脚本语法检查。
+- 模型验证完整的进场字形序列、中心两格与字标宽度固定、无进场梦泡、青色升降及恢复；保留初始化乱序、首次跳过、取消、点击抢占、旧消息隔离和点击剧情回归。
+- `scripts/verify-linux.sh lazyclash-e2e`：在已有专用 Debian/arm64 VM 内实际执行全部可运行的 Go 测试，包含更新后的进场与生命周期回归。
+- 更新后的 `scripts/logo-intro-pty.py` 分别在 macOS/arm64 和 Linux/arm64 的真实 controlling PTY 验证 160×45、120×24、100×20。各尺寸均捕获 `💤 → z → Z → 💤`，实际青色峰值为 `#c5efff`，随后恢复 `#85b3e0`；没有进场梦泡或字标偏移。切页、缩放与关闭帮助后不重播，原点击剧情完整通过；80×24 启动后扩大到 160×45 不补播。
+
+记录位于 `.test-artifacts/logo-sleepy-entry/`：主机检查和 Linux 全包测试日志，以及 `macos/`、`linux-pty/` 下逐尺寸的中心字形、颜色、当前屏幕和原始 ANSI。仍可通过上一节的 `scripts/logo-intro-pty.py` 命令复验，使用新的输出目录即可。PTY 使用隔离的未安装实例，VM 暂存目录已清理；本轮未重跑真实 Mihomo/systemd 安装生命周期 E2E。
+
+## 首次安装入口（2026-11-02）
+
+未安装时，首页只突出安装 Mihomo，默认聚焦主按钮，按一次 Enter 打开现有安装向导；启动 TUI 不自动下载或安装。“稍后设置”只跳过当前会话的准备页，不写入永久关闭引导偏好。安装后的内置默认配置属于正常可用状态，可由用户明确启动；订阅和本地 YAML 均为可选能力，不构成必经步骤。
+
+本轮实际验证：
+
+- 宿主 macOS/arm64：最终源代码的 `make check`（全部 Go 测试及 vet）通过；本轮较早版本的 `make race` 通过。新增模型测试覆盖初始化消息乱序、一次 Enter 仅打开向导、迟到结果不抢焦点、会话跳过、无订阅默认配置就绪与明确启动，以及安装完成后保持停止。
+- `scripts/verify-linux.sh lazyclash-e2e`：在已有专用 Debian/arm64 VM 内实际执行最终源代码的 Linux 全包测试，通过；不是仅做交叉编译。
+- `scripts/onboarding-pty.py`：宿主中英文 × True Color、ANSI256、NO_COLOR × 160×45、120×32、80×24、60×20、120×18 的真实 controlling PTY 通过；Linux 中英文 True Color 也通过上述五种尺寸。最终界面另在中英文 True Color 下复验 160×45、120×32、80×24、60×20，检查首屏、安装向导入口、临时跳过和配置页。PNG 根据实际 PTY 字符格和颜色重绘，用于排版检查，不是原生 Ghostty 截图。
+- `scripts/pty-smoke.py` 已同步现有页脚、单来源导入、默认配置名称和导航交互，并修正等待初始快照的竞态；E2E 的预导入检查按配置内部 ID 验证，不再把自动生成的显示名当作 ID。独立 Linux `empty` 模式通过，保留凭据隐藏、预安装导入、缩放、Esc 取消和 SIGTERM 清理场景。
+
+最新完整 `e2e.sh lazyclash-e2e --proxy-mode environment` 尝试通过了 `empty` PTY，但在官方 Mihomo 发布元数据查询阶段因网络连接失败中止；后续只读直连 `curl` 诊断返回 HTTP 403。本轮没有完成该版本的真实安装、启动及后续 systemd 生命周期验证，不把模型测试和入口 PTY 视为这些场景的通过证据。清理记录为 `resources released=1`、`exit=1`，保留了本次 E2E 失败状态。
+
+记录保存在忽略目录 `.test-artifacts/onboarding/`，包括最终宿主与 Linux 检查日志、较早的 race 日志、中英文各颜色/尺寸的当前屏幕与 ANSI、重绘 PNG，以及 E2E 输出和清理记录。验证使用隔离数据目录和随机服务名，临时资源已清理；实测平台范围未扩大。
