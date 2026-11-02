@@ -170,18 +170,40 @@ func TestMarianaPagesAcrossSizesAndProfiles(t *testing.T) {
 func TestMarianaSidebarCurrentHoverAndFocusAreIndependent(t *testing.T) {
 	o := dashboardOptions{Width: 160, Height: 45, Page: "overview", Focus: "nav.proxies", Hover: "nav.rules"}
 	screen, _, _ := renderDashboard(o)
-	plain := ansi.Strip(screen)
-	if !strings.Contains(plain, "Overview •") || !strings.Contains(plain, "› Proxies") {
-		t.Fatal("current page and keyboard focus lost their independent text markers")
+	sidebar := sidebarText(screen)
+	if strings.Contains(sidebar, "Overview •") || !strings.Contains(sidebar, "› Proxies") {
+		t.Fatal("colored navigation repeated the current marker or lost keyboard focus")
 	}
-	hoverLabel := lipgloss.NewStyle().Underline(true).Render("Rules")
-	labelPadding := strings.Repeat(" ", (sidebarWidth-2-ansi.StringWidth("Rules"))/2)
-	if !strings.Contains(screen, themed(cellPad(labelPadding+hoverLabel, sidebarWidth-2), text, sidebarBackground, false)) {
+	for _, row := range strings.Split(screen, "\n") {
+		line := ansi.Cut(row, 0, sidebarWidth)
+		if strings.Contains(line, "\x1b[4m") {
+			t.Fatal("sidebar added underline emphasis")
+		}
+	}
+	if !strings.Contains(screen, themed("› ", focus, sidebarBackground, false)) {
+		t.Fatal("keyboard focus lost its separate orange marker")
+	}
+	currentLabel := lipgloss.NewStyle().Bold(true).Render("Overview")
+	if !strings.Contains(screen, themed(currentLabel, selectionForeground, bg, false)) {
+		t.Fatal("current page lost its body background or bold label")
+	}
+	if !strings.Contains(screen, themed(cellPad("Rules", sidebarWidth-5), text, sidebarBackground, false)) {
 		t.Fatal("persistent hover lost its text emphasis or changed the sidebar background")
 	}
-	o.Width, o.Height, o.SidebarOpen = 80, 24, true
+	o.Hover = o.Focus
+	hoveredFocus, _, _ := renderDashboard(o)
+	if !strings.Contains(hoveredFocus, themed(cellPad("Proxies", sidebarWidth-5), text, sidebarBackground, false)) || !strings.Contains(hoveredFocus, themed("› ", focus, sidebarBackground, false)) {
+		t.Fatal("hovering the keyboard focus replaced its independent text or marker colors")
+	}
+	o.Hover = "nav.rules"
+	o.PlainButtons = true
+	plain, _, _ := renderDashboard(o)
+	if !strings.Contains(sidebarText(plain), "Overview •") || !strings.Contains(sidebarText(plain), "› Proxies") {
+		t.Fatal("low-color navigation lost independent current and focus text markers")
+	}
+	o.Width, o.Height, o.SidebarOpen, o.PlainButtons = 80, 24, true, false
 	popup, _, _ := renderDashboard(o)
-	if !strings.Contains(popup, themed(cellPad(labelPadding+"Rules", sidebarWidth-2), text, hoverBackground, false)) {
+	if !strings.Contains(popup, themed(cellPad("Rules", sidebarWidth-5), text, hoverBackground, false)) {
 		t.Fatal("compact menu lost its hover surface")
 	}
 }

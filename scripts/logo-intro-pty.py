@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Verify the one-time sleepy logo entrance and click story in a real color PTY.
 
-Uses disposable empty homes and random service names. No core, service, or user
-configuration is installed or changed. Every invocation creates a new output
-subdirectory so earlier verification evidence remains intact.
+Uses disposable homes with startup guidance dismissed and random service names.
+No core, service, or user configuration is installed or changed. Every invocation
+creates a new output subdirectory so earlier verification evidence remains intact.
 """
 import argparse
 import codecs
@@ -116,6 +116,7 @@ class ColorScreen(SMOKE.Screen):
 
 
 def spawn(binary, size, home):
+    DEMO.prepare_home(home)
     columns, rows = size
     command = [sys.executable, "-c", WRAPPER, str(columns), str(rows), str(binary),
                "--home", str(home), "--service-name", "lazyclash-logo-intro-" + uuid.uuid4().hex[:12]]
@@ -175,9 +176,10 @@ def ready(terminal, size, page="Overview"):
     columns, rows = size
     def painted():
         lines = terminal.screen.text().splitlines()
+        header_y = 1 if rows >= 24 else 0
         return (len(lines) == rows and lines[-1].find("q Quit") == columns - 8
-                and page + " •" in terminal.screen.text()
-                and LOGO in lines[1 if rows >= 24 else 0])
+                and lines[header_y][DEMO.SIDEBAR_WIDTH:].lstrip().startswith(page)
+                and LOGO in lines[header_y])
     DEMO.wait_until(terminal, painted, "sidebar did not finish painting")
 
 

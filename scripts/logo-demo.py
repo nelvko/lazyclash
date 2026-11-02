@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Capture and verify the sidebar logo's wake-and-dream animation in a real PTY.
 
-The demo uses an isolated empty lazyclash home and does not install a core,
-create a service, change network settings, or read a real user home. Pass
---size repeatedly to verify multiple persistent-sidebar terminal sizes.
+The demo uses an isolated lazyclash home with startup guidance dismissed. It
+does not install a core, create a service, change network settings, or read a
+real user home. Pass --size repeatedly to verify multiple terminal sizes.
 """
 import argparse
 import importlib.util
@@ -24,6 +24,7 @@ SPEC.loader.exec_module(SMOKE)
 # Locale and terminal capability changes belong only to the disposable child.
 WRAPPER = "import os, sys; os.environ['LAZYCLASH_LANG'] = 'en'; os.execv(sys.argv[1], sys.argv[1:])"
 LOGO = "la💤yClash"
+SIDEBAR_WIDTH = 20
 # (phase, central two cells, character above the center, column offset).
 FRAMES = [
     ("wake", "!!", "", 0),
@@ -41,6 +42,12 @@ FRAMES = [
 ]
 
 
+def prepare_home(home):
+    """Keep logo-only captures independent of the startup release lookup."""
+    home.mkdir()
+    (home / "preferences.json").write_text(json.dumps({"GuideDismissed": True}) + "\n")
+
+
 def wait_until(terminal, predicate, label, timeout=10):
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -56,7 +63,7 @@ def locate_logo(terminal, height):
     """Return cell coordinates rather than Python character indexes."""
     y = 1 if height >= 24 else 0
     row = terminal.screen.cells[y]
-    for x in range(22 - 10):
+    for x in range(SIDEBAR_WIDTH - 10):
         if "".join(row[x:x + 10]) == LOGO:
             return x, y
     raise AssertionError("complete static logo is missing from sidebar header")
@@ -67,13 +74,13 @@ def logo_state(terminal, origin):
     row = terminal.screen.cells[y]
     if "".join(row[x:x + 2]) != "la" or "".join(row[x + 4:x + 10]) != "yClash":
         return None  # A partial repaint must never pass an animation assertion.
-    if any(cell.strip() for cell in row[x + 10:21]):
+    if any(cell.strip() for cell in row[x + 10:SIDEBAR_WIDTH - 1]):
         raise AssertionError("logo grew a trailing suffix or shifted its wordmark")
     center = "".join(row[x + 2:x + 4])
     if not y:
         return center, "", 0
     top = terminal.screen.cells[y - 1]
-    marks = [(column - x - 2, cell) for column, cell in enumerate(top[:21]) if cell.strip()]
+    marks = [(column - x - 2, cell) for column, cell in enumerate(top[:SIDEBAR_WIDTH - 1]) if cell.strip()]
     if not marks:
         return center, "", 0
     if len(marks) != 1:
@@ -87,6 +94,7 @@ def capture(binary, output, size, frames=None):
     output.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="lazyclash-logo-demo-") as temporary:
         home = Path(temporary) / "home"
+        prepare_home(home)
         service = "lazyclash-logo-demo-" + uuid.uuid4().hex[:12]
         command = [sys.executable, "-c", WRAPPER, str(binary), "--home", str(home), "--service-name", service]
         terminal = SMOKE.Terminal(command)
@@ -99,7 +107,7 @@ def capture(binary, output, size, frames=None):
                 # The new bottom-right footer proves SIGWINCH was painted.
                 # Waiting only for Overview would accept the old 120x40 frame.
                 return (len(lines) == rows and lines[-1].find("q Quit") == columns - 8
-                        and "Overview •" in terminal.screen.text()
+                        and any("Overview" in line[:SIDEBAR_WIDTH] for line in lines)
                         and LOGO in lines[1 if rows >= 24 else 0]
                         and "Loading state" not in terminal.screen.text()
                         and "Cancel in progress notice" not in terminal.screen.text())

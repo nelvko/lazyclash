@@ -116,7 +116,7 @@ func drawSidebar(rows []string, o dashboardOptions, popup bool) []hitRegion {
 		id := "nav." + page
 		label := pageTitle(page, o.Locale)
 		labelStyle := lipgloss.NewStyle()
-		current := "  "
+		current := ""
 		background, foreground := sidebarBackground, muted
 		if page == o.Page {
 			background, foreground = bg, selectionForeground
@@ -124,26 +124,22 @@ func drawSidebar(rows []string, o dashboardOptions, popup bool) []hitRegion {
 				background = selectionBackground
 			}
 			labelStyle = labelStyle.Bold(true)
-			current = " •"
+			if o.PlainButtons {
+				current = " •"
+			}
 		}
-		if o.Hover == id && o.Focus != id && page != o.Page {
+		if o.Hover == id && page != o.Page {
 			foreground = text
 			if popup {
 				background = hoverBackground
-			} else {
-				labelStyle = labelStyle.Underline(true)
 			}
 		}
 		marker := "  "
 		if o.Focus == id {
 			marker = "› "
-			if page != o.Page {
-				foreground = focus
-			}
-			labelStyle = labelStyle.Underline(true)
 		}
-		label = labelStyle.Render(label)
-		value := lipgloss.NewStyle().Width(g.width - 2).Align(lipgloss.Center).Render(marker + cellCrop(label, max(1, g.width-6)) + current)
+		label = cellCrop(labelStyle.Render(label), max(1, g.width-6-ansi.StringWidth(current)))
+		value := cellPad(" "+themed(marker, focus, background, o.Dim)+label+current, g.width-2)
 		for row := 0; row < g.itemHeight; row++ {
 			y := index*g.itemHeight + row
 			lines[y] = themed(strings.Repeat(" ", g.width), foreground, background, o.Dim)

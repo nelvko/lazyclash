@@ -11,7 +11,7 @@ import (
 	"github.com/nelvko/lazyclash/internal/i18n"
 )
 
-const sidebarWidth = 22
+const sidebarWidth = 20
 
 type hitRegion struct {
 	ID         string
