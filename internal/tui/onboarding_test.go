@@ -87,9 +87,13 @@ func TestOnboardingInitialMessagesFocusInstallWithoutStartingWork(t *testing.T) 
 						}
 					}
 					beforeID := m.id
-					m, _ = update(m, special(tea.KeyEnter))
-					if !m.wizard.open || m.wizard.step != stepCore || m.busy || m.id != beforeID || calls != 0 {
-						t.Fatalf("one Enter did not open the existing idle wizard: step=%s busy=%v calls=%d", m.wizard.step, m.busy, calls)
+					m, cmd := update(m, special(tea.KeyEnter))
+					if !m.wizard.open || m.wizard.step != stepVersion || !m.busy || m.id == beforeID || calls != 0 {
+						t.Fatalf("one Enter did not open the installation page with a read-only check: step=%s busy=%v calls=%d", m.wizard.step, m.busy, calls)
+					}
+					m, _ = update(m, actionCmd(t, cmd)())
+					if m.busy || m.wizard.updateCheck.LatestVersion != "v1.19.33" || calls != 0 {
+						t.Fatal("checking the recommended version resolved, installed or started a core")
 					}
 				})
 			}
@@ -146,7 +150,7 @@ func TestOnboardingSetUpLaterOnlySkipsTheCurrentSession(t *testing.T) {
 		t.Fatal("returning to Overview reopened setup during the same session")
 	}
 	m, _ = update(m, key("i"))
-	if !m.wizard.open || m.busy || b.guideSaves != 0 {
+	if !m.wizard.open || m.wizard.step != stepVersion || b.guideSaves != 0 {
 		t.Fatal("set up later removed the explicit installation entry point")
 	}
 	next := onboardingReady(t, b, "en")

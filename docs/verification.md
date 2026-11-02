@@ -2,6 +2,20 @@
 
 普通构建/单元测试不会调用 OrbStack、安装服务或修改系统配置。以下三类运行验证均为显式入口，不由 `go test` 自动触发。
 
+## Mihomo 版本检查与升级（2026-11-02）
+
+本轮实现与边界见 [内核版本管理](core-updates.md)。已实际运行：
+
+- 宿主 macOS/arm64：`make check`（全部 Go 测试与 vet）、`make race`、`make build`、四项 Python 终端解析测试及 `git diff --check` 通过。最终界面紧凑布局及诊断调整后再次运行全包 check/build，并对 app、CLI、TUI、service、store 的更新/恢复/锁相关用例运行 race，通过。
+- `./scripts/verify-linux.sh lazyclash-e2e` 在现有专用 Debian 12/arm64 VM 内实际执行全部包测试，两次均通过，最终记录位于忽略的 `.test-artifacts/core-update-linux-run.log`。包括正式版比较、Alpha/未知格式、未安装/不可执行、HTTP/超时/无效响应、损坏下载、配置与版本验证失败、取消、重启/API就绪失败、回滚失败保留材料、中断边界、Stop 优先、systemd start-limit 清理、外部状态变化及并发升级。
+- `scripts/core-update-pty.py` 使用 opt-in TUI 测试二进制，在真实 controlling PTY 内验证中英文 Manage 打开不查询、一次手动检查、版本审阅、一次明确确认升级、Esc 等待模拟恢复以及缩放；各自调用报告为 `checks=1, upgrades=1`。测试尺寸 120×32、80×24、60×20、40×16；40×16 初始屏同时可见本地/目标版本、状态和重启提示。记录位于 `.test-artifacts/core-update-20261102/pty-final/`。此 PTY 使用 fake backend，无真实网络、内核文件或系统服务，不能当作真实升级证据。
+- 同目录 `previews/` 保存 24 组中英文检查/进度/结果的 ANSI 与 PNG（四种尺寸）；PNG 是模型终端渲染预览，已人工查看，非原生终端截图。
+- 构建后的实际 CLI 经显式 environment 代理成功查询 stable `v1.19.33`、Alpha `alpha-69c1631`。两次以不存在的数据目录调用 `install check`，查询后均确认目录不存在；没有创建锁、下载内核或启动服务。
+
+真实完整 E2E **本轮未通过**：显式执行 `./scripts/e2e.sh lazyclash-e2e --proxy-mode environment` 与无代理版本，均在第一个固定版本安装的官方 Releases API 查询返回 HTTP 403（permission denied or rate limit），尚未下载内核。两次均完成冲突预检和 empty PTY；清理确认 `resources released=1`，无专用 unit、进程或监听残留。产品没有绕过摘要验证；同一网络的 `version.txt` 查询可以成功。
+
+E2E 脚本已新增旧版实际运行时只读检查保持 PID、确认升级改变 PID/实际版本且配置不变的断言，但因上述限流尚未执行到该场景。真实新内核启动失败、start-limit 后旧版本恢复尚无本轮 systemd 实测证据，仅有业务及服务 fixture 测试。未验证真实掉电持久性、Linux/amd64 CPU 或其他发行版；不能由 Linux/arm64 单元执行和文件同步顺序推断这些环境已通过。
+
 ## 新建配置表单（2026-11-02）
 
 本轮第二个按钮使用 New profile / 新建配置，统一创建远程 URL 或本地文件配置，并接受可选显示名称、描述。已验证：
@@ -299,3 +313,22 @@ python3 scripts/logo-intro-pty.py --binary bin/lazyclash \
 最新完整 `e2e.sh lazyclash-e2e --proxy-mode environment` 尝试通过了 `empty` PTY，但在官方 Mihomo 发布元数据查询阶段因网络连接失败中止；后续只读直连 `curl` 诊断返回 HTTP 403。本轮没有完成该版本的真实安装、启动及后续 systemd 生命周期验证，不把模型测试和入口 PTY 视为这些场景的通过证据。清理记录为 `resources released=1`、`exit=1`，保留了本次 E2E 失败状态。
 
 记录保存在忽略目录 `.test-artifacts/onboarding/`，包括最终宿主与 Linux 检查日志、较早的 race 日志、中英文各颜色/尺寸的当前屏幕与 ANSI、重绘 PNG，以及 E2E 输出和清理记录。验证使用隔离数据目录和随机服务名，临时资源已清理；实测平台范围未扩大。
+
+## 单页安装与设备构建选择（2026-11-02）
+
+首次打开安装窗口时直接显示版本与下载设置，复用 `CheckUpdate` 查询稳定版，不再要求确认唯一的 Mihomo 内核选项。用户明确点击安装后，使用已查到的固定版本依次解析官方资产、预检并安装；取消或修改选项会清除这次安装意图，迟到结果不能触发安装。已有实例通过手动入口重装、降级或更换本地文件时仍保留计划审阅，预检阻止项不能绕过。
+
+设备构建选择继续限定为已有 Linux/arm64 与 Linux/amd64。arm64 使用原生构建；amd64 根据每个可见 CPU 的指令集交集及操作系统 AVX 状态支持，选择可用的最高安全 v3、v2 或 v1，信息不完整时保守选择 v1。旧版无标签 amd64 只在已确认 v3 能力时使用，`compatible` 作为 v1 回退；初装、指定版本和升级共用该解析器。参考 [Mihomo FAQ](https://github.com/MetaCubeX/mihomo/wiki/FAQ) 与 [Go 最低要求](https://go.dev/wiki/MinimumRequirements#amd64)，没有凭 CPU 型号推测能力，也没有扩大其他架构或旧 Linux 内核的支持范围。
+
+本轮实际验证：
+
+- 宿主 macOS/arm64：最终源代码的 `make check`（全部 Go 测试及 vet）通过，记录为 `.test-artifacts/install-flow/check-final.log`。
+- `scripts/verify-linux.sh lazyclash-e2e`：在已有专用 Debian/arm64 VM 内实际执行最终源代码的 Linux 全包测试，通过；记录为 `.test-artifacts/install-flow/linux-final.log`。
+- Mihomo 及 TUI 的 Install、CoreUpdate、Wizard、Resolve 相关 race 测试通过，记录为 `.test-artifacts/install-flow/race-final.log`；不是本轮全包 race 的结论。设备选择测试覆盖全部 v2/v3 必需位缺失、系统未启用 YMM 状态、多核能力不一致、CPU 信息缺失，以及资产缺少时降级和禁止向上误选；AMD64 测试二进制另通过交叉构建，未声称已在真实 AMD64 设备运行。
+- Python 四项 VT 协议回归通过。真实产品二进制使用 environment 连接模式查询官方稳定版本，得到 `v1.19.33`，查询后隔离数据目录仍不存在，未创建安装或服务。
+- 最终 `make build`、Python 脚本语法和 Shell 语法检查及差异空白检查通过。
+- 更新后的 `scripts/onboarding-pty.py --test-binary` 在宿主完成中英文 × True Color、ANSI256、NO_COLOR × 160×45、120×32、80×24、60×20、120×18 共 30 场景；在专用 Linux/arm64 VM 实际完成中英文 × True Color × 120×32、80×24、60×20 共 6 场景。每场明确记录 `checks=1, resolves=1, prepares=1, installs=1`，验证一次安装操作串联、取消等待，以及返回后的会话跳过与浏览。后端是明确启用的内存 fixture，没有真实下载、执行 Mihomo 或创建服务。主机记录在 `.test-artifacts/install-flow-pty/final/20261102-140846-33c0eb/`，Linux 记录在 `.test-artifacts/install-flow-pty/linux/evidence/20261102-141332-16465f/`；已目视检查 Linux 120×32、60×20 安装页 PNG。VM 私有暂存目录已清理并复查不存在。
+
+最新完整 `e2e.sh lazyclash-e2e --proxy-mode environment` 尝试通过 `empty` PTY 后，在官方固定版本 release API 查询阶段收到 HTTP 403；清理记录为 `resources released=1`、`exit=1`。本轮未完成真实内核下载安装、启动及后续 systemd 生命周期验证，不以版本查询、模型测试或界面预览代替这些证据。
+
+证据保存在忽略目录 `.test-artifacts/install-flow/`。终端 PNG 按实际 PTY 字符格与颜色重绘，安装进度和结果的内存替代后端预览只用于界面检查；两者均不能作为实际下载或服务运行证据。测试使用隔离数据目录和专用资源，实测平台范围未扩大。

@@ -39,8 +39,8 @@ CLI 帮助与面向用户的提示随语言切换。JSON 字段、状态值、�
 
 安装会自动准备可运行的**内置默认配置**，并明确显示“内置默认配置已就绪”；启动仍由用户在 Overview 明确操作。订阅和用户导入的本地 YAML 均为可选，不作为完成设置或启动的前置条件。内置配置的 `PROXY → DIRECT` 是正常策略，支持 `DIRECT`、`REJECT`；可随时在 Profiles 添加订阅或配置。安装后及正常停止时不再显示未完成引导。
 
-- `i` 或首页 **安装 Mihomo / Install Mihomo**：打开 Core → Version → Confirm 向导。
-- `b`：打开本地可执行文件安装选项，同样经过版本检查与确认。
+- `i` 或首页 **安装 Mihomo / Install Mihomo**：未安装时直接打开安装页，共用版本检查功能查询最新稳定版；点击 **下载并安装** 后执行预检和安装，无需再选择唯一支持的内核或重复确认首次安装。已安装时进入管理页。
+- `b`：直接打开本地可执行文件安装选项，点击安装后检查版本并执行预检。
 - `n` 或 Settings → **Network settings**：在查询版本前配置下载网络。
 - `a` 或 **Import config**：添加订阅 URL 或本地 Mihomo YAML；可在安装内核前保存，标记等待内核校验。
 - 侧栏 `↑↓` / `j/k` 立即切换右侧页面，焦点留在导航；`Home/End` 到第一／最后一页，首尾不循环。`Enter`、`→` 或 `l` 进入当前页上次有效的内容位置，首次进入则落到主要列表、卡片或内容视图；这次按键只移动焦点。常驻侧栏中的 `←` / `h` 不移动焦点。
@@ -101,15 +101,19 @@ CLI 使用同一日志用例，例如 `lazyclash logs --lines 50 --duration 5s`�
 
 CLI 使用同一事务用例：`lazyclash settings show` 查看，`lazyclash settings ports --mixed-port 17897 --controller-port 19097 --dry-run` 预检查；运行中应用需显式加 `--restart`。失败或取消执行回滚；恢复失败则保留恢复记录并报告。API 密钥、原始 profile 和其他配置保留。父 Shell 已导出的代理变量需重新求值 `lazyclash env`。详细操作与恢复边界见 [运行端口设置](docs/runtime-settings.md)。
 
-## 版本、确认与安装
+## 版本与安装
 
-Latest stable 每次从官方 GitHub API 解析为具体版本；Specific version 可输入稳定标签，例如 `v1.19.33`。尚未支持 pre-release 和其他内核，因此不展示可进入的占位流程。
+首次安装页复用升级功能的只读 `CheckUpdate`，从官方 `version.txt` 查询最新稳定版。进入 TUI 不查询或下载；用户打开安装页才查询，点击 **下载并安装** 后固定这次看到的版本，再通过官方 GitHub API 获取对应资产及 SHA256。Specific version 可输入稳定标签，例如 `v1.19.33`；也可直接使用本地文件。尚未支持 pre-release 安装和其他内核。
 
-确认页展示实际版本、Linux 平台/资产、安装路径、旧版与运行版本、操作、磁盘空间、下载来源及代理。预检查验证目标可写、unit 所属关系、磁盘、平台和已有状态；提交时在进程锁内复检，拒绝过期或修改过的计划。
+发布构建按设备自动适配：arm64 使用对应资产；Linux amd64 结合所有可见 CPU 的指令集与操作系统 AVX 支持选择 v3、v2 或 v1。信息不足时选 v1，旧版本缺少推荐资产时向兼容等级回退；不会给低等级 CPU 选择旧的无标签 v3 资产。设备展示是能力推荐，最终文件取决于该发布实际提供的资产。规则依据 [Mihomo FAQ](https://github.com/MetaCubeX/mihomo/wiki/FAQ)，当前仍只支持 Linux arm64/amd64。
 
-安装显示真实下载字节、已知总量/百分比、速率，以及校验、解压、可执行文件检查和部署阶段。总量未知时使用不确定状态；详情可展开。失败保留选择，可修改网络后重试，仍需重新确认后才安装。
+首次安装按一次 **下载并安装** 即串联资产解析、预检和现有安装管线。预检验证目标可写、unit 所属关系、磁盘、平台和已有状态；阻断原因会展示，提交仍在进程锁内复检。已有实例的手动版本更换或重装保留实际计划审阅，显示当前/运行版本、目标资产、路径、操作和警告。
+
+安装显示真实下载字节、已知总量/百分比、速率，以及校验、解压、可执行文件检查和部署阶段。总量未知时使用不确定状态；详情可展开。失败保留选择，可重试或修改网络；修改网络只重新检查，仍须主动点击安装。取消、改选版本或本地文件会清除待安装意图，迟到结果不会继续安装。
 
 安装、更新和显式重装均**不会自动启动或重启服务、修改系统代理、启用 TUN 或设置自启动**。同版本默认 Use existing，只有明确选择 Reinstall 才替换。更新先暂存并验证，再原子替换路径；正在运行的进程继续持有旧 inode。配置、API secret 与 unit 不因更新而覆盖。结果和首页分别显示已安装版本与实际运行版本，切换运行版本需要显式重启。
+
+已安装实例的 Settings → Manage / 管理内核提供**手动检查更新**与确认升级。检查只读地获取实际安装版本及官方 `version.txt`，区分已最新、有更新、本地更高和无法比较；确认升级固定目标，原服务运行时重启并验证，失败恢复旧文件及运行状态，停止时保持停止。Alpha 支持识别与检查，不比较 hash 先后，本期不提供 Alpha 一键升级。进入已安装实例的管理页不自动请求网络。架构、校验与恢复限制见 [内核版本管理](docs/core-updates.md)。
 
 没有订阅也可启动：默认 `PROXY` 选择组包含 `DIRECT` 和 `REJECT`，不依赖 Geo 数据，也不会凭空提供远程节点。添加配置只校验保存，不自动应用；重复显示名称会去重，新导入不会覆盖已有配置。应用前执行内核校验，运行状态下应用失败恢复旧配置和原服务，停止状态下应用不隐式启动。
 
@@ -117,11 +121,11 @@ Latest stable 每次从官方 GitHub API 解析为具体版本；Specific versio
 
 默认 **Official / No proxy**，不自动切换第三方服务，也不修改操作系统网络设置。来源与代理可以组合，例如 prefix + custom HTTP proxy。
 
-| 下载来源 | 发布文件 | 版本及预期 SHA256 |
+| 下载来源 | 发布文件 | 版本与预期 SHA256 |
 | --- | --- | --- |
-| Official | 官方 GitHub release 资产地址 | 官方 GitHub API |
-| URL prefix accelerator | 去掉前缀末尾 `/`，再拼 `/` 和完整官方 URL | 仍为官方 GitHub API，不添加前缀 |
-| Custom mirror | 精确模板替换 `{version}`、`{asset}` | 仍为官方 GitHub API，不使用镜像摘要 |
+| Official | 官方 GitHub release 资产地址 | 官方 version.txt / API |
+| URL prefix accelerator | 去掉前缀末尾 `/`，再拼 `/` 和完整官方 URL | 仍为官方 version.txt / API，不添加前缀 |
+| Custom mirror | 精确模板替换 `{version}`、`{asset}` | 仍为官方 version.txt / API，不使用镜像摘要 |
 
 前缀示例：`https://accelerator.example.invalid/https://github.com/MetaCubeX/mihomo/releases/download/...`。这里是完整字符串拼接，不使用路径拼接破坏内层 `https://`，不整体编码官方 URL。
 
@@ -135,7 +139,7 @@ Latest stable 每次从官方 GitHub API 解析为具体版本；Specific versio
 
 所有下载相关请求使用所选连接代理。不会假设尚未安装或尚未启动的 Mihomo 可作下载代理。
 
-Test connection 分开显示 Version query 与 File download。版本测试验证真实 release JSON；文件测试读取实际资产的 Range、最多 4 KiB，并检查 gzip 魔数，不下载整个内核、不代替完整性校验。尚无有效资产时标记 Not applicable。版本失败但已有有效资产时仍可独立测试文件；不同版本的文件结果不会混用。修改草稿会使测试结果失效，不会每输入一个字符就请求网络。
+Test connection 分开显示 Version query 与 File download。最新版本测试复用 `version.txt` 检查，再按固定版本获取 release JSON；指定版本直接获取对应元数据。文件测试读取实际资产的 Range、最多 4 KiB，并检查 gzip 魔数，不下载整个内核、不代替完整性校验。尚无有效资产时标记 Not applicable。版本失败但已有有效资产时仍可独立测试文件；不同版本的文件结果不会混用。修改草稿会使测试结果失效，不会每输入一个字符就请求网络。
 
 Back 放弃草稿；Apply 仅应用到当前会话；从失败状态进入时提供 Apply & retry。勾选 Remember 才保存允许的非敏感偏好。认证、查询参数、opaque URL 和不在公开路径规则内的地址只能用于本次会话，保存会明确失败；可取消 Remember 后继续。不会默认明文保存密码。
 
@@ -156,6 +160,9 @@ lazyclash install --core-version latest
 lazyclash install --core-version v1.19.33 --dry-run
 lazyclash install --bin /absolute/mihomo
 lazyclash install --core-version v1.19.33 --reinstall
+lazyclash install check                         # 只读检查，不下载内核或重启
+lazyclash install check --channel alpha         # Alpha hash 不同显示无法比较
+lazyclash install upgrade --yes                 # 检查并确认正式版升级，必要时重启
 lazyclash install --download-source prefix --download-prefix https://accelerator.example.invalid/ \
   --proxy-mode custom --proxy-url http://127.0.0.1:7890
 lazyclash profile add /absolute/config.yaml --name local

@@ -13,7 +13,7 @@ import (
 )
 
 func TestNotificationCriticalTraversesJoinedDiagnostics(t *testing.T) {
-	for _, code := range []string{"diagnostic.recovery.serviceFailed", "diagnostic.install.recoveryPending", "diagnostic.runtime.stopInspection", "diagnostic.refresh_state", "diagnostic.wizard_refresh"} {
+	for _, code := range []string{"diagnostic.recovery.serviceFailed", "diagnostic.install.recoveryPending", "diagnostic.upgrade.rollbackRestart", "diagnostic.upgrade.rollbackVersion", "diagnostic.upgrade.recoveryPending", "diagnostic.runtime.stopInspection", "diagnostic.refresh_state", "diagnostic.wizard_refresh"} {
 		t.Run(code, func(t *testing.T) {
 			err := errors.Join(
 				diagnostic.New("diagnostic.download.timeout", "download failed: %w", context.Canceled),

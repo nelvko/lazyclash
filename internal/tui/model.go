@@ -32,6 +32,8 @@ type Backend interface {
 	SaveKeyHintsPreference(context.Context, bool) error
 	SetAutostart(context.Context, bool) error
 	SetMode(context.Context, string) error
+	CheckUpdate(context.Context, mihomo.Channel, downloadnet.Config) (app.CoreUpdateCheck, error)
+	UpgradeCore(context.Context, app.CoreUpdateCheck, downloadnet.Config, func(mihomo.Progress)) (app.CoreUpgradeResult, error)
 	ResolveRelease(context.Context, string, downloadnet.Config) (mihomo.Release, error)
 	TestReleaseFile(context.Context, mihomo.Release, downloadnet.Config) error
 	PrepareInstall(context.Context, mihomo.Release, string, bool) (app.InstallPlan, error)
@@ -77,15 +79,18 @@ type resultMsg struct {
 	transient       bool
 }
 type wizardMsg struct {
-	progress    mihomo.Progress
-	id          uint64
-	kind        string
-	release     mihomo.Release
-	plan        app.InstallPlan
-	result      app.InstallResult
-	snapshot    app.Snapshot
-	hasSnapshot bool
-	err         error
+	updateCheck   app.CoreUpdateCheck
+	upgradeResult app.CoreUpgradeResult
+	refreshError  error
+	progress      mihomo.Progress
+	id            uint64
+	kind          string
+	release       mihomo.Release
+	plan          app.InstallPlan
+	result        app.InstallResult
+	snapshot      app.Snapshot
+	hasSnapshot   bool
+	err           error
 }
 type progressMsg struct {
 	id       uint64
@@ -236,6 +241,7 @@ func (m *Model) abortLookup() {
 	m.id++
 	m.busy = false
 	m.job = ""
+	m.wizard.installRequested = false
 }
 func (m *Model) refresh() tea.Cmd {
 	ctx := m.newJob("refresh")
@@ -286,6 +292,7 @@ func (m *Model) cancelTask(quit bool) {
 		m.cancel()
 	}
 	m.quitting = m.quitting || quit
+	m.wizard.installRequested = false
 	m.message = m.tr("model.canceling")
 	if m.job == "install" {
 		m.wizard.cancelling = true
@@ -483,8 +490,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.snapshotReady = true
 		}
 		cmd = m.handleWizardResult(v)
-		if v.kind == "install" {
+		if v.kind == "install" || v.kind == "upgrade" {
 			m.notification.operation.Context = m.tr("notification.install")
+			if v.kind == "upgrade" {
+				m.notification.operation.Context = m.tr("core_update.title")
+			}
 			m.notification.critical = notificationCritical(v.err)
 			if !v.hasSnapshot && m.snapshotReady {
 				m.markOperationStateUnknown()
@@ -806,10 +816,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "c":
 			m.navigate("connections")
 		case "i":
-			m.openWizard(false)
+			cmd = m.openWizard(false)
 		case "b":
-			m.openWizard(true)
-			cmd = textinput.Blink
+			cmd = m.openWizard(true)
 		case "n":
 			m.openNetwork(false)
 		case "a":
@@ -900,7 +909,7 @@ func (m *Model) navigate(page string) {
 	m.browsePage(page)
 	m.enterContent()
 }
-func (m *Model) openWizard(local bool) {
+func (m *Model) openWizard(local bool) tea.Cmd {
 	m.wizard.open = true
 	m.wizard.networkOpen = false
 	m.wizard.step = stepCore
@@ -908,15 +917,34 @@ func (m *Model) openWizard(local bool) {
 	m.wizard.failedKind = ""
 	m.wizard.failedStage = ""
 	m.wizard.localMode = local
+	m.wizard.specific = false
+	m.wizard.reinstall = false
+	m.wizard.installRequested = false
+	m.wizard.release = mihomo.Release{}
+	m.wizard.plan = app.InstallPlan{}
+	m.wizard.updateMode, m.wizard.upgrading = false, false
+	m.wizard.updateCheck = app.CoreUpdateCheck{}
+	m.wizard.refreshError = ""
 	m.wizard.cancelling = false
 	m.wizard.scroll = 0
-	m.wizard.focus = "continue"
+	m.wizard.focus = "check-update"
+	if !m.snapshot.Installed || local {
+		m.wizard.step = stepVersion
+		m.wizard.focus = "install"
+	}
 	if local {
 		m.wizard.focus = "local"
 		m.wizard.local.Focus()
 	}
 	m.failure = ""
 	m.wizard.reveal = true
+	if local {
+		return textinput.Blink
+	}
+	if !m.snapshot.Installed {
+		return m.checkInstallVersion()
+	}
+	return nil
 }
 func (m *Model) openForm() tea.Cmd {
 	m.rememberSource = false
@@ -1038,8 +1066,7 @@ func (m *Model) activate(id string) tea.Cmd {
 		}
 		return nil
 	case "card.install", "core.install":
-		m.openWizard(false)
-		return nil
+		return m.openWizard(false)
 	case "card.start":
 		return m.serviceAction("start")
 	case "core.start", "core.stop", "core.restart":
@@ -1068,7 +1095,7 @@ func (m *Model) activate(id string) tea.Cmd {
 			m.focus = "menu"
 		}
 	case id == "install":
-		m.openWizard(false)
+		return m.openWizard(false)
 	case id == "network":
 		m.openNetwork(false)
 	case id == "import" || id == "add":

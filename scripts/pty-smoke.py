@@ -270,18 +270,18 @@ class Terminal:
                 return
         raise AssertionError("Current PTY screen has no clickable text: " + label)
 
-    def local_confirm(self, source):
+    def local_ready(self, source):
         # The initial footer may paint before the asynchronous state read ends.
         # Wait for the ready preparation view before sending its local shortcut.
         self.wait("Install the Mihomo core")
         self.key(b"b")
         self.wait("Local Mihomo executable")
         self.key(os.fsencode(source))
-        self.key(b"\t")  # cancel
-        self.key(b"\t")  # continue
-        mark = len(self.text())
-        self.key(b"\r")
-        self.wait("Review installation", after=mark)
+        # Local input -> local-source toggle -> network -> Back -> Install.
+        # The next explicit Enter performs preflight and installation together.
+        for _ in range(4):
+            self.key(b"\t")
+        self.wait("› [ Install ]")
 
     def exit(self, key=b"q"):
         self.send(key)
@@ -383,9 +383,9 @@ def main():
             terminal.resize(24, 8)
             terminal.wait("Please enlarge terminal")
             terminal.resize(80, 24)
-            terminal.wait("Mihomo · Core")
+            terminal.wait("Mihomo · Version")
             terminal.key(b"\x1b")
-            terminal.wait_absent("Mihomo · Core")
+            terminal.wait_absent("Mihomo · Version")
             terminal.resize(120, 40)
 
             # First two version checks pass (preflight and recheck), while the
@@ -394,9 +394,9 @@ def main():
             counter = home.parent / ("counter-" + args.service_name)
             slow.write_text("#!/usr/bin/python3\nfrom pathlib import Path\nimport sys,time\np=Path(" + repr(str(counter)) + ")\nif '-v' in sys.argv:\n n=int(p.read_text())+1 if p.exists() else 1\n p.write_text(str(n))\n if n>=3: time.sleep(60)\n print('Mihomo Meta v1.19.33 linux arm64')\n")
             slow.chmod(0o700)
-            terminal.local_confirm(slow)
+            terminal.local_ready(slow)
             mark = len(terminal.text())
-            terminal.key(b"\r")  # confirm install
+            terminal.key(b"\r")  # preflight and install, without another page
             terminal.wait("Checking executable", after=mark)
             terminal.key(b"\x1b")
             terminal.wait("Installation canceled; cleanup completed", after=mark)
@@ -411,7 +411,7 @@ def main():
             signal_terminal.wait_absent("Loading state")
             signal_terminal.wait("q Quit")
             counter.unlink()
-            signal_terminal.local_confirm(slow)
+            signal_terminal.local_ready(slow)
             signal_terminal.key(b"\r")
             signal_terminal.wait("Checking executable")
             os.kill(signal_terminal.pid, signal.SIGTERM)
@@ -423,7 +423,7 @@ def main():
         elif args.mode == "install-local":
             if not args.mihomo_bin:
                 parser.error("--mihomo-bin is required for install-local mode")
-            terminal.local_confirm(args.mihomo_bin)
+            terminal.local_ready(args.mihomo_bin)
             mark = len(terminal.text())
             terminal.key(b"\r")
             terminal.wait("Mihomo installed and verified", after=mark)

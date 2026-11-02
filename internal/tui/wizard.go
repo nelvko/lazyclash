@@ -20,6 +20,7 @@ type wizardStep string
 const (
 	stepCore       wizardStep = "Core"
 	stepVersion    wizardStep = "Version"
+	stepUpdate     wizardStep = "Update"
 	stepConfirm    wizardStep = "Confirm"
 	stepInstalling wizardStep = "Installing"
 	stepResult     wizardStep = "Result"
@@ -36,6 +37,10 @@ const (
 
 type checkState struct{ Status, Detail string }
 type wizardState struct {
+	updateMode, upgrading                 bool
+	updateCheck                           app.CoreUpdateCheck
+	upgradeResult                         app.CoreUpgradeResult
+	refreshError                          string
 	open, networkOpen                     bool
 	step                                  wizardStep
 	cfg, draft                            downloadnet.Config
@@ -44,6 +49,7 @@ type wizardState struct {
 	scroll                                int
 	reveal                                bool
 	localMode, specific, reinstall        bool
+	installRequested                      bool
 	version, local, prefix, mirror, proxy textinput.Model
 	release                               mihomo.Release
 	plan                                  app.InstallPlan
@@ -90,7 +96,14 @@ func (m *Model) resolveVersion() tea.Cmd {
 		m.wizard.err = m.tr("wizard.version.required")
 		return nil
 	}
+	if !m.wizard.specific && m.wizard.updateCheck.LatestVersion == "" {
+		return m.checkInstallVersion()
+	}
 	cfg, selection := m.wizard.cfg, m.selection()
+	if !m.wizard.specific {
+		// Pin the shared version check, never look up mutable latest twice.
+		selection = m.wizard.updateCheck.LatestVersion
+	}
 	ctx := m.newJob("resolve")
 	id := m.id
 	backend := m.backend
@@ -122,10 +135,15 @@ func (m *Model) preparePlan() tea.Cmd {
 	}, m.spinner.Tick)
 }
 func (m *Model) installCore() tea.Cmd {
+	m.wizard.upgrading = false
+	return m.runCoreInstall()
+}
+
+func (m *Model) runCoreInstall() tea.Cmd {
 	if m.busy {
 		return nil
 	}
-	if m.wizard.plan.BlockedReason != "" {
+	if !m.wizard.upgrading && m.wizard.plan.BlockedReason != "" {
 		m.wizard.err = m.locale.Diagnostic(m.wizard.plan.BlockedReason, m.wizard.plan.BlockedDiagnostic)
 		return nil
 	}
@@ -133,6 +151,8 @@ func (m *Model) installCore() tea.Cmd {
 	id := m.id
 	backend := m.backend
 	plan, cfg := m.wizard.plan, m.wizard.cfg
+	upgrading, check := m.wizard.upgrading, m.wizard.updateCheck
+	m.wizard.refreshError = ""
 	m.wizard.step = stepInstalling
 	m.wizard.cancelling = false
 	m.wizard.err = ""
@@ -156,17 +176,26 @@ func (m *Model) installCore() tea.Cmd {
 	}
 	run := func() tea.Msg {
 		defer close(updates)
-		result, err := backend.InstallCore(ctx, plan, cfg, report)
+		var result app.InstallResult
+		var upgraded app.CoreUpgradeResult
+		var err error
+		kind := "install"
+		if upgrading {
+			kind = "upgrade"
+			upgraded, err = backend.UpgradeCore(ctx, check, cfg, report)
+		} else {
+			result, err = backend.InstallCore(ctx, plan, cfg, report)
+		}
 		refreshCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 8*time.Second)
 		defer cancel()
 		s, se := backend.Snapshot(refreshCtx)
-		if se != nil {
+		if se != nil && !upgrading {
 			err = errors.Join(err, diagnostic.New("diagnostic.wizard_refresh", "refresh dashboard: %w", se))
 		}
 		latestMu.Lock()
 		finalProgress := latest
 		latestMu.Unlock()
-		return wizardMsg{id: id, kind: "install", result: result, snapshot: s, hasSnapshot: se == nil, progress: finalProgress, err: err}
+		return wizardMsg{id: id, kind: kind, result: result, upgradeResult: upgraded, snapshot: s, hasSnapshot: se == nil, refreshError: se, progress: finalProgress, err: err}
 	}
 	return tea.Batch(run, waitProgress(ctx, updates), m.spinner.Tick)
 }
@@ -176,19 +205,38 @@ func (m *Model) handleWizardResult(v wizardMsg) tea.Cmd {
 		w.progress = v.progress
 	}
 	if v.err != nil {
+		w.installRequested = false
 		w.err = clean(m.localizeError(v.err))
 		if v.kind == "save-network" {
 			w.err = m.tr("wizard.preferences_not_saved", w.err)
 			return nil
 		}
 		w.failedKind = v.kind
+		if v.kind == "check-update" {
+			w.focus = "check-update"
+		} else if v.kind == "install-check" || v.kind == "resolve" || v.kind == "prepare" {
+			w.focus = "resolve"
+			if v.kind == "prepare" {
+				w.step, w.plan, w.focus = stepVersion, app.InstallPlan{}, "install"
+			}
+			if w.localMode {
+				w.focus = "local"
+			}
+		}
 		m.message = m.tr("wizard.operation_failed")
-		if v.kind == "install" {
+		if v.kind == "install" || v.kind == "upgrade" {
 			w.failedStage = w.progress.Stage
 			w.step = stepResult
 			w.focus = "retry"
+			if v.kind == "upgrade" {
+				w.focus, w.cancelling = "check-update", false
+			}
 			if errors.Is(v.err, context.Canceled) {
-				w.err = m.tr("wizard.install_cancelled", w.err)
+				key := "wizard.install_cancelled"
+				if v.kind == "upgrade" {
+					key = "core_update.cancelled"
+				}
+				w.err = m.tr(key, w.err)
 				w.focus = "done"
 			}
 		}
@@ -198,16 +246,48 @@ func (m *Model) handleWizardResult(v wizardMsg) tea.Cmd {
 	w.err = ""
 	w.failedKind = ""
 	switch v.kind {
+	case "install-check":
+		w.updateCheck = v.updateCheck
+		w.focus = "install"
+		m.message = m.tr("core_update.checked")
+		if w.installRequested {
+			return m.resolveVersion()
+		}
+	case "check-update":
+		w.updateCheck = v.updateCheck
+		w.focus = "check-update"
+		if v.updateCheck.Status == mihomo.UpdateAvailable && v.updateCheck.Channel == mihomo.ChannelStable {
+			w.focus = "upgrade"
+		}
+		m.message = m.tr("core_update.checked")
+	case "upgrade":
+		w.upgradeResult = v.upgradeResult
+		w.step, w.focus, w.cancelling = stepResult, "done", false
+		if v.refreshError != nil {
+			w.refreshError = m.tr("core_update.refresh_failed")
+		}
+		m.message = m.tr("core_update.succeeded")
 	case "resolve":
 		w.release = v.release
 		w.cachedRelease, w.cachedSelection = v.release, m.selection()
 		m.message = m.tr("wizard.version_resolved", v.release.Version)
-		w.focus = "continue"
+		w.focus = "install"
+		if w.installRequested {
+			return m.preparePlan()
+		}
 	case "prepare":
 		w.plan = v.plan
 		w.release = v.plan.Release
+		if w.installRequested && v.plan.BlockedReason == "" && v.plan.ExistingVersion == "" {
+			w.installRequested = false
+			return m.installCore()
+		}
+		w.installRequested = false
 		w.step = stepConfirm
 		w.focus = "install"
+		if v.plan.BlockedReason != "" {
+			w.focus = "back"
+		}
 		w.scroll = 0
 		m.message = m.tr("wizard.preflight.completed")
 	case "install":
@@ -224,6 +304,7 @@ func (m *Model) handleWizardResult(v wizardMsg) tea.Cmd {
 }
 func (m *Model) openNetwork(fromFailure bool) {
 	w := &m.wizard
+	w.installRequested = false
 	if m.busy && m.job != "install" {
 		m.abortLookup()
 	}
@@ -278,6 +359,16 @@ func (m *Model) testNetwork() tea.Cmd {
 	w.testPending = 1
 	w.testRelease = r
 	cmds := []tea.Cmd{func() tea.Msg {
+		if selection == "latest" {
+			check, err := backend.CheckUpdate(ctx, mihomo.ChannelStable, cfg)
+			if err != nil {
+				return networkMsg{id: id, kind: "version", err: err}
+			}
+			if check.LatestVersion == "" {
+				return networkMsg{id: id, kind: "version", err: diagnostic.New("diagnostic.release.versionChoice", "choose latest or a stable Mihomo version such as v1.19.33")}
+			}
+			selection = check.LatestVersion
+		}
 		release, err := backend.ResolveRelease(ctx, selection, cfg)
 		return networkMsg{id: id, kind: "version", release: release, err: err}
 	}, m.spinner.Tick}
@@ -348,6 +439,7 @@ func (m *Model) saveAndApplyNetwork() tea.Cmd {
 func (m *Model) applyNetwork() tea.Cmd {
 	w := &m.wizard
 	changed := w.cfg != w.draft.Normalized()
+	w.installRequested = false
 	w.cfg = w.draft.Normalized()
 	w.networkOpen = false
 	w.focus = w.returnFocus
@@ -357,14 +449,23 @@ func (m *Model) applyNetwork() tea.Cmd {
 	retry := w.returnFailed
 	w.err = ""
 	w.failedKind = ""
+	if w.open && w.updateMode {
+		w.updateCheck = app.CoreUpdateCheck{}
+		w.step = stepUpdate
+		return m.checkCoreUpdate()
+	}
 	if changed {
+		w.updateCheck = app.CoreUpdateCheck{}
 		w.release = mihomo.Release{}
 		w.plan = app.InstallPlan{}
 		if w.step == stepConfirm || w.step == stepResult {
 			w.step = stepVersion
 		}
 	}
-	if w.open && (retry != "" || w.step == stepVersion) {
+	if w.open && !w.localMode && (retry != "" || w.step == stepVersion) {
+		if !w.specific {
+			return m.checkInstallVersion()
+		}
 		return m.resolveVersion()
 	}
 	return nil
@@ -384,6 +485,7 @@ func (m *Model) wizardKey(k tea.KeyPressMsg) tea.Cmd {
 	key := k.String()
 	w := &m.wizard
 	if key == "esc" {
+		w.installRequested = false
 		if m.job == "install" {
 			m.cancelTask(false)
 			return nil
@@ -398,17 +500,23 @@ func (m *Model) wizardKey(k tea.KeyPressMsg) tea.Cmd {
 		if w.step == stepInstalling {
 			return nil
 		}
-		if w.step == stepCore || w.step == stepResult {
+		if w.step == stepCore || w.step == stepResult || w.step == stepVersion && !m.snapshot.Installed {
 			w.open = false
 
 			return nil
 		}
-		if w.step == stepConfirm {
+		if w.step == stepUpdate {
+			w.step = stepCore
+			w.updateMode = false
+		} else if w.step == stepConfirm {
 			w.step = stepVersion
 		} else {
 			w.step = stepCore
 		}
-		w.focus = "continue"
+		w.focus = "install"
+		if w.step == stepCore {
+			w.focus = "check-update"
+		}
 		w.scroll = 0
 		w.reveal = true
 		return nil
@@ -503,6 +611,7 @@ func (m *Model) updateWizardInput(msg tea.Msg) tea.Cmd {
 			}
 			m.draftChanged()
 		} else {
+			w.installRequested = false
 			if m.busy {
 				m.abortLookup()
 			}
@@ -594,44 +703,77 @@ func (m *Model) wizardActivate(id string) tea.Cmd {
 		return nil
 	}
 	switch id {
+	case "manual-install":
+		w.step, w.focus, w.scroll, w.reveal = stepVersion, "install", 0, true
+		w.updateMode, w.upgrading = false, false
+		w.installRequested = false
+		if !w.localMode && !w.specific {
+			return m.checkInstallVersion()
+		}
+	case "check-update":
+		if !m.busy {
+			return m.checkCoreUpdate()
+		}
+	case "upgrade":
+		if !m.busy && w.updateCheck.Status == mihomo.UpdateAvailable && w.updateCheck.Channel == mihomo.ChannelStable {
+			w.upgrading = true
+			return m.runCoreInstall()
+		}
 	case "network":
 		m.openNetwork(w.err != "")
 	case "cancel":
+		w.installRequested = false
 		if m.busy {
 			m.abortLookup()
 		}
 		w.open = false
 
 	case "back":
+		w.installRequested = false
 		if m.busy {
 			m.abortLookup()
 		}
-		if w.step == stepConfirm {
+		if w.step == stepUpdate {
+			w.step = stepCore
+			w.updateMode = false
+		} else if w.step == stepConfirm {
 			w.step = stepVersion
-		} else if w.step == stepVersion {
+		} else if w.step == stepVersion && m.snapshot.Installed {
 			w.step = stepCore
 		} else {
 			w.open = false
 		}
 		w.scroll = 0
-		w.focus = "continue"
+		w.focus = "install"
+		if w.step == stepCore {
+			w.focus = "check-update"
+		}
 		w.reveal = true
 	case "local-mode":
+		if m.busy {
+			m.abortLookup()
+		}
+		w.installRequested = false
 		w.localMode = !w.localMode
+		w.err, w.failedKind = "", ""
 		w.release = mihomo.Release{}
 		w.plan = app.InstallPlan{}
 		if w.localMode {
 			w.focus = "local"
 			w.local.Focus()
+		} else {
+			w.focus = "install"
+			if !w.specific {
+				return m.checkInstallVersion()
+			}
 		}
 		w.reveal = true
-	case "core":
-		w.localMode = false
 	case "version-mode":
 		if m.busy {
 			m.abortLookup()
 		}
 		w.specific = !w.specific
+		w.installRequested = false
 		w.cachedRelease = mihomo.Release{}
 		w.cachedSelection = ""
 		w.release = mihomo.Release{}
@@ -639,6 +781,8 @@ func (m *Model) wizardActivate(id string) tea.Cmd {
 		w.err = ""
 		if w.specific {
 			w.focus = "version-input"
+		} else {
+			return m.checkInstallVersion()
 		}
 		w.reveal = true
 	case "version-input", "local":
@@ -647,38 +791,36 @@ func (m *Model) wizardActivate(id string) tea.Cmd {
 		if m.busy {
 			return nil
 		}
+		if w.upgrading || w.updateMode {
+			return m.checkCoreUpdate()
+		}
 		if w.step == stepResult {
 			w.step = stepVersion
 			w.err = ""
+			w.installRequested = true
 			return m.resolveVersion()
+		}
+		if !w.localMode && !w.specific {
+			return m.checkInstallVersion()
 		}
 		return m.resolveVersion()
-	case "continue":
-		if m.busy {
-			return nil
-		}
-		switch w.step {
-		case stepCore:
-			w.step = stepVersion
-			w.scroll = 0
-			w.focus = "continue"
-			w.reveal = true
-			return m.resolveVersion()
-		case stepVersion:
-			if w.release.Version == "" {
-				return m.resolveVersion()
-			}
-			return m.preparePlan()
-		}
 	case "reinstall":
 		if m.busy {
 			return nil
 		}
 		w.reinstall = !w.reinstall
-		return m.preparePlan()
+		w.installRequested = false
+		if w.step == stepConfirm {
+			return m.preparePlan()
+		}
+		w.plan = app.InstallPlan{}
 	case "install":
 		if !m.busy {
-			return m.installCore()
+			if w.step == stepConfirm {
+				return m.installCore()
+			}
+			w.installRequested = true
+			return m.resolveVersion()
 		}
 	case "details":
 		w.details = !w.details

@@ -16,9 +16,9 @@ import (
 )
 
 func TestWizardBilingualInstallKeepsReviewedMachineValues(t *testing.T) {
-	for _, sample := range []struct{ language, title, review, installed string }{
-		{"en", "Install proxy core", "Review installation", "Mihomo installed and verified"},
-		{"zh-Hans", "安装代理内核", "审阅安装信息", "Mihomo 已安装并通过校验"},
+	for _, sample := range []struct{ language, title, installed string }{
+		{"en", "Install Mihomo", "Mihomo installed and verified"},
+		{"zh-Hans", "安装 Mihomo", "Mihomo 已安装并通过校验"},
 	} {
 		t.Run(sample.language, func(t *testing.T) {
 			installs := 0
@@ -32,22 +32,20 @@ func TestWizardBilingualInstallKeepsReviewedMachineValues(t *testing.T) {
 			m := ready(b)
 			m.locale = i18n.New(sample.language)
 			m.width, m.height = 120, 40
-			m.openWizard(false)
+			initial := m.openWizard(false)
+			m, _ = update(m, actionCmd(t, initial)())
 			_, _, title := m.wizardDocument(100)
 			if title != sample.title {
 				t.Fatalf("unexpected wizard title %q", title)
 			}
-			m, cmd := activateWizard(m, "continue")
-			m, _ = update(m, actionCmd(t, cmd)())
-			m, cmd = activateWizard(m, "continue")
-			m, _ = update(m, actionCmd(t, cmd)())
-			doc, _, _ := m.wizardDocument(100)
-			if m.wizard.step != stepConfirm || !strings.Contains(ansi.Strip(strings.Join(doc.lines, "\n")), sample.review) || installs != 0 {
-				t.Fatal("review was not localized or installation skipped confirmation")
+			m, cmd := activateWizard(m, "install")
+			for _, stage := range []string{"resolve", "prepare", "install"} {
+				if m.job != stage || m.wizard.step == stepConfirm {
+					t.Fatalf("localized installation did not continue through %s", stage)
+				}
+				m, cmd = update(m, actionCmd(t, cmd)())
 			}
-			m, cmd = activateWizard(m, "install")
-			m, _ = update(m, actionCmd(t, cmd)())
-			doc, _, _ = m.wizardDocument(100)
+			doc, _, _ := m.wizardDocument(100)
 			plain := ansi.Strip(strings.Join(doc.lines, "\n"))
 			if installs != 1 || m.wizard.step != stepResult || !strings.Contains(plain, sample.installed) || !strings.Contains(plain, "/tmp/Install proxy core/mihomo") {
 				t.Fatal("installation result lost localized text or changed a path", plain)

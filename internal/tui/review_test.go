@@ -34,6 +34,9 @@ func TestCachedReleaseRemainsAvailableForIndependentFileTest(t *testing.T) {
 			m := ready(b)
 			m.openWizard(false)
 			m.wizard.step = stepVersion
+			m.abortLookup()
+			m.wizard.specific = true
+			m.wizard.version.SetValue("v1.19.33")
 			m, cmd := update(m, actionCmd(t, m.resolveVersion())())
 			if m.wizard.cachedRelease.Asset == "" {
 				t.Fatal("successful metadata did not preserve a cache")

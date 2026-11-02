@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 """Verify first-run installation guidance through a real controlling PTY.
 
-Uses disposable empty homes and random service names. Opens only the first
-installation screen; never queries a release, installs a core or starts a
-service. Captures current VT screens and raw ANSI. Optional --png redraws the
-actual PTY cell state with Pillow; these are not native terminal-app screenshots.
+Uses disposable empty homes and random service names. The production binary
+opens the installation page and its read-only version check, without installing
+a core or starting a service. --test-binary selects an explicit in-memory Go
+fixture that also exercises one-click installation and cancellation, with no
+network, executable or service. Captures current VT screens and raw ANSI.
+Optional --png redraws the actual PTY cell state with Pillow; these are not
+native terminal-app screenshots.
 """
 import argparse
 import codecs
@@ -165,6 +168,18 @@ def png(screen, path, font_path, cjk_path, size):
     from PIL import Image, ImageDraw, ImageFont
     font = ImageFont.truetype(str(font_path), size)
     cjk = ImageFont.truetype(str(cjk_path), size) if cjk_path else font
+    if cjk_path and cjk_path.suffix.lower() == ".ttc":
+        # macOS PingFang's default face is HK and contains blank glyphs for
+        # some simplified characters. Prefer the SC regular face for zh-Hans.
+        for index in range(32):
+            try:
+                candidate = ImageFont.truetype(str(cjk_path), size, index=index)
+            except OSError:
+                break
+            family, weight = candidate.getname()
+            if "SC" in family and weight == "Regular":
+                cjk = candidate
+                break
     emoji_path = Path("/System/Library/Fonts/Apple Color Emoji.ttc")
     emoji = ImageFont.truetype(str(emoji_path), 20) if emoji_path.is_file() else None
     bold = font
@@ -232,17 +247,21 @@ def assert_uninstalled(home):
 
 
 def run(binary, output, language, profile, sizes, args):
-    labels = ({"overview": "概览", "title": "安装 Mihomo 内核", "later": "稍后设置", "wizard": "选择代理内核",
-               "routing": "路由模式", "profiles": "配置", "quit": "q 退出"}
+    labels = ({"overview": "概览", "title": "安装 Mihomo 内核", "later": "稍后设置", "wizard": "已安装版本:",
+               "install": "下载并安装", "downloading": "正在下载", "cancelled": "安装已取消，清理已完成", "routing": "路由模式", "profiles": "配置", "quit": "q 退出"}
               if language == "zh-Hans" else
-              {"overview": "Overview", "title": "Install the Mihomo core", "later": "Set up later", "wizard": "Choose a proxy core",
-               "routing": "Routing mode", "profiles": "Profiles", "quit": "q Quit"})
+              {"overview": "Overview", "title": "Install the Mihomo core", "later": "Set up later", "wizard": "Installed version:",
+               "install": "Download & install", "downloading": "Downloading", "cancelled": "Installation canceled; cleanup completed", "routing": "Routing mode", "profiles": "Profiles", "quit": "q Quit"})
     with tempfile.TemporaryDirectory(prefix="lazyclash-onboarding-pty-") as temporary:
         home = Path(temporary) / "home"
         for columns, rows in sizes:
             name = "%s-%s-%sx%s" % (language, profile, columns, rows)
-            command = [sys.executable, "-c", WRAPPER, str(columns), str(rows), profile, language, str(binary),
-                       "--lang", language, "--home", str(home), "--service-name", "lazyclash-onboarding-" + uuid.uuid4().hex[:12]]
+            wrapper, arguments = WRAPPER, ["--lang", language, "--home", str(home), "--service-name", "lazyclash-onboarding-" + uuid.uuid4().hex[:12]]
+            report = output / (name + "-calls.json")
+            if args.test_binary:
+                wrapper = WRAPPER.replace("os.execv(sys.argv[5], sys.argv[5:])", "os.environ.update(LAZYCLASH_INSTALL_PTY_REPORT=" + repr(str(report)) + ", LAZYCLASH_INSTALL_PTY_LANGUAGE=sys.argv[4]); os.execv(sys.argv[5], sys.argv[5:])")
+                arguments = ["-test.run=^TestInstallFlowPTYFixture$", "-test.count=1"]
+            command = [sys.executable, "-c", wrapper, str(columns), str(rows), profile, language, str(binary), *arguments]
             terminal = SMOKE.Terminal(command)
             terminal.screen = StyledScreen(columns, rows)
             try:
@@ -254,12 +273,26 @@ def run(binary, output, language, profile, sizes, args):
                     raise AssertionError("First-run hero retained the mandatory steps or unavailable cards")
                 if labels["quit"] not in screen.splitlines()[-1]:
                     raise AssertionError("Quit hint is not in the final terminal row")
-                # Exactly one Enter on a fresh process opens the existing core
-                # selection screen. Never press its Continue/version controls.
+                # Exactly one Enter opens the installation page. It may query
+                # the stable version, but must not install without the action.
                 terminal.key(b"\r")
                 terminal.wait(labels["wizard"])
+                if args.test_binary:
+                    terminal.wait("v1.19.33")
                 capture(terminal, output, name + "-wizard", args)
-                terminal.key(b"\x1b")
+                wizard = terminal.screen.text()
+                if "[1 " in wizard or "Choose a proxy core" in wizard or "选择代理内核" in wizard:
+                    raise AssertionError("Installation page retained redundant core selection or a stepper")
+                if args.test_binary:
+                    click(terminal, labels["install"])
+                    terminal.wait(labels["downloading"])
+                    capture(terminal, output, name + "-download", args)
+                    terminal.key(b"\x1b")
+                    terminal.wait(labels["cancelled"])
+                    capture(terminal, output, name + "-cancelled", args)
+                    terminal.key(b"\r")  # cancellation focuses Done
+                else:
+                    terminal.key(b"\x1b")
                 terminal.wait_absent(labels["wizard"])
                 terminal.wait(labels["title"])
                 click(terminal, labels["later"])
@@ -271,6 +304,10 @@ def run(binary, output, language, profile, sizes, args):
                 capture(terminal, output, name + "-profiles", args)
                 terminal.exit()
                 assert_uninstalled(home)
+                if args.test_binary:
+                    calls = json.loads(report.read_text())
+                    if calls != {"checks": 1, "resolves": 1, "prepares": 1, "installs": 1}:
+                        raise AssertionError("Installation flow duplicated or skipped a backend stage: " + repr(calls))
                 raw = bytes(terminal.raw)
                 (output / (name + ".ansi")).write_bytes(raw)
                 if OSC_SET.search(raw):
@@ -293,6 +330,7 @@ def run(binary, output, language, profile, sizes, args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, required=True)
+    parser.add_argument("--test-binary", action="store_true", help="Use an opt-in TUI test binary with in-memory install/check fixture; no real network, core or service")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--lang", choices=["en", "zh-Hans"], action="append", help="Repeat to select languages; default: both")
     parser.add_argument("--profile", choices=["truecolor", "256", "no-color"], action="append", help="Repeat to select capabilities; default: all")

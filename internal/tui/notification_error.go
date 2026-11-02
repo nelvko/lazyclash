@@ -17,7 +17,7 @@ func notificationCritical(err error) bool {
 			return true
 		}
 		switch detail.Code {
-		case "diagnostic.install.recoveryPending", "diagnostic.runtime.stopInspection", "diagnostic.refresh_state", "diagnostic.wizard_refresh":
+		case "diagnostic.install.recoveryPending", "diagnostic.upgrade.rollbackRestart", "diagnostic.upgrade.rollbackVersion", "diagnostic.upgrade.recoveryPending", "diagnostic.runtime.stopInspection", "diagnostic.refresh_state", "diagnostic.wizard_refresh":
 			return true
 		}
 	}

@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/downloadnet"
 	"github.com/nelvko/lazyclash/internal/i18n"
+	"github.com/nelvko/lazyclash/internal/mihomo"
 )
 
 type wizardButton struct{ ID, Label string }
@@ -28,6 +29,8 @@ func wizardStepLabel(locale i18n.Localizer, step wizardStep) string {
 	switch step {
 	case stepCore:
 		return locale.T("wizard.step.core")
+	case stepUpdate:
+		return locale.T("core_update.title")
 	case stepVersion:
 		return locale.T("wizard.step.version")
 	case stepConfirm:
@@ -47,19 +50,6 @@ func (d *wizardDocument) line(s string) {
 func (d *wizardDocument) space() { d.lines = append(d.lines, "") }
 func (d *wizardDocument) label(s string) {
 	d.line(themed(lipgloss.NewStyle().Bold(true).Render(s), text, raised, false))
-}
-func (d *wizardDocument) steps(current wizardStep) {
-	var parts []string
-	for i, step := range []wizardStep{stepCore, stepVersion, stepConfirm} {
-		label := fmt.Sprintf("%d %s", i+1, wizardStepLabel(d.locale, step))
-		color := muted
-		if step == current {
-			label = "[" + label + "]"
-			color = accent
-		}
-		parts = append(parts, themed(label, color, raised, false))
-	}
-	d.line(strings.Join(parts, themed("  >  ", muted, raised, false)))
 }
 func (d *wizardDocument) control(id, label, focused string) {
 	prefix := "  "
@@ -196,7 +186,7 @@ func (m *Model) wizardOperation(operation string) string {
 
 func (m *Model) stageLabel(stage string) string {
 	switch stage {
-	case "query", "download", "checksum", "extract", "verify", "deploy", "done":
+	case "query", "download", "checksum", "extract", "verify", "deploy", "restart", "rollback", "done":
 		return m.tr("wizard.stage." + stage)
 	default:
 		return clean(stage)
@@ -206,7 +196,7 @@ func (m *Model) stageLabel(stage string) string {
 func (m *Model) wizardFailedStage(stage string) string {
 	// Legacy test fixtures and already-built documents can still contain an
 	// English label. New operation results retain the stable stage identifier.
-	for _, id := range []string{"query", "download", "checksum", "extract", "verify", "deploy", "done"} {
+	for _, id := range []string{"query", "download", "checksum", "extract", "verify", "deploy", "restart", "rollback", "done"} {
 		if stage == id || stage == stageLabel(id) {
 			return m.stageLabel(id)
 		}
@@ -220,7 +210,7 @@ func (m *Model) wizardControlDisabled(id string) bool {
 	}
 	if m.busy {
 		switch id {
-		case "test", "resolve", "retry", "continue", "install", "reinstall":
+		case "test", "resolve", "retry", "continue", "install", "reinstall", "check-update", "upgrade":
 			return true
 		}
 	}
@@ -230,6 +220,9 @@ func (m *Model) wizardDocument(width int) (wizardDocument, []wizardButton, strin
 	w := &m.wizard
 	d := wizardDocument{locale: m.locale, width: max(1, width), hover: m.hover, disabled: m.wizardControlDisabled}
 	title := m.tr("wizard.title")
+	if w.upgrading {
+		title = m.tr("core_update.title")
+	}
 	if w.networkOpen {
 		title = m.tr("wizard.network.title")
 		d.line(m.tr("wizard.network.independent"))
@@ -287,13 +280,10 @@ func (m *Model) wizardDocument(width int) (wizardDocument, []wizardButton, strin
 		return d, []wizardButton{{"back", m.tr("wizard.back")}, {"test", m.tr("wizard.test_connection")}, {"apply-network", apply}}, title
 	}
 	switch w.step {
+	case stepUpdate:
+		return m.coreUpdateDocument(d)
 	case stepCore:
-		d.label(m.tr("wizard.core.choose"))
-		d.steps(w.step)
-		d.space()
-		d.control("core", m.tr("wizard.core.mihomo"), w.focus)
-		d.space()
-		d.pair(m.tr("wizard.platform_detected"), runtime.GOOS+"/"+runtime.GOARCH)
+		title = m.tr("wizard.manage.title")
 		existing := m.snapshot.Version
 		if existing == "" {
 			existing = m.tr("wizard.not_installed")
@@ -306,28 +296,29 @@ func (m *Model) wizardDocument(width int) (wizardDocument, []wizardButton, strin
 			}
 			d.pair(m.tr("wizard.running_version"), running)
 		}
+		d.pair(m.tr("wizard.platform_detected"), runtime.GOOS+"/"+mihomo.RecommendedVariant())
+		d.space()
+		d.line(m.tr("core_update.read_only"))
 		d.space()
 		d.control("network", m.tr("wizard.network.title"), w.focus)
-		d.line(m.wizardSourceName(w.cfg) + " / " + m.wizardProxySummary(w.cfg))
-		d.space()
-		localLabel := m.tr("wizard.local.choose")
-		if w.localMode {
-			localLabel = m.tr("wizard.local.selected")
+		d.control("manual-install", m.tr("wizard.manual_install"), w.focus)
+		return d, []wizardButton{{"cancel", m.tr("wizard.back")}, {"check-update", m.tr("core_update.check")}}, title
+	case stepVersion:
+		existing := m.snapshot.Version
+		if existing == "" {
+			existing = m.tr("wizard.not_installed")
 		}
-		d.control("local-mode", localLabel, w.focus)
+		d.pair(m.tr("wizard.installed_version"), existing)
+		d.pair(m.tr("wizard.platform_detected"), runtime.GOOS+"/"+mihomo.RecommendedVariant())
+		if m.height >= 20 {
+			d.space()
+		}
 		if w.localMode {
 			d.field("local", m.tr("wizard.local.executable"), &w.local, w.focus)
-		}
-		d.space()
-		d.line(m.tr("wizard.install_boundary"))
-		return d, []wizardButton{{"cancel", m.tr("wizard.skip")}, {"continue", m.tr("wizard.continue")}}, title
-	case stepVersion:
-		d.label(m.tr("wizard.version.choose"))
-		d.steps(w.step)
-		d.space()
-		if w.localMode {
-			d.pair(m.tr("wizard.local.binary"), w.local.Value())
 			d.line(m.tr("wizard.local.version_check"))
+			if m.busy {
+				d.line(m.spinner.View() + " " + clean(m.message))
+			}
 		} else {
 			mode := m.tr("wizard.version.latest")
 			if w.specific {
@@ -337,35 +328,68 @@ func (m *Model) wizardDocument(width int) (wizardDocument, []wizardButton, strin
 			if w.specific {
 				d.field("version-input", m.tr("wizard.version.identifier"), &w.version, w.focus)
 			}
-			d.control("resolve", m.tr("wizard.version.resolve_retry"), w.focus)
+			if m.busy {
+				d.line(m.spinner.View() + " " + clean(m.message))
+			} else {
+				version := w.updateCheck.LatestVersion
+				if w.release.Version != "" {
+					version = w.release.Version
+				}
+				if w.specific {
+					version = w.release.Version
+				}
+				if version != "" {
+					d.pair(m.tr("wizard.version.recommended"), version)
+				} else if w.err == "" {
+					d.line(m.tr("wizard.version.pending"))
+				}
+			}
+			d.control("resolve", m.tr("wizard.version.check_again"), w.focus)
+			d.line(m.tr("wizard.device_auto"))
 		}
-		d.space()
-		if m.busy {
-			d.line(m.spinner.View() + " " + clean(m.message))
-		} else if w.release.Version != "" {
-			d.pair(m.tr("wizard.version.resolved"), w.release.Version)
-			d.pair(m.tr("wizard.asset"), w.release.Asset)
-			d.pair(m.tr("wizard.platform"), w.release.Platform)
-			d.pair(m.tr("wizard.checksum_authority"), m.localizeDetail(w.release.ChecksumSource))
-		} else {
-			d.line(m.tr("wizard.version.unresolved"))
-		}
-		d.space()
-		d.control("network", m.tr("wizard.network.title"), w.focus)
-		d.line(m.wizardSourceName(w.cfg) + " / " + m.wizardProxySummary(w.cfg))
 		if w.err != "" {
 			d.space()
-			key := "wizard.version.failed"
-			if w.failedKind == "prepare" {
-				key = "wizard.preflight.failed"
-			}
-			d.line(themed(m.tr(key, clean(w.err)), errorColor, raised, false))
+			d.line(themed(clean(w.err), errorColor, raised, false))
 		}
-		return d, []wizardButton{{"back", m.tr("wizard.back")}, {"continue", m.tr("wizard.continue")}}, title
+		d.space()
+		localLabel := m.tr("wizard.local.choose")
+		if w.localMode {
+			localLabel = m.tr("wizard.local.selected")
+		}
+		d.control("local-mode", localLabel, w.focus)
+		if m.snapshot.Installed {
+			mark := "[ ]"
+			if w.reinstall {
+				mark = "[x]"
+			}
+			d.control("reinstall", mark+m.tr("wizard.reinstall"), w.focus)
+		}
+		d.control("network", m.tr("wizard.network.title"), w.focus)
+		if m.height >= 24 {
+			d.line(m.wizardSourceName(w.cfg) + " / " + m.wizardProxySummary(w.cfg))
+		}
+		if w.release.Asset != "" {
+			d.control("details", map[bool]string{false: m.tr("wizard.details_show"), true: m.tr("wizard.details_hide")}[w.details], w.focus)
+			if w.details {
+				d.pair(m.tr("wizard.asset"), w.release.Asset)
+				d.pair(m.tr("wizard.expected_sha256"), w.release.SHA256)
+				d.pair(m.tr("wizard.checksum_authority"), m.localizeDetail(w.release.ChecksumSource))
+			}
+		}
+		d.space()
+		if m.snapshot.Installed {
+			d.line(m.tr("wizard.replace_summary"))
+		} else {
+			d.line(m.tr("wizard.install_summary"))
+		}
+		install := m.tr("wizard.download_install")
+		if w.localMode {
+			install = m.tr("wizard.install")
+		}
+		return d, []wizardButton{{"back", m.tr("wizard.back")}, {"install", install}}, title
 	case stepConfirm:
 		p := w.plan
 		d.label(m.tr("wizard.review"))
-		d.steps(w.step)
 		d.space()
 		d.pair(m.tr("wizard.step.core"), "Mihomo")
 		d.pair(m.tr("wizard.step.version"), p.Release.Version)
@@ -435,8 +459,12 @@ func (m *Model) wizardDocument(width int) (wizardDocument, []wizardButton, strin
 		}
 		d.label(label)
 		d.space()
-		d.pair(m.tr("wizard.step.version"), w.plan.Release.Version)
-		d.pair(m.tr("wizard.asset"), w.plan.Release.Asset)
+		if w.upgrading {
+			d.pair(m.tr("wizard.step.version"), w.updateCheck.LatestVersion)
+		} else {
+			d.pair(m.tr("wizard.step.version"), w.plan.Release.Version)
+			d.pair(m.tr("wizard.asset"), w.plan.Release.Asset)
+		}
 		if w.progress.Stage == "download" {
 			summary := m.wizardByteSize(w.progress.Downloaded)
 			if w.progress.Total > 0 {
@@ -466,6 +494,9 @@ func (m *Model) wizardDocument(width int) (wizardDocument, []wizardButton, strin
 		}
 		return d, []wizardButton{{"cancel", m.tr("wizard.cancel")}}, title
 	case stepResult:
+		if w.upgrading {
+			return m.coreUpgradeResultDocument(d)
+		}
 		if w.err != "" {
 			d.line(themed(m.tr("wizard.incomplete"), errorColor, raised, false))
 			d.pair(m.tr("wizard.failed_stage"), m.wizardFailedStage(w.failedStage))
@@ -541,7 +572,7 @@ func (m *Model) renderWizard(base string) (string, []hitRegion) {
 		label := "  [ " + b.Label + " ]"
 		foreground, background := text, raised
 		switch b.ID {
-		case "continue", "install", "apply-network", "retry":
+		case "continue", "install", "upgrade", "apply-network", "retry", "check-update":
 			foreground, background = primaryButtonForeground, primaryButtonBackground
 		case "done":
 			if w.err == "" {

@@ -27,18 +27,18 @@ func TestWizardNetworkChecksKeepIndependentSemanticStates(t *testing.T) {
 
 func TestWizardFocusAndCurrentStepRemainVisibleWithoutColor(t *testing.T) {
 	m := ready(&fakeBackend{})
-	m.openWizard(false)
+	m.openWizard(true)
 	for _, size := range [][2]int{{160, 45}, {120, 32}, {80, 24}, {60, 20}, {120, 18}} {
 		m, _ = update(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
-		m.wizard.step, m.wizard.focus = stepVersion, "continue"
+		m.wizard.step, m.wizard.focus = stepVersion, "install"
 		m.layout()
 		plain := ansi.Strip(m.screen)
-		if !strings.Contains(plain, "[2 Version]") {
-			t.Fatalf("size %v lost current-step marker", size)
+		if !strings.Contains(plain, "Install Mihomo") {
+			t.Fatalf("size %v lost the installation title", size)
 		}
-		r := findTarget(t, m, "continue")
+		r := findTarget(t, m, "install")
 		row := strings.Split(m.screen, "\n")[r.Y]
-		if !strings.Contains(ansi.Strip(ansi.Cut(row, r.X, r.X+r.W)), "› [ Continue ]") {
+		if !strings.Contains(ansi.Strip(ansi.Cut(row, r.X, r.X+r.W)), "› [ Install ]") {
 			t.Fatalf("size %v lost the focused footer marker", size)
 		}
 	}

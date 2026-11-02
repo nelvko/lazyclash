@@ -17,6 +17,8 @@ import (
 )
 
 type fakeBackend struct {
+	checkUpdate          func(context.Context, mihomo.Channel, downloadnet.Config) (app.CoreUpdateCheck, error)
+	upgradeCore          func(context.Context, app.CoreUpdateCheck, downloadnet.Config, func(mihomo.Progress)) (app.CoreUpgradeResult, error)
 	snapshot             app.Snapshot
 	snapshotErr          error
 	prefs                app.Preferences
@@ -276,17 +278,19 @@ func activateWizard(m Model, id string) (Model, tea.Cmd) {
 	m.wizard.focus = id
 	return update(m, special(tea.KeyEnter))
 }
+
+// confirmModel isolates the already-prepared installation transaction. The
+// ordinary first-run UI is exercised separately and no longer visits Confirm.
 func confirmModel(t *testing.T, b *fakeBackend) Model {
 	t.Helper()
 	m := ready(b)
-	m, _ = update(m, key("i"))
-	m, cmd := activateWizard(m, "continue")
-	m, _ = update(m, actionCmd(t, cmd)())
-	m, cmd = activateWizard(m, "continue")
-	m, _ = update(m, actionCmd(t, cmd)())
-	if m.wizard.step != stepConfirm {
-		t.Fatalf("expected Confirm, got %s", m.wizard.step)
+	m.wizard.open, m.wizard.step, m.wizard.focus = true, stepConfirm, "install"
+	plan, err := b.PrepareInstall(t.Context(), testRelease(), "", false)
+	if err != nil {
+		t.Fatal(err)
 	}
+	m.wizard.plan, m.wizard.release = plan, plan.Release
+	m.layout()
 	return m
 }
 func findTarget(t *testing.T, m Model, id string) hitRegion {
@@ -322,28 +326,21 @@ func TestInitialOverviewAndExplicitInstallFlow(t *testing.T) {
 			t.Fatalf("missing %s", label)
 		}
 	}
-	m, _ = update(m, key("i"))
-	if !m.wizard.open || m.wizard.step != stepCore || m.busy {
-		t.Fatal("install shortcut must open Core without starting a request")
-	}
-	m, cmd := activateWizard(m, "continue")
-	if m.wizard.step != stepVersion || !m.busy || m.job != "resolve" {
-		t.Fatal("Core did not enter version lookup")
+	m, cmd := update(m, key("i"))
+	if !m.wizard.open || m.wizard.step != stepVersion || !m.busy {
+		t.Fatal("install shortcut did not open the single installation page and read-only version check")
 	}
 	m, _ = update(m, actionCmd(t, cmd)())
-	if m.busy || m.wizard.release.Version == "" || m.wizard.step != stepVersion {
-		t.Fatal("resolved release must remain on Version for review")
-	}
-	m, cmd = activateWizard(m, "continue")
-	m, _ = update(m, actionCmd(t, cmd)())
-	if m.wizard.step != stepConfirm || m.wizard.plan.Release.Version != "v1.19.33" {
-		t.Fatal("preflight plan not shown for confirmation")
+	if m.busy || m.wizard.updateCheck.LatestVersion == "" || m.wizard.release.Asset != "" {
+		t.Fatal("read-only version check downloaded or resolved a release asset")
 	}
 	m, cmd = activateWizard(m, "install")
-	if m.wizard.step != stepInstalling || !m.busy {
-		t.Fatal("confirmation did not start installation")
+	for _, stage := range []string{"resolve", "prepare", "install"} {
+		if !m.busy || m.job != stage || m.wizard.step == stepConfirm {
+			t.Fatalf("explicit install did not continue automatically through %s: step=%s job=%s", stage, m.wizard.step, m.job)
+		}
+		m, cmd = update(m, actionCmd(t, cmd)())
 	}
-	m, _ = update(m, actionCmd(t, cmd)())
 	if m.wizard.step != stepResult || m.wizard.result.InstalledVersion != "v1.19.33" || m.busy {
 		t.Fatal("verified result not shown")
 	}
@@ -387,16 +384,16 @@ func TestResponsiveWizardModalAndFullPage(t *testing.T) {
 			m, _ = update(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
 			m, _ = update(m, key("i"))
 			plain := ansi.Strip(m.View().Content)
-			if !strings.Contains(plain, "Install proxy core") {
+			if !strings.Contains(plain, "Install Mihomo") {
 				t.Fatal("wizard title missing")
 			}
 			modal := size[0] >= 110 && size[1] >= 30
-			if strings.Contains(plain, "Overview") != modal {
-				t.Fatalf("wrong modal/full-page layout at %v", size)
+			if strings.HasPrefix(plain, "┌") == modal {
+				t.Fatalf("wrong modal/full-page layout at %v:\n%s", size, plain)
 			}
 			assertCanvas(t, m.View().Content, size[0], size[1])
 			assertRegions(t, m.targets, size[0], size[1])
-			for _, id := range []string{"cancel", "continue"} {
+			for _, id := range []string{"back", "install"} {
 				r := findTarget(t, m, id)
 				if r.Y >= size[1]-1 {
 					t.Fatalf("footer target not inside frame: %+v", r)
@@ -577,8 +574,11 @@ func TestMetadataFailureKeepsNetworkReachableAndApplyRetries(t *testing.T) {
 	}}
 	m := ready(b)
 	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 40})
-	m, _ = update(m, key("i"))
-	m, cmd := activateWizard(m, "continue")
+	m, initial := update(m, key("i"))
+	m, _ = update(m, actionCmd(t, initial)())
+	m.wizard.specific = true
+	m.wizard.version.SetValue("v1.19.33")
+	m, cmd := activateWizard(m, "resolve")
 	m, _ = update(m, actionCmd(t, cmd)())
 	if m.wizard.failedKind != "resolve" || m.wizard.step != stepVersion || m.busy {
 		t.Fatal("metadata failure lost recoverable Version state")
@@ -752,7 +752,8 @@ func TestModalMouseDoesNotReachDashboardAndActualButtonsWork(t *testing.T) {
 	m := ready(&fakeBackend{})
 	m, _ = update(m, tea.WindowSizeMsg{Width: 160, Height: 45})
 	behind := findTarget(t, m, "nav.settings")
-	m, _ = update(m, key("i"))
+	m, initial := update(m, key("i"))
+	m, _ = update(m, actionCmd(t, initial)())
 	for _, r := range m.targets {
 		if strings.HasPrefix(r.ID, "nav.") {
 			t.Fatal("modal kept dashboard targets")
@@ -762,16 +763,17 @@ func TestModalMouseDoesNotReachDashboardAndActualButtonsWork(t *testing.T) {
 	if m.page != "overview" || !m.wizard.open {
 		t.Fatal("mouse click penetrated modal")
 	}
-	target := findTarget(t, m, "continue")
+	target := findTarget(t, m, "install")
 	line := strings.Split(m.View().Content, "\n")[target.Y]
-	if !strings.Contains(ansi.Strip(ansi.Cut(line, target.X, target.X+target.W)), "Continue") {
+	if !strings.Contains(ansi.Strip(ansi.Cut(line, target.X, target.X+target.W)), "Download & install") {
 		t.Fatal("button target misses painted label")
 	}
 	m, cmd := click(m, target)
 	if !m.busy || m.job != "resolve" || m.wizard.step != stepVersion {
-		t.Fatal("actual Continue click did not trigger lookup")
+		t.Fatal("actual install click did not trigger pinned asset lookup")
 	}
 	m, _ = update(m, actionCmd(t, cmd)())
+	m.abortLookup()
 	m.wizard.step = stepConfirm
 	m.wizard.plan.Warnings = make([]string, 30)
 	for i := range m.wizard.plan.Warnings {
@@ -886,4 +888,21 @@ func TestNetworkVersionSuccessStartsFileTestForResolvedAsset(t *testing.T) {
 	if m.busy || m.wizard.fileTest.Status != "Passed" || files != 1 {
 		t.Fatal("scheduled file test did not complete independently")
 	}
+}
+
+func (f *fakeBackend) CheckUpdate(ctx context.Context, channel mihomo.Channel, cfg downloadnet.Config) (app.CoreUpdateCheck, error) {
+	if f.checkUpdate != nil {
+		return f.checkUpdate(ctx, channel, cfg)
+	}
+	check := app.CoreUpdateCheck{LatestVersion: "v1.19.33", Channel: mihomo.ChannelStable, Status: mihomo.UpdateNotInstalled, CheckedAt: time.Now()}
+	if f.snapshot.Installed {
+		check.InstalledVersion, check.Status = f.snapshot.Version, mihomo.UpdateAvailable
+	}
+	return check, ctx.Err()
+}
+func (f *fakeBackend) UpgradeCore(ctx context.Context, check app.CoreUpdateCheck, cfg downloadnet.Config, progress func(mihomo.Progress)) (app.CoreUpgradeResult, error) {
+	if f.upgradeCore != nil {
+		return f.upgradeCore(ctx, check, cfg, progress)
+	}
+	return app.CoreUpgradeResult{InstalledVersion: check.LatestVersion, PreviousVersion: check.InstalledVersion}, ctx.Err()
 }
