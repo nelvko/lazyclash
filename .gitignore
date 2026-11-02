@@ -12,6 +12,10 @@
 coverage.out
 coverage.html
 
+# Python verification caches
+__pycache__/
+*.py[cod]
+
 # Go workspace files
 go.work
 go.work.sum
