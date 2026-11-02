@@ -3,14 +3,14 @@
 set -euo pipefail
 if [[ ${1:-} != --linux ]]; then
   if [[ $# != 1 && $# != 3 ]]; then
-    printf 'Usage: %s ORBSTACK_VM [--proxy-mode none|environment]\n' "$0" >&2
+    printf 'Usage: %s ORBSTACK_VM [--download-method direct|environment]\n' "$0" >&2
     exit 2
   fi
   vm=$1
-  proxy_mode=none
+  download_method=direct
   if [[ $# == 3 ]]; then
-    [[ $2 == --proxy-mode && ($3 == none || $3 == environment) ]] || { printf 'Expected --proxy-mode none|environment\n' >&2; exit 2; }
-    proxy_mode=$3
+    [[ $2 == --download-method && ($3 == direct || $3 == environment) ]] || { printf 'Expected --download-method direct|environment\n' >&2; exit 2; }
+    download_method=$3
   fi
   root=$(cd "$(dirname "$0")/.." && pwd)
   cd "$root"
@@ -48,7 +48,7 @@ if [[ ${1:-} != --linux ]]; then
   cp scripts/e2e.sh scripts/pty-smoke.py scripts/ports-e2e.py scripts/lifecycle-e2e.py scripts/configuration-e2e.py "$host_stage/"
   COPYFILE_DISABLE=1 tar --no-xattrs -C "$host_stage" -cf - lazyclash e2e.sh pty-smoke.py ports-e2e.py lifecycle-e2e.py configuration-e2e.py | orb -m "$vm" tar -xf - -C "$linux_stage"
   # Captured output deliberately excludes raw configuration, journal and URLs.
-  if orb -m "$vm" bash "$linux_stage/e2e.sh" --linux "$linux_stage" "$proxy_mode" > .test-artifacts/e2e.log 2>&1; then
+  if orb -m "$vm" bash "$linux_stage/e2e.sh" --linux "$linux_stage" "$download_method" > .test-artifacts/e2e.log 2>&1; then
     sed '/^download: [0-9]/d' .test-artifacts/e2e.log
   else
     result=$?
@@ -59,7 +59,7 @@ if [[ ${1:-} != --linux ]]; then
 fi
 
 work=$2
-proxy_mode=${3:-none}
+download_method=${3:-direct}
 cd "$work"
 test "$(uname -s)" = Linux
 test "$(id -u)" != 0
@@ -180,9 +180,9 @@ lp() { "$app" --home "$home" --service-name "$service_name" "$@"; }
 python3 "$work/pty-smoke.py" --binary "$app" --home "$home" --service-name "$service_name" --mode empty --output "$work/pty-empty.txt"
 [[ ! -e "$home/installation" && ! -e "$unit" && ! -L "$unit" ]]
 printf 'Install official pinned Mihomo release (version/checksum verified by application)\n'
-printf 'Explicit download connection mode: %s\n' "$proxy_mode"
+printf 'Explicit download method: %s\n' "$download_method"
 owned=yes
-lp install --core-version v1.19.32 --proxy-mode "$proxy_mode"
+lp install --core-version v1.19.32 --download-method "$download_method"
 lp status > "$work/status.json"
 python3 - "$work/status.json" <<'PY'
 import json, sys
@@ -267,7 +267,7 @@ import hashlib, sys
 print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())
 PY
 )
-lp install --core-version v1.19.33 --proxy-mode "$proxy_mode" > "$work/update-result.json"
+lp install --core-version v1.19.33 --download-method "$download_method" > "$work/update-result.json"
 [[ $(systemctl --user show "$service_name.service" --property=MainPID --value) == "$old_pid" ]]
 lp status > "$work/update-status.json"
 python3 - "$work/update-result.json" "$work/update-status.json" "$home/installation/current/config.yaml" "$config_hash" <<'PY'
@@ -292,9 +292,9 @@ PY
 # metadata and real systemd. Restore the fixture's old disk binary explicitly;
 # the still-running process already uses that version.
 lp install --bin "$work/mihomo-old" > "$work/restore-old-result.json"
-lp install check --proxy-mode "$proxy_mode" > "$work/core-check.json"
+lp install check --download-method "$download_method" > "$work/core-check.json"
 [[ $(systemctl --user show "$service_name.service" --property=MainPID --value) == "$old_pid" ]]
-lp install upgrade --yes --proxy-mode "$proxy_mode" > "$work/core-upgrade.json"
+lp install upgrade --yes --download-method "$download_method" > "$work/core-upgrade.json"
 lp status > "$work/core-upgraded-status.json"
 python3 - "$work/core-check.json" "$work/core-upgrade.json" "$work/core-upgraded-status.json" "$old_pid" "$home/installation/current/config.yaml" "$config_hash" <<'PY'
 import hashlib, json, sys

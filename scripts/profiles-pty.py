@@ -357,7 +357,7 @@ def main():
             terminal.wait("3 saved")
             (output / "profiles-header.txt").write_text(terminal.screen.text())
 
-            for key, action in [(b"2", "[ Refresh ]"), (b"4", "[ Refresh ]"), (b"5", "[ Refresh ]"), (b"6", "[ Reconnect ]"), (b"7", "[ Network settings ]")]:
+            for key, action in [(b"2", "[ Refresh ]"), (b"4", "[ Refresh ]"), (b"5", "[ Refresh ]"), (b"6", "[ Reconnect ]"), (b"7", "[ Download method ]")]:
                 terminal.key(key)
                 header_row(terminal, action)
             terminal.key(b"1")

@@ -2,6 +2,27 @@
 
 普通构建/单元测试不会调用 OrbStack、安装服务或修改系统配置。以下三类运行验证均为显式入口，不由 `go test` 自动触发。
 
+## 概览内安装与统一下载方式（2026-11-02）
+
+本节对应当前实现；下方同日的首次安装和单页安装记录保留其当时行为与验证结果。概览直接显示安装区，默认只读检查稳定版本；明确点击下载并安装后才解析资产、预检及安装，不再打开初装弹窗或要求第二次确认。下载方式统一为直连、使用环境代理、GitHub 加速，版本文本、发布 API、安装包探测和下载遵循同一设置。本轮没有移除安装阶段对 GitHub API 预期 SHA256 的依赖。
+
+本轮已实际验证：
+
+- 宿主 macOS/arm64 的全包 `make check`、`make race` 与构建通过；包含查询取消与迟到结果、单次安装链、失败重试、预检阻断、取消等待清理、明确启动、输入焦点和极小窗口回归。
+- `scripts/verify-linux.sh lazyclash-e2e` 在已有专用 Debian/arm64 VM 中实际执行全部 Linux 测试包，通过。网络 fixture 验证 version.txt → 发布元数据 → Range 探测 → 完整 SHA256 下载的统一加速地址，没有静默直连回退。旧偏好迁移和拒绝不支持配置时保留原文件也有回归。
+- `scripts/onboarding-pty.py --test-binary` 在宿主真实 controlling PTY 完成中英文 × 三种颜色能力 × 120×32、80×24、60×20 的 18 组取消场景；成功、查询失败重试、更多选项各完成中英文 × 三种尺寸，共 18 组。每组核对检查、解析、预检、安装调用次数，成功页明确验证 `starts=0`。
+- Linux/arm64 实际 controlling PTY 完成取消、成功、更多选项 × 中英文 × 三种尺寸，共 18 组；临时目录已清理。`core-update-pty.py` 另完成中英文 × 三种颜色能力的六组更新场景，包括 120×32、80×24、60×20、40×16 缩放。
+- 实际产品 `theme-pty.py` 完成三种颜色能力各五种尺寸；`i18n-pty.py` 完成语言切换、偏好持久化、中文鼠标命中、帮助、下载方式表单及缩放。Python 四项 VT 解析回归、全部 Python 脚本语法、E2E Shell 语法与差异空白检查通过。
+- 收尾复核修正失败页展开更多选项的重复焦点，以及后台查询失败后从导航返回正文时恢复到禁用安装按钮的问题；实际 `Update` 按键回归验证可达选项及显式重试。最终源码重新完成全包 check/race、Linux 全包测试与构建，独立导出的实现暂存树通过 `go test -mod=readonly ./...`。日志分别为 `.test-artifacts/inline-check-final.log`、`inline-race-final.log`、`inline-install-linux-final.log` 与 `inline-staged-implementation-test.log`。
+
+最终实际执行 `./scripts/e2e.sh lazyclash-e2e --download-method environment`：冲突预检及真实产品 `empty` PTY 通过，包括安装前导入、下载方式草稿、24×8 缩放、本地长路径输入、Esc/SIGTERM 取消和清理。随后官方固定版本 Release API 返回 HTTP 403，尚未下载内核，本轮真实安装、启动及后续 systemd 生命周期未完成。清理确认 `resources released=1`、`exit=1`。记录为 `.test-artifacts/inline-e2e-after-pty-sync.log` 和 `.test-artifacts/cleanup.txt`。
+
+完整前置操作后的长路径输入暴露了验证脚本读取旧增量帧的问题：脚本连续发 Tab 时仍在消费输入期间积压的画面。`pty-smoke.py` 现在先等完整路径，再等同步渲染帧完成后判断每次焦点，保留准确的安装按钮断言。独立 Linux 实际产品 `empty` 也完整通过，记录为 `.test-artifacts/inline-install-pty/empty-real-final.txt`。
+
+主要证据位于忽略的 `.test-artifacts/inline-install-pty/`：`final-matrix/20261102-170431-f9df1e`、`final-scenarios/20261102-170632-6e2b08`、`linux/evidence/20261102-171358-437da5`、`core-update/`、`theme-final/` 与 `i18n-final/`。稳定展示图为 `.test-artifacts/inline-install-preview-{initial,download,success,network,compact}.png`，已按 Linux 实际 PTY 字符格和颜色重绘并人工查看。
+
+安装与升级 PTY 使用明确启用的内存后端 fixture；它们验证产品状态机和终端交互，不下载或执行真实 Mihomo，也不创建 systemd 服务。PNG 不是原生 Ghostty 截图，不以其代替真实下载安装或服务生命周期验证。
+
 ## Mihomo 版本检查与升级（2026-11-02）
 
 本轮实现与边界见 [内核版本管理](core-updates.md)。已实际运行：
@@ -64,14 +85,14 @@ orb -m "$VM" sh -c 'id; uname -m; ps -p 1 -o comm=; systemctl --user is-system-r
 python3 scripts/pty-smoke.py --help
 ```
 
-`empty` 模式仅操作专用的未安装数据目录，检查默认首页、网络草稿的隐藏输入与放弃、安装前导入、宽屏 Modal/紧凑布局、安装阶段取消和 SIGTERM。`install-local` 模式通过完整 TUI 向导安装明确的本地 Mihomo 二进制并确认未启动服务；`installed` 模式使用已启动的专用服务，以鼠标和键盘切换 PROXY 节点，并通过实际 API 回读确认。`runtime` 模式使用专用流量连接，验证实时卡片、按 UUID 搜索/详情/确认关闭、缩放和停止/启动后的自动恢复。`runtime-settings` 模式验证端口输入、取消草稿、占用后的纠正、确认重启、宽窄切换及各控制 API 页面的重新连接。完整的目录、服务、前置检查和清理由下一入口安排，建议通过它执行全部模式。
+`empty` 模式仅操作专用的未安装数据目录，检查概览内安装区、下载方式草稿的编辑与放弃、安装前导入、宽窄布局、安装阶段取消和 SIGTERM。`install-local` 模式通过 TUI 内联安装明确的本地 Mihomo 二进制并确认未启动服务；`installed` 模式使用已启动的专用服务，以鼠标和键盘切换 PROXY 节点，并通过实际 API 回读确认。`runtime` 模式使用专用流量连接，验证实时卡片、按 UUID 搜索/详情/确认关闭、缩放和停止/启动后的自动恢复。`runtime-settings` 模式验证端口输入、取消草稿、占用后的纠正、确认重启、宽窄切换及各控制 API 页面的重新连接。完整的目录、服务、前置检查和清理由下一入口安排，建议通过它执行全部模式。
 
 ## 4. 真实 Mihomo + systemd 端到端
 
 ```sh
 ./scripts/e2e.sh "$VM"
 # 若明确使用该 VM 已有的标准代理环境变量：
-./scripts/e2e.sh "$VM" --proxy-mode environment
+./scripts/e2e.sh "$VM" --download-method environment
 ```
 
 此脚本显式修改所选 Linux VM 中的**临时资源**：

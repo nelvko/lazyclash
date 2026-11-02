@@ -7,21 +7,21 @@
 ```sh
 lazyclash install check
 lazyclash install check --channel alpha
-lazyclash install check --proxy-mode environment
-lazyclash install upgrade --yes --proxy-mode environment
+lazyclash install check --download-method environment
+lazyclash install upgrade --yes --download-method environment
 ```
 
 `install check` 不创建数据目录或锁文件，不执行恢复，不下载压缩包，不修改配置或控制服务。读取现有安装的真实 `mihomo -v`，再查询远程版本；安装记录、文件摘要或版本有问题时返回 `unavailable` 和原因，而不是冒充未安装。恢复日志存在时保留现场，提示先检查状态。远程网络失败仍返回错误，不显示“已经最新”。
 
 `install upgrade` 要求 `--yes`，主动重新检查并升级到这次检查得到的确定版本。原服务正在运行时会重启并验证，停止时保持停止。独立检查输出用于自动化查看；升级不接受外部 JSON 作为可执行计划。TUI 中已安装实例打开 Settings → Manage / 管理内核，手动选择检查更新，审阅版本、渠道、时间和状态，再确认升级。进入管理页不联网。升级进度复用 spinner、下载计数与日志；取消后等待回滚完成。
 
-未安装实例直接进入单页安装界面，不再选择唯一支持的 Mihomo。显式打开安装页后复用同一 `CheckUpdate(stable)` 查询；点击“下载并安装”才固定检查版本并串联资产解析、预检与既有安装管线。首次安装没有额外确认页；预检阻断仍显示原因。已有实例的手动指定版本/本地文件替换保留最终计划审阅。修改网络或输入、退出与取消均清除未完成的安装意图，迟到查询和预检不能触发安装。
+未安装实例在概览正文中显示安装区，保留侧栏，无需打开居中弹窗或选择唯一支持的 Mihomo。概览就绪后复用同一 `CheckUpdate(stable)` 只读查询；点击“下载并安装”才固定检查版本并串联资产解析、预检与既有安装管线。首次安装没有额外确认页；预检阻断仍显示原因。已有实例的手动指定版本/本地文件替换保留最终计划审阅。修改网络或输入、退出与取消均清除未完成的安装意图，迟到查询和预检不能触发安装。
 
 原 `install --core-version ...`、本地安装和显式重装仍只发布文件，保留当前进程；它们可用于用户明确选择的版本更换。该行为与“升级并验证运行状态”的 `install upgrade` 不同。
 
 ## 查询与比较
 
-检查直接请求以下官方文本地址，复用现有 None / Environment / Custom（HTTP、HTTPS、SOCKS5、SOCKS5H）代理设置。文件 prefix / mirror 不改写版本查询，也不成为摘要权威。
+检查请求以下官方文本地址，统一使用直连、使用环境代理或 GitHub 加速中的一种。加速方式为文本、发布 API 和安装包的完整 URL 添加同一个 HTTP(S) 前缀；直连与加速均忽略环境代理，没有静默回退。当前仍通过发布 API 获取 SHA256，三种方式的信任边界见 README。
 
 - 正式版：<https://github.com/MetaCubeX/mihomo/releases/latest/download/version.txt>
 - Alpha：<https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha/version.txt>

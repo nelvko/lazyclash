@@ -2,7 +2,8 @@
 """Verify Mariana rendering through an isolated, real controlling PTY.
 
 Requires an already built --binary (absolute path). It does not build, create a
-VM, install a core/service, query releases or change system network settings.
+VM, install a core/service or change system network settings. First-run
+guidance may perform its automatic read-only stable-version check.
 --output stores per-profile raw PTY captures and current-screen text snapshots.
 """
 import argparse
@@ -46,20 +47,34 @@ OSC_SET = re.compile(rb"\x1b\](?:10|11);(?!\?)")
 
 
 def save_screen(terminal, output, profile, name):
+    settle(terminal)
     (output / (profile + "-" + name + ".txt")).write_text(terminal.screen.text() + "\n")
 
 
+def settle(terminal):
+    deadline, quiet = time.monotonic() + 4, 0
+    while time.monotonic() < deadline:
+        before = len(terminal.raw)
+        terminal.read(0.03)
+        complete = not terminal.screen.synchronized and terminal.screen.state == "text"
+        quiet = quiet + 1 if len(terminal.raw) == before and complete else 0
+        if quiet == 2:
+            return
+    raise AssertionError("PTY did not finish a frame\n" + terminal.screen.text())
+
+
 def enter_network(terminal):
-    terminal.key(b"\r")
-    terminal.wait("Mihomo · Source + Connection")
+    terminal.key(b"n")
+    terminal.wait("Use environment proxy")
 
 
-def masked_input(terminal):
-    terminal.wait("Prefix URL")
+def focused_prefix(terminal):
+    settle(terminal)
+    terminal.wait("Acceleration URL")
     # The current-screen emulator handles the v2 renderer's cell-diff output.
     # Reading raw historical text here could falsely retain an old focus/input.
     lines = terminal.screen.text().splitlines()
-    return any("›" in line and "*" * len(PREFIX) in line for line in lines)
+    return any("›" in line and PREFIX in line for line in lines)
 
 
 def exercise_notifications(terminal, output, profile):
@@ -194,49 +209,38 @@ def exercise(binary, output, profile):
             terminal.key(b"1")  # Enter Overview content before runtime shortcuts.
             save_screen(terminal, output, profile, "overview")
             exercise_notifications(terminal, output, profile)
-            terminal.key(b"i")
-            terminal.wait("Mihomo · Core")
-            terminal.wait("Choose a proxy core")
-            save_screen(terminal, output, profile, "core")
-
-            # Continue -> Core -> Network settings, without selecting Continue
-            # or launching any version query. Tab focus is exercised in the PTY.
-            terminal.key(b"\t")
-            terminal.key(b"\t")
+            # Network setup is a single method choice. Prefixes are visible
+            # public URLs, and abandoning the modal discards the complete draft.
             enter_network(terminal)
-            terminal.key(b"\r")  # Official -> URL prefix accelerator
-            terminal.wait("Prefix URL")
+            terminal.key(b"\r")  # Direct -> environment
+            terminal.key(b"\r")  # Environment -> GitHub acceleration
+            terminal.wait("Acceleration URL")
             terminal.key(b"\t")
             terminal.key(PREFIX.encode("ascii"))
-            terminal.wait("*" * len(PREFIX))
+            terminal.wait(PREFIX)
             for columns, rows in SIZES:
                 mark = len(terminal.text())
                 terminal.resize(columns, rows)
-                terminal.wait("Prefix URL", after=mark)
-                terminal.wait("*" * len(PREFIX))
-                if not masked_input(terminal):
+                terminal.wait(PREFIX, after=mark)
+                if not focused_prefix(terminal):
                     raise AssertionError("resize lost the draft input or its focus at %sx%s" % (columns, rows))
                 terminal.wait("Esc")
                 save_screen(terminal, output, profile, "network-%sx%s" % (columns, rows))
-            mark = len(terminal.text())
             terminal.resize(120, 32)
-            terminal.wait("*" * len(PREFIX), after=mark)
+            settle(terminal)
+            terminal.wait(PREFIX)
             terminal.key(b"\x1b")
-            terminal.wait_absent("Mihomo · Source + Connection")
-            terminal.wait("Mihomo · Core")
-            enter_network(terminal)  # restored Network settings trigger focus
-            terminal.wait("Official / GitHub direct")
-            terminal.wait_absent("Prefix URL")
+            terminal.wait_absent("Acceleration URL")
+            enter_network(terminal)
+            terminal.wait("Direct")
+            terminal.wait_absent("Acceleration URL")
+            terminal.wait_absent(PREFIX)
             terminal.key(b"\x1b")
-            terminal.wait_absent("Mihomo · Source + Connection")
-            terminal.key(b"\x1b")
-            terminal.wait_absent("Mihomo · Core")
+            terminal.wait_absent("Use environment proxy")
             terminal.wait("Routing mode")
             terminal.exit()
 
             raw = bytes(terminal.raw)
-            if PREFIX.encode("ascii") in raw:
-                raise AssertionError("hidden input appeared in terminal output")
             if OSC_SET.search(raw):
                 raise AssertionError("TUI set the terminal's global foreground/background")
             if profile == "truecolor" and not RGB.search(raw):

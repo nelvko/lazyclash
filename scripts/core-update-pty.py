@@ -13,7 +13,8 @@ import sys
 import time
 
 
-def exercise(smoke, binary, output, language):
+def exercise(preview, binary, output, language, profile, args):
+    smoke = preview.SMOKE
     output.mkdir(parents=True, exist_ok=True)
     report = output / "calls.json"
     words = {
@@ -23,8 +24,10 @@ def exercise(smoke, binary, output, language):
                     "有新的正式版可升级", "确认升级", "Mihomo 升级失败", "完成"),
     }[language]
     overview, loading, check, review, available, upgrade, failed, done = words
-    wrapper = "import os,sys; os.environ['LAZYCLASH_CORE_UPDATE_PTY_REPORT']=sys.argv[1]; os.environ['LAZYCLASH_CORE_UPDATE_PTY_LANGUAGE']=sys.argv[2]; os.execv(sys.argv[3],sys.argv[3:])"
-    terminal = smoke.Terminal([sys.executable, "-c", wrapper, str(report), language, str(binary.resolve()), "-test.run=^TestCoreUpdatePTYFixture$", "-test.count=1"])
+    environment = {"LAZYCLASH_CORE_UPDATE_PTY_REPORT": str(report), "LAZYCLASH_CORE_UPDATE_PTY_LANGUAGE": language}
+    wrapper = preview.WRAPPER.replace("os.execv(sys.argv[5], sys.argv[5:])", "os.environ.update(" + repr(environment) + "); os.execv(sys.argv[5], sys.argv[5:])")
+    terminal = smoke.Terminal([sys.executable, "-c", wrapper, "120", "32", profile, language, str(binary.resolve()), "-test.run=^TestCoreUpdatePTYFixture$", "-test.count=1"])
+    terminal.screen = preview.StyledScreen(120, 32)
     try:
         terminal.wait(overview)
         terminal.wait_absent(loading)
@@ -32,11 +35,11 @@ def exercise(smoke, binary, output, language):
         terminal.key(b"i")
         terminal.wait(check)
         assert review not in terminal.screen.text()
-        (output / "manage.txt").write_text(terminal.screen.text())
+        preview.capture(terminal, output, "manage", args)
         terminal.click_text(check)
         terminal.wait(available)
         terminal.wait(upgrade)
-        (output / "check.txt").write_text(terminal.screen.text())
+        preview.capture(terminal, output, "check", args)
         for width, height in [(80, 24), (60, 20), (40, 16), (120, 32)]:
             terminal.resize(width, height)
             deadline = time.monotonic() + 5
@@ -51,19 +54,25 @@ def exercise(smoke, binary, output, language):
                     break
             else:
                 raise AssertionError("upgrade confirmation became inaccessible after resize\n" + terminal.screen.text())
-            (output / ("check-%dx%d.txt" % (width, height))).write_text(terminal.screen.text())
+            preview.capture(terminal, output, "check-%dx%d" % (width, height), args)
         terminal.key(b"\r")
         terminal.wait("Fixture transfer")
         terminal.key(b"\x1b")
         terminal.wait(failed)
-        (output / "cancel-result.txt").write_text(terminal.screen.text())
+        preview.capture(terminal, output, "cancel-result", args)
         terminal.key(b"\r")  # Cancellation focuses the Done button.
         terminal.wait_absent(failed)
         terminal.wait(overview)
         terminal.exit()
         assert json.loads(report.read_text()) == {"checks": 1, "upgrades": 1}, "management/check duplicated a backend call"
         (output / "pty.raw").write_bytes(terminal.raw)
-        print("PASS %s: manual check, compact review, explicit upgrade and cancellation cleanup" % language)
+        print("PASS %s/%s: manual check, compact review, explicit upgrade and cancellation cleanup" % (language, profile), flush=True)
+    except Exception:
+        (output / "failed.txt").write_text(terminal.screen.text() + "\n")
+        (output / "failed.ansi").write_bytes(terminal.raw)
+        if args.png:
+            preview.png(terminal.screen, output / "failed.png", args.font, args.cjk_font, args.font_size)
+        raise
     finally:
         terminal.cleanup()
 
@@ -72,13 +81,18 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
-    args = parser.parse_args()
     sys.dont_write_bytecode = True
-    spec = importlib.util.spec_from_file_location("pty_smoke", Path(__file__).with_name("pty-smoke.py"))
-    smoke = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(smoke)
-    for language in ("en", "zh-Hans"):
-        exercise(smoke, args.binary, args.output.resolve() / language, language)
+    spec = importlib.util.spec_from_file_location("onboarding_pty", Path(__file__).with_name("onboarding-pty.py"))
+    preview = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(preview)
+    parser.add_argument("--lang", choices=["en", "zh-Hans"], action="append", help="Repeat to select languages; default: both")
+    parser.add_argument("--profile", choices=["truecolor", "256", "no-color"], action="append", help="Repeat to select color capabilities; default: all")
+    preview.capture_arguments(parser)
+    args = parser.parse_args()
+    preview.configure_fonts(parser, args)
+    for language in args.lang or ("en", "zh-Hans"):
+        for profile in args.profile or ("truecolor", "256", "no-color"):
+            exercise(preview, args.binary, args.output.resolve() / language / profile, language, profile, args)
 
 
 if __name__ == "__main__":

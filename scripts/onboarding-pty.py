@@ -2,7 +2,7 @@
 """Verify first-run installation guidance through a real controlling PTY.
 
 Uses disposable empty homes and random service names. The production binary
-opens the installation page and its read-only version check, without installing
+shows inline guidance and its read-only version check, without installing
 a core or starting a service. --test-binary selects an explicit in-memory Go
 fixture that also exercises one-click installation and cancellation, with no
 network, executable or service. Captures current VT screens and raw ANSI.
@@ -146,22 +146,12 @@ def settle(terminal):
     deadline, quiet = time.monotonic() + 4, 0
     while time.monotonic() < deadline:
         mark = len(terminal.raw)
-        terminal.read(0.12)
-        quiet = quiet + 1 if len(terminal.raw) == mark and not terminal.screen.synchronized else 0
+        terminal.read(0.03)
+        complete = not terminal.screen.synchronized and terminal.screen.state == "text"
+        quiet = quiet + 1 if len(terminal.raw) == mark and complete else 0
         if quiet == 2:
             return
     raise AssertionError("PTY did not settle\n" + terminal.screen.text())
-
-
-def click(terminal, label):
-    terminal.wait(label)
-    settle(terminal)
-    for y, row in enumerate(terminal.screen.cells):
-        for x, cell in enumerate(row):
-            if cell and "".join(row[x:]).startswith(label):
-                terminal.key(("\x1b[<0;%d;%dM\x1b[<0;%d;%dm" % (x + 1, y + 1, x + 1, y + 1)).encode())
-                return
-    raise AssertionError("No clickable text: " + label)
 
 
 def png(screen, path, font_path, cjk_path, size):
@@ -206,7 +196,15 @@ def png(screen, path, font_path, cjk_path, size):
             left, top = x * cell_w, y * cell_h
             draw.rectangle((left, top, left + cells * cell_w - 1, top + cell_h - 1), fill=bg)
             chosen = cjk if ord(text[0]) >= 0x2E80 else (bold if heavy else font)
-            if text in "│─┌┐└┘├┤┬┴┼":
+            if 0x2800 <= ord(text[0]) <= 0x28FF:
+                dots = ord(text[0]) - 0x2800
+                radius = max(1, cell_w // 10)
+                for bit, (column, row) in enumerate(((0, 0), (0, 1), (0, 2), (1, 0), (1, 1), (1, 2), (0, 3), (1, 3))):
+                    if dots & (1 << bit):
+                        center_x = left + round(cell_w * (column + 1) / 3)
+                        center_y = top + round(cell_h * (row + 1) / 5)
+                        draw.ellipse((center_x - radius, center_y - radius, center_x + radius, center_y + radius), fill=fg)
+            elif text in "│─┌┐└┘├┤┬┴┼":
                 center_x, center_y = left + cell_w // 2, top + cell_h // 2
                 if text in "│┌┐├┤┬┼":
                     draw.line((center_x, center_y, center_x, top + cell_h - 1), fill=fg)
@@ -231,6 +229,9 @@ def png(screen, path, font_path, cjk_path, size):
 
 
 def capture(terminal, output, name, args):
+    # Gaps between complete frames are shorter than the busy spinner period.
+    # Drain all partial PTY chunks before rendering a screenshot, including on
+    # terminals where synchronized output has not been negotiated.
     settle(terminal)
     (output / (name + ".txt")).write_text(terminal.screen.text() + "\n")
     (output / (name + ".ansi")).write_bytes(bytes(terminal.raw))
@@ -246,59 +247,147 @@ def assert_uninstalled(home):
         raise AssertionError("Set up later permanently dismissed the guide")
 
 
-def run(binary, output, language, profile, sizes, args):
-    labels = ({"overview": "概览", "title": "安装 Mihomo 内核", "later": "稍后设置", "wizard": "已安装版本:",
-               "install": "下载并安装", "downloading": "正在下载", "cancelled": "安装已取消，清理已完成", "routing": "路由模式", "profiles": "配置", "quit": "q 退出"}
-              if language == "zh-Hans" else
-              {"overview": "Overview", "title": "Install the Mihomo core", "later": "Set up later", "wizard": "Installed version:",
-               "install": "Download & install", "downloading": "Downloading", "cancelled": "Installation canceled; cleanup completed", "routing": "Routing mode", "profiles": "Profiles", "quit": "q Quit"})
+def focus_control(terminal, label):
+    """Use the real focus order; focused controls may scroll into view."""
+    for _ in range(24):
+        settle(terminal)
+        if re.search(r"›\s*(?:\[\s*)?" + re.escape(label), terminal.screen.text()):
+            return
+        terminal.key(b"\t")
+    raise AssertionError("Control is not keyboard accessible: " + label + "\n" + terminal.screen.text())
+
+
+def words(language):
+    return ({"overview": "概览", "title": "安装 Mihomo 内核", "later": "稍后设置",
+             "install": "下载并安装", "downloading": "正在下载", "cancelled": "安装已取消，清理已完成",
+             "routing": "路由模式", "profiles": "配置", "quit": "q 退出", "more": "更多选项",
+             "method": "下载方式", "network": "下载方式", "prefix": "加速地址",
+             "choices": ("直连", "使用环境代理", "GitHub 加速"), "retry": "重试", "back": "返回概览",
+             "start": "启动内核", "ready": "默认配置已就绪", "apply": "应用"}
+            if language == "zh-Hans" else
+            {"overview": "Overview", "title": "Install the Mihomo core", "later": "Set up later",
+             "install": "Download and install", "downloading": "Downloading", "cancelled": "Installation canceled; cleanup completed",
+             "routing": "Routing mode", "profiles": "Profiles", "quit": "q Quit", "more": "More options",
+             "method": "Download method", "network": "Download method", "prefix": "Acceleration URL",
+             "choices": ("Direct", "Use environment proxy", "GitHub acceleration"), "retry": "Retry", "back": "Back to overview",
+             "start": "Start core", "ready": "default configuration is ready", "apply": "Apply"})
+
+
+def exercise_options(terminal, output, name, labels, args):
+    terminal.click_text(labels["more"])
+    focus_control(terminal, labels["method"])
+    terminal.key(b"\r")
+    terminal.wait(labels["network"])
+    for label in labels["choices"]:
+        terminal.wait(label)
+    capture(terminal, output, name + "-network-direct", args)
+    terminal.key(b"\x1b[C")  # direct -> environment
+    capture(terminal, output, name + "-network-environment", args)
+    terminal.key(b"\x1b[C")  # environment -> accelerated
+    terminal.wait(labels["prefix"])
+    terminal.key(b"\t")
+    prefix = "https://pty.example.invalid/"
+    terminal.key(prefix.encode("ascii"))
+    terminal.wait(prefix)
+    capture(terminal, output, name + "-network-accelerated", args)
+    terminal.key(b"\t")
+    terminal.key(b"\r")
+    terminal.wait("https://github.com/")
+    for _ in range(12):
+        if "version.txt" in terminal.screen.text():
+            break
+        terminal.key(b"\x1b[B")
+    terminal.wait("version.txt")
+    capture(terminal, output, name + "-network-url-preview", args)
+    terminal.key(b"\x1b[Z")
+    settle(terminal)
+    for columns, rows in ((60, 20), (80, 24), (120, 32)):
+        terminal.resize(columns, rows)
+        settle(terminal)
+        terminal.wait(prefix)
+        if not any("›" in line and prefix in line for line in terminal.screen.text().splitlines()):
+            raise AssertionError("Network resize lost acceleration input focus")
+        capture(terminal, output, name + "-network-resize-%dx%d" % (columns, rows), args)
+    terminal.key(b"\x1b")
+    terminal.wait_absent(labels["prefix"])
+    # Reopening must restore the applied direct method and discard the draft.
+    focus_control(terminal, labels["method"])
+    terminal.key(b"\r")
+    terminal.wait(labels["network"])
+    terminal.wait_absent(prefix)
+    terminal.wait_absent(labels["prefix"])
+    capture(terminal, output, name + "-network-discarded", args)
+    terminal.key(b"\r")  # Applying environment mode requests a fresh read-only check.
+    focus_control(terminal, labels["apply"])
+    terminal.key(b"\r")
+    terminal.wait_absent(labels["choices"][2])
+    terminal.wait("v1.19.33")
+    capture(terminal, output, name + "-network-applied", args)
+
+
+def run(binary, output, language, profile, sizes, args, scenario):
+    labels = words(language)
     with tempfile.TemporaryDirectory(prefix="lazyclash-onboarding-pty-") as temporary:
         home = Path(temporary) / "home"
         for columns, rows in sizes:
-            name = "%s-%s-%sx%s" % (language, profile, columns, rows)
-            wrapper, arguments = WRAPPER, ["--lang", language, "--home", str(home), "--service-name", "lazyclash-onboarding-" + uuid.uuid4().hex[:12]]
+            name = "%s-%s-%sx%s-%s" % (language, profile, columns, rows, scenario)
+            arguments = ["--lang", language, "--home", str(home), "--service-name", "lazyclash-onboarding-" + uuid.uuid4().hex[:12]]
             report = output / (name + "-calls.json")
+            wrapper = WRAPPER
             if args.test_binary:
-                wrapper = WRAPPER.replace("os.execv(sys.argv[5], sys.argv[5:])", "os.environ.update(LAZYCLASH_INSTALL_PTY_REPORT=" + repr(str(report)) + ", LAZYCLASH_INSTALL_PTY_LANGUAGE=sys.argv[4]); os.execv(sys.argv[5], sys.argv[5:])")
+                environment = {"LAZYCLASH_INSTALL_PTY_REPORT": str(report), "LAZYCLASH_INSTALL_PTY_SCENARIO": scenario}
+                wrapper = WRAPPER.replace("os.execv(sys.argv[5], sys.argv[5:])", "os.environ.update(" + repr(environment) + "); os.environ['LAZYCLASH_INSTALL_PTY_LANGUAGE']=sys.argv[4]; os.execv(sys.argv[5], sys.argv[5:])")
                 arguments = ["-test.run=^TestInstallFlowPTYFixture$", "-test.count=1"]
             command = [sys.executable, "-c", wrapper, str(columns), str(rows), profile, language, str(binary), *arguments]
             terminal = SMOKE.Terminal(command)
             terminal.screen = StyledScreen(columns, rows)
+            expected = {"checks": 1, "resolves": 0, "prepares": 0, "installs": 0, "starts": 0}
             try:
                 terminal.wait(labels["title"])
                 terminal.wait(labels["later"])
+                if args.test_binary:
+                    terminal.wait("Fixture version check failed" if scenario == "check-retry" else "v1.19.33")
                 capture(terminal, output, name + "-initial", args)
                 screen = terminal.screen.text()
-                if "1 / 3" in screen or "1/3" in screen or labels["routing"] in screen:
-                    raise AssertionError("First-run hero retained the mandatory steps or unavailable cards")
+                if "1 / 3" in screen or "[1 " in screen or labels["routing"] in screen:
+                    raise AssertionError("First-run inline guidance retained mandatory steps or unavailable cards")
                 if labels["quit"] not in screen.splitlines()[-1]:
                     raise AssertionError("Quit hint is not in the final terminal row")
-                # Exactly one Enter opens the installation page. It may query
-                # the stable version, but must not install without the action.
-                terminal.key(b"\r")
-                terminal.wait(labels["wizard"])
-                if args.test_binary:
-                    terminal.wait("v1.19.33")
-                capture(terminal, output, name + "-wizard", args)
-                wizard = terminal.screen.text()
-                if "[1 " in wizard or "Choose a proxy core" in wizard or "选择代理内核" in wizard:
-                    raise AssertionError("Installation page retained redundant core selection or a stepper")
-                if args.test_binary:
-                    click(terminal, labels["install"])
+                if scenario == "options":
+                    exercise_options(terminal, output, name, labels, args)
+                    expected["checks"] = 2
+                    terminal.resize(columns, rows)
+                elif args.test_binary:
+                    if scenario == "check-retry":
+                        focus_control(terminal, labels["retry"])
+                        terminal.key(b"\r")
+                        terminal.wait("v1.19.33")
+                        terminal.wait_absent("Fixture version check failed")
+                        expected["checks"] = 2
+                        capture(terminal, output, name + "-retried", args)
+                        focus_control(terminal, labels["install"])
+                    # No second page or confirmation: the first default Enter
+                    # submits exactly one resolve -> prepare -> install chain.
+                    terminal.key(b"\r")
                     terminal.wait(labels["downloading"])
                     capture(terminal, output, name + "-download", args)
-                    terminal.key(b"\x1b")
-                    terminal.wait(labels["cancelled"])
-                    capture(terminal, output, name + "-cancelled", args)
-                    terminal.key(b"\r")  # cancellation focuses Done
-                else:
-                    terminal.key(b"\x1b")
-                terminal.wait_absent(labels["wizard"])
-                terminal.wait(labels["title"])
-                click(terminal, labels["later"])
+                    expected.update(resolves=1, prepares=1, installs=1)
+                    if scenario in ("success", "check-retry"):
+                        terminal.wait(labels["start"])
+                        terminal.wait(labels["ready"])
+                        capture(terminal, output, name + "-success", args)
+                    else:
+                        terminal.key(b"\x1b")
+                        terminal.wait(labels["cancelled"])
+                        capture(terminal, output, name + "-cancelled", args)
+                    focus_control(terminal, labels["back"])
+                    terminal.key(b"\r")
+                if scenario == "options" or not args.test_binary:
+                    focus_control(terminal, labels["later"])
+                    terminal.key(b"\r")
                 terminal.wait_absent(labels["title"])
                 terminal.wait(labels["routing"])
-                capture(terminal, output, name + "-later", args)
+                capture(terminal, output, name + "-overview", args)
                 terminal.key(b"3")
                 terminal.wait(labels["profiles"])
                 capture(terminal, output, name + "-profiles", args)
@@ -306,8 +395,8 @@ def run(binary, output, language, profile, sizes, args):
                 assert_uninstalled(home)
                 if args.test_binary:
                     calls = json.loads(report.read_text())
-                    if calls != {"checks": 1, "resolves": 1, "prepares": 1, "installs": 1}:
-                        raise AssertionError("Installation flow duplicated or skipped a backend stage: " + repr(calls))
+                    if calls != expected:
+                        raise AssertionError("Installation flow duplicated or skipped a backend stage: expected %r, got %r" % (expected, calls))
                 raw = bytes(terminal.raw)
                 (output / (name + ".ansi")).write_bytes(raw)
                 if OSC_SET.search(raw):
@@ -318,13 +407,38 @@ def run(binary, output, language, profile, sizes, args):
                     raise AssertionError("256-color run used unsupported color styling")
                 if profile == "no-color" and any(part not in (b"", b"0") for match in SGR.finditer(raw) for part in match.group(1).split(b";")):
                     raise AssertionError("NO_COLOR run emitted styling")
-                print("PASS:", name, "single Enter, temporary later, browsing, layout and color")
+                print("PASS:", name, expected, flush=True)
             except Exception:
                 (output / (name + "-failed.txt")).write_text(terminal.screen.text() + "\n")
                 (output / (name + "-failed.ansi")).write_bytes(bytes(terminal.raw))
+                if args.png:
+                    png(terminal.screen, output / (name + "-failed.png"), args.font, args.cjk_font, args.font_size)
                 raise
             finally:
                 terminal.cleanup()
+
+
+def capture_arguments(parser):
+    parser.add_argument("--png", action="store_true", help="Also redraw actual PTY cell states as PNG (requires Pillow)")
+    parser.add_argument("--font", type=Path, help="Monospace TTF/TTC; defaults to Menlo or DejaVu Sans Mono")
+    parser.add_argument("--cjk-font", type=Path, help="Chinese TTF/TTC; defaults to installed PingFang or Noto CJK")
+    parser.add_argument("--font-size", type=int, default=18)
+
+
+def configure_fonts(parser, args):
+    if not args.png:
+        return
+    from PIL import Image  # noqa: F401
+    fonts = [args.font] if args.font else [Path("/System/Library/Fonts/Menlo.ttc"), Path("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf")]
+    args.font = next((font for font in fonts if font.is_file()), None)
+    if args.font is None:
+        parser.error("--font must select an existing monospace TTF/TTC file")
+    cjk_fonts = ([args.cjk_font] if args.cjk_font else
+                 [Path("/System/Library/Fonts/PingFang.ttc"),
+                  *Path("/System/Library/AssetsV2").glob("com_apple_MobileAsset_Font*/*/AssetData/PingFang.ttc"),
+                  Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
+                  Path("/System/Library/Fonts/Supplemental/Songti.ttc")])
+    args.cjk_font = next((font for font in cjk_fonts if font.is_file()), None)
 
 
 def main():
@@ -335,10 +449,8 @@ def main():
     parser.add_argument("--lang", choices=["en", "zh-Hans"], action="append", help="Repeat to select languages; default: both")
     parser.add_argument("--profile", choices=["truecolor", "256", "no-color"], action="append", help="Repeat to select capabilities; default: all")
     parser.add_argument("--size", action="append", help="Repeat COLSxROWS; default: 160x45,120x32,80x24,60x20,120x18")
-    parser.add_argument("--png", action="store_true", help="Also redraw actual PTY cell states as PNG (requires Pillow)")
-    parser.add_argument("--font", type=Path, help="Monospace TTF/TTC; defaults to Menlo or DejaVu Sans Mono")
-    parser.add_argument("--cjk-font", type=Path, help="Chinese TTF/TTC; defaults to installed PingFang or Noto CJK")
-    parser.add_argument("--font-size", type=int, default=18)
+    parser.add_argument("--scenario", choices=["cancel", "success", "check-retry", "options"], action="append", help="Fixture cases; default: cancel. Success/check-retry/options require --test-binary")
+    capture_arguments(parser)
     args = parser.parse_args()
     sizes = []
     for value in args.size or []:
@@ -349,18 +461,9 @@ def main():
             sizes.append(size)
         except ValueError:
             parser.error("--size must be COLSxROWS with both dimensions at least 12")
-    if args.png:
-        from PIL import Image  # noqa: F401
-        fonts = [args.font] if args.font else [Path("/System/Library/Fonts/Menlo.ttc"), Path("/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf")]
-        args.font = next((font for font in fonts if font.is_file()), None)
-        if args.font is None:
-            parser.error("--font must select an existing monospace TTF/TTC file")
-        cjk_fonts = ([args.cjk_font] if args.cjk_font else
-                     [Path("/System/Library/Fonts/PingFang.ttc"),
-                      *Path("/System/Library/AssetsV2").glob("com_apple_MobileAsset_Font*/*/AssetData/PingFang.ttc"),
-                      Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
-                      Path("/System/Library/Fonts/Supplemental/Songti.ttc")])
-        args.cjk_font = next((font for font in cjk_fonts if font.is_file()), None)
+    configure_fonts(parser, args)
+    if not args.test_binary and any(scenario != "cancel" for scenario in args.scenario or []):
+        parser.error("extra --scenario cases require --test-binary")
     binary = args.binary.resolve()
     if not binary.is_file() or not os.access(binary, os.X_OK):
         parser.error("--binary must select an already built executable")
@@ -368,7 +471,8 @@ def main():
     output.mkdir(parents=True)
     for language in args.lang or ["en", "zh-Hans"]:
         for profile in args.profile or ["truecolor", "256", "no-color"]:
-            run(binary, output, language, profile, sizes or SIZES, args)
+            for scenario in args.scenario or ["cancel"]:
+                run(binary, output, language, profile, sizes or SIZES, args, scenario)
     print("Evidence:", output)
 
 

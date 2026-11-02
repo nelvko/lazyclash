@@ -260,28 +260,48 @@ class Terminal:
         self.send(data)
         self.read(0.08)
 
+    def settle(self, timeout=4):
+        """Drain complete frames before inspecting an input/focus change."""
+        deadline, quiet = time.monotonic() + timeout, 0
+        while time.monotonic() < deadline:
+            before = len(self.raw)
+            self.read(0.03)
+            complete = not self.screen.synchronized and self.screen.state == "text"
+            quiet = quiet + 1 if len(self.raw) == before and complete else 0
+            if quiet == 2:
+                return
+        raise AssertionError("PTY did not finish a frame\n" + self.screen.text())
+
     def click_text(self, label):
         self.wait(label)
-        for y, line in enumerate(self.screen.text().splitlines()):
-            if label in line:
-                # Test labels are ASCII, so their indexes are terminal cells.
-                x = line.index(label) + 1
-                self.key(("\x1b[<0;%d;%dM\x1b[<0;%d;%dm" % (x + 1, y + 1, x + 1, y + 1)).encode())
-                return
+        for y, row in enumerate(self.screen.cells):
+            for x, cell in enumerate(row):
+                if cell and "".join(row[x:]).startswith(label):
+                    self.key(("\x1b[<0;%d;%dM\x1b[<0;%d;%dm" % (x + 1, y + 1, x + 1, y + 1)).encode())
+                    return
         raise AssertionError("Current PTY screen has no clickable text: " + label)
 
     def local_ready(self, source):
         # The initial footer may paint before the asynchronous state read ends.
         # Wait for the ready preparation view before sending its local shortcut.
         self.wait("Install the Mihomo core")
+        self.key(b"1")  # Explicitly enter Overview content from navigation.
         self.key(b"b")
         self.wait("Local Mihomo executable")
         self.key(os.fsencode(source))
-        # Local input -> local-source toggle -> network -> Back -> Install.
-        # The next explicit Enter performs preflight and installation together.
-        for _ in range(4):
+        # Typing a long path produces multiple incremental frames. Waiting for
+        # its visible suffix and draining them prevents later Tab checks from
+        # inspecting old input frames, especially with notifications present.
+        self.wait(os.fsdecode(source)[-24:])
+        self.settle()
+        # The local source shortcut opens the inline options. Follow real Tab
+        # navigation so the viewport reveals the focused installation action.
+        for _ in range(16):
             self.key(b"\t")
-        self.wait("› [ Install ]")
+            self.settle()
+            if re.search(r"›\s*\[\s*Install\s*\]", self.screen.text()):
+                return
+        raise AssertionError("Local installation action is not keyboard accessible\n" + self.screen.text())
 
     def exit(self, key=b"q"):
         self.send(key)
@@ -346,24 +366,20 @@ def main():
             terminal.wait_absent("Import configuration")
             terminal.wait("Input canceled")
 
-            # Network inputs are independently editable and remain hidden.
-            # Esc discards the complete draft without persisting credentials.
+            # Download method is one choice. The acceleration prefix is visible
+            # and does not permit embedded credentials; Esc discards the draft.
             terminal.key(b"n")
-            terminal.wait("Network settings")
-            terminal.key(b"\r")  # official -> prefix
-            terminal.wait("Prefix URL")
+            terminal.wait("Download method")
+            for label in ("Direct", "Use environment proxy", "GitHub acceleration"):
+                terminal.wait(label)
+            terminal.key(b"\r")  # direct -> environment
+            terminal.key(b"\r")  # environment -> accelerated
+            terminal.wait("Acceleration URL")
             terminal.key(b"\t")
-            terminal.key(b"https://accelerator.example.invalid/private-path-token")
-            terminal.key(b"\t")  # proxy mode
-            terminal.key(b"\r")  # environment
-            terminal.key(b"\r")  # custom
-            terminal.wait("Proxy URL")
-            terminal.key(b"\t")
-            terminal.key(b"http://user:private-proxy-token@127.0.0.1:18080")
-            if "private-path-token" in terminal.text() or "private-proxy-token" in terminal.text():
-                raise AssertionError("network credentials appeared in the terminal")
+            terminal.key(b"https://accelerator.example.invalid/")
+            terminal.wait("https://accelerator.example.invalid/")
             terminal.key(b"\x1b")
-            terminal.wait_absent("Mihomo · Source + Connection")
+            terminal.wait_absent("Acceleration URL")
 
             # Import works before installing a core and remains explicitly
             # unvalidated by the engine until a later successful application.
@@ -383,9 +399,9 @@ def main():
             terminal.resize(24, 8)
             terminal.wait("Please enlarge terminal")
             terminal.resize(80, 24)
-            terminal.wait("Mihomo · Version")
+            terminal.wait("Download and install")
             terminal.key(b"\x1b")
-            terminal.wait_absent("Mihomo · Version")
+            terminal.wait("q Quit")
             terminal.resize(120, 40)
 
             # First two version checks pass (preflight and recheck), while the
@@ -426,10 +442,7 @@ def main():
             terminal.local_ready(args.mihomo_bin)
             mark = len(terminal.text())
             terminal.key(b"\r")
-            terminal.wait("Mihomo installed and verified", after=mark)
-            terminal.wait(str(home / "installation" / "mihomo"), after=mark)
-            terminal.wait("Service remains stopped", after=mark)
-            terminal.key(b"\r")
+            terminal.wait("is installed and verified", after=mark)
             terminal.wait("Built-in default configuration is ready")
             terminal.wait("Start core")
             terminal.exit()

@@ -15,7 +15,7 @@ internal/
   configuration/        Profile 元数据、私有快照与原子索引
   mihomo/               发布解析、下载校验、配置及控制 API
   service/              systemd 用户服务操作
-  downloadnet/          下载来源、连接代理及脱敏
+  downloadnet/          互斥下载方式、统一 URL 改写及脱敏
   store/                私有目录、原子写入与可取消进程锁
 scripts/                显式运行的 Linux、PTY 和端到端验证
 ```
@@ -71,3 +71,5 @@ scripts/                显式运行的 Linux、PTY 和端到端验证
 后续增加真实平台需求时，通过已有应用层服务接口接入并验证相应适配器，优先评估现有库；不把第三方库类型暴露给 CLI/TUI。平台的权限、用户/系统服务范围及注销后的生命周期需要单独验证，不能由统一接口推断支持。当前不依赖尚未完成的 unisvc，也不使用平级目录的永久 `replace`。
 
 持久生命周期、用户/实际/操作状态与恢复策略见 [持久运行](runtime-lifecycle.md)，权限方案比较及扩展条件见 [权限边界](permissions.md)。当前没有常驻 daemon、特权 helper 或系统级 backend；未来新增平台扩展 service，新增内核扩展 mihomo 适配边界，根据真实差异调整应用接口，不预先创建空实现。
+
+首次安装由 `tui/inline_install.go` 在 Overview 正文内呈现，复用 wizard 的检查、解析、预检与安装状态机。`wizard.inline` 与管理弹窗互斥，页面导航、焦点、滚动仍由概览管理；后台结果不会抢夺其他页面焦点。首屏只读查询最新稳定版，明确点击安装后才继续下载，完成后明确启动。下载设置统一为 direct/environment/accelerated；`downloadnet.Config.URL` 应用于版本、发布信息及文件的所有请求。
