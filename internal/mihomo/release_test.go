@@ -65,6 +65,102 @@ func TestResolveLatestAndSpecificUseOnlyOfficialMetadata(t *testing.T) {
 	}
 }
 
+func TestResolveAMD64PrefersV1AndAcceptsCompatibleFallback(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		assets []string
+		want   string
+	}{
+		{"prefer-v1", []string{"compatible", "v1"}, "v1"},
+		{"old-release", []string{"compatible"}, "compatible"},
+		{"v1-only", []string{"v1"}, "v1"},
+		{"never-v3-default", []string{""}, ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var assets []map[string]any
+			for _, variant := range test.assets {
+				prefix := "mihomo-linux-amd64-"
+				if variant != "" {
+					prefix += variant + "-"
+				}
+				name := prefix + "v1.2.3.gz"
+				assets = append(assets, map[string]any{"name": name, "browser_download_url": releaseFiles + "v1.2.3/" + name, "digest": "sha256:" + strings.Repeat("a", 64), "size": 123})
+			}
+			raw, _ := json.Marshal(map[string]any{"tag_name": "v1.2.3", "assets": assets})
+			resolver := Resolver{Arch: "amd64", HTTP: &http.Client{Transport: downloadTransportFunc(func(r *http.Request) (*http.Response, error) {
+				return fixtureResponse(r, 200, "application/json", raw), nil
+			})}}
+			got, err := resolver.Resolve(t.Context(), "v1.2.3", downloadnet.Config{})
+			if test.want == "" {
+				if err == nil {
+					t.Fatal("unsafe plain amd64 fallback accepted")
+				}
+				return
+			}
+			want := "mihomo-linux-amd64-" + test.want + "-v1.2.3.gz"
+			if err != nil || got.Asset != want {
+				t.Fatalf("asset=%q err=%v, want %q", got.Asset, err, want)
+			}
+			if err := validRelease(got); err != nil {
+				t.Fatalf("resolver produced invalid release: %v", err)
+			}
+		})
+	}
+}
+
+func TestResolveAMD64SelectsAvailableBuildWithinDeviceCapabilities(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		level  int
+		assets []string
+		want   string
+	}{
+		{"v3-device", 3, []string{"compatible", "v1", "v2", "v3"}, "v3"},
+		{"v2-device", 2, []string{"compatible", "v1", "v2", "v3"}, "v2"},
+		{"v1-device", 1, []string{"compatible", "v1", "v2", "v3"}, "v1"},
+		{"v3-missing", 3, []string{"v1", "v2"}, "v2"},
+		{"v2-missing", 2, []string{"v1", "v3"}, "v1"},
+		{"old-v3-default", 3, []string{"", "compatible"}, ""},
+		{"old-v2-compatible", 2, []string{"", "compatible"}, "compatible"},
+		{"never-promote-v1", 1, []string{"v2", "v3", ""}, "missing"},
+		{"never-promote-v2", 2, []string{"v3", ""}, "missing"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var assets []map[string]any
+			for _, variant := range test.assets {
+				name := "mihomo-linux-amd64-"
+				if variant != "" {
+					name += variant + "-"
+				}
+				name += "v1.2.3.gz"
+				assets = append(assets, map[string]any{"name": name, "browser_download_url": releaseFiles + "v1.2.3/" + name, "digest": "sha256:" + strings.Repeat("a", 64), "size": 123})
+			}
+			raw, _ := json.Marshal(map[string]any{"tag_name": "v1.2.3", "assets": assets})
+			resolver := Resolver{Arch: "amd64", AMD64Level: test.level, HTTP: &http.Client{Transport: downloadTransportFunc(func(r *http.Request) (*http.Response, error) {
+				return fixtureResponse(r, 200, "application/json", raw), nil
+			})}}
+			got, err := resolver.Resolve(t.Context(), "latest", downloadnet.Config{})
+			if test.want == "missing" {
+				if err == nil {
+					t.Fatalf("selected unsupported build %s", got.Asset)
+				}
+				return
+			}
+			want := "mihomo-linux-amd64-"
+			if test.want != "" {
+				want += test.want + "-"
+			}
+			want += "v1.2.3.gz"
+			if err != nil || got.Asset != want {
+				t.Fatalf("asset=%q, err=%v; want %s", got.Asset, err, want)
+			}
+			if err := validRelease(got); err != nil {
+				t.Fatalf("selected official build is invalid: %v", err)
+			}
+		})
+	}
+}
+
 func TestReleaseRejectsUntrustedMetadataAndMissingDigest(t *testing.T) {
 	expected, _, raw := releaseFixture(t, "v1.2.3")
 	cases := map[string][]byte{

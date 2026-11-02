@@ -43,8 +43,9 @@ type Progress struct {
 // Resolver exposes HTTP and architecture seams for local fixtures. Production
 // always requests the official API URL; source settings only rewrite files.
 type Resolver struct {
-	HTTP *http.Client
-	Arch string
+	HTTP       *http.Client
+	Arch       string
+	AMD64Level int // 1–3 overrides detection; an explicit Arch defaults to v1.
 }
 
 func Resolve(ctx context.Context, selection string, cfg downloadnet.Config) (Release, error) {
@@ -59,10 +60,29 @@ func releaseAsset(version, arch string) (string, error) {
 	case "arm64":
 		return "mihomo-linux-arm64-" + version + ".gz", nil
 	case "amd64":
-		return "mihomo-linux-amd64-compatible-" + version + ".gz", nil
+		return "mihomo-linux-amd64-v1-" + version + ".gz", nil
 	default:
 		return "", diagnostic.New("diagnostic.release.architecture", "Mihomo release download does not support Linux %s", arch)
 	}
+}
+
+func releaseAssets(version, arch string, amd64Level int) ([]string, error) {
+	asset, err := releaseAsset(version, arch)
+	if err != nil {
+		return nil, err
+	}
+	if arch != "amd64" {
+		return []string{asset}, nil
+	}
+	var candidates []string
+	if amd64Level >= 3 {
+		candidates = append(candidates, "mihomo-linux-amd64-v3-"+version+".gz", "mihomo-linux-amd64-"+version+".gz")
+	}
+	if amd64Level >= 2 {
+		candidates = append(candidates, "mihomo-linux-amd64-v2-"+version+".gz")
+	}
+	// Upstream is retiring compatible; both it and v1 use GOAMD64=v1.
+	return append(candidates, asset, "mihomo-linux-amd64-compatible-"+version+".gz"), nil
 }
 func (r Resolver) client(cfg downloadnet.Config, timeout time.Duration) (*http.Client, error) {
 	if err := cfg.Validate(); err != nil {
@@ -141,24 +161,33 @@ func (r Resolver) Resolve(ctx context.Context, selection string, cfg downloadnet
 		return Release{}, diagnostic.New("diagnostic.release.versionMismatch", "official release response does not match the requested version")
 	}
 	arch := r.Arch
+	amd64Level := r.AMD64Level
 	if arch == "" {
 		arch = runtime.GOARCH
+		if amd64Level == 0 {
+			amd64Level = nativeAMD64Level()
+		}
 	}
-	asset, err := releaseAsset(result.Tag, arch)
+	candidates, err := releaseAssets(result.Tag, arch, amd64Level)
 	if err != nil {
 		return Release{}, err
 	}
 	var release Release
-	for _, a := range result.Assets {
-		if a.Name != asset {
-			continue
+	for _, candidate := range candidates {
+		for _, a := range result.Assets {
+			if a.Name != candidate {
+				continue
+			}
+			if release.Asset != "" {
+				return Release{}, diagnostic.New("diagnostic.release.duplicateAsset", "official release contains duplicate matching assets")
+			}
+			release = Release{Version: result.Tag, Asset: a.Name, URL: a.URL, SHA256: strings.TrimPrefix(a.Digest, "sha256:"), ChecksumSource: endpoint + "#asset-digest:" + candidate, Size: a.Size, Platform: "linux/" + arch}
+			if !strings.HasPrefix(a.Digest, "sha256:") {
+				return Release{}, diagnostic.New("diagnostic.release.missingDigest", "official GitHub release asset has no SHA256 digest; refusing unverifiable bytes")
+			}
 		}
 		if release.Asset != "" {
-			return Release{}, diagnostic.New("diagnostic.release.duplicateAsset", "official release contains duplicate matching assets")
-		}
-		release = Release{Version: result.Tag, Asset: a.Name, URL: a.URL, SHA256: strings.TrimPrefix(a.Digest, "sha256:"), ChecksumSource: endpoint + "#asset-digest:" + asset, Size: a.Size, Platform: "linux/" + arch}
-		if !strings.HasPrefix(a.Digest, "sha256:") {
-			return Release{}, diagnostic.New("diagnostic.release.missingDigest", "official GitHub release asset has no SHA256 digest; refusing unverifiable bytes")
+			break
 		}
 	}
 	if release.Asset == "" {
@@ -175,8 +204,12 @@ func validRelease(r Release) error {
 		return diagnostic.New("diagnostic.release.invalidVersion", "invalid stable release version")
 	}
 	arch := strings.TrimPrefix(r.Platform, "linux/")
-	asset, err := releaseAsset(r.Version, arch)
-	if err != nil || r.Platform != "linux/"+arch || asset != r.Asset {
+	assets, err := releaseAssets(r.Version, arch, 3)
+	matched := false
+	for _, asset := range assets {
+		matched = matched || asset == r.Asset
+	}
+	if err != nil || r.Platform != "linux/"+arch || !matched {
 		return diagnostic.New("diagnostic.release.platformMismatch", "release asset does not match its Linux platform")
 	}
 	if r.URL != releaseFiles+r.Version+"/"+r.Asset {
