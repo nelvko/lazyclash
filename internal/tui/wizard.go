@@ -639,6 +639,9 @@ func (m *Model) wizardInput() *textinput.Model {
 	return nil
 }
 func (m *Model) wizardActivate(id string) tea.Cmd {
+	if m.wizardControlDisabled(id) {
+		return nil
+	}
 	w := &m.wizard
 	if m.job == "install" {
 		if id == "cancel" {

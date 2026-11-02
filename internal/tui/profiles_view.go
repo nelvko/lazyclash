@@ -74,11 +74,10 @@ func (m Model) profilesToolbar(width int) dashboardBlock {
 	var body dashboardBlock
 	input := m.profilesUI.url
 	input.Placeholder = m.tr("profiles.url_placeholder")
-	options := dashboardOptions{Focus: m.focus, Hover: m.hover}
 	buttons := []profileButton{{"profiles.add", m.tr("profiles.add"), true}, {"profiles.create", m.tr("profiles.create"), false}}
 	buttonWidth := 0
 	for _, b := range buttons {
-		buttonWidth += ansi.StringWidth(dashboardButton(b.id, b.label, options, b.primary)) + 2
+		buttonWidth += ansi.StringWidth(m.profileButtonView(b, bg)) + 2
 	}
 	inline := width >= 70
 	fieldWidth := width
@@ -103,9 +102,11 @@ func (m Model) profilesToolbar(width int) dashboardBlock {
 	if inline {
 		x := fieldWidth + 2
 		for _, b := range buttons {
-			value := dashboardButton(b.id, b.label, options, b.primary)
+			value := m.profileButtonView(b, bg)
 			body.lines[1] += themed("  ", text, bg, false) + value
-			body.targets = append(body.targets, hitRegion{ID: b.id, X: x, Y: 1, W: ansi.StringWidth(value), H: 1})
+			if !m.busy && !m.quitting {
+				body.targets = append(body.targets, hitRegion{ID: b.id, X: x, Y: 1, W: ansi.StringWidth(value), H: 1})
+			}
 			x += ansi.StringWidth(value) + 2
 		}
 		body.lines[1] = cellCrop(body.lines[1], width)
@@ -126,14 +127,23 @@ type profileButton struct {
 	primary   bool
 }
 
+func (m Model) profileButtonView(b profileButton, surface string) string {
+	kind := buttonSecondary
+	if b.primary {
+		kind = buttonPrimary
+	} else if strings.HasPrefix(b.id, "profiles.delete.") {
+		kind = buttonDanger
+	}
+	return renderButton(b.label, buttonOptions{Kind: kind, Surface: surface,
+		Focused: m.focus == b.id && b.id != "", Hovered: m.hover == b.id && b.id != "",
+		Disabled: b.id == "" || m.busy || m.quitting, Plain: m.buttonPlain()})
+}
+
 func (m Model) profileButtons(buttons []profileButton, width int) dashboardBlock {
 	body := dashboardBlock{lines: []string{""}}
 	x, y := 0, 0
 	for _, b := range buttons {
-		value := dashboardButton(b.id, b.label, dashboardOptions{Focus: m.focus, Hover: m.hover}, b.primary)
-		if b.id == "" {
-			value = themed("[ "+b.label+" ]", disabled, bg, false)
-		}
+		value := m.profileButtonView(b, bg)
 		w := min(width, ansi.StringWidth(value))
 		if x > 0 && x+w > width {
 			body.lines = append(body.lines, "")
@@ -143,7 +153,7 @@ func (m Model) profileButtons(buttons []profileButton, width int) dashboardBlock
 			body.lines[y] += themed("  ", text, bg, false)
 		}
 		body.lines[y] += cellCrop(value, w)
-		if b.id != "" {
+		if b.id != "" && !m.busy && !m.quitting {
 			body.targets = append(body.targets, hitRegion{ID: b.id, X: x, Y: y, W: w, H: 1})
 		}
 		x += w + 2
@@ -208,15 +218,17 @@ func (m Model) profileCard(index, width int) dashboardBlock {
 	if width >= 12 {
 		controls = append(controls, profileButton{id: menuID, label: "⋯"})
 	}
-	titleWidth := max(1, inner-4*len(controls))
+	controlViews := make([]string, len(controls))
+	controlsWidth := 0
+	for i, control := range controls {
+		controlViews[i] = m.profileButtonView(control, surface)
+		controlsWidth += ansi.StringWidth(controlViews[i])
+	}
+	titleWidth := max(1, inner-controlsWidth)
 	title := themed(lipgloss.NewStyle().Bold(true).Render(cellCrop(prefix+clean(info.Name), max(1, titleWidth))), titleColor, surface, false)
 	title = cellPad(title, titleWidth)
-	for _, control := range controls {
-		color := muted
-		if m.focus == control.id || m.hover == control.id {
-			color = focus
-		}
-		title += themed(" ["+control.label+"]", color, surface, false)
+	for _, control := range controlViews {
+		title += control
 	}
 	origin, kind := m.tr("profiles.builtin_origin"), m.tr("profiles.kind")
 	if name != "default" {
@@ -248,8 +260,13 @@ func (m Model) profileCard(index, width int) dashboardBlock {
 		themed(cellCrop(stamp, inner), muted, surface, false), themed(cellCrop(status, inner), statusColor, surface, false)}
 	block := dashboardBlock{lines: profileCardSurface(lines, width, surface, selected)}
 	// Card controls win hit testing over the containing card.
+	x := 2 + titleWidth
 	for i, control := range controls {
-		block.targets = append(block.targets, hitRegion{ID: control.id, X: width - 5 - 4*(len(controls)-1-i), Y: 1, W: 3, H: 1})
+		w := ansi.StringWidth(controlViews[i])
+		if !m.busy && !m.quitting {
+			block.targets = append(block.targets, hitRegion{ID: control.id, X: x, Y: 1, W: w, H: 1})
+		}
+		x += w
 	}
 	block.targets = append(block.targets, hitRegion{ID: id, W: width, H: len(block.lines)})
 	return block

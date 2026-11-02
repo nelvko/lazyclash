@@ -12,6 +12,7 @@ import (
 type overviewControlButton struct {
 	id, label         string
 	enabled, selected bool
+	primary           bool
 }
 
 func overviewControlPanel(o dashboardOptions, width int, title string, content []string, buttons []overviewControlButton) dashboardBlock {
@@ -29,14 +30,11 @@ func overviewControlPanel(o dashboardOptions, width int, title string, content [
 		b.footerY = top + len(lines)
 		row, x := "", 0
 		for _, button := range buttons {
-			label := button.label
-			if button.selected {
-				label += " •"
-			}
-			value := themed("[ "+label+" ]", disabled, panel, o.Dim)
-			if button.enabled {
-				value = dashboardButton(button.id, label, o, button.selected)
-			}
+			options := dashboardButtonOptions(button.id, o, button.primary, panel)
+			options.Disabled = !button.enabled
+			options.Selected = button.selected
+			options.Selectable = strings.HasPrefix(button.id, "mode.") || strings.HasPrefix(button.id, "language.") || button.id == "key-hints.toggle"
+			value := renderButton(button.label, options)
 			value = cellCrop(value, inner)
 			buttonWidth := ansi.StringWidth(value)
 			if x > 0 && x+2+buttonWidth > inner {
@@ -79,7 +77,7 @@ func overviewControlCard(o dashboardOptions, index, width int) dashboardBlock {
 	status, color := coreSummary(s, o.Locale)
 	lines := []string{style(status, color)}
 	if !s.Installed {
-		return overviewControlPanel(o, width, tr("dashboard.control.core"), lines, []overviewControlButton{{id: "core.install", label: tr("dashboard.action.install"), enabled: !o.Busy}})
+		return overviewControlPanel(o, width, tr("dashboard.control.core"), lines, []overviewControlButton{{id: "core.install", label: tr("dashboard.action.install"), enabled: !o.Busy, primary: true}})
 	}
 	if !s.Service.Active && !s.HasRun && s.ConfigReady && (s.Applied == "default" || s.Applied == "") {
 		lines = append(lines, style(tr("dashboard.profile.builtinReady"), muted))
@@ -87,14 +85,9 @@ func overviewControlCard(o dashboardOptions, index, width int) dashboardBlock {
 	issue := runtimeControlIssue(s, o.Locale)
 	var buttons []overviewControlButton
 	if s.Service.Active {
-		selected := s.ServiceError == "" && s.Service.State != "unknown" && s.Service.State != "unsupported"
-		label := tr("dashboard.control.on")
-		if s.ServiceError != "" || s.Service.State == "unknown" || s.Service.State == "unsupported" {
-			label = tr("dashboard.action.stop")
-		}
-		buttons = append(buttons, overviewControlButton{id: "core.stop", label: label, enabled: !o.Busy && runtimeStopIssue(s, o.Locale) == "", selected: selected})
+		buttons = append(buttons, overviewControlButton{id: "core.stop", label: tr("dashboard.action.stop"), enabled: !o.Busy && runtimeStopIssue(s, o.Locale) == ""})
 	} else {
-		buttons = append(buttons, overviewControlButton{id: "core.start", label: tr("dashboard.action.start"), enabled: !o.Busy && issue == ""})
+		buttons = append(buttons, overviewControlButton{id: "core.start", label: tr("dashboard.action.start"), enabled: !o.Busy && issue == "", primary: true})
 		if s.Desired.Running {
 			buttons = append(buttons, overviewControlButton{id: "core.stop", label: tr("dashboard.action.stop"), enabled: !o.Busy && runtimeStopIssue(s, o.Locale) == ""})
 		}
@@ -208,5 +201,5 @@ func overviewKernelCard(o dashboardOptions, width int) dashboardBlock {
 	if s.Installed {
 		label = tr("dashboard.action.manage")
 	}
-	return overviewControlPanel(o, width, tr("dashboard.kernel.title"), lines, []overviewControlButton{{id: "card.install", label: label, enabled: !o.Busy}})
+	return overviewControlPanel(o, width, tr("dashboard.kernel.title"), lines, []overviewControlButton{{id: "card.install", label: label, enabled: !o.Busy, primary: !s.Installed}})
 }

@@ -151,7 +151,7 @@ func (p *notificationPanel) mouse(msg tea.MouseMsg) string {
 	return ""
 }
 
-func (p *notificationPanel) render(items []notificationItem, width, height int, locale i18n.Localizer) (string, []hitRegion) {
+func (p *notificationPanel) render(items []notificationItem, width, height int, locale i18n.Localizer, plain ...bool) (string, []hitRegion) {
 	if !p.open || width <= 0 || height <= 0 {
 		return "", nil
 	}
@@ -166,9 +166,12 @@ func (p *notificationPanel) render(items []notificationItem, width, height int, 
 	for i := range rows {
 		rows[i] = themed(strings.Repeat(" ", width), muted, bg, true)
 	}
+	options := dashboardOptions{PlainButtons: len(plain) > 0 && plain[0]}
 	if w < 20 || h < 6 {
-		label := cellCrop(locale.T("notification.collapse"), width)
-		putRows(rows, 0, 0, themed(label, focus, raised, false), width)
+		options.Focus = "notification.panel.close"
+		label := notificationButton(options.Focus, locale.T("notification.collapse"), width, options)
+		putRows(rows, 0, 0, label, width)
+		p.bounds = hitRegion{W: width, H: height}
 		p.targets = []hitRegion{{ID: "notification.panel.close", W: min(width, ansi.StringWidth(label)), H: 1}}
 		return strings.Join(rows, "\n"), p.targets
 	}
@@ -177,6 +180,7 @@ func (p *notificationPanel) render(items []notificationItem, width, height int, 
 	p.viewport.SetHeight(h - 6)
 	var lines []string
 	p.actions = nil
+	var actionLabels []string
 	if p.detailID != 0 {
 		for _, item := range items {
 			if item.ID != p.detailID {
@@ -194,20 +198,26 @@ func (p *notificationPanel) render(items []notificationItem, width, height int, 
 		for _, item := range items {
 			lines = append(lines, strings.Split(wrapText(notificationHeading(item, locale, ""), inner), "\n")...)
 			lines = append(lines, strings.Split(wrapText(notificationText(item.Message), inner), "\n")...)
-			details := locale.T("notification.details")
-			dismiss := locale.T("notification.dismiss")
+			detailsID := fmt.Sprintf("notification.panel.details.%d", item.ID)
+			dismissID := fmt.Sprintf("notification.panel.dismiss.%d", item.ID)
+			detailsLabel, dismissLabel := locale.T("notification.details"), locale.T("notification.dismiss")
+			details := notificationButton(detailsID, detailsLabel, inner, options)
+			dismiss := notificationButton(dismissID, dismissLabel, inner, options)
 			lineY := len(lines)
-			p.actions = append(p.actions, hitRegion{ID: fmt.Sprintf("notification.panel.details.%d", item.ID), Y: lineY, W: min(inner, ansi.StringWidth(details)), H: 1})
+			p.actions = append(p.actions, hitRegion{ID: detailsID, Y: lineY, W: ansi.StringWidth(details), H: 1})
+			actionLabels = append(actionLabels, detailsLabel, dismissLabel)
 			if ansi.StringWidth(details)+ansi.StringWidth(dismiss)+2 > inner {
-				lines = append(lines, cellCrop(details, inner), cellCrop(dismiss, inner), "")
-				p.actions = append(p.actions, hitRegion{ID: fmt.Sprintf("notification.panel.dismiss.%d", item.ID), Y: lineY + 1, W: min(inner, ansi.StringWidth(dismiss)), H: 1})
+				lines = append(lines, details, dismiss, "")
+				p.actions = append(p.actions, hitRegion{ID: dismissID, Y: lineY + 1, W: ansi.StringWidth(dismiss), H: 1})
 			} else {
 				lines = append(lines, details+"  "+dismiss, "")
-				p.actions = append(p.actions, hitRegion{ID: fmt.Sprintf("notification.panel.dismiss.%d", item.ID), X: ansi.StringWidth(details) + 2, Y: lineY, W: ansi.StringWidth(dismiss), H: 1})
+				p.actions = append(p.actions, hitRegion{ID: dismissID, X: ansi.StringWidth(details) + 2, Y: lineY, W: ansi.StringWidth(dismiss), H: 1})
 			}
 			if item.Kind == "working" {
-				label := cellCrop(locale.T("notification.cancel"), inner)
-				p.actions = append(p.actions, hitRegion{ID: fmt.Sprintf("notification.cancel.%d", item.ID), Y: len(lines) - 1, W: ansi.StringWidth(label), H: 1})
+				id := fmt.Sprintf("notification.cancel.%d", item.ID)
+				label := notificationButton(id, locale.T("notification.cancel"), inner, options)
+				p.actions = append(p.actions, hitRegion{ID: id, Y: len(lines) - 1, W: ansi.StringWidth(label), H: 1})
+				actionLabels = append(actionLabels, locale.T("notification.cancel"))
 				lines[len(lines)-1] = label
 				lines = append(lines, "")
 			}
@@ -219,7 +229,9 @@ func (p *notificationPanel) render(items []notificationItem, width, height int, 
 	p.focus = max(0, min(p.focus, len(p.actions)-1))
 	if p.detailID == 0 && len(p.actions) > 0 {
 		selected := p.actions[p.focus]
-		lines[selected.Y] = ansi.Cut(lines[selected.Y], 0, selected.X) + themed(ansi.Cut(lines[selected.Y], selected.X, selected.X+selected.W), focus, raised, false) + ansi.Cut(lines[selected.Y], selected.X+selected.W, ansi.StringWidth(lines[selected.Y]))
+		options.Focus = selected.ID
+		value := notificationButton(selected.ID, actionLabels[p.focus], selected.W, options)
+		lines[selected.Y] = ansi.Cut(lines[selected.Y], 0, selected.X) + value + ansi.Cut(lines[selected.Y], selected.X+selected.W, ansi.StringWidth(lines[selected.Y]))
 	}
 	p.viewport.SetContent(strings.Join(lines, "\n"))
 	box := make([]string, h)
@@ -242,18 +254,20 @@ func (p *notificationPanel) render(items []notificationItem, width, height int, 
 		backID, backLabel = "notification.panel.back", locale.T("notification.back")
 		help = locale.T("notification.detailHelp")
 	}
-	backWidth := min(inner, ansi.StringWidth(backLabel))
-	putRows(box, 3, h-2, themed(cellCrop(backLabel, inner), focus, raised, false), w)
+	back := notificationButton(backID, backLabel, inner, options)
+	backWidth := ansi.StringWidth(back)
+	putRows(box, 3, h-2, back, w)
 	if left := 3 + backWidth + 2; left < w-3 {
 		putRows(box, left, h-2, helpText(cellCrop(help, w-left-3), raised, false), w)
 	}
 	p.targets = []hitRegion{{ID: backID, X: x + 3, Y: y + h - 2, W: backWidth, H: 1}}
 	if p.detailID != 0 {
-		label := locale.T("notification.dismiss")
-		labelWidth := min(inner/2, ansi.StringWidth(label))
+		id := fmt.Sprintf("notification.panel.dismiss.%d", p.detailID)
+		label := notificationButton(id, locale.T("notification.dismiss"), inner/2, options)
+		labelWidth := ansi.StringWidth(label)
 		buttonX := w - 3 - labelWidth
-		putRows(box, buttonX, 1, themed(cellCrop(label, labelWidth), focus, raised, false), w)
-		p.targets = append(p.targets, hitRegion{ID: fmt.Sprintf("notification.panel.dismiss.%d", p.detailID), X: x + buttonX, Y: y + 1, W: labelWidth, H: 1})
+		putRows(box, buttonX, 1, label, w)
+		p.targets = append(p.targets, hitRegion{ID: id, X: x + buttonX, Y: y + 1, W: labelWidth, H: 1})
 	}
 	p.contentY = y + 3
 	for _, action := range p.actions {

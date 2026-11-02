@@ -218,10 +218,12 @@ func TestProfileOverridesSaveDraftAndRecipeDeletionRequiresName(t *testing.T) {
 	}
 	m.activate("profile.delete.1")
 	m.input.SetValue("other")
+	m.profileDeleteSetFocus("profile-delete.confirm")
 	if cmd := m.formKey(special(tea.KeyEnter)); cmd != nil || deletedName != "" {
 		t.Fatal("recipe deletion skipped confirmation")
 	}
 	m.input.SetValue("work")
+	m.profileDeleteSetFocus("profile-delete.confirm")
 	cmd = m.formKey(special(tea.KeyEnter))
 	m = finishProfileJob(t, m, cmd)
 	if deletedName != "work" || backend.applied != 0 {
@@ -335,6 +337,7 @@ func TestProfileDisplayNameEditsKeepActionsOnStableID(t *testing.T) {
 	}
 	m.activate("profiles.delete.1")
 	m.input.SetValue("机场 A")
+	m.profileDeleteSetFocus("profile-delete.confirm")
 	m, cmd = update(m, special(tea.KeyEnter))
 	m = finishProfileJob(t, m, cmd)
 	if deletedID != id {

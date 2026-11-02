@@ -285,8 +285,12 @@ func (m Model) logsBody(width int) (string, []hitRegion) {
 		lines = append(lines, strings.Split(wrapText(themed(value, color, bg, false), max(1, width)), "\n")...)
 	}
 	button := func(id, label string) {
-		value := dashboardButton(id, label, dashboardOptions{Focus: m.focus, Hover: m.hover}, false)
-		hits = append(hits, hitRegion{ID: id, Y: len(lines), W: min(width, ansi.StringWidth(value)), H: 1})
+		options := dashboardButtonOptions(id, m.navigationOptions(), false, bg)
+		options.Disabled = m.busy
+		value := renderButton(label, options)
+		if !options.Disabled {
+			hits = append(hits, hitRegion{ID: id, Y: len(lines), W: min(width, ansi.StringWidth(value)), H: 1})
+		}
 		lines = append(lines, cellCrop(value, width))
 	}
 	add(m.tr("logs.title"), text)

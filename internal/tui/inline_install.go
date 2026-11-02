@@ -322,16 +322,15 @@ func (d *inlineInstallDocument) space() { d.lines = append(d.lines, "") }
 
 func (d *inlineInstallDocument) control(action, label string) {
 	id := "setup." + action
-	prefix, color, background := "  ", text, panel
-	if d.model.hover == id {
-		background = hoverBackground
+	kind := buttonSecondary
+	if action == "more" || action == "details" {
+		kind = buttonText
 	}
-	if d.model.focus == id {
-		prefix, color = "› ", focus
-	}
+	value := renderButton(label, buttonOptions{Kind: kind, Surface: panel,
+		Focused: d.model.focus == id, Hovered: d.model.hover == id, Plain: d.model.buttonPlain()})
 	row := len(d.lines)
-	d.lines = append(d.lines, strings.Split(wrapText(themed(prefix+label, color, background, false), d.width), "\n")...)
-	d.targets = append(d.targets, hitRegion{ID: id, Y: row, W: d.width, H: len(d.lines) - row})
+	d.lines = append(d.lines, cellCrop(value, d.width))
+	d.targets = append(d.targets, hitRegion{ID: id, Y: row, W: min(d.width, ansi.StringWidth(value)), H: 1})
 }
 
 func (d *inlineInstallDocument) field(action, label string, input textinput.Model) {
@@ -350,15 +349,19 @@ func (d *inlineInstallDocument) field(action, label string, input textinput.Mode
 }
 
 func (d *inlineInstallDocument) buttons(buttons ...wizardButton) {
-	o := d.model.navigationOptions()
 	line := ""
 	for _, button := range buttons {
 		id := "setup." + button.ID
 		primary := button.ID == "install" || button.ID == "retry" || button.ID == "start"
-		label := dashboardButton(id, button.Label, o, primary)
-		if button.ID == "install" && !d.model.inlineCanInstall() || d.model.wizard.cancelling && button.ID == "cancel" {
-			label = themed("[ "+button.Label+" ]", disabled, panel, false)
+		kind := buttonSecondary
+		if primary {
+			kind = buttonPrimary
 		}
+		blocked := button.ID == "install" && !d.model.inlineCanInstall() || d.model.wizard.cancelling && button.ID == "cancel"
+		label := renderButton(button.Label, buttonOptions{
+			Kind: kind, Surface: panel, Focused: d.model.focus == id, Hovered: d.model.hover == id,
+			Disabled: blocked && !d.model.busy, Busy: blocked && d.model.busy, Plain: d.model.buttonPlain(),
+		})
 		label = cellCrop(label, d.width)
 		width := ansi.StringWidth(label)
 		if line != "" && ansi.StringWidth(line)+2+width > d.width {
@@ -368,7 +371,9 @@ func (d *inlineInstallDocument) buttons(buttons ...wizardButton) {
 		if line != "" {
 			line += "  "
 		}
-		d.targets = append(d.targets, hitRegion{ID: id, X: ansi.StringWidth(line), Y: len(d.lines), W: width, H: 1})
+		if !blocked {
+			d.targets = append(d.targets, hitRegion{ID: id, X: ansi.StringWidth(line), Y: len(d.lines), W: width, H: 1})
+		}
 		line += label
 	}
 	if line != "" {

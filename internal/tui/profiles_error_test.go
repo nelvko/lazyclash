@@ -21,7 +21,7 @@ func TestInitialProfileReadFailureDoesNotPresentAnEmptyLibrary(t *testing.T) {
 			t.Fatalf("unreadable snapshot was presented as known state: %q\n%s", absent, view)
 		}
 	}
-	for _, present := range []string{"Profiles unavailable", "invalid configuration library", "[ Retry ]"} {
+	for _, present := range []string{"Profiles unavailable", "invalid configuration library", "Retry"} {
 		if !strings.Contains(view, present) {
 			t.Fatalf("missing read failure feedback %q\n%s", present, view)
 		}

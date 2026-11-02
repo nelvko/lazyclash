@@ -412,7 +412,7 @@ func TestOverviewLayoutPreservesDetailsAndActionTargets(t *testing.T) {
 					if hit.ID == id {
 						found = true
 						visible := ansi.Strip(ansi.Cut(rows[hit.Y], hit.X, hit.X+hit.W))
-						if !strings.Contains(visible, label) || !strings.Contains(visible, "[") {
+						if strings.TrimSpace(strings.TrimPrefix(visible, "› ")) != label || hit.W != ansi.StringWidth(label)+4 {
 							t.Errorf("%s target misses its rendered button: %q", id, visible)
 						}
 					}
@@ -470,10 +470,11 @@ func TestDashboardMouseCoordinatesFollowScrolling(t *testing.T) {
 		t.Fatal("short viewport should require scrolling")
 	}
 	lines := strings.Split(value, "\n")
+	labels := map[string]string{"core.install": "Install core", "card.import": "Import config", "card.install": "Manage core"}
 	for _, r := range regions {
-		if r.ID == "core.install" || r.ID == "card.import" || r.ID == "card.install" {
+		if label, ok := labels[r.ID]; ok {
 			cells := ansi.Strip(ansi.Cut(lines[r.Y], r.X, r.X+r.W))
-			if !strings.Contains(cells, "[") {
+			if strings.TrimSpace(strings.TrimPrefix(cells, "› ")) != label || r.W != ansi.StringWidth(label)+4 {
 				t.Fatalf("target does not cover actual button: %+v %q", r, cells)
 			}
 		}

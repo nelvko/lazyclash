@@ -41,6 +41,7 @@ type dashboardOptions struct {
 	LogoFrame                       int
 	LogoIntroFrame                  int
 	Busy                            bool
+	PlainButtons                    bool
 	StateUnavailable                bool
 	Header                          pageHeader
 	Runtime                         app.RuntimeSnapshot
@@ -316,29 +317,7 @@ func sidebarTraffic(o dashboardOptions, width int) []string {
 }
 
 func dashboardButton(id, label string, o dashboardOptions, primary bool) string {
-	surface := panel
-	if id == "menu" {
-		surface = bg
-	}
-	foreground, background := text, surface
-	if primary {
-		foreground, background = primaryButtonForeground, primaryButtonBackground
-	}
-	value := "[ " + label + " ]"
-	if o.Hover == id && o.Focus != id {
-		if !primary {
-			foreground, background = text, hoverBackground
-		}
-		value = lipgloss.NewStyle().Underline(true).Render(value)
-	}
-	if o.Focus == id {
-		value = "›" + value
-		value = lipgloss.NewStyle().Underline(true).Bold(true).Render(value)
-		if !primary {
-			foreground, background = focus, surface
-		}
-	}
-	return themed(value, foreground, background, o.Dim)
+	return renderButton(label, dashboardButtonOptions(id, o, primary, bg))
 }
 
 type dashboardBlock struct {
@@ -485,9 +464,13 @@ func overviewContent(o dashboardOptions, width int) (string, []hitRegion) {
 			index := i + column
 			actionID, label := overviewAction(o, index)
 			if actionID != "" {
-				value := cellCrop(dashboardButton(actionID, label, o, false), max(1, cardWidth-4))
+				options := dashboardButtonOptions(actionID, o, false, panel)
+				options.Disabled = o.Busy
+				value := cellCrop(renderButton(label, options), max(1, cardWidth-4))
 				content[index] = append(content[index], "", value)
-				actions = append(actions, hitRegion{ID: actionID, X: 2 + column*(cardWidth+2), W: max(1, ansi.StringWidth(value)), H: 1})
+				if !o.Busy {
+					actions = append(actions, hitRegion{ID: actionID, X: 2 + column*(cardWidth+2), W: max(1, ansi.StringWidth(value)), H: 1})
+				}
 			}
 		}
 		height := len(content[i]) + 2
@@ -680,7 +663,7 @@ func getStarted(o dashboardOptions, width int) dashboardBlock {
 	x := 0
 	buttonLine := ""
 	for _, button := range buttons {
-		label := dashboardButton(button.id, button.label, o, button.primary)
+		label := renderButton(button.label, dashboardButtonOptions(button.id, o, button.primary, panel))
 		label = cellCrop(label, inner)
 		w := ansi.StringWidth(label)
 		if x > 0 && x+2+w > inner {
@@ -856,8 +839,12 @@ func settingsContent(o dashboardOptions, width int) (string, []hitRegion) {
 		if !control.enabled || o.Header.owns(control.id) {
 			continue
 		}
-		value := dashboardButton(control.id, control.label, o, control.id == "install")
-		b.targets = append(b.targets, hitRegion{ID: control.id, X: 2, Y: 1 + len(lines), W: min(inner, ansi.StringWidth(value)), H: 1})
+		options := dashboardButtonOptions(control.id, o, control.id == "install", panel)
+		options.Disabled = o.Busy
+		value := cellCrop(renderButton(control.label, options), inner)
+		if !o.Busy {
+			b.targets = append(b.targets, hitRegion{ID: control.id, X: 2, Y: 1 + len(lines), W: min(inner, ansi.StringWidth(value)), H: 1})
+		}
 		lines = append(lines, value, "")
 	}
 	if o.Snapshot.Installed {

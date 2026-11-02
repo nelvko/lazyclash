@@ -35,6 +35,7 @@ def paste(terminal, value):
 
 def mouse_text(terminal, label, button=0, occurrence=0):
     terminal.wait(label)
+    terminal.settle()
     matches = []
     for y, line in enumerate(terminal.screen.text().splitlines()):
         start = 0
@@ -48,7 +49,7 @@ def mouse_text(terminal, label, button=0, occurrence=0):
 
 
 def header_row(terminal, label):
-    needle = label if label.startswith("[") else "[ " + label + " ]"
+    needle = "[" + label.strip("[] ") + "]"
     terminal.wait(needle)
     rows = [i for i, line in enumerate(terminal.screen.text().splitlines()) if needle in line]
     assert len(rows) == 1 and rows[0] < 3, "page action was duplicated or left in the scrolling body: " + label + "\n" + terminal.screen.text()
@@ -121,6 +122,7 @@ def main():
             terminal.resize(160, 40)
             terminal.key(b"3")
             terminal.wait("Configurations")
+            terminal.wait("↑↓←→ Select")  # Initial version checks may still own the global busy state.
             header_row(terminal, "Update all")
             assert "Sources (" not in terminal.screen.text(), "source management remained in the Profiles header"
             terminal.key(b"a")
@@ -185,7 +187,7 @@ def main():
 
             payload[0] = b"rules: ['MATCH,REJECT']\n"
             provider_name[0] = "pty-updated"
-            terminal.click_text("[ Update ]")
+            terminal.click_text("[Update]")
             wait_until(terminal, lambda: revision() == hashlib.sha256(payload[0]).hexdigest(), "detail Update did not persist a profile revision")
             terminal.wait_absent("Updating profile")
             assert not (home / "installation").exists(), "Update applied a runtime configuration"
@@ -203,7 +205,7 @@ def main():
             assert profile_id("My Airport") == primary_id[0]
             assert library()["profiles"][primary_id[0]]["name_source"] == "custom"
             provider_name[0] = "provider-renamed-again"
-            terminal.click_text("[ Edit URL ]")
+            terminal.click_text("[Edit URL]")
             terminal.wait("New subscription URL or local YAML path")
             replacement_address = "http://127.0.0.1:%d/replacement" % server.server_port
             paste(terminal, replacement_address)
@@ -231,7 +233,7 @@ def main():
             terminal.key(b"\x1b")
             terminal.wait("Update all")
             payload[0] = b"rules: ['DOMAIN,example.invalid,REJECT', 'MATCH,DIRECT']\n"
-            terminal.click_text("[ Update all ]")
+            terminal.click_text("[Update all]")
             wait_until(terminal, lambda: revision() == hashlib.sha256(payload[0]).hexdigest(), "Update all did not persist a profile revision")
             terminal.wait_absent("Updating profiles")
 
@@ -241,7 +243,7 @@ def main():
             local = local_dir / "pty-local"
             local.write_text("rules: ['MATCH,DIRECT']\n")
             (local_dir / "pty-other.yaml").write_text("rules: ['MATCH,DIRECT']\n")
-            terminal.click_text("[ New profile ]")
+            terminal.click_text("[New profile]")
             terminal.wait("Display name (optional)")
             terminal.wait("Description (optional)")
             terminal.wait("URL or absolute local path")
@@ -270,7 +272,7 @@ def main():
             assert profile_id("pty-local") is None, "Tab created the selected file profile before Enter"
             terminal.wait("› pty-local")
             terminal.key(b"\t")
-            terminal.wait("›[ Create ]")
+            terminal.wait("› [Create]")
             terminal.key(b"\r")
             wait_until(terminal, lambda: profile_id("pty-local") is not None, "new local profile was not persisted")
             terminal.wait_absent("Creating profile")
@@ -301,7 +303,7 @@ def main():
             remote_name = "PTY named remote"
             remote_description = "Remote metadata from New profile"
             remote_address = "http://127.0.0.1:%d/new-profile" % server.server_port
-            terminal.click_text("[ New profile ]")
+            terminal.click_text("[New profile]")
             terminal.wait("Display name (optional)")
             paste(terminal, remote_name)
             terminal.key(b"\t")
@@ -310,11 +312,11 @@ def main():
             paste(terminal, remote_address)
             terminal.wait("Source type: Remote URL")
             terminal.key(b"\t")  # no path matches: source -> Create
-            terminal.wait("›[ Create ]")
+            terminal.wait("› [Create]")
             terminal.key(b"\t")
-            terminal.wait("›[ Cancel ]")
+            terminal.wait("› [Cancel]")
             terminal.key(b"\x1b[Z")  # Cancel -> Create
-            terminal.wait("›[ Create ]")
+            terminal.wait("› [Create]")
             before = len(requests)
             terminal.key(b"\r")
             wait_until(terminal, remote_started.is_set, "New profile did not start its remote download")
@@ -346,7 +348,7 @@ def main():
             terminal.key(b"\x1b[F")
             assert header_row(terminal, "Update all") == update_row
             payload[0] = b"rules: ['DOMAIN,header.invalid,DIRECT', 'MATCH,REJECT']\n"
-            terminal.click_text("[ Update all ]")
+            terminal.click_text("[Update all]")
             wait_until(terminal, lambda: revision() == hashlib.sha256(payload[0]).hexdigest(), "fixed header Update all did not refresh while scrolled")
             terminal.wait_absent("Updating profiles")
             assert not (home / "installation").exists(), "fixed header update applied runtime state"
@@ -357,7 +359,7 @@ def main():
             terminal.wait("3 saved")
             (output / "profiles-header.txt").write_text(terminal.screen.text())
 
-            for key, action in [(b"2", "[ Refresh ]"), (b"4", "[ Refresh ]"), (b"5", "[ Refresh ]"), (b"6", "[ Reconnect ]"), (b"7", "[ Download method ]")]:
+            for key, action in [(b"2", "[Refresh]"), (b"4", "[Refresh]"), (b"5", "[Refresh]"), (b"6", "[Reconnect]"), (b"7", "[Download method]")]:
                 terminal.key(key)
                 header_row(terminal, action)
             terminal.key(b"1")
@@ -373,7 +375,7 @@ def main():
             assert duplicate_id != primary_id[0], "duplicate import reused the existing profile ID"
             for _ in range(2):
                 before = len(requests)
-                terminal.click_text("[ Update all ]")
+                terminal.click_text("[Update all]")
                 wait_until(terminal, lambda: len(requests) >= before + 3, "Update all did not refresh all three remote profiles")
                 terminal.wait_absent("Updating profiles")
                 assert profile_id("My Airport (1)") == duplicate_id, "repeated updates accumulated a duplicate suffix or changed the ID"
@@ -400,6 +402,7 @@ def main():
             terminal.wait(remote_name)
             terminal.wait("pty-snapshot")
             terminal.wait("5 saved")
+            terminal.wait("↑↓←→ Select")
             assert profile_id(remote_name) == remote_id and profile_id("pty-local") == local_id
             reopened_remote = library()["profiles"][remote_id]
             assert reopened_remote["name_source"] == "custom" and reopened_remote["name_base"] == remote_name
@@ -417,12 +420,39 @@ def main():
             assert not (home / "installation").exists(), "disabled menu Update applied runtime state"
             terminal.key(b"\x1b")
             terminal.wait_absent("View details")
+            mouse_text(terminal, "pty-snapshot", button=2)
+            mouse_text(terminal, "Delete…")
+            terminal.wait("Delete recipe")
+            terminal.wait("› [Cancel]")
+            terminal.key(b"\r")
+            terminal.wait_absent("Delete recipe")
+            assert profile_id("pty-snapshot") == snapshot_id, "default Enter deleted a profile instead of canceling"
+
+            mouse_text(terminal, "pty-snapshot", button=2)
+            mouse_text(terminal, "Delete…")
+            terminal.wait("› [Cancel]")
+            terminal.key(b"\x1b[Z")  # Cancel -> name input
+            paste(terminal, "wrong-name")
+            terminal.key(b"\r")  # Input Enter only focuses confirmation.
+            terminal.wait("› [Delete]")
+            assert profile_id("pty-snapshot") == snapshot_id, "input Enter bypassed explicit deletion confirmation"
+            terminal.key(b"\r")
+            terminal.wait("Enter the exact name")
+            assert profile_id("pty-snapshot") == snapshot_id, "delete confirmation accepted a mismatched name"
+            terminal.key(b"\x01\x0b")
+            paste(terminal, "pty-snapshot")
+            terminal.click_text("[Delete]")
+            wait_until(terminal, lambda: profile_id("pty-snapshot") is None, "confirmed deletion did not remove the selected profile")
+            terminal.wait_absent("Deleting profile")
+            assert len(requests) == before, "deletion requested a subscription download"
+            (output / "profiles-delete-confirmed.txt").write_text(terminal.screen.text())
             terminal.exit()
             result = {
                 "passed": True,
                 "scenarios": ["visible URL bracketed paste", "automatic Add without naming modal or Apply", "two-column arrows", "Enter opens details only", "provider name update retains ID", "custom Rename survives provider updates", "Edit URL retains custom name and ID", "detail configuration Update", "Update all", "New profile local file with optional metadata omitted", "live directory and file matches", "arrow selection and Tab completion without creating", "Unicode and spaced directories with an extensionless configuration", "New profile remote URL with custom name and description", "Tab and Shift+Tab reach Create and Cancel", "busy form ignores editing and duplicate submission", "one download per new remote profile", "retained local source refresh", "CLI one-time copy import", "60x20 resize and Escape", "fixed header while scrolled", "header mouse update without Apply", "20x12 compact header", "page-specific controls", "duplicate imports retain distinct IDs", "repeated updates preserve duplicate suffix", "exit and reopen metadata and source persistence"],
                 "menu_scenarios": ["right-click card without Apply", "right-click update icon opens containing card menu", "left-click menu button", "menu owns q, page digits and pasted text", "outside click closes without reaching the underlying card", "keyboard m and Escape focus restoration", "menu Rename uses the existing custom-name flow", "menu edge avoidance through resize", "retained local file Update rereads the source without HTTP", "copy-import Update is disabled without a download request"],
                 "menu_dimensions": [[160, 40], [60, 20], [40, 16], [20, 12]],
+                "delete_scenarios": ["default Enter cancels", "input Enter only focuses confirmation", "mismatched name is rejected", "explicit mouse confirmation deletes once"],
                 "http_requests": len(requests),
                 "limitations": "No installed core; actual Apply/systemd integration is covered separately, not by this UI smoke test.",
             }

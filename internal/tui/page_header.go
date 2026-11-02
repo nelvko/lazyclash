@@ -25,16 +25,30 @@ func (h pageHeader) owns(id string) bool {
 	return false
 }
 
+func (h pageHeader) enabled(id string) bool {
+	for _, action := range h.actions {
+		if action.id == id {
+			return action.enabled
+		}
+	}
+	return false
+}
+
+func (m Model) hasRefreshableProfiles() bool {
+	for _, profile := range m.snapshot.ProfileDetails {
+		if profile.Refreshable {
+			return true
+		}
+	}
+	return false
+}
+
 func (m Model) pageHeader() pageHeader {
 	tr := m.tr
 	h := pageHeader{}
 	switch m.page {
 	case "profiles":
-		canUpdate := false
-		for _, profile := range m.snapshot.ProfileDetails {
-			canUpdate = canUpdate || profile.Refreshable
-		}
-		h.actions = []headerAction{{"profiles.update-all", tr("header.updateAll"), "↻", canUpdate}}
+		h.actions = []headerAction{{"profiles.update-all", tr("header.updateAll"), "↻", m.hasRefreshableProfiles()}}
 	case "proxies":
 		if m.snapshot.Installed && m.snapshot.Service.Active && m.snapshot.ServiceError == "" && m.snapshot.APIError == "" {
 			h.summary = tr("header.groups", len(m.snapshot.Groups))
@@ -94,10 +108,9 @@ func renderPageHeader(o dashboardOptions, g dashboardLayout, titleX, titleWidth 
 			if squeeze && ansi.StringWidth(label) > 1 {
 				label = string([]rune(label)[0])
 			}
-			value := dashboardButton(action.id, label, o, false)
-			if !action.enabled || o.Busy {
-				value = themed("[ "+label+" ]", disabled, bg, o.Dim)
-			}
+			options := dashboardButtonOptions(action.id, o, false, bg)
+			options.Disabled = !action.enabled || o.Busy
+			value := renderButton(label, options)
 			values = append(values, value)
 			total += ansi.StringWidth(value)
 		}

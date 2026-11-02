@@ -176,6 +176,20 @@ func TestRuntimePortsCancellationWaitsForApplicationAndRejectsLateMessages(t *te
 	_ = cmd
 }
 
+func TestRuntimePortsCancellingDisablesRepeatedCancelAction(t *testing.T) {
+	m := portsModel(t, &fakeBackend{snapshot: app.Snapshot{Installed: true}})
+	m.ports.step, m.ports.cancelling, m.busy = "applying", true, true
+	cancelCalls := 0
+	m.cancel = func() { cancelCalls++ }
+	m.layout()
+	if hasAction(m.targets, "ports.cancel") || len(m.ports.controls) != 0 {
+		t.Fatal("cancellation cleanup retained an executable or tabbable Cancel button")
+	}
+	if m.portsActivate("ports.cancel") != nil || cancelCalls != 0 {
+		t.Fatal("cancellation cleanup accepted a duplicate Cancel action")
+	}
+}
+
 func TestRuntimePortsModalStopsBackgroundAndDoesNotClickThrough(t *testing.T) {
 	m := ready(&fakeBackend{snapshot: app.Snapshot{Installed: true}})
 	m.width, m.height, m.page, m.focus = 120, 32, "settings", "runtime-settings"

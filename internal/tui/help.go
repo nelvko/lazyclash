@@ -95,9 +95,11 @@ func (m *Model) renderHelp(base string) (string, []hitRegion) {
 	tr := m.tr
 	w, h := min(82, m.width), min(28, m.height)
 	x, y := (m.width-w)/2, (m.height-h)/2
-	closeColor := focus
-	if m.keyHints.helpFocus == "key-hints.toggle" {
-		closeColor = muted
+	button := func(id, label string, width int) string {
+		label = strings.Trim(label, "[] ")
+		return cellCrop(renderButton(cellCrop(label, max(1, width-4)), buttonOptions{
+			Kind: buttonText, Surface: raised, Focused: m.keyHints.helpFocus == id || id == "help.close" && m.keyHints.helpFocus == "", Hovered: m.hover == id, Plain: m.buttonPlain(),
+		}), width)
 	}
 	if w < 26 || h < 8 {
 		rows := make([]string, max(1, m.height))
@@ -108,19 +110,15 @@ func (m *Model) renderHelp(base string) (string, []hitRegion) {
 			return "", nil
 		}
 		putRows(rows, 0, 0, themed(cellCrop(tr("help.small"), m.width), text, raised, false), m.width)
-		label := cellCrop(tr("help.close"), m.width)
+		label := button("help.close", tr("help.close"), m.width)
 		if ansi.StringWidth(label) == 0 {
 			label = "×"
 		}
-		putRows(rows, 0, m.height-1, themed(label, closeColor, raised, false), m.width)
+		putRows(rows, 0, m.height-1, label, m.width)
 		hits := []hitRegion{{ID: "help.close", X: 0, Y: m.height - 1, W: max(1, ansi.StringWidth(label)), H: 1}}
 		if m.height >= 3 {
-			label = cellCrop(m.keyHintsLabel(), m.width)
-			color := muted
-			if m.keyHints.helpFocus == "key-hints.toggle" {
-				color = focus
-			}
-			putRows(rows, 0, m.height-2, themed(label, color, raised, false), m.width)
+			label = button("key-hints.toggle", m.keyHintsLabel(), m.width)
+			putRows(rows, 0, m.height-2, label, m.width)
 			hits = append(hits, hitRegion{ID: "key-hints.toggle", X: 0, Y: m.height - 2, W: max(1, ansi.StringWidth(label)), H: 1})
 		}
 		return strings.Join(rows, "\n"), hits
@@ -139,17 +137,13 @@ func (m *Model) renderHelp(base string) (string, []hitRegion) {
 		putRows(rows, w-1, i, themed("│", border, raised, false), w)
 	}
 	putRows(rows, 3, 1, themed(tr("help.title", pageTitle(m.page, m.locale)), text, raised, false), w)
-	toggle := cellCrop(m.keyHintsLabel(), inner)
-	toggleColor := muted
-	if m.keyHints.helpFocus == "key-hints.toggle" {
-		toggleColor = focus
-	}
-	putRows(rows, 3, 2, themed(toggle, toggleColor, raised, false), w)
+	toggle := button("key-hints.toggle", m.keyHintsLabel(), inner)
+	putRows(rows, 3, 2, toggle, w)
 	for i := 0; i < visible && i+m.helpScroll < len(lines); i++ {
 		putRows(rows, 3, i+4, themed(cellPad(lines[i+m.helpScroll], inner), text, raised, false), w)
 	}
-	label := tr("help.close")
-	putRows(rows, 3, h-2, themed(label, closeColor, raised, false), w)
+	label := button("help.close", tr("help.close"), inner)
+	putRows(rows, 3, h-2, label, w)
 	footerX := 3 + ansi.StringWidth(label) + 3
 	if footerX < w-3 {
 		putRows(rows, footerX, h-2, helpText(cellCrop(tr("help.footer"), w-footerX-3), raised, false), w)

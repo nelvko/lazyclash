@@ -25,6 +25,7 @@ type profilesState struct {
 	detail        string
 	importing     bool
 	menuProfile   string
+	deleteFocus   string
 }
 
 func newProfilesState(locales ...i18n.Localizer) profilesState {
@@ -219,6 +220,9 @@ func (m *Model) profileAction(id string) (bool, tea.Cmd) {
 		m.failure = ""
 		return true, cmd
 	case "profiles.update-all":
+		if !m.hasRefreshableProfiles() {
+			return true, nil
+		}
 		return true, m.begin(m.tr("profiles.updating_all"), m.tr("profiles.updated_all"), m.backend.RefreshAllProfiles,
 			notificationOperation{Key: "profile.refresh-all", Context: m.tr("profiles.updating_all")})
 	case "profiles.close":
@@ -299,11 +303,16 @@ func (m *Model) openProfileEdit(form, name string) tea.Cmd {
 		m.input.Placeholder = m.tr("profiles.overrides_path")
 	}
 	m.input.Focus()
+	if form == "profile-delete" {
+		m.profileDeleteSetFocus("profile-delete.cancel")
+		return nil
+	}
 	return textinput.Blink
 }
 
 func (m *Model) closeProfileForm() {
 	m.form, m.name, m.rememberSource = "", "", false
+	m.profilesUI.deleteFocus = ""
 	m.input.Reset()
 	m.input.Blur()
 }
@@ -311,6 +320,36 @@ func (m *Model) closeProfileForm() {
 func (m *Model) profileFormKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 	if !m.profileEditForm() {
 		return false, nil
+	}
+	if m.form == "profile-delete" {
+		switch k.String() {
+		case "tab", "shift+tab":
+			controls := []string{"import-input", "profile-delete.cancel", "profile-delete.confirm"}
+			for i, id := range controls {
+				if id == m.profilesUI.deleteFocus {
+					delta := 1
+					if k.String() == "shift+tab" {
+						delta = -1
+					}
+					return true, m.profileDeleteSetFocus(controls[(i+delta+len(controls))%len(controls)])
+				}
+			}
+			return true, m.profileDeleteSetFocus("profile-delete.cancel")
+		case "enter":
+			switch m.profilesUI.deleteFocus {
+			case "profile-delete.cancel":
+				m.closeProfileForm()
+				return true, nil
+			case "import-input":
+				return true, m.profileDeleteSetFocus("profile-delete.confirm")
+			}
+		case "esc":
+			// Keep the existing cancellation notification below.
+		default:
+			if m.profilesUI.deleteFocus != "import-input" {
+				return true, nil
+			}
+		}
 	}
 	switch k.String() {
 	case "esc":
@@ -325,6 +364,9 @@ func (m *Model) profileFormKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 		value := strings.TrimSpace(m.input.Value())
 		if value == "" && m.form != "profile-description" {
 			m.failure = m.tr("profiles.value_required")
+			if m.form == "profile-delete" {
+				m.profileDeleteSetFocus("import-input")
+			}
 			return true, nil
 		}
 		form, name := m.form, m.name
@@ -348,6 +390,7 @@ func (m *Model) profileFormKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 		}
 		if form == "profile-delete" && value != expected {
 			m.failure = m.tr("profiles.delete_placeholder")
+			m.profileDeleteSetFocus("import-input")
 			return true, nil
 		}
 		m.closeProfileForm()
@@ -384,6 +427,30 @@ func (m *Model) profileFormKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 	return true, cmd
 }
 
+func (m *Model) profileDeleteSetFocus(id string) tea.Cmd {
+	m.profilesUI.deleteFocus = id
+	if id == "import-input" {
+		return m.input.Focus()
+	}
+	m.input.Blur()
+	return nil
+}
+
+func (m *Model) profileDeleteMouse(id string) tea.Cmd {
+	if m.form != "profile-delete" || m.busy || m.quitting {
+		return nil
+	}
+	switch id {
+	case "import-input":
+		return m.profileDeleteSetFocus(id)
+	case "profile-delete.cancel", "profile-delete.confirm":
+		m.profileDeleteSetFocus(id)
+		_, cmd := m.profileFormKey(tea.KeyPressMsg{Code: tea.KeyEnter})
+		return cmd
+	}
+	return nil
+}
+
 func readProfileOverrides(path string) ([]byte, error) {
 	if !filepath.IsAbs(path) {
 		return nil, diagnostic.New("diagnostic.overrides_absolute", "overrides input must be an absolute file path")
@@ -401,6 +468,9 @@ func readProfileOverrides(path string) ([]byte, error) {
 func (m *Model) renderProfileForm(base string) (string, []hitRegion) {
 	if m.form == "profile-create" {
 		return m.renderProfileCreateForm(base)
+	}
+	if m.form == "profile-delete" {
+		return m.renderProfileDeleteForm(base)
 	}
 	boxW, boxH := min(76, m.width), min(12, m.height)
 	if m.pathForm() {
@@ -463,4 +533,74 @@ func (m *Model) renderProfileForm(base string) (string, []hitRegion) {
 	}
 	box := lipgloss.NewStyle().Background(lipgloss.Color(raised)).Border(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color(focus)).Width(boxW).Height(boxH).Padding(0, 1).Render(strings.Join(lines, "\n"))
 	return overlay(base, themed(box, text, raised, false), x, y, m.width, m.height), []hitRegion{{ID: "import-input", X: x + 2, Y: y + inputRow, W: max(1, boxW-4), H: 1}}
+}
+
+func (m *Model) renderProfileDeleteForm(base string) (string, []hitRegion) {
+	width, height := min(76, m.width), min(14, m.height)
+	if width < 24 || height < 7 {
+		return overlay("", m.tr("profiles.enlarge"), 0, 0, m.width, m.height), nil
+	}
+	x, y := (m.width-width)/2, (m.height-height)/2
+	inner := width - 4
+	rows := make([]string, height)
+	for i := range rows {
+		rows[i] = themed(strings.Repeat(" ", width), text, raised, false)
+	}
+	put := func(row int, value string) { putRows(rows, 2, row, cellPad(value, inner), width) }
+	for row := range rows {
+		putRows(rows, 0, row, themed("│", border, raised, false), width)
+		putRows(rows, width-1, row, themed("│", border, raised, false), width)
+	}
+	putRows(rows, 0, 0, themed("┌"+strings.Repeat("─", width-2)+"┐", border, raised, false), width)
+	putRows(rows, 0, height-1, themed("└"+strings.Repeat("─", width-2)+"┘", border, raised, false), width)
+	put(1, themed(m.tr("profiles.delete_title", clean(m.profileInfo(m.name).Name)), text, raised, false))
+	inputRow := 2
+	if height >= 10 {
+		put(2, themed(m.tr("profiles.delete_hint"), muted, raised, false))
+		put(3, themed(m.tr("profiles.delete_label"), muted, raised, false))
+		inputRow = 4
+	}
+	m.input.SetWidth(max(1, inner-2-ansi.StringWidth(m.input.Prompt)))
+	m.input.SetCursor(m.input.Position())
+	styleInput(&m.input, inputBackground, m.failure != "")
+	put(inputRow, themed(cellPad(m.input.View(), inner), text, inputBackground, false))
+	buttons := []struct {
+		id, label string
+		kind      buttonKind
+	}{
+		{"profile-delete.cancel", m.tr("profiles.create_cancel"), buttonSecondary},
+		{"profile-delete.confirm", m.tr("profiles.delete"), buttonDangerConfirm},
+	}
+	buttonRow := height - 4
+	var targets []hitRegion
+	targets = append(targets, hitRegion{ID: "import-input", X: x + 2, Y: y + inputRow, W: inner, H: 1})
+	line, bx := "", 0
+	for _, button := range buttons {
+		value := renderButton(button.label, buttonOptions{Kind: button.kind, Surface: raised,
+			Focused: m.profilesUI.deleteFocus == button.id, Hovered: m.hover == button.id,
+			Disabled: m.busy || m.quitting, Plain: m.buttonPlain()})
+		w := min(inner, ansi.StringWidth(value))
+		if bx > 0 && bx+2+w > inner {
+			put(buttonRow, line)
+			buttonRow++
+			line, bx = "", 0
+		}
+		if bx > 0 {
+			line += themed("  ", text, raised, false)
+			bx += 2
+		}
+		targets = append(targets, hitRegion{ID: button.id, X: x + 2 + bx, Y: y + buttonRow, W: w, H: 1})
+		line += cellCrop(value, inner)
+		bx += w
+	}
+	put(buttonRow, line)
+	message, color := m.tr("profiles.create_footer"), muted
+	if m.failure != "" {
+		message, color = m.failure, errorColor
+	}
+	put(height-2, themed(cellCrop(message, inner), color, raised, false))
+	if m.busy || m.quitting {
+		targets = nil
+	}
+	return overlay(base, strings.Join(rows, "\n"), x, y, m.width, m.height), targets
 }

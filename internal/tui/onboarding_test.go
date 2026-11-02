@@ -83,6 +83,19 @@ func TestOnboardingInitialMessagesFocusInstallWithoutStartingWork(t *testing.T) 
 					}
 					assertCanvas(t, m.screen, size[0], size[1])
 					assertRegions(t, m.targets, size[0], size[1])
+					if hasAction(m.targets, "setup.install") {
+						t.Fatal("pending version check retained a clickable Install button")
+					}
+					findTarget(t, m, "setup.later")
+					beforeID := m.id
+					m, _ = update(m, special(tea.KeyEnter))
+					if m.wizard.open || m.wizard.step != stepVersion || !m.busy || m.id != beforeID || calls != 0 {
+						t.Fatalf("pending version check accepted a duplicate install: step=%s busy=%v calls=%d", m.wizard.step, m.busy, calls)
+					}
+					m, _ = update(m, inlineOperationMsg(t, check))
+					if m.busy || m.wizard.updateCheck.LatestVersion != "v1.19.33" || calls != 0 {
+						t.Fatal("checking the recommended version resolved, installed or started a core")
+					}
 					for _, id := range []string{"setup.install", "setup.later"} {
 						hit := findTarget(t, m, id)
 						painted := ansi.Strip(ansi.Cut(strings.Split(m.screen, "\n")[hit.Y], hit.X, hit.X+hit.W))
@@ -93,15 +106,6 @@ func TestOnboardingInitialMessagesFocusInstallWithoutStartingWork(t *testing.T) 
 						if !strings.Contains(painted, label) {
 							t.Fatalf("%s target misses translated label %q: %q", id, label, painted)
 						}
-					}
-					beforeID := m.id
-					m, _ = update(m, special(tea.KeyEnter))
-					if m.wizard.open || m.wizard.step != stepVersion || !m.busy || m.id != beforeID || calls != 0 {
-						t.Fatalf("pending version check accepted a duplicate install: step=%s busy=%v calls=%d", m.wizard.step, m.busy, calls)
-					}
-					m, _ = update(m, inlineOperationMsg(t, check))
-					if m.busy || m.wizard.updateCheck.LatestVersion != "v1.19.33" || calls != 0 {
-						t.Fatal("checking the recommended version resolved, installed or started a core")
 					}
 				})
 			}

@@ -63,10 +63,10 @@ func TestPageHeadersUsePageActionsAcrossSizesAndFocus(t *testing.T) {
 							t.Fatalf("%s overlaps the divider or body: %+v", id, target)
 						}
 						painted := ansi.Strip(ansi.Cut(lines[target.Y], target.X, target.X+target.W))
-						if !strings.Contains(painted, "[") || !strings.HasSuffix(painted, "]") {
+						if strings.TrimSpace(strings.TrimPrefix(painted, "›")) == "" {
 							t.Fatalf("header button was clipped: %s=%q", id, painted)
 						}
-						if id == focused && !strings.HasPrefix(painted, "›[ ") {
+						if id == focused && !strings.HasPrefix(painted, "› ") {
 							t.Fatalf("header focus marker was clipped: %s=%q", id, painted)
 						}
 						count := 0
@@ -172,6 +172,37 @@ func TestProfilesHeaderUpdateIsDisabledWithoutRefreshableProfiles(t *testing.T) 
 		if hit.ID == "profiles.update-all" {
 			t.Fatal("Update all remained actionable without a refreshable profile")
 		}
+	}
+}
+
+func TestProfilesHeaderLosingLastSubscriptionRepairsFocusAndBlocksUpdate(t *testing.T) {
+	for _, size := range [][2]int{{60, 20}, {120, 32}, {216, 55}} {
+		t.Run(fmt.Sprintf("%dx%d", size[0], size[1]), func(t *testing.T) {
+			m := headerModel("profiles", size[0], size[1])
+			calls := 0
+			m.backend = &fakeBackend{snapshot: m.snapshot, refreshAllProfiles: func(context.Context) error {
+				calls++
+				return nil
+			}}
+			m.focus = "profiles.update-all"
+			m.layout()
+			findTarget(t, m, m.focus)
+			next := m.snapshot
+			next.Profiles = nil
+			next.ProfileDetails = profileFixtures("default")
+			beforeID := m.id
+			m, _ = update(m, coreStatusMsg{generation: m.statusGeneration, snapshot: next})
+			if m.focus == "profiles.update-all" || hasAction(m.targets, "profiles.update-all") {
+				t.Fatal("disabled Update all retained focus or a mouse target after the last subscription disappeared")
+			}
+			m, _ = update(m, special(tea.KeyEnter))
+			if m.busy || m.id != beforeID || calls != 0 {
+				t.Fatal("Enter started an operation through the disabled header action")
+			}
+			if handled, cmd := m.profileAction("profiles.update-all"); !handled || cmd != nil || m.busy || m.id != beforeID {
+				t.Fatal("a stale Update all action bypassed the current snapshot availability check")
+			}
+		})
 	}
 }
 

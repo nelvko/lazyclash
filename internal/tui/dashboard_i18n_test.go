@@ -67,7 +67,7 @@ func TestLanguageControlsUseNativeNamesAndDisplayCellHits(t *testing.T) {
 					if !strings.Contains(painted, name) || ansi.StringWidth(painted) != hit.W {
 						t.Fatalf("%s/%d: language target misses label: %s=%q", language, width, id, painted)
 					}
-					if strings.Contains(painted, "•") != (id == "language."+language) {
+					if strings.Contains(painted, "✓") != (id == "language."+language) {
 						t.Fatalf("%s: selected language marker follows text instead of language ID", language)
 					}
 					found = true
@@ -96,7 +96,8 @@ func TestLocalizedHelpCloseHitMatchesPaintedButton(t *testing.T) {
 			}
 			hit := hits[0]
 			painted := ansi.Strip(ansi.Cut(strings.Split(screen, "\n")[hit.Y], hit.X, hit.X+hit.W))
-			if painted != m.tr("help.close") || hit.W != ansi.StringWidth(painted) {
+			label := strings.Trim(m.tr("help.close"), "[] ")
+			if strings.Trim(painted, "› ") != label || hit.W != ansi.StringWidth(label)+4 || !strings.HasPrefix(painted, "›  ") || !strings.HasSuffix(painted, " ") {
 				t.Fatalf("%s: close hit includes adjacent hint or misses translated label: %q", language, painted)
 			}
 			m.targets = hits
@@ -128,13 +129,13 @@ func TestLocalizedCoreControlsPreserveStateAndSelection(t *testing.T) {
 	o := dashboardOptions{Locale: i18n.New("zh-Hans"), Snapshot: app.Snapshot{Installed: true, Service: service.Status{Active: true, State: "active"}}}
 	block := overviewControlCard(o, 0, 56)
 	plain := ansi.Strip(strings.Join(block.lines, "\n"))
-	if !hasAction(block.targets, "core.stop") || !strings.Contains(plain, "已开启 •") {
-		t.Fatal("translated core state lost the selected stop action")
+	if !hasAction(block.targets, "core.stop") || !strings.Contains(plain, "运行中") || !strings.Contains(plain, "停止内核") || strings.Contains(plain, "已开启") {
+		t.Fatal("running state and explicit stop action are not separate")
 	}
 	o.Snapshot.Service.State = "unknown"
 	block = overviewControlCard(o, 0, 56)
 	plain = ansi.Strip(strings.Join(block.lines, "\n"))
-	if strings.Contains(plain, "已开启 •") || !strings.Contains(plain, "停止内核") {
+	if strings.Contains(plain, "已开启") || !strings.Contains(plain, "停止内核") {
 		t.Fatal("unknown service state used the translated label to infer selection")
 	}
 }

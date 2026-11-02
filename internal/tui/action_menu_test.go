@@ -193,3 +193,27 @@ func TestActionMenuItemUpdatesPreserveSelectionAndSkipNewlyDisabledActions(t *te
 		t.Fatal("empty updated menu did not close")
 	}
 }
+
+func TestActionMenuDestructiveSelectionKeepsAnIndependentFocusMarker(t *testing.T) {
+	var menu actionMenu
+	menu.show(testMenuItems(), 5, 4)
+	menu.render("", 80, 24)
+	before := menu.bounds
+	menu.key(special(tea.KeyEnd))
+	view := menu.render("", 80, 24)
+	if menu.bounds != before || menu.items[menu.selected].ID != "delete" {
+		t.Fatal("moving focus to Delete changed the menu geometry or selection")
+	}
+	if !strings.Contains(view, themed("› ", focus, selectionBackground, false)) {
+		t.Fatal("the destructive label color replaced the focus marker color")
+	}
+	label := cellPad("Delete", menu.bounds.W-4)
+	if !strings.Contains(view, themed(label, errorColor, selectionBackground, false)) {
+		t.Fatal("Delete lost its destructive text color when focused")
+	}
+	click := menuMouse(menu, 3, tea.MouseLeft)
+	click.X = menu.bounds.X + menu.bounds.W - 2
+	if result := menu.mouse(click); result.Action != "delete" || !result.Closed {
+		t.Fatal("the last painted menu-item cell did not activate Delete", result)
+	}
+}

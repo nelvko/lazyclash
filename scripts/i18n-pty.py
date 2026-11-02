@@ -52,13 +52,25 @@ def settle(terminal):
     while time.monotonic() < deadline:
         before = len(terminal.raw)
         terminal.read(0.1)
-        if len(terminal.raw) == before and not terminal.screen.synchronized:
+        if len(terminal.raw) == before and not terminal.screen.synchronized and terminal.screen.state == "text":
             quiet += 1
             if quiet == 2:
                 return
         else:
             quiet = 0
-    raise AssertionError("Terminal did not finish drawing a frame")
+    raise AssertionError("Terminal did not finish drawing a frame\n" + terminal.screen.text())
+
+
+def cancel_initial_lookup(terminal, title, network_choice):
+    # The first-run version query owns the global busy state and disables the
+    # language actions. Opening download settings explicitly cancels that
+    # read-only query; Esc then discards the unchanged network draft.
+    terminal.wait(title)
+    terminal.key(b"n")
+    terminal.wait(network_choice)
+    terminal.key(b"\x1b")
+    terminal.wait_absent(network_choice)
+    settle(terminal)
 
 
 def run(binary, output):
@@ -69,6 +81,7 @@ def run(binary, output):
         terminal = Terminal(base + ["--lang", "en"])
         try:
             terminal.wait("Overview")
+            cancel_initial_lookup(terminal, "Install the Mihomo core", "Use environment proxy")
             terminal.key(b"7")
             terminal.wait("Language")
             click(terminal, "简体中文")
@@ -91,6 +104,7 @@ def run(binary, output):
         terminal = Terminal(base)
         try:
             terminal.wait("概览")
+            cancel_initial_lookup(terminal, "安装 Mihomo 内核", "使用环境代理")
             terminal.key(b"7")
             terminal.wait("语言")
             terminal.key(b"?")

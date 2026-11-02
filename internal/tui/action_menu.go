@@ -217,7 +217,9 @@ func (m *actionMenu) render(base string, width, height int) string {
 		} else if i == m.selected {
 			prefix, background = "› ", selectionBackground
 		}
-		line := themed(cellPad(prefix+labels[i], menuWidth-2*padding), foreground, background, false)
+		content := cellPad(prefix+labels[i], menuWidth-2*padding)
+		markerWidth := min(2, ansi.StringWidth(content))
+		line := themed(ansi.Cut(content, 0, markerWidth), focus, background, false) + themed(ansi.Cut(content, markerWidth, ansi.StringWidth(content)), foreground, background, false)
 		if m.framed {
 			line = themed("│", border, raised, false) + line + themed("│", border, raised, false)
 		}

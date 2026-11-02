@@ -394,8 +394,12 @@ func TestResponsiveWizardModalAndFullPage(t *testing.T) {
 		t.Run(fmt.Sprint(size), func(t *testing.T) {
 			m := ready(&fakeBackend{})
 			m, _ = update(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
-			m.openManagementWizard(false)
+			check := m.openManagementWizard(false)
 			m.layout()
+			if hasAction(m.targets, "install") {
+				t.Fatal("pending version check retained a clickable Install button")
+			}
+			m, _ = update(m, actionCmd(t, check)())
 			plain := ansi.Strip(m.View().Content)
 			if !strings.Contains(plain, "Install Mihomo") {
 				t.Fatal("wizard title missing")

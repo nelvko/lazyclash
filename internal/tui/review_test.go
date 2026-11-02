@@ -127,6 +127,7 @@ func TestNetworkSaveLocksDraftAgainstKeyboardPasteAndMouse(t *testing.T) {
 	m.wizard.focus = "download-method"
 	m.wizard.reveal = true
 	m.layout()
+	methodTarget := findTarget(t, m, "download-method")
 	before := m.wizard.draft
 	prefix := m.wizard.prefix.Value()
 	ctx := m.newJob("save-network")
@@ -142,7 +143,10 @@ func TestNetworkSaveLocksDraftAgainstKeyboardPasteAndMouse(t *testing.T) {
 	m.wizard.focus = "download-method"
 	m.wizard.reveal = true
 	m.layout()
-	m, _ = click(m, findTarget(t, m, "download-method"))
+	if hasAction(m.targets, "download-method") || hasAction(m.targets, "remember") {
+		t.Fatal("preference save retained a clickable draft choice")
+	}
+	m, _ = click(m, methodTarget)
 	if m.wizard.draft != before || m.wizard.prefix.Value() != prefix || !m.wizard.remember || m.id != id || !m.busy || ctx.Err() != nil {
 		t.Fatal("input modified or canceled an in-flight preference save")
 	}

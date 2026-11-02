@@ -20,6 +20,8 @@ type wizardDocument struct {
 	targets  []hitRegion
 	width    int
 	hover    string
+	plain    bool
+	busy     bool
 	disabled func(string) bool
 }
 
@@ -52,6 +54,23 @@ func (d *wizardDocument) label(s string) {
 	d.line(themed(lipgloss.NewStyle().Bold(true).Render(s), text, raised, false))
 }
 func (d *wizardDocument) control(id, label, focused string) {
+	blocked := d.disabled != nil && d.disabled(id)
+	if id != "download-method" && id != "remember" && id != "reinstall" {
+		kind := buttonSecondary
+		if id == "details" || id == "url-preview" {
+			kind = buttonText
+		}
+		value := renderButton(label, buttonOptions{
+			Kind: kind, Surface: raised, Focused: id == focused, Hovered: id == d.hover,
+			Disabled: blocked && !d.busy, Busy: blocked && d.busy, Plain: d.plain,
+		})
+		y := len(d.lines)
+		d.lines = append(d.lines, cellCrop(value, d.width))
+		if !blocked {
+			d.targets = append(d.targets, hitRegion{ID: id, Y: y, W: min(d.width, ansi.StringWidth(value)), H: 1})
+		}
+		return
+	}
 	prefix := "  "
 	color, background := text, raised
 	if strings.HasPrefix(label, "(*)") || strings.HasPrefix(label, "[x]") {
@@ -67,12 +86,14 @@ func (d *wizardDocument) control(id, label, focused string) {
 		background = hoverBackground
 		value = lipgloss.NewStyle().Underline(true).Render(value)
 	}
-	if d.disabled != nil && d.disabled(id) {
+	if blocked {
 		color, background = disabled, raised
 		value += d.tr("wizard.busy_suffix")
 	}
 	d.line(themed(value, color, background, false))
-	d.targets = append(d.targets, hitRegion{ID: id, Y: y, W: d.width, H: len(d.lines) - y})
+	if !blocked {
+		d.targets = append(d.targets, hitRegion{ID: id, Y: y, W: d.width, H: len(d.lines) - y})
+	}
 }
 func (d *wizardDocument) field(id, label string, input *textinput.Model, focus string) {
 	labelColor := muted
@@ -210,7 +231,7 @@ func (m *Model) wizardControlDisabled(id string) bool {
 }
 func (m *Model) wizardDocument(width int) (wizardDocument, []wizardButton, string) {
 	w := &m.wizard
-	d := wizardDocument{locale: m.locale, width: max(1, width), hover: m.hover, disabled: m.wizardControlDisabled}
+	d := wizardDocument{locale: m.locale, width: max(1, width), hover: m.hover, plain: m.buttonPlain(), busy: m.busy, disabled: m.wizardControlDisabled}
 	title := m.tr("wizard.title")
 	if w.upgrading {
 		title = m.tr("core_update.title")
@@ -561,35 +582,27 @@ func (m *Model) renderWizard(base string) (string, []hitRegion) {
 	line := ""
 	row := 0
 	for _, b := range buttons {
-		label := "  [ " + b.Label + " ]"
-		foreground, background := text, raised
+		kind := buttonSecondary
 		switch b.ID {
-		case "continue", "install", "upgrade", "apply-network", "retry", "check-update":
-			foreground, background = primaryButtonForeground, primaryButtonBackground
+		case "continue", "install", "upgrade", "apply-network", "retry":
+			kind = buttonPrimary
+		case "check-update":
+			kind = buttonPrimary
+			for _, other := range buttons {
+				if other.ID == "upgrade" {
+					kind = buttonSecondary
+				}
+			}
 		case "done":
 			if w.err == "" {
-				foreground, background = primaryButtonForeground, primaryButtonBackground
+				kind = buttonPrimary
 			}
 		}
-		style := lipgloss.NewStyle()
-		if m.hover == b.ID && w.focus != b.ID {
-			if background != primaryButtonBackground {
-				background = hoverBackground
-			}
-			style = style.Underline(true)
-		}
-		if w.focus == b.ID {
-			label = "› [ " + b.Label + " ]"
-			if background != primaryButtonBackground {
-				foreground, background = focus, raised
-			}
-			style = style.Underline(true)
-		}
-		if m.wizardControlDisabled(b.ID) {
-			label += m.tr("wizard.busy_suffix")
-			foreground, background = disabled, raised
-		}
-		style = style.Foreground(lipgloss.Color(foreground)).Background(lipgloss.Color(background))
+		blocked := m.wizardControlDisabled(b.ID)
+		label := renderButton(b.Label, buttonOptions{
+			Kind: kind, Surface: raised, Focused: w.focus == b.ID, Hovered: m.hover == b.ID,
+			Disabled: blocked && !m.busy, Busy: blocked && m.busy, Plain: m.buttonPlain(),
+		})
 		bw := min(innerW, ansi.StringWidth(label))
 		if ansi.StringWidth(line) > 0 && ansi.StringWidth(line)+2+bw > innerW {
 			footer = append(footer, cellPad(line, innerW))
@@ -600,8 +613,10 @@ func (m *Model) renderWizard(base string) (string, []hitRegion) {
 			line += "  "
 		}
 		bx := ansi.StringWidth(line)
-		line += style.Render(cellCrop(label, innerW))
-		buttonHits = append(buttonHits, hitRegion{ID: b.ID, X: bx, Y: row, W: bw, H: 1})
+		line += cellCrop(label, innerW)
+		if !blocked {
+			buttonHits = append(buttonHits, hitRegion{ID: b.ID, X: bx, Y: row, W: bw, H: 1})
+		}
 	}
 	footer = append(footer, cellPad(line, innerW))
 	footerH := len(footer)
@@ -616,7 +631,9 @@ func (m *Model) renderWizard(base string) (string, []hitRegion) {
 		w.controls = append(w.controls, r.ID)
 	}
 	for _, b := range buttons {
-		w.controls = append(w.controls, b.ID)
+		if !m.wizardControlDisabled(b.ID) {
+			w.controls = append(w.controls, b.ID)
+		}
 	}
 	if w.reveal {
 		for _, r := range doc.targets {

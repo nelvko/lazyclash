@@ -318,8 +318,12 @@ func (m Model) renderProfileCreateForm(base string) (string, []hitRegion) {
 		lines = append(lines, m.paths.view(inner, rows, m.locale)...)
 	}
 	buttonRow := len(lines)
-	createButton := dashboardButton("profile-create.save", m.tr("profiles.create_save"), dashboardOptions{Focus: m.focus, Hover: m.hover}, true)
-	cancelButton := dashboardButton("profile-create.cancel", m.tr("profiles.create_cancel"), dashboardOptions{Focus: m.focus, Hover: m.hover}, false)
+	createButton := renderButton(m.tr("profiles.create_save"), buttonOptions{Kind: buttonPrimary, Surface: raised,
+		Focused: m.focus == "profile-create.save", Hovered: m.hover == "profile-create.save", Busy: m.busy,
+		Disabled: m.quitting, Plain: m.buttonPlain()})
+	cancelButton := renderButton(m.tr("profiles.create_cancel"), buttonOptions{Surface: raised,
+		Focused: m.focus == "profile-create.cancel", Hovered: m.hover == "profile-create.cancel",
+		Disabled: m.busy || m.quitting, Plain: m.buttonPlain()})
 	lines = append(lines, cancelButton+"  "+createButton, themed(cellCrop(m.tr("profiles.create_footer"), inner), muted, raised, false))
 	if m.failure != "" {
 		lines = append(lines, themed(cellCrop(m.failure, inner), errorColor, raised, false))

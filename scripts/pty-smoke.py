@@ -299,7 +299,7 @@ class Terminal:
         for _ in range(16):
             self.key(b"\t")
             self.settle()
-            if re.search(r"›\s*\[\s*Install\s*\]", self.screen.text()):
+            if re.search(r"›\s*(?:\[\s*)?Install(?:\s*\])?", self.screen.text()):
                 return
         raise AssertionError("Local installation action is not keyboard accessible\n" + self.screen.text())
 

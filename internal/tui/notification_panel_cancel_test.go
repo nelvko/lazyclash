@@ -155,7 +155,7 @@ func TestNotificationPanelCancelControlsFitAndOnlyApplyToWorkingItems(t *testing
 						}
 						foundCancel = true
 						line := strings.Split(screen, "\n")[target.Y]
-						if got := ansi.Strip(ansi.Cut(line, target.X, target.X+target.W)); got != locale.T("notification.cancel") {
+						if got := ansi.Strip(ansi.Cut(line, target.X, target.X+target.W)); strings.Trim(got, "› ") != locale.T("notification.cancel") || target.W != ansi.StringWidth(locale.T("notification.cancel"))+4 {
 							t.Fatalf("Cancel label was obscured: %q", got)
 						}
 						if action := panel.mouse(tea.MouseClickMsg{X: target.X, Y: target.Y, Button: tea.MouseLeft}); action != target.ID {

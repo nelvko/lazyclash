@@ -1304,6 +1304,9 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 					if m.form == "profile-create" {
 						return m.profileCreateMouse(r.ID)
 					}
+					if m.form == "profile-delete" {
+						return m.profileDeleteMouse(r.ID)
+					}
 					m.input.Focus()
 					return textinput.Blink
 				}
@@ -1471,7 +1474,7 @@ func (m *Model) layout() {
 	} else if m.form != "" {
 		m.screen, m.targets = m.renderProfileForm(base)
 	} else if m.notification.panel.open {
-		m.screen, m.targets = m.notification.panel.render(m.notification.items, m.width, m.height, m.locale)
+		m.screen, m.targets = m.notification.panel.render(m.notification.items, m.width, m.height, m.locale, m.buttonPlain())
 	} else if m.menu.open {
 		m.screen = m.menu.render(base, m.width, m.height)
 	}

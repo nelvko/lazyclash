@@ -211,6 +211,9 @@ func (m *Model) closePorts() {
 }
 
 func (m *Model) portsActivate(id string) tea.Cmd {
+	if m.ports.cancelling && id == "ports.cancel" {
+		return nil
+	}
 	if m.busy {
 		if id == "ports.cancel" {
 			m.cancelTask(false)
@@ -334,7 +337,7 @@ func (m *Model) portsMouse(event tea.MouseMsg) tea.Cmd {
 
 func (m *Model) portsDocument(width int) (wizardDocument, []wizardButton, string) {
 	p := &m.ports
-	d := wizardDocument{locale: m.locale, width: width, hover: m.hover}
+	d := wizardDocument{locale: m.locale, width: width, hover: m.hover, plain: m.buttonPlain(), busy: m.busy}
 	buttons := []wizardButton{{"ports.cancel", m.tr("ports.cancel")}}
 	subtitle := m.tr("ports.edit")
 	switch p.step {
@@ -452,10 +455,18 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 	var footerHits []hitRegion
 	line := ""
 	for _, button := range buttons {
-		p.controls = append(p.controls, button.ID)
+		blocked := m.busy && button.ID != "ports.cancel" || p.cancelling && button.ID == "ports.cancel"
+		if !blocked {
+			p.controls = append(p.controls, button.ID)
+		}
 		primary := button.ID == "ports.review" || button.ID == "ports.apply" || button.ID == "ports.retry" || button.ID == "ports.done" && p.applied
-		value := dashboardButton(button.ID, button.Label, dashboardOptions{Focus: p.focus, Hover: m.hover}, primary)
-		value = themed(value, text, raised, false)
+		kind := buttonSecondary
+		if primary {
+			kind = buttonPrimary
+		}
+		value := renderButton(button.Label, buttonOptions{Kind: kind, Surface: raised,
+			Focused: p.focus == button.ID, Hovered: m.hover == button.ID,
+			Disabled: blocked && !m.busy, Busy: blocked && m.busy, Plain: m.buttonPlain()})
 		width := min(inner, ansi.StringWidth(value))
 		if line != "" && ansi.StringWidth(line)+2+width > inner {
 			footer = append(footer, line)
@@ -464,7 +475,9 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 		if line != "" {
 			line += themed("  ", text, raised, false)
 		}
-		footerHits = append(footerHits, hitRegion{ID: button.ID, X: ansi.StringWidth(line), Y: len(footer), W: width, H: 1})
+		if !blocked {
+			footerHits = append(footerHits, hitRegion{ID: button.ID, X: ansi.StringWidth(line), Y: len(footer), W: width, H: 1})
+		}
 		line += cellCrop(value, inner)
 	}
 	footer = append(footer, line)

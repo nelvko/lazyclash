@@ -40,7 +40,7 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait(available)
         terminal.wait(upgrade)
         preview.capture(terminal, output, "check", args)
-        for width, height in [(80, 24), (60, 20), (40, 16), (120, 32)]:
+        for width, height in [(160, 45), (80, 24), (60, 20), (40, 16), (120, 18), (120, 32)]:
             terminal.resize(width, height)
             deadline = time.monotonic() + 5
             while time.monotonic() < deadline:
@@ -50,7 +50,7 @@ def exercise(preview, binary, output, language, profile, args):
                 warning = "running core" if language == "en" else "内核将重启"
                 ready = not terminal.screen.synchronized and upgrade in screen and status in screen
                 ready = ready and "v1.19.32" in screen and "v1.19.33" in screen
-                if ready and (height != 16 or warning in screen):
+                if ready and (height >= 20 or warning in screen):
                     break
             else:
                 raise AssertionError("upgrade confirmation became inaccessible after resize\n" + terminal.screen.text())

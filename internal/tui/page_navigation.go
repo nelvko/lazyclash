@@ -480,7 +480,7 @@ func (m *Model) repairPageFocus() {
 	}
 	state := m.pageViews[m.page]
 	if !m.busy && m.focus != "content" && m.focus != "menu" && !strings.HasPrefix(m.focus, "nav.") && !strings.HasPrefix(m.focus, "notification.") {
-		valid := m.pageHeader().owns(m.focus)
+		valid := m.pageHeader().enabled(m.focus)
 		for _, target := range m.contentTargets() {
 			if target.ID == m.focus {
 				valid = true
