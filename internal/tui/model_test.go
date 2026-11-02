@@ -253,6 +253,14 @@ func ctrlC() tea.KeyPressMsg            { return tea.KeyPressMsg{Code: 'c', Mod:
 func ready(b *fakeBackend) Model {
 	m := New(context.Background(), b, "en")
 	m, _ = update(m, m.snapshotCmd(m.id, m.opCtx, true)())
+	// Most tests begin after the initial observation. Keep their backend call
+	// counts independent; startup tests drive the actual CheckUpdate command.
+	if m.wizard.inline && m.job == "check-update" {
+		m.abortLookup()
+		m.wizard.updateCheck = app.CoreUpdateCheck{LatestVersion: "v1.19.33", Channel: mihomo.ChannelStable, Status: mihomo.UpdateNotInstalled, CheckedAt: time.Now()}
+		m.message = ""
+		m.layout()
+	}
 	return m
 }
 func profileFixtures(ids ...string) []app.ProfileInfo {
@@ -275,6 +283,9 @@ func commandBatch(t *testing.T, cmd tea.Cmd) tea.BatchMsg {
 }
 func actionCmd(t *testing.T, cmd tea.Cmd) tea.Cmd { t.Helper(); return commandBatch(t, cmd)[0] }
 func activateWizard(m Model, id string) (Model, tea.Cmd) {
+	if m.wizard.inline && !m.wizard.open && !m.wizard.networkOpen {
+		m.focus = "setup." + id
+	}
 	m.wizard.focus = id
 	return update(m, special(tea.KeyEnter))
 }
@@ -284,6 +295,7 @@ func activateWizard(m Model, id string) (Model, tea.Cmd) {
 func confirmModel(t *testing.T, b *fakeBackend) Model {
 	t.Helper()
 	m := ready(b)
+	m.wizard.inline = false
 	m.wizard.open, m.wizard.step, m.wizard.focus = true, stepConfirm, "install"
 	plan, err := b.PrepareInstall(t.Context(), testRelease(), "", false)
 	if err != nil {
@@ -321,20 +333,19 @@ func TestInitialOverviewAndExplicitInstallFlow(t *testing.T) {
 	if m.page != "overview" || m.wizard.open || m.wizard.networkOpen {
 		t.Fatal("startup must leave the dashboard browsable")
 	}
-	for _, label := range []string{"Get started", "Install the Mihomo core", "Install Mihomo"} {
+	for _, label := range []string{"Install the Mihomo core", "Latest stable version", "Download and install"} {
 		if !strings.Contains(ansi.Strip(m.View().Content), label) {
 			t.Fatalf("missing %s", label)
 		}
 	}
-	m, cmd := update(m, key("i"))
-	if !m.wizard.open || m.wizard.step != stepVersion || !m.busy {
-		t.Fatal("install shortcut did not open the single installation page and read-only version check")
+	m, _ = update(m, key("i"))
+	if m.wizard.open || !m.wizard.inline || m.wizard.step != stepVersion || m.busy {
+		t.Fatal("install shortcut did not focus the inline installation region")
 	}
-	m, _ = update(m, actionCmd(t, cmd)())
 	if m.busy || m.wizard.updateCheck.LatestVersion == "" || m.wizard.release.Asset != "" {
 		t.Fatal("read-only version check downloaded or resolved a release asset")
 	}
-	m, cmd = activateWizard(m, "install")
+	m, cmd := activateWizard(m, "install")
 	for _, stage := range []string{"resolve", "prepare", "install"} {
 		if !m.busy || m.job != stage || m.wizard.step == stepConfirm {
 			t.Fatalf("explicit install did not continue automatically through %s: step=%s job=%s", stage, m.wizard.step, m.job)
@@ -352,13 +363,14 @@ func TestInitialOverviewAndExplicitInstallFlow(t *testing.T) {
 
 func TestResizePreservesWizardInputNetworkFocusAndJob(t *testing.T) {
 	m := ready(&fakeBackend{})
-	m, _ = update(m, key("i"))
+	m.openManagementWizard(false)
+	m.layout()
 	m.wizard.step = stepVersion
 	m.wizard.specific = true
 	m.wizard.focus = "version-input"
 	m.wizard.version.SetValue("v1.19.33")
 	m.wizard.local.SetValue("/tmp/中文/mihomo")
-	m.wizard.cfg = downloadnet.Config{Source: "prefix", Prefix: "https://accelerator.example.invalid/", ProxyMode: "custom", ProxyURL: "http://127.0.0.1:7890"}
+	m.wizard.cfg = downloadnet.Config{Method: "accelerated", Prefix: "https://accelerator.example.invalid/"}
 	m.wizard.draft = m.wizard.cfg
 	m.wizard.remember = true
 	ctx := m.newJob("resolve")
@@ -382,7 +394,8 @@ func TestResponsiveWizardModalAndFullPage(t *testing.T) {
 		t.Run(fmt.Sprint(size), func(t *testing.T) {
 			m := ready(&fakeBackend{})
 			m, _ = update(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
-			m, _ = update(m, key("i"))
+			m.openManagementWizard(false)
+			m.layout()
 			plain := ansi.Strip(m.View().Content)
 			if !strings.Contains(plain, "Install Mihomo") {
 				t.Fatal("wizard title missing")
@@ -481,7 +494,8 @@ func TestEscapeCancelsInstallWithoutClosingResult(t *testing.T) {
 
 func TestLateMessagesCannotReplaceCurrentOperation(t *testing.T) {
 	m := ready(&fakeBackend{})
-	m, _ = update(m, key("i"))
+	m.openManagementWizard(false)
+	m.layout()
 	m.wizard.step = stepVersion
 	m.newJob("resolve")
 	old := m.id
@@ -502,11 +516,11 @@ func TestNetworkDraftBackAndExplicitRemember(t *testing.T) {
 	for _, remember := range []bool{false, true} {
 		t.Run(fmt.Sprint(remember), func(t *testing.T) {
 			saves := 0
-			b := &fakeBackend{save: func(context.Context, downloadnet.Config) error { saves++; return nil }}
+			b := &fakeBackend{snapshot: app.Snapshot{Installed: true}, save: func(context.Context, downloadnet.Config) error { saves++; return nil }}
 			m := ready(b)
 			original := m.wizard.cfg
 			m, _ = update(m, key("n"))
-			m.wizard.draft = downloadnet.Config{Source: "prefix", Prefix: "https://accelerator.example.invalid/", ProxyMode: "none"}
+			m.wizard.draft = downloadnet.Config{Method: "accelerated", Prefix: "https://accelerator.example.invalid/"}
 			m, _ = activateWizard(m, "back")
 			if m.wizard.cfg != original || saves != 0 || m.wizard.networkOpen {
 				t.Fatal("Back applied network draft")
@@ -515,7 +529,7 @@ func TestNetworkDraftBackAndExplicitRemember(t *testing.T) {
 			if m.wizard.remember {
 				t.Fatal("remember must require an explicit choice")
 			}
-			m.wizard.draft = downloadnet.Config{Source: "prefix", Prefix: "https://accelerator.example.invalid/", ProxyMode: "none"}
+			m.wizard.draft = downloadnet.Config{Method: "accelerated", Prefix: "https://accelerator.example.invalid/"}
 			if remember {
 				m, _ = activateWizard(m, "remember")
 			}
@@ -532,7 +546,7 @@ func TestNetworkDraftBackAndExplicitRemember(t *testing.T) {
 			} else if m.busy {
 				t.Fatal("session-only apply unexpectedly started a job")
 			}
-			if m.wizard.networkOpen || m.wizard.cfg.Source != "prefix" || saves != map[bool]int{false: 0, true: 1}[remember] {
+			if m.wizard.networkOpen || m.wizard.cfg.Method != "accelerated" || saves != map[bool]int{false: 0, true: 1}[remember] {
 				t.Fatal("explicit Apply semantics incorrect")
 			}
 		})
@@ -542,7 +556,7 @@ func TestNetworkDraftBackAndExplicitRemember(t *testing.T) {
 func TestNetworkEditInvalidatesChecksAndLateRequests(t *testing.T) {
 	m := ready(&fakeBackend{})
 	m, _ = update(m, key("n"))
-	m.wizard.draft.Source = "prefix"
+	m.wizard.draft.Method = "accelerated"
 	m.wizard.draft.Prefix = "https://example.invalid/"
 	m.wizard.prefix.SetValue(m.wizard.draft.Prefix)
 	m.wizard.focus = "prefix"
@@ -574,7 +588,8 @@ func TestMetadataFailureKeepsNetworkReachableAndApplyRetries(t *testing.T) {
 	}}
 	m := ready(b)
 	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 40})
-	m, initial := update(m, key("i"))
+	initial := m.openManagementWizard(false)
+	m.layout()
 	m, _ = update(m, actionCmd(t, initial)())
 	m.wizard.specific = true
 	m.wizard.version.SetValue("v1.19.33")
@@ -587,13 +602,13 @@ func TestMetadataFailureKeepsNetworkReachableAndApplyRetries(t *testing.T) {
 	if cmd != nil || !m.wizard.networkOpen {
 		t.Fatal("network settings inaccessible after metadata failure")
 	}
-	m.wizard.draft = downloadnet.Config{Source: "official", ProxyMode: "environment"}
+	m.wizard.draft = downloadnet.Config{Method: "environment"}
 	m, cmd = activateWizard(m, "apply-network")
 	if !m.busy || m.wizard.networkOpen || m.job != "resolve" {
 		t.Fatal("Apply & retry did not start metadata retry")
 	}
 	m, _ = update(m, actionCmd(t, cmd)())
-	if calls != 2 || used.ProxyMode != "environment" || m.wizard.release.Version == "" || m.wizard.err != "" {
+	if calls != 2 || used.Method != "environment" || m.wizard.release.Version == "" || m.wizard.err != "" {
 		t.Fatal("retry did not use selected connection")
 	}
 }
@@ -687,7 +702,7 @@ func TestFailedInstallSurvivesNetworkBackAndDraftEdits(t *testing.T) {
 	for _, edit := range []bool{false, true} {
 		t.Run(fmt.Sprint(edit), func(t *testing.T) {
 			m := ready(&fakeBackend{})
-			m.openWizard(false)
+			m.openManagementWizard(false)
 			m.wizard.step = stepResult
 			m.wizard.err = "checksum mismatch"
 			m.wizard.failedKind = "install"
@@ -695,7 +710,7 @@ func TestFailedInstallSurvivesNetworkBackAndDraftEdits(t *testing.T) {
 			m.layout()
 			m, _ = activateWizard(m, "network")
 			if edit {
-				m.wizard.focus = "source"
+				m.wizard.focus = "download-method"
 				m, _ = update(m, special(tea.KeyRight))
 			}
 			m, _ = activateWizard(m, "back")
@@ -708,7 +723,8 @@ func TestFailedInstallSurvivesNetworkBackAndDraftEdits(t *testing.T) {
 
 func TestTextInputOwnsQAndDigitsAndSourceEditingIsVisible(t *testing.T) {
 	m := ready(&fakeBackend{})
-	m, _ = update(m, key("i"))
+	m.openManagementWizard(false)
+	m.layout()
 	m.wizard.step = stepVersion
 	m.wizard.specific = true
 	m.wizard.focus = "version-input"
@@ -738,13 +754,13 @@ func TestTextInputOwnsQAndDigitsAndSourceEditingIsVisible(t *testing.T) {
 		t.Fatal("cancel did not clear source input")
 	}
 	m, _ = update(m, key("n"))
-	m.wizard.draft.ProxyMode = "custom"
-	m.wizard.proxy.SetValue("http://user:password-secret@127.0.0.1:7890")
-	m.wizard.draft.ProxyURL = m.wizard.proxy.Value()
-	m.wizard.focus = "proxy-url"
+	m.wizard.draft.Method = "accelerated"
+	m.wizard.prefix.SetValue("https://accelerator.example/private-token/")
+	m.wizard.draft.Prefix = m.wizard.prefix.Value()
+	m.wizard.focus = "prefix"
 	m.layout()
-	if strings.Contains(ansi.Strip(m.View().Content), "password-secret") {
-		t.Fatal("proxy input leaked credentials")
+	if !strings.Contains(ansi.Strip(m.View().Content), "https://accelerator.example/private-token/") {
+		t.Fatal("acceleration prefix is not visible for editing")
 	}
 }
 
@@ -752,7 +768,8 @@ func TestModalMouseDoesNotReachDashboardAndActualButtonsWork(t *testing.T) {
 	m := ready(&fakeBackend{})
 	m, _ = update(m, tea.WindowSizeMsg{Width: 160, Height: 45})
 	behind := findTarget(t, m, "nav.settings")
-	m, initial := update(m, key("i"))
+	initial := m.openManagementWizard(false)
+	m.layout()
 	m, _ = update(m, actionCmd(t, initial)())
 	for _, r := range m.targets {
 		if strings.HasPrefix(r.ID, "nav.") {
@@ -765,7 +782,7 @@ func TestModalMouseDoesNotReachDashboardAndActualButtonsWork(t *testing.T) {
 	}
 	target := findTarget(t, m, "install")
 	line := strings.Split(m.View().Content, "\n")[target.Y]
-	if !strings.Contains(ansi.Strip(ansi.Cut(line, target.X, target.X+target.W)), "Download & install") {
+	if !strings.Contains(ansi.Strip(ansi.Cut(line, target.X, target.X+target.W)), "Download and install") {
 		t.Fatal("button target misses painted label")
 	}
 	m, cmd := click(m, target)
@@ -799,7 +816,7 @@ func TestWizardLongContentAndProgressRemainWithinTerminal(t *testing.T) {
 		for _, step := range []wizardStep{stepCore, stepVersion, stepConfirm, stepInstalling, stepResult} {
 			t.Run(fmt.Sprintf("%v/%s", size, step), func(t *testing.T) {
 				m := ready(&fakeBackend{snapshot: app.Snapshot{Installed: true, Version: long, Service: service.Status{Active: true}}})
-				m.openWizard(false)
+				m.openManagementWizard(false)
 				m.wizard.step = step
 				m.wizard.release = testRelease()
 				m.wizard.plan = app.InstallPlan{Release: testRelease(), ActualPath: long, Warnings: []string{long}}
@@ -812,7 +829,7 @@ func TestWizardLongContentAndProgressRemainWithinTerminal(t *testing.T) {
 		}
 	}
 	m := ready(&fakeBackend{})
-	m.openWizard(false)
+	m.openManagementWizard(false)
 	m.wizard.step = stepInstalling
 	m.wizard.progress = mihomo.Progress{Stage: "download", Downloaded: 512, Total: 0}
 	m.layout()
@@ -845,14 +862,14 @@ func TestRememberFailureKeepsDraftAndOriginalInstallFailure(t *testing.T) {
 		return errors.New("credentials must remain session-only")
 	}}
 	m := ready(b)
-	m.openWizard(false)
+	m.openManagementWizard(false)
 	m.wizard.step = stepResult
 	m.wizard.err = "checksum mismatch"
 	m.wizard.failedKind = "install"
 	m.layout()
 	m, _ = activateWizard(m, "network")
 	original := m.wizard.cfg
-	m.wizard.draft = downloadnet.Config{Source: "official", ProxyMode: "custom", ProxyURL: "http://user:pass@127.0.0.1:7890"}
+	m.wizard.draft = downloadnet.Config{Method: "environment"}
 	m, _ = activateWizard(m, "remember")
 	m, cmd := activateWizard(m, "apply-network")
 	m, _ = update(m, actionCmd(t, cmd)())

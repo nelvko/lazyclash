@@ -24,7 +24,7 @@ func TestWizardBilingualInstallKeepsReviewedMachineValues(t *testing.T) {
 			installs := 0
 			b := &fakeBackend{install: func(_ context.Context, plan app.InstallPlan, cfg downloadnet.Config, _ func(mihomo.Progress)) (app.InstallResult, error) {
 				installs++
-				if plan.Operation != "install" || plan.Release.Asset != testRelease().Asset || cfg.Source != "official" || cfg.ProxyMode != "none" {
+				if plan.Operation != "install" || plan.Release.Asset != testRelease().Asset || cfg.Normalized().Method != "direct" {
 					t.Fatal("translation changed the reviewed operation or release")
 				}
 				return app.InstallResult{InstalledVersion: plan.Release.Version, ActualPath: "/tmp/Install proxy core/mihomo", Operation: plan.Operation}, nil
@@ -32,7 +32,7 @@ func TestWizardBilingualInstallKeepsReviewedMachineValues(t *testing.T) {
 			m := ready(b)
 			m.locale = i18n.New(sample.language)
 			m.width, m.height = 120, 40
-			initial := m.openWizard(false)
+			initial := m.openManagementWizard(false)
 			m, _ = update(m, actionCmd(t, initial)())
 			_, _, title := m.wizardDocument(100)
 			if title != sample.title {
@@ -89,7 +89,7 @@ func TestWizardBilingualLayoutKeepsCanvasAndHitRegions(t *testing.T) {
 	for _, language := range []string{"en", "zh-Hans"} {
 		m := ready(&fakeBackend{})
 		m.locale = i18n.New(language)
-		m.openWizard(false)
+		m.openManagementWizard(false)
 		m.wizard.release = testRelease()
 		m.wizard.plan = app.InstallPlan{Release: testRelease(), ActualPath: "/tmp/mihomo", Operation: "install", FreeBytes: 1024, DiskKnown: true}
 		m.wizard.progress = mihomo.Progress{Stage: "download", Downloaded: 1024, Total: 4096, Detail: "fixture-progress"}

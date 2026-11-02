@@ -24,7 +24,7 @@ type Preferences struct {
 }
 
 func defaultPreferences() Preferences {
-	return Preferences{Network: downloadnet.Config{Source: "official", ProxyMode: "none"}}
+	return Preferences{Network: downloadnet.Config{Method: downloadnet.MethodDirect}}
 }
 
 func (a *App) loadPreferencesLocked() (Preferences, []byte, error) {
@@ -40,6 +40,7 @@ func (a *App) loadPreferencesLocked() (Preferences, []byte, error) {
 	if json.Unmarshal(raw, &p) != nil {
 		return p, nil, diagnostic.New("diagnostic.preferences.invalid", "invalid preferences file; preserving it for inspection")
 	}
+	p.Network = p.Network.Normalized()
 	if err := rememberableNetwork(p.Network); err != nil {
 		return p, nil, diagnostic.New("diagnostic.preferences.networkInvalid", "stored download settings are invalid or contain credentials; file preserved")
 	}
@@ -70,22 +71,21 @@ func rememberableNetwork(cfg downloadnet.Config) error {
 	if err := cfg.Validate(); err != nil {
 		return err
 	}
-	for _, text := range []string{cfg.Prefix, cfg.Mirror, cfg.ProxyURL} {
-		if text == "" {
-			continue
-		}
-		u, err := url.Parse(text)
-		if err != nil || u.Hostname() == "" || u.Opaque != "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
-			return diagnostic.New("diagnostic.preferences.credentials", "download settings containing credentials or query parameters are session-only and cannot be remembered")
-		}
-		// Restrict remembered path components to public release/proxy vocabulary.
-		// Arbitrary paths (which may themselves be tokens) remain session-only.
-		for _, part := range strings.Split(u.Path, "/") {
-			switch part {
-			case "", "proxy", "github", "github.com", "gh", "MetaCubeX", "mihomo", "releases", "release", "download", "downloads", "{version}", "{asset}":
-			default:
-				return diagnostic.New("diagnostic.preferences.privatePath", "download URLs containing private or unrecognized path components are session-only and cannot be remembered")
-			}
+	prefix := cfg.Normalized().Prefix
+	if prefix == "" {
+		return nil
+	}
+	u, err := url.Parse(prefix)
+	if err != nil || u.Hostname() == "" || u.Opaque != "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
+		return diagnostic.New("diagnostic.preferences.credentials", "download settings containing credentials or query parameters are session-only and cannot be remembered")
+	}
+	// Restrict remembered path components to public release/proxy vocabulary.
+	// Arbitrary paths (which may themselves be tokens) remain session-only.
+	for _, part := range strings.Split(u.Path, "/") {
+		switch part {
+		case "", "proxy", "github", "github.com", "gh", "cache", "MetaCubeX", "mihomo", "releases", "release", "download", "downloads":
+		default:
+			return diagnostic.New("diagnostic.preferences.privatePath", "download URLs containing private or unrecognized path components are session-only and cannot be remembered")
 		}
 	}
 	return nil
@@ -120,15 +120,6 @@ func (a *App) editPreferences(ctx context.Context, edit func(*Preferences) error
 
 func (a *App) SaveNetworkPreferences(ctx context.Context, cfg downloadnet.Config) error {
 	cfg = cfg.Normalized()
-	if cfg.Source != "prefix" {
-		cfg.Prefix = ""
-	}
-	if cfg.Source != "mirror" {
-		cfg.Mirror = ""
-	}
-	if cfg.ProxyMode != "custom" {
-		cfg.ProxyURL = ""
-	}
 	if err := rememberableNetwork(cfg); err != nil {
 		return err
 	}

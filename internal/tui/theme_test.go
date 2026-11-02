@@ -91,7 +91,7 @@ func themeSample(name string) Model {
 			{Level: "gap", Message: "Capture paused; logs during this interval are not collected."},
 		}
 	default:
-		m.openWizard(false)
+		m.openManagementWizard(false)
 		switch name {
 		case "version-input", "input-error":
 			m.wizard.step, m.wizard.specific, m.wizard.focus = stepVersion, true, "version-input"
@@ -102,13 +102,12 @@ func themeSample(name string) Model {
 			}
 		case "network", "network-tests":
 			m.openNetwork(false)
-			m.wizard.draft.Source, m.wizard.draft.ProxyMode = "prefix", "custom"
+			m.wizard.draft.Method = "accelerated"
 			m.wizard.prefix.SetValue("https://accelerator.example.invalid/")
-			m.wizard.proxy.SetValue("http://127.0.0.1:7890")
 			m.wizard.versionTest = checkState{Status: "Failed", Detail: "Version query: HTTP 429 rate limit; retry later."}
 			m.wizard.fileTest = checkState{Status: "Passed", Detail: "Release file probe passed (4 KiB)."}
-			m.wizard.focus = "source"
-			m.hover = "proxy-mode"
+			m.wizard.focus = "download-method"
+			m.hover = "download-method"
 		case "confirm":
 			m.wizard.step, m.wizard.focus = stepConfirm, "install"
 			m.wizard.plan = app.InstallPlan{Release: testRelease(), ActualPath: "/tmp/lazyclash-preview/installation/mihomo", Operation: "install", DiskKnown: true, FreeBytes: 1 << 30}

@@ -50,7 +50,7 @@ func TestRemoveCorePreservesProfilesSourcesAndPreferences(t *testing.T) {
 		t.Fatal(err)
 	}
 	removalRecord(t, a)
-	write(t, filepath.Join(a.Home, "preferences.json"), []byte(`{"Network":{"Source":"official","ProxyMode":"none"}}`))
+	write(t, filepath.Join(a.Home, "preferences.json"), []byte(`{"Network":{"method":"direct"}}`))
 	profilePath := savedSourcePath(t, a, "saved")
 	profile := read(t, profilePath)
 	metadataPath := filepath.Join(a.Home, "configuration", "library.json")

@@ -1,10 +1,12 @@
-// Package downloadnet separates release-file locations from connection proxies.
+// Package downloadnet applies one download method to all Mihomo requests.
 package downloadnet
 
 import (
+	"bytes"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -18,22 +20,85 @@ import (
 	"github.com/nelvko/lazyclash/internal/diagnostic"
 )
 
-// Prefix and Mirror rewrite release files only. Version metadata and SHA256
-// digests come from official GitHub endpoints through the chosen proxy.
+const (
+	MethodDirect      = "direct"
+	MethodEnvironment = "environment"
+	MethodAccelerated = "accelerated"
+)
+
+// Config selects one route for version queries, release metadata and files.
+// Accelerators receive the complete original GitHub URL after Prefix.
 type Config struct {
-	Source    string `json:"source"`
-	Prefix    string `json:"prefix,omitempty"`
-	Mirror    string `json:"mirror,omitempty"`
-	ProxyMode string `json:"proxy_mode"`
-	ProxyURL  string `json:"proxy_url,omitempty"`
+	Method string `json:"method"`
+	Prefix string `json:"prefix,omitempty"`
+}
+
+// Migrate only legacy routes that have an exact equivalent. Unsupported stored
+// settings must not silently become direct connections, and new writes contain
+// only Method and Prefix.
+func (c *Config) UnmarshalJSON(raw []byte) error {
+	var stored struct {
+		Method    json.RawMessage `json:"method"`
+		Prefix    string          `json:"prefix"`
+		Source    json.RawMessage `json:"source"`
+		ProxyMode json.RawMessage `json:"proxy_mode"`
+		Mirror    json.RawMessage `json:"mirror"`
+		ProxyURL  json.RawMessage `json:"proxy_url"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	invalid := diagnostic.New("diagnostic.network.configJSON", "download settings contain unsupported fields or invalid JSON")
+	if err := decoder.Decode(&stored); err != nil {
+		return invalid
+	}
+	decoded := Config{Prefix: stored.Prefix}
+	legacy := len(stored.Source) > 0 || len(stored.ProxyMode) > 0 || len(stored.Mirror) > 0 || len(stored.ProxyURL) > 0
+	if !legacy {
+		if len(stored.Method) > 0 && json.Unmarshal(stored.Method, &decoded.Method) != nil {
+			return invalid
+		}
+	} else {
+		if len(stored.Method) > 0 {
+			return invalid
+		}
+		// Old writers omitted inactive optional fields. Empty values are also
+		// harmless, but configured mirrors or custom proxies cannot be migrated.
+		for _, field := range []json.RawMessage{stored.Mirror, stored.ProxyURL} {
+			var value string
+			if len(field) > 0 && (json.Unmarshal(field, &value) != nil || value != "") {
+				return invalid
+			}
+		}
+		var source, proxy string
+		if json.Unmarshal(stored.Source, &source) != nil || json.Unmarshal(stored.ProxyMode, &proxy) != nil {
+			return invalid
+		}
+		switch {
+		case source == "official" && proxy == "none":
+			decoded.Method = MethodDirect
+		case source == "official" && proxy == "environment":
+			decoded.Method = MethodEnvironment
+		case source == "prefix" && proxy == "none":
+			decoded.Method = MethodAccelerated
+		default:
+			return invalid
+		}
+	}
+	*c = decoded
+	return nil
 }
 
 func (c Config) Normalized() Config {
-	if c.Source == "" {
-		c.Source = "official"
+	if c.Method == "" {
+		c.Method = MethodDirect
 	}
-	if c.ProxyMode == "" {
-		c.ProxyMode = "none"
+	if c.Method == MethodAccelerated {
+		c.Prefix = strings.TrimSpace(c.Prefix)
+		if c.Prefix != "" {
+			c.Prefix = strings.TrimRight(c.Prefix, "/") + "/"
+		}
+	} else {
+		c.Prefix = ""
 	}
 	return c
 }
@@ -67,56 +132,38 @@ func proxyURL(raw string) (*url.URL, error) {
 
 func (c Config) Validate() error {
 	c = c.Normalized()
-	switch c.Source {
-	case "official":
-	case "prefix":
+	switch c.Method {
+	case MethodDirect, MethodEnvironment:
+	case MethodAccelerated:
 		u, err := webURL(c.Prefix)
 		if err != nil {
-			return diagnostic.New("diagnostic.network.prefixURL", "invalid release-file prefix URL")
+			return diagnostic.New("diagnostic.network.prefixURL", "invalid GitHub acceleration prefix URL")
 		}
-		if u.RawQuery != "" || strings.ContainsAny(c.Prefix, "{}") {
-			return diagnostic.New("diagnostic.network.prefixTemplate", "prefix must be a plain URL; use mirror for a version/asset template")
-		}
-	case "mirror":
-		if !strings.Contains(c.Mirror, "{version}") || !strings.Contains(c.Mirror, "{asset}") {
-			return diagnostic.New("diagnostic.network.mirrorRequired", "mirror URL template must contain {version} and {asset}")
-		}
-		probe := strings.NewReplacer("{version}", "v1.2.3", "{asset}", "mihomo.gz").Replace(c.Mirror)
-		if strings.ContainsAny(probe, "{}") {
-			return diagnostic.New("diagnostic.network.mirrorPlaceholder", "unsupported mirror URL template placeholder")
-		}
-		if _, err := webURL(probe); err != nil {
-			return diagnostic.New("diagnostic.network.mirrorURL", "invalid release-file mirror URL template")
+		if u.User != nil || u.RawQuery != "" || u.ForceQuery || strings.ContainsAny(c.Prefix, "{}") {
+			return diagnostic.New("diagnostic.network.prefixPlain", "acceleration prefix must be a plain HTTP(S) URL without credentials, query parameters or placeholders")
 		}
 	default:
-		return diagnostic.New("diagnostic.network.source", "release source must be official, prefix or mirror")
-	}
-	switch c.ProxyMode {
-	case "none", "environment":
-	case "custom":
-		if _, err := proxyURL(c.ProxyURL); err != nil {
-			return err
-		}
-	default:
-		return diagnostic.New("diagnostic.network.proxyMode", "proxy mode must be none, environment or custom")
+		return diagnostic.New("diagnostic.network.method", "download method must be direct, environment or accelerated")
 	}
 	return nil
 }
 
-func (c Config) AssetURL(original, version, asset string) (string, error) {
+// URL produces the actual request URL. It deliberately uses concatenation:
+// path.Join would damage the nested https:// used by GitHub accelerators.
+func (c Config) URL(original string) (string, error) {
 	if err := c.Validate(); err != nil {
 		return "", err
 	}
 	c = c.Normalized()
+	if _, err := webURL(original); err != nil {
+		return "", diagnostic.New("diagnostic.network.resultURL", "invalid download request URL")
+	}
 	result := original
-	switch c.Source {
-	case "prefix":
-		result = strings.TrimRight(c.Prefix, "/") + "/" + original
-	case "mirror":
-		result = strings.NewReplacer("{version}", url.PathEscape(version), "{asset}", url.PathEscape(asset)).Replace(c.Mirror)
+	if c.Method == MethodAccelerated {
+		result = c.Prefix + original
 	}
 	if _, err := webURL(result); err != nil {
-		return "", diagnostic.New("diagnostic.network.resultURL", "invalid resulting release-file URL")
+		return "", diagnostic.New("diagnostic.network.resultURL", "invalid download request URL")
 	}
 	return result, nil
 }
@@ -315,12 +362,8 @@ func NewClient(cfg Config, timeout time.Duration) (*http.Client, error) {
 		}
 		return classified
 	}
-	switch cfg.ProxyMode {
-	case "environment":
+	if cfg.Method == MethodEnvironment {
 		tr.Proxy = environmentProxy()
-	case "custom":
-		p, _ := proxyURL(cfg.ProxyURL)
-		tr.Proxy = http.ProxyURL(p)
 	}
 	return &http.Client{Transport: tr, Timeout: timeout, CheckRedirect: func(req *http.Request, via []*http.Request) error {
 		if len(via) >= 10 {
@@ -345,6 +388,24 @@ func envValue(names ...string) string {
 		}
 	}
 	return ""
+}
+
+// EnvironmentStatus reports whether an HTTPS GitHub request would use an
+// environment proxy. It never returns its URL or credentials.
+func EnvironmentStatus() (string, error) {
+	const endpoint = "https://github.com/MetaCubeX/mihomo/releases/latest/download/version.txt"
+	req, _ := http.NewRequest(http.MethodGet, endpoint, nil)
+	proxy, err := environmentProxy()(req)
+	if err != nil {
+		return "", err
+	}
+	if proxy != nil {
+		return "configured", nil
+	}
+	if envValue("HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy") != "" {
+		return "bypassed", nil
+	}
+	return "missing", nil
 }
 
 // Each new client snapshots the environment. Unlike ProxyFromEnvironment, this

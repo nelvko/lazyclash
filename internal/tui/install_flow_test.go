@@ -18,7 +18,7 @@ import (
 
 func TestInstallUsesSharedStableCheckAndPinsItsVersionWithoutAnotherConfirmation(t *testing.T) {
 	var events []string
-	cfg := downloadnet.Config{Source: "official", ProxyMode: "environment"}
+	cfg := downloadnet.Config{Method: "environment"}
 	b := &fakeBackend{prefs: app.Preferences{Network: cfg}}
 	b.checkUpdate = func(ctx context.Context, channel mihomo.Channel, used downloadnet.Config) (app.CoreUpdateCheck, error) {
 		events = append(events, "check")
@@ -49,7 +49,7 @@ func TestInstallUsesSharedStableCheckAndPinsItsVersionWithoutAnotherConfirmation
 		return app.InstallResult{InstalledVersion: plan.Release.Version, Operation: plan.Operation}, ctx.Err()
 	}
 	m := ready(b)
-	m, cmd := update(m, key("i"))
+	cmd := m.openManagementWizard(false)
 	m, _ = update(m, actionCmd(t, cmd)())
 	if strings.Join(events, ",") != "check" || m.busy || m.wizard.step != stepVersion {
 		t.Fatal("entering installation downloaded, prepared or installed a core")
@@ -97,7 +97,7 @@ func TestInstallSpecificAndLocalSourcesNeedOnlyOneInstallAction(t *testing.T) {
 				return app.InstallResult{InstalledVersion: "v1.19.33"}, nil
 			}
 			m := ready(b)
-			m.openWizard(true)
+			m.openManagementWizard(true)
 			m.wizard.local.SetValue("/tmp/local-mihomo")
 			if !local {
 				m.wizard.localMode, m.wizard.specific = false, true
@@ -133,7 +133,7 @@ func TestInstallPreflightBlockAndFailureNeverDownload(t *testing.T) {
 				return app.InstallResult{}, nil
 			}}
 			m := ready(b)
-			m.openWizard(true)
+			m.openManagementWizard(true)
 			m.wizard.local.SetValue("/tmp/mihomo")
 			m, cmd := activateWizard(m, "install")
 			m, _ = update(m, actionCmd(t, cmd)())
@@ -161,7 +161,7 @@ func TestInstallPendingPreflightCannotContinueAfterLeavingOrEditing(t *testing.T
 				return app.InstallResult{}, nil
 			}}
 			m := ready(b)
-			m.openWizard(true)
+			m.openManagementWizard(true)
 			m.wizard.local.SetValue("/tmp/mihomo")
 			m, cmd := activateWizard(m, "install")
 			late := actionCmd(t, cmd)()
@@ -196,11 +196,11 @@ func TestInstallEmptyVersionFailsAfterOneSharedCheck(t *testing.T) {
 			m := ready(b)
 			var cmd tea.Cmd
 			if requested {
-				m.openWizard(true)
+				m.openManagementWizard(true)
 				m.wizard.localMode = false
 				m, cmd = activateWizard(m, "install")
 			} else {
-				cmd = m.openWizard(false)
+				cmd = m.openManagementWizard(false)
 			}
 			m, _ = update(m, actionCmd(t, cmd)())
 			if checks != 1 || resolves != 0 || m.busy || m.wizard.installRequested || m.wizard.err == "" || m.wizard.focus != "resolve" {
@@ -216,7 +216,7 @@ func TestInstallNetworkApplyRechecksWithoutRetainingPendingInstallation(t *testi
 			checks, resolves, installs := 0, 0, 0
 			b := &fakeBackend{checkUpdate: func(_ context.Context, _ mihomo.Channel, cfg downloadnet.Config) (app.CoreUpdateCheck, error) {
 				checks++
-				if checks == 2 && cfg.ProxyMode != "environment" {
+				if checks == 2 && cfg.Method != "environment" {
 					t.Fatal("network apply did not use the changed connection")
 				}
 				return app.CoreUpdateCheck{LatestVersion: "v1.19.33", Channel: mihomo.ChannelStable, Status: mihomo.UpdateNotInstalled, CheckedAt: time.Now()}, nil
@@ -228,7 +228,7 @@ func TestInstallNetworkApplyRechecksWithoutRetainingPendingInstallation(t *testi
 				return app.InstallResult{}, nil
 			}}
 			m := ready(b)
-			initial := m.openWizard(false)
+			initial := m.openManagementWizard(false)
 			m, _ = update(m, actionCmd(t, initial)())
 			m, cmd := activateWizard(m, "install")
 			if stage == "prepare" {
@@ -236,7 +236,7 @@ func TestInstallNetworkApplyRechecksWithoutRetainingPendingInstallation(t *testi
 			}
 			late := actionCmd(t, cmd)()
 			m, _ = activateWizard(m, "network")
-			m.wizard.draft.ProxyMode = "environment"
+			m.wizard.draft.Method = "environment"
 			m, check := activateWizard(m, "apply-network")
 			if !m.busy || m.job != "check-update" || m.wizard.installRequested {
 				t.Fatal("network apply retained an earlier install authorization")
@@ -254,7 +254,7 @@ func TestInstallRemoteFailureCanSwitchToLocalWithoutRetainingTheError(t *testing
 	m := ready(&fakeBackend{checkUpdate: func(context.Context, mihomo.Channel, downloadnet.Config) (app.CoreUpdateCheck, error) {
 		return app.CoreUpdateCheck{}, errors.New("fixture remote unavailable")
 	}})
-	cmd := m.openWizard(false)
+	cmd := m.openManagementWizard(false)
 	m, _ = update(m, actionCmd(t, cmd)())
 	if m.wizard.err == "" {
 		t.Fatal("remote failure missing")
@@ -276,10 +276,10 @@ func TestInstalledCoreManualReplacementStillReviewsThePlan(t *testing.T) {
 		return app.InstallResult{}, nil
 	}
 	m := ready(b)
-	if cmd := m.openWizard(false); cmd != nil || m.busy || m.wizard.step != stepCore {
+	if cmd := m.openManagementWizard(false); cmd != nil || m.busy || m.wizard.step != stepCore {
 		t.Fatal("opening installed-core management performed a lookup or replacement")
 	}
-	m.openWizard(true)
+	m.openManagementWizard(true)
 	m.wizard.local.SetValue("/tmp/older-mihomo")
 	m, cmd := activateWizard(m, "install")
 	m, _ = update(m, actionCmd(t, cmd)())
@@ -296,10 +296,17 @@ func TestInstallFlowPTYFixture(t *testing.T) {
 	if report == "" {
 		t.Skip("explicit PTY report path required")
 	}
-	var checks, resolves, prepares, installs atomic.Int32
+	var checks, resolves, prepares, installs, starts atomic.Int32
+	scenario := os.Getenv("LAZYCLASH_INSTALL_PTY_SCENARIO")
 	b := &fakeBackend{}
+	b.control = func(ctx context.Context, action string) error {
+		if action == "start" {
+			starts.Add(1)
+		}
+		return ctx.Err()
+	}
 	b.checkUpdate = func(ctx context.Context, channel mihomo.Channel, _ downloadnet.Config) (app.CoreUpdateCheck, error) {
-		checks.Add(1)
+		attempt := checks.Add(1)
 		select {
 		case <-ctx.Done():
 			return app.CoreUpdateCheck{}, ctx.Err()
@@ -307,6 +314,9 @@ func TestInstallFlowPTYFixture(t *testing.T) {
 		}
 		if channel != mihomo.ChannelStable {
 			return app.CoreUpdateCheck{}, errors.New("fixture expected stable channel")
+		}
+		if scenario == "check-retry" && attempt == 1 {
+			return app.CoreUpdateCheck{}, errors.New("Fixture version check failed")
 		}
 		return app.CoreUpdateCheck{LatestVersion: "v1.19.33", Channel: channel, Status: mihomo.UpdateNotInstalled, CheckedAt: time.Now()}, nil
 	}
@@ -324,6 +334,15 @@ func TestInstallFlowPTYFixture(t *testing.T) {
 	b.install = func(ctx context.Context, plan app.InstallPlan, _ downloadnet.Config, progress func(mihomo.Progress)) (app.InstallResult, error) {
 		installs.Add(1)
 		progress(mihomo.Progress{Stage: "download", Downloaded: 12 << 20, Total: 20 << 20, BytesPerSecond: 2 << 20, Detail: "Fixture transfer"})
+		if scenario == "success" || scenario == "check-retry" {
+			select {
+			case <-ctx.Done():
+				return app.InstallResult{}, ctx.Err()
+			case <-time.After(250 * time.Millisecond):
+			}
+			b.snapshot = onboardingDefaultSnapshot()
+			return app.InstallResult{InstalledVersion: plan.Release.Version, Operation: "install"}, nil
+		}
 		<-ctx.Done()
 		time.Sleep(80 * time.Millisecond)
 		return app.InstallResult{}, ctx.Err()
@@ -332,7 +351,7 @@ func TestInstallFlowPTYFixture(t *testing.T) {
 	if err := Run(context.Background(), b, language); err != nil {
 		t.Fatal(err)
 	}
-	raw, _ := json.Marshal(map[string]int32{"checks": checks.Load(), "resolves": resolves.Load(), "prepares": prepares.Load(), "installs": installs.Load()})
+	raw, _ := json.Marshal(map[string]int32{"checks": checks.Load(), "resolves": resolves.Load(), "prepares": prepares.Load(), "installs": installs.Load(), "starts": starts.Load()})
 	if err := os.WriteFile(report, raw, 0600); err != nil {
 		t.Fatal(err)
 	}

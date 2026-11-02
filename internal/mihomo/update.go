@@ -19,8 +19,7 @@ func LatestVersion(ctx context.Context, channel Channel, cfg downloadnet.Config)
 	return (Resolver{}).LatestVersion(ctx, channel, cfg)
 }
 
-// LatestVersion reads official version.txt through the configured connection
-// proxy. Release-file mirrors never become an authority for version metadata.
+// LatestVersion reads official version.txt through the selected download method.
 // It downloads no core assets and keeps no persistent cache.
 func (r Resolver) LatestVersion(ctx context.Context, channel Channel, cfg downloadnet.Config) (string, error) {
 	var endpoint string
@@ -40,6 +39,10 @@ func (r Resolver) LatestVersion(ctx context.Context, channel Channel, cfg downlo
 	}
 	if r.HTTP == nil {
 		defer client.CloseIdleConnections()
+	}
+	endpoint, err = cfg.URL(endpoint)
+	if err != nil {
+		return "", err
 	}
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	req.Header.Set("Accept", "text/plain, application/octet-stream")

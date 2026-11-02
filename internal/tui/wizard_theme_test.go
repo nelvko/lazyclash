@@ -27,7 +27,7 @@ func TestWizardNetworkChecksKeepIndependentSemanticStates(t *testing.T) {
 
 func TestWizardFocusAndCurrentStepRemainVisibleWithoutColor(t *testing.T) {
 	m := ready(&fakeBackend{})
-	m.openWizard(true)
+	m.openManagementWizard(true)
 	for _, size := range [][2]int{{160, 45}, {120, 32}, {80, 24}, {60, 20}, {120, 18}} {
 		m, _ = update(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
 		m.wizard.step, m.wizard.focus = stepVersion, "install"

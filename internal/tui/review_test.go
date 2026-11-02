@@ -121,10 +121,10 @@ func TestNetworkSaveLocksDraftAgainstKeyboardPasteAndMouse(t *testing.T) {
 	m := ready(&fakeBackend{})
 	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 40})
 	m.openNetwork(false)
-	m.wizard.draft = downloadnet.Config{Source: "prefix", Prefix: "https://accelerator.example.invalid/", ProxyMode: "none"}
+	m.wizard.draft = downloadnet.Config{Method: "accelerated", Prefix: "https://accelerator.example.invalid/"}
 	m.wizard.prefix.SetValue(m.wizard.draft.Prefix)
 	m.wizard.remember = true
-	m.wizard.focus = "source"
+	m.wizard.focus = "download-method"
 	m.wizard.reveal = true
 	m.layout()
 	before := m.wizard.draft
@@ -134,15 +134,15 @@ func TestNetworkSaveLocksDraftAgainstKeyboardPasteAndMouse(t *testing.T) {
 	m.wizard.focus = "prefix"
 	m, _ = update(m, key("q123"))
 	m, _ = update(m, tea.PasteMsg{Content: "https://different.example.invalid/"})
-	for _, control := range []string{"source", "proxy-mode", "remember"} {
+	for _, control := range []string{"download-method", "remember"} {
 		m.wizard.focus = control
 		m, _ = update(m, special(tea.KeyRight))
 		m, _ = update(m, special(tea.KeyEnter))
 	}
-	m.wizard.focus = "source"
+	m.wizard.focus = "download-method"
 	m.wizard.reveal = true
 	m.layout()
-	m, _ = click(m, findTarget(t, m, "source"))
+	m, _ = click(m, findTarget(t, m, "download-method"))
 	if m.wizard.draft != before || m.wizard.prefix.Value() != prefix || !m.wizard.remember || m.id != id || !m.busy || ctx.Err() != nil {
 		t.Fatal("input modified or canceled an in-flight preference save")
 	}
@@ -232,7 +232,7 @@ func TestInstallResultCarriesFinalProgressBeforeErrorClassification(t *testing.T
 }
 
 func TestV2ViewFlagsPasteMouseAndKeyboardReleaseSemantics(t *testing.T) {
-	m := ready(&fakeBackend{})
+	m := ready(&fakeBackend{snapshot: app.Snapshot{Installed: true}})
 	view := m.View()
 	if !view.AltScreen || view.MouseMode != tea.MouseModeAllMotion || view.DisableBracketedPasteMode || ansi.Strip(view.Content) != ansi.Strip(m.screen) {
 		t.Fatal("v2 View did not request terminal capabilities")
@@ -245,7 +245,7 @@ func TestV2ViewFlagsPasteMouseAndKeyboardReleaseSemantics(t *testing.T) {
 	if m.wizard.open {
 		t.Fatal("key release activated a shortcut")
 	}
-	m, _ = update(m, key("i"))
+	m.openManagementWizard(false)
 	m.wizard.step = stepVersion
 	m.wizard.specific = true
 	m.wizard.focus = "version-input"
@@ -288,13 +288,14 @@ func TestNewWizardClearsPreviousFailureAndNetworkPreviewIsActual(t *testing.T) {
 	m.wizard.err = "old failure"
 	m.wizard.failedKind = "install"
 	m.wizard.failedStage = "Downloading"
-	m.openWizard(false)
+	m.openManagementWizard(false)
 	if m.wizard.err != "" || m.wizard.failedKind != "" || m.wizard.failedStage != "" {
 		t.Fatal("new flow retained previous retry state")
 	}
 	m.wizard.release = testRelease()
 	m.openNetwork(false)
-	m.wizard.draft = downloadnet.Config{Source: "prefix", Prefix: "https://accelerator.example.invalid/", ProxyMode: "none"}
+	m.wizard.draft = downloadnet.Config{Method: "accelerated", Prefix: "https://accelerator.example.invalid/"}
+	m.wizard.previewURL = true
 	doc, _, _ := m.wizardDocument(300)
 	preview := ansi.Strip(strings.Join(doc.lines, "\n"))
 	actual := "https://accelerator.example.invalid/" + testRelease().URL
@@ -304,8 +305,8 @@ func TestNewWizardClearsPreviousFailureAndNetworkPreviewIsActual(t *testing.T) {
 	m.wizard.release = mihomo.Release{}
 	doc, _, _ = m.wizardDocument(300)
 	preview = ansi.Strip(strings.Join(doc.lines, "\n"))
-	if strings.Contains(preview, "https://github.com/") || !strings.Contains(preview, "Resolve a version") {
-		t.Fatal("unresolved preview fabricated an asset address")
+	if !strings.Contains(preview, "https://github.com/MetaCubeX/mihomo/releases/latest/download/version.txt") || strings.Contains(preview, testRelease().Asset) {
+		t.Fatal("unresolved preview did not use the real version query URL")
 	}
 }
 

@@ -104,7 +104,7 @@ func TestNavigationArrowsAndTabHaveIndependentRegions(t *testing.T) {
 func TestHelpIsScrollableCapturesInputAndRestoresFocus(t *testing.T) {
 	m := ready(&fakeBackend{})
 	m.width, m.height = 80, 24
-	m.focus = "install"
+	m.focus = "setup.install"
 	m, _ = update(m, key("?"))
 	if !m.helpOpen || !strings.Contains(ansi.Strip(m.screen), "Help / Overview") {
 		t.Fatal("help did not open")
@@ -122,7 +122,7 @@ func TestHelpIsScrollableCapturesInputAndRestoresFocus(t *testing.T) {
 	assertCanvas(t, m.View().Content, 20, 5)
 	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 32})
 	m, _ = update(m, special(tea.KeyEscape))
-	if m.helpOpen || m.focus != "install" || m.page != "overview" {
+	if m.helpOpen || m.focus != "setup.install" || m.page != "overview" {
 		t.Fatal("closing help did not restore the previous page and focus")
 	}
 }

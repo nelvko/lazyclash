@@ -12,6 +12,8 @@ require (
 
 require github.com/nicksnyder/go-i18n/v2 v2.6.1
 
+require github.com/charmbracelet/harmonica v0.2.0 // indirect
+
 require (
 	charm.land/bubbles/v2 v2.2.1
 	charm.land/bubbletea/v2 v2.1.1

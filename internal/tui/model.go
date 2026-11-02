@@ -476,6 +476,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.quitting && !m.keyHints.pending {
 			return m, tea.Quit
 		}
+		if m.wizard.inline && m.wizard.step == stepResult && m.notification.operation.Key == "service.start" && v.actionSucceeded {
+			m.wizard.inline = false
+			if m.page == "overview" && strings.HasPrefix(m.focus, "setup.") {
+				m.focus = "core.stop"
+			}
+		}
 	case wizardMsg:
 		if v.id != m.id {
 			return m, nil
@@ -489,7 +495,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.snapshot = v.snapshot
 			m.snapshotReady = true
 		}
-		cmd = m.handleWizardResult(v)
+		cmd = m.handleInlineWizardResult(v)
 		if v.kind == "install" || v.kind == "upgrade" {
 			m.notification.operation.Context = m.tr("notification.install")
 			if v.kind == "upgrade" {
@@ -551,6 +557,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			break
 		} else if m.wizard.open || m.wizard.networkOpen {
 			cmd = m.updateWizardInput(v)
+		} else if m.inlineInputActive() {
+			cmd = m.updateInlineInput(v)
 		} else if m.form != "" {
 			if m.form == "profile-create" {
 				input := m.profileCreateActive()
@@ -622,6 +630,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.notification.panel.open {
 			m.notificationAction(m.notification.panel.key(v))
+			break
+		}
+		if handled, next := m.inlineInstallKey(v); handled {
+			cmd = next
 			break
 		}
 		if handled, next := m.profileURLKey(v); handled {
@@ -864,6 +876,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			break
 		} else if m.wizard.open || m.wizard.networkOpen {
 			cmd = m.updateWizardInput(msg)
+		} else if m.inlineInputActive() {
+			cmd = m.updateInlineInput(msg)
 		} else if m.form != "" {
 			if m.form == "profile-create" {
 				if input := m.profileCreateActive(); input != nil && !m.busy && !m.quitting {
@@ -882,6 +896,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.logs.search, cmd = m.logs.search.Update(msg)
 		}
 	}
+	inline := m.syncInlineInstall()
 	notification := m.syncNotification()
 	m.reconcileProfiles()
 	m.reconcileProfileMenu()
@@ -900,8 +915,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.layout()
 	intro := m.syncLogoIntro()
 	timers := m.syncNotificationTimers(time.Now())
-	if notification != nil || timers != nil || completion != nil || next != nil || nextRules != nil || nextLogs != nil || intro != nil {
-		return m, tea.Batch(cmd, notification, timers, completion, next, nextRules, nextLogs, intro)
+	if inline != nil || notification != nil || timers != nil || completion != nil || next != nil || nextRules != nil || nextLogs != nil || intro != nil {
+		return m, tea.Batch(cmd, inline, notification, timers, completion, next, nextRules, nextLogs, intro)
 	}
 	return m, cmd
 }
@@ -909,7 +924,8 @@ func (m *Model) navigate(page string) {
 	m.browsePage(page)
 	m.enterContent()
 }
-func (m *Model) openWizard(local bool) tea.Cmd {
+func (m *Model) openManagementWizard(local bool) tea.Cmd {
+	m.wizard.inline = false
 	m.wizard.open = true
 	m.wizard.networkOpen = false
 	m.wizard.step = stepCore
@@ -1035,6 +1051,9 @@ func (m *Model) serviceAction(action string) tea.Cmd {
 	return m.begin(m.tr("model.service_"+action), m.tr("model.service_"+action+"_done"), func(ctx context.Context) error { return m.backend.Control(ctx, action) }, notificationOperation{Key: "service." + action, Context: m.tr("notification.service." + action)})
 }
 func (m *Model) activate(id string) tea.Cmd {
+	if strings.HasPrefix(id, "setup.") {
+		return m.inlineInstallActivate(id)
+	}
 	if handled, cmd := m.keyHintsAction(id); handled {
 		return cmd
 	}
@@ -1174,6 +1193,9 @@ func (m *Model) cycleFocus(delta int) {
 	current = (current + delta + len(targets)) % len(targets)
 	previous := m.focus
 	m.focus = targets[current].ID
+	if !m.inlineInputActive() {
+		m.blurInlineInput()
+	}
 	if strings.HasPrefix(m.focus, "nav.") {
 		m.sidebar.reveal = true
 	}
@@ -1299,6 +1321,10 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 				if m.notificationAction(r.ID) {
 					return nil
 				}
+				if strings.HasPrefix(r.ID, "setup.") {
+					m.focus = r.ID
+					return m.inlineInstallActivate(r.ID)
+				}
 				if !m.busy {
 					if r.ID == "logo" {
 						return m.startLogoPulse()
@@ -1327,6 +1353,9 @@ func (m Model) profiles() []string {
 	return p
 }
 func (m Model) pageBody(width int) (string, []hitRegion) {
+	if m.page == "overview" && m.inlineInstallVisible() {
+		return m.inlineInstallBody(width)
+	}
 	var lines []string
 	var hits []hitRegion
 	add := func(id, label string) {

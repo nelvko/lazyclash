@@ -48,6 +48,7 @@ func (m *Model) browsePage(page string) {
 	m.sidebar.reveal = true
 	if page != m.page {
 		m.rememberPageView()
+		m.blurInlineInput()
 		m.dismissProfileMenu()
 		m.profilesUI.editing = false
 		m.profilesUI.url.Blur()
@@ -71,6 +72,7 @@ func (m *Model) browsePage(page string) {
 
 func (m *Model) returnToNavigation() {
 	m.rememberPageView()
+	m.blurInlineInput()
 	m.profilesUI.editing = false
 	m.profilesUI.url.Blur()
 	m.connections.editing = false
@@ -105,6 +107,10 @@ func (m Model) contentTargets() []hitRegion {
 	width := dashboardBodyWidth(o)
 	switch m.page {
 	case "overview":
+		if m.inlineInstallVisible() {
+			_, targets := m.inlineInstallBody(width)
+			return targets
+		}
 		body, actions := overviewContent(o, width)
 		return append(overviewCardRegions(body, o), actions...)
 	case "settings":
@@ -149,6 +155,9 @@ func (m *Model) enterContent() {
 	m.sidebarOpen = false
 	targets := m.contentTargets()
 	remembered := m.restoredContentFocus(m.pageViews[m.page])
+	if m.page == "overview" && m.inlineInstallVisible() && m.wizard.step == stepVersion && m.wizard.err != "" && remembered == "setup.install" {
+		remembered = "setup.resolve"
+	}
 	chosen := ""
 	if remembered == "content" {
 		chosen = remembered
@@ -162,6 +171,22 @@ func (m *Model) enterContent() {
 	if chosen == "" {
 		switch m.page {
 		case "overview":
+			if m.inlineInstallVisible() {
+				chosen = "setup.install"
+				if m.wizard.step == stepInstalling {
+					chosen = "setup.cancel"
+				} else if m.wizard.step == stepResult {
+					chosen = "setup.start"
+					if m.wizard.err != "" {
+						chosen = "setup.retry"
+					}
+				} else if m.wizard.step == stepConfirm && m.wizard.plan.BlockedReason != "" {
+					chosen = "setup.later"
+				} else if m.wizard.step == stepVersion && m.wizard.err != "" {
+					chosen = "setup.resolve"
+				}
+				break
+			}
 			if overviewSetupVisible(m.navigationOptions()) {
 				chosen = "install"
 				break
@@ -306,6 +331,9 @@ func (m *Model) contentNavigationKey(k tea.KeyPressMsg) bool {
 }
 
 func overviewCardRegionsFromModel(m Model) []hitRegion {
+	if m.inlineInstallVisible() {
+		return nil
+	}
 	o := m.navigationOptions()
 	body, _ := overviewContent(o, dashboardBodyWidth(o))
 	return overviewCardRegions(body, o)

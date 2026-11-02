@@ -270,7 +270,7 @@ func TestDirectionalNavigationOverlaysOwnTheirKeys(t *testing.T) {
 				m, _ = update(m, key("x"))
 			case "wizard choice":
 				m.openNetwork(false)
-				m.wizard.focus = "source"
+				m.wizard.focus = "download-method"
 			}
 			directionCleanup(t, &m)
 			m.layout()
@@ -298,7 +298,7 @@ func TestDirectionalNavigationOverlaysOwnTheirKeys(t *testing.T) {
 						t.Fatal("direction key escaped connection confirmation")
 					}
 				case "wizard choice":
-					if !m.wizard.networkOpen || m.wizard.focus != "source" {
+					if !m.wizard.networkOpen || m.wizard.focus != "download-method" {
 						t.Fatal("direction key escaped the wizard choice")
 					}
 				}

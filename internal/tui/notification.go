@@ -23,6 +23,7 @@ type notificationOperation struct {
 	ID                 uint64
 	Key, Page, Context string
 	Dialog             bool
+	Inline             bool
 }
 
 type notificationItem struct {
@@ -41,6 +42,7 @@ type notificationSource struct {
 	busy             bool
 	transient        bool
 	informational    bool
+	inlineVisible    bool
 }
 
 type notificationState struct {
@@ -59,7 +61,7 @@ type notificationState struct {
 }
 
 func (m Model) notificationSource() notificationSource {
-	return notificationSource{m.id, m.notification.operation.ID, m.message, m.failure, m.busy, m.messageTransient, m.messageInformational}
+	return notificationSource{m.id, m.notification.operation.ID, m.message, m.failure, m.busy, m.messageTransient, m.messageInformational, m.page == "overview" && m.inlineInstallVisible()}
 }
 
 func (m Model) feedbackDialogOpen() bool {
@@ -70,6 +72,9 @@ func (m *Model) prepareNotification(key, context string) {
 	n := &m.notification
 	n.nextOperation++
 	n.operation = notificationOperation{ID: n.nextOperation, Key: key, Page: m.page, Context: context, Dialog: m.feedbackDialogOpen()}
+	if m.wizard.inline && (key == "check-update" || key == "resolve" || key == "prepare" || key == "install") {
+		n.operation.Inline = true
+	}
 	n.details, n.critical = "", false
 	n.retainDialog = false
 	for _, item := range n.items {
@@ -90,6 +95,9 @@ func (m *Model) syncNotification() tea.Cmd {
 	}
 	n.source = source
 	op := n.operation
+	if op.Inline && source.inlineVisible && !n.critical {
+		return nil
+	}
 	index := -1
 	for i, item := range n.items {
 		if item.Operation == op.ID || (op.Key != "" && item.Key == op.Key && item.Kind == "error") {
@@ -296,7 +304,16 @@ func (m *Model) notificationAction(action string) bool {
 }
 
 func (m Model) dashboardOptions() dashboardOptions {
-	return dashboardOptions{Locale: m.locale, Width: m.width, Height: m.height, Page: m.page, Busy: m.busy, Dim: m.feedbackDialogOpen() || m.helpOpen || m.notification.panel.open, SidebarOpen: m.sidebarOpen, HideKeyHints: m.keyHints.hidden, GuideSkipped: m.guideSkipped, Notifications: m.notification.items, Spinner: m.spinner.View(), LogoFrame: m.logoFrame, LogoIntroFrame: m.logoIntro.frame}
+	items := m.notification.items
+	if m.page == "overview" && m.inlineInstallVisible() {
+		items = nil
+		for _, item := range m.notification.items {
+			if item.Operation != m.notification.operation.ID || !m.notification.operation.Inline || item.Critical {
+				items = append(items, item)
+			}
+		}
+	}
+	return dashboardOptions{Locale: m.locale, Width: m.width, Height: m.height, Page: m.page, Busy: m.busy, Dim: m.feedbackDialogOpen() || m.helpOpen || m.notification.panel.open, SidebarOpen: m.sidebarOpen, HideKeyHints: m.keyHints.hidden || m.wizard.open || m.wizard.networkOpen, GuideSkipped: m.guideSkipped, Notifications: items, Spinner: m.spinner.View(), LogoFrame: m.logoFrame, LogoIntroFrame: m.logoIntro.frame, InlineInstall: m.page == "overview" && m.inlineInstallVisible()}
 }
 
 // Single-card adapter for geometry callers outside the dashboard.

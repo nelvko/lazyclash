@@ -41,27 +41,30 @@ func fixtureResponse(r *http.Request, status int, media string, body []byte) *ht
 	return &http.Response{StatusCode: status, Body: io.NopCloser(bytes.NewReader(body)), Header: headers, Request: r, ContentLength: int64(len(body))}
 }
 
-func TestResolveLatestAndSpecificUseOnlyOfficialMetadata(t *testing.T) {
+func TestResolveLatestAndSpecificUseSelectedMetadataRoute(t *testing.T) {
 	expected, _, raw := releaseFixture(t, "v1.2.3")
-	var requests []string
-	resolver := Resolver{Arch: "arm64", HTTP: &http.Client{Transport: downloadTransportFunc(func(r *http.Request) (*http.Response, error) {
-		requests = append(requests, r.URL.String())
-		if r.Header.Get("Accept") != "application/vnd.github+json" {
-			t.Error("missing GitHub JSON Accept header")
+	for _, cfg := range []downloadnet.Config{{}, {Method: downloadnet.MethodEnvironment}, {Method: downloadnet.MethodAccelerated, Prefix: "https://accelerator.invalid/"}} {
+		var requests []string
+		resolver := Resolver{Arch: "arm64", HTTP: &http.Client{Transport: downloadTransportFunc(func(r *http.Request) (*http.Response, error) {
+			requests = append(requests, r.URL.String())
+			if r.Header.Get("Accept") != "application/vnd.github+json" {
+				t.Error("missing GitHub JSON Accept header")
+			}
+			return fixtureResponse(r, 200, "application/json", raw), nil
+		})}}
+		got, err := resolver.Resolve(t.Context(), "latest", cfg)
+		if err != nil || got != expected {
+			t.Fatalf("release=%+v err=%v expected=%+v", got, err, expected)
 		}
-		return fixtureResponse(r, 200, "application/json", raw), nil
-	})}}
-	cfg := downloadnet.Config{Source: "mirror", Mirror: "https://mirror.invalid/{version}/{asset}", ProxyMode: "none"}
-	got, err := resolver.Resolve(t.Context(), "latest", cfg)
-	if err != nil || got != expected {
-		t.Fatalf("release=%+v err=%v expected=%+v", got, err, expected)
-	}
-	got, err = resolver.Resolve(t.Context(), "1.2.3", cfg)
-	if err != nil || got.Version != "v1.2.3" || got.ChecksumSource != releaseAPI+"tags/v1.2.3#asset-digest:"+got.Asset {
-		t.Fatalf("specific release=%+v err=%v", got, err)
-	}
-	if len(requests) != 2 || requests[0] != releaseAPI+"latest" || requests[1] != releaseAPI+"tags/v1.2.3" {
-		t.Fatalf("mirror rewrote metadata: %v", requests)
+		got, err = resolver.Resolve(t.Context(), "1.2.3", cfg)
+		if err != nil || got.Version != "v1.2.3" || got.ChecksumSource != releaseAPI+"tags/v1.2.3#asset-digest:"+got.Asset {
+			t.Fatalf("specific release=%+v err=%v", got, err)
+		}
+		latest, _ := cfg.URL(releaseAPI + "latest")
+		specific, _ := cfg.URL(releaseAPI + "tags/v1.2.3")
+		if len(requests) != 2 || requests[0] != latest || requests[1] != specific {
+			t.Fatalf("metadata ignored selected route: %v", requests)
+		}
 	}
 }
 
@@ -206,7 +209,7 @@ func (b *limitedProbeBody) Read(p []byte) (int, error) {
 }
 func (b *limitedProbeBody) Close() error { return nil }
 
-func TestFileProbeIsIndependentBoundedAndUsesOnlyAssetRewrite(t *testing.T) {
+func TestFileProbeIsIndependentBoundedAndUsesSelectedRoute(t *testing.T) {
 	release, _, _ := releaseFixture(t, "v1.2.3")
 	body := append([]byte{0x1f, 0x8b}, bytes.Repeat([]byte("x"), 10000)...)
 	consumed := 0
@@ -214,14 +217,14 @@ func TestFileProbeIsIndependentBoundedAndUsesOnlyAssetRewrite(t *testing.T) {
 		if r.Header.Get("Range") != "bytes=0-4095" {
 			t.Error("file test did not request bounded range")
 		}
-		if r.URL.String() != "https://mirror.invalid/v1.2.3/"+release.Asset {
+		if r.URL.String() != "https://accelerator.invalid/"+release.URL {
 			t.Errorf("unexpected probe URL %s", r.URL.String())
 		}
 		response := fixtureResponse(r, 206, "application/gzip", nil)
 		response.Body = &limitedProbeBody{Reader: *bytes.NewReader(body), read: &consumed}
 		return response, nil
 	})}}
-	if err := resolver.TestFile(t.Context(), release, downloadnet.Config{Source: "mirror", Mirror: "https://mirror.invalid/{version}/{asset}"}); err != nil {
+	if err := resolver.TestFile(t.Context(), release, downloadnet.Config{Method: downloadnet.MethodAccelerated, Prefix: "https://accelerator.invalid/"}); err != nil {
 		t.Fatal(err)
 	}
 	if consumed != 4096 {
@@ -257,7 +260,7 @@ func TestDownloadReleaseReportsMeasuredProgressAndRejectsTampering(t *testing.T)
 			dir := t.TempDir()
 			dest := filepath.Join(dir, "mihomo")
 			var events []Progress
-			err := DownloadRelease(t.Context(), dest, release, downloadnet.Config{Source: "mirror", Mirror: server.URL + "/{version}/{asset}"}, func(p Progress) { events = append(events, p) })
+			err := DownloadRelease(t.Context(), dest, release, downloadnet.Config{Method: downloadnet.MethodAccelerated, Prefix: server.URL}, func(p Progress) { events = append(events, p) })
 			if tamper {
 				if err == nil || !strings.Contains(err.Error(), "checksum mismatch") {
 					t.Fatalf("tampered source accepted: %v", err)
@@ -316,7 +319,7 @@ func TestReleaseQueryCancellationAndFileStatusAreSeparate(t *testing.T) {
 	}
 }
 
-func TestMetadataRedirectIsNotTreatedAsOfficialDigestAuthority(t *testing.T) {
+func TestMetadataRedirectDoesNotSilentlyChangeSelectedSource(t *testing.T) {
 	_, _, raw := releaseFixture(t, "v1.2.3")
 	requests := 0
 	resolver := Resolver{Arch: "arm64", HTTP: &http.Client{Transport: downloadTransportFunc(func(r *http.Request) (*http.Response, error) {
@@ -353,5 +356,80 @@ func TestDownloadUnknownTotalStillReportsActualBytes(t *testing.T) {
 	}
 	if final.Total != 0 || final.Downloaded != int64(len(archive)) || final.Stage != "done" {
 		t.Fatalf("incorrect unknown-length progress %+v", final)
+	}
+}
+
+func TestAcceleratedInstallRoutesVersionMetadataAndFileThroughOnePrefix(t *testing.T) {
+	release, archive, metadata := releaseFixture(t, "v1.2.3")
+	requestPaths := make(chan string, 8)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestPaths <- r.URL.Path
+		switch r.URL.Path {
+		case "/proxy/" + stableVersionURL:
+			w.Header().Set("Content-Type", "text/plain")
+			_, _ = io.WriteString(w, release.Version+"\n")
+		case "/proxy/" + releaseAPI + "tags/v1.2.3":
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write(metadata)
+		case "/proxy/" + release.URL:
+			w.Header().Set("Content-Type", "application/gzip")
+			_, _ = w.Write(archive)
+		default:
+			t.Errorf("unexpected request: %s", r.URL.Path)
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	// Acceleration must remain usable with an invalid inherited proxy.
+	t.Setenv("HTTPS_PROXY", "http://private-user:private-pass@127.0.0.1:1")
+	t.Setenv("HTTP_PROXY", "http://private-user:private-pass@127.0.0.1:1")
+	cfg := downloadnet.Config{Method: downloadnet.MethodAccelerated, Prefix: server.URL + "/proxy///"}
+	resolver := Resolver{Arch: "arm64"}
+	version, err := resolver.LatestVersion(t.Context(), ChannelStable, cfg)
+	if err != nil || version != release.Version {
+		t.Fatalf("version=%q err=%v", version, err)
+	}
+	resolved, err := resolver.Resolve(t.Context(), version, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := resolver.TestFile(t.Context(), resolved, cfg); err != nil {
+		t.Fatal(err)
+	}
+	dest := filepath.Join(t.TempDir(), "mihomo")
+	if err := DownloadRelease(t.Context(), dest, resolved, cfg, nil); err != nil {
+		t.Fatal(err)
+	}
+	var requests []string
+	for len(requestPaths) > 0 {
+		requests = append(requests, <-requestPaths)
+	}
+	if len(requests) != 4 || requests[0] != "/proxy/"+stableVersionURL || requests[1] != "/proxy/"+releaseAPI+"tags/v1.2.3" || requests[2] != "/proxy/"+release.URL || requests[3] != requests[2] {
+		t.Fatalf("installation did not use one consistent route: %v", requests)
+	}
+}
+
+func TestAcceleratorMetadataFailureHasNoDirectFallback(t *testing.T) {
+	release, archive, _ := releaseFixture(t, "v1.2.3")
+	var requests []string
+	resolver := Resolver{Arch: "arm64", HTTP: &http.Client{Transport: downloadTransportFunc(func(r *http.Request) (*http.Response, error) {
+		requests = append(requests, r.URL.String())
+		if strings.HasPrefix(r.URL.String(), "https://accelerator.invalid/"+releaseAPI) {
+			return fixtureResponse(r, http.StatusBadGateway, "text/plain", []byte("private-error")), nil
+		}
+		if r.URL.String() != "https://accelerator.invalid/"+release.URL {
+			t.Errorf("attempted direct fallback: %s", r.URL.String())
+		}
+		return fixtureResponse(r, 200, "application/gzip", archive), nil
+	})}}
+	cfg := downloadnet.Config{Method: downloadnet.MethodAccelerated, Prefix: "https://accelerator.invalid/"}
+	if _, err := resolver.Resolve(t.Context(), "v1.2.3", cfg); err == nil || !strings.Contains(err.Error(), "502") || strings.Contains(err.Error(), "private-") {
+		t.Fatalf("unsupported metadata query accepted or exposed response: %v", err)
+	}
+	if len(requests) != 1 {
+		t.Fatal("metadata failure triggered fallback", requests)
+	}
+	if err := resolver.TestFile(t.Context(), release, cfg); err != nil {
+		t.Fatal("file compatibility should be independent of metadata support", err)
 	}
 }

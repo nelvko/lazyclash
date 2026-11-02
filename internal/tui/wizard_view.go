@@ -136,25 +136,17 @@ func (d *wizardDocument) pair(label, value string) {
 	d.line(themed(label+": ", muted, raised, false) + themed(clean(value), text, raised, false))
 }
 func (m *Model) wizardSourceName(cfg downloadnet.Config) string {
-	switch cfg.Normalized().Source {
-	case "prefix":
-		return m.tr("wizard.source.prefix")
-	case "mirror":
-		return m.tr("wizard.source.mirror")
-	default:
-		return m.tr("wizard.source.official")
-	}
+	return m.tr("wizard.method." + cfg.Normalized().Method)
 }
 func (m *Model) wizardProxySummary(cfg downloadnet.Config) string {
-	cfg = cfg.Normalized()
-	switch cfg.ProxyMode {
-	case "environment":
-		return m.tr("wizard.proxy.environment")
-	case "custom":
-		return m.tr("wizard.proxy.custom", downloadnet.RedactedURL(cfg.ProxyURL))
-	default:
-		return m.tr("wizard.proxy.none")
+	if cfg.Normalized().Method == "environment" {
+		status, err := downloadnet.EnvironmentStatus()
+		if err != nil {
+			return m.tr("wizard.environment.invalid")
+		}
+		return m.tr("wizard.environment." + status)
 	}
+	return m.tr("wizard.environment.ignored")
 }
 func (m *Model) wizardByteSize(n int64) string {
 	if n < 0 {
@@ -225,35 +217,38 @@ func (m *Model) wizardDocument(width int) (wizardDocument, []wizardButton, strin
 	}
 	if w.networkOpen {
 		title = m.tr("wizard.network.title")
-		d.line(m.tr("wizard.network.independent"))
-		d.space()
-		d.label(m.tr("wizard.network.source"))
-		d.control("source", m.wizardSourceName(w.draft)+"  ‹ / ›", w.focus)
-		switch w.draft.Source {
-		case "prefix":
+		choices := make([]string, 0, 3)
+		for _, method := range []string{"direct", "environment", "accelerated"} {
+			mark := "( ) "
+			if method == w.draft.Normalized().Method {
+				mark = "(*) "
+			}
+			choices = append(choices, mark+m.tr("wizard.method."+method))
+		}
+		separator := "  "
+		if d.width < 66 {
+			separator = "\n"
+		}
+		d.control("download-method", strings.Join(choices, separator), w.focus)
+		if w.draft.Normalized().Method == "accelerated" {
 			d.space()
 			d.field("prefix", m.tr("wizard.network.prefix"), &w.prefix, w.focus)
-		case "mirror":
-			d.space()
-			d.field("mirror", m.tr("wizard.network.mirror"), &w.mirror, w.focus)
-		}
-		d.space()
-		d.label(m.tr("wizard.network.preview"))
-		if w.release.URL != "" {
-			if value, err := w.draft.FilePreview(w.release.URL, w.release.Version, w.release.Asset); err == nil {
-				d.line(value)
-			} else {
-				d.line(themed(m.tr("wizard.network.invalid_source", m.localizeError(err)), errorColor, raised, false))
+			d.line(m.tr("wizard.network.prefix_help"))
+			d.control("url-preview", m.tr("wizard.network.preview_toggle"), w.focus)
+			if w.previewURL {
+				original := "https://github.com/MetaCubeX/mihomo/releases/latest/download/version.txt"
+				if w.release.URL != "" {
+					original = w.release.URL
+				}
+				if value, err := w.draft.Preview(original); err == nil {
+					d.line(value)
+				} else {
+					d.line(themed(m.localizeError(err), errorColor, raised, false))
+				}
 			}
-		} else {
-			d.line(m.tr("wizard.network.resolve_preview"))
 		}
 		d.space()
-		d.label(m.tr("wizard.network.connection"))
-		d.control("proxy-mode", m.wizardProxySummary(w.draft)+"  ‹ / ›", w.focus)
-		if w.draft.ProxyMode == "custom" {
-			d.field("proxy-url", m.tr("wizard.network.proxy_url"), &w.proxy, w.focus)
-		}
+		d.line(m.wizardProxySummary(w.draft))
 		d.space()
 		d.label(m.tr("wizard.network.test"))
 		d.check(m.tr("wizard.network.version_query"), w.versionTest)
@@ -265,10 +260,8 @@ func (m *Model) wizardDocument(width int) (wizardDocument, []wizardButton, strin
 			mark = "[x]"
 		}
 		d.control("remember", mark+m.tr("wizard.network.remember"), w.focus)
-		d.line(m.tr("wizard.network.session_only"))
 		d.space()
-		d.line(m.tr("wizard.network.authority"))
-		d.line(m.tr("wizard.network.mirror_boundary"))
+		d.line(m.tr("wizard.network.scope"))
 		if w.err != "" {
 			d.space()
 			d.line(themed(clean(w.err), errorColor, raised, false))
@@ -366,7 +359,7 @@ func (m *Model) wizardDocument(width int) (wizardDocument, []wizardButton, strin
 		}
 		d.control("network", m.tr("wizard.network.title"), w.focus)
 		if m.height >= 24 {
-			d.line(m.wizardSourceName(w.cfg) + " / " + m.wizardProxySummary(w.cfg))
+			d.line(m.tr("wizard.network.summary", m.wizardSourceName(w.cfg)))
 		}
 		if w.release.Asset != "" {
 			d.control("details", map[bool]string{false: m.tr("wizard.details_show"), true: m.tr("wizard.details_hide")}[w.details], w.focus)
@@ -416,7 +409,6 @@ func (m *Model) wizardDocument(width int) (wizardDocument, []wizardButton, strin
 		}
 		d.pair(m.tr("wizard.permissions"), m.tr("wizard.permissions_current"))
 		d.pair(m.tr("wizard.download_source"), m.wizardSourceName(w.cfg))
-		d.pair(m.tr("wizard.connection_proxy"), m.wizardProxySummary(w.cfg))
 		if p.Local != "" {
 			d.pair(m.tr("wizard.binary_source"), m.tr("wizard.local.no_digest"))
 		} else {
@@ -613,6 +605,10 @@ func (m *Model) renderWizard(base string) (string, []hitRegion) {
 	}
 	footer = append(footer, cellPad(line, innerW))
 	footerH := len(footer)
+	if modal {
+		boxH = min(boxH, len(doc.lines)+footerH+9)
+		y = (m.height - boxH) / 2
+	}
 	bodyY := 5
 	bodyH := max(1, boxH-bodyY-footerH-4)
 	w.controls = nil
@@ -651,7 +647,7 @@ func (m *Model) renderWizard(base string) (string, []hitRegion) {
 	if w.networkOpen {
 		step = m.tr("wizard.network.subtitle")
 	}
-	putRows(rows, 3, 2, themed(cellCrop("Mihomo · "+step+" · "+runtime.GOOS+"/"+runtime.GOARCH, innerW), muted, raised, false), boxW)
+	putRows(rows, 3, 2, themed(cellCrop(step, innerW), muted, raised, false), boxW)
 	putRows(rows, 2, 3, themed(strings.Repeat("─", boxW-4), border, raised, false), boxW)
 	for i := 0; i < bodyH && w.scroll+i < len(doc.lines); i++ {
 		putRows(rows, 3, bodyY+i, themed(cellPad(doc.lines[w.scroll+i], innerW), text, raised, false), boxW)

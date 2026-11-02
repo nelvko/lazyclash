@@ -12,7 +12,7 @@ import (
 
 func TestLanguagePreferencePersistsAndPreservesOtherPreferences(t *testing.T) {
 	a, _ := testApp(t)
-	network := downloadnet.Config{Source: "official", ProxyMode: "environment"}
+	network := downloadnet.Config{Method: downloadnet.MethodEnvironment}
 	if err := a.SaveNetworkPreferences(t.Context(), network); err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +53,7 @@ func TestLanguagePreferencePersistsAndPreservesOtherPreferences(t *testing.T) {
 func TestLanguagePreferenceAcceptsLegacyFileAndPreservesDamagedFile(t *testing.T) {
 	a, _ := testApp(t)
 	path := filepath.Join(a.Home, "preferences.json")
-	write(t, path, []byte(`{"Network":{"Source":"official","ProxyMode":"none"},"HasRun":true}`))
+	write(t, path, []byte(`{"Network":{"method":"direct"},"HasRun":true}`))
 	p, err := a.LoadPreferences(t.Context())
 	if err != nil || p.Language != "" || !p.HasRun {
 		t.Fatalf("legacy=%+v err=%v", p, err)

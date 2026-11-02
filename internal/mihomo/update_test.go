@@ -12,7 +12,7 @@ import (
 	"github.com/nelvko/lazyclash/internal/downloadnet"
 )
 
-func TestLatestVersionUsesOfficialTextWithoutReleaseAPIOrAssetRewrite(t *testing.T) {
+func TestLatestVersionUsesSelectedTextRouteWithoutReleaseAPI(t *testing.T) {
 	for _, test := range []struct {
 		channel Channel
 		url     string
@@ -28,7 +28,7 @@ func TestLatestVersionUsesOfficialTextWithoutReleaseAPIOrAssetRewrite(t *testing
 			requests := 0
 			resolver := Resolver{HTTP: &http.Client{Transport: downloadTransportFunc(func(r *http.Request) (*http.Response, error) {
 				requests++
-				if r.URL.String() != test.url {
+				if r.URL.String() != "https://accelerator.invalid/"+test.url {
 					t.Errorf("version query used %s", r.URL.String())
 				}
 				deadline, ok := r.Context().Deadline()
@@ -37,7 +37,7 @@ func TestLatestVersionUsesOfficialTextWithoutReleaseAPIOrAssetRewrite(t *testing
 				}
 				return fixtureResponse(r, 200, "application/octet-stream", []byte(test.body)), nil
 			})}}
-			cfg := downloadnet.Config{Source: "mirror", Mirror: "https://mirror.invalid/{version}/{asset}"}
+			cfg := downloadnet.Config{Method: downloadnet.MethodAccelerated, Prefix: "https://accelerator.invalid/"}
 			got, err := resolver.LatestVersion(t.Context(), test.channel, cfg)
 			if err != nil || got != test.want || requests != 1 {
 				t.Fatalf("version=%q err=%v requests=%d", got, err, requests)

@@ -17,6 +17,7 @@ import (
 
 func TestCoreCheckCLIIsReadOnlyAndUsesSessionNetworkSettings(t *testing.T) {
 	home := filepath.Join(t.TempDir(), "absent")
+	t.Setenv("HTTPS_PROXY", "http://user:private-token@127.0.0.1:18080")
 	a, err := app.New(home, "lazyclash-cli-readonly")
 	if err != nil {
 		t.Fatal(err)
@@ -24,8 +25,8 @@ func TestCoreCheckCLIIsReadOnlyAndUsesSessionNetworkSettings(t *testing.T) {
 	queries := 0
 	a.QueryLatest = func(ctx context.Context, channel mihomo.Channel, cfg downloadnet.Config) (string, error) {
 		queries++
-		if channel != mihomo.ChannelAlpha || cfg.ProxyMode != "custom" || cfg.ProxyURL != "http://user:private-token@127.0.0.1:18080" {
-			t.Fatal("check did not use explicit channel/session proxy")
+		if channel != mihomo.ChannelAlpha || cfg.Method != downloadnet.MethodEnvironment {
+			t.Fatal("check did not use explicit channel/environment proxy")
 		}
 		return "alpha-1234567", ctx.Err()
 	}
@@ -37,7 +38,7 @@ func TestCoreCheckCLIIsReadOnlyAndUsesSessionNetworkSettings(t *testing.T) {
 	var out, stderr bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&stderr)
-	cmd.SetArgs([]string{"check", "--channel", "alpha", "--proxy-mode", "custom", "--proxy-url", "http://user:private-token@127.0.0.1:18080"})
+	cmd.SetArgs([]string{"check", "--channel", "alpha", "--download-method", "environment"})
 	if err := cmd.ExecuteContext(t.Context()); err != nil {
 		t.Fatal(err)
 	}

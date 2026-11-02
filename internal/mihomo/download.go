@@ -61,7 +61,7 @@ func DownloadRelease(ctx context.Context, dest string, release Release, cfg down
 		return err
 	}
 	defer client.CloseIdleConnections()
-	source, err := cfg.AssetURL(release.URL, release.Version, release.Asset)
+	source, err := cfg.URL(release.URL)
 	if err != nil {
 		return err
 	}
@@ -159,7 +159,7 @@ func transfer(ctx context.Context, dest string, art artifact, expectedSize int64
 	}
 	elapsed := time.Since(writer.started).Seconds()
 	report(Progress{Stage: "download", Downloaded: n, Total: total, BytesPerSecond: float64(n) / elapsed, Detail: "Release-file transfer complete"})
-	report(Progress{Stage: "checksum", Downloaded: n, Total: total, Detail: "Checking SHA256 against the official GitHub API digest"})
+	report(Progress{Stage: "checksum", Downloaded: n, Total: total, Detail: "Checking SHA256 against the release metadata digest"})
 	if hex.EncodeToString(h.Sum(nil)) != strings.ToLower(art.SHA256) {
 		return diagnostic.New("diagnostic.download.checksum", "Mihomo release SHA256 checksum mismatch; nothing installed")
 	}

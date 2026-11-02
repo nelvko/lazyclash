@@ -283,7 +283,7 @@ func TestPageNavigationRemovedOverviewGuideRestoresVisibleCardFocus(t *testing.T
 	m.navigate("overview")
 	m.layout()
 	oldFocus := m.focus
-	if oldFocus != "install" {
+	if oldFocus != "setup.install" {
 		t.Fatalf("fixture did not focus the setup action: %s", oldFocus)
 	}
 	m.snapshot.GuideDismissed = true
@@ -309,20 +309,20 @@ func TestPageNavigationOverviewCardIDsRemainUniqueAndStableAcrossResize(t *testi
 				m.snapshot.GuideDismissed = guideDismissed
 				m.focus = "overview.card.dashboard.system.title"
 				if !guideDismissed {
-					m.focus = "install"
+					m.focus = "setup.install"
 				}
 				wantFocus := m.focus
 				var wantIDs []string
 				for _, width := range []int{20, 30, 60, 120, 240, 20} {
 					m.width = width
 					m.layout()
-					if width == 20 && dashboardBodyWidth(m.navigationOptions()) != 16 {
+					if width == 20 && guideDismissed && dashboardBodyWidth(m.navigationOptions()) != 16 {
 						t.Fatal("narrow fixture no longer exercises a 16-column card body")
 					}
 					cards := overviewCardRegionsFromModel(m)
 					wantCount := 9
 					if !guideDismissed {
-						wantCount = 1
+						wantCount = 0
 					}
 					if len(cards) != wantCount {
 						t.Fatalf("width %d: found %d cards; want %d", width, len(cards), wantCount)

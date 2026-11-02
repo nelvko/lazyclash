@@ -47,8 +47,9 @@ type dashboardOptions struct {
 	RuntimeReceived, RuntimePending bool
 	// Body and its targets are relative to the first content row beneath the
 	// page header. They are used by the Proxies, Profiles, Connections, Rules and Logs pages.
-	Body        string
-	BodyTargets []hitRegion
+	Body          string
+	BodyTargets   []hitRegion
+	InlineInstall bool
 }
 
 type dashboardLayout struct {
@@ -71,6 +72,9 @@ func dashboardGeometry(o dashboardOptions) dashboardLayout {
 		left = (o.Width - width) / 2
 		if sidebar {
 			left = sidebarWidth + (o.Width-sidebarWidth-width)/2
+		} else if o.InlineInstall && o.Width < 38 {
+			// The compact setup notice needs the full row at very small sizes.
+			width, left = o.Width, 0
 		}
 	}
 	headerY, bodyY := 0, 3
@@ -143,7 +147,11 @@ func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
 	var bodyTargets []hitRegion
 	switch o.Page {
 	case "overview":
-		body, bodyTargets = overviewContent(o, g.width)
+		if o.InlineInstall {
+			body, bodyTargets = o.Body, o.BodyTargets
+		} else {
+			body, bodyTargets = overviewContent(o, g.width)
+		}
 	case "settings":
 		body, bodyTargets = settingsContent(o, g.width)
 	default:

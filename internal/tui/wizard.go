@@ -37,36 +37,37 @@ const (
 
 type checkState struct{ Status, Detail string }
 type wizardState struct {
-	updateMode, upgrading                 bool
-	updateCheck                           app.CoreUpdateCheck
-	upgradeResult                         app.CoreUpgradeResult
-	refreshError                          string
-	open, networkOpen                     bool
-	step                                  wizardStep
-	cfg, draft                            downloadnet.Config
-	focus                                 string
-	controls                              []string
-	scroll                                int
-	reveal                                bool
-	localMode, specific, reinstall        bool
-	installRequested                      bool
-	version, local, prefix, mirror, proxy textinput.Model
-	release                               mihomo.Release
-	plan                                  app.InstallPlan
-	result                                app.InstallResult
-	progress                              mihomo.Progress
-	logs                                  []string
-	details, cancelling                   bool
-	err, failedKind, failedStage          string
-	returnErr, returnFailed               string
-	returnFocus                           string
-	remember                              bool
-	versionTest, fileTest                 checkState
-	testRelease                           mihomo.Release
-	testPending                           int
-	cachedRelease                         mihomo.Release
-	cachedSelection                       string
-	expanded                              string
+	updateMode, upgrading           bool
+	updateCheck                     app.CoreUpdateCheck
+	upgradeResult                   app.CoreUpgradeResult
+	refreshError                    string
+	open, networkOpen, inline, more bool
+	step                            wizardStep
+	cfg, draft                      downloadnet.Config
+	focus                           string
+	controls                        []string
+	scroll                          int
+	reveal                          bool
+	localMode, specific, reinstall  bool
+	installRequested                bool
+	version, local, prefix          textinput.Model
+	release                         mihomo.Release
+	plan                            app.InstallPlan
+	result                          app.InstallResult
+	progress                        mihomo.Progress
+	logs                            []string
+	details, cancelling             bool
+	err, failedKind, failedStage    string
+	returnErr, returnFailed         string
+	returnFocus                     string
+	remember                        bool
+	previewURL                      bool
+	versionTest, fileTest           checkState
+	testRelease                     mihomo.Release
+	testPending                     int
+	cachedRelease                   mihomo.Release
+	cachedSelection                 string
+	expanded                        string
 }
 
 func newWizard() wizardState {
@@ -80,7 +81,7 @@ func newWizard() wizardState {
 		}
 		return v
 	}
-	return wizardState{step: stepCore, cfg: downloadnet.Config{Source: "official", ProxyMode: "none"}, draft: downloadnet.Config{Source: "official", ProxyMode: "none"}, focus: "continue", version: input("v1.19.33", false), local: input("/absolute/path/to/mihomo", false), prefix: input("https://accelerator.example.invalid/", true), mirror: input("https://mirror.example.invalid/mihomo/{version}/{asset}", true), proxy: input("http://127.0.0.1:7890", true), versionTest: checkState{Status: checkNotTested}, fileTest: checkState{Status: checkNotTested}}
+	return wizardState{step: stepCore, cfg: downloadnet.Config{Method: "direct"}, draft: downloadnet.Config{Method: "direct"}, focus: "continue", version: input("v1.19.33", false), local: input("/absolute/path/to/mihomo", false), prefix: input("https://your-accelerator.example/", false), versionTest: checkState{Status: checkNotTested}, fileTest: checkState{Status: checkNotTested}}
 }
 func (m *Model) selection() string {
 	if m.wizard.specific {
@@ -157,7 +158,7 @@ func (m *Model) runCoreInstall() tea.Cmd {
 	m.wizard.cancelling = false
 	m.wizard.err = ""
 	m.wizard.failedStage = ""
-	m.wizard.progress = mihomo.Progress{Stage: "deploy", Detail: "Rechecking the reviewed installation plan"}
+	m.wizard.progress = mihomo.Progress{Stage: "deploy", Detail: "Rechecking installation requirements"}
 	m.wizard.logs = nil
 	m.wizard.scroll = 0
 	m.wizard.focus = "cancel"
@@ -314,14 +315,13 @@ func (m *Model) openNetwork(fromFailure bool) {
 	w.networkOpen = true
 	w.draft = w.cfg.Normalized()
 	w.prefix.SetValue(w.draft.Prefix)
-	w.mirror.SetValue(w.draft.Mirror)
-	w.proxy.SetValue(w.draft.ProxyURL)
 	w.returnFocus = w.focus
 	w.returnErr, w.returnFailed = w.err, w.failedKind
-	w.focus = "source"
+	w.focus = "download-method"
 	w.scroll = 0
 	w.reveal = true
 	w.remember = false
+	w.previewURL = false
 	w.versionTest = checkState{Status: checkNotTested}
 	w.fileTest = checkState{Status: checkNotTested}
 	w.testPending = 0
@@ -449,7 +449,7 @@ func (m *Model) applyNetwork() tea.Cmd {
 	retry := w.returnFailed
 	w.err = ""
 	w.failedKind = ""
-	if w.open && w.updateMode {
+	if (w.open || w.inline) && w.updateMode {
 		w.updateCheck = app.CoreUpdateCheck{}
 		w.step = stepUpdate
 		return m.checkCoreUpdate()
@@ -462,7 +462,7 @@ func (m *Model) applyNetwork() tea.Cmd {
 			w.step = stepVersion
 		}
 	}
-	if w.open && !w.localMode && (retry != "" || w.step == stepVersion) {
+	if (w.open || w.inline) && !w.localMode && (retry != "" || w.step == stepVersion) {
 		if !w.specific {
 			return m.checkInstallVersion()
 		}
@@ -553,7 +553,7 @@ func (m *Model) wizardKey(k tea.KeyPressMsg) tea.Cmd {
 	case "enter", "space", " ":
 		return m.wizardActivate(w.focus)
 	case "left", "right":
-		if w.focus == "source" || w.focus == "proxy-mode" || w.focus == "version-mode" {
+		if w.focus == "download-method" || w.focus == "version-mode" {
 			delta := 1
 			if key == "left" {
 				delta = -1
@@ -561,12 +561,12 @@ func (m *Model) wizardKey(k tea.KeyPressMsg) tea.Cmd {
 			return m.cycleOption(w.focus, delta)
 		}
 	case "up":
-		if w.focus == "source" || w.focus == "proxy-mode" || w.focus == "version-mode" {
+		if w.focus == "download-method" || w.focus == "version-mode" {
 			return m.cycleOption(w.focus, -1)
 		}
 		w.scroll = max(0, w.scroll-1)
 	case "down":
-		if w.focus == "source" || w.focus == "proxy-mode" || w.focus == "version-mode" {
+		if w.focus == "download-method" || w.focus == "version-mode" {
 			return m.cycleOption(w.focus, 1)
 		}
 		w.scroll++
@@ -604,10 +604,6 @@ func (m *Model) updateWizardInput(msg tea.Msg) tea.Cmd {
 			switch w.focus {
 			case "prefix":
 				w.draft.Prefix = input.Value()
-			case "mirror":
-				w.draft.Mirror = input.Value()
-			case "proxy-url":
-				w.draft.ProxyURL = input.Value()
 			}
 			m.draftChanged()
 		} else {
@@ -628,11 +624,9 @@ func (m *Model) wizardInput() *textinput.Model {
 	if w.networkOpen {
 		switch w.focus {
 		case "prefix":
-			return &w.prefix
-		case "mirror":
-			return &w.mirror
-		case "proxy-url":
-			return &w.proxy
+			if w.draft.Normalized().Method == "accelerated" {
+				return &w.prefix
+			}
 		}
 	} else {
 		if w.focus == "version-input" {
@@ -659,27 +653,14 @@ func (m *Model) wizardActivate(id string) tea.Cmd {
 			return nil
 		}
 		switch id {
-		case "source":
-			sources := []string{"official", "prefix", "mirror"}
-			index := 0
-			for i, s := range sources {
-				if s == w.draft.Source {
-					index = i
-				}
-			}
-			w.draft.Source = sources[(index+1)%len(sources)]
+		case "download-method":
+			return m.cycleOption(id, 1)
+		case "method-direct", "method-environment", "method-accelerated":
+			w.draft.Method = strings.TrimPrefix(id, "method-")
 			m.draftChanged()
 			w.reveal = true
-		case "proxy-mode":
-			modes := []string{"none", "environment", "custom"}
-			index := 0
-			for i, s := range modes {
-				if s == w.draft.ProxyMode {
-					index = i
-				}
-			}
-			w.draft.ProxyMode = modes[(index+1)%len(modes)]
-			m.draftChanged()
+		case "url-preview":
+			w.previewURL = !w.previewURL
 			w.reveal = true
 		case "remember":
 			w.remember = !w.remember
@@ -694,7 +675,7 @@ func (m *Model) wizardActivate(id string) tea.Cmd {
 			return m.saveAndApplyNetwork()
 		case "back":
 			m.closeNetwork()
-		case "prefix", "mirror", "proxy-url":
+		case "prefix":
 			if input := m.wizardInput(); input != nil {
 				input.Focus()
 				return textinput.Blink
@@ -864,12 +845,11 @@ func (m *Model) cycleOption(id string, delta int) tea.Cmd {
 	if !w.networkOpen || m.job == "save-network" {
 		return nil
 	}
-	options := []string{"official", "prefix", "mirror"}
-	current := &w.draft.Source
-	if id == "proxy-mode" {
-		options = []string{"none", "environment", "custom"}
-		current = &w.draft.ProxyMode
+	if id != "download-method" {
+		return nil
 	}
+	options := []string{"direct", "environment", "accelerated"}
+	current := &w.draft.Method
 	index := 0
 	for i, value := range options {
 		if value == *current {

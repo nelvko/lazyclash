@@ -41,7 +41,7 @@ type Progress struct {
 }
 
 // Resolver exposes HTTP and architecture seams for local fixtures. Production
-// always requests the official API URL; source settings only rewrite files.
+// starts from official URLs and applies the selected method to every request.
 type Resolver struct {
 	HTTP       *http.Client
 	Arch       string
@@ -113,11 +113,17 @@ func (r Resolver) Resolve(ctx context.Context, selection string, cfg downloadnet
 		}
 		endpoint = releaseAPI + "tags/" + selection
 	}
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	requestURL, err := cfg.URL(endpoint)
+	if err != nil {
+		return Release{}, err
+	}
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	// Release metadata must be answered at this official endpoint. A file
-	// source may redirect to a CDN; the digest authority may not redirect.
+	// Metadata must be answered at the selected endpoint, including when using
+	// an accelerator. Never silently follow a relay's metadata redirect to a
+	// different source. ChecksumSource records the logical release identity;
+	// a digest relayed with the file is not an independent authenticity proof.
 	queryClient := *client
 	queryClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	resp, err := queryClient.Do(req)
@@ -246,7 +252,7 @@ func (r Resolver) TestFile(ctx context.Context, release Release, cfg downloadnet
 	if r.HTTP == nil {
 		defer client.CloseIdleConnections()
 	}
-	source, err := cfg.AssetURL(release.URL, release.Version, release.Asset)
+	source, err := cfg.URL(release.URL)
 	if err != nil {
 		return err
 	}

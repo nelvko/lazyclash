@@ -25,6 +25,7 @@ func TestNotificationNavigationAndLocalControlsDoNotReplayPreviousFailure(t *tes
 
 func TestSuccessfulRefreshRetryResolvesOriginalFailure(t *testing.T) {
 	m := noticeModel()
+	m.focus = "content"
 	m, _ = update(m, key("g"))
 	m, _ = update(m, resultMsg{id: m.id, transient: true, err: errors.New("state temporarily unavailable")})
 	if len(m.notification.items) != 1 {

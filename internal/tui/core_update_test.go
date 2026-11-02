@@ -20,7 +20,7 @@ func TestCoreUpdateRequiresManualCheckAndConfirmation(t *testing.T) {
 	b := &fakeBackend{
 		checkUpdate: func(ctx context.Context, channel mihomo.Channel, cfg downloadnet.Config) (app.CoreUpdateCheck, error) {
 			checks++
-			if channel != "" || cfg.Normalized().Source != "official" {
+			if channel != "" || cfg.Normalized().Method != "direct" {
 				t.Fatal("check did not use automatic channel and existing network settings")
 			}
 			return app.CoreUpdateCheck{InstalledVersion: "v1.19.32", LatestVersion: "v1.19.33", Channel: mihomo.ChannelStable, Status: mihomo.UpdateAvailable, CheckedAt: time.Now()}, ctx.Err()
@@ -180,7 +180,7 @@ func TestCoreUpdateCheckFailureHasRetryFocusAndClosedWizardDoesNotCheckOnNetwork
 	}
 	m.wizard.open = false
 	m.openNetwork(false)
-	m.wizard.draft.ProxyMode = "environment"
+	m.wizard.draft.Method = "environment"
 	if cmd := m.applyNetwork(); cmd != nil || m.busy {
 		t.Fatal("network-only settings triggered a stale update operation")
 	}

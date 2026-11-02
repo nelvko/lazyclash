@@ -12,7 +12,7 @@ import (
 func TestKeyHintsPreferenceDefaultsAndPreservesOtherSettings(t *testing.T) {
 	a, _ := testApp(t)
 	path := filepath.Join(a.Home, "preferences.json")
-	write(t, path, []byte(`{"Network":{"source":"official","proxy_mode":"environment"},"Language":"zh-Hans","HasRun":true,"GuideDismissed":true}`))
+	write(t, path, []byte(`{"Network":{"method":"environment"},"Language":"zh-Hans","HasRun":true,"GuideDismissed":true}`))
 	p, err := a.LoadPreferences(t.Context())
 	if err != nil || p.HideKeyHints {
 		t.Fatalf("legacy preference should show hints: %+v, %v", p, err)
@@ -26,7 +26,7 @@ func TestKeyHintsPreferenceDefaultsAndPreservesOtherSettings(t *testing.T) {
 			t.Fatal(err)
 		}
 		p, err = other.LoadPreferences(t.Context())
-		if err != nil || p.HideKeyHints != hidden || p.Language != "zh-Hans" || !p.HasRun || !p.GuideDismissed || p.Network != (downloadnet.Config{Source: "official", ProxyMode: "environment"}) {
+		if err != nil || p.HideKeyHints != hidden || p.Language != "zh-Hans" || !p.HasRun || !p.GuideDismissed || p.Network != (downloadnet.Config{Method: downloadnet.MethodEnvironment}) {
 			t.Fatalf("save replaced another preference: %+v, %v", p, err)
 		}
 	}

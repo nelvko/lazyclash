@@ -53,12 +53,12 @@ func TestCLIHelpRestoresSavedLanguageAndSupportsExplicitOverride(t *testing.T) {
 		t.Fatal(err)
 	}
 	out, _, err := localizedCLI(t, "--home", home, "help", "install")
-	if err != nil || !strings.Contains(out, "用法：") || !strings.Contains(out, "发布文件来源") {
+	if err != nil || !strings.Contains(out, "用法：") || !strings.Contains(out, "下载方式") {
 		t.Fatalf("out=%s err=%v", out, err)
 	}
 	for _, action := range []string{"check", "upgrade"} {
 		out, _, err = localizedCLI(t, "--home", home, "install", action, "--help")
-		if err != nil || !strings.Contains(out, "发布文件来源") || !strings.Contains(out, "下载连接方式") {
+		if err != nil || !strings.Contains(out, "下载方式") || !strings.Contains(out, "加速模式") {
 			t.Fatalf("%s help lost shared network translations: out=%s err=%v", action, out, err)
 		}
 	}
@@ -126,7 +126,7 @@ func TestCLIBootstrapHonorsTerminatorAndValues(t *testing.T) {
 	}{
 		{[]string{"--lang=zh-CN", "--home", "/tmp/example"}, "/tmp/example", "zh-CN"},
 		{[]string{"profile", "add", "--", "--lang", "zh-Hans"}, "", ""},
-		{[]string{"install", "--proxy-url", "--lang", "en"}, "", ""},
+		{[]string{"install", "--acceleration-prefix", "--lang", "en"}, "", ""},
 	} {
 		home, lang := bootstrapPresentation(root, test.args)
 		if home != test.home || lang != test.lang {

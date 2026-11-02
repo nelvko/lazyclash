@@ -5,7 +5,6 @@ import (
 
 	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/diagnostic"
-	"github.com/nelvko/lazyclash/internal/downloadnet"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 	"github.com/spf13/cobra"
 )
@@ -13,18 +12,13 @@ import (
 func newInstallCommand(backend func() *app.App) *cobra.Command {
 	cmd := &cobra.Command{Use: "install", Short: "Install, update, or explicitly reinstall Mihomo without restarting its service", Args: noArgs}
 	var bin, version string
-	var overrides downloadnet.Config
+	overrides := addDownloadFlags(cmd)
 	var reinstall, remember, dryRun bool
 	flags := cmd.Flags()
 	flags.StringVar(&bin, "bin", "", "Use an absolute local Mihomo executable path")
 	flags.StringVar(&version, "core-version", "latest", "Official stable release: latest or vX.Y.Z")
 	flags.BoolVar(&reinstall, "reinstall", false, "Replace the binary even when the same version is installed")
 	flags.BoolVar(&dryRun, "dry-run", false, "Resolve the version and show installation preflight without installing")
-	flags.StringVar(&overrides.Source, "download-source", "", "Release files: official, prefix, or mirror")
-	flags.StringVar(&overrides.Prefix, "download-prefix", "", "Prefix prepended to the official release-file URL")
-	flags.StringVar(&overrides.Mirror, "download-mirror", "", "File URL template containing {version} and {asset}")
-	flags.StringVar(&overrides.ProxyMode, "proxy-mode", "", "Download connection: none, environment, or custom")
-	flags.StringVar(&overrides.ProxyURL, "proxy-url", "", "Custom HTTP, HTTPS, SOCKS5, or SOCKS5H proxy URL (session-only if authenticated)")
 	flags.BoolVar(&remember, "remember-download-settings", false, "Remember safe download settings; credentials and private URL paths are never saved")
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		locale := commandLocale(cmd)
@@ -33,20 +27,8 @@ func newInstallCommand(backend func() *app.App) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		cfg := prefs.Network
-		for flag, pair := range map[string][2]*string{
-			"download-source": {&cfg.Source, &overrides.Source},
-			"download-prefix": {&cfg.Prefix, &overrides.Prefix},
-			"download-mirror": {&cfg.Mirror, &overrides.Mirror},
-			"proxy-mode":      {&cfg.ProxyMode, &overrides.ProxyMode},
-			"proxy-url":       {&cfg.ProxyURL, &overrides.ProxyURL},
-		} {
-			if flags.Changed(flag) {
-				*pair[0] = *pair[1]
-			}
-		}
-		cfg = cfg.Normalized()
-		if err := cfg.Validate(); err != nil {
+		cfg, err := configuredDownload(cmd, prefs.Network, *overrides)
+		if err != nil {
 			return err
 		}
 		if bin != "" && flags.Changed("core-version") {

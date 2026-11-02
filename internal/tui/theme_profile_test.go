@@ -97,7 +97,7 @@ func TestMarianaModelProfileAndResizeKeepWizardTaskAndFocus(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Setenv("NO_COLOR", env)
 			m := ready(&fakeBackend{})
-			m, _ = update(m, key("i"))
+			m.openManagementWizard(false)
 			m.wizard.step = stepVersion
 			m.wizard.specific = true
 			m.wizard.version.SetValue("v1.19.33")

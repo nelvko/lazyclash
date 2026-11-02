@@ -16,23 +16,32 @@ import (
 	"time"
 )
 
-func TestSourceAndConnectionProxyAreIndependent(t *testing.T) {
-	original := "https://github.com/MetaCubeX/mihomo/releases/download/v1.2.3/mihomo.gz"
-	cases := []struct {
-		cfg  Config
-		want string
-	}{
-		{Config{}, original},
-		{Config{Source: "prefix", Prefix: "https://prefix.example/cache/", ProxyMode: "custom", ProxyURL: "socks5://localhost:1080"}, "https://prefix.example/cache/" + original},
-		{Config{Source: "mirror", Mirror: "https://mirror.example/{version}/{asset}"}, "https://mirror.example/v1.2.3/mihomo.gz"},
-	}
-	for _, tc := range cases {
-		got, err := tc.cfg.AssetURL(original, "v1.2.3", "mihomo.gz")
-		if err != nil || got != tc.want {
-			t.Fatalf("got %q %v want %q", got, err, tc.want)
+func TestDownloadMethodsRouteEveryURLConsistently(t *testing.T) {
+	for _, original := range []string{
+		"https://github.com/MetaCubeX/mihomo/releases/latest/download/version.txt",
+		"https://api.github.com/repos/MetaCubeX/mihomo/releases/tags/v1.2.3",
+		"https://github.com/MetaCubeX/mihomo/releases/download/v1.2.3/mihomo.gz",
+	} {
+		for _, cfg := range []Config{{}, {Method: MethodDirect}, {Method: MethodEnvironment}, {Method: MethodAccelerated, Prefix: "  https://prefix.example/cache///  "}} {
+			want := original
+			if cfg.Method == MethodAccelerated {
+				want = "https://prefix.example/cache/" + original
+			}
+			got, err := cfg.URL(original)
+			if err != nil || got != want {
+				t.Fatalf("method=%s got %q %v want %q", cfg.Method, got, err, want)
+			}
 		}
 	}
-	for _, cfg := range []Config{{Source: "unknown"}, {Source: "prefix", Prefix: "https://secret.example?token=private-token"}, {Source: "mirror", Mirror: "https://example.org/{asset}"}, {ProxyMode: "custom", ProxyURL: "ftp://private-user:private-pass@example.org"}, {ProxyMode: "custom", ProxyURL: "http://example.org?token=private-token"}} {
+	for _, cfg := range []Config{
+		{Method: "unknown"},
+		{Method: MethodAccelerated, Prefix: "https://secret.example?token=private-token"},
+		{Method: MethodAccelerated, Prefix: "https://private-user:private-pass@example.org"},
+		{Method: MethodAccelerated, Prefix: "https://example.org/private-fragment#token"},
+		{Method: MethodAccelerated, Prefix: "https://example.org/{asset}"},
+		{Method: MethodAccelerated, Prefix: "ftp://example.org"},
+		{Method: MethodAccelerated, Prefix: "https://example.org?"},
+	} {
 		if err := cfg.Validate(); err == nil || strings.Contains(err.Error(), "private-") {
 			t.Fatalf("unsafe validation error: %v", err)
 		}
@@ -43,19 +52,24 @@ func TestSourceAndConnectionProxyAreIndependent(t *testing.T) {
 	}
 }
 
-func TestEnvironmentSnapshotAndNoProxyDoNotAffectNone(t *testing.T) {
+func clearProxyEnvironment(t *testing.T) {
+	t.Helper()
 	for _, name := range []string{"HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy", "ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy", "REQUEST_METHOD"} {
 		t.Setenv(name, "")
 	}
+}
+
+func TestEnvironmentSnapshotAndNoProxyDoNotAffectDirectOrAccelerated(t *testing.T) {
+	clearProxyEnvironment(t)
 	t.Setenv("HTTP_PROXY", "http://first.example:8080")
 	t.Setenv("NO_PROXY", ".internal.example,10.0.0.0/8,exact.example:8081")
-	first, err := NewClient(Config{ProxyMode: "environment"}, time.Second)
+	first, err := NewClient(Config{Method: MethodEnvironment}, time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer first.CloseIdleConnections()
 	t.Setenv("HTTP_PROXY", "http://second.example:8080")
-	second, err := NewClient(Config{ProxyMode: "environment"}, time.Second)
+	second, err := NewClient(Config{Method: MethodEnvironment}, time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -73,17 +87,19 @@ func TestEnvironmentSnapshotAndNoProxyDoNotAffectNone(t *testing.T) {
 			t.Fatalf("NO_PROXY ignored for %s: %v %v", address, p, err)
 		}
 	}
-	none, err := NewClient(Config{}, time.Second)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer none.CloseIdleConnections()
-	if none.Transport.(*http.Transport).Proxy != nil {
-		t.Fatal("none mode inherited a proxy function")
+	for _, cfg := range []Config{{}, {Method: MethodAccelerated, Prefix: "https://accelerator.example/"}} {
+		client, err := NewClient(cfg, time.Second)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer client.CloseIdleConnections()
+		if client.Transport.(*http.Transport).Proxy != nil {
+			t.Fatal("direct or accelerated method inherited an environment proxy")
+		}
 	}
 	t.Setenv("HTTP_PROXY", "")
 	t.Setenv("ALL_PROXY", "socks5h://fallback.example:1080")
-	all, err := NewClient(Config{ProxyMode: "environment"}, time.Second)
+	all, err := NewClient(Config{Method: MethodEnvironment}, time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,6 +113,7 @@ func TestEnvironmentSnapshotAndNoProxyDoNotAffectNone(t *testing.T) {
 func TestRealHTTPAndHTTPSProxyConnect(t *testing.T) {
 	for _, secure := range []bool{false, true} {
 		t.Run(map[bool]string{false: "http", true: "https"}[secure], func(t *testing.T) {
+			clearProxyEnvironment(t)
 			origin := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Connection", "close")
 				_, _ = io.WriteString(w, "proxy fixture origin")
@@ -140,7 +157,8 @@ func TestRealHTTPAndHTTPSProxyConnect(t *testing.T) {
 			defer proxy.Close()
 			parsed, _ := url.Parse(proxy.URL)
 			parsed.User = url.UserPassword("user", "pass")
-			client, err := NewClient(Config{ProxyMode: "custom", ProxyURL: parsed.String()}, 3*time.Second)
+			t.Setenv("HTTPS_PROXY", parsed.String())
+			client, err := NewClient(Config{Method: MethodEnvironment}, 3*time.Second)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -152,7 +170,9 @@ func TestRealHTTPAndHTTPSProxyConnect(t *testing.T) {
 			}
 			client.Transport.(*http.Transport).TLSClientConfig = origin.Client().Transport.(*http.Transport).TLSClientConfig.Clone()
 			client.Transport.(*http.Transport).TLSClientConfig.RootCAs = roots
-			resp, err := client.Get(origin.URL)
+			client.Transport.(*http.Transport).TLSClientConfig.ServerName = "example.com"
+			originURL, _ := url.Parse(origin.URL)
+			resp, err := client.Get("https://origin.example.com:" + originURL.Port() + "/download")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -168,6 +188,7 @@ func TestRealHTTPAndHTTPSProxyConnect(t *testing.T) {
 func TestRealSOCKS5AndSOCKS5HProxy(t *testing.T) {
 	for _, scheme := range []string{"socks5", "socks5h"} {
 		t.Run(scheme, func(t *testing.T) {
+			clearProxyEnvironment(t)
 			origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Connection", "close")
 				_, _ = io.WriteString(w, "SOCKS fixture")
@@ -249,7 +270,8 @@ func TestRealSOCKS5AndSOCKS5HProxy(t *testing.T) {
 				_, err = io.Copy(conn, upstream)
 				finished <- err
 			}()
-			client, err := NewClient(Config{ProxyMode: "custom", ProxyURL: scheme + "://user:pass@" + listener.Addr().String()}, 3*time.Second)
+			t.Setenv("HTTP_PROXY", scheme+"://user:pass@"+listener.Addr().String())
+			client, err := NewClient(Config{Method: MethodEnvironment}, 3*time.Second)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -293,6 +315,7 @@ func TestRequestErrorsWithholdCredentialsAndBodies(t *testing.T) {
 }
 
 func TestProxyConnectAuthenticationAndOriginAuthenticationRemainDistinct(t *testing.T) {
+	clearProxyEnvironment(t)
 	proxy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodConnect {
 			t.Errorf("expected CONNECT, got %s", r.Method)
@@ -302,7 +325,8 @@ func TestProxyConnectAuthenticationAndOriginAuthenticationRemainDistinct(t *test
 		_, _ = io.WriteString(w, "private-proxy-response-body")
 	}))
 	defer proxy.Close()
-	client, err := NewClient(Config{ProxyMode: "custom", ProxyURL: proxy.URL}, 3*time.Second)
+	t.Setenv("HTTPS_PROXY", proxy.URL)
+	client, err := NewClient(Config{Method: MethodEnvironment}, 3*time.Second)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -326,5 +350,30 @@ func TestProxyConnectAuthenticationAndOriginAuthenticationRemainDistinct(t *test
 	socks := Failure(t.Context(), "release-file download", &net.OpError{Op: "socks connect", Net: "tcp", Err: errors.New("private-socks-error")})
 	if !errors.As(socks, &category) || category.Kind != "proxy connection" || strings.Contains(socks.Error(), "private-") {
 		t.Fatalf("SOCKS connection was not safely classified: %v", socks)
+	}
+}
+
+func TestEnvironmentStatusWithholdsProxyCredentials(t *testing.T) {
+	clearProxyEnvironment(t)
+	for _, tc := range []struct {
+		proxy, bypass, want string
+		invalid             bool
+	}{
+		{want: "missing"},
+		{proxy: "http://private-user:private-pass@proxy.example:8080", want: "configured"},
+		{proxy: "socks5h://private-user:private-pass@proxy.example:1080", want: "configured"},
+		{proxy: "http://private-user:private-pass@proxy.example:8080", bypass: "github.com", want: "bypassed"},
+		{proxy: "ftp://private-user:private-pass@proxy.example", invalid: true},
+	} {
+		t.Setenv("HTTPS_PROXY", tc.proxy)
+		t.Setenv("NO_PROXY", tc.bypass)
+		status, err := EnvironmentStatus()
+		if tc.invalid {
+			if err == nil || strings.Contains(err.Error(), "private-") {
+				t.Fatalf("invalid proxy was accepted or exposed: %q %v", status, err)
+			}
+		} else if err != nil || status != tc.want {
+			t.Fatalf("status=%q want=%q err=%v", status, tc.want, err)
+		}
 	}
 }

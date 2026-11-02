@@ -49,7 +49,7 @@ func installBackend(t *testing.T) (*app.App, *installService) {
 
 func TestInstallCLIUsesSharedPlanDefaultsOverridesAndExplicitReinstall(t *testing.T) {
 	a, svc := installBackend(t)
-	saved := downloadnet.Config{Source: "prefix", Prefix: "https://mirror.example", ProxyMode: "environment"}
+	saved := downloadnet.Config{Method: downloadnet.MethodAccelerated, Prefix: "https://mirror.example/"}
 	if err := a.SaveNetworkPreferences(t.Context(), saved); err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestInstallCLIUsesSharedPlanDefaultsOverridesAndExplicitReinstall(t *testin
 	downloads := 0
 	a.Resolve = func(ctx context.Context, selection string, cfg downloadnet.Config) (mihomo.Release, error) {
 		queries++
-		if selection != "latest" || cfg.Source != "prefix" || cfg.Prefix != saved.Prefix || cfg.ProxyMode != "none" {
+		if selection != "latest" || cfg.Method != downloadnet.MethodDirect || cfg.Prefix != "" {
 			t.Fatalf("selection=%s cfg=%+v", selection, cfg)
 		}
 		return mihomo.Release{Version: "v1.20.0"}, ctx.Err()
@@ -67,7 +67,7 @@ func TestInstallCLIUsesSharedPlanDefaultsOverridesAndExplicitReinstall(t *testin
 		downloads++
 		return downloader(ctx, dest, r, cfg, p)
 	}
-	for _, args := range [][]string{{"--proxy-mode", "none"}, {"--proxy-mode", "none"}, {"--proxy-mode", "none", "--reinstall"}} {
+	for _, args := range [][]string{{"--download-method", "direct"}, {"--download-method", "direct"}, {"--download-method", "direct", "--reinstall"}} {
 		cmd := newInstallCommand(func() *app.App { return a })
 		var out, diagnostics bytes.Buffer
 		cmd.SetOut(&out)
@@ -89,11 +89,12 @@ func TestInstallCLIUsesSharedPlanDefaultsOverridesAndExplicitReinstall(t *testin
 	}
 }
 
-func TestInstallCLILocalAndSessionCredentialsAreNotLoggedOrSaved(t *testing.T) {
+func TestInstallCLILocalAndEnvironmentCredentialsAreNotLoggedOrSaved(t *testing.T) {
 	a, _ := installBackend(t)
+	t.Setenv("HTTPS_PROXY", "http://user:private-token@127.0.0.1:18080")
 	a.Resolve = func(ctx context.Context, selection string, cfg downloadnet.Config) (mihomo.Release, error) {
-		if cfg.ProxyURL != "http://user:private-token@127.0.0.1:18080" {
-			t.Fatal("session credentials were not passed in memory")
+		if cfg.Method != downloadnet.MethodEnvironment {
+			t.Fatal("explicit environment download method was not passed")
 		}
 		return mihomo.Release{Version: "v1.20.0"}, nil
 	}
@@ -101,7 +102,7 @@ func TestInstallCLILocalAndSessionCredentialsAreNotLoggedOrSaved(t *testing.T) {
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
-	cmd.SetArgs([]string{"--proxy-mode", "custom", "--proxy-url", "http://user:private-token@127.0.0.1:18080"})
+	cmd.SetArgs([]string{"--download-method", "environment"})
 	if err := cmd.ExecuteContext(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -126,5 +127,47 @@ func TestInstallCLILocalAndSessionCredentialsAreNotLoggedOrSaved(t *testing.T) {
 	cmd.SetArgs([]string{"--bin", local})
 	if err := cmd.ExecuteContext(t.Context()); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestInstallCLIAppliesOneAcceleratedRouteAndRejectsObsoleteSettings(t *testing.T) {
+	a, _ := installBackend(t)
+	queries := 0
+	a.Resolve = func(ctx context.Context, _ string, cfg downloadnet.Config) (mihomo.Release, error) {
+		queries++
+		if cfg.Method != downloadnet.MethodAccelerated || cfg.Prefix != "https://accelerator.example/proxy/" {
+			t.Fatalf("accelerated flags were not normalized: %+v", cfg)
+		}
+		return mihomo.Release{Version: "v1.20.0"}, ctx.Err()
+	}
+	cmd := newInstallCommand(func() *app.App { return a })
+	var out bytes.Buffer
+	cmd.SetOut(&out)
+	cmd.SetErr(&out)
+	cmd.SetArgs([]string{"--download-method", "accelerated", "--acceleration-prefix", "https://accelerator.example/proxy///", "--dry-run"})
+	if err := cmd.ExecuteContext(t.Context()); err != nil || queries != 1 {
+		t.Fatalf("accelerated dry run failed: queries=%d err=%v", queries, err)
+	}
+	for _, args := range [][]string{
+		{"--download-method", "unknown"},
+		{"--acceleration-prefix", "https://accelerator.example/"},
+		{"--download-method", "direct", "--acceleration-prefix", "https://accelerator.example/"},
+		{"--download-method", "accelerated", "--acceleration-prefix", "https://private-user:private-pass@accelerator.example/"},
+		{"--download-method", "accelerated", "--acceleration-prefix", "https://accelerator.example/?token=private-token"},
+		{"--proxy-mode", "none"},
+		{"--download-source", "official"},
+		{"--download-mirror", "https://mirror.example/{version}/{asset}"},
+	} {
+		cmd := newInstallCommand(func() *app.App { return a })
+		cmd.SilenceUsage = true
+		cmd.SetOut(&out)
+		cmd.SetErr(&out)
+		cmd.SetArgs(args)
+		if err := cmd.ExecuteContext(t.Context()); err == nil || strings.Contains(err.Error(), "private-") {
+			t.Fatalf("unsupported flags were accepted or exposed: args=%q err=%v", args, err)
+		}
+	}
+	if queries != 1 {
+		t.Fatal("invalid settings triggered network activity", queries)
 	}
 }

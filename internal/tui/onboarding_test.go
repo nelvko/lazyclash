@@ -30,7 +30,10 @@ func (b *onboardingBackend) SetGuideDismissed(context.Context, bool) error {
 func onboardingReady(t *testing.T, backend Backend, language string) Model {
 	t.Helper()
 	m := New(t.Context(), backend, language)
-	m, _ = update(m, m.snapshotCmd(m.id, m.opCtx, true)())
+	m, cmd := update(m, m.snapshotCmd(m.id, m.opCtx, true)())
+	if m.wizard.inline && m.job == "check-update" {
+		m, _ = update(m, inlineOperationMsg(t, cmd))
+	}
 	return m
 }
 
@@ -67,19 +70,24 @@ func TestOnboardingInitialMessagesFocusInstallWithoutStartingWork(t *testing.T) 
 						tea.ColorProfileMsg{Profile: colorprofile.TrueColor},
 						m.snapshotCmd(m.id, m.opCtx, true)(),
 					}
+					var check tea.Cmd
 					for _, index := range order {
-						m, _ = update(m, messages[index])
+						var cmd tea.Cmd
+						m, cmd = update(m, messages[index])
+						if index == 2 {
+							check = cmd
+						}
 					}
-					if m.focus != "install" || m.busy || m.wizard.open || calls != 0 {
-						t.Fatalf("startup did not focus the idle install action: focus=%s busy=%v wizard=%v calls=%d", m.focus, m.busy, m.wizard.open, calls)
+					if m.focus != "setup.install" || !m.busy || m.wizard.open || !m.wizard.inline || calls != 0 {
+						t.Fatalf("startup did not focus the read-only inline setup: focus=%s busy=%v wizard=%v calls=%d", m.focus, m.busy, m.wizard.open, calls)
 					}
 					assertCanvas(t, m.screen, size[0], size[1])
 					assertRegions(t, m.targets, size[0], size[1])
-					for _, id := range []string{"install", "guide.later"} {
+					for _, id := range []string{"setup.install", "setup.later"} {
 						hit := findTarget(t, m, id)
 						painted := ansi.Strip(ansi.Cut(strings.Split(m.screen, "\n")[hit.Y], hit.X, hit.X+hit.W))
-						label := m.tr("dashboard.guide.install")
-						if id == "guide.later" {
+						label := m.tr("wizard.download_install")
+						if id == "setup.later" {
 							label = m.tr("dashboard.guide.later")
 						}
 						if !strings.Contains(painted, label) {
@@ -87,11 +95,11 @@ func TestOnboardingInitialMessagesFocusInstallWithoutStartingWork(t *testing.T) 
 						}
 					}
 					beforeID := m.id
-					m, cmd := update(m, special(tea.KeyEnter))
-					if !m.wizard.open || m.wizard.step != stepVersion || !m.busy || m.id == beforeID || calls != 0 {
-						t.Fatalf("one Enter did not open the installation page with a read-only check: step=%s busy=%v calls=%d", m.wizard.step, m.busy, calls)
+					m, _ = update(m, special(tea.KeyEnter))
+					if m.wizard.open || m.wizard.step != stepVersion || !m.busy || m.id != beforeID || calls != 0 {
+						t.Fatalf("pending version check accepted a duplicate install: step=%s busy=%v calls=%d", m.wizard.step, m.busy, calls)
 					}
-					m, _ = update(m, actionCmd(t, cmd)())
+					m, _ = update(m, inlineOperationMsg(t, check))
 					if m.busy || m.wizard.updateCheck.LatestVersion != "v1.19.33" || calls != 0 {
 						t.Fatal("checking the recommended version resolved, installed or started a core")
 					}
@@ -134,11 +142,11 @@ func TestOnboardingSetUpLaterOnlySkipsTheCurrentSession(t *testing.T) {
 	m := onboardingReady(t, b, "en")
 	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 32})
 	beforeID := m.id
-	m, _ = click(m, findTarget(t, m, "guide.later"))
+	m, _ = click(m, findTarget(t, m, "setup.later"))
 	if b.guideSaves != 0 || b.prefs.GuideDismissed || m.snapshot.GuideDismissed || m.busy || m.id != beforeID {
 		t.Fatal("set up later persisted a guide preference or started a backend operation")
 	}
-	if overviewSetupVisible(m.navigationOptions()) || hasAction(m.targets, "guide.later") {
+	if overviewSetupVisible(m.navigationOptions()) || hasAction(m.targets, "setup.later") {
 		t.Fatal("set up later did not leave the preparation view")
 	}
 	m, _ = update(m, key("3"))
@@ -150,11 +158,11 @@ func TestOnboardingSetUpLaterOnlySkipsTheCurrentSession(t *testing.T) {
 		t.Fatal("returning to Overview reopened setup during the same session")
 	}
 	m, _ = update(m, key("i"))
-	if !m.wizard.open || m.wizard.step != stepVersion || b.guideSaves != 0 {
+	if m.wizard.open || !m.wizard.inline || m.wizard.step != stepVersion || b.guideSaves != 0 {
 		t.Fatal("set up later removed the explicit installation entry point")
 	}
 	next := onboardingReady(t, b, "en")
-	if next.focus != "install" || !overviewSetupVisible(next.navigationOptions()) {
+	if next.focus != "setup.install" || !overviewSetupVisible(next.navigationOptions()) {
 		t.Fatal("a session-only skip suppressed setup on the next launch")
 	}
 }

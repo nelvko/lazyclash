@@ -49,7 +49,7 @@ func (m Model) focusTargets() []hitRegion {
 			controls = append(controls, target)
 		}
 	}
-	if len(list) == 0 || m.focus == "content" {
+	if len(list) == 0 && !(m.page == "overview" && m.inlineInstallVisible()) || m.focus == "content" {
 		list = append([]hitRegion{{ID: "content", X: g.x, Y: g.y, W: g.width, H: 1}}, list...)
 	}
 	if len(list) > 0 {
@@ -166,6 +166,9 @@ func (m Model) contextHelp() string {
 	}
 	if m.sidebarOpen {
 		return tr("navigation.drawer")
+	}
+	if m.page == "overview" && m.inlineInstallVisible() && strings.HasPrefix(m.focus, "setup.") {
+		return m.inlineInstallHint()
 	}
 	if m.busy {
 		return tr("navigation.busy")
