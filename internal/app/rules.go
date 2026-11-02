@@ -14,6 +14,7 @@ type RuleSnapshot struct {
 	Rules      []mihomo.Rule
 	ObservedAt time.Time
 	Error      string
+	Diagnostic error `json:"-"`
 }
 
 func (a *App) Rules(ctx context.Context) (RuleSnapshot, error) {
@@ -27,7 +28,7 @@ func (a *App) Rules(ctx context.Context) (RuleSnapshot, error) {
 		before, client, identity, err = a.inspectRuntimeLocked(ctx)
 		return err
 	})
-	s := RuleSnapshot{State: before.State, Error: before.Error, ObservedAt: before.ObservedAt}
+	s := RuleSnapshot{State: before.State, Error: before.Error, Diagnostic: before.Diagnostic, ObservedAt: before.ObservedAt}
 	if err != nil || s.State != "ready" {
 		return s, err
 	}
@@ -44,6 +45,7 @@ func (a *App) Rules(ctx context.Context) (RuleSnapshot, error) {
 			return err
 		}
 		s.State, s.Error, s.ObservedAt = current.State, current.Error, time.Now()
+		s.Diagnostic = current.Diagnostic
 		if current.State != "ready" {
 			return nil
 		}
@@ -53,6 +55,7 @@ func (a *App) Rules(ctx context.Context) (RuleSnapshot, error) {
 		}
 		if queryErr != nil {
 			s.State, s.Error = "unavailable", queryErr.Error()
+			s.Diagnostic = queryErr
 			return nil
 		}
 		s.Rules = rules

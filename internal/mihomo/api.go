@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -13,6 +11,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 )
 
 type Client struct {
@@ -37,7 +37,7 @@ func (c Client) open(ctx context.Context, method, path string, body []byte) (io.
 func (c Client) openRequest(ctx context.Context, method, path string, body []byte, stream bool) (io.ReadCloser, error) {
 	base, err := url.Parse(c.BaseURL)
 	if err != nil || (base.Scheme != "http" && base.Scheme != "https") || base.User != nil || base.RawQuery != "" || base.Fragment != "" || (base.Path != "" && base.Path != "/") {
-		return nil, errors.New("invalid local controller URL")
+		return nil, diagnostic.New("diagnostic.api.controllerURL", "invalid local controller URL")
 	}
 	if err := loopbackAddress(base.Host); err != nil {
 		return nil, err
@@ -76,7 +76,7 @@ func (c Client) openRequest(ctx context.Context, method, path string, body []byt
 	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(c.BaseURL, "/")+path, bytes.NewReader(body))
 	if err != nil {
 		closeIdle()
-		return nil, errors.New("cannot construct local controller request")
+		return nil, diagnostic.New("diagnostic.api.request", "cannot construct local controller request")
 	}
 	req.Header.Set("Authorization", "Bearer "+c.Secret)
 	if body != nil {
@@ -88,15 +88,15 @@ func (c Client) openRequest(ctx context.Context, method, path string, body []byt
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		return nil, errors.New("cannot reach local Mihomo API; check the service and controller port")
+		return nil, diagnostic.New("diagnostic.api.unreachable", "cannot reach local Mihomo API; check the service and controller port")
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		_ = resp.Body.Close()
 		closeIdle()
 		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-			return nil, fmt.Errorf("Mihomo API returned HTTP %d; verify the managed listener and credentials", resp.StatusCode)
+			return nil, diagnostic.New("diagnostic.api.httpCredentials", "Mihomo API returned HTTP %d; verify the managed listener and credentials", resp.StatusCode)
 		}
-		return nil, fmt.Errorf("Mihomo API returned HTTP %d", resp.StatusCode)
+		return nil, diagnostic.New("diagnostic.api.http", "Mihomo API returned HTTP %d", resp.StatusCode)
 	}
 	return apiBody{ReadCloser: resp.Body, closeIdle: closeIdle}, nil
 }
@@ -123,10 +123,10 @@ func (c Client) request(ctx context.Context, method, path string, body []byte) (
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		return nil, errors.New("cannot read Mihomo API response")
+		return nil, diagnostic.New("diagnostic.api.readResponse", "cannot read Mihomo API response")
 	}
 	if len(data) > MaxConfigSize {
-		return nil, errors.New("Mihomo API response exceeds 8 MiB")
+		return nil, diagnostic.New("diagnostic.api.responseSize", "Mihomo API response exceeds 8 MiB")
 	}
 	return data, nil
 }
@@ -145,7 +145,7 @@ func (c Client) Version(ctx context.Context) (string, error) {
 		Version string `json:"version"`
 	}
 	if json.Unmarshal(raw, &v) != nil || v.Version == "" {
-		return "", errors.New("local listener did not return a Mihomo version")
+		return "", diagnostic.New("diagnostic.api.version", "local listener did not return a Mihomo version")
 	}
 	return v.Version, nil
 }
@@ -159,7 +159,7 @@ func (c Client) Groups(ctx context.Context) ([]Group, error) {
 		Proxies map[string]Group `json:"proxies"`
 	}
 	if err := json.Unmarshal(raw, &result); err != nil || result.Proxies == nil {
-		return nil, errors.New("invalid Mihomo proxy response")
+		return nil, diagnostic.New("diagnostic.api.proxyResponse", "invalid Mihomo proxy response")
 	}
 	groups := []Group{}
 	for name, g := range result.Proxies {
@@ -183,7 +183,7 @@ func (c Client) Select(ctx context.Context, group, node string) error {
 			continue
 		}
 		if g.Type != "Selector" {
-			return errors.New("this group is selected automatically by Mihomo")
+			return diagnostic.New("diagnostic.api.automaticGroup", "this group is selected automatically by Mihomo")
 		}
 		for _, n := range g.All {
 			if n == node {
@@ -193,7 +193,7 @@ func (c Client) Select(ctx context.Context, group, node string) error {
 		}
 	}
 	if !found {
-		return errors.New("the group or node is no longer available; refresh the nodes page")
+		return diagnostic.New("diagnostic.api.nodeUnavailable", "the group or node is no longer available; refresh the nodes page")
 	}
 	payload, _ := json.Marshal(map[string]string{"name": node})
 	_, err = c.request(ctx, http.MethodPut, "/proxies/"+url.PathEscape(group), payload)
@@ -202,14 +202,14 @@ func (c Client) Select(ctx context.Context, group, node string) error {
 	}
 	groups, err = c.Groups(ctx)
 	if err != nil {
-		return fmt.Errorf("node selection was accepted but could not be confirmed: %w", err)
+		return diagnostic.New("diagnostic.api.selectConfirm", "node selection was accepted but could not be confirmed: %w", err)
 	}
 	for _, g := range groups {
 		if g.Name == group && g.Now == node {
 			return nil
 		}
 	}
-	return errors.New("Mihomo did not apply the requested node selection; refresh the nodes page")
+	return diagnostic.New("diagnostic.api.selectUnapplied", "Mihomo did not apply the requested node selection; refresh the nodes page")
 }
 
 type Configuration struct {
@@ -231,14 +231,14 @@ func (c Client) Configuration(ctx context.Context) (Configuration, error) {
 		} `json:"tun"`
 	}
 	if json.Unmarshal(raw, &cfg) != nil || !ValidMode(cfg.Mode) || cfg.TUN == nil || cfg.TUN.Enable == nil {
-		return Configuration{}, errors.New("invalid Mihomo runtime configuration response")
+		return Configuration{}, diagnostic.New("diagnostic.api.configResponse", "invalid Mihomo runtime configuration response")
 	}
 	return Configuration{Mode: cfg.Mode, TUN: *cfg.TUN.Enable}, nil
 }
 
 func (c Client) SetMode(ctx context.Context, mode string) error {
 	if !ValidMode(mode) {
-		return errors.New("Mihomo mode must be rule, global or direct")
+		return diagnostic.New("diagnostic.api.mode", "Mihomo mode must be rule, global or direct")
 	}
 	payload, _ := json.Marshal(map[string]string{"mode": mode})
 	if _, err := c.request(ctx, http.MethodPatch, "/configs", payload); err != nil {
@@ -246,10 +246,10 @@ func (c Client) SetMode(ctx context.Context, mode string) error {
 	}
 	cfg, err := c.Configuration(ctx)
 	if err != nil {
-		return fmt.Errorf("mode update was accepted but could not be confirmed: %w", err)
+		return diagnostic.New("diagnostic.api.modeConfirm", "mode update was accepted but could not be confirmed: %w", err)
 	}
 	if cfg.Mode != mode {
-		return errors.New("Mihomo did not apply the requested mode")
+		return diagnostic.New("diagnostic.api.modeUnapplied", "Mihomo did not apply the requested mode")
 	}
 	return nil
 }

@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 	"github.com/nelvko/lazyclash/internal/store"
 )
 
@@ -68,7 +69,7 @@ func (r Repository) Load() (Library, []byte, error) {
 		return lib, nil, err
 	}
 	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return lib, nil, errors.New("configuration library is not a real directory")
+		return lib, nil, diagnostic.New("diagnostic.library.directory", "configuration library is not a real directory")
 	}
 	raw, err := store.Read(filepath.Join(r.Root, "library.json"))
 	if errors.Is(err, os.ErrNotExist) {
@@ -81,13 +82,13 @@ func (r Repository) Load() (Library, []byte, error) {
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
 	if decoder.Decode(&saved) != nil || saved.validate() != nil || decoder.Decode(new(any)) != io.EOF {
-		return Library{}, nil, errors.New("invalid configuration library; preserving it for inspection")
+		return Library{}, nil, diagnostic.New("diagnostic.library.invalidPreserved", "invalid configuration library; preserving it for inspection")
 	}
 	return saved, raw, nil
 }
 
 func (l Library) validate() error {
-	invalid := errors.New("invalid configuration library")
+	invalid := diagnostic.New("diagnostic.library.invalid", "invalid configuration library")
 	if l.Version != LibraryVersion || l.Profiles == nil {
 		return invalid
 	}
@@ -122,7 +123,7 @@ func (r Repository) Save(lib Library, expected []byte) error {
 		return err
 	}
 	if len(raw) > 16<<20 {
-		return errors.New("configuration library exceeds 16 MiB")
+		return diagnostic.New("diagnostic.library.size", "configuration library exceeds 16 MiB")
 	}
 	if err := store.Dir(r.Root); err != nil {
 		return err
@@ -132,7 +133,7 @@ func (r Repository) Save(lib Library, expected []byte) error {
 
 func (r Repository) Put(raw []byte) (string, error) {
 	if len(raw) == 0 || len(raw) > MaxDocumentSize {
-		return "", errors.New("configuration must be nonempty and at most 8 MiB")
+		return "", diagnostic.New("diagnostic.library.documentSize", "configuration must be nonempty and at most 8 MiB")
 	}
 	if err := store.Dir(r.Root); err != nil {
 		return "", err
@@ -146,7 +147,7 @@ func (r Repository) Put(raw []byte) (string, error) {
 	old, err := store.Read(path)
 	if err == nil {
 		if Hash(old) != revision {
-			return "", errors.New("configuration snapshot was modified; preserving it")
+			return "", diagnostic.New("diagnostic.library.snapshotModified", "configuration snapshot was modified; preserving it")
 		}
 		return revision, nil
 	}
@@ -158,7 +159,7 @@ func (r Repository) Put(raw []byte) (string, error) {
 
 func (r Repository) Read(revision string) ([]byte, error) {
 	if !revisionPattern.MatchString(revision) {
-		return nil, errors.New("invalid configuration revision")
+		return nil, diagnostic.New("diagnostic.library.revision", "invalid configuration revision")
 	}
 	for _, path := range []string{r.Root, filepath.Join(r.Root, "snapshots")} {
 		info, err := os.Lstat(path)
@@ -166,7 +167,7 @@ func (r Repository) Read(revision string) ([]byte, error) {
 			return nil, err
 		}
 		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			return nil, errors.New("configuration snapshot directory is unsafe")
+			return nil, diagnostic.New("diagnostic.library.snapshotDirectory", "configuration snapshot directory is unsafe")
 		}
 	}
 	raw, err := store.Read(filepath.Join(r.Root, "snapshots", revision+".yaml"))
@@ -174,7 +175,7 @@ func (r Repository) Read(revision string) ([]byte, error) {
 		return nil, err
 	}
 	if len(raw) > MaxDocumentSize || Hash(raw) != revision {
-		return nil, errors.New("configuration snapshot was modified; preserving it")
+		return nil, diagnostic.New("diagnostic.library.snapshotModified", "configuration snapshot was modified; preserving it")
 	}
 	return raw, nil
 }

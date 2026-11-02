@@ -5,8 +5,6 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"io"
 	"mime"
 	"net/http"
@@ -15,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 	"github.com/nelvko/lazyclash/internal/downloadnet"
 )
 
@@ -62,7 +61,7 @@ func releaseAsset(version, arch string) (string, error) {
 	case "amd64":
 		return "mihomo-linux-amd64-compatible-" + version + ".gz", nil
 	default:
-		return "", fmt.Errorf("Mihomo release download does not support Linux %s", arch)
+		return "", diagnostic.New("diagnostic.release.architecture", "Mihomo release download does not support Linux %s", arch)
 	}
 }
 func (r Resolver) client(cfg downloadnet.Config, timeout time.Duration) (*http.Client, error) {
@@ -90,7 +89,7 @@ func (r Resolver) Resolve(ctx context.Context, selection string, cfg downloadnet
 			selection = "v" + selection
 		}
 		if !stableTag.MatchString(selection) {
-			return Release{}, errors.New("choose latest or a stable Mihomo version such as v1.19.33")
+			return Release{}, diagnostic.New("diagnostic.release.versionChoice", "choose latest or a stable Mihomo version such as v1.19.33")
 		}
 		endpoint = releaseAPI + "tags/" + selection
 	}
@@ -111,7 +110,7 @@ func (r Resolver) Resolve(ctx context.Context, selection string, cfg downloadnet
 	}
 	media, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
 	if media != "" && media != "application/json" && media != "application/vnd.github+json" {
-		return Release{}, errors.New("official version query returned an unexpected content type")
+		return Release{}, diagnostic.New("diagnostic.release.contentType", "official version query returned an unexpected content type")
 	}
 	const metadataLimit = 4 << 20
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, metadataLimit+1))
@@ -119,7 +118,7 @@ func (r Resolver) Resolve(ctx context.Context, selection string, cfg downloadnet
 		return Release{}, downloadnet.Failure(ctx, "official version response", err)
 	}
 	if len(raw) > metadataLimit {
-		return Release{}, errors.New("official release metadata exceeds 4 MiB")
+		return Release{}, diagnostic.New("diagnostic.release.metadataLimit", "official release metadata exceeds 4 MiB")
 	}
 	var result struct {
 		Tag        string `json:"tag_name"`
@@ -133,13 +132,13 @@ func (r Resolver) Resolve(ctx context.Context, selection string, cfg downloadnet
 		} `json:"assets"`
 	}
 	if json.Unmarshal(raw, &result) != nil {
-		return Release{}, errors.New("official version query did not return valid release JSON")
+		return Release{}, diagnostic.New("diagnostic.release.invalidJSON", "official version query did not return valid release JSON")
 	}
 	if result.Draft || result.Prerelease || !stableTag.MatchString(result.Tag) {
-		return Release{}, errors.New("only published stable Mihomo releases are supported")
+		return Release{}, diagnostic.New("diagnostic.release.stableOnly", "only published stable Mihomo releases are supported")
 	}
 	if selection != "" && selection != "latest" && selection != result.Tag {
-		return Release{}, errors.New("official release response does not match the requested version")
+		return Release{}, diagnostic.New("diagnostic.release.versionMismatch", "official release response does not match the requested version")
 	}
 	arch := r.Arch
 	if arch == "" {
@@ -155,15 +154,15 @@ func (r Resolver) Resolve(ctx context.Context, selection string, cfg downloadnet
 			continue
 		}
 		if release.Asset != "" {
-			return Release{}, errors.New("official release contains duplicate matching assets")
+			return Release{}, diagnostic.New("diagnostic.release.duplicateAsset", "official release contains duplicate matching assets")
 		}
 		release = Release{Version: result.Tag, Asset: a.Name, URL: a.URL, SHA256: strings.TrimPrefix(a.Digest, "sha256:"), ChecksumSource: endpoint + "#asset-digest:" + asset, Size: a.Size, Platform: "linux/" + arch}
 		if !strings.HasPrefix(a.Digest, "sha256:") {
-			return Release{}, errors.New("official GitHub release asset has no SHA256 digest; refusing unverifiable bytes")
+			return Release{}, diagnostic.New("diagnostic.release.missingDigest", "official GitHub release asset has no SHA256 digest; refusing unverifiable bytes")
 		}
 	}
 	if release.Asset == "" {
-		return Release{}, errors.New("requested Linux architecture asset is missing from the official release")
+		return Release{}, diagnostic.New("diagnostic.release.missingArchitecture", "requested Linux architecture asset is missing from the official release")
 	}
 	if err := validRelease(release); err != nil {
 		return Release{}, err
@@ -173,27 +172,27 @@ func (r Resolver) Resolve(ctx context.Context, selection string, cfg downloadnet
 }
 func validRelease(r Release) error {
 	if !stableTag.MatchString(r.Version) {
-		return errors.New("invalid stable release version")
+		return diagnostic.New("diagnostic.release.invalidVersion", "invalid stable release version")
 	}
 	arch := strings.TrimPrefix(r.Platform, "linux/")
 	asset, err := releaseAsset(r.Version, arch)
 	if err != nil || r.Platform != "linux/"+arch || asset != r.Asset {
-		return errors.New("release asset does not match its Linux platform")
+		return diagnostic.New("diagnostic.release.platformMismatch", "release asset does not match its Linux platform")
 	}
 	if r.URL != releaseFiles+r.Version+"/"+r.Asset {
-		return errors.New("release file URL is not the expected official GitHub asset")
+		return diagnostic.New("diagnostic.release.unofficialURL", "release file URL is not the expected official GitHub asset")
 	}
 	hash, err := hex.DecodeString(r.SHA256)
 	if err != nil || len(hash) != 32 {
-		return errors.New("official GitHub release asset has no valid SHA256 digest")
+		return diagnostic.New("diagnostic.release.invalidDigest", "official GitHub release asset has no valid SHA256 digest")
 	}
 	expectedSuffix := "#asset-digest:" + r.Asset
 	source := strings.TrimSuffix(r.ChecksumSource, expectedSuffix)
 	if source == r.ChecksumSource || (source != releaseAPI+"latest" && source != releaseAPI+"tags/"+r.Version) {
-		return errors.New("release checksum provenance is not the official GitHub API")
+		return diagnostic.New("diagnostic.release.digestProvenance", "release checksum provenance is not the official GitHub API")
 	}
 	if r.Size <= 0 || r.Size > archiveLimit {
-		return errors.New("official release asset size is unavailable or exceeds 64 MiB")
+		return diagnostic.New("diagnostic.release.assetSize", "official release asset size is unavailable or exceeds 64 MiB")
 	}
 	return nil
 }
@@ -230,7 +229,7 @@ func (r Resolver) TestFile(ctx context.Context, release Release, cfg downloadnet
 		return downloadnet.HTTPError("release-file connection test", resp.StatusCode)
 	}
 	if badArchiveMedia(resp.Header.Get("Content-Type")) {
-		return errors.New("release-file connection test returned HTML or JSON instead of gzip")
+		return diagnostic.New("diagnostic.release.testContentType", "release-file connection test returned HTML or JSON instead of gzip")
 	}
 	// Never consume more than 4 KiB, even when a server ignores Range. A magic
 	// probe confirms an archive-like response; SHA256 is checked during install.
@@ -239,7 +238,7 @@ func (r Resolver) TestFile(ctx context.Context, release Release, cfg downloadnet
 		return downloadnet.Failure(ctx, "release-file connection test", err)
 	}
 	if len(raw) < 2 || !bytes.Equal(raw[:2], []byte{0x1f, 0x8b}) {
-		return errors.New("release-file connection test did not return gzip bytes")
+		return diagnostic.New("diagnostic.release.testGzip", "release-file connection test did not return gzip bytes")
 	}
 	return nil
 }

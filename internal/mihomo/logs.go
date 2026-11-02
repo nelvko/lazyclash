@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"regexp"
 	"strings"
@@ -13,6 +12,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/charmbracelet/x/ansi"
+
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 )
 
 const MaxLogMessage = 4096
@@ -69,7 +70,7 @@ func SafeLogMessage(message, controllerSecret string) string {
 // never writes raw messages to disk. emit runs serially and must return promptly.
 func (c Client) StreamLogs(ctx context.Context, emit func(LogEntry)) error {
 	if emit == nil {
-		return errors.New("a log consumer is required")
+		return diagnostic.New("diagnostic.logs.consumer", "a log consumer is required")
 	}
 	body, err := c.openRequest(ctx, http.MethodGet, "/logs?level=info", nil, true)
 	if err != nil {
@@ -87,12 +88,12 @@ func (c Client) StreamLogs(ctx context.Context, emit func(LogEntry)) error {
 			Payload *string `json:"payload"`
 		}
 		if json.Unmarshal(scanner.Bytes(), &event) != nil || event.Type == nil || event.Payload == nil {
-			return errors.New("invalid Mihomo log event")
+			return diagnostic.New("diagnostic.logs.event", "invalid Mihomo log event")
 		}
 		switch *event.Type {
 		case "debug", "info", "warning", "error", "fatal":
 		default:
-			return errors.New("invalid Mihomo log level")
+			return diagnostic.New("diagnostic.logs.level", "invalid Mihomo log level")
 		}
 		emit(LogEntry{Time: time.Now(), Level: *event.Type, Message: SafeLogMessage(*event.Payload, c.Secret)})
 	}
@@ -100,7 +101,7 @@ func (c Client) StreamLogs(ctx context.Context, emit func(LogEntry)) error {
 		return ctx.Err()
 	}
 	if scanner.Err() != nil {
-		return errors.New("Mihomo log stream was interrupted or exceeded the 64 KiB event limit")
+		return diagnostic.New("diagnostic.logs.interrupted", "Mihomo log stream was interrupted or exceeded the 64 KiB event limit")
 	}
-	return errors.New("Mihomo log stream ended; reconnect to continue")
+	return diagnostic.New("diagnostic.logs.ended", "Mihomo log stream ended; reconnect to continue")
 }

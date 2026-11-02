@@ -4,19 +4,20 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 	"github.com/nelvko/lazyclash/internal/store"
 )
 
 type ModeStatus struct {
-	Desired string `json:"desired"`
-	Actual  string `json:"actual,omitempty"`
-	Running bool   `json:"running"`
-	Error   string `json:"error,omitempty"`
+	Desired         string `json:"desired"`
+	Actual          string `json:"actual,omitempty"`
+	Running         bool   `json:"running"`
+	Error           string `json:"error,omitempty"`
+	ErrorDiagnostic error  `json:"-"`
 }
 
 func (a *App) GetMode(ctx context.Context) (ModeStatus, error) {
@@ -64,7 +65,7 @@ func (a *App) GetMode(ctx context.Context) (ModeStatus, error) {
 // restart and remain effective when systemd later restarts Mihomo.
 func (a *App) SetMode(ctx context.Context, mode string) error {
 	if !mihomo.ValidMode(mode) {
-		return errors.New("proxy mode must be rule, global or direct")
+		return diagnostic.New("diagnostic.runtime.mode", "proxy mode must be rule, global or direct")
 	}
 	return a.locked(ctx, func() error {
 		if err := a.requireService(); err != nil {
@@ -83,7 +84,7 @@ func (a *App) SetMode(ctx context.Context, mode string) error {
 			return err
 		}
 		if status.State == "activating" || status.State == "deactivating" || status.State == "reloading" {
-			return errors.New("service is changing state; wait before changing the proxy mode")
+			return diagnostic.New("diagnostic.runtime.modeChanging", "service is changing state; wait before changing the proxy mode")
 		}
 		raw, err := store.Read(config)
 		if err != nil {
@@ -127,7 +128,7 @@ func (a *App) SetMode(ctx context.Context, mode string) error {
 			return err
 		}
 		if status.Active != observed.Active || status.State != observed.State || status.PID != observed.PID {
-			return errors.New("service changed while validating the proxy mode; retry the operation")
+			return diagnostic.New("diagnostic.runtime.modeServiceChanged", "service changed while validating the proxy mode; retry the operation")
 		}
 		if err := a.Service.Verify(ctx, bin, config, data); err != nil {
 			return err
@@ -170,7 +171,7 @@ func (a *App) SetMode(ctx context.Context, mode string) error {
 // prohibit TUN. An unexpectedly enabled runtime is reported for inspection.
 func (a *App) SetTUN(ctx context.Context, enabled bool) error {
 	if enabled {
-		return errors.New("TUN is unavailable in the managed systemd user service: privileged system-service support is not implemented; ordinary HTTP/SOCKS proxying requires no root")
+		return diagnostic.New("diagnostic.runtime.tunUnavailable", "TUN is unavailable in the managed systemd user service: privileged system-service support is not implemented; ordinary HTTP/SOCKS proxying requires no root")
 	}
 	return a.locked(ctx, func() error {
 		if err := a.requireService(); err != nil {
@@ -193,7 +194,7 @@ func (a *App) SetTUN(ctx context.Context, enabled bool) error {
 			return err
 		}
 		if on {
-			return errors.New("managed configuration unexpectedly enables TUN; inspect it before restarting the service")
+			return diagnostic.New("diagnostic.runtime.tunConfig", "managed configuration unexpectedly enables TUN; inspect it before restarting the service")
 		}
 		status, err := a.Service.Inspect(ctx)
 		if err != nil {
@@ -202,10 +203,10 @@ func (a *App) SetTUN(ctx context.Context, enabled bool) error {
 		if status.Active {
 			cfg, err := a.client(m).Configuration(ctx)
 			if err != nil {
-				return fmt.Errorf("cannot confirm that TUN is disabled: %w", err)
+				return diagnostic.New("diagnostic.runtime.tunVerify", "cannot confirm that TUN is disabled: %w", err)
 			}
 			if cfg.TUN {
-				return errors.New("Mihomo unexpectedly reports active TUN in a user service; stop the service and inspect its configuration")
+				return diagnostic.New("diagnostic.runtime.tunActive", "Mihomo unexpectedly reports active TUN in a user service; stop the service and inspect its configuration")
 			}
 		}
 		return nil

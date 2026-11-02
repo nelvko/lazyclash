@@ -1,10 +1,11 @@
 package downloadnet
 
 import (
-	"errors"
 	"net/url"
 	"regexp"
 	"strings"
+
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 )
 
 var displayVersion = regexp.MustCompile(`^v?[0-9]+\.[0-9]+\.[0-9]+$`)
@@ -44,7 +45,7 @@ func (c Config) FilePreview(original, version, asset string) (string, error) {
 func previewURL(raw, version, asset string) (string, error) {
 	u, err := webURL(raw)
 	if err != nil {
-		return "", errors.New("cannot preview an invalid release-file URL")
+		return "", diagnostic.New("diagnostic.network.previewURL", "cannot preview an invalid release-file URL")
 	}
 	parts := strings.Split(u.EscapedPath(), "/")
 	for i, part := range parts {

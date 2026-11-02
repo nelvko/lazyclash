@@ -4,10 +4,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
 	"path"
 	"strings"
 	"unicode"
+
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 )
 
 // normalizeProviderPaths isolates HTTP caches by provider definition rather
@@ -19,13 +20,13 @@ func normalizeProviderPaths(cfg map[string]any) error {
 		for name, value := range providers {
 			provider, ok := value.(map[string]any)
 			if !ok {
-				return errors.New("provider definition must be a mapping")
+				return diagnostic.New("diagnostic.config.providerMapping", "provider definition must be a mapping")
 			}
 			switch provider["type"] {
 			case "http":
 				if value, exists := provider["path"]; exists {
 					if _, ok := value.(string); !ok {
-						return errors.New("HTTP provider path must be a string when present")
+						return diagnostic.New("diagnostic.config.httpProviderPath", "HTTP provider path must be a string when present")
 					}
 				}
 				definition := make(map[string]any, len(provider))
@@ -39,7 +40,7 @@ func normalizeProviderPaths(cfg map[string]any) error {
 					Definition map[string]any
 				}{kind.field, name, definition})
 				if err != nil {
-					return errors.New("cannot encode provider cache identity")
+					return diagnostic.New("diagnostic.config.providerIdentity", "cannot encode provider cache identity")
 				}
 				// URLs, authorization headers and all other options contribute to
 				// identity, but their plaintext never enters a filename or error.
@@ -48,16 +49,16 @@ func normalizeProviderPaths(cfg map[string]any) error {
 			case "file":
 				value, ok := provider["path"].(string)
 				if !ok || value == "" || path.IsAbs(value) || strings.ContainsAny(value, "\\:") || strings.IndexFunc(value, unicode.IsControl) >= 0 {
-					return errors.New("file provider path must name an asset relative to the core runtime directory")
+					return diagnostic.New("diagnostic.config.fileProviderRelative", "file provider path must name an asset relative to the core runtime directory")
 				}
 				for _, part := range strings.Split(value, "/") {
 					if part == ".." {
-						return errors.New("file provider path cannot traverse outside its runtime asset directory")
+						return diagnostic.New("diagnostic.config.fileProviderTraversal", "file provider path cannot traverse outside its runtime asset directory")
 					}
 				}
 				clean := path.Clean(value)
 				if clean == "." {
-					return errors.New("file provider path must name a local asset file")
+					return diagnostic.New("diagnostic.config.fileProviderFile", "file provider path must name a local asset file")
 				}
 				provider["path"] = clean
 			}

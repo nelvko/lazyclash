@@ -5,8 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"errors"
-	"fmt"
 	"io"
 	"io/fs"
 	"os"
@@ -15,6 +13,8 @@ import (
 
 	"github.com/nelvko/lazyclash/internal/mihomo"
 	"github.com/nelvko/lazyclash/internal/store"
+
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 )
 
 type manifest struct {
@@ -62,55 +62,55 @@ func (a *App) load() (manifest, string, error) {
 	}
 	for _, p := range []string{dir, filepath.Join(dir, "generations"), filepath.Join(dir, "runtime")} {
 		if err := existingDir(p); err != nil {
-			return manifest{}, "", fmt.Errorf("installation is incomplete or unsafe: %v", err)
+			return manifest{}, "", diagnostic.New("diagnostic.installation.incomplete", "installation is incomplete or unsafe: %v", err)
 		}
 	}
 	target, err := os.Readlink(filepath.Join(dir, "current"))
 	if err != nil {
-		return manifest{}, "", errors.New("installation has no valid current generation; refusing to modify")
+		return manifest{}, "", diagnostic.New("diagnostic.installation.noGeneration", "installation has no valid current generation; refusing to modify")
 	}
 	if !generationName.MatchString(target) {
-		return manifest{}, "", errors.New("invalid current generation target")
+		return manifest{}, "", diagnostic.New("diagnostic.installation.generationTarget", "invalid current generation target")
 	}
 	if err := existingDir(filepath.Join(dir, target)); err != nil {
-		return manifest{}, "", fmt.Errorf("installation generation is incomplete or unsafe: %v", err)
+		return manifest{}, "", diagnostic.New("diagnostic.installation.generationUnsafe", "installation generation is incomplete or unsafe: %v", err)
 	}
 	raw, err := store.Read(filepath.Join(dir, target, "manifest.json"))
 	if err != nil {
-		return manifest{}, "", fmt.Errorf("installation manifest is unavailable: %v", err)
+		return manifest{}, "", diagnostic.New("diagnostic.installation.manifestUnavailable", "installation manifest is unavailable: %v", err)
 	}
 	var m manifest
 	if json.Unmarshal(raw, &m) != nil || m.ID == "" || m.Secret == "" || m.Service != a.Name {
-		return m, "", errors.New("invalid installation manifest or service name mismatch")
+		return m, "", diagnostic.New("diagnostic.installation.manifestInvalid", "invalid installation manifest or service name mismatch")
 	}
 	if m.Mode != "" && !mihomo.ValidMode(m.Mode) {
-		return m, "", errors.New("invalid persisted proxy mode")
+		return m, "", diagnostic.New("diagnostic.installation.persistedMode", "invalid persisted proxy mode")
 	}
 	cfg, err := store.Read(filepath.Join(dir, target, "config.yaml"))
 	if err != nil {
-		return m, "", fmt.Errorf("installation configuration is unavailable: %v", err)
+		return m, "", diagnostic.New("diagnostic.installation.configUnavailable", "installation configuration is unavailable: %v", err)
 	}
 	if digest(cfg) != m.SHA {
-		return m, "", errors.New("active configuration was modified; refusing to replace user changes")
+		return m, "", diagnostic.New("diagnostic.installation.configModified", "active configuration was modified; refusing to replace user changes")
 	}
 	bin, _, _ := a.paths()
 	info, err := os.Lstat(bin)
 	if err != nil {
-		return m, "", fmt.Errorf("installation binary is unavailable: %v", err)
+		return m, "", diagnostic.New("diagnostic.installation.binaryUnavailable", "installation binary is unavailable: %v", err)
 	}
 	if !info.Mode().IsRegular() {
-		return m, "", errors.New("installed binary is not a regular file")
+		return m, "", diagnostic.New("diagnostic.installation.binaryRegular", "installed binary is not a regular file")
 	}
 	hash, err := fileDigest(bin)
 	if err != nil {
 		return m, "", err
 	}
 	if hash != m.BinarySHA {
-		return m, "", errors.New("installed binary was modified; refusing to operate")
+		return m, "", diagnostic.New("diagnostic.installation.binaryModified", "installed binary was modified; refusing to operate")
 	}
 	// Validate stored connection settings without exposing credentials.
 	if _, err := mihomo.Default(m.Controller, m.Secret, m.Port); err != nil {
-		return m, "", errors.New("invalid managed controller settings")
+		return m, "", diagnostic.New("diagnostic.installation.controllerSettings", "invalid managed controller settings")
 	}
 	return m, target, nil
 }
@@ -135,7 +135,7 @@ func (a *App) writeGeneration(base string, m manifest, config []byte) (string, e
 		return "", err
 	}
 	if len(raw) > 16<<20 {
-		return "", errors.New("configuration build record exceeds the managed file size limit")
+		return "", diagnostic.New("diagnostic.installation.buildRecordSize", "configuration build record exceeds the managed file size limit")
 	}
 	if err := store.Replace(filepath.Join(dir, "config.yaml"), config, nil, 0600); err != nil {
 		return "", err
@@ -155,7 +155,7 @@ func existingDir(path string) error {
 		return err
 	}
 	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return errors.New("managed path is not a real directory")
+		return diagnostic.New("diagnostic.installation.realDirectory", "managed path is not a real directory")
 	}
 	return nil
 }
@@ -177,14 +177,14 @@ func installationTree(base string) (map[string]string, error) {
 			tree[rel] = "directory"
 		case entry.Type()&os.ModeSymlink != 0:
 			if rel != "current" {
-				return errors.New("installation contains an unexpected symbolic link")
+				return diagnostic.New("diagnostic.installation.unexpectedSymlink", "installation contains an unexpected symbolic link")
 			}
 			target, err := os.Readlink(path)
 			if err != nil {
 				return err
 			}
 			if !generationName.MatchString(target) {
-				return errors.New("installation current target is invalid")
+				return diagnostic.New("diagnostic.installation.currentTarget", "installation current target is invalid")
 			}
 			tree[rel] = "symlink:" + target
 		case entry.Type().IsRegular():
@@ -193,7 +193,7 @@ func installationTree(base string) (map[string]string, error) {
 				return err
 			}
 			if info.Size() > 256<<20 {
-				return errors.New("installation file exceeds size limit")
+				return diagnostic.New("diagnostic.installation.fileSize", "installation file exceeds size limit")
 			}
 			hash, err := fileDigest(path)
 			if err != nil {
@@ -201,7 +201,7 @@ func installationTree(base string) (map[string]string, error) {
 			}
 			tree[rel] = "file:" + hash
 		default:
-			return errors.New("installation contains a non-regular file")
+			return diagnostic.New("diagnostic.installation.regularFiles", "installation contains a non-regular file")
 		}
 		return nil
 	})

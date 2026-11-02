@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -14,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 	"github.com/nelvko/lazyclash/internal/downloadnet"
 )
 
@@ -33,7 +33,7 @@ func releaseArtifact(arch string) (artifact, error) {
 		name = "mihomo-linux-amd64-compatible-" + Version + ".gz"
 		digest = "386508bfb1c72c43b6a0eda73708ecdce82546581b0ebcb16366c53757c622b6"
 	default:
-		return artifact{}, fmt.Errorf("Mihomo download does not support Linux %s", arch)
+		return artifact{}, diagnostic.New("diagnostic.release.downloadArchitecture", "Mihomo download does not support Linux %s", arch)
 	}
 	return artifact{"https://github.com/MetaCubeX/mihomo/releases/download/" + Version + "/" + name, digest}, nil
 }
@@ -103,7 +103,7 @@ func transfer(ctx context.Context, dest string, art artifact, expectedSize int64
 		}
 	}
 	if _, err := os.Lstat(dest); err == nil {
-		return errors.New("refusing to replace an existing binary")
+		return diagnostic.New("diagnostic.download.noReplace", "refusing to replace an existing binary")
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
@@ -113,7 +113,7 @@ func transfer(ctx context.Context, dest string, art artifact, expectedSize int64
 	report(Progress{Stage: "query", Total: expectedSize, Detail: "Connecting to selected release-file source"})
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, art.URL, nil)
 	if err != nil {
-		return errors.New("cannot construct release-file request")
+		return diagnostic.New("diagnostic.download.request", "cannot construct release-file request")
 	}
 	req.Header.Set("Accept-Encoding", "identity")
 	resp, err := client.Do(req)
@@ -125,10 +125,10 @@ func transfer(ctx context.Context, dest string, art artifact, expectedSize int64
 		return downloadnet.HTTPError("release-file download", resp.StatusCode)
 	}
 	if badArchiveMedia(resp.Header.Get("Content-Type")) {
-		return errors.New("release-file source returned HTML or JSON instead of gzip")
+		return diagnostic.New("diagnostic.download.contentType", "release-file source returned HTML or JSON instead of gzip")
 	}
 	if expectedSize > 0 && resp.ContentLength >= 0 && resp.ContentLength != expectedSize {
-		return errors.New("release-file Content-Length differs from the official asset size")
+		return diagnostic.New("diagnostic.download.contentLength", "release-file Content-Length differs from the official asset size")
 	}
 	archive, err := os.CreateTemp(filepath.Dir(dest), ".mihomo-download-*")
 	if err != nil {
@@ -152,23 +152,23 @@ func transfer(ctx context.Context, dest string, art artifact, expectedSize int64
 		return downloadnet.Failure(ctx, "release-file download", err)
 	}
 	if n > archiveLimit {
-		return errors.New("Mihomo archive exceeds 64 MiB")
+		return diagnostic.New("diagnostic.download.archiveLimit", "Mihomo archive exceeds 64 MiB")
 	}
 	if expectedSize > 0 && n != expectedSize {
-		return errors.New("release-file size differs from the official asset size")
+		return diagnostic.New("diagnostic.download.assetSize", "release-file size differs from the official asset size")
 	}
 	elapsed := time.Since(writer.started).Seconds()
 	report(Progress{Stage: "download", Downloaded: n, Total: total, BytesPerSecond: float64(n) / elapsed, Detail: "Release-file transfer complete"})
 	report(Progress{Stage: "checksum", Downloaded: n, Total: total, Detail: "Checking SHA256 against the official GitHub API digest"})
 	if hex.EncodeToString(h.Sum(nil)) != strings.ToLower(art.SHA256) {
-		return errors.New("Mihomo release SHA256 checksum mismatch; nothing installed")
+		return diagnostic.New("diagnostic.download.checksum", "Mihomo release SHA256 checksum mismatch; nothing installed")
 	}
 	if _, err = archive.Seek(0, io.SeekStart); err != nil {
 		return err
 	}
 	gz, err := gzip.NewReader(archive)
 	if err != nil {
-		return errors.New("Mihomo release archive is invalid")
+		return diagnostic.New("diagnostic.download.invalidArchive", "Mihomo release archive is invalid")
 	}
 	defer gz.Close()
 	report(Progress{Stage: "extract", Downloaded: n, Total: total, Detail: "Extracting validated gzip archive"})
@@ -184,10 +184,10 @@ func transfer(ctx context.Context, dest string, art artifact, expectedSize int64
 		return ctx.Err()
 	}
 	if err != nil || extracted == 0 {
-		return errors.New("cannot extract Mihomo release")
+		return diagnostic.New("diagnostic.download.extract", "cannot extract Mihomo release")
 	}
 	if extracted > binaryLimit {
-		return errors.New("Mihomo executable exceeds 128 MiB")
+		return diagnostic.New("diagnostic.download.executableLimit", "Mihomo executable exceeds 128 MiB")
 	}
 	if err = out.Chmod(0700); err != nil {
 		return err
@@ -204,13 +204,13 @@ func transfer(ctx context.Context, dest string, art artifact, expectedSize int64
 		return err
 	}
 	if expectedVersion != "" && version != expectedVersion {
-		return errors.New("downloaded Mihomo version does not match the selected release")
+		return diagnostic.New("diagnostic.download.versionMismatch", "downloaded Mihomo version does not match the selected release")
 	}
 	if err = ctx.Err(); err != nil {
 		return err
 	}
 	if err = os.Link(out.Name(), dest); err != nil {
-		return fmt.Errorf("commit downloaded Mihomo: %w", err)
+		return diagnostic.New("diagnostic.download.commit", "commit downloaded Mihomo: %w", err)
 	}
 	report(Progress{Stage: "done", Downloaded: n, Total: total, Detail: "Verified Mihomo release downloaded"})
 	return nil

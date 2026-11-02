@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 	"github.com/nelvko/lazyclash/internal/store"
 )
 
@@ -29,7 +29,7 @@ func (a *App) Apply(ctx context.Context, name string) error {
 			return err
 		}
 		if status.State == "activating" || status.State == "deactivating" || status.State == "reloading" {
-			return errors.New("service is changing state; wait before applying a profile")
+			return diagnostic.New("diagnostic.profile.serviceChanging", "service is changing state; wait before applying a profile")
 		}
 		lib, _, err := a.library().Load()
 		if err != nil {
@@ -74,7 +74,7 @@ func (a *App) Apply(ctx context.Context, name string) error {
 			return err
 		}
 		if status.Active != observed.Active || status.State != observed.State || status.PID != observed.PID {
-			return errors.New("service changed while validating the profile; retry the operation")
+			return diagnostic.New("diagnostic.profile.serviceChanged", "service changed while validating the profile; retry the operation")
 		}
 		if err := a.Service.Verify(ctx, bin, config, data); err != nil {
 			return err
@@ -110,7 +110,7 @@ func (a *App) Apply(ctx context.Context, name string) error {
 		}
 		committed = true
 		if err := a.markProfileValidated(name); err != nil {
-			return fmt.Errorf("configuration applied, but profile validation metadata could not be saved: %w", err)
+			return diagnostic.New("diagnostic.profile.metadataSave", "configuration applied, but profile validation metadata could not be saved: %w", err)
 		}
 		return nil
 	})

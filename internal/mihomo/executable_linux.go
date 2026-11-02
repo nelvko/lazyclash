@@ -6,6 +6,8 @@ import (
 	"errors"
 
 	"golang.org/x/sys/unix"
+
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 )
 
 func checkFileCapabilities(path string) error {
@@ -14,7 +16,7 @@ func checkFileCapabilities(path string) error {
 		return nil
 	}
 	if err != nil {
-		return errors.New("cannot inspect Mihomo file capabilities; refusing to execute an unverified binary")
+		return diagnostic.New("diagnostic.executable.capabilitiesInspect", "cannot inspect Mihomo file capabilities; refusing to execute an unverified binary")
 	}
-	return errors.New("refusing a Mihomo executable with file capabilities; install an unprivileged binary")
+	return diagnostic.New("diagnostic.executable.capabilities", "refusing a Mihomo executable with file capabilities; install an unprivileged binary")
 }

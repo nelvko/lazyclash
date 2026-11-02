@@ -2,22 +2,21 @@ package app
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"time"
 
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
 
 // ErrLogsNotReady distinguishes failure to establish the owned API from the
 // expected end of a bounded observation window after a successful handshake.
-var ErrLogsNotReady = errors.New("live logs unavailable")
+var ErrLogsNotReady = diagnostic.New("diagnostic.logs.notReady", "live logs unavailable")
 
 // StreamLogs observes the current owned core only. No system journal is enabled:
 // keeping raw stdout/stderr discarded avoids persisting unredacted credentials.
 func (a *App) StreamLogs(ctx context.Context, emit func(mihomo.LogEntry)) error {
 	if emit == nil {
-		return errors.New("a log consumer is required")
+		return diagnostic.New("diagnostic.logs.consumer", "a log consumer is required")
 	}
 	var before RuntimeSnapshot
 	var client mihomo.Client
@@ -29,24 +28,24 @@ func (a *App) StreamLogs(ctx context.Context, emit func(mihomo.LogEntry)) error 
 	})
 	if err != nil {
 		if ctx.Err() != nil {
-			return fmt.Errorf("%w: %w", ErrLogsNotReady, ctx.Err())
+			return diagnostic.New("diagnostic.logs.failure", "%w: %w", ErrLogsNotReady, ctx.Err())
 		}
-		return fmt.Errorf("%w: cannot verify the managed installation", ErrLogsNotReady)
+		return diagnostic.New("diagnostic.logs.installation", "%w: cannot verify the managed installation", ErrLogsNotReady)
 	}
 	if before.State != "ready" {
-		detail := "Core or managed service ownership is unavailable; check status or doctor"
+		detail := diagnostic.New("diagnostic.logs.ownership", "Core or managed service ownership is unavailable; check status or doctor")
 		switch before.State {
 		case "uninstalled":
-			detail = "Mihomo is not installed; install and start it to view live logs"
+			detail = diagnostic.New("diagnostic.logs.installFirst", "Mihomo is not installed; install and start it to view live logs")
 		case "stopped":
-			detail = "Core is stopped; start it to view live logs"
+			detail = diagnostic.New("diagnostic.logs.startFirst", "Core is stopped; start it to view live logs")
 		case "unsupported":
-			detail = "Log viewing requires a Linux systemd user service"
+			detail = diagnostic.New("diagnostic.logs.platform", "Log viewing requires a Linux systemd user service")
 		}
-		return fmt.Errorf("%w: %s", ErrLogsNotReady, detail)
+		return diagnostic.New("diagnostic.logs.unavailable", "%w: %s", ErrLogsNotReady, detail)
 	}
 	if _, err := client.Version(ctx); err != nil {
-		return fmt.Errorf("%w: %w", ErrLogsNotReady, err)
+		return diagnostic.New("diagnostic.logs.failure", "%w: %w", ErrLogsNotReady, err)
 	}
 	streamCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -54,10 +53,10 @@ func (a *App) StreamLogs(ctx context.Context, emit func(mihomo.LogEntry)) error 
 		return a.locked(streamCtx, func() error {
 			current, _, currentID, err := a.inspectRuntimeLocked(streamCtx)
 			if err != nil || current.State != "ready" {
-				return errors.New("Core stopped or service ownership became unavailable; reconnect logs")
+				return diagnostic.New("diagnostic.logs.stopped", "Core stopped or service ownership became unavailable; reconnect logs")
 			}
 			if identity != currentID || before.Service.PID != current.Service.PID {
-				return errors.New("Core changed while observing logs; reconnect to the current core")
+				return diagnostic.New("diagnostic.logs.changed", "Core changed while observing logs; reconnect to the current core")
 			}
 			return nil
 		})

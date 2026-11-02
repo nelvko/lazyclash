@@ -5,11 +5,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 	"github.com/nelvko/lazyclash/internal/service"
 	"github.com/nelvko/lazyclash/internal/store"
 )
@@ -48,7 +48,7 @@ func (a *App) stopIntent() ([]byte, error) {
 	}
 	expected, _ := json.Marshal([]string{a.Name, a.Home})
 	if !bytes.Equal(raw, expected) {
-		return nil, errors.New("stop intent changed or belongs to another installation path; preserving it")
+		return nil, diagnostic.New("diagnostic.state.stopIntentChanged", "stop intent changed or belongs to another installation path; preserving it")
 	}
 	return raw, nil
 }
@@ -80,12 +80,12 @@ func (a *App) loadRuntimeRecord(m manifest) (runtimeRecord, []byte, error) {
 		return r, nil, err
 	}
 	if json.Unmarshal(raw, &r) != nil || r.Installation != m.ID || r.Service != a.Name || !r.Desired.Known {
-		return runtimeRecord{}, nil, errors.New("runtime state is invalid or belongs to another installation; preserving it")
+		return runtimeRecord{}, nil, diagnostic.New("diagnostic.state.runtimeInvalid", "runtime state is invalid or belongs to another installation; preserving it")
 	}
 	switch r.Operation.State {
 	case "pending", "complete", "failed":
 	default:
-		return runtimeRecord{}, nil, errors.New("runtime operation state is invalid; preserving it")
+		return runtimeRecord{}, nil, diagnostic.New("diagnostic.state.operationInvalid", "runtime operation state is invalid; preserving it")
 	}
 	return r, raw, nil
 }
@@ -149,11 +149,11 @@ func (a *App) stopLocked(ctx context.Context) error {
 		s, err := a.Service.Inspect(ctx)
 		stopErr = err
 		if err == nil && (s.Active || s.PID != 0 || (s.State != "inactive" && s.State != "failed" && s.State != "not-found")) {
-			stopErr = errors.New("service has not fully stopped; inspect status and retry Stop")
+			stopErr = diagnostic.New("diagnostic.runtime.stopIncomplete", "service has not fully stopped; inspect status and retry Stop")
 		}
 	}
 	if stateErr != nil || markerErr != nil {
-		return errors.Join(errors.New("stop was requested, but saved runtime state needs inspection"), stateErr, markerErr, stopErr)
+		return errors.Join(diagnostic.New("diagnostic.runtime.stopInspection", "stop was requested, but saved runtime state needs inspection"), stateErr, markerErr, stopErr)
 	}
 	if stopErr != nil {
 		return a.finishOperation(r, raw, stopErr)
@@ -210,7 +210,7 @@ func (a *App) SetAutostart(ctx context.Context, enabled bool) error {
 			SetEnabled(context.Context, bool) error
 		})
 		if !ok {
-			return errors.New("this runtime cannot configure autostart")
+			return diagnostic.New("diagnostic.runtime.autostartUnsupported", "this runtime cannot configure autostart")
 		}
 		m, _, err := a.load()
 		if err != nil {
@@ -253,7 +253,7 @@ func (a *App) SetAutostart(ctx context.Context, enabled bool) error {
 		}
 		s, err = a.Service.Inspect(ctx)
 		if err == nil && s.Enabled != enabled {
-			err = fmt.Errorf("systemd autostart did not change to %t", enabled)
+			err = diagnostic.New("diagnostic.state.autostartUnchanged", "systemd autostart did not change to %t", enabled)
 		}
 		return a.finishOperation(r, raw, err)
 	})

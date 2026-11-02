@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 	"github.com/nelvko/lazyclash/internal/downloadnet"
 	"github.com/nelvko/lazyclash/internal/store"
 )
@@ -35,10 +36,10 @@ func (a *App) loadPreferencesLocked() (Preferences, []byte, error) {
 	}
 	var p Preferences
 	if json.Unmarshal(raw, &p) != nil {
-		return p, nil, errors.New("invalid preferences file; preserving it for inspection")
+		return p, nil, diagnostic.New("diagnostic.preferences.invalid", "invalid preferences file; preserving it for inspection")
 	}
 	if err := rememberableNetwork(p.Network); err != nil {
-		return p, nil, errors.New("stored download settings are invalid or contain credentials; file preserved")
+		return p, nil, diagnostic.New("diagnostic.preferences.networkInvalid", "stored download settings are invalid or contain credentials; file preserved")
 	}
 	return p, raw, nil
 }
@@ -63,7 +64,7 @@ func rememberableNetwork(cfg downloadnet.Config) error {
 		}
 		u, err := url.Parse(text)
 		if err != nil || u.Hostname() == "" || u.Opaque != "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" {
-			return errors.New("download settings containing credentials or query parameters are session-only and cannot be remembered")
+			return diagnostic.New("diagnostic.preferences.credentials", "download settings containing credentials or query parameters are session-only and cannot be remembered")
 		}
 		// Restrict remembered path components to public release/proxy vocabulary.
 		// Arbitrary paths (which may themselves be tokens) remain session-only.
@@ -71,7 +72,7 @@ func rememberableNetwork(cfg downloadnet.Config) error {
 			switch part {
 			case "", "proxy", "github", "github.com", "gh", "MetaCubeX", "mihomo", "releases", "release", "download", "downloads", "{version}", "{asset}":
 			default:
-				return errors.New("download URLs containing private or unrecognized path components are session-only and cannot be remembered")
+				return diagnostic.New("diagnostic.preferences.privatePath", "download URLs containing private or unrecognized path components are session-only and cannot be remembered")
 			}
 		}
 	}

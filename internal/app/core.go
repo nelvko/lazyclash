@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -17,20 +18,21 @@ import (
 )
 
 type InstallPlan struct {
-	Release         mihomo.Release
-	Local           string
-	ActualPath      string
-	ExistingVersion string
-	RunningVersion  string
-	ServiceActive   bool
-	Operation       string
-	FreeBytes       uint64
-	DiskKnown       bool
-	Warnings        []string
-	BlockedReason   string
-	guard, localSHA string
-	seal            string
-	reinstall       bool
+	Release           mihomo.Release
+	Local             string
+	ActualPath        string
+	ExistingVersion   string
+	RunningVersion    string
+	ServiceActive     bool
+	Operation         string
+	FreeBytes         uint64
+	DiskKnown         bool
+	Warnings          []string
+	BlockedReason     string
+	BlockedDiagnostic error `json:"-"`
+	guard, localSHA   string
+	seal              string
+	reinstall         bool
 }
 
 type InstallResult struct {
@@ -75,15 +77,16 @@ func (a *App) prepareInstallLocked(ctx context.Context, release mihomo.Release, 
 	// that the application has an authorized runtime (in particular as root).
 	if err := a.requireService(); err != nil && local != "" {
 		p.BlockedReason = err.Error()
+		p.BlockedDiagnostic = err
 		return p, nil
 	}
 	if local != "" {
 		if !filepath.IsAbs(local) {
-			return p, errors.New("local Mihomo path must be absolute")
+			return p, diagnostic.New("diagnostic.install.localAbsolute", "local Mihomo path must be absolute")
 		}
 		info, err := os.Stat(local)
 		if err != nil || !info.Mode().IsRegular() || info.Size() > 256<<20 {
-			return p, errors.New("local Mihomo must be a readable regular file at most 256 MiB")
+			return p, diagnostic.New("diagnostic.install.localReadable", "local Mihomo must be a readable regular file at most 256 MiB")
 		}
 		version, err := a.Version(ctx, local)
 		if err != nil {
@@ -96,7 +99,7 @@ func (a *App) prepareInstallLocked(ctx context.Context, release mihomo.Release, 
 		}
 	}
 	if p.Release.Version == "" {
-		return p, errors.New("resolve a Mihomo version before preparing installation")
+		return p, diagnostic.New("diagnostic.install.resolveFirst", "resolve a Mihomo version before preparing installation")
 	}
 	if free, err := a.freeSpace(a.Home); err == nil {
 		p.FreeBytes, p.DiskKnown = free, true
@@ -106,6 +109,7 @@ func (a *App) prepareInstallLocked(ctx context.Context, release mihomo.Release, 
 	block := func(err error) {
 		if err != nil && p.BlockedReason == "" {
 			p.BlockedReason = err.Error()
+			p.BlockedDiagnostic = err
 		}
 	}
 	block(a.requireService())
@@ -169,7 +173,7 @@ func (a *App) prepareInstallLocked(ctx context.Context, release mihomo.Release, 
 			need += uint64(p.Release.Size)
 		}
 		if p.FreeBytes < need {
-			block(errors.New("insufficient free disk space for staging and recovery"))
+			block(diagnostic.New("diagnostic.install.diskSpace", "insufficient free disk space for staging and recovery"))
 		}
 	}
 	probeDirs := []string{a.Home}
@@ -179,11 +183,11 @@ func (a *App) prepareInstallLocked(ctx context.Context, release mihomo.Release, 
 	for _, dir := range probeDirs {
 		f, err := os.CreateTemp(dir, ".lazyclash-preflight-*")
 		if err != nil {
-			block(errors.New("installation destination is not writable"))
+			block(diagnostic.New("diagnostic.install.destination", "installation destination is not writable"))
 			continue
 		}
 		if err := errors.Join(f.Close(), os.Remove(f.Name())); err != nil {
-			block(errors.New("installation destination write probe could not be cleaned up"))
+			block(diagnostic.New("diagnostic.install.probeCleanup", "installation destination write probe could not be cleaned up"))
 		}
 	}
 	p.guard = digest([]byte(a.Home + "\x00" + a.Name + "\x00" + p.guard))
@@ -213,16 +217,19 @@ func (a *App) InstallCore(ctx context.Context, plan InstallPlan, cfg downloadnet
 	var result InstallResult
 	err := a.locked(ctx, func() error {
 		if plan.seal == "" || plan.seal != planSeal(plan) {
-			return errors.New("installation plan was changed; prepare it again")
+			return diagnostic.New("diagnostic.install.planChanged", "installation plan was changed; prepare it again")
 		}
 		fresh, err := a.prepareInstallLocked(ctx, plan.Release, plan.Local, plan.reinstall)
 		if err != nil {
 			return err
 		}
 		if fresh.guard != plan.guard || fresh.localSHA != plan.localSHA || fresh.Operation != plan.Operation {
-			return errors.New("installation changed since preflight; prepare installation again")
+			return diagnostic.New("diagnostic.install.preflightChanged", "installation changed since preflight; prepare installation again")
 		}
 		if fresh.BlockedReason != "" {
+			if fresh.BlockedDiagnostic != nil {
+				return fresh.BlockedDiagnostic
+			}
 			return errors.New(fresh.BlockedReason)
 		}
 		result = InstallResult{InstalledVersion: fresh.Release.Version, RunningVersion: fresh.RunningVersion, Operation: fresh.Operation, ActualPath: fresh.ActualPath, RestartRequired: fresh.ServiceActive && fresh.RunningVersion != fresh.Release.Version}
@@ -254,7 +261,7 @@ func (a *App) InstallCore(ctx context.Context, plan InstallPlan, cfg downloadnet
 		if fresh.Local != "" {
 			copiedSHA, err := fileDigest(newBin)
 			if err != nil || copiedSHA != fresh.localSHA {
-				return errors.New("local Mihomo changed during staging; prepare installation again")
+				return diagnostic.New("diagnostic.install.localChanged", "local Mihomo changed during staging; prepare installation again")
 			}
 		}
 		report("verify", "Verifying the staged Mihomo executable")
@@ -263,7 +270,7 @@ func (a *App) InstallCore(ctx context.Context, plan InstallPlan, cfg downloadnet
 			return err
 		}
 		if version != fresh.Release.Version {
-			return errors.New("staged Mihomo version differs from the reviewed version")
+			return diagnostic.New("diagnostic.install.stagedVersion", "staged Mihomo version differs from the reviewed version")
 		}
 		report("deploy", "Validating configuration and committing the staged installation")
 		if fresh.Operation == "install" {
@@ -369,7 +376,7 @@ func (a *App) replaceCoreLocked(ctx context.Context, newBin, version string) (re
 	}
 	committed = true
 	if err := a.recoverCore(ctx); err != nil {
-		return fmt.Errorf("new binary installed; recovery cleanup remains pending: %w", err)
+		return diagnostic.New("diagnostic.recovery.coreCleanup", "new binary installed; recovery cleanup remains pending: %w", err)
 	}
 	return nil
 }
@@ -385,7 +392,7 @@ func (a *App) recoverCore(ctx context.Context) error {
 	}
 	var j coreJournal
 	if json.Unmarshal(raw, &j) != nil || !generationName.MatchString(j.Old) || !generationName.MatchString(j.New) || j.Old == j.New || !regexpCoreBackup(j.Backup) || j.Service != a.Name || j.ID == "" {
-		return errors.New("invalid core recovery journal; preserving installation")
+		return diagnostic.New("diagnostic.recovery.coreJournal", "invalid core recovery journal; preserving installation")
 	}
 	base := filepath.Join(a.Home, "installation")
 	if err := existingDir(base); err != nil {
@@ -402,15 +409,15 @@ func (a *App) recoverCore(ctx context.Context) error {
 		}
 		manifestBytes, err := store.Read(filepath.Join(base, gen.target, "manifest.json"))
 		if err != nil || digest(manifestBytes) != gen.manifestSHA {
-			return errors.New("core recovery metadata changed; preserving installation")
+			return diagnostic.New("diagnostic.recovery.coreMetadataChanged", "core recovery metadata changed; preserving installation")
 		}
 		var m manifest
 		if json.Unmarshal(manifestBytes, &m) != nil || m.ID != j.ID || m.Service != j.Service || m.BinarySHA != gen.binarySHA || m.SHA != j.ConfigSHA || m.Version == "" {
-			return errors.New("core recovery metadata does not match its transaction; preserving installation")
+			return diagnostic.New("diagnostic.recovery.coreTransactionMismatch", "core recovery metadata does not match its transaction; preserving installation")
 		}
 		cfg, err := store.Read(filepath.Join(base, gen.target, "config.yaml"))
 		if err != nil || digest(cfg) != j.ConfigSHA {
-			return errors.New("core recovery configuration changed; preserving installation")
+			return diagnostic.New("diagnostic.recovery.coreConfigurationChanged", "core recovery configuration changed; preserving installation")
 		}
 	}
 	bin, config, data := a.paths()
@@ -422,27 +429,27 @@ func (a *App) recoverCore(ctx context.Context) error {
 	}
 	info, err := os.Lstat(bin)
 	if err != nil || !info.Mode().IsRegular() {
-		return errors.New("core recovery binary changed; preserving installation")
+		return diagnostic.New("diagnostic.recovery.coreBinaryChanged", "core recovery binary changed; preserving installation")
 	}
 	actualSHA, err := fileDigest(bin)
 	if err != nil || (actualSHA != j.OldBinarySHA && actualSHA != j.NewBinarySHA) {
-		return errors.New("core recovery binary was modified; preserving it")
+		return diagnostic.New("diagnostic.recovery.coreBinaryModified", "core recovery binary was modified; preserving it")
 	}
 	current := filepath.Join(base, "current")
 	target, err := os.Readlink(current)
 	if err != nil || (target != j.Old && target != j.New) {
-		return errors.New("core recovery current generation changed; preserving it")
+		return diagnostic.New("diagnostic.recovery.coreGenerationChanged", "core recovery current generation changed; preserving it")
 	}
 	backup := filepath.Join(base, j.Backup)
 	backupExists := false
 	var backupInfo os.FileInfo
 	if candidate, err := os.Lstat(backup); err == nil {
 		if !candidate.Mode().IsRegular() {
-			return errors.New("core recovery backup is not a regular file")
+			return diagnostic.New("diagnostic.recovery.coreBackupRegular", "core recovery backup is not a regular file")
 		}
 		backupSHA, err := fileDigest(backup)
 		if err != nil || backupSHA != j.OldBinarySHA {
-			return errors.New("core recovery backup was modified; preserving it")
+			return diagnostic.New("diagnostic.recovery.coreBackupModified", "core recovery backup was modified; preserving it")
 		}
 		backupExists = true
 		backupInfo = candidate
@@ -451,11 +458,11 @@ func (a *App) recoverCore(ctx context.Context) error {
 	}
 	if j.Committed {
 		if target != j.New || actualSHA != j.NewBinarySHA {
-			return errors.New("committed core transaction was modified; preserving installation")
+			return diagnostic.New("diagnostic.recovery.coreCommittedModified", "committed core transaction was modified; preserving installation")
 		}
 	} else {
 		if !backupExists && (actualSHA != j.OldBinarySHA || target != j.Old) {
-			return errors.New("core rollback backup is unavailable; preserving installation")
+			return diagnostic.New("diagnostic.recovery.coreBackupUnavailable", "core rollback backup is unavailable; preserving installation")
 		}
 		if backupExists && !os.SameFile(info, backupInfo) {
 			restore := filepath.Join(base, ".core-restore-"+randomID())
@@ -505,12 +512,12 @@ func removeStagedGeneration(path, manifestSHA, configSHA string) error {
 		return err
 	}
 	if len(entries) != 2 {
-		return errors.New("unused core generation contains user files; preserving it")
+		return diagnostic.New("diagnostic.recovery.unusedUserFiles", "unused core generation contains user files; preserving it")
 	}
 	for name, hash := range map[string]string{"manifest.json": manifestSHA, "config.yaml": configSHA} {
 		raw, err := store.Read(filepath.Join(path, name))
 		if err != nil || digest(raw) != hash {
-			return errors.New("unused core generation changed; preserving it")
+			return diagnostic.New("diagnostic.recovery.unusedChanged", "unused core generation changed; preserving it")
 		}
 	}
 	return os.RemoveAll(path)

@@ -1,8 +1,9 @@
 package mihomo
 
 import (
-	"errors"
 	"os"
+
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 )
 
 // SafeExecutable rejects privilege-bearing binaries before version checks or
@@ -12,13 +13,13 @@ import (
 func SafeExecutable(path string) error {
 	info, err := os.Stat(path)
 	if err != nil {
-		return errors.New("cannot inspect Mihomo executable")
+		return diagnostic.New("diagnostic.executable.inspect", "cannot inspect Mihomo executable")
 	}
 	if !info.Mode().IsRegular() || info.Mode().Perm()&0111 == 0 {
-		return errors.New("Mihomo must be a regular executable file")
+		return diagnostic.New("diagnostic.executable.regular", "Mihomo must be a regular executable file")
 	}
 	if info.Mode()&(os.ModeSetuid|os.ModeSetgid) != 0 {
-		return errors.New("refusing a setuid or setgid Mihomo executable; install an unprivileged binary")
+		return diagnostic.New("diagnostic.executable.setuid", "refusing a setuid or setgid Mihomo executable; install an unprivileged binary")
 	}
 	return checkFileCapabilities(path)
 }

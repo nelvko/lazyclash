@@ -5,11 +5,11 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 	"golang.org/x/sys/unix"
 )
 
@@ -29,7 +29,7 @@ func Home(override string) (string, error) {
 		override = filepath.Join(base, "lazyclash")
 	}
 	if !filepath.IsAbs(override) {
-		return "", errors.New("lazyclash home must be an absolute path")
+		return "", diagnostic.New("diagnostic.store.homeAbsolute", "lazyclash home must be an absolute path")
 	}
 	return filepath.Clean(override), nil
 }
@@ -39,7 +39,7 @@ func Home(override string) (string, error) {
 // We do not claim protection against another process with the same UID.
 func Dir(path string) error {
 	if !filepath.IsAbs(path) {
-		return errors.New("private directory must be absolute")
+		return diagnostic.New("diagnostic.store.directoryAbsolute", "private directory must be absolute")
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		return err
@@ -52,7 +52,7 @@ func Dir(path string) error {
 		return err
 	}
 	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("refusing non-directory or symlink: %s", path)
+		return diagnostic.New("diagnostic.store.directoryBoundary", "refusing non-directory or symlink: %s", path)
 	}
 	return nil
 }
@@ -63,10 +63,10 @@ func Read(path string) ([]byte, error) {
 		return nil, err
 	}
 	if !info.Mode().IsRegular() {
-		return nil, errors.New("refusing to read a non-regular managed file")
+		return nil, diagnostic.New("diagnostic.store.readRegular", "refusing to read a non-regular managed file")
 	}
 	if info.Size() > 16<<20 {
-		return nil, errors.New("managed file exceeds size limit")
+		return nil, diagnostic.New("diagnostic.store.fileSize", "managed file exceeds size limit")
 	}
 	return os.ReadFile(path)
 }
@@ -79,7 +79,7 @@ func Replace(path string, data, expected []byte, mode os.FileMode) error {
 			if err != nil {
 				return err
 			}
-			return errors.New("file already exists; refusing to overwrite")
+			return diagnostic.New("diagnostic.store.noOverwrite", "file already exists; refusing to overwrite")
 		}
 	} else {
 		old, err := Read(path)
@@ -87,7 +87,7 @@ func Replace(path string, data, expected []byte, mode os.FileMode) error {
 			return err
 		}
 		if !bytes.Equal(old, expected) {
-			return errors.New("managed file was modified; refusing to overwrite")
+			return diagnostic.New("diagnostic.store.modifiedOverwrite", "managed file was modified; refusing to overwrite")
 		}
 	}
 	f, err := os.CreateTemp(filepath.Dir(path), ".lazyclash-write-*")
@@ -121,14 +121,14 @@ func Replace(path string, data, expected []byte, mode os.FileMode) error {
 // running under the same UID.
 func Remove(path string, expected []byte) error {
 	if expected == nil {
-		return errors.New("refusing to remove a file without expected contents")
+		return diagnostic.New("diagnostic.store.expectedContents", "refusing to remove a file without expected contents")
 	}
 	actual, err := Read(path)
 	if err != nil {
 		return err
 	}
 	if !bytes.Equal(actual, expected) {
-		return errors.New("managed file was modified; refusing to remove")
+		return diagnostic.New("diagnostic.store.modifiedRemove", "managed file was modified; refusing to remove")
 	}
 	if err := os.Remove(path); err != nil {
 		return err
@@ -183,10 +183,10 @@ func Switch(path, target, expected string) error {
 	old, err := os.Readlink(path)
 	if expected == "" {
 		if !errors.Is(err, os.ErrNotExist) {
-			return errors.New("current generation already exists")
+			return diagnostic.New("diagnostic.store.generationExists", "current generation already exists")
 		}
 	} else if err != nil || old != expected {
-		return errors.New("current generation changed; refusing to replace")
+		return diagnostic.New("diagnostic.store.generationChanged", "current generation changed; refusing to replace")
 	}
 	f, err := os.CreateTemp(filepath.Dir(path), ".lazyclash-link-*")
 	if err != nil {
@@ -201,7 +201,7 @@ func Switch(path, target, expected string) error {
 	}
 	if expected == "" { // root is locked; avoid replacing foreign data even here.
 		if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
-			return errors.New("current generation already exists")
+			return diagnostic.New("diagnostic.store.generationExists", "current generation already exists")
 		}
 	}
 	if err := os.Rename(name, path); err != nil {

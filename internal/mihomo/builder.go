@@ -1,11 +1,11 @@
 package mihomo
 
 import (
-	"errors"
-	"fmt"
 	"strings"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 )
 
 // BuildOptions describes reproducible inputs, independent of service state.
@@ -42,7 +42,7 @@ func Build(opts BuildOptions) ([]byte, error) {
 	}
 	raw, err := yaml.Marshal(cfg)
 	if err != nil {
-		return nil, errors.New("cannot encode Mihomo build inputs")
+		return nil, diagnostic.New("diagnostic.config.buildEncoding", "cannot encode Mihomo build inputs")
 	}
 	out, err := Effective(raw, opts.Controller, opts.Secret, opts.MixedPort)
 	if err != nil {
@@ -73,7 +73,7 @@ func ValidateSource(raw []byte) error {
 	}
 	for _, key := range []string{"outbounds", "inbounds"} {
 		if _, exists := cfg[key]; exists && !hasRouting {
-			return errors.New("subscription appears to use another core's configuration format; expected Mihomo YAML")
+			return diagnostic.New("diagnostic.config.otherCore", "subscription appears to use another core's configuration format; expected Mihomo YAML")
 		}
 	}
 	hasField := hasRouting
@@ -84,7 +84,7 @@ func ValidateSource(raw []byte) error {
 		}
 	}
 	if !hasField {
-		return errors.New("subscription contains no recognized Mihomo configuration fields")
+		return diagnostic.New("diagnostic.config.noFields", "subscription contains no recognized Mihomo configuration fields")
 	}
 	return validateContainers(cfg)
 }
@@ -96,7 +96,7 @@ func configEntries(cfg map[string]any, key string) ([]any, error) {
 	}
 	items, ok := value.([]any)
 	if !ok {
-		return nil, fmt.Errorf("Mihomo %s must be a YAML list", key)
+		return nil, diagnostic.New("diagnostic.config.list", "Mihomo %s must be a YAML list", key)
 	}
 	return items, nil
 }
@@ -110,7 +110,7 @@ func configRules(cfg map[string]any) ([]string, error) {
 	for _, entry := range entries {
 		rule, ok := entry.(string)
 		if !ok || strings.TrimSpace(rule) == "" {
-			return nil, errors.New("Mihomo rules must contain nonempty strings")
+			return nil, diagnostic.New("diagnostic.config.ruleStrings", "Mihomo rules must contain nonempty strings")
 		}
 		rules = append(rules, rule)
 	}
@@ -142,7 +142,7 @@ func validateContainers(cfg map[string]any) error {
 				return invalidEntryError(key, i)
 			}
 			if names[name] || builtinOutbounds[name] || (key == "proxies" && name == "GLOBAL") {
-				return fmt.Errorf("Mihomo %s entry %d has a duplicate or reserved outbound name", key, i+1)
+				return diagnostic.New("diagnostic.config.names", "Mihomo %s entry %d has a duplicate or reserved outbound name", key, i+1)
 			}
 			names[name] = true
 		}
@@ -157,11 +157,11 @@ func validateContainers(cfg map[string]any) error {
 		}
 		providers, ok := value.(map[string]any)
 		if !ok {
-			return fmt.Errorf("Mihomo %s must be a mapping", key)
+			return diagnostic.New("diagnostic.config.mapping", "Mihomo %s must be a mapping", key)
 		}
 		for name, item := range providers {
 			if _, ok := item.(map[string]any); !ok || name == "" {
-				return fmt.Errorf("Mihomo %s entries must be named mappings", key)
+				return diagnostic.New("diagnostic.config.namedMappings", "Mihomo %s entries must be named mappings", key)
 			}
 		}
 	}
@@ -169,7 +169,7 @@ func validateContainers(cfg map[string]any) error {
 }
 
 func invalidEntryError(key string, index int) error {
-	return fmt.Errorf("Mihomo %s entry %d requires a mapping with nonempty name and type", key, index+1)
+	return diagnostic.New("diagnostic.config.entry", "Mihomo %s entry %d requires a mapping with nonempty name and type", key, index+1)
 }
 
 // These settings belong to lazyclash's listener/permission policy. A patch must
@@ -190,35 +190,35 @@ var managedOverrideFields = map[string]bool{
 func applyOverrides(cfg map[string]any, raw []byte) error {
 	patch, err := decodeConfig(raw)
 	if err != nil {
-		return errors.New("invalid profile overrides: expected one YAML mapping with unique keys")
+		return diagnostic.New("diagnostic.config.overridesMapping", "invalid profile overrides: expected one YAML mapping with unique keys")
 	}
 	for key := range patch {
 		if key != "set" && key != "prepend-rules" && key != "append-rules" {
-			return errors.New("unknown profile override operation; use set, prepend-rules or append-rules")
+			return diagnostic.New("diagnostic.config.overrideOperation", "unknown profile override operation; use set, prepend-rules or append-rules")
 		}
 	}
 	if value, exists := patch["set"]; exists {
 		fields, ok := value.(map[string]any)
 		if !ok || containsNull(fields) {
-			return errors.New("override set must be a mapping without null values")
+			return diagnostic.New("diagnostic.config.overrideSet", "override set must be a mapping without null values")
 		}
 		for key, value := range fields {
 			if managedOverrideFields[key] {
-				return errors.New("override set contains an application-managed field; change application settings instead")
+				return diagnostic.New("diagnostic.config.managedField", "override set contains an application-managed field; change application settings instead")
 			}
 			if key == "profile" {
 				profile, ok := value.(map[string]any)
 				if !ok {
-					return errors.New("override profile must be a mapping")
+					return diagnostic.New("diagnostic.config.profileMapping", "override profile must be a mapping")
 				}
 				if _, exists := profile["store-selected"]; exists {
-					return errors.New("profile.store-selected is managed by lazyclash")
+					return diagnostic.New("diagnostic.config.selectionManaged", "profile.store-selected is managed by lazyclash")
 				}
 			}
 			if key == "dns" {
 				if dns, ok := value.(map[string]any); ok {
 					if _, exists := dns["listen"]; exists {
-						return errors.New("dns.listen is managed by lazyclash; resolver settings may be overridden without a listener")
+						return diagnostic.New("diagnostic.config.dnsListener", "dns.listen is managed by lazyclash; resolver settings may be overridden without a listener")
 					}
 				}
 			}
@@ -246,7 +246,7 @@ func applyOverrides(cfg map[string]any, raw []byte) error {
 			if strings.EqualFold(strings.TrimSpace(parts[0]), "MATCH") && len(parts) >= 2 {
 				switch strings.TrimSpace(parts[1]) {
 				case "DIRECT", "REJECT", "REJECT-DROP":
-					return errors.New("override append-rules would follow a terminal MATCH rule; prepend rules or replace the rule list")
+					return diagnostic.New("diagnostic.config.appendMatch", "override append-rules would follow a terminal MATCH rule; prepend rules or replace the rule list")
 				}
 			}
 		}
@@ -294,11 +294,11 @@ func overrideRules(patch map[string]any, key string) ([]string, error) {
 		return nil, nil
 	}
 	if value == nil {
-		return nil, fmt.Errorf("override %s must be a list of nonempty rule strings", key)
+		return nil, diagnostic.New("diagnostic.config.overrideRules", "override %s must be a list of nonempty rule strings", key)
 	}
 	rules, err := configRules(map[string]any{"rules": value})
 	if err != nil {
-		return nil, fmt.Errorf("override %s must be a list of nonempty rule strings", key)
+		return nil, diagnostic.New("diagnostic.config.overrideRules", "override %s must be a list of nonempty rule strings", key)
 	}
 	return rules, nil
 }
@@ -310,13 +310,13 @@ func stringReferences(entry map[string]any, key string) ([]string, error) {
 	}
 	items, ok := value.([]any)
 	if !ok {
-		return nil, errors.New("proxy-group references must be lists of nonempty strings")
+		return nil, diagnostic.New("diagnostic.config.groupReferences", "proxy-group references must be lists of nonempty strings")
 	}
 	refs := make([]string, 0, len(items))
 	for _, item := range items {
 		ref, ok := item.(string)
 		if !ok || ref == "" {
-			return nil, errors.New("proxy-group references must be lists of nonempty strings")
+			return nil, diagnostic.New("diagnostic.config.groupReferences", "proxy-group references must be lists of nonempty strings")
 		}
 		refs = append(refs, ref)
 	}
@@ -349,7 +349,7 @@ func validateReferences(cfg map[string]any) error {
 		}
 		for _, ref := range refs {
 			if !outbounds[ref] {
-				return errors.New("proxy-group references an unknown outbound")
+				return diagnostic.New("diagnostic.config.unknownOutbound", "proxy-group references an unknown outbound")
 			}
 			edges[name] = append(edges[name], ref)
 		}
@@ -359,12 +359,12 @@ func validateReferences(cfg map[string]any) error {
 		}
 		for _, ref := range uses {
 			if _, ok := providers[ref]; !ok {
-				return errors.New("proxy-group references an unknown proxy provider")
+				return diagnostic.New("diagnostic.config.unknownProvider", "proxy-group references an unknown proxy provider")
 			}
 		}
 	}
 	if hasReferenceCycle(edges) {
-		return errors.New("proxy-groups contain a reference cycle")
+		return diagnostic.New("diagnostic.config.referenceCycle", "proxy-groups contain a reference cycle")
 	}
 	// Nodes may dial through groups or other nodes. Validate the complete
 	// namespace, including node-to-node loops.
@@ -376,12 +376,12 @@ func validateReferences(cfg map[string]any) error {
 		}
 		ref, ok := value.(string)
 		if !ok || !outbounds[ref] {
-			return errors.New("proxy dialer-proxy references an unknown outbound")
+			return diagnostic.New("diagnostic.config.unknownDialer", "proxy dialer-proxy references an unknown outbound")
 		}
 		edges[node["name"].(string)] = append(edges[node["name"].(string)], ref)
 	}
 	if hasReferenceCycle(edges) {
-		return errors.New("outbound dialer references contain a cycle")
+		return diagnostic.New("diagnostic.config.dialerCycle", "outbound dialer references contain a cycle")
 	}
 	rules, _ := configRules(cfg)
 	ruleProviders, _ := cfg["rule-providers"].(map[string]any)
@@ -395,7 +395,7 @@ func validateReferences(cfg map[string]any) error {
 		}
 		if kind == "RULE-SET" && len(parts) >= 3 {
 			if _, ok := ruleProviders[strings.TrimSpace(parts[1])]; !ok {
-				return fmt.Errorf("rule %d references an unknown rule provider", i+1)
+				return diagnostic.New("diagnostic.config.ruleProvider", "rule %d references an unknown rule provider", i+1)
 			}
 		}
 		target := 2
@@ -408,7 +408,7 @@ func validateReferences(cfg map[string]any) error {
 			target = len(parts) - 1
 		}
 		if len(parts) > target && !outbounds[strings.TrimSpace(parts[target])] {
-			return fmt.Errorf("rule %d references an unknown outbound", i+1)
+			return diagnostic.New("diagnostic.config.ruleOutbound", "rule %d references an unknown outbound", i+1)
 		}
 	}
 	return nil

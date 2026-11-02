@@ -4,13 +4,14 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/nelvko/lazyclash/internal/store"
+
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 )
 
 type installJournal struct {
@@ -44,22 +45,22 @@ func (a *App) recover(ctx context.Context) error {
 	}
 	var p pending
 	if json.Unmarshal(raw, &p) != nil || !generationName.MatchString(p.Old) || !generationName.MatchString(p.New) {
-		return errors.New("invalid recovery journal; manual inspection required")
+		return diagnostic.New("diagnostic.recovery.invalidJournal", "invalid recovery journal; manual inspection required")
 	}
 	if err := a.requireService(); err != nil {
 		return err
 	}
 	if p.OldGuard != "" || p.NewGuard != "" {
 		if len(p.OldGuard) != 64 || len(p.NewGuard) != 64 || p.Old == p.New {
-			return errors.New("invalid guarded recovery journal; manual inspection required")
+			return diagnostic.New("diagnostic.recovery.guardedJournal", "invalid guarded recovery journal; manual inspection required")
 		}
 		if _, _, err := a.load(); err != nil {
-			return fmt.Errorf("recovery installation changed; preserving files and journal: %w", err)
+			return diagnostic.New("diagnostic.recovery.installationChanged", "recovery installation changed; preserving files and journal: %w", err)
 		}
 		for target, expected := range map[string]string{p.Old: p.OldGuard, p.New: p.NewGuard} {
 			actual, err := a.generationGuard(target)
 			if err != nil || actual != expected {
-				return errors.New("recovery generation changed; preserving files and journal for manual inspection")
+				return diagnostic.New("diagnostic.recovery.generationChanged", "recovery generation changed; preserving files and journal for manual inspection")
 			}
 		}
 		bin, config, data := a.paths()
@@ -77,7 +78,7 @@ func (a *App) recover(ctx context.Context) error {
 			return err
 		}
 	} else if target != p.Old {
-		return errors.New("recovery target changed; refusing to modify")
+		return diagnostic.New("diagnostic.recovery.targetChanged", "recovery target changed; refusing to modify")
 	}
 	m, _, err := a.load()
 	if err != nil {
@@ -93,7 +94,7 @@ func (a *App) recover(ctx context.Context) error {
 	}
 	if stopped == nil && p.Active && (!intent.Desired.Known || intent.Desired.Running) {
 		if err := a.restartReady(ctx, m); err != nil {
-			return fmt.Errorf("configuration restored but service recovery failed: %w", err)
+			return diagnostic.New("diagnostic.recovery.serviceFailed", "configuration restored but service recovery failed: %w", err)
 		}
 	}
 	return os.Remove(path)
@@ -109,7 +110,7 @@ func (a *App) recoverInstall(ctx context.Context) error {
 	}
 	var journal installJournal
 	if json.Unmarshal(raw, &journal) != nil || journal.ID == "" || journal.Service != a.Name || len(journal.Tree) == 0 {
-		return errors.New("invalid installation recovery journal")
+		return diagnostic.New("diagnostic.recovery.invalidInstallationJournal", "invalid installation recovery journal")
 	}
 	m := journal.manifest
 	if err := a.requireService(); err != nil {
@@ -119,14 +120,14 @@ func (a *App) recoverInstall(ctx context.Context) error {
 	if _, err := os.Lstat(filepath.Join(a.Home, "installation")); err == nil {
 		current, _, err := a.load()
 		if err != nil || current.ID != m.ID {
-			return errors.New("interrupted installation changed; refusing to remove files")
+			return diagnostic.New("diagnostic.recovery.interruptedChanged", "interrupted installation changed; refusing to remove files")
 		}
 		tree, err := installationTree(filepath.Join(a.Home, "installation"))
 		if err != nil || !maps.Equal(tree, journal.Tree) {
-			return errors.New("interrupted installation contains changed or additional files; preserving files for manual inspection")
+			return diagnostic.New("diagnostic.recovery.interruptedFiles", "interrupted installation contains changed or additional files; preserving files for manual inspection")
 		}
 		if err := a.Service.RemoveOwned(ctx, bin, config, data); err != nil {
-			return fmt.Errorf("installation rollback: %w", err)
+			return diagnostic.New("diagnostic.recovery.rollback", "installation rollback: %w", err)
 		}
 		if err := os.RemoveAll(filepath.Join(a.Home, "installation")); err != nil {
 			return err

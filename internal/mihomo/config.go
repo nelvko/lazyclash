@@ -4,8 +4,6 @@ package mihomo
 import (
 	"bytes"
 	"context"
-	"errors"
-	"fmt"
 	"io"
 	"net"
 	"os/exec"
@@ -16,6 +14,8 @@ import (
 	"unicode"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 )
 
 const MaxConfigSize = 8 << 20
@@ -29,20 +29,20 @@ func Default(controller, secret string, mixedPort int) ([]byte, error) {
 // outbound definitions survive, but cannot enable privileged or public inbounds.
 func Effective(raw []byte, controller, secret string, mixedPort int) ([]byte, error) {
 	if len(bytes.TrimSpace(raw)) == 0 || len(raw) > MaxConfigSize {
-		return nil, errors.New("Mihomo YAML must be nonempty and at most 8 MiB")
+		return nil, diagnostic.New("diagnostic.config.yamlSize", "Mihomo YAML must be nonempty and at most 8 MiB")
 	}
 	if err := loopbackAddress(controller); err != nil {
 		return nil, err
 	}
 	if secret == "" || strings.IndexFunc(secret, unicode.IsControl) >= 0 {
-		return nil, errors.New("controller secret must be nonempty and contain no control characters")
+		return nil, diagnostic.New("diagnostic.config.controllerSecret", "controller secret must be nonempty and contain no control characters")
 	}
 	if mixedPort < 1024 || mixedPort > 65535 {
-		return nil, errors.New("mixed port must be between 1024 and 65535")
+		return nil, diagnostic.New("diagnostic.config.mixedPort", "mixed port must be between 1024 and 65535")
 	}
 	_, apiPort, _ := net.SplitHostPort(controller)
 	if apiPort == strconv.Itoa(mixedPort) {
-		return nil, errors.New("controller and proxy ports must differ")
+		return nil, diagnostic.New("diagnostic.config.portConflict", "controller and proxy ports must differ")
 	}
 	cfg, err := decodeConfig(raw)
 	if err != nil {
@@ -50,7 +50,7 @@ func Effective(raw []byte, controller, secret string, mixedPort int) ([]byte, er
 	}
 	if tun, ok := cfg["tun"].(map[string]any); ok {
 		if tun["enable"] == true {
-			return nil, errors.New("this profile enables TUN, which is unavailable in the managed unprivileged user service; disable tun.enable before importing")
+			return nil, diagnostic.New("diagnostic.config.tunEnabled", "this profile enables TUN, which is unavailable in the managed unprivileged user service; disable tun.enable before importing")
 		}
 	}
 	cfg["external-controller"], cfg["secret"] = controller, secret
@@ -67,7 +67,7 @@ func Effective(raw []byte, controller, secret string, mixedPort int) ([]byte, er
 			if listeners, ok := cfg[k].([]any); ok {
 				for _, listener := range listeners {
 					if entry, ok := listener.(map[string]any); ok && entry["type"] == "tun" {
-						return nil, errors.New("this profile contains a TUN listener, which is unavailable in the managed unprivileged user service")
+						return nil, diagnostic.New("diagnostic.config.tunListener", "this profile contains a TUN listener, which is unavailable in the managed unprivileged user service")
 					}
 				}
 			}
@@ -84,7 +84,7 @@ func Effective(raw []byte, controller, secret string, mixedPort int) ([]byte, er
 		var ok bool
 		dns, ok = value.(map[string]any)
 		if !ok {
-			return nil, errors.New("invalid Mihomo DNS configuration: expected a mapping")
+			return nil, diagnostic.New("diagnostic.config.dnsMapping", "invalid Mihomo DNS configuration: expected a mapping")
 		}
 	}
 	dns["listen"] = ""
@@ -100,23 +100,23 @@ func Effective(raw []byte, controller, secret string, mixedPort int) ([]byte, er
 	cfg["profile"] = profile
 	out, err := yaml.Marshal(cfg)
 	if err != nil {
-		return nil, errors.New("cannot encode Mihomo YAML")
+		return nil, diagnostic.New("diagnostic.config.encode", "cannot encode Mihomo YAML")
 	}
 	return out, nil
 }
 
 func decodeConfig(raw []byte) (map[string]any, error) {
 	if len(bytes.TrimSpace(raw)) == 0 || len(raw) > MaxConfigSize {
-		return nil, errors.New("Mihomo YAML must be nonempty and at most 8 MiB")
+		return nil, diagnostic.New("diagnostic.config.yamlSize", "Mihomo YAML must be nonempty and at most 8 MiB")
 	}
 	var cfg map[string]any
 	d := yaml.NewDecoder(bytes.NewReader(raw))
 	if err := d.Decode(&cfg); err != nil || cfg == nil {
-		return nil, errors.New("invalid Mihomo YAML: expected one mapping with unique keys")
+		return nil, diagnostic.New("diagnostic.config.yamlMapping", "invalid Mihomo YAML: expected one mapping with unique keys")
 	}
 	var extra any
 	if err := d.Decode(&extra); err != io.EOF {
-		return nil, errors.New("invalid Mihomo YAML: multiple documents are not supported")
+		return nil, diagnostic.New("diagnostic.config.yamlDocuments", "invalid Mihomo YAML: multiple documents are not supported")
 	}
 	return cfg, nil
 }
@@ -135,7 +135,7 @@ func ConfigMode(raw []byte) (string, error) {
 	}
 	mode, ok := cfg["mode"].(string)
 	if !ok || !ValidMode(mode) {
-		return "", errors.New("Mihomo mode must be rule, global or direct")
+		return "", diagnostic.New("diagnostic.api.mode", "Mihomo mode must be rule, global or direct")
 	}
 	return mode, nil
 }
@@ -144,7 +144,7 @@ func ConfigMode(raw []byte) (string, error) {
 // remain with the effective configuration that the application already built.
 func WithMode(raw []byte, mode string) ([]byte, error) {
 	if !ValidMode(mode) {
-		return nil, errors.New("Mihomo mode must be rule, global or direct")
+		return nil, diagnostic.New("diagnostic.api.mode", "Mihomo mode must be rule, global or direct")
 	}
 	cfg, err := decodeConfig(raw)
 	if err != nil {
@@ -161,11 +161,11 @@ func ConfigTUN(raw []byte) (bool, error) {
 	}
 	tun, ok := cfg["tun"].(map[string]any)
 	if !ok && cfg["tun"] != nil {
-		return false, errors.New("invalid Mihomo TUN configuration")
+		return false, diagnostic.New("diagnostic.config.tun", "invalid Mihomo TUN configuration")
 	}
 	enabled, ok := tun["enable"].(bool)
 	if !ok && tun["enable"] != nil {
-		return false, errors.New("invalid Mihomo TUN enable setting")
+		return false, diagnostic.New("diagnostic.config.tunEnable", "invalid Mihomo TUN enable setting")
 	}
 	return enabled, nil
 }
@@ -177,14 +177,14 @@ func ConfigSelectionPersistence(raw []byte) (bool, error) {
 	}
 	profile, ok := cfg["profile"].(map[string]any)
 	if !ok && cfg["profile"] != nil {
-		return false, errors.New("invalid Mihomo profile cache configuration")
+		return false, diagnostic.New("diagnostic.config.profileCache", "invalid Mihomo profile cache configuration")
 	}
 	if profile["store-selected"] == nil {
 		return true, nil // Mihomo's native default.
 	}
 	enabled, ok := profile["store-selected"].(bool)
 	if !ok {
-		return false, errors.New("invalid Mihomo selection cache setting")
+		return false, diagnostic.New("diagnostic.config.selectionCache", "invalid Mihomo selection cache setting")
 	}
 	return enabled, nil
 }
@@ -192,12 +192,12 @@ func ConfigSelectionPersistence(raw []byte) (bool, error) {
 func loopbackAddress(address string) error {
 	host, port, err := net.SplitHostPort(address)
 	if err != nil {
-		return errors.New("controller must be a loopback IP address with a port")
+		return diagnostic.New("diagnostic.config.controllerLoopback", "controller must be a loopback IP address with a port")
 	}
 	ip := net.ParseIP(host)
 	p, err := strconv.Atoi(port)
 	if ip == nil || !ip.IsLoopback() || err != nil || p < 1024 || p > 65535 {
-		return errors.New("controller must use a loopback IP and a port between 1024 and 65535")
+		return diagnostic.New("diagnostic.config.controllerPort", "controller must use a loopback IP and a port between 1024 and 65535")
 	}
 	return nil
 }
@@ -237,11 +237,11 @@ func BinaryVersion(ctx context.Context, bin string) (string, error) {
 		return "", ctx.Err()
 	}
 	if err != nil {
-		return "", errors.New("cannot execute Mihomo binary with -v; check the OS, architecture and executable permission")
+		return "", diagnostic.New("diagnostic.executable.version", "cannot execute Mihomo binary with -v; check the OS, architecture and executable permission")
 	}
 	match := versionPattern.FindStringSubmatch(out.String())
 	if len(match) != 2 {
-		return "", errors.New("binary did not identify itself as Mihomo with a version")
+		return "", diagnostic.New("diagnostic.executable.identity", "binary did not identify itself as Mihomo with a version")
 	}
 	return match[1], nil
 }
@@ -265,7 +265,7 @@ func Validate(ctx context.Context, bin, config, data string) error {
 		return ctx.Err()
 	}
 	if err != nil {
-		return fmt.Errorf("Mihomo configuration validation failed (engine output withheld to protect credentials)")
+		return diagnostic.New("diagnostic.config.validation", "Mihomo configuration validation failed (engine output withheld to protect credentials)")
 	}
 	return nil
 }

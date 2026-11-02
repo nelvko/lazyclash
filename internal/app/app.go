@@ -3,7 +3,6 @@ package app
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"os"
 	"regexp"
@@ -12,6 +11,8 @@ import (
 	"github.com/nelvko/lazyclash/internal/mihomo"
 	"github.com/nelvko/lazyclash/internal/service"
 	"github.com/nelvko/lazyclash/internal/store"
+
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 )
 
 const DefaultService = "lazyclash-mihomo"
@@ -55,7 +56,7 @@ func New(home, name string) (*App, error) {
 		name = DefaultService
 	}
 	if !regexp.MustCompile(`^lazyclash-[A-Za-z0-9-]+$`).MatchString(name) {
-		return nil, errors.New("invalid lazyclash service name")
+		return nil, diagnostic.New("diagnostic.app.serviceName", "invalid lazyclash service name")
 	}
 	svc, platformErr := service.New(name)
 	a := &App{Home: root, Name: name, PlatformError: platformErr, Download: mihomo.Download, Version: mihomo.BinaryVersion, Validate: mihomo.Validate}

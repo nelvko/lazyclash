@@ -3,12 +3,12 @@ package app
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"strings"
 	"time"
 
 	"github.com/nelvko/lazyclash/internal/configuration"
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
 
@@ -24,7 +24,7 @@ func (a *App) AddSubscription(ctx context.Context, name, address string) error {
 
 func (a *App) importProfile(ctx context.Context, name, address string, remember bool) error {
 	if name != "" && configuration.CleanName(name) == "" {
-		return errors.New("profile name must not be empty")
+		return diagnostic.New("diagnostic.profile.emptyName", "profile name must not be empty")
 	}
 	address = strings.TrimSpace(address)
 	return a.locked(ctx, func() error {
@@ -87,13 +87,13 @@ func (a *App) updateProfile(ctx context.Context, reference, address string, chan
 		}
 		entry, ok := lib.Profiles[id]
 		if !ok {
-			return errors.New("choose a saved profile to update")
+			return diagnostic.New("diagnostic.profile.chooseUpdate", "choose a saved profile to update")
 		}
 		if !changeAddress {
 			address = entry.Address
 		}
 		if address == "" {
-			return errors.New("this profile has no remembered address; set a URL or import a new configuration")
+			return diagnostic.New("diagnostic.profile.noAddress", "this profile has no remembered address; set a URL or import a new configuration")
 		}
 		if _, err := a.library().Read(entry.Spec.Revision); err != nil {
 			return err
@@ -147,11 +147,11 @@ func (a *App) RefreshAllProfiles(ctx context.Context) error {
 			continue
 		}
 		if err := a.Refresh(ctx, profile.ID); err != nil {
-			failures = append(failures, fmt.Errorf("%s: %w", profile.Name, err))
+			failures = append(failures, diagnostic.New("diagnostic.profile.namedError", "%s: %w", profile.Name, err))
 		}
 	}
 	if len(failures) > 0 {
-		return fmt.Errorf("%d profiles could not be updated: %w", len(failures), errors.Join(failures...))
+		return diagnostic.New("diagnostic.profile.updateFailures", "%d profiles could not be updated: %w", len(failures), errors.Join(failures...))
 	}
 	return nil
 }

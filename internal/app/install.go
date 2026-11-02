@@ -4,11 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 	"github.com/nelvko/lazyclash/internal/store"
 )
@@ -16,14 +16,14 @@ import (
 func copyBinary(ctx context.Context, src, dest string) error {
 	info, err := os.Stat(src)
 	if err != nil {
-		return errors.New("cannot read local Mihomo binary")
+		return diagnostic.New("diagnostic.install.localRead", "cannot read local Mihomo binary")
 	}
 	if !info.Mode().IsRegular() || info.Size() > 256<<20 {
-		return errors.New("local binary must be a regular file at most 256 MiB")
+		return diagnostic.New("diagnostic.install.localRegular", "local binary must be a regular file at most 256 MiB")
 	}
 	in, err := os.Open(src)
 	if err != nil {
-		return errors.New("cannot open local Mihomo binary")
+		return diagnostic.New("diagnostic.install.localOpen", "cannot open local Mihomo binary")
 	}
 	defer in.Close()
 	out, err := os.OpenFile(dest, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0700)
@@ -46,7 +46,7 @@ func copyBinary(ctx context.Context, src, dest string) error {
 			break
 		}
 		if readErr != nil {
-			return errors.New("cannot copy local Mihomo binary")
+			return diagnostic.New("diagnostic.install.localCopy", "cannot copy local Mihomo binary")
 		}
 	}
 	return out.Sync()
@@ -71,7 +71,7 @@ func (a *App) installFreshLocked(ctx context.Context, local string, progress fun
 	}
 	final := filepath.Join(a.Home, "installation")
 	if _, err := os.Lstat(final); !errors.Is(err, os.ErrNotExist) {
-		return errors.New("installation path already exists; refusing to overwrite")
+		return diagnostic.New("diagnostic.install.exists", "installation path already exists; refusing to overwrite")
 	}
 	m := manifest{ID: randomID(), Service: a.Name, Controller: "127.0.0.1:9097", Secret: randomID() + randomID(), Port: 7897, Applied: "default"}
 	// Installation writes and validates files but does not open runtime ports.
@@ -90,7 +90,7 @@ func (a *App) installFreshLocked(ctx context.Context, local string, progress fun
 			c, cancel := cleanupContext()
 			defer cancel()
 			if err := a.recoverInstall(c); err != nil {
-				result = errors.Join(result, fmt.Errorf("installation recovery remains pending: %w", err))
+				result = errors.Join(result, diagnostic.New("diagnostic.install.recoveryPending", "installation recovery remains pending: %w", err))
 			}
 		}
 	}()

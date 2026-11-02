@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 )
 
 // Prefix and Mirror rewrite release files only. Version metadata and SHA256
@@ -39,12 +41,12 @@ func (c Config) Normalized() Config {
 func webURL(raw string) (*url.URL, error) {
 	u, err := url.Parse(raw)
 	if err != nil || u.Hostname() == "" || (u.Scheme != "http" && u.Scheme != "https") || u.Fragment != "" {
-		return nil, errors.New("expected an absolute HTTP(S) URL without a fragment")
+		return nil, diagnostic.New("diagnostic.network.absoluteURL", "expected an absolute HTTP(S) URL without a fragment")
 	}
 	if p := u.Port(); p != "" {
 		n, e := strconv.Atoi(p)
 		if e != nil || n < 1 || n > 65535 {
-			return nil, errors.New("invalid URL port")
+			return nil, diagnostic.New("diagnostic.network.urlPort", "invalid URL port")
 		}
 	}
 	return u, nil
@@ -52,12 +54,12 @@ func webURL(raw string) (*url.URL, error) {
 func proxyURL(raw string) (*url.URL, error) {
 	u, err := url.Parse(raw)
 	if err != nil || u.Hostname() == "" || (u.Scheme != "http" && u.Scheme != "https" && u.Scheme != "socks5" && u.Scheme != "socks5h") || (u.Path != "" && u.Path != "/") || u.RawQuery != "" || u.Fragment != "" {
-		return nil, errors.New("proxy must be an HTTP, HTTPS, SOCKS5 or SOCKS5H URL without a path or query")
+		return nil, diagnostic.New("diagnostic.network.proxyURL", "proxy must be an HTTP, HTTPS, SOCKS5 or SOCKS5H URL without a path or query")
 	}
 	if p := u.Port(); p != "" {
 		n, e := strconv.Atoi(p)
 		if e != nil || n < 1 || n > 65535 {
-			return nil, errors.New("invalid proxy port")
+			return nil, diagnostic.New("diagnostic.network.proxyPort", "invalid proxy port")
 		}
 	}
 	return u, nil
@@ -70,24 +72,24 @@ func (c Config) Validate() error {
 	case "prefix":
 		u, err := webURL(c.Prefix)
 		if err != nil {
-			return errors.New("invalid release-file prefix URL")
+			return diagnostic.New("diagnostic.network.prefixURL", "invalid release-file prefix URL")
 		}
 		if u.RawQuery != "" || strings.ContainsAny(c.Prefix, "{}") {
-			return errors.New("prefix must be a plain URL; use mirror for a version/asset template")
+			return diagnostic.New("diagnostic.network.prefixTemplate", "prefix must be a plain URL; use mirror for a version/asset template")
 		}
 	case "mirror":
 		if !strings.Contains(c.Mirror, "{version}") || !strings.Contains(c.Mirror, "{asset}") {
-			return errors.New("mirror URL template must contain {version} and {asset}")
+			return diagnostic.New("diagnostic.network.mirrorRequired", "mirror URL template must contain {version} and {asset}")
 		}
 		probe := strings.NewReplacer("{version}", "v1.2.3", "{asset}", "mihomo.gz").Replace(c.Mirror)
 		if strings.ContainsAny(probe, "{}") {
-			return errors.New("unsupported mirror URL template placeholder")
+			return diagnostic.New("diagnostic.network.mirrorPlaceholder", "unsupported mirror URL template placeholder")
 		}
 		if _, err := webURL(probe); err != nil {
-			return errors.New("invalid release-file mirror URL template")
+			return diagnostic.New("diagnostic.network.mirrorURL", "invalid release-file mirror URL template")
 		}
 	default:
-		return errors.New("release source must be official, prefix or mirror")
+		return diagnostic.New("diagnostic.network.source", "release source must be official, prefix or mirror")
 	}
 	switch c.ProxyMode {
 	case "none", "environment":
@@ -96,7 +98,7 @@ func (c Config) Validate() error {
 			return err
 		}
 	default:
-		return errors.New("proxy mode must be none, environment or custom")
+		return diagnostic.New("diagnostic.network.proxyMode", "proxy mode must be none, environment or custom")
 	}
 	return nil
 }
@@ -114,7 +116,7 @@ func (c Config) AssetURL(original, version, asset string) (string, error) {
 		result = strings.NewReplacer("{version}", url.PathEscape(version), "{asset}", url.PathEscape(asset)).Replace(c.Mirror)
 	}
 	if _, err := webURL(result); err != nil {
-		return "", errors.New("invalid resulting release-file URL")
+		return "", diagnostic.New("diagnostic.network.resultURL", "invalid resulting release-file URL")
 	}
 	return result, nil
 }
@@ -150,6 +152,57 @@ func (e *Error) Error() string {
 	return e.Operation + " failed: " + e.Kind
 }
 func (e *Error) Unwrap() error { return e.cause }
+
+// Diagnostic exposes only the already redacted public fields. The original
+// transport error is deliberately excluded: it can contain URL credentials.
+func (e *Error) Diagnostic() error {
+	operation := networkDiagnosticLabel(e.Operation)
+	kind := networkDiagnosticLabel(e.Kind)
+	if e.StatusCode != 0 {
+		return diagnostic.New("diagnostic.network.httpFailure", "%s failed: HTTP %d (%s)", operation, e.StatusCode, kind)
+	}
+	return diagnostic.New("diagnostic.network.failure", "%s failed: %s", operation, kind)
+}
+
+func networkDiagnosticLabel(value string) error {
+	switch value {
+	case "connection proxy":
+		return diagnostic.New("diagnostic.network.operation.proxy", "connection proxy")
+	case "official version query":
+		return diagnostic.New("diagnostic.network.operation.versionQuery", "official version query")
+	case "official version response":
+		return diagnostic.New("diagnostic.network.operation.versionResponse", "official version response")
+	case "release-file connection test":
+		return diagnostic.New("diagnostic.network.operation.fileTest", "release-file connection test")
+	case "release-file download":
+		return diagnostic.New("diagnostic.network.operation.download", "release-file download")
+	case "canceled":
+		return diagnostic.New("diagnostic.network.kind.canceled", "canceled")
+	case "timeout":
+		return diagnostic.New("diagnostic.network.kind.timeout", "timeout")
+	case "DNS lookup":
+		return diagnostic.New("diagnostic.network.kind.dns", "DNS lookup")
+	case "TLS certificate":
+		return diagnostic.New("diagnostic.network.kind.certificate", "TLS certificate")
+	case "TLS handshake":
+		return diagnostic.New("diagnostic.network.kind.handshake", "TLS handshake")
+	case "proxy connection":
+		return diagnostic.New("diagnostic.network.kind.proxyConnection", "proxy connection")
+	case "network connection":
+		return diagnostic.New("diagnostic.network.kind.connection", "network connection")
+	case "HTTP response":
+		return diagnostic.New("diagnostic.network.kind.response", "HTTP response")
+	case "proxy authentication":
+		return diagnostic.New("diagnostic.network.kind.proxyAuthentication", "proxy authentication")
+	case "rate limit":
+		return diagnostic.New("diagnostic.network.kind.rateLimit", "rate limit")
+	case "permission denied or rate limit":
+		return diagnostic.New("diagnostic.network.kind.permission", "permission denied or rate limit")
+	default:
+		return errors.New(value)
+	}
+}
+
 func Failure(ctx context.Context, operation string, err error) error {
 	cause := ctx.Err()
 	if cause == nil {
@@ -271,10 +324,10 @@ func NewClient(cfg Config, timeout time.Duration) (*http.Client, error) {
 	}
 	return &http.Client{Transport: tr, Timeout: timeout, CheckRedirect: func(req *http.Request, via []*http.Request) error {
 		if len(via) >= 10 {
-			return errors.New("redirect limit exceeded")
+			return diagnostic.New("diagnostic.network.redirectLimit", "redirect limit exceeded")
 		}
 		if len(via) > 0 && via[len(via)-1].URL.Scheme == "https" && req.URL.Scheme != "https" {
-			return errors.New("HTTPS downgrade redirect refused")
+			return diagnostic.New("diagnostic.network.httpsDowngrade", "HTTPS downgrade redirect refused")
 		}
 		req.Header.Del("Referer")
 		if len(via) > 0 && via[0].URL.Host != req.URL.Host {
@@ -312,7 +365,7 @@ func environmentProxy() func(*http.Request) (*url.URL, error) {
 		}
 		if req.URL.Scheme == "http" && httpProxy != "" {
 			if cgi {
-				return nil, errors.New("HTTP_PROXY is unavailable in CGI environments")
+				return nil, diagnostic.New("diagnostic.network.cgiProxy", "HTTP_PROXY is unavailable in CGI environments")
 			}
 			raw = httpProxy
 		}
@@ -324,7 +377,7 @@ func environmentProxy() func(*http.Request) (*url.URL, error) {
 		}
 		p, err := proxyURL(raw)
 		if err != nil {
-			return nil, errors.New("invalid environment proxy URL")
+			return nil, diagnostic.New("diagnostic.network.environmentProxy", "invalid environment proxy URL")
 		}
 		return p, nil
 	}

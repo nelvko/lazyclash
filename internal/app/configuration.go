@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -12,6 +11,7 @@ import (
 	"time"
 
 	"github.com/nelvko/lazyclash/internal/configuration"
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
 
@@ -43,11 +43,11 @@ func recipeRecord(lib configuration.Library, name string) (buildRecord, error) {
 	}
 	entry, ok := lib.Profiles[name]
 	if !ok {
-		return record, errors.New("profile does not exist")
+		return record, diagnostic.New("diagnostic.profile.missing", "profile does not exist")
 	}
 	p := entry.Spec
 	if p.Core != "mihomo" {
-		return record, errors.New("this profile requires an unsupported core")
+		return record, diagnostic.New("diagnostic.profile.unsupportedCore", "this profile requires an unsupported core")
 	}
 	record.Recipe = &p
 	return record, nil
@@ -77,11 +77,11 @@ func (a *App) buildProfile(ctx context.Context, lib configuration.Library, name 
 	opts.Controller, opts.Secret, opts.MixedPort, opts.Mode = m.Controller, m.Secret, m.Port, m.Mode
 	cfg, err := mihomo.Build(opts)
 	if err != nil {
-		return nil, record, fmt.Errorf("profile %s could not be built: %w", name, err)
+		return nil, record, diagnostic.New("diagnostic.profile.build", "profile %s could not be built: %w", name, err)
 	}
 	if engine {
 		if err := a.validateConfig(ctx, m, cfg); err != nil {
-			return nil, record, fmt.Errorf("profile %s failed core validation: %w", name, err)
+			return nil, record, diagnostic.New("diagnostic.profile.validate", "profile %s failed core validation: %w", name, err)
 		}
 	}
 	return cfg, record, nil
@@ -179,7 +179,7 @@ func (a *App) ProfileDetails(ctx context.Context, name string) (ProfileInfo, err
 // pinned input snapshot until the user explicitly applies this profile again.
 func (a *App) SetProfileOverrides(ctx context.Context, name string, raw []byte) error {
 	if len(raw) > configuration.MaxDocumentSize {
-		return errors.New("overrides exceed 8 MiB")
+		return diagnostic.New("diagnostic.profile.overridesSize", "overrides exceed 8 MiB")
 	}
 	return a.locked(ctx, func() error {
 		lib, old, err := a.library().Load()
@@ -192,7 +192,7 @@ func (a *App) SetProfileOverrides(ctx context.Context, name string, raw []byte) 
 		}
 		entry, ok := lib.Profiles[name]
 		if !ok {
-			return errors.New("choose a saved profile to edit overrides")
+			return diagnostic.New("diagnostic.profile.chooseOverrides", "choose a saved profile to edit overrides")
 		}
 		entry.Spec.Overrides = string(raw)
 		lib.Profiles[name] = entry
@@ -223,14 +223,14 @@ func (a *App) DeleteProfile(ctx context.Context, name string) error {
 			return err
 		}
 		if _, ok := lib.Profiles[name]; !ok {
-			return errors.New("profile does not exist")
+			return diagnostic.New("diagnostic.profile.missing", "profile does not exist")
 		}
 		m, installed, err := a.buildContext()
 		if err != nil {
 			return err
 		}
 		if installed && m.Applied == name {
-			return errors.New("apply another profile before deleting the selected profile")
+			return diagnostic.New("diagnostic.profile.deleteSelected", "apply another profile before deleting the selected profile")
 		}
 		delete(lib.Profiles, name)
 		return a.library().Save(lib, old)

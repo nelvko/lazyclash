@@ -4,7 +4,6 @@ package service
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -14,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 	"github.com/nelvko/lazyclash/internal/store"
 )
 
@@ -45,24 +45,24 @@ type Systemd struct {
 
 func New(name string) (*Systemd, error) {
 	if runtime.GOOS != "linux" {
-		return nil, errors.New("service management requires Linux with systemd; this platform is unsupported")
+		return nil, diagnostic.New("diagnostic.service.platform", "service management requires Linux with systemd; this platform is unsupported")
 	}
 	if !validName.MatchString(name) {
-		return nil, errors.New("service name must match lazyclash-[A-Za-z0-9-]+")
+		return nil, diagnostic.New("diagnostic.service.name", "service name must match lazyclash-[A-Za-z0-9-]+")
 	}
 	if os.Geteuid() == 0 {
-		return nil, errors.New("lazyclash manages an unprivileged user service; run it as a normal user, without sudo")
+		return nil, diagnostic.New("diagnostic.service.normalUser", "lazyclash manages an unprivileged user service; run it as a normal user, without sudo")
 	}
 	config := os.Getenv("XDG_CONFIG_HOME")
 	if config == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			return nil, fmt.Errorf("find user config directory: %w", err)
+			return nil, diagnostic.New("diagnostic.service.userConfigDirectory", "find user config directory: %w", err)
 		}
 		config = filepath.Join(home, ".config")
 	}
 	if !filepath.IsAbs(config) {
-		return nil, errors.New("XDG_CONFIG_HOME must be an absolute path")
+		return nil, diagnostic.New("diagnostic.service.configPath", "XDG_CONFIG_HOME must be an absolute path")
 	}
 	return &Systemd{Name: name, UnitDir: filepath.Join(config, "systemd", "user")}, nil
 }
@@ -81,14 +81,14 @@ func (s *Systemd) command(ctx context.Context, command string, args ...string) (
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		return nil, fmt.Errorf("%s failed: %w", command, err)
+		return nil, diagnostic.New("diagnostic.service.commandFailed", "%s failed: %w", command, err)
 	}
 	return out, nil
 }
 
 func (s *Systemd) unit() (string, error) {
 	if !validName.MatchString(s.Name) || !filepath.IsAbs(s.UnitDir) {
-		return "", errors.New("invalid systemd service name or unit directory")
+		return "", diagnostic.New("diagnostic.service.invalidUnitDirectory", "invalid systemd service name or unit directory")
 	}
 	return s.Name + ".service", nil
 }
@@ -98,7 +98,7 @@ func (s *Systemd) Check(ctx context.Context) error {
 		return err
 	}
 	if _, err := s.command(ctx, "systemctl", "--user", "show", "--property=SystemState", "--value"); err != nil {
-		return fmt.Errorf("systemd user manager is unavailable (check your user session and XDG_RUNTIME_DIR): %w", err)
+		return diagnostic.New("diagnostic.service.manager", "systemd user manager is unavailable (check your user session and XDG_RUNTIME_DIR): %w", err)
 	}
 	return nil
 }
@@ -115,7 +115,7 @@ func (s *Systemd) CheckPersistent(ctx context.Context) error {
 		return err
 	}
 	if !known || !enabled {
-		return fmt.Errorf("persistent user service requires linger; run loginctl enable-linger %d (administrator authorization may be required), then retry", os.Getuid())
+		return diagnostic.New("diagnostic.service.linger", "persistent user service requires linger; run loginctl enable-linger %d (administrator authorization may be required), then retry", os.Getuid())
 	}
 	return nil
 }
@@ -143,16 +143,16 @@ func (s *Systemd) Available(ctx context.Context) error {
 		return err
 	}
 	if _, err := os.Lstat(filepath.Join(s.UnitDir, name)); err == nil {
-		return fmt.Errorf("service %s already exists; refusing to overwrite it", name)
+		return diagnostic.New("diagnostic.service.exists", "service %s already exists; refusing to overwrite it", name)
 	} else if !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("inspect unit path: %w", err)
+		return diagnostic.New("diagnostic.service.inspectUnit", "inspect unit path: %w", err)
 	}
 	out, err := s.command(ctx, "systemctl", "--user", "show", name, "--property=LoadState", "--value")
 	if err != nil {
-		return fmt.Errorf("check service availability: %w", err)
+		return diagnostic.New("diagnostic.service.checkAvailability", "check service availability: %w", err)
 	}
 	if strings.TrimSpace(string(out)) != "not-found" {
-		return fmt.Errorf("service %s already exists or its availability is unknown", name)
+		return diagnostic.New("diagnostic.service.unknownAvailability", "service %s already exists or its availability is unknown", name)
 	}
 	return nil
 }
@@ -174,7 +174,7 @@ func (s *Systemd) inspect(ctx context.Context) (Status, error) {
 	}
 	out, err := s.command(ctx, "systemctl", "--user", "show", name, "--property=LoadState,ActiveState,SubState,MainPID,Result,ExecMainStatus,NRestarts,UnitFileState")
 	if err != nil {
-		return Status{}, fmt.Errorf("inspect service: %w", err)
+		return Status{}, diagnostic.New("diagnostic.service.inspect", "inspect service: %w", err)
 	}
 	status := Status{State: "unknown"}
 	load := ""
@@ -195,13 +195,13 @@ func (s *Systemd) inspect(ctx context.Context) (Status, error) {
 		case "ExecMainStatus":
 			exit, err := strconv.Atoi(value)
 			if err != nil || exit < 0 {
-				return Status{}, errors.New("systemd returned an invalid exit status")
+				return Status{}, diagnostic.New("diagnostic.service.invalidExit", "systemd returned an invalid exit status")
 			}
 			status.ExitCode = exit
 		case "NRestarts":
 			restarts, err := strconv.ParseUint(value, 10, 64)
 			if err != nil {
-				return Status{}, errors.New("systemd returned an invalid restart count")
+				return Status{}, diagnostic.New("diagnostic.service.invalidRestarts", "systemd returned an invalid restart count")
 			}
 			status.Restarts = restarts
 		case "UnitFileState":
@@ -210,7 +210,7 @@ func (s *Systemd) inspect(ctx context.Context) (Status, error) {
 		case "MainPID":
 			pid, err := strconv.Atoi(value)
 			if err != nil || pid < 0 {
-				return Status{}, errors.New("systemd returned an invalid process ID")
+				return Status{}, diagnostic.New("diagnostic.service.invalidPID", "systemd returned an invalid process ID")
 			}
 			status.PID = pid
 		}
@@ -229,7 +229,7 @@ func (s *Systemd) inspect(ctx context.Context) (Status, error) {
 // also happens inside quotes, so literal percent signs must be doubled.
 func quoteArg(path string) (string, error) {
 	if !filepath.IsAbs(path) || strings.ContainsAny(path, "\x00\n\r") {
-		return "", errors.New("service paths must be absolute and contain no NUL or newline")
+		return "", diagnostic.New("diagnostic.service.absolutePaths", "service paths must be absolute and contain no NUL or newline")
 	}
 	path = strings.ReplaceAll(path, "\\", "\\\\")
 	path = strings.ReplaceAll(path, `"`, `\"`)
@@ -277,11 +277,11 @@ func (s *Systemd) Install(ctx context.Context, bin, config, data string) error {
 		return err
 	}
 	if err := os.MkdirAll(s.UnitDir, 0700); err != nil {
-		return fmt.Errorf("create user unit directory: %w", err)
+		return diagnostic.New("diagnostic.service.createDirectory", "create user unit directory: %w", err)
 	}
 	tmp, err := os.CreateTemp(s.UnitDir, ".lazyclash-unit-*")
 	if err != nil {
-		return fmt.Errorf("stage service unit: %w", err)
+		return diagnostic.New("diagnostic.service.stageUnit", "stage service unit: %w", err)
 	}
 	defer os.Remove(tmp.Name())
 	_, writeErr := tmp.WriteString(content)
@@ -290,14 +290,14 @@ func (s *Systemd) Install(ctx context.Context, bin, config, data string) error {
 	}
 	closeErr := tmp.Close()
 	if err := errors.Join(writeErr, closeErr); err != nil {
-		return fmt.Errorf("write service unit: %w", err)
+		return diagnostic.New("diagnostic.service.writeUnit", "write service unit: %w", err)
 	}
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	path := filepath.Join(s.UnitDir, s.Name+".service")
 	if err := os.Link(tmp.Name(), path); err != nil {
-		return fmt.Errorf("publish service unit without overwriting: %w", err)
+		return diagnostic.New("diagnostic.service.publishUnit", "publish service unit without overwriting: %w", err)
 	}
 	s.installedContent = content
 	if _, err := s.command(ctx, "systemctl", "--user", "daemon-reload"); err != nil {
@@ -310,7 +310,7 @@ func (s *Systemd) Install(ctx context.Context, bin, config, data string) error {
 		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
 		_, reloadErr := s.command(cleanupCtx, "systemctl", "--user", "daemon-reload")
-		return errors.Join(fmt.Errorf("reload user service definitions: %w", err), removeErr, reloadErr)
+		return errors.Join(diagnostic.New("diagnostic.service.reloadDefinitions", "reload user service definitions: %w", err), removeErr, reloadErr)
 	}
 	return nil
 }
@@ -335,7 +335,7 @@ func (s *Systemd) Verify(ctx context.Context, bin, config, data string) error {
 	}
 	out, err := s.command(ctx, "systemctl", "--user", "show", name, "--property=FragmentPath,DropInPaths,NeedDaemonReload")
 	if err != nil {
-		return fmt.Errorf("verify loaded service ownership: %w", err)
+		return diagnostic.New("diagnostic.service.verifyLoaded", "verify loaded service ownership: %w", err)
 	}
 	fragment := ""
 	for line := range strings.SplitSeq(string(out), "\n") {
@@ -348,16 +348,16 @@ func (s *Systemd) Verify(ctx context.Context, bin, config, data string) error {
 			fragment = value
 		case "NeedDaemonReload":
 			if value == "yes" {
-				return errors.New("service definition changed without daemon-reload; refusing to control an unverified loaded unit")
+				return diagnostic.New("diagnostic.service.changedDefinition", "service definition changed without daemon-reload; refusing to control an unverified loaded unit")
 			}
 		case "DropInPaths":
 			if value != "" {
-				return errors.New("service has additional drop-ins; refusing to control a modified unit")
+				return diagnostic.New("diagnostic.service.dropins", "service has additional drop-ins; refusing to control a modified unit")
 			}
 		}
 	}
 	if fragment != path {
-		return errors.New("loaded service belongs to a different installation or is not loaded")
+		return diagnostic.New("diagnostic.service.foreignLoaded", "loaded service belongs to a different installation or is not loaded")
 	}
 	return nil
 }
@@ -365,17 +365,17 @@ func (s *Systemd) Verify(ctx context.Context, bin, config, data string) error {
 func verifyFile(path, expected string) error {
 	info, err := os.Lstat(path)
 	if err != nil {
-		return fmt.Errorf("inspect service ownership: %w", err)
+		return diagnostic.New("diagnostic.service.inspectOwnership", "inspect service ownership: %w", err)
 	}
 	if !info.Mode().IsRegular() {
-		return errors.New("refusing to modify a service unit that is not a regular file")
+		return diagnostic.New("diagnostic.service.regularUnit", "refusing to modify a service unit that is not a regular file")
 	}
 	content, err := os.ReadFile(path)
 	if err != nil {
-		return fmt.Errorf("read service ownership: %w", err)
+		return diagnostic.New("diagnostic.service.readOwnership", "read service ownership: %w", err)
 	}
 	if string(content) != expected {
-		return errors.New("service unit differs from this installation; refusing to modify it")
+		return diagnostic.New("diagnostic.service.modifiedUnit", "service unit differs from this installation; refusing to modify it")
 	}
 	return nil
 }
@@ -407,7 +407,7 @@ func (s *Systemd) RemoveOwned(ctx context.Context, bin, config, data string) err
 // Use RemoveOwned when the installation was created by an earlier process.
 func (s *Systemd) Remove(ctx context.Context) error {
 	if s.installedContent == "" {
-		return errors.New("no service unit was installed by this operation")
+		return diagnostic.New("diagnostic.service.noInstalledUnit", "no service unit was installed by this operation")
 	}
 	return s.remove(ctx, s.installedContent)
 }
@@ -426,15 +426,15 @@ func (s *Systemd) remove(ctx context.Context, expected string) error {
 	}
 	status, err := s.Inspect(ctx)
 	if err != nil {
-		return fmt.Errorf("check service before removal: %w", err)
+		return diagnostic.New("diagnostic.service.checkRemoval", "check service before removal: %w", err)
 	}
 	if status.PID != 0 {
-		return errors.New("service still owns a process; refusing to remove its installation")
+		return diagnostic.New("diagnostic.service.ownsProcess", "service still owns a process; refusing to remove its installation")
 	}
 	switch status.State {
 	case "inactive", "failed", "not-found":
 	default:
-		return errors.New("service is running or changing state; refusing to remove its installation")
+		return diagnostic.New("diagnostic.service.activeRemoval", "service is running or changing state; refusing to remove its installation")
 	}
 	if err := ctx.Err(); err != nil {
 		return err
@@ -443,17 +443,17 @@ func (s *Systemd) remove(ctx context.Context, expected string) error {
 	// dangling wants/ link could silently enable a later installation of the
 	// same name. disable never stops or starts the already verified service.
 	if _, err := s.command(ctx, "systemctl", "--user", "disable", name); err != nil {
-		return fmt.Errorf("disable activation before removing service: %w", err)
+		return diagnostic.New("diagnostic.service.disableRemoval", "disable activation before removing service: %w", err)
 	}
 	if err := verifyFile(path, expected); err != nil {
 		return err
 	}
 	if err := os.Remove(path); err != nil {
-		return fmt.Errorf("remove service unit: %w", err)
+		return diagnostic.New("diagnostic.service.removeUnit", "remove service unit: %w", err)
 	}
 	s.installedContent = ""
 	if _, err := s.command(ctx, "systemctl", "--user", "daemon-reload"); err != nil {
-		return fmt.Errorf("reload after service removal: %w", err)
+		return diagnostic.New("diagnostic.service.reloadRemoval", "reload after service removal: %w", err)
 	}
 	return nil
 }
@@ -466,10 +466,10 @@ func (s *Systemd) Action(ctx context.Context, action string) error {
 	switch action {
 	case "start", "stop", "restart":
 	default:
-		return errors.New("service action must be start, stop, or restart")
+		return diagnostic.New("diagnostic.service.action", "service action must be start, stop, or restart")
 	}
 	if _, err := s.command(ctx, "systemctl", "--user", action, name); err != nil {
-		return fmt.Errorf("%s service %s: %w", action, name, err)
+		return diagnostic.New("diagnostic.service.control", "%s service %s: %w", action, name, err)
 	}
 	if action == "stop" {
 		waitCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
@@ -477,14 +477,14 @@ func (s *Systemd) Action(ctx context.Context, action string) error {
 		for {
 			status, err := s.inspect(waitCtx)
 			if err != nil {
-				return fmt.Errorf("confirm service stop: %w", err)
+				return diagnostic.New("diagnostic.service.confirmStop", "confirm service stop: %w", err)
 			}
 			if status.PID == 0 && (status.State == "inactive" || status.State == "failed" || status.State == "not-found") {
 				return nil
 			}
 			select {
 			case <-waitCtx.Done():
-				return fmt.Errorf("service did not stop: %w", waitCtx.Err())
+				return diagnostic.New("diagnostic.service.notStopped", "service did not stop: %w", waitCtx.Err())
 			case <-time.After(100 * time.Millisecond):
 			}
 		}
@@ -526,7 +526,7 @@ func (s *Systemd) UpgradeOwned(ctx context.Context, bin, config, data string) er
 		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
 		_, reloadErr := s.command(cleanupCtx, "systemctl", "--user", "daemon-reload")
-		return errors.Join(fmt.Errorf("upgrade owned service: %w", err), rollbackErr, reloadErr)
+		return errors.Join(diagnostic.New("diagnostic.service.upgradeOwned", "upgrade owned service: %w", err), rollbackErr, reloadErr)
 	}
 	return nil
 }
@@ -546,14 +546,14 @@ func (s *Systemd) SetEnabled(ctx context.Context, enabled bool) error {
 		action = "enable"
 	}
 	if _, err := s.command(ctx, "systemctl", "--user", action, name); err != nil {
-		return fmt.Errorf("%s service activation: %w", action, err)
+		return diagnostic.New("diagnostic.service.activation", "%s service activation: %w", action, err)
 	}
 	status, err := s.inspect(ctx)
 	if err != nil {
 		return err
 	}
 	if status.Enabled != enabled || status.EnableState == "" {
-		return errors.New("systemd did not confirm the requested service activation setting")
+		return diagnostic.New("diagnostic.service.enableConfirm", "systemd did not confirm the requested service activation setting")
 	}
 	return nil
 }

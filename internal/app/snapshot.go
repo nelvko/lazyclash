@@ -22,6 +22,7 @@ type Snapshot struct {
 	UnvalidatedProfiles []string
 	Service             service.Status
 	ServiceError        string
+	ServiceDiagnostic   error `json:"-"`
 	Controller          string
 	ProfilePending      bool
 	Generation          string
@@ -31,6 +32,7 @@ type Snapshot struct {
 	ProfileDetails      []ProfileInfo
 	Groups              []mihomo.Group
 	APIError            string
+	APIDiagnostic       error `json:"-"`
 	Desired             DesiredState
 	Operation           OperationState
 	Drift               string
@@ -84,18 +86,21 @@ func (a *App) Snapshot(ctx context.Context) (Snapshot, error) {
 			out.Service.State = "unsupported"
 			if a.PlatformError != nil {
 				out.ServiceError = a.PlatformError.Error()
+				out.ServiceDiagnostic = a.PlatformError
 			}
 		} else {
 			s, err := a.Service.Inspect(ctx)
 			out.Service = s
 			if err != nil {
 				out.ServiceError = err.Error()
+				out.ServiceDiagnostic = err
 			}
 		}
 		if out.Installed && a.Service != nil && out.ServiceError == "" {
 			bin, config, data := a.paths()
 			if err := a.Service.Verify(ctx, bin, config, data); err != nil {
 				out.ServiceError = err.Error()
+				out.ServiceDiagnostic = err
 			}
 		}
 		lib, _, err := a.library().Load()
@@ -128,6 +133,7 @@ func (a *App) Snapshot(ctx context.Context) (Snapshot, error) {
 			out.RunningVersion, err = a.client(m).Version(ctx)
 			if err != nil {
 				out.APIError = err.Error()
+				out.APIDiagnostic = err
 			} else if !prefs.HasRun {
 				// An owned, authenticated running engine is also evidence of a
 				// completed first run, including starts performed outside this CLI.
@@ -139,11 +145,13 @@ func (a *App) Snapshot(ctx context.Context) (Snapshot, error) {
 			out.Groups, err = a.client(m).Groups(ctx)
 			if err != nil {
 				out.APIError = err.Error()
+				out.APIDiagnostic = err
 			}
 			out.Mode.Running = true
 			cfg, err := a.client(m).Configuration(ctx)
 			if err != nil {
 				out.Mode.Error = err.Error()
+				out.Mode.ErrorDiagnostic = err
 			} else {
 				out.Mode.Actual = cfg.Mode
 				if cfg.TUN {

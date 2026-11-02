@@ -2,12 +2,11 @@ package app
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"net"
 	"strconv"
 	"time"
 
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 	"github.com/nelvko/lazyclash/internal/store"
 )
@@ -17,7 +16,7 @@ func (a *App) requireService() error {
 		if a.PlatformError != nil {
 			return a.PlatformError
 		}
-		return errors.New("Linux systemd user service unavailable")
+		return diagnostic.New("diagnostic.runtime.serviceUnavailable", "Linux systemd user service unavailable")
 	}
 	return nil
 }
@@ -50,7 +49,7 @@ func (a *App) probeProxy(ctx context.Context, port int) error {
 	dialer := net.Dialer{Timeout: 200 * time.Millisecond}
 	conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
 	if err != nil {
-		return errors.New("Mihomo mixed proxy listener is not ready")
+		return diagnostic.New("diagnostic.runtime.listenerNotReady", "Mihomo mixed proxy listener is not ready")
 	}
 	return conn.Close()
 }
@@ -62,21 +61,21 @@ func (a *App) waitReady(ctx context.Context, m manifest) error {
 	defer tick.Stop()
 	for {
 		if err := ctx.Err(); err != nil {
-			return fmt.Errorf("Mihomo API did not become ready: %w", err)
+			return diagnostic.New("diagnostic.runtime.apiNotReady", "Mihomo API did not become ready: %w", err)
 		}
 		status, err := a.Service.Inspect(ctx)
 		if err != nil {
 			return err
 		}
 		if status.State == "failed" {
-			return fmt.Errorf("Mihomo service failed (result=%s, exit=%d); inspect status before retrying", status.Result, status.ExitCode)
+			return diagnostic.New("diagnostic.runtime.serviceFailed", "Mihomo service failed (result=%s, exit=%d); inspect status before retrying", status.Result, status.ExitCode)
 		}
 		if status.Active && a.client(m).Ping(ctx) == nil && a.probeProxy(ctx, m.Port) == nil {
 			return nil
 		}
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("Mihomo API did not become ready: %w", ctx.Err())
+			return diagnostic.New("diagnostic.runtime.apiNotReady", "Mihomo API did not become ready: %w", ctx.Err())
 		case <-tick.C:
 		}
 	}
@@ -96,7 +95,7 @@ func (a *App) restartReady(ctx context.Context, m manifest) error {
 // cancelled UI observation must never turn into an implicit stop request.
 func (a *App) Control(ctx context.Context, action string) error {
 	if action != "start" && action != "stop" && action != "restart" {
-		return errors.New("unsupported service action")
+		return diagnostic.New("diagnostic.runtime.action", "unsupported service action")
 	}
 	unlock, err := store.Lock(ctx, a.Home)
 	if err != nil {
@@ -139,7 +138,7 @@ func (a *App) Control(ctx context.Context, action string) error {
 		return err
 	}
 	if status.State == "deactivating" || status.State == "reloading" {
-		return errors.New("service is changing state; wait before starting or restarting it")
+		return diagnostic.New("diagnostic.runtime.serviceChanging", "service is changing state; wait before starting or restarting it")
 	}
 	if !status.Active && status.State != "activating" {
 		if err := a.checkPorts(m); err != nil {
@@ -191,7 +190,7 @@ func (a *App) Select(ctx context.Context, group, node string) error {
 			return err
 		}
 		if !status.Active {
-			return errors.New("start the managed service before selecting a node")
+			return diagnostic.New("diagnostic.runtime.selectStopped", "start the managed service before selecting a node")
 		}
 		raw, err := store.Read(config)
 		if err != nil {
@@ -202,7 +201,7 @@ func (a *App) Select(ctx context.Context, group, node string) error {
 			return err
 		}
 		if !persistent {
-			return errors.New("this legacy configuration disables selection persistence; reapply the current profile before selecting a node")
+			return diagnostic.New("diagnostic.runtime.selectionPersistence", "this legacy configuration disables selection persistence; reapply the current profile before selecting a node")
 		}
 		return a.client(m).Select(ctx, group, node)
 	})

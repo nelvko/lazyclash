@@ -4,12 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net"
 	"os"
 	"path/filepath"
 	"strconv"
 
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 	"github.com/nelvko/lazyclash/internal/store"
 )
@@ -59,10 +59,10 @@ func (a *App) GetRuntimeSettings(ctx context.Context) (RuntimeSettings, error) {
 
 func validateRuntimeSettings(settings RuntimeSettings) error {
 	if settings.MixedPort < 1024 || settings.MixedPort > 65535 || settings.ControllerPort < 1024 || settings.ControllerPort > 65535 {
-		return errors.New("proxy and controller ports must be between 1024 and 65535")
+		return diagnostic.New("diagnostic.settings.portRange", "proxy and controller ports must be between 1024 and 65535")
 	}
 	if settings.MixedPort == settings.ControllerPort {
-		return errors.New("proxy and controller ports must differ")
+		return diagnostic.New("diagnostic.settings.portsDiffer", "proxy and controller ports must differ")
 	}
 	return nil
 }
@@ -103,7 +103,7 @@ func (a *App) prepareRuntimeSettingsLocked(ctx context.Context, proposed Runtime
 		return plan, m, target, nil, err
 	}
 	if status.State == "activating" || status.State == "deactivating" || status.State == "reloading" {
-		return plan, m, target, nil, errors.New("service is changing state; wait and review the port settings again")
+		return plan, m, target, nil, diagnostic.New("diagnostic.settings.serviceChanging", "service is changing state; wait and review the port settings again")
 	}
 	host, _, _ := net.SplitHostPort(m.Controller)
 	plan = RuntimeSettingsPlan{Current: manifestSettings(m), Proposed: proposed, ControllerHost: host, Active: status.Active, AppliedProfile: m.Applied}
@@ -162,10 +162,10 @@ func checkRuntimePorts(ctx context.Context, current manifest, next RuntimeSettin
 			closer, err = net.Listen("tcp", endpoint.address)
 		}
 		if err != nil {
-			return fmt.Errorf("local %s port %s is unavailable; no other service was stopped", endpoint.network, endpoint.address)
+			return diagnostic.New("diagnostic.settings.portUnavailable", "local %s port %s is unavailable; no other service was stopped", endpoint.network, endpoint.address)
 		}
 		if err := closer.Close(); err != nil {
-			return errors.New("port check could not release its temporary socket")
+			return diagnostic.New("diagnostic.settings.probeCleanup", "port check could not release its temporary socket")
 		}
 	}
 	return ctx.Err()
@@ -178,14 +178,14 @@ func (a *App) ApplyRuntimeSettings(ctx context.Context, plan RuntimeSettingsPlan
 	var result RuntimeSettingsResult
 	err := a.locked(ctx, func() error {
 		if plan.seal == "" || plan.seal != runtimeSettingsSeal(plan) {
-			return errors.New("port settings plan changed; review the settings again")
+			return diagnostic.New("diagnostic.settings.planChanged", "port settings plan changed; review the settings again")
 		}
 		fresh, m, old, config, err := a.prepareRuntimeSettingsLocked(ctx, plan.Proposed)
 		if err != nil {
 			return err
 		}
 		if fresh.guard != plan.guard {
-			return errors.New("installation or service changed since review; review the port settings again")
+			return diagnostic.New("diagnostic.settings.reviewChanged", "installation or service changed since review; review the port settings again")
 		}
 		controller := net.JoinHostPort(fresh.ControllerHost, strconv.Itoa(fresh.Proposed.ControllerPort))
 		if !fresh.Changed {
@@ -220,7 +220,7 @@ func (a *App) ApplyRuntimeSettings(ctx context.Context, plan RuntimeSettingsPlan
 		}
 		identity, _ := json.Marshal([]any{a.Home, a.Name, old, oldGuard, m.BinarySHA, status.Active, status.State, status.PID})
 		if digest(identity) != fresh.guard {
-			return errors.New("service changed while checking the settings; review them again")
+			return diagnostic.New("diagnostic.settings.checkChanged", "service changed while checking the settings; review them again")
 		}
 		bin, activeConfig, data := a.paths()
 		if err := a.Service.Verify(ctx, bin, activeConfig, data); err != nil {
@@ -245,7 +245,7 @@ func (a *App) ApplyRuntimeSettings(ctx context.Context, plan RuntimeSettingsPlan
 			}
 			stopped, err := a.Service.Inspect(ctx)
 			if err != nil || stopped.Active {
-				return rollback(errors.Join(errors.New("managed service did not stop before changing ports"), err))
+				return rollback(errors.Join(diagnostic.New("diagnostic.settings.stopRequired", "managed service did not stop before changing ports"), err))
 			}
 		}
 		if err := checkRuntimePorts(ctx, m, fresh.Proposed, false); err != nil {
@@ -276,7 +276,7 @@ func (a *App) ApplyRuntimeSettings(ctx context.Context, plan RuntimeSettingsPlan
 // both generations before moving the pointer, preserving any later user edits.
 func (a *App) generationGuard(target string) (string, error) {
 	if !generationName.MatchString(target) {
-		return "", errors.New("invalid configuration generation")
+		return "", diagnostic.New("diagnostic.settings.generationInvalid", "invalid configuration generation")
 	}
 	dir := filepath.Join(a.Home, "installation", target)
 	if err := existingDir(dir); err != nil {
@@ -292,14 +292,14 @@ func (a *App) generationGuard(target string) (string, error) {
 	}
 	var m manifest
 	if json.Unmarshal(raw, &m) != nil || m.ID == "" || m.Service != a.Name || digest(config) != m.SHA {
-		return "", errors.New("configuration generation changed; preserving files for manual inspection")
+		return "", diagnostic.New("diagnostic.settings.generationChanged", "configuration generation changed; preserving files for manual inspection")
 	}
 	tree, err := installationTree(dir)
 	if err != nil {
 		return "", err
 	}
 	if tree["manifest.json"] != "file:"+digest(raw) || tree["config.yaml"] != "file:"+digest(config) {
-		return "", errors.New("configuration changed while checking its generation; review again")
+		return "", diagnostic.New("diagnostic.settings.generationCheckChanged", "configuration changed while checking its generation; review again")
 	}
 	identity, _ := json.Marshal(tree)
 	return digest(identity), nil

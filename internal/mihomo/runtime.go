@@ -10,6 +10,8 @@ import (
 	"net/url"
 	"strconv"
 	"time"
+
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 )
 
 // Traffic is Mihomo's most recent one-second upload/download sample, in bytes.
@@ -78,7 +80,7 @@ func (c Client) Connections(ctx context.Context) (ConnectionSnapshot, error) {
 		Connections   json.RawMessage `json:"connections"`
 		Memory        uint64          `json:"memory"`
 	}
-	invalid := errors.New("invalid Mihomo connections response")
+	invalid := diagnostic.New("diagnostic.api.connectionsResponse", "invalid Mihomo connections response")
 	if json.Unmarshal(raw, &value) != nil || value.UploadTotal == nil || value.DownloadTotal == nil || *value.UploadTotal < 0 || *value.DownloadTotal < 0 || len(value.Connections) == 0 {
 		return ConnectionSnapshot{}, invalid
 	}
@@ -117,7 +119,7 @@ func (c Client) Connections(ctx context.Context) (ConnectionSnapshot, error) {
 // CloseConnection deliberately has no empty-ID or close-all variant.
 func (c Client) CloseConnection(ctx context.Context, id string) error {
 	if !ValidConnectionID(id) {
-		return errors.New("invalid connection ID; refresh the connections list")
+		return diagnostic.New("diagnostic.api.connectionID", "invalid connection ID; refresh the connections list")
 	}
 	_, err := c.request(ctx, http.MethodDelete, "/connections/"+url.PathEscape(id), nil)
 	return err
@@ -143,12 +145,12 @@ func (c Client) sample(ctx context.Context, path string, frames int) (json.RawMe
 			}
 			var timeout net.Error
 			if errors.As(err, &timeout) && timeout.Timeout() {
-				return nil, errors.New("Mihomo API sample timed out")
+				return nil, diagnostic.New("diagnostic.api.sampleTimeout", "Mihomo API sample timed out")
 			}
-			return nil, errors.New("invalid or interrupted Mihomo " + path[1:] + " response")
+			return nil, diagnostic.New("diagnostic.runtime.response", "invalid or interrupted Mihomo %s response", path[1:])
 		}
 		if decoder.InputOffset()-before > maxRuntimeSample {
-			return nil, errors.New("Mihomo API sample exceeds 64 KiB")
+			return nil, diagnostic.New("diagnostic.api.sampleSize", "Mihomo API sample exceeds 64 KiB")
 		}
 	}
 	return raw, nil
@@ -164,7 +166,7 @@ func (c Client) Traffic(ctx context.Context) (Traffic, error) {
 		return Traffic{}, err
 	}
 	if json.Unmarshal(raw, &value) != nil || value.Up == nil || value.Down == nil || *value.Up < 0 || *value.Down < 0 {
-		return Traffic{}, errors.New("invalid Mihomo traffic response")
+		return Traffic{}, diagnostic.New("diagnostic.api.trafficResponse", "invalid Mihomo traffic response")
 	}
 	return Traffic{Up: *value.Up, Down: *value.Down}, nil
 }
@@ -180,7 +182,7 @@ func (c Client) Memory(ctx context.Context) (uint64, error) {
 		return 0, err
 	}
 	if json.Unmarshal(raw, &value) != nil || value.Inuse == nil {
-		return 0, errors.New("invalid Mihomo memory response")
+		return 0, diagnostic.New("diagnostic.api.memoryResponse", "invalid Mihomo memory response")
 	}
 	return *value.Inuse, nil
 }

@@ -2,8 +2,6 @@ package app
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -12,6 +10,7 @@ import (
 	"time"
 
 	"github.com/nelvko/lazyclash/internal/configuration"
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 	"github.com/nelvko/lazyclash/internal/store"
 )
 
@@ -24,7 +23,7 @@ func (a *App) downloadSource(ctx context.Context, source string) (downloadedSour
 	if strings.HasPrefix(source, "https://") || strings.HasPrefix(source, "http://") {
 		req, err := http.NewRequestWithContext(ctx, "GET", source, nil)
 		if err != nil {
-			return downloadedSource{}, errors.New("invalid subscription URL")
+			return downloadedSource{}, diagnostic.New("diagnostic.source.invalidURL", "invalid subscription URL")
 		}
 		tr := http.DefaultTransport.(*http.Transport).Clone()
 		tr.Proxy = nil
@@ -37,10 +36,10 @@ func (a *App) downloadSource(ctx context.Context, source string) (downloadedSour
 		client.CheckRedirect = func(next *http.Request, via []*http.Request) error {
 			next.Header.Del("Referer")
 			if len(via) >= 10 {
-				return errors.New("too many subscription redirects")
+				return diagnostic.New("diagnostic.source.redirectLimit", "too many subscription redirects")
 			}
 			if via[0].URL.Scheme == "https" && next.URL.Scheme != "https" {
-				return errors.New("subscription redirect would downgrade HTTPS")
+				return diagnostic.New("diagnostic.source.httpsDowngrade", "subscription redirect would downgrade HTTPS")
 			}
 			return nil
 		}
@@ -49,30 +48,30 @@ func (a *App) downloadSource(ctx context.Context, source string) (downloadedSour
 			if ctx.Err() != nil {
 				return downloadedSource{}, ctx.Err()
 			}
-			return downloadedSource{}, errors.New("subscription download failed (URL withheld)")
+			return downloadedSource{}, diagnostic.New("diagnostic.source.download", "subscription download failed (URL withheld)")
 		}
 		defer resp.Body.Close()
 		if resp.StatusCode != 200 {
-			return downloadedSource{}, fmt.Errorf("subscription download returned HTTP %d", resp.StatusCode)
+			return downloadedSource{}, diagnostic.New("diagnostic.source.http", "subscription download returned HTTP %d", resp.StatusCode)
 		}
 		raw, err := io.ReadAll(io.LimitReader(resp.Body, configuration.MaxDocumentSize+1))
 		if err != nil {
 			if ctx.Err() != nil {
 				return downloadedSource{}, ctx.Err()
 			}
-			return downloadedSource{}, errors.New("cannot read subscription response")
+			return downloadedSource{}, diagnostic.New("diagnostic.source.readResponse", "cannot read subscription response")
 		}
 		if len(raw) > configuration.MaxDocumentSize {
-			return downloadedSource{}, errors.New("subscription exceeds 8 MiB")
+			return downloadedSource{}, diagnostic.New("diagnostic.source.size", "subscription exceeds 8 MiB")
 		}
 		return downloadedSource{Raw: raw, Headers: resp.Header.Clone()}, nil
 	}
 	if !filepath.IsAbs(source) {
-		return downloadedSource{}, errors.New("subscription source must be an HTTP(S) URL or absolute file path")
+		return downloadedSource{}, diagnostic.New("diagnostic.source.address", "subscription source must be an HTTP(S) URL or absolute file path")
 	}
 	raw, err := store.Read(source)
 	if err != nil {
-		return downloadedSource{}, errors.New("cannot read subscription file")
+		return downloadedSource{}, diagnostic.New("diagnostic.source.readFile", "cannot read subscription file")
 	}
 	return downloadedSource{Raw: raw}, nil
 }

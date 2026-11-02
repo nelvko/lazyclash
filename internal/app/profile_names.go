@@ -4,9 +4,9 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
 
 	"github.com/nelvko/lazyclash/internal/configuration"
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 )
 
 func configurationID(lib configuration.Library, preferred string) (string, error) {
@@ -44,7 +44,7 @@ func resolveProfileID(lib configuration.Library, reference string) (string, erro
 			return id, nil
 		}
 	}
-	return "", errors.New("profile does not exist")
+	return "", diagnostic.New("diagnostic.profile.missing", "profile does not exist")
 }
 
 func nameProfile(lib *configuration.Library, id string, candidate configuration.NameCandidate) {
@@ -59,7 +59,7 @@ func nameProfile(lib *configuration.Library, id string, candidate configuration.
 func (a *App) RenameProfile(ctx context.Context, reference, name string) error {
 	name = configuration.CleanName(name)
 	if name == "" {
-		return errors.New("profile name must not be empty")
+		return diagnostic.New("diagnostic.profile.emptyName", "profile name must not be empty")
 	}
 	return a.locked(ctx, func() error {
 		lib, old, err := a.library().Load()
@@ -71,7 +71,7 @@ func (a *App) RenameProfile(ctx context.Context, reference, name string) error {
 			return err
 		}
 		if id == "default" {
-			return errors.New("the built-in profile cannot be renamed")
+			return diagnostic.New("diagnostic.profile.builtinRename", "the built-in profile cannot be renamed")
 		}
 		nameProfile(&lib, id, configuration.NameCandidate{Name: name, Source: "custom"})
 		if err := ctx.Err(); err != nil {

@@ -4,10 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 )
 
 // Rule is one entry in Mihomo's effective matching order. Index is the core's
@@ -38,7 +39,7 @@ func (c Client) Rules(ctx context.Context) ([]Rule, error) {
 	if err != nil {
 		return nil, err
 	}
-	invalid := errors.New("invalid Mihomo rules response")
+	invalid := diagnostic.New("diagnostic.api.rulesResponse", "invalid Mihomo rules response")
 	var response struct {
 		Rules json.RawMessage `json:"rules"`
 	}

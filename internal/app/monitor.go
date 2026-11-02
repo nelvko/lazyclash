@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 	"os"
 	"sync"
 	"time"
@@ -15,17 +16,21 @@ import (
 // mean unavailable, never zero. Totals belong to the current core's counters;
 // lazyclash does not integrate rates or persist historical traffic.
 type RuntimeSnapshot struct {
-	State            string
-	Service          service.Status
-	RunningVersion   string
-	ObservedAt       time.Time
-	Traffic          *mihomo.Traffic
-	Connections      *mihomo.ConnectionSnapshot
-	Memory           *uint64
-	Error            string
-	TrafficError     string
-	ConnectionsError string
-	MemoryError      string
+	State                 string
+	Service               service.Status
+	RunningVersion        string
+	ObservedAt            time.Time
+	Traffic               *mihomo.Traffic
+	Connections           *mihomo.ConnectionSnapshot
+	Memory                *uint64
+	Error                 string
+	TrafficError          string
+	ConnectionsError      string
+	MemoryError           string
+	Diagnostic            error `json:"-"`
+	TrafficDiagnostic     error `json:"-"`
+	ConnectionsDiagnostic error `json:"-"`
+	MemoryDiagnostic      error `json:"-"`
 }
 
 // inspectRuntimeLocked checks ownership before exposing the local controller.
@@ -41,16 +46,19 @@ func (a *App) inspectRuntimeLocked(ctx context.Context) (RuntimeSnapshot, mihomo
 	}
 	if err := a.requireService(); err != nil {
 		s.State, s.Error = "unsupported", err.Error()
+		s.Diagnostic = err
 		return s, mihomo.Client{}, "", nil
 	}
 	bin, config, data := a.paths()
 	if err := a.Service.Verify(ctx, bin, config, data); err != nil {
 		s.State, s.Error = "unavailable", err.Error()
+		s.Diagnostic = err
 		return s, mihomo.Client{}, "", nil
 	}
 	s.Service, err = a.Service.Inspect(ctx)
 	if err != nil {
 		s.State, s.Error = "unavailable", err.Error()
+		s.Diagnostic = err
 		return s, mihomo.Client{}, "", nil
 	}
 	s.State = "stopped"
@@ -90,6 +98,7 @@ func (a *App) Runtime(ctx context.Context) (RuntimeSnapshot, error) {
 		value, err := client.Traffic(ctx)
 		if err != nil {
 			s.TrafficError = err.Error()
+			s.TrafficDiagnostic = err
 		} else {
 			s.Traffic = &value
 		}
@@ -99,6 +108,7 @@ func (a *App) Runtime(ctx context.Context) (RuntimeSnapshot, error) {
 		value, err := client.Connections(ctx)
 		if err != nil {
 			s.ConnectionsError = err.Error()
+			s.ConnectionsDiagnostic = err
 		} else {
 			s.Connections = &value
 		}
@@ -108,6 +118,7 @@ func (a *App) Runtime(ctx context.Context) (RuntimeSnapshot, error) {
 		value, err := client.Memory(ctx)
 		if err != nil {
 			s.MemoryError = err.Error()
+			s.MemoryDiagnostic = err
 		} else {
 			s.Memory = &value
 		}
@@ -134,7 +145,7 @@ func (a *App) Runtime(ctx context.Context) (RuntimeSnapshot, error) {
 		}
 		s.Service = current.Service
 		if versionErr != nil {
-			s = RuntimeSnapshot{State: "unavailable", Service: current.Service, ObservedAt: time.Now(), Error: versionErr.Error()}
+			s = RuntimeSnapshot{State: "unavailable", Service: current.Service, ObservedAt: time.Now(), Error: versionErr.Error(), Diagnostic: versionErr}
 			return nil
 		}
 		if s.Traffic == nil && s.Connections == nil && s.Memory == nil {
@@ -149,12 +160,15 @@ func (a *App) Runtime(ctx context.Context) (RuntimeSnapshot, error) {
 
 func runtimeError(s RuntimeSnapshot) error {
 	if s.Error != "" {
+		if s.Diagnostic != nil && s.Diagnostic.Error() == s.Error {
+			return s.Diagnostic
+		}
 		return errors.New(s.Error)
 	}
 	if s.State == "uninstalled" {
-		return errors.New("Mihomo is not installed")
+		return diagnostic.New("diagnostic.runtime.notInstalled", "Mihomo is not installed")
 	}
-	return errors.New("Mihomo is not running; start it before viewing connections")
+	return diagnostic.New("diagnostic.runtime.notRunning", "Mihomo is not running; start it before viewing connections")
 }
 
 func (a *App) Connections(ctx context.Context) (mihomo.ConnectionSnapshot, error) {
@@ -181,7 +195,7 @@ func (a *App) Connections(ctx context.Context) (mihomo.ConnectionSnapshot, error
 // case. A disappearing connection is reported without closing another one.
 func (a *App) CloseConnection(ctx context.Context, id string) error {
 	if !mihomo.ValidConnectionID(id) {
-		return errors.New("invalid connection ID")
+		return diagnostic.New("diagnostic.runtime.connectionID", "invalid connection ID")
 	}
 	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
 	defer cancel()
@@ -202,6 +216,6 @@ func (a *App) CloseConnection(ctx context.Context, id string) error {
 				return client.CloseConnection(ctx, id)
 			}
 		}
-		return errors.New("connection is no longer active; refresh the list")
+		return diagnostic.New("diagnostic.runtime.connectionGone", "connection is no longer active; refresh the list")
 	})
 }
