@@ -13,6 +13,7 @@ from pathlib import Path
 import re
 import sys
 import tempfile
+import time
 import uuid
 
 
@@ -61,6 +62,118 @@ def masked_input(terminal):
     return any("›" in line and "*" * len(PREFIX) in line for line in lines)
 
 
+def exercise_notifications(terminal, output, profile):
+    # Three independent commands share a cause, but retain their own context.
+    # The uninstalled guards do not touch a service or query a release.
+    error = "Mihomo is not installed"
+    terminal.key(b"s")
+    terminal.wait(error)
+    terminal.wait("Start service")
+    terminal.key(b"r")
+    terminal.wait("Restart service")
+    screen = terminal.screen.text().splitlines()
+    start_y = next(i for i, line in enumerate(screen) if "Start service" in line)
+    restart_y = next(i for i, line in enumerate(screen) if "Restart service" in line)
+    if start_y >= restart_y or sum(error in line for line in screen[:restart_y + 3]) != 2:
+        raise AssertionError("independent failures were merged or hidden")
+    deadline = time.monotonic() + 5.2
+    while time.monotonic() < deadline:
+        terminal.read()
+    terminal.wait("Start service")
+    terminal.wait("Restart service")
+    terminal.key(b"x")
+    terminal.wait("more")
+    terminal.wait("Expand")
+    screen = terminal.screen.text().splitlines()
+    restart_y = next(i for i, line in enumerate(screen) if "Restart service" in line)
+    stop_y = next(i for i, line in enumerate(screen) if "Stop service" in line)
+    if restart_y >= stop_y:
+        raise AssertionError("visible notifications are not ordered oldest first")
+    save_screen(terminal, output, profile, "notification-overflow")
+
+    terminal.click_text("Expand")
+    terminal.wait("Notifications")
+    for context in ("Start service", "Restart service", "Stop service"):
+        terminal.wait(context)
+    save_screen(terminal, output, profile, "notification-list")
+    terminal.key(b"x")  # Close the selected Start notification, not the others.
+    terminal.wait_absent("Start service")
+    terminal.wait("Restart service")
+    terminal.wait("Stop service")
+    terminal.key(b"\x1b")
+    terminal.wait_absent("Notifications")
+    for columns, rows in SIZES:
+        terminal.resize(columns, rows)
+        # A resized emulator initially contains cropped cells from the old
+        # frame. Wait for complete new geometry without assuming one-line text.
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            terminal.read()
+            screen = terminal.screen.text().splitlines()
+            if (not terminal.screen.synchronized
+                    and any(error in line for line in screen)
+                    and any("Stop service" in line for line in screen)
+                    and screen[-1].find("q Quit") == columns - 8):
+                break
+        else:
+            raise AssertionError("notification resize did not finish rendering")
+        error_y = next(i for i, line in enumerate(screen) if error in line)
+        if error_y > 5 or any(error in line for line in screen[-2:]):
+            raise AssertionError("Toast is not in the upper-right corner")
+        save_screen(terminal, output, profile, "notification-%sx%s" % (columns, rows))
+
+    terminal.key(b"3")
+    terminal.wait("Profiles")
+    terminal.wait("Expand")  # Tight header space keeps an accessible entry.
+    terminal.key(b"\x0e")  # Ctrl+N opens the bounded collection from any page.
+    terminal.wait("Notifications")
+    terminal.wait(error)  # Switching pages preserved both unrelated failures.
+    terminal.wait("Restart service")
+    terminal.wait("Stop service")
+    terminal.key(b"x")
+    terminal.wait_absent("Restart service")
+    terminal.key(b"x")
+    terminal.wait_absent(error)
+    terminal.key(b"\x1b")
+    terminal.wait_absent("Notifications")
+
+    terminal.resize(120, 32)
+    terminal.key(b"a")
+    terminal.key(b"1243\r")
+    validation = "subscription source must be"
+    terminal.wait(validation)
+    terminal.wait("1243")
+    if "Error ·" in terminal.screen.text() or "Expand" in terminal.screen.text():
+        raise AssertionError("input validation generated a global notification")
+    save_screen(terminal, output, profile, "notification-local-validation")
+    terminal.key(b"\x01\x0bhttps://example.invalid/sub")
+    terminal.wait_absent(validation)
+    terminal.key(b"\t")  # End editing before using a page shortcut.
+    terminal.key(b"1")
+    terminal.wait("Routing mode")
+    terminal.wait_absent(validation)
+    terminal.key(b"s")
+    terminal.wait("Start service")  # The same failure can be shown again after closing.
+    terminal.key(b"\x0e")
+    terminal.wait("Notifications")
+    terminal.key(b"x")
+    terminal.wait_absent("Start service")
+    terminal.key(b"\x1b")
+    terminal.wait_absent("Notifications")
+
+    terminal.key(b"a")
+    terminal.wait("Import configuration")
+    terminal.key(b"\r")
+    terminal.wait("A value is required")
+    terminal.key(b"\x1b")
+    terminal.wait("Input canceled")
+    terminal.wait_absent("A value is required")
+    save_screen(terminal, output, profile, "notification-canceled")
+    terminal.wait_absent("Input canceled", timeout=8)
+    terminal.resize(160, 45)
+    terminal.wait("Routing mode")
+
+
 def exercise(binary, output, profile):
     terminal = None
     with tempfile.TemporaryDirectory(prefix="lazyclash-theme-pty-") as temporary:
@@ -72,12 +185,15 @@ def exercise(binary, output, profile):
             terminal = SMOKE.Terminal(command)
             terminal.wait("Overview")
             terminal.wait_absent("Loading state")
-            terminal.wait("1–7 Pages")
+            terminal.wait("q Quit")
             mark = len(terminal.text())
             terminal.resize(160, 45)
-            terminal.wait("Routing mode", after=mark)
-            terminal.wait("Get started")
+            terminal.wait("Install the Mihomo core", after=mark)
+            terminal.click_text("Set up later")
+            terminal.wait("Routing mode")
+            terminal.key(b"1")  # Enter Overview content before runtime shortcuts.
             save_screen(terminal, output, profile, "overview")
+            exercise_notifications(terminal, output, profile)
             terminal.key(b"i")
             terminal.wait("Mihomo · Core")
             terminal.wait("Choose a proxy core")
@@ -114,8 +230,8 @@ def exercise(binary, output, profile):
             terminal.key(b"\x1b")
             terminal.wait_absent("Mihomo · Source + Connection")
             terminal.key(b"\x1b")
-            terminal.wait_absent("Install proxy core")
-            terminal.wait("Get started")
+            terminal.wait_absent("Mihomo · Core")
+            terminal.wait("Routing mode")
             terminal.exit()
 
             raw = bytes(terminal.raw)

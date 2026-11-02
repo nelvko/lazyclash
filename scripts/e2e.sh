@@ -189,7 +189,8 @@ import json, sys
 s = json.load(open(sys.argv[1]))
 assert s["Installed"] and s["Applied"] == "default", s
 assert s["Version"] == "v1.19.32", s["Version"]
-assert "preimport" in s["UnvalidatedProfiles"], s
+preimport = next(p for p in s["ProfileDetails"] if p["name"] == "preimport")
+assert preimport["id"] in s["UnvalidatedProfiles"], preimport
 print("Pinned Mihomo installed with valid default configuration")
 PY
 # A second --bin install uses a separate unit while both services are stopped.

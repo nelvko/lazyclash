@@ -202,7 +202,7 @@ class Terminal:
         if self.pid == 0:
             fcntl.ioctl(0, termios.TIOCSWINSZ, struct.pack("HHHH", 40, 120, 0, 0))
             env = os.environ.copy()
-            env.update(TERM="xterm-256color", NO_COLOR="1")
+            env.update(TERM="xterm-256color", NO_COLOR="1", LAZYCLASH_LANG="en")
             os.execvpe(command[0], command, env)
         os.set_blocking(self.fd, False)
 
@@ -271,6 +271,9 @@ class Terminal:
         raise AssertionError("Current PTY screen has no clickable text: " + label)
 
     def local_confirm(self, source):
+        # The initial footer may paint before the asynchronous state read ends.
+        # Wait for the ready preparation view before sending its local shortcut.
+        self.wait("Install the Mihomo core")
         self.key(b"b")
         self.wait("Local Mihomo executable")
         self.key(os.fsencode(source))
@@ -334,11 +337,11 @@ def main():
     try:
         terminal.wait("Overview")
         terminal.wait_absent("Loading state")
-        terminal.wait("1–7 Pages")
+        terminal.wait("q Quit")
         if args.mode == "empty":
-            terminal.wait("Install your first proxy core")
+            terminal.wait("Install the Mihomo core")
             terminal.key(b"a")
-            terminal.wait("Configuration name")
+            terminal.wait("Subscription URL or local YAML path")
             terminal.key(b"\x1b")
             terminal.wait_absent("Import configuration")
             terminal.wait("Input canceled")
@@ -367,8 +370,6 @@ def main():
             config = home.parent / "preimport.yaml"
             config.write_text("proxies: []\nrules: ['MATCH,DIRECT']\n")
             terminal.key(b"a")
-            terminal.wait("Configuration name")
-            terminal.key(b"preimport\r")
             terminal.wait("Subscription URL or local YAML path")
             terminal.key(os.fsencode(config) + b"\r")
             terminal.wait("Configuration saved")
@@ -408,7 +409,7 @@ def main():
             terminals.append(signal_terminal)
             signal_terminal.wait("Overview")
             signal_terminal.wait_absent("Loading state")
-            signal_terminal.wait("1–7 Pages")
+            signal_terminal.wait("q Quit")
             counter.unlink()
             signal_terminal.local_confirm(slow)
             signal_terminal.key(b"\r")
@@ -429,6 +430,8 @@ def main():
             terminal.wait(str(home / "installation" / "mihomo"), after=mark)
             terminal.wait("Service remains stopped", after=mark)
             terminal.key(b"\r")
+            terminal.wait("Built-in default configuration is ready")
+            terminal.wait("Start core")
             terminal.exit()
         elif args.mode == "runtime-settings":
             if not all(value and 1024 <= value <= 65535 for value in
@@ -714,9 +717,9 @@ def main():
             terminal.key(f"\x1b[<0;5;{proxies_row}M\x1b[<0;5;{proxies_row}m".encode("ascii"))
             terminal.wait("Proxy groups and options")
             terminal.wait("PROXY")
-            terminal.key(b"\t")  # navigation group -> first group (GLOBAL)
+            terminal.key(b"\x1b[C")  # sidebar -> first group (GLOBAL), bypassing header actions
             terminal.key(b"\x1b[B")  # next group: PROXY
-            terminal.wait("> PROXY [Selector]")
+            terminal.wait("PROXY [Selector]")
             terminal.key(b"\r")
             terminal.wait("REJECT")
             terminal.key(b"\x1b[B")  # DIRECT
@@ -725,7 +728,8 @@ def main():
             terminal.wait("Node selected")
             terminal.wait("PROXY [Selector] → REJECT")
             terminal.key(b"3")
-            terminal.wait("default")
+            terminal.wait("Built-in default")
+            terminal.wait("configuration")
             terminal.resize(20, 5)
             time.sleep(0.1)
             terminal.resize(120, 40)

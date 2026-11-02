@@ -10,6 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import importlib.util
 import json
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 import threading
@@ -30,6 +31,20 @@ def wait_until(terminal, predicate, label, timeout=15):
 
 def paste(terminal, value):
     terminal.key(b"\x1b[200~" + value.encode() + b"\x1b[201~")
+
+
+def mouse_text(terminal, label, button=0, occurrence=0):
+    terminal.wait(label)
+    matches = []
+    for y, line in enumerate(terminal.screen.text().splitlines()):
+        start = 0
+        while label in line[start:]:
+            x = line.index(label, start)
+            matches.append((x, y))
+            start = x + len(label)
+    assert len(matches) > occurrence, "missing mouse target: " + label
+    x, y = matches[occurrence]
+    terminal.key(("\x1b[<%d;%d;%dM\x1b[<%d;%d;%dm" % (button, x + 1, y + 1, button, x + 1, y + 1)).encode())
 
 
 def header_row(terminal, label):
@@ -55,10 +70,15 @@ def main():
     payload = [b"rules: ['MATCH,DIRECT']\n"]
     provider_name = ["pty-airport"]
     requests = []
+    remote_started = threading.Event()
+    remote_release = threading.Event()
 
     class Fixture(BaseHTTPRequestHandler):
         def do_GET(self):
             requests.append(self.path)
+            if self.path == "/new-profile":
+                remote_started.set()
+                remote_release.wait(timeout=10)
             self.send_response(200)
             self.send_header("Content-Type", "text/yaml")
             self.send_header("profile-title", provider_name[0])
@@ -121,6 +141,39 @@ def main():
             assert not (home / "installation").exists(), "Add created runtime installation state"
             (output / "profiles-added.txt").write_text(terminal.screen.text())
 
+            # Menu entrypoints use the same private Profile without applying it.
+            before = len(requests)
+            mouse_text(terminal, "pty-airport", button=2)
+            terminal.wait("View details")
+            terminal.wait("Install core first")
+            (output / "profiles-menu-160x40.txt").write_text(terminal.screen.text())
+            terminal.key(b"\x1b")
+            terminal.wait_absent("View details")
+            terminal.key(b"\x1b")  # dismiss the Add notification before using its covered card controls
+            mouse_text(terminal, "[↻]", button=2)
+            terminal.wait("View details")
+            terminal.key(b"\x1b")
+            terminal.wait_absent("View details")
+            mouse_text(terminal, "[⋯]", occurrence=1)
+            terminal.wait("View details")
+            terminal.key(b"q")
+            terminal.key(b"2")
+            paste(terminal, "menu-owned-paste")
+            terminal.wait("View details")
+            assert "menu-owned-paste" not in terminal.screen.text(), "menu paste escaped to a page input"
+            # A click on another card dismisses without opening or applying it.
+            mouse_text(terminal, "default")
+            terminal.wait_absent("View details")
+            assert "default · Configuration" not in terminal.screen.text(), "outside menu click reached its underlying card"
+            terminal.key(b"m")
+            terminal.wait("View details")
+            terminal.key(b"\x1b")
+            terminal.wait_absent("View details")
+            assert len(requests) == before, "opening or dismissing a menu downloaded a subscription"
+            assert not (home / "installation").exists(), "opening a menu applied runtime state"
+            terminal.key(b"a")
+            terminal.key(b"\x1b")
+
             # Toolbar Down enters the first card; Right follows the wide grid.
             terminal.key(b"\x1b[B")
             terminal.key(b"\x1b[C")
@@ -139,7 +192,9 @@ def main():
             terminal.wait("pty-updated · Configuration")
             assert profile_id("pty-updated") == primary_id[0], "provider rename changed its stable ID"
 
-            terminal.click_text("[ Rename ]")
+            mouse_text(terminal, "pty-updated", button=2)
+            terminal.wait("Rename…")
+            mouse_text(terminal, "Rename…")
             terminal.wait("Display name")
             terminal.key(b"\x15")
             paste(terminal, "My Airport")
@@ -162,6 +217,15 @@ def main():
             header_row(terminal, "Update all")
             terminal.key(b"\x1b")
             terminal.wait_absent("My Airport · Configuration")
+            terminal.key(b"m")
+            terminal.wait("View details")
+            for columns, rows in [(60, 20), (40, 16), (20, 12)]:
+                terminal.resize(columns, rows)
+                terminal.wait("View details")
+                assert not (home / "installation").exists(), "resizing a menu applied a profile"
+                (output / ("profiles-menu-%dx%d.txt" % (columns, rows))).write_text(terminal.screen.text())
+            terminal.key(b"\x1b")
+            terminal.wait_absent("View details")
             terminal.resize(160, 40)
             terminal.key(b"a")
             terminal.key(b"\x1b")
@@ -177,10 +241,14 @@ def main():
             local = local_dir / "pty-local"
             local.write_text("rules: ['MATCH,DIRECT']\n")
             (local_dir / "pty-other.yaml").write_text("rules: ['MATCH,DIRECT']\n")
-            terminal.click_text("[ Import ]")
-            terminal.wait("Import configuration")
-            terminal.wait("Subscription URL or local YAML path")
+            terminal.click_text("[ New profile ]")
+            terminal.wait("Display name (optional)")
+            terminal.wait("Description (optional)")
+            terminal.wait("URL or absolute local path")
+            terminal.key(b"\t")  # optional display name -> optional description
+            terminal.key(b"\t")  # optional description -> source
             paste(terminal, str(base) + "/配")
+            terminal.wait("Source type: Local file")
             terminal.wait("› 配置 files/")
             terminal.wait("配置 other/")
             terminal.key(b"\x1b[B")
@@ -189,7 +257,7 @@ def main():
             terminal.wait("› 配置 files/")
             terminal.key(b"\t")
             terminal.wait("› nested folder/")
-            assert len(library()["profiles"]) == 1, "directory completion submitted an import"
+            assert len(library()["profiles"]) == 1, "directory completion created a profile"
             terminal.key(b"\t")
             terminal.wait("› pty-local")
             terminal.wait("pty-other.yaml")
@@ -198,14 +266,76 @@ def main():
             terminal.key(b"\x1b[A")
             terminal.wait("› pty-local")
             terminal.key(b"\t")
-            assert len(library()["profiles"]) == 1, "file completion submitted an import"
-            assert profile_id("pty-local") is None, "Tab imported the selected file before Enter"
+            assert len(library()["profiles"]) == 1, "file completion created a profile"
+            assert profile_id("pty-local") is None, "Tab created the selected file profile before Enter"
+            terminal.wait("› pty-local")
+            terminal.key(b"\t")
+            terminal.wait("›[ Create ]")
             terminal.key(b"\r")
-            wait_until(terminal, lambda: profile_id("pty-local") is not None, "local import was not persisted")
-            terminal.wait_absent("Fetching and validating")
+            wait_until(terminal, lambda: profile_id("pty-local") is not None, "new local profile was not persisted")
+            terminal.wait_absent("Creating profile")
             terminal.wait_absent("nested folder")
-            assert "address" not in library()["profiles"][profile_id("pty-local")], "one-time import remembered its private path"
-            assert not (home / "installation").exists(), "one-time import applied runtime state"
+            local_id = profile_id("pty-local")
+            local_record = library()["profiles"][local_id]
+            assert local_record["address"] == str(local), "new local profile did not retain its source for updates"
+            assert local_record["name_source"] == "url", "empty optional name was treated as a custom name"
+            assert not local_record.get("description"), "empty optional description was not left empty"
+            assert not (home / "installation").exists(), "new local profile applied runtime state"
+
+            before = len(requests)
+            local.write_text("rules: ['DOMAIN,local.invalid,REJECT', 'MATCH,DIRECT']\n")
+            mouse_text(terminal, "pty-local", button=2)
+            terminal.wait("View details")
+            assert "No saved address" not in terminal.screen.text(), "new local profile Update was disabled"
+            terminal.key(b"\r")  # Update is the first enabled action without an installed core.
+            wait_until(terminal, lambda: library()["profiles"][local_id]["spec"]["revision"] == hashlib.sha256(local.read_bytes()).hexdigest(), "local menu Update did not reread the retained path")
+            terminal.wait_absent("Updating profile")
+            terminal.wait_absent("View details")
+            assert len(requests) == before, "local Update sent an HTTP request"
+            assert profile_id("pty-local") == local_id, "local refresh changed its stable profile ID"
+            assert not (home / "installation").exists(), "local menu Update applied runtime state"
+
+            # The second toolbar action also creates a named remote profile.
+            # Hold its response to exercise the busy form without racing the
+            # immediate loopback fixture; input must not submit it twice.
+            remote_name = "PTY named remote"
+            remote_description = "Remote metadata from New profile"
+            remote_address = "http://127.0.0.1:%d/new-profile" % server.server_port
+            terminal.click_text("[ New profile ]")
+            terminal.wait("Display name (optional)")
+            paste(terminal, remote_name)
+            terminal.key(b"\t")
+            paste(terminal, remote_description)
+            terminal.key(b"\t")
+            paste(terminal, remote_address)
+            terminal.wait("Source type: Remote URL")
+            terminal.key(b"\t")  # no path matches: source -> Create
+            terminal.wait("›[ Create ]")
+            terminal.key(b"\t")
+            terminal.wait("›[ Cancel ]")
+            terminal.key(b"\x1b[Z")  # Cancel -> Create
+            terminal.wait("›[ Create ]")
+            before = len(requests)
+            terminal.key(b"\r")
+            wait_until(terminal, remote_started.is_set, "New profile did not start its remote download")
+            terminal.wait("Creating profile")
+            terminal.key(b"\r\t\r")
+            paste(terminal, "busy-input-must-not-edit")
+            assert len(library()["profiles"]) == 2, "busy creation published a partial profile"
+            remote_release.set()
+            wait_until(terminal, lambda: profile_id(remote_name) is not None, "named remote profile was not created")
+            terminal.wait_absent("Creating profile")
+            terminal.wait_absent("URL or absolute local path")
+            remote_id = profile_id(remote_name)
+            remote_record = library()["profiles"][remote_id]
+            assert len(requests) == before + 1, "New profile downloaded the remote source more than once"
+            assert remote_record["name_source"] == "custom" and remote_record["name_base"] == remote_name
+            assert remote_record["description"] == remote_description, "New profile lost the description"
+            assert remote_record["address"] == remote_address, "New profile lost its remote refresh source"
+            assert remote_record["spec"]["revision"] == hashlib.sha256(payload[0]).hexdigest()
+            assert "busy-input-must-not-edit" not in terminal.screen.text(), "busy form input leaked into the page"
+            assert not (home / "installation").exists(), "new remote profile applied runtime state"
+            (output / "profiles-created.txt").write_text(terminal.screen.text())
 
             terminal.key(b"a")
             terminal.key(b"\x1b")
@@ -224,7 +354,7 @@ def main():
             terminal.resize(20, 12)
             header_row(terminal, "Update all")
             terminal.resize(160, 40)
-            terminal.wait("2 saved")
+            terminal.wait("3 saved")
             (output / "profiles-header.txt").write_text(terminal.screen.text())
 
             for key, action in [(b"2", "[ Refresh ]"), (b"4", "[ Refresh ]"), (b"5", "[ Refresh ]"), (b"6", "[ Reconnect ]"), (b"7", "[ Network settings ]")]:
@@ -244,11 +374,19 @@ def main():
             for _ in range(2):
                 before = len(requests)
                 terminal.click_text("[ Update all ]")
-                wait_until(terminal, lambda: len(requests) >= before + 2, "Update all did not refresh both remote profiles")
+                wait_until(terminal, lambda: len(requests) >= before + 3, "Update all did not refresh all three remote profiles")
                 terminal.wait_absent("Updating profiles")
                 assert profile_id("My Airport (1)") == duplicate_id, "repeated updates accumulated a duplicate suffix or changed the ID"
                 assert profile_id("My Airport") == primary_id[0], "duplicate refresh changed the custom profile name"
+                assert profile_id(remote_name) == remote_id, "provider refresh changed the New profile custom name or ID"
+                assert library()["profiles"][remote_id]["description"] == remote_description, "provider refresh discarded the description"
             terminal.exit()
+
+            # CLI copy import remains supported independently of the new form.
+            # Retain disabled-Update coverage for profiles without a source.
+            subprocess.run(command + ["profile", "add", str(local), "--name", "pty-snapshot"], check=True, capture_output=True, timeout=15)
+            snapshot_id = profile_id("pty-snapshot")
+            assert snapshot_id and "address" not in library()["profiles"][snapshot_id], "copy import unexpectedly retained its source"
 
             terminal = smoke.Terminal(command)
             terminals.append(terminal)
@@ -259,20 +397,39 @@ def main():
             terminal.wait("My Airport")
             terminal.wait("My Airport (1)")
             terminal.wait("pty-local")
-            terminal.wait("3 saved")
+            terminal.wait(remote_name)
+            terminal.wait("pty-snapshot")
+            terminal.wait("5 saved")
+            assert profile_id(remote_name) == remote_id and profile_id("pty-local") == local_id
+            reopened_remote = library()["profiles"][remote_id]
+            assert reopened_remote["name_source"] == "custom" and reopened_remote["name_base"] == remote_name
+            assert reopened_remote["description"] == remote_description and reopened_remote["address"] == remote_address
+            assert library()["profiles"][local_id]["address"] == str(local)
             assert secret not in terminal.text()
             assert not (home / "installation").exists()
             (output / "profiles-reopened.txt").write_text(terminal.screen.text())
+            before = len(requests)
+            mouse_text(terminal, "pty-snapshot", button=2)
+            terminal.wait("No saved address")
+            mouse_text(terminal, "Update · No saved address")
+            terminal.wait("View details")
+            assert len(requests) == before, "disabled copy-import Update sent a download request"
+            assert not (home / "installation").exists(), "disabled menu Update applied runtime state"
+            terminal.key(b"\x1b")
+            terminal.wait_absent("View details")
             terminal.exit()
             result = {
                 "passed": True,
-                "scenarios": ["visible URL bracketed paste", "automatic Add without naming modal or Apply", "two-column arrows", "Enter opens details only", "provider name update retains ID", "custom Rename survives provider updates", "Edit URL retains custom name and ID", "detail configuration Update", "Update all", "visible one-time local Import", "live directory and file matches", "arrow selection and Tab completion without importing", "Unicode and spaced directories with an extensionless configuration", "60x20 resize and Escape", "fixed header while scrolled", "header mouse update without Apply", "20x12 compact header", "page-specific controls", "duplicate imports retain distinct IDs", "repeated updates preserve duplicate suffix", "exit and reopen persistence"],
+                "scenarios": ["visible URL bracketed paste", "automatic Add without naming modal or Apply", "two-column arrows", "Enter opens details only", "provider name update retains ID", "custom Rename survives provider updates", "Edit URL retains custom name and ID", "detail configuration Update", "Update all", "New profile local file with optional metadata omitted", "live directory and file matches", "arrow selection and Tab completion without creating", "Unicode and spaced directories with an extensionless configuration", "New profile remote URL with custom name and description", "Tab and Shift+Tab reach Create and Cancel", "busy form ignores editing and duplicate submission", "one download per new remote profile", "retained local source refresh", "CLI one-time copy import", "60x20 resize and Escape", "fixed header while scrolled", "header mouse update without Apply", "20x12 compact header", "page-specific controls", "duplicate imports retain distinct IDs", "repeated updates preserve duplicate suffix", "exit and reopen metadata and source persistence"],
+                "menu_scenarios": ["right-click card without Apply", "right-click update icon opens containing card menu", "left-click menu button", "menu owns q, page digits and pasted text", "outside click closes without reaching the underlying card", "keyboard m and Escape focus restoration", "menu Rename uses the existing custom-name flow", "menu edge avoidance through resize", "retained local file Update rereads the source without HTTP", "copy-import Update is disabled without a download request"],
+                "menu_dimensions": [[160, 40], [60, 20], [40, 16], [20, 12]],
                 "http_requests": len(requests),
                 "limitations": "No installed core; actual Apply/systemd integration is covered separately, not by this UI smoke test.",
             }
             (output / "result.json").write_text(json.dumps(result, indent=2) + "\n")
             print(json.dumps(result, ensure_ascii=False))
     finally:
+        remote_release.set()
         for terminal in terminals:
             terminal.cleanup()
         server.shutdown()
