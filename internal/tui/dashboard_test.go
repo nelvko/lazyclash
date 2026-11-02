@@ -196,7 +196,7 @@ func TestSidebarExtendsToContentBottomAndShieldsMouseTargets(t *testing.T) {
 	}
 }
 
-func TestDashboardSidebarHasSevenLeftAlignedContiguousItems(t *testing.T) {
+func TestDashboardSidebarHasSevenCenteredContiguousItems(t *testing.T) {
 	o := dashboardOptions{Width: 160, Height: 45, Page: "profiles", Focus: "nav.connections"}
 	screen, targets, _ := renderDashboard(o)
 	rows := strings.Split(screen, "\n")
@@ -221,8 +221,9 @@ func TestDashboardSidebarHasSevenLeftAlignedContiguousItems(t *testing.T) {
 		}
 		nameX := strings.Index(value, pageTitle(page))
 		left := ansi.StringWidth(value[:nameX])
-		if left != 4 {
-			t.Fatalf("page name moved out of the common label column: %q", value)
+		right := hit.W - left - ansi.StringWidth(pageTitle(page))
+		if left-right > 1 || right-left > 1 {
+			t.Fatalf("page name is not centered independently of its markers: %q", value)
 		}
 		if i > 0 && (hit.Y != previousY+previousHeight || hit.H != previousHeight) {
 			t.Fatal("sidebar items are not contiguous and equal in height")

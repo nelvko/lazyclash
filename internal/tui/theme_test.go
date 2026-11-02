@@ -187,12 +187,16 @@ func TestMarianaSidebarCurrentHoverAndFocusAreIndependent(t *testing.T) {
 	if !strings.Contains(screen, themed(currentLabel, selectionForeground, bg, false)) {
 		t.Fatal("current page lost its body background or bold label")
 	}
-	if !strings.Contains(screen, themed(cellPad("Rules", sidebarWidth-5), text, sidebarBackground, false)) {
+	labelTail := func(label string) string {
+		left := (sidebarWidth - ansi.StringWidth(label)) / 2
+		return cellPad(label, sidebarWidth-1-left)
+	}
+	if !strings.Contains(screen, themed(labelTail("Rules"), text, sidebarBackground, false)) {
 		t.Fatal("persistent hover lost its text emphasis or changed the sidebar background")
 	}
 	o.Hover = o.Focus
 	hoveredFocus, _, _ := renderDashboard(o)
-	if !strings.Contains(hoveredFocus, themed(cellPad("Proxies", sidebarWidth-5), text, sidebarBackground, false)) || !strings.Contains(hoveredFocus, themed("› ", focus, sidebarBackground, false)) {
+	if !strings.Contains(hoveredFocus, themed(labelTail("Proxies"), text, sidebarBackground, false)) || !strings.Contains(hoveredFocus, themed("› ", focus, sidebarBackground, false)) {
 		t.Fatal("hovering the keyboard focus replaced its independent text or marker colors")
 	}
 	o.Hover = "nav.rules"
@@ -203,7 +207,7 @@ func TestMarianaSidebarCurrentHoverAndFocusAreIndependent(t *testing.T) {
 	}
 	o.Width, o.Height, o.SidebarOpen, o.PlainButtons = 80, 24, true, false
 	popup, _, _ := renderDashboard(o)
-	if !strings.Contains(popup, themed(cellPad("Rules", sidebarWidth-5), text, hoverBackground, false)) {
+	if !strings.Contains(popup, themed(labelTail("Rules"), text, hoverBackground, false)) {
 		t.Fatal("compact menu lost its hover surface")
 	}
 }

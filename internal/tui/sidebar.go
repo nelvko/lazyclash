@@ -138,8 +138,11 @@ func drawSidebar(rows []string, o dashboardOptions, popup bool) []hitRegion {
 		if o.Focus == id {
 			marker = "› "
 		}
-		label = cellCrop(labelStyle.Render(label), max(1, g.width-6-ansi.StringWidth(current)))
-		value := cellPad(" "+themed(marker, focus, background, o.Dim)+label+current, g.width-2)
+		// Center only the label; tiny popups clip decorations inside the menu.
+		label = cellCrop(labelStyle.Render(label), max(1, g.width-6))
+		padding := (g.width - 2 - ansi.StringWidth(label)) / 2
+		value := strings.Repeat(" ", max(0, padding-2)) + themed(ansi.Cut(marker, max(0, 2-padding), 2), focus, background, o.Dim) + label + current
+		value = cellPad(value, g.width-2)
 		for row := 0; row < g.itemHeight; row++ {
 			y := index*g.itemHeight + row
 			lines[y] = themed(strings.Repeat(" ", g.width), foreground, background, o.Dim)

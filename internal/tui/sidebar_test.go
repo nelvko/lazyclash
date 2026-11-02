@@ -6,7 +6,9 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nelvko/lazyclash/internal/i18n"
 )
 
 func visibleSidebarTargets(targets []hitRegion) []hitRegion {
@@ -232,5 +234,62 @@ func TestSidebarTinyPopupFallsBackWithoutEscapingCanvas(t *testing.T) {
 				assertSidebarFocusVisible(t, m, "nav.overview", 1)
 			}
 		})
+	}
+}
+
+func TestSidebarLabelsStayCenteredAcrossStatesAndColorProfiles(t *testing.T) {
+	for _, language := range []string{i18n.English, i18n.Chinese} {
+		for _, size := range []struct {
+			width int
+			popup bool
+		}{{160, false}, {80, true}, {20, true}, {10, true}, {4, true}} {
+			for _, profile := range []colorprofile.Profile{colorprofile.TrueColor, colorprofile.ANSI256, colorprofile.ANSI, colorprofile.ASCII} {
+				for _, page := range []string{"overview", "rules", "connections"} {
+					t.Run(fmt.Sprintf("%s/%d/%s/%s", language, size.width, profile, page), func(t *testing.T) {
+						for _, state := range []struct{ current, focused, hovered bool }{{}, {current: true}, {focused: true, hovered: true}, {current: true, focused: true, hovered: true}} {
+							o := dashboardOptions{Width: size.width, Height: 45, Page: "profiles", Locale: i18n.New(language), PlainButtons: profile <= colorprofile.ANSI}
+							if state.current {
+								o.Page = page
+							}
+							if state.focused {
+								o.Focus = "nav." + page
+							}
+							if state.hovered {
+								o.Hover = "nav." + page
+							}
+							rows := make([]string, o.Height)
+							for y := range rows {
+								rows[y] = strings.Repeat(" ", o.Width)
+							}
+							targets := drawSidebar(rows, o, size.popup)
+							if !hasAction(targets, "nav."+page) {
+								t.Fatal("fixture lost its visible navigation target")
+							}
+							screen := terminalTheme(strings.Join(rows, "\n"), profile)
+							assertCanvas(t, screen, o.Width, o.Height)
+							assertRegions(t, targets, o.Width, o.Height)
+							width := min(sidebarWidth, o.Width)
+							label := cellCrop(pageTitle(page, o.Locale), max(1, width-6))
+							left := (width - ansi.StringWidth(label)) / 2
+							for _, hit := range targets {
+								if hit.ID != "nav."+page {
+									continue
+								}
+								row := ansi.Strip(strings.Split(screen, "\n")[hit.Y+hit.H/2])
+								if actual := strings.Index(row, label); actual < 0 || ansi.StringWidth(row[:actual]) != left {
+									t.Fatalf("state %+v moved or clipped the centered label: %q", state, row)
+								}
+								if state.focused && left >= 3 && ansi.Cut(row, left-2, left) != "› " {
+									t.Fatalf("focus is not in the two cells before the label: %q", row)
+								}
+								if size.popup && ansi.Cut(row, width-1, width) != "│" {
+									t.Fatalf("label decorations overwrote the popup border: %q", row)
+								}
+							}
+						}
+					})
+				}
+			}
+		}
 	}
 }
