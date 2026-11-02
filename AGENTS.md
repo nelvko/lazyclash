@@ -44,3 +44,12 @@ Service installation supports Linux/systemd user services, not macOS. Use isolat
 @/Users/nelvko/.codex/RTK.md
 
 Prefer suitable Charm Bubbles components for TUI work; implement and encapsulate custom components only when none fits.
+
+遵循 karpathy-guidelines，但需注意：
+
+1. 架构设计优先考虑正确性、可维护性和明确的扩展需求。
+2. 不为假设性的未来需求过度设计。
+3. 对已确定的未来需求，允许合理抽象和预留扩展点。
+4. 项目处于早期开发阶段，不以兼容旧实现或最小 Diff 为首要目标。
+5. 发现现有设计不合理时，主动提出重构或重写方案。
+6. 实现完成后必须验证功能，而不是仅保证代码能编译。
