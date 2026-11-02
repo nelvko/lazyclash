@@ -95,18 +95,13 @@ func TestOverviewControlStatesRemainExplicit(t *testing.T) {
 		Capabilities: app.Capabilities{Scope: "user", Runtime: app.Capability{Supported: true}},
 		Mode:         app.ModeStatus{Desired: "rule", Actual: "rule", Running: true},
 	}}
-	for _, index := range []int{1, 2} {
-		block := overviewControlCard(o, index, 56)
-		plain := ansi.Strip(strings.Join(block.lines, "\n"))
-		if len(block.targets) != 0 || !strings.Contains(plain, "Unavailable") {
-			t.Fatal("unsupported TUN or system proxy control appeared actionable")
-		}
-		if index == 2 && (!strings.Contains(plain, "Unmanaged") || strings.Contains(plain, "[ Off")) {
-			t.Fatal("unmanaged system proxy was presented as switched off")
-		}
+	block := overviewSystemCard(o, 56)
+	plain := ansi.Strip(strings.Join(block.lines, "\n"))
+	if len(block.targets) != 0 || !strings.Contains(plain, "TUN") || !strings.Contains(plain, "Not supported by the user service.") || !strings.Contains(plain, "Unmanaged") {
+		t.Fatal("environment hid capability explanations or made them actionable")
 	}
 	o.Busy = true
-	for _, block := range []dashboardBlock{overviewControlCard(o, 0, 56), overviewModeCard(o, 56)} {
+	for _, block := range []dashboardBlock{overviewCoreCard(o, 56), overviewModeCard(o, 56)} {
 		if len(block.targets) != 0 {
 			t.Fatal("busy runtime control retained an actionable target")
 		}

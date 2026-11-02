@@ -127,13 +127,13 @@ func TestDashboardTransientMessagesDoNotDependOnTranslatedText(t *testing.T) {
 
 func TestLocalizedCoreControlsPreserveStateAndSelection(t *testing.T) {
 	o := dashboardOptions{Locale: i18n.New("zh-Hans"), Snapshot: app.Snapshot{Installed: true, Service: service.Status{Active: true, State: "active"}}}
-	block := overviewControlCard(o, 0, 56)
+	block := overviewCoreCard(o, 56)
 	plain := ansi.Strip(strings.Join(block.lines, "\n"))
 	if !hasAction(block.targets, "core.stop") || !strings.Contains(plain, "运行中") || !strings.Contains(plain, "停止内核") || strings.Contains(plain, "已开启") {
 		t.Fatal("running state and explicit stop action are not separate")
 	}
 	o.Snapshot.Service.State = "unknown"
-	block = overviewControlCard(o, 0, 56)
+	block = overviewCoreCard(o, 56)
 	plain = ansi.Strip(strings.Join(block.lines, "\n"))
 	if strings.Contains(plain, "已开启") || !strings.Contains(plain, "停止内核") {
 		t.Fatal("unknown service state used the translated label to infer selection")

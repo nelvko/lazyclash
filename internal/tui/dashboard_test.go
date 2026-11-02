@@ -92,7 +92,7 @@ func TestOverviewUninitializedIsBrowsable(t *testing.T) {
 	if !hasAction(targets, "nav.settings") {
 		t.Fatal("dismiss removed permanent navigation")
 	}
-	if !hasAction(targets, "card.import") || !hasAction(targets, "card.install") {
+	if !hasAction(targets, "card.profiles") || !hasAction(targets, "core.install") || hasAction(targets, "card.install") {
 		t.Fatal("dismiss removed the profile or core card action")
 	}
 }
@@ -405,7 +405,7 @@ func TestOverviewLayoutPreservesDetailsAndActionTargets(t *testing.T) {
 			}
 			assertCanvas(t, body, width, len(rows))
 			assertRegions(t, hits, width, len(rows))
-			for id, label := range map[string]string{"card.import": "Import config", "card.proxies": "Open Proxies", "card.install": "Manage core"} {
+			for id, label := range map[string]string{"card.profiles": "Manage profiles", "card.proxies": "Open Proxies", "card.install": "Manage core"} {
 				found := false
 				for _, hit := range hits {
 					if hit.ID == id {
@@ -432,7 +432,7 @@ func TestOverviewLayoutPreservesDetailsAndActionTargets(t *testing.T) {
 	t.Run("uninstalled", func(t *testing.T) {
 		o := dashboardOptions{Snapshot: app.Snapshot{ServiceError: "Service management is unsupported on macOS"}}
 		group := ansi.Strip(strings.Join(overviewCards(o)[1], "\n"))
-		if !strings.Contains(group, "Core not installed") || strings.Contains(group, "Service unavailable") {
+		if !strings.Contains(group, "Proxy groups appear after the core starts.") || strings.Contains(group, "Service unavailable") {
 			t.Fatalf("uninstalled core was presented as a service failure: %s", group)
 		}
 	})
@@ -441,7 +441,7 @@ func TestOverviewLayoutPreservesDetailsAndActionTargets(t *testing.T) {
 func TestInstalledCoreDoesNotRequireGuideOrSubscription(t *testing.T) {
 	o := dashboardOptions{Width: 160, Height: 45, Page: "overview", Snapshot: app.Snapshot{Installed: true}}
 	value, targets, _ := renderDashboard(o)
-	if strings.Contains(ansi.Strip(value), "Get started") || !strings.Contains(ansi.Strip(value), "Not configured") {
+	if strings.Contains(ansi.Strip(value), "Get started") || !strings.Contains(ansi.Strip(value), "Not applied") {
 		t.Fatal("missing runnable configuration must be shown as state, not a mandatory guide")
 	}
 	o.Snapshot.ConfigReady = true
@@ -469,7 +469,7 @@ func TestDashboardMouseCoordinatesFollowScrolling(t *testing.T) {
 		t.Fatal("short viewport should require scrolling")
 	}
 	lines := strings.Split(value, "\n")
-	labels := map[string]string{"core.install": "Install core", "card.import": "Import config", "card.install": "Manage core"}
+	labels := map[string]string{"core.install": "Install core", "card.profiles": "Manage profiles", "card.install": "Manage core"}
 	for _, r := range regions {
 		if label, ok := labels[r.ID]; ok {
 			cells := ansi.Strip(ansi.Cut(lines[r.Y], r.X, r.X+r.W))
@@ -480,10 +480,10 @@ func TestDashboardMouseCoordinatesFollowScrolling(t *testing.T) {
 	}
 	o.Scroll = 10000
 	value, regions, _ = renderDashboard(o)
-	if hasAction(regions, "core.install") || hasAction(regions, "card.import") {
+	if hasAction(regions, "core.install") || hasAction(regions, "card.profiles") {
 		t.Fatal("scrolled-away actions retained mouse targets")
 	}
-	if !strings.Contains(ansi.Strip(value), "Kernel information") {
+	if !strings.Contains(ansi.Strip(value), "Environment") {
 		t.Fatal("bottom card is not reachable by scrolling")
 	}
 	if !hasAction(regions, "menu") {

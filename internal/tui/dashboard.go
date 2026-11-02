@@ -75,7 +75,11 @@ func dashboardGeometry(o dashboardOptions) dashboardLayout {
 		left = (o.Width - width) / 2
 		if sidebar {
 			left = sidebarWidth + (o.Width-sidebarWidth-width)/2
-		} else if o.InlineInstall && o.Width < 38 {
+		}
+		if o.InlineInstall {
+			width, left = min(96, available), headerX
+		}
+		if !sidebar && o.InlineInstall && o.Width < 38 {
 			// The compact setup notice needs the full row at very small sizes.
 			width, left = o.Width, 0
 		}
@@ -422,91 +426,33 @@ func overviewContent(o dashboardOptions, width int) (string, []hitRegion) {
 		setup := getStarted(o, width)
 		return strings.Join(setup.lines, "\n"), setup.targets
 	}
-	controlColumns := 1
+	columns := 1
 	if width >= 76 && o.Height >= 20 {
-		controlColumns = 2
+		columns = 2
 	}
-	if width >= 166 && o.Height >= 24 {
-		controlColumns = 4
-	}
-	for first := 0; first < 4; first += controlColumns {
-		body.append(overviewRow(o, width, min(controlColumns, 4-first), func(column, cardWidth int) dashboardBlock {
-			index := first + column
-			if index == 1 {
+	cards := overviewCards(o)
+	for first := 0; first < 4; first += columns {
+		body.append(overviewRow(o, width, columns, func(column, cardWidth int) dashboardBlock {
+			switch index := first + column; index {
+			case 0:
+				return overviewCoreCard(o, cardWidth)
+			case 1:
 				return overviewModeCard(o, cardWidth)
+			default:
+				card := index - 2
+				title := o.Locale.T("dashboard.profile.title")
+				if card == 1 {
+					title = o.Locale.T("dashboard.groups.title")
+				}
+				var buttons []overviewControlButton
+				if id, label := overviewAction(o, card); id != "" {
+					buttons = append(buttons, overviewControlButton{id: id, label: label, enabled: !o.Busy})
+				}
+				return overviewControlPanel(o, cardWidth, title, cards[card][1:], buttons)
 			}
-			if index > 1 {
-				index--
-			}
-			return overviewControlCard(o, index, cardWidth)
 		}))
 		body.blank()
 	}
-	cards := overviewCards(o)
-	columns := 1
-	if width >= 76 && o.Height >= 24 {
-		columns = 2
-	}
-	cardWidth := width
-	if columns == 2 {
-		cardWidth = (width - 2) / 2
-	}
-	gridCards := 2
-	content := make([][]string, len(cards))
-	for i, c := range cards {
-		for _, line := range c {
-			content[i] = append(content[i], strings.Split(wrapText(line, max(1, cardWidth-4)), "\n")...)
-		}
-	}
-	for i := 0; i < gridCards; i += columns {
-		var actions []hitRegion
-		for column := 0; column < columns; column++ {
-			index := i + column
-			actionID, label := overviewAction(o, index)
-			if actionID != "" {
-				options := dashboardButtonOptions(actionID, o, false, panel)
-				options.Disabled = o.Busy
-				value := cellCrop(renderButton(label, options), max(1, cardWidth-4))
-				content[index] = append(content[index], "", value)
-				if !o.Busy {
-					actions = append(actions, hitRegion{ID: actionID, X: 2 + column*(cardWidth+2), W: max(1, ansi.StringWidth(value)), H: 1})
-				}
-			}
-		}
-		height := len(content[i]) + 2
-		if columns == 2 {
-			height = max(height, len(content[i+1])+2)
-		}
-		for column := 0; column < columns; column++ {
-			index := i + column
-			if actionID, _ := overviewAction(o, index); actionID != "" {
-				last := len(content[index]) - 1
-				button := content[index][last]
-				content[index] = content[index][:last]
-				for len(content[index]) < height-3 {
-					content[index] = append(content[index], "")
-				}
-				content[index] = append(content[index], button)
-			}
-		}
-		for _, action := range actions {
-			action.Y = len(body.lines) + height - 2
-			body.targets = append(body.targets, action)
-		}
-		left := panelFrame(content[i], cardWidth, height, o)
-		if columns == 1 {
-			body.lines = append(body.lines, left...)
-		} else {
-			right := panelFrame(content[i+1], width-cardWidth-2, height, o)
-			for y := range left {
-				body.lines = append(body.lines, left[y]+themed("  ", text, bg, o.Dim)+right[y])
-			}
-		}
-		if i+columns < gridCards {
-			body.blank()
-		}
-	}
-	body.blank()
 	if columns == 2 {
 		body.append(overviewTrafficSummary(o, cards[2], width))
 	} else {
@@ -517,14 +463,18 @@ func overviewContent(o dashboardOptions, width int) (string, []hitRegion) {
 		body.append(dashboardBlock{lines: panelFrame(lines, width, len(lines)+2, o)})
 	}
 	body.blank()
-	body.append(overviewRow(o, width, columns, func(column, cardWidth int) dashboardBlock {
-		if column == 0 {
-			return overviewKernelCard(o, cardWidth)
+	if o.Snapshot.Installed {
+		body.append(overviewRow(o, width, columns, func(column, cardWidth int) dashboardBlock {
+			if column == 0 {
+				return overviewKernelCard(o, cardWidth)
+			}
+			return overviewSystemCard(o, cardWidth)
+		}))
+		if columns == 1 {
+			body.blank()
+			body.append(overviewSystemCard(o, width))
 		}
-		return overviewSystemCard(o, cardWidth)
-	}))
-	if columns == 1 {
-		body.blank()
+	} else {
 		body.append(overviewSystemCard(o, width))
 	}
 	return strings.Join(body.lines, "\n"), body.targets
@@ -535,7 +485,7 @@ func overviewAction(o dashboardOptions, index int) (string, string) {
 	s := o.Snapshot
 	switch index {
 	case 0:
-		return "card.import", tr("dashboard.action.import")
+		return "card.profiles", tr("dashboard.action.profiles")
 	case 1:
 		if s.Service.Active && len(s.Groups) > 0 {
 			return "card.proxies", tr("dashboard.action.openProxies")
@@ -705,7 +655,7 @@ func overviewCards(o dashboardOptions) [][]string {
 	style := func(value, color string) string { return themed(clean(value), color, panel, o.Dim) }
 	title := func(value string) string { return lipgloss.NewStyle().Bold(true).Render(style(value, text)) }
 	label := func(name, value string) string { return style(cellPad(name, 20), muted) + style(value, text) }
-	configured, active := tr("dashboard.sidebar.notConfigured"), tr("dashboard.profile.none")
+	configured, active := tr("dashboard.profile.notApplied"), tr("dashboard.profile.none")
 	if s.ConfigReady {
 		configured = tr("dashboard.profile.ready")
 		active = snapshotProfileName(s, s.Applied, o.Locale)
@@ -762,7 +712,7 @@ func overviewCards(o dashboardOptions) [][]string {
 		}
 	}
 	if !s.Installed {
-		groupName, node, groupStatus = "--", "--", tr("dashboard.groups.notInstalled")
+		groupName, node, groupStatus = "--", "--", tr("dashboard.groups.afterStart")
 	} else if s.ServiceError != "" {
 		groupName, node, groupStatus = "--", "--", tr("dashboard.groups.serviceUnavailable")
 	} else if s.Service.Active && s.APIError != "" {
@@ -771,15 +721,14 @@ func overviewCards(o dashboardOptions) [][]string {
 	groups := []string{title(tr("dashboard.groups.title")), style(groupStatus, muted)}
 	if groupName != "--" {
 		groups = append(groups, "", label(tr("dashboard.groups.group"), groupName), label(tr("dashboard.groups.node"), node))
-	} else if !s.Service.Active {
-		hint := tr("dashboard.groups.startHint")
-		if !s.Installed {
-			hint = tr("dashboard.groups.installHint")
-		}
-		groups = append(groups, style(hint, muted))
+	} else if s.Installed && !s.Service.Active {
+		groups = append(groups, style(tr("dashboard.groups.startHint"), muted))
 	}
 	observed := o.Runtime
 	status := runtimeStatus(observed, o.RuntimeReceived, o.RuntimePending, s.Installed, o.Locale)
+	if !s.Installed {
+		status = tr("dashboard.traffic.startHint")
+	}
 	traffic := []string{title(tr("dashboard.traffic.title")), style(status, muted)}
 	if o.RuntimeReceived && observed.State == "ready" {
 		traffic = append(traffic, "")
@@ -787,7 +736,7 @@ func overviewCards(o dashboardOptions) [][]string {
 			traffic = append(traffic, label(field.label, field.value))
 		}
 		traffic = append(traffic, style(tr("dashboard.traffic.resetHint"), muted))
-	} else {
+	} else if s.Installed {
 		traffic = append(traffic, style(tr("dashboard.traffic.startHint"), muted))
 	}
 	for _, issue := range []struct {

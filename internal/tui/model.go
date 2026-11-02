@@ -1077,8 +1077,9 @@ func (m *Model) activate(id string) tea.Cmd {
 		return m.openPorts()
 	}
 	switch id {
-	case "card.import":
-		return m.openForm()
+	case "card.profiles":
+		m.navigate("profiles")
+		return nil
 	case "page.refresh":
 		if !m.busy && !m.quitting {
 			return m.refresh()

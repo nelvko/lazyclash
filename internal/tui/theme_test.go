@@ -60,7 +60,7 @@ func themeSample(name string) Model {
 		m.message = "Fetching and validating configuration…"
 	case "notification-stack", "notification-list", "notification-details", "notification-details-end", "notification-profile-error":
 		m.locale = i18n.New(i18n.English)
-		m.page, m.focus = "overview", "card.import"
+		m.page, m.focus = "overview", "card.profiles"
 		m.notification.items = []notificationItem{
 			{ID: 1, Page: "settings", Context: "Save language", Kind: "done", Message: "Language saved. The new selection is active."},
 			{ID: 2, Page: "profiles", Context: "Update subscription", Kind: "error", Message: "Subscription download timed out. Check your connection and retry.", Details: "Download failed: connection timeout.\nThe saved subscription remains available."},

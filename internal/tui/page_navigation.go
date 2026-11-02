@@ -343,7 +343,11 @@ func overviewCardRegionsFromModel(m Model) []hitRegion {
 // clickable surface and cannot overlap a card's real action buttons.
 func overviewCardRegions(body string, o dashboardOptions) []hitRegion {
 	lines := strings.Split(body, "\n")
-	names := []string{"dashboard.control.core", "dashboard.control.routingMode", "dashboard.field.tun", "dashboard.field.systemProxy", "dashboard.profile.title", "dashboard.groups.title", "dashboard.traffic.title", "dashboard.kernel.title", "dashboard.system.title"}
+	names := []string{"dashboard.control.core", "dashboard.control.routingMode", "dashboard.profile.title", "dashboard.groups.title", "dashboard.traffic.title"}
+	if o.Snapshot.Installed {
+		names = append(names, "dashboard.kernel.title")
+	}
+	names = append(names, "dashboard.system.title")
 	if overviewSetupVisible(o) {
 		names = []string{"dashboard.guide.title"}
 	}

@@ -153,6 +153,9 @@ func TestOnboardingSetUpLaterOnlySkipsTheCurrentSession(t *testing.T) {
 	if overviewSetupVisible(m.navigationOptions()) || hasAction(m.targets, "setup.later") {
 		t.Fatal("set up later did not leave the preparation view")
 	}
+	if !hasAction(m.contentTargets(), "core.install") || hasAction(m.contentTargets(), "card.install") {
+		t.Fatal("skipped setup did not retain exactly one ordinary installation entry")
+	}
 	m, _ = update(m, key("3"))
 	if m.page != "profiles" || m.wizard.open {
 		t.Fatal("leaving setup prevented ordinary page navigation")

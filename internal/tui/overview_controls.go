@@ -64,20 +64,14 @@ func overviewControlPanel(o dashboardOptions, width int, title string, content [
 	return b
 }
 
-func overviewControlCard(o dashboardOptions, index, width int) dashboardBlock {
+func overviewCoreCard(o dashboardOptions, width int) dashboardBlock {
 	tr := o.Locale.T
 	s := o.Snapshot
 	style := func(value, color string) string { return themed(clean(value), color, panel, o.Dim) }
-	if index == 1 {
-		return overviewControlPanel(o, width, tr("dashboard.field.tun"), []string{style(tr("dashboard.status.unavailable"), muted), style(tr("dashboard.control.tunHint"), muted)}, []overviewControlButton{{label: tr("dashboard.status.unavailable")}})
-	}
-	if index == 2 {
-		return overviewControlPanel(o, width, tr("dashboard.field.systemProxy"), []string{style(tr("dashboard.control.unmanaged"), muted), style(tr("dashboard.control.systemProxyHint"), muted)}, []overviewControlButton{{label: tr("dashboard.status.unavailable")}})
-	}
 	status, color := coreSummary(s, o.Locale)
-	lines := []string{style(status, color)}
+	lines := []string{lipgloss.NewStyle().Bold(true).Render(style(status, color))}
 	if !s.Installed {
-		return overviewControlPanel(o, width, tr("dashboard.control.core"), lines, []overviewControlButton{{id: "core.install", label: tr("dashboard.action.install"), enabled: !o.Busy, primary: true}})
+		return overviewControlPanel(o, width, tr("dashboard.control.core"), lines, []overviewControlButton{{id: "core.install", label: tr("dashboard.action.install"), enabled: !o.Busy}})
 	}
 	if !s.Service.Active && !s.HasRun && s.ConfigReady && (s.Applied == "default" || s.Applied == "") {
 		lines = append(lines, style(tr("dashboard.profile.builtinReady"), muted))
@@ -105,6 +99,11 @@ func overviewControlCard(o dashboardOptions, index, width int) dashboardBlock {
 func overviewModeCard(o dashboardOptions, width int) dashboardBlock {
 	tr := o.Locale.T
 	s := o.Snapshot
+	if !s.Installed {
+		return overviewControlPanel(o, width, tr("dashboard.control.routingMode"), []string{
+			themed(tr("dashboard.control.modeAfterInstall"), muted, panel, o.Dim),
+		}, nil)
+	}
 	modeNames := map[string]string{"rule": tr("dashboard.mode.rule"), "global": tr("dashboard.mode.global"), "direct": tr("dashboard.mode.direct")}
 	saved := modeNames[s.Mode.Desired]
 	if saved == "" {
@@ -162,6 +161,10 @@ func overviewSystemCard(o dashboardOptions, width int) dashboardBlock {
 		themed(tr("dashboard.system.serviceManager", manager), muted, panel, o.Dim),
 		themed(tr("dashboard.system.autostart", autostart), muted, panel, o.Dim),
 	}
+	lines = append(lines, "",
+		themed(tr("dashboard.field.tun")+" · "+tr("dashboard.control.tunHint"), muted, panel, o.Dim),
+		themed(tr("dashboard.field.systemProxy")+" · "+tr("dashboard.control.unmanaged"), text, panel, o.Dim),
+		themed(tr("dashboard.control.systemProxyHint"), muted, panel, o.Dim))
 	return overviewControlPanel(o, width, tr("dashboard.system.title"), lines, nil)
 }
 

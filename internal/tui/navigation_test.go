@@ -159,10 +159,13 @@ func TestDismissedGuideKeepsCardOperationsUsable(t *testing.T) {
 	if strings.Contains(ansi.Strip(m.screen), "Get started") {
 		t.Fatal("layout reset a dismissed guide")
 	}
-	findTarget(t, m, "card.import")
-	findTarget(t, m, "card.install")
-	m, _ = update(m, m.activate("card.import"))
-	if m.form != "source" || added {
-		t.Fatal("card import did not open the existing form")
+	findTarget(t, m, "card.profiles")
+	findTarget(t, m, "core.install")
+	if hasAction(m.contentTargets(), "card.install") {
+		t.Fatal("uninstalled overview retained a duplicate kernel installation action")
+	}
+	m, _ = update(m, m.activate("card.profiles"))
+	if m.page != "profiles" || m.form != "" || added {
+		t.Fatal("Manage profiles did not open the configuration page without importing")
 	}
 }

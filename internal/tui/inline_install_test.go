@@ -412,7 +412,7 @@ func TestInlineMoreOptionsRetainFocusAndRemoveHiddenFieldsFromTabOrder(t *testin
 
 func TestInlinePresentationRetainsSidebarAndFitsTerminal(t *testing.T) {
 	for _, language := range []string{"en", "zh-Hans"} {
-		for _, size := range [][2]int{{160, 45}, {120, 32}, {80, 24}, {60, 20}, {120, 18}, {30, 12}, {24, 8}, {20, 7}} {
+		for _, size := range [][2]int{{216, 55}, {160, 45}, {120, 32}, {80, 24}, {60, 20}, {120, 18}, {30, 12}, {24, 8}, {20, 7}} {
 			for _, state := range []string{"initial", "more", "progress", "success", "failure"} {
 				t.Run(fmt.Sprintf("%s/%v/%s", language, size, state), func(t *testing.T) {
 					m := ready(&fakeBackend{})
@@ -433,7 +433,17 @@ func TestInlinePresentationRetainsSidebarAndFitsTerminal(t *testing.T) {
 					m.layout()
 					assertCanvas(t, m.View().Content, size[0], size[1])
 					assertRegions(t, m.targets, size[0], size[1])
-					if dashboardGeometry(m.dashboardOptions()).sidebar && !hasAction(m.targets, "nav.settings") {
+					g := dashboardGeometry(m.dashboardOptions())
+					if size[0] >= 38 {
+						if g.width != min(96, g.headerWidth) || g.x != g.headerX {
+							t.Fatalf("inline body must cap at 96 cells and align with the full header: %+v", g)
+						}
+						divider := ansi.Strip(strings.Split(m.screen, "\n")[g.headerHeight])
+						if strings.Count(divider, "▔") != g.headerWidth {
+							t.Fatal("bounded inline body narrowed the page divider")
+						}
+					}
+					if g.sidebar && !hasAction(m.targets, "nav.settings") {
 						t.Fatal("inline setup removed the ordinary sidebar")
 					}
 					if state == "initial" && size[0] >= 60 && size[1] >= 18 && !hasAction(m.targets, "setup.install") {

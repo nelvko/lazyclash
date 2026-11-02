@@ -92,6 +92,35 @@ func TestPageNavigationOverviewStartsAtCardBeforeItsControls(t *testing.T) {
 	}
 }
 
+func TestPageNavigationInstalledKernelManageRequiresExplicitActivation(t *testing.T) {
+	m := pageNavigationModel()
+	m.snapshot = onboardingDefaultSnapshot()
+	m.focus = "overview.card.dashboard.kernel.title"
+	m.layout()
+	id := m.id
+	m, _ = update(m, special(tea.KeyEnter))
+	if m.focus != "card.install" || m.wizard.open || m.busy || m.id != id {
+		t.Fatal("entering the kernel card did not focus Manage without activating it")
+	}
+	m, _ = update(m, special(tea.KeyEnter))
+	if !m.wizard.open || m.wizard.inline || m.wizard.step != stepCore || m.busy || m.id != id {
+		t.Fatal("explicit Manage activation did not open installed-core management without a lookup")
+	}
+}
+
+func TestPageNavigationEnvironmentFocusSurvivesInstallationStateChanges(t *testing.T) {
+	m := pageNavigationModel()
+	m.snapshot.GuideDismissed = true
+	m.focus = "overview.card.dashboard.system.title"
+	for _, installed := range []bool{true, false, true} {
+		m.snapshot.Installed = installed
+		m.layout()
+		if m.focus != "overview.card.dashboard.system.title" || !hasAction(m.contentTargets(), m.focus) {
+			t.Fatalf("installed=%v: adding or removing kernel information lost environment focus: %s", installed, m.focus)
+		}
+	}
+}
+
 func TestPageNavigationEscapeReturnsToSidebarWithoutDismissingToast(t *testing.T) {
 	m := pageNavigationModel()
 	m.navigate("overview")
@@ -302,30 +331,46 @@ func TestPageNavigationRemovedOverviewGuideRestoresVisibleCardFocus(t *testing.T
 
 func TestPageNavigationOverviewCardIDsRemainUniqueAndStableAcrossResize(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
-		for _, guideDismissed := range []bool{false, true} {
-			t.Run(fmt.Sprintf("%s/guideDismissed=%v", language, guideDismissed), func(t *testing.T) {
+		for _, state := range []struct {
+			name                      string
+			installed, guideDismissed bool
+		}{
+			{name: "setup"},
+			{name: "dismissed", guideDismissed: true},
+			{name: "installed", installed: true},
+			{name: "installed-dismissed", installed: true, guideDismissed: true},
+		} {
+			t.Run(fmt.Sprintf("%s/%s", language, state.name), func(t *testing.T) {
 				m := pageNavigationModel()
 				m.locale = i18n.New(language)
-				m.snapshot.GuideDismissed = guideDismissed
+				m.snapshot.Installed, m.snapshot.GuideDismissed = state.installed, state.guideDismissed
+				setup := !state.installed && !state.guideDismissed
 				m.focus = "overview.card.dashboard.system.title"
-				if !guideDismissed {
+				if setup {
 					m.focus = "setup.install"
 				}
 				wantFocus := m.focus
 				var wantIDs []string
+				if !setup {
+					wantIDs = []string{
+						"overview.card.dashboard.control.core", "overview.card.dashboard.control.routingMode",
+						"overview.card.dashboard.profile.title", "overview.card.dashboard.groups.title",
+						"overview.card.dashboard.traffic.title",
+					}
+					if state.installed {
+						wantIDs = append(wantIDs, "overview.card.dashboard.kernel.title")
+					}
+					wantIDs = append(wantIDs, "overview.card.dashboard.system.title")
+				}
 				for _, width := range []int{20, 30, 60, 120, 240, 20} {
 					m.width = width
 					m.layout()
-					if width == 20 && guideDismissed && dashboardBodyWidth(m.navigationOptions()) != 16 {
+					if width == 20 && !setup && dashboardBodyWidth(m.navigationOptions()) != 16 {
 						t.Fatal("narrow fixture no longer exercises a 16-column card body")
 					}
 					cards := overviewCardRegionsFromModel(m)
-					wantCount := 9
-					if !guideDismissed {
-						wantCount = 0
-					}
-					if len(cards) != wantCount {
-						t.Fatalf("width %d: found %d cards; want %d", width, len(cards), wantCount)
+					if len(cards) != len(wantIDs) {
+						t.Fatalf("width %d: found %d cards; want %d", width, len(cards), len(wantIDs))
 					}
 					seen := make(map[string]bool)
 					ids := make([]string, len(cards))
@@ -336,13 +381,8 @@ func TestPageNavigationOverviewCardIDsRemainUniqueAndStableAcrossResize(t *testi
 						seen[card.ID] = true
 						ids[index] = card.ID
 					}
-					if guideDismissed && (!seen["overview.card.dashboard.field.systemProxy"] || !seen["overview.card.dashboard.system.title"]) {
-						t.Fatalf("width %d: System proxy and System information need distinct stable targets", width)
-					}
-					if wantIDs == nil {
-						wantIDs = ids
-					} else if strings.Join(ids, "\n") != strings.Join(wantIDs, "\n") {
-						t.Fatalf("width %d: resizing changed card IDs: %v", width, ids)
+					if strings.Join(ids, "\n") != strings.Join(wantIDs, "\n") {
+						t.Fatalf("width %d: consolidated card IDs changed: got %v, want %v", width, ids, wantIDs)
 					}
 					if m.focus != wantFocus {
 						t.Fatalf("width %d: resizing moved the system card focus to %s", width, m.focus)
