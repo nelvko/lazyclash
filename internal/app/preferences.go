@@ -19,6 +19,8 @@ type Preferences struct {
 	Network        downloadnet.Config
 	GuideDismissed bool
 	HasRun         bool
+	Language       string `json:",omitempty"`
+	HideKeyHints   bool   `json:",omitempty"`
 }
 
 func defaultPreferences() Preferences {
@@ -125,6 +127,19 @@ func (a *App) SaveNetworkPreferences(ctx context.Context, cfg downloadnet.Config
 
 func (a *App) SetGuideDismissed(ctx context.Context, dismissed bool) error {
 	return a.editPreferences(ctx, func(p *Preferences) error { p.GuideDismissed = dismissed; return nil })
+}
+
+// SaveLanguagePreference changes presentation only and preserves other preferences.
+func (a *App) SaveLanguagePreference(ctx context.Context, language string) error {
+	if language != "en" && language != "zh-Hans" {
+		return diagnostic.New("language.unsupported", "Language must be en or zh-Hans")
+	}
+	return a.editPreferences(ctx, func(p *Preferences) error { p.Language = language; return nil })
+}
+
+// SaveKeyHintsPreference changes presentation without replacing other preferences.
+func (a *App) SaveKeyHintsPreference(ctx context.Context, hidden bool) error {
+	return a.editPreferences(ctx, func(p *Preferences) error { p.HideKeyHints = hidden; return nil })
 }
 
 func (a *App) markHasRunLocked(ctx context.Context) error {

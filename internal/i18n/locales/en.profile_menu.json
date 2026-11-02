@@ -1,0 +1,15 @@
+{
+  "profile_menu.use": "Use profile",
+  "profile_menu.already_selected": "Already selected",
+  "profile_menu.apply_changes": "Apply changes",
+  "profile_menu.install_first": "Install core first",
+  "profile_menu.update": "Update",
+  "profile_menu.no_address": "No saved address",
+  "profile_menu.rename": "Rename…",
+  "profile_menu.description": "Edit description…",
+  "profile_menu.address": "Edit address…",
+  "profile_menu.overrides": "Import overrides…",
+  "profile_menu.details": "View details",
+  "profile_menu.delete": "Delete…",
+  "profile_menu.switch_first": "Switch profile first"
+}

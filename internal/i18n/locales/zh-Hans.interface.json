@@ -1,0 +1,15 @@
+{
+  "header.help": "帮助",
+  "dashboard.interface.title": "界面",
+  "dashboard.interface.keyHints": "显示快捷键提示",
+  "dashboard.interface.keyHintsOn": "开启",
+  "dashboard.interface.keyHintsOff": "关闭",
+  "dashboard.interface.keyHintsHint": "Ctrl+T 显示或隐藏底部提示，并记住选择。",
+  "help.keyHints.show": "显示快捷键提示 · Ctrl+T",
+  "help.keyHints.hide": "隐藏快捷键提示 · Ctrl+T",
+  "help.keyHints.shortcut": "Ctrl+T：显示或隐藏快捷键提示",
+  "keyHints.saveFailed": "无法记住快捷键提示设置：%s",
+  "navigation.drawer": "↑↓ 切页 · → 内容 · ← 关闭 · ? 帮助",
+  "navigation.content": "↑↓ 滚动 · Tab 控件 · ← / Esc 返回 · ? 帮助",
+  "overview.cardHint": "Enter 控件 · ↑↓ 卡片 · Tab 下一项 · ← / Esc 返回"
+}

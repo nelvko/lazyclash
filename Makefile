@@ -1,4 +1,4 @@
-.PHONY: build test check race
+.PHONY: build test check race i18n-check
 build:
 	go build -o bin/lazyclash .
 test:
@@ -8,3 +8,5 @@ check:
 	go vet ./...
 race:
 	go test -race ./...
+i18n-check:
+	go test ./internal/i18n

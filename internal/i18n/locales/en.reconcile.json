@@ -1,0 +1,8 @@
+{
+  "help.profiles.click": "Click a card to apply it. Clicking the current profile applies pending changes; unchanged profiles are not reloaded.",
+  "help.profiles.menu": "Right-click a card, click its ⋯ button, or press m / Shift+F10 on a focused card to open its action menu.",
+  "help.profiles.menuControls": "Menu: arrows / j / k choose; Enter runs an action; Esc / Tab or an outside click closes without activating the page.",
+  "help.messages.toast": "Up to two Toasts appear in the upper-right. Ctrl+N opens the full list and details. Visible success lasts 3 seconds; info lasts 4 seconds.",
+  "help.messages.dismiss": "Errors remain until closed. Cancel on a progress notice stops its task; closing the notice keeps it running. Esc returns one layer at a time.",
+  "navigation.actionMenu": "↑↓ Select · Enter Choose · Esc Close"
+}

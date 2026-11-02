@@ -1,0 +1,8 @@
+{
+  "help.profiles.click": "点击卡片应用配置。点击当前配置可应用待生效更改；没有更改时不会重新加载。",
+  "help.profiles.menu": "右键点击卡片、点击 ⋯ 按钮，或聚焦卡片后按 m / Shift+F10 打开操作菜单。",
+  "help.profiles.menuControls": "菜单：方向键或 j / k 选择，Enter 执行；Esc / Tab 或点击外部关闭菜单。",
+  "help.messages.toast": "右上角最多展开两条通知。Ctrl+N 查看完整列表和详情。成功展开后显示 3 秒，普通信息显示 4 秒。",
+  "help.messages.dismiss": "错误通知保留到手动关闭。进度通知中的“取消任务”可停止任务；关闭通知不会取消任务。Esc 每次返回一层。",
+  "navigation.actionMenu": "↑↓ 选择 · Enter 确定 · Esc 关闭"
+}

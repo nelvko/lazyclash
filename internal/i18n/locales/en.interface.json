@@ -1,0 +1,15 @@
+{
+  "header.help": "Help",
+  "dashboard.interface.title": "Interface",
+  "dashboard.interface.keyHints": "Show shortcut hints",
+  "dashboard.interface.keyHintsOn": "On",
+  "dashboard.interface.keyHintsOff": "Off",
+  "dashboard.interface.keyHintsHint": "Ctrl+T toggles the shortcut bar. This choice is remembered.",
+  "help.keyHints.show": "Show shortcut hints · Ctrl+T",
+  "help.keyHints.hide": "Hide shortcut hints · Ctrl+T",
+  "help.keyHints.shortcut": "Ctrl+T: show or hide shortcut hints",
+  "keyHints.saveFailed": "Could not remember shortcut hint visibility: %s",
+  "navigation.drawer": "↑↓ Pages · → Content · ← Close · ? Help",
+  "navigation.content": "↑↓ Scroll · Tab Controls · ← / Esc Back · ? Help",
+  "overview.cardHint": "Enter Controls · ↑↓ Cards · Tab Next · ← / Esc Back"
+}
