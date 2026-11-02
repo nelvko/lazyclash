@@ -24,12 +24,12 @@ type serviceBackend interface {
 func serviceCommand(backend func() serviceBackend) *cobra.Command {
 	cmd := &cobra.Command{Use: "service", Short: "Control the Linux systemd user service"}
 	for _, action := range []string{"start", "stop", "restart"} {
-		cmd.AddCommand(&cobra.Command{Use: action, Short: strings.ToUpper(action[:1]) + action[1:] + " Mihomo", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
+		cmd.AddCommand(&cobra.Command{Use: action, Short: strings.ToUpper(action[:1]) + action[1:] + " Mihomo", Args: noArgs, RunE: func(cmd *cobra.Command, args []string) error {
 			return backend().Control(cmd.Context(), cmd.Name())
 		}})
 	}
 	for _, action := range []string{"enable", "disable"} {
-		cmd.AddCommand(&cobra.Command{Use: action, Short: strings.ToUpper(action[:1]) + action[1:] + " automatic startup without changing the running process", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		cmd.AddCommand(&cobra.Command{Use: action, Short: strings.ToUpper(action[:1]) + action[1:] + " automatic startup without changing the running process", Args: noArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 			return backend().SetAutostart(cmd.Context(), cmd.Name() == "enable")
 		}})
 	}

@@ -3,14 +3,16 @@ package main
 import (
 	"context"
 	"os"
+	"os/signal"
 	"syscall"
 
-	"charm.land/fang/v2"
 	"github.com/nelvko/lazyclash/internal/cli"
 )
 
 func main() {
-	if err := fang.Execute(context.Background(), cli.New(), fang.WithVersion("0.1.0-dev"), fang.WithNotifySignal(os.Interrupt, syscall.SIGTERM)); err != nil {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	if err := cli.Execute(ctx, os.Args[1:]); err != nil {
 		os.Exit(1)
 	}
 }

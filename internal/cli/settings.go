@@ -2,10 +2,10 @@ package cli
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/nelvko/lazyclash/internal/app"
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 	"github.com/spf13/cobra"
 )
 
@@ -29,11 +29,11 @@ func runtimeSettingsCommand(backend func() runtimeSettingsBackend) *cobra.Comman
 		}
 		return writeJSON(cmd, settings)
 	}
-	cmd := &cobra.Command{Use: "settings", Short: "Inspect and change managed local runtime settings", Args: cobra.NoArgs, SilenceUsage: true, RunE: show}
-	cmd.AddCommand(&cobra.Command{Use: "show", Short: "Print current managed ports as JSON", Args: cobra.NoArgs, RunE: show})
+	cmd := &cobra.Command{Use: "settings", Short: "Inspect and change managed local runtime settings", Args: noArgs, SilenceUsage: true, RunE: show}
+	cmd.AddCommand(&cobra.Command{Use: "show", Short: "Print current managed ports as JSON", Args: noArgs, RunE: show})
 	var mixed, controller int
 	var dryRun, restart bool
-	ports := &cobra.Command{Use: "ports", Short: "Review and apply local proxy and controller ports", Args: cobra.NoArgs}
+	ports := &cobra.Command{Use: "ports", Short: "Review and apply local proxy and controller ports", Args: noArgs}
 	flags := ports.Flags()
 	flags.IntVar(&mixed, "mixed-port", 0, "Local HTTP/SOCKS proxy port (1024–65535)")
 	flags.IntVar(&controller, "controller-port", 0, "Local control API port (1024–65535)")
@@ -41,7 +41,7 @@ func runtimeSettingsCommand(backend func() runtimeSettingsBackend) *cobra.Comman
 	flags.BoolVar(&restart, "restart", false, "Acknowledge restarting an active core and interrupting its connections")
 	ports.RunE = func(cmd *cobra.Command, _ []string) error {
 		if !flags.Changed("mixed-port") && !flags.Changed("controller-port") {
-			return errors.New("specify --mixed-port or --controller-port")
+			return diagnostic.New("diagnostic.cli.ports_required", "specify --mixed-port or --controller-port")
 		}
 		a := backend()
 		current, err := a.GetRuntimeSettings(cmd.Context())
@@ -66,14 +66,14 @@ func runtimeSettingsCommand(backend func() runtimeSettingsBackend) *cobra.Comman
 			if err := writeJSON(cmd, plan); err != nil {
 				return err
 			}
-			return errors.New("the core is running; review with --dry-run, then use --restart to acknowledge interrupting its connections")
+			return diagnostic.New("diagnostic.cli.restart_required", "the core is running; review with --dry-run, then use --restart to acknowledge interrupting its connections")
 		}
 		result, err := a.ApplyRuntimeSettings(cmd.Context(), plan)
 		if err != nil {
 			return err
 		}
 		if result.Changed {
-			fmt.Fprintln(cmd.ErrOrStderr(), "Runtime settings applied. Existing parent-shell proxy variables require a new lazyclash env evaluation.")
+			fmt.Fprintln(cmd.ErrOrStderr(), commandLocale(cmd).T("cli.settings.applied"))
 		}
 		return writeJSON(cmd, result)
 	}

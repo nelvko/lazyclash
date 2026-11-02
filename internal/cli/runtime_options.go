@@ -14,7 +14,7 @@ type runtimeOptionsBackend interface {
 }
 
 func newModeCommand(backend func() runtimeOptionsBackend) *cobra.Command {
-	return &cobra.Command{Use: "mode [rule|global|direct]", Short: "Inspect or persist the Mihomo routing mode", Args: cobra.MaximumNArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	return &cobra.Command{Use: "mode [rule|global|direct]", Short: "Inspect or persist the Mihomo routing mode", Args: maximumArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		a := backend()
 		if len(args) == 1 {
 			if err := a.SetMode(cmd.Context(), args[0]); err != nil {
@@ -30,7 +30,7 @@ func newModeCommand(backend func() runtimeOptionsBackend) *cobra.Command {
 }
 
 func newTUNCommand(backend func() runtimeOptionsBackend) *cobra.Command {
-	return &cobra.Command{Use: "tun <on|off>", Short: "Request TUN state (privileged TUN is unavailable in the user service)", Args: cobra.MatchAll(cobra.ExactArgs(1), cobra.OnlyValidArgs), ValidArgs: []string{"on", "off"}, RunE: func(cmd *cobra.Command, args []string) error {
+	return &cobra.Command{Use: "tun <on|off>", Short: "Request TUN state (privileged TUN is unavailable in the user service)", Args: cobra.MatchAll(exactArgs(1), onlyValidArgs), ValidArgs: []string{"on", "off"}, RunE: func(cmd *cobra.Command, args []string) error {
 		return backend().SetTUN(cmd.Context(), args[0] == "on")
 	}}
 }

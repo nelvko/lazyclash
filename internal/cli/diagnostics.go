@@ -1,15 +1,15 @@
 package cli
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/nelvko/lazyclash/internal/app"
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 	"github.com/spf13/cobra"
 )
 
 func newStatusCommand(backend func() *app.App) *cobra.Command {
-	return &cobra.Command{Use: "status", Short: "Print installation, service and API status as JSON", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
+	return &cobra.Command{Use: "status", Short: "Print installation, service and API status as JSON", Args: noArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		s, err := backend().Snapshot(cmd.Context())
 		if err != nil {
 			return err
@@ -19,7 +19,7 @@ func newStatusCommand(backend func() *app.App) *cobra.Command {
 }
 
 func newDoctorCommand(backend func() *app.App) *cobra.Command {
-	return &cobra.Command{Use: "doctor", Short: "Diagnose user systemd, linger and API availability", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
+	return &cobra.Command{Use: "doctor", Short: "Diagnose user systemd, linger and API availability", Args: noArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		s, err := backend().Snapshot(cmd.Context())
 		if err != nil {
 			return err
@@ -28,18 +28,18 @@ func newDoctorCommand(backend func() *app.App) *cobra.Command {
 			return err
 		}
 		if s.ServiceError != "" {
-			return errors.New(s.ServiceError)
+			return reportedError(s.ServiceError, s.ServiceDiagnostic)
 		}
 		if !s.Service.LingerKnown {
-			fmt.Fprintln(cmd.ErrOrStderr(), "Linger status is unknown: inspect loginctl show-user before relying on operation after logout.")
+			fmt.Fprintln(cmd.ErrOrStderr(), commandLocale(cmd).T("cli.doctor.linger_unknown"))
 		} else if !s.Service.Linger {
-			fmt.Fprintln(cmd.ErrOrStderr(), "Linger is disabled: service lifetime may depend on your login session. To keep it running after logout, review: loginctl enable-linger \"$(id -un)\"")
+			fmt.Fprintln(cmd.ErrOrStderr(), commandLocale(cmd).T("cli.doctor.linger_disabled"))
 		}
 		if s.APIError != "" {
-			fmt.Fprintln(cmd.ErrOrStderr(), safe(s.APIError))
+			fmt.Fprintln(cmd.ErrOrStderr(), safe(commandLocale(cmd).Diagnostic(s.APIError, s.APIDiagnostic)))
 		}
 		if s.Service.State == "failed" {
-			return fmt.Errorf("Mihomo service failed: %s (exit %d); inspect the systemd journal", safe(s.Service.Result), s.Service.ExitCode)
+			return diagnostic.New("diagnostic.cli.service_failed", "Mihomo service failed: %s (exit %d); inspect the systemd journal", safe(s.Service.Result), s.Service.ExitCode)
 		}
 		return nil
 	}}

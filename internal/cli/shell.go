@@ -1,11 +1,11 @@
 package cli
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/nelvko/lazyclash/internal/app"
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 	"github.com/spf13/cobra"
 )
 
@@ -13,7 +13,7 @@ const Unset = "unset http_proxy https_proxy all_proxy HTTP_PROXY HTTPS_PROXY ALL
 
 func newEnvCommand(backend func() *app.App) *cobra.Command {
 	var unset bool
-	cmd := &cobra.Command{Use: "env", Short: "Print POSIX shell exports; evaluate them in the parent shell", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "env", Short: "Print POSIX shell exports; evaluate them in the parent shell", Args: noArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		if unset {
 			_, err := fmt.Fprintln(cmd.OutOrStdout(), Unset)
 			return err
@@ -31,9 +31,9 @@ func newEnvCommand(backend func() *app.App) *cobra.Command {
 
 func newInitCommand(home, name *string) *cobra.Command {
 	var shell string
-	cmd := &cobra.Command{Use: "init", Short: "Print bash/zsh helpers; does not edit shell files", Args: cobra.NoArgs, RunE: func(cmd *cobra.Command, args []string) error {
+	cmd := &cobra.Command{Use: "init", Short: "Print bash/zsh helpers; does not edit shell files", Args: noArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		if shell != "bash" && shell != "zsh" {
-			return errors.New("supported shells: bash, zsh")
+			return diagnostic.New("diagnostic.cli.shell", "supported shells: bash, zsh")
 		}
 		prefix := "command lazyclash"
 		if *home != "" {
