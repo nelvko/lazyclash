@@ -356,7 +356,7 @@ def main():
             terminal.resize(20, 12)
             header_row(terminal, "Update all")
             terminal.resize(160, 40)
-            terminal.wait("3 saved")
+            terminal.wait("3 custom · 1 built-in")
             (output / "profiles-header.txt").write_text(terminal.screen.text())
 
             for key, action in [(b"2", "[Refresh]"), (b"4", "[Refresh]"), (b"5", "[Refresh]"), (b"6", "[Reconnect]"), (b"7", "[Download method]")]:
@@ -401,7 +401,7 @@ def main():
             terminal.wait("pty-local")
             terminal.wait(remote_name)
             terminal.wait("pty-snapshot")
-            terminal.wait("5 saved")
+            terminal.wait("5 custom · 1 built-in")
             terminal.wait("↑↓←→ Select")
             assert profile_id(remote_name) == remote_id and profile_id("pty-local") == local_id
             reopened_remote = library()["profiles"][remote_id]

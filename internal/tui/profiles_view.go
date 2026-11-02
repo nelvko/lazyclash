@@ -230,14 +230,15 @@ func (m Model) profileCard(index, width int) dashboardBlock {
 	for _, control := range controlViews {
 		title += control
 	}
-	origin, kind := m.tr("profiles.builtin_origin"), m.tr("profiles.kind")
+	metadata := m.tr("profiles.builtin_origin")
 	if name != "default" {
-		origin = info.Origin
-		if info.HasOverrides {
-			kind = m.tr("profiles.kind_overrides", kind)
+		metadata = m.profileOrigin(info)
+		if metadata != "" {
+			metadata += " · "
 		}
+		metadata += profileUpdated(info.UpdatedAt, time.Now(), m.locale)
 	}
-	status, statusColor := m.tr("profiles.ready"), muted
+	status, statusColor := m.tr("profiles.ready"), text
 	if !info.Validated && name != "default" {
 		status, statusColor = m.tr("profiles.validation_pending"), warning
 	}
@@ -252,12 +253,21 @@ func (m Model) profileCard(index, width int) dashboardBlock {
 	if info.Pending {
 		status, statusColor = m.tr("profiles.changes_pending"), warning
 	}
-	stamp := m.tr("profiles.builtin_stamp")
-	if name != "default" {
-		stamp = profileUpdated(info.UpdatedAt, time.Now(), m.locale)
+	// Reserve two auxiliary rows for every card, so long origins can wrap
+	// without shifting another card's status or the following grid row.
+	metadataLines := strings.Split(wrapText(metadata, inner), "\n")
+	if len(metadataLines) > 2 {
+		metadataLines[1] = cellCrop(strings.Join(metadataLines[1:], " "), inner)
 	}
-	lines := []string{title, themed(cellCrop(clean(origin), inner), muted, surface, false), themed(cellCrop(kind, inner), muted, surface, false),
-		themed(cellCrop(stamp, inner), muted, surface, false), themed(cellCrop(status, inner), statusColor, surface, false)}
+	lines := []string{title}
+	for row := range 2 {
+		value := ""
+		if row < len(metadataLines) {
+			value = metadataLines[row]
+		}
+		lines = append(lines, themed(value, muted, surface, false))
+	}
+	lines = append(lines, themed(cellCrop(status, inner), statusColor, surface, false))
 	block := dashboardBlock{lines: profileCardSurface(lines, width, surface, selected)}
 	// Card controls win hit testing over the containing card.
 	x := 2 + titleWidth
@@ -325,6 +335,17 @@ func profileUpdated(updated, now time.Time, locales ...i18n.Localizer) string {
 	}
 }
 
+func (m Model) profileOrigin(info app.ProfileInfo) string {
+	switch info.Kind {
+	case "local":
+		return m.tr("profiles.create_local")
+	case "imported":
+		return m.tr("profiles.imported_origin")
+	default:
+		return strings.TrimSpace(clean(info.Origin))
+	}
+}
+
 func (m Model) profileDetailsPane(name string, width int) dashboardBlock {
 	info := m.profileInfo(name)
 	index := 0
@@ -335,10 +356,23 @@ func (m Model) profileDetailsPane(name string, width int) dashboardBlock {
 		}
 	}
 	body := dashboardBlock{lines: []string{themed(cellCrop(m.tr("profiles.details_title", clean(info.Name)), width), focus, bg, false)}}
+	kind := m.tr("profiles.kind")
+	if info.HasOverrides {
+		kind = m.tr("profiles.kind_overrides", kind)
+	}
+	if name == "default" {
+		kind += " · " + m.tr("profiles.builtin_stamp")
+	}
+	body.lines = append(body.lines, themed(cellCrop(kind, width), muted, bg, false))
 	if name == "default" {
 		body.lines = append(body.lines, themed(cellCrop(m.tr("profiles.builtin_description"), width), muted, bg, false))
 	} else {
-		body.lines = append(body.lines, themed(cellCrop(clean(info.Origin), width), muted, bg, false))
+		if origin := m.profileOrigin(info); origin != "" {
+			for _, line := range strings.Split(wrapText(origin, width), "\n") {
+				body.lines = append(body.lines, themed(line, muted, bg, false))
+			}
+		}
+		body.lines = append(body.lines, themed(cellCrop(profileUpdated(info.UpdatedAt, time.Now(), m.locale), width), muted, bg, false))
 		if info.Description != "" {
 			body.lines = append(body.lines, themed(cellCrop(clean(info.Description), width), muted, bg, false))
 		}

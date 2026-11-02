@@ -16,7 +16,7 @@ func TestInitialProfileReadFailureDoesNotPresentAnEmptyLibrary(t *testing.T) {
 	m.page = "profiles"
 	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 32})
 	view := ansi.Strip(m.View().Content)
-	for _, absent := range []string{"Configurations · 0 saved", "Built-in · No subscription", "Mihomo not installed", "Paste subscription URL or local path"} {
+	for _, absent := range []string{"Configurations · 0 custom · 1 built-in", "Built-in · No subscription", "Mihomo not installed", "Paste subscription URL or local path"} {
 		if strings.Contains(view, absent) {
 			t.Fatalf("unreadable snapshot was presented as known state: %q\n%s", absent, view)
 		}
@@ -31,14 +31,14 @@ func TestInitialProfileReadFailureDoesNotPresentAnEmptyLibrary(t *testing.T) {
 	cmd := m.activate("page.refresh")
 	m.layout()
 	view = ansi.Strip(m.View().Content)
-	if !strings.Contains(view, "Loading configurations") || strings.Contains(view, "0 saved") {
+	if !strings.Contains(view, "Loading configurations") || strings.Contains(view, "0 custom") {
 		t.Fatal("retry presented an empty library before a successful read")
 	}
 	b.snapshotErr = nil
 	b.snapshot = app.Snapshot{Profiles: []string{"default"}, ProfileDetails: profileFixtures("default")}
 	m, _ = update(m, actionCmd(t, cmd)())
 	view = ansi.Strip(m.View().Content)
-	if !m.snapshotReady || strings.Contains(view, "Profiles unavailable") || !strings.Contains(view, "Configurations · 0 saved") || !strings.Contains(view, "default") {
+	if !m.snapshotReady || strings.Contains(view, "Profiles unavailable") || !strings.Contains(view, "Configurations · 0 custom · 1 built-in") || !strings.Contains(view, "default") {
 		t.Fatal("successful retry did not show the loaded library", view)
 	}
 }
