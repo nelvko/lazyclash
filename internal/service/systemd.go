@@ -492,6 +492,22 @@ func (s *Systemd) Action(ctx context.Context, action string) error {
 	return nil
 }
 
+// ResetFailedOwned lets rollback recover from a crashing new binary exhausting
+// systemd's start limit. It applies only to the exact managed unit.
+func (s *Systemd) ResetFailedOwned(ctx context.Context, bin, config, data string) error {
+	if err := s.Verify(ctx, bin, config, data); err != nil {
+		return err
+	}
+	name, err := s.unit()
+	if err != nil {
+		return err
+	}
+	if _, err := s.command(ctx, "systemctl", "--user", "reset-failed", name); err != nil {
+		return diagnostic.New("diagnostic.service.resetFailed", "reset failed state before service recovery: %w", err)
+	}
+	return nil
+}
+
 // UpgradeOwned migrates only the exact previously generated unit, after checking
 // loaded ownership. Read-only status calls never rewrite a service definition.
 func (s *Systemd) UpgradeOwned(ctx context.Context, bin, config, data string) error {

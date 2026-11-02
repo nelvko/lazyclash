@@ -103,5 +103,6 @@ func newInstallCommand(backend func() *app.App) *cobra.Command {
 		}
 		return writeJSON(cmd, result)
 	}
+	cmd.AddCommand(newCoreUpdateCommand(backend, false), newCoreUpdateCommand(backend, true))
 	return cmd
 }

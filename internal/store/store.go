@@ -155,6 +155,10 @@ func Lock(ctx context.Context, root string) (func(), error) {
 		return nil, err
 	}
 	f := os.NewFile(uintptr(fd), "lazyclash lock")
+	if info, err := f.Stat(); err != nil || !info.Mode().IsRegular() {
+		f.Close()
+		return nil, diagnostic.New("diagnostic.store.lockFile", "application lock must be a regular file")
+	}
 	ticker := time.NewTicker(25 * time.Millisecond)
 	defer ticker.Stop()
 	for {
@@ -175,6 +179,55 @@ func Lock(ctx context.Context, root string) (func(), error) {
 			f.Close()
 			return nil, ctx.Err()
 		case <-ticker.C:
+		}
+	}
+}
+
+// ReadLock synchronizes observations with managed mutations without creating a
+// directory or lock file. An absent namespace has nothing to observe yet.
+func ReadLock(ctx context.Context, root string) (func(), error) {
+	info, err := os.Lstat(root)
+	if errors.Is(err, os.ErrNotExist) {
+		return func() {}, ctx.Err()
+	}
+	if err != nil {
+		return nil, err
+	}
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return nil, diagnostic.New("diagnostic.store.realDirectory", "application data path must be a real directory")
+	}
+	fd, err := unix.Open(filepath.Join(root, ".lock"), unix.O_RDONLY|unix.O_NOFOLLOW|unix.O_CLOEXEC|unix.O_NONBLOCK, 0)
+	if errors.Is(err, os.ErrNotExist) {
+		return func() {}, ctx.Err()
+	}
+	if err != nil {
+		return nil, err
+	}
+	f := os.NewFile(uintptr(fd), "lazyclash read lock")
+	if info, err := f.Stat(); err != nil || !info.Mode().IsRegular() {
+		f.Close()
+		return nil, diagnostic.New("diagnostic.store.lockFile", "application lock must be a regular file")
+	}
+	tick := time.NewTicker(25 * time.Millisecond)
+	defer tick.Stop()
+	for {
+		if err := ctx.Err(); err != nil {
+			f.Close()
+			return nil, err
+		}
+		err := unix.Flock(fd, unix.LOCK_SH|unix.LOCK_NB)
+		if err == nil {
+			return func() { _ = unix.Flock(fd, unix.LOCK_UN); _ = f.Close() }, nil
+		}
+		if !errors.Is(err, unix.EWOULDBLOCK) && !errors.Is(err, unix.EAGAIN) {
+			f.Close()
+			return nil, err
+		}
+		select {
+		case <-ctx.Done():
+			f.Close()
+			return nil, ctx.Err()
+		case <-tick.C:
 		}
 	}
 }

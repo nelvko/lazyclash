@@ -232,60 +232,79 @@ func (a *App) InstallCore(ctx context.Context, plan InstallPlan, cfg downloadnet
 			}
 			return errors.New(fresh.BlockedReason)
 		}
-		result = InstallResult{InstalledVersion: fresh.Release.Version, RunningVersion: fresh.RunningVersion, Operation: fresh.Operation, ActualPath: fresh.ActualPath, RestartRequired: fresh.ServiceActive && fresh.RunningVersion != fresh.Release.Version}
-		if fresh.Operation == "use existing" {
-			return nil
-		}
-		report := func(stage, detail string) {
-			if progress != nil {
-				progress(mihomo.Progress{Stage: stage, Detail: detail})
-			}
-		}
-		stage, err := os.MkdirTemp(a.Home, ".core-stage-*")
-		if err != nil {
-			return err
-		}
-		defer os.RemoveAll(stage)
-		newBin := filepath.Join(stage, "mihomo")
-		if fresh.Local != "" {
-			report("download", "Copying the selected local Mihomo binary")
-			err = copyBinary(ctx, fresh.Local, newBin)
-		} else if a.DownloadRelease != nil {
-			err = a.DownloadRelease(ctx, newBin, fresh.Release, cfg, progress)
-		} else {
-			err = mihomo.DownloadRelease(ctx, newBin, fresh.Release, cfg, progress)
-		}
-		if err != nil {
-			return err
-		}
-		if fresh.Local != "" {
-			copiedSHA, err := fileDigest(newBin)
-			if err != nil || copiedSHA != fresh.localSHA {
-				return diagnostic.New("diagnostic.install.localChanged", "local Mihomo changed during staging; prepare installation again")
-			}
-		}
-		report("verify", "Verifying the staged Mihomo executable")
-		version, err := a.Version(ctx, newBin)
-		if err != nil {
-			return err
-		}
-		if version != fresh.Release.Version {
-			return diagnostic.New("diagnostic.install.stagedVersion", "staged Mihomo version differs from the reviewed version")
-		}
-		report("deploy", "Validating configuration and committing the staged installation")
-		if fresh.Operation == "install" {
-			err = a.installFreshLocked(ctx, newBin, func(detail string) { report("deploy", detail) })
-		} else {
-			err = a.replaceCoreLocked(ctx, newBin, version)
-		}
-		if err != nil {
-			return err
-		}
-		result.RestartRequired = fresh.ServiceActive
-		report("done", "Mihomo binary is installed; service state was preserved")
-		return nil
+		result, err = a.installCoreLocked(ctx, fresh, cfg, progress, false)
+		return err
 	})
 	return result, err
+}
+
+// installCoreLocked shares staging and validation between installation and upgrade.
+func (a *App) installCoreLocked(ctx context.Context, fresh InstallPlan, cfg downloadnet.Config, progress func(mihomo.Progress), upgrading bool) (InstallResult, error) {
+	restart := upgrading && fresh.ServiceActive
+	result := InstallResult{InstalledVersion: fresh.Release.Version, RunningVersion: fresh.RunningVersion, Operation: fresh.Operation, ActualPath: fresh.ActualPath, RestartRequired: fresh.ServiceActive && fresh.RunningVersion != fresh.Release.Version}
+	if fresh.Operation == "use existing" {
+		return result, nil
+	}
+	report := func(stage, detail string) {
+		if progress != nil {
+			progress(mihomo.Progress{Stage: stage, Detail: detail})
+		}
+	}
+	stage, err := os.MkdirTemp(a.Home, ".core-stage-*")
+	if err != nil {
+		return result, err
+	}
+	defer os.RemoveAll(stage)
+	newBin := filepath.Join(stage, "mihomo")
+	if fresh.Local != "" {
+		report("download", "Copying the selected local Mihomo binary")
+		err = copyBinary(ctx, fresh.Local, newBin)
+	} else if a.DownloadRelease != nil {
+		err = a.DownloadRelease(ctx, newBin, fresh.Release, cfg, progress)
+	} else {
+		err = mihomo.DownloadRelease(ctx, newBin, fresh.Release, cfg, progress)
+	}
+	if err != nil {
+		return result, err
+	}
+	if fresh.Local != "" {
+		copiedSHA, err := fileDigest(newBin)
+		if err != nil || copiedSHA != fresh.localSHA {
+			return result, diagnostic.New("diagnostic.install.localChanged", "local Mihomo changed during staging; prepare installation again")
+		}
+	}
+	report("verify", "Verifying the staged Mihomo executable")
+	version, err := a.Version(ctx, newBin)
+	if err != nil {
+		return result, err
+	}
+	if version != fresh.Release.Version {
+		return result, diagnostic.New("diagnostic.install.stagedVersion", "staged Mihomo version differs from the reviewed version")
+	}
+	if upgrading {
+		status, err := a.Service.Inspect(ctx)
+		if err != nil {
+			return result, err
+		}
+		if status.Active != fresh.ServiceActive || (status.State != "active" && status.State != "inactive" && status.State != "failed") {
+			return result, diagnostic.New("diagnostic.upgrade.serviceChanged", "service state changed while staging the upgrade; check updates again")
+		}
+	}
+	report("deploy", "Validating configuration and committing the staged installation")
+	if fresh.Operation == "install" {
+		err = a.installFreshLocked(ctx, newBin, func(detail string) { report("deploy", detail) })
+	} else {
+		err = a.replaceCoreLocked(ctx, newBin, version, restart, progress)
+	}
+	if err != nil {
+		return result, err
+	}
+	result.RestartRequired = fresh.ServiceActive && !restart
+	if restart {
+		result.RunningVersion = version
+	}
+	report("done", "Mihomo binary installation complete")
+	return result, nil
 }
 
 type coreJournal struct {
@@ -294,9 +313,12 @@ type coreJournal struct {
 	OldManifestSHA, NewManifestSHA, ConfigSHA string
 	Service, ID                               string
 	Committed                                 bool
+	Restart                                   bool `json:",omitempty"`
 }
 
-func (a *App) replaceCoreLocked(ctx context.Context, newBin, version string) (result error) {
+// A restarting upgrade keeps its rollback journal until the new process is
+// ready. Ordinary installation retains its existing no-restart contract.
+func (a *App) replaceCoreLocked(ctx context.Context, newBin, version string, restart bool, progress func(mihomo.Progress)) (result error) {
 	m, old, err := a.load()
 	if err != nil {
 		return err
@@ -333,7 +355,7 @@ func (a *App) replaceCoreLocked(ctx context.Context, newBin, version string) (re
 	if err != nil {
 		return err
 	}
-	j := coreJournal{Old: old, New: next, Backup: "core-backup-" + randomID(), OldBinarySHA: oldSHA, NewBinarySHA: m.BinarySHA, OldManifestSHA: digest(oldManifest), NewManifestSHA: digest(newManifest), ConfigSHA: digest(cfg), Service: a.Name, ID: m.ID}
+	j := coreJournal{Old: old, New: next, Backup: "core-backup-" + randomID(), OldBinarySHA: oldSHA, NewBinarySHA: m.BinarySHA, OldManifestSHA: digest(oldManifest), NewManifestSHA: digest(newManifest), ConfigSHA: digest(cfg), Service: a.Name, ID: m.ID, Restart: restart}
 	backup := filepath.Join(base, j.Backup)
 	if err := os.Link(bin, backup); err != nil {
 		return err
@@ -349,6 +371,9 @@ func (a *App) replaceCoreLocked(ctx context.Context, newBin, version string) (re
 	committed := false
 	defer func() {
 		if !committed {
+			if progress != nil {
+				progress(mihomo.Progress{Stage: "rollback", Detail: "Restoring the previous Mihomo binary and service state"})
+			}
 			c, cancel := cleanupContext()
 			defer cancel()
 			result = errors.Join(result, a.recoverCore(c))
@@ -365,6 +390,21 @@ func (a *App) replaceCoreLocked(ctx context.Context, newBin, version string) (re
 	}
 	if err := store.Switch(filepath.Join(base, "current"), next, old); err != nil {
 		return err
+	}
+	if restart {
+		if progress != nil {
+			progress(mihomo.Progress{Stage: "restart", Detail: "Restarting Mihomo and checking the running version, API and proxy listener"})
+		}
+		if err := a.restartReady(ctx, m); err != nil {
+			return diagnostic.New("diagnostic.upgrade.restart", "new Mihomo failed to restart; attempting rollback: %w", err)
+		}
+		running, err := a.client(m).Version(ctx)
+		if err != nil {
+			return err
+		}
+		if mihomo.CompareVersions(running, version, mihomo.ChannelStable) != mihomo.UpdateCurrent {
+			return diagnostic.New("diagnostic.upgrade.runningVersion", "running Mihomo does not match the upgraded version; attempting rollback")
+		}
 	}
 	if err := ctx.Err(); err != nil {
 		return err
@@ -482,6 +522,39 @@ func (a *App) recoverCore(ctx context.Context) error {
 	}
 	if err := store.SyncDir(base); err != nil {
 		return err
+	}
+	if !j.Committed && j.Restart {
+		stopped, err := a.stopIntent()
+		if err != nil {
+			return err
+		}
+		old, _, err := a.load()
+		if err != nil {
+			return err
+		}
+		intent, _, err := a.loadRuntimeRecord(old)
+		if err != nil && stopped == nil {
+			return err
+		}
+		if stopped == nil && (!intent.Desired.Known || intent.Desired.Running) {
+			if svc, ok := a.Service.(interface {
+				ResetFailedOwned(context.Context, string, string, string) error
+			}); ok {
+				if err := svc.ResetFailedOwned(ctx, bin, config, data); err != nil {
+					return diagnostic.New("diagnostic.upgrade.rollbackRestart", "previous Mihomo files restored, but service recovery failed; rollback journal retained: %w", err)
+				}
+			}
+			if err := a.restartReady(ctx, old); err != nil {
+				return diagnostic.New("diagnostic.upgrade.rollbackRestart", "previous Mihomo files restored, but service recovery failed; rollback journal retained: %w", err)
+			}
+			running, err := a.client(old).Version(ctx)
+			if err != nil {
+				return err
+			}
+			if mihomo.CompareVersions(running, old.Version, mihomo.ChannelStable) != mihomo.UpdateCurrent {
+				return diagnostic.New("diagnostic.upgrade.rollbackVersion", "previous Mihomo files restored, but the running version is incorrect; rollback journal retained")
+			}
+		}
 	}
 	if backupExists {
 		if err := os.Remove(backup); err != nil {

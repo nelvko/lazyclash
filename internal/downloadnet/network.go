@@ -19,7 +19,7 @@ import (
 )
 
 // Prefix and Mirror rewrite release files only. Version metadata and SHA256
-// digests always come from the official GitHub API through the chosen proxy.
+// digests come from official GitHub endpoints through the chosen proxy.
 type Config struct {
 	Source    string `json:"source"`
 	Prefix    string `json:"prefix,omitempty"`

@@ -261,6 +261,7 @@ python3 "$work/pty-smoke.py" --binary "$app" --home "$home" --service-name "$ser
 # Update the installed path while the old inode remains an actual running
 # Mihomo process. Installation must leave its PID, API version and config alone.
 old_pid=$(systemctl --user show "$service_name.service" --property=MainPID --value)
+cp "$home/installation/mihomo" "$work/mihomo-old"
 config_hash=$(python3 - "$home/installation/current/config.yaml" <<'PY'
 import hashlib, sys
 print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest())
@@ -286,6 +287,27 @@ assert json.load(open(sys.argv[1]))["Operation"] == "use existing"
 r=json.load(open(sys.argv[2])); assert r["Operation"] == "reinstall" and r["RestartRequired"], r
 print("Same-version reuse and explicit reinstall preserved the running process")
 PY
+
+# Exercise the separate read-only check and restarting upgrade against official
+# metadata and real systemd. Restore the fixture's old disk binary explicitly;
+# the still-running process already uses that version.
+lp install --bin "$work/mihomo-old" > "$work/restore-old-result.json"
+lp install check --proxy-mode "$proxy_mode" > "$work/core-check.json"
+[[ $(systemctl --user show "$service_name.service" --property=MainPID --value) == "$old_pid" ]]
+lp install upgrade --yes --proxy-mode "$proxy_mode" > "$work/core-upgrade.json"
+lp status > "$work/core-upgraded-status.json"
+python3 - "$work/core-check.json" "$work/core-upgrade.json" "$work/core-upgraded-status.json" "$old_pid" "$home/installation/current/config.yaml" "$config_hash" <<'PY'
+import hashlib, json, sys
+check, result, status = (json.load(open(path)) for path in sys.argv[1:4])
+assert check["installedVersion"] == "v1.19.32" and check["status"] == "available", check
+assert result["previousVersion"] == "v1.19.32" and result["installedVersion"] == check["latestVersion"] and result["restarted"], result
+assert status["Version"] == status["RunningVersion"] == result["installedVersion"] and status["Service"]["Active"], status
+assert status["Service"]["PID"] != int(sys.argv[4]), "upgrade did not replace the real process"
+assert hashlib.sha256(open(sys.argv[5], "rb").read()).hexdigest() == sys.argv[6], "upgrade changed configuration"
+print("Read-only check preserved PID; confirmed upgrade restarted into the reviewed official version")
+PY
+[[ ! -e "$home/core-pending.json" ]]
+rm "$work/mihomo-old"
 
 # Local HTTP fixture exercises subscriptions without private data or live URLs.
 cat > "$work/fixture.py" <<'PY'

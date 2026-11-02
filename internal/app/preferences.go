@@ -56,6 +56,16 @@ func (a *App) LoadPreferences(ctx context.Context) (Preferences, error) {
 	return p, err
 }
 
+// ReadPreferences is for read-only commands: it neither creates storage nor
+// runs recovery. Writers publish preferences atomically.
+func (a *App) ReadPreferences(ctx context.Context) (Preferences, error) {
+	if err := ctx.Err(); err != nil {
+		return Preferences{}, err
+	}
+	p, _, err := a.loadPreferencesLocked()
+	return p, err
+}
+
 func rememberableNetwork(cfg downloadnet.Config) error {
 	if err := cfg.Validate(); err != nil {
 		return err

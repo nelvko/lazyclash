@@ -56,6 +56,12 @@ func TestCLIHelpRestoresSavedLanguageAndSupportsExplicitOverride(t *testing.T) {
 	if err != nil || !strings.Contains(out, "用法：") || !strings.Contains(out, "发布文件来源") {
 		t.Fatalf("out=%s err=%v", out, err)
 	}
+	for _, action := range []string{"check", "upgrade"} {
+		out, _, err = localizedCLI(t, "--home", home, "install", action, "--help")
+		if err != nil || !strings.Contains(out, "发布文件来源") || !strings.Contains(out, "下载连接方式") {
+			t.Fatalf("%s help lost shared network translations: out=%s err=%v", action, out, err)
+		}
+	}
 	out, _, err = localizedCLI(t, "--home", home, "--lang", "en", "install", "--help")
 	if err != nil || !strings.Contains(out, "Usage:") || strings.Contains(out, "用法：") {
 		t.Fatalf("out=%s err=%v", out, err)

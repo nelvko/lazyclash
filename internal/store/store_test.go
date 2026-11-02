@@ -54,3 +54,45 @@ func TestLockCancellationAndReuse(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestReadLockDoesNotCreateStorageAndCoordinatesWithWriters(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "absent")
+	readUnlock, err := ReadLock(t.Context(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	readUnlock()
+	if _, err := os.Lstat(root); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("read lock created storage: %v", err)
+	}
+	writeUnlock, err := Lock(t.Context(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Millisecond)
+	defer cancel()
+	if _, err := ReadLock(ctx, root); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("read lock bypassed writer: %v", err)
+	}
+	writeUnlock()
+	readUnlock, err = ReadLock(t.Context(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := ReadLock(t.Context(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second()
+	ctx, cancelWriter := context.WithTimeout(t.Context(), 60*time.Millisecond)
+	defer cancelWriter()
+	if _, err := Lock(ctx, root); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("writer bypassed read lock: %v", err)
+	}
+	readUnlock()
+	writeUnlock, err = Lock(t.Context(), root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeUnlock()
+}

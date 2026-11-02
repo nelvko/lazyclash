@@ -7,7 +7,6 @@ import (
 	"io"
 	"net"
 	"os/exec"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -218,8 +217,6 @@ func (w *limitedOutput) Write(p []byte) (int, error) {
 	return n, nil
 }
 
-var versionPattern = regexp.MustCompile(`(?m)\bMihomo\b[^\r\n]*?\b(v[0-9][^\s]*)`)
-
 func BinaryVersion(ctx context.Context, bin string) (string, error) {
 	if err := ctx.Err(); err != nil {
 		return "", err
@@ -239,11 +236,20 @@ func BinaryVersion(ctx context.Context, bin string) (string, error) {
 	if err != nil {
 		return "", diagnostic.New("diagnostic.executable.version", "cannot execute Mihomo binary with -v; check the OS, architecture and executable permission")
 	}
-	match := versionPattern.FindStringSubmatch(out.String())
-	if len(match) != 2 {
-		return "", diagnostic.New("diagnostic.executable.identity", "binary did not identify itself as Mihomo with a version")
+	for _, line := range strings.Split(out.String(), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 2 || fields[0] != "Mihomo" {
+			continue
+		}
+		index := 1
+		if fields[index] == "Meta" {
+			index++
+		}
+		if index < len(fields) && validVersionToken(fields[index]) {
+			return fields[index], nil
+		}
 	}
-	return match[1], nil
+	return "", diagnostic.New("diagnostic.executable.identity", "binary did not identify itself as Mihomo with a version")
 }
 
 // Validate intentionally keeps engine output private: parser errors may include

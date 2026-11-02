@@ -143,6 +143,11 @@ func (a *App) writeGeneration(base string, m manifest, config []byte) (string, e
 	if err := store.Replace(filepath.Join(dir, "manifest.json"), raw, nil, 0600); err != nil {
 		return "", err
 	}
+	// Persist the new directory entry before a journal/current pointer can
+	// depend on it. Syncing the generation itself does not sync its parent.
+	if err := store.SyncDir(filepath.Join(base, "generations")); err != nil {
+		return "", err
+	}
 	complete = true
 	return target, nil
 }
