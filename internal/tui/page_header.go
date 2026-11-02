@@ -12,8 +12,8 @@ type headerAction struct {
 }
 
 type pageHeader struct {
-	summary, color string
-	actions        []headerAction
+	summary string
+	actions []headerAction
 }
 
 func (h pageHeader) owns(id string) bool {
@@ -27,7 +27,7 @@ func (h pageHeader) owns(id string) bool {
 
 func (m Model) pageHeader() pageHeader {
 	tr := m.tr
-	h := pageHeader{color: muted}
+	h := pageHeader{}
 	switch m.page {
 	case "profiles":
 		canUpdate := false
@@ -54,7 +54,7 @@ func (m Model) pageHeader() pageHeader {
 		h.summary = tr("header.connecting")
 		follow, compact := tr("header.resume"), "▶"
 		if m.logs.active {
-			h.summary, h.color = tr("header.live"), info
+			h.summary = tr("header.live")
 			follow, compact = tr("header.pause"), "Ⅱ"
 		} else if m.logs.paused {
 			h.summary = tr("header.paused")
@@ -73,14 +73,15 @@ func (m Model) pageHeader() pageHeader {
 func renderPageHeader(o dashboardOptions, g dashboardLayout, titleX, titleWidth int) (string, int, int, []hitRegion) {
 	h := o.Header
 	if o.Page == "overview" {
-		status, color := coreSummary(o.Snapshot, o.Locale)
-		h = pageHeader{summary: "Mihomo · " + status, color: color}
+		status, _ := coreSummary(o.Snapshot, o.Locale)
+		h = pageHeader{summary: "Mihomo · " + status}
 	}
 	y, left := g.headerY, titleX+titleWidth+2
 	if o.Width < 70 && o.Page != "overview" {
-		y, left = g.headerY+1, g.x
+		y, left = g.headerY+1, g.headerX
 	}
-	available := max(0, g.x+g.width-left)
+	right := g.headerX + g.headerWidth
+	available := max(0, right-left)
 	gap, squeeze := 2, false
 	buttons := func(compact bool) ([]string, int) {
 		var values []string
@@ -115,7 +116,7 @@ func renderPageHeader(o dashboardOptions, g dashboardLayout, titleX, titleWidth 
 		values, width = buttons(true)
 	}
 	var hits []hitRegion
-	x := max(left, g.x+g.width-width)
+	x := max(left, right-width)
 	for i, action := range h.actions {
 		w := ansi.StringWidth(values[i])
 		if action.enabled && !o.Busy {
@@ -130,12 +131,12 @@ func renderPageHeader(o dashboardOptions, g dashboardLayout, titleX, titleWidth 
 			summaryWidth -= 2
 		}
 		if summaryWidth >= ansi.StringWidth(h.summary) {
-			prefix := themed(h.summary, h.color, bg, o.Dim)
+			prefix := themed(h.summary, muted, bg, o.Dim)
 			if width > 0 {
 				prefix += themed("  ", text, bg, o.Dim)
 			}
 			value = prefix + value
 		}
 	}
-	return value, max(left, g.x+g.width-ansi.StringWidth(value)), y, hits
+	return value, max(left, right-ansi.StringWidth(value)), y, hits
 }

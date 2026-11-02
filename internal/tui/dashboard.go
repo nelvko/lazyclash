@@ -54,6 +54,7 @@ type dashboardOptions struct {
 
 type dashboardLayout struct {
 	x, width, y, height   int
+	headerX, headerWidth  int
 	headerY, headerHeight int
 	sidebar               bool
 }
@@ -66,6 +67,7 @@ func dashboardGeometry(o dashboardOptions) dashboardLayout {
 		left = sidebarWidth + 2
 		available = max(1, o.Width-left-3)
 	}
+	headerX, headerWidth := left, available
 	width := min(112, available)
 	if o.Page == "" || o.Page == "overview" {
 		width = available
@@ -84,7 +86,7 @@ func dashboardGeometry(o dashboardOptions) dashboardLayout {
 	if o.Width < 70 && o.Height < 24 && o.Page != "" && o.Page != "overview" {
 		bodyY++
 	}
-	return dashboardLayout{x: left, width: width, y: bodyY, height: max(0, dashboardContentBottom(o)-bodyY), headerY: headerY, headerHeight: bodyY - 2, sidebar: sidebar}
+	return dashboardLayout{x: left, width: width, y: bodyY, height: max(0, dashboardContentBottom(o)-bodyY), headerX: headerX, headerWidth: headerWidth, headerY: headerY, headerHeight: bodyY - 2, sidebar: sidebar}
 }
 func dashboardBodyWidth(o dashboardOptions) int { return dashboardGeometry(o).width }
 
@@ -115,33 +117,33 @@ func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
 			targets = append(targets, r)
 		}
 	}
+	titleText := lipgloss.NewStyle().Bold(true).Render(pageTitle(o.Page, o.Locale))
 	if o.Height < 7 || o.Width < 20 {
-		put(0, 0, themed(cellCrop(logoText(bg, o.Dim)+" / "+pageTitle(o.Page, o.Locale), o.Width), text, bg, o.Dim))
+		put(0, 0, themed(cellCrop(logoText(bg, o.Dim)+" / "+titleText, o.Width), text, bg, o.Dim))
 		if o.Height > 1 {
 			put(0, o.Height-1, themed(cellCrop(tr("dashboard.menuCompact"), o.Width), muted, bg, o.Dim))
 			add(hitRegion{ID: "menu", X: 0, Y: o.Height - 1, W: min(ansi.StringWidth(tr("dashboard.menu")), o.Width), H: 1})
 		}
 		return strings.Join(rows, "\n"), targets, 0
 	}
-	titleX := g.x
-	titleText := pageTitle(o.Page, o.Locale)
+	titleX := g.headerX
 	if !g.sidebar {
 		label := dashboardButton("menu", tr("dashboard.menu"), o, false)
 		put(1, g.headerY, label)
 		add(hitRegion{ID: "menu", X: 1, Y: g.headerY, W: ansi.StringWidth(label), H: 1})
-		titleX = max(12, g.x)
+		titleX = max(12, g.headerX)
 		if o.Width >= 50 {
 			titleText = logoText(bg, o.Dim) + " / " + titleText
 		}
 	}
-	put(titleX, g.headerY, themed(cellCrop(titleText, max(1, g.x+g.width-titleX)), text, bg, o.Dim))
+	put(titleX, g.headerY, themed(cellCrop(titleText, max(1, g.headerX+g.headerWidth-titleX)), text, bg, o.Dim))
 	header, headerX, headerY, headerTargets := renderPageHeader(o, g, titleX, ansi.StringWidth(titleText))
 	put(headerX, headerY, header)
 	for _, hit := range headerTargets {
 		add(hit)
 	}
 	// A top-edge stroke aligns with the sidebar's background boundary.
-	put(g.x, g.headerHeight, themed(strings.Repeat("▔", g.width), divider, bg, o.Dim))
+	put(g.headerX, g.headerHeight, themed(strings.Repeat("▔", g.headerWidth), divider, bg, o.Dim))
 
 	var body string
 	var bodyTargets []hitRegion

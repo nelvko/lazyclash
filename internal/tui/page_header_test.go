@@ -38,7 +38,7 @@ func TestPageHeadersUsePageActionsAcrossSizesAndFocus(t *testing.T) {
 		"connections": {"conn.retry"}, "rules": {"rules.retry"},
 		"logs": {"logs.follow", "logs.retry"}, "settings": {"network"},
 	} {
-		for _, size := range [][2]int{{20, 7}, {30, 12}, {60, 20}, {70, 20}, {80, 24}, {120, 32}} {
+		for _, size := range [][2]int{{20, 7}, {30, 12}, {60, 20}, {70, 20}, {80, 24}, {120, 32}, {160, 45}, {216, 55}} {
 			for _, focused := range actions {
 				t.Run(fmt.Sprintf("%s/%dx%d/%s", page, size[0], size[1], focused), func(t *testing.T) {
 					m := headerModel(page, size[0], size[1])
@@ -89,6 +89,37 @@ func TestPageHeadersUsePageActionsAcrossSizesAndFocus(t *testing.T) {
 	}
 	if !strings.Contains(ansi.Strip(strings.Split(m.screen, "\n")[1]), "Mihomo · Running") {
 		t.Fatal("Overview lost its core summary")
+	}
+}
+
+func TestPageHeaderDividerBoundsAndBodyGapStayConsistentAcrossPages(t *testing.T) {
+	for _, size := range [][2]int{{30, 12}, {60, 20}, {80, 24}, {120, 18}, {120, 32}, {160, 45}, {216, 55}} {
+		for _, page := range navPages() {
+			t.Run(fmt.Sprintf("%s/%dx%d", page, size[0], size[1]), func(t *testing.T) {
+				m := headerModel(page, size[0], size[1])
+				g := dashboardGeometry(m.dashboardOptions())
+				lines := strings.Split(m.screen, "\n")
+				left, right := 2, size[0]-2
+				if size[0] >= 100 && size[1] >= 20 {
+					left, right = sidebarWidth+2, size[0]-3
+				}
+				line := ansi.Strip(lines[g.headerHeight])
+				if first := ansi.StringWidth(strings.SplitN(line, "▔", 2)[0]); first != left {
+					t.Fatalf("divider starts at %d, want %d", first, left)
+				}
+				if actual := strings.Count(line, "▔"); actual != right-left {
+					t.Fatalf("divider spans %d cells, want %d", actual, right-left)
+				}
+				if g.y != g.headerHeight+2 || strings.TrimSpace(ansi.Strip(ansi.Cut(lines[g.y-1], left, right))) != "" {
+					t.Fatal("header does not leave exactly one blank row before the body")
+				}
+				for _, action := range m.pageHeader().actions {
+					if hit := findTarget(t, m, action.id); hit.X+hit.W > right {
+						t.Fatalf("header action exceeds the shared right edge: %+v", hit)
+					}
+				}
+			})
+		}
 	}
 }
 
