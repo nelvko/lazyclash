@@ -155,6 +155,33 @@ func TestRepositoryRejectsInvalidProfileMetadataBeforePublishing(t *testing.T) {
 	}
 }
 
+func TestProfileDescriptionIsNormalizedAndPersistedAsMetadata(t *testing.T) {
+	r, lib, expected, _ := publishedRepository(t)
+	record := lib.Profiles["primary"]
+	record.Description = CleanDescription("  Daily\n  route\tprofile  ")
+	lib.Profiles["primary"] = record
+	if err := r.Save(lib, expected); err != nil {
+		t.Fatal(err)
+	}
+	reopened, _, err := r.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := reopened.Profiles["primary"].Description; got != "Daily route profile" {
+		t.Fatalf("description = %q", got)
+	}
+}
+
+func TestRepositoryRejectsUncleanProfileDescription(t *testing.T) {
+	r, lib, expected, _ := publishedRepository(t)
+	record := lib.Profiles["primary"]
+	record.Description = "line\nbreak"
+	lib.Profiles["primary"] = record
+	if err := r.Save(lib, expected); err == nil {
+		t.Fatal("unclean description was published")
+	}
+}
+
 func TestRepositoryRejectsUnknownFieldsWithoutRewritingTheIndex(t *testing.T) {
 	for _, tc := range []struct {
 		name string

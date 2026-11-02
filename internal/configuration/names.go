@@ -6,6 +6,7 @@ import (
 	"mime"
 	"net/http"
 	"net/url"
+	"path/filepath"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -16,6 +17,7 @@ import (
 )
 
 const MaxNameRunes = 128
+const MaxDescriptionRunes = 512
 const FallbackName = "Remote Subscription"
 
 const (
@@ -48,6 +50,23 @@ func CleanName(value string) string {
 	return truncateName(value, MaxNameRunes)
 }
 
+// CleanDescription keeps profile metadata safe to render in a single-line
+// card/detail view. Descriptions are never fed into the Mihomo configuration.
+func CleanDescription(value string) string {
+	value = strings.ToValidUTF8(ansi.Strip(value), "")
+	value = strings.Map(func(r rune) rune {
+		if unicode.IsSpace(r) {
+			return ' '
+		}
+		if unicode.IsControl(r) || unicode.Is(unicode.Cf, r) {
+			return -1
+		}
+		return r
+	}, value)
+	value = norm.NFC.String(strings.Join(strings.Fields(value), " "))
+	return truncateName(value, MaxDescriptionRunes)
+}
+
 func truncateName(value string, limit int) string {
 	if utf8.RuneCountInString(value) > limit {
 		value = string([]rune(value)[:limit])
@@ -64,7 +83,15 @@ func ResolveName(explicit string, headers http.Header, address string) NameCandi
 	if name := ProviderName(headers); name != "" {
 		return NameCandidate{Name: name, Source: NameProvider}
 	}
-	if parsed, err := url.Parse(address); err == nil {
+	if filepath.IsAbs(address) {
+		// A local basename is literal: ?, # and % are valid filename characters,
+		// not URL delimiters or escapes. Keep the existing source-derived name
+		// ownership so later refreshes still respect custom names.
+		name := stripYAMLSuffix(CleanName(filepath.Base(address)))
+		if name != "" && name != "." && name != ".." && name != string(filepath.Separator) {
+			return NameCandidate{Name: name, Source: NameURL}
+		}
+	} else if parsed, err := url.Parse(address); err == nil {
 		parts := strings.Split(parsed.EscapedPath(), "/")
 		for i := len(parts) - 1; i >= 0; i-- {
 			part, err := url.PathUnescape(parts[i])

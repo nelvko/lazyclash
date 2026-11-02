@@ -90,6 +90,7 @@ func (a *App) buildProfile(ctx context.Context, lib configuration.Library, name 
 type ProfileInfo struct {
 	ID           string    `json:"id"`
 	Name         string    `json:"name"`
+	Description  string    `json:"description,omitempty"`
 	NameSource   string    `json:"name_source"`
 	NameBase     string    `json:"name_base"`
 	Core         string    `json:"core"`
@@ -110,7 +111,7 @@ func (a *App) profileInfo(lib configuration.Library, name string, m manifest, in
 	info := ProfileInfo{ID: name, Name: name, NameSource: configuration.NameCustom, NameBase: name, Core: "mihomo", Kind: "builtin", Origin: "Built-in", Validated: installed && name == "default"}
 	if record.Recipe != nil {
 		entry := lib.Profiles[name]
-		info.Name, info.NameSource, info.NameBase = entry.Name, entry.NameSource, entry.NameBase
+		info.Name, info.Description, info.NameSource, info.NameBase = entry.Name, entry.Description, entry.NameSource, entry.NameBase
 		info.Core, info.Refreshable, info.UpdatedAt = entry.Spec.Core, entry.Address != "", entry.UpdatedAt
 		info.Kind, info.Origin = "imported", "Imported file"
 		if entry.Address != "" {

@@ -80,3 +80,33 @@ func (a *App) RenameProfile(ctx context.Context, reference, name string) error {
 		return a.library().Save(lib, old)
 	})
 }
+
+// UpdateProfileDescription changes only user-facing metadata. It does not
+// rebuild or reload the profile because descriptions are outside the runtime
+// recipe.
+func (a *App) UpdateProfileDescription(ctx context.Context, reference, description string) error {
+	description = configuration.CleanDescription(description)
+	return a.locked(ctx, func() error {
+		lib, old, err := a.library().Load()
+		if err != nil {
+			return err
+		}
+		id, err := resolveProfileID(lib, reference)
+		if err != nil {
+			return err
+		}
+		if id == "default" {
+			return diagnostic.New("diagnostic.profile.builtinDescription", "the built-in profile cannot be edited")
+		}
+		entry, ok := lib.Profiles[id]
+		if !ok {
+			return diagnostic.New("diagnostic.profile.missing", "profile does not exist")
+		}
+		entry.Description = description
+		lib.Profiles[id] = entry
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		return a.library().Save(lib, old)
+	})
+}

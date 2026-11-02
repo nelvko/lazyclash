@@ -64,6 +64,35 @@ func TestProviderNameWithoutValidHeaderDoesNotResetToURL(t *testing.T) {
 	}
 }
 
+func TestResolveNameUsesLiteralLocalBasename(t *testing.T) {
+	for _, tc := range []struct{ filename, want string }{
+		{filename: "配置#1?.yaml", want: "配置#1?"},
+		{filename: "100%.yaml", want: "100%"},
+		{filename: "literal%20.yaml", want: "literal%20"},
+		{filename: "中文 文件.YML", want: "中文 文件"},
+		{filename: "Cafe\u0301#%?.yaml", want: "Café#%?"},
+	} {
+		t.Run(tc.filename, func(t *testing.T) {
+			address := filepath.Join(t.TempDir(), "parent#with?delimiters%", tc.filename)
+			got := ResolveName("", nil, address)
+			if got.Name != tc.want || got.Source != NameURL {
+				t.Fatalf("local name = %#v, want %q (%s)", got, tc.want, NameURL)
+			}
+		})
+	}
+	address := filepath.Join(t.TempDir(), "配置#1?.yaml")
+	headers := http.Header{"Profile-Title": {"Provider name"}}
+	for _, tc := range []struct{ explicit, want, source string }{
+		{explicit: "", want: "Provider name", source: NameProvider},
+		{explicit: "Custom name", want: "Custom name", source: NameCustom},
+	} {
+		got := ResolveName(tc.explicit, headers, address)
+		if got.Name != tc.want || got.Source != tc.source {
+			t.Fatalf("local naming precedence = %#v, want %q (%s)", got, tc.want, tc.source)
+		}
+	}
+}
+
 func TestNamesCleanControlsNormalizeUnicodeAndStayBounded(t *testing.T) {
 	if got := CleanName("\x1b[31m  Cafe\u0301 \t  机场\u202e \x1b[0m"); got != "Café 机场" {
 		t.Fatalf("unsafe or noncanonical name: %q", got)

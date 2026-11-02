@@ -22,6 +22,50 @@ func generatedDocument(t *testing.T, a *App) map[string]any {
 	return cfg
 }
 
+func TestCreateProfileStoresDescriptionWithoutChangingRuntimeRecipe(t *testing.T) {
+	a, _ := installedApp(t)
+	path := filepath.Join(t.TempDir(), "remote-like.yaml")
+	write(t, path, []byte("rules: ['MATCH,DIRECT']\n"))
+	if err := a.CreateProfile(t.Context(), ProfileDraft{Name: "Work", Description: "  office\nroute  ", Address: path, RememberSource: true}); err != nil {
+		t.Fatal(err)
+	}
+	info, err := a.ProfileDetails(t.Context(), "Work")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Description != "office route" || !info.Refreshable {
+		t.Fatalf("unexpected profile metadata: %+v", info)
+	}
+	lib, _, err := a.library().Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := lib.Profiles[info.ID].Spec.Overrides; got != "" {
+		t.Fatalf("description leaked into runtime recipe: %q", got)
+	}
+}
+
+func TestUpdateProfileDescriptionOnlyChangesMetadata(t *testing.T) {
+	a, _ := installedApp(t)
+	path := filepath.Join(t.TempDir(), "profile.yaml")
+	write(t, path, []byte("rules: ['MATCH,DIRECT']\n"))
+	if err := a.AddSubscription(t.Context(), "Work", path); err != nil {
+		t.Fatal(err)
+	}
+	lib, _, err := a.library().Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	revision := lib.Profiles["Work"].Spec.Revision
+	if err := a.UpdateProfileDescription(t.Context(), "Work", "  office\nroute  "); err != nil {
+		t.Fatal(err)
+	}
+	updated, _, err := a.library().Load()
+	if err != nil || updated.Profiles["Work"].Spec.Revision != revision || updated.Profiles["Work"].Description != "office route" {
+		t.Fatalf("description update changed recipe or was not saved: %+v %v", updated.Profiles["Work"], err)
+	}
+}
+
 func TestFullProfilePinsAppliedContentAndCustomRules(t *testing.T) {
 	a, svc := installedApp(t)
 	path := filepath.Join(t.TempDir(), "profile.yaml")

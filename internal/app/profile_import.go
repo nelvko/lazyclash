@@ -12,31 +12,35 @@ import (
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
 
-// Add imports a private copy. AddSubscription also remembers the address for
-// updates. Both create a complete profile without selecting or starting it.
-func (a *App) Add(ctx context.Context, name, address string) error {
-	return a.importProfile(ctx, name, address, false)
+// ProfileDraft contains the user-facing metadata for a new complete profile.
+// Address may be an HTTP(S) URL or an absolute local file path. The source is
+// kept when RememberSource is true so the profile can be refreshed later.
+type ProfileDraft struct {
+	Name           string
+	Description    string
+	Address        string
+	RememberSource bool
 }
 
-func (a *App) AddSubscription(ctx context.Context, name, address string) error {
-	return a.importProfile(ctx, name, address, true)
-}
-
-func (a *App) importProfile(ctx context.Context, name, address string, remember bool) error {
-	if name != "" && configuration.CleanName(name) == "" {
+// CreateProfile downloads or reads a source, validates it, and publishes one
+// complete profile atomically. Metadata is stored separately from the core
+// recipe and never becomes part of the generated Mihomo YAML.
+func (a *App) CreateProfile(ctx context.Context, draft ProfileDraft) error {
+	if draft.Name != "" && configuration.CleanName(draft.Name) == "" {
 		return diagnostic.New("diagnostic.profile.emptyName", "profile name must not be empty")
 	}
-	address = strings.TrimSpace(address)
+	draft.Description = configuration.CleanDescription(draft.Description)
+	draft.Address = strings.TrimSpace(draft.Address)
 	return a.locked(ctx, func() error {
 		lib, old, err := a.library().Load()
 		if err != nil {
 			return err
 		}
-		id, err := configurationID(lib, name)
+		id, err := configurationID(lib, draft.Name)
 		if err != nil {
 			return err
 		}
-		download, err := a.downloadSource(ctx, address)
+		download, err := a.downloadSource(ctx, draft.Address)
 		if err != nil {
 			return err
 		}
@@ -47,12 +51,16 @@ func (a *App) importProfile(ctx context.Context, name, address string, remember 
 		if err != nil {
 			return err
 		}
-		entry := configuration.ProfileRecord{Spec: configuration.Profile{Core: "mihomo", Revision: revision}, UpdatedAt: time.Now().UTC()}
-		if remember {
-			entry.Address = address
+		entry := configuration.ProfileRecord{
+			Spec:        configuration.Profile{Core: "mihomo", Revision: revision},
+			Description: draft.Description,
+			UpdatedAt:   time.Now().UTC(),
+		}
+		if draft.RememberSource {
+			entry.Address = draft.Address
 		}
 		lib.Profiles[id] = entry
-		nameProfile(&lib, id, configuration.ResolveName(name, download.Headers, address))
+		nameProfile(&lib, id, configuration.ResolveName(draft.Name, download.Headers, draft.Address))
 		if err := a.validateProfile(ctx, &lib, id); err != nil {
 			return err
 		}
@@ -61,6 +69,16 @@ func (a *App) importProfile(ctx context.Context, name, address string, remember 
 		}
 		return a.library().Save(lib, old)
 	})
+}
+
+// Add imports a private copy. AddSubscription also remembers the address for
+// updates. Both create a complete profile without selecting or starting it.
+func (a *App) Add(ctx context.Context, name, address string) error {
+	return a.CreateProfile(ctx, ProfileDraft{Name: name, Address: address})
+}
+
+func (a *App) AddSubscription(ctx context.Context, name, address string) error {
+	return a.CreateProfile(ctx, ProfileDraft{Name: name, Address: address, RememberSource: true})
 }
 
 // Refresh saves a validated download as a draft of this profile. It never

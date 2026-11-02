@@ -19,7 +19,7 @@ import (
 )
 
 const MaxDocumentSize = 8 << 20
-const LibraryVersion = 3
+const LibraryVersion = 4
 
 var namePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_-]{0,47}$`)
 var revisionPattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
@@ -35,16 +35,17 @@ type Profile struct {
 }
 
 type ProfileRecord struct {
-	Spec       Profile   `json:"spec"`
-	Validated  bool      `json:"validated"` // engine validation, not network readiness
-	Name       string    `json:"name"`
-	NameSource string    `json:"name_source"`
-	NameBase   string    `json:"name_base"`
-	Address    string    `json:"address,omitempty"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	Spec        Profile   `json:"spec"`
+	Validated   bool      `json:"validated"` // engine validation, not network readiness
+	Name        string    `json:"name"`
+	NameSource  string    `json:"name_source"`
+	NameBase    string    `json:"name_base"`
+	Description string    `json:"description,omitempty"`
+	Address     string    `json:"address,omitempty"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
-// One atomic index commits each profile's name, address and revision together.
+// One atomic index commits each profile's metadata, source and revision together.
 // Blobs are written first; interrupted writes may leave an unreferenced private
 // blob, but cannot publish only part of a profile update.
 type Library struct {
@@ -98,7 +99,7 @@ func (l Library) validate() error {
 		if !ValidName(name) || p.Core == "" || !revisionPattern.MatchString(p.Revision) || len(p.Overrides) > MaxDocumentSize {
 			return invalid
 		}
-		if record.Name == "" || record.NameBase == "" || record.Name != CleanName(record.Name) || record.NameBase != CleanName(record.NameBase) || used[NameKey(record.Name)] {
+		if record.Name == "" || record.NameBase == "" || record.Name != CleanName(record.Name) || record.NameBase != CleanName(record.NameBase) || record.Description != CleanDescription(record.Description) || used[NameKey(record.Name)] {
 			return invalid
 		}
 		switch record.NameSource {
