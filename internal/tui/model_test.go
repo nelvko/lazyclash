@@ -21,6 +21,7 @@ type fakeBackend struct {
 	snapshotErr          error
 	prefs                app.Preferences
 	prefsErr             error
+	saveLanguage         func(context.Context, string) error
 	resolve              func(context.Context, string, downloadnet.Config) (mihomo.Release, error)
 	testFile             func(context.Context, mihomo.Release, downloadnet.Config) error
 	prepare              func(context.Context, mihomo.Release, string, bool) (app.InstallPlan, error)
@@ -28,7 +29,9 @@ type fakeBackend struct {
 	save                 func(context.Context, downloadnet.Config) error
 	add                  func(context.Context, string, string) error
 	addSubscription      func(context.Context, string, string) error
+	createProfile        func(context.Context, app.ProfileDraft) error
 	renameProfile        func(context.Context, string, string) error
+	updateDescription    func(context.Context, string, string) error
 	updateProfileAddress func(context.Context, string, string) error
 	refresh              func(context.Context, string) error
 	refreshAllProfiles   func(context.Context) error
@@ -79,6 +82,17 @@ func (f *fakeBackend) Snapshot(context.Context) (app.Snapshot, error) {
 }
 func (f *fakeBackend) LoadPreferences(context.Context) (app.Preferences, error) {
 	return f.prefs, f.prefsErr
+}
+func (f *fakeBackend) SaveKeyHintsPreference(_ context.Context, hidden bool) error {
+	f.prefs.HideKeyHints = hidden
+	return nil
+}
+func (f *fakeBackend) SaveLanguagePreference(ctx context.Context, language string) error {
+	if f.saveLanguage != nil {
+		return f.saveLanguage(ctx, language)
+	}
+	f.prefs.Language = language
+	return ctx.Err()
 }
 func (f *fakeBackend) SaveNetworkPreferences(ctx context.Context, cfg downloadnet.Config) error {
 	if f.save != nil {
@@ -136,9 +150,23 @@ func (f *fakeBackend) AddSubscription(ctx context.Context, name, source string) 
 	return ctx.Err()
 }
 
+func (f *fakeBackend) CreateProfile(ctx context.Context, draft app.ProfileDraft) error {
+	if f.createProfile != nil {
+		return f.createProfile(ctx, draft)
+	}
+	return ctx.Err()
+}
+
 func (f *fakeBackend) RenameProfile(ctx context.Context, id, name string) error {
 	if f.renameProfile != nil {
 		return f.renameProfile(ctx, id, name)
+	}
+	return ctx.Err()
+}
+
+func (f *fakeBackend) UpdateProfileDescription(ctx context.Context, id, description string) error {
+	if f.updateDescription != nil {
+		return f.updateDescription(ctx, id, description)
 	}
 	return ctx.Err()
 }
@@ -221,7 +249,7 @@ func key(value string) tea.KeyPressMsg {
 func special(code rune) tea.KeyPressMsg { return tea.KeyPressMsg{Code: code} }
 func ctrlC() tea.KeyPressMsg            { return tea.KeyPressMsg{Code: 'c', Mod: tea.ModCtrl} }
 func ready(b *fakeBackend) Model {
-	m := New(context.Background(), b)
+	m := New(context.Background(), b, "en")
 	m, _ = update(m, m.snapshotCmd(m.id, m.opCtx, true)())
 	return m
 }
@@ -289,11 +317,7 @@ func TestInitialOverviewAndExplicitInstallFlow(t *testing.T) {
 	if m.page != "overview" || m.wizard.open || m.wizard.networkOpen {
 		t.Fatal("startup must leave the dashboard browsable")
 	}
-	for _, label := range []string{"Get started", "Core", "Kernel information"} {
-		// On the default short viewport the last card is below the fold.
-		if label == "Kernel information" {
-			continue
-		}
+	for _, label := range []string{"Get started", "Install the Mihomo core", "Install Mihomo"} {
 		if !strings.Contains(ansi.Strip(m.View().Content), label) {
 			t.Fatalf("missing %s", label)
 		}
@@ -508,7 +532,7 @@ func TestNetworkDraftBackAndExplicitRemember(t *testing.T) {
 					t.Fatal("save should be asynchronous")
 				}
 				m, _ = update(m, actionCmd(t, cmd)())
-			} else if cmd != nil {
+			} else if m.busy {
 				t.Fatal("session-only apply unexpectedly started a job")
 			}
 			if m.wizard.networkOpen || m.wizard.cfg.Source != "prefix" || saves != map[bool]int{false: 0, true: 1}[remember] {
@@ -802,7 +826,7 @@ func TestWizardLongContentAndProgressRemainWithinTerminal(t *testing.T) {
 
 func TestFailedRefreshPreservesLastSnapshotAndProfilesDeduplicate(t *testing.T) {
 	b := &fakeBackend{snapshot: app.Snapshot{Installed: true, Version: "known", Profiles: []string{"default", "work", "work"}}, snapshotErr: errors.New("lock timeout")}
-	m := New(context.Background(), b)
+	m := New(context.Background(), b, "en")
 	m, _ = update(m, resultMsg{id: m.id, snapshot: b.snapshot, hasSnapshot: true})
 	m, cmd := update(m, key("r"))
 	m, _ = update(m, actionCmd(t, cmd)())

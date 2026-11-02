@@ -15,11 +15,12 @@ import (
 )
 
 type connectionsState struct {
-	search     textinput.Model
-	editing    bool
-	selected   string
-	detail     *mihomo.Connection
-	confirming bool
+	search                      textinput.Model
+	editing                     bool
+	selected                    string
+	selectedIndex, detailScroll int
+	detail                      *mihomo.Connection
+	confirming                  bool
 }
 
 func (m Model) filteredConnections() []mihomo.Connection {
@@ -44,24 +45,30 @@ func (m Model) filteredConnections() []mihomo.Connection {
 	return out
 }
 func (m *Model) reconcileConnections() {
+	previousIndex := m.connections.selectedIndex
 	list := m.filteredConnections()
 	found := false
-	for _, c := range list {
+	for index, c := range list {
 		if c.ID == m.connections.selected {
-			found = true
+			m.connections.selectedIndex, found = index, true
+			break
 		}
 	}
 	if !found {
 		m.connections.selected = ""
 		if len(list) > 0 {
-			m.connections.selected = list[0].ID
+			m.connections.selectedIndex = min(m.connections.selectedIndex, len(list)-1)
+			m.connections.selected = list[m.connections.selectedIndex].ID
 		}
 	}
-	if m.connections.detail == nil && strings.HasPrefix(m.focus, "connection.") {
-		m.focus = "conn.search"
+	if m.page == "connections" && m.connections.detail == nil && strings.HasPrefix(m.focus, "connection.") {
+		previous := m.focus
+		m.focus = "content"
 		if m.connections.selected != "" {
 			m.focus = "connection." + m.connections.selected
-			m.revealConnection(0)
+			if previous != m.focus || previousIndex != m.connections.selectedIndex {
+				m.revealConnection(0)
+			}
 		}
 	}
 	if m.connections.detail != nil && m.runtime.snapshot.Connections != nil {
@@ -142,8 +149,9 @@ func (m *Model) connectionKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 	case "esc":
 		if m.connections.detail != nil {
 			m.connections.detail = nil
-			m.scroll = 0
+			m.scroll = m.connections.detailScroll
 			m.focus = "connection." + m.connections.selected
+			m.reconcileConnections()
 			return true, nil
 		}
 	case "down", "j", "up", "k":
@@ -164,6 +172,7 @@ func (m *Model) connectionKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 				delta = -1
 			}
 			index = max(0, min(len(list)-1, index+delta))
+			m.connections.selectedIndex = index
 			m.connections.selected = list[index].ID
 			m.focus = "connection." + list[index].ID
 			m.revealConnection(index)
@@ -175,7 +184,7 @@ func (m *Model) connectionKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 	return false, nil
 }
 func (m *Model) revealConnection(_ int) {
-	g := dashboardGeometry(dashboardOptions{Width: m.width, Height: m.height, Page: m.page})
+	g := dashboardGeometry(m.dashboardOptions())
 	_, hits := m.connectionsBody(g.width)
 	height := max(1, g.height)
 	for _, hit := range hits {
@@ -192,8 +201,9 @@ func (m *Model) revealConnection(_ int) {
 	}
 }
 func (m *Model) openSelectedConnection() {
-	for _, c := range m.filteredConnections() {
+	for index, c := range m.filteredConnections() {
 		if c.ID == m.connections.selected {
+			m.connections.selectedIndex, m.connections.detailScroll = index, m.scroll
 			copy := c
 			m.connections.detail = &copy
 			m.connections.confirming = false
@@ -219,8 +229,9 @@ func (m *Model) connectionActivate(id string) tea.Cmd {
 	case id == "conn.back":
 		m.connections.detail = nil
 		m.connections.confirming = false
-		m.scroll = 0
+		m.scroll = m.connections.detailScroll
 		m.focus = "connection." + m.connections.selected
+		m.reconcileConnections()
 	case id == "conn.close":
 		if m.detailActive() {
 			m.connections.confirming = true
@@ -235,15 +246,17 @@ func (m *Model) connectionActivate(id string) tea.Cmd {
 			return nil
 		}
 		if !m.detailActive() {
+			id := m.connections.detail.ID
+			m.prepareNotification(notificationKey("connection.close", id), m.tr("connections.closing")+" · "+id)
 			m.connections.confirming = false
 			m.focus = "conn.back"
-			m.failure = "Connection is no longer active; refresh the list"
+			m.failure = m.tr("connections.no_longer_active")
 			return nil
 		}
 		id := m.connections.detail.ID
 		m.connections.confirming = false
 		m.focus = "conn.back"
-		return m.begin("Closing selected connection…", "Connection close requested", func(ctx context.Context) error { return m.backend.CloseConnection(ctx, id) })
+		return m.begin(m.tr("connections.closing"), m.tr("connections.close_requested"), func(ctx context.Context) error { return m.backend.CloseConnection(ctx, id) }, notificationOperation{Key: notificationKey("connection.close", id), Context: m.tr("connections.closing") + " · " + id})
 	}
 	return nil
 }
@@ -259,27 +272,27 @@ func (m Model) connectionsBody(width int) (string, []hitRegion) {
 		lines = append(lines, cellCrop(s, width))
 	}
 	if c := m.connections.detail; c != nil {
-		addText("Connection details", text)
+		addText(m.tr("connections.details"), text)
 		if m.detailActive() {
-			addText("Active", text)
+			addText(m.tr("connections.active"), text)
 		} else {
-			addText("Connection is no longer active / runtime data unavailable", warning)
+			addText(m.tr("connections.inactive_detail"), warning)
 		}
 		lines = append(lines, "")
 		if m.connections.confirming {
-			addText("Close this connection?", warning)
-			addText("Only the connection shown here will be closed. y Confirm · Esc Cancel", muted)
-			addButton("conn.cancel", "Cancel")
-			addButton("conn.confirm", "Close connection")
+			addText(m.tr("connections.confirm_title"), warning)
+			addText(m.tr("connections.confirm_hint"), muted)
+			addButton("conn.cancel", m.tr("connections.cancel"))
+			addButton("conn.confirm", m.tr("connections.close"))
 		} else {
-			addButton("conn.back", "Back to connections")
+			addButton("conn.back", m.tr("connections.back"))
 			if m.detailActive() {
-				addButton("conn.close", "Close connection (x)")
+				addButton("conn.close", m.tr("connections.close_shortcut"))
 			}
 		}
 
 		md := c.Metadata
-		fields := [][2]string{{"ID", c.ID}, {"Destination", connectionDestination(*c)}, {"Resolved IP", md.DestinationIP}, {"Source", joinAddress(md.SourceIP, md.SourcePort)}, {"Network / inbound", md.Network + " / " + md.Type}, {"Process", md.Process}, {"Process path", md.ProcessPath}, {"Rule", c.Rule + " " + c.RulePayload}, {"Chain", strings.Join(c.Chains, " → ")}, {"Started", c.Start.Local().Format(time.RFC3339)}, {"Upload / download", formatBytes(c.Upload) + " / " + formatBytes(c.Download)}}
+		fields := [][2]string{{m.tr("connections.id"), c.ID}, {m.tr("connections.destination"), connectionDestination(*c)}, {m.tr("connections.resolved_ip"), md.DestinationIP}, {m.tr("connections.source"), joinAddress(md.SourceIP, md.SourcePort)}, {m.tr("connections.network_inbound"), md.Network + " / " + md.Type}, {m.tr("connections.process"), md.Process}, {m.tr("connections.process_path"), md.ProcessPath}, {m.tr("connections.rule"), c.Rule + " " + c.RulePayload}, {m.tr("connections.chain"), strings.Join(c.Chains, " → ")}, {m.tr("connections.started"), c.Start.Local().Format(time.RFC3339)}, {m.tr("connections.transfer"), formatBytes(c.Upload) + " / " + formatBytes(c.Download)}}
 		for _, f := range fields {
 			value := strings.TrimSpace(f[1])
 			if value == "" {
@@ -289,33 +302,34 @@ func (m Model) connectionsBody(width int) (string, []hitRegion) {
 		}
 		return strings.Join(lines, "\n"), hits
 	}
-	addText("Active connections", text)
-	status := runtimeStatus(m.runtime.snapshot, m.runtime.received, m.runtime.pending, m.snapshot.Installed)
+	addText(m.tr("connections.title"), text)
+	status := runtimeStatus(m.runtime.snapshot, m.runtime.received, m.runtime.pending, m.snapshot.Installed, m.locale)
 	addText(status, muted)
 	if m.connections.editing {
+		m.connections.search.Placeholder = m.tr("connections.search_placeholder")
 		m.connections.search.SetWidth(max(1, width-2))
-		addText("Search connections (Enter / Esc finish)", accent)
+		addText(m.tr("connections.search_edit"), accent)
 		hits = append(hits, hitRegion{ID: "conn.search", Y: len(lines), W: width, H: 1})
 		lines = append(lines, cellCrop(m.connections.search.View(), width))
 	} else {
-		addButton("conn.search", "Search connections (/): "+clean(m.connections.search.Value()))
+		addButton("conn.search", m.tr("connections.search", clean(m.connections.search.Value())))
 	}
-	addText("Enter Details · x Close selected · ↑↓ Select · / Search", muted)
+	addText(m.tr("connections.shortcuts"), muted)
 	lines = append(lines, "")
 	if err := m.runtime.snapshot.Error; err != "" {
-		addText(err, errorColor)
+		addText(m.locale.Diagnostic(err, m.runtime.snapshot.Diagnostic), errorColor)
 	}
 	if err := m.runtime.snapshot.ConnectionsError; err != "" {
-		addText(err, errorColor)
+		addText(m.locale.Diagnostic(err, m.runtime.snapshot.ConnectionsDiagnostic), errorColor)
 	}
 	list := m.filteredConnections()
 	if len(list) == 0 {
-		empty := "No active connections"
+		empty := m.tr("connections.empty")
 		if m.connections.search.Value() != "" {
-			empty = "No connections match this search"
+			empty = m.tr("connections.no_matches")
 		}
 		if m.runtime.snapshot.Connections == nil {
-			empty = "Connections will appear when Mihomo is running and its API is available"
+			empty = m.tr("connections.unavailable_hint")
 		}
 		addText(empty, muted)
 	}

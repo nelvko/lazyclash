@@ -143,7 +143,7 @@ func TestProfileGridIgnoresGlobalKeysInputsAndModals(t *testing.T) {
 			t.Fatalf("grid captured unrelated shortcut %q", message.String())
 		}
 	}
-	for _, state := range []string{"other-page", "navigation", "sidebar", "form", "inline-input", "help", "ports", "wizard", "network", "busy", "quitting"} {
+	for _, state := range []string{"other-page", "navigation", "sidebar", "form", "inline-input", "help", "ports", "wizard", "network", "quitting"} {
 		t.Run(state, func(t *testing.T) {
 			m := profileNavigationModel(160, 32)
 			switch state {
@@ -333,12 +333,16 @@ func TestProfileRefreshButtonAndUpdateAllDoNotOpenOrApplyCards(t *testing.T) {
 	if refreshed != "work" || refreshes != 1 || backend.applied != 0 || m.profilesUI.detail != "" || m.snapshot.Applied != "default" {
 		t.Fatal("card refresh opened, selected, or applied its containing card")
 	}
+	// The result occupies the header action area until it is dismissed.
+	m.dismissNotification()
+	m.layout()
 	m, cmd = click(m, findTarget(t, m, "profiles.update-all"))
 	m = finishProfileJob(t, m, cmd)
 	if all != 1 || backend.applied != 0 || m.snapshot.Applied != "default" || !strings.Contains(m.message, "apply a profile") {
 		t.Fatal("Update all bypassed the shared refresh use case or changed the runtime")
 	}
-	m, _ = click(m, findTarget(t, m, "profile.1"))
+	m.focus = "profile.1"
+	m, _ = update(m, special(tea.KeyEnter))
 	m, cmd = click(m, findTarget(t, m, "profiles.update.1"))
 	m = finishProfileJob(t, m, cmd)
 	if refreshed != "work" || refreshes != 2 || backend.applied != 0 || m.profilesUI.detail != "work" {
@@ -366,14 +370,14 @@ func TestProfileDetailTabControlsRemainReachableAcrossResize(t *testing.T) {
 			t.Fatalf("resize retargeted the open profile at %v: detail=%s focus=%s", size, m.profilesUI.detail, m.focus)
 		}
 		findTarget(t, m, "profiles.apply.3")
-		for _, id := range []string{"profiles.update.3", "profiles.rename.3", "profiles.url-edit.3", "profiles.overrides.3", "profiles.delete.3", "profiles.close"} {
+		for _, id := range []string{"profiles.update.3", "profiles.rename.3", "profiles.description.3", "profiles.url-edit.3", "profiles.overrides.3", "profiles.delete.3", "profiles.close"} {
 			m, _ = update(m, special(tea.KeyTab))
 			if m.focus != id {
 				t.Fatalf("Tab did not reach %s at %v; focused %s", id, size, m.focus)
 			}
 			findTarget(t, m, id)
 		}
-		for range 6 {
+		for range 7 {
 			m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
 		}
 		if m.focus != "profiles.apply.3" {
@@ -393,10 +397,11 @@ func TestProfileURLCannotStartAnotherOperationWhileBusy(t *testing.T) {
 		t.Fatal("busy URL input opened a second job or swallowed Quit")
 	}
 	m = profileInteractionsModel(&fakeBackend{}, 120, 32)
-	m.focus, m.busy = "profiles.url", true
+	m.focus = "profiles.url"
+	m.newJob("action")
 	m, _ = update(m, special(tea.KeyEscape))
-	if m.opCtx.Err() == nil || m.focus != "profiles.url" {
-		t.Fatal("busy URL input swallowed operation cancellation")
+	if m.opCtx.Err() != nil || m.focus != "nav.profiles" {
+		t.Fatal("Esc did not return to navigation while preserving the background operation")
 	}
 }
 

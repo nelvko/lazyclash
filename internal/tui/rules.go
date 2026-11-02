@@ -15,14 +15,16 @@ import (
 )
 
 type rulesState struct {
-	snapshot                  app.RuleSnapshot
-	search                    textinput.Model
-	selected                  string
-	detail                    *mihomo.Rule
-	generation                uint64
-	active, pending, received bool
-	editing                   bool
-	cancel                    context.CancelFunc
+	snapshot                    app.RuleSnapshot
+	search                      textinput.Model
+	selected                    string
+	selectedIndex, detailScroll int
+	detail                      *mihomo.Rule
+	generation                  uint64
+	active, pending, received   bool
+	editing                     bool
+	err                         error
+	cancel                      context.CancelFunc
 }
 type rulesResultMsg struct {
 	generation uint64
@@ -36,10 +38,10 @@ func (m *Model) stopRules() {
 		m.rules.cancel()
 		m.rules.cancel = nil
 	}
-	if m.rules.active {
+	if m.rules.active || m.rules.pending {
 		m.rules.generation++
 	}
-	m.rules.active, m.rules.pending, m.rules.received = false, false, false
+	m.rules.active, m.rules.pending = false, false
 }
 func (m Model) rulesVisible() bool {
 	return m.page == "rules" && !m.busy && !m.quitting && !m.helpOpen && !m.ports.open && !m.wizard.open && !m.wizard.networkOpen && m.form == "" && m.ctx.Err() == nil
@@ -77,8 +79,9 @@ func (m *Model) acceptRules(v rulesResultMsg) tea.Cmd {
 		m.rules.cancel = nil
 	}
 	m.rules.pending, m.rules.received = false, true
+	m.rules.err = v.err
 	if v.err != nil {
-		m.rules.snapshot = app.RuleSnapshot{State: "unavailable", Error: clean(v.err.Error())}
+		m.rules.snapshot = app.RuleSnapshot{State: "unavailable", Error: v.err.Error(), Diagnostic: v.err}
 	} else {
 		m.rules.snapshot = v.snapshot
 	}
@@ -88,6 +91,7 @@ func (m *Model) acceptRules(v rulesResultMsg) tea.Cmd {
 }
 func (m *Model) retryRules() tea.Cmd {
 	m.stopRules()
+	m.rules.received = false
 	return m.syncRules()
 }
 
@@ -122,18 +126,20 @@ func (m Model) ruleCurrent(r mihomo.Rule) bool {
 	return false
 }
 func (m *Model) reconcileRules() {
+	previousIndex := m.rules.selectedIndex
 	list := m.filteredRules()
 	found := false
-	for _, r := range list {
+	for index, r := range list {
 		if ruleIdentity(r) == m.rules.selected {
-			found = true
+			m.rules.selectedIndex, found = index, true
 			break
 		}
 	}
 	if !found {
 		m.rules.selected = ""
 		if len(list) > 0 {
-			m.rules.selected = ruleIdentity(list[0])
+			m.rules.selectedIndex = min(m.rules.selectedIndex, len(list)-1)
+			m.rules.selected = ruleIdentity(list[m.rules.selectedIndex])
 		}
 	}
 	if m.rules.detail != nil && m.rules.snapshot.State == "ready" {
@@ -145,19 +151,22 @@ func (m *Model) reconcileRules() {
 			}
 		}
 	}
-	if m.rules.detail == nil && strings.HasPrefix(m.focus, "rule.") {
-		m.focus = "rules.search"
+	if m.page == "rules" && m.rules.detail == nil && strings.HasPrefix(m.focus, "rule.") {
+		previous := m.focus
+		m.focus = "content"
 		for _, r := range list {
 			if ruleIdentity(r) == m.rules.selected {
 				m.focus = "rule." + strconv.Itoa(r.Index)
-				m.revealRule()
+				if previous != m.focus || previousIndex != m.rules.selectedIndex {
+					m.revealRule()
+				}
 				break
 			}
 		}
 	}
 }
 func (m *Model) revealRule() {
-	g := dashboardGeometry(dashboardOptions{Width: m.width, Height: m.height, Page: m.page})
+	g := dashboardGeometry(m.dashboardOptions())
 	_, hits := m.rulesBody(g.width)
 	height := max(1, g.height)
 	for _, r := range m.filteredRules() {
@@ -204,9 +213,7 @@ func (m *Model) ruleKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 		return true, m.focusRulesSearch()
 	case "esc":
 		if m.rules.detail != nil {
-			m.rules.detail = nil
-			m.scroll, m.focus = 0, "rule."
-			m.reconcileRules()
+			m.backToRules()
 			return true, nil
 		}
 	case "g", "ctrl+r":
@@ -228,7 +235,8 @@ func (m *Model) ruleKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 			if k.String() == "up" || k.String() == "k" {
 				delta = -1
 			}
-			r := list[max(0, min(len(list)-1, index+delta))]
+			m.rules.selectedIndex = max(0, min(len(list)-1, index+delta))
+			r := list[m.rules.selectedIndex]
 			m.rules.selected, m.focus = ruleIdentity(r), "rule."+strconv.Itoa(r.Index)
 			m.revealRule()
 			return true, nil
@@ -247,12 +255,11 @@ func (m *Model) ruleActivate(id string) tea.Cmd {
 	case id == "rules.retry":
 		return m.retryRules()
 	case id == "rules.back":
-		m.rules.detail = nil
-		m.scroll, m.focus = 0, "rule."
-		m.reconcileRules()
+		m.backToRules()
 	case strings.HasPrefix(id, "rule."):
-		for _, r := range m.filteredRules() {
+		for index, r := range m.filteredRules() {
 			if id == "rule."+strconv.Itoa(r.Index) {
+				m.rules.selectedIndex, m.rules.detailScroll = index, m.scroll
 				copy := r
 				m.rules.selected, m.rules.detail = ruleIdentity(r), &copy
 				m.scroll, m.focus = 0, "rules.back"
@@ -262,21 +269,33 @@ func (m *Model) ruleActivate(id string) tea.Cmd {
 	}
 	return nil
 }
+func (m *Model) backToRules() {
+	m.rules.detail = nil
+	m.scroll, m.focus = m.rules.detailScroll, "content"
+	m.reconcileRules()
+	for _, r := range m.filteredRules() {
+		if ruleIdentity(r) == m.rules.selected {
+			m.focus = "rule." + strconv.Itoa(r.Index)
+			break
+		}
+	}
+}
+
 func (m Model) rulesStatus() string {
 	if !m.rules.received {
-		return "Loading rules…"
+		return m.tr("rules.loading")
 	}
 	switch m.rules.snapshot.State {
 	case "ready":
-		return "Rules loaded"
+		return m.tr("rules.loaded")
 	case "uninstalled":
-		return "Core not installed"
+		return m.tr("rules.uninstalled")
 	case "stopped":
-		return "Core stopped"
+		return m.tr("rules.stopped")
 	case "unsupported":
-		return "Service management unavailable"
+		return m.tr("rules.unsupported")
 	default:
-		return "Rules unavailable"
+		return m.tr("rules.unavailable")
 	}
 }
 func (m Model) rulesBody(width int) (string, []hitRegion) {
@@ -291,58 +310,63 @@ func (m Model) rulesBody(width int) (string, []hitRegion) {
 		lines = append(lines, cellCrop(value, width))
 	}
 	if r := m.rules.detail; r != nil {
-		addText("Rule details", text)
+		addText(m.tr("rules.details"), text)
 		if m.ruleCurrent(*r) {
-			addText("Current API observation · Read only", muted)
+			addText(m.tr("rules.observation"), muted)
 		} else {
-			addText("Last observed rule · no longer confirmed current", warning)
+			addText(m.tr("rules.stale"), warning)
 		}
-		addButton("rules.back", "Back to rules")
-		addText(fmt.Sprintf("Order: #%d (API index %d)", r.Index+1, r.Index), text)
-		addText("Type: "+r.Type, text)
+		addButton("rules.back", m.tr("rules.back"))
+		addText(fmt.Sprintf(m.tr("rules.order"), r.Index+1, r.Index), text)
+		addText(m.tr("rules.type", r.Type), text)
 		payload := r.Payload
 		if payload == "" {
-			payload = "(empty)"
+			payload = m.tr("rules.empty_payload")
 		}
-		addText("Payload: "+payload, text)
+		addText(m.tr("rules.payload", payload), text)
 		proxy := r.Proxy
 		if proxy == "" {
 			proxy = "--"
 		}
-		addText("Proxy: "+proxy, text)
+		addText(m.tr("rules.proxy", proxy), text)
 		if r.Size >= 0 {
-			addText(fmt.Sprintf("Entries: %d", r.Size), text)
+			addText(fmt.Sprintf(m.tr("rules.entries"), r.Size), text)
 		}
 		if r.Extra != nil {
-			state := "Enabled"
+			state := m.tr("rules.enabled")
 			if r.Extra.Disabled {
-				state = "Disabled"
+				state = m.tr("rules.disabled")
 			}
-			addText("State: "+state, text)
-			addText(fmt.Sprintf("Hits / misses: %d / %d", r.Extra.HitCount, r.Extra.MissCount), text)
+			addText(m.tr("rules.state", state), text)
+			addText(fmt.Sprintf(m.tr("rules.hits"), r.Extra.HitCount, r.Extra.MissCount), text)
 		}
-		addText("Loaded by the core; matching order applies in Rule mode. Read only.", muted)
+		addText(m.tr("rules.description"), muted)
 		return strings.Join(lines, "\n"), hits
 	}
-	addText("Effective rules", text)
+	addText(m.tr("rules.title"), text)
 	addText(m.rulesStatus(), muted)
-	addText("Loaded by the core; matching order applies in Rule mode. Read only.", muted)
+	addText(m.tr("rules.description"), muted)
 	if m.rules.editing {
-		addText("Search rules (Enter / Esc finish)", accent)
+		addText(m.tr("rules.search_edit"), accent)
+		m.rules.search.Placeholder = m.tr("rules.search_placeholder")
 		lines = append(lines, cellCrop(m.rules.search.View(), width))
 		hits = append(hits, hitRegion{ID: "rules.search", Y: len(lines) - 1, W: width, H: 1})
 	} else {
-		addButton("rules.search", "Search rules (/): "+clean(m.rules.search.Value()))
+		addButton("rules.search", m.tr("rules.search", clean(m.rules.search.Value())))
 	}
-	addText("↑↓ Select · Enter Details · / Search · g Refresh", muted)
-	if m.rules.snapshot.Error != "" && m.rules.received {
-		addText(m.rules.snapshot.Error, errorColor)
+	addText(m.tr("rules.shortcuts"), muted)
+	if m.rules.received {
+		if m.rules.err != nil {
+			addText(m.localizeError(m.rules.err), errorColor)
+		} else if m.rules.snapshot.Error != "" {
+			addText(m.locale.Diagnostic(m.rules.snapshot.Error, m.rules.snapshot.Diagnostic), errorColor)
+		}
 	}
 	list := m.filteredRules()
 	if m.rules.received && m.rules.snapshot.State == "ready" && len(list) == 0 {
-		message := "No effective rules returned by Mihomo"
+		message := m.tr("rules.empty")
 		if m.rules.search.Value() != "" {
-			message = "No rules match this search"
+			message = m.tr("rules.no_matches")
 		}
 		addText(message, muted)
 	}
@@ -356,7 +380,7 @@ func (m Model) rulesBody(width int) (string, []hitRegion) {
 		}
 		label := fmt.Sprintf("%s#%d %s · %s → %s", prefix, r.Index+1, clean(r.Type), clean(r.Payload), clean(r.Proxy))
 		if r.Extra != nil && r.Extra.Disabled {
-			label += " [disabled]"
+			label += m.tr("rules.disabled_suffix")
 		}
 		row := len(lines)
 		lines = append(lines, themed(cellCrop(label, width), color, bg, false))

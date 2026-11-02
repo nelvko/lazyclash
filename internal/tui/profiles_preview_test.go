@@ -83,6 +83,16 @@ func TestExportProfilesViews(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
+		for _, index := range []int{0, 1, 3} {
+			m := profilesPreview(false)
+			m, _ = update(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+			m.openProfileMenuForCard(index)
+			m.layout()
+			name := fmt.Sprintf("profiles-menu-%dx%d-card-%d.ansi", size[0], size[1], index)
+			if err := os.WriteFile(filepath.Join(dir, name), []byte(m.View().Content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}
 	}
 	for _, size := range [][2]int{{80, 24}, {40, 16}, {24, 7}} {
 		m := profilesPreview(false)

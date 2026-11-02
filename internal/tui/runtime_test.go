@@ -3,6 +3,8 @@ package tui
 import (
 	"context"
 	"errors"
+	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -18,10 +20,13 @@ func runtimeModel(t *testing.T, b *fakeBackend) Model {
 	t.Helper()
 	b.snapshot.Installed, b.snapshot.ConfigReady = true, true
 	b.snapshot.Service = service.Status{Active: true, State: "active"}
-	m := New(t.Context(), b)
+	m := New(t.Context(), b, "en")
 	m.snapshot = b.snapshot
 	m.snapshotReady = true
 	m.busy, m.job = false, ""
+	m.message = "State refreshed"
+	m.messageTransient = true
+	m.syncNotification()
 	m.width, m.height = 120, 32
 	m.layout()
 	return m
@@ -87,6 +92,36 @@ func TestRuntimeRetryAndTicksRejectOldSamples(t *testing.T) {
 	}
 }
 
+func TestRuntimeKeepsSidebarRatesLiveAcrossPages(t *testing.T) {
+	for i, page := range navPages() {
+		t.Run(page, func(t *testing.T) {
+			m := runtimeModel(t, &fakeBackend{})
+			m.syncRuntime()
+			generation := m.runtime.generation
+			m, _ = update(m, key(fmt.Sprint(i+1)))
+			if m.page != page || !m.runtime.active || !m.runtime.pending || m.runtime.generation != generation {
+				t.Fatal("page switch restarted or stopped the sidebar's pending sample")
+			}
+			m, _ = update(m, runtimeResultMsg{generation: generation, snapshot: liveRuntime()})
+			if !strings.Contains(sidebarText(m.screen), "2.0 KiB/s") || !strings.Contains(sidebarText(m.screen), "4.0 KiB/s") {
+				t.Fatal("page switch lost live sidebar rates")
+			}
+			if page != "overview" && page != "connections" {
+				cached := m.runtime.snapshot
+				m, _ = update(m, tea.WindowSizeMsg{Width: 80, Height: 24})
+				if m.runtime.active || m.runtime.pending || !m.runtime.received || !reflect.DeepEqual(m.runtime.snapshot, cached) {
+					t.Fatal("hiding the sidebar did not stop sampling while retaining its cache")
+				}
+				stoppedGeneration := m.runtime.generation
+				m, _ = update(m, runtimeResultMsg{generation: generation, snapshot: app.RuntimeSnapshot{State: "stopped"}})
+				if m.runtime.generation != stoppedGeneration || !m.runtime.received || !reflect.DeepEqual(m.runtime.snapshot, cached) {
+					t.Fatal("late result replaced the hidden sidebar's cache")
+				}
+			}
+		})
+	}
+}
+
 func TestRuntimeCancelsRequestsWhenLeavingOrOpeningModal(t *testing.T) {
 	for _, action := range []string{"2", "i", "n", "a", "s", "q", "ctrl+c"} {
 		t.Run(action, func(t *testing.T) {
@@ -98,6 +133,9 @@ func TestRuntimeCancelsRequestsWhenLeavingOrOpeningModal(t *testing.T) {
 				return app.RuntimeSnapshot{}, ctx.Err()
 			}}
 			m := runtimeModel(t, b)
+			if action == "2" {
+				m.width = 80 // Leaving Overview also hides the permanent sidebar.
+			}
 			cmd := m.syncRuntime()
 			go func() { finished <- cmd() }()
 			var requestCtx context.Context
@@ -114,11 +152,12 @@ func TestRuntimeCancelsRequestsWhenLeavingOrOpeningModal(t *testing.T) {
 			if requestCtx.Err() == nil || m.runtime.active {
 				t.Fatal("background request survived leaving its visible context")
 			}
+			cached, received, stoppedGeneration := m.runtime.snapshot, m.runtime.received, m.runtime.generation
 			select {
 			case late := <-finished:
 				m, _ = update(m, late)
-				if m.runtime.received {
-					t.Fatal("late canceled request was accepted")
+				if m.runtime.received != received || m.runtime.generation != stoppedGeneration || !reflect.DeepEqual(m.runtime.snapshot, cached) {
+					t.Fatal("late canceled request changed the cached runtime observation")
 				}
 			case <-time.After(time.Second):
 				t.Fatal("request did not observe cancellation")

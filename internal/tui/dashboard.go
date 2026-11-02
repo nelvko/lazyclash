@@ -8,21 +8,19 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
+	"github.com/nelvko/lazyclash/internal/i18n"
 )
 
-const logo = "la💤yClash"
-
-const sidebarWidth = 28
-
-func logoText(background string, dimmed bool) string {
-	return themed(lipgloss.NewStyle().Bold(true).Render(logo), accent, background, dimmed)
-}
+const sidebarWidth = 22
 
 type hitRegion struct {
 	ID         string
 	X, Y, W, H int
 }
 type dashboardOptions struct {
+	Locale                          i18n.Localizer
+	MessageTransient                bool
+	MessageInformational            bool
 	Width, Height                   int
 	Page                            string
 	SelectedGroup                   string
@@ -30,11 +28,18 @@ type dashboardOptions struct {
 	Focus                           string
 	Hover                           string
 	GuideDismissed                  bool
+	GuideSkipped                    bool
 	Scroll                          int
 	Dim                             bool
 	Message, Failure                string
+	Notifications                   []notificationItem
+	Spinner                         string
 	Help                            string
+	HideKeyHints                    bool
 	SidebarOpen                     bool
+	Sidebar                         *sidebarState
+	LogoFrame                       int
+	LogoIntroFrame                  int
 	Busy                            bool
 	StateUnavailable                bool
 	Header                          pageHeader
@@ -75,11 +80,19 @@ func dashboardGeometry(o dashboardOptions) dashboardLayout {
 	if o.Width < 70 && o.Height < 24 && o.Page != "" && o.Page != "overview" {
 		bodyY++
 	}
-	return dashboardLayout{x: left, width: width, y: bodyY, height: max(0, o.Height-bodyY-2), headerY: headerY, headerHeight: bodyY - 2, sidebar: sidebar}
+	return dashboardLayout{x: left, width: width, y: bodyY, height: max(0, dashboardContentBottom(o)-bodyY), headerY: headerY, headerHeight: bodyY - 2, sidebar: sidebar}
 }
 func dashboardBodyWidth(o dashboardOptions) int { return dashboardGeometry(o).width }
 
+func dashboardContentBottom(o dashboardOptions) int {
+	if o.HideKeyHints {
+		return o.Height
+	}
+	return o.Height - 1
+}
+
 func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
+	tr := o.Locale.T
 	if o.Width <= 0 || o.Height <= 0 {
 		return "", nil, 0
 	}
@@ -99,17 +112,17 @@ func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
 		}
 	}
 	if o.Height < 7 || o.Width < 20 {
-		put(0, 0, themed(cellCrop(logoText(bg, o.Dim)+" / "+pageTitle(o.Page), o.Width), text, bg, o.Dim))
+		put(0, 0, themed(cellCrop(logoText(bg, o.Dim)+" / "+pageTitle(o.Page, o.Locale), o.Width), text, bg, o.Dim))
 		if o.Height > 1 {
-			put(0, o.Height-1, themed(cellCrop("Menu · q Quit", o.Width), muted, bg, o.Dim))
-			add(hitRegion{ID: "menu", X: 0, Y: o.Height - 1, W: min(4, o.Width), H: 1})
+			put(0, o.Height-1, themed(cellCrop(tr("dashboard.menuCompact"), o.Width), muted, bg, o.Dim))
+			add(hitRegion{ID: "menu", X: 0, Y: o.Height - 1, W: min(ansi.StringWidth(tr("dashboard.menu")), o.Width), H: 1})
 		}
 		return strings.Join(rows, "\n"), targets, 0
 	}
 	titleX := g.x
-	titleText := pageTitle(o.Page)
+	titleText := pageTitle(o.Page, o.Locale)
 	if !g.sidebar {
-		label := dashboardButton("menu", "Menu", o, false)
+		label := dashboardButton("menu", tr("dashboard.menu"), o, false)
 		put(1, g.headerY, label)
 		add(hitRegion{ID: "menu", X: 1, Y: g.headerY, W: ansi.StringWidth(label), H: 1})
 		titleX = max(12, g.x)
@@ -142,6 +155,7 @@ func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
 	}
 	total := len(bodyLines)
 	scroll := max(0, min(o.Scroll, max(0, total-g.height)))
+	o.Scroll = scroll
 	for i := 0; i < g.height && scroll+i < total; i++ {
 		put(g.x, g.y+i, cellPad(bodyLines[scroll+i], g.width))
 	}
@@ -172,30 +186,38 @@ func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
 		// Underlying buttons must not receive a click through the navigation menu.
 		kept := targets[:0]
 		for _, r := range targets {
-			if !regionsOverlap(r, hitRegion{X: 0, Y: g.y - 1, W: menuWidth, H: max(0, o.Height-g.y-1)}) {
+			if !regionsOverlap(r, hitRegion{X: 0, Y: g.headerHeight + 1, W: menuWidth, H: max(0, dashboardContentBottom(o)-g.headerHeight-1)}) {
 				kept = append(kept, r)
 			}
 		}
 		targets = append(kept, drawSidebar(rows, o, true)...)
 	}
-	status := o.Message
-	color := muted
-	if status == "State refreshed" {
-		status = ""
+	if !o.HideKeyHints {
+		help := o.Help
+		if help == "" {
+			help = tr("dashboard.footer.default")
+		}
+		quit := tr("dashboard.footer.quit")
+		put(2, o.Height-1, helpText(cellCrop(help, max(1, o.Width-ansi.StringWidth(quit)-6)), bg, o.Dim))
+		if o.Width >= 16 {
+			put(o.Width-ansi.StringWidth(quit)-2, o.Height-1, helpText(quit, bg, o.Dim))
+		}
 	}
-	if o.Failure != "" {
-		status = "Error: " + clean(o.Failure)
-		color = errorColor
-	}
-	put(2, o.Height-2, themed(cellCrop(clean(status), max(1, o.Width-4)), color, bg, o.Dim))
-	help := o.Help
-	if help == "" {
-		help = "Tab Focus · Enter Open · ? Help"
-	}
-	quit := "q Quit"
-	put(2, o.Height-1, helpText(cellCrop(help, max(1, o.Width-len(quit)-6)), bg, o.Dim))
-	if o.Width >= 16 {
-		put(o.Width-len(quit)-2, o.Height-1, helpText(quit, bg, o.Dim))
+	for _, notification := range notificationLayout(o) {
+		bounds := notification.Bounds
+		put(bounds.X, bounds.Y, notification.Content)
+		// A Toast owns every cell it covers, including its padding and border.
+		// Remove underlying controls so a click cannot pass through the card.
+		kept := targets[:0]
+		for _, target := range targets {
+			if !regionsOverlap(target, bounds) {
+				kept = append(kept, target)
+			}
+		}
+		targets = kept
+		for _, target := range notification.Targets {
+			add(target)
+		}
 	}
 
 	return strings.Join(rows, "\n"), targets, total
@@ -206,48 +228,53 @@ func navPages() []string {
 	return []string{"overview", "proxies", "profiles", "connections", "rules", "logs", "settings"}
 }
 
-func pageTitle(page string) string {
+func pageTitle(page string, locales ...i18n.Localizer) string {
+	tr := dashboardLocale(locales).T
 	switch page {
 	case "proxies":
-		return "Proxies"
+		return tr("dashboard.page.proxies")
 	case "profiles":
-		return "Profiles"
+		return tr("dashboard.page.profiles")
 	case "settings":
-		return "Settings"
+		return tr("dashboard.page.settings")
 	case "rules":
-		return "Rules"
+		return tr("dashboard.page.rules")
 	case "connections":
-		return "Connections"
+		return tr("dashboard.page.connections")
 	case "logs":
-		return "Logs"
+		return tr("dashboard.page.logs")
 	default:
-		return "Overview"
+		return tr("dashboard.page.overview")
 	}
 }
 
-func coreSummary(s app.Snapshot) (string, string) {
+func coreSummary(s app.Snapshot, locales ...i18n.Localizer) (string, string) {
+	tr := dashboardLocale(locales).T
+	if s.Service.State == "unknown" && s.ServiceError != "" {
+		return tr("dashboard.status.unknown"), errorColor
+	}
 	if !s.Installed {
-		return "Not installed", muted
+		return tr("dashboard.status.notInstalled"), muted
 	}
 	if s.ServiceError != "" {
-		return "Unavailable", errorColor
+		return tr("dashboard.status.unavailable"), errorColor
 	}
 	if s.Service.Active {
-		return "Running", success
+		return tr("dashboard.status.running"), success
 	}
 	switch s.Service.State {
 	case "activating":
-		return "Starting", warning
+		return tr("dashboard.status.starting"), warning
 	case "deactivating":
-		return "Stopping", warning
+		return tr("dashboard.status.stopping"), warning
 	case "reloading":
-		return "Reloading", warning
+		return tr("dashboard.status.reloading"), warning
 	case "failed":
-		return "Failed", errorColor
+		return tr("dashboard.status.failed"), errorColor
 	case "unknown", "unsupported":
-		return "Unavailable", errorColor
+		return tr("dashboard.status.unavailable"), errorColor
 	}
-	return "Stopped", muted
+	return tr("dashboard.status.stopped"), muted
 }
 
 func clipRegion(r hitRegion, x, y, w, h int) (hitRegion, bool) {
@@ -260,173 +287,22 @@ func regionsOverlap(a, b hitRegion) bool {
 	return a.X < b.X+b.W && b.X < a.X+a.W && a.Y < b.Y+b.H && b.Y < a.Y+a.H
 }
 
-func drawSidebar(rows []string, o dashboardOptions, popup bool) []hitRegion {
-	width := min(sidebarWidth, o.Width)
-	end := o.Height - 2
-	g := dashboardGeometry(o)
-	var targets []hitRegion
-	if width < 4 || end < 4 {
-		return targets
-	}
-	start := g.y - 1
-	if !popup {
-		start = 0
-	}
-	for y := start; y < end; y++ {
-		putRows(rows, 0, y, themed(strings.Repeat(" ", width), text, sidebarBackground, o.Dim), o.Width)
-		if popup {
-			putRows(rows, width-1, y, themed("│", divider, sidebarBackground, o.Dim), o.Width)
-		}
-	}
-	if !popup {
-		header := lipgloss.NewStyle().Width(width - 1).Align(lipgloss.Center).Render(logoText(sidebarBackground, o.Dim))
-		putRows(rows, 0, g.headerY, themed(header, accent, sidebarBackground, o.Dim), o.Width)
-	}
-	pages := navPages()
-	menuY := g.y
-	if !popup {
-		// Permanent navigation starts directly at the shared header edge.
-		menuY = g.headerHeight
-	}
-	availableRows := max(0, end-menuY)
-	if availableRows == 0 {
-		return targets
-	}
-	// Consecutive menu rows share an edge; padding stays inside each item.
-	itemHeight := 1
-	if availableRows >= len(pages)*3 {
-		itemHeight = 3
-	}
-	first, last := 0, len(pages)
-	if availableRows < len(pages) {
-		selected := 0
-		for i, page := range pages {
-			if o.Page == page {
-				selected = i
-			}
-		}
-		for i, page := range pages {
-			if o.Focus == "nav."+page {
-				selected = i
-			}
-		}
-		// Keep the focused item visible in short navigation popups.
-		first = max(0, min(selected-availableRows/2, len(pages)-availableRows))
-		last = first + availableRows
-	}
-	y := menuY
-	for i := first; i < last; i++ {
-		page := pages[i]
-		if y+itemHeight > end {
-			break
-		}
-		id := "nav." + page
-		label := pageTitle(page)
-		labelStyle := lipgloss.NewStyle()
-		current := "  "
-		background, foreground := sidebarBackground, muted
-		if page == o.Page {
-			background, foreground = bg, selectionForeground
-			if popup {
-				background = selectionBackground
-			}
-			labelStyle = labelStyle.Bold(true)
-			current = " •"
-		}
-		if o.Hover == id && o.Focus != id && page != o.Page {
-			foreground = text
-			if popup {
-				background = hoverBackground
-			} else {
-				labelStyle = labelStyle.Underline(true)
-			}
-		}
-		marker := "  "
-		if o.Focus == id {
-			marker = "› "
-			if page != o.Page {
-				foreground = focus
-			}
-			labelStyle = labelStyle.Underline(true)
-		}
-		label = labelStyle.Render(label)
-		// Equal marker space keeps the page name centered as selection changes.
-		value := lipgloss.NewStyle().Width(width - 2).Align(lipgloss.Center).Render(marker + cellCrop(label, max(1, width-6)) + current)
-		value = themed(value, foreground, background, o.Dim)
-		for row := 0; row < itemHeight; row++ {
-			if !popup {
-				putRows(rows, 0, y+row, themed(strings.Repeat(" ", width), foreground, background, o.Dim), o.Width)
-			}
-			line := themed(strings.Repeat(" ", width-2), foreground, background, o.Dim)
-			if row == itemHeight/2 {
-				line = value
-			}
-			putRows(rows, 1, y+row, line, o.Width)
-		}
-		x, hitWidth := 0, width
-		if popup {
-			x, hitWidth = 1, width-2
-		}
-		targets = append(targets, hitRegion{ID: id, X: x, Y: y, W: hitWidth, H: itemHeight})
-		y += itemHeight
-	}
-	if first > 0 {
-		putRows(rows, width-2, menuY-1, themed("↑", muted, sidebarBackground, o.Dim), o.Width)
-	}
-	if last < len(pages) {
-		putRows(rows, width-2, end-1, themed("↓", muted, sidebarBackground, o.Dim), o.Width)
-	}
-	if !popup {
-		footer := sidebarSummary(o, width)
-		footerY := end - len(footer) - 1
-		// Use spare space without reducing the navigation's size or spacing.
-		if footerY >= y+1 {
-			for row, line := range footer {
-				putRows(rows, 2, footerY+row, line, o.Width)
-			}
-		}
-	}
-	return targets
-}
-
-func sidebarSummary(o dashboardOptions, width int) []string {
+func sidebarTraffic(o dashboardOptions, width int) []string {
 	inner := max(1, width-4)
-	s := o.Snapshot
 	style := func(value, color string) string {
 		return themed(value, color, sidebarBackground, o.Dim)
 	}
-	lines := []string{style(strings.Repeat("─", inner), divider)}
-	if o.StateUnavailable {
-		status := "State unavailable"
-		if o.Busy {
-			status = "Loading state…"
-		}
-		return append(lines, style(cellPad(status, inner), muted))
+	up, down := "--", "--"
+	if !o.StateUnavailable && o.Snapshot.Installed && o.RuntimeReceived && o.Runtime.State == "ready" && o.Runtime.Traffic != nil {
+		up = formatBytes(o.Runtime.Traffic.Up) + "/s"
+		down = formatBytes(o.Runtime.Traffic.Down) + "/s"
 	}
-	if !s.Installed {
-		return append(lines, style(cellPad("Mihomo not installed", inner), muted))
+	rate := func(arrow, value string) string {
+		value = cellCrop(value, max(1, inner-2))
+		gap := max(1, inner-1-ansi.StringWidth(value))
+		return style(arrow, muted) + style(strings.Repeat(" ", gap)+value, text)
 	}
-	pair := func(label, value string) string {
-		value = cellCrop(clean(value), max(1, inner-ansi.StringWidth(label)-1))
-		gap := max(1, inner-ansi.StringWidth(label)-ansi.StringWidth(value))
-		return style(label, muted) + style(strings.Repeat(" ", gap)+value, text)
-	}
-	profile := clean(snapshotProfileName(s, s.Applied))
-	if profile == "" {
-		profile = "Not configured"
-		if s.ConfigReady {
-			profile = "default"
-		}
-	}
-	mode := map[string]string{"rule": "Rule", "global": "Global", "direct": "Direct"}[s.Mode.Desired]
-	if mode == "" {
-		mode = "Unknown"
-	}
-	version := clean(s.Version)
-	if version == "" {
-		version = "Unknown"
-	}
-	return append(lines, pair("Profile", profile), pair("Saved mode", mode), pair("Installed", version))
+	return []string{style(strings.Repeat("─", inner), divider), rate("↑", up), rate("↓", down)}
 }
 
 func dashboardButton(id, label string, o dashboardOptions, primary bool) string {
@@ -523,7 +399,11 @@ func overviewRow(o dashboardOptions, width, columns int, render func(int, int) d
 	return row
 }
 
-func panelFrame(lines []string, width, height int, o dashboardOptions) []string {
+func panelFrame(lines []string, width, height int, o dashboardOptions, edge ...string) []string {
+	edgeColor := divider
+	if len(edge) > 0 {
+		edgeColor = edge[0]
+	}
 	if width < 4 {
 		result := make([]string, max(1, height))
 		for i := range result {
@@ -535,24 +415,23 @@ func panelFrame(lines []string, width, height int, o dashboardOptions) []string 
 	}
 	height = max(height, len(lines)+2)
 	result := make([]string, height)
-	result[0] = themed("┌"+strings.Repeat("─", width-2)+"┐", divider, panel, o.Dim)
+	result[0] = themed("┌"+strings.Repeat("─", width-2)+"┐", edgeColor, panel, o.Dim)
 	for i := 1; i < height-1; i++ {
 		content := ""
 		if i-1 < len(lines) {
 			content = lines[i-1]
 		}
-		result[i] = themed("│ ", divider, panel, o.Dim) + themed(cellPad(content, width-4), text, panel, o.Dim) + themed(" │", divider, panel, o.Dim)
+		result[i] = themed("│ ", edgeColor, panel, o.Dim) + themed(cellPad(content, width-4), text, panel, o.Dim) + themed(" │", edgeColor, panel, o.Dim)
 	}
-	result[height-1] = themed("└"+strings.Repeat("─", width-2)+"┘", divider, panel, o.Dim)
+	result[height-1] = themed("└"+strings.Repeat("─", width-2)+"┘", edgeColor, panel, o.Dim)
 	return result
 }
 
 func overviewContent(o dashboardOptions, width int) (string, []hitRegion) {
 	var body dashboardBlock
-	s := o.Snapshot
-	if !o.GuideDismissed && !s.GuideDismissed && (!s.Installed || !s.ConfigReady || (!s.HasRun && !s.Service.Active)) {
-		body.append(getStarted(o, width))
-		body.blank()
+	if overviewSetupVisible(o) {
+		setup := getStarted(o, width)
+		return strings.Join(setup.lines, "\n"), setup.targets
 	}
 	controlColumns := 1
 	if width >= 76 && o.Height >= 20 {
@@ -659,13 +538,14 @@ func overviewContent(o dashboardOptions, width int) (string, []hitRegion) {
 }
 
 func overviewAction(o dashboardOptions, index int) (string, string) {
+	tr := o.Locale.T
 	s := o.Snapshot
 	switch index {
 	case 0:
-		return "card.import", "Import config"
+		return "card.import", tr("dashboard.action.import")
 	case 1:
 		if s.Service.Active && len(s.Groups) > 0 {
-			return "card.proxies", "Open Proxies"
+			return "card.proxies", tr("dashboard.action.openProxies")
 		}
 	}
 	return "", ""
@@ -674,6 +554,7 @@ func overviewAction(o dashboardOptions, index int) (string, string) {
 type overviewField struct{ label, value string }
 
 func overviewTrafficFields(o dashboardOptions) []overviewField {
+	tr := o.Locale.T
 	connections, rate, totals, memory := "--", "--", "--", "--"
 	observed := o.Runtime
 	if o.RuntimeReceived && observed.State == "ready" {
@@ -688,26 +569,27 @@ func overviewTrafficFields(o dashboardOptions) []overviewField {
 			memory = formatBytes(int64(*observed.Memory))
 		}
 	}
-	return []overviewField{{"Upload / download", rate}, {"Since core start", totals}, {"Connections", connections}, {"Core memory", memory}}
+	return []overviewField{{tr("dashboard.field.uploadDownload"), rate}, {tr("dashboard.field.sinceStart"), totals}, {tr("dashboard.field.connections"), connections}, {tr("dashboard.field.coreMemory"), memory}}
 }
 
-func overviewEnvironmentFields(s app.Snapshot) []overviewField {
-	fields := []overviewField{{"Platform", runtime.GOOS + "/" + runtime.GOARCH}, {"System proxy", "Unchanged"}, {"TUN", "Unsupported in user service"}}
+func overviewEnvironmentFields(s app.Snapshot, locales ...i18n.Localizer) []overviewField {
+	tr := dashboardLocale(locales).T
+	fields := []overviewField{{tr("dashboard.field.platform"), runtime.GOOS + "/" + runtime.GOARCH}, {tr("dashboard.field.systemProxy"), tr("dashboard.field.unchanged")}, {tr("dashboard.field.tun"), tr("dashboard.field.tunUnsupported")}}
 	if s.Installed {
-		fields = append(fields, overviewField{"Installed version", s.Version})
+		fields = append(fields, overviewField{tr("dashboard.field.installedVersion"), s.Version})
 		if s.Service.Active {
 			running := s.RunningVersion
 			if running == "" {
-				running = "Unavailable"
+				running = tr("dashboard.status.unavailable")
 			}
-			fields = append(fields, overviewField{"Running version", running})
+			fields = append(fields, overviewField{tr("dashboard.field.runningVersion"), running})
 		}
 		if s.Desired.Known {
-			desired := "Stopped"
+			desired := tr("dashboard.status.stopped")
 			if s.Desired.Running {
-				desired = "Running"
+				desired = tr("dashboard.status.running")
 			}
-			fields = append(fields, overviewField{"Desired state", desired})
+			fields = append(fields, overviewField{tr("dashboard.field.desiredState"), desired})
 		}
 	}
 	return fields
@@ -766,44 +648,30 @@ func overviewTrafficSummary(o dashboardOptions, card []string, width int) dashbo
 	return b
 }
 
+func overviewSetupVisible(o dashboardOptions) bool {
+	return !o.StateUnavailable && !o.Snapshot.Installed && !o.GuideSkipped && !o.GuideDismissed && !o.Snapshot.GuideDismissed
+}
+
 func getStarted(o dashboardOptions, width int) dashboardBlock {
-	title, description := "Install your first proxy core", "Then add a subscription or import a local configuration."
-	primaryID, primaryLabel := "install", "Install core"
-	secondaryID, secondaryLabel := "import", "Import config"
-	step := 1
-	if o.Snapshot.Installed {
-		step = 2
-		title = "Choose your first configuration"
-		description = "Import Mihomo YAML, or use the built-in DIRECT configuration."
-		primaryID, primaryLabel = "import", "Import config"
-		secondaryID, secondaryLabel = "start", "Use default"
-		if o.Snapshot.ConfigReady {
-			step = 3
-			title = "Start your proxy core"
-			description = "Your configuration is ready. Start Mihomo to browse and select nodes."
-			primaryID, primaryLabel = "start", "Start core"
-			secondaryID, secondaryLabel = "import", "Import config"
-		}
-	}
+	tr := o.Locale.T
 	inner := max(1, width-4)
-	heading := themed(lipgloss.NewStyle().Bold(true).Render("Get started"), text, panel, o.Dim)
-	steps := fmt.Sprintf("%d / 3 · Core > Config > Start", step)
-	if inner >= 55 {
-		heading = cellPad(heading, inner-ansi.StringWidth(steps)) + themed(steps, muted, panel, o.Dim)
+	lines := strings.Split(wrapText(themed(tr("dashboard.guide.title"), muted, panel, o.Dim), inner), "\n")
+	lines = append(lines, "")
+	lines = append(lines, strings.Split(wrapText(themed(lipgloss.NewStyle().Bold(true).Render(tr("dashboard.guide.installTitle")), accent, panel, o.Dim), inner), "\n")...)
+	for _, key := range []string{"dashboard.guide.installDescription", "dashboard.guide.readyHint"} {
+		lines = append(lines, strings.Split(wrapText(themed(tr(key), text, panel, o.Dim), inner), "\n")...)
 	}
-	lines := []string{heading}
-	lines = append(lines, strings.Split(wrapText(themed(lipgloss.NewStyle().Bold(true).Render(title), text, panel, o.Dim), inner), "\n")...)
-	lines = append(lines, strings.Split(wrapText(themed(description, muted, panel, o.Dim), inner), "\n")...)
 	lines = append(lines, "")
 	b := dashboardBlock{}
 	buttons := []struct {
 		id, label string
 		primary   bool
-	}{{primaryID, primaryLabel, true}, {secondaryID, secondaryLabel, false}, {"dismiss", "Dismiss", false}}
+	}{{"install", tr("dashboard.guide.install"), true}, {"guide.later", tr("dashboard.guide.later"), false}}
 	x := 0
 	buttonLine := ""
 	for _, button := range buttons {
 		label := dashboardButton(button.id, button.label, o, button.primary)
+		label = cellCrop(label, inner)
 		w := ansi.StringWidth(label)
 		if x > 0 && x+2+w > inner {
 			lines = append(lines, cellPad(buttonLine, inner))
@@ -814,32 +682,42 @@ func getStarted(o dashboardOptions, width int) dashboardBlock {
 			buttonLine += themed("  ", text, panel, o.Dim)
 			x += 2
 		}
-		// Keep the dismiss action right-aligned when all controls fit one row.
-		if button.id == "dismiss" && x+w <= inner && inner >= 60 {
-			gap := inner - x - w
-			buttonLine += themed(strings.Repeat(" ", gap), text, panel, o.Dim)
-			x += gap
+		left, top := 2, 1
+		if width < 4 {
+			left, top = 0, 0
 		}
-		b.targets = append(b.targets, hitRegion{ID: button.id, X: 2 + x, Y: 1 + len(lines), W: min(w, inner-x), H: 1})
+		b.targets = append(b.targets, hitRegion{ID: button.id, X: left + x, Y: top + len(lines), W: w, H: 1})
 		buttonLine += label
 		x += w
 	}
 	lines = append(lines, cellPad(buttonLine, inner))
-	b.lines = panelFrame(lines, width, len(lines)+2, o)
+	lines = append(lines, "")
+	for _, key := range []string{"dashboard.guide.hint", "dashboard.guide.boundary"} {
+		lines = append(lines, strings.Split(wrapText(themed(tr(key), muted, panel, o.Dim), inner), "\n")...)
+	}
+	b.lines = panelFrame(lines, width, len(lines)+2, o, accent)
+	visible := b.targets[:0]
+	for _, target := range b.targets {
+		if target, ok := clipRegion(target, 0, 0, width, len(b.lines)); ok {
+			visible = append(visible, target)
+		}
+	}
+	b.targets = visible
 	return b
 }
 
 func overviewCards(o dashboardOptions) [][]string {
+	tr := o.Locale.T
 	s := o.Snapshot
 	style := func(value, color string) string { return themed(clean(value), color, panel, o.Dim) }
 	title := func(value string) string { return lipgloss.NewStyle().Bold(true).Render(style(value, text)) }
 	label := func(name, value string) string { return style(cellPad(name, 20), muted) + style(value, text) }
-	configured, active := "Not configured", "None"
+	configured, active := tr("dashboard.sidebar.notConfigured"), tr("dashboard.profile.none")
 	if s.ConfigReady {
-		configured = "Configuration ready"
-		active = snapshotProfileName(s, s.Applied)
+		configured = tr("dashboard.profile.ready")
+		active = snapshotProfileName(s, s.Applied, o.Locale)
 		if active == "" {
-			active = "default"
+			active = tr("profiles.builtin_name")
 		}
 	}
 	saved := 0
@@ -848,15 +726,15 @@ func overviewCards(o dashboardOptions) [][]string {
 			saved++
 		}
 	}
-	profile := []string{title("Current profile"), style(configured, text)}
+	profile := []string{title(tr("dashboard.profile.title")), style(configured, text)}
 	if s.ConfigReady || saved > 0 {
-		profile = append(profile, "", label("Active profile", active), label("Saved profiles", fmt.Sprint(saved)))
+		profile = append(profile, "", style(tr("dashboard.profile.active"), muted), style(active, text), label(tr("dashboard.profile.saved"), fmt.Sprint(saved)))
 	} else {
-		profile = append(profile, style("Import a subscription URL or local YAML.", muted))
+		profile = append(profile, style(tr("dashboard.profile.importHint"), muted))
 	}
-	groupName, node, groupStatus := "--", "--", "No active core"
+	groupName, node, groupStatus := "--", "--", tr("dashboard.groups.inactive")
 	if s.Service.Active {
-		groupStatus = "No proxy groups"
+		groupStatus = tr("dashboard.groups.empty")
 		if len(s.Groups) > 0 {
 
 			g := s.Groups[0]
@@ -887,77 +765,81 @@ func overviewCards(o dashboardOptions) [][]string {
 					}
 				}
 			}
-			groupName, node, groupStatus = g.Name, g.Now, "Ready to select"
+			groupName, node, groupStatus = g.Name, g.Now, tr("dashboard.groups.ready")
 		}
 	}
 	if !s.Installed {
-		groupName, node, groupStatus = "--", "--", "Core not installed"
+		groupName, node, groupStatus = "--", "--", tr("dashboard.groups.notInstalled")
 	} else if s.ServiceError != "" {
-		groupName, node, groupStatus = "--", "--", "Service unavailable"
+		groupName, node, groupStatus = "--", "--", tr("dashboard.groups.serviceUnavailable")
 	} else if s.Service.Active && s.APIError != "" {
-		groupName, node, groupStatus = "--", "--", "API unavailable"
+		groupName, node, groupStatus = "--", "--", tr("dashboard.groups.apiUnavailable")
 	}
-	groups := []string{title("Selected proxy group"), style(groupStatus, muted)}
+	groups := []string{title(tr("dashboard.groups.title")), style(groupStatus, muted)}
 	if groupName != "--" {
-		groups = append(groups, "", label("Group", groupName), label("Current node", node))
+		groups = append(groups, "", label(tr("dashboard.groups.group"), groupName), label(tr("dashboard.groups.node"), node))
 	} else if !s.Service.Active {
-		hint := "Start the core to browse Proxies."
+		hint := tr("dashboard.groups.startHint")
 		if !s.Installed {
-			hint = "Install the core to browse Proxies."
+			hint = tr("dashboard.groups.installHint")
 		}
 		groups = append(groups, style(hint, muted))
 	}
 	observed := o.Runtime
-	status := runtimeStatus(observed, o.RuntimeReceived, o.RuntimePending, s.Installed)
-	traffic := []string{title("Traffic statistics"), style(status, muted)}
+	status := runtimeStatus(observed, o.RuntimeReceived, o.RuntimePending, s.Installed, o.Locale)
+	traffic := []string{title(tr("dashboard.traffic.title")), style(status, muted)}
 	if o.RuntimeReceived && observed.State == "ready" {
 		traffic = append(traffic, "")
 		for _, field := range overviewTrafficFields(o) {
 			traffic = append(traffic, label(field.label, field.value))
 		}
-		traffic = append(traffic, style("Totals reset when the core restarts", muted))
+		traffic = append(traffic, style(tr("dashboard.traffic.resetHint"), muted))
 	} else {
-		traffic = append(traffic, style("Runtime data appears after the core starts.", muted))
+		traffic = append(traffic, style(tr("dashboard.traffic.startHint"), muted))
 	}
-	for _, issue := range []string{observed.Error, observed.ConnectionsError, observed.TrafficError, observed.MemoryError} {
-		if issue != "" {
-			traffic = append(traffic, style(issue, errorColor))
+	for _, issue := range []struct {
+		text  string
+		cause error
+	}{{observed.Error, observed.Diagnostic}, {observed.ConnectionsError, observed.ConnectionsDiagnostic}, {observed.TrafficError, observed.TrafficDiagnostic}, {observed.MemoryError, observed.MemoryDiagnostic}} {
+		if issue.text != "" {
+			traffic = append(traffic, style(o.Locale.Diagnostic(issue.text, issue.cause), errorColor))
 			break
 		}
 	}
-	coreStatus, color := coreSummary(s)
-	kernel := []string{title("Kernel and environment"), style(coreStatus, color), ""}
-	for _, field := range overviewEnvironmentFields(s) {
+	coreStatus, color := coreSummary(s, o.Locale)
+	kernel := []string{title(tr("dashboard.kernel.environment")), style(coreStatus, color), ""}
+	for _, field := range overviewEnvironmentFields(s, o.Locale) {
 		kernel = append(kernel, label(field.label, field.value))
 	}
 	if s.Installed && s.Drift != "" {
-		kernel = append(kernel, style(clean(s.Drift), warning))
+		kernel = append(kernel, style(clean(o.Locale.Detail(s.Drift)), warning))
 	}
 	return [][]string{profile, groups, traffic, kernel}
 }
 
 func settingsContent(o dashboardOptions, width int) (string, []hitRegion) {
+	tr := o.Locale.T
 	var b dashboardBlock
 	inner := max(1, width-4)
 	label := func(s string) string { return themed(s, muted, panel, o.Dim) }
-	lines := []string{themed(lipgloss.NewStyle().Bold(true).Render("Core and configuration"), text, panel, o.Dim)}
-	lines = append(lines, label("Theme: "+themeName))
-	info := "Install Mihomo, manage its configuration, and control the user service."
+	lines := []string{themed(lipgloss.NewStyle().Bold(true).Render(tr("dashboard.settings.title")), text, panel, o.Dim)}
+	lines = append(lines, label(tr("dashboard.settings.theme", themeName)))
+	info := tr("dashboard.settings.description")
 	lines = append(lines, strings.Split(wrapText(label(info), inner), "\n")...)
 	lines = append(lines, "")
 	type settingControl struct {
 		id, label string
 		enabled   bool
 	}
-	controls := []settingControl{{"install", map[bool]string{false: "Install core", true: "Manage / Update core"}[o.Snapshot.Installed], true}, {"network", "Network settings", true}, {"import", "Import config", true}, {"runtime-settings", "Runtime settings / Ports", o.Snapshot.Installed}, {"start", "Start", o.Snapshot.Installed && !o.Snapshot.Service.Active}, {"stop", "Stop", o.Snapshot.Installed && (o.Snapshot.Service.Active || o.Snapshot.Desired.Running)}, {"restart", "Restart", o.Snapshot.Installed}}
+	controls := []settingControl{{"install", map[bool]string{false: tr("dashboard.action.install"), true: tr("dashboard.settings.manage")}[o.Snapshot.Installed], true}, {"network", tr("dashboard.action.network"), true}, {"import", tr("dashboard.action.import"), true}, {"runtime-settings", tr("dashboard.settings.ports"), o.Snapshot.Installed}, {"start", tr("dashboard.settings.start"), o.Snapshot.Installed && !o.Snapshot.Service.Active}, {"stop", tr("dashboard.settings.stop"), o.Snapshot.Installed && (o.Snapshot.Service.Active || o.Snapshot.Desired.Running)}, {"restart", tr("dashboard.action.restart"), o.Snapshot.Installed}}
 	if o.Snapshot.Installed {
-		autostartID, autostartLabel := "autostart-enable", "Enable autostart"
+		autostartID, autostartLabel := "autostart-enable", tr("dashboard.settings.enableAutostart")
 		if o.Snapshot.Service.Enabled {
-			autostartID, autostartLabel = "autostart-disable", "Disable autostart"
+			autostartID, autostartLabel = "autostart-disable", tr("dashboard.settings.disableAutostart")
 		}
 		controls = append(controls, settingControl{autostartID, autostartLabel, true})
 		for _, mode := range []string{"rule", "global", "direct"} {
-			controls = append(controls, settingControl{"mode." + mode, "Use " + mode + " mode", true})
+			controls = append(controls, settingControl{"mode." + mode, tr("dashboard.settings.useMode." + mode), true})
 		}
 	}
 	for _, control := range controls {
@@ -969,34 +851,85 @@ func settingsContent(o dashboardOptions, width int) (string, []hitRegion) {
 		lines = append(lines, value, "")
 	}
 	if o.Snapshot.Installed {
-		lines = append(lines, label("Installed: "+clean(o.Snapshot.Version)))
+		lines = append(lines, label(tr("dashboard.settings.installed", clean(o.Snapshot.Version))))
 		if o.Snapshot.RunningVersion != "" {
-			lines = append(lines, label("Running: "+clean(o.Snapshot.RunningVersion)))
+			lines = append(lines, label(tr("dashboard.settings.running", clean(o.Snapshot.RunningVersion))))
 		}
-		lines = append(lines, strings.Split(wrapText(label("Controller: "+clean(o.Snapshot.Controller)), inner), "\n")...)
-		lines = append(lines, label("Mode: desired "+clean(o.Snapshot.Mode.Desired)))
+		lines = append(lines, strings.Split(wrapText(label(tr("dashboard.settings.controller", clean(o.Snapshot.Controller))), inner), "\n")...)
+		lines = append(lines, label(tr("dashboard.settings.desiredMode", dashboardModeLabel(o.Snapshot.Mode.Desired, o.Locale))))
 		if o.Snapshot.Mode.Actual != "" {
-			lines = append(lines, label("Mode: actual "+clean(o.Snapshot.Mode.Actual)))
+			lines = append(lines, label(tr("dashboard.settings.actualMode", dashboardModeLabel(o.Snapshot.Mode.Actual, o.Locale))))
 		}
-		lines = append(lines, label("TUN: unsupported in the unprivileged user service"))
-		lines = append(lines, strings.Split(wrapText(label("Remove core: stop and disable autostart, then run lazyclash uninstall. Saved profiles are retained."), inner), "\n")...)
+		lines = append(lines, label(tr("dashboard.settings.tunUnsupported")))
+		lines = append(lines, strings.Split(wrapText(label(tr("dashboard.settings.removeHint")), inner), "\n")...)
 		if o.Snapshot.Service.Result != "" && o.Snapshot.Service.Result != "success" {
-			lines = append(lines, label(fmt.Sprintf("Last service result: %s (exit %d)", clean(o.Snapshot.Service.Result), o.Snapshot.Service.ExitCode)))
+			lines = append(lines, label(tr("dashboard.settings.serviceResult", clean(o.Snapshot.Service.Result), o.Snapshot.Service.ExitCode)))
 		}
 		if o.Snapshot.Drift != "" {
-			lines = append(lines, strings.Split(wrapText(themed(clean(o.Snapshot.Drift), warning, panel, o.Dim), inner), "\n")...)
+			lines = append(lines, strings.Split(wrapText(themed(clean(o.Locale.Detail(o.Snapshot.Drift)), warning, panel, o.Dim), inner), "\n")...)
 		}
 	}
 	if o.Snapshot.ServiceError != "" {
-		lines = append(lines, strings.Split(wrapText(themed(clean(o.Snapshot.ServiceError), errorColor, panel, o.Dim), inner), "\n")...)
+		lines = append(lines, strings.Split(wrapText(themed(clean(o.Locale.Diagnostic(o.Snapshot.ServiceError, o.Snapshot.ServiceDiagnostic)), errorColor, panel, o.Dim), inner), "\n")...)
 	}
 	if o.Snapshot.Installed && !o.Snapshot.Service.Linger {
-		issue := "Linger is disabled; enable it with loginctl enable-linger to keep Mihomo running after logout."
+		issue := tr("dashboard.settings.lingerDisabled")
 		if !o.Snapshot.Service.LingerKnown {
-			issue = "Linger status is unknown; run lazyclash doctor before relying on operation after logout."
+			issue = tr("dashboard.settings.lingerUnknown")
 		}
 		lines = append(lines, strings.Split(wrapText(label(issue), inner), "\n")...)
 	}
 	b.lines = panelFrame(lines, width, len(lines)+2, o)
-	return strings.Join(b.lines, "\n"), b.targets
+	result := interfaceSettings(o, width)
+	result.blank()
+	result.append(languageSettings(o, width))
+	result.blank()
+	result.append(b)
+	return strings.Join(result.lines, "\n"), result.targets
+}
+
+func interfaceSettings(o dashboardOptions, width int) dashboardBlock {
+	state := o.Locale.T("dashboard.interface.keyHintsOn")
+	if o.HideKeyHints {
+		state = o.Locale.T("dashboard.interface.keyHintsOff")
+	}
+	lines := []string{
+		themed(o.Locale.T("dashboard.interface.keyHints")+": "+state, text, panel, o.Dim),
+		themed(o.Locale.T("dashboard.interface.keyHintsHint"), muted, panel, o.Dim),
+	}
+	return overviewControlPanel(o, width, o.Locale.T("dashboard.interface.title"), lines, []overviewControlButton{
+		{id: "key-hints.toggle", label: state, enabled: true, selected: !o.HideKeyHints},
+	})
+}
+
+func languageSettings(o dashboardOptions, width int) dashboardBlock {
+	name := "English"
+	if o.Locale.Language() == "zh-Hans" {
+		name = "简体中文"
+	}
+	lines := []string{
+		themed(o.Locale.T("dashboard.language.current", name), text, panel, o.Dim),
+		themed(o.Locale.T("dashboard.language.savedHint"), muted, panel, o.Dim),
+	}
+	buttons := []overviewControlButton{
+		{id: "language.en", label: "English", enabled: !o.Busy, selected: o.Locale.Language() == "en"},
+		{id: "language.zh-Hans", label: "简体中文", enabled: !o.Busy, selected: o.Locale.Language() == "zh-Hans"},
+	}
+	return overviewControlPanel(o, width, o.Locale.T("dashboard.language.title"), lines, buttons)
+}
+
+func dashboardModeLabel(mode string, locale i18n.Localizer) string {
+	switch mode {
+	case "rule", "global", "direct":
+		return locale.T("dashboard.mode." + mode)
+	default:
+		return clean(mode)
+	}
+}
+
+func dashboardLocale(locales []i18n.Localizer) i18n.Localizer {
+	if len(locales) > 0 {
+		return locales[0]
+	}
+	return i18n.Localizer{}
 }

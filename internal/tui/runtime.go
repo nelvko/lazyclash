@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/nelvko/lazyclash/internal/app"
+	"github.com/nelvko/lazyclash/internal/i18n"
 )
 
 type runtimeState struct {
@@ -26,14 +27,14 @@ func (m *Model) stopRuntime() {
 		m.runtime.cancel()
 		m.runtime.cancel = nil
 	}
-	if m.runtime.active {
+	if m.runtime.active || m.runtime.pending {
 		m.runtime.generation++
 	}
 	m.runtime.active, m.runtime.pending = false, false
-	m.runtime.received = false
 }
 func (m *Model) runtimeVisible() bool {
-	return m.snapshot.Installed && (m.page == "overview" || m.page == "connections") && !m.busy && !m.quitting && !m.helpOpen && !m.ports.open && !m.wizard.open && !m.wizard.networkOpen && m.form == "" && m.ctx.Err() == nil
+	sidebar := dashboardGeometry(dashboardOptions{Width: m.width, Height: m.height}).sidebar
+	return m.snapshot.Installed && (m.page == "overview" || m.page == "connections" || sidebar) && !m.busy && !m.quitting && !m.helpOpen && !m.ports.open && !m.wizard.open && !m.wizard.networkOpen && m.form == "" && m.ctx.Err() == nil
 }
 func (m *Model) syncRuntime() tea.Cmd {
 	if !m.runtimeVisible() {
@@ -73,21 +74,26 @@ func (m *Model) acceptRuntime(v runtimeResultMsg) tea.Cmd {
 	previousError := m.runtime.snapshot.Error
 	previousState, previousService := m.runtime.snapshot.State, m.snapshot.Service
 	if v.err != nil {
-		m.runtime.snapshot = app.RuntimeSnapshot{State: "unavailable", Error: clean(v.err.Error())}
+		m.runtime.snapshot = app.RuntimeSnapshot{State: "unavailable", Error: v.err.Error(), Diagnostic: v.err}
 		m.snapshot.ServiceError = "Service status is unavailable; retry runtime monitoring"
 		m.snapshot.APIError = m.runtime.snapshot.Error
+		m.snapshot.APIDiagnostic = v.err
 	} else {
 		m.runtime.snapshot = v.snapshot
 		if v.snapshot.State == "unavailable" || v.snapshot.State == "unsupported" {
 			m.snapshot.APIError = v.snapshot.Error
-		} else if v.snapshot.State == "ready" && (m.snapshot.APIError == previousError || m.snapshot.APIError == "Start the service to view proxy groups") {
+			m.snapshot.APIDiagnostic = v.snapshot.Diagnostic
+		} else if v.snapshot.State == "ready" && (m.snapshot.APIError == previousError || previousState == "stopped" || !previousService.Active) {
 			m.snapshot.APIError = ""
+			m.snapshot.APIDiagnostic = nil
 		}
 		if v.snapshot.Service.State != "" {
 			m.snapshot.Service = v.snapshot.Service
 			m.snapshot.ServiceError = ""
+			m.snapshot.ServiceDiagnostic = nil
 		} else if v.snapshot.State == "unavailable" || v.snapshot.State == "unsupported" {
 			m.snapshot.ServiceError = v.snapshot.Error
+			m.snapshot.ServiceDiagnostic = v.snapshot.Diagnostic
 			if m.snapshot.ServiceError == "" {
 				m.snapshot.ServiceError = "Service status is unavailable"
 			}
@@ -99,6 +105,7 @@ func (m *Model) acceptRuntime(v runtimeResultMsg) tea.Cmd {
 		if v.snapshot.State == "stopped" {
 			m.snapshot.Groups = nil
 			m.snapshot.APIError = "Start the service to view proxy groups"
+			m.snapshot.APIDiagnostic = nil
 		}
 		m.snapshot.RunningVersion = v.snapshot.RunningVersion
 		if v.snapshot.RunningVersion != "" {
@@ -122,39 +129,43 @@ func (m *Model) retryRuntime() tea.Cmd {
 	m.runtime.received = false
 	return m.syncRuntime()
 }
-func runtimeStatus(s app.RuntimeSnapshot, received, pending bool, installed bool) string {
+func runtimeStatus(s app.RuntimeSnapshot, received, pending bool, installed bool, locales ...i18n.Localizer) string {
+	var locale i18n.Localizer
+	if len(locales) > 0 {
+		locale = locales[0]
+	}
 	if !installed {
-		return "Core not installed"
+		return locale.T("runtime.status.not_installed")
 	}
 	if !received {
 		if pending {
-			return "Connecting…"
+			return locale.T("runtime.status.connecting")
 		}
-		return "Waiting for runtime data"
+		return locale.T("runtime.status.waiting")
 	}
 	switch s.Service.State {
 	case "activating":
-		return "Core starting"
+		return locale.T("runtime.status.starting")
 	case "deactivating":
-		return "Core stopping"
+		return locale.T("runtime.status.stopping")
 	case "failed":
-		return "Core failed; check service diagnostics"
+		return locale.T("runtime.status.failed")
 	}
 	switch s.State {
 	case "stopped":
-		return "Core stopped"
+		return locale.T("runtime.status.stopped")
 	case "unsupported":
-		return "Service management unavailable"
+		return locale.T("runtime.status.management_unavailable")
 	case "uninstalled":
-		return "Core not installed"
+		return locale.T("runtime.status.not_installed")
 	case "unavailable":
-		return "API unavailable"
+		return locale.T("runtime.status.api_unavailable")
 	case "ready":
 		if s.Traffic == nil || s.Connections == nil || s.Memory == nil {
-			return "Partially available"
+			return locale.T("runtime.status.partial")
 		}
-		return "Live"
+		return locale.T("runtime.status.live")
 	default:
-		return "Connecting…"
+		return locale.T("runtime.status.connecting")
 	}
 }

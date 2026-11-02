@@ -70,17 +70,17 @@ func TestSevenPageKeysDoNotEscapeInputsOrHelp(t *testing.T) {
 func TestNavigationArrowsAndTabHaveIndependentRegions(t *testing.T) {
 	m := ready(&fakeBackend{})
 	m.width, m.height = 120, 32
-	m.navigate("rules")
+	m.browsePage("rules")
 	m.layout()
 	m, _ = update(m, special(tea.KeyDown))
-	if m.page != "rules" || m.focus != "nav.logs" || m.scroll != 0 {
-		t.Fatal("sidebar arrow changed the content instead of the navigation selection")
+	if m.page != "logs" || m.focus != "nav.logs" || m.scroll != 0 {
+		t.Fatal("sidebar arrow did not browse the page while retaining navigation focus")
 	}
 	m, _ = update(m, special(tea.KeyEnter))
 	if m.page != "logs" {
 		t.Fatal("Enter did not activate the chosen navigation item")
 	}
-	m.navigate("overview")
+	m.browsePage("overview")
 	m.layout()
 	m, _ = update(m, special(tea.KeyTab))
 	if strings.HasPrefix(m.focus, "nav.") {
@@ -110,7 +110,7 @@ func TestHelpIsScrollableCapturesInputAndRestoresFocus(t *testing.T) {
 		t.Fatal("help did not open")
 	}
 	for _, hit := range m.targets {
-		if hit.ID != "help.close" {
+		if hit.ID != "help.close" && hit.ID != "key-hints.toggle" {
 			t.Fatal("background retained mouse targets under Help")
 		}
 	}

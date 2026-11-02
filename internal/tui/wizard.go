@@ -3,7 +3,6 @@ package tui
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -11,6 +10,7 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"github.com/nelvko/lazyclash/internal/app"
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 	"github.com/nelvko/lazyclash/internal/downloadnet"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
@@ -23,6 +23,15 @@ const (
 	stepConfirm    wizardStep = "Confirm"
 	stepInstalling wizardStep = "Installing"
 	stepResult     wizardStep = "Result"
+)
+
+// These stable state values are independent of the labels shown to the user.
+const (
+	checkNotTested     = "Not tested"
+	checkTesting       = "Testing"
+	checkNotApplicable = "Not applicable"
+	checkPassed        = "Passed"
+	checkFailed        = "Failed"
 )
 
 type checkState struct{ Status, Detail string }
@@ -65,7 +74,7 @@ func newWizard() wizardState {
 		}
 		return v
 	}
-	return wizardState{step: stepCore, cfg: downloadnet.Config{Source: "official", ProxyMode: "none"}, draft: downloadnet.Config{Source: "official", ProxyMode: "none"}, focus: "continue", version: input("v1.19.33", false), local: input("/absolute/path/to/mihomo", false), prefix: input("https://accelerator.example.invalid/", true), mirror: input("https://mirror.example.invalid/mihomo/{version}/{asset}", true), proxy: input("http://127.0.0.1:7890", true), versionTest: checkState{Status: "Not tested"}, fileTest: checkState{Status: "Not tested"}}
+	return wizardState{step: stepCore, cfg: downloadnet.Config{Source: "official", ProxyMode: "none"}, draft: downloadnet.Config{Source: "official", ProxyMode: "none"}, focus: "continue", version: input("v1.19.33", false), local: input("/absolute/path/to/mihomo", false), prefix: input("https://accelerator.example.invalid/", true), mirror: input("https://mirror.example.invalid/mihomo/{version}/{asset}", true), proxy: input("http://127.0.0.1:7890", true), versionTest: checkState{Status: checkNotTested}, fileTest: checkState{Status: checkNotTested}}
 }
 func (m *Model) selection() string {
 	if m.wizard.specific {
@@ -78,7 +87,7 @@ func (m *Model) resolveVersion() tea.Cmd {
 		return m.preparePlan()
 	}
 	if m.wizard.specific && strings.TrimSpace(m.wizard.version.Value()) == "" {
-		m.wizard.err = "Enter a specific stable version"
+		m.wizard.err = m.tr("wizard.version.required")
 		return nil
 	}
 	cfg, selection := m.wizard.cfg, m.selection()
@@ -89,7 +98,7 @@ func (m *Model) resolveVersion() tea.Cmd {
 	m.wizard.failedKind = ""
 	m.wizard.release = mihomo.Release{}
 	m.wizard.plan = app.InstallPlan{}
-	m.message = "Querying official stable release metadata…"
+	m.message = m.tr("wizard.version.querying")
 	return tea.Batch(func() tea.Msg {
 		r, err := backend.ResolveRelease(ctx, selection, cfg)
 		return wizardMsg{id: id, kind: "resolve", release: r, err: err}
@@ -106,7 +115,7 @@ func (m *Model) preparePlan() tea.Cmd {
 	}
 	reinstall := m.wizard.reinstall
 	m.wizard.err = ""
-	m.message = "Checking platform, target, installed state and disk space…"
+	m.message = m.tr("wizard.preflight.checking")
 	return tea.Batch(func() tea.Msg {
 		p, err := backend.PrepareInstall(ctx, release, local, reinstall)
 		return wizardMsg{id: id, kind: "prepare", plan: p, err: err}
@@ -117,7 +126,7 @@ func (m *Model) installCore() tea.Cmd {
 		return nil
 	}
 	if m.wizard.plan.BlockedReason != "" {
-		m.wizard.err = m.wizard.plan.BlockedReason
+		m.wizard.err = m.locale.Diagnostic(m.wizard.plan.BlockedReason, m.wizard.plan.BlockedDiagnostic)
 		return nil
 	}
 	ctx := m.newJob("install")
@@ -152,7 +161,7 @@ func (m *Model) installCore() tea.Cmd {
 		defer cancel()
 		s, se := backend.Snapshot(refreshCtx)
 		if se != nil {
-			err = errors.Join(err, fmt.Errorf("refresh dashboard: %w", se))
+			err = errors.Join(err, diagnostic.New("diagnostic.wizard_refresh", "refresh dashboard: %w", se))
 		}
 		latestMu.Lock()
 		finalProgress := latest
@@ -167,19 +176,19 @@ func (m *Model) handleWizardResult(v wizardMsg) tea.Cmd {
 		w.progress = v.progress
 	}
 	if v.err != nil {
-		w.err = clean(v.err.Error())
+		w.err = clean(m.localizeError(v.err))
 		if v.kind == "save-network" {
-			w.err = "Preferences were not saved: " + w.err
+			w.err = m.tr("wizard.preferences_not_saved", w.err)
 			return nil
 		}
 		w.failedKind = v.kind
-		m.message = "Operation failed"
+		m.message = m.tr("wizard.operation_failed")
 		if v.kind == "install" {
-			w.failedStage = stageLabel(w.progress.Stage)
+			w.failedStage = w.progress.Stage
 			w.step = stepResult
 			w.focus = "retry"
 			if errors.Is(v.err, context.Canceled) {
-				w.err = "Installation canceled; cleanup completed. " + w.err
+				w.err = m.tr("wizard.install_cancelled", w.err)
 				w.focus = "done"
 			}
 		}
@@ -192,7 +201,7 @@ func (m *Model) handleWizardResult(v wizardMsg) tea.Cmd {
 	case "resolve":
 		w.release = v.release
 		w.cachedRelease, w.cachedSelection = v.release, m.selection()
-		m.message = "Version resolved: " + v.release.Version
+		m.message = m.tr("wizard.version_resolved", v.release.Version)
 		w.focus = "continue"
 	case "prepare":
 		w.plan = v.plan
@@ -200,13 +209,13 @@ func (m *Model) handleWizardResult(v wizardMsg) tea.Cmd {
 		w.step = stepConfirm
 		w.focus = "install"
 		w.scroll = 0
-		m.message = "Preflight completed"
+		m.message = m.tr("wizard.preflight.completed")
 	case "install":
 		w.result = v.result
 		w.step = stepResult
 		w.focus = "done"
 		w.cancelling = false
-		m.message = "Mihomo installed and verified"
+		m.message = m.tr("wizard.installed")
 	case "save-network":
 		return m.applyNetwork()
 	}
@@ -232,8 +241,8 @@ func (m *Model) openNetwork(fromFailure bool) {
 	w.scroll = 0
 	w.reveal = true
 	w.remember = false
-	w.versionTest = checkState{Status: "Not tested"}
-	w.fileTest = checkState{Status: "Not tested"}
+	w.versionTest = checkState{Status: checkNotTested}
+	w.fileTest = checkState{Status: checkNotTested}
 	w.testPending = 0
 	if !fromFailure && w.failedKind == "" {
 		w.err = ""
@@ -244,8 +253,8 @@ func (m *Model) draftChanged() {
 		m.abortLookup()
 	}
 	w := &m.wizard
-	w.versionTest = checkState{Status: "Not tested"}
-	w.fileTest = checkState{Status: "Not tested"}
+	w.versionTest = checkState{Status: checkNotTested}
+	w.fileTest = checkState{Status: checkNotTested}
 	w.testPending = 0
 	w.err = ""
 }
@@ -253,7 +262,7 @@ func (m *Model) testNetwork() tea.Cmd {
 	w := &m.wizard
 	cfg := w.draft.Normalized()
 	if err := cfg.Validate(); err != nil {
-		w.err = err.Error()
+		w.err = m.localizeError(err)
 		return nil
 	}
 	ctx := m.newJob("network")
@@ -264,8 +273,8 @@ func (m *Model) testNetwork() tea.Cmd {
 	if r.Asset == "" && w.cachedSelection == selection {
 		r = w.cachedRelease
 	}
-	w.versionTest = checkState{Status: "Testing"}
-	w.fileTest = checkState{Status: "Not applicable", Detail: "Resolve a version to obtain a valid file URL"}
+	w.versionTest = checkState{Status: checkTesting}
+	w.fileTest = checkState{Status: checkNotApplicable, Detail: m.tr("wizard.network.resolve_file")}
 	w.testPending = 1
 	w.testRelease = r
 	cmds := []tea.Cmd{func() tea.Msg {
@@ -273,7 +282,7 @@ func (m *Model) testNetwork() tea.Cmd {
 		return networkMsg{id: id, kind: "version", release: release, err: err}
 	}, m.spinner.Tick}
 	if r.Asset != "" {
-		w.fileTest = checkState{Status: "Testing"}
+		w.fileTest = checkState{Status: checkTesting}
 		w.testPending++
 		cmds = append(cmds, m.fileTestCmd(ctx, id, r, cfg))
 	}
@@ -288,25 +297,25 @@ func (m Model) fileTestCmd(ctx context.Context, id uint64, r mihomo.Release, cfg
 func (m *Model) handleNetworkResult(v networkMsg) tea.Cmd {
 	w := &m.wizard
 	w.testPending--
-	status := checkState{Status: "Passed"}
+	status := checkState{Status: checkPassed}
 	if v.err != nil {
-		status = checkState{Status: "Failed", Detail: clean(v.err.Error())}
+		status = checkState{Status: checkFailed, Detail: clean(m.localizeError(v.err))}
 	}
 	var cmd tea.Cmd
 	if v.kind == "version" {
 		w.versionTest = status
 		if v.err == nil {
-			w.versionTest.Detail = "Resolved " + v.release.Version
+			w.versionTest.Detail = m.tr("wizard.network.resolved", v.release.Version)
 			different := w.testRelease.Version != v.release.Version || w.testRelease.Asset != v.release.Asset || w.testRelease.SHA256 != v.release.SHA256
 			w.testRelease = v.release
-			if different || w.fileTest.Status == "Not applicable" {
-				w.fileTest = checkState{Status: "Testing", Detail: v.release.Asset}
+			if different || w.fileTest.Status == checkNotApplicable {
+				w.fileTest = checkState{Status: checkTesting, Detail: v.release.Asset}
 				w.testPending++
 				cmd = m.fileTestCmd(m.opCtx, m.id, v.release, w.draft)
 			}
 		}
 	} else if v.release.Version == w.testRelease.Version && v.release.Asset == w.testRelease.Asset && v.release.SHA256 == w.testRelease.SHA256 {
-		status.Detail = "Asset " + v.release.Asset + ": " + status.Detail
+		status.Detail = m.tr("wizard.network.asset", v.release.Asset, status.Detail)
 		w.fileTest = status
 	}
 	if w.testPending <= 0 {
@@ -315,14 +324,14 @@ func (m *Model) handleNetworkResult(v networkMsg) tea.Cmd {
 		if m.cancel != nil {
 			m.cancel()
 		}
-		m.message = "Connection tests completed"
+		m.message = m.tr("wizard.network.completed")
 	}
 	return cmd
 }
 func (m *Model) saveAndApplyNetwork() tea.Cmd {
 	cfg := m.wizard.draft.Normalized()
 	if err := cfg.Validate(); err != nil {
-		m.wizard.err = err.Error()
+		m.wizard.err = m.localizeError(err)
 		return nil
 	}
 	if !m.wizard.remember {
@@ -344,7 +353,7 @@ func (m *Model) applyNetwork() tea.Cmd {
 	w.focus = w.returnFocus
 	w.scroll = 0
 	w.reveal = true
-	m.message = "Download network settings applied to this session"
+	m.message = m.tr("wizard.network.applied")
 	retry := w.returnFailed
 	w.err = ""
 	w.failedKind = ""

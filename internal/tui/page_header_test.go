@@ -46,6 +46,9 @@ func TestPageHeadersUsePageActionsAcrossSizesAndFocus(t *testing.T) {
 					m.layout()
 					assertCanvas(t, m.screen, size[0], size[1])
 					assertRegions(t, m.targets, size[0], size[1])
+					if hasAction(m.targets, "help.open") || hasAction(m.focusTargets(), "help.open") {
+						t.Fatal("header retained a help button or Tab stop")
+					}
 					g := dashboardGeometry(dashboardOptions{Width: m.width, Height: m.height, Page: page})
 					lines := strings.Split(m.screen, "\n")
 					if strings.Contains(ansi.Strip(strings.Join(lines[:g.y], "\n")), "Mihomo ·") {
@@ -81,6 +84,9 @@ func TestPageHeadersUsePageActionsAcrossSizesAndFocus(t *testing.T) {
 		}
 	}
 	m := headerModel("overview", 120, 32)
+	if hasAction(m.targets, "help.open") || hasAction(m.focusTargets(), "help.open") {
+		t.Fatal("Overview retained a help button or Tab stop")
+	}
 	if !strings.Contains(ansi.Strip(strings.Split(m.screen, "\n")[1]), "Mihomo · Running") {
 		t.Fatal("Overview lost its core summary")
 	}

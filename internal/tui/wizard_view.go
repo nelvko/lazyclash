@@ -9,15 +9,36 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/downloadnet"
+	"github.com/nelvko/lazyclash/internal/i18n"
 )
 
 type wizardButton struct{ ID, Label string }
 type wizardDocument struct {
+	locale   i18n.Localizer
 	lines    []string
 	targets  []hitRegion
 	width    int
 	hover    string
 	disabled func(string) bool
+}
+
+func (d *wizardDocument) tr(id string, args ...any) string { return d.locale.T(id, args...) }
+
+func wizardStepLabel(locale i18n.Localizer, step wizardStep) string {
+	switch step {
+	case stepCore:
+		return locale.T("wizard.step.core")
+	case stepVersion:
+		return locale.T("wizard.step.version")
+	case stepConfirm:
+		return locale.T("wizard.step.confirm")
+	case stepInstalling:
+		return locale.T("wizard.step.installing")
+	case stepResult:
+		return locale.T("wizard.step.result")
+	default:
+		return clean(string(step))
+	}
 }
 
 func (d *wizardDocument) line(s string) {
@@ -30,7 +51,7 @@ func (d *wizardDocument) label(s string) {
 func (d *wizardDocument) steps(current wizardStep) {
 	var parts []string
 	for i, step := range []wizardStep{stepCore, stepVersion, stepConfirm} {
-		label := fmt.Sprintf("%d %s", i+1, step)
+		label := fmt.Sprintf("%d %s", i+1, wizardStepLabel(d.locale, step))
 		color := muted
 		if step == current {
 			label = "[" + label + "]"
@@ -58,7 +79,7 @@ func (d *wizardDocument) control(id, label, focused string) {
 	}
 	if d.disabled != nil && d.disabled(id) {
 		color, background = disabled, raised
-		value += " (busy)"
+		value += d.tr("wizard.busy_suffix")
 	}
 	d.line(themed(value, color, background, false))
 	d.targets = append(d.targets, hitRegion{ID: id, Y: y, W: d.width, H: len(d.lines) - y})
@@ -67,7 +88,7 @@ func (d *wizardDocument) field(id, label string, input *textinput.Model, focus s
 	labelColor := muted
 	if input.Err != nil {
 		labelColor = errorColor
-		label += " · Invalid value"
+		label += d.tr("wizard.invalid_suffix")
 	}
 	d.line(themed(label, labelColor, raised, false))
 	styleInput(input, inputBackground, input.Err != nil)
@@ -91,11 +112,11 @@ func (d *wizardDocument) field(id, label string, input *textinput.Model, focus s
 }
 func checkColor(status string) string {
 	switch status {
-	case "Passed":
+	case checkPassed:
 		return success
-	case "Failed":
+	case checkFailed:
 		return errorColor
-	case "Testing":
+	case checkTesting:
 		return info
 	default:
 		return muted
@@ -103,7 +124,20 @@ func checkColor(status string) string {
 }
 func (d *wizardDocument) check(label string, state checkState) {
 	color := checkColor(state.Status)
-	d.line(themed(label+": ", muted, raised, false) + themed(state.Status, color, raised, false))
+	status := state.Status
+	switch state.Status {
+	case checkNotTested:
+		status = d.tr("wizard.check.not_tested")
+	case checkTesting:
+		status = d.tr("wizard.check.testing")
+	case checkNotApplicable:
+		status = d.tr("wizard.check.not_applicable")
+	case checkPassed:
+		status = d.tr("wizard.check.passed")
+	case checkFailed:
+		status = d.tr("wizard.check.failed")
+	}
+	d.line(themed(label+": ", muted, raised, false) + themed(status, color, raised, false))
 	if state.Detail != "" {
 		d.line(themed(clean(state.Detail), color, raised, false))
 	}
@@ -111,30 +145,30 @@ func (d *wizardDocument) check(label string, state checkState) {
 func (d *wizardDocument) pair(label, value string) {
 	d.line(themed(label+": ", muted, raised, false) + themed(clean(value), text, raised, false))
 }
-func sourceName(cfg downloadnet.Config) string {
+func (m *Model) wizardSourceName(cfg downloadnet.Config) string {
 	switch cfg.Normalized().Source {
 	case "prefix":
-		return "URL prefix accelerator"
+		return m.tr("wizard.source.prefix")
 	case "mirror":
-		return "Custom mirror template"
+		return m.tr("wizard.source.mirror")
 	default:
-		return "Official / GitHub direct"
+		return m.tr("wizard.source.official")
 	}
 }
-func proxySummary(cfg downloadnet.Config) string {
+func (m *Model) wizardProxySummary(cfg downloadnet.Config) string {
 	cfg = cfg.Normalized()
 	switch cfg.ProxyMode {
 	case "environment":
-		return "Environment proxy (HTTP(S)_PROXY / ALL_PROXY / NO_PROXY)"
+		return m.tr("wizard.proxy.environment")
 	case "custom":
-		return "Custom proxy · " + downloadnet.RedactedURL(cfg.ProxyURL)
+		return m.tr("wizard.proxy.custom", downloadnet.RedactedURL(cfg.ProxyURL))
 	default:
-		return "No proxy (environment variables ignored)"
+		return m.tr("wizard.proxy.none")
 	}
 }
-func byteSize(n int64) string {
+func (m *Model) wizardByteSize(n int64) string {
 	if n < 0 {
-		return "Unknown"
+		return m.tr("wizard.unknown")
 	}
 	units := []string{"B", "KiB", "MiB", "GiB"}
 	v := float64(n)
@@ -148,6 +182,38 @@ func byteSize(n int64) string {
 	}
 	return fmt.Sprintf("%.1f %s", v, units[i])
 }
+
+func (m *Model) wizardOperation(operation string) string {
+	switch operation {
+	case "install", "update", "reinstall":
+		return m.tr("wizard.operation." + operation)
+	case "use existing":
+		return m.tr("wizard.operation.use_existing")
+	default:
+		return operation
+	}
+}
+
+func (m *Model) stageLabel(stage string) string {
+	switch stage {
+	case "query", "download", "checksum", "extract", "verify", "deploy", "done":
+		return m.tr("wizard.stage." + stage)
+	default:
+		return clean(stage)
+	}
+}
+
+func (m *Model) wizardFailedStage(stage string) string {
+	// Legacy test fixtures and already-built documents can still contain an
+	// English label. New operation results retain the stable stage identifier.
+	for _, id := range []string{"query", "download", "checksum", "extract", "verify", "deploy", "done"} {
+		if stage == id || stage == stageLabel(id) {
+			return m.stageLabel(id)
+		}
+	}
+	return stage
+}
+
 func (m *Model) wizardControlDisabled(id string) bool {
 	if m.job == "save-network" {
 		return id != "back"
@@ -162,279 +228,282 @@ func (m *Model) wizardControlDisabled(id string) bool {
 }
 func (m *Model) wizardDocument(width int) (wizardDocument, []wizardButton, string) {
 	w := &m.wizard
-	d := wizardDocument{width: max(1, width), hover: m.hover, disabled: m.wizardControlDisabled}
-	title := "Install proxy core"
+	d := wizardDocument{locale: m.locale, width: max(1, width), hover: m.hover, disabled: m.wizardControlDisabled}
+	title := m.tr("wizard.title")
 	if w.networkOpen {
-		title = "Network settings"
-		d.line("Download source and connection are independent.")
+		title = m.tr("wizard.network.title")
+		d.line(m.tr("wizard.network.independent"))
 		d.space()
-		d.label("DOWNLOAD SOURCE")
-		d.control("source", sourceName(w.draft)+"  ‹ / ›", w.focus)
+		d.label(m.tr("wizard.network.source"))
+		d.control("source", m.wizardSourceName(w.draft)+"  ‹ / ›", w.focus)
 		switch w.draft.Source {
 		case "prefix":
 			d.space()
-			d.field("prefix", "Prefix URL (input hidden)", &w.prefix, w.focus)
+			d.field("prefix", m.tr("wizard.network.prefix"), &w.prefix, w.focus)
 		case "mirror":
 			d.space()
-			d.field("mirror", "Template with {version} and {asset} (input hidden)", &w.mirror, w.focus)
+			d.field("mirror", m.tr("wizard.network.mirror"), &w.mirror, w.focus)
 		}
 		d.space()
-		d.label("Final file URL preview")
+		d.label(m.tr("wizard.network.preview"))
 		if w.release.URL != "" {
 			if value, err := w.draft.FilePreview(w.release.URL, w.release.Version, w.release.Asset); err == nil {
 				d.line(value)
 			} else {
-				d.line(themed("Invalid source settings: "+err.Error(), errorColor, raised, false))
+				d.line(themed(m.tr("wizard.network.invalid_source", m.localizeError(err)), errorColor, raised, false))
 			}
 		} else {
-			d.line("Resolve a version to preview its actual asset URL.")
+			d.line(m.tr("wizard.network.resolve_preview"))
 		}
 		d.space()
-		d.label("CONNECTION")
-		d.control("proxy-mode", proxySummary(w.draft)+"  ‹ / ›", w.focus)
+		d.label(m.tr("wizard.network.connection"))
+		d.control("proxy-mode", m.wizardProxySummary(w.draft)+"  ‹ / ›", w.focus)
 		if w.draft.ProxyMode == "custom" {
-			d.field("proxy-url", "Proxy URL · http / https / socks5 / socks5h (hidden)", &w.proxy, w.focus)
+			d.field("proxy-url", m.tr("wizard.network.proxy_url"), &w.proxy, w.focus)
 		}
 		d.space()
-		d.label("CONNECTION TEST")
-		d.check("Version query", w.versionTest)
-		d.check("File download", w.fileTest)
-		d.line("File test reads at most 4 KiB; installation still verifies the complete SHA256.")
+		d.label(m.tr("wizard.network.test"))
+		d.check(m.tr("wizard.network.version_query"), w.versionTest)
+		d.check(m.tr("wizard.network.file_download"), w.fileTest)
+		d.line(m.tr("wizard.network.test_limit"))
 		d.space()
 		mark := "[ ]"
 		if w.remember {
 			mark = "[x]"
 		}
-		d.control("remember", mark+" Remember download preferences", w.focus)
-		d.line("Credentials, query tokens and unrecognized private paths are session-only.")
+		d.control("remember", mark+m.tr("wizard.network.remember"), w.focus)
+		d.line(m.tr("wizard.network.session_only"))
 		d.space()
-		d.line("Version metadata and expected SHA256: official GitHub API through the connection proxy.")
-		d.line("Prefix/mirror: release files only; no API rewriting. A successful file test does not prove that version queries work.")
+		d.line(m.tr("wizard.network.authority"))
+		d.line(m.tr("wizard.network.mirror_boundary"))
 		if w.err != "" {
 			d.space()
 			d.line(themed(clean(w.err), errorColor, raised, false))
 		}
-		apply := "Apply"
+		apply := m.tr("wizard.apply")
 		if w.failedKind != "" && w.failedKind != "save-network" {
-			apply = "Apply & retry"
+			apply = m.tr("wizard.apply_retry")
 		}
-		return d, []wizardButton{{"back", "Back"}, {"test", "Test connection"}, {"apply-network", apply}}, title
+		return d, []wizardButton{{"back", m.tr("wizard.back")}, {"test", m.tr("wizard.test_connection")}, {"apply-network", apply}}, title
 	}
 	switch w.step {
 	case stepCore:
-		d.label("Choose a proxy core")
+		d.label(m.tr("wizard.core.choose"))
 		d.steps(w.step)
 		d.space()
-		d.control("core", "(*) Mihomo · Clash-compatible proxy core", w.focus)
+		d.control("core", m.tr("wizard.core.mihomo"), w.focus)
 		d.space()
-		d.pair("Detected platform", runtime.GOOS+"/"+runtime.GOARCH)
+		d.pair(m.tr("wizard.platform_detected"), runtime.GOOS+"/"+runtime.GOARCH)
 		existing := m.snapshot.Version
 		if existing == "" {
-			existing = "Not installed"
+			existing = m.tr("wizard.not_installed")
 		}
-		d.pair("Installed version", existing)
+		d.pair(m.tr("wizard.installed_version"), existing)
 		if m.snapshot.Service.Active {
 			running := m.snapshot.RunningVersion
 			if running == "" {
-				running = "Running (version unavailable)"
+				running = m.tr("wizard.running_unknown")
 			}
-			d.pair("Running version", running)
+			d.pair(m.tr("wizard.running_version"), running)
 		}
 		d.space()
-		d.control("network", "Network settings", w.focus)
-		d.line(sourceName(w.cfg) + " / " + proxySummary(w.cfg))
+		d.control("network", m.tr("wizard.network.title"), w.focus)
+		d.line(m.wizardSourceName(w.cfg) + " / " + m.wizardProxySummary(w.cfg))
 		d.space()
-		localLabel := "Use a local binary instead of downloading"
+		localLabel := m.tr("wizard.local.choose")
 		if w.localMode {
-			localLabel = "[x] Local binary selected"
+			localLabel = m.tr("wizard.local.selected")
 		}
 		d.control("local-mode", localLabel, w.focus)
 		if w.localMode {
-			d.field("local", "Local Mihomo executable", &w.local, w.focus)
+			d.field("local", m.tr("wizard.local.executable"), &w.local, w.focus)
 		}
 		d.space()
-		d.line("Installation does not start the service, change system proxy, enable TUN or enable autostart.")
-		return d, []wizardButton{{"cancel", "Skip for now"}, {"continue", "Continue"}}, title
+		d.line(m.tr("wizard.install_boundary"))
+		return d, []wizardButton{{"cancel", m.tr("wizard.skip")}, {"continue", m.tr("wizard.continue")}}, title
 	case stepVersion:
-		d.label("Choose a version")
+		d.label(m.tr("wizard.version.choose"))
 		d.steps(w.step)
 		d.space()
 		if w.localMode {
-			d.pair("Local binary", w.local.Value())
-			d.line("Its version is checked by executing -v with a timeout.")
+			d.pair(m.tr("wizard.local.binary"), w.local.Value())
+			d.line(m.tr("wizard.local.version_check"))
 		} else {
-			mode := "(*) Latest stable · resolved from the official release API"
+			mode := m.tr("wizard.version.latest")
 			if w.specific {
-				mode = "(*) Specific stable version"
+				mode = m.tr("wizard.version.specific")
 			}
 			d.control("version-mode", mode, w.focus)
 			if w.specific {
-				d.field("version-input", "Version identifier", &w.version, w.focus)
+				d.field("version-input", m.tr("wizard.version.identifier"), &w.version, w.focus)
 			}
-			d.control("resolve", "Resolve / Retry version query", w.focus)
+			d.control("resolve", m.tr("wizard.version.resolve_retry"), w.focus)
 		}
 		d.space()
 		if m.busy {
 			d.line(m.spinner.View() + " " + clean(m.message))
 		} else if w.release.Version != "" {
-			d.pair("Resolved version", w.release.Version)
-			d.pair("Asset", w.release.Asset)
-			d.pair("Platform", w.release.Platform)
-			d.pair("Checksum authority", w.release.ChecksumSource)
+			d.pair(m.tr("wizard.version.resolved"), w.release.Version)
+			d.pair(m.tr("wizard.asset"), w.release.Asset)
+			d.pair(m.tr("wizard.platform"), w.release.Platform)
+			d.pair(m.tr("wizard.checksum_authority"), m.localizeDetail(w.release.ChecksumSource))
 		} else {
-			d.line("No version has been resolved yet.")
+			d.line(m.tr("wizard.version.unresolved"))
 		}
 		d.space()
-		d.control("network", "Network settings", w.focus)
-		d.line(sourceName(w.cfg) + " / " + proxySummary(w.cfg))
+		d.control("network", m.tr("wizard.network.title"), w.focus)
+		d.line(m.wizardSourceName(w.cfg) + " / " + m.wizardProxySummary(w.cfg))
 		if w.err != "" {
 			d.space()
-			label := "Version query failed: "
+			key := "wizard.version.failed"
 			if w.failedKind == "prepare" {
-				label = "Preflight failed: "
+				key = "wizard.preflight.failed"
 			}
-			d.line(themed(label+clean(w.err), errorColor, raised, false))
+			d.line(themed(m.tr(key, clean(w.err)), errorColor, raised, false))
 		}
-		return d, []wizardButton{{"back", "Back"}, {"continue", "Continue"}}, title
+		return d, []wizardButton{{"back", m.tr("wizard.back")}, {"continue", m.tr("wizard.continue")}}, title
 	case stepConfirm:
 		p := w.plan
-		d.label("Review installation")
+		d.label(m.tr("wizard.review"))
 		d.steps(w.step)
 		d.space()
-		d.pair("Core", "Mihomo")
-		d.pair("Version", p.Release.Version)
+		d.pair(m.tr("wizard.step.core"), "Mihomo")
+		d.pair(m.tr("wizard.step.version"), p.Release.Version)
 		platform := p.Release.Platform
 		if platform == "" {
 			platform = runtime.GOOS + "/" + runtime.GOARCH
 		}
-		d.pair("Platform", platform)
-		d.pair("Asset", p.Release.Asset)
-		d.pair("Install path", p.ActualPath)
+		d.pair(m.tr("wizard.platform"), platform)
+		d.pair(m.tr("wizard.asset"), p.Release.Asset)
+		d.pair(m.tr("wizard.install_path"), p.ActualPath)
 		current := p.ExistingVersion
 		if current == "" {
-			current = "None"
+			current = m.tr("wizard.none")
 		}
-		d.pair("Existing version", current)
+		d.pair(m.tr("wizard.existing_version"), current)
 		if p.RunningVersion != "" {
-			d.pair("Current running version", p.RunningVersion)
+			d.pair(m.tr("wizard.running_current"), p.RunningVersion)
 		}
-		d.pair("Operation", p.Operation)
+		d.pair(m.tr("wizard.operation"), m.wizardOperation(p.Operation))
 		if p.DiskKnown {
-			d.pair("Free disk space", byteSize(int64(p.FreeBytes)))
+			d.pair(m.tr("wizard.disk_space"), m.wizardByteSize(int64(p.FreeBytes)))
 		} else {
-			d.pair("Free disk space", "Unknown; could not reliably determine")
+			d.pair(m.tr("wizard.disk_space"), m.tr("wizard.disk_unknown"))
 		}
-		d.pair("Permissions", "Current user; no privilege elevation")
-		d.pair("Download source", sourceName(w.cfg))
-		d.pair("Connection proxy", proxySummary(w.cfg))
+		d.pair(m.tr("wizard.permissions"), m.tr("wizard.permissions_current"))
+		d.pair(m.tr("wizard.download_source"), m.wizardSourceName(w.cfg))
+		d.pair(m.tr("wizard.connection_proxy"), m.wizardProxySummary(w.cfg))
 		if p.Local != "" {
-			d.pair("Binary source", "Local executable; no official digest is claimed")
+			d.pair(m.tr("wizard.binary_source"), m.tr("wizard.local.no_digest"))
 		} else {
-			d.pair("Expected SHA256", p.Release.SHA256)
-			d.pair("Checksum source", p.Release.ChecksumSource)
+			d.pair(m.tr("wizard.expected_sha256"), p.Release.SHA256)
+			d.pair(m.tr("wizard.checksum_source"), m.localizeDetail(p.Release.ChecksumSource))
 		}
 		for _, s := range p.Warnings {
-			d.line(themed(clean(s), warning, raised, false))
+			d.line(themed(clean(m.localizeDetail(s)), warning, raised, false))
 		}
 		if p.ExistingVersion != "" && p.ExistingVersion == p.Release.Version {
 			mark := "[ ]"
 			if w.reinstall {
 				mark = "[x]"
 			}
-			d.control("reinstall", mark+" Reinstall selected version (otherwise use existing)", w.focus)
+			d.control("reinstall", mark+m.tr("wizard.reinstall"), w.focus)
 		}
 		d.space()
-		d.control("network", "Network settings", w.focus)
-		d.line("This installs the core only. It will NOT start the service, modify system proxy, enable TUN or enable autostart.")
+		d.control("network", m.tr("wizard.network.title"), w.focus)
+		d.line(m.tr("wizard.confirm_boundary"))
 		if p.BlockedReason != "" {
 			d.space()
-			d.line(themed("Cannot install: "+clean(p.BlockedReason), errorColor, raised, false))
+			d.line(themed(m.tr("wizard.cannot_install", clean(m.locale.Diagnostic(p.BlockedReason, p.BlockedDiagnostic))), errorColor, raised, false))
 		}
 		if w.err != "" {
 			d.line(themed(clean(w.err), errorColor, raised, false))
 		}
-		install := "Install"
+		install := m.tr("wizard.install")
 		if p.Operation == "use existing" {
-			install = "Use existing"
+			install = m.tr("wizard.use_existing")
 		}
-		buttons := []wizardButton{{"back", "Back"}}
+		buttons := []wizardButton{{"back", m.tr("wizard.back")}}
 		if p.BlockedReason == "" {
 			buttons = append(buttons, wizardButton{"install", install})
 		}
 		return d, buttons, title
 	case stepInstalling:
-		label := stageLabel(w.progress.Stage)
+		label := m.stageLabel(w.progress.Stage)
 		if w.cancelling {
-			label = "Cancelling / Cleaning up"
+			label = m.tr("wizard.cancelling")
 		}
 		d.label(label)
 		d.space()
-		d.pair("Version", w.plan.Release.Version)
-		d.pair("Asset", w.plan.Release.Asset)
+		d.pair(m.tr("wizard.step.version"), w.plan.Release.Version)
+		d.pair(m.tr("wizard.asset"), w.plan.Release.Asset)
 		if w.progress.Stage == "download" {
-			summary := byteSize(w.progress.Downloaded)
+			summary := m.wizardByteSize(w.progress.Downloaded)
 			if w.progress.Total > 0 {
-				summary += " / " + byteSize(w.progress.Total) + fmt.Sprintf("  %.1f%%", min(100, float64(w.progress.Downloaded)*100/float64(w.progress.Total)))
+				summary += " / " + m.wizardByteSize(w.progress.Total) + fmt.Sprintf("  %.1f%%", min(100, float64(w.progress.Downloaded)*100/float64(w.progress.Total)))
 			} else {
-				summary += " / total unknown (indeterminate)"
+				summary += m.tr("wizard.total_unknown")
 			}
 			d.line(summary)
-			d.pair("Speed", byteSize(int64(w.progress.BytesPerSecond))+"/s")
+			d.pair(m.tr("wizard.speed"), m.wizardByteSize(int64(w.progress.BytesPerSecond))+"/s")
 			if w.progress.Total > 0 {
 				count := min(36, max(1, width-4))
 				filled := int(min(float64(count), float64(w.progress.Downloaded)*float64(count)/float64(w.progress.Total)))
 				d.line(themed(strings.Repeat("━", filled), info, raised, false) + themed(strings.Repeat("─", count-filled), border, raised, false))
 			} else {
-				d.line(m.spinner.View() + " Downloading with unknown total size")
+				d.line(m.spinner.View() + m.tr("wizard.download_unknown"))
 			}
 		}
 		d.space()
-		d.line(clean(w.progress.Detail))
-		d.line("Cancel waits for requests and safe deployment cleanup; existing configuration is preserved.")
-		d.control("details", map[bool]string{false: "Show details", true: "Hide details"}[w.details], w.focus)
+		d.line(clean(m.localizeDetail(w.progress.Detail)))
+		d.line(m.tr("wizard.cancel_boundary"))
+		d.control("details", map[bool]string{false: m.tr("wizard.details_show"), true: m.tr("wizard.details_hide")}[w.details], w.focus)
 		if w.details {
 			d.space()
 			for _, s := range w.logs {
 				d.line(themed(clean(s), muted, raised, false))
 			}
 		}
-		return d, []wizardButton{{"cancel", "Cancel"}}, title
+		return d, []wizardButton{{"cancel", m.tr("wizard.cancel")}}, title
 	case stepResult:
 		if w.err != "" {
-			d.line(themed("Installation did not complete", errorColor, raised, false))
-			d.pair("Failed stage", w.failedStage)
+			d.line(themed(m.tr("wizard.incomplete"), errorColor, raised, false))
+			d.pair(m.tr("wizard.failed_stage"), m.wizardFailedStage(w.failedStage))
 			d.line(themed(clean(w.err), errorColor, raised, false))
 			d.space()
-			d.line("Your choices are preserved. Retry after reviewing network settings or return without changing the existing core.")
-			d.control("network", "Network settings", w.focus)
-			d.control("details", map[bool]string{false: "View details", true: "Hide details"}[w.details], w.focus)
+			d.line(m.tr("wizard.retry_boundary"))
+			d.control("network", m.tr("wizard.network.title"), w.focus)
+			d.control("details", map[bool]string{false: m.tr("wizard.details_view"), true: m.tr("wizard.details_hide")}[w.details], w.focus)
 			if w.details {
 				for _, s := range w.logs {
 					d.line(themed(clean(s), muted, raised, false))
 				}
 			}
-			return d, []wizardButton{{"done", "Back to overview"}, {"retry", "Retry"}}, title
+			return d, []wizardButton{{"done", m.tr("wizard.overview")}, {"retry", m.tr("wizard.retry")}}, title
 		}
-		d.line(themed("Mihomo installed and verified", success, raised, false))
-		d.pair("Installed version", w.result.InstalledVersion)
-		d.pair("Install path", w.result.ActualPath)
-		d.pair("Operation", w.result.Operation)
+		d.line(themed(m.tr("wizard.installed"), success, raised, false))
+		d.pair(m.tr("wizard.installed_version"), w.result.InstalledVersion)
+		d.pair(m.tr("wizard.install_path"), w.result.ActualPath)
+		d.pair(m.tr("wizard.operation"), m.wizardOperation(w.result.Operation))
 		if w.result.RunningVersion != "" {
-			d.pair("Current running version", w.result.RunningVersion)
+			d.pair(m.tr("wizard.running_current"), w.result.RunningVersion)
 			if w.result.RestartRequired {
-				d.line("The running process was preserved. Restart explicitly to use the installed binary.")
+				d.line(m.tr("wizard.restart_required"))
 			}
 		} else if m.snapshot.Service.Active {
-			d.line("The previous process is still running; its version is unavailable. Restart explicitly to use the installed binary.")
+			d.line(m.tr("wizard.running_preserved"))
 		} else {
-			d.line("Service remains stopped. Installation did not start it.")
+			d.line(m.tr("wizard.stopped"))
 		}
-		d.line("Executable version and configuration validation passed.")
+		d.line(m.tr("wizard.validated"))
+		if m.snapshot.ConfigReady && (m.snapshot.Applied == "default" || m.snapshot.Applied == "") {
+			d.line(m.tr("dashboard.profile.builtinReady"))
+		}
 		d.space()
-		d.control("import", "Add subscription / Import config", w.focus)
-		return d, []wizardButton{{"done", "Done / Overview"}}, title
+		d.control("import", m.tr("wizard.import"), w.focus)
+		return d, []wizardButton{{"done", m.tr("wizard.done")}}, title
 	}
-	return d, []wizardButton{{"cancel", "Back"}}, title
+	return d, []wizardButton{{"cancel", m.tr("wizard.back")}}, title
 }
 
 func (m *Model) renderWizard(base string) (string, []hitRegion) {
@@ -451,12 +520,12 @@ func (m *Model) renderWizard(base string) (string, []hitRegion) {
 		y = (m.height - boxH) / 2
 	}
 	if boxW < 34 || boxH < 10 {
-		lines := []string{themed(cellCrop(logo+" · "+string(w.step), boxW), text, raised, false), cellCrop("Please enlarge terminal", boxW), cellCrop("Esc Back / Cancel · Ctrl+C Quit", boxW)}
+		lines := []string{themed(cellCrop(logo+" · "+wizardStepLabel(m.locale, w.step), boxW), text, raised, false), cellCrop(m.tr("wizard.enlarge"), boxW), cellCrop(m.tr("wizard.compact_help"), boxW)}
 		if w.cancelling {
-			lines = append(lines, cellCrop("Cancelling / Cleaning up…", boxW))
+			lines = append(lines, cellCrop(m.tr("wizard.cancelling_progress"), boxW))
 		}
 		if w.progress.Stage != "" {
-			lines = append(lines, cellCrop(stageLabel(w.progress.Stage), boxW))
+			lines = append(lines, cellCrop(m.stageLabel(w.progress.Stage), boxW))
 		}
 		lines = lines[:min(len(lines), boxH)]
 		return overlay("", strings.Join(lines, "\n"), 0, 0, m.width, m.height), nil
@@ -494,7 +563,7 @@ func (m *Model) renderWizard(base string) (string, []hitRegion) {
 			style = style.Underline(true)
 		}
 		if m.wizardControlDisabled(b.ID) {
-			label += " (busy)"
+			label += m.tr("wizard.busy_suffix")
 			foreground, background = disabled, raised
 		}
 		style = style.Foreground(lipgloss.Color(foreground)).Background(lipgloss.Color(background))
@@ -547,9 +616,9 @@ func (m *Model) renderWizard(base string) (string, []hitRegion) {
 	}
 	putRows(rows, 0, boxH-1, themed("└"+strings.Repeat("─", boxW-2)+"┘", border, raised, false), boxW)
 	putRows(rows, 3, 1, themed(lipgloss.NewStyle().Bold(true).Render(cellCrop(title, innerW)), text, raised, false), boxW)
-	step := string(w.step)
+	step := wizardStepLabel(m.locale, w.step)
 	if w.networkOpen {
-		step = "Source + Connection"
+		step = m.tr("wizard.network.subtitle")
 	}
 	putRows(rows, 3, 2, themed(cellCrop("Mihomo · "+step+" · "+runtime.GOOS+"/"+runtime.GOARCH, innerW), muted, raised, false), boxW)
 	putRows(rows, 2, 3, themed(strings.Repeat("─", boxW-4), border, raised, false), boxW)
@@ -576,9 +645,9 @@ func (m *Model) renderWizard(base string) (string, []hitRegion) {
 		r.Y += y + footerY
 		hits = append(hits, r)
 	}
-	help := "Tab Focus · Enter Select · Esc Back · Ctrl+C Quit"
+	help := m.tr("wizard.help")
 	if m.busy {
-		help = "Esc Cancel · cleanup completes before leaving"
+		help = m.tr("wizard.busy_help")
 	}
 	putRows(rows, 3, boxH-2, helpText(cellCrop(help, innerW), raised, false), boxW)
 	if len(doc.lines) > bodyH {

@@ -2,7 +2,6 @@ package tui
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -11,6 +10,8 @@ import (
 	"unicode"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/nelvko/lazyclash/internal/diagnostic"
+	"github.com/nelvko/lazyclash/internal/i18n"
 )
 
 const (
@@ -88,18 +89,22 @@ func (p pathCompletion) selectedPath() (string, bool) {
 	return p.matches[p.index].path, true
 }
 
-func (p pathCompletion) view(width, rows int) []string {
+func (p pathCompletion) view(width, rows int, locales ...i18n.Localizer) []string {
+	var locale i18n.Localizer
+	if len(locales) > 0 {
+		locale = locales[0]
+	}
 	if !p.active || width < 1 || rows < 1 {
 		return nil
 	}
 	status := ""
 	switch {
 	case p.loading:
-		status = "Finding files…"
+		status = locale.T("path.finding")
 	case p.problem != "":
-		status = p.problem
+		status = locale.Detail(p.problem)
 	case len(p.matches) == 0:
-		status = "No matching files or folders"
+		status = locale.T("path.no_matches")
 	}
 	if status != "" {
 		return []string{themed(cellCrop(status, width), muted, raised, false)}
@@ -123,9 +128,9 @@ func (p pathCompletion) view(width, rows int) []string {
 		lines = append(lines, themed(cellPad(prefix+match.label, width), foreground, background, false))
 	}
 	if showCount {
-		label := fmt.Sprintf("%d matches · ↑↓ Browse", len(p.matches))
+		label := locale.T("path.matches", len(p.matches))
 		if p.limited {
-			label = "More entries available; narrow the path"
+			label = locale.T("path.more_entries")
 		}
 		lines = append(lines, themed(cellCrop(label, width), muted, raised, false))
 	}
@@ -138,16 +143,16 @@ func resolveLocalPath(value string) (string, error) {
 		return value, nil
 	}
 	if value == "" {
-		return "", errors.New("enter a local file path")
+		return "", diagnostic.New("diagnostic.path_required", "enter a local file path")
 	}
 	if value == "~" || strings.HasPrefix(value, "~/") {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			return "", errors.New("cannot locate your home directory")
+			return "", diagnostic.New("diagnostic.home_not_found", "cannot locate your home directory")
 		}
 		value = filepath.Join(home, strings.TrimPrefix(value, "~"))
 	} else if strings.HasPrefix(value, "~") {
-		return "", errors.New("use ~/ for your home directory")
+		return "", diagnostic.New("diagnostic.home_syntax", "use ~/ for your home directory")
 	}
 	return filepath.Abs(value)
 }

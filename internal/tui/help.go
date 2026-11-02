@@ -4,27 +4,29 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func (m Model) helpLines(width int) []string {
-	lines := []string{"Navigation", "1 Overview · 2 Proxies · 3 Profiles", "4 Connections · 5 Rules · 6 Logs · 7 Settings", "", "Tab / Shift+Tab: move between navigation and visible controls", "Arrows: choose within navigation or a list; Enter activates", "PgUp / PgDn / Home / End: scroll the content", "Esc: back or close; Ctrl+C: cancel safely and quit", "", "Current page: " + pageTitle(m.page)}
+	tr := m.tr
+	lines := []string{tr("help.navigation"), tr("help.pages.first"), tr("help.pages.second"), "", tr("help.navigation.tab"), tr("help.navigation.arrows"), tr("help.navigation.scroll"), tr("help.navigation.cancel"), tr("help.keyHints.shortcut"), "", tr("help.currentPage", pageTitle(m.page, m.locale))}
 	switch m.page {
 	case "proxies":
-		lines = append(lines, "Enter a proxy group to expand its choices. Enter an option in a Selector group to apply it.", "DIRECT and REJECT are valid choices; automatic groups choose their own option.")
+		lines = append(lines, tr("help.proxies.expand"), tr("help.proxies.options"))
 	case "profiles":
-		lines = append(lines, "a: focus the subscription URL input; Add downloads and names the profile automatically.", "Import: copy a URL or local YAML once, without remembering its private address.", "Rename preserves your custom display name across subscription updates; Edit URL replaces a profile's download address.", "Arrows / hjkl: browse the card grid. Enter opens details; Use profile / Apply changes loads it.", "Tab / Shift+Tab: visit actions, including controls below the fold. Esc closes details.", "Update / Update all saves configuration changes without loading them into the core.", "Overrides imports a separate overrides YAML draft.", "Delete requires the exact display name. The selected profile is protected.")
+		lines = append(lines, tr("help.profiles.add"), tr("help.profiles.import"), tr("help.profiles.rename"), tr("help.profiles.click"), tr("help.profiles.menu"), tr("help.profiles.menuControls"), tr("help.profiles.grid"), tr("help.profiles.actions"), tr("help.profiles.update"), tr("help.profiles.overrides"), tr("help.profiles.delete"))
 	case "connections":
-		lines = append(lines, "/: search · Enter: details · x: review closing one connection", "Closing requires confirmation of the displayed connection; other connections stay active.")
+		lines = append(lines, tr("help.connections.keys"), tr("help.connections.confirm"))
 	case "rules":
-		lines = append(lines, "/: search · Enter: details · g / Ctrl+R: refresh", "Rules are read only and remain in the core's matching order.")
+		lines = append(lines, tr("help.rules.keys"), tr("help.rules.readOnly"))
 	case "settings":
-		lines = append(lines, "Runtime settings / Ports: edit local proxy and control API ports.", "Review changed listeners and restart impact before applying; existing API credentials remain private.", "Routing mode and autostart use the same persistent settings as the CLI.", "TUN requires privileged system integration and is unavailable in this user service.")
+		lines = append(lines, tr("help.settings.ports"), tr("help.settings.review"), tr("help.settings.persistence"), tr("help.settings.tun"))
 	case "logs":
-		lines = append(lines, "f: pause/resume · End: follow · /: search · g: reconnect", "Only live logs are available. Pausing disconnects; events during a pause are not retained.", "The view retains at most 200 redacted entries in memory. No raw log history is written.")
+		lines = append(lines, tr("help.logs.keys"), tr("help.logs.liveOnly"), tr("help.logs.retention"))
 	default:
-		lines = append(lines, "i: install/manage core · b: install a local executable", "n: download network settings · a: add/import profile", "Core: start, stop or restart; routing mode: Rule / Global / Direct.", "Controls refresh the observed state after the operation.", "TUN and system proxy controls are unavailable in this release.")
+		lines = append(lines, tr("help.overview.install"), tr("help.overview.import"), tr("help.overview.controls"), tr("help.overview.refresh"), tr("help.overview.unavailable"))
 	}
-	lines = append(lines, "", "Core and configuration", "s: start · x: stop · r: restart (Connections uses x for one connection)", "g / Ctrl+R: refresh current data", "Quitting closes this interface; systemd continues to own Mihomo.", "", "Forms and dialogs", "Tab / Shift+Tab: change controls · Enter: activate · Esc: back", "Printable keys, including q and 1–7, belong to the active input.", "Modal dialogs capture input and restore the previous page on close.", "", "Messages", "Progress stays visible while work runs. Errors remain until the next action or refresh.", "Installation and network configuration use the same application use cases as the CLI.")
+	lines = append(lines, "", tr("help.core.title"), tr("help.core.actions"), tr("help.core.refresh"), tr("help.core.quit"), "", tr("help.forms.title"), tr("help.forms.keys"), tr("help.forms.input"), tr("help.forms.modal"), "", tr("help.messages.title"), tr("help.messages.toast"), tr("help.messages.dismiss"), tr("help.messages.shared"))
 	var wrapped []string
 	for _, line := range lines {
 		wrapped = append(wrapped, strings.Split(wrapText(line, max(1, width)), "\n")...)
@@ -35,18 +37,30 @@ func (m Model) helpLines(width int) []string {
 func (m *Model) helpKey(k tea.KeyPressMsg) tea.Cmd {
 	switch k.String() {
 	case "esc", "?":
-		m.helpOpen = false
+		_, cmd := m.keyHintsAction("help.close")
+		return cmd
+	case "tab", "shift+tab":
+		if m.keyHints.helpFocus == "key-hints.toggle" {
+			m.keyHints.helpFocus = "help.close"
+		} else {
+			m.keyHints.helpFocus = "key-hints.toggle"
+		}
+	case "enter":
+		if m.keyHints.helpFocus == "key-hints.toggle" {
+			return m.toggleKeyHints()
+		}
+		_, cmd := m.keyHintsAction("help.close")
+		return cmd
 	case "q":
-		m.quitting = true
-		return tea.Quit
+		return m.requestQuit()
 	case "down", "j":
 		m.helpScroll++
 	case "up", "k":
 		m.helpScroll = max(0, m.helpScroll-1)
 	case "pgdown", "space", " ":
-		m.helpScroll += max(1, min(28, m.height-2)-6)
+		m.helpScroll += max(1, min(28, m.height-2)-7)
 	case "pgup":
-		m.helpScroll = max(0, m.helpScroll-max(1, min(28, m.height-2)-6))
+		m.helpScroll = max(0, m.helpScroll-max(1, min(28, m.height-2)-7))
 	case "home":
 		m.helpScroll = 0
 	case "end":
@@ -67,8 +81,10 @@ func (m *Model) helpMouse(event tea.MouseMsg) tea.Cmd {
 	if _, clicked := event.(tea.MouseClickMsg); clicked && event.Mouse().Button == tea.MouseLeft {
 		for _, hit := range m.targets {
 			k := event.Mouse()
-			if hit.ID == "help.close" && k.X >= hit.X && k.X < hit.X+hit.W && k.Y == hit.Y {
-				m.helpOpen = false
+			if k.X >= hit.X && k.X < hit.X+hit.W && k.Y >= hit.Y && k.Y < hit.Y+hit.H {
+				m.keyHints.helpFocus = hit.ID
+				_, cmd := m.keyHintsAction(hit.ID)
+				return cmd
 			}
 		}
 	}
@@ -76,12 +92,40 @@ func (m *Model) helpMouse(event tea.MouseMsg) tea.Cmd {
 }
 
 func (m *Model) renderHelp(base string) (string, []hitRegion) {
+	tr := m.tr
 	w, h := min(82, m.width), min(28, m.height)
 	x, y := (m.width-w)/2, (m.height-h)/2
-	if w < 26 || h < 8 {
-		return overlay("", themed(cellCrop("Help · Esc Close · Ctrl+C Quit", w), text, raised, false), 0, 0, m.width, m.height), nil
+	closeColor := focus
+	if m.keyHints.helpFocus == "key-hints.toggle" {
+		closeColor = muted
 	}
-	inner, visible := w-6, h-6
+	if w < 26 || h < 8 {
+		rows := make([]string, max(1, m.height))
+		for i := range rows {
+			rows[i] = themed(strings.Repeat(" ", max(0, m.width)), text, raised, false)
+		}
+		if m.width < 1 || m.height < 1 {
+			return "", nil
+		}
+		putRows(rows, 0, 0, themed(cellCrop(tr("help.small"), m.width), text, raised, false), m.width)
+		label := cellCrop(tr("help.close"), m.width)
+		if ansi.StringWidth(label) == 0 {
+			label = "×"
+		}
+		putRows(rows, 0, m.height-1, themed(label, closeColor, raised, false), m.width)
+		hits := []hitRegion{{ID: "help.close", X: 0, Y: m.height - 1, W: max(1, ansi.StringWidth(label)), H: 1}}
+		if m.height >= 3 {
+			label = cellCrop(m.keyHintsLabel(), m.width)
+			color := muted
+			if m.keyHints.helpFocus == "key-hints.toggle" {
+				color = focus
+			}
+			putRows(rows, 0, m.height-2, themed(label, color, raised, false), m.width)
+			hits = append(hits, hitRegion{ID: "key-hints.toggle", X: 0, Y: m.height - 2, W: max(1, ansi.StringWidth(label)), H: 1})
+		}
+		return strings.Join(rows, "\n"), hits
+	}
+	inner, visible := w-6, h-7
 	lines := m.helpLines(inner)
 	m.helpScroll = min(max(0, m.helpScroll), max(0, len(lines)-visible))
 	rows := make([]string, h)
@@ -94,12 +138,31 @@ func (m *Model) renderHelp(base string) (string, []hitRegion) {
 		putRows(rows, 0, i, themed("│", border, raised, false), w)
 		putRows(rows, w-1, i, themed("│", border, raised, false), w)
 	}
-	putRows(rows, 3, 1, themed("Help / "+pageTitle(m.page), text, raised, false), w)
-	for i := 0; i < visible && i+m.helpScroll < len(lines); i++ {
-		putRows(rows, 3, i+3, themed(cellPad(lines[i+m.helpScroll], inner), text, raised, false), w)
+	putRows(rows, 3, 1, themed(tr("help.title", pageTitle(m.page, m.locale)), text, raised, false), w)
+	toggle := cellCrop(m.keyHintsLabel(), inner)
+	toggleColor := muted
+	if m.keyHints.helpFocus == "key-hints.toggle" {
+		toggleColor = focus
 	}
-	label := "[ Esc Close ]"
-	putRows(rows, 3, h-2, themed(label, focus, raised, false), w)
-	putRows(rows, 19, h-2, helpText(cellCrop("↑↓ Scroll · q Quit", max(1, w-22)), raised, false), w)
-	return overlay(base, strings.Join(rows, "\n"), x, y, m.width, m.height), []hitRegion{{ID: "help.close", X: x + 3, Y: y + h - 2, W: len(label), H: 1}}
+	putRows(rows, 3, 2, themed(toggle, toggleColor, raised, false), w)
+	for i := 0; i < visible && i+m.helpScroll < len(lines); i++ {
+		putRows(rows, 3, i+4, themed(cellPad(lines[i+m.helpScroll], inner), text, raised, false), w)
+	}
+	label := tr("help.close")
+	putRows(rows, 3, h-2, themed(label, closeColor, raised, false), w)
+	footerX := 3 + ansi.StringWidth(label) + 3
+	if footerX < w-3 {
+		putRows(rows, footerX, h-2, helpText(cellCrop(tr("help.footer"), w-footerX-3), raised, false), w)
+	}
+	return overlay(base, strings.Join(rows, "\n"), x, y, m.width, m.height), []hitRegion{
+		{ID: "help.close", X: x + 3, Y: y + h - 2, W: ansi.StringWidth(label), H: 1},
+		{ID: "key-hints.toggle", X: x + 3, Y: y + 2, W: ansi.StringWidth(toggle), H: 1},
+	}
+}
+
+func (m Model) keyHintsLabel() string {
+	if m.keyHints.hidden {
+		return m.tr("help.keyHints.show")
+	}
+	return m.tr("help.keyHints.hide")
 }

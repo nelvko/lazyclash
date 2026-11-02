@@ -78,7 +78,8 @@ func helpText(s, background string, dimmed bool) string {
 	keys := map[string]bool{"Tab": true, "Enter": true, "Esc": true, "Ctrl+C": true, "↑↓": true, "?": true, "q": true}
 	for i, word := range parts {
 		color := muted
-		if keys[word] {
+		// Translations can attach punctuation directly to a key name.
+		if keys[strings.TrimRight(word, ":：")] {
 			color = text
 		}
 		parts[i] = themed(word, color, background, dimmed)

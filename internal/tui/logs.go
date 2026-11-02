@@ -10,11 +10,14 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nelvko/lazyclash/internal/i18n"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
 
 const (
 	retainedLogLimit = 200
+	// Store a message identity so retained capture gaps follow language changes.
+	logCaptureGap    = "logs.gap"
 	maxLogScrollRows = 1 << 20
 )
 
@@ -27,7 +30,7 @@ type logsState struct {
 	cancel                 context.CancelFunc
 	ctx                    context.Context
 	updates                <-chan logsResultMsg
-	err                    string
+	err                    error
 	observedAt             time.Time
 	offset                 int // visible rows back from the newest entry
 	gap                    bool
@@ -40,10 +43,14 @@ type logsResultMsg struct {
 	err        error
 }
 
-func newLogsState() logsState {
+func newLogsState(locales ...i18n.Localizer) logsState {
+	var locale i18n.Localizer
+	if len(locales) > 0 {
+		locale = locales[0]
+	}
 	search := textinput.New()
 	search.CharLimit = 256
-	search.Placeholder = "Level or redacted message"
+	search.Placeholder = locale.T("logs.placeholder")
 	styleInput(&search, bg, false)
 	return logsState{search: search}
 }
@@ -103,14 +110,14 @@ func (m *Model) syncLogs() tea.Cmd {
 		return nil
 	}
 	if m.logs.gap {
-		m.appendLogs([]mihomo.LogEntry{{Time: time.Now(), Level: "gap", Message: "Capture resumed; logs while inactive were not collected."}})
+		m.appendLogs([]mihomo.LogEntry{{Time: time.Now(), Level: "gap", Message: logCaptureGap}})
 		m.logs.gap = false
 	}
 	m.logs.generation++
 	id := m.logs.generation
 	ctx, cancel := context.WithCancel(m.ctx)
 	updates := make(chan logsResultMsg, 32)
-	m.logs.active, m.logs.pending, m.logs.err = true, true, ""
+	m.logs.active, m.logs.pending, m.logs.err = true, true, nil
 	m.logs.cancel, m.logs.ctx, m.logs.updates = cancel, ctx, updates
 	backend := m.backend
 	run := func() tea.Msg {
@@ -164,7 +171,7 @@ func (m *Model) acceptLogs(msg logsResultMsg) tea.Cmd {
 		}
 		m.logs.active, m.logs.pending, m.logs.ended = false, false, true
 		if msg.err != nil && !errors.Is(msg.err, context.Canceled) {
-			m.logs.err = cellCrop(clean(msg.err.Error()), 4096)
+			m.logs.err = msg.err
 		}
 		return nil
 	}
@@ -282,40 +289,45 @@ func (m Model) logsBody(width int) (string, []hitRegion) {
 		hits = append(hits, hitRegion{ID: id, Y: len(lines), W: min(width, ansi.StringWidth(value)), H: 1})
 		lines = append(lines, cellCrop(value, width))
 	}
-	add("Mihomo logs", text)
-	status, color := "Capture ended · retained entries are last observed", muted
+	add(m.tr("logs.title"), text)
+	status, color := m.tr("logs.ended"), muted
 	if m.logs.active {
-		status, color = "Capturing live events · no historical replay", info
+		status, color = m.tr("logs.capturing"), info
 		if len(m.logs.entries) == 0 {
-			status = "Waiting for live events · no historical replay"
+			status = m.tr("logs.waiting")
 		}
 	} else if m.logs.paused {
-		status = "Paused · logs while paused are not collected"
+		status = m.tr("logs.paused")
 	} else if !m.logs.ended {
-		status = "Opening live log capture…"
+		status = m.tr("logs.opening")
 	}
 	add(status, color)
-	add("Only this session; at most 200 redacted entries retained in memory.", muted)
+	add(m.tr("logs.retention"), muted)
 	if !m.logs.observedAt.IsZero() {
-		add("Last observed locally: "+m.logs.observedAt.Local().Format("15:04:05"), muted)
+		add(m.tr("logs.observed", m.logs.observedAt.Local().Format("15:04:05")), muted)
 	}
 	if m.logs.editing {
-		add("Search retained entries · Enter / Esc finish", info)
+		add(m.tr("logs.search_edit"), info)
+		m.logs.search.Placeholder = m.tr("logs.placeholder")
 		m.logs.search.SetWidth(max(1, width-2))
 		lines = append(lines, cellCrop(m.logs.search.View(), width))
 		hits = append(hits, hitRegion{ID: "logs.search", Y: len(lines) - 1, W: width, H: 1})
 	} else {
-		button("logs.search", "Search retained entries (/): "+clean(m.logs.search.Value()))
+		button("logs.search", m.tr("logs.search", clean(m.logs.search.Value())))
 	}
-	if m.logs.err != "" {
-		add("Capture unavailable: "+m.logs.err, errorColor)
+	if m.logs.err != nil {
+		add(m.tr("logs.unavailable", cellCrop(m.localizeError(m.logs.err), 4096)), errorColor)
 	}
 	lines = append(lines, "")
 	query := strings.ToLower(strings.TrimSpace(m.logs.search.Value()))
 	count := 0
 	var rows []string
 	for _, entry := range m.logs.entries {
-		if query != "" && !strings.Contains(strings.ToLower(entry.Level+" "+entry.Message), query) {
+		message := entry.Message
+		if entry.Level == "gap" && entry.Message == logCaptureGap {
+			message = m.tr(logCaptureGap)
+		}
+		if query != "" && !strings.Contains(strings.ToLower(entry.Level+" "+message), query) {
 			continue
 		}
 		count++
@@ -333,16 +345,16 @@ func (m Model) logsBody(width int) (string, []hitRegion) {
 			timestamp = entry.Time.Local().Format("15:04:05")
 		}
 		prefix := themed(timestamp+" ", muted, bg, false) + themed(strings.ToUpper(entry.Level)+" ", levelColor, bg, false)
-		rows = append(rows, strings.Split(wrapText(prefix+themed(entry.Message, text, bg, false), max(1, width)), "\n")...)
+		rows = append(rows, strings.Split(wrapText(prefix+themed(message, text, bg, false), max(1, width)), "\n")...)
 	}
 	if count == 0 {
-		message := "No events captured yet. Start Mihomo or retry the capture."
+		message := m.tr("logs.empty")
 		if query != "" {
-			message = "No retained entries match this search."
+			message = m.tr("logs.no_matches")
 		}
 		rows = append(rows, strings.Split(wrapText(themed(message, muted, bg, false), max(1, width)), "\n")...)
 	}
-	height := dashboardGeometry(dashboardOptions{Width: m.width, Height: m.height, Page: m.page}).height
+	height := dashboardGeometry(m.dashboardOptions()).height
 	capacity := max(1, height-len(lines)-1)
 	tail := max(0, len(rows)-capacity)
 	start := max(0, min(tail, tail-max(0, m.logs.offset)))
@@ -350,7 +362,7 @@ func (m Model) logsBody(width int) (string, []hitRegion) {
 	hits = append(hits, hitRegion{ID: "logs.list", Y: len(lines), W: width, H: max(1, end-start)})
 	lines = append(lines, rows[start:end]...)
 	if len(rows) > capacity {
-		add(fmt.Sprintf("Rows %d–%d / %d · ↑↓ scroll pauses · End resumes", start+1, end, len(rows)), muted)
+		add(fmt.Sprintf(m.tr("logs.rows"), start+1, end, len(rows)), muted)
 	}
 	return strings.Join(lines, "\n"), hits
 }

@@ -65,17 +65,17 @@ func TestOverviewUninitializedIsBrowsable(t *testing.T) {
 	body, bodyTargets := overviewContent(options, dashboardBodyWidth(options))
 	plain := ansi.Strip(value + "\n" + body)
 	allTargets := append(append([]hitRegion(nil), targets...), bodyTargets...)
-	for _, part := range []string{"Get started", "Install your first proxy core", "Current profile", "Selected proxy group", "Traffic statistics", "Kernel information", "System information", "Routing mode", "TUN", "System proxy", "Core not installed", "Mihomo · Not installed"} {
+	for _, part := range []string{"Get started", "Install the Mihomo core", "Install Mihomo", "Set up later", "Mihomo · Not installed"} {
 		if !strings.Contains(plain, part) {
 			t.Errorf("missing %q", part)
 		}
 	}
-	for _, id := range []string{"install", "import", "dismiss", "nav.overview", "nav.proxies", "nav.profiles", "nav.connections", "nav.rules", "nav.logs", "nav.settings"} {
+	for _, id := range []string{"install", "guide.later", "nav.overview", "nav.proxies", "nav.profiles", "nav.connections", "nav.rules", "nav.logs", "nav.settings"} {
 		if !hasAction(allTargets, id) {
 			t.Errorf("missing action %s", id)
 		}
 	}
-	for _, part := range []string{"sing-box"} {
+	for _, part := range []string{"sing-box", "Traffic statistics", "Routing mode", "1 / 3"} {
 		if strings.Contains(plain, part) {
 			t.Errorf("unexpected placeholder navigation %q", part)
 		}
@@ -98,20 +98,101 @@ func TestOverviewUninitializedIsBrowsable(t *testing.T) {
 }
 
 func TestOverviewContentFillsAreaBesideNavigationAndReservesUsableRows(t *testing.T) {
-	for _, width := range []int{160, 197, 240, 320} {
+	for _, width := range []int{100, 120, 140, 160, 197, 240, 320} {
 		g := dashboardGeometry(dashboardOptions{Width: width, Height: 45})
 		left, right := g.x-sidebarWidth, width-g.x-g.width
-		if left-right > 1 || right-left > 1 || g.width != width-sidebarWidth-5 || g.y != 5 || g.height != 38 {
+		if left-right > 1 || right-left > 1 || g.width != width-sidebarWidth-5 || g.y != 5 || g.height != 39 {
 			t.Fatalf("Overview does not fill the area beside the navigation: %+v", g)
 		}
 	}
 	g := dashboardGeometry(dashboardOptions{Width: 80, Height: 24})
-	if g.sidebar || g.x != 2 || g.height != 17 {
+	if g.sidebar || g.x != 2 || g.height != 18 {
 		t.Fatalf("compact frame wasted content space: %+v", g)
 	}
 	g = dashboardGeometry(dashboardOptions{Width: 240, Height: 45, Page: "proxies"})
-	if g.x != 30 {
+	if g.x != sidebarWidth+2 {
 		t.Fatalf("Overview sizing moved another page: %+v", g)
+	}
+}
+
+func TestDashboardContentReachesRowBeforeFooter(t *testing.T) {
+	for _, size := range [][2]int{{160, 45}, {120, 32}, {100, 20}, {80, 24}, {60, 20}, {120, 18}, {30, 12}, {20, 7}} {
+		t.Run(fmt.Sprintf("%dx%d", size[0], size[1]), func(t *testing.T) {
+			o := dashboardOptions{Width: size[0], Height: size[1], Page: "proxies", Help: "Keys"}
+			g := dashboardGeometry(o)
+			var body []string
+			for i := 0; i < g.height+3; i++ {
+				label := fmt.Sprintf("Row%02d", i)
+				body = append(body, label)
+				o.BodyTargets = append(o.BodyTargets, hitRegion{ID: label, Y: i, W: 5, H: 1})
+			}
+			o.Body = strings.Join(body, "\n")
+			for _, atEnd := range []bool{false, true} {
+				last, marker := g.height-1, "↓"
+				if atEnd {
+					o.Scroll, last, marker = 10000, len(body)-1, "↑"
+				}
+				screen, targets, _ := renderDashboard(o)
+				rows := strings.Split(screen, "\n")
+				label := fmt.Sprintf("Row%02d", last)
+				if !strings.Contains(ansi.Strip(rows[o.Height-2]), label) {
+					t.Fatalf("last content row was reserved instead of showing %s", label)
+				}
+				if !strings.Contains(ansi.Strip(rows[o.Height-2]), marker) || !strings.Contains(ansi.Strip(rows[o.Height-1]), "Keys") {
+					t.Fatal("scroll marker or footer moved away from its final row")
+				}
+				found := false
+				for _, hit := range targets {
+					if strings.HasPrefix(hit.ID, "Row") && hit.Y+hit.H > o.Height-1 {
+						t.Fatalf("content target overlaps footer: %+v", hit)
+					}
+					found = found || (hit.ID == label && hit.Y == o.Height-2)
+				}
+				if !found {
+					t.Fatal("last content row has no matching mouse target")
+				}
+				assertCanvas(t, screen, o.Width, o.Height)
+				assertRegions(t, targets, o.Width, o.Height)
+			}
+		})
+	}
+}
+
+func TestSidebarExtendsToContentBottomAndShieldsMouseTargets(t *testing.T) {
+	for _, size := range [][2]int{{160, 45}, {120, 25}, {100, 20}, {80, 24}, {60, 20}, {120, 18}, {30, 12}, {20, 7}} {
+		t.Run(fmt.Sprintf("%dx%d", size[0], size[1]), func(t *testing.T) {
+			o := dashboardOptions{Width: size[0], Height: size[1], Page: "proxies", SidebarOpen: true, Focus: "nav.settings", Help: "Keys"}
+			g := dashboardGeometry(o)
+			rows := make([]string, o.Height)
+			for i := range rows {
+				rows[i] = strings.Repeat(".", o.Width)
+			}
+			drawSidebar(rows, o, !g.sidebar)
+			if strings.Contains(ansi.Strip(ansi.Cut(rows[o.Height-2], 0, min(sidebarWidth, o.Width))), ".") {
+				t.Fatal("sidebar left the last content row uncovered")
+			}
+			if rows[o.Height-1] != strings.Repeat(".", o.Width) {
+				t.Fatal("sidebar painted over the footer")
+			}
+			if g.sidebar {
+				return
+			}
+			o.Body = strings.Repeat("underlay\n", g.height)
+			o.BodyTargets = []hitRegion{{ID: "underlay", Y: g.height - 1, W: 8, H: 1}}
+			o.SidebarOpen = false
+			_, targets, _ := renderDashboard(o)
+			if !hasAction(targets, "underlay") {
+				t.Fatal("fixture is missing the last content row target")
+			}
+			o.SidebarOpen = true
+			screen, targets, _ := renderDashboard(o)
+			if hasAction(targets, "underlay") {
+				t.Fatal("compact navigation allows clicks through its final row")
+			}
+			if !strings.Contains(ansi.Strip(strings.Split(screen, "\n")[o.Height-1]), "Keys") {
+				t.Fatal("compact navigation obscured the footer")
+			}
+		})
 	}
 }
 
@@ -130,6 +211,9 @@ func TestDashboardSidebarHasSevenCenteredContiguousItems(t *testing.T) {
 		}
 		if hit.W == 0 {
 			t.Fatalf("missing navigation for %s", page)
+		}
+		if hit.H != 3 {
+			t.Fatalf("menu height changed for %s: %+v", page, hit)
 		}
 		value := ansi.Strip(ansi.Cut(rows[hit.Y+hit.H/2], hit.X, hit.X+hit.W))
 		if !strings.Contains(value, pageTitle(page)) || strings.ContainsAny(value, "1234567") {
@@ -157,122 +241,109 @@ func sidebarText(screen string) string {
 	for i := range rows {
 		rows[i] = ansi.Strip(ansi.Cut(rows[i], 0, sidebarWidth))
 	}
-	return strings.Join(rows[:len(rows)-2], "\n")
+	return strings.Join(rows[:len(rows)-1], "\n")
 }
 
-func TestSidebarMetadataReflectsSavedConfiguration(t *testing.T) {
+func TestSidebarTrafficDistinguishesLiveMissingAndZeroRates(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
-		snapshot app.Snapshot
-		fields   map[string]string
-		absent   []string
+		change   func(*dashboardOptions)
+		up, down string
 	}{
-		{
-			name: "saved configuration differs from running core",
-			snapshot: app.Snapshot{
-				Installed: true, ConfigReady: true, Applied: "work-profile",
-				Version: "v1.20.0", RunningVersion: "v1.19.33",
-				Mode:    app.ModeStatus{Desired: "rule", Actual: "global", Running: true},
-				Service: service.Status{Active: true, State: "active"},
-			},
-			fields: map[string]string{"Profile": "work-profile", "Saved mode": "rule", "Installed": "v1.20.0"},
-			absent: []string{"v1.19.33", "global"},
-		},
-		{
-			name:     "default profile and unavailable metadata",
-			snapshot: app.Snapshot{Installed: true, ConfigReady: true},
-			fields:   map[string]string{"Profile": "default", "Saved mode": "Unknown", "Installed": "Unknown"},
-		},
-		{
-			name:     "configuration unavailable",
-			snapshot: app.Snapshot{Installed: true},
-			fields:   map[string]string{"Profile": "Not configured"},
-			absent:   []string{"default"},
-		},
-		{
-			name: "uninstalled core has no fabricated configuration",
-			snapshot: app.Snapshot{
-				Applied: "stale-profile", Version: "stale-version",
-				Mode: app.ModeStatus{Desired: "stale-mode"},
-			},
-			fields: map[string]string{"Mihomo": "not installed"},
-			absent: []string{"stale-profile", "stale-version", "stale-mode", "Saved mode", "default"},
-		},
+		{name: "live", up: "2.0 KiB/s", down: "4.0 KiB/s"},
+		{name: "zero", change: func(o *dashboardOptions) { o.Runtime.Traffic = &mihomo.Traffic{} }, up: "0 B/s", down: "0 B/s"},
+		{name: "waiting", change: func(o *dashboardOptions) { o.RuntimeReceived = false }, up: "--", down: "--"},
+		{name: "first pending", change: func(o *dashboardOptions) { o.RuntimeReceived, o.RuntimePending = false, true }, up: "--", down: "--"},
+		{name: "next pending", change: func(o *dashboardOptions) { o.RuntimePending = true }, up: "2.0 KiB/s", down: "4.0 KiB/s"},
+		{name: "missing traffic", change: func(o *dashboardOptions) { o.Runtime.Traffic = nil }, up: "--", down: "--"},
+		{name: "stopped", change: func(o *dashboardOptions) { o.Runtime.State = "stopped" }, up: "--", down: "--"},
+		{name: "unavailable", change: func(o *dashboardOptions) { o.Runtime.State = "unavailable" }, up: "--", down: "--"},
+		{name: "uninstalled", change: func(o *dashboardOptions) { o.Snapshot.Installed = false }, up: "--", down: "--"},
+		{name: "state unavailable", change: func(o *dashboardOptions) { o.StateUnavailable = true }, up: "--", down: "--"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			screen, _, _ := renderDashboard(dashboardOptions{Width: 160, Height: 45, Page: "overview", Snapshot: tc.snapshot})
-			metadata := sidebarText(screen)
-			for label, value := range tc.fields {
-				found := false
-				for _, row := range strings.Split(metadata, "\n") {
-					found = found || strings.Contains(row, label) && strings.Contains(strings.ToLower(row), strings.ToLower(value))
-				}
-				if !found {
-					t.Errorf("missing sidebar field %s = %s:\n%s", label, value, metadata)
+			o := dashboardOptions{
+				Width: 160, Height: 45, Page: "proxies", Runtime: liveRuntime(), RuntimeReceived: true,
+				Snapshot: app.Snapshot{Installed: true, ConfigReady: true, Applied: "work-profile", Version: "v1.20.0", Mode: app.ModeStatus{Desired: "rule"}},
+			}
+			if tc.change != nil {
+				tc.change(&o)
+			}
+			screen, _, _ := renderDashboard(o)
+			footer := strings.Join(strings.Fields(sidebarText(screen)), " ")
+			for _, value := range []string{"↑ " + tc.up, "↓ " + tc.down} {
+				if !strings.Contains(footer, value) {
+					t.Fatalf("missing sidebar rate %q: %s", value, footer)
 				}
 			}
-			for _, value := range tc.absent {
-				if strings.Contains(strings.ToLower(metadata), strings.ToLower(value)) {
-					t.Errorf("sidebar exposes unexpected value %q:\n%s", value, metadata)
+			for _, value := range []string{"work-profile", "Saved mode", "Installed", "v1.20.0", "Mihomo"} {
+				if strings.Contains(footer, value) {
+					t.Fatalf("sidebar retained old metadata %q: %s", value, footer)
 				}
+			}
+			if tc.up == "--" && (strings.Contains(footer, "B/s") || strings.Contains(footer, "KiB/s")) {
+				t.Fatalf("unavailable sidebar rates displayed zero or stale data: %s", footer)
 			}
 		})
 	}
 }
 
-func TestSidebarMetadataPreservesNavigationAndStaysOutOfPopup(t *testing.T) {
-	snapshot := app.Snapshot{Installed: true, ConfigReady: true, Applied: "work-profile", Version: "v1.20.0", Mode: app.ModeStatus{Desired: "rule"}}
-	for _, size := range [][2]int{{160, 45}, {120, 28}, {80, 45}} {
-		t.Run(fmt.Sprintf("%dx%d", size[0], size[1]), func(t *testing.T) {
-			o := dashboardOptions{Width: size[0], Height: size[1], Page: "overview", SidebarOpen: true, Snapshot: snapshot}
+func TestSidebarTrafficPreservesNavigationAndStaysOutOfPopup(t *testing.T) {
+	for _, tc := range []struct {
+		width, height int
+		visible       bool
+	}{{160, 45, true}, {120, 31, true}, {120, 28, false}, {100, 20, false}, {80, 45, false}} {
+		t.Run(fmt.Sprintf("%dx%d", tc.width, tc.height), func(t *testing.T) {
+			o := dashboardOptions{Width: tc.width, Height: tc.height, Page: "proxies", SidebarOpen: true, Snapshot: app.Snapshot{Installed: true}, Runtime: liveRuntime(), RuntimeReceived: true}
 			screen, targets, _ := renderDashboard(o)
-			metadata := sidebarText(screen)
-			wantMetadata := size == [2]int{160, 45}
-			metadataY := len(strings.Split(metadata, "\n"))
-			for y, row := range strings.Split(metadata, "\n") {
-				if strings.Contains(row, "work-profile") {
-					metadataY = y
+			footer := sidebarText(screen)
+			footerY := len(strings.Split(footer, "\n"))
+			for y, row := range strings.Split(footer, "\n") {
+				if strings.Contains(row, "2.0 KiB/s") {
+					footerY = y - 1
 					break
 				}
 			}
-			for _, label := range []string{"work-profile", "Saved mode", "Installed"} {
-				if strings.Contains(metadata, label) != wantMetadata {
-					t.Fatalf("sidebar metadata visibility is wrong for %q:\n%s", label, metadata)
+			for _, rate := range []string{"2.0 KiB/s", "4.0 KiB/s"} {
+				if strings.Contains(footer, rate) != tc.visible {
+					t.Fatalf("sidebar rate visibility is wrong for %q:\n%s", rate, footer)
 				}
 			}
-			for _, page := range navPages() {
-				var hit hitRegion
-				for _, target := range targets {
-					if target.ID == "nav."+page {
-						hit = target
-						break
-					}
+			visibleItems := 0
+			for _, hit := range targets {
+				if !strings.HasPrefix(hit.ID, "nav.") {
+					continue
 				}
+				visibleItems++
 				if hit.H != 3 {
-					t.Fatalf("sidebar metadata hid or compressed navigation for %s: %+v", page, hit)
+					t.Fatalf("sidebar traffic compressed navigation: %+v", hit)
 				}
-				if wantMetadata && hit.Y+hit.H > metadataY {
-					t.Fatalf("sidebar metadata overlaps navigation for %s", page)
+				if tc.visible && hit.Y+hit.H > footerY {
+					t.Fatalf("sidebar traffic overlaps navigation: %+v", hit)
 				}
 				row := strings.Split(screen, "\n")[hit.Y+hit.H/2]
-				if !strings.Contains(ansi.Strip(ansi.Cut(row, hit.X, hit.X+hit.W)), pageTitle(page)) {
-					t.Fatalf("sidebar metadata covered navigation for %s", page)
+				if !strings.Contains(ansi.Strip(ansi.Cut(row, hit.X, hit.X+hit.W)), pageTitle(strings.TrimPrefix(hit.ID, "nav."))) {
+					t.Fatalf("sidebar traffic covered navigation: %+v", hit)
 				}
+			}
+			if visibleItems == 0 || (tc.height >= 28 && visibleItems != len(navPages())) || (tc.height == 20 && visibleItems >= len(navPages())) {
+				t.Fatalf("wrong number of visible menu items: %d", visibleItems)
 			}
 		})
 	}
 }
 
 func TestDashboardFooterUsesContextAndDoesNotKeepRefreshNotice(t *testing.T) {
-	o := dashboardOptions{Width: 120, Height: 32, Page: "overview", Message: "State refreshed", Help: "↑↓ Navigate · Enter Open · Tab Content"}
+	o := dashboardOptions{Width: 120, Height: 32, Page: "overview", Message: "State refreshed", MessageTransient: true, Help: "↑↓ Navigate · Enter Open · Tab Content"}
 	screen, _, _ := renderDashboard(o)
 	plain := ansi.Strip(screen)
 	if strings.Contains(plain, "State refreshed") || !strings.Contains(plain, "↑↓ Navigate") {
 		t.Fatal("footer retained an idle refresh message or lost context")
 	}
 	o.Failure = "permission denied"
+	o.Notifications = []notificationItem{{ID: 1, Kind: "error", Message: o.Failure}}
 	screen, _, _ = renderDashboard(o)
-	if !strings.Contains(ansi.Strip(screen), "Error: permission denied") {
+	if !strings.Contains(ansi.Strip(screen), "Error") || !strings.Contains(ansi.Strip(screen), "permission denied") {
 		t.Fatal("necessary failure feedback was hidden")
 	}
 }
@@ -368,16 +439,16 @@ func TestOverviewLayoutPreservesDetailsAndActionTargets(t *testing.T) {
 	})
 }
 
-func TestGuideStagesAndNormalStop(t *testing.T) {
+func TestInstalledCoreDoesNotRequireGuideOrSubscription(t *testing.T) {
 	o := dashboardOptions{Width: 160, Height: 45, Page: "overview", Snapshot: app.Snapshot{Installed: true}}
 	value, targets, _ := renderDashboard(o)
-	if !strings.Contains(ansi.Strip(value), "Choose your first configuration") || !hasAction(targets, "start") {
-		t.Fatal("configuration stage missing")
+	if strings.Contains(ansi.Strip(value), "Get started") || !strings.Contains(ansi.Strip(value), "Not configured") {
+		t.Fatal("missing runnable configuration must be shown as state, not a mandatory guide")
 	}
 	o.Snapshot.ConfigReady = true
 	value, targets, _ = renderDashboard(o)
-	if !strings.Contains(ansi.Strip(value), "Start your proxy core") || !hasAction(targets, "start") {
-		t.Fatal("start stage missing")
+	if !strings.Contains(ansi.Strip(value), "Built-in default configuration is ready") || !hasAction(targets, "core.start") {
+		t.Fatal("built-in configuration must be ready for an explicit start")
 	}
 	o.Snapshot.HasRun = true
 	value, targets, _ = renderDashboard(o)
@@ -393,14 +464,14 @@ func TestGuideStagesAndNormalStop(t *testing.T) {
 }
 
 func TestDashboardMouseCoordinatesFollowScrolling(t *testing.T) {
-	o := dashboardOptions{Width: 60, Height: 20, Page: "overview"}
+	o := dashboardOptions{Width: 60, Height: 20, Page: "overview", GuideSkipped: true}
 	value, regions, total := renderDashboard(o)
 	if total <= o.Height-7 {
 		t.Fatal("short viewport should require scrolling")
 	}
 	lines := strings.Split(value, "\n")
 	for _, r := range regions {
-		if r.ID == "install" || r.ID == "import" || r.ID == "dismiss" {
+		if r.ID == "core.install" || r.ID == "card.import" || r.ID == "card.install" {
 			cells := ansi.Strip(ansi.Cut(lines[r.Y], r.X, r.X+r.W))
 			if !strings.Contains(cells, "[") {
 				t.Fatalf("target does not cover actual button: %+v %q", r, cells)
@@ -409,7 +480,7 @@ func TestDashboardMouseCoordinatesFollowScrolling(t *testing.T) {
 	}
 	o.Scroll = 10000
 	value, regions, _ = renderDashboard(o)
-	if hasAction(regions, "install") || hasAction(regions, "dismiss") {
+	if hasAction(regions, "core.install") || hasAction(regions, "card.import") {
 		t.Fatal("scrolled-away actions retained mouse targets")
 	}
 	if !strings.Contains(ansi.Strip(value), "Kernel information") {
@@ -420,10 +491,18 @@ func TestDashboardMouseCoordinatesFollowScrolling(t *testing.T) {
 	}
 	o.SidebarOpen = true
 	value, regions, _ = renderDashboard(o)
-	for _, id := range []string{"nav.overview", "nav.proxies", "nav.profiles", "nav.settings"} {
+	for _, id := range []string{"nav.overview", "nav.proxies", "nav.profiles"} {
 		if !hasAction(regions, id) {
 			t.Errorf("menu action missing: %s", id)
 		}
+	}
+	if hasAction(regions, "nav.settings") {
+		t.Fatal("offscreen menu retained a mouse target")
+	}
+	o.Focus = "nav.settings"
+	value, regions, _ = renderDashboard(o)
+	if !hasAction(regions, "nav.settings") || hasAction(regions, "nav.overview") {
+		t.Fatal("compact menu did not reveal the focused item")
 	}
 	assertCanvas(t, value, o.Width, o.Height)
 	assertRegions(t, regions, o.Width, o.Height)
@@ -505,12 +584,12 @@ func TestShortCompactNavigationKeepsFocusedLastItemVisible(t *testing.T) {
 		t.Run(fmt.Sprintf("%dx%d", size[0], size[1]), func(t *testing.T) {
 			m := ready(&fakeBackend{})
 			m.width, m.height = size[0], size[1]
-			m.sidebarOpen, m.focus = true, "nav.settings"
+			m.page, m.sidebarOpen, m.focus = "settings", true, "nav.settings"
 			m.layout()
 			check := func(id, label string) {
 				t.Helper()
 				hit := findTarget(t, m, id)
-				line := strings.Split(m.screen, "\n")[hit.Y]
+				line := strings.Split(m.screen, "\n")[hit.Y+hit.H/2]
 				visible := ansi.Strip(ansi.Cut(line, hit.X, hit.X+hit.W))
 				if !strings.Contains(visible, "› "+label) {
 					t.Fatalf("focused menu item is hidden: %q", visible)
@@ -519,14 +598,12 @@ func TestShortCompactNavigationKeepsFocusedLastItemVisible(t *testing.T) {
 				assertRegions(t, m.targets, size[0], size[1])
 			}
 			check("nav.settings", "Settings")
-			if size[1] == 12 {
-				for _, page := range navPages() {
-					findTarget(t, m, "nav."+page)
-				}
+			if hasAction(m.targets, "nav.overview") {
+				t.Fatal("short compact menu retained an offscreen item")
 			}
 			before := m.scroll
 			m, _ = update(m, special(tea.KeyUp))
-			if m.focus != "nav.logs" || m.scroll != before {
+			if m.page != "logs" || m.focus != "nav.logs" || m.scroll != before {
 				t.Fatal("arrow did not move back inside compact navigation")
 			}
 			check("nav.logs", "Logs")

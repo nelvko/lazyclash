@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -58,6 +59,90 @@ func TestProfileSourceInputScrollsLongPathOnOneLine(t *testing.T) {
 			}
 			assertCanvas(t, m.View().Content, width, 24)
 		}
+	}
+}
+
+func TestProfileCreateFormSubmitsRemoteMetadataAndClosesOnSuccess(t *testing.T) {
+	var got app.ProfileDraft
+	b := &fakeBackend{createProfile: func(_ context.Context, draft app.ProfileDraft) error {
+		got = draft
+		return nil
+	}}
+	m := ready(b)
+	m.page = "profiles"
+	m.activate("profiles.create")
+	if m.form != "profile-create" {
+		t.Fatal("new profile action did not open the dedicated form")
+	}
+	for _, size := range [][2]int{{120, 30}, {80, 24}, {60, 20}, {40, 16}} {
+		m.width, m.height = size[0], size[1]
+		m.layout()
+		assertCanvas(t, m.View().Content, size[0], size[1])
+	}
+	m.profileCreate.name.SetValue("Travel")
+	m.profileCreate.description.SetValue("personal route")
+	m.profileCreate.source.SetValue("https://example.com/profile.yaml")
+	m.profileCreate.field = profileCreateSource
+	m.profileCreate.source.Focus()
+	m, cmd := update(m, special(tea.KeyEnter))
+	m = finishProfileJob(t, m, cmd)
+	if got.Name != "Travel" || got.Description != "personal route" || got.Address != "https://example.com/profile.yaml" || !got.RememberSource {
+		t.Fatalf("unexpected profile draft: %+v", got)
+	}
+	if m.form != "" {
+		t.Fatal("successful profile creation left the form open")
+	}
+}
+
+func TestProfileCreateFormRetainsDraftAfterFailure(t *testing.T) {
+	m := ready(&fakeBackend{createProfile: func(context.Context, app.ProfileDraft) error {
+		return errors.New("create failed")
+	}})
+	m.page = "profiles"
+	m.activate("profiles.create")
+	m.profileCreate.name.SetValue("Travel")
+	m.profileCreate.source.SetValue("https://example.com/profile.yaml")
+	m.profileCreate.field = profileCreateSource
+	m.profileCreate.source.Focus()
+	m, cmd := update(m, special(tea.KeyEnter))
+	m = finishProfileJob(t, m, cmd)
+	if m.form != "profile-create" || m.profileCreate.name.Value() != "Travel" || m.profileCreate.source.Value() == "" {
+		t.Fatal("failed creation discarded the editable draft")
+	}
+}
+
+func TestProfileCreateFormButtonsUseModalHitTargets(t *testing.T) {
+	called := false
+	m := ready(&fakeBackend{createProfile: func(context.Context, app.ProfileDraft) error {
+		called = true
+		return nil
+	}})
+	m.page = "profiles"
+	m.width, m.height = 120, 30
+	m.activate("profiles.create")
+	m.profileCreate.source.SetValue("https://example.com/profile.yaml")
+	m.layout()
+	m, cmd := click(m, findTarget(t, m, "profile-create.save"))
+	m = finishProfileJob(t, m, cmd)
+	if !called || m.form != "" {
+		t.Fatal("modal Save target did not submit and close the form")
+	}
+}
+
+func TestProfileDescriptionEditUsesMetadataUseCase(t *testing.T) {
+	var gotID, gotDescription string
+	b := &fakeBackend{snapshot: app.Snapshot{Profiles: []string{"work"}, ProfileDetails: profileFixtures("default", "work")}, updateDescription: func(_ context.Context, id, description string) error {
+		gotID, gotDescription = id, description
+		return nil
+	}}
+	m := ready(b)
+	m.page = "profiles"
+	m.openProfileEdit("profile-description", "work")
+	m.input.SetValue("office route")
+	m, cmd := update(m, special(tea.KeyEnter))
+	m = finishProfileJob(t, m, cmd)
+	if gotID != "work" || gotDescription != "office route" || m.form != "" {
+		t.Fatalf("description edit was not submitted: %q %q form=%q", gotID, gotDescription, m.form)
 	}
 }
 
@@ -189,7 +274,7 @@ func TestProfilePageShowsPendingChangesAndAccurateActionRows(t *testing.T) {
 	m.profilesUI.detail = "work"
 	body, hits := m.pageBody(150)
 	plain := ansi.Strip(body)
-	for _, text := range []string{"Paste subscription URL", "Add", "Import", "CHANGES PENDING", "Apply to load", "Apply changes", "Overrides"} {
+	for _, text := range []string{"Paste subscription URL or local path", "Add", "New profile", "CHANGES PENDING", "Apply to load", "Apply changes", "Overrides"} {
 		if !strings.Contains(plain, text) {
 			t.Fatalf("missing %q in profiles page", text)
 		}

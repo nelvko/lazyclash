@@ -70,7 +70,7 @@ func TestOverviewRuntimeControlsWaitForObservedState(t *testing.T) {
 	}
 }
 
-func TestOverviewModeKeepsObservedStateWhenRefreshFails(t *testing.T) {
+func TestOverviewModeMarksActualStateUnknownWhenRefreshFails(t *testing.T) {
 	b := &fakeBackend{snapshot: app.Snapshot{Installed: true, Service: service.Status{Active: true, State: "active"}, Mode: app.ModeStatus{Desired: "rule", Actual: "rule", Running: true}}}
 	b.mode = func(_ context.Context, mode string) error {
 		b.snapshot.Mode.Desired, b.snapshot.Mode.Actual = mode, mode
@@ -84,8 +84,8 @@ func TestOverviewModeKeepsObservedStateWhenRefreshFails(t *testing.T) {
 	}
 	cmd := m.activate("mode.global")
 	m, _ = update(m, actionCmd(t, cmd)())
-	if m.busy || m.snapshot.Mode.Desired != "rule" || m.snapshot.Mode.Actual != "rule" || !strings.Contains(m.failure, "status refresh unavailable") {
-		t.Fatal("failed observation produced an optimistic routing mode")
+	if m.busy || m.snapshot.Mode.Desired != "rule" || m.snapshot.Mode.Actual != "" || m.snapshot.ServiceError == "" || !strings.Contains(m.failure, "status refresh unavailable") {
+		t.Fatal("failed observation did not mark actual state unknown")
 	}
 }
 

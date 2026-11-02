@@ -51,7 +51,7 @@ func newPortsState() portsState {
 
 func (m *Model) openPorts() tea.Cmd {
 	if !m.snapshot.Installed {
-		m.failure = "Install Mihomo before changing runtime ports"
+		m.failure = m.tr("ports.require_install")
 		return nil
 	}
 	p := newPortsState()
@@ -64,7 +64,7 @@ func (m *Model) loadPorts() tea.Cmd {
 	ctx := m.newJob("ports-load")
 	id, backend := m.id, m.backend
 	m.ports.step, m.ports.err, m.ports.cancelling = "loading", "", false
-	m.message = "Loading managed runtime settings…"
+	m.message = m.tr("ports.loading_message")
 	return tea.Batch(func() tea.Msg {
 		s, err := backend.GetRuntimeSettings(ctx)
 		return portsMsg{id: id, kind: "load", settings: s, err: err}
@@ -76,15 +76,15 @@ func (m *Model) preparePorts() tea.Cmd {
 	parse := func(input *textinput.Model, label string) (int, error) {
 		port, err := strconv.Atoi(strings.TrimSpace(input.Value()))
 		if err != nil || port < 1024 || port > 65535 {
-			err = fmt.Errorf("%s must be a whole number between 1024 and 65535", label)
+			err = errors.New(m.tr("ports.validation.range", label))
 			input.Err = err
 			return 0, err
 		}
 		input.Err = nil
 		return port, nil
 	}
-	mixed, mixedErr := parse(&p.mixed, "Proxy port")
-	controller, controllerErr := parse(&p.controller, "Control API port")
+	mixed, mixedErr := parse(&p.mixed, m.tr("ports.proxy_port"))
+	controller, controllerErr := parse(&p.controller, m.tr("ports.controller_port"))
 	if mixedErr != nil || controllerErr != nil {
 		p.err = errors.Join(mixedErr, controllerErr).Error()
 		if mixedErr != nil {
@@ -96,7 +96,7 @@ func (m *Model) preparePorts() tea.Cmd {
 		return nil
 	}
 	if mixed == controller {
-		p.err = "Proxy port and control API port must differ"
+		p.err = m.tr("ports.validation.distinct")
 		p.controller.Err = errors.New(p.err)
 		p.focus, p.reveal = "ports.controller", true
 		return nil
@@ -106,7 +106,7 @@ func (m *Model) preparePorts() tea.Cmd {
 	settings := app.RuntimeSettings{MixedPort: mixed, ControllerPort: controller}
 	p.err, p.cancelling = "", false
 	p.step, p.focus, p.scroll = "preparing", "ports.cancel", 0
-	m.message = "Checking runtime ports, configuration and current service…"
+	m.message = m.tr("ports.checking_message")
 	return tea.Batch(func() tea.Msg {
 		plan, err := backend.PrepareRuntimeSettings(ctx, settings)
 		return portsMsg{id: id, kind: "prepare", plan: plan, err: err}
@@ -122,7 +122,7 @@ func (m *Model) applyPorts() tea.Cmd {
 	m.ports.step, m.ports.err, m.ports.cancelling = "applying", "", false
 	m.ports.refreshError, m.ports.applied = "", false
 	m.ports.focus = "ports.cancel"
-	m.message = "Applying runtime settings…"
+	m.message = m.tr("ports.applying_message")
 	return tea.Batch(func() tea.Msg {
 		result, err := backend.ApplyRuntimeSettings(ctx, plan)
 		refreshCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 8*time.Second)
@@ -145,7 +145,7 @@ func (m *Model) acceptPorts(msg portsMsg) {
 	p.cancelling, p.reveal = false, true
 	p.err = ""
 	if msg.err != nil {
-		p.err = clean(msg.err.Error())
+		p.err = clean(m.localizeError(msg.err))
 	}
 	if msg.hasSnapshot {
 		m.snapshot = msg.snapshot
@@ -168,16 +168,29 @@ func (m *Model) acceptPorts(msg portsMsg) {
 			p.scroll = 0
 		}
 	case "apply":
+		m.notification.operation.Context = m.tr("notification.ports")
+		m.notification.critical = notificationCritical(msg.err) || msg.refreshError != nil
+		if !msg.hasSnapshot && m.snapshotReady {
+			m.markOperationStateUnknown()
+		}
+		if m.notification.critical || m.notification.retainDialog {
+			m.failure = m.localizeError(msg.err)
+			m.notification.details = m.locale.Error(msg.err)
+			if msg.refreshError != nil {
+				m.failure = m.tr("notification.state_unknown")
+				m.notification.details += "\n" + m.locale.Error(msg.refreshError)
+			}
+		}
 		p.result, p.step, p.focus = msg.result, "result", "ports.done"
 		p.applied = msg.err == nil
 		if p.applied {
 			p.current = msg.result.Settings
-			m.message = "Runtime settings applied"
+			m.message = m.tr("ports.applied")
 		} else {
-			m.message = "Runtime settings application finished; review the result"
+			m.message = m.tr("ports.finished")
 		}
 		if msg.refreshError != nil {
-			p.refreshError = "Could not refresh the dashboard; refresh again after closing this dialog."
+			p.refreshError = m.tr("ports.refresh_failed")
 		}
 	}
 }
@@ -192,7 +205,7 @@ func (m *Model) closePorts() {
 	if !m.snapshot.Installed {
 		m.focus = "install"
 	}
-	if strings.HasPrefix(m.message, "Loading managed") || strings.HasPrefix(m.message, "Checking runtime") {
+	if m.ports.step == "loading" || m.ports.step == "preparing" {
 		m.message = ""
 	}
 }
@@ -321,95 +334,95 @@ func (m *Model) portsMouse(event tea.MouseMsg) tea.Cmd {
 
 func (m *Model) portsDocument(width int) (wizardDocument, []wizardButton, string) {
 	p := &m.ports
-	d := wizardDocument{width: width, hover: m.hover}
-	buttons := []wizardButton{{"ports.cancel", "Cancel"}}
-	subtitle := "Edit ports"
+	d := wizardDocument{locale: m.locale, width: width, hover: m.hover}
+	buttons := []wizardButton{{"ports.cancel", m.tr("ports.cancel")}}
+	subtitle := m.tr("ports.edit")
 	switch p.step {
 	case "loading":
-		subtitle = "Loading"
-		d.line(m.spinner.View() + " Loading current managed ports…")
+		subtitle = m.tr("ports.loading")
+		d.line(m.spinner.View() + m.tr("ports.loading_current"))
 	case "preparing":
-		subtitle = "Checking changes"
-		d.label("Checking runtime settings")
-		d.pair("Proxy port", p.mixed.Value())
-		d.pair("Control API port", p.controller.Value())
-		d.line(m.spinner.View() + " Checking port availability, configuration and current service…")
-		d.line("No change is applied until you review and confirm the resulting plan.")
+		subtitle = m.tr("ports.checking")
+		d.label(m.tr("ports.checking_title"))
+		d.pair(m.tr("ports.proxy_port"), p.mixed.Value())
+		d.pair(m.tr("ports.controller_port"), p.controller.Value())
+		d.line(m.spinner.View() + m.tr("ports.checking_detail"))
+		d.line(m.tr("ports.review_boundary"))
 	case "edit":
-		d.label("Local listeners")
-		d.line("Only loopback port settings change. The managed API key stays private and unchanged.")
+		d.label(m.tr("ports.listeners"))
+		d.line(m.tr("ports.edit_boundary"))
 		d.space()
-		d.field("ports.mixed", "Proxy port · HTTP and SOCKS", &p.mixed, p.focus)
+		d.field("ports.mixed", m.tr("ports.proxy_field"), &p.mixed, p.focus)
 		d.space()
-		d.field("ports.controller", "Control API port", &p.controller, p.focus)
+		d.field("ports.controller", m.tr("ports.controller_port"), &p.controller, p.focus)
 		d.space()
-		d.line("Use distinct ports between 1024 and 65535. Review checks availability before anything is applied.")
-		buttons = append(buttons, wizardButton{"ports.review", "Review changes"})
+		d.line(m.tr("ports.range_hint"))
+		buttons = append(buttons, wizardButton{"ports.review", m.tr("ports.review")})
 	case "review":
-		subtitle = "Review changes"
-		d.label("Reviewed port changes")
-		d.pair("Proxy port", fmt.Sprintf("%d → %d", p.plan.Current.MixedPort, p.plan.Proposed.MixedPort))
-		d.pair("Control API port", fmt.Sprintf("%d → %d", p.plan.Current.ControllerPort, p.plan.Proposed.ControllerPort))
-		d.pair("Listen address", p.plan.ControllerHost+" (loopback only)")
-		d.pair("Current profile", snapshotProfileName(m.snapshot, p.plan.AppliedProfile))
-		d.pair("API key", "Existing managed key retained; never displayed")
+		subtitle = m.tr("ports.review")
+		d.label(m.tr("ports.reviewed"))
+		d.pair(m.tr("ports.proxy_port"), fmt.Sprintf("%d → %d", p.plan.Current.MixedPort, p.plan.Proposed.MixedPort))
+		d.pair(m.tr("ports.controller_port"), fmt.Sprintf("%d → %d", p.plan.Current.ControllerPort, p.plan.Proposed.ControllerPort))
+		d.pair(m.tr("ports.listen_address"), m.tr("ports.loopback", p.plan.ControllerHost))
+		d.pair(m.tr("ports.profile"), snapshotProfileName(m.snapshot, p.plan.AppliedProfile, m.locale))
+		d.pair(m.tr("ports.api_key"), m.tr("ports.key_retained"))
 		d.space()
-		label := "Apply settings"
+		label := m.tr("ports.apply")
 		if !p.plan.Changed {
-			d.line("No changes; the current settings already match.")
-			label = "Keep current"
+			d.line(m.tr("ports.unchanged"))
+			label = m.tr("ports.keep_current")
 		} else if p.plan.Active {
-			d.line(themed("Restart required: active connections will be interrupted.", warning, raised, false))
-			d.line("Apply stops and restarts this managed core, then reconnects the control API. On failure, recovery attempts to restore the prior configuration and service state.")
-			label = "Apply & restart"
+			d.line(themed(m.tr("ports.restart_warning"), warning, raised, false))
+			d.line(m.tr("ports.restart_boundary"))
+			label = m.tr("ports.apply_restart")
 		} else {
-			d.line("The service is stopped and will remain stopped. These ports take effect at the next explicit start.")
+			d.line(m.tr("ports.stopped_boundary"))
 		}
 		d.space()
-		d.line("Profiles, system proxy, DNS, TUN and autostart settings are preserved.")
-		buttons = []wizardButton{{"ports.back", "Back"}, {"ports.apply", label}}
+		d.line(m.tr("ports.preserved"))
+		buttons = []wizardButton{{"ports.back", m.tr("ports.back")}, {"ports.apply", label}}
 	case "applying":
-		subtitle = "Applying"
-		d.label("Applying runtime settings")
+		subtitle = m.tr("ports.applying")
+		d.label(m.tr("ports.applying_title"))
 		if p.cancelling {
-			d.line(themed("Cancelling / Restoring previous state…", warning, raised, false))
+			d.line(themed(m.tr("ports.restoring"), warning, raised, false))
 		} else {
-			d.line(m.spinner.View() + " Updating configuration and checking the managed service…")
+			d.line(m.spinner.View() + m.tr("ports.updating"))
 		}
-		d.line("Cancellation waits for the application task and any required recovery before leaving.")
+		d.line(m.tr("ports.cancel_boundary"))
 	case "result":
-		subtitle = "Result"
-		buttons = []wizardButton{{"ports.done", "Back to Settings"}}
+		subtitle = m.tr("ports.result")
+		buttons = []wizardButton{{"ports.done", m.tr("ports.done")}}
 		if p.applied {
-			d.line(themed("Runtime settings applied", success, raised, false))
-			d.pair("Proxy port", strconv.Itoa(p.result.Settings.MixedPort))
-			d.pair("Control API", p.result.Controller)
+			d.line(themed(m.tr("ports.applied"), success, raised, false))
+			d.pair(m.tr("ports.proxy_port"), strconv.Itoa(p.result.Settings.MixedPort))
+			d.pair(m.tr("ports.controller"), p.result.Controller)
 			if p.result.Restarted {
-				d.line("The managed core restarted and its control API passed readiness checks.")
+				d.line(m.tr("ports.restarted"))
 			} else if !m.snapshot.Service.Active && p.refreshError == "" {
-				d.line("The service remains stopped. Start it explicitly when ready.")
+				d.line(m.tr("ports.stopped"))
 			} else {
-				d.line("No service restart was required.")
+				d.line(m.tr("ports.no_restart"))
 			}
 		} else {
-			d.line(themed("Runtime settings did not complete", errorColor, raised, false))
-			d.line("Review the error and current service state before retrying. Retry prepares a new plan and asks for confirmation again.")
-			buttons = append(buttons, wizardButton{"ports.retry", "Review / Retry"})
+			d.line(themed(m.tr("ports.incomplete"), errorColor, raised, false))
+			d.line(m.tr("ports.retry_boundary"))
+			buttons = append(buttons, wizardButton{"ports.retry", m.tr("ports.review_retry")})
 		}
 		if p.refreshError != "" {
 			d.line(themed(p.refreshError, warning, raised, false))
 		}
 	case "load-error":
-		subtitle = "Unavailable"
-		d.line("Current runtime settings are unavailable.")
-		buttons = append(buttons, wizardButton{"ports.retry", "Retry"})
+		subtitle = m.tr("ports.unavailable")
+		d.line(m.tr("ports.settings_unavailable"))
+		buttons = append(buttons, wizardButton{"ports.retry", m.tr("ports.retry")})
 	}
 	if p.err != "" {
 		d.space()
 		d.line(themed(p.err, errorColor, raised, false))
 	}
 	if p.cancelling && p.step != "applying" {
-		d.line(themed("Cancelling; waiting for the current check to finish safely…", warning, raised, false))
+		d.line(themed(m.tr("ports.cancelling"), warning, raised, false))
 	}
 	return d, buttons, subtitle
 }
@@ -423,9 +436,9 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 		x, y = (m.width-w)/2, (m.height-h)/2
 	}
 	if w < 34 || h < 10 {
-		label := "Please enlarge terminal · Esc Back · Ctrl+C Quit"
+		label := m.tr("ports.compact_help")
 		if m.busy {
-			label = "Working / Cleaning up · Esc Cancel · Ctrl+C Quit"
+			label = m.tr("ports.compact_busy")
 		}
 		return overlay("", themed(cellCrop(label, w), text, raised, false), 0, 0, m.width, m.height), nil
 	}
@@ -481,7 +494,7 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 		putRows(rows, 0, i, themed("│", border, raised, false), w)
 		putRows(rows, w-1, i, themed("│", border, raised, false), w)
 	}
-	putRows(rows, 3, 1, themed("Runtime settings", text, raised, false), w)
+	putRows(rows, 3, 1, themed(m.tr("ports.title"), text, raised, false), w)
 	putRows(rows, 3, 2, themed(subtitle, muted, raised, false), w)
 	putRows(rows, 2, 3, themed(strings.Repeat("─", w-4), divider, raised, false), w)
 	var hits []hitRegion
@@ -503,9 +516,9 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 		hit.X, hit.Y = hit.X+x+3, hit.Y+y+footerY
 		hits = append(hits, hit)
 	}
-	help := "Tab Focus · Enter Review / Apply · Esc Back · Ctrl+C Quit"
+	help := m.tr("ports.help")
 	if m.busy {
-		help = "Esc Cancel · wait for safe recovery before leaving"
+		help = m.tr("ports.busy_help")
 	}
 	putRows(rows, 3, h-2, helpText(cellCrop(help, inner), raised, false), w)
 	if len(doc.lines) > bodyH {

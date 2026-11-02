@@ -8,6 +8,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
+	"github.com/nelvko/lazyclash/internal/i18n"
 )
 
 // Bubbles supplies the URL editor; the responsive card grid is a small custom
@@ -20,9 +21,9 @@ func (m Model) profilesBody(width int) (string, []hitRegion) {
 	body := m.profilesToolbar(width)
 	body.blank()
 	count := len(m.profiles()) - 1
-	summary := fmt.Sprintf("Configurations · %d saved", count)
+	summary := fmt.Sprintf(m.tr("profiles.summary"), count)
 	if m.snapshot.Applied != "" {
-		summary += " · Selected: " + clean(snapshotProfileName(m.snapshot, m.snapshot.Applied))
+		summary += m.tr("profiles.selected_name", clean(snapshotProfileName(m.snapshot, m.snapshot.Applied, m.locale)))
 	}
 	body.lines = append(body.lines, themed(cellCrop(summary, width), muted, bg, false))
 	body.blank()
@@ -64,7 +65,7 @@ func (m Model) profilesBody(width int) (string, []hitRegion) {
 		}
 	}
 	if count == 0 {
-		body.lines = append(body.lines, themed(cellCrop("Add a subscription above, or import a local Mihomo configuration.", width), muted, bg, false), "")
+		body.lines = append(body.lines, themed(cellCrop(m.tr("profiles.empty_hint"), width), muted, bg, false), "")
 	}
 	return strings.Join(body.lines, "\n"), body.targets
 }
@@ -72,8 +73,9 @@ func (m Model) profilesBody(width int) (string, []hitRegion) {
 func (m Model) profilesToolbar(width int) dashboardBlock {
 	var body dashboardBlock
 	input := m.profilesUI.url
+	input.Placeholder = m.tr("profiles.url_placeholder")
 	options := dashboardOptions{Focus: m.focus, Hover: m.hover}
-	buttons := []profileButton{{"profiles.add", "Add", true}, {"add", "Import", false}}
+	buttons := []profileButton{{"profiles.add", m.tr("profiles.add"), true}, {"profiles.create", m.tr("profiles.create"), false}}
 	buttonWidth := 0
 	for _, b := range buttons {
 		buttonWidth += ansi.StringWidth(dashboardButton(b.id, b.label, options, b.primary)) + 2
@@ -86,10 +88,14 @@ func (m Model) profilesToolbar(width int) dashboardBlock {
 	// Bubbles reserves one additional cell for the cursor, outside Width.
 	input.SetWidth(max(1, fieldWidth-5-ansi.StringWidth(input.Prompt)))
 	input.SetCursor(input.Position())
-	styleInput(&input, inputBackground, false)
+	invalid := m.profilesUI.urlError != "" && m.profilesUI.urlErrorValue == input.Value()
+	styleInput(&input, inputBackground, invalid)
 	edge := border
 	if m.focus == "profiles.url" {
 		edge = focus
+	}
+	if invalid {
+		edge = errorColor
 	}
 	field := profileInputFrame([]string{input.View()}, fieldWidth, edge, inputBackground)
 	body.lines = append(body.lines, field...)
@@ -103,7 +109,13 @@ func (m Model) profilesToolbar(width int) dashboardBlock {
 			x += ansi.StringWidth(value) + 2
 		}
 		body.lines[1] = cellCrop(body.lines[1], width)
-	} else {
+	}
+	if invalid {
+		for _, line := range strings.Split(wrapText(clean(m.profilesUI.urlError), fieldWidth), "\n") {
+			body.lines = append(body.lines, themed(line, errorColor, bg, false))
+		}
+	}
+	if !inline {
 		body.append(m.profileButtons(buttons, width))
 	}
 	return body
@@ -142,13 +154,22 @@ func (m Model) profileButtons(buttons []profileButton, width int) dashboardBlock
 func (m Model) profileInfo(name string) app.ProfileInfo {
 	for _, info := range m.snapshot.ProfileDetails {
 		if info.ID == name {
+			if name == "default" {
+				info.Name = m.tr("profiles.builtin_name")
+			}
 			return info
 		}
+	}
+	if name == "default" {
+		return app.ProfileInfo{ID: name, Name: m.tr("profiles.builtin_name")}
 	}
 	return app.ProfileInfo{}
 }
 
-func snapshotProfileName(snapshot app.Snapshot, id string) string {
+func snapshotProfileName(snapshot app.Snapshot, id string, locales ...i18n.Localizer) string {
+	if id == "default" {
+		return dashboardLocale(locales).T("profiles.builtin_name")
+	}
 	if id == snapshot.Applied && snapshot.AppliedName != "" {
 		return snapshot.AppliedName
 	}
@@ -165,9 +186,10 @@ func (m Model) profileCard(index, width int) dashboardBlock {
 	info := m.profileInfo(name)
 	id := fmt.Sprintf("profile.%d", index)
 	refreshID := fmt.Sprintf("profiles.refresh.%d", index)
+	menuID := fmt.Sprintf("profiles.menu.%d", index)
 	selected := name == m.snapshot.Applied
 	surface := panel
-	if m.hover == id || m.hover == refreshID || m.focus == id || m.focus == refreshID {
+	if m.hover == id || m.hover == refreshID || m.hover == menuID || m.focus == id || m.focus == refreshID || m.focus == menuID {
 		surface = raised
 	}
 	inner := max(1, width-4)
@@ -179,51 +201,55 @@ func (m Model) profileCard(index, width int) dashboardBlock {
 	if selected {
 		titleColor = accent
 	}
-	canUpdate := info.Refreshable
-	titleWidth := inner
-	if canUpdate {
-		titleWidth -= 4
+	var controls []profileButton
+	if info.Refreshable && width >= 16 {
+		controls = append(controls, profileButton{id: refreshID, label: "↻"})
 	}
+	if width >= 12 {
+		controls = append(controls, profileButton{id: menuID, label: "⋯"})
+	}
+	titleWidth := max(1, inner-4*len(controls))
 	title := themed(lipgloss.NewStyle().Bold(true).Render(cellCrop(prefix+clean(info.Name), max(1, titleWidth))), titleColor, surface, false)
-	if canUpdate {
+	title = cellPad(title, titleWidth)
+	for _, control := range controls {
 		color := muted
-		if m.focus == refreshID || m.hover == refreshID {
+		if m.focus == control.id || m.hover == control.id {
 			color = focus
 		}
-		title = cellPad(title, max(1, inner-3)) + themed("[↻]", color, surface, false)
+		title += themed(" ["+control.label+"]", color, surface, false)
 	}
-	origin, kind := "Built-in · No subscription", "Mihomo configuration"
+	origin, kind := m.tr("profiles.builtin_origin"), m.tr("profiles.kind")
 	if name != "default" {
 		origin = info.Origin
 		if info.HasOverrides {
-			kind += " · Overrides"
+			kind = m.tr("profiles.kind_overrides", kind)
 		}
 	}
-	status, statusColor := "Ready", muted
+	status, statusColor := m.tr("profiles.ready"), muted
 	if !info.Validated && name != "default" {
-		status, statusColor = "Engine validation pending", warning
+		status, statusColor = m.tr("profiles.validation_pending"), warning
 	}
 	if selected {
-		status, statusColor = "SELECTED · Next start", accent
+		status, statusColor = m.tr("profiles.selected_next_start"), accent
 		if m.snapshot.ServiceError != "" || m.snapshot.APIError != "" {
-			status = "SELECTED · Runtime unavailable"
+			status = m.tr("profiles.selected_unavailable")
 		} else if m.snapshot.Service.Active {
-			status = "IN USE"
+			status = m.tr("profiles.in_use")
 		}
 	}
 	if info.Pending {
-		status, statusColor = "CHANGES PENDING · Apply to load", warning
+		status, statusColor = m.tr("profiles.changes_pending"), warning
 	}
-	stamp := "Built-in configuration"
+	stamp := m.tr("profiles.builtin_stamp")
 	if name != "default" {
-		stamp = profileUpdated(info.UpdatedAt, time.Now())
+		stamp = profileUpdated(info.UpdatedAt, time.Now(), m.locale)
 	}
 	lines := []string{title, themed(cellCrop(clean(origin), inner), muted, surface, false), themed(cellCrop(kind, inner), muted, surface, false),
 		themed(cellCrop(stamp, inner), muted, surface, false), themed(cellCrop(status, inner), statusColor, surface, false)}
 	block := dashboardBlock{lines: profileCardSurface(lines, width, surface, selected)}
-	// The small update button wins hit testing over the containing card.
-	if canUpdate && width >= 12 {
-		block.targets = append(block.targets, hitRegion{ID: refreshID, X: width - 5, Y: 1, W: 3, H: 1})
+	// Card controls win hit testing over the containing card.
+	for i, control := range controls {
+		block.targets = append(block.targets, hitRegion{ID: control.id, X: width - 5 - 4*(len(controls)-1-i), Y: 1, W: 3, H: 1})
 	}
 	block.targets = append(block.targets, hitRegion{ID: id, W: width, H: len(block.lines)})
 	return block
@@ -259,22 +285,26 @@ func profileInputFrame(lines []string, width int, edge, surface string) []string
 	return append(rows, themed("╰"+strings.Repeat("─", width-2)+"╯", edge, surface, false))
 }
 
-func profileUpdated(updated, now time.Time) string {
+func profileUpdated(updated, now time.Time, locales ...i18n.Localizer) string {
+	var locale i18n.Localizer
+	if len(locales) > 0 {
+		locale = locales[0]
+	}
 	if updated.IsZero() {
-		return "No update history"
+		return locale.T("profiles.no_history")
 	}
 	age := now.Sub(updated)
 	switch {
 	case age < time.Minute:
-		return "Updated just now"
+		return locale.T("profiles.just_updated")
 	case age < time.Hour:
-		return fmt.Sprintf("Updated %dm ago", int(age/time.Minute))
+		return fmt.Sprintf(locale.T("profiles.updated_minutes"), int(age/time.Minute))
 	case age < 24*time.Hour:
-		return fmt.Sprintf("Updated %dh ago", int(age/time.Hour))
+		return fmt.Sprintf(locale.T("profiles.updated_hours"), int(age/time.Hour))
 	case age < 30*24*time.Hour:
-		return fmt.Sprintf("Updated %dd ago", int(age/(24*time.Hour)))
+		return fmt.Sprintf(locale.T("profiles.updated_days"), int(age/(24*time.Hour)))
 	default:
-		return "Updated " + updated.Format("2006-01-02")
+		return locale.T("profiles.updated_date", updated.Format("2006-01-02"))
 	}
 }
 
@@ -287,32 +317,36 @@ func (m Model) profileDetailsPane(name string, width int) dashboardBlock {
 			break
 		}
 	}
-	body := dashboardBlock{lines: []string{themed(cellCrop(clean(info.Name)+" · Configuration", width), focus, bg, false)}}
+	body := dashboardBlock{lines: []string{themed(cellCrop(m.tr("profiles.details_title", clean(info.Name)), width), focus, bg, false)}}
 	if name == "default" {
-		body.lines = append(body.lines, themed(cellCrop("Built-in local proxy configuration. No subscription required.", width), muted, bg, false))
+		body.lines = append(body.lines, themed(cellCrop(m.tr("profiles.builtin_description"), width), muted, bg, false))
 	} else {
 		body.lines = append(body.lines, themed(cellCrop(clean(info.Origin), width), muted, bg, false))
+		if info.Description != "" {
+			body.lines = append(body.lines, themed(cellCrop(clean(info.Description), width), muted, bg, false))
+		}
 	}
-	applyID, label := fmt.Sprintf("profiles.apply.%d", index), "Use profile"
+	applyID, label := fmt.Sprintf("profiles.apply.%d", index), m.tr("profiles.use")
 	if name == m.snapshot.Applied {
-		label = "Reapply"
+		label = m.tr("profiles.reapply")
 	}
 	if info.Pending {
-		label = "Apply changes"
+		label = m.tr("profiles.apply_changes")
 	}
 	if !m.snapshot.Installed {
-		applyID, label = "", "Install core to apply"
+		applyID, label = "", m.tr("profiles.install_to_apply")
 	}
 	buttons := []profileButton{{applyID, label, true}}
 	if info.Refreshable {
-		buttons = append(buttons, profileButton{fmt.Sprintf("profiles.update.%d", index), "Update", false})
+		buttons = append(buttons, profileButton{fmt.Sprintf("profiles.update.%d", index), m.tr("profiles.update"), false})
 	}
 	if name != "default" {
-		buttons = append(buttons, profileButton{fmt.Sprintf("profiles.rename.%d", index), "Rename", false})
-		buttons = append(buttons, profileButton{fmt.Sprintf("profiles.url-edit.%d", index), "Edit URL", false})
-		buttons = append(buttons, profileButton{fmt.Sprintf("profiles.overrides.%d", index), "Overrides", false}, profileButton{fmt.Sprintf("profiles.delete.%d", index), "Delete", false})
+		buttons = append(buttons, profileButton{fmt.Sprintf("profiles.rename.%d", index), m.tr("profiles.rename"), false})
+		buttons = append(buttons, profileButton{fmt.Sprintf("profiles.description.%d", index), m.tr("profiles.edit_description"), false})
+		buttons = append(buttons, profileButton{fmt.Sprintf("profiles.url-edit.%d", index), m.tr("profiles.edit_url"), false})
+		buttons = append(buttons, profileButton{fmt.Sprintf("profiles.overrides.%d", index), m.tr("profiles.overrides"), false}, profileButton{fmt.Sprintf("profiles.delete.%d", index), m.tr("profiles.delete"), false})
 	}
-	buttons = append(buttons, profileButton{"profiles.close", "Close", false})
+	buttons = append(buttons, profileButton{"profiles.close", m.tr("profiles.close"), false})
 	body.append(m.profileButtons(buttons, width))
 	return body
 }

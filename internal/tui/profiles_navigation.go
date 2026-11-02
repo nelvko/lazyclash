@@ -12,7 +12,7 @@ import (
 // cards below the viewport and follows the current one- or two-column layout.
 func (m *Model) profileGridKey(k tea.KeyPressMsg) bool {
 	if m.page != "profiles" || m.form != "" || m.profilesUI.editing ||
-		m.sidebarOpen || strings.HasPrefix(m.focus, "nav.") || m.busy || m.quitting ||
+		m.sidebarOpen || strings.HasPrefix(m.focus, "nav.") || m.quitting ||
 		m.helpOpen || m.ports.open || m.wizard.open || m.wizard.networkOpen {
 		return false
 	}
@@ -50,7 +50,7 @@ func (m *Model) profileGridKey(k tea.KeyPressMsg) bool {
 			return false
 		}
 		switch m.focus {
-		case "profiles.url", "profiles.add", "add", "profiles.update-all":
+		case "profiles.url", "profiles.add", "profiles.create", "add", "profiles.update-all":
 			m.focus = cards[0].ID
 			m.revealBodyTarget(cards[0])
 			return true

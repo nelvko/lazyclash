@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -170,10 +171,14 @@ func TestRulesRequestsCancelOnNavigationModalActionAndQuit(t *testing.T) {
 			case <-time.After(time.Second):
 				t.Fatal("leaving the rules query did not cancel it")
 			}
+			cached, stoppedGeneration := m.rules.snapshot, m.rules.generation
+			if !m.rules.received || cached.State != "ready" {
+				t.Fatal("canceling the rules query discarded its previous observation")
+			}
 			late := <-done
 			m, _ = update(m, late)
-			if m.rules.received {
-				t.Fatal("canceled result became visible")
+			if !m.rules.received || m.rules.generation != stoppedGeneration || !reflect.DeepEqual(m.rules.snapshot, cached) {
+				t.Fatal("canceled result changed the cached rules observation")
 			}
 		})
 	}

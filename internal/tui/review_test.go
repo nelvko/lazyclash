@@ -219,11 +219,11 @@ func TestInstallResultCarriesFinalProgressBeforeErrorClassification(t *testing.T
 	// delivered later or dropped by the bounded progress channel.
 	result := actionCmd(t, cmd)()
 	m, _ = update(m, result)
-	if m.wizard.failedStage != "Verifying checksum" || m.wizard.progress.Stage != "checksum" || m.wizard.step != stepResult {
+	if m.wizard.failedStage != "checksum" || m.wizard.progress.Stage != "checksum" || m.wizard.step != stepResult {
 		t.Fatal("result classified failure using stale deploy/download progress")
 	}
 	m, _ = update(m, nextProgressMsg{progressMsg: progressMsg{id: id, progress: mihomo.Progress{Stage: "download"}}})
-	if m.wizard.progress.Stage != "checksum" || m.wizard.failedStage != "Verifying checksum" {
+	if m.wizard.progress.Stage != "checksum" || m.wizard.failedStage != "checksum" {
 		t.Fatal("late progress overwrote final result stage")
 	}
 }

@@ -17,7 +17,9 @@ import (
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 	"github.com/nelvko/lazyclash/internal/downloadnet"
+	"github.com/nelvko/lazyclash/internal/i18n"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
 
@@ -26,6 +28,8 @@ type Backend interface {
 	LoadPreferences(context.Context) (app.Preferences, error)
 	SaveNetworkPreferences(context.Context, downloadnet.Config) error
 	SetGuideDismissed(context.Context, bool) error
+	SaveLanguagePreference(context.Context, string) error
+	SaveKeyHintsPreference(context.Context, bool) error
 	SetAutostart(context.Context, bool) error
 	SetMode(context.Context, string) error
 	ResolveRelease(context.Context, string, downloadnet.Config) (mihomo.Release, error)
@@ -34,7 +38,9 @@ type Backend interface {
 	InstallCore(context.Context, app.InstallPlan, downloadnet.Config, func(mihomo.Progress)) (app.InstallResult, error)
 	Add(context.Context, string, string) error
 	AddSubscription(context.Context, string, string) error
+	CreateProfile(context.Context, app.ProfileDraft) error
 	RenameProfile(context.Context, string, string) error
+	UpdateProfileDescription(context.Context, string, string) error
 	UpdateProfileAddress(context.Context, string, string) error
 	Refresh(context.Context, string) error
 	RefreshAllProfiles(context.Context) error
@@ -53,13 +59,22 @@ type Backend interface {
 }
 
 type parentCanceledMsg struct{}
+type languageSavedMsg struct {
+	id       uint64
+	language string
+	err      error
+}
 type resultMsg struct {
 	id          uint64
 	snapshot    app.Snapshot
 	hasSnapshot bool
-	prefs       *app.Preferences
-	err         error
-	success     string
+	// actionSucceeded tracks the mutation separately from the following read.
+	// A refresh failure must not leave a committed creation ready to submit again.
+	actionSucceeded bool
+	prefs           *app.Preferences
+	err             error
+	success         string
+	transient       bool
 }
 type wizardMsg struct {
 	progress    mihomo.Progress
@@ -89,6 +104,8 @@ type networkMsg struct {
 }
 
 type Model struct {
+	locale                i18n.Localizer
+	languageOverride      string
 	ctx                   context.Context
 	backend               Backend
 	snapshot              app.Snapshot
@@ -98,12 +115,24 @@ type Model struct {
 	cancel                context.CancelFunc
 	opCtx                 context.Context
 	job, message, failure string
+	notification          notificationState
+	messageTransient      bool
+	messageInformational  bool
 	page, focus, hover    string
+	guideSkipped          bool
 	scroll, total         int
+	logoFrame             int
+	logoGeneration        uint64
+	logoIntro             logoIntroState
 	sidebarOpen           bool
+	sidebar               sidebarState
+	keyHints              keyHintsState
+	pageViews             map[string]pageViewState
 	form, name            string
 	rememberSource        bool
 	profilesUI            profilesState
+	profileCreate         profileCreateState
+	menu                  actionMenu
 	input                 textinput.Model
 	paths                 pathCompletion
 	spinner               spinner.Model
@@ -124,7 +153,7 @@ type Model struct {
 	ports                 portsState
 }
 
-func New(ctx context.Context, backend Backend) Model {
+func New(ctx context.Context, backend Backend, languages ...string) Model {
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -134,31 +163,39 @@ func New(ctx context.Context, backend Backend) Model {
 	spin := spinner.New()
 	spin.Spinner = spinner.Dot
 	opCtx, cancel := context.WithCancel(ctx)
-	m := Model{ctx: ctx, backend: backend, busy: true, id: 1, cancel: cancel, opCtx: opCtx, job: "refresh", message: "Loading state…", page: "overview", focus: "install", input: input, spinner: spin, width: 80, height: 24, wizard: newWizard(), profilesUI: newProfilesState()}
+	m := Model{ctx: ctx, backend: backend, busy: true, id: 1, cancel: cancel, opCtx: opCtx, job: "refresh", message: "", page: "overview", focus: "install", input: input, spinner: spin, width: 80, height: 24, wizard: newWizard(), profilesUI: newProfilesState(), profileCreate: newProfileCreateState()}
+	if len(languages) > 0 {
+		m.languageOverride = languages[0]
+	}
+	m.locale = i18n.New(i18n.Resolve(m.languageOverride, "", os.Getenv))
+	m.profilesUI = newProfilesState(m.locale)
+	m.message = m.tr("model.loading")
 	m.connections.search = textinput.New()
 	m.connections.search.CharLimit = 256
-	m.connections.search.Placeholder = "Host, IP, port, process or rule"
+	m.connections.search.Placeholder = m.tr("model.connection_search")
 	m.rules.search = textinput.New()
 	m.rules.search.CharLimit = 512
-	m.rules.search.Placeholder = "Type, payload, proxy or order"
-	m.logs = newLogsState()
+	m.rules.search.Placeholder = m.tr("model.rule_search")
+	m.logs = newLogsState(m.locale)
 	styleInput(&m.connections.search, bg, false)
 	styleInput(&m.rules.search, bg, false)
 	m.colorProfile = colorprofile.Env(os.Environ())
 	m.noColor = os.Getenv("NO_COLOR") != ""
 	m.colorProfile = themeProfile(os.Environ(), m.colorProfile)
+	m.syncNotification()
 	m.layout()
 	return m
 }
-func Run(ctx context.Context, backend Backend) error {
+func Run(ctx context.Context, backend Backend, languages ...string) error {
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	_, err := tea.NewProgram(New(runCtx, backend), tea.WithoutSignalHandler()).Run()
+	_, err := tea.NewProgram(New(runCtx, backend, languages...), tea.WithoutSignalHandler()).Run()
 	return err
 }
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(m.snapshotCmd(m.id, m.opCtx, true), m.spinner.Tick, func() tea.Msg { <-m.ctx.Done(); return parentCanceledMsg{} })
 }
+
 func (m Model) snapshotCmd(id uint64, ctx context.Context, initial bool) tea.Cmd {
 	return func() tea.Msg {
 		var p *app.Preferences
@@ -171,7 +208,7 @@ func (m Model) snapshotCmd(id uint64, ctx context.Context, initial bool) tea.Cmd
 			}
 		}
 		s, err := m.backend.Snapshot(ctx)
-		return resultMsg{id: id, snapshot: s, hasSnapshot: err == nil, prefs: p, err: errors.Join(pe, err), success: "State refreshed"}
+		return resultMsg{id: id, snapshot: s, hasSnapshot: err == nil, prefs: p, err: errors.Join(pe, err), success: "State refreshed", transient: true}
 	}
 }
 func (m *Model) newJob(kind string) context.Context {
@@ -186,7 +223,10 @@ func (m *Model) newJob(kind string) context.Context {
 	m.opCtx, m.cancel = context.WithCancel(m.ctx)
 	m.busy = true
 	m.job = kind
+	m.prepareNotification(kind, "")
 	m.failure = ""
+	m.messageTransient = false
+	m.messageInformational = false
 	return m.opCtx
 }
 func (m *Model) abortLookup() {
@@ -199,23 +239,29 @@ func (m *Model) abortLookup() {
 }
 func (m *Model) refresh() tea.Cmd {
 	ctx := m.newJob("refresh")
-	m.message = "Refreshing…"
+	m.message = m.tr("model.refreshing")
 	return tea.Batch(m.snapshotCmd(m.id, ctx, false), m.spinner.Tick)
 }
-func (m *Model) begin(label, success string, work func(context.Context) error) tea.Cmd {
+func (m *Model) begin(label, success string, work func(context.Context) error, operations ...notificationOperation) tea.Cmd {
 	ctx := m.newJob("action")
+	m.notification.operation.Context = label
+	if len(operations) > 0 {
+		op := operations[0]
+		m.notification.operation.Key, m.notification.operation.Context = op.Key, op.Context
+	}
 	id := m.id
 	backend := m.backend
 	m.message = label
 	return tea.Batch(func() tea.Msg {
 		err := work(ctx)
+		actionSucceeded := err == nil
 		refreshCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 8*time.Second)
 		defer cancel()
 		s, se := backend.Snapshot(refreshCtx)
 		if se != nil {
-			err = errors.Join(err, fmt.Errorf("refresh current state: %w", se))
+			err = errors.Join(err, diagnostic.New("diagnostic.refresh_state", "refresh current state: %w", se))
 		}
-		return resultMsg{id: id, snapshot: s, hasSnapshot: se == nil, err: err, success: success}
+		return resultMsg{id: id, snapshot: s, hasSnapshot: se == nil, actionSucceeded: actionSucceeded, err: err, success: success}
 	}, m.spinner.Tick)
 }
 func waitProgress(ctx context.Context, updates <-chan progressMsg) tea.Cmd {
@@ -240,7 +286,7 @@ func (m *Model) cancelTask(quit bool) {
 		m.cancel()
 	}
 	m.quitting = m.quitting || quit
-	m.message = "Cancelling / Cleaning up…"
+	m.message = m.tr("model.canceling")
 	if m.job == "install" {
 		m.wizard.cancelling = true
 		m.wizard.progress.Detail = "Waiting for safe cleanup before leaving"
@@ -251,13 +297,40 @@ func (m *Model) cancelTask(quit bool) {
 }
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
+	previousPage := m.page
 	switch v := msg.(type) {
+	case keyHintsSavedMsg:
+		cmd = m.acceptKeyHintsSaved(v)
+	case notificationExpiredMsg:
+		m.expireNotification(v)
+	case languageSavedMsg:
+		if v.id != m.id {
+			return m, nil
+		}
+		if m.cancel != nil {
+			m.cancel()
+		}
+		m.busy, m.job = false, ""
+		m.messageInformational = false
+		if v.err != nil {
+			m.notification.details = m.locale.Error(v.err)
+			m.failure = m.tr("language.save_failed", m.localizeError(v.err))
+			m.message = ""
+		} else {
+			m.locale = i18n.New(v.language)
+			m.languageOverride = v.language
+			m.message, m.failure = m.tr("language.saved"), ""
+			m.refreshLocalizedInputs()
+		}
+		if m.quitting && !m.keyHints.pending {
+			return m, tea.Quit
+		}
 	case portsMsg:
 		if v.id != m.id || !m.ports.open {
 			return m, nil
 		}
 		m.acceptPorts(v)
-		if m.quitting && !m.busy {
+		if m.quitting && !m.busy && !m.keyHints.pending {
 			return m, tea.Quit
 		}
 	case logsResultMsg:
@@ -285,6 +358,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tea.ColorProfileMsg:
 		m.colorProfile = v.Profile
+		m.logoIntro.colored = true
 	case rulesResultMsg:
 		accepted := m.rules.active && v.generation == m.rules.generation
 		cmd = m.acceptRules(v)
@@ -312,6 +386,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 	case tea.WindowSizeMsg:
+		if m.logoIntro.sized && (m.width != max(1, v.Width) || m.height != max(1, v.Height)) {
+			m.stopLogoIntro()
+		}
+		m.logoIntro.sized = true
+		m.sidebar.reveal = true
 		m.width, m.height = max(1, v.Width), max(1, v.Height)
 		m.wizard.reveal = true
 		m.ports.reveal = true
@@ -324,9 +403,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.page == "profiles" && !m.sidebarOpen {
 			m.focusProfileControl(m.focus)
 		}
+		m.revealContentFocus()
 	case resultMsg:
 		if v.id != m.id {
 			return m, nil
+		}
+		if v.id == 1 {
+			m.logoIntro.loaded = true
+			if v.err != nil {
+				m.logoIntro.used = true
+			}
 		}
 		if m.cancel != nil {
 			m.cancel()
@@ -343,22 +429,44 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.profilesUI.importing = false
 		}
+		profileCreated := m.form == "profile-create" && m.profileCreate.submitting && v.actionSucceeded
+		if m.form == "profile-create" && m.profileCreate.submitting {
+			m.profileCreate.submitting = false
+			if v.actionSucceeded {
+				m.closeProfileCreate()
+			}
+		}
 		if v.prefs != nil {
+			m.loadKeyHintsPreference(v.prefs.HideKeyHints)
+			m.locale = i18n.New(i18n.Resolve(m.languageOverride, v.prefs.Language, os.Getenv))
+			m.refreshLocalizedInputs()
 			m.wizard.cfg = v.prefs.Network.Normalized()
 			m.wizard.draft = m.wizard.cfg
 			m.snapshot.GuideDismissed = v.prefs.GuideDismissed || m.snapshot.GuideDismissed
 		}
+		m.messageInformational = false
 		if v.err != nil {
-			m.failure = clean(v.err.Error())
-			m.message = "Operation failed"
-			if errors.Is(v.err, context.Canceled) {
-				m.message = "Operation canceled; cleanup completed"
+			m.notification.details = m.locale.Error(v.err)
+			m.notification.critical = notificationCritical(v.err)
+			if !v.hasSnapshot && m.notification.operation.Key != "refresh" && m.snapshotReady {
+				m.markOperationStateUnknown()
+			}
+			m.failure = m.localizeError(v.err)
+			m.message = m.tr("model.failed")
+			if profileCreated {
+				m.message = v.success
+			}
+			if notificationCancellation(v.err) {
+				m.message = m.tr("model.canceled")
+				m.messageInformational = true
+				m.failure = ""
 			}
 		} else {
 			m.message = v.success
+			m.messageTransient = v.transient
 			m.failure = ""
 		}
-		if m.quitting {
+		if m.quitting && !m.keyHints.pending {
 			return m, tea.Quit
 		}
 	case wizardMsg:
@@ -375,7 +483,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.snapshotReady = true
 		}
 		cmd = m.handleWizardResult(v)
-		if m.quitting {
+		if v.kind == "install" {
+			m.notification.operation.Context = m.tr("notification.install")
+			m.notification.critical = notificationCritical(v.err)
+			if !v.hasSnapshot && m.snapshotReady {
+				m.markOperationStateUnknown()
+			}
+			if m.notification.critical || m.notification.retainDialog {
+				m.notification.details = m.locale.Error(v.err)
+				m.failure = m.localizeError(v.err)
+			}
+		}
+		if m.quitting && !m.keyHints.pending {
 			return m, tea.Quit
 		}
 	case networkMsg:
@@ -383,13 +502,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		cmd = m.handleNetworkResult(v)
-		if m.quitting && !m.busy {
+		if m.quitting && !m.busy && !m.keyHints.pending {
 			return m, tea.Quit
 		}
 	case nextProgressMsg:
 		if v.id == m.id && m.busy {
 			m.wizard.progress = v.progress
-			m.wizard.logs = append(m.wizard.logs, stageLabel(v.progress.Stage)+": "+clean(v.progress.Detail))
+			m.wizard.logs = append(m.wizard.logs, m.stageLabel(v.progress.Stage)+": "+clean(m.localizeDetail(v.progress.Detail)))
 			if len(m.wizard.logs) > 80 {
 				m.wizard.logs = m.wizard.logs[len(m.wizard.logs)-80:]
 			}
@@ -399,6 +518,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.busy {
 			m.spinner, cmd = m.spinner.Update(v)
 		}
+	case logoPulseMsg:
+		cmd = m.advanceLogoPulse(v)
+	case logoIntroMsg:
+		cmd = m.advanceLogoIntro(v)
 	case pathMatchesMsg:
 		if m.pathForm() {
 			m.paths.update(v)
@@ -408,14 +531,37 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.PasteMsg:
 		// Bracketed paste is text input, never a global command. In particular a
 		// pasted q or digit cannot quit or navigate out of a form.
-		if m.ports.open {
+		if m.notification.panel.open {
+			break
+		} else if m.menu.open {
+			break
+		} else if m.ports.open {
 			cmd = m.updatePortsInput(v)
 		} else if m.helpOpen {
 			break
 		} else if m.wizard.open || m.wizard.networkOpen {
 			cmd = m.updateWizardInput(v)
 		} else if m.form != "" {
-			m.input, cmd = m.input.Update(v)
+			if m.form == "profile-create" {
+				input := m.profileCreateActive()
+				if m.busy || m.quitting || input == nil {
+					break
+				}
+				before := input.Value()
+				*input, cmd = input.Update(v)
+				if before != input.Value() {
+					m.failure = ""
+					if m.profileCreate.field == profileCreateSource {
+						m.paths.reset()
+					}
+				}
+			} else {
+				before := m.input.Value()
+				m.input, cmd = m.input.Update(v)
+				if before != m.input.Value() {
+					m.failure = ""
+				}
+			}
 		} else if m.page == "profiles" && m.focus == "profiles.url" && !m.busy && !m.quitting && !m.sidebarOpen {
 			m.profilesUI.editing = true
 			m.profilesUI.url.Focus()
@@ -434,16 +580,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyPressMsg:
 		key := v.String()
 		if key == "ctrl+c" {
-			m.stopRuntime()
-			m.stopRules()
-			m.stopLogs()
-			m.stopCoreStatus()
-			if m.busy {
-				m.cancelTask(true)
-			} else {
-				m.quitting = true
-				return m, tea.Quit
+			cmd = m.requestQuit()
+			if cmd != nil {
+				return m, cmd
 			}
+			break
+		}
+		if handled, next := m.keyHintsShortcut(v); handled {
+			cmd = next
+			break
+		}
+		if m.menu.open {
+			cmd = m.profileMenuResult(m.menu.key(v))
 			break
 		}
 		if m.ports.open {
@@ -462,6 +610,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.formKey(v)
 			break
 		}
+		if m.notification.panel.open {
+			m.notificationAction(m.notification.panel.key(v))
+			break
+		}
 		if handled, next := m.profileURLKey(v); handled {
 			cmd = next
 			break
@@ -478,23 +630,49 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.logsSearchKey(v)
 			break
 		}
+		if m.page == "connections" && m.connections.confirming {
+			_, cmd = m.connectionKey(v)
+			break
+		}
+		if key == "left" || key == "h" {
+			// Editors and overlays above own their keys. Let horizontal controls
+			// handle the original key before reusing the existing Escape hierarchy.
+			if m.profileGridKey(v) {
+				break
+			}
+			v = tea.KeyPressMsg{Code: tea.KeyEscape}
+			key = v.String()
+		}
+		if key == "ctrl+n" {
+			m.notificationAction("notification.expand")
+			break
+		}
+		if strings.HasPrefix(m.focus, "notification.") {
+			handled := true
+			switch key {
+			case "enter", "space", " ":
+				m.notificationAction(m.focus)
+			case "esc":
+				m.dismissNotification()
+			case "tab":
+				m.cycleFocus(1)
+			case "shift+tab":
+				m.cycleFocus(-1)
+			default:
+				handled = false
+			}
+			if handled {
+				break
+			}
+		}
 		if key == "q" {
-			m.stopRuntime()
-			m.stopRules()
-			m.stopLogs()
-			m.stopCoreStatus()
-			if m.busy {
-				m.cancelTask(true)
-			} else {
-				m.quitting = true
-				return m, tea.Quit
+			cmd = m.requestQuit()
+			if cmd != nil {
+				return m, cmd
 			}
 			break
 		}
-		if m.busy {
-			if key == "esc" {
-				m.cancelTask(false)
-			}
+		if m.profileMenuKey(v) {
 			break
 		}
 		if m.navigationKey(v) {
@@ -511,6 +689,94 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !allowed {
 				break
 			}
+		}
+		if key >= "1" && key <= "7" && len(key) == 1 {
+			m.navigate(navPages()[int(key[0]-'1')])
+			break
+		}
+		if key == "?" {
+			_, cmd = m.keyHintsAction("help.open")
+			break
+		}
+		if strings.HasPrefix(m.focus, "nav.") {
+			switch key {
+			case "enter", "space", " ", "tab", "shift+tab":
+				if key == "tab" || key == "shift+tab" {
+					if m.sidebarOpen {
+						m.enterContent()
+					} else if key == "tab" {
+						m.cycleFocus(1)
+					} else {
+						m.cycleFocus(-1)
+					}
+				} else {
+					m.enterContent()
+				}
+			case "esc":
+				if m.sidebarOpen {
+					m.sidebarOpen, m.focus = false, "menu"
+				}
+			}
+			break
+		}
+		if m.focus == "menu" && (key == "enter" || key == "space" || key == " ") {
+			cmd = m.activate("menu")
+			break
+		}
+		if m.busy {
+			if (key == "enter" || key == "space" || key == " ") && m.focus == "key-hints.toggle" {
+				_, cmd = m.keyHintsAction(m.focus)
+				break
+			}
+			switch key {
+			case "up", "down", "left", "right", "j", "k", "h", "l", "home", "end", "pgup", "pgdown", "esc":
+				if m.contentNavigationKey(v) {
+					break
+				}
+				handled := false
+				if m.page == "connections" {
+					handled, cmd = m.connectionKey(v)
+				}
+				if m.page == "rules" {
+					handled, cmd = m.ruleKey(v)
+				}
+				if m.page == "logs" && key != "esc" {
+					handled, cmd = m.logsKey(v)
+				}
+				if !handled {
+					handled = m.profileGridKey(v)
+				}
+				if !handled {
+					handled = m.bodyListKey(v)
+				}
+				if handled {
+					break
+				}
+				switch key {
+				case "esc":
+					m.returnToNavigation()
+				case "up", "k":
+					m.scroll = max(0, m.scroll-1)
+				case "down", "j":
+					m.scroll++
+				case "home":
+					m.scroll = 0
+				case "end":
+					m.scroll = m.total
+				case "pgup":
+					m.scroll = max(0, m.scroll-max(1, dashboardGeometry(m.dashboardOptions()).height-1))
+				case "pgdown":
+					m.scroll += max(1, dashboardGeometry(m.dashboardOptions()).height-1)
+				}
+			case "tab":
+				m.cycleFocus(1)
+			case "shift+tab":
+				m.cycleFocus(-1)
+			}
+			break
+		}
+		if m.contentNavigationKey(v) {
+			break
 		}
 		if m.page == "connections" {
 			if handled, next := m.connectionKey(v); handled {
@@ -537,9 +803,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			break
 		}
 		switch key {
-		case "1", "2", "3", "4", "5", "6", "7":
-			n, _ := strconv.Atoi(key)
-			m.navigate(navPages()[n-1])
 		case "c":
 			m.navigate("connections")
 		case "i":
@@ -569,24 +832,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "up", "k":
 			m.scroll = max(0, m.scroll-1)
 		case "pgdown":
-			g := dashboardGeometry(dashboardOptions{Width: m.width, Height: m.height, Page: m.page})
+			g := dashboardGeometry(m.dashboardOptions())
 			m.scroll += max(1, g.height-1)
 		case "pgup":
-			g := dashboardGeometry(dashboardOptions{Width: m.width, Height: m.height, Page: m.page})
+			g := dashboardGeometry(m.dashboardOptions())
 			m.scroll = max(0, m.scroll-max(1, g.height-1))
 		case "home":
 			m.scroll = 0
 		case "end":
 			m.scroll = m.total
 		case "esc":
-			m.sidebarOpen = false
-			if m.width < 100 || m.height < 20 {
-				m.focus = "menu"
-			}
+			m.returnToNavigation()
 		case "g", "ctrl+r":
 			cmd = m.refresh()
-		case "?":
-			m.helpOpen, m.helpScroll = true, 0
 		}
 	default:
 		// Forward cursor/clipboard messages to the focused Bubbles input. The
@@ -598,7 +856,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else if m.wizard.open || m.wizard.networkOpen {
 			cmd = m.updateWizardInput(msg)
 		} else if m.form != "" {
-			m.input, cmd = m.input.Update(msg)
+			if m.form == "profile-create" {
+				if input := m.profileCreateActive(); input != nil && !m.busy && !m.quitting {
+					*input, cmd = input.Update(msg)
+				}
+			} else {
+				m.input, cmd = m.input.Update(msg)
+			}
 		} else if m.page == "profiles" && m.focus == "profiles.url" {
 			m.profilesUI.url, cmd = m.profilesUI.url.Update(msg)
 		} else if m.connections.editing {
@@ -609,42 +873,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.logs.search, cmd = m.logs.search.Update(msg)
 		}
 	}
+	notification := m.syncNotification()
 	m.reconcileProfiles()
+	m.reconcileProfileMenu()
 	var completion tea.Cmd
 	if m.pathForm() {
-		completion = m.paths.request(m.input.Value())
+		completion = m.paths.request(m.pathInputValue())
 	} else {
 		m.paths.reset()
 	}
 	next := m.syncRuntime()
 	nextRules := m.syncRules()
 	nextLogs := m.syncLogs()
+	if m.page != previousPage {
+		m.stopLogoIntro()
+	}
 	m.layout()
-	if completion != nil || next != nil || nextRules != nil || nextLogs != nil {
-		return m, tea.Batch(cmd, completion, next, nextRules, nextLogs)
+	intro := m.syncLogoIntro()
+	timers := m.syncNotificationTimers(time.Now())
+	if notification != nil || timers != nil || completion != nil || next != nil || nextRules != nil || nextLogs != nil || intro != nil {
+		return m, tea.Batch(cmd, notification, timers, completion, next, nextRules, nextLogs, intro)
 	}
 	return m, cmd
 }
 func (m *Model) navigate(page string) {
-	m.profilesUI.editing = false
-	m.profilesUI.url.Blur()
-	m.stopRuntime()
-	m.stopRules()
-	m.stopLogs()
-	m.stopCoreStatus()
-	m.connections.editing = false
-	m.connections.search.Blur()
-	m.rules.editing = false
-	m.rules.search.Blur()
-	m.logs.editing = false
-	m.logs.search.Blur()
-	m.page = page
-	m.scroll = 0
-	m.focus = "nav." + page
-	m.sidebarOpen = false
-	if m.width < 100 || m.height < 20 {
-		m.focus = "menu"
-	}
+	m.browsePage(page)
+	m.enterContent()
 }
 func (m *Model) openWizard(local bool) {
 	m.wizard.open = true
@@ -671,11 +925,14 @@ func (m *Model) openForm() tea.Cmd {
 	m.input.Reset()
 	m.paths.reset()
 	m.input.EchoMode = textinput.EchoNormal
-	m.input.Placeholder = "HTTPS URL, ~/config.yaml or ./config.yaml"
+	m.input.Placeholder = m.tr("model.source_placeholder")
 	m.input.Focus()
 	return textinput.Blink
 }
 func (m *Model) formKey(k tea.KeyPressMsg) tea.Cmd {
+	if handled, cmd := m.profileCreateKey(k); handled {
+		return cmd
+	}
 	if handled, cmd := m.pathFormKey(k); handled {
 		return cmd
 	}
@@ -688,18 +945,26 @@ func (m *Model) formKey(k tea.KeyPressMsg) tea.Cmd {
 		m.form = ""
 		m.input.Reset()
 		m.input.Blur()
-		m.message = "Input canceled"
+		m.prepareNotification("input.cancel", m.tr("model.input_canceled"))
+		m.message = m.tr("model.input_canceled")
+		m.messageTransient = false
+		m.messageInformational = true
+		m.failure = ""
 		return nil
 	}
 	if key == "enter" {
 		value := strings.TrimSpace(m.input.Value())
 		if value == "" {
-			m.failure = "A value is required"
+			m.failure = m.tr("model.value_required")
 			return nil
 		}
 		source, err := resolveLocalPath(value)
 		if err != nil {
-			m.failure = clean(err.Error())
+			m.failure = m.localizeError(err)
+			return nil
+		}
+		if err := validateProfileSource(source); err != nil {
+			m.failure = m.localizeError(err)
 			return nil
 		}
 		remember := m.rememberSource
@@ -707,36 +972,57 @@ func (m *Model) formKey(k tea.KeyPressMsg) tea.Cmd {
 		m.form = ""
 		m.input.Reset()
 		m.input.Blur()
-		return m.begin("Fetching and validating configuration…", "Configuration saved; apply it from Profiles", func(ctx context.Context) error {
+		return m.begin(m.tr("model.fetch_config"), m.tr("model.config_saved"), func(ctx context.Context) error {
 			if remember {
 				return m.backend.AddSubscription(ctx, "", source)
 			}
 			return m.backend.Add(ctx, "", source)
-		})
+		}, notificationOperation{Key: notificationKey("profile.add", source), Context: m.tr("model.fetch_config")})
 	}
 	var cmd tea.Cmd
+	before := m.input.Value()
 	m.input, cmd = m.input.Update(k)
+	if before != m.input.Value() {
+		m.failure = ""
+	}
 	return cmd
 }
 func (m *Model) serviceAction(action string) tea.Cmd {
 	if m.busy || m.quitting {
 		return nil
 	}
+	m.prepareNotification("service."+action, m.tr("notification.service."+action))
 	if action != "start" && action != "stop" && action != "restart" {
-		m.failure = "Unsupported service action"
+		m.failure = m.tr("model.unsupported_action")
 		return nil
 	}
-	issue := runtimeControlIssue(m.snapshot)
+	issue := runtimeControlIssue(m.snapshot, m.locale)
 	if action == "stop" {
-		issue = runtimeStopIssue(m.snapshot)
+		issue = runtimeStopIssue(m.snapshot, m.locale)
 	}
 	if issue != "" {
 		m.failure = issue
 		return nil
 	}
-	return m.begin("Service: "+action+"…", "Service "+action+" completed", func(ctx context.Context) error { return m.backend.Control(ctx, action) })
+	return m.begin(m.tr("model.service_"+action), m.tr("model.service_"+action+"_done"), func(ctx context.Context) error { return m.backend.Control(ctx, action) }, notificationOperation{Key: "service." + action, Context: m.tr("notification.service." + action)})
 }
 func (m *Model) activate(id string) tea.Cmd {
+	if handled, cmd := m.keyHintsAction(id); handled {
+		return cmd
+	}
+	if id == "content" {
+		return nil
+	}
+	if strings.HasPrefix(id, "overview.card.") {
+		m.enterOverviewCard()
+		return nil
+	}
+	if m.notificationAction(id) {
+		return nil
+	}
+	if strings.HasPrefix(id, "language.") {
+		return m.changeLanguage(strings.TrimPrefix(id, "language."))
+	}
 	if handled, cmd := m.profileAction(id); handled {
 		return cmd
 	}
@@ -761,6 +1047,8 @@ func (m *Model) activate(id string) tea.Cmd {
 	case "card.proxies":
 		m.navigate("proxies")
 		return nil
+	case "logo":
+		return m.startLogoPulse()
 	}
 	switch {
 	case strings.HasPrefix(id, "logs."):
@@ -770,10 +1058,11 @@ func (m *Model) activate(id string) tea.Cmd {
 	case strings.HasPrefix(id, "connection.") || strings.HasPrefix(id, "conn."):
 		return m.connectionActivate(id)
 	case strings.HasPrefix(id, "nav."):
-		m.navigate(strings.TrimPrefix(id, "nav."))
+		m.enterContent()
 	case id == "menu":
 		m.sidebarOpen = !m.sidebarOpen
 		if m.sidebarOpen {
+			m.sidebar.reveal = true
 			m.focus = "nav." + m.page
 		} else {
 			m.focus = "menu"
@@ -784,27 +1073,33 @@ func (m *Model) activate(id string) tea.Cmd {
 		m.openNetwork(false)
 	case id == "import" || id == "add":
 		return m.openForm()
+	case id == "guide.later":
+		m.guideSkipped = true
+		m.scroll = 0
+		m.returnToNavigation()
 	case id == "dismiss":
-		return m.begin("Saving guide preference…", "Guide dismissed; Install and Network remain in Settings", func(ctx context.Context) error { return m.backend.SetGuideDismissed(ctx, true) })
+		return m.begin(m.tr("model.saving_guide"), m.tr("model.guide_dismissed"), func(ctx context.Context) error { return m.backend.SetGuideDismissed(ctx, true) }, notificationOperation{Key: "guide.dismiss", Context: m.tr("model.saving_guide")})
 	case id == "start" || id == "stop" || id == "restart":
 		return m.serviceAction(id)
 	case id == "autostart-enable" || id == "autostart-disable":
 		enabled := id == "autostart-enable"
-		return m.begin("Updating service autostart…", "Service autostart updated", func(ctx context.Context) error { return m.backend.SetAutostart(ctx, enabled) })
+		return m.begin(m.tr("model.updating_autostart"), m.tr("model.autostart_saved"), func(ctx context.Context) error { return m.backend.SetAutostart(ctx, enabled) }, notificationOperation{Key: id, Context: m.tr("model.updating_autostart")})
 	case strings.HasPrefix(id, "mode."):
 		if m.busy || m.quitting {
 			return nil
 		}
 		mode := strings.TrimPrefix(id, "mode.")
 		if !mihomo.ValidMode(mode) {
-			m.failure = "Proxy mode must be rule, global or direct"
+			m.prepareNotification("mode."+mode, m.tr("model.applying_mode")+" · "+mode)
+			m.failure = m.tr("model.invalid_mode")
 			return nil
 		}
-		if issue := runtimeControlIssue(m.snapshot); issue != "" {
+		if issue := runtimeControlIssue(m.snapshot, m.locale); issue != "" {
+			m.prepareNotification("mode."+mode, m.tr("model.applying_mode")+" · "+mode)
 			m.failure = issue
 			return nil
 		}
-		return m.begin("Applying routing mode…", "Routing mode saved", func(ctx context.Context) error { return m.backend.SetMode(ctx, mode) })
+		return m.begin(m.tr("model.applying_mode"), m.tr("model.mode_saved"), func(ctx context.Context) error { return m.backend.SetMode(ctx, mode) }, notificationOperation{Key: "mode." + mode, Context: m.tr("model.applying_mode") + " · " + mode})
 	case strings.HasPrefix(id, "group."):
 		n, err := strconv.Atoi(strings.TrimPrefix(id, "group."))
 		if err == nil && n >= 0 && n < len(m.snapshot.Groups) {
@@ -826,11 +1121,12 @@ func (m *Model) activate(id string) tea.Cmd {
 			g := m.snapshot.Groups[gi]
 			if ni >= 0 && ni < len(g.All) {
 				if g.Type != "Selector" {
-					m.failure = "This group selects nodes automatically"
+					m.prepareNotification(notificationKey("node.select", g.Name), m.tr("model.switching_node")+" · "+clean(g.Name))
+					m.failure = m.tr("model.automatic_group")
 					return nil
 				}
 				node := g.All[ni]
-				return m.begin("Switching selected node…", "Node selected", func(ctx context.Context) error { return m.backend.Select(ctx, g.Name, node) })
+				return m.begin(m.tr("model.switching_node"), m.tr("model.node_selected"), func(ctx context.Context) error { return m.backend.Select(ctx, g.Name, node) }, notificationOperation{Key: notificationKey("node.select", g.Name+"\x00"+node), Context: m.tr("model.switching_node") + " · " + clean(g.Name) + " / " + clean(node)})
 			}
 		}
 	}
@@ -849,7 +1145,14 @@ func (m *Model) cycleFocus(delta int) {
 		}
 	}
 	current = (current + delta + len(targets)) % len(targets)
+	previous := m.focus
 	m.focus = targets[current].ID
+	if strings.HasPrefix(m.focus, "nav.") {
+		m.sidebar.reveal = true
+	}
+	if strings.HasPrefix(m.focus, "notification.") && !strings.HasPrefix(previous, "notification.") {
+		m.notification.restoreFocus = previous
+	}
 	if m.page == "profiles" {
 		m.focusProfileControl(m.focus)
 	}
@@ -863,6 +1166,14 @@ func (m *Model) cycleFocus(delta int) {
 	if strings.HasPrefix(m.focus, "connection.") {
 		m.connections.selected = strings.TrimPrefix(m.focus, "connection.")
 	}
+	if m.focus != "menu" && !strings.HasPrefix(m.focus, "nav.") {
+		for _, target := range m.contentTargets() {
+			if target.ID == m.focus {
+				m.revealBodyTarget(target)
+				break
+			}
+		}
+	}
 	if strings.HasPrefix(m.focus, "rule.") {
 		for _, r := range m.filteredRules() {
 			if m.focus == "rule."+strconv.Itoa(r.Index) {
@@ -874,20 +1185,41 @@ func (m *Model) cycleFocus(delta int) {
 }
 func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 	k := event.Mouse()
+	if m.notification.panel.open {
+		m.notificationAction(m.notification.panel.mouse(event))
+		return nil
+	}
+	if m.menu.open {
+		return m.profileMenuResult(m.menu.mouse(event))
+	}
 	if m.ports.open {
 		return m.portsMouse(event)
 	}
 	if m.helpOpen {
 		return m.helpMouse(event)
 	}
-	if m.sidebarOpen && !m.wizard.open && !m.wizard.networkOpen && m.form == "" {
-		if _, wheel := event.(tea.MouseWheelMsg); wheel {
-			return nil
+	if _, wheel := event.(tea.MouseWheelMsg); wheel {
+		o := m.dashboardOptions()
+		o.Body, o.BodyTargets = m.pageBody(dashboardGeometry(o).width)
+		o.Scroll = m.scroll
+		for _, toast := range notificationLayout(o) {
+			if k.X >= toast.Bounds.X && k.X < toast.Bounds.X+toast.Bounds.W && k.Y >= toast.Bounds.Y && k.Y < toast.Bounds.Y+toast.Bounds.H {
+				return nil
+			}
 		}
+	}
+	if wheel, ok := event.(tea.MouseWheelMsg); ok && m.sidebarWheel(wheel) {
+		return nil
+	}
+	if m.sidebarOpen && !m.wizard.open && !m.wizard.networkOpen && m.form == "" {
 		if _, clicked := event.(tea.MouseClickMsg); clicked && k.Button == tea.MouseLeft && k.X >= min(sidebarWidth, m.width) {
 			m.sidebarOpen, m.focus = false, "menu"
 			return nil
 		}
+	}
+	if _, clicked := event.(tea.MouseClickMsg); clicked && k.Button == tea.MouseRight {
+		m.openProfileMenuAt(k.X, k.Y)
+		return nil
 	}
 	if _, wheel := event.(tea.MouseWheelMsg); wheel {
 		if k.Button != tea.MouseWheelUp && k.Button != tea.MouseWheelDown {
@@ -920,11 +1252,34 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 					return m.wizardActivate(r.ID)
 				}
 				if m.form != "" {
+					if m.form == "profile-create" {
+						return m.profileCreateMouse(r.ID)
+					}
 					m.input.Focus()
 					return textinput.Blink
 				}
+				if handled, cmd := m.keyHintsAction(r.ID); handled {
+					return cmd
+				}
+				if strings.HasPrefix(r.ID, "nav.") {
+					popup := m.sidebarOpen
+					m.browsePage(strings.TrimPrefix(r.ID, "nav."))
+					if popup {
+						m.enterContent()
+					}
+					return nil
+				}
+				if m.notificationAction(r.ID) {
+					return nil
+				}
 				if !m.busy {
+					if r.ID == "logo" {
+						return m.startLogoPulse()
+					}
 					m.focus = r.ID
+					if handled, cmd := m.profileCardClick(r.ID); handled {
+						return cmd
+					}
 					return m.activate(r.ID)
 				}
 			}
@@ -975,9 +1330,9 @@ func (m Model) pageBody(width int) (string, []hitRegion) {
 	if m.page == "profiles" {
 		return m.profilesBody(width)
 	} else {
-		lines = append(lines, themed("Proxy groups and options", text, bg, false), "Enter a group to expand; select a node in a Selector group.", "")
+		lines = append(lines, themed(m.tr("model.proxy_groups"), text, bg, false), m.tr("model.proxy_instructions"), "")
 		if m.snapshot.APIError != "" {
-			lines = append(lines, strings.Split(wrapText("API unavailable: "+clean(m.snapshot.APIError), width), "\n")...)
+			lines = append(lines, strings.Split(wrapText(m.tr("model.api_unavailable", clean(m.locale.Diagnostic(m.snapshot.APIError, m.snapshot.APIDiagnostic))), width), "\n")...)
 		}
 		for gi, g := range m.snapshot.Groups {
 			add(fmt.Sprintf("group.%d", gi), fmt.Sprintf("%s [%s] → %s", g.Name, g.Type, g.Now))
@@ -992,7 +1347,7 @@ func (m Model) pageBody(width int) (string, []hitRegion) {
 			}
 		}
 		if len(m.snapshot.Groups) == 0 {
-			lines = append(lines, "No proxy groups available. Start Mihomo, then refresh.")
+			lines = append(lines, m.tr("model.no_groups"))
 		}
 	}
 	// Body rows are single display lines, including hard-wrapped descriptions.
@@ -1003,13 +1358,24 @@ func (m Model) pageBody(width int) (string, []hitRegion) {
 	return strings.Join(expanded, "\n"), hits
 }
 func (m *Model) layout() {
+	m.repairPageFocus()
+	if !m.logoVisible() {
+		m.stopLogoPulse()
+	}
+	if !m.logoIntroVisible() {
+		m.stopLogoIntro()
+	}
 	if m.width >= 100 && m.height >= 20 {
 		m.sidebarOpen = false
 	} else if strings.HasPrefix(m.focus, "nav.") && !m.ports.open && !m.wizard.open && !m.wizard.networkOpen && m.form == "" && !m.helpOpen && m.width >= 20 && m.height >= 12 {
 		// Preserve a focused navigation item when its persistent sidebar folds.
 		m.sidebarOpen = true
 	}
-	o := dashboardOptions{Width: m.width, Height: m.height, Page: m.page, SelectedGroup: m.wizard.expanded, Snapshot: m.snapshot, Focus: m.focus, Hover: m.hover, Help: m.contextHelp(), GuideDismissed: m.snapshot.GuideDismissed, Scroll: m.scroll, Dim: m.ports.open || m.helpOpen || m.wizard.open || m.wizard.networkOpen || m.form != "", Message: m.message, Failure: m.failure, SidebarOpen: m.sidebarOpen, Runtime: m.runtime.snapshot, RuntimeReceived: m.runtime.received, RuntimePending: m.runtime.pending, Busy: m.busy}
+	o := m.dashboardOptions()
+	o.Sidebar = &m.sidebar
+	o.SelectedGroup, o.Snapshot, o.Focus, o.Hover = m.wizard.expanded, m.snapshot, m.focus, m.hover
+	o.Help, o.GuideDismissed, o.Scroll, o.SidebarOpen = m.contextHelp(), m.snapshot.GuideDismissed, m.scroll, m.sidebarOpen
+	o.Runtime, o.RuntimeReceived, o.RuntimePending = m.runtime.snapshot, m.runtime.received, m.runtime.pending
 	o.StateUnavailable = !m.snapshotReady
 	g := dashboardGeometry(o)
 	o.Header = m.pageHeader()
@@ -1023,6 +1389,23 @@ func (m *Model) layout() {
 	m.total = total
 	m.scroll = min(m.scroll, max(0, total-g.height))
 	m.screen, m.targets = base, hits
+	if !o.Dim && !m.sidebarOpen && !m.menu.open {
+		m.decorateContentFocus(g, notificationLayout(o))
+	}
+	if !o.Dim && !m.sidebarOpen && !m.menu.open {
+		m.rememberPageView()
+	}
+	if strings.HasPrefix(m.focus, "notification.") && !m.notification.panel.open && !o.Dim && !m.sidebarOpen {
+		available := false
+		for _, target := range hits {
+			available = available || target.ID == m.focus
+		}
+		if !available {
+			m.restoreNotificationFocus()
+			m.layout()
+			return
+		}
+	}
 	if m.ports.open {
 		m.screen, m.targets = m.renderPorts(base)
 	} else if m.helpOpen {
@@ -1031,6 +1414,10 @@ func (m *Model) layout() {
 		m.screen, m.targets = m.renderWizard(base)
 	} else if m.form != "" {
 		m.screen, m.targets = m.renderProfileForm(base)
+	} else if m.notification.panel.open {
+		m.screen, m.targets = m.notification.panel.render(m.notification.items, m.width, m.height, m.locale)
+	} else if m.menu.open {
+		m.screen = m.menu.render(base, m.width, m.height)
 	}
 }
 func (m Model) View() tea.View {

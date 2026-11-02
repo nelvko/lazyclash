@@ -13,6 +13,7 @@ import (
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
+	"github.com/nelvko/lazyclash/internal/i18n"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 	"github.com/nelvko/lazyclash/internal/service"
 )
@@ -50,6 +51,36 @@ func themeSample(name string) Model {
 		m.focus = "nav.overview"
 	case "help":
 		m.helpOpen = true
+	case "notification-success":
+		m.message = "Routing mode saved"
+	case "notification-error":
+		m.failure = "Could not update the subscription: the server is temporarily unavailable. Your saved configuration is still available; check the connection and retry."
+	case "notification-progress":
+		m.busy = true
+		m.message = "Fetching and validating configuration…"
+	case "notification-stack", "notification-list", "notification-details", "notification-details-end", "notification-profile-error":
+		m.locale = i18n.New(i18n.English)
+		m.page, m.focus = "overview", "card.import"
+		m.notification.items = []notificationItem{
+			{ID: 1, Page: "settings", Context: "Save language", Kind: "done", Message: "Language saved. The new selection is active."},
+			{ID: 2, Page: "profiles", Context: "Update subscription", Kind: "error", Message: "Subscription download timed out. Check your connection and retry.", Details: "Download failed: connection timeout.\nThe saved subscription remains available."},
+			{ID: 3, Page: "overview", Context: "Start service", Kind: "error", Message: "Could not start Mihomo. Check the service and retry.", Details: "Start failed: the user service manager could not confirm that Mihomo is ready.\n" + strings.Repeat("A bounded notification viewport retains full diagnostic paragraphs.\n", 24) + "End of full diagnostic."},
+		}
+		m.notification.visible = true
+		if name == "notification-list" {
+			m.notification.panel.show(0)
+		} else if name == "notification-details" || name == "notification-details-end" {
+			m.notification.panel.show(3)
+		} else if name == "notification-profile-error" {
+			m.page, m.focus = "profiles", "profiles.add"
+			m.profilesUI.url.SetValue("https://example.invalid/subscription")
+			m.notification.items = m.notification.items[1:2]
+		}
+	case "notification-profile-validation":
+		m.locale = i18n.New(i18n.English)
+		m.page, m.focus = "profiles", "profiles.url"
+		m.profilesUI.url.SetValue("1243")
+		m.beginProfileURLImport()
 	case "logs":
 		m.snapshot = app.Snapshot{Installed: true, ConfigReady: true, Version: "v1.19.33", Service: service.Status{Active: true, State: "active"}}
 		m.page, m.focus = "logs", "logs.follow"
@@ -98,16 +129,20 @@ func themeSample(name string) Model {
 			}
 		}
 	}
+	m.syncNotification()
 	m.layout()
 	if name == "network-tests" {
 		m.wizard.scroll = 14
+		m.layout()
+	} else if name == "notification-details-end" {
+		m.notification.panel.viewport.GotoBottom()
 		m.layout()
 	}
 	return m
 }
 
 func TestMarianaPagesAcrossSizesAndProfiles(t *testing.T) {
-	names := []string{"overview-empty", "overview-running", "overview-stopped", "sidebar-focus", "sidebar-hover", "core", "version-input", "input-error", "network", "confirm", "installing", "disabled", "success", "failure"}
+	names := []string{"overview-empty", "overview-running", "overview-stopped", "sidebar-focus", "sidebar-hover", "core", "version-input", "input-error", "network", "confirm", "installing", "disabled", "success", "failure", "notification-success", "notification-error", "notification-progress", "notification-stack", "notification-list", "notification-details", "notification-profile-error", "notification-profile-validation"}
 	for _, name := range names {
 		for _, size := range [][2]int{{160, 45}, {120, 32}, {80, 24}, {60, 20}, {120, 18}, {20, 7}} {
 			for _, profile := range []colorprofile.Profile{colorprofile.TrueColor, colorprofile.ANSI256, colorprofile.ANSI, colorprofile.ASCII} {
@@ -141,12 +176,13 @@ func TestMarianaSidebarCurrentHoverAndFocusAreIndependent(t *testing.T) {
 		t.Fatal("current page and keyboard focus lost their independent text markers")
 	}
 	hoverLabel := lipgloss.NewStyle().Underline(true).Render("Rules")
-	if !strings.Contains(screen, themed(cellPad(strings.Repeat(" ", 10)+hoverLabel, sidebarWidth-2), text, sidebarBackground, false)) {
+	labelPadding := strings.Repeat(" ", (sidebarWidth-2-ansi.StringWidth("Rules"))/2)
+	if !strings.Contains(screen, themed(cellPad(labelPadding+hoverLabel, sidebarWidth-2), text, sidebarBackground, false)) {
 		t.Fatal("persistent hover lost its text emphasis or changed the sidebar background")
 	}
 	o.Width, o.Height, o.SidebarOpen = 80, 24, true
 	popup, _, _ := renderDashboard(o)
-	if !strings.Contains(popup, themed(cellPad(strings.Repeat(" ", 10)+"Rules", sidebarWidth-2), text, hoverBackground, false)) {
+	if !strings.Contains(popup, themed(cellPad(labelPadding+"Rules", sidebarWidth-2), text, hoverBackground, false)) {
 		t.Fatal("compact menu lost its hover surface")
 	}
 }
@@ -189,6 +225,24 @@ func TestExportMarianaViews(t *testing.T) {
 		{"overview-empty", 160, 45, colorprofile.TrueColor},
 		{"overview-empty", 216, 55, colorprofile.TrueColor},
 		{"overview-empty", 120, 32, colorprofile.TrueColor},
+		{"notification-success", 120, 32, colorprofile.TrueColor},
+		{"notification-error", 120, 32, colorprofile.TrueColor},
+		{"notification-error", 60, 20, colorprofile.TrueColor},
+		{"notification-progress", 80, 24, colorprofile.TrueColor},
+		{"notification-error", 80, 24, colorprofile.ASCII},
+		{"notification-stack", 160, 45, colorprofile.TrueColor},
+		{"notification-stack", 120, 32, colorprofile.TrueColor},
+		{"notification-stack", 80, 24, colorprofile.TrueColor},
+		{"notification-stack", 60, 20, colorprofile.TrueColor},
+		{"notification-stack", 120, 18, colorprofile.TrueColor},
+		{"notification-stack", 80, 24, colorprofile.ASCII},
+		{"notification-list", 120, 32, colorprofile.TrueColor},
+		{"notification-list", 60, 20, colorprofile.TrueColor},
+		{"notification-details", 120, 32, colorprofile.TrueColor},
+		{"notification-details-end", 120, 32, colorprofile.TrueColor},
+		{"notification-profile-error", 120, 32, colorprofile.TrueColor},
+		{"notification-profile-validation", 120, 32, colorprofile.TrueColor},
+		{"notification-profile-validation", 60, 20, colorprofile.TrueColor},
 		{"overview-running", 160, 45, colorprofile.TrueColor},
 		{"overview-running", 216, 55, colorprofile.TrueColor},
 		{"overview-running", 120, 32, colorprofile.TrueColor},
