@@ -97,7 +97,6 @@
   "cli.flag.completion.no-descriptions": "Disable completion descriptions",
   "diagnostic.cli.bin_version_conflict": "--bin and --core-version cannot be combined",
   "diagnostic.cli.no_terminal": "TUI requires a terminal; use status, doctor or --help for automation",
-  "diagnostic.cli.normal_user": "run lazyclash as your normal user without sudo; the current runtime uses an unprivileged systemd user service",
   "diagnostic.cli.ports_required": "specify --mixed-port or --controller-port",
   "diagnostic.cli.restart_required": "the core is running; review with --dry-run, then use --restart to acknowledge interrupting its connections",
   "diagnostic.cli.shell": "supported shells: bash, zsh",

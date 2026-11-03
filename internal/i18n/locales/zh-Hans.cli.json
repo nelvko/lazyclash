@@ -97,7 +97,6 @@
   "cli.flag.completion.no-descriptions": "禁用补全说明",
   "diagnostic.cli.bin_version_conflict": "--bin 和 --core-version 不能同时使用",
   "diagnostic.cli.no_terminal": "TUI 需要终端；自动化操作请使用 status、doctor 或 --help",
-  "diagnostic.cli.normal_user": "请以普通用户运行 lazyclash，不使用 sudo；当前运行方式使用无特权的 systemd 用户服务",
   "diagnostic.cli.ports_required": "请指定 --mixed-port 或 --controller-port",
   "diagnostic.cli.restart_required": "内核正在运行；请先使用 --dry-run 审阅，再通过 --restart 确认中断连接并重启",
   "diagnostic.cli.shell": "支持的 Shell：bash、zsh",
