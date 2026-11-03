@@ -121,7 +121,7 @@ func (a *App) finishOperation(r runtimeRecord, raw []byte, cause error) error {
 // the user from stopping an already running, positively identified service.
 func (a *App) stopLocked(ctx context.Context) error {
 	bin, config, data := a.paths()
-	if err := a.Service.Verify(ctx, bin, config, data); err != nil {
+	if err := a.verifyForStop(ctx, bin, config, data); err != nil {
 		return err
 	}
 	markerErr := a.rememberStop()

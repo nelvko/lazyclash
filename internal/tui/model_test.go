@@ -42,6 +42,7 @@ type fakeBackend struct {
 	control              func(context.Context, string) error
 	autostart            func(context.Context, bool) error
 	mode                 func(context.Context, string) error
+	tun                  func(context.Context, bool) error
 	runtime              func(context.Context) (app.RuntimeSnapshot, error)
 	rules                func(context.Context) (app.RuleSnapshot, error)
 	streamLogs           func(context.Context, func(mihomo.LogEntry)) error
@@ -112,6 +113,12 @@ func (f *fakeBackend) SetAutostart(ctx context.Context, enabled bool) error {
 func (f *fakeBackend) SetMode(ctx context.Context, mode string) error {
 	if f.mode != nil {
 		return f.mode(ctx, mode)
+	}
+	return ctx.Err()
+}
+func (f *fakeBackend) SetTUN(ctx context.Context, enabled bool) error {
+	if f.tun != nil {
+		return f.tun(ctx, enabled)
 	}
 	return ctx.Err()
 }

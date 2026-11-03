@@ -517,7 +517,15 @@ func overviewTrafficFields(o dashboardOptions) []overviewField {
 
 func overviewEnvironmentFields(s app.Snapshot, locales ...i18n.Localizer) []overviewField {
 	tr := dashboardLocale(locales).T
-	fields := []overviewField{{tr("dashboard.field.platform"), runtime.GOOS + "/" + runtime.GOARCH}, {tr("dashboard.field.systemProxy"), tr("dashboard.field.unchanged")}, {tr("dashboard.field.tun"), tr("dashboard.field.tunUnsupported")}}
+	tun := tr("dashboard.field.tunUnsupported")
+	if s.Capabilities.TUN.Supported {
+		tun = tr("dashboard.control.off")
+		if s.TUN {
+			tun = tr("dashboard.control.on")
+		}
+		tun = tr("tun.saved_state", tun) + " · " + tr("tun.host_scope")
+	}
+	fields := []overviewField{{tr("dashboard.field.platform"), runtime.GOOS + "/" + runtime.GOARCH}, {tr("dashboard.field.systemProxy"), tr("dashboard.field.unchanged")}, {tr("dashboard.field.tun"), tun}}
 	if s.Installed {
 		fields = append(fields, overviewField{tr("dashboard.field.installedVersion"), s.Version})
 		if s.Service.Active {
@@ -783,6 +791,13 @@ func settingsContent(o dashboardOptions, width int) (string, []hitRegion) {
 		for _, mode := range []string{"rule", "global", "direct"} {
 			controls = append(controls, settingControl{"mode." + mode, tr("dashboard.settings.useMode." + mode), true})
 		}
+		if o.Snapshot.Capabilities.TUN.Supported {
+			id, label := "tun.enable", tr("tun.enable")
+			if o.Snapshot.TUN {
+				id, label = "tun.disable", tr("tun.disable")
+			}
+			controls = append(controls, settingControl{id, label, runtimeControlIssue(o.Snapshot, o.Locale) == ""})
+		}
 	}
 	for _, control := range controls {
 		if !control.enabled || o.Header.owns(control.id) {
@@ -806,7 +821,15 @@ func settingsContent(o dashboardOptions, width int) (string, []hitRegion) {
 		if o.Snapshot.Mode.Actual != "" {
 			lines = append(lines, label(tr("dashboard.settings.actualMode", dashboardModeLabel(o.Snapshot.Mode.Actual, o.Locale))))
 		}
-		lines = append(lines, label(tr("dashboard.settings.tunUnsupported")))
+		tun := tr("dashboard.settings.tunUnsupported")
+		if o.Snapshot.Capabilities.TUN.Supported {
+			state := tr("dashboard.control.off")
+			if o.Snapshot.TUN {
+				state = tr("dashboard.control.on")
+			}
+			tun = tr("dashboard.field.tun") + ": " + tr("tun.saved_state", state) + " · " + tr("tun.host_scope")
+		}
+		lines = append(lines, label(tun))
 		lines = append(lines, strings.Split(wrapText(label(tr("dashboard.settings.removeHint")), inner), "\n")...)
 		if o.Snapshot.Service.Result != "" && o.Snapshot.Service.Result != "success" {
 			lines = append(lines, label(tr("dashboard.settings.serviceResult", clean(o.Snapshot.Service.Result), o.Snapshot.Service.ExitCode)))

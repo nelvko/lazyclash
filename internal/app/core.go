@@ -476,7 +476,7 @@ func (a *App) recoverCore(ctx context.Context) error {
 	if err := a.requireService(); err != nil {
 		return err
 	}
-	if err := a.Service.Verify(ctx, bin, config, data); err != nil {
+	if err := a.verifyForStop(ctx, bin, config, data); err != nil {
 		return err
 	}
 	info, err := os.Lstat(bin)

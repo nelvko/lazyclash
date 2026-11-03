@@ -97,10 +97,10 @@ func TestModeCommandShowsDesiredAndActualAndPropagatesFailure(t *testing.T) {
 func TestTUNCommandRejectsInvalidInputAndSurfacesCapabilityFailure(t *testing.T) {
 	f := &lifecycleFixture{err: errors.New("user service cannot enable TUN")}
 	for _, value := range []string{"on", "off", "invalid"} {
-		cmd := newTUNCommand(func() runtimeOptionsBackend { return f })
+		cmd := tunCommand(func() runtimeOptionsBackend { return f }, func() int { return 0 })
 		cmd.SetOut(&bytes.Buffer{})
 		cmd.SetErr(&bytes.Buffer{})
-		cmd.SetArgs([]string{value})
+		cmd.SetArgs([]string{value, "--scope", "host", "--confirm-host"})
 		before := f.tunCalls
 		if err := cmd.Execute(); err == nil {
 			t.Fatal("invalid or unsupported TUN request succeeded")
@@ -111,5 +111,38 @@ func TestTUNCommandRejectsInvalidInputAndSurfacesCapabilityFailure(t *testing.T)
 		if value != "invalid" && (f.tunCalls != before+1 || f.tun != (value == "on")) {
 			t.Fatal("TUN command failed to use the shared use case")
 		}
+	}
+}
+
+func TestTUNEnableRequiresRootAndHostConfirmationBeforeBackendAccess(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		uid  int
+		args []string
+	}{
+		{"user", 1000, []string{"on", "--scope", "host", "--confirm-host"}},
+		{"missing consent", 0, []string{"on"}},
+		{"missing scope", 0, []string{"on", "--confirm-host"}},
+		{"missing confirmation", 0, []string{"on", "--scope", "host"}},
+		{"other scope", 0, []string{"on", "--scope", "user", "--confirm-host"}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			cmd := tunCommand(func() runtimeOptionsBackend {
+				t.Fatal("unconfirmed host TUN accessed the backend")
+				return nil
+			}, func() int { return test.uid })
+			cmd.SetOut(&bytes.Buffer{})
+			cmd.SetErr(&bytes.Buffer{})
+			cmd.SetArgs(test.args)
+			if err := cmd.Execute(); err == nil {
+				t.Fatal("unconfirmed host TUN succeeded")
+			}
+		})
+	}
+	f := &lifecycleFixture{}
+	cmd := tunCommand(func() runtimeOptionsBackend { return f }, func() int { return 0 })
+	cmd.SetArgs([]string{"on", "--scope", "host", "--confirm-host"})
+	if err := cmd.Execute(); err != nil || f.tunCalls != 1 || !f.tun {
+		t.Fatalf("confirmed host TUN did not reach shared use case: calls=%d err=%v", f.tunCalls, err)
 	}
 }

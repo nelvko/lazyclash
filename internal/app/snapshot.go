@@ -13,6 +13,9 @@ import (
 )
 
 type Snapshot struct {
+	TUN                 bool
+	TUNActual           *bool
+	TUNError            string
 	Installed           bool
 	Version             string
 	RunningVersion      string
@@ -55,6 +58,7 @@ func (a *App) Snapshot(ctx context.Context) (Snapshot, error) {
 			return err
 		}
 		if err == nil {
+			out.TUN = m.TUN
 			out.Installed = true
 			out.ConfigReady = true
 			out.Version = m.Version
@@ -154,8 +158,9 @@ func (a *App) Snapshot(ctx context.Context) (Snapshot, error) {
 				out.Mode.ErrorDiagnostic = err
 			} else {
 				out.Mode.Actual = cfg.Mode
-				if cfg.TUN {
-					out.Mode.Error = "Mihomo reports TUN enabled outside the managed user-service policy; stop and inspect the service"
+				out.TUNActual = &cfg.TUN
+				if cfg.TUN != out.TUN {
+					out.TUNError = "Running TUN differs from the saved policy; restart the service"
 				}
 			}
 		} else if out.Installed {

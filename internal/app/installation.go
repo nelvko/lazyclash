@@ -18,6 +18,7 @@ import (
 )
 
 type manifest struct {
+	TUN          bool         `json:"tun"`
 	LifecycleSHA string       `json:"lifecycle_sha256,omitempty"`
 	Build        *buildRecord `json:"build,omitempty"`
 	ID           string       `json:"id"`
@@ -125,6 +126,9 @@ func (a *App) load() (manifest, string, error) {
 	// Validate stored connection settings without exposing credentials.
 	if _, err := mihomo.Default(m.Controller, m.Secret, m.Port); err != nil {
 		return m, "", diagnostic.New("diagnostic.installation.controllerSettings", "invalid managed controller settings")
+	}
+	if err := a.bindTUN(m, cfg); err != nil {
+		return m, "", err
 	}
 	return m, target, nil
 }

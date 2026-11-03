@@ -57,6 +57,7 @@ func New(args ...string) *cobra.Command {
 		newSettingsCommand(current),
 		newModeCommand(func() runtimeOptionsBackend { return current() }),
 		newTUNCommand(func() runtimeOptionsBackend { return current() }),
+		newLifecycleCommand(current),
 	)
 	configurePresentation(root, args)
 	if len(args) > 0 {

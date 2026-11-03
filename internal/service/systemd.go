@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/nelvko/lazyclash/internal/diagnostic"
+	"github.com/nelvko/lazyclash/internal/store"
 )
 
 const managedHeader = "# Managed by lazyclash.\n"
@@ -361,7 +362,20 @@ func (s *Systemd) content(bin, config, data string) (string, error) {
 	if scope == System {
 		target = "multi-user.target"
 		content += "User=" + s.Account() + "\nGroup=" + s.Account() + "\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\nReadWritePaths=" + paths[2] + "\nCapabilityBoundingSet=\nAmbientCapabilities=\n"
-
+		if s.TUN {
+			content += "CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW\nAmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW\n"
+		}
+		if s.Lifecycle != "" {
+			lifecycle, err := quoteArg(s.Lifecycle)
+			if err != nil {
+				return "", err
+			}
+			home, err := quoteArg(s.Home)
+			if err != nil {
+				return "", err
+			}
+			content += "ExecStartPre=+:" + lifecycle + " __service prepare --home " + home + " --service-name " + s.Name + "\nExecStartPost=+:" + lifecycle + " __service ready --home " + home + " --service-name " + s.Name + "\nExecStopPost=+:" + lifecycle + " __service cleanup --home " + home + " --service-name " + s.Name + "\n"
+		}
 	}
 	return content + "\n[Install]\nWantedBy=" + target + "\n", nil
 }
@@ -600,6 +614,64 @@ func (s *Systemd) ResetFailedOwned(ctx context.Context, bin, config, data string
 		return diagnostic.New("diagnostic.service.resetFailed", "reset failed state before service recovery: %w", err)
 	}
 	return nil
+}
+
+// SetTUNPolicy updates only an exactly owned unit and never starts it.
+func (s *Systemd) SetTUNPolicy(ctx context.Context, enabled bool, bin, config, data string) error {
+	if s.Scope != System {
+		if enabled {
+			return fmt.Errorf("TUN requires root's system service")
+		}
+		return nil
+	}
+	if s.TUN == enabled {
+		return nil
+	}
+	if err := s.Verify(ctx, bin, config, data); err != nil {
+		return err
+	}
+	old, err := s.content(bin, config, data)
+	if err != nil {
+		return err
+	}
+	previous := s.TUN
+	s.TUN = enabled
+	next, err := s.content(bin, config, data)
+	if err != nil {
+		s.TUN = previous
+		return err
+	}
+	path := filepath.Join(s.UnitDir, s.Name+".service")
+	if err := store.Replace(path, []byte(next), []byte(old), 0600); err != nil {
+		s.TUN = previous
+		return err
+	}
+	if _, err := s.command(ctx, "systemctl", "--user", "daemon-reload"); err != nil {
+		s.TUN = previous
+		undo := store.Replace(path, []byte(old), []byte(next), 0600)
+		cleanup, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_, reload := s.command(cleanup, "systemctl", "--user", "daemon-reload")
+		return errors.Join(err, undo, reload)
+	}
+	return nil
+}
+
+// VerifyForStop identifies either complete managed policy without trusting a
+// possibly damaged configuration. Stop must remain possible during recovery.
+func (s *Systemd) VerifyForStop(ctx context.Context, bin, config, data string) error {
+	if s.Scope != System {
+		return s.Verify(ctx, bin, config, data)
+	}
+	original := s.TUN
+	for _, enabled := range []bool{original, !original} {
+		s.TUN = enabled
+		if err := s.Verify(ctx, bin, config, data); err == nil {
+			return nil
+		}
+	}
+	s.TUN = original
+	return s.Verify(ctx, bin, config, data)
 }
 
 // SetEnabled changes only boot/login activation; it never starts or stops the
