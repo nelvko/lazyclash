@@ -121,7 +121,7 @@ func (a *App) finishOperation(r runtimeRecord, raw []byte, cause error) error {
 // the user from stopping an already running, positively identified service.
 func (a *App) stopLocked(ctx context.Context) error {
 	bin, config, data := a.paths()
-	if err := a.Service.Verify(ctx, bin, config, data); err != nil {
+	if err := a.verifyForStop(ctx, bin, config, data); err != nil {
 		return err
 	}
 	markerErr := a.rememberStop()
@@ -163,22 +163,12 @@ func (a *App) stopLocked(ctx context.Context) error {
 	return a.finishOperation(r, raw, errors.Join(a.markHasRunLocked(ctx), a.recover(ctx)))
 }
 
-// checkPersistent and upgradeService are Linux integration capabilities; test
+// checkPersistent is a Linux integration capability; test
 // runtimes can provide just the lifecycle contract. No other platform is
 // implemented or silently substituted.
 func (a *App) checkPersistent(ctx context.Context) error {
 	if s, ok := a.Service.(interface{ CheckPersistent(context.Context) error }); ok {
 		return s.CheckPersistent(ctx)
-	}
-	return nil
-}
-
-func (a *App) upgradeService(ctx context.Context) error {
-	if s, ok := a.Service.(interface {
-		UpgradeOwned(context.Context, string, string, string) error
-	}); ok {
-		bin, config, data := a.paths()
-		return s.UpgradeOwned(ctx, bin, config, data)
 	}
 	return nil
 }
@@ -244,9 +234,6 @@ func (a *App) SetAutostart(ctx context.Context, enabled bool) error {
 		raw, err := a.saveRuntimeRecord(r, old)
 		if err != nil {
 			return err
-		}
-		if err := a.upgradeService(ctx); err != nil {
-			return a.finishOperation(r, raw, err)
 		}
 		if err := svc.SetEnabled(ctx, enabled); err != nil {
 			return a.finishOperation(r, raw, err)

@@ -111,7 +111,7 @@ func TestEffectiveRejectsPrivilegedTUNRequests(t *testing.T) {
 		"listeners: [{name: network, type: tun}]\n",
 	} {
 		_, err := Effective([]byte(raw), "127.0.0.1:19090", "managed-secret", 17890)
-		if err == nil || !strings.Contains(err.Error(), "TUN") || !strings.Contains(err.Error(), "user service") {
+		if err == nil || !strings.Contains(err.Error(), "TUN") || !strings.Contains(err.Error(), "explicitly authoriz") {
 			t.Fatalf("TUN request did not report the permission boundary: %v", err)
 		}
 	}

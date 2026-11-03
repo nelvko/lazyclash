@@ -115,9 +115,23 @@ func (a *App) prepareRuntimeSettingsLocked(ctx context.Context, proposed Runtime
 	if err != nil {
 		return plan, m, target, nil, err
 	}
+	// The saved generation may already contain the authorized application TUN
+	// policy. Strip it before validating ordinary profile inbounds, then reapply.
+	if m.TUN {
+		raw, err = mihomo.WithTUN(raw, false, a.Name)
+		if err != nil {
+			return plan, m, target, nil, err
+		}
+	}
 	effective, err := mihomo.Effective(raw, controller, m.Secret, proposed.MixedPort)
 	if err != nil {
 		return plan, m, target, nil, err
+	}
+	if m.TUN && err == nil {
+		effective, err = mihomo.WithTUN(effective, true, a.Name)
+		if err != nil {
+			return plan, m, target, nil, err
+		}
 	}
 	if plan.Changed {
 		if err := checkRuntimePorts(ctx, m, proposed, status.Active); err != nil {

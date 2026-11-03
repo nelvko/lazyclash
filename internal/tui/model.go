@@ -32,6 +32,7 @@ type Backend interface {
 	SaveKeyHintsPreference(context.Context, bool) error
 	SetAutostart(context.Context, bool) error
 	SetMode(context.Context, string) error
+	SetTUN(context.Context, bool) error
 	CheckUpdate(context.Context, mihomo.Channel, downloadnet.Config) (app.CoreUpdateCheck, error)
 	UpgradeCore(context.Context, app.CoreUpdateCheck, downloadnet.Config, func(mihomo.Progress)) (app.CoreUpgradeResult, error)
 	ResolveRelease(context.Context, string, downloadnet.Config) (mihomo.Release, error)
@@ -124,6 +125,7 @@ type Model struct {
 	messageTransient      bool
 	messageInformational  bool
 	page, focus, hover    string
+	tunFocus              string
 	guideSkipped          bool
 	scroll, total         int
 	logoFrame             int
@@ -559,6 +561,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.updateWizardInput(v)
 		} else if m.inlineInputActive() {
 			cmd = m.updateInlineInput(v)
+		} else if m.form == "tun-confirm" {
+			break
 		} else if m.form != "" {
 			if m.form == "profile-create" {
 				input := m.profileCreateActive()
@@ -878,6 +882,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.updateWizardInput(msg)
 		} else if m.inlineInputActive() {
 			cmd = m.updateInlineInput(msg)
+		} else if m.form == "tun-confirm" {
+			break
 		} else if m.form != "" {
 			if m.form == "profile-create" {
 				if input := m.profileCreateActive(); input != nil && !m.busy && !m.quitting {
@@ -974,6 +980,9 @@ func (m *Model) openForm() tea.Cmd {
 	return textinput.Blink
 }
 func (m *Model) formKey(k tea.KeyPressMsg) tea.Cmd {
+	if m.form == "tun-confirm" {
+		return m.tunConfirmationKey(k)
+	}
 	if handled, cmd := m.profileCreateKey(k); handled {
 		return cmd
 	}
@@ -1091,6 +1100,8 @@ func (m *Model) activate(id string) tea.Cmd {
 		return m.serviceAction("start")
 	case "core.start", "core.stop", "core.restart":
 		return m.serviceAction(strings.TrimPrefix(id, "core."))
+	case "tun.enable", "tun.disable":
+		return m.tunAction(id == "tun.enable")
 	case "card.proxies":
 		m.navigate("proxies")
 		return nil
@@ -1302,6 +1313,9 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 					return m.wizardActivate(r.ID)
 				}
 				if m.form != "" {
+					if m.form == "tun-confirm" {
+						return m.tunConfirmationAction(r.ID)
+					}
 					if m.form == "profile-create" {
 						return m.profileCreateMouse(r.ID)
 					}
@@ -1472,6 +1486,8 @@ func (m *Model) layout() {
 		m.screen, m.targets = m.renderHelp(base)
 	} else if m.wizard.open || m.wizard.networkOpen {
 		m.screen, m.targets = m.renderWizard(base)
+	} else if m.form == "tun-confirm" {
+		m.screen, m.targets = m.renderTUNConfirmation(base)
 	} else if m.form != "" {
 		m.screen, m.targets = m.renderProfileForm(base)
 	} else if m.notification.panel.open {

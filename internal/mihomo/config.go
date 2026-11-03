@@ -6,7 +6,6 @@ import (
 	"context"
 	"io"
 	"net"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -49,7 +48,7 @@ func Effective(raw []byte, controller, secret string, mixedPort int) ([]byte, er
 	}
 	if tun, ok := cfg["tun"].(map[string]any); ok {
 		if tun["enable"] == true {
-			return nil, diagnostic.New("diagnostic.config.tunEnabled", "this profile enables TUN, which is unavailable in the managed unprivileged user service; disable tun.enable before importing")
+			return nil, diagnostic.New("diagnostic.config.tunEnabled", "this profile enables TUN; disable tun.enable before importing and explicitly authorize TUN in lazyclash settings")
 		}
 	}
 	cfg["external-controller"], cfg["secret"] = controller, secret
@@ -66,7 +65,7 @@ func Effective(raw []byte, controller, secret string, mixedPort int) ([]byte, er
 			if listeners, ok := cfg[k].([]any); ok {
 				for _, listener := range listeners {
 					if entry, ok := listener.(map[string]any); ok && entry["type"] == "tun" {
-						return nil, diagnostic.New("diagnostic.config.tunListener", "this profile contains a TUN listener, which is unavailable in the managed unprivileged user service")
+						return nil, diagnostic.New("diagnostic.config.tunListener", "this profile contains a TUN listener; managed TUN must be explicitly authorized in lazyclash settings")
 					}
 				}
 			}
@@ -226,10 +225,13 @@ func BinaryVersion(ctx context.Context, bin string) (string, error) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, bin, "-v")
+	cmd, err := executableCommand(ctx, bin, "-v")
+	if err != nil {
+		return "", err
+	}
 	out := &limitedOutput{limit: 64 << 10}
 	cmd.Stdout, cmd.Stderr = out, out
-	err := cmd.Run()
+	err = cmd.Run()
 	if ctx.Err() != nil {
 		return "", ctx.Err()
 	}
@@ -263,10 +265,13 @@ func Validate(ctx context.Context, bin, config, data string) error {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, bin, "-t", "-d", data, "-f", config)
+	cmd, err := executableCommand(ctx, bin, "-t", "-d", data, "-f", config)
+	if err != nil {
+		return err
+	}
 	out := &limitedOutput{limit: 64 << 10}
 	cmd.Stdout, cmd.Stderr = out, out
-	err := cmd.Run()
+	err = cmd.Run()
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}

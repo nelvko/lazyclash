@@ -1,45 +1,35 @@
 # Linux 权限边界
 
-## 项目目标与当前实现
+首发提供独立的普通用户 user 实例和 root system 实例。普通用户只使用自己的本机 HTTP/SOCKS 代理；root 的系统实例可明确授权整台主机的 TUN。`sudo lazyclash` 操作 root 的独立数据和服务，不复制用户安装，也不保持原用户 owner。没有普通用户提权流程、backend 切换或独立 helper；完整约定见 [服务 scope](service-scopes.md)。
 
-目标是同时支持 root 和普通用户，各自拥有独立实例：root 默认使用 system backend，普通用户无需提权即可使用自己的 user service，也能经 sudo 授权为同一实例部署 system backend 并开启 TUN。逻辑 owner、执行 scope、操作者授权、内核权限与流量覆盖分别建模；普通用户不自动操作 root 的实例。具体契约见 [服务 scope 与权限模型](service-scopes.md)。
+## 用户实例
 
-以下描述的是**当前代码边界**，不是长期目标。项目未发行，后续直接重构 unit、manifest、存储和权限入口，不保留旧格式或旧行为兼容层。
+TUI、CLI 和 Mihomo 使用当前用户权限，数据保存在 XDG 用户目录，unit 位于用户 systemd 配置目录。服务设置 `NoNewPrivileges=true`，不额外授予网络 capabilities，不调用 sudo、pkexec 或 setcap。Start/Restart/Enable 检查用户 manager 与 linger，缺失时明确报告，由用户或管理员自行授权配置；lazyclash 不修改 linger。
 
-本版只实现普通用户的 systemd user service。HTTP/SOCKS 监听与认证控制 API 均限定本机；TUI、CLI、Mihomo 运行在同一普通用户权限下。TUN、系统路由、DNS 接管、系统代理修改和系统级服务仍未实现，不能把以下未来方案视作已交付能力。
+文件摘要、精确 unit 内容、加载路径和 drop-in 检查用于确认安装归属及避免误操作，不构成对同 UID 恶意进程的隔离。loopback 代理端口本身不限制客户端 UID，不能把 user scope 宣传为用户流量隔离。
 
-## 当前策略
+## 系统实例
 
-- 不调用 sudo、pkexec、setcap，不安装特权 helper，不自动授权或切换到系统级作用域。Linux TUI 与实际 service backend 拒绝 root 运行；只读诊断及 Shell 变量输出仍可执行；版本检查与配置校验前拒绝 setuid/setgid 内核文件，并在 Linux 检查、拒绝文件 capabilities（无法确认时失败）。开启 TUN 返回明确的不支持错误，不保存虚假的开启状态。
-- 服务使用 `NoNewPrivileges=true`，阻止该进程及其后代通过 exec 获得 setuid 或文件 capabilities。它不限制一个已经以 root 启动的 TUI，也不覆盖独立执行的版本检查/配置校验进程，因此不能代替应用入口与内核执行路径的权限检查。[systemd.exec](https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html#NoNewPrivileges=)
-- 安装目录、配置、Profile、订阅与用户 unit 都由当前用户管理。文件摘要、精确 unit 内容、加载路径和 drop-in 检查用于避免误操作其他安装；它们不是对抗同 UID 恶意进程的隔离机制。
-- 启动前检查用户 manager 与 linger；未确认 linger 时拒绝承诺持久运行，并提示用户明确执行 `loginctl enable-linger <UID>`。lazyclash 不修改此全局用户设置。linger 让 manager 在注销后继续存在，也允许其随开机启动；它本身不等于启用某个具体服务。[loginctl](https://www.freedesktop.org/software/systemd/man/latest/loginctl.html)
-- 原始 Mihomo stdout/stderr 仍指向 `null`，避免 provider URL、订阅令牌或控制凭据写入 journal。失败通过 systemd 的 `Result`、`ExecMainStatus`、服务子状态与重启次数诊断；这不能提供完整启动错误正文。运行日志由现有认证 API 读取并在进入界面前脱敏。
+root 默认数据目录为 `/var/lib/lazyclash/<service-name>`，忽略用户的 `LAZYCLASH_HOME`、`LAZYCLASH_SERVICE` 和 XDG 数据目录。显式 `--home` 仍须通过 root 所有权、真实目录、可写权限和服务账号遍历检查，祖先目录也属于校验范围。系统数据禁止位于 `/tmp`、`/var/tmp`、`/home`、`/root`、`/run/user` 及其子目录，因为 unit 文件系统沙箱会隐藏这些位置；隔离测试也应使用 `/var/lib/lazyclash` 下受保护的专用目录。
 
-## 提权方式比较
+每个系统服务有专用的非登录、非 root 账号。root 持有二进制、配置代际、manifest、journal 和受保护的 `installation/lazyclash` 生命周期副本；服务账号只能读取配置、执行内核并写入独立 runtime 缓存。root 管理命令的版本探测和配置校验同样降至该账号，清空附加组并使用最小环境，不以 root 执行候选 Mihomo。
 
-以下结论依据当前文件布局推导，并非这些机制本身必然不安全。
+system unit 使用 `NoNewPrivileges=true`、只读系统视图、隐藏 home、私有临时目录及限定 runtime 写入路径。普通代理的 capability bounding/ambient 集合为空；明确开启 TUN 后只加入 `CAP_NET_ADMIN CAP_NET_RAW`。不开启完整 root Mihomo，不授予 `CAP_SYS_ADMIN`，不把 capabilities 写到可执行文件上。所有版本检查和校验路径拒绝 setuid/setgid 内核；Linux 无法确认文件 capabilities 时也拒绝执行。[systemd.exec](https://www.freedesktop.org/software/systemd/man/latest/systemd.exec.html)，[Linux capabilities](https://man7.org/linux/man-pages/man7/capabilities.7.html)
 
-| 方式 | 当前布局中的攻击面 | 采用条件 |
-| --- | --- | --- |
-| 整个 TUI 长期 root 运行 | 下载器、YAML/订阅解析、终端交互、HTTP 客户端和本地内核校验都进入 root 信任边界；用户可写可执行文件会被 root 执行 | 当前拒绝此运行方式 |
-| 每次操作 sudo | 限定的受保护服务控制命令可以缩小授权范围；但 sudo 执行用户可写 lazyclash/Mihomo、任意命令或用户提供的 unit 路径仍允许扩大权限 | 将来仅允许固定操作与固定、受保护的目标；不能直接 sudo 当前用户安装 |
-| 对 Mihomo setcap | 权限附着在可执行文件上，直接运行及校验路径也可能获得能力；配置仍由用户控制，更新替换 inode 还可能丢失能力 | 当前不采用；不能把它当作普通用户 TUN 开关 |
-| 专用非 root 用户的 system service | 能把长期权限集中到内核，但被授予的网络能力仍具有系统影响；root-owned unit 引用用户可写二进制、配置、current 链接或任一祖先目录，会破坏授权边界 | 未来须新增独立受保护部署、明确发布事务和能力约束 |
-| 最小 helper + 按操作授权 | 可以把安装/发布/网络修改限制为固定请求；其 IPC、路径处理、竞态检查和参数校验成为新的特权入口 | 确有系统级需求后再实现，拒绝任意 shell/路径/命令参数，按请求验证身份与权限 |
+root 运行的 lazyclash 本身承担下载、配置和部署管理的 root 信任边界，管理员应从可信发行包安装到受保护的位置。内核降权、摘要和 unit 校验不能证明第三方二进制或订阅可信。系统实例不读取普通用户目录来继承配置，不使用用户可写 runtime 中的程序作为 root 生命周期入口。
 
-`CAP_NET_ADMIN` 涉及接口、路由与防火墙操作，`CAP_NET_RAW` 涉及原始套接字；它们不是只允许“本程序使用 TUN”的细粒度权限。不得习惯性授予 `CAP_SYS_ADMIN` 或完整 root。未来所需集合必须根据实际 Mihomo 版本、TUN stack 与网络功能实测决定。[Linux capabilities](https://man7.org/linux/man-pages/man7/capabilities.7.html)
+## host TUN 与资源归属
 
-## system scope 与 TUN 的实现前提
+CLI 开启要求 root 与 `--scope host --confirm-host`；TUI 使用默认取消的确认弹窗，说明整台主机、其他用户和服务的流量及 DNS 影响。TUN 控制权不从实例归属推断，订阅也不能授权开启。首版不提供 UID 范围、任意 namespace、普通用户 TUN 或自动实例交接。
 
-后续允许 root 运行 TUI/CLI，但不会因此让 Mihomo 常驻完整 root。普通用户为自己的实例使用 system backend 时，通过固定、受保护的 helper 经 sudo 授权，不能把整个用户 TUI 或用户可写二进制直接 sudo 后当作实现。执行 scope 变化不改变 owner；system 普通代理和 system TUN 使用不同权限策略，关闭 TUN 不自动改变 backend。
+TUN 配置启用受管 IPv4/IPv6 自动路由和 TUN 内 DNS 劫持，显式禁用对系统 resolver 的修改。`CAP_NET_ADMIN` 和 `CAP_NET_RAW` 具有主机级权限，不能视为某个设备的细粒度沙箱。设备可读写也不等于能够创建 TUN，真实建链、路由和 DNS 必须运行验证。[Linux TUN/TAP](https://www.kernel.org/doc/html/latest/networking/tuntap.html)
 
-新增系统级部署时，应将 unit、可执行文件和生效配置发布到普通用户不能替换的目录；包括其祖先目录、符号链接目标以及内核会继续读取的 provider 配置。服务使用专用非 root 用户，只有必要的运行数据目录可写。当前用户空间中的下载与 Profile 必须作为不可信输入，经过校验和明确授权后复制发布，不能让特权服务跟随用户 `current` 链接。只对配置文件执行 chown 不足以保护可被用户替换的父目录。
+systemd 每次启动通过有限钩子取得本 namespace 的独占记录，检查已有 TUN、保留路由表和规则冲突；就绪后记录本次 invocation 的接口身份与网络资源。退出时仅清理已确认归属的资源，外部改动和未知归属会保留并报告。冲突不自动停止其他实例或 VPN。未完成清理的记录会阻止下一次接管，需要管理员检查，不能通过删除记录宣称网络已经恢复。
 
-系统级控制授权应绑定逻辑 owner、固定实例、执行部署和动作。同一逻辑实例的 user/system backend 只允许一个活动；不同用户的普通代理可以并存。同一网络命名空间内只允许一个 lazyclash TUN 管理者，占用时提示用户和实例，管理员明确授权后才能转移；独占必须覆盖自启动、自动恢复和停止清理，不能只检查 TUI 状态。该协议不约束其他 VPN 客户端，外部资源冲突仍须检测并拒绝破坏性接管。
+## 状态、凭据与验证
 
-流量覆盖策略必须独立配置和授权，不能根据 owner 推导；UID 筛选不等于严格网络隔离。授权通过也不意味着输入安全；即使使用 polkit，特权机制仍须校验调用者与每次请求。SSH 场景可能没有图形认证 agent，需单独设计交互流程。[polkit](https://www.freedesktop.org/software/polkit/docs/latest/polkit.8.html)
+API secret、原始订阅与私有状态不出现在公开状态输出中。Mihomo 原始 stdout/stderr 指向 `null`，避免凭据进入 journal；退出诊断来自 systemd 状态，实时日志通过认证 API 读取并脱敏，不提供历史启动日志。
 
-验收必须包含 `/dev/net/tun`、实际设备创建权限、路由/DNS 的应用和失败回滚、停止后的清理，以及内核恢复后的重新应用。仅存在设备文件或可读写它并不代表具备创建网络设备的权限。Linux TUN 文档区分设备访问与 `CAP_NET_ADMIN`；资源的清理也需按持久设备及内核实际创建的副作用验证。[Linux TUN/TAP](https://www.kernel.org/doc/html/latest/networking/tuntap.html)
+应用管理事务使用持久 journal，可处理失败立即回滚，中断后的恢复在下一次调用时触发。systemd 负责进程与退出清理，当前没有后台 daemon 持续修复管理事务。恢复失败保留证据；显式 Stop 优先于恢复，不能为回滚而复活已被要求停止的服务。
 
-权限测试分别验证提权模式文件被拒绝且未执行。Linux 文件 capabilities 测试需要可设置 `security.capability` 的文件系统和测试身份，否则明确 skip；在 macOS 通过其余单测不能证明该 Linux 检查已经实测。
+权限验收入口包括普通单测、Linux 全包、root 身份/数据测试和真实双作用域/TUN 端到端，实际结果见 [验证说明](verification.md)。缺少设置 `security.capability` 权限的测试必须明确 skip，macOS 单测和交叉编译不能代替 Linux capabilities、路由或清理实测。项目未发行，不提供旧安装兼容或自动迁移。

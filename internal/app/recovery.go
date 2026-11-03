@@ -20,6 +20,7 @@ type installJournal struct {
 }
 
 type pending struct {
+	TUNChange          *tunTransition `json:"tun_change,omitempty"`
 	Old, New           string
 	Active             bool
 	OldGuard, NewGuard string `json:",omitempty"`
@@ -50,6 +51,17 @@ func (a *App) recover(ctx context.Context) error {
 	if err := a.requireService(); err != nil {
 		return err
 	}
+	current := filepath.Join(a.Home, "installation", "current")
+	target, err := os.Readlink(current)
+	if err != nil {
+		return err
+	}
+	if target != p.Old && target != p.New {
+		return diagnostic.New("diagnostic.recovery.targetChanged", "recovery target changed; refusing to modify")
+	}
+	if p.TUNChange != nil && (p.OldGuard == "" || p.NewGuard == "") {
+		return errors.New("TUN recovery requires guarded generations")
+	}
 	if p.OldGuard != "" || p.NewGuard != "" {
 		if len(p.OldGuard) != 64 || len(p.NewGuard) != 64 || p.Old == p.New {
 			return diagnostic.New("diagnostic.recovery.guardedJournal", "invalid guarded recovery journal; manual inspection required")
@@ -64,14 +76,24 @@ func (a *App) recover(ctx context.Context) error {
 			}
 		}
 		bin, config, data := a.paths()
-		if err := a.Service.Verify(ctx, bin, config, data); err != nil {
-			return err
+		if p.TUNChange == nil {
+			if err := a.Service.Verify(ctx, bin, config, data); err != nil {
+				return err
+			}
+		} else {
+			if p.TUNChange.Old == p.TUNChange.New {
+				return errors.New("invalid TUN transition")
+			}
+			if err := a.verifyForStop(ctx, bin, config, data); err != nil {
+				return err
+			}
+			if err := a.Service.Action(ctx, "stop"); err != nil {
+				return err
+			}
+			if err := a.setTUNPolicy(ctx, p.TUNChange.Old); err != nil {
+				return err
+			}
 		}
-	}
-	current := filepath.Join(a.Home, "installation", "current")
-	target, err := os.Readlink(current)
-	if err != nil {
-		return err
 	}
 	if target == p.New {
 		if err := store.Switch(current, p.Old, p.New); err != nil {

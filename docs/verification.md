@@ -1,5 +1,52 @@
 # 验证入口
 
+## master 合并验证（2026-11-03）
+
+合并 `codex/service-scopes` 的四个提交，同时保留 master 的 API-free 下载实现及下载审计。修正两者的执行边界：安装用例把专用服务身份传入下载阶段，解压后的系统内核保持 root 所有、服务组只读和可执行，再以该非 root 身份运行版本检查；普通用户下载仍为 0700。
+
+合并结果通过 `make check`、`make build`、`go test -race ./internal/app ./internal/mihomo`、八项 Python 回归及 `./scripts/verify-linux.sh lazyclash-e2e`。另在 Linux 以 root 实际执行八项身份、路径和文件权限测试，其中新增下载回归检查真实子进程 UID/GID、空附加组、最小环境、无法改写自身、最终文件归属及临时文件清理。`make package VERSION=dev` 重新生成两种 Linux 架构的归档并校验 SHA256SUMS。
+
+用于重跑真实内核端到端的旧临时 Mihomo 文件已不存在；本轮获取官方 v1.19.33 测试文件时遇到 GitHub HTTPS TLS 连接错误，因此未重跑真实 Mihomo/systemd/TUN 完整端到端。下方两批实现各自的真实运行结果及限制分别保留，不能作为合并后重跑成功的记录。本轮 Linux 实测仍为 arm64，amd64 仅构建和归档验证。
+
+## 双作用域、root TUN 与发行打包（2026-11-03）
+
+本节记录服务 scope 分支的运行时验收结果；后续章节分别保留各批实现及验证范围。
+
+本轮按首发范围实现运行时代码：root 使用独立 system service，普通用户各自使用 user service；`sudo lazyclash` 忽略原用户继承的实例环境。system 内核由专用非 root 账号运行，普通代理无网络 capabilities，明确授权 host TUN 后才授予 `CAP_NET_ADMIN CAP_NET_RAW`。不增加 daemon、提权 helper、普通用户 TUN 或旧安装兼容层。
+
+实际通过的验证：
+
+- macOS/arm64、Go 1.27.1：`make check`、完整 `make race`、`make build`、四项 Python 终端解析回归、Shell/Python 脚本语法及差异空白检查。
+- `./scripts/verify-linux.sh lazyclash-e2e`：在已有专用 Debian 12/arm64、systemd 252 VM 内实际执行最终源码的全部可运行 Go 测试。另以 root 实际执行七项独立 scope 默认值、目录/文件归属、sandbox 路径、稳定清理身份和 Mihomo 降权回归；验证子进程 UID/GID 与补充组确实已下降。
+- 第一批 scope 提交独立导出暂存源码，完成 `make check`、Linux 全包运行及真实 root/system、普通用户/user 的 proxy-only 验收；第二批 TUN 提交也从独立暂存树通过 check，避免依赖后续工作区文件。
+- `make package VERSION=dev` 生成 Linux/amd64、Linux/arm64 归档与 SHA256SUMS，显式使用 amd64 v1 / arm64 v8.0。校验归档摘要和 ELF 架构，解包后的 arm64 产品用于下述完整实测；没有用 `go run` 或内存后端代替。
+- root/system 与普通用户/user 实际安装、并发普通代理、TCP/UDP 端口冲突拒绝、独立数据/服务、root 核心非零 UID、普通代理 CapEff=0、`sudo` 继承用户环境不接管用户实例、安装后未自动启动及正常卸载。
+- CLI 缺少 host 范围确认时拒绝启用 TUN；普通用户没有提权流程。已有外来 TUN 接口时拒绝启用；另一个 root 实例占用时错误包含占用实例，原服务不被停止。
+- TUN 通过受控本地 HTTP CONNECT fixture 实际处理 `203.0.113.77:80` 流量，并将发往 `203.0.113.53:53` 的 DNS 查询劫持至受控 DNS fixture，验证响应与代理请求计数。TUN 期间专用内核只有 NET_ADMIN/NET_RAW，两种规则族、路由表和接口均核对。
+- TUN 开启时重新应用 profile 保持策略；SIGKILL 内核后退出钩子清理，systemd 自动重启并再次达到真实 TUN 就绪；当前配置故意损坏时 Stop 报检查错误，但内核、接口、双栈规则/路由及 claim 仍可靠释放。关闭 TUN 后再次启动，网络 capabilities 归零；显式停止后由另一个 root 实例取得管理权。
+- root 产品实际 controlling PTY 在 120×36、80×24 显示完整整机流量与 DNS 影响确认；默认 Enter 取消且网络不变。120×36 另实际确认开启 TUN，再经 CLI 关闭并核对资源释放。模型补充中英文 160×45、80×24、60×20、120×18、20×7，极小窗口无法完整阅读时禁止确认。
+
+实测发现并修复了 iproute2 自定义路由表的字符串 JSON、设备消失后的 `iif_detached` 标记，以及 Mihomo 已创建网络设备但 TUN 栈尚未初始化完成的窗口。unit 就绪钩子与 app 就绪均需 API 确认 TUN 实际开启；单凭接口或 `systemd active` 不判定成功。清理使用独立受保护 instance-id，不依赖损坏的 current 配置；不删除无法确认归属的规则、路由或接口。
+
+此 OrbStack VM 为所有 system service 注入会弱化 sandbox 的全局 drop-in，且 LXC generator 会在 daemon-reload 时重建它。测试 fixture 在专用 VM 临时保存这两份文件，结束后按原始 SHA256 恢复并 reload，没有重启其他服务。产品仍拒绝额外 drop-in，没有为测试环境放宽 unit 所有权或权限校验。各轮创建的专用 unit、账号、安装目录、网络 fixture 和 TUN 管理记录已清理。
+
+本轮也显式执行既有 `./scripts/e2e.sh lazyclash-e2e`；默认 9097/7897 端口被该 VM 其他已有 Mihomo 实例占用，脚本按预期在资源创建前退出，没有停止已有进程。完整运行验收由新入口使用独立动态端口完成；本轮不将旧入口报告为通过。Mihomo 使用明确选择的本地 v1.19.33 可执行文件副本，不读取旧安装的订阅或凭据，也不把这次本地安装验收描述为官方下载安装链路验证。
+
+入口：
+
+```sh
+make package VERSION=dev
+# 解包对应 VM 架构的归档后；第三个参数是 VM 内明确选择的 Mihomo 可执行文件
+./scripts/service-scopes-e2e.sh VM /absolute/packaged/lazyclash /absolute/vm/mihomo
+./scripts/service-scopes-e2e.sh VM /absolute/packaged/lazyclash /absolute/vm/mihomo --proxy-only
+./scripts/service-scopes-e2e.sh VM /absolute/packaged/lazyclash /absolute/vm/mihomo --ui-tun-only
+```
+
+脱敏证据位于忽略目录 `.test-artifacts/`：`scopes-check.log`、`scopes-race.log`、`scopes-linux.log`、`scopes-root-tests.log`、`package-verify.log`、`scopes-index-check.log`、`scopes-index-linux.log`、`tun-index-check.log`、`service-scopes-e2e.log`、`service-scopes-proxy-e2e.log`、`service-scopes-ui-e2e.log` 与 `pty-root-tun-{120x36,80x24}.txt`。
+
+实际运行平台为 Linux/arm64；amd64 完成打包构建与归档验证，尚未在 amd64 机器运行。本轮没有重启 VM、注销最后一个真实 SSH 会话、同时运行 Alice/Bob 两个普通 UID，也未完成 IPv6 端到端流量测试；双栈规则/路由核对不等同于这些场景通过。自动交接、UID 流量筛选、普通用户提权与系统 resolver 改写不在首发范围。
+
+
 普通构建/单元测试不会调用 OrbStack、安装服务或修改系统配置。以下三类运行验证均为显式入口，不由 `go test` 自动触发。
 
 ## 移除 GitHub Release API 依赖（2026-11-03）

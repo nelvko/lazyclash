@@ -17,6 +17,8 @@ type BuildOptions struct {
 	Controller, Secret string
 	MixedPort          int
 	Mode               string
+	TUN                bool
+	ServiceName        string
 }
 
 // Build preserves unknown Mihomo fields and delegates their final semantics to
@@ -49,7 +51,13 @@ func Build(opts BuildOptions) ([]byte, error) {
 		return nil, err
 	}
 	if opts.Mode != "" {
-		return WithMode(out, opts.Mode)
+		out, err = WithMode(out, opts.Mode)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if opts.TUN {
+		return WithTUN(out, true, opts.ServiceName)
 	}
 	return out, nil
 }

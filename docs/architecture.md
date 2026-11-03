@@ -1,8 +1,8 @@
 # 代码结构与职责
 
-项目目标是 root 与普通用户各自拥有独立实例。普通用户默认使用 user backend，root 默认使用 system backend；普通用户经 sudo 授权可切换自己实例的执行 backend，owner 不变。普通代理可并存，TUN 管理权在同一网络命名空间内独占，流量覆盖策略独立于 owner。目标架构与重构顺序见 [服务 scope 与权限模型](service-scopes.md)；以下包结构和职责描述当前代码，不把现有用户服务限制视为最终架构。项目尚未发行，重构直接采用新契约，不增加旧 unit、manifest 或目录布局的兼容层。
+首发提供 Linux/systemd 的两种独立实例：普通用户使用 user scope，root 使用 system scope。`sudo lazyclash` 选择 root 实例，不复制或切换原用户配置。两者支持普通代理，root 的系统实例经明确确认可开启整台主机的 host TUN；同一网络命名空间内管理权独占。范围与权限见 [服务 scope](service-scopes.md)。项目未发行，不增加旧 unit、manifest、目录布局或命令的兼容层。
 
-lazyclash 当前只有一个可执行程序，入口位于根目录。源码内可直接 `go run .`、`go build .`，构建到指定目录使用 `make build`。Cobra 子命令集中在 `internal/cli`，不为每个子命令创建独立包。
+lazyclash 只有一个可执行程序，入口位于根目录。源码内可直接 `go run .`、`go build .`，构建到指定目录使用 `make build`；`make package VERSION=dev` 生成 Linux amd64/arm64 归档和 SHA256SUMS，包含该程序与 README。Cobra 子命令集中在 `internal/cli`，不为每个子命令创建独立包。
 
 ```text
 main.go                 信号、CLI 执行与进程退出
@@ -14,9 +14,9 @@ internal/
   app/                  CLI/TUI 共享用例、安装事务和失败恢复
   configuration/        Profile 元数据、私有快照与原子索引
   mihomo/               发布解析、下载校验、配置及控制 API
-  service/              systemd 用户服务操作
+  service/              systemd user/system unit、TUN 协调与有限生命周期钩子
   downloadnet/          互斥下载方式、统一 URL 改写及脱敏
-  store/                私有目录、原子写入与可取消进程锁
+  store/                作用域数据路径、私有目录、原子写入与可取消进程锁
 scripts/                显式运行的 Linux、PTY 和端到端验证
 ```
 
@@ -24,7 +24,7 @@ scripts/                显式运行的 Linux、PTY 和端到端验证
 
 语言属于展示层。CLI 在帮助与参数解析前选择语言，TUI 保存偏好成功后原地重绘，不重新构造输入框或重启内核。`i18n.Localizer` 按实例传入，零值保持英文，不使用可变全局语言。资源放在 `internal/i18n/locales/` 的成对 JSON 文件中，以稳定词条 ID 查找，缺失译文回退英文。新增词条需同步两种语言，`make i18n-check` 检查键、格式参数和代码引用。
 
-业务错误可通过 `diagnostic.Error` 保留消息 ID、参数和 `errors.Is/As` 错误链，在 CLI/TUI 显示时格式化；下载错误仅提供已有脱敏分类。快照中的英文诊断字段继续供机器输出使用，`json:"-"` 的错误旁路保留动态参数的消息身份。旧固定诊断由展示层精确映射，未知外部诊断和内核日志保留原文。CLI 自行管理帮助渲染，以覆盖根帮助、参数解析失败和设置偏好，不再由 Fang 覆盖帮助函数。
+业务错误可通过 `diagnostic.Error` 保留消息 ID、参数和 `errors.Is/As` 错误链，在 CLI/TUI 显示时格式化；下载错误仅提供已有脱敏分类。快照中的英文诊断字段供机器输出使用，`json:"-"` 的错误旁路保留动态参数的消息身份。固定诊断由展示层精确映射，未知外部诊断和内核日志保留原文。CLI 自行管理帮助渲染，覆盖根帮助、参数解析失败和设置偏好。
 
 ## 应用用例
 
@@ -35,6 +35,7 @@ scripts/                显式运行的 Linux、PTY 和端到端验证
 - `core_update.go`：独立只读版本检查、固定正式版升级目标、重启验证与回滚编排；版本文本和比较规则位于 `mihomo/update.go`、`mihomo/version.go`。
 - `install.go`：首次安装的文件准备、发布、服务注册及提交编排。
 - `installation.go`：安装记录、配置代际、文件树和所属关系。
+- `system_data.go`：系统部署的 root 路径/文件权限、专用服务身份和 Mihomo 降权执行上下文。
 - `recovery.go`：首次安装和配置应用的恢复日志与回滚。
 - `profiles.go`：构建并校验 Profile，发布独立运行代际、应用及回滚编排。
 - `configuration.go`：完整 Profile 的构建、用户覆写与安全状态查询。
@@ -46,7 +47,8 @@ scripts/                显式运行的 Linux、PTY 和端到端验证
 - `snapshot.go`：供界面和 CLI 使用的运行及安装状态。
 - `preferences.go`：引导历史和非敏感偏好。
 - `state.go`：绑定安装的运行意图、自启动偏好、操作状态与差异；Stop 优先于配置恢复。
-- `mode.go`、`capabilities.go`：模式持久化/动态应用和用户服务能力边界。
+- `mode.go`、`capabilities.go`：模式持久化/动态应用和 user/system 能力边界。
+- `tun.go`：显式 host TUN 配置与 unit 权限事务、就绪/回滚及有限服务生命周期入口。
 - `profile_import.go`：Profile 导入、订阅更新、地址修改及批量更新，校验后原子提交，不隐式应用。
 - `removal.go`：验证停止、禁用与所属关系后移除内核，保留用户数据。
 
@@ -54,7 +56,7 @@ scripts/                显式运行的 Linux、PTY 和端到端验证
 
 `configuration` 以 Profile 为唯一配置管理对象，保存稳定 ID、显示名称、描述、可选私密地址、更新时间、原文 revision 与覆写。不存在独立来源实体、共享引用或 Managed 配方。原文按内容摘要寻址，`library.json` 原子提交完整 Profile。`names.go` 负责名称解析、清理和去重，`app/profile_names.go` 负责改名和描述，下载更新直接复用同一次 HTTP 响应头。Mihomo Builder 负责完整配置覆写、受管字段和引用校验；`app` 负责内核验证及运行代提交。运行 generation 固定 Profile revision 与覆写，后续下载或编辑不改变已应用配置。领域模型和业务流程见 [配置设计](subscription-design.md)，执行结果见 [验证记录](subscription-verification.md)。
 
-首次安装分为文件准备、发布和服务注册。文件准备生成默认配置并完成 Mihomo 验证，不操作服务；应用用例在同一个进程锁和恢复日志保护下发布文件，再注册指向已发布路径的服务，最后提交安装记录。注册失败或取消时执行所属关系检查与恢复，不删除用户后来修改的文件。普通安装/重装继续原子发布并保持旧运行进程；独立升级用例则在原服务运行时重启，通过就绪和运行版本验证后才提交，否则恢复旧文件和运行状态。检查更新保持只读，详见 [内核更新](core-updates.md)。
+首次安装分为文件准备、发布和服务注册。文件准备生成默认配置并完成 Mihomo 验证；系统实例先准备专用非 root 身份，将版本探测和校验降权执行，发布目录和程序仍由 root 持有，只有独立 runtime 缓存可写。应用用例在同一个进程锁和恢复日志保护下发布文件，再注册指向已发布路径的服务，最后提交安装记录。注册失败或取消时执行所属关系检查与恢复，不删除后来出现的外来文件。普通安装/重装继续原子发布并保持旧运行进程；独立升级用例则在原服务运行时重启，通过就绪和运行版本验证后才提交，否则恢复旧文件和运行状态。检查更新保持只读，详见 [内核更新](core-updates.md)。
 
 服务适配层负责服务管理器的操作与定义验证。端口冲突、Mihomo 配置验证、API 就绪、引导历史及跨步骤回滚保留在应用层。服务处于 active 状态不能代替控制 API 就绪。
 
@@ -66,11 +68,13 @@ scripts/                显式运行的 Linux、PTY 和端到端验证
 
 全局操作反馈由 `tui/notification.go` 按操作和资源标识保存，右上角最多展开两条 Toast，旧消息在上、新消息在下；窄/矮屏使用单条紧凑布局，不改变正文高度或滚动位置。浮层从页头开始，输入区域限制可见容量，放不下的完整说明进入“另有 N 条 · 展开”，不会把通知推到输入框下方。`Ctrl+N` 打开有边界的通知列表，列表和完整技术详情复用 Bubbles viewport。进行中复用 spinner，同一操作的结果和重试更新原条目，独立操作不会因错误文字相同而合并。成功展开后显示三秒、普通信息四秒，溢出及被遮挡时暂停计时；失败跨页保留至手动关闭，无关成功不能覆盖旧失败。定时消息绑定条目和版本，关闭进度通知不取消任务。通知不抢焦点，Esc 优先处理活动输入、菜单、详情和弹窗；覆盖区域不接受底层点击或滚轮事件。订阅地址格式等局部校验贴近输入框显示，修改或离页清除；安装、网络、端口和配置弹窗保留自己的校验反馈，关闭后不重放。操作后的状态回读失败时保留库数据并将实际运行状态标为未知，后续有效观察恢复展示。完整行为见 [通知设计](notifications.md)。
 
-当前仅维护 `lazyclash-mihomo.service` 的 systemd 用户服务实现，不自动启动、enable、修改 linger 或提权。下一轮保留每个内核独立 unit，重构为明确的 user/system manager 与受保护的系统用例入口。已接受的多步变更交给 systemd 托管的按需事务执行器，补上当前主要等下一次应用调用才执行恢复的限制；TUN 门禁和清理接入 unit 生命周期。暂不新增自行监督全部内核的全局 daemon，具体取舍见 [内核托管与管理事务](service-scopes.md#内核托管与管理事务)。不通过删除 root 检查或在 systemctl 前拼 sudo 替代完整实现。没有其他平台或 init 系统的占位实现。
+每个 Mihomo 由独立 user/system unit 直接启动，systemd 负责 cgroup、异常重启、停止超时与自启动。system unit 另调用安装时复制到受保护路径的同一个 lazyclash 程序，以有限内部命令执行启动检查、TUN 就绪和退出清理；不另发 helper，不在钩子中启动后台进程。普通系统代理不授予额外 capabilities，明确开启 TUN 后才加入 `CAP_NET_ADMIN CAP_NET_RAW`；网络归属记录按 namespace、实例及 invocation 绑定，冲突与外部变更拒绝自动接管。具体边界见 [内核托管与管理事务](service-scopes.md#内核托管与管理事务)。
+
+安装、更新、配置与 TUN 事务仍由调用进程执行，持久 journal 支持即时回滚及下一次调用恢复。没有常驻 daemon、独立事务执行器或客户端离线后的立即管理恢复保证；systemd 的内核监督与退出钩子独立继续。安装不自动 Start/Enable，用户实例不自动修改 linger，普通用户界面不请求提权。root 数据默认 `/var/lib/lazyclash/<service-name>`，用户使用 XDG 数据目录，两者不共享安装记录。
 
 后续增加真实平台需求时，通过已有应用层服务接口接入并验证相应适配器，优先评估现有库；不把第三方库类型暴露给 CLI/TUI。平台的权限、用户/系统服务范围及注销后的生命周期需要单独验证，不能由统一接口推断支持。当前不依赖尚未完成的 unisvc，也不使用平级目录的永久 `replace`。
 
-持久生命周期、用户/实际/操作状态与恢复策略见 [持久运行](runtime-lifecycle.md)，权限方案比较及扩展条件见 [权限边界](permissions.md)。当前没有常驻 daemon、特权 helper 或系统级 backend；未来新增平台扩展 service，新增内核扩展 mihomo 适配边界，根据真实差异调整应用接口，不预先创建空实现。
+持久生命周期、期望/实际/操作状态与恢复策略见 [持久运行](runtime-lifecycle.md)，系统身份、文件与能力约束见 [权限边界](permissions.md)。新增平台扩展 service，新增内核扩展 mihomo 适配边界，均依据明确需求和真实验证调整接口，不预先创建空实现。
 
 首次安装由 `tui/inline_install.go` 在 Overview 正文内呈现，复用 wizard 的检查、解析、预检与安装状态机。`wizard.inline` 与管理弹窗互斥，页面导航、焦点、滚动仍由概览管理；后台结果不会抢夺其他页面焦点。首屏只读查询最新稳定版，明确点击安装后才继续下载，完成后明确启动。下载设置统一为 direct/environment/accelerated；`downloadnet.Config.URL` 应用于版本文本及文件的所有请求。
 

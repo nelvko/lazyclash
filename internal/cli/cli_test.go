@@ -70,12 +70,3 @@ func TestInitPreservesNamespaceAndQuotesShellInput(t *testing.T) {
 		t.Fatal(out.String())
 	}
 }
-
-func TestTUIRequiresNormalLinuxUser(t *testing.T) {
-	if err := requireUnprivilegedTUI("linux", 0); err == nil || !strings.Contains(err.Error(), "without sudo") {
-		t.Fatal("root TUI did not explain the unprivileged service boundary")
-	}
-	if err := requireUnprivilegedTUI("linux", 1000); err != nil {
-		t.Fatal(err)
-	}
-}

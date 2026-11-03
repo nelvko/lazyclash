@@ -88,7 +88,10 @@ func (a *App) prepareInstallLocked(ctx context.Context, release mihomo.Release, 
 		if err != nil || !info.Mode().IsRegular() || info.Size() > 256<<20 {
 			return p, diagnostic.New("diagnostic.install.localReadable", "local Mihomo must be a readable regular file at most 256 MiB")
 		}
-		version, err := a.Version(ctx, local)
+		if err := a.prepareSystemHome(ctx); err != nil {
+			return p, err
+		}
+		version, err := a.binaryVersion(ctx, local)
 		if err != nil {
 			return p, err
 		}
@@ -254,11 +257,21 @@ func (a *App) installCoreLocked(ctx context.Context, fresh InstallPlan, cfg down
 			progress(mihomo.Progress{Stage: stage, Detail: detail})
 		}
 	}
+	if err := a.prepareSystemHome(ctx); err != nil {
+		return result, err
+	}
+	ctx, err := a.executionContext(ctx)
+	if err != nil {
+		return result, err
+	}
 	stage, err := os.MkdirTemp(a.Home, ".core-stage-*")
 	if err != nil {
 		return result, err
 	}
 	defer os.RemoveAll(stage)
+	if err := a.systemDirectory(stage); err != nil {
+		return result, err
+	}
 	newBin := filepath.Join(stage, "mihomo")
 	if fresh.Local != "" {
 		report("download", "Copying the selected local Mihomo binary")
@@ -278,8 +291,11 @@ func (a *App) installCoreLocked(ctx context.Context, fresh InstallPlan, cfg down
 		}
 	}
 	report("verify", "Verifying the staged Mihomo executable")
-	version, err := a.Version(ctx, newBin)
+	version, err := a.binaryVersion(ctx, newBin)
 	if err != nil {
+		return result, err
+	}
+	if err := a.systemFile(newBin, 0750); err != nil {
 		return result, err
 	}
 	if version != fresh.Release.Version {
@@ -338,7 +354,7 @@ func (a *App) replaceCoreLocked(ctx context.Context, newBin, version string, res
 	}
 	// The replacement core must resolve providers and local assets in the same
 	// stable home as the running service, just like ordinary configuration apply.
-	if err := a.Validate(ctx, newBin, config, data); err != nil {
+	if err := a.validateBinaryConfig(ctx, newBin, config, data); err != nil {
 		return err
 	}
 	oldSHA := m.BinarySHA
@@ -468,7 +484,7 @@ func (a *App) recoverCore(ctx context.Context) error {
 	if err := a.requireService(); err != nil {
 		return err
 	}
-	if err := a.Service.Verify(ctx, bin, config, data); err != nil {
+	if err := a.verifyForStop(ctx, bin, config, data); err != nil {
 		return err
 	}
 	info, err := os.Lstat(bin)

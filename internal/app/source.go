@@ -77,7 +77,9 @@ func (a *App) downloadSource(ctx context.Context, source string) (downloadedSour
 }
 func (a *App) validateConfig(ctx context.Context, m manifest, config []byte) error {
 	bin, _, data := a.paths()
-	stage, err := os.MkdirTemp(data, ".validate-*")
+	// Runtime belongs to the unprivileged service in system scope. Keep root's
+	// staging writes in the protected installation directory instead.
+	stage, err := os.MkdirTemp(filepath.Dir(bin), ".validate-*")
 	if err != nil {
 		return err
 	}
@@ -86,5 +88,11 @@ func (a *App) validateConfig(ctx context.Context, m manifest, config []byte) err
 	if err := store.Replace(path, config, nil, 0600); err != nil {
 		return err
 	}
-	return a.Validate(ctx, bin, path, data)
+	if err := a.systemDirectory(stage); err != nil {
+		return err
+	}
+	if err := a.systemFile(path, 0640); err != nil {
+		return err
+	}
+	return a.validateBinaryConfig(ctx, bin, path, data)
 }

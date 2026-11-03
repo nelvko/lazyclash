@@ -2,7 +2,7 @@
 
 以 TUI 为主要交互的 Mihomo 终端代理管理工具。Go module：`github.com/nelvko/lazyclash`。
 
-项目目标同时支持 root 和普通用户：各自拥有独立实例，普通用户默认使用自己的 user service，经 sudo 授权后可为本实例启用特权执行后端和 TUN。普通代理可并存，同一网络命名空间内的 lazyclash TUN 管理权独占，流量覆盖范围单独配置。当前实现尚限于非 root 用户服务；目标设计见 [服务 scope 设计](docs/service-scopes.md)。项目处于开发阶段，不承诺旧数据格式或服务定义兼容。
+Linux/systemd 同时支持普通用户的 user 实例和 root 的独立 system 实例；两者均可运行本机 HTTP/SOCKS 代理，root 可明确确认后启用整台主机的 TUN。`sudo lazyclash` 操作 root 自己的配置和服务，不复制用户数据或切换原用户实例。普通代理可在端口不冲突时并存，同一网络命名空间内的 TUN 管理权独占。首发范围见 [服务 scope](docs/service-scopes.md)；项目未发行，不提供旧数据格式、unit 或命令行为兼容层。
 
 ## 构建与使用
 
@@ -15,7 +15,9 @@ make build
 go run .
 ```
 
-服务与内核安装当前支持 **Linux/systemd 用户服务、arm64 与 amd64**。macOS 可构建、运行 TUI、配置下载网络及查询 Linux 发布信息，但预检查会明确阻止安装和服务管理，没有 macOS 空后端。
+服务与内核安装支持 **Linux/systemd 的 user/system 服务、arm64 与 amd64**。macOS 可构建、运行 TUI、配置下载网络及查询 Linux 发布信息，但预检查会明确阻止安装和服务管理，没有 macOS 空后端。
+
+发行打包使用 `make package VERSION=dev`：在 `bin/packages/` 生成 `lazyclash_dev_linux_amd64.tar.gz`、`lazyclash_dev_linux_arm64.tar.gz` 和 `lazyclash_dev_SHA256SUMS`。每个归档包含一个 lazyclash 可执行程序及 README；Mihomo 在使用时下载或从明确选择的本地文件安装。管理员使用 root 实例前，应把可信发行程序安装到受保护的位置，例如 `/usr/local/bin/lazyclash`。
 
 在 macOS 终端执行 `./scripts/dev.sh` 可构建并进入现有的专用 OrbStack 虚拟机；进入后直接输入 `lazyclash`。脚本自动选择唯一的 `lazyclash` / `lazyclash-*` 虚拟机并检测其架构，构建产物为 `bin/linux-架构/lazyclash`，仅向当前虚拟机 Shell 的 PATH 添加该目录。程序使用正常默认数据目录和服务名，安装及启动由你在 TUI 中操作。多个专用虚拟机时可用 `./scripts/dev.sh VM_NAME` 选择；`exit` 返回 macOS。
 
@@ -35,7 +37,7 @@ CLI 帮助与面向用户的提示随语言切换。JSON 字段、状态值、�
 
 ## 首页与安装向导
 
-默认进入带侧边导航的 Overview。未安装 Mihomo 时，概览正文直接呈现紧凑安装区，后台只读检查最新稳定版，默认聚焦 **下载并安装 / Download and install**。按一次 Enter 后开始安装，没有内核选择或第二次确认。启动 TUI 不自动下载或安装内核。选择 **稍后设置 / Set up later** 后，本次会话显示正常概览，可继续浏览所有页面，并从 Settings 打开内核管理和下载方式设置；下次启动未安装实例时重新显示引导。旧的持久关闭引导偏好仍然有效。
+默认进入带侧边导航的 Overview。未安装 Mihomo 时，概览正文直接呈现紧凑安装区，后台只读检查最新稳定版，默认聚焦 **下载并安装 / Download and install**。按一次 Enter 后开始安装，没有内核选择或第二次确认。启动 TUI 不自动下载或安装内核。选择 **稍后设置 / Set up later** 后，本次会话显示正常概览，可继续浏览所有页面，并从 Settings 打开内核管理和下载方式设置；下次启动未安装实例时重新显示引导。
 
 安装会自动准备可运行的**内置默认配置**，并明确显示“内置默认配置已就绪”；启动仍由用户在 Overview 明确操作。订阅和用户导入的本地 YAML 均为可选，不作为完成设置或启动的前置条件。内置配置的 `PROXY → DIRECT` 是正常策略，支持 `DIRECT`、`REJECT`；可随时在 Profiles 添加订阅或配置。安装后及正常停止时不再显示未完成引导。
 
@@ -54,7 +56,7 @@ CLI 帮助与面向用户的提示随语言切换。JSON 字段、状态值、�
 
 窄屏 Menu 抽屉打开时定位当前页，`↑↓` 同步浏览并保持抽屉打开；`Enter`、`→`、`l` 或 `Tab` 关闭抽屉并进入内容，`Esc`、`←` 或 `h` 关闭后回到 Menu，已浏览到的页面继续保留。鼠标点击菜单后切页并关闭抽屉。
 
-Overview 自适应撑满内容区，展示 Core、TUN、System proxy 控制卡、Rule / Global / Direct 模式选择，以及当前配置、代理组、流量、内核信息和系统信息。内核启停、重启和模式切换调用现有应用用例，完成后重新读取状态；运行模式与保存模式分别显示。TUN 和系统代理目前没有切换后端，显示不可用原因，系统代理明确标为 Unmanaged，不显示虚假的关闭状态。宽窗口使用多列卡片，窄窗口逐步收为单列；运行指标按空间分两列或四列。运行后自动展示实际上传/下载速率、活动连接数、本次内核运行累计流量及内核 RSS；未安装、停止、正在连接、部分数据不可用和 API 不可达分别反馈，不把缺失数据显示为零。
+Overview 自适应撑满内容区，展示 Core、Rule / Global / Direct 模式、当前配置、代理组、流量、内核与系统信息。启停、重启、模式和 TUN 操作调用共享应用用例，完成后重新读取状态；运行值与保存值分别显示。环境卡明确显示 user/system scope；普通用户 TUN 显示不支持，root 系统实例提供整台主机 TUN 的确认入口。系统代理标为 Unmanaged，不显示虚假的关闭状态。宽窗口使用多列卡片，窄窗口逐步收为单列；运行指标按空间分两列或四列。运行后自动展示实际上传/下载速率、活动连接数、本次内核运行累计流量及内核 RSS；未安装、停止、正在连接、部分数据不可用和 API 不可达分别反馈，不把缺失数据显示为零。
 
 ## 运行监控与连接
 
@@ -139,9 +141,16 @@ CLI 使用同一事务用例：`lazyclash settings show` 查看，`lazyclash set
 
 ## 持久运行与权限
 
-当前交付 Linux + systemd 用户服务 + Mihomo 本机 HTTP/SOCKS 代理。启动要求已明确启用 linger；TUI 退出或终端挂断不发送 Stop。运行意图、模式、节点缓存和显式订阅来源持久保存，状态展示实际 systemd/API 及差异。`service enable/disable` 独立控制自启动，`mode`、`profile refresh`、`uninstall` 复用共享用例。详细行为和验收见 [持久运行](docs/runtime-lifecycle.md)。
+普通用户通过 systemd user service 运行，Start/Restart/Enable 要求已明确启用 linger；root 通过 systemd system service 运行，不依赖登录会话或 linger。安装不启动、不 enable、不修改 linger，TUI 退出或终端挂断不发送 Stop。运行意图、模式、TUN 策略、节点缓存和显式订阅来源持久保存。`service enable/disable` 独立控制自启动；多步管理事务中断后，遗留 journal 在下一次应用调用时恢复，没有后台 daemon 或独立事务执行器代跑。详细行为见 [持久运行](docs/runtime-lifecycle.md)。
 
-本版不提供特权 TUN、系统级服务或系统代理接管，开启请求会明确失败；不要求整个 TUI 以 root 运行，也不对用户可写 Mihomo 设置 capabilities。方案比较与后续安全条件见 [权限管理](docs/permissions.md)。
+system Mihomo 使用专用非 root 账号；普通代理无额外 capabilities，明确开启 TUN 才授予 `CAP_NET_ADMIN CAP_NET_RAW`。TUI 默认取消的弹窗和 CLI `tun on --scope host --confirm-host` 均说明整台主机、其他用户和服务的流量及 DNS 影响。停止时开启仅保存策略；运行时切换会重启内核。启动及退出由同一受保护 lazyclash 程序的有限 unit 钩子检查冲突、记录并清理自有接口/路由，不自动抢占其他实例或 VPN。TUN 的 DNS 劫持不修改系统 resolver；系统代理自动设置、普通用户 TUN 和 UID 筛选不在首发范围。权限细节与限制见 [权限管理](docs/permissions.md)。
+
+```sh
+# 已安装到受保护路径；始终操作独立 root 实例
+sudo /usr/local/bin/lazyclash
+sudo /usr/local/bin/lazyclash tun on --scope host --confirm-host
+sudo /usr/local/bin/lazyclash tun off
+```
 
 ## CLI 与 Shell
 
@@ -179,8 +188,6 @@ lazyclash doctor
 
 网络 flags：`--download-method direct|environment|accelerated`、`--acceleration-prefix URL`、`--remember-download-settings`。未指定的设置复用已保存偏好。
 
-旧偏好仅迁移有明确等价关系的组合：official + none → 直连、official + environment → 使用环境代理、prefix + none → GitHub 加速。旧 mirror、自定义代理或其他组合会明确报错并保留原文件供处理；旧网络 flags 已移除。
-
 子进程和 TUI 无法修改父 Shell；显式求值：
 
 ```sh
@@ -192,9 +199,9 @@ lazyclash_on   # 启动成功后设置当前 Shell 环境
 lazyclash_off  # 清除环境，不停止服务
 ```
 
-服务名为用户级 `lazyclash-mihomo.service`，不提权、不自动 enable 或修改 linger；Start/Restart 要求 linger 已启用，显式 `service enable/disable` 管理自启动。API `127.0.0.1:9097`、mixed `127.0.0.1:7897`；安装和启动前检查冲突，不停止已有服务腾位置。API 密钥自动生成和注入，状态不输出密钥。服务 stdout/stderr 丢弃，避免 provider URL 凭据进入 journal；退出原因通过 systemd Result、退出状态和重启计数查询。
+默认服务名为 `lazyclash-mihomo.service`，user/system manager 各自管理，不共享配置或安装记录。API 默认 `127.0.0.1:9097`、mixed 默认 `127.0.0.1:7897`；并存实例须调整端口，冲突时不会停止其他服务腾位置。API 密钥自动生成和注入，状态不输出密钥。服务 stdout/stderr 丢弃，避免 provider URL 凭据进入 journal；退出原因通过 systemd Result、退出状态和重启计数查询。
 
-默认数据目录 `$XDG_DATA_HOME/lazyclash`（或 `~/.local/share/lazyclash`）。`--home ABS` / `LAZYCLASH_HOME` 隔离数据；`--service-name lazyclash-NAME` / `LAZYCLASH_SERVICE` 隔离 unit，仍需避免端口冲突。私有目录和 `0600` 文件保护配置、原始订阅、偏好与恢复日志；进程锁等待可取消，锁文件不删除。检测到用户修改的文件或 unit 时保留现场并报错。
+普通用户默认数据目录为 `$XDG_DATA_HOME/lazyclash`（或 `~/.local/share/lazyclash`），可用 `--home ABS` / `LAZYCLASH_HOME` 和 `--service-name lazyclash-NAME` / `LAZYCLASH_SERVICE` 隔离实例。root 默认 `/var/lib/lazyclash/<service-name>`，忽略这两个用户环境变量及 XDG 数据目录，按显式 flags 选择独立路径和服务。系统数据及祖先必须受 root 保护，且不能位于 unit 沙箱隐藏的 `/tmp`、`/var/tmp`、`/home`、`/root`、`/run/user` 下；仅运行缓存由专用服务账号写入。配置、原始订阅、偏好与恢复记录按必要权限私密保存。进程锁等待可取消，锁文件不删除；检测到外来文件、unit/drop-in 或归属变化时保留现场并报错。
 
 ## 开发与验证
 
@@ -203,14 +210,17 @@ make check
 make race
 make i18n-check
 make build
+make package VERSION=dev
 python3 -m unittest discover -s scripts -p 'test_*.py'
 orb list
 ./scripts/verify-linux.sh "$VM"
 ./scripts/e2e.sh "$VM"
+# 双作用域测试另传打包后的可执行程序及 VM 内明确选择的 Mihomo
+./scripts/service-scopes-e2e.sh "$VM" /absolute/packaged/lazyclash /absolute/vm/mihomo
 ```
 
 普通测试仅用临时目录、fixture 与 fake 服务，不创建 VM 或修改真实代理。真实 Linux、PTY 与 Mihomo/systemd 测试显式执行，使用临时目录、随机专用 unit、冲突检查和失败清理，详情见 [验证说明](docs/verification.md)。未实测平台不得由交叉编译推断为已通过。
 
-程序入口为根目录 `main.go`。`internal/cli` 保留 Cobra 子命令与 Shell 集成，`internal/tui` 负责交互与响应式渲染；二者直接调用 `internal/app` 的共用用例，包括运行采样和单连接关闭。`internal/downloadnet` 负责来源与连接，`internal/mihomo` 负责发布、下载、校验和控制 API，`internal/service` 负责 systemd 用户服务，`internal/store` 负责原子文件与进程锁。具体边界见 [代码结构](docs/architecture.md)。
+程序入口为根目录 `main.go`。`internal/cli` 保留 Cobra 子命令与 Shell 集成，`internal/tui` 负责交互与响应式渲染；二者直接调用 `internal/app` 的共用用例，包括运行采样和单连接关闭。`internal/downloadnet` 负责来源与连接，`internal/mihomo` 负责发布、下载、降权校验、TUN 配置和控制 API，`internal/service` 负责 systemd user/system 服务及有限 TUN 生命周期，`internal/store` 负责作用域数据路径、原子文件与进程锁。具体边界见 [代码结构](docs/architecture.md)。
 
 [路线图](docs/roadmap.md)。参考旧项目仅用于只读研究，不读取旧运行配置，不继承历史、提供旧别名或实现迁移层。

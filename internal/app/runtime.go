@@ -8,6 +8,7 @@ import (
 
 	"github.com/nelvko/lazyclash/internal/diagnostic"
 	"github.com/nelvko/lazyclash/internal/mihomo"
+	"github.com/nelvko/lazyclash/internal/service"
 	"github.com/nelvko/lazyclash/internal/store"
 )
 
@@ -28,6 +29,11 @@ func (a *App) registerService(ctx context.Context) error {
 		return err
 	}
 	bin, config, data := a.paths()
+	if s, ok := a.Service.(*service.Systemd); ok && s.Scope == service.System {
+		if err := service.PrepareTUNRuntime(); err != nil {
+			return err
+		}
+	}
 	return a.Service.Install(ctx, bin, config, data)
 }
 
@@ -71,7 +77,13 @@ func (a *App) waitReady(ctx context.Context, m manifest) error {
 			return diagnostic.New("diagnostic.runtime.serviceFailed", "Mihomo service failed (result=%s, exit=%d); inspect status before retrying", status.Result, status.ExitCode)
 		}
 		if status.Active && a.client(m).Ping(ctx) == nil && a.probeProxy(ctx, m.Port) == nil {
-			return nil
+			if !m.TUN {
+				return nil
+			}
+			cfg, err := a.client(m).Configuration(ctx)
+			if err == nil && cfg.TUN {
+				return nil
+			}
 		}
 		select {
 		case <-ctx.Done():
@@ -97,11 +109,21 @@ func (a *App) Control(ctx context.Context, action string) error {
 	if action != "start" && action != "stop" && action != "restart" {
 		return diagnostic.New("diagnostic.runtime.action", "unsupported service action")
 	}
+	if a.systemService() != nil {
+		if err := trustedRootAncestors(a.Home); err != nil {
+			return err
+		}
+	}
 	unlock, err := store.Lock(ctx, a.Home)
 	if err != nil {
 		return err
 	}
 	defer unlock()
+	if a.systemService() != nil {
+		if err := trustedRootAncestors(a.Home); err != nil {
+			return err
+		}
+	}
 	if err := a.requireService(); err != nil {
 		return err
 	}
@@ -125,6 +147,11 @@ func (a *App) Control(ctx context.Context, action string) error {
 	}
 	if err := a.checkPersistent(ctx); err != nil {
 		return err
+	}
+	if m.TUN {
+		if err := a.checkTUNConflict(ctx, m); err != nil {
+			return err
+		}
 	}
 	configBytes, err := store.Read(config)
 	if err != nil {
@@ -157,9 +184,6 @@ func (a *App) Control(ctx context.Context, action string) error {
 	raw, err := a.saveRuntimeRecord(r, old)
 	if err != nil {
 		return err
-	}
-	if err := a.upgradeService(ctx); err != nil {
-		return a.finishOperation(r, raw, err)
 	}
 	if err := a.clearStop(); err != nil {
 		return a.finishOperation(r, raw, err)

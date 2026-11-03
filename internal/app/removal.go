@@ -96,6 +96,8 @@ func (a *App) removalTree(owner manifest) (map[string]string, error) {
 	for path, kind := range tree {
 		switch {
 		case path == "." || path == "mihomo" || path == "current" || path == "runtime" || path == "generations" || strings.HasPrefix(path, "runtime/"):
+		case a.systemService() != nil && path == "lazyclash" && owner.LifecycleSHA != "" && kind == "file:"+owner.LifecycleSHA:
+		case a.systemService() != nil && path == "instance-id" && kind == "file:"+digest([]byte(owner.ID)):
 		case generationName.MatchString(path) && kind == "directory":
 			raw, err := store.Read(filepath.Join(base, path, "manifest.json"))
 			if err != nil {

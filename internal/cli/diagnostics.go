@@ -19,7 +19,7 @@ func newStatusCommand(backend func() *app.App) *cobra.Command {
 }
 
 func newDoctorCommand(backend func() *app.App) *cobra.Command {
-	return &cobra.Command{Use: "doctor", Short: "Diagnose user systemd, linger and API availability", Args: noArgs, RunE: func(cmd *cobra.Command, args []string) error {
+	return &cobra.Command{Use: "doctor", Short: "Diagnose service scope, systemd and API availability", Args: noArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		s, err := backend().Snapshot(cmd.Context())
 		if err != nil {
 			return err
@@ -30,9 +30,9 @@ func newDoctorCommand(backend func() *app.App) *cobra.Command {
 		if s.ServiceError != "" {
 			return reportedError(s.ServiceError, s.ServiceDiagnostic)
 		}
-		if !s.Service.LingerKnown {
+		if s.Capabilities.Scope == "user" && !s.Service.LingerKnown {
 			fmt.Fprintln(cmd.ErrOrStderr(), commandLocale(cmd).T("cli.doctor.linger_unknown"))
-		} else if !s.Service.Linger {
+		} else if s.Capabilities.Scope == "user" && !s.Service.Linger {
 			fmt.Fprintln(cmd.ErrOrStderr(), commandLocale(cmd).T("cli.doctor.linger_disabled"))
 		}
 		if s.APIError != "" {

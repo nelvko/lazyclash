@@ -5,7 +5,9 @@ import (
 	"context"
 	"net/http"
 	"os"
+	"path/filepath"
 	"regexp"
+	"runtime"
 
 	"github.com/nelvko/lazyclash/internal/downloadnet"
 	"github.com/nelvko/lazyclash/internal/mihomo"
@@ -46,11 +48,7 @@ type App struct {
 }
 
 func New(home, name string) (*App, error) {
-	root, err := store.Home(home)
-	if err != nil {
-		return nil, err
-	}
-	if name == "" {
+	if name == "" && !(runtime.GOOS == "linux" && os.Geteuid() == 0) {
 		name = os.Getenv("LAZYCLASH_SERVICE")
 	}
 	if name == "" {
@@ -59,20 +57,38 @@ func New(home, name string) (*App, error) {
 	if !regexp.MustCompile(`^lazyclash-[A-Za-z0-9-]+$`).MatchString(name) {
 		return nil, diagnostic.New("diagnostic.app.serviceName", "invalid lazyclash service name")
 	}
+	root, err := store.HomeForService(home, name)
+	if err != nil {
+		return nil, err
+	}
 	svc, platformErr := service.New(name)
 	a := &App{Home: root, Name: name, PlatformError: platformErr, Download: mihomo.Download, Version: mihomo.BinaryVersion, Validate: mihomo.Validate}
 	if svc != nil {
+		if svc.Scope == service.System {
+			svc.Home = root
+			svc.Lifecycle = filepath.Join(root, "installation", "lazyclash")
+		}
 		a.Service = svc
 	}
 	return a, nil
 }
 
 func (a *App) locked(ctx context.Context, fn func() error) error {
+	if a.systemService() != nil {
+		if err := trustedRootAncestors(a.Home); err != nil {
+			return err
+		}
+	}
 	unlock, err := store.Lock(ctx, a.Home)
 	if err != nil {
 		return err
 	}
 	defer unlock()
+	if a.systemService() != nil {
+		if err := trustedRootAncestors(a.Home); err != nil {
+			return err
+		}
+	}
 	if err := a.recover(ctx); err != nil {
 		return err
 	}

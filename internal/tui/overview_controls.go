@@ -137,10 +137,15 @@ func overviewSystemCard(o dashboardOptions, width int) dashboardBlock {
 	scope := clean(s.Capabilities.Scope)
 	if scope == "" || scope == "user" {
 		scope = tr("dashboard.system.user")
+	} else if scope == "system" {
+		scope = tr("dashboard.system.system")
 	}
 	manager, autostart := tr("dashboard.status.unavailable"), tr("dashboard.status.unknown")
 	if s.Capabilities.Runtime.Supported {
 		manager = tr("dashboard.system.manager")
+		if s.Capabilities.Scope == "system" {
+			manager = tr("dashboard.system.systemManager")
+		}
 		if s.ServiceError == "" {
 			switch s.Service.EnableState {
 			case "enabled":
@@ -161,11 +166,24 @@ func overviewSystemCard(o dashboardOptions, width int) dashboardBlock {
 		themed(tr("dashboard.system.serviceManager", manager), muted, panel, o.Dim),
 		themed(tr("dashboard.system.autostart", autostart), muted, panel, o.Dim),
 	}
-	lines = append(lines, "",
-		themed(tr("dashboard.field.tun")+" · "+tr("dashboard.control.tunHint"), muted, panel, o.Dim),
+	var buttons []overviewControlButton
+	tunHint := tr("dashboard.control.tunHint")
+	if s.Capabilities.TUN.Supported {
+		state, id, label := tr("dashboard.control.off"), "tun.enable", tr("tun.enable")
+		if s.TUN {
+			state, id, label = tr("dashboard.control.on"), "tun.disable", tr("tun.disable")
+		}
+		tunHint = tr("tun.saved_state", state) + " · " + tr("tun.host_scope")
+		buttons = append(buttons, overviewControlButton{id: id, label: label, enabled: !o.Busy && runtimeControlIssue(s, o.Locale) == ""})
+	}
+	lines = append(lines, "", themed(tr("dashboard.field.tun")+" · "+tunHint, muted, panel, o.Dim))
+	if s.TUNError != "" {
+		lines = append(lines, themed(clean(o.Locale.Detail(s.TUNError)), warning, panel, o.Dim))
+	}
+	lines = append(lines,
 		themed(tr("dashboard.field.systemProxy")+" · "+tr("dashboard.control.unmanaged"), text, panel, o.Dim),
 		themed(tr("dashboard.control.systemProxyHint"), muted, panel, o.Dim))
-	return overviewControlPanel(o, width, tr("dashboard.system.title"), lines, nil)
+	return overviewControlPanel(o, width, tr("dashboard.system.title"), lines, buttons)
 }
 
 func overviewKernelCard(o dashboardOptions, width int) dashboardBlock {

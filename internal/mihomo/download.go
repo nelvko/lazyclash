@@ -153,7 +153,7 @@ func transfer(ctx context.Context, dest string, source string, expectedSize int6
 	if extracted > binaryLimit {
 		return diagnostic.New("diagnostic.download.executableLimit", "Mihomo executable exceeds 128 MiB")
 	}
-	if err = out.Chmod(0700); err != nil {
+	if err = prepareDownloadedExecutable(ctx, out); err != nil {
 		return err
 	}
 	if err = out.Sync(); err != nil {

@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 
 	mango "github.com/muesli/mango-cobra"
 	"github.com/muesli/roff"
+	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/diagnostic"
 	"github.com/nelvko/lazyclash/internal/i18n"
 	"github.com/nelvko/lazyclash/internal/store"
@@ -42,7 +44,7 @@ func Execute(ctx context.Context, args []string) error {
 
 // A read-only scan selects presentation before Cobra handles --help or rejects
 // arguments. Known value flags consume their next token, and -- ends scanning.
-func bootstrapPresentation(root *cobra.Command, args []string) (home, language string) {
+func bootstrapPresentation(root *cobra.Command, args []string) (home, language, serviceName string) {
 	flags := map[string]*pflag.Flag{}
 	var collect func(*cobra.Command)
 	collect = func(cmd *cobra.Command) {
@@ -78,15 +80,23 @@ func bootstrapPresentation(root *cobra.Command, args []string) (home, language s
 			home = value
 		case "lang":
 			language = value
+		case "service-name":
+			serviceName = value
 		}
 	}
-	return home, language
+	return home, language, serviceName
 }
 
 // Reading a language preference never creates directories, locks or services.
 // A missing/damaged preference must not prevent help or env --unset from working.
-func preferredLanguage(home string) string {
-	path, err := store.Home(home)
+func preferredLanguage(home, name string) string {
+	if name == "" && !(runtime.GOOS == "linux" && os.Geteuid() == 0) {
+		name = os.Getenv("LAZYCLASH_SERVICE")
+	}
+	if name == "" {
+		name = app.DefaultService
+	}
+	path, err := store.HomeForService(home, name)
 	if err != nil {
 		return ""
 	}
@@ -105,13 +115,17 @@ func commandLocale(cmd *cobra.Command) i18n.Localizer {
 	root := cmd.Root()
 	language, _ := root.PersistentFlags().GetString("lang")
 	home, _ := root.PersistentFlags().GetString("home")
+	name, _ := root.PersistentFlags().GetString("service-name")
 	if language == "" {
 		language = root.Annotations["i18n.explicit"]
 	}
 	if home == "" {
 		home = root.Annotations["i18n.home"]
 	}
-	return i18n.New(i18n.Resolve(language, preferredLanguage(home), os.Getenv))
+	if name == "" {
+		name = root.Annotations["i18n.service-name"]
+	}
+	return i18n.New(i18n.Resolve(language, preferredLanguage(home, name), os.Getenv))
 }
 
 func invocationError(locale i18n.Localizer, err error) string {
@@ -216,8 +230,8 @@ func configurePresentation(root *cobra.Command, args []string) {
 			return err
 		},
 	})
-	home, language := bootstrapPresentation(root, args)
-	root.Annotations = map[string]string{"i18n.home": home, "i18n.explicit": language}
+	home, language, name := bootstrapPresentation(root, args)
+	root.Annotations = map[string]string{"i18n.home": home, "i18n.explicit": language, "i18n.service-name": name}
 	root.SetHelpFunc(func(cmd *cobra.Command, _ []string) { renderHelp(cmd, commandLocale(cmd)) })
 	root.SetUsageFunc(func(cmd *cobra.Command) error { renderHelp(cmd, commandLocale(cmd)); return nil })
 	localizeCommandTree(root, commandLocale(root))

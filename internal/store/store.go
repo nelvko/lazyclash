@@ -7,6 +7,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"time"
 
 	"github.com/nelvko/lazyclash/internal/diagnostic"
@@ -14,6 +15,22 @@ import (
 )
 
 func Home(override string) (string, error) {
+	return HomeForService(override, "lazyclash-mihomo")
+}
+
+// HomeForService separates root system instances from user data and inherited
+// user environment. An explicit path remains available for isolated instances.
+func HomeForService(override, name string) (string, error) {
+	return homeForService(override, name, runtime.GOOS, os.Geteuid())
+}
+
+func homeForService(override, name, goos string, euid int) (string, error) {
+	if override == "" && goos == "linux" && euid == 0 {
+		if name == "" || name == "." || name == ".." || filepath.Base(name) != name {
+			return "", diagnostic.New("diagnostic.store.serviceName", "system data directory requires a valid service name")
+		}
+		override = filepath.Join("/var/lib/lazyclash", name)
+	}
 	if override == "" {
 		override = os.Getenv("LAZYCLASH_HOME")
 	}

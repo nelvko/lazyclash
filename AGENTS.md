@@ -7,12 +7,13 @@ lazyclash is a Go 1.26+ Mihomo proxy manager with a TUI-first interface.
 - `main.go`: executable entry point.
 - `internal/cli/` and `internal/tui/`: Cobra commands and Bubble Tea interaction, both calling shared `internal/app/` use cases. Do not invoke the CLI from the TUI.
 - `internal/configuration/`: Profile metadata and snapshots; `internal/mihomo/`: releases, configuration building, and control API.
-- `internal/service/`, `internal/downloadnet/`, `internal/store/`: systemd user services, download networking, and atomic storage/locking.
+- `internal/service/`, `internal/downloadnet/`, `internal/store/`: systemd user/system services and finite TUN lifecycle hooks, download networking, and scope-specific atomic storage/locking.
 - Tests live beside source as `*_test.go`. `scripts/` contains development and verification tools; `docs/` explains architecture and behavior. Generated binaries and diagnostics belong in ignored `bin/` and `.test-artifacts/`.
 
 ## Build, Test, and Development Commands
 
 - `make build`: build `bin/lazyclash`; `go run .`: run locally.
+- `make package VERSION=dev`: produce Linux amd64/arm64 archives and SHA256SUMS in `bin/packages/`.
 - `make test`: run all Go tests.
 - `make check`: run Go tests and `go vet ./...`.
 - `make race`: run tests with the race detector.
@@ -27,7 +28,7 @@ Use `gofmt` with tab indentation. Follow Go naming conventions: exported `MixedC
 
 Use Go's standard `testing` package, descriptive `TestBehavior` names, table-driven cases, `t.TempDir()`, local HTTP fixtures, and fake services. Cover cancellation, stale results, rollback, and credential redaction where relevant; no numeric coverage threshold is configured.
 
-Standalone core integration requires `LAZYCLASH_TEST_MIHOMO=/absolute/path/to/mihomo`. For Linux changes, explicitly run `./scripts/verify-linux.sh "$VM"`; real Mihomo/systemd/PTY verification uses `./scripts/e2e.sh "$VM"`. Read `docs/verification.md` first. Cross-compilation alone is not runtime verification.
+Standalone core integration requires `LAZYCLASH_TEST_MIHOMO=/absolute/path/to/mihomo`. For Linux changes, explicitly run `./scripts/verify-linux.sh "$VM"`; user Mihomo/systemd/PTY verification uses `./scripts/e2e.sh "$VM"`. Dual-scope and host TUN verification uses `./scripts/service-scopes-e2e.sh "$VM" /absolute/packaged/lazyclash /absolute/vm/mihomo`. Read `docs/verification.md` first. Cross-compilation alone is not runtime verification.
 
 ## Commit & Pull Request Guidelines
 
@@ -37,7 +38,9 @@ PRs should explain behavior changes, link relevant issues, and list verification
 
 ## Security & Configuration
 
-Service installation supports Linux/systemd user services, not macOS. Use isolated data directories and dedicated service names for runtime experiments. Never commit subscription credentials, API secrets, raw profiles, or unredacted logs.
+Service installation supports Linux/systemd user and system services, not macOS. Ordinary users manage only their user proxy; root manages an independent system instance under `/var/lib/lazyclash/<service-name>`, with a dedicated non-root Mihomo identity. `sudo lazyclash` never copies or switches user data. Host-only TUN requires explicit confirmation; ordinary system proxying has no extra capabilities, while TUN grants only `CAP_NET_ADMIN` and `CAP_NET_RAW`. Units directly start Mihomo and invoke finite lifecycle commands from the same protected lazyclash executable; there is no helper or daemon. Interrupted management journals recover on the next invocation. Do not add legacy compatibility or automatic migration.
+
+Use isolated data directories and dedicated service names for runtime experiments. Never commit subscription credentials, API secrets, raw profiles, or unredacted logs.
 
 ## Agent Instructions
 

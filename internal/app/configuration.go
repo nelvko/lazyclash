@@ -75,6 +75,7 @@ func (a *App) buildProfile(ctx context.Context, lib configuration.Library, name 
 		}
 	}
 	opts.Controller, opts.Secret, opts.MixedPort, opts.Mode = m.Controller, m.Secret, m.Port, m.Mode
+	opts.TUN, opts.ServiceName = m.TUN, a.Name
 	cfg, err := mihomo.Build(opts)
 	if err != nil {
 		return nil, record, diagnostic.New("diagnostic.profile.build", "profile %s could not be built: %w", name, err)

@@ -22,7 +22,7 @@ type serviceBackend interface {
 }
 
 func serviceCommand(backend func() serviceBackend) *cobra.Command {
-	cmd := &cobra.Command{Use: "service", Short: "Control the Linux systemd user service"}
+	cmd := &cobra.Command{Use: "service", Short: "Control the Linux systemd service in the selected scope"}
 	for _, action := range []string{"start", "stop", "restart"} {
 		cmd.AddCommand(&cobra.Command{Use: action, Short: strings.ToUpper(action[:1]) + action[1:] + " Mihomo", Args: noArgs, RunE: func(cmd *cobra.Command, args []string) error {
 			return backend().Control(cmd.Context(), cmd.Name())

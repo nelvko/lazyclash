@@ -11,18 +11,11 @@ import (
 )
 
 func TestResetFailedOwnedClearsOnlyVerifiedUnitWithoutChangingLifecycle(t *testing.T) {
-	for _, legacy := range []bool{false, true} {
-		name := "current"
-		if legacy {
-			name = "legacy"
-		}
+	for _, name := range []string{"current"} {
 		t.Run(name, func(t *testing.T) {
 			s, _ := testManager(t)
 			path := filepath.Join(s.UnitDir, s.Name+".service")
 			content, err := unitContent("/my/mihomo", "/my/config", "/my/data")
-			if legacy {
-				content, err = legacyUnitContent("/my/mihomo", "/my/config", "/my/data")
-			}
 			if err != nil {
 				t.Fatal(err)
 			}
