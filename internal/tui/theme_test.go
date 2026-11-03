@@ -104,7 +104,7 @@ func themeSample(name string) Model {
 			m.openNetwork(false)
 			m.wizard.draft.Method = "accelerated"
 			m.wizard.prefix.SetValue("https://accelerator.example.invalid/")
-			m.wizard.versionTest = checkState{Status: "Failed", Detail: "Version query: HTTP 429 rate limit; retry later."}
+			m.wizard.versionTest = checkState{Status: "Failed", Detail: "Version information: request timed out; retry later."}
 			m.wizard.fileTest = checkState{Status: "Passed", Detail: "Release file probe passed (4 KiB)."}
 			m.wizard.focus = "download-method"
 			m.hover = "download-method"
@@ -123,7 +123,7 @@ func themeSample(name string) Model {
 			m.wizard.step, m.wizard.focus = stepResult, "done"
 			m.wizard.result = app.InstallResult{InstalledVersion: "v1.19.33", ActualPath: "/tmp/lazyclash-preview/installation/mihomo", Operation: "install"}
 			if name == "failure" {
-				m.wizard.failedStage, m.wizard.err = "Verifying", "SHA256 mismatch: downloaded content does not match the expected digest."
+				m.wizard.failedStage, m.wizard.err = "extract", "Gzip integrity check failed; the downloaded archive is incomplete or damaged."
 				m.wizard.focus = "retry"
 			}
 		}

@@ -187,7 +187,7 @@ func script(t *testing.T, body string) string {
 }
 
 func TestBinaryAndValidationWithholdOutput(t *testing.T) {
-	if version, err := BinaryVersion(t.Context(), script(t, "echo 'Mihomo Meta v1.19.33 linux arm64'\n")); err != nil || version != Version {
+	if version, err := BinaryVersion(t.Context(), script(t, "echo 'Mihomo Meta v1.19.33 linux arm64'\n")); err != nil || version != "v1.19.33" {
 		t.Fatalf("version=%q err=%v", version, err)
 	}
 	bad := script(t, "echo 'secret-private-token' >&2\nexit 1\n")

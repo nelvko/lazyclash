@@ -5,14 +5,12 @@ import (
 	"testing"
 )
 
-func TestPreviewKeepsActualGitHubVersionMetadataAndFileAddresses(t *testing.T) {
+func TestPreviewKeepsActualGitHubVersionAndFileAddresses(t *testing.T) {
 	version := "v1.19.33"
 	asset := "mihomo-linux-arm64-" + version + ".gz"
 	for _, original := range []string{
 		"https://github.com/MetaCubeX/mihomo/releases/latest/download/version.txt",
 		"https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha/version.txt",
-		"https://api.github.com/repos/MetaCubeX/mihomo/releases/latest",
-		"https://api.github.com/repos/MetaCubeX/mihomo/releases/tags/" + version,
 		"https://github.com/MetaCubeX/mihomo/releases/download/" + version + "/" + asset,
 	} {
 		for _, cfg := range []Config{{}, {Method: MethodEnvironment}, {Method: MethodAccelerated, Prefix: "https://accelerator.example.invalid/proxy///"}} {

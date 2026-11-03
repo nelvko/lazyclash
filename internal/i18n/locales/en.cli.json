@@ -17,7 +17,7 @@
   "diagnostic.cli.exact_args": "accepts %d arg(s), received %d",
   "diagnostic.cli.maximum_args": "accepts at most %d arg(s), received %d",
   "diagnostic.cli.invalid_argument": "invalid argument %q for %q",
-  "cli.install.query": "Querying the official Mihomo release metadata…",
+  "cli.install.query": "Resolving the Mihomo version and device-compatible download…",
   "cli.install.plan": "Mihomo %s · %s\nPath: %s\n",
   "cli.install.versions": "Installed: %s; running: %s\n",
   "cli.install.disk": "Free disk space: %d MiB\n",

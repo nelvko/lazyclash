@@ -14,12 +14,12 @@ import (
 func TestWizardNetworkChecksKeepIndependentSemanticStates(t *testing.T) {
 	m := ready(&fakeBackend{})
 	m.openNetwork(false)
-	m.wizard.versionTest = checkState{Status: "Failed", Detail: "API rate limit"}
+	m.wizard.versionTest = checkState{Status: "Failed", Detail: "Version information unavailable"}
 	m.wizard.fileTest = checkState{Status: "Passed", Detail: "Asset probe passed"}
 	doc, _, _ := m.wizardDocument(120)
 	screen := strings.Join(doc.lines, "\n")
 	for _, sample := range []struct{ value, color string }{
-		{"Failed", errorColor}, {"API rate limit", errorColor},
+		{"Failed", errorColor}, {"Version information unavailable", errorColor},
 		{"Passed", success}, {"Asset probe passed", success},
 	} {
 		if !strings.Contains(screen, themed(sample.value, sample.color, raised, false)) {

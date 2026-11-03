@@ -3,43 +3,19 @@ package mihomo
 import (
 	"compress/gzip"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/nelvko/lazyclash/internal/diagnostic"
 	"github.com/nelvko/lazyclash/internal/downloadnet"
 )
 
-// Version and digests are pinned to official MetaCubeX/mihomo release assets.
-// Source: https://api.github.com/repos/MetaCubeX/mihomo/releases/tags/v1.19.33
-const Version = "v1.19.33"
-
-type artifact struct{ URL, SHA256 string }
-
-func releaseArtifact(arch string) (artifact, error) {
-	var name, digest string
-	switch arch {
-	case "arm64":
-		name = "mihomo-linux-arm64-" + Version + ".gz"
-		digest = "ba408b317080ee265c46cb923a50018c1b82cbd708551cdd46a1e3e307396187"
-	case "amd64":
-		name = "mihomo-linux-amd64-compatible-" + Version + ".gz"
-		digest = "386508bfb1c72c43b6a0eda73708ecdce82546581b0ebcb16366c53757c622b6"
-	default:
-		return artifact{}, diagnostic.New("diagnostic.release.downloadArchitecture", "Mihomo download does not support Linux %s", arch)
-	}
-	return artifact{"https://github.com/MetaCubeX/mihomo/releases/download/" + Version + "/" + name, digest}, nil
-}
-
-// Download retains the first-stage default entry while sharing the same
-// checksum, extraction and no-replace commit implementation.
+// Download shares the release resolver, bounded extraction, executable checks,
+// and no-replace publication with explicit-version installs.
 func Download(ctx context.Context, dest string, progress func(string)) error {
 	release, err := Resolve(ctx, "latest", downloadnet.Config{})
 	if err != nil {
@@ -65,17 +41,7 @@ func DownloadRelease(ctx context.Context, dest string, release Release, cfg down
 	if err != nil {
 		return err
 	}
-	return transfer(ctx, dest, artifact{source, release.SHA256}, release.Size, release.Version, client, progress)
-}
-
-// download is the existing HTTP fixture seam; production and fixture transfers
-// run the same code rather than maintaining a second download implementation.
-func download(ctx context.Context, dest string, art artifact, client *http.Client, progress func(string)) error {
-	return transfer(ctx, dest, art, 0, "", client, func(p Progress) {
-		if progress != nil && (p.Stage == "query" || p.Stage == "verify") {
-			progress(p.Detail)
-		}
-	})
+	return transfer(ctx, dest, source, release.Size, release.Version, client, progress)
 }
 
 type downloadWriter struct {
@@ -91,12 +57,12 @@ func (w *downloadWriter) Write(p []byte) (int, error) {
 	now := time.Now()
 	if now.Sub(w.last) >= 100*time.Millisecond {
 		w.last = now
-		w.report(Progress{Stage: "download", Downloaded: w.downloaded, Total: w.total, BytesPerSecond: float64(w.downloaded) / now.Sub(w.started).Seconds(), Detail: "Downloading verified release bytes"})
+		w.report(Progress{Stage: "download", Downloaded: w.downloaded, Total: w.total, BytesPerSecond: float64(w.downloaded) / now.Sub(w.started).Seconds(), Detail: "Downloading Mihomo release bytes"})
 	}
 	return n, err
 }
 
-func transfer(ctx context.Context, dest string, art artifact, expectedSize int64, expectedVersion string, client *http.Client, progress func(Progress)) error {
+func transfer(ctx context.Context, dest string, source string, expectedSize int64, expectedVersion string, client *http.Client, progress func(Progress)) error {
 	report := func(p Progress) {
 		if progress != nil {
 			progress(p)
@@ -111,7 +77,7 @@ func transfer(ctx context.Context, dest string, art artifact, expectedSize int64
 		return err
 	}
 	report(Progress{Stage: "query", Total: expectedSize, Detail: "Connecting to selected release-file source"})
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, art.URL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, source, nil)
 	if err != nil {
 		return diagnostic.New("diagnostic.download.request", "cannot construct release-file request")
 	}
@@ -128,7 +94,10 @@ func transfer(ctx context.Context, dest string, art artifact, expectedSize int64
 		return diagnostic.New("diagnostic.download.contentType", "release-file source returned HTML or JSON instead of gzip")
 	}
 	if expectedSize > 0 && resp.ContentLength >= 0 && resp.ContentLength != expectedSize {
-		return diagnostic.New("diagnostic.download.contentLength", "release-file Content-Length differs from the official asset size")
+		return diagnostic.New("diagnostic.download.contentLength", "release-file Content-Length differs from the probed release size")
+	}
+	if resp.ContentLength > MaxArchiveSize {
+		return diagnostic.New("diagnostic.download.archiveLimit", "Mihomo archive exceeds 64 MiB")
 	}
 	archive, err := os.CreateTemp(filepath.Dir(dest), ".mihomo-download-*")
 	if err != nil {
@@ -140,29 +109,24 @@ func transfer(ctx context.Context, dest string, art artifact, expectedSize int64
 	if total == 0 && resp.ContentLength > 0 {
 		total = resp.ContentLength
 	}
-	h := sha256.New()
 	started := time.Now()
-	writer := &downloadWriter{writer: io.MultiWriter(archive, h), report: report, total: total, started: started, last: started}
-	report(Progress{Stage: "download", Total: total, Detail: "Downloading verified release bytes"})
-	n, err := io.Copy(writer, io.LimitReader(resp.Body, archiveLimit+1))
+	writer := &downloadWriter{writer: archive, report: report, total: total, started: started, last: started}
+	report(Progress{Stage: "download", Total: total, Detail: "Downloading Mihomo release bytes"})
+	n, err := io.Copy(writer, io.LimitReader(resp.Body, MaxArchiveSize+1))
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
 	if err != nil {
 		return downloadnet.Failure(ctx, "release-file download", err)
 	}
-	if n > archiveLimit {
+	if n > MaxArchiveSize {
 		return diagnostic.New("diagnostic.download.archiveLimit", "Mihomo archive exceeds 64 MiB")
 	}
 	if expectedSize > 0 && n != expectedSize {
-		return diagnostic.New("diagnostic.download.assetSize", "release-file size differs from the official asset size")
+		return diagnostic.New("diagnostic.download.assetSize", "release-file size differs from the probed release size")
 	}
 	elapsed := time.Since(writer.started).Seconds()
 	report(Progress{Stage: "download", Downloaded: n, Total: total, BytesPerSecond: float64(n) / elapsed, Detail: "Release-file transfer complete"})
-	report(Progress{Stage: "checksum", Downloaded: n, Total: total, Detail: "Checking SHA256 against the release metadata digest"})
-	if hex.EncodeToString(h.Sum(nil)) != strings.ToLower(art.SHA256) {
-		return diagnostic.New("diagnostic.download.checksum", "Mihomo release SHA256 checksum mismatch; nothing installed")
-	}
 	if _, err = archive.Seek(0, io.SeekStart); err != nil {
 		return err
 	}
@@ -171,7 +135,7 @@ func transfer(ctx context.Context, dest string, art artifact, expectedSize int64
 		return diagnostic.New("diagnostic.download.invalidArchive", "Mihomo release archive is invalid")
 	}
 	defer gz.Close()
-	report(Progress{Stage: "extract", Downloaded: n, Total: total, Detail: "Extracting validated gzip archive"})
+	report(Progress{Stage: "extract", Downloaded: n, Total: total, Detail: "Extracting and checking gzip integrity"})
 	out, err := os.CreateTemp(filepath.Dir(dest), ".mihomo-binary-*")
 	if err != nil {
 		return err
@@ -203,7 +167,7 @@ func transfer(ctx context.Context, dest string, art artifact, expectedSize int64
 	if err != nil {
 		return err
 	}
-	if expectedVersion != "" && version != expectedVersion {
+	if version != expectedVersion {
 		return diagnostic.New("diagnostic.download.versionMismatch", "downloaded Mihomo version does not match the selected release")
 	}
 	if err = ctx.Err(); err != nil {
@@ -212,6 +176,6 @@ func transfer(ctx context.Context, dest string, art artifact, expectedSize int64
 	if err = os.Link(out.Name(), dest); err != nil {
 		return diagnostic.New("diagnostic.download.commit", "commit downloaded Mihomo: %w", err)
 	}
-	report(Progress{Stage: "done", Downloaded: n, Total: total, Detail: "Verified Mihomo release downloaded"})
+	report(Progress{Stage: "done", Downloaded: n, Total: total, Detail: "Mihomo release downloaded and checked"})
 	return nil
 }

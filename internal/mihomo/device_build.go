@@ -9,8 +9,8 @@ import (
 	"golang.org/x/sys/cpu"
 )
 
-// RecommendedVariant names the native build selected before release metadata is
-// fetched. A release that lacks this build may use a lower compatible level.
+// RecommendedVariant names the native build selected before probing release
+// files. A release that lacks this build may use a lower compatible level.
 func RecommendedVariant() string {
 	if runtime.GOARCH == "amd64" {
 		return "amd64-v" + strconv.Itoa(nativeAMD64Level())

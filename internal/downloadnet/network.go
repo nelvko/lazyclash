@@ -26,7 +26,7 @@ const (
 	MethodAccelerated = "accelerated"
 )
 
-// Config selects one route for version queries, release metadata and files.
+// Config selects one route for version queries and release files.
 // Accelerators receive the complete original GitHub URL after Prefix.
 type Config struct {
 	Method string `json:"method"`

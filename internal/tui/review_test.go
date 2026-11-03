@@ -71,49 +71,97 @@ func TestCachedReleaseRemainsAvailableForIndependentFileTest(t *testing.T) {
 	}
 }
 
-func TestChangedLatestReleaseReprobesFileAndIgnoresOldAssetResult(t *testing.T) {
-	for _, oldFirst := range []bool{false, true} {
-		t.Run(fmt.Sprint(oldFirst), func(t *testing.T) {
-			old := testRelease()
-			current := old
-			current.Version = "v1.20.0"
-			current.Asset = strings.ReplaceAll(old.Asset, old.Version, current.Version)
-			current.URL = strings.ReplaceAll(old.URL, old.Version, current.Version)
-			current.SHA256 = strings.Repeat("b", 64)
-			var probes []string
-			b := &fakeBackend{resolve: func(context.Context, string, downloadnet.Config) (mihomo.Release, error) { return current, nil }, testFile: func(_ context.Context, r mihomo.Release, _ downloadnet.Config) error {
-				probes = append(probes, r.Asset)
-				if r.Asset == old.Asset {
-					return errors.New("old file unavailable")
-				}
-				return nil
-			}}
-			m := ready(b)
-			m.wizard.release = old
-			m.openNetwork(false)
-			m, cmd := activateWizard(m, "test")
-			commands := commandBatch(t, cmd)
-			m, reprobe := update(m, commands[0]())
-			if reprobe == nil || m.wizard.testRelease.Asset != current.Asset || m.wizard.fileTest.Status != "Testing" {
-				t.Fatal("new metadata did not replace the file under test")
+func TestNetworkTestPinsSharedStableVersionAndSelectedNetwork(t *testing.T) {
+	cfg := downloadnet.Config{Method: "environment"}
+	var calls []string
+	b := &fakeBackend{
+		checkUpdate: func(ctx context.Context, channel mihomo.Channel, used downloadnet.Config) (app.CoreUpdateCheck, error) {
+			calls = append(calls, "check")
+			if channel != mihomo.ChannelStable || used != cfg {
+				t.Fatal("network test did not reuse the stable checker and selected download method")
 			}
-			if oldFirst {
-				m, _ = update(m, commands[2]())
-				if m.wizard.fileTest.Status != "Testing" || !m.busy {
-					t.Fatal("old result completed the new file test")
-				}
-				m, _ = update(m, reprobe())
-			} else {
-				m, _ = update(m, reprobe())
-				if m.wizard.fileTest.Status != "Passed" || !m.busy {
-					t.Fatal("new result should still await old request cleanup")
-				}
-				m, _ = update(m, commands[2]())
+			return app.CoreUpdateCheck{LatestVersion: testRelease().Version, Channel: channel}, ctx.Err()
+		},
+		resolve: func(ctx context.Context, selection string, used downloadnet.Config) (mihomo.Release, error) {
+			calls = append(calls, "resolve")
+			if selection != testRelease().Version || used != cfg {
+				t.Fatal("network test did not pin the checked version before resolving its package")
 			}
-			if m.busy || m.wizard.fileTest.Status != "Passed" || !strings.Contains(m.wizard.fileTest.Detail, current.Asset) || strings.Contains(m.wizard.fileTest.Detail, "old file unavailable") || len(probes) != 2 {
-				t.Fatal("late old-asset status overwrote the actual latest file")
+			return testRelease(), ctx.Err()
+		},
+		testFile: func(ctx context.Context, release mihomo.Release, used downloadnet.Config) error {
+			calls = append(calls, "file")
+			if release != testRelease() || used != cfg {
+				t.Fatal("package test changed the resolved release or selected download method")
 			}
-		})
+			return ctx.Err()
+		},
+	}
+	m := ready(b)
+	m.openNetwork(false)
+	m.wizard.draft = cfg
+	commands := commandBatch(t, m.testNetwork())
+	m, probe := update(m, commands[0]())
+	if probe == nil || strings.Join(calls, ",") != "check,resolve" || m.wizard.versionTest.Status != checkPassed {
+		t.Fatal("version test did not prepare the pinned package connection test")
+	}
+	m, _ = update(m, probe())
+	if m.busy || m.wizard.fileTest.Status != checkPassed || strings.Join(calls, ",") != "check,resolve,file" {
+		t.Fatal("network test did not complete both checks through the shared release flow")
+	}
+}
+
+func TestChangedReleaseIdentityReprobesFileAndIgnoresOldResult(t *testing.T) {
+	for _, sample := range []struct {
+		name   string
+		change func(*mihomo.Release)
+	}{
+		{"version", func(r *mihomo.Release) { r.Version = "v1.20.0" }},
+		{"asset", func(r *mihomo.Release) { r.Asset = "mihomo-linux-amd64-v1-v1.19.33.gz" }},
+		{"url", func(r *mihomo.Release) { r.URL += "?download=1" }},
+		{"platform", func(r *mihomo.Release) { r.Platform = "linux/amd64" }},
+		{"size", func(r *mihomo.Release) { r.Size++ }},
+	} {
+		for _, oldFirst := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/oldFirst=%v", sample.name, oldFirst), func(t *testing.T) {
+				old := testRelease()
+				current := old
+				sample.change(&current)
+				var probes []mihomo.Release
+				b := &fakeBackend{resolve: func(context.Context, string, downloadnet.Config) (mihomo.Release, error) { return current, nil }, testFile: func(_ context.Context, r mihomo.Release, _ downloadnet.Config) error {
+					probes = append(probes, r)
+					if r == old {
+						return errors.New("old file unavailable")
+					}
+					return nil
+				}}
+				m := ready(b)
+				m.wizard.release = old
+				m.openNetwork(false)
+				m, cmd := activateWizard(m, "test")
+				commands := commandBatch(t, cmd)
+				m, reprobe := update(m, commands[0]())
+				if reprobe == nil || m.wizard.testRelease != current || m.wizard.fileTest.Status != "Testing" {
+					t.Fatal("changed release identity did not replace the file under test")
+				}
+				if oldFirst {
+					m, _ = update(m, commands[2]())
+					if m.wizard.fileTest.Status != "Testing" || !m.busy {
+						t.Fatal("old result completed the new file test")
+					}
+					m, _ = update(m, reprobe())
+				} else {
+					m, _ = update(m, reprobe())
+					if m.wizard.fileTest.Status != "Passed" || !m.busy {
+						t.Fatal("new result should still await old request cleanup")
+					}
+					m, _ = update(m, commands[2]())
+				}
+				if m.busy || m.wizard.fileTest.Status != "Passed" || !strings.Contains(m.wizard.fileTest.Detail, current.Asset) || strings.Contains(m.wizard.fileTest.Detail, "old file unavailable") || len(probes) != 2 {
+					t.Fatal("late old-release status overwrote the actual file under test")
+				}
+			})
+		}
 	}
 }
 
@@ -216,8 +264,8 @@ func TestInstallResultCarriesFinalProgressBeforeErrorClassification(t *testing.T
 		for i := 0; i < 80; i++ {
 			report(mihomo.Progress{Stage: "download", Downloaded: int64(i)})
 		}
-		report(mihomo.Progress{Stage: "checksum", Detail: "final verification"})
-		return app.InstallResult{}, errors.New("checksum mismatch")
+		report(mihomo.Progress{Stage: "extract", Detail: "final verification"})
+		return app.InstallResult{}, errors.New("gzip integrity check failed")
 	}}
 	m := confirmModel(t, b)
 	m, cmd := activateWizard(m, "install")
@@ -226,11 +274,11 @@ func TestInstallResultCarriesFinalProgressBeforeErrorClassification(t *testing.T
 	// delivered later or dropped by the bounded progress channel.
 	result := actionCmd(t, cmd)()
 	m, _ = update(m, result)
-	if m.wizard.failedStage != "checksum" || m.wizard.progress.Stage != "checksum" || m.wizard.step != stepResult {
+	if m.wizard.failedStage != "extract" || m.wizard.progress.Stage != "extract" || m.wizard.step != stepResult {
 		t.Fatal("result classified failure using stale deploy/download progress")
 	}
 	m, _ = update(m, nextProgressMsg{progressMsg: progressMsg{id: id, progress: mihomo.Progress{Stage: "download"}}})
-	if m.wizard.progress.Stage != "checksum" || m.wizard.failedStage != "checksum" {
+	if m.wizard.progress.Stage != "extract" || m.wizard.failedStage != "extract" {
 		t.Fatal("late progress overwrote final result stage")
 	}
 }

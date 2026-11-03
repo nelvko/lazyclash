@@ -92,7 +92,7 @@ func (a *App) prepareInstallLocked(ctx context.Context, release mihomo.Release, 
 		if err != nil {
 			return p, err
 		}
-		p.Release = mihomo.Release{Version: version, Asset: filepath.Base(local), ChecksumSource: "local binary", Size: info.Size(), Platform: runtime.GOOS + "/" + runtime.GOARCH}
+		p.Release = mihomo.Release{Version: version, Asset: filepath.Base(local), Size: info.Size(), Platform: runtime.GOOS + "/" + runtime.GOARCH}
 		p.localSHA, err = fileDigest(local)
 		if err != nil {
 			return p, err
@@ -171,6 +171,10 @@ func (a *App) prepareInstallLocked(ctx context.Context, release mihomo.Release, 
 		}
 		if p.Release.Size > 0 {
 			need += uint64(p.Release.Size)
+		} else if local == "" {
+			// HTTP servers may omit the archive's total length. Reserve the
+			// download limit rather than assuming an unknown archive is empty.
+			need += mihomo.MaxArchiveSize
 		}
 		if p.FreeBytes < need {
 			block(diagnostic.New("diagnostic.install.diskSpace", "insufficient free disk space for staging and recovery"))

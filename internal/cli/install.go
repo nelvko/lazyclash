@@ -65,7 +65,7 @@ func newInstallCommand(backend func() *app.App) *cobra.Command {
 			return reportedError(plan.BlockedReason, plan.BlockedDiagnostic)
 		}
 		if dryRun {
-			// Release metadata contains only official URLs, but keep the CLI
+			// Resolved releases contain only official URLs, but keep the CLI
 			// preflight deliberately independent of any session URL credentials.
 			return writeJSON(cmd, struct {
 				Version, Operation, Path, Installed, Running string

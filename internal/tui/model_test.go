@@ -234,7 +234,7 @@ func (f *fakeBackend) CloseConnection(ctx context.Context, id string) error {
 }
 
 func testRelease() mihomo.Release {
-	return mihomo.Release{Version: "v1.19.33", Asset: "mihomo-linux-arm64-v1.19.33.gz", URL: "https://github.com/MetaCubeX/mihomo/releases/download/v1.19.33/mihomo-linux-arm64-v1.19.33.gz", SHA256: strings.Repeat("a", 64), ChecksumSource: "official API", Platform: "linux/arm64", Size: 1024}
+	return mihomo.Release{Version: "v1.19.33", Asset: "mihomo-linux-arm64-v1.19.33.gz", URL: "https://github.com/MetaCubeX/mihomo/releases/download/v1.19.33/mihomo-linux-arm64-v1.19.33.gz", Platform: "linux/arm64", Size: 1024}
 }
 func update(m Model, msg tea.Msg) (Model, tea.Cmd) {
 	next, cmd := m.Update(msg)
@@ -708,9 +708,9 @@ func TestFailedInstallSurvivesNetworkBackAndDraftEdits(t *testing.T) {
 			m := ready(&fakeBackend{})
 			m.openManagementWizard(false)
 			m.wizard.step = stepResult
-			m.wizard.err = "checksum mismatch"
+			m.wizard.err = "gzip integrity check failed"
 			m.wizard.failedKind = "install"
-			m.wizard.failedStage = "Verifying checksum"
+			m.wizard.failedStage = "extract"
 			m.layout()
 			m, _ = activateWizard(m, "network")
 			if edit {
@@ -868,7 +868,7 @@ func TestRememberFailureKeepsDraftAndOriginalInstallFailure(t *testing.T) {
 	m := ready(b)
 	m.openManagementWizard(false)
 	m.wizard.step = stepResult
-	m.wizard.err = "checksum mismatch"
+	m.wizard.err = "gzip integrity check failed"
 	m.wizard.failedKind = "install"
 	m.layout()
 	m, _ = activateWizard(m, "network")
@@ -881,7 +881,7 @@ func TestRememberFailureKeepsDraftAndOriginalInstallFailure(t *testing.T) {
 		t.Fatal("failed preference save applied settings or lost editable draft")
 	}
 	m, _ = activateWizard(m, "back")
-	if m.wizard.err != "checksum mismatch" || m.wizard.failedKind != "install" {
+	if m.wizard.err != "gzip integrity check failed" || m.wizard.failedKind != "install" {
 		t.Fatal("preference failure overwrote original installation failure")
 	}
 }

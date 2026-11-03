@@ -19,6 +19,8 @@ import (
 	"github.com/nelvko/lazyclash/internal/store"
 )
 
+const testMihomoVersion = "v1.19.33"
+
 type fakeService struct {
 	active                           bool
 	installs, removes                int
@@ -94,7 +96,7 @@ func testApp(t *testing.T) (*App, *fakeService) {
 		}
 		return os.WriteFile(dest, []byte("fixture engine"), 0700)
 	}
-	a.Version = func(ctx context.Context, bin string) (string, error) { return mihomo.Version, ctx.Err() }
+	a.Version = func(ctx context.Context, bin string) (string, error) { return testMihomoVersion, ctx.Err() }
 	a.Validate = func(ctx context.Context, bin, config, data string) error { return ctx.Err() }
 	a.HTTP = &http.Client{Transport: fixtureTransport(func(r *http.Request) (*http.Response, error) {
 		body := `{"version":"v1.19.33","meta":true}`

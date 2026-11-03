@@ -21,7 +21,7 @@ lazyclash install upgrade --yes --download-method environment
 
 ## 查询与比较
 
-检查请求以下官方文本地址，统一使用直连、使用环境代理或 GitHub 加速中的一种。加速方式为文本、发布 API 和安装包的完整 URL 添加同一个 HTTP(S) 前缀；直连与加速均忽略环境代理，没有静默回退。当前仍通过发布 API 获取 SHA256，三种方式的信任边界见 README。
+检查请求以下官方文本地址，统一使用直连、使用环境代理或 GitHub 加速中的一种。加速方式为版本文本和安装包的完整 URL 添加同一个 HTTP(S) 前缀；直连与加速均忽略环境代理，没有静默回退。安装和升级也不请求 GitHub Release API。
 
 - 正式版：<https://github.com/MetaCubeX/mihomo/releases/latest/download/version.txt>
 - Alpha：<https://github.com/MetaCubeX/mihomo/releases/download/Prerelease-Alpha/version.txt>
@@ -46,24 +46,26 @@ lazyclash install upgrade --yes --download-method environment
 ## 发布、重启与恢复
 
 1. 在现有 namespace 文件锁内重新核验安装 ID、代际、文件摘要和实际版本，拒绝修改过或过期的检查结果。同目录的安装、配置和生命周期操作共用该锁；两个并发升级只会有一个发布成功。当前运行状态与保存的停止意图冲突时先要求用户通过 Start / Stop 消除差异；暂存后再次检查运行状态，检测到外部启停则在发布前拒绝。
-2. 按确定标签调用现有 Releases API 取得平台资产、大小和官方 SHA256 digest。缺失摘要或 API 限流时失败关闭，不跳过完整性校验。
-3. 复用现有下载管线：5 分钟网络超时、64 MiB 压缩包与 128 MiB 二进制上限、大小及 SHA256 校验、gzip 完整解压、0700 权限、执行 `-v` 精确核对目标。临时目录位于数据目录中，与发布路径同文件系统。
+2. 按确定标签及现有设备能力选择构造 `https://github.com/MetaCubeX/mihomo/releases/download/{version}/{asset}`。使用不超过 4 KiB 的 Range 请求探测候选；仅 HTTP 404/410 尝试下一个兼容构建，其他错误直接失败。HTTP 总长度已知时保存在安装计划中，未知时允许继续并按压缩包上限预留磁盘。
+3. 复用现有下载管线：5 分钟网络超时、64 MiB 压缩包与 128 MiB 二进制上限、HTTP 长度一致性、gzip 完整解压及 CRC、0700 权限、同步暂存文件、执行 `-v` 精确核对目标。HTTPS 证书验证保持开启，临时目录位于数据目录中，与发布路径同文件系统。没有上游预期摘要或独立签名验证；响应长度、gzip CRC 及执行版本检查都不能代替它们。
 4. 使用新内核验证现有配置；hard link 保留旧 inode，写入包含双方摘要、旧/新代际和原运行状态的 `core-pending.json` 并同步目录；随后 rename 原子发布二进制、切换配置代际。旧进程的二进制从不被原地写入。
 5. 原先运行时，通过验证所属关系的 systemd unit 执行 restart，等待服务 active、认证 API 与 mixed 监听就绪，并核对实际运行版本。原先停止时只安排下次启动使用新版本。
 6. 上述步骤成功后才持久化 committed，再清理备份与 journal。失败或取消使用独立的有界清理上下文恢复旧文件、代际和原运行状态。恢复旧服务前对已确认所属的 unit 执行 `reset-failed`，避免新版本反复崩溃触发的 start-limit 阻止旧版本启动；恢复后也核对实际版本。恢复启动失败会组合报告原错误和恢复错误，并保留 journal/备份供下一次恢复，避免把失败当成功。
 
 进程被强行终止时，未提交事务在下一次会触发恢复的应用调用中回滚。只读检查本身不触发恢复。显式 Stop 的持久标记优先，恢复不会越过用户停止意图重启。恢复前核对文件/代际摘要和 unit 所属关系，发现用户修改则保留现场并报错。没有常驻恢复进程；机器断电或客户端被 SIGKILL 后无法承诺立即恢复服务。
 
-## 上游依据与取舍（2026-11-02）
+## 上游依据与取舍（2026-11-03）
 
 [Mihomo build.yml](https://github.com/MetaCubeX/mihomo/blob/Meta/.github/workflows/build.yml) 定义资产命名和构建矩阵；本次实取 stable 为 `v1.19.33`，Alpha 为 `alpha-69c1631`。
 
 - arm64 选择 `mihomo-linux-arm64-<version>.gz`。
 - amd64 根据 Linux `/proc/cpuinfo` 中每个可见 CPU 的指令集交集及 `x/sys/cpu` 对 OSXSAVE/XGETBV 的检测，选最高兼容的 v3/v2/v1；虚拟机按 guest 暴露的能力判断。检测不完整时保守选 v1。优先所选等级，有缺失则降级；v3 能力也可使用旧普通 `amd64` 资产，旧 `amd64-compatible` 是 v1 的末级回退。低等级 CPU 不会选择旧普通 v3 资产。资产名校验不依赖测试宿主 CPU，实际选择集中在共享 Resolver，初装、指定版本和升级共用。
 - [官方 FAQ](https://github.com/MetaCubeX/mihomo/wiki/FAQ) 的 v1/v2/v3 表示 CPU 指令集等级，具体要求见 [Go AMD64 最低要求](https://go.dev/wiki/MinimumRequirements#amd64)。旧 Linux 2.6.32～3.1 的 `go123` 构建未加入：lazyclash 自身 Go 1.26 已要求 Linux 3.2 以上。ARM32、MIPS、其他 Linux 架构仍未扩大支持范围。
-- 正式版 `v1.19.33/checksums.txt` 实取 404，官方资产 API 提供 SHA256，所以下载继续依赖 API digest。检查版本时无需 API；本次 API 遭遇 403 限流时，两个 `version.txt` 仍正常，无需新增查询 API fallback。
-- Alpha 发布移动 `Prerelease-Alpha` tag 并删除旧资产，文件名带 hash，当前另有 `checksums.txt`。未来支持 Alpha 升级必须固定版本文件名及可信摘要，并处理旧资产已删除的竞态；不能悄悄改用新 latest。无需为了比较 hash 引入 commit 历史 API。
+- 正式版从 `version.txt` 固定版本号，以构建命名规则下载文件。版本文本与文件均经过用户明确选择的下载方式，没有 GitHub Release API 或摘要查询回退。当前不校验上游预期摘要；下载信任包含所选加速站，HTTP 前缀也没有 HTTPS 的传输保护。
+- Alpha 发布移动 `Prerelease-Alpha` tag 并删除旧资产，文件名带 hash。当前仍只检查 Alpha 版本；未来实现升级时需要单独处理固定文件名及旧资源删除的竞态，不能悄悄改用新 latest。无需为了比较 hash 引入 commit 历史 API。
 
-参考 [Clash Verge Rev core_upgrade.rs](https://github.com/clash-verge-rev/clash-verge-rev/blob/dev/src-tauri/src/feat/core_upgrade.rs) 的暂存、执行验证、hard link 与 rename 发布思路。其“版本不同即升级”、检查与升级绑定以及缺少官方摘要的策略未沿用。本项目继续复用已有文件锁、下载器、安装记录和恢复日志。
+参考 [Clash Verge Rev v2.5.9 core_upgrade.rs](https://github.com/clash-verge-rev/clash-verge-rev/blob/v2.5.9/src-tauri/src/feat/core_upgrade.rs) 的版本文本、资源命名、有限下载和执行版本验证策略。本项目保留已有 CPU 能力选择、独立只读检查、明确确认升级、文件锁、下载器、安装记录和恢复日志。Verge 的构建脚本随 Tauri sidecar 打包内核与应用内升级属于不同链路；本次没有为 lazyclash 内置内核，也没有引入 Tauri 应用更新签名。
+
+安装后计算的本地 SHA256 只用于后续文件修改检测、事务保护与恢复材料身份核对，不作为独立的上游真实性证明。gzip CRC 检查传输/压缩内容的自洽性，`-v` 检查可执行文件自报的版本；不将它们描述为官方摘要或签名校验。
 
 未来扩展记录在 [TODO](../TODO.md)，没有为未支持的平台或其他内核增加空接口。

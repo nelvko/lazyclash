@@ -199,7 +199,7 @@ func (m *Model) wizardOperation(operation string) string {
 
 func (m *Model) stageLabel(stage string) string {
 	switch stage {
-	case "query", "download", "checksum", "extract", "verify", "deploy", "restart", "rollback", "done":
+	case "query", "download", "extract", "verify", "deploy", "restart", "rollback", "done":
 		return m.tr("wizard.stage." + stage)
 	default:
 		return clean(stage)
@@ -209,7 +209,7 @@ func (m *Model) stageLabel(stage string) string {
 func (m *Model) wizardFailedStage(stage string) string {
 	// Legacy test fixtures and already-built documents can still contain an
 	// English label. New operation results retain the stable stage identifier.
-	for _, id := range []string{"query", "download", "checksum", "extract", "verify", "deploy", "restart", "rollback", "done"} {
+	for _, id := range []string{"query", "download", "extract", "verify", "deploy", "restart", "rollback", "done"} {
 		if stage == id || stage == stageLabel(id) {
 			return m.stageLabel(id)
 		}
@@ -386,8 +386,8 @@ func (m *Model) wizardDocument(width int) (wizardDocument, []wizardButton, strin
 			d.control("details", map[bool]string{false: m.tr("wizard.details_show"), true: m.tr("wizard.details_hide")}[w.details], w.focus)
 			if w.details {
 				d.pair(m.tr("wizard.asset"), w.release.Asset)
-				d.pair(m.tr("wizard.expected_sha256"), w.release.SHA256)
-				d.pair(m.tr("wizard.checksum_authority"), m.localizeDetail(w.release.ChecksumSource))
+				d.pair(m.tr("wizard.verification"), m.tr("wizard.verification.download"))
+				d.line(m.tr("wizard.verification.no_signature"))
 			}
 		}
 		d.space()
@@ -431,10 +431,10 @@ func (m *Model) wizardDocument(width int) (wizardDocument, []wizardButton, strin
 		d.pair(m.tr("wizard.permissions"), m.tr("wizard.permissions_current"))
 		d.pair(m.tr("wizard.download_source"), m.wizardSourceName(w.cfg))
 		if p.Local != "" {
-			d.pair(m.tr("wizard.binary_source"), m.tr("wizard.local.no_digest"))
+			d.pair(m.tr("wizard.binary_source"), m.tr("wizard.local.verification"))
 		} else {
-			d.pair(m.tr("wizard.expected_sha256"), p.Release.SHA256)
-			d.pair(m.tr("wizard.checksum_source"), m.localizeDetail(p.Release.ChecksumSource))
+			d.pair(m.tr("wizard.verification"), m.tr("wizard.verification.download"))
+			d.line(m.tr("wizard.verification.no_signature"))
 		}
 		for _, s := range p.Warnings {
 			d.line(themed(clean(m.localizeDetail(s)), warning, raised, false))

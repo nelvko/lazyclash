@@ -2,14 +2,14 @@ package mihomo
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
-	"encoding/hex"
-	"encoding/json"
 	"io"
 	"mime"
 	"net/http"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,20 +17,21 @@ import (
 	"github.com/nelvko/lazyclash/internal/downloadnet"
 )
 
-const releaseAPI = "https://api.github.com/repos/MetaCubeX/mihomo/releases/"
 const releaseFiles = "https://github.com/MetaCubeX/mihomo/releases/download/"
-const archiveLimit = 64 << 20
+
+// MaxArchiveSize bounds compressed downloads and installation disk estimates.
+const MaxArchiveSize = 64 << 20
+const probeLimit = 4096
 
 var stableTag = regexp.MustCompile(`^v[0-9]+\.[0-9]+\.[0-9]+$`)
+var probeRange = regexp.MustCompile(`^bytes 0-([0-9]+)/([0-9]+|\*)$`)
 
 type Release struct {
-	Version        string `json:"version"`
-	Asset          string `json:"asset"`
-	URL            string `json:"url"`
-	SHA256         string `json:"sha256"`
-	ChecksumSource string `json:"checksum_source"`
-	Size           int64  `json:"size"`
-	Platform       string `json:"platform"`
+	Version  string `json:"version"`
+	Asset    string `json:"asset"`
+	URL      string `json:"url"`
+	Size     int64  `json:"size"` // Observed HTTP transfer size; zero means unknown.
+	Platform string `json:"platform"`
 }
 
 type Progress struct {
@@ -96,75 +97,18 @@ func (r Resolver) client(cfg downloadnet.Config, timeout time.Duration) (*http.C
 func (r Resolver) Resolve(ctx context.Context, selection string, cfg downloadnet.Config) (Release, error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	client, err := r.client(cfg, 30*time.Second)
-	if err != nil {
-		return Release{}, err
-	}
-	if r.HTTP == nil {
-		defer client.CloseIdleConnections()
-	}
-	endpoint := releaseAPI + "latest"
-	if selection != "" && selection != "latest" {
-		if !strings.HasPrefix(selection, "v") {
-			selection = "v" + selection
+	version := selection
+	if version == "" || version == "latest" {
+		var err error
+		version, err = r.LatestVersion(ctx, ChannelStable, cfg)
+		if err != nil {
+			return Release{}, err
 		}
-		if !stableTag.MatchString(selection) {
-			return Release{}, diagnostic.New("diagnostic.release.versionChoice", "choose latest or a stable Mihomo version such as v1.19.33")
-		}
-		endpoint = releaseAPI + "tags/" + selection
+	} else if !strings.HasPrefix(version, "v") {
+		version = "v" + version
 	}
-	requestURL, err := cfg.URL(endpoint)
-	if err != nil {
-		return Release{}, err
-	}
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
-	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("X-GitHub-Api-Version", "2022-11-28")
-	// Metadata must be answered at the selected endpoint, including when using
-	// an accelerator. Never silently follow a relay's metadata redirect to a
-	// different source. ChecksumSource records the logical release identity;
-	// a digest relayed with the file is not an independent authenticity proof.
-	queryClient := *client
-	queryClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	resp, err := queryClient.Do(req)
-	if err != nil {
-		return Release{}, downloadnet.Failure(ctx, "official version query", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return Release{}, downloadnet.HTTPError("official version query", resp.StatusCode)
-	}
-	media, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
-	if media != "" && media != "application/json" && media != "application/vnd.github+json" {
-		return Release{}, diagnostic.New("diagnostic.release.contentType", "official version query returned an unexpected content type")
-	}
-	const metadataLimit = 4 << 20
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, metadataLimit+1))
-	if err != nil {
-		return Release{}, downloadnet.Failure(ctx, "official version response", err)
-	}
-	if len(raw) > metadataLimit {
-		return Release{}, diagnostic.New("diagnostic.release.metadataLimit", "official release metadata exceeds 4 MiB")
-	}
-	var result struct {
-		Tag        string `json:"tag_name"`
-		Draft      bool   `json:"draft"`
-		Prerelease bool   `json:"prerelease"`
-		Assets     []struct {
-			Name   string `json:"name"`
-			URL    string `json:"browser_download_url"`
-			Digest string `json:"digest"`
-			Size   int64  `json:"size"`
-		} `json:"assets"`
-	}
-	if json.Unmarshal(raw, &result) != nil {
-		return Release{}, diagnostic.New("diagnostic.release.invalidJSON", "official version query did not return valid release JSON")
-	}
-	if result.Draft || result.Prerelease || !stableTag.MatchString(result.Tag) {
-		return Release{}, diagnostic.New("diagnostic.release.stableOnly", "only published stable Mihomo releases are supported")
-	}
-	if selection != "" && selection != "latest" && selection != result.Tag {
-		return Release{}, diagnostic.New("diagnostic.release.versionMismatch", "official release response does not match the requested version")
+	if !stableTag.MatchString(version) {
+		return Release{}, diagnostic.New("diagnostic.release.versionChoice", "choose latest or a stable Mihomo version such as v1.19.33")
 	}
 	arch := r.Arch
 	amd64Level := r.AMD64Level
@@ -174,36 +118,30 @@ func (r Resolver) Resolve(ctx context.Context, selection string, cfg downloadnet
 			amd64Level = nativeAMD64Level()
 		}
 	}
-	candidates, err := releaseAssets(result.Tag, arch, amd64Level)
+	candidates, err := releaseAssets(version, arch, amd64Level)
 	if err != nil {
 		return Release{}, err
 	}
-	var release Release
-	for _, candidate := range candidates {
-		for _, a := range result.Assets {
-			if a.Name != candidate {
-				continue
-			}
-			if release.Asset != "" {
-				return Release{}, diagnostic.New("diagnostic.release.duplicateAsset", "official release contains duplicate matching assets")
-			}
-			release = Release{Version: result.Tag, Asset: a.Name, URL: a.URL, SHA256: strings.TrimPrefix(a.Digest, "sha256:"), ChecksumSource: endpoint + "#asset-digest:" + candidate, Size: a.Size, Platform: "linux/" + arch}
-			if !strings.HasPrefix(a.Digest, "sha256:") {
-				return Release{}, diagnostic.New("diagnostic.release.missingDigest", "official GitHub release asset has no SHA256 digest; refusing unverifiable bytes")
-			}
-		}
-		if release.Asset != "" {
-			break
-		}
-	}
-	if release.Asset == "" {
-		return Release{}, diagnostic.New("diagnostic.release.missingArchitecture", "requested Linux architecture asset is missing from the official release")
-	}
-	if err := validRelease(release); err != nil {
+	client, err := r.client(cfg, 30*time.Second)
+	if err != nil {
 		return Release{}, err
 	}
-	release.SHA256 = strings.ToLower(release.SHA256)
-	return release, nil
+	if r.HTTP == nil {
+		defer client.CloseIdleConnections()
+	}
+	for _, asset := range candidates {
+		release := Release{Version: version, Asset: asset, URL: releaseFiles + version + "/" + asset, Platform: "linux/" + arch}
+		size, missing, err := probeFile(ctx, client, release.URL, cfg)
+		if err != nil {
+			return Release{}, err
+		}
+		if missing {
+			continue
+		}
+		release.Size = size
+		return release, nil
+	}
+	return Release{}, diagnostic.New("diagnostic.release.missingArchitecture", "requested Linux architecture asset is missing from the official release")
 }
 func validRelease(r Release) error {
 	if !stableTag.MatchString(r.Version) {
@@ -221,17 +159,8 @@ func validRelease(r Release) error {
 	if r.URL != releaseFiles+r.Version+"/"+r.Asset {
 		return diagnostic.New("diagnostic.release.unofficialURL", "release file URL is not the expected official GitHub asset")
 	}
-	hash, err := hex.DecodeString(r.SHA256)
-	if err != nil || len(hash) != 32 {
-		return diagnostic.New("diagnostic.release.invalidDigest", "official GitHub release asset has no valid SHA256 digest")
-	}
-	expectedSuffix := "#asset-digest:" + r.Asset
-	source := strings.TrimSuffix(r.ChecksumSource, expectedSuffix)
-	if source == r.ChecksumSource || (source != releaseAPI+"latest" && source != releaseAPI+"tags/"+r.Version) {
-		return diagnostic.New("diagnostic.release.digestProvenance", "release checksum provenance is not the official GitHub API")
-	}
-	if r.Size <= 0 || r.Size > archiveLimit {
-		return diagnostic.New("diagnostic.release.assetSize", "official release asset size is unavailable or exceeds 64 MiB")
+	if r.Size < 0 || r.Size > MaxArchiveSize {
+		return diagnostic.New("diagnostic.release.assetSize", "release file size is invalid or exceeds 64 MiB")
 	}
 	return nil
 }
@@ -252,36 +181,95 @@ func (r Resolver) TestFile(ctx context.Context, release Release, cfg downloadnet
 	if r.HTTP == nil {
 		defer client.CloseIdleConnections()
 	}
-	source, err := cfg.URL(release.URL)
+	size, missing, err := probeFile(ctx, client, release.URL, cfg)
 	if err != nil {
 		return err
+	}
+	if missing {
+		return diagnostic.New("diagnostic.release.missingArchitecture", "requested Linux architecture asset is missing from the official release")
+	}
+	if release.Size > 0 && size > 0 && size != release.Size {
+		return diagnostic.New("diagnostic.download.assetSize", "release-file size differs from the probed release size")
+	}
+	return nil
+}
+
+// probeFile never consumes more than 4 KiB, even when the server ignores Range.
+// Only an absent asset permits trying a different compatible build. A response
+// header and gzip probe establish availability, not independent authenticity.
+func probeFile(ctx context.Context, client *http.Client, official string, cfg downloadnet.Config) (size int64, missing bool, err error) {
+	source, err := cfg.URL(official)
+	if err != nil {
+		return 0, false, err
 	}
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, source, nil)
 	req.Header.Set("Range", "bytes=0-4095")
 	req.Header.Set("Accept-Encoding", "identity")
 	resp, err := client.Do(req)
 	if err != nil {
-		return downloadnet.Failure(ctx, "release-file connection test", err)
+		return 0, false, downloadnet.Failure(ctx, "release-file connection test", err)
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusGone {
+		return 0, true, nil
+	}
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusPartialContent {
-		return downloadnet.HTTPError("release-file connection test", resp.StatusCode)
+		return 0, false, downloadnet.HTTPError("release-file connection test", resp.StatusCode)
 	}
 	if badArchiveMedia(resp.Header.Get("Content-Type")) {
-		return diagnostic.New("diagnostic.release.testContentType", "release-file connection test returned HTML or JSON instead of gzip")
+		return 0, false, diagnostic.New("diagnostic.release.testContentType", "release-file connection test returned HTML or JSON instead of gzip")
 	}
-	// Never consume more than 4 KiB, even when a server ignores Range. A magic
-	// probe confirms an archive-like response; SHA256 is checked during install.
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	size, expected, err := probeSize(resp)
 	if err != nil {
-		return downloadnet.Failure(ctx, "release-file connection test", err)
+		return 0, false, err
 	}
-	if len(raw) < 2 || !bytes.Equal(raw[:2], []byte{0x1f, 0x8b}) {
-		return diagnostic.New("diagnostic.release.testGzip", "release-file connection test did not return gzip bytes")
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, probeLimit))
+	if err != nil {
+		return 0, false, downloadnet.Failure(ctx, "release-file connection test", err)
 	}
-	return nil
+	if err := ctx.Err(); err != nil {
+		return 0, false, downloadnet.Failure(ctx, "release-file connection test", err)
+	}
+	if expected >= 0 && int64(len(raw)) != expected {
+		return 0, false, downloadnet.Failure(ctx, "release-file connection test", io.ErrUnexpectedEOF)
+	}
+	gz, err := gzip.NewReader(bytes.NewReader(raw))
+	if err != nil {
+		return 0, false, diagnostic.New("diagnostic.release.testGzip", "release-file connection test did not return gzip bytes")
+	}
+	_ = gz.Close()
+	return size, false, nil
 }
+
+func probeSize(resp *http.Response) (size, expected int64, err error) {
+	expected = -1
+	if resp.StatusCode == http.StatusPartialContent {
+		parts := probeRange.FindStringSubmatch(resp.Header.Get("Content-Range"))
+		if parts == nil {
+			return 0, 0, diagnostic.New("diagnostic.release.probeRange", "release-file probe returned an invalid Content-Range")
+		}
+		end, err := strconv.ParseInt(parts[1], 10, 64)
+		if err != nil || end >= probeLimit || resp.ContentLength >= 0 && resp.ContentLength != end+1 {
+			return 0, 0, diagnostic.New("diagnostic.release.probeRange", "release-file probe returned an invalid Content-Range")
+		}
+		expected = end + 1
+		if parts[2] != "*" {
+			size, err = strconv.ParseInt(parts[2], 10, 64)
+			if err != nil || size <= end {
+				return 0, 0, diagnostic.New("diagnostic.release.probeRange", "release-file probe returned an invalid Content-Range")
+			}
+		}
+	} else if resp.ContentLength >= 0 {
+		size = resp.ContentLength
+		expected = min(size, probeLimit)
+	}
+	if size < 0 || size > MaxArchiveSize {
+		return 0, 0, diagnostic.New("diagnostic.release.probeSize", "release-file size is invalid or exceeds 64 MiB")
+	}
+	return size, expected, nil
+}
+
 func badArchiveMedia(value string) bool {
 	media, _, _ := mime.ParseMediaType(value)
-	return media == "text/html" || media == "application/json" || strings.HasSuffix(media, "+json")
+	return media == "text/html" || media == "application/xhtml+xml" || media == "application/json" || strings.HasSuffix(media, "+json")
 }

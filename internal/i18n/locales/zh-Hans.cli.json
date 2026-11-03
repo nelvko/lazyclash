@@ -17,7 +17,7 @@
   "diagnostic.cli.exact_args": "需要 %d 个参数，收到 %d 个",
   "diagnostic.cli.maximum_args": "最多接受 %d 个参数，收到 %d 个",
   "diagnostic.cli.invalid_argument": "参数 %q 不适用于 %q",
-  "cli.install.query": "正在查询 Mihomo 官方发布信息…",
+  "cli.install.query": "正在解析 Mihomo 版本及适合本机的下载资源…",
   "cli.install.plan": "Mihomo %s · %s\n路径：%s\n",
   "cli.install.versions": "已安装：%s；正在运行：%s\n",
   "cli.install.disk": "可用磁盘空间：%d MiB\n",

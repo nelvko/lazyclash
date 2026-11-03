@@ -37,7 +37,7 @@ func (c Config) FilePreview(original, version, asset string) (string, error) {
 	return previewURL(actual, version, asset)
 }
 
-// Preview also supports version.txt and release API endpoints. Only recognized
+// Preview also supports version.txt endpoints. Only recognized
 // public Mihomo paths may expose the resolved version or asset name.
 func (c Config) Preview(original string) (string, error) {
 	var version, asset string
@@ -48,9 +48,6 @@ func (c Config) Preview(original string) (string, error) {
 	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
 	if u.Hostname() == "github.com" && len(parts) == 6 && parts[0] == "MetaCubeX" && parts[1] == "mihomo" && parts[2] == "releases" && parts[3] == "download" {
 		version, asset = parts[4], parts[5]
-	}
-	if u.Hostname() == "api.github.com" && len(parts) == 6 && parts[0] == "repos" && parts[1] == "MetaCubeX" && parts[2] == "mihomo" && parts[3] == "releases" && parts[4] == "tags" {
-		version = parts[5]
 	}
 	return c.FilePreview(original, version, asset)
 }
@@ -76,7 +73,7 @@ func previewURL(raw, version, asset string) (string, error) {
 
 func publicDisplaySegment(part, version, asset string) bool {
 	switch part {
-	case "", "proxy", "github", "github.com", "gh", "cache", "repos", "tags", "MetaCubeX", "mihomo", "releases", "release", "download", "downloads", "assets", "files", "linux", "stable", "latest", "version.txt", "Prerelease-Alpha":
+	case "", "proxy", "github", "github.com", "gh", "cache", "MetaCubeX", "mihomo", "releases", "release", "download", "downloads", "assets", "files", "linux", "stable", "latest", "version.txt", "Prerelease-Alpha":
 		return true
 	}
 	// Only release-like values supplied by the resolved release may be exposed.

@@ -154,7 +154,7 @@ func (a *App) UpgradeCore(ctx context.Context, check CoreUpdateCheck, cfg downlo
 			return diagnostic.New("diagnostic.upgrade.downgrade", "target is not a newer stable version; refusing to downgrade")
 		}
 		if progress != nil {
-			progress(mihomo.Progress{Stage: "query", Detail: "Resolving the reviewed release and its official SHA256 digest"})
+			progress(mihomo.Progress{Stage: "query", Detail: "Resolving the reviewed release for this device"})
 		}
 		release, err := a.ResolveRelease(ctx, check.LatestVersion, cfg)
 		if err != nil {

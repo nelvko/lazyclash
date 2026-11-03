@@ -31,7 +31,7 @@ func coreFixture(t *testing.T) (*App, *fakeService) {
 		if strings.HasPrefix(string(raw), "version:") {
 			return strings.TrimPrefix(string(raw), "version:"), nil
 		}
-		return mihomo.Version, nil
+		return testMihomoVersion, nil
 	}
 	a.Resolve = func(ctx context.Context, selection string, cfg downloadnet.Config) (mihomo.Release, error) {
 		return mihomo.Release{Version: "v1.20.0", Asset: "fixture.gz", Size: 128}, ctx.Err()
@@ -63,14 +63,14 @@ func TestCoreUpdatePreservesRunningInodeConfigurationAndService(t *testing.T) {
 	}
 	defer oldProcess.Close()
 	plan, err := a.PrepareInstall(t.Context(), mihomo.Release{Version: "v1.20.0", Size: 128}, "", false)
-	if err != nil || plan.BlockedReason != "" || plan.Operation != "update" || plan.RunningVersion != mihomo.Version {
+	if err != nil || plan.BlockedReason != "" || plan.Operation != "update" || plan.RunningVersion != testMihomoVersion {
 		t.Fatalf("plan=%+v err=%v", plan, err)
 	}
 	result, err := a.InstallCore(t.Context(), plan, downloadnet.Config{}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !result.RestartRequired || result.RunningVersion != mihomo.Version || result.InstalledVersion != "v1.20.0" {
+	if !result.RestartRequired || result.RunningVersion != testMihomoVersion || result.InstalledVersion != "v1.20.0" {
 		t.Fatalf("result=%+v", result)
 	}
 	if len(svc.actions) != 0 || !svc.active || svc.installs != 1 {
@@ -140,7 +140,7 @@ func TestCoreSameVersionIsNoOpUnlessReinstallWasRequested(t *testing.T) {
 	bin, _, _ := a.paths()
 	before, _ := os.Stat(bin)
 	for _, reinstall := range []bool{false, true} {
-		plan, err := a.PrepareInstall(t.Context(), mihomo.Release{Version: mihomo.Version}, "", reinstall)
+		plan, err := a.PrepareInstall(t.Context(), mihomo.Release{Version: testMihomoVersion}, "", reinstall)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -303,7 +303,7 @@ func TestCoreInterruptedPublicationRecoversEveryBoundaryWithoutServiceAction(t *
 			if err != nil {
 				t.Fatal(err)
 			}
-			want := mihomo.Version
+			want := testMihomoVersion
 			if tc.committed {
 				want = "v1.20.0"
 			}
@@ -366,5 +366,33 @@ func TestPreflightDiskPermissionsAndUnsupportedPlatform(t *testing.T) {
 	p, err = a.PrepareInstall(t.Context(), mihomo.Release{Version: "v1.20.0"}, "", false)
 	if err != nil || !strings.Contains(p.BlockedReason, "not writable") {
 		t.Fatalf("permission preflight=%+v err=%v", p, err)
+	}
+}
+
+func TestPreflightReservesArchiveSpaceWhenHTTPSizeIsUnknown(t *testing.T) {
+	for _, installed := range []bool{false, true} {
+		t.Run(map[bool]string{false: "first-install", true: "update"}[installed], func(t *testing.T) {
+			a, _ := coreFixture(t)
+			if installed {
+				if err := a.Install(t.Context(), "", nil); err != nil {
+					t.Fatal(err)
+				}
+			}
+			available := uint64(280 << 20)
+			if installed {
+				available = 160 << 20
+			}
+			a.DiskSpace = func(string) (uint64, error) { return available, nil }
+			release := mihomo.Release{Version: "v1.20.0"}
+			plan, err := a.PrepareInstall(t.Context(), release, "", false)
+			if err != nil || !strings.Contains(plan.BlockedReason, "disk space") {
+				t.Fatalf("unknown archive size did not reserve transfer space: plan=%+v err=%v", plan, err)
+			}
+			release.Size = 8 << 20
+			plan, err = a.PrepareInstall(t.Context(), release, "", false)
+			if err != nil || plan.BlockedReason != "" {
+				t.Fatalf("known small archive should fit: plan=%+v err=%v", plan, err)
+			}
+		})
 	}
 }

@@ -397,7 +397,7 @@ func (m *Model) handleNetworkResult(v networkMsg) tea.Cmd {
 		w.versionTest = status
 		if v.err == nil {
 			w.versionTest.Detail = m.tr("wizard.network.resolved", v.release.Version)
-			different := w.testRelease.Version != v.release.Version || w.testRelease.Asset != v.release.Asset || w.testRelease.SHA256 != v.release.SHA256
+			different := w.testRelease != v.release
 			w.testRelease = v.release
 			if different || w.fileTest.Status == checkNotApplicable {
 				w.fileTest = checkState{Status: checkTesting, Detail: v.release.Asset}
@@ -405,7 +405,7 @@ func (m *Model) handleNetworkResult(v networkMsg) tea.Cmd {
 				cmd = m.fileTestCmd(m.opCtx, m.id, v.release, w.draft)
 			}
 		}
-	} else if v.release.Version == w.testRelease.Version && v.release.Asset == w.testRelease.Asset && v.release.SHA256 == w.testRelease.SHA256 {
+	} else if v.release == w.testRelease {
 		status.Detail = m.tr("wizard.network.asset", v.release.Asset, status.Detail)
 		w.fileTest = status
 	}
@@ -825,10 +825,8 @@ func stageLabel(stage string) string {
 		return "Resolving version"
 	case "download":
 		return "Downloading"
-	case "checksum":
-		return "Verifying checksum"
 	case "extract":
-		return "Extracting"
+		return "Extracting and checking archive"
 	case "verify":
 		return "Checking executable"
 	case "deploy":

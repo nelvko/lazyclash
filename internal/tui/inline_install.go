@@ -521,6 +521,11 @@ func (m Model) inlineInstallBody(width int) (string, []hitRegion) {
 			d.control("local-mode", local)
 			if w.localMode {
 				d.field("local", m.tr("wizard.local.executable"), w.local)
+				d.line(m.tr("wizard.local.version_check"), muted)
+			} else {
+				d.space()
+				d.line(m.tr("wizard.verification.download"), muted)
+				d.line(m.tr("wizard.verification.no_signature"), muted)
 			}
 		}
 		d.space()

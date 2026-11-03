@@ -72,4 +72,6 @@ scripts/                显式运行的 Linux、PTY 和端到端验证
 
 持久生命周期、用户/实际/操作状态与恢复策略见 [持久运行](runtime-lifecycle.md)，权限方案比较及扩展条件见 [权限边界](permissions.md)。当前没有常驻 daemon、特权 helper 或系统级 backend；未来新增平台扩展 service，新增内核扩展 mihomo 适配边界，根据真实差异调整应用接口，不预先创建空实现。
 
-首次安装由 `tui/inline_install.go` 在 Overview 正文内呈现，复用 wizard 的检查、解析、预检与安装状态机。`wizard.inline` 与管理弹窗互斥，页面导航、焦点、滚动仍由概览管理；后台结果不会抢夺其他页面焦点。首屏只读查询最新稳定版，明确点击安装后才继续下载，完成后明确启动。下载设置统一为 direct/environment/accelerated；`downloadnet.Config.URL` 应用于版本、发布信息及文件的所有请求。
+首次安装由 `tui/inline_install.go` 在 Overview 正文内呈现，复用 wizard 的检查、解析、预检与安装状态机。`wizard.inline` 与管理弹窗互斥，页面导航、焦点、滚动仍由概览管理；后台结果不会抢夺其他页面焦点。首屏只读查询最新稳定版，明确点击安装后才继续下载，完成后明确启动。下载设置统一为 direct/environment/accelerated；`downloadnet.Config.URL` 应用于版本文本及文件的所有请求。
+
+latest 安装和升级检查从官方 `version.txt` 固定稳定标签，指定版本安装直接固定用户输入的标签；再由 `mihomo.Resolver` 按设备能力构造资源 URL，并以有限 Range 请求探测兼容候选。不存在 GitHub Release API 生产路径。下载器检查响应、大小、gzip 完整性和精确可执行版本，应用层继续负责配置验证、事务发布与回滚；不提供上游预期摘要或签名验证。本地安装记录中的摘要用于文件变化和恢复身份检测，不能冒充上游真实性证明。

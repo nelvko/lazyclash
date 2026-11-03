@@ -55,8 +55,9 @@ func TestWizardBilingualInstallKeepsReviewedMachineValues(t *testing.T) {
 }
 
 func TestWizardNetworkBilingualLabelsKeepIndependentResults(t *testing.T) {
-	for _, sample := range []struct{ language, failed, passed string }{
-		{"en", "Failed", "Passed"}, {"zh-Hans", "失败", "通过"},
+	for _, sample := range []struct{ language, failed, passed, version, file string }{
+		{"en", "Failed", "Passed", "Version information", "Package connection"},
+		{"zh-Hans", "失败", "通过", "版本信息", "安装包连接"},
 	} {
 		t.Run(sample.language, func(t *testing.T) {
 			b := &fakeBackend{resolve: func(context.Context, string, downloadnet.Config) (mihomo.Release, error) {
@@ -80,6 +81,57 @@ func TestWizardNetworkBilingualLabelsKeepIndependentResults(t *testing.T) {
 			plain := ansi.Strip(screen)
 			if !strings.Contains(plain, "fixture-metadata-rejected") || !strings.Contains(plain, testRelease().Asset) {
 				t.Fatal("network test altered an external diagnostic or asset")
+			}
+			if !strings.Contains(plain, sample.version) || !strings.Contains(plain, sample.file) {
+				t.Fatal("network checks did not explain their separate purposes", plain)
+			}
+		})
+	}
+}
+
+func TestReleaseVerificationDetailsDescribeActualChecksWithoutOfficialDigestClaim(t *testing.T) {
+	for _, sample := range []struct {
+		language string
+		checks   []string
+	}{
+		{"en", []string{"TLS", "gzip decompression", "archive integrity", "executable version", "No independent upstream digest or signature is verified."}},
+		{"zh-Hans", []string{"TLS", "完整解压 gzip", "压缩包完整性", "可执行文件版本", "未验证独立的上游摘要或签名。"}},
+	} {
+		t.Run(sample.language, func(t *testing.T) {
+			assertChecks := func(name, screen string) {
+				t.Helper()
+				plain := ansi.Strip(screen)
+				for _, check := range sample.checks {
+					if !strings.Contains(plain, check) {
+						t.Fatalf("%s omitted actual verification detail %q: %s", name, check, plain)
+					}
+				}
+				for _, claim := range []string{"SHA256", "GitHub API", "Release digest source", "Checksum source", "发布摘要来源", "校验值来源"} {
+					if strings.Contains(plain, claim) {
+						t.Fatalf("%s claimed an unavailable upstream digest: %s", name, plain)
+					}
+				}
+			}
+			m := ready(&fakeBackend{})
+			m.locale = i18n.New(sample.language)
+			m.openManagementWizard(false)
+			m.wizard.release, m.wizard.details = testRelease(), true
+			m.wizard.plan = app.InstallPlan{Release: testRelease(), ActualPath: "/tmp/mihomo", Operation: "install"}
+			for _, step := range []wizardStep{stepVersion, stepConfirm} {
+				m.wizard.step = step
+				doc, _, _ := m.wizardDocument(180)
+				assertChecks(string(step), strings.Join(doc.lines, "\n"))
+			}
+			m = ready(&fakeBackend{})
+			m.locale = i18n.New(sample.language)
+			m.beginInlineInstall(false, false)
+			m.wizard.more = true
+			screen, _ := m.inlineInstallBody(180)
+			assertChecks("inline more options", screen)
+			m.wizard.more = false
+			screen, _ = m.inlineInstallBody(180)
+			if strings.Contains(ansi.Strip(screen), sample.checks[len(sample.checks)-1]) {
+				t.Fatal("collapsed first-run guide retained expanded verification details")
 			}
 		})
 	}
