@@ -8,7 +8,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"sort"
 	"strings"
 	"time"
 
@@ -94,12 +93,22 @@ func (c Client) openRequest(ctx context.Context, method, path string, body []byt
 		_ = resp.Body.Close()
 		closeIdle()
 		if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
-			return nil, diagnostic.New("diagnostic.api.httpCredentials", "Mihomo API returned HTTP %d; verify the managed listener and credentials", resp.StatusCode)
+			return nil, &apiHTTPError{status: resp.StatusCode, err: diagnostic.New("diagnostic.api.httpCredentials", "Mihomo API returned HTTP %d; verify the managed listener and credentials", resp.StatusCode)}
 		}
-		return nil, diagnostic.New("diagnostic.api.http", "Mihomo API returned HTTP %d", resp.StatusCode)
+		return nil, &apiHTTPError{status: resp.StatusCode, err: diagnostic.New("diagnostic.api.http", "Mihomo API returned HTTP %d", resp.StatusCode)}
 	}
 	return apiBody{ReadCloser: resp.Body, closeIdle: closeIdle}, nil
 }
+
+// apiHTTPError preserves the response status without exposing its untrusted body.
+type apiHTTPError struct {
+	status int
+	err    error
+}
+
+func (e *apiHTTPError) Error() string     { return e.err.Error() }
+func (e *apiHTTPError) Unwrap() error     { return e.err }
+func (e *apiHTTPError) Diagnostic() error { return e.err }
 
 type apiBody struct {
 	io.ReadCloser
@@ -151,25 +160,11 @@ func (c Client) Version(ctx context.Context) (string, error) {
 }
 
 func (c Client) Groups(ctx context.Context) ([]Group, error) {
-	raw, err := c.request(ctx, http.MethodGet, "/proxies", nil)
+	proxies, err := c.Proxies(ctx)
 	if err != nil {
 		return nil, err
 	}
-	var result struct {
-		Proxies map[string]Group `json:"proxies"`
-	}
-	if err := json.Unmarshal(raw, &result); err != nil || result.Proxies == nil {
-		return nil, diagnostic.New("diagnostic.api.proxyResponse", "invalid Mihomo proxy response")
-	}
-	groups := []Group{}
-	for name, g := range result.Proxies {
-		if len(g.All) > 0 {
-			g.Name = name
-			groups = append(groups, g)
-		}
-	}
-	sort.Slice(groups, func(i, j int) bool { return groups[i].Name < groups[j].Name })
-	return groups, nil
+	return ProxyGroups(proxies), nil
 }
 
 func (c Client) Select(ctx context.Context, group, node string) error {

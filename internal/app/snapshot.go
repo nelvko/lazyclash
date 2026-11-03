@@ -34,6 +34,7 @@ type Snapshot struct {
 	Profiles            []string
 	ProfileDetails      []ProfileInfo
 	Groups              []mihomo.Group
+	Proxies             map[string]mihomo.Proxy
 	APIError            string
 	APIDiagnostic       error `json:"-"`
 	Desired             DesiredState
@@ -146,10 +147,12 @@ func (a *App) Snapshot(ctx context.Context) (Snapshot, error) {
 				}
 				out.HasRun = true
 			}
-			out.Groups, err = a.client(m).Groups(ctx)
+			out.Proxies, err = a.client(m).Proxies(ctx)
 			if err != nil {
 				out.APIError = err.Error()
 				out.APIDiagnostic = err
+			} else {
+				out.Groups = mihomo.ProxyGroups(out.Proxies)
 			}
 			out.Mode.Running = true
 			cfg, err := a.client(m).Configuration(ctx)
