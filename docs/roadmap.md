@@ -12,20 +12,19 @@
 
 已完成运行端口设置：Settings 内审阅并修改本机代理与控制 API 端口，检查 TCP/UDP 冲突，运行中明确确认重启，停止时保持停止；取消或失败恢复旧配置和服务状态，保留原始 profile 与 API 密钥。CLI 共享用例，操作见 [运行端口设置](runtime-settings.md)。
 
-下一阶段优先重构 Linux 服务 scope 与权限模型，目标是 root 与普通用户均可使用，具有 sudo 授权的普通用户可以开启 TUN。设计、实施顺序和验收见 [服务 scope 与权限模型](service-scopes.md)：
+Linux 首发服务 scope 与权限实现及 Linux/arm64 双作用域、TUN 端到端验收已完成，平台范围及限制以 [验证记录](verification.md) 为准。范围见 [服务 scope](service-scopes.md)：
 
-1. 分开逻辑 owner/实例身份与 user/system 执行部署；root 的 system 普通代理与普通用户的 user 普通代理均可用，允许端口不冲突的独立实例并存。
-2. 实现受保护的系统用例入口与 sudo 授权，覆盖发布、控制 API、服务操作和恢复，不提权整个普通用户 TUI。
-3. 实现同一网络命名空间内的 TUN 独占协调、占用者提示和管理员显式转移，覆盖自启动、自动恢复及清理；实现最小权限和独立流量覆盖策略。
-4. 完成同一实例 user → system backend 的显式切换，保持 owner 不变；验收设备/路由/DNS、失败恢复和多用户场景，保证普通用户经授权即可为自己的实例开启 TUN。
+- 普通用户管理自己的 user 代理；root 管理独立 system 实例，默认 `/var/lib/lazyclash/<service-name>`。`sudo lazyclash` 不复制或切换原用户数据，不提供普通用户 TUN 授权流程。
+- system Mihomo 使用专用非 root 账号，普通代理无额外 capabilities；明确确认 host 范围的 TUN 后才授予 `CAP_NET_ADMIN CAP_NET_RAW`。首版不提供 UID 筛选。
+- 独立 unit 直接托管内核，同一受保护 lazyclash 程序的有限钩子负责 TUN 冲突、就绪与退出清理。没有独立 helper、常驻 daemon 或脱离客户端的事务执行器；遗留 journal 在下一次调用时恢复。
+- `make package VERSION=dev` 生成 Linux amd64/arm64 的发行归档与 SHA256SUMS。完整验收包括用户/root 普通代理、TUN、停止清理、失败恢复及生命周期，不能以打包、单测或交叉编译代替。
 
 项目未发行，直接重构；不保留旧 unit、manifest、目录布局或命令行为的兼容层，不编写旧安装自动迁移。
 
 其余后续需求：
 
-1. 订阅刷新、卸载流程及明确的配置覆盖机制。
-2. 基于具体需求完善日志筛选与诊断，保持当前不落盘的敏感信息边界。
-3. 必要的主题偏好。
-4. 有具体需求后再评估 sing-box。
+1. 基于具体需求完善日志筛选与诊断，保持当前不落盘的敏感信息边界。
+2. 必要的主题偏好。
+3. 有具体需求后再评估其他内核或平台。
 
-其他平台服务、独立于 TUN 的系统 DNS 接管、系统代理自动设置、自动 enable/linger 或 Shell 启动文件修改仍不在本轮范围。没有占位后端、插件框架或历史兼容层。
+普通用户提权、同一实例的 user/system 切换、TUN 自动交接、其他平台服务、独立系统 DNS 接管、系统代理自动设置、自动 enable/linger 和 Shell 启动文件修改均不在首发范围，也不是当前已承诺的后续实现。没有占位后端、插件框架或历史兼容层。
