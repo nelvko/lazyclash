@@ -67,7 +67,6 @@ type wizardState struct {
 	testPending                     int
 	cachedRelease                   mihomo.Release
 	cachedSelection                 string
-	expanded                        string
 }
 
 func newWizard() wizardState {

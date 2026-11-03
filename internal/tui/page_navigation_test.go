@@ -189,15 +189,16 @@ func TestPageNavigationRestoresProfilesAndNodesByIdentity(t *testing.T) {
 	})
 	t.Run("node", func(t *testing.T) {
 		m := pageNavigationModel()
+		m.snapshot.Installed, m.snapshot.Service.Active = true, true
 		m.snapshot.Groups = []mihomo.Group{{Name: "A", Type: "Selector", All: []string{"a1"}}, {Name: "B", Type: "Selector", All: []string{"b1", "b2"}}}
-		m.wizard.expanded = "B"
+		m.proxies.expanded = "B"
 		m.navigate("proxies")
 		m.focus = "node.1.1"
 		m.browsePage("overview")
 		m.snapshot.Groups = []mihomo.Group{{Name: "B", Type: "Selector", All: []string{"b2", "b1"}}, {Name: "A", Type: "Selector", All: []string{"a1"}}}
 		m.navigate("proxies")
-		if m.focus != "node.0.0" || m.wizard.expanded != "B" {
-			t.Fatalf("restored a different proxy after reordering: focus=%s group=%s", m.focus, m.wizard.expanded)
+		if m.focus != "node.0.0" || m.proxies.expanded != "B" {
+			t.Fatalf("restored a different proxy after reordering: focus=%s group=%s", m.focus, m.proxies.expanded)
 		}
 	})
 }
@@ -289,8 +290,9 @@ func TestPageNavigationActiveFocusSurvivesSnapshotReordering(t *testing.T) {
 	})
 	t.Run("node", func(t *testing.T) {
 		m := pageNavigationModel()
+		m.snapshot.Installed, m.snapshot.Service.Active = true, true
 		m.snapshot.Groups = []mihomo.Group{{Name: "A", Type: "Selector", All: []string{"a1"}}, {Name: "B", Type: "Selector", All: []string{"b1", "b2"}}}
-		m.wizard.expanded = "B"
+		m.proxies.expanded = "B"
 		m.navigate("proxies")
 		m.focus = "node.1.1"
 		m.layout()

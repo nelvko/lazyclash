@@ -203,7 +203,8 @@ func TestNetworkSaveLocksDraftAgainstKeyboardPasteAndMouse(t *testing.T) {
 
 func TestWrappedPageBodyTargetsMatchTheirPaintedRows(t *testing.T) {
 	for _, width := range []int{18, 25, 40} {
-		m := ready(&fakeBackend{snapshot: app.Snapshot{APIError: strings.Repeat("API unavailable 中文 ", 20), Groups: []mihomo.Group{{Name: "alpha", Type: "Selector", Now: "DIRECT", All: []string{"DIRECT"}}}}})
+		m := ready(&fakeBackend{snapshot: app.Snapshot{Installed: true, Groups: []mihomo.Group{{Name: "alpha", Type: "Selector", Now: "DIRECT", All: []string{"DIRECT"}}}}})
+		m.snapshot.Service.Active = true
 		m.page = "proxies"
 		body, hits := m.pageBody(width)
 		lines := strings.Split(body, "\n")
@@ -373,7 +374,7 @@ func TestOverviewReflectsSelectedGroupAndPrefersPROXY(t *testing.T) {
 		}
 	}
 	m := ready(&fakeBackend{snapshot: snapshot})
-	m.wizard.expanded = "Work"
+	m.proxies.expanded = "Work"
 	m, _ = update(m, tea.WindowSizeMsg{Width: 160, Height: 45})
 	if !strings.Contains(ansi.Strip(m.View().Content), "work-node") {
 		t.Fatal("model did not pass session group selection to Overview")

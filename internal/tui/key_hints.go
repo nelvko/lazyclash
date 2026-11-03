@@ -79,6 +79,7 @@ func (m *Model) keyHintsShortcut(k tea.KeyPressMsg) (bool, tea.Cmd) {
 		return false, nil
 	}
 	if !m.helpOpen && (m.inlineInputActive() || (m.page == "profiles" && m.focus == "profiles.url" && !m.sidebarOpen) ||
+		(m.page == "proxies" && m.proxies.editing) ||
 		(m.page == "connections" && (m.connections.editing || m.connections.confirming)) ||
 		(m.page == "rules" && m.rules.editing) || (m.page == "logs" && m.logs.editing)) {
 		return false, nil

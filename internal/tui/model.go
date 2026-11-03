@@ -4,7 +4,6 @@ package tui
 import (
 	"context"
 	"errors"
-	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -138,6 +137,7 @@ type Model struct {
 	form, name            string
 	rememberSource        bool
 	profilesUI            profilesState
+	proxies               proxiesState
 	profileCreate         profileCreateState
 	menu                  actionMenu
 	input                 textinput.Model
@@ -170,7 +170,7 @@ func New(ctx context.Context, backend Backend, languages ...string) Model {
 	spin := spinner.New()
 	spin.Spinner = spinner.Dot
 	opCtx, cancel := context.WithCancel(ctx)
-	m := Model{ctx: ctx, backend: backend, busy: true, id: 1, cancel: cancel, opCtx: opCtx, job: "refresh", message: "", page: "overview", focus: "install", input: input, spinner: spin, width: 80, height: 24, wizard: newWizard(), profilesUI: newProfilesState(), profileCreate: newProfileCreateState()}
+	m := Model{ctx: ctx, backend: backend, busy: true, id: 1, cancel: cancel, opCtx: opCtx, job: "refresh", message: "", page: "overview", focus: "install", input: input, spinner: spin, width: 80, height: 24, wizard: newWizard(), profilesUI: newProfilesState(), proxies: newProxiesState(), profileCreate: newProfileCreateState()}
 	if len(languages) > 0 {
 		m.languageOverride = languages[0]
 	}
@@ -219,6 +219,7 @@ func (m Model) snapshotCmd(id uint64, ctx context.Context, initial bool) tea.Cmd
 	}
 }
 func (m *Model) newJob(kind string) context.Context {
+	m.stopProxyTests()
 	m.stopRuntime()
 	m.stopRules()
 	m.stopLogs()
@@ -286,6 +287,7 @@ func waitProgress(ctx context.Context, updates <-chan progressMsg) tea.Cmd {
 	}
 }
 func (m *Model) cancelTask(quit bool) {
+	m.stopProxyTests()
 	m.stopRuntime()
 	m.stopRules()
 	m.stopLogs()
@@ -308,6 +310,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	previousPage := m.page
 	switch v := msg.(type) {
+	case proxyDelayMsg:
+		cmd = m.acceptProxyDelay(v)
 	case keyHintsSavedMsg:
 		cmd = m.acceptKeyHintsSaved(v)
 	case notificationExpiredMsg:
@@ -385,6 +389,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.runtimeCmd()
 		}
 	case parentCanceledMsg:
+		m.stopProxyTests()
 		m.stopRuntime()
 		m.stopRules()
 		m.stopLogs()
@@ -428,6 +433,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.busy = false
 		m.job = ""
+		m.proxies.pendingGroup, m.proxies.pendingNode = "", ""
 		if v.hasSnapshot {
 			m.snapshot = v.snapshot
 			m.snapshotReady = true
@@ -533,7 +539,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = waitProgress(v.ctx, v.updates)
 		}
 	case spinner.TickMsg:
-		if m.busy {
+		if m.busy || m.proxies.testing {
 			m.spinner, cmd = m.spinner.Update(v)
 		}
 	case logoPulseMsg:
@@ -588,6 +594,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.profilesUI.editing = true
 			m.profilesUI.url.Focus()
 			m.profilesUI.url, cmd = m.profilesUI.url.Update(v)
+		} else if m.proxies.editing {
+			m.proxies.search, cmd = m.proxies.search.Update(v)
+			m.scroll = 0
 		} else if m.connections.editing {
 			m.connections.search, cmd = m.connections.search.Update(v)
 			m.reconcileConnections()
@@ -648,6 +657,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.connectionSearchKey(v)
 			break
 		}
+		if m.page == "proxies" && m.proxies.editing {
+			cmd = m.proxySearchKey(v)
+			break
+		}
 		if m.page == "rules" && m.rules.editing {
 			cmd = m.ruleSearchKey(v)
 			break
@@ -664,6 +677,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Editors and overlays above own their keys. Let horizontal controls
 			// handle the original key before reusing the existing Escape hierarchy.
 			if m.profileGridKey(v) {
+				break
+			}
+			if m.page == "proxies" && !m.sidebarOpen && m.proxyHorizontal(-1) {
+				break
+			}
+			if m.page == "proxies" && !strings.HasPrefix(m.focus, "nav.") && !m.sidebarOpen && m.proxyBack() {
 				break
 			}
 			v = tea.KeyPressMsg{Code: tea.KeyEscape}
@@ -801,6 +820,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			break
 		}
+		if m.page == "proxies" {
+			if handled, next := m.proxyKey(v); handled {
+				cmd = next
+				break
+			}
+		}
 		if m.contentNavigationKey(v) {
 			break
 		}
@@ -894,6 +919,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		} else if m.page == "profiles" && m.focus == "profiles.url" {
 			m.profilesUI.url, cmd = m.profilesUI.url.Update(msg)
+		} else if m.proxies.editing {
+			m.proxies.search, cmd = m.proxies.search.Update(msg)
 		} else if m.connections.editing {
 			m.connections.search, cmd = m.connections.search.Update(msg)
 		} else if m.rules.editing {
@@ -905,6 +932,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	inline := m.syncInlineInstall()
 	notification := m.syncNotification()
 	m.reconcileProfiles()
+	m.syncProxies()
 	m.reconcileProfileMenu()
 	var completion tea.Cmd
 	if m.pathForm() {
@@ -1060,6 +1088,13 @@ func (m *Model) serviceAction(action string) tea.Cmd {
 	return m.begin(m.tr("model.service_"+action), m.tr("model.service_"+action+"_done"), func(ctx context.Context) error { return m.backend.Control(ctx, action) }, notificationOperation{Key: "service." + action, Context: m.tr("notification.service." + action)})
 }
 func (m *Model) activate(id string) tea.Cmd {
+	if m.page == "proxies" && id != "proxies.search" {
+		m.proxies.editing = false
+		m.proxies.search.Blur()
+	}
+	if m.page == "proxies" && (strings.HasPrefix(id, "proxies.") || strings.HasPrefix(id, "group.") || strings.HasPrefix(id, "node.")) {
+		return m.proxyActivate(id)
+	}
 	if strings.HasPrefix(id, "setup.") {
 		return m.inlineInstallActivate(id)
 	}
@@ -1158,35 +1193,6 @@ func (m *Model) activate(id string) tea.Cmd {
 			return nil
 		}
 		return m.begin(m.tr("model.applying_mode"), m.tr("model.mode_saved"), func(ctx context.Context) error { return m.backend.SetMode(ctx, mode) }, notificationOperation{Key: "mode." + mode, Context: m.tr("model.applying_mode") + " · " + mode})
-	case strings.HasPrefix(id, "group."):
-		n, err := strconv.Atoi(strings.TrimPrefix(id, "group."))
-		if err == nil && n >= 0 && n < len(m.snapshot.Groups) {
-			g := m.snapshot.Groups[n]
-			if m.wizard.expanded == g.Name {
-				m.wizard.expanded = ""
-			} else {
-				m.wizard.expanded = g.Name
-			}
-		}
-	case strings.HasPrefix(id, "node."):
-		parts := strings.Split(strings.TrimPrefix(id, "node."), ".")
-		if len(parts) != 2 {
-			return nil
-		}
-		gi, e1 := strconv.Atoi(parts[0])
-		ni, e2 := strconv.Atoi(parts[1])
-		if e1 == nil && e2 == nil && gi >= 0 && gi < len(m.snapshot.Groups) {
-			g := m.snapshot.Groups[gi]
-			if ni >= 0 && ni < len(g.All) {
-				if g.Type != "Selector" {
-					m.prepareNotification(notificationKey("node.select", g.Name), m.tr("model.switching_node")+" · "+clean(g.Name))
-					m.failure = m.tr("model.automatic_group")
-					return nil
-				}
-				node := g.All[ni]
-				return m.begin(m.tr("model.switching_node"), m.tr("model.node_selected"), func(ctx context.Context) error { return m.backend.Select(ctx, g.Name, node) }, notificationOperation{Key: notificationKey("node.select", g.Name+"\x00"+node), Context: m.tr("model.switching_node") + " · " + clean(g.Name) + " / " + clean(node)})
-			}
-		}
 	}
 	return nil
 }
@@ -1374,24 +1380,6 @@ func (m Model) pageBody(width int) (string, []hitRegion) {
 	if m.page == "overview" && m.inlineInstallVisible() {
 		return m.inlineInstallBody(width)
 	}
-	var lines []string
-	var hits []hitRegion
-	add := func(id, label string) {
-		row := len(lines)
-		s := "  " + clean(label)
-		if m.focus == id {
-			s = "> " + clean(label)
-		}
-		foreground, background := text, bg
-		if m.hover == id {
-			background = hoverBackground
-		}
-		if m.focus == id {
-			foreground = focus
-		}
-		lines = append(lines, themed(cellCrop(s, width), foreground, background, false))
-		hits = append(hits, hitRegion{ID: id, Y: row, W: width, H: 1})
-	}
 	if m.page == "connections" {
 		return m.connectionsBody(width)
 	}
@@ -1403,33 +1391,11 @@ func (m Model) pageBody(width int) (string, []hitRegion) {
 	}
 	if m.page == "profiles" {
 		return m.profilesBody(width)
-	} else {
-		lines = append(lines, themed(m.tr("model.proxy_groups"), text, bg, false), m.tr("model.proxy_instructions"), "")
-		if m.snapshot.APIError != "" {
-			lines = append(lines, strings.Split(wrapText(m.tr("model.api_unavailable", clean(m.locale.Diagnostic(m.snapshot.APIError, m.snapshot.APIDiagnostic))), width), "\n")...)
-		}
-		for gi, g := range m.snapshot.Groups {
-			add(fmt.Sprintf("group.%d", gi), fmt.Sprintf("%s [%s] → %s", g.Name, g.Type, g.Now))
-			if m.wizard.expanded == g.Name {
-				for ni, node := range g.All {
-					mark := "  "
-					if node == g.Now {
-						mark = "✓ "
-					}
-					add(fmt.Sprintf("node.%d.%d", gi, ni), "    "+mark+node)
-				}
-			}
-		}
-		if len(m.snapshot.Groups) == 0 {
-			lines = append(lines, m.tr("model.no_groups"))
-		}
 	}
-	// Body rows are single display lines, including hard-wrapped descriptions.
-	var expanded []string
-	for _, s := range lines {
-		expanded = append(expanded, strings.Split(s, "\n")...)
+	if m.page == "proxies" {
+		return m.proxiesBody(width)
 	}
-	return strings.Join(expanded, "\n"), hits
+	return "", nil
 }
 func (m *Model) layout() {
 	m.repairPageFocus()
@@ -1447,12 +1413,14 @@ func (m *Model) layout() {
 	}
 	o := m.dashboardOptions()
 	o.Sidebar = &m.sidebar
-	o.SelectedGroup, o.Snapshot, o.Focus, o.Hover = m.wizard.expanded, m.snapshot, m.focus, m.hover
+	o.SelectedGroup, o.Snapshot, o.Focus, o.Hover = m.proxies.expanded, m.snapshot, m.focus, m.hover
 	o.Help, o.GuideDismissed, o.Scroll, o.SidebarOpen = m.contextHelp(), m.snapshot.GuideDismissed, m.scroll, m.sidebarOpen
 	o.Runtime, o.RuntimeReceived, o.RuntimePending = m.runtime.snapshot, m.runtime.received, m.runtime.pending
 	o.StateUnavailable = !m.snapshotReady
 	g := dashboardGeometry(o)
 	o.Header = m.pageHeader()
+	m.proxies.search.SetWidth(max(1, g.width-ansi.StringWidth(m.proxies.search.Prompt)-1))
+	m.proxies.search.SetCursor(m.proxies.search.Position())
 	m.connections.search.SetWidth(max(1, g.width-2))
 	m.rules.search.SetWidth(max(1, g.width-2))
 	o.Body, o.BodyTargets = m.pageBody(g.width)

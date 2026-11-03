@@ -39,9 +39,9 @@ func (m *Model) beginInlineInstall(local, takeFocus bool) tea.Cmd {
 		m.abortLookup()
 	}
 	if !m.wizard.inline || m.wizard.step == stepResult {
-		cfg, expanded := m.wizard.cfg, m.wizard.expanded
+		cfg := m.wizard.cfg
 		m.wizard = newWizard()
-		m.wizard.cfg, m.wizard.draft, m.wizard.expanded = cfg, cfg, expanded
+		m.wizard.cfg, m.wizard.draft = cfg, cfg
 		m.wizard.inline = true
 	}
 	m.guideSkipped = false

@@ -45,11 +45,13 @@ func (m *Model) observeCoreState(state string) tea.Cmd {
 	switch state {
 	case "stopped":
 		m.snapshot.Groups = nil
+		m.snapshot.Proxies = nil
 		if m.snapshot.Service.Active || m.snapshot.Service.State != "inactive" || m.snapshot.ServiceError != "" {
 			return m.refreshCoreStatus()
 		}
 	case "uninstalled":
 		m.snapshot.Groups = nil
+		m.snapshot.Proxies = nil
 		if m.snapshot.Installed {
 			return m.refreshCoreStatus()
 		}

@@ -145,6 +145,13 @@ func (m *Model) dismissProfileMenu() {
 }
 
 func (m *Model) reconcileProfileMenu() {
+	if m.proxies.sortMenu {
+		if m.page != "proxies" || m.busy {
+			m.menu.dismiss()
+			m.proxies.sortMenu = false
+		}
+		return
+	}
 	if !m.menu.open {
 		return
 	}
@@ -165,6 +172,9 @@ func (m *Model) reconcileProfileMenu() {
 }
 
 func (m *Model) profileMenuResult(result menuResult) tea.Cmd {
+	if m.proxies.sortMenu {
+		return m.proxyMenuResult(result)
+	}
 	if !result.Closed {
 		return nil
 	}

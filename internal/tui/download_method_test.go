@@ -42,13 +42,13 @@ func TestAccelerationPreviewExpandsTheActualFullURL(t *testing.T) {
 	m.openNetwork(false)
 	m.wizard.draft = downloadnet.Config{Method: "accelerated", Prefix: "https://accelerator.example.invalid/"}
 	m.wizard.release = testRelease()
-	m.wizard.expanded = "PROXY"
+	m.proxies.expanded = "PROXY"
 	doc, _, _ := m.wizardDocument(300)
 	if strings.Contains(ansi.Strip(strings.Join(doc.lines, "\n")), testRelease().URL) {
 		t.Fatal("full URL preview should be collapsed initially")
 	}
 	m.wizardActivate("url-preview")
-	if m.wizard.expanded != "PROXY" {
+	if m.proxies.expanded != "PROXY" {
 		t.Fatal("opening a download preview changed the selected proxy group")
 	}
 	doc, _, _ = m.wizardDocument(300)

@@ -51,7 +51,13 @@ func (m Model) pageHeader() pageHeader {
 		h.actions = []headerAction{{"profiles.update-all", tr("header.updateAll"), "↻", m.hasRefreshableProfiles()}}
 	case "proxies":
 		if m.snapshot.Installed && m.snapshot.Service.Active && m.snapshot.ServiceError == "" && m.snapshot.APIError == "" {
-			h.summary = tr("header.groups", len(m.snapshot.Groups))
+			count := 0
+			for _, g := range m.snapshot.Groups {
+				if (m.snapshot.Mode.Actual == "global") == (g.Name == "GLOBAL") {
+					count++
+				}
+			}
+			h.summary = tr("header.groups", count)
 		}
 		h.actions = []headerAction{{"page.refresh", tr("header.refresh"), "↻", true}}
 	case "connections":

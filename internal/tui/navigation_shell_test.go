@@ -132,6 +132,7 @@ func TestNavigationShellHintResizeKeepsFocusedListRowVisible(t *testing.T) {
 	m := ready(&fakeBackend{})
 	m.width, m.height = 120, 32
 	m.page, m.keyHints.hidden = "proxies", true
+	m.snapshot.Installed, m.snapshot.Service.Active = true, true
 	for i := 0; i < 40; i++ {
 		m.snapshot.Groups = append(m.snapshot.Groups, mihomo.Group{Name: fmt.Sprintf("Group %02d", i), Type: "Selector", Now: "DIRECT"})
 	}

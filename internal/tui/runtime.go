@@ -104,6 +104,7 @@ func (m *Model) acceptRuntime(v runtimeResultMsg) tea.Cmd {
 		}
 		if v.snapshot.State == "stopped" {
 			m.snapshot.Groups = nil
+			m.snapshot.Proxies = nil
 			m.snapshot.APIError = "Start the service to view proxy groups"
 			m.snapshot.APIDiagnostic = nil
 		}

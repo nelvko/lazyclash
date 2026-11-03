@@ -47,6 +47,9 @@ func (m *Model) rememberPageView() {
 func (m *Model) browsePage(page string) {
 	m.sidebar.reveal = true
 	if page != m.page {
+		m.stopProxyTests()
+		m.proxies.editing = false
+		m.proxies.search.Blur()
 		m.rememberPageView()
 		m.blurInlineInput()
 		m.dismissProfileMenu()
@@ -72,6 +75,8 @@ func (m *Model) browsePage(page string) {
 
 func (m *Model) returnToNavigation() {
 	m.rememberPageView()
+	m.proxies.editing = false
+	m.proxies.search.Blur()
 	m.blurInlineInput()
 	m.profilesUI.editing = false
 	m.profilesUI.url.Blur()
@@ -94,7 +99,7 @@ func (m Model) navigationOptions() dashboardOptions {
 	o := m.dashboardOptions()
 	o.Snapshot, o.Focus, o.Hover = m.snapshot, m.focus, m.hover
 	o.GuideDismissed = m.snapshot.GuideDismissed
-	o.SelectedGroup = m.wizard.expanded
+	o.SelectedGroup = m.proxies.expanded
 	o.Runtime, o.RuntimeReceived, o.RuntimePending = m.runtime.snapshot, m.runtime.received, m.runtime.pending
 	o.StateUnavailable = !m.snapshotReady
 	return o
@@ -463,6 +468,7 @@ func (m *Model) decorateContentFocus(g dashboardLayout, overlays []notificationO
 }
 
 func (m *Model) requestQuit() tea.Cmd {
+	m.stopProxyTests()
 	m.stopRuntime()
 	m.stopRules()
 	m.stopLogs()

@@ -12,7 +12,7 @@ func (m Model) helpLines(width int) []string {
 	lines := []string{tr("help.navigation"), tr("help.pages.first"), tr("help.pages.second"), "", tr("help.navigation.tab"), tr("help.navigation.arrows"), tr("help.navigation.scroll"), tr("help.navigation.cancel"), tr("help.keyHints.shortcut"), "", tr("help.currentPage", pageTitle(m.page, m.locale))}
 	switch m.page {
 	case "proxies":
-		lines = append(lines, tr("help.proxies.expand"), tr("help.proxies.options"))
+		lines = append(lines, tr("help.proxies.expand"), tr("help.proxies.options"), tr("help.proxies.tools"))
 	case "profiles":
 		lines = append(lines, tr("help.profiles.add"), tr("help.profiles.import"), tr("help.profiles.rename"), tr("help.profiles.click"), tr("help.profiles.menu"), tr("help.profiles.menuControls"), tr("help.profiles.grid"), tr("help.profiles.actions"), tr("help.profiles.update"), tr("help.profiles.overrides"), tr("help.profiles.delete"))
 	case "connections":
