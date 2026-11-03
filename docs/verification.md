@@ -1,5 +1,18 @@
 # 验证入口
 
+## Proxies 分组与节点浏览重设计（2026-11-03）
+
+代理页改为折叠组摘要与双列成员；窄屏使用组列表、成员列表两级浏览。选择确认与键盘焦点分别显示，自动策略组只供查看；搜索、排序、引用组往返、延迟测试与取消均保留稳定焦点和过期结果保护。引用组不复用核心的历史延迟，只显示绑定当前解析路径的本轮测试结果；叶子节点仍可使用核心历史。
+
+本轮实际通过：
+
+- 宿主 macOS/arm64 的 `make check`、`make build`、全包 `make race` 与完整 TUI/i18n race。最终引用组历史保护后重新通过 `make check build` 与 Proxies 定向 race；八项 Python 终端解析回归及变更脚本语法检查通过。
+- `./scripts/verify-linux.sh lazyclash-e2e` 在已有专用 Debian 12/arm64、systemd 252 VM 内实际执行全部九个可运行测试包。最终产品提交另在 VM 内重跑整个 TUI 测试包，通过，包含引用组路径变化后旧历史失效的回归；私有暂存目录已清理。
+- `scripts/proxies-pty.py` 在真实 controlling PTY 完成中英文 × True Color/ANSI256/NO_COLOR 六组，覆盖协议/UDP、双列键盘与鼠标选择、自动策略只读、组引用与搜索往返、排序、测试完成/取消/迟到结果、空组、负载均衡、模式切换，以及 160×45、120×32、80×24、60×20、40×16、120×18 缩放。该入口明确使用内存后端，调用报告与 ANSI/文本/PNG 位于 `.test-artifacts/proxies-redesign/pty/`；PNG 按实际 PTY 字符格与颜色重绘，不是原生终端截图，也不代表远端节点网络测试通过。
+- `./scripts/e2e.sh lazyclash-e2e` 以 direct 下载方式完整通过真实 Mihomo/user systemd/PTY 验收。Proxies 使用真实内核的 DIRECT/REJECT，键盘和鼠标切换后均由 API 回读确认，`r` 刷新保持 PID；内置项显示 N/A。整轮还完成官方 v1.19.32 安装与 v1.19.33 升级、配置事务与回滚、规则、日志暂停/恢复、实时连接、端口修改及 SIGHUP/SIGKILL 恢复等既有场景。验证脚本同步新代理页交互与当前页面导航，日志停启状态改由实际服务 JSON 核对，同时保留捕获不可用、重连和新事件断言。
+
+最终脱敏记录位于忽略目录 `.test-artifacts/proxies-redesign/`：`linux-tests.log`、`linux-tui-final.log`、`e2e.log`、`e2e-cleanup.txt` 及相关 `pty-*.txt`。完整 E2E 退出码为 0；随机专用 unit 已移除，默认与动态 TCP/UDP 监听均释放，清理记录为 `resources released=1`、`exit=0`。实际 Linux 运行平台为 arm64，未在 amd64 运行；本轮未重跑 system scope/TUN 专项，也不把内存后端延迟结果当作真实远端节点测速证据。
+
 ## systemd 属性查询与作用域诊断（2026-11-03）
 
 管理器预检、服务名冲突检查和 linger 查询统一读取 `属性名=值`，移除旧版 systemctl/loginctl 不支持的 `--value`。可读的 `SystemState=degraded` 与 `running` 均表示管理器可访问；不要求清理全机失败服务。只有明确的 `LoadState=not-found` 才允许发布新 unit，查询失败、缺失属性、已有 vendor unit 或 masked unit 仍阻止安装。用户管理器失败保留会话与 `XDG_RUNTIME_DIR` 提示，系统管理器失败使用独立的中英文诊断。

@@ -544,7 +544,7 @@ def main():
 
             # Every major API consumer must use the new authenticated endpoint.
             terminal.key(b"2")
-            terminal.wait("Proxy groups and options")
+            terminal.wait("Search groups or nodes")
             terminal.wait("PROXY")
             terminal.key(b"5")
             terminal.wait("Rules loaded")
@@ -653,7 +653,7 @@ def main():
                 if "[TCP]" in terminal.screen.text():
                     break
             terminal.wait("[TCP]")
-            terminal.key(b"\t")  # navigation group -> log capture controls
+            # Numeric page navigation already enters the page content.
             terminal.key(b"f")
             terminal.wait("Paused")
             mark = len(terminal.text())
@@ -685,11 +685,15 @@ def main():
             cli("service", "stop")
             cli("logs", "--lines", "1", "--duration", "1s", success=False)
             terminal.wait("Capture unavailable")
-            terminal.wait("Mihomo · Stopped")
+            stopped = json.loads(cli("status"))["Service"]
+            if stopped["Active"] or stopped["State"] != "inactive":
+                raise AssertionError("Log capture ended without the dedicated service stopping")
             cli("service", "start")
+            started = json.loads(cli("status"))["Service"]
+            if not started["Active"] or started["State"] != "active":
+                raise AssertionError("Dedicated log-test service did not restart")
             terminal.key(b"g")
             terminal.wait("Capturing live events")
-            terminal.wait("Mihomo · Running")
             recovered_source = None
             for _ in range(5):
                 recovered_source = log_event()
@@ -747,24 +751,54 @@ def main():
             terminal.wait("Since core start")
             terminal.exit()
         else:
+            def cli(*arguments):
+                result = subprocess.run(command + list(arguments), check=True,
+                                        capture_output=True, timeout=20)
+                return json.loads(result.stdout)
+
+            def check_proxy_selection(expected):
+                groups = cli("nodes")
+                selected = next(group for group in groups if group["name"] == "PROXY")
+                if selected["now"] != expected:
+                    raise AssertionError("TUI selection was not confirmed by the real API")
+
             terminal.wait("Running")
             # Locate the sidebar entry so mouse coverage follows its spacing.
             terminal.wait("Settings")
             proxies_row = next(row for row, line in enumerate(terminal.screen.text().splitlines(), 1)
                                if re.match(r"^[ ›]*Proxies\b", line))
             terminal.key(f"\x1b[<0;5;{proxies_row}M\x1b[<0;5;{proxies_row}m".encode("ascii"))
-            terminal.wait("Proxy groups and options")
+            terminal.wait("Search groups or nodes")
             terminal.wait("PROXY")
-            terminal.key(b"\x1b[C")  # sidebar -> first group (GLOBAL), bypassing header actions
-            terminal.key(b"\x1b[B")  # next group: PROXY
-            terminal.wait("PROXY [Selector]")
+            terminal.key(b"\x1b[C")  # sidebar -> PROXY; GLOBAL is reserved for Global mode
             terminal.key(b"\r")
+            terminal.wait("Current selection: DIRECT")
+            terminal.wait("Selector")
+            terminal.wait("N/A")  # built-in choices never receive fabricated latency
             terminal.wait("REJECT")
             terminal.key(b"\x1b[B")  # DIRECT
-            terminal.key(b"\x1b[B")  # REJECT
+            terminal.key(b"\x1b[C")  # REJECT in the second column
             terminal.key(b"\r")
             terminal.wait("Node selected")
-            terminal.wait("PROXY [Selector] → REJECT")
+            terminal.wait("Current selection: REJECT")
+            check_proxy_selection("REJECT")
+
+            # Exercise a real candidate click as well as the sidebar click.
+            terminal.click_text("DIRECT")
+            terminal.wait("Current selection: DIRECT")
+            check_proxy_selection("DIRECT")
+            terminal.key(b"\x1b[C")
+            terminal.key(b"\r")
+            terminal.wait("Current selection: REJECT")
+            check_proxy_selection("REJECT")
+
+            # On this page r refreshes observations; it must not restart Mihomo.
+            pid = cli("status")["Service"]["PID"]
+            terminal.key(b"r")
+            terminal.wait_absent("Refreshing")
+            terminal.wait("Current selection: REJECT")
+            if cli("status")["Service"]["PID"] != pid:
+                raise AssertionError("Proxies refresh restarted the running core")
             terminal.key(b"3")
             terminal.wait("Built-in default")
             terminal.wait("configuration")
