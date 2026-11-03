@@ -66,6 +66,26 @@ func TestProxyDelayValidatesLiveMembersAndAutomaticReferences(t *testing.T) {
 	}
 }
 
+func TestProxyDelayRejectsEmptyAndNonmemberSelectedReferences(t *testing.T) {
+	for _, selected := range []string{"", "outside"} {
+		t.Run("selected="+selected, func(t *testing.T) {
+			a, s := installedApp(t)
+			s.active = true
+			delayCalls := 0
+			a.HTTP = &http.Client{Transport: fixtureTransport(func(r *http.Request) (*http.Response, error) {
+				if r.URL.Path == "/proxies" {
+					return proxyTestResponse(r, `{"proxies":{"MAIN":{"type":"Selector","all":["AUTO"]},"AUTO":{"type":"URLTest","now":"`+selected+`","all":["HK"]},"HK":{"type":"Shadowsocks"},"outside":{"type":"Trojan"}}}`), nil
+				}
+				delayCalls++
+				return proxyTestResponse(r, `{"delay":32}`), nil
+			})}
+			if _, err := a.TestProxyDelay(t.Context(), "MAIN", "AUTO"); err == nil || delayCalls != 0 {
+				t.Fatalf("invalid selected reference reached delay endpoint: calls=%d err=%v", delayCalls, err)
+			}
+		})
+	}
+}
+
 type proxyPIDService struct {
 	*fakeService
 	pid int

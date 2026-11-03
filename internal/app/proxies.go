@@ -95,6 +95,13 @@ func testableProxy(proxies map[string]mihomo.Proxy, group, node string) error {
 		if !p.IsGroup() {
 			return nil
 		}
+		selectedMember := false
+		for _, member := range p.All {
+			selectedMember = selectedMember || member == p.Now
+		}
+		if p.Now == "" || !selectedMember {
+			return diagnostic.New("diagnostic.api.nodeUnavailable", "the group or node is no longer available; refresh the nodes page")
+		}
 		node = p.Now
 	}
 }
