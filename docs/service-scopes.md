@@ -19,6 +19,8 @@ lazyclash 在 Linux/systemd 上提供两个独立作用域：普通用户管理�
 
 默认服务名均为 `lazyclash-mihomo`。同名 user/system unit 属于不同 manager，配置、密钥和安装记录互不共享。普通代理可并存，但监听端口必须不同；发现端口占用时报告，不停止其他实例。loopback TCP 监听本身没有用户隔离语义。
 
+管理器预检只确认当前 scope 的 systemd 可访问，`SystemState=degraded` 不会阻止安装。属性查询读取带名称的输出，不依赖 `--value`；服务名必须明确返回 `LoadState=not-found` 才视为空闲。系统管理器连接失败不会提示用户会话或 `XDG_RUNTIME_DIR`。这些查询已修正旧版工具的选项问题，但 systemd 219 的完整安装、unit 与生命周期尚未实测，版本范围及实际验证见 [验证说明](verification.md)。
+
 普通用户可用 `--home` / `LAZYCLASH_HOME` 和 `--service-name` / `LAZYCLASH_SERVICE` 隔离实例。root 忽略这两个用户环境变量，也不根据 `SUDO_USER` 选择数据；使用显式 `--home` 和 `--service-name`。root 的每个服务名有独立默认目录。自定义系统路径必须位于受保护、服务账号可遍历的目录下，祖先须 root 所有且不可由其他账号改写。`/tmp`、`/var/tmp`、`/home`、`/root`、`/run/user` 及其子目录会被 unit 文件系统沙箱隐藏，因此明确禁止；请使用 `/var/lib/lazyclash` 下的独立目录。符号链接或不安全的现存文件也会被拒绝。
 
 ## 日常操作

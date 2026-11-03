@@ -122,10 +122,29 @@ func (s *Systemd) Check(ctx context.Context) error {
 	if _, err := s.unit(); err != nil {
 		return err
 	}
-	if _, err := s.command(ctx, "systemctl", "--user", "show", "--property=SystemState", "--value"); err != nil {
+	out, err := s.command(ctx, "systemctl", "--user", "show", "--property=SystemState")
+	if err == nil && systemdProperty(out, "SystemState") == "" {
+		err = diagnostic.New("diagnostic.service.managerState", "systemd did not return a nonempty SystemState property")
+	}
+	if err != nil {
+		if s.Scope == System {
+			return diagnostic.New("diagnostic.service.systemManager", "systemd system manager is unavailable: %w", err)
+		}
 		return diagnostic.New("diagnostic.service.manager", "systemd user manager is unavailable (check your user session and XDG_RUNTIME_DIR): %w", err)
 	}
 	return nil
+}
+
+// Read the named property rather than relying on --value, which older systemd
+// tools do not support. Missing or empty values cannot confirm availability.
+func systemdProperty(out []byte, name string) string {
+	for line := range strings.SplitSeq(string(out), "\n") {
+		key, value, ok := strings.Cut(strings.TrimSpace(line), "=")
+		if ok && key == name {
+			return strings.TrimSpace(value)
+		}
+	}
+	return ""
 }
 
 // CheckPersistent refuses to promise logout independence until logind confirms
@@ -149,11 +168,11 @@ func (s *Systemd) CheckPersistent(ctx context.Context) error {
 }
 
 func (s *Systemd) linger(ctx context.Context) (known, enabled bool) {
-	out, err := s.command(ctx, "loginctl", "show-user", strconv.Itoa(os.Getuid()), "--property=Linger", "--value")
+	out, err := s.command(ctx, "loginctl", "show-user", strconv.Itoa(os.Getuid()), "--property=Linger")
 	if err != nil {
 		return false, false
 	}
-	switch strings.TrimSpace(string(out)) {
+	switch systemdProperty(out, "Linger") {
 	case "yes":
 		return true, true
 	case "no":
@@ -175,11 +194,11 @@ func (s *Systemd) Available(ctx context.Context) error {
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return diagnostic.New("diagnostic.service.inspectUnit", "inspect unit path: %w", err)
 	}
-	out, err := s.command(ctx, "systemctl", "--user", "show", name, "--property=LoadState", "--value")
+	out, err := s.command(ctx, "systemctl", "--user", "show", name, "--property=LoadState")
 	if err != nil {
 		return diagnostic.New("diagnostic.service.checkAvailability", "check service availability: %w", err)
 	}
-	if strings.TrimSpace(string(out)) != "not-found" {
+	if systemdProperty(out, "LoadState") != "not-found" {
 		return diagnostic.New("diagnostic.service.unknownAvailability", "service %s already exists or its availability is unknown", name)
 	}
 	return nil

@@ -1,5 +1,26 @@
 # 验证入口
 
+## systemd 属性查询与作用域诊断（2026-11-03）
+
+管理器预检、服务名冲突检查和 linger 查询统一读取 `属性名=值`，移除旧版 systemctl/loginctl 不支持的 `--value`。可读的 `SystemState=degraded` 与 `running` 均表示管理器可访问；不要求清理全机失败服务。只有明确的 `LoadState=not-found` 才允许发布新 unit，查询失败、缺失属性、已有 vendor unit 或 masked unit 仍阻止安装。用户管理器失败保留会话与 `XDG_RUNTIME_DIR` 提示，系统管理器失败使用独立的中英文诊断。
+
+核对了上游 systemd **v219** 的 [systemctl 属性选项与输出实现](https://github.com/systemd/systemd/blob/v219/src/systemctl/systemctl.c)、[Manager 的 SystemState 属性](https://github.com/systemd/systemd/blob/v219/src/core/dbus-manager.c) 和 [logind 用户的 Linger 属性](https://github.com/systemd/systemd/blob/v219/src/login/logind-user-dbus.c)。该版本支持所需属性及带名称的输出；systemctl 的多属性逗号列表也已存在。此核对不等同于在 v219 系统运行产品，也不代表当前生成的 unit、安全沙箱、capabilities 和完整 Mihomo 生命周期已适配 v219。
+
+本轮实际通过：
+
+- 宿主 `make check build`（全部 Go 测试、vet 和产品构建）、`go test -race ./internal/service ./internal/app ./internal/i18n`。
+- 回归 fixture 在修改前复现 `--value` 导致的预检失败及 root 误报用户管理器；修改后覆盖 user/system 查询、running/degraded/starting 状态、带名属性解析、空/错属性、服务冲突、失败时不发布 unit、linger 的明确 yes/no、取消与错误链，以及中英文诊断。
+- `./scripts/verify-linux.sh lazyclash-e2e` 在已有专用 Debian 12/arm64、systemd 252 VM 内实际执行全部可运行的 Linux Go 测试，通过。
+- 显式启用 `LAZYCLASH_TEST_SYSTEMD=1`，分别以该 VM 的普通用户和 root 执行 `TestSystemdManagerIntegration`。真实 user/system 管理器预检、随机未占用服务名、未安装状态回读和 scope/linger 处理均通过；user 实际为 Linger=yes，system 不查询 linger。没有安装 unit、启停服务或改变 linger，测试二进制的私有暂存目录已清理。
+
+证据保存在忽略目录 `.test-artifacts/systemd-properties/`：`before-fix.log`、`service-i18n.log`、`check-build.log`、`race.log`、`linux-tests.log`、`live-managers.log` 和最终 user/root 定向复验的 `linux-properties-final.log`；`upstream-v219/` 为只读获取的上述上游资源。普通测试默认跳过真实管理器检查；可在专用 Linux 测试机器上显式运行：
+
+```sh
+LAZYCLASH_TEST_SYSTEMD=1 go test ./internal/service -run '^TestSystemdManagerIntegration$' -count=1 -v
+```
+
+本轮未访问用户的服务器，没有真实 systemd 219 环境，也未重跑 Mihomo 安装/启动或 TUN 完整端到端测试。修复范围是已复现的命令选项、属性解析和作用域诊断，不能据此宣称整体兼容 systemd 219。
+
 ## master 合并验证（2026-11-03）
 
 合并 `codex/service-scopes` 的四个提交，同时保留 master 的 API-free 下载实现及下载审计。修正两者的执行边界：安装用例把专用服务身份传入下载阶段，解压后的系统内核保持 root 所有、服务组只读和可执行，再以该非 root 身份运行版本检查；普通用户下载仍为 0700。

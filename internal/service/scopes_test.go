@@ -17,6 +17,9 @@ func TestSystemScopeUsesSystemManagerWithoutLinger(t *testing.T) {
 		if command != "systemctl" || (len(args) > 0 && args[0] == "--user") {
 			t.Fatalf("wrong system scope: %s %v", command, args)
 		}
+		if strings.Contains(strings.Join(args, " "), "--property=SystemState") {
+			return []byte("SystemState=running\n"), nil
+		}
 		return []byte("LoadState=loaded\nActiveState=inactive\nMainPID=0\n"), nil
 	}
 	if err := s.CheckPersistent(t.Context()); err != nil {

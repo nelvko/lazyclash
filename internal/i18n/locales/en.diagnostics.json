@@ -142,6 +142,8 @@
   "diagnostic.service.normalUser": "lazyclash manages an unprivileged user service; run it as a normal user, without sudo",
   "diagnostic.service.configPath": "XDG_CONFIG_HOME must be an absolute path",
   "diagnostic.service.manager": "systemd user manager is unavailable (check your user session and XDG_RUNTIME_DIR): %w",
+  "diagnostic.service.systemManager": "systemd system manager is unavailable: %w",
+  "diagnostic.service.managerState": "systemd did not return a nonempty SystemState property",
   "diagnostic.service.linger": "persistent user service requires linger; run loginctl enable-linger %d (administrator authorization may be required), then retry",
   "diagnostic.service.exists": "service %s already exists; refusing to overwrite it",
   "diagnostic.service.unknownAvailability": "service %s already exists or its availability is unknown",

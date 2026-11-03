@@ -142,6 +142,8 @@
   "diagnostic.service.normalUser": "lazyclash 管理非特权用户服务；请使用普通用户运行，不要使用 sudo",
   "diagnostic.service.configPath": "XDG_CONFIG_HOME 必须是绝对路径",
   "diagnostic.service.manager": "systemd 用户管理器不可用（请检查用户会话和 XDG_RUNTIME_DIR）：%w",
+  "diagnostic.service.systemManager": "systemd 系统管理器不可用：%w",
+  "diagnostic.service.managerState": "systemd 未返回非空的 SystemState 属性",
   "diagnostic.service.linger": "持久用户服务需要 linger；请执行 loginctl enable-linger %d（可能需要管理员授权）后重试",
   "diagnostic.service.exists": "服务 %s 已存在；已拒绝覆盖",
   "diagnostic.service.unknownAvailability": "服务 %s 已存在或其可用性未知",

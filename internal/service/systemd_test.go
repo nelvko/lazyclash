@@ -19,7 +19,10 @@ func testManager(t *testing.T) (*Systemd, *[]string) {
 	s.run = func(_ context.Context, cmd string, args ...string) ([]byte, error) {
 		calls = append(calls, cmd+" "+strings.Join(args, " "))
 		if strings.Contains(strings.Join(args, " "), "--property=LoadState") {
-			return []byte("not-found\n"), nil
+			return []byte("LoadState=not-found\n"), nil
+		}
+		if strings.Contains(strings.Join(args, " "), "--property=SystemState") {
+			return []byte("SystemState=running\n"), nil
 		}
 		return nil, nil
 	}
@@ -32,7 +35,7 @@ func TestInspectReportsProcessIdentityAndRejectsInvalidPID(t *testing.T) {
 			s, _ := testManager(t)
 			s.run = func(_ context.Context, command string, args ...string) ([]byte, error) {
 				if command == "loginctl" {
-					return []byte("yes\n"), nil
+					return []byte("Linger=yes\n"), nil
 				}
 				if !strings.Contains(strings.Join(args, " "), "MainPID") {
 					t.Fatal("process identity was not requested")
@@ -74,7 +77,7 @@ func TestInstallIsAtomicAndDoesNotEnable(t *testing.T) {
 		t.Fatalf("invalid unit: %s", content)
 	}
 	want := []string{
-		"systemctl --user show lazyclash-test.service --property=LoadState --value",
+		"systemctl --user show lazyclash-test.service --property=LoadState",
 		"systemctl --user daemon-reload",
 	}
 	if !reflect.DeepEqual(*calls, want) {
@@ -108,7 +111,7 @@ func TestAvailableRejectsDanglingSymlinkAndVendorUnit(t *testing.T) {
 	if err := os.Remove(path); err != nil {
 		t.Fatal(err)
 	}
-	s.run = func(context.Context, string, ...string) ([]byte, error) { return []byte("loaded\n"), nil }
+	s.run = func(context.Context, string, ...string) ([]byte, error) { return []byte("LoadState=loaded\n"), nil }
 	if err := s.Available(context.Background()); err == nil {
 		t.Fatal("accepted existing vendor unit")
 	}
@@ -122,7 +125,7 @@ func TestFailedReloadRollsBackUnit(t *testing.T) {
 			reloads++
 			return nil, errors.New("unavailable manager")
 		}
-		return []byte("not-found\n"), nil
+		return []byte("LoadState=not-found\n"), nil
 	}
 	if err := s.Install(context.Background(), "/mihomo", "/config", "/data"); err == nil {
 		t.Fatal("expected reload failure")
@@ -170,7 +173,7 @@ func TestInspectNotFoundAndLinger(t *testing.T) {
 	s, _ := testManager(t)
 	s.run = func(_ context.Context, command string, args ...string) ([]byte, error) {
 		if command == "loginctl" {
-			return []byte("yes\n"), nil
+			return []byte("Linger=yes\n"), nil
 		}
 		return []byte("LoadState=not-found\nActiveState=inactive\n"), nil
 	}
@@ -333,23 +336,29 @@ func TestRemoveOwnedPreservesRunningOrTransitioningService(t *testing.T) {
 }
 
 func TestPersistentRuntimeRequiresConfirmedLingerAndNeverEnablesIt(t *testing.T) {
-	for _, value := range []string{"yes", "no", "", "unknown", "unavailable"} {
+	for _, value := range []string{"yes", "no", "", "unknown", "unavailable", "wrong-property", "bare-value"} {
 		t.Run(value, func(t *testing.T) {
 			s, _ := testManager(t)
 			s.run = func(_ context.Context, command string, args ...string) ([]byte, error) {
 				if command == "systemctl" {
-					if !reflect.DeepEqual(args, []string{"--user", "show", "--property=SystemState", "--value"}) {
+					if !reflect.DeepEqual(args, []string{"--user", "show", "--property=SystemState"}) {
 						t.Fatalf("unexpected service mutation: %v", args)
 					}
-					return []byte("running\n"), nil
+					return []byte("SystemState=running\n"), nil
 				}
-				if command != "loginctl" || args[0] != "show-user" {
+				if command != "loginctl" || !reflect.DeepEqual(args, []string{"show-user", strconv.Itoa(os.Getuid()), "--property=Linger"}) {
 					t.Fatalf("unexpected privilege operation: %s %v", command, args)
 				}
 				if value == "unavailable" {
 					return nil, errors.New("no logind")
 				}
-				return []byte(value + "\n"), nil
+				if value == "wrong-property" {
+					return []byte("OtherProperty=yes\n"), nil
+				}
+				if value == "bare-value" {
+					return []byte("yes\n"), nil
+				}
+				return []byte("Linger=" + value + "\n"), nil
 			}
 			err := s.CheckPersistent(t.Context())
 			if (err == nil) != (value == "yes") {
@@ -438,7 +447,10 @@ func TestSetEnabledUsesUserScopeAndConfirmsResultWithoutStarting(t *testing.T) {
 			s.run = func(_ context.Context, command string, args ...string) ([]byte, error) {
 				calls = append(calls, command+" "+strings.Join(args, " "))
 				if command == "loginctl" {
-					return []byte("yes\n"), nil
+					return []byte("Linger=yes\n"), nil
+				}
+				if strings.Contains(strings.Join(args, " "), "--property=SystemState") {
+					return []byte("SystemState=running\n"), nil
 				}
 				if args[0] != "--user" {
 					t.Fatalf("system scope touched: %v", args)
@@ -473,7 +485,7 @@ func TestRemoveOwnedClearsActivationBeforeDeletingUnit(t *testing.T) {
 			disabled := false
 			s.run = func(_ context.Context, command string, args ...string) ([]byte, error) {
 				if command == "loginctl" {
-					return []byte("no\n"), nil
+					return []byte("Linger=no\n"), nil
 				}
 				if args[1] == "disable" {
 					if _, err := os.Stat(path); err != nil {
