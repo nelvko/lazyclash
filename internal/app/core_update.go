@@ -107,7 +107,7 @@ func (a *App) observeCoreVersion(ctx context.Context) CoreUpdateCheck {
 	}
 	if err == nil {
 		bin, _, _ := a.paths()
-		check.InstalledVersion, err = a.Version(ctx, bin)
+		check.InstalledVersion, err = a.binaryVersion(ctx, bin)
 	}
 	if err == nil && check.InstalledVersion != m.Version {
 		// Normalize a harmless v prefix while retaining the actual -v output.

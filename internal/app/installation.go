@@ -18,17 +18,18 @@ import (
 )
 
 type manifest struct {
-	Build      *buildRecord `json:"build,omitempty"`
-	ID         string       `json:"id"`
-	Service    string       `json:"service"`
-	Version    string       `json:"version"`
-	Controller string       `json:"controller"`
-	Secret     string       `json:"secret"`
-	Port       int          `json:"mixed_port"`
-	Applied    string       `json:"applied"`
-	Mode       string       `json:"mode,omitempty"`
-	SHA        string       `json:"config_sha256"`
-	BinarySHA  string       `json:"binary_sha256"`
+	LifecycleSHA string       `json:"lifecycle_sha256,omitempty"`
+	Build        *buildRecord `json:"build,omitempty"`
+	ID           string       `json:"id"`
+	Service      string       `json:"service"`
+	Version      string       `json:"version"`
+	Controller   string       `json:"controller"`
+	Secret       string       `json:"secret"`
+	Port         int          `json:"mixed_port"`
+	Applied      string       `json:"applied"`
+	Mode         string       `json:"mode,omitempty"`
+	SHA          string       `json:"config_sha256"`
+	BinarySHA    string       `json:"binary_sha256"`
 }
 
 var generationName = regexp.MustCompile(`^generations/g-[a-f0-9]{24}$`)
@@ -75,6 +76,16 @@ func (a *App) load() (manifest, string, error) {
 	if err := existingDir(filepath.Join(dir, target)); err != nil {
 		return manifest{}, "", diagnostic.New("diagnostic.installation.generationUnsafe", "installation generation is incomplete or unsafe: %v", err)
 	}
+	if a.systemService() != nil {
+		if err := trustedRootAncestors(filepath.Join(dir, target)); err != nil {
+			return manifest{}, "", err
+		}
+		for _, path := range []string{filepath.Join(dir, "mihomo"), filepath.Join(dir, target, "config.yaml"), filepath.Join(dir, target, "manifest.json")} {
+			if err := trustedRootFile(path); err != nil {
+				return manifest{}, "", err
+			}
+		}
+	}
 	raw, err := store.Read(filepath.Join(dir, target, "manifest.json"))
 	if err != nil {
 		return manifest{}, "", diagnostic.New("diagnostic.installation.manifestUnavailable", "installation manifest is unavailable: %v", err)
@@ -107,6 +118,9 @@ func (a *App) load() (manifest, string, error) {
 	}
 	if hash != m.BinarySHA {
 		return m, "", diagnostic.New("diagnostic.installation.binaryModified", "installed binary was modified; refusing to operate")
+	}
+	if err := a.verifyLifecycle(m); err != nil {
+		return m, "", err
 	}
 	// Validate stored connection settings without exposing credentials.
 	if _, err := mihomo.Default(m.Controller, m.Secret, m.Port); err != nil {
@@ -141,6 +155,14 @@ func (a *App) writeGeneration(base string, m manifest, config []byte) (string, e
 		return "", err
 	}
 	if err := store.Replace(filepath.Join(dir, "manifest.json"), raw, nil, 0600); err != nil {
+		return "", err
+	}
+	for _, path := range []string{base, filepath.Join(base, "generations"), dir} {
+		if err := a.systemDirectory(path); err != nil {
+			return "", err
+		}
+	}
+	if err := a.systemFile(filepath.Join(dir, "config.yaml"), 0640); err != nil {
 		return "", err
 	}
 	// Persist the new directory entry before a journal/current pointer can

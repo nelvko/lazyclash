@@ -1,11 +1,14 @@
-// Package service manages a single unprivileged Linux systemd user service.
+// Package service manages independent Linux systemd user and system services.
 package service
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -14,14 +17,28 @@ import (
 	"time"
 
 	"github.com/nelvko/lazyclash/internal/diagnostic"
-	"github.com/nelvko/lazyclash/internal/store"
 )
 
 const managedHeader = "# Managed by lazyclash.\n"
 
 var validName = regexp.MustCompile(`^lazyclash-[A-Za-z0-9-]+$`)
 
+type Scope string
+
+const (
+	User   Scope = "user"
+	System Scope = "system"
+)
+
+func CurrentScope() Scope {
+	if os.Geteuid() == 0 {
+		return System
+	}
+	return User
+}
+
 type Status struct {
+	Scope       Scope `json:"scope"`
 	Active      bool
 	State       string
 	SubState    string
@@ -38,6 +55,10 @@ type Status struct {
 // Name excludes the .service suffix. UnitDir is the systemd user unit directory.
 type Systemd struct {
 	Name             string
+	Scope            Scope
+	TUN              bool
+	Lifecycle        string
+	Home             string
 	UnitDir          string
 	run              func(context.Context, string, ...string) ([]byte, error)
 	installedContent string
@@ -50,8 +71,8 @@ func New(name string) (*Systemd, error) {
 	if !validName.MatchString(name) {
 		return nil, diagnostic.New("diagnostic.service.name", "service name must match lazyclash-[A-Za-z0-9-]+")
 	}
-	if os.Geteuid() == 0 {
-		return nil, diagnostic.New("diagnostic.service.normalUser", "lazyclash manages an unprivileged user service; run it as a normal user, without sudo")
+	if CurrentScope() == System {
+		return &Systemd{Name: name, Scope: System, UnitDir: "/etc/systemd/system"}, nil
 	}
 	config := os.Getenv("XDG_CONFIG_HOME")
 	if config == "" {
@@ -64,10 +85,13 @@ func New(name string) (*Systemd, error) {
 	if !filepath.IsAbs(config) {
 		return nil, diagnostic.New("diagnostic.service.configPath", "XDG_CONFIG_HOME must be an absolute path")
 	}
-	return &Systemd{Name: name, UnitDir: filepath.Join(config, "systemd", "user")}, nil
+	return &Systemd{Name: name, Scope: User, UnitDir: filepath.Join(config, "systemd", "user")}, nil
 }
 
 func (s *Systemd) command(ctx context.Context, command string, args ...string) ([]byte, error) {
+	if command == "systemctl" && s.Scope == System && len(args) > 0 && args[0] == "--user" {
+		args = args[1:]
+	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -109,6 +133,9 @@ func (s *Systemd) Check(ctx context.Context) error {
 func (s *Systemd) CheckPersistent(ctx context.Context) error {
 	if err := s.Check(ctx); err != nil {
 		return err
+	}
+	if s.Scope == System {
+		return nil
 	}
 	known, enabled := s.linger(ctx)
 	if err := ctx.Err(); err != nil {
@@ -162,8 +189,11 @@ func (s *Systemd) Inspect(ctx context.Context) (Status, error) {
 	if err != nil {
 		return status, err
 	}
-	// Linger is diagnostic here: lack of loginctl must not prevent a stop.
-	status.LingerKnown, status.Linger = s.linger(ctx)
+	// Linger applies only to a user manager.
+	if s.Scope != System {
+		status.LingerKnown, status.Linger = s.linger(ctx)
+	}
+	status.Scope = s.scope()
 	return status, ctx.Err()
 }
 
@@ -239,7 +269,84 @@ func quoteArg(path string) (string, error) {
 	return `"` + path + `"`, nil
 }
 
-func legacyUnitContent(bin, config, data string) (string, error) {
+func unitContent(bin, config, data string) (string, error) {
+	return (&Systemd{}).content(bin, config, data)
+}
+
+func (s *Systemd) scope() Scope {
+	if s.Scope == System {
+		return System
+	}
+	return User
+}
+
+func (s *Systemd) ServiceScope() Scope { return s.scope() }
+
+func (s *Systemd) Account() string {
+	sum := sha256.Sum256([]byte(s.Name))
+	return fmt.Sprintf("lc-%x", sum[:6])
+}
+
+// Identity resolves the dedicated account. Creation happens only during install.
+func (s *Systemd) Identity() (int, int, error) {
+	u, err := user.Lookup(s.Account())
+	if err != nil {
+		return 0, 0, err
+	}
+	uid, err := strconv.Atoi(u.Uid)
+	if err != nil || uid == 0 {
+		return 0, 0, fmt.Errorf("invalid service uid")
+	}
+	gid, err := strconv.Atoi(u.Gid)
+	if err != nil || gid == 0 {
+		return 0, 0, fmt.Errorf("invalid service gid")
+	}
+	group, err := user.LookupGroupId(u.Gid)
+	if err != nil || group.Name != s.Account() || u.HomeDir != "/nonexistent" || u.Name != "lazyclash managed "+s.Name {
+		return 0, 0, fmt.Errorf("existing service account is not a dedicated lazyclash identity")
+	}
+	groups, err := u.GroupIds()
+	if err != nil {
+		return 0, 0, err
+	}
+	for _, group := range groups {
+		if group != u.Gid {
+			return 0, 0, fmt.Errorf("service account has supplementary groups")
+		}
+	}
+	passwd, err := os.ReadFile("/etc/passwd")
+	if err != nil {
+		return 0, 0, err
+	}
+	nologin := false
+	for line := range strings.SplitSeq(string(passwd), "\n") {
+		fields := strings.Split(line, ":")
+		if len(fields) == 7 && fields[0] == s.Account() {
+			nologin = fields[6] == "/usr/sbin/nologin"
+		}
+	}
+	if !nologin {
+		return 0, 0, fmt.Errorf("service account must have a nologin shell")
+	}
+	return uid, gid, nil
+}
+
+func (s *Systemd) PrepareIdentity(ctx context.Context) error {
+	if s.Scope != System {
+		return nil
+	}
+	if _, err := user.Lookup(s.Account()); err == nil {
+		_, _, err := s.Identity()
+		return err
+	}
+	if _, err := s.command(ctx, "/usr/sbin/useradd", "--system", "--user-group", "--no-create-home", "--comment", "lazyclash managed "+s.Name, "--home-dir", "/nonexistent", "--shell", "/usr/sbin/nologin", s.Account()); err != nil {
+		return err
+	}
+	_, _, err := s.Identity()
+	return err
+}
+
+func (s *Systemd) content(bin, config, data string) (string, error) {
 	paths := []string{bin, config, data}
 	for i := range paths {
 		var err error
@@ -248,25 +355,21 @@ func legacyUnitContent(bin, config, data string) (string, error) {
 			return "", err
 		}
 	}
-	return managedHeader + "[Unit]\nDescription=lazyclash Mihomo user service\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=:" + paths[0] + " -d " + paths[2] + " -f " + paths[1] + "\nRestart=on-failure\nRestartSec=2s\nStandardOutput=null\nStandardError=null\nUMask=0077\nNoNewPrivileges=true\n\n[Install]\nWantedBy=default.target\n", nil
-}
+	scope := s.scope()
+	content := managedHeader + "[Unit]\nDescription=lazyclash Mihomo " + string(scope) + " service\nAfter=network.target\nStartLimitIntervalSec=60s\nStartLimitBurst=5\n\n[Service]\nType=exec\nExecStart=:" + paths[0] + " -d " + paths[2] + " -f " + paths[1] + "\nRestart=on-failure\nRestartSec=2s\nTimeoutStopSec=15s\nKillMode=control-group\nStandardOutput=null\nStandardError=null\nUMask=0077\nNoNewPrivileges=true\n"
+	target := "default.target"
+	if scope == System {
+		target = "multi-user.target"
+		content += "User=" + s.Account() + "\nGroup=" + s.Account() + "\nProtectSystem=strict\nProtectHome=true\nPrivateTmp=true\nReadWritePaths=" + paths[2] + "\nCapabilityBoundingSet=\nAmbientCapabilities=\n"
 
-// unitContent adds explicit recovery bounds. Raw core output remains discarded
-// because it may contain provider credentials; status retains exit diagnostics.
-func unitContent(bin, config, data string) (string, error) {
-	content, err := legacyUnitContent(bin, config, data)
-	if err != nil {
-		return "", err
 	}
-	content = strings.Replace(content, "After=network.target\n", "After=network.target\nStartLimitIntervalSec=60s\nStartLimitBurst=5\n", 1)
-	content = strings.Replace(content, "RestartSec=2s\nStandardOutput=null\nStandardError=null\n", "RestartSec=2s\nTimeoutStopSec=15s\nKillMode=control-group\nStandardOutput=null\nStandardError=null\n", 1)
-	return content, nil
+	return content + "\n[Install]\nWantedBy=" + target + "\n", nil
 }
 
 // Install publishes a complete unit atomically without replacing any file.
 // It deliberately does not enable or start the service.
 func (s *Systemd) Install(ctx context.Context, bin, config, data string) error {
-	content, err := unitContent(bin, config, data)
+	content, err := s.content(bin, config, data)
 	if err != nil {
 		return err
 	}
@@ -322,17 +425,15 @@ func (s *Systemd) Verify(ctx context.Context, bin, config, data string) error {
 	if err != nil {
 		return err
 	}
-	expected, err := unitContent(bin, config, data)
+	expected, err := s.content(bin, config, data)
 	if err != nil {
 		return err
 	}
 	path := filepath.Join(s.UnitDir, name)
 	if err := verifyFile(path, expected); err != nil {
-		legacy, legacyErr := legacyUnitContent(bin, config, data)
-		if legacyErr != nil || verifyFile(path, legacy) != nil {
-			return err
-		}
+		return err
 	}
+
 	out, err := s.command(ctx, "systemctl", "--user", "show", name, "--property=FragmentPath,DropInPaths,NeedDaemonReload")
 	if err != nil {
 		return diagnostic.New("diagnostic.service.verifyLoaded", "verify loaded service ownership: %w", err)
@@ -389,16 +490,9 @@ func (s *Systemd) RemoveOwned(ctx context.Context, bin, config, data string) err
 		}
 		return err
 	}
-	expected, err := unitContent(bin, config, data)
+	expected, err := s.content(bin, config, data)
 	if err != nil {
 		return err
-	}
-	path := filepath.Join(s.UnitDir, s.Name+".service")
-	if verifyFile(path, expected) != nil {
-		expected, err = legacyUnitContent(bin, config, data)
-		if err != nil {
-			return err
-		}
 	}
 	return s.remove(ctx, expected)
 }
@@ -504,45 +598,6 @@ func (s *Systemd) ResetFailedOwned(ctx context.Context, bin, config, data string
 	}
 	if _, err := s.command(ctx, "systemctl", "--user", "reset-failed", name); err != nil {
 		return diagnostic.New("diagnostic.service.resetFailed", "reset failed state before service recovery: %w", err)
-	}
-	return nil
-}
-
-// UpgradeOwned migrates only the exact previously generated unit, after checking
-// loaded ownership. Read-only status calls never rewrite a service definition.
-func (s *Systemd) UpgradeOwned(ctx context.Context, bin, config, data string) error {
-	if err := s.Verify(ctx, bin, config, data); err != nil {
-		return err
-	}
-	content, err := unitContent(bin, config, data)
-	if err != nil {
-		return err
-	}
-	path := filepath.Join(s.UnitDir, s.Name+".service")
-	if verifyFile(path, content) == nil {
-		return nil
-	}
-	legacy, err := legacyUnitContent(bin, config, data)
-	if err != nil {
-		return err
-	}
-	if err := verifyFile(path, legacy); err != nil {
-		return err
-	}
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	if err := store.Replace(path, []byte(content), []byte(legacy), 0600); err != nil {
-		return err
-	}
-	if _, err := s.command(ctx, "systemctl", "--user", "daemon-reload"); err != nil {
-		// A cancelled reload may still have reached the manager. Roll back only
-		// our exact new bytes and reload using a fresh bounded context.
-		rollbackErr := store.Replace(path, []byte(legacy), []byte(content), 0600)
-		cleanupCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
-		defer cancel()
-		_, reloadErr := s.command(cleanupCtx, "systemctl", "--user", "daemon-reload")
-		return errors.Join(diagnostic.New("diagnostic.service.upgradeOwned", "upgrade owned service: %w", err), rollbackErr, reloadErr)
 	}
 	return nil
 }

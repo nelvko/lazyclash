@@ -381,7 +381,7 @@ func TestUnitRecoveryAndDirectSupervision(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, directive := range []string{"Type=simple", `ExecStart=:"/bin/mihomo" -d "/data" -f "/config.yaml"`, "Restart=on-failure", "StartLimitIntervalSec=60s", "StartLimitBurst=5", "TimeoutStopSec=15s", "KillMode=control-group", "StandardOutput=null", "StandardError=null", "NoNewPrivileges=true"} {
+	for _, directive := range []string{"Type=exec", `ExecStart=:"/bin/mihomo" -d "/data" -f "/config.yaml"`, "Restart=on-failure", "StartLimitIntervalSec=60s", "StartLimitBurst=5", "TimeoutStopSec=15s", "KillMode=control-group", "StandardOutput=null", "StandardError=null", "NoNewPrivileges=true"} {
 		if !strings.Contains(content, directive+"\n") {
 			t.Fatalf("missing supervision policy: %s", directive)
 		}
@@ -456,53 +456,6 @@ func TestSetEnabledUsesUserScopeAndConfirmsResultWithoutStarting(t *testing.T) {
 				if strings.Contains(call, " start ") || strings.Contains(call, " stop ") || strings.Contains(call, "--now") {
 					t.Fatalf("activation setting changed process lifecycle: %v", calls)
 				}
-			}
-		})
-	}
-}
-
-func TestOwnedLegacyUnitMigratesOnlyOnExplicitUpgrade(t *testing.T) {
-	for _, reloadFails := range []bool{false, true} {
-		t.Run(strconv.FormatBool(reloadFails), func(t *testing.T) {
-			s, _ := testManager(t)
-			path := filepath.Join(s.UnitDir, s.Name+".service")
-			legacy, _ := legacyUnitContent("/mihomo", "/config", "/data")
-			current, _ := unitContent("/mihomo", "/config", "/data")
-			if err := os.WriteFile(path, []byte(legacy), 0600); err != nil {
-				t.Fatal(err)
-			}
-			reloads := 0
-			s.run = func(_ context.Context, _ string, args ...string) ([]byte, error) {
-				if args[1] == "daemon-reload" {
-					reloads++
-					if reloadFails && reloads == 1 {
-						return nil, errors.New("manager unavailable")
-					}
-					return nil, nil
-				}
-				return []byte("FragmentPath=" + path + "\nDropInPaths=\nNeedDaemonReload=no\n"), nil
-			}
-			if err := s.Verify(t.Context(), "/mihomo", "/config", "/data"); err != nil {
-				t.Fatal(err)
-			}
-			before, _ := os.ReadFile(path)
-			if string(before) != legacy || reloads != 0 {
-				t.Fatal("read-only ownership check migrated the service")
-			}
-			err := s.UpgradeOwned(t.Context(), "/mihomo", "/config", "/data")
-			if (err != nil) != reloadFails {
-				t.Fatalf("upgrade error=%v failure=%v", err, reloadFails)
-			}
-			want := current
-			if reloadFails {
-				want = legacy
-				if reloads != 2 {
-					t.Fatalf("rollback did not invalidate manager cache: %d", reloads)
-				}
-			}
-			after, _ := os.ReadFile(path)
-			if string(after) != want {
-				t.Fatal("service did not commit/roll back expected exact contents")
 			}
 		})
 	}

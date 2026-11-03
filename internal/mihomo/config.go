@@ -6,7 +6,6 @@ import (
 	"context"
 	"io"
 	"net"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -226,10 +225,13 @@ func BinaryVersion(ctx context.Context, bin string) (string, error) {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, bin, "-v")
+	cmd, err := executableCommand(ctx, bin, "-v")
+	if err != nil {
+		return "", err
+	}
 	out := &limitedOutput{limit: 64 << 10}
 	cmd.Stdout, cmd.Stderr = out, out
-	err := cmd.Run()
+	err = cmd.Run()
 	if ctx.Err() != nil {
 		return "", ctx.Err()
 	}
@@ -263,10 +265,13 @@ func Validate(ctx context.Context, bin, config, data string) error {
 	}
 	ctx, cancel := context.WithTimeout(ctx, 45*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, bin, "-t", "-d", data, "-f", config)
+	cmd, err := executableCommand(ctx, bin, "-t", "-d", data, "-f", config)
+	if err != nil {
+		return err
+	}
 	out := &limitedOutput{limit: 64 << 10}
 	cmd.Stdout, cmd.Stderr = out, out
-	err := cmd.Run()
+	err = cmd.Run()
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}

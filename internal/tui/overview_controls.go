@@ -137,10 +137,15 @@ func overviewSystemCard(o dashboardOptions, width int) dashboardBlock {
 	scope := clean(s.Capabilities.Scope)
 	if scope == "" || scope == "user" {
 		scope = tr("dashboard.system.user")
+	} else if scope == "system" {
+		scope = tr("dashboard.system.system")
 	}
 	manager, autostart := tr("dashboard.status.unavailable"), tr("dashboard.status.unknown")
 	if s.Capabilities.Runtime.Supported {
 		manager = tr("dashboard.system.manager")
+		if s.Capabilities.Scope == "system" {
+			manager = tr("dashboard.system.systemManager")
+		}
 		if s.ServiceError == "" {
 			switch s.Service.EnableState {
 			case "enabled":

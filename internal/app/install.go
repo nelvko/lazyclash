@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 
 	"github.com/nelvko/lazyclash/internal/diagnostic"
 	"github.com/nelvko/lazyclash/internal/mihomo"
@@ -125,6 +126,9 @@ type stagedInstallation struct {
 // stageFreshInstallation prepares and validates files without registering or
 // controlling a service. The caller removes the returned private staging tree.
 func (a *App) stageFreshInstallation(ctx context.Context, m manifest, local string, progress func(string)) (stagedInstallation, error) {
+	if err := a.prepareSystemHome(ctx); err != nil {
+		return stagedInstallation{}, err
+	}
 	stage, err := os.MkdirTemp(a.Home, ".install-*")
 	if err != nil {
 		return stagedInstallation{}, err
@@ -135,6 +139,9 @@ func (a *App) stageFreshInstallation(ctx context.Context, m manifest, local stri
 			_ = os.RemoveAll(stage)
 		}
 	}()
+	if err := a.systemDirectory(stage); err != nil {
+		return stagedInstallation{}, err
+	}
 	bin := filepath.Join(stage, "mihomo")
 	if local == "" {
 		err = a.Download(ctx, bin, progress)
@@ -147,9 +154,34 @@ func (a *App) stageFreshInstallation(ctx context.Context, m manifest, local stri
 	if err != nil {
 		return stagedInstallation{}, err
 	}
-	m.Version, err = a.Version(ctx, bin)
+	m.Version, err = a.binaryVersion(ctx, bin)
 	if err != nil {
 		return stagedInstallation{}, err
+	}
+	if err := a.systemFile(bin, 0750); err != nil {
+		return stagedInstallation{}, err
+	}
+	if a.systemService() != nil {
+		if err := store.Replace(filepath.Join(stage, "instance-id"), []byte(m.ID), nil, 0600); err != nil {
+			return stagedInstallation{}, err
+		}
+		executable, err := os.Executable()
+		if err != nil {
+			return stagedInstallation{}, err
+		}
+		if runtime.GOOS == "linux" {
+			// Copy the running image even if its original, user-owned pathname
+			// has been replaced since sudo started this process.
+			executable = "/proc/self/exe"
+		}
+		lifecycle := filepath.Join(stage, "lazyclash")
+		if err := copyBinary(ctx, executable, lifecycle); err != nil {
+			return stagedInstallation{}, err
+		}
+		m.LifecycleSHA, err = fileDigest(lifecycle)
+		if err != nil {
+			return stagedInstallation{}, err
+		}
 	}
 	m.BinarySHA, err = fileDigest(bin)
 	if err != nil {
@@ -167,10 +199,13 @@ func (a *App) stageFreshInstallation(ctx context.Context, m manifest, local stri
 	if err := store.Dir(filepath.Join(stage, "runtime")); err != nil {
 		return stagedInstallation{}, err
 	}
+	if err := a.systemRuntime(filepath.Join(stage, "runtime")); err != nil {
+		return stagedInstallation{}, err
+	}
 	if progress != nil {
 		progress("Validating default configuration…")
 	}
-	if err := a.Validate(ctx, bin, filepath.Join(stage, target, "config.yaml"), filepath.Join(stage, "runtime")); err != nil {
+	if err := a.validateBinaryConfig(ctx, bin, filepath.Join(stage, target, "config.yaml"), filepath.Join(stage, "runtime")); err != nil {
 		return stagedInstallation{}, err
 	}
 	if err := store.Switch(filepath.Join(stage, "current"), target, ""); err != nil {

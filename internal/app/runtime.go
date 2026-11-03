@@ -97,6 +97,11 @@ func (a *App) Control(ctx context.Context, action string) error {
 	if action != "start" && action != "stop" && action != "restart" {
 		return diagnostic.New("diagnostic.runtime.action", "unsupported service action")
 	}
+	if a.systemService() != nil {
+		if err := trustedRootAncestors(a.Home); err != nil {
+			return err
+		}
+	}
 	unlock, err := store.Lock(ctx, a.Home)
 	if err != nil {
 		return err
@@ -157,9 +162,6 @@ func (a *App) Control(ctx context.Context, action string) error {
 	raw, err := a.saveRuntimeRecord(r, old)
 	if err != nil {
 		return err
-	}
-	if err := a.upgradeService(ctx); err != nil {
-		return a.finishOperation(r, raw, err)
 	}
 	if err := a.clearStop(); err != nil {
 		return a.finishOperation(r, raw, err)

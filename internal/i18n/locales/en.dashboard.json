@@ -224,5 +224,7 @@
   "dashboard.action.profiles": "Manage profiles",
   "dashboard.control.modeAfterInstall": "Routing modes are available after installation.",
   "dashboard.groups.afterStart": "Proxy groups appear after the core starts.",
-  "dashboard.profile.notApplied": "Not applied"
+  "dashboard.profile.notApplied": "Not applied",
+  "dashboard.system.system": "system (entire host)",
+  "dashboard.system.systemManager": "systemd system"
 }

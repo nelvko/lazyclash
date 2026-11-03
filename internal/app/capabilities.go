@@ -1,5 +1,7 @@
 package app
 
+import "github.com/nelvko/lazyclash/internal/service"
+
 type Capability struct {
 	Supported bool   `json:"supported"`
 	Reason    string `json:"reason,omitempty"`
@@ -21,6 +23,9 @@ func (a *App) Capabilities() Capabilities {
 		Runtime:     Capability{Supported: a.Service != nil},
 		TUN:         Capability{Reason: "TUN requires a separately authorized privileged system service; this release only manages an unprivileged systemd user service"},
 		SystemProxy: Capability{Reason: "automatic system proxy changes are not implemented; lazyclash env explicitly prints shell proxy variables"},
+	}
+	if s, ok := a.Service.(*service.Systemd); ok && s.Scope == service.System {
+		c.Scope = "system"
 	}
 	if a.Service == nil {
 		c.Runtime.Reason = "Linux with an available systemd user manager is required"

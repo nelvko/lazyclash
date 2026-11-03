@@ -121,16 +121,17 @@ func TestCLIUnsettingAndJSONRemainIndependentOfLanguage(t *testing.T) {
 func TestCLIBootstrapHonorsTerminatorAndValues(t *testing.T) {
 	root := New()
 	for _, test := range []struct {
-		args       []string
-		home, lang string
+		args             []string
+		home, lang, name string
 	}{
-		{[]string{"--lang=zh-CN", "--home", "/tmp/example"}, "/tmp/example", "zh-CN"},
-		{[]string{"profile", "add", "--", "--lang", "zh-Hans"}, "", ""},
-		{[]string{"install", "--acceleration-prefix", "--lang", "en"}, "", ""},
+		{[]string{"--lang=zh-CN", "--home", "/tmp/example"}, "/tmp/example", "zh-CN", ""},
+		{[]string{"profile", "add", "--", "--lang", "zh-Hans"}, "", "", ""},
+		{[]string{"install", "--acceleration-prefix", "--lang", "en"}, "", "", ""},
+		{[]string{"--service-name", "lazyclash-other", "--lang", "en"}, "", "en", "lazyclash-other"},
 	} {
-		home, lang := bootstrapPresentation(root, test.args)
-		if home != test.home || lang != test.lang {
-			t.Fatalf("args=%q home=%q lang=%q", test.args, home, lang)
+		home, lang, name := bootstrapPresentation(root, test.args)
+		if home != test.home || lang != test.lang || name != test.name {
+			t.Fatalf("args=%q home=%q lang=%q service=%q", test.args, home, lang, name)
 		}
 	}
 }

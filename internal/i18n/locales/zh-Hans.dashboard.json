@@ -224,5 +224,7 @@
   "dashboard.action.profiles": "管理配置",
   "dashboard.control.modeAfterInstall": "安装内核后可切换路由模式。",
   "dashboard.groups.afterStart": "启动内核后显示代理组。",
-  "dashboard.profile.notApplied": "尚未应用"
+  "dashboard.profile.notApplied": "尚未应用",
+  "dashboard.system.system": "系统（整台主机）",
+  "dashboard.system.systemManager": "systemd 系统管理器"
 }

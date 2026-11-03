@@ -3,7 +3,6 @@ package cli
 
 import (
 	"os"
-	"runtime"
 
 	"github.com/charmbracelet/x/term"
 	"github.com/nelvko/lazyclash/internal/app"
@@ -17,8 +16,8 @@ func New(args ...string) *cobra.Command {
 	var home, name, language string
 	var backend *app.App
 	root := &cobra.Command{Use: "lazyclash", Short: "Manage Mihomo from a terminal UI", SilenceUsage: true, Args: noArgs}
-	root.PersistentFlags().StringVar(&home, "home", "", "Private lazyclash data directory (or LAZYCLASH_HOME)")
-	root.PersistentFlags().StringVar(&name, "service-name", "", "Systemd user service name (or LAZYCLASH_SERVICE)")
+	root.PersistentFlags().StringVar(&home, "home", "", "Scope-specific lazyclash data directory (normal users may use LAZYCLASH_HOME)")
+	root.PersistentFlags().StringVar(&name, "service-name", "", "Systemd service name (normal users may use LAZYCLASH_SERVICE)")
 	root.PersistentFlags().StringVar(&language, "lang", "", "Interface language: auto, en or zh-Hans")
 	root.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		if _, ok := i18n.Normalize(language); !ok {
@@ -34,9 +33,6 @@ func New(args ...string) *cobra.Command {
 		return err
 	}
 	root.RunE = func(cmd *cobra.Command, args []string) error {
-		if err := requireUnprivilegedTUI(runtime.GOOS, os.Geteuid()); err != nil {
-			return err
-		}
 		if !term.IsTerminal(os.Stdin.Fd()) || !term.IsTerminal(os.Stdout.Fd()) {
 			return diagnostic.New("diagnostic.cli.no_terminal", "TUI requires a terminal; use status, doctor or --help for automation")
 		}
@@ -67,11 +63,4 @@ func New(args ...string) *cobra.Command {
 		root.SetArgs(args)
 	}
 	return root
-}
-
-func requireUnprivilegedTUI(goos string, euid int) error {
-	if goos == "linux" && euid == 0 {
-		return diagnostic.New("diagnostic.cli.normal_user", "run lazyclash as your normal user without sudo; the current runtime uses an unprivileged systemd user service")
-	}
-	return nil
 }
