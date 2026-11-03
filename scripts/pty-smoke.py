@@ -339,7 +339,9 @@ def main():
     parser.add_argument("--binary", required=True)
     parser.add_argument("--home", required=True)
     parser.add_argument("--service-name", required=True)
-    parser.add_argument("--mode", choices=["empty", "installed", "install-local", "runtime", "rules", "logs", "runtime-settings"], required=True)
+    parser.add_argument("--mode", choices=["empty", "download-network", "installed", "install-local", "runtime", "rules", "logs", "runtime-settings"], required=True)
+    parser.add_argument("--download-method", choices=["direct", "environment"], default="direct",
+                        help="Explicit real download route for download-network mode; never retries another route")
     parser.add_argument("--mihomo-bin")
     parser.add_argument("--fixture-port", type=int, help="Dedicated loopback HTTP fixture port for live log events")
     parser.add_argument("--connection-id", help="Dedicated active fixture connection UUID for runtime mode")
@@ -436,6 +438,29 @@ def main():
                 raise AssertionError("SIGTERM left a half installation or staging directory")
             slow.unlink()
             counter.unlink()
+        elif args.mode == "download-network":
+            terminal.wait("Install the Mihomo core")
+            terminal.key(b"n")  # Cancel the automatic lookup and open its draft.
+            terminal.wait("Download method")
+            terminal.wait("Package connection: Not tested")
+            if args.download_method == "environment":
+                terminal.key(b"\r")  # Direct -> explicit environment proxy.
+                terminal.wait("(*) Use environment proxy")
+            else:
+                terminal.wait("(*) Direct")
+            terminal.click_text("Test connection")
+            terminal.wait("Version information: Passed", timeout=90)
+            terminal.wait("Package connection: Passed", timeout=90)
+            terminal.settle()
+            if "Package connection: Failed" in terminal.screen.text():
+                raise AssertionError("Real remote package connection failed")
+            # Testing a draft may query version.txt and probe an official file,
+            # but cannot deploy files, install a unit or start the core.
+            if (home / "installation").exists() or list(home.glob(".install-*")) or list(home.glob(".core-stage-*")):
+                raise AssertionError("Connection testing created installation files")
+            terminal.key(b"\x1b")
+            terminal.wait_absent("Package connection")
+            terminal.exit()
         elif args.mode == "install-local":
             if not args.mihomo_bin:
                 parser.error("--mihomo-bin is required for install-local mode")

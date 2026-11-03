@@ -2,6 +2,28 @@
 
 普通构建/单元测试不会调用 OrbStack、安装服务或修改系统配置。以下三类运行验证均为显式入口，不由 `go test` 自动触发。
 
+## 移除 GitHub Release API 依赖（2026-11-03）
+
+安装、重装、指定版本、升级和下载方式连接测试共用 API-free 资源解析：最新版本来自既有 `version.txt` 检查，稳定标签与 CPU 能力规则生成固定的官方 Release 文件地址。最多读取 4 KiB 探测候选，只有 HTTP 404/410 会尝试兼容构建；所有请求遵循用户所选的 direct/environment/accelerated 路线。没有访问 `api.github.com` 的生产回退。
+
+当前校验模型为响应状态与长度、64 MiB 压缩包上限、128 MiB 解压文件上限、完整 gzip/CRC、0700 权限与同步、执行 `-v` 精确版本，以及应用层配置验证、事务和回滚。HTTPS 证书验证保持开启；HTTP 加速前缀没有该段 TLS 保护。不存在上游预期摘要或独立签名验证，本地安装记录摘要用于后续变化和恢复身份检测。下方 2026-11-02 及之前的摘要/API 记录描述当时实现，不能视为当前校验承诺。
+
+本轮已实际验证：
+
+- 宿主 macOS/arm64：最终源码的 `make check`（全包测试及 vet）、全包 `make race`、`make build` 通过。独立导出的实现暂存树另通过 `go test -mod=readonly ./...`，不依赖未暂存的验证脚本。
+- HTTP fixture 覆盖稳定版本文本与固定标签资源链、amd64 兼容候选、仅 404/410 降级、有限 Range/gzip 头/响应长度、未知总量、完整 gzip 损坏与截断、精确执行版本、取消和失败清理。CLI 实际使用生产 Resolver/下载器，以本地 HTTP 和 gzip 可执行文件 fixture 验证 latest dry-run 不完整下载，指定版本只安装一次且服务保持停止；应用层保留配置、事务和回滚回归。
+- `scripts/verify-linux.sh lazyclash-e2e` 在已有专用 Debian 12/arm64 VM 内实际执行全部可运行的 Linux Go 测试，通过；不是仅交叉编译。普通 uid 501，systemd 用户 manager running，Linger=yes。
+- `scripts/onboarding-pty.py --test-binary` 在真实 controlling PTY 完成中英文 × 120×32、60×20 × 更多选项/成功共八组，核对新连接测试名称、诚实的校验说明及成功后 `starts=0`。使用明确启用的内存后端；PNG 是实际 PTY 字符格与颜色重绘，不是 Ghostty 原生截图，也不替代真实下载安装验证。
+- Python 八项回归、全部 Python 脚本语法、E2E Shell 语法及差异空白检查通过。新增 CONNECT observer 的本地协议测试验证不改写隧道负载、上游认证、API 拒绝、失败无回退、错误脱敏及关闭后的端口释放。
+
+真实网络验收使用同一显式 environment 上游，由仅记录类别的 CONNECT observer 串联，保留端到端 TLS。首次完整 E2E 尝试已通过实际产品 empty/TUI 连接测试、未安装只读检查、指定版本 dry-run、官方 v1.19.32 下载与安装、运行中手动换为 v1.19.33、同版本复用与重装、旧版运行时只读检查；手动换版保持旧 PID、实际 API 版本和配置。所有已执行远程阶段的审计均为 GitHub API 尝试零。
+
+`./scripts/e2e.sh lazyclash-e2e --download-method environment` 三次均未整轮通过：分别在确认升级的版本文本查询、指定版本 dry-run 的文件探测、TUI 连接测试的文件探测遇到网络/TLS 中断。无 observer 的同一路线只读对照也复现 `SSLZeroReturnError`，不能将其归因为 GitHub API 限流或据此声称整套生命周期 E2E 已通过。没有自动重试、切换路线或忽略失败。首轮清理曾因 observer 的 TIME_WAIT 被误判为监听残留而报失败，修正其监听复用设置后，本地协议测试和后两轮清理均通过；首轮已另行核验自有 unit、进程和端口全部释放。
+
+随后沿同一路线定向执行真实安装、启动、只读检查与确认升级。四阶段均首次成功，原始退出码保存在 `targeted-upgrade/attempts.jsonl`。检查保持旧 PID；确认升级由官方 v1.19.32 升至 v1.19.33，实际 PID 改变，安装版本与实际 API 运行版本一致，配置摘要不变，`core-pending.json` 已清除。运行会话中断后恢复检查现有实例并完成清理，没有重新下载或重新执行升级。审计共 12 个官方 CONNECT 隧道，API/其他目标/上游 CONNECT 失败均为零。补验及清理记录明确区分于原始四阶段执行：专用 unit 为 not-found、自有进程归零、默认端口和 observer 端口均可绑定，`resources released=1`、`exit=0`。
+
+证据位于忽略目录 `.test-artifacts/api-free/`：`check.log`、`race.log`、`build.log`、`staged-code-test.log`、`staged-script-test.log`、`linux-tests.log` 和 `pty/20261103-110314-254fab/`；失败整轮保留在 `first-attempt/`、`second-attempt/` 与 `e2e-run.log`，路线对照为 `network-diagnostics.jsonl`，成功定向升级及恢复清理证据在 `targeted-upgrade/`。实测平台仍为 macOS/arm64 与专用 Debian/arm64；没有扩大 Linux/amd64、其他发行版或真实掉电恢复的运行验证范围。
+
 ## 轻量卡片与侧栏布局（2026-11-02）
 
 概览保留轻量卡片：内核、路由模式、配置、代理组形成主区域，流量统计继续通栏展示，环境及已安装内核的信息仍为独立卡片。TUN 和系统代理说明收进环境，跳过安装后仅有一个普通安装入口；管理配置直接进入配置页。首次安装正文上限为 96 列并与完整页头左边界对齐。配置卡片减少重复元数据，摘要明确区分自定义数量与内置数量。侧栏宽 20 列，最终按反馈恢复标签本身居中，焦点箭头及低色当前页圆点独立占位，不挤偏文字。
@@ -36,7 +58,7 @@
 
 ## 概览内安装与统一下载方式（2026-11-02）
 
-本节对应当前实现；下方同日的首次安装和单页安装记录保留其当时行为与验证结果。概览直接显示安装区，默认只读检查稳定版本；明确点击下载并安装后才解析资产、预检及安装，不再打开初装弹窗或要求第二次确认。下载方式统一为直连、使用环境代理、GitHub 加速，版本文本、发布 API、安装包探测和下载遵循同一设置。本轮没有移除安装阶段对 GitHub API 预期 SHA256 的依赖。
+本节记录当时实现；下载与校验行为已由上方 2026-11-03 的 API-free 实现替代。下方同日的首次安装和单页安装记录保留其当时行为与验证结果。概览直接显示安装区，默认只读检查稳定版本；明确点击下载并安装后才解析资产、预检及安装，不再打开初装弹窗或要求第二次确认。下载方式统一为直连、使用环境代理、GitHub 加速，当时版本文本、发布 API、安装包探测和下载遵循同一设置。该轮没有移除安装阶段对 GitHub API 预期 SHA256 的依赖。
 
 本轮已实际验证：
 
@@ -117,7 +139,7 @@ orb -m "$VM" sh -c 'id; uname -m; ps -p 1 -o comm=; systemctl --user is-system-r
 python3 scripts/pty-smoke.py --help
 ```
 
-`empty` 模式仅操作专用的未安装数据目录，检查概览内安装区、下载方式草稿的编辑与放弃、安装前导入、宽窄布局、安装阶段取消和 SIGTERM。`install-local` 模式通过 TUI 内联安装明确的本地 Mihomo 二进制并确认未启动服务；`installed` 模式使用已启动的专用服务，以鼠标和键盘切换 PROXY 节点，并通过实际 API 回读确认。`runtime` 模式使用专用流量连接，验证实时卡片、按 UUID 搜索/详情/确认关闭、缩放和停止/启动后的自动恢复。`runtime-settings` 模式验证端口输入、取消草稿、占用后的纠正、确认重启、宽窄切换及各控制 API 页面的重新连接。完整的目录、服务、前置检查和清理由下一入口安排，建议通过它执行全部模式。
+`empty` 模式仅操作专用的未安装数据目录，检查概览内安装区、下载方式草稿的编辑与放弃、安装前导入、宽窄布局、安装阶段取消和 SIGTERM。`download-network` 模式按明确选择的 direct/environment 方式，在未安装实例中真实查询版本和探测安装包，再放弃草稿，断言没有创建安装或服务。`install-local` 模式通过 TUI 内联安装明确的本地 Mihomo 二进制并确认未启动服务；`installed` 模式使用已启动的专用服务，以鼠标和键盘切换 PROXY 节点，并通过实际 API 回读确认。`runtime` 模式使用专用流量连接，验证实时卡片、按 UUID 搜索/详情/确认关闭、缩放和停止/启动后的自动恢复。`runtime-settings` 模式验证端口输入、取消草稿、占用后的纠正、确认重启、宽窄切换及各控制 API 页面的重新连接。完整的目录、服务、前置检查和清理由下一入口安排，建议通过它执行全部模式。
 
 ## 4. 真实 Mihomo + systemd 端到端
 
@@ -131,7 +153,9 @@ python3 scripts/pty-smoke.py --help
 
 - 动态检测 CPU 架构、普通用户与用户 systemd，不硬编码用户名或工程目录。
 - `mktemp` 数据目录、随机 `lazyclash-e2e-*` unit；运行前检查同名 unit 与 `9097`/`7897` 端口，冲突即失败，不停止已有资源。
-- 由产品按明确标签下载官方 Mihomo **v1.19.32** 和 **v1.19.33**，从官方 API 获取预期 SHA256 后校验；另建独立 unit，经 TUI 本地安装和 CLI `--bin` 验证。
+- 显式 environment 模式将已有 HTTP(S) `HTTPS_PROXY` 作为上游，为本轮进程设置临时本地 CONNECT observer；不解密 TLS，只记录目标类别与隧道计数，并拒绝 `api.github.com`。每个远程阶段断言经过该路线且 API 尝试为零。此验证工具不支持 SOCKS 上游；产品本身的环境代理支持范围不变。direct 模式不产生同等的 observer 审计证据。
+- 由产品按明确标签与设备规则下载官方 Mihomo **v1.19.32** 和 **v1.19.33**，验证 HTTP 响应、大小限制、gzip 完整性与精确可执行版本；不查询 GitHub Release API 或校验上游预期摘要。另建独立 unit，经 TUI 本地安装和 CLI `--bin` 验证。
+- 未安装时真实执行 TUI 连接测试、`install check` 和指定版本 dry-run，检查无安装或 unit；旧版运行时的只读检查保持 PID，确认升级后核对新 PID、已安装与运行版本、配置不变及 journal 清理。
 - 验证真实默认配置、API 认证和组、PTY 显示与节点切换、本地 HTTP YAML 保存/校验/应用，以及 start/stop/restart 生命周期；运行旧版时安装新版、同版本复用和显式重装均检查 PID、旧运行版本和配置字节保持不变。
 - `trap` 仅清理本次确认所属的 unit、进程和文件，失败也执行；不读取旧代理配置，不修改 macOS 代理、DNS 或路由。
 
