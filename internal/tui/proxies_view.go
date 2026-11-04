@@ -315,7 +315,7 @@ func (m Model) proxyColumns(width int) int {
 	if m.proxiesNarrow() {
 		return 1
 	}
-	return min(3, max(1, (width-2+1)/37))
+	return min(4, max(1, (width-2+1)/37))
 }
 func (m Model) proxyGroupBody(gi, width int) dashboardBlock {
 	g := m.snapshot.Groups[gi]

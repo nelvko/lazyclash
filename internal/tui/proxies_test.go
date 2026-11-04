@@ -223,7 +223,7 @@ func TestProxiesClickingModeLeavesSearchEditing(t *testing.T) {
 }
 
 func TestProxiesGridVerticalAndHorizontalTraversal(t *testing.T) {
-	for _, test := range []struct{ width, columns int }{{160, 3}, {200, 3}} {
+	for _, test := range []struct{ width, columns int }{{160, 3}, {200, 4}} {
 		t.Run(fmt.Sprint(test.columns, "columns"), func(t *testing.T) {
 			m, _ := proxiesModel(t, test.width, 40)
 			m.snapshot.Groups[0].All = nil
@@ -277,7 +277,7 @@ func TestProxiesGridVerticalAndHorizontalTraversal(t *testing.T) {
 }
 
 func TestProxiesVerticalTraversalStopsAtBoundaryRows(t *testing.T) {
-	for _, test := range []struct{ width, columns int }{{160, 3}, {200, 3}} {
+	for _, test := range []struct{ width, columns int }{{160, 3}, {200, 4}} {
 		for _, partial := range []bool{false, true} {
 			t.Run(fmt.Sprint(test.columns, "columns/partial=", partial), func(t *testing.T) {
 				m, _ := proxiesModel(t, test.width, 40)
@@ -322,7 +322,7 @@ func TestProxiesVerticalTraversalStopsAtBoundaryRows(t *testing.T) {
 }
 
 func TestProxiesPendingSelectionKeepsVerticalGridNavigation(t *testing.T) {
-	for _, test := range []struct{ width, columns int }{{160, 3}, {200, 3}} {
+	for _, test := range []struct{ width, columns int }{{160, 3}, {200, 4}} {
 		t.Run(fmt.Sprint(test.columns, "columns"), func(t *testing.T) {
 			m, backend := proxiesModel(t, test.width, 40)
 			m.snapshot.Groups = m.snapshot.Groups[:1]
@@ -395,8 +395,8 @@ func TestProxiesShortGroupsKeepTheAvailableColumnWidth(t *testing.T) {
 			if test.query != "" {
 				wantCount = 1
 			}
-			if len(cards) != wantCount || m.proxyColumns(width) != 3 {
-				t.Fatalf("short group lost cards or the three-column grid: cards=%d columns=%d", len(cards), m.proxyColumns(width))
+			if len(cards) != wantCount || m.proxyColumns(width) != 4 {
+				t.Fatalf("short group lost cards or the four-column grid: cards=%d columns=%d", len(cards), m.proxyColumns(width))
 			}
 			positions := make(map[int]bool)
 			for _, card := range cards {
@@ -414,8 +414,8 @@ func TestProxiesShortGroupsKeepTheAvailableColumnWidth(t *testing.T) {
 	}
 }
 
-func TestProxiesColumnsStopAtThreeOnWideScreens(t *testing.T) {
-	for _, test := range []struct{ width, columns int }{{80, 1}, {120, 2}, {160, 3}, {200, 3}, {240, 3}, {400, 3}} {
+func TestProxiesColumnsStopAtFourOnWideScreens(t *testing.T) {
+	for _, test := range []struct{ width, columns int }{{80, 1}, {120, 2}, {160, 3}, {200, 4}, {240, 4}, {400, 4}} {
 		t.Run(fmt.Sprint(test.width), func(t *testing.T) {
 			m, _ := proxiesModel(t, test.width, 40)
 			if got := m.proxyColumns(dashboardBodyWidth(m.dashboardOptions())); got != test.columns {

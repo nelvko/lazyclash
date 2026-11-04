@@ -196,10 +196,10 @@ def latency_span(terminal, name):
     return value.end()
 
 
-def assert_three_columns(terminal):
+def assert_four_columns(terminal):
     positions = [candidate_position(terminal, name) for name in MEMBERS]
     xs = sorted({x for x, _ in positions})
-    assert len(xs) == 3, "wide grid did not keep three columns: " + repr(positions)
+    assert len(xs) == 4, "wide grid did not keep four columns: " + repr(positions)
     first_y = min(y for _, y in positions)
     gap = terminal.screen.cells[first_y - 2][xs[0] - 4:]
     assert not "".join(gap).strip(), "group header touches the first card row"
@@ -360,7 +360,18 @@ def exercise(preview, binary, output, language, profile, args):
             terminal.wait("HK 01")
             terminal.wait("ms")
             if width in (200, 240):
-                assert_three_columns(terminal)
+                assert_four_columns(terminal)
+            if width == 160:
+                assert len({candidate_position(terminal, name)[0] for name in MEMBERS}) == 3, "160-column grid lost its three-column layout"
+            if width == 200:
+                terminal.key(b"\x1b[C")  # HK 01 -> JP 01 -> AUTO, the fourth slot.
+                terminal.key(b"\x1b[C")
+                terminal.settle()
+                assert any(re.search(r"›\s*AUTO", line) for line in terminal.screen.text().splitlines()), "horizontal navigation missed the fourth card"
+                terminal.key(b"\x1b[D")
+                terminal.key(b"\x1b[D")
+                terminal.settle()
+                assert any(re.search(r"›\s*HK 01", line) for line in terminal.screen.text().splitlines()), "horizontal navigation did not return from the fourth card"
             preview.capture(terminal, output, "selected-%dx%d" % (width, height), args)
 
         # Short groups and member filters retain the same slots as a full grid.
@@ -368,7 +379,7 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.key(b"\x1b[H")
         terminal.key(b"\x1b[C")
         terminal.settle()
-        slots = assert_three_columns(terminal)
+        slots = assert_four_columns(terminal)
         span = latency_span(terminal, "HK 01")
         search(terminal, "Hong Kong")
         collapse_all(terminal, words)
@@ -444,7 +455,7 @@ def exercise(preview, binary, output, language, profile, args):
         if profile == "256":
             assert not preview.RGB.search(raw), "ANSI256 emitted RGB text"
         (output / "pty.raw").write_bytes(raw)
-        print("PASS %s/%s: selection/padding, references, search, sort, cancel/late results, strategies, resize/three-column slots" % (language, profile), flush=True)
+        print("PASS %s/%s: selection/padding, references, search, sort, cancel/late results, strategies, resize/four-column cap" % (language, profile), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")
         (output / "failed.ansi").write_bytes(terminal.raw)
