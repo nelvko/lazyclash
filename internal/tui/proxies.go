@@ -14,7 +14,7 @@ import (
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
 
-// Bubbles supplies the editor, spinner and key bindings. The grouped, two-column
+// Bubbles supplies the editor, spinner and key bindings. The adaptive grouped
 // list uses the shell's scrolling and hit regions rather than a second viewport.
 type proxiesState struct {
 	expanded, detail, detailGroup string
@@ -82,7 +82,7 @@ func (m Model) proxyGroup(name string) (int, mihomo.Group, bool) {
 }
 func (m Model) proxyLocation() proxyLocation {
 	loc := proxyLocation{group: m.proxies.expanded, focus: m.focus, query: m.proxies.search.Value(), scroll: m.scroll}
-	if _, g, n, ok := m.proxyAtFocus(); ok && (strings.HasPrefix(m.focus, "node.") || strings.HasPrefix(m.focus, "group.")) {
+	if _, g, n, ok := m.proxyAtFocus(); ok && (strings.HasPrefix(m.focus, "node.") || strings.HasPrefix(m.focus, "group.") || strings.HasPrefix(m.focus, "proxies.reference.")) {
 		loc.identity = pageViewState{group: g.Name, node: n, focus: m.focus}
 	}
 	return loc
@@ -102,7 +102,8 @@ func (m *Model) restoreProxyLocation(loc proxyLocation) {
 }
 func (m Model) proxyAtFocus() (int, mihomo.Group, string, bool) {
 	var gi, ni int
-	if _, err := fmt.Sscanf(m.focus, "node.%d.%d", &gi, &ni); err == nil && gi >= 0 && gi < len(m.snapshot.Groups) {
+	nodeFocus := strings.Replace(m.focus, "proxies.reference.", "node.", 1)
+	if _, err := fmt.Sscanf(nodeFocus, "node.%d.%d", &gi, &ni); err == nil && gi >= 0 && gi < len(m.snapshot.Groups) {
 		g := m.snapshot.Groups[gi]
 		if ni >= 0 && ni < len(g.All) {
 			return gi, g, g.All[ni], true
@@ -201,11 +202,11 @@ func (m Model) visibleProxyGroups() []int {
 	var out []int
 	query := strings.ToLower(strings.TrimSpace(m.proxies.search.Value()))
 	for i, g := range m.snapshot.Groups {
-		if len(m.proxies.history) > 0 || m.proxiesNarrow() && m.proxies.expanded != "" {
+		if m.proxiesNarrow() && m.proxies.expanded != "" {
 			if g.Name != m.proxies.expanded {
 				continue
 			}
-		} else if m.snapshot.Mode.Actual == "global" && g.Name != "GLOBAL" || m.snapshot.Mode.Actual != "global" && g.Name == "GLOBAL" {
+		} else if !(len(m.proxies.history) > 0 && g.Name == m.proxies.expanded) && (m.snapshot.Mode.Actual == "global" && g.Name != "GLOBAL" || m.snapshot.Mode.Actual != "global" && g.Name == "GLOBAL") {
 			continue
 		}
 		matches := query == "" || strings.Contains(strings.ToLower(g.Name), query)
@@ -343,6 +344,15 @@ func (m *Model) browseProxyReference(name string) {
 	m.proxies.expanded, m.proxies.detail = name, ""
 	m.proxies.search.SetValue("")
 	m.focus, m.scroll = fmt.Sprintf("group.%d", gi), 0
+	if !m.proxiesNarrow() {
+		_, hits := m.proxiesBody(dashboardBodyWidth(m.dashboardOptions()))
+		for _, hit := range hits {
+			if hit.ID == m.focus {
+				m.scroll = hit.Y
+				break
+			}
+		}
+	}
 	m.rememberPageView()
 }
 func (m *Model) proxyBack() bool {
@@ -398,10 +408,11 @@ func (m *Model) proxyKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 	case "right", "l":
 		gi, g, n, ok := m.proxyAtFocus()
 		if ok && n != "" {
+			if m.proxyHorizontal(1) {
+				return true, nil
+			}
 			if _, _, ref := m.proxyGroup(n); ref {
 				m.browseProxyReference(n)
-			} else {
-				m.proxyHorizontal(1)
 			}
 		} else if ok {
 			m.proxies.expanded = g.Name
@@ -434,14 +445,20 @@ func (m *Model) proxyHorizontal(delta int) bool {
 	if current.ID == "" {
 		return false
 	}
+	var nearest hitRegion
 	for _, h := range hits {
 		if h.Y == current.Y && strings.HasPrefix(h.ID, "node.") && (delta > 0 && h.X > current.X || delta < 0 && h.X < current.X) {
-			m.focus = h.ID
-			m.revealBodyTarget(h)
-			return true
+			if nearest.ID == "" || delta > 0 && h.X < nearest.X || delta < 0 && h.X > nearest.X {
+				nearest = h
+			}
 		}
 	}
-	return false
+	if nearest.ID == "" {
+		return false
+	}
+	m.focus = nearest.ID
+	m.revealBodyTarget(nearest)
+	return true
 }
 func (m *Model) proxyListKey(k tea.KeyPressMsg) bool {
 	key := k.String()
@@ -451,8 +468,10 @@ func (m *Model) proxyListKey(k tea.KeyPressMsg) bool {
 	_, hits := m.proxiesBody(dashboardBodyWidth(m.dashboardOptions()))
 	var list []hitRegion
 	index := -1
+	seen := make(map[string]bool)
 	for _, hit := range hits {
-		if listTarget(hit.ID) {
+		if listTarget(hit.ID) && !seen[hit.ID] {
+			seen[hit.ID] = true
 			if hit.ID == m.focus {
 				index = len(list)
 			}
@@ -462,7 +481,8 @@ func (m *Model) proxyListKey(k tea.KeyPressMsg) bool {
 	if len(list) == 0 {
 		return true
 	}
-	// In a two-column row, vertical movement stays in the current column.
+	// Move to the nearest column in the next visual row, including partial rows.
+	distance := func(a, b int) int { return max(a-b, b-a) }
 	next := max(0, index)
 	if key == "home" {
 		next = 0
@@ -475,14 +495,19 @@ func (m *Model) proxyListKey(k tea.KeyPressMsg) bool {
 		}
 		next = min(len(list)-1, max(0, index+delta))
 		if index >= 0 {
+			next = index
+			row := -1
 			for i := index + delta; i >= 0 && i < len(list); i += delta {
 				if list[i].Y == list[index].Y {
 					continue
 				}
-				if list[i].X == list[index].X || strings.HasPrefix(list[i].ID, "group.") || strings.HasPrefix(list[index].ID, "group.") {
-					next = i
+				if row >= 0 && list[i].Y != row {
 					break
 				}
+				if row < 0 || distance(list[i].X, list[index].X) < distance(list[next].X, list[index].X) {
+					next = i
+				}
+				row = list[i].Y
 			}
 		}
 	}
@@ -509,11 +534,6 @@ func (m *Model) proxyActivate(id string) tea.Cmd {
 		m.proxyBack()
 	case "proxies.enter":
 		m.browseProxyReference(m.proxies.detail)
-	case "proxies.reference":
-		_, g, _, ok := m.proxyAtFocus()
-		if ok {
-			m.browseProxyReference(g.Now)
-		}
 	case "proxies.directory":
 		m.proxies.expanded = ""
 		m.proxies.history = nil
@@ -528,7 +548,9 @@ func (m *Model) proxyActivate(id string) tea.Cmd {
 			m.focus = previous
 			return nil
 		}
-		if strings.HasPrefix(id, "group.") {
+		if strings.HasPrefix(id, "proxies.reference.") && node != "" {
+			m.browseProxyReference(node)
+		} else if strings.HasPrefix(id, "group.") {
 			if m.proxies.expanded == g.Name {
 				m.proxies.expanded = ""
 			} else {

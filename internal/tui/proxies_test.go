@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nelvko/lazyclash/internal/i18n"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
 
@@ -42,8 +43,11 @@ func TestProxiesFocusAndObservedSelectionRemainIndependent(t *testing.T) {
 	}
 	current := ansi.Strip(strings.Join(m.proxyNode(0, 0, 50).lines, "\n"))
 	focused := ansi.Strip(strings.Join(m.proxyNode(0, 1, 50).lines, "\n"))
-	if !strings.HasPrefix(current, "  ✓ ") || !strings.HasPrefix(focused, "›   ") {
+	if !strings.HasPrefix(current, "▌   AUTO") || !strings.HasPrefix(focused, "  › HK 01") || strings.Contains(current+focused, "✓") {
 		t.Fatalf("focus/selection markers confused: current=%q focused=%q", current, focused)
+	}
+	if !strings.HasPrefix(strings.Split(current, "\n")[1], "▌ ") || strings.Contains(focused, "▌") {
+		t.Fatalf("selection rail did not span only the selected card: current=%q focused=%q", current, focused)
 	}
 	m, cmd := update(m, special(tea.KeyEnter))
 	if !m.busy || m.snapshot.Groups[0].Now != "AUTO" || m.proxies.pendingNode != "HK 01" {
@@ -54,7 +58,7 @@ func TestProxiesFocusAndObservedSelectionRemainIndependent(t *testing.T) {
 		t.Fatalf("selection confirmation failed: group=%+v count=%d", m.snapshot.Groups[0], b.selections)
 	}
 	selected := ansi.Strip(strings.Join(m.proxyNode(0, 1, 50).lines, "\n"))
-	if !strings.HasPrefix(selected, "› ✓ ") {
+	if !strings.HasPrefix(selected, "▌ › HK 01") {
 		t.Fatalf("focus erased current selection: %q", selected)
 	}
 }
@@ -73,34 +77,59 @@ func TestProxiesAutomaticGroupsOpenDetailsAndReferencesBrowse(t *testing.T) {
 	m.proxies.search.SetValue("proxy")
 	m.rememberPageView()
 	m.layout()
-	m, _ = update(m, special(tea.KeyRight))
+	m.proxyActivate("proxies.reference.0.0")
+	m.layout()
 	if m.proxies.expanded != "AUTO" || m.proxies.search.Value() != "" || len(m.proxies.history) != 1 {
 		t.Fatal("reference browsing retained an incompatible search")
 	}
 	m, _ = update(m, special(tea.KeyEscape))
-	if m.proxies.expanded != "PROXY" || m.proxies.search.Value() != "proxy" || m.focus != "node.0.0" {
+	if m.proxies.expanded != "PROXY" || m.proxies.search.Value() != "proxy" || m.focus != "proxies.reference.0.0" {
 		t.Fatalf("reference return lost its location: %+v focus=%s", m.proxies, m.focus)
 	}
 }
 
 func TestProxiesReturnRestoresNamesAfterGroupAndMemberReordering(t *testing.T) {
-	for _, detail := range []bool{false, true} {
-		t.Run(fmt.Sprint("detail=", detail), func(t *testing.T) {
+	for _, origin := range []string{"node", "detail", "reference"} {
+		t.Run(origin, func(t *testing.T) {
 			m, _ := proxiesModel(t, 160, 40)
 			m.focus = "node.0.0"
 			m.rememberPageView()
-			if detail {
+			if origin == "detail" {
 				m.openProxyDetail("PROXY", "AUTO")
+			} else if origin == "reference" {
+				m.proxyActivate("proxies.reference.0.0")
 			} else {
 				m.browseProxyReference("AUTO")
 			}
 			m.snapshot.Groups[0], m.snapshot.Groups[2] = m.snapshot.Groups[2], m.snapshot.Groups[0]
 			g := &m.snapshot.Groups[2]
 			g.All[0], g.All[2] = g.All[2], g.All[0]
-			if !m.proxyBack() || m.proxies.expanded != "PROXY" || m.focus != "node.2.2" {
+			wantFocus := "node.2.2"
+			if origin == "reference" {
+				wantFocus = "proxies.reference.2.2"
+			}
+			if !m.proxyBack() || m.proxies.expanded != "PROXY" || m.focus != wantFocus {
 				t.Fatalf("return followed stale row indexes: group=%s focus=%s", m.proxies.expanded, m.focus)
 			}
 		})
+	}
+}
+
+func TestProxiesReferenceActionFocusSurvivesLiveReordering(t *testing.T) {
+	m, _ := proxiesModel(t, 160, 40)
+	m.focus = "proxies.reference.0.0"
+	m.layout()
+	m.snapshot.Groups[0], m.snapshot.Groups[2] = m.snapshot.Groups[2], m.snapshot.Groups[0]
+	g := &m.snapshot.Groups[2]
+	g.All[0], g.All[2] = g.All[2], g.All[0]
+	m.layout()
+	if m.focus != "proxies.reference.2.2" || m.pageViews["proxies"].group != "PROXY" || m.pageViews["proxies"].node != "AUTO" {
+		t.Fatalf("live refresh reassigned reference action focus: focus=%s state=%+v", m.focus, m.pageViews["proxies"])
+	}
+	g.All = append(g.All[:2], g.All[3:]...)
+	m.layout()
+	if m.focus != "group.2" {
+		t.Fatalf("removed reference did not return focus to its own group: %s", m.focus)
 	}
 }
 
@@ -120,8 +149,17 @@ func TestProxiesModeChangeResetsNarrowAndReferencedLocations(t *testing.T) {
 			m.proxies.expanded = "GLOBAL"
 			m.focus = "node.8.0"
 			m.browseProxyReference("PROXY")
-			if groups := m.visibleProxyGroups(); len(groups) != 1 || m.snapshot.Groups[groups[0]].Name != "PROXY" {
-				t.Fatal("global mode prevented explicit reference browsing")
+			groups = m.visibleProxyGroups()
+			want := []string{"PROXY", "GLOBAL"}
+			if width < 100 {
+				want = []string{"PROXY"}
+			}
+			var names []string
+			for _, gi := range groups {
+				names = append(names, m.snapshot.Groups[gi].Name)
+			}
+			if !reflect.DeepEqual(names, want) {
+				t.Fatalf("global mode prevented explicit reference browsing: got %v, want %v", names, want)
 			}
 			m.proxyBack()
 			if m.proxies.expanded != "GLOBAL" || m.focus != "node.8.0" {
@@ -172,25 +210,442 @@ func TestProxiesClickingModeLeavesSearchEditing(t *testing.T) {
 }
 
 func TestProxiesGridVerticalAndHorizontalTraversal(t *testing.T) {
-	m, _ := proxiesModel(t, 160, 40)
-	m, _ = update(m, special(tea.KeyDown))
-	if m.focus != "node.0.0" {
-		t.Fatalf("Down from expanded group skipped its first member: %s", m.focus)
+	for _, test := range []struct{ width, columns int }{{160, 3}, {200, 4}} {
+		t.Run(fmt.Sprint(test.columns, "columns"), func(t *testing.T) {
+			m, _ := proxiesModel(t, test.width, 40)
+			m.snapshot.Groups[0].All = nil
+			for i := 0; i < 11; i++ {
+				m.snapshot.Groups[0].All = append(m.snapshot.Groups[0].All, fmt.Sprintf("leaf-%02d", i))
+			}
+			m.layout()
+			if columns := m.proxyColumns(dashboardBodyWidth(m.dashboardOptions())); columns != test.columns {
+				t.Fatalf("width %d produced %d columns, want %d", test.width, columns, test.columns)
+			}
+			m, _ = update(m, special(tea.KeyDown))
+			if m.focus != "node.0.0" {
+				t.Fatalf("Down from expanded group skipped its first member: %s", m.focus)
+			}
+			m.focus = "node.0.1"
+			m.rememberPageView()
+			m, _ = update(m, special(tea.KeyRight))
+			if m.focus != "node.0.2" {
+				t.Fatalf("Right skipped the nearest column: %s", m.focus)
+			}
+			m, _ = update(m, special(tea.KeyLeft))
+			if m.focus != "node.0.1" {
+				t.Fatalf("Left skipped the nearest column: %s", m.focus)
+			}
+			m, _ = update(m, special(tea.KeyDown))
+			if want := fmt.Sprintf("node.0.%d", 1+test.columns); m.focus != want {
+				t.Fatalf("Down changed the active column: got %s, want %s", m.focus, want)
+			}
+			m, _ = update(m, special(tea.KeyUp))
+			if m.focus != "node.0.1" {
+				t.Fatalf("Up changed the active column: %s", m.focus)
+			}
+			lastIndex := len(m.snapshot.Groups[0].All) - 1
+			lastRowStart := lastIndex / test.columns * test.columns
+			m.focus = fmt.Sprintf("node.0.%d", lastRowStart-1)
+			m.rememberPageView()
+			m, _ = update(m, special(tea.KeyDown))
+			if want := fmt.Sprintf("node.0.%d", lastIndex); m.focus != want {
+				t.Fatalf("Down into a partial row missed its nearest card: got %s, want %s", m.focus, want)
+			}
+			m, _ = update(m, special(tea.KeyRight))
+			if want := fmt.Sprintf("node.0.%d", lastIndex); m.focus != want {
+				t.Fatalf("Right crossed the row boundary: got %s, want %s", m.focus, want)
+			}
+			m, _ = update(m, special(tea.KeyUp))
+			if want := fmt.Sprintf("node.0.%d", lastIndex-test.columns); m.focus != want {
+				t.Fatalf("Up from a partial row changed its column: got %s, want %s", m.focus, want)
+			}
+		})
 	}
-	// AUTO is a group reference, so use an ordinary leaf for horizontal movement.
-	m.focus = "node.0.2"
+}
+
+func TestProxiesVerticalTraversalStopsAtBoundaryRows(t *testing.T) {
+	for _, test := range []struct{ width, columns int }{{160, 3}, {200, 4}} {
+		for _, partial := range []bool{false, true} {
+			t.Run(fmt.Sprint(test.columns, "columns/partial=", partial), func(t *testing.T) {
+				m, _ := proxiesModel(t, test.width, 40)
+				m.snapshot.Groups = m.snapshot.Groups[:1]
+				group := &m.snapshot.Groups[0]
+				group.All = nil
+				count := 2 * test.columns
+				if partial {
+					count--
+				}
+				for i := 0; i < count; i++ {
+					group.All = append(group.All, fmt.Sprintf("leaf-%02d", i))
+				}
+				group.Now = group.All[0]
+				m.layout()
+				for index := test.columns; index < count; index++ {
+					for _, down := range []tea.KeyPressMsg{special(tea.KeyDown), key("j")} {
+						want := fmt.Sprintf("node.0.%d", index)
+						m.focus = want
+						m.rememberPageView()
+						m, _ = update(m, down)
+						if m.focus != want {
+							t.Fatalf("Down at final row moved sideways: got %s, want %s", m.focus, want)
+						}
+					}
+				}
+				for column := 0; column < test.columns; column++ {
+					m.focus = fmt.Sprintf("node.0.%d", column)
+					m.rememberPageView()
+					m, _ = update(m, special(tea.KeyUp))
+					if m.focus != "group.0" {
+						t.Fatalf("Up from the first card row skipped its group heading: %s", m.focus)
+					}
+					m, _ = update(m, special(tea.KeyUp))
+					if m.focus != "group.0" {
+						t.Fatalf("Up at the first list row moved focus elsewhere: %s", m.focus)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestProxiesPendingSelectionKeepsVerticalGridNavigation(t *testing.T) {
+	for _, test := range []struct{ width, columns int }{{160, 3}, {200, 4}} {
+		t.Run(fmt.Sprint(test.columns, "columns"), func(t *testing.T) {
+			m, backend := proxiesModel(t, test.width, 40)
+			m.snapshot.Groups = m.snapshot.Groups[:1]
+			m.focus = "node.0.1"
+			m.layout()
+			m, pending := update(m, special(tea.KeyEnter))
+			if !m.busy || pending == nil || m.proxies.pendingNode != "HK 01" || backend.selections != 0 {
+				t.Fatal("selection did not enter the pending backend operation")
+			}
+			// Keep the selection command pending while driving normal Update keys.
+			m, _ = update(m, special(tea.KeyDown))
+			if want := fmt.Sprintf("node.0.%d", 1+test.columns); m.focus != want {
+				t.Fatalf("pending selection changed the column on Down: got %s, want %s", m.focus, want)
+			}
+			m, _ = update(m, special(tea.KeyUp))
+			if m.focus != "node.0.1" {
+				t.Fatalf("pending selection changed the column on Up: %s", m.focus)
+			}
+			lastRow := (len(m.snapshot.Groups[0].All) - 1) / test.columns * test.columns
+			for index := lastRow; index < len(m.snapshot.Groups[0].All); index++ {
+				m.focus = fmt.Sprintf("node.0.%d", index)
+				m.rememberPageView()
+				want := m.focus
+				m, _ = update(m, special(tea.KeyDown))
+				if m.focus != want {
+					t.Fatalf("pending selection moved sideways at the final row: got %s, want %s", m.focus, want)
+				}
+			}
+			if !m.busy || backend.selections != 0 || m.snapshot.Groups[0].Now != "AUTO" {
+				t.Fatal("grid navigation completed or changed the pending selection")
+			}
+		})
+	}
+}
+
+func TestProxiesShortGroupsFillTheAvailableRow(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		count int
+		query string
+	}{{"one member", 1, ""}, {"two members", 2, ""}, {"one filtered member", 8, "HK 01"}} {
+		t.Run(test.name, func(t *testing.T) {
+			m, _ := proxiesModel(t, 200, 40)
+			m.snapshot.Groups[0].All = m.snapshot.Groups[0].All[:test.count]
+			m.proxies.search.SetValue(test.query)
+			width := dashboardBodyWidth(m.dashboardOptions())
+			body := m.proxyGroupBody(0, width)
+			seen := make(map[string]bool)
+			lastRight, firstX := 0, width
+			for _, hit := range body.targets {
+				if !strings.HasPrefix(hit.ID, "node.") || seen[hit.ID] {
+					continue
+				}
+				seen[hit.ID] = true
+				firstX = min(firstX, hit.X)
+				lastRight = max(lastRight, hit.X+hit.W)
+			}
+			wantCount := test.count
+			if test.query != "" {
+				wantCount = 1
+			}
+			if len(seen) != wantCount || firstX != 2 || width-lastRight >= wantCount {
+				t.Fatalf("short group retained unused card columns: cards=%d firstX=%d right=%d width=%d", len(seen), firstX, lastRight, width)
+			}
+		})
+	}
+}
+
+func TestProxiesReferenceTraversalKeepsWideDirectoryAndRestoresLocation(t *testing.T) {
+	for _, width := range []int{80, 160} {
+		t.Run(fmt.Sprint(width), func(t *testing.T) {
+			m, _ := proxiesModel(t, width, 20)
+			m.proxies.search.SetValue("proxy")
+			m.focus = "node.0.0"
+			m.scroll = 4
+			m.rememberPageView()
+			location := m.proxyLocation()
+			m.browseProxyReference("AUTO")
+			m.layout()
+			groups := m.visibleProxyGroups()
+			if width < 100 {
+				if len(groups) != 1 || m.snapshot.Groups[groups[0]].Name != "AUTO" {
+					t.Fatalf("narrow reference view mixed in the directory: %v", groups)
+				}
+			} else if len(groups) != len(m.snapshot.Groups)-1 {
+				t.Fatalf("wide reference view hid root groups: %v", groups)
+			}
+			if m.proxies.expanded != "AUTO" || m.proxies.search.Value() != "" || !hasAction(m.targets, "group.1") {
+				t.Fatalf("reference target was not expanded and revealed: expanded=%s focus=%s scroll=%d", m.proxies.expanded, m.focus, m.scroll)
+			}
+			if !m.proxyBack() || m.proxies.expanded != location.group || m.proxies.search.Value() != location.query || m.focus != location.focus || m.scroll != location.scroll {
+				t.Fatalf("reference return lost parent location: got %+v, want %+v", m.proxyLocation(), location)
+			}
+		})
+	}
+}
+
+func TestProxiesDistantReferenceRevealsMembersAndRestoresParent(t *testing.T) {
+	for _, width := range []int{80, 160} {
+		t.Run(fmt.Sprint(width), func(t *testing.T) {
+			m, _ := proxiesModel(t, width, 20)
+			parent := m.snapshot.Groups[0]
+			parent.All = []string{"HK 01", "HK 02", "JP 01", "SG 01", "US 01", "DIRECT", "REJECT", "parent-leaf-7", "parent-leaf-8", "parent-leaf-9", "REMOTE"}
+			parent.Now = "HK 01"
+			m.snapshot.Groups = []mihomo.Group{parent}
+			for i := 0; i < 24; i++ {
+				m.snapshot.Groups = append(m.snapshot.Groups, mihomo.Group{Name: fmt.Sprintf("spacer-%02d", i), Type: "Selector", Now: "HK 01", All: []string{"HK 01"}})
+			}
+			target := len(m.snapshot.Groups)
+			m.snapshot.Groups = append(m.snapshot.Groups, mihomo.Group{Name: "REMOTE", Type: "Selector", Now: "JP 01", All: []string{"HK 01", "HK 02", "JP 01", "SG 01", "US 01"}})
+			m.proxies.search.SetValue("proxy")
+			m.focus, m.scroll = "proxies.reference.0.10", 4
+			m.rememberPageView()
+			m.layout()
+			location := m.proxyLocation()
+			if location.scroll <= 0 {
+				t.Fatal("fixture did not retain a valid scrolled parent position")
+			}
+			m.proxyActivate("proxies.reference.0.10")
+			m.layout()
+			if m.proxies.expanded != "REMOTE" || !hasAction(m.targets, fmt.Sprintf("node.%d.0", target)) {
+				t.Fatalf("distant reference revealed only its heading: expanded=%s scroll=%d targets=%+v", m.proxies.expanded, m.scroll, m.targets)
+			}
+			m, _ = update(m, special(tea.KeyEscape))
+			if m.proxies.expanded != location.group || m.proxies.search.Value() != location.query || m.focus != location.focus || m.scroll != location.scroll {
+				t.Fatalf("return from distant reference lost the parent location: got %+v, want %+v", m.proxyLocation(), location)
+			}
+		})
+	}
+}
+
+func TestProxiesReferenceKeysPreferAdjacentNodeBeforeBrowsing(t *testing.T) {
+	m, _ := proxiesModel(t, 160, 40)
+	m.focus = "node.0.0"
 	m.rememberPageView()
 	m, _ = update(m, special(tea.KeyRight))
-	if m.focus != "node.0.3" {
-		t.Fatalf("Right did not move to adjacent leaf: %s", m.focus)
+	if m.focus != "node.0.1" || m.proxies.expanded != "PROXY" || len(m.proxies.history) != 0 {
+		t.Fatalf("Right entered a reference before moving to its adjacent node: focus=%s expanded=%s", m.focus, m.proxies.expanded)
 	}
-	m, _ = update(m, special(tea.KeyDown))
-	if m.focus != "node.0.5" {
-		t.Fatalf("Down did not preserve the right column: %s", m.focus)
+	columns := m.proxyColumns(dashboardBodyWidth(m.dashboardOptions()))
+	m.snapshot.Groups[0].All[0], m.snapshot.Groups[0].All[columns-1] = m.snapshot.Groups[0].All[columns-1], m.snapshot.Groups[0].All[0]
+	m.focus = fmt.Sprintf("node.0.%d", columns-1)
+	m.rememberPageView()
+	m, _ = update(m, special(tea.KeyRight))
+	if m.proxies.expanded != "AUTO" || len(m.proxies.history) != 1 {
+		t.Fatalf("Right at the row edge did not enter its reference: expanded=%s history=%d", m.proxies.expanded, len(m.proxies.history))
+	}
+	m.focus = "node.1.1"
+	m.rememberPageView()
+	m, _ = update(m, special(tea.KeyLeft))
+	if m.focus != "node.1.0" || m.proxies.expanded != "AUTO" || len(m.proxies.history) != 1 {
+		t.Fatalf("Left returned before moving to its adjacent node: focus=%s expanded=%s", m.focus, m.proxies.expanded)
 	}
 	m, _ = update(m, special(tea.KeyLeft))
-	if m.focus != "node.0.4" {
-		t.Fatalf("Left did not move to adjacent leaf: %s", m.focus)
+	if m.proxies.expanded != "PROXY" || m.focus != fmt.Sprintf("node.0.%d", columns-1) || len(m.proxies.history) != 0 {
+		t.Fatalf("Left at the row edge lost its parent reference: focus=%s expanded=%s", m.focus, m.proxies.expanded)
+	}
+}
+
+func TestProxiesReferenceActionDoesNotSelectItsNode(t *testing.T) {
+	for _, width := range []int{80, 160} {
+		t.Run(fmt.Sprint(width), func(t *testing.T) {
+			m, backend := proxiesModel(t, width, 40)
+			m, cmd := click(m, findTarget(t, m, "proxies.reference.0.0"))
+			if cmd != nil || m.busy || backend.selections != 0 || m.proxies.expanded != "AUTO" {
+				t.Fatalf("reference action selected its parent node: expanded=%s selections=%d busy=%t", m.proxies.expanded, backend.selections, m.busy)
+			}
+			m.proxyBack()
+			m.snapshot.Groups[0].Now = "HK 01"
+			m.layout()
+			m, cmd = click(m, findTarget(t, m, "node.0.0"))
+			if cmd == nil || !m.busy || m.proxies.expanded != "PROXY" || m.proxies.pendingNode != "AUTO" {
+				t.Fatal("reference card body lost its normal selector action")
+			}
+			m, _ = update(m, actionCmd(t, cmd)())
+			if backend.selections != 1 || m.snapshot.Groups[0].Now != "AUTO" {
+				t.Fatal("reference card selection was not confirmed through the backend")
+			}
+		})
+	}
+	// An automatic strategy may contain references, which remain inspectable.
+	m, backend := proxiesModel(t, 160, 40)
+	m.snapshot.Groups[1].All = append(m.snapshot.Groups[1].All, "Japan")
+	m.proxies.expanded, m.focus = "AUTO", "group.1"
+	m.layout()
+	m, cmd := click(m, findTarget(t, m, "proxies.reference.1.4"))
+	if cmd != nil || backend.selections != 0 || m.proxies.expanded != "Japan" {
+		t.Fatalf("automatic reference action was unavailable or selected a node: expanded=%s selections=%d", m.proxies.expanded, backend.selections)
+	}
+}
+
+func TestProxiesToolbarKeepsModeAndSearchTogetherWhenWide(t *testing.T) {
+	for _, language := range []string{i18n.English, i18n.Chinese} {
+		for _, width := range []int{160, 80, 40} {
+			t.Run(fmt.Sprint(language, "/", width), func(t *testing.T) {
+				m, _ := proxiesModel(t, width, 40)
+				m.locale = i18n.New(language)
+				bodyWidth := dashboardBodyWidth(m.dashboardOptions())
+				toolbar := m.proxiesToolbar(bodyWidth)
+				targets := make(map[string]hitRegion)
+				for _, hit := range toolbar.targets {
+					targets[hit.ID] = hit
+					if hit.X+hit.W > bodyWidth || hit.Y+hit.H > len(toolbar.lines) {
+						t.Fatalf("toolbar hit exceeds its rendered content: %+v", hit)
+					}
+				}
+				mode, search := targets["mode.global"], targets["proxies.search"]
+				if mode.ID == "" || search.ID == "" {
+					t.Fatal("toolbar lost mode or search targets")
+				}
+				if width >= 100 {
+					if mode.Y != search.Y || search.X <= mode.X+mode.W {
+						t.Fatalf("wide search did not share the mode row: mode=%+v search=%+v", mode, search)
+					}
+				} else if search.Y <= mode.Y || search.X != 0 {
+					t.Fatalf("narrow toolbar did not give search a full row: mode=%+v search=%+v", mode, search)
+				}
+			})
+		}
+	}
+}
+
+func TestProxiesGroupHeaderKeepsRightBadgeAndIndependentTestAction(t *testing.T) {
+	for _, language := range []string{i18n.English, i18n.Chinese} {
+		t.Run(language, func(t *testing.T) {
+			m, _ := proxiesModel(t, 160, 40)
+			m.locale = i18n.New(language)
+			m.snapshot.Groups[1].All = make([]string, 100)
+			width := dashboardBodyWidth(m.dashboardOptions())
+			for _, gi := range []int{0, 1, 2} {
+				header := m.proxyGroupHeader(gi, width)
+				line := ansi.Strip(header.lines[0])
+				if ansi.StringWidth(line) != width || strings.TrimSpace(ansi.Cut(line, width-5, width)) != fmt.Sprint(len(m.snapshot.Groups[gi].All)) {
+					t.Fatalf("group %d count badge was not aligned to the fixed right column: %q", gi, line)
+				}
+				for i, hit := range header.targets {
+					for _, other := range header.targets[i+1:] {
+						if regionsOverlap(hit, other) {
+							t.Fatalf("header controls overlap: %+v / %+v", hit, other)
+						}
+					}
+				}
+			}
+			m.layout()
+			group, test := findTarget(t, m, "group.0"), findTarget(t, m, "proxies.test")
+			if test.Y != group.Y || test.X <= group.X {
+				t.Fatalf("wide test action left the group heading: group=%+v test=%+v", group, test)
+			}
+			m, _ = click(m, test)
+			defer m.stopProxyTests()
+			if !m.proxies.testing || m.proxies.expanded != "PROXY" {
+				t.Fatalf("group test action folded or switched the group: expanded=%s testing=%t", m.proxies.expanded, m.proxies.testing)
+			}
+		})
+	}
+}
+
+func TestProxiesVisibleRangeCountsSplitAndPartiallyVisibleCards(t *testing.T) {
+	hits := []hitRegion{
+		{ID: "group.0", Y: 0, W: 80, H: 1},
+		{ID: "node.0.4", Y: 2, W: 36, H: 1},
+		{ID: "proxies.reference.0.4", X: 26, Y: 3, W: 10, H: 1},
+		{ID: "node.0.4", Y: 3, W: 26, H: 1},
+		{ID: "node.0.7", X: 37, Y: 2, W: 36, H: 2},
+		{ID: "node.0.9", Y: 5, W: 36, H: 2},
+		{ID: "node.0.12", X: 37, Y: 5, W: 36, H: 2},
+		{ID: "node.0.16", Y: 8, W: 36, H: 2},
+	}
+	for _, language := range []string{i18n.English, i18n.Chinese} {
+		locale := i18n.New(language)
+		for _, test := range []struct {
+			name           string
+			scroll, height int
+			want           string
+		}{
+			{"first row", 2, 2, "1–2 / 5"},
+			{"split second line", 3, 1, "1–2 / 5"},
+			{"between cards", 4, 1, ""},
+			{"partial first and last rows", 6, 3, "3–5 / 5"},
+			{"last second line", 9, 1, "5–5 / 5"},
+			{"after last card", 10, 2, ""},
+		} {
+			t.Run(language+"/"+test.name, func(t *testing.T) {
+				if got := proxyVisibleRange(locale, hits, test.scroll, test.height); got != test.want {
+					t.Fatalf("visible card range: got %q, want %q", got, test.want)
+				}
+			})
+		}
+		filtered := []hitRegion{hits[0], hits[4], hits[7]}
+		if got := proxyVisibleRange(locale, filtered, 0, 10); got != "1–2 / 2" {
+			t.Fatalf("filtered range used source indexes or hidden members: %q", got)
+		}
+	}
+}
+
+func TestProxiesVisibleRangeFooterStaysAboveKeyHints(t *testing.T) {
+	for _, size := range [][2]int{{160, 45}, {80, 24}, {40, 16}, {24, 12}, {20, 7}} {
+		t.Run(fmt.Sprint(size), func(t *testing.T) {
+			m, _ := proxiesModel(t, size[0], size[1])
+			o := m.dashboardOptions()
+			if !o.BodyRange {
+				t.Fatal("ready expanded group omitted its range footer")
+			}
+			o.Body = strings.Repeat("candidate\n", 30)
+			o.BodyTargets = nil
+			for i := 0; i < 15; i++ {
+				o.BodyTargets = append(o.BodyTargets, hitRegion{ID: fmt.Sprintf("node.0.%d", i), Y: 2 * i, W: 8, H: 2})
+			}
+			view, targets, _ := renderDashboard(o)
+			assertCanvas(t, view, size[0], size[1])
+			geometry := dashboardGeometry(o)
+			footerY := geometry.y + geometry.height
+			if footerY < dashboardContentBottom(o) {
+				label := proxyVisibleRange(o.Locale, o.BodyTargets, 0, geometry.height)
+				if label != "" && !strings.Contains(ansi.Strip(strings.Split(view, "\n")[footerY]), label) {
+					t.Fatalf("footer row %d did not show its visible range %q", footerY, label)
+				}
+				for _, hit := range targets {
+					if strings.HasPrefix(hit.ID, "node.") && hit.Y+hit.H > footerY {
+						t.Fatalf("node target overlaps the range footer: %+v", hit)
+					}
+				}
+			}
+			m.proxies.detail = "HK 01"
+			if m.dashboardOptions().BodyRange {
+				t.Fatal("node details retained the group range footer")
+			}
+			m.proxies.detail, m.proxies.expanded = "", ""
+			if m.dashboardOptions().BodyRange {
+				t.Fatal("collapsed directory retained the group range footer")
+			}
+			m.proxies.expanded, m.snapshot.Service.Active = "PROXY", false
+			if m.dashboardOptions().BodyRange {
+				t.Fatal("unavailable group retained the range footer")
+			}
+		})
 	}
 }
 
@@ -353,7 +808,7 @@ func TestProxiesUntestableRoutesAndHistoricalFailuresStayHonest(t *testing.T) {
 }
 
 func TestProxiesGeometryAtDesktopAndNarrowSizes(t *testing.T) {
-	for _, size := range [][2]int{{160, 40}, {120, 30}, {100, 24}, {80, 24}, {60, 20}, {40, 16}, {24, 12}} {
+	for _, size := range [][2]int{{240, 45}, {200, 40}, {160, 40}, {120, 30}, {100, 24}, {80, 24}, {60, 20}, {40, 16}, {24, 12}} {
 		t.Run(fmt.Sprint(size), func(t *testing.T) {
 			m, _ := proxiesModel(t, size[0], size[1])
 			for _, profile := range []colorprofile.Profile{colorprofile.TrueColor, colorprofile.ANSI256, colorprofile.ANSI, colorprofile.ASCII} {
@@ -365,14 +820,21 @@ func TestProxiesGeometryAtDesktopAndNarrowSizes(t *testing.T) {
 				}
 			}
 			width := dashboardBodyWidth(m.dashboardOptions())
+			if size[0] >= 160 && width <= 112 {
+				t.Fatalf("wide proxy content retained the 112-cell cap: terminal=%d body=%d", size[0], width)
+			}
 			body, hits := m.proxiesBody(width)
 			lines := strings.Split(body, "\n")
+			columns := make(map[int]bool)
 			for i, line := range lines {
 				if got := ansi.StringWidth(line); got > width {
 					t.Fatalf("body line %d exceeds %d cells: %d", i, width, got)
 				}
 			}
 			for i, hit := range hits {
+				if strings.HasPrefix(hit.ID, "node.0.") {
+					columns[hit.X] = true
+				}
 				if hit.X < 0 || hit.Y < 0 || hit.W <= 0 || hit.H <= 0 || hit.X+hit.W > width || hit.Y+hit.H > len(lines) {
 					t.Fatalf("invalid hit geometry: %+v width=%d rows=%d", hit, width, len(lines))
 				}
@@ -381,6 +843,9 @@ func TestProxiesGeometryAtDesktopAndNarrowSizes(t *testing.T) {
 						t.Fatalf("overlapping hit regions: %+v / %+v", hit, other)
 					}
 				}
+			}
+			if len(columns) != min(len(m.snapshot.Groups[0].All), m.proxyColumns(width)) {
+				t.Fatalf("rendered columns diverged from navigation: got %d, want %d", len(columns), m.proxyColumns(width))
 			}
 			if size[0] < 100 {
 				if groups := m.visibleProxyGroups(); len(groups) != 1 || m.snapshot.Groups[groups[0]].Name != "PROXY" {

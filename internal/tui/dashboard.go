@@ -50,6 +50,7 @@ type dashboardOptions struct {
 	// page header. They are used by the Proxies, Profiles, Connections, Rules and Logs pages.
 	Body          string
 	BodyTargets   []hitRegion
+	BodyRange     bool
 	InlineInstall bool
 }
 
@@ -70,6 +71,9 @@ func dashboardGeometry(o dashboardOptions) dashboardLayout {
 	}
 	headerX, headerWidth := left, available
 	width := min(112, available)
+	if o.Page == "proxies" {
+		width = available
+	}
 	if o.Page == "" || o.Page == "overview" {
 		width = available
 		left = (o.Width - width) / 2
@@ -91,7 +95,11 @@ func dashboardGeometry(o dashboardOptions) dashboardLayout {
 	if o.Width < 70 && o.Height < 24 && o.Page != "" && o.Page != "overview" {
 		bodyY++
 	}
-	return dashboardLayout{x: left, width: width, y: bodyY, height: max(0, dashboardContentBottom(o)-bodyY), headerX: headerX, headerWidth: headerWidth, headerY: headerY, headerHeight: bodyY - 2, sidebar: sidebar}
+	height := max(0, dashboardContentBottom(o)-bodyY)
+	if o.BodyRange && height > 1 {
+		height--
+	}
+	return dashboardLayout{x: left, width: width, y: bodyY, height: height, headerX: headerX, headerWidth: headerWidth, headerY: headerY, headerHeight: bodyY - 2, sidebar: sidebar}
 }
 func dashboardBodyWidth(o dashboardOptions) int { return dashboardGeometry(o).width }
 
@@ -191,6 +199,10 @@ func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
 			marker = "↑"
 		}
 		put(min(o.Width-1, g.x+g.width), g.y+g.height-1, themed(marker, accent, bg, o.Dim))
+	}
+	if o.BodyRange && g.y+g.height < dashboardContentBottom(o) {
+		label := proxyVisibleRange(o.Locale, bodyTargets, scroll, g.height)
+		put(g.x+max(0, g.width-ansi.StringWidth(label)), g.y+g.height, themed(cellCrop(label, g.width), muted, bg, o.Dim))
 	}
 
 	if g.sidebar {

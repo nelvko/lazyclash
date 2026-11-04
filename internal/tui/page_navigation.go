@@ -33,7 +33,7 @@ func (m *Model) rememberPageView() {
 			if gi >= 0 && gi < len(m.snapshot.Groups) {
 				state.group = m.snapshot.Groups[gi].Name
 			}
-		} else if _, err := fmt.Sscanf(m.focus, "node.%d.%d", &gi, &ni); err == nil && gi >= 0 && gi < len(m.snapshot.Groups) {
+		} else if _, err := fmt.Sscanf(strings.Replace(m.focus, "proxies.reference.", "node.", 1), "node.%d.%d", &gi, &ni); err == nil && gi >= 0 && gi < len(m.snapshot.Groups) {
 			state.group = m.snapshot.Groups[gi].Name
 			if ni >= 0 && ni < len(m.snapshot.Groups[gi].All) {
 				state.node = m.snapshot.Groups[gi].All[ni]
@@ -146,6 +146,11 @@ func (m Model) restoredContentFocus(state pageViewState) string {
 			}
 			for ni, node := range group.All {
 				if node == state.node {
+					if strings.HasPrefix(state.focus, "proxies.reference.") {
+						if _, _, reference := m.proxyGroup(node); reference {
+							return fmt.Sprintf("proxies.reference.%d.%d", gi, ni)
+						}
+					}
 					return fmt.Sprintf("node.%d.%d", gi, ni)
 				}
 			}

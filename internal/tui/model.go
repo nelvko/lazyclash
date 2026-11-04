@@ -1419,7 +1419,7 @@ func (m *Model) layout() {
 	o.StateUnavailable = !m.snapshotReady
 	g := dashboardGeometry(o)
 	o.Header = m.pageHeader()
-	m.proxies.search.SetWidth(max(1, g.width-ansi.StringWidth(m.proxies.search.Prompt)-1))
+	m.proxies.search.SetWidth(m.proxySearchWidth(g.width))
 	m.proxies.search.SetCursor(m.proxies.search.Position())
 	m.connections.search.SetWidth(max(1, g.width-2))
 	m.rules.search.SetWidth(max(1, g.width-2))

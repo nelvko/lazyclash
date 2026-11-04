@@ -119,34 +119,12 @@ func (m *Model) bodyListKey(k tea.KeyPressMsg) bool {
 	if m.page != "proxies" || strings.HasPrefix(m.focus, "nav.") {
 		return false
 	}
-	delta := 0
 	switch k.String() {
-	case "up", "k":
-		delta = -1
-	case "down", "j":
-		delta = 1
+	case "up", "k", "down", "j":
+		return m.proxyListKey(k)
 	default:
 		return false
 	}
-	_, hits := m.pageBody(dashboardBodyWidth(dashboardOptions{Width: m.width, Height: m.height, Page: m.page}))
-	var list []hitRegion
-	index := -1
-	for _, hit := range hits {
-		if !listTarget(hit.ID) {
-			continue
-		}
-		if hit.ID == m.focus {
-			index = len(list)
-		}
-		list = append(list, hit)
-	}
-	if len(list) == 0 {
-		return false
-	}
-	index = min(len(list)-1, max(0, index+delta))
-	m.focus = list[index].ID
-	m.revealBodyTarget(list[index])
-	return true
 }
 
 func (m *Model) revealBodyTarget(hit hitRegion) {

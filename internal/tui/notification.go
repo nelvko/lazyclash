@@ -313,7 +313,7 @@ func (m Model) dashboardOptions() dashboardOptions {
 			}
 		}
 	}
-	return dashboardOptions{Locale: m.locale, Width: m.width, Height: m.height, Page: m.page, Busy: m.busy, PlainButtons: m.buttonPlain(), Dim: m.feedbackDialogOpen() || m.helpOpen || m.notification.panel.open, SidebarOpen: m.sidebarOpen, HideKeyHints: m.keyHints.hidden || m.wizard.open || m.wizard.networkOpen, GuideSkipped: m.guideSkipped, Notifications: items, Spinner: m.spinner.View(), LogoFrame: m.logoFrame, LogoIntroFrame: m.logoIntro.frame, InlineInstall: m.page == "overview" && m.inlineInstallVisible()}
+	return dashboardOptions{Locale: m.locale, Width: m.width, Height: m.height, Page: m.page, Busy: m.busy, PlainButtons: m.buttonPlain(), Dim: m.feedbackDialogOpen() || m.helpOpen || m.notification.panel.open, SidebarOpen: m.sidebarOpen, HideKeyHints: m.keyHints.hidden || m.wizard.open || m.wizard.networkOpen, GuideSkipped: m.guideSkipped, Notifications: items, Spinner: m.spinner.View(), LogoFrame: m.logoFrame, LogoIntroFrame: m.logoIntro.frame, InlineInstall: m.page == "overview" && m.inlineInstallVisible(), BodyRange: m.page == "proxies" && m.proxiesReady() && m.proxies.expanded != "" && m.proxies.detail == ""}
 }
 
 // Single-card adapter for geometry callers outside the dashboard.

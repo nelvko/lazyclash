@@ -47,8 +47,13 @@ def search(terminal, value):
 
 
 def chosen(terminal, name):
-    return any(re.search(r"✓\s*" + re.escape(name) + r"(?:\s|$)", line)
+    return any(re.search(r"▌\s*(?:›\s*)?" + re.escape(name) + r"(?:\s|$)", line)
                for line in terminal.screen.text().splitlines())
+
+
+def wait_mode(terminal, label):
+    wait_until(terminal, lambda: any(re.search(r"✓\s*" + re.escape(label) + r"(?:\s|\]|$)", line)
+               for line in terminal.screen.text().splitlines()), "routing mode was not confirmed: " + label)
 
 
 def candidate_order(terminal):
@@ -77,6 +82,25 @@ def click_candidate(terminal, name):
     raise AssertionError("Candidate is not visible: " + name + "\n" + terminal.screen.text())
 
 
+def enter_reference(terminal, name, label):
+    terminal.settle()
+    rows = terminal.screen.cells
+    for y, row in enumerate(rows[:-1]):
+        following = "".join(rows[y + 1])
+        if not re.search(r"Selector|URLTest|Fallback|LoadBalance|Relay", following):
+            continue
+        for x, cell in enumerate(row):
+            if cell and "".join(row[x:]).startswith(name):
+                # The action is on this card's metadata row, before the next
+                # card's contents; choose the nearest action to its right.
+                for button in range(x, len(rows[y + 1])):
+                    if "".join(rows[y + 1][button:]).startswith(label):
+                        terminal.key(("\x1b[<0;%d;%dM\x1b[<0;%d;%dm" % (button + 1, y + 2, button + 1, y + 2)).encode())
+                        terminal.settle()
+                        return
+    raise AssertionError("Reference action is not visible: " + name + "\n" + terminal.screen.text())
+
+
 def exercise(preview, binary, output, language, profile, args):
     output.mkdir(parents=True, exist_ok=True)
     report = output / "calls.json"
@@ -101,12 +125,12 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait("UDP")
         preview.capture(terminal, output, "groups-wide", args)
 
-        # Walk the grid with real terminal keys. AUTO's Right enters its group;
-        # a leaf's Right moves across the row, and Up stays in that column.
+        # At 160 columns the adaptive grid has three candidate columns.
+        # Horizontal keys move to the nearest card; Up keeps its column.
         terminal.key(b"\x1b[C")  # group -> AUTO, first left candidate
-        terminal.key(b"\x1b[B")  # HK 02, second left candidate
-        terminal.key(b"\x1b[C")  # JP 01, second right candidate
-        terminal.key(b"\x1b[A")  # HK 01, first right candidate
+        terminal.key(b"\x1b[B")  # JP 01, second left candidate
+        terminal.key(b"\x1b[C")  # SG 01, second middle candidate
+        terminal.key(b"\x1b[A")  # HK 01, first middle candidate
         terminal.settle()
         assert any(re.search(r"›\s*(?:✓\s*)?HK 01", line) for line in terminal.screen.text().splitlines()), "keyboard could not reach the right candidate column"
         # Selection goes through the asynchronous backend and snapshot readback.
@@ -120,10 +144,10 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.key(b"\x1b")
         terminal.wait("Hysteria2")
 
-        # The first candidate references AUTO; Right browses it without selecting.
+        # The reference's independent action browses without selecting it.
         terminal.key(b"\x1b[H")
         terminal.key(b"\x1b[C")
-        terminal.key(b"\x1b[C")
+        enter_reference(terminal, "AUTO", words["proxies.enter"])
         terminal.wait(words["proxies.automatic"])
         terminal.key(b"\x1b[C")
         terminal.key(b"\r")
@@ -140,11 +164,11 @@ def exercise(preview, binary, output, language, profile, args):
         search(terminal, "ChatGPT")
         terminal.wait("ChatGPT")
         terminal.key(b"\x1b[C")
-        terminal.key(b"\x1b[C")
+        enter_reference(terminal, "PROXY", words["proxies.enter"])
         terminal.wait("Hysteria2")
         terminal.key(b"\x1b[D")
         terminal.wait("ChatGPT")
-        assert any(re.search(r"/\s*ChatGPT", line) for line in terminal.screen.text().splitlines()), "reference return lost search input"
+        wait_until(terminal, lambda: any(re.search(r"/\s*ChatGPT", line) for line in terminal.screen.text().splitlines()), "reference return lost search input")
         preview.capture(terminal, output, "search-reference-return", args)
         search(terminal, "")
         terminal.key(b"\x1b[H")
@@ -180,12 +204,18 @@ def exercise(preview, binary, output, language, profile, args):
         # Keep a node focused across terminal geometry changes. Each frame is
         # captured from the PTY after redraw rather than directly from Model.View.
         click_candidate(terminal, "HK 01")
-        for width, height in [(160, 45), (120, 32), (80, 24), (60, 20), (40, 16), (120, 18)]:
+        for width, height in [(160, 45), (200, 40), (240, 40), (120, 32), (80, 24), (60, 20), (40, 16), (120, 18)]:
             terminal.resize(width, height)
             terminal.settle()
             terminal.wait("HK 01")
             terminal.wait("ms")
             preview.capture(terminal, output, "selected-%dx%d" % (width, height), args)
+        terminal.resize(80, 24)
+        terminal.settle()
+        terminal.key(b"\x1b[6~")  # Continue scrolling within one group, no page switch.
+        terminal.settle()
+        assert re.search(r"\d+–\d+ / 8", terminal.screen.text()), "scrolled group lost its visible range"
+        preview.capture(terminal, output, "continuous-scroll-range", args)
         terminal.resize(160, 45)
         terminal.settle()
 
@@ -203,19 +233,22 @@ def exercise(preview, binary, output, language, profile, args):
         # Global exposes GLOBAL and allows following its references. Returning
         # to Rule restores ordinary groups; Direct explains retained choices.
         terminal.click_text(words["dashboard.mode.global"])
+        wait_mode(terminal, words["dashboard.mode.global"])
         terminal.wait("GLOBAL")
         terminal.settle()
         terminal.click_text("GLOBAL")
         terminal.key(b"\x1b[C")
-        terminal.key(b"\x1b[C")
+        enter_reference(terminal, "PROXY", words["proxies.enter"])
         terminal.wait("Hysteria2")
         terminal.key(b"\x1b[D")
         terminal.wait("GLOBAL")
         preview.capture(terminal, output, "global-reference-return", args)
         terminal.click_text(words["dashboard.mode.direct"])
+        wait_mode(terminal, words["dashboard.mode.direct"])
         terminal.wait(words["proxies.direct_mode"][:40])
         preview.capture(terminal, output, "direct-mode", args)
         terminal.click_text(words["dashboard.mode.rule"])
+        wait_mode(terminal, words["dashboard.mode.rule"])
         terminal.wait("BALANCE")
         terminal.exit()
         calls = json.loads(report.read_text())
