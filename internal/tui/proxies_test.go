@@ -43,11 +43,14 @@ func TestProxiesFocusAndObservedSelectionRemainIndependent(t *testing.T) {
 	}
 	current := ansi.Strip(strings.Join(m.proxyNode(0, 0, 50).lines, "\n"))
 	focused := ansi.Strip(strings.Join(m.proxyNode(0, 1, 50).lines, "\n"))
-	if !strings.HasPrefix(current, "▌   AUTO") || !strings.HasPrefix(focused, "  › HK 01") || strings.Contains(current+focused, "✓") {
+	currentLines, focusedLines := strings.Split(current, "\n"), strings.Split(focused, "\n")
+	if len(currentLines) != 4 || len(focusedLines) != 4 || !strings.HasPrefix(currentLines[1], "▌   AUTO") || !strings.HasPrefix(focusedLines[1], "  › HK 01") || strings.Contains(current+focused, "✓") {
 		t.Fatalf("focus/selection markers confused: current=%q focused=%q", current, focused)
 	}
-	if !strings.HasPrefix(strings.Split(current, "\n")[1], "▌ ") || strings.Contains(focused, "▌") {
-		t.Fatalf("selection rail did not span only the selected card: current=%q focused=%q", current, focused)
+	for _, line := range currentLines {
+		if !strings.HasPrefix(line, "▌ ") || strings.Contains(focused, "▌") {
+			t.Fatalf("selection rail did not span only the selected card: current=%q focused=%q", current, focused)
+		}
 	}
 	m, cmd := update(m, special(tea.KeyEnter))
 	if !m.busy || m.snapshot.Groups[0].Now != "AUTO" || m.proxies.pendingNode != "HK 01" {
@@ -58,7 +61,7 @@ func TestProxiesFocusAndObservedSelectionRemainIndependent(t *testing.T) {
 		t.Fatalf("selection confirmation failed: group=%+v count=%d", m.snapshot.Groups[0], b.selections)
 	}
 	selected := ansi.Strip(strings.Join(m.proxyNode(0, 1, 50).lines, "\n"))
-	if !strings.HasPrefix(selected, "▌ › HK 01") {
+	if !strings.HasPrefix(strings.Split(selected, "\n")[1], "▌ › HK 01") {
 		t.Fatalf("focus erased current selection: %q", selected)
 	}
 }
@@ -210,7 +213,7 @@ func TestProxiesClickingModeLeavesSearchEditing(t *testing.T) {
 }
 
 func TestProxiesGridVerticalAndHorizontalTraversal(t *testing.T) {
-	for _, test := range []struct{ width, columns int }{{160, 3}, {200, 4}} {
+	for _, test := range []struct{ width, columns int }{{160, 3}, {200, 3}} {
 		t.Run(fmt.Sprint(test.columns, "columns"), func(t *testing.T) {
 			m, _ := proxiesModel(t, test.width, 40)
 			m.snapshot.Groups[0].All = nil
@@ -264,7 +267,7 @@ func TestProxiesGridVerticalAndHorizontalTraversal(t *testing.T) {
 }
 
 func TestProxiesVerticalTraversalStopsAtBoundaryRows(t *testing.T) {
-	for _, test := range []struct{ width, columns int }{{160, 3}, {200, 4}} {
+	for _, test := range []struct{ width, columns int }{{160, 3}, {200, 3}} {
 		for _, partial := range []bool{false, true} {
 			t.Run(fmt.Sprint(test.columns, "columns/partial=", partial), func(t *testing.T) {
 				m, _ := proxiesModel(t, test.width, 40)
@@ -309,7 +312,7 @@ func TestProxiesVerticalTraversalStopsAtBoundaryRows(t *testing.T) {
 }
 
 func TestProxiesPendingSelectionKeepsVerticalGridNavigation(t *testing.T) {
-	for _, test := range []struct{ width, columns int }{{160, 3}, {200, 4}} {
+	for _, test := range []struct{ width, columns int }{{160, 3}, {200, 3}} {
 		t.Run(fmt.Sprint(test.columns, "columns"), func(t *testing.T) {
 			m, backend := proxiesModel(t, test.width, 40)
 			m.snapshot.Groups = m.snapshot.Groups[:1]
@@ -345,7 +348,7 @@ func TestProxiesPendingSelectionKeepsVerticalGridNavigation(t *testing.T) {
 	}
 }
 
-func TestProxiesShortGroupsFillTheAvailableRow(t *testing.T) {
+func TestProxiesShortGroupsKeepTheAvailableColumnWidth(t *testing.T) {
 	for _, test := range []struct {
 		name  string
 		count int
@@ -353,26 +356,157 @@ func TestProxiesShortGroupsFillTheAvailableRow(t *testing.T) {
 	}{{"one member", 1, ""}, {"two members", 2, ""}, {"one filtered member", 8, "HK 01"}} {
 		t.Run(test.name, func(t *testing.T) {
 			m, _ := proxiesModel(t, 200, 40)
+			width := dashboardBodyWidth(m.dashboardOptions())
+			full := m.proxyGroupBody(0, width)
+			left, right := width, 0
+			for _, hit := range full.targets {
+				if hit.ID == "node.0.0" {
+					left, right = min(left, hit.X), max(right, hit.X+hit.W)
+				}
+			}
+			cardWidth := right - left
 			m.snapshot.Groups[0].All = m.snapshot.Groups[0].All[:test.count]
 			m.proxies.search.SetValue(test.query)
-			width := dashboardBodyWidth(m.dashboardOptions())
 			body := m.proxyGroupBody(0, width)
-			seen := make(map[string]bool)
-			lastRight, firstX := 0, width
+			type bounds struct{ left, right int }
+			cards := make(map[string]bounds)
 			for _, hit := range body.targets {
-				if !strings.HasPrefix(hit.ID, "node.") || seen[hit.ID] {
+				if !strings.HasPrefix(hit.ID, "node.") {
 					continue
 				}
-				seen[hit.ID] = true
-				firstX = min(firstX, hit.X)
-				lastRight = max(lastRight, hit.X+hit.W)
+				card, found := cards[hit.ID]
+				if !found {
+					card.left = hit.X
+				}
+				card.left, card.right = min(card.left, hit.X), max(card.right, hit.X+hit.W)
+				cards[hit.ID] = card
 			}
 			wantCount := test.count
 			if test.query != "" {
 				wantCount = 1
 			}
-			if len(seen) != wantCount || firstX != 2 || width-lastRight >= wantCount {
-				t.Fatalf("short group retained unused card columns: cards=%d firstX=%d right=%d width=%d", len(seen), firstX, lastRight, width)
+			if len(cards) != wantCount || m.proxyColumns(width) != 3 {
+				t.Fatalf("short group lost cards or the three-column grid: cards=%d columns=%d", len(cards), m.proxyColumns(width))
+			}
+			positions := make(map[int]bool)
+			for _, card := range cards {
+				if card.right-card.left != cardWidth {
+					t.Fatalf("short group stretched its card: bounds=%+v want width=%d", card, cardWidth)
+				}
+				positions[card.left] = true
+			}
+			for column := 0; column < wantCount; column++ {
+				if !positions[2+column*(cardWidth+1)] {
+					t.Fatalf("short group did not retain left-aligned column slots: %+v", positions)
+				}
+			}
+		})
+	}
+}
+
+func TestProxiesColumnsStopAtThreeOnWideScreens(t *testing.T) {
+	for _, test := range []struct{ width, columns int }{{80, 1}, {120, 2}, {160, 3}, {200, 3}, {240, 3}, {400, 3}} {
+		t.Run(fmt.Sprint(test.width), func(t *testing.T) {
+			m, _ := proxiesModel(t, test.width, 40)
+			if got := m.proxyColumns(dashboardBodyWidth(m.dashboardOptions())); got != test.columns {
+				t.Fatalf("terminal width %d produced %d columns, want %d", test.width, got, test.columns)
+			}
+		})
+	}
+}
+
+func TestProxiesCardPaddingKeepsItsReferenceActionIndependent(t *testing.T) {
+	m, _ := proxiesModel(t, 160, 40)
+	m.focus = "node.0.0"
+	const width = 50
+	card := m.proxyNode(0, 0, width)
+	if len(card.lines) != 4 {
+		t.Fatalf("card has %d rows, want four including vertical padding", len(card.lines))
+	}
+	for y, line := range card.lines {
+		line = ansi.Strip(line)
+		if ansi.StringWidth(line) != width || !strings.HasPrefix(line, "▌ ") || !strings.HasSuffix(line, "  ") {
+			t.Fatalf("card row %d lost its rail or padding: %q", y, line)
+		}
+		if (y == 0 || y == 3) && strings.TrimSpace(strings.TrimPrefix(line, "▌")) != "" {
+			t.Fatalf("vertical padding row contains content: %q", line)
+		}
+	}
+	if !strings.HasPrefix(ansi.Strip(card.lines[1]), "▌ › AUTO") || !strings.HasPrefix(ansi.Strip(card.lines[2]), "▌   Proxy group") {
+		t.Fatalf("name and metadata lost their shared left padding: %+v", card.lines)
+	}
+	assertRegions(t, card.targets, width, 4)
+	for i, hit := range card.targets {
+		for _, other := range card.targets[i+1:] {
+			if regionsOverlap(hit, other) {
+				t.Fatalf("padded selection and reference actions overlap: %+v / %+v", hit, other)
+			}
+		}
+	}
+	for y := 0; y < 4; y++ {
+		for x := 0; x < width; x++ {
+			var hitID string
+			for _, hit := range card.targets {
+				if x >= hit.X && x < hit.X+hit.W && y >= hit.Y && y < hit.Y+hit.H {
+					hitID = hit.ID
+				}
+			}
+			want := "node.0.0"
+			for _, hit := range card.targets {
+				if hit.ID != "proxies.reference.0.0" {
+					continue
+				}
+				if hit.Y != 2 || hit.X+hit.W != width-2 {
+					t.Fatalf("reference action lost its metadata row or right padding: %+v", hit)
+				}
+				if y == hit.Y && x >= hit.X && x < hit.X+hit.W {
+					want = hit.ID
+				}
+			}
+			if hitID != want {
+				t.Fatalf("card cell (%d,%d) routes to %q, want %q", x, y, hitID, want)
+			}
+		}
+	}
+	if !hasAction(card.targets, "proxies.reference.0.0") {
+		t.Fatal("reference card lost its independent entrance")
+	}
+	for _, scroll := range []int{0, 3} {
+		if got := proxyVisibleRange(m.locale, card.targets, scroll, 1); got != "1–1 / 1" {
+			t.Fatalf("visible card padding disappeared from the range: row=%d got=%q", scroll, got)
+		}
+	}
+}
+
+func TestProxiesCardPaddingMouseClicksSelectItsNode(t *testing.T) {
+	for _, position := range []string{"top left", "top right", "bottom left", "bottom right", "metadata right"} {
+		t.Run(position, func(t *testing.T) {
+			m, backend := proxiesModel(t, 160, 40)
+			m.snapshot.Groups[0].Now = "HK 01"
+			m.layout()
+			left, right, top, bottom := m.width, 0, m.height, 0
+			for _, hit := range m.targets {
+				if hit.ID == "node.0.0" {
+					left, right = min(left, hit.X), max(right, hit.X+hit.W)
+					top, bottom = min(top, hit.Y), max(bottom, hit.Y+hit.H)
+				}
+			}
+			x, y := left, top
+			if strings.Contains(position, "right") {
+				x = right - 1
+			}
+			if strings.Contains(position, "bottom") {
+				y = bottom - 1
+			} else if strings.Contains(position, "metadata") {
+				y = top + 2
+			}
+			m, cmd := update(m, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+			if cmd == nil || !m.busy || m.proxies.pendingNode != "AUTO" || m.proxies.expanded != "PROXY" {
+				t.Fatalf("padding click did not select its reference card: position=%s focus=%s pending=%s expanded=%s", position, m.focus, m.proxies.pendingNode, m.proxies.expanded)
+			}
+			m, _ = update(m, actionCmd(t, cmd)())
+			if backend.selections != 1 || m.snapshot.Groups[0].Now != "AUTO" {
+				t.Fatal("padding selection was not confirmed by the backend")
 			}
 		})
 	}
@@ -615,6 +749,26 @@ func TestProxiesExpandedGroupKeepsSortingInHeader(t *testing.T) {
 			body := m.proxyGroupBody(0, bodyWidth)
 			if len(body.targets) == 0 || body.targets[0].Y != 0 || hasAction(body.targets, "proxies.sort") {
 				t.Fatalf("expanded group retained rows before its cards: %+v", body.targets)
+			}
+			full, hits := m.proxiesBody(bodyWidth)
+			lines := strings.Split(ansi.Strip(full), "\n")
+			groupY, firstNodeY := len(lines), len(lines)
+			for _, hit := range hits {
+				if hit.ID == "group.0" {
+					groupY = min(groupY, hit.Y)
+				}
+				if strings.HasPrefix(hit.ID, "node.0.") {
+					firstNodeY = min(firstNodeY, hit.Y)
+				}
+			}
+			gapY := groupY + len(m.proxyGroupHeader(0, bodyWidth).lines)
+			if firstNodeY-gapY != 1 || strings.TrimSpace(lines[gapY]) != "" {
+				t.Fatal("header-to-card gap contains content")
+			}
+			for _, hit := range hits {
+				if hit.Y <= gapY && hit.Y+hit.H > gapY {
+					t.Fatalf("header-to-card gap activates a control: %+v", hit)
+				}
 			}
 			if hasAction(m.proxyGroupHeader(0, bodyWidth).targets, "proxies.sort") {
 				t.Fatal("default sorting retained a header control")
@@ -1000,14 +1154,16 @@ func TestProxiesGeometryAtDesktopAndNarrowSizes(t *testing.T) {
 			body, hits := m.proxiesBody(width)
 			lines := strings.Split(body, "\n")
 			columns := make(map[int]bool)
+			seen := make(map[string]bool)
 			for i, line := range lines {
 				if got := ansi.StringWidth(line); got > width {
 					t.Fatalf("body line %d exceeds %d cells: %d", i, width, got)
 				}
 			}
 			for i, hit := range hits {
-				if strings.HasPrefix(hit.ID, "node.0.") {
+				if strings.HasPrefix(hit.ID, "node.0.") && !seen[hit.ID] {
 					columns[hit.X] = true
+					seen[hit.ID] = true
 				}
 				if hit.X < 0 || hit.Y < 0 || hit.W <= 0 || hit.H <= 0 || hit.X+hit.W > width || hit.Y+hit.H > len(lines) {
 					t.Fatalf("invalid hit geometry: %+v width=%d rows=%d", hit, width, len(lines))

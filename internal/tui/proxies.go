@@ -473,8 +473,13 @@ func (m *Model) proxyHorizontal(delta int) bool {
 		return false
 	}
 	var nearest hitRegion
+	seen := make(map[string]bool)
 	for _, h := range hits {
-		if h.Y == current.Y && strings.HasPrefix(h.ID, "node.") && (delta > 0 && h.X > current.X || delta < 0 && h.X < current.X) {
+		if !strings.HasPrefix(h.ID, "node.") || seen[h.ID] {
+			continue
+		}
+		seen[h.ID] = true
+		if h.ID != current.ID && h.Y == current.Y && (delta > 0 && h.X > current.X || delta < 0 && h.X < current.X) {
 			if nearest.ID == "" || delta > 0 && h.X < nearest.X || delta < 0 && h.X > nearest.X {
 				nearest = h
 			}

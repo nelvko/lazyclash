@@ -130,6 +130,7 @@ func (m Model) proxiesBody(width int) (string, []hitRegion) {
 		g := m.snapshot.Groups[gi]
 		b.append(m.proxyGroupHeader(gi, width))
 		if m.proxies.expanded == g.Name {
+			b.blank()
 			b.append(m.proxyGroupBody(gi, width))
 		}
 		if g.Name == m.proxies.testGroup && m.proxies.total > 0 && (m.proxies.testing || m.proxies.testStatusVisible) {
@@ -257,7 +258,7 @@ func (m Model) proxyColumns(width int) int {
 	if m.proxiesNarrow() {
 		return 1
 	}
-	return max(1, (width-2+1)/37)
+	return min(3, max(1, (width-2+1)/37))
 }
 func (m Model) proxyGroupBody(gi, width int) dashboardBlock {
 	g := m.snapshot.Groups[gi]
@@ -273,7 +274,7 @@ func (m Model) proxyGroupBody(gi, width int) dashboardBlock {
 		}
 	}
 	indices := m.proxyMembers(g)
-	columns := min(m.proxyColumns(width), max(1, len(indices)))
+	columns := m.proxyColumns(width)
 	cellWidth := (inner - (columns - 1)) / columns
 	for first := 0; first < len(indices); first += columns {
 		if first > 0 {
@@ -284,7 +285,7 @@ func (m Model) proxyGroupBody(gi, width int) dashboardBlock {
 			cells = append(cells, m.proxyNode(gi, indices[first+c], cellWidth))
 		}
 		rowY := len(b.lines)
-		for y := 0; y < 2; y++ {
+		for y := range cells[0].lines {
 			line := themed(strings.Repeat(" ", indent), text, bg, false)
 			for c, cell := range cells {
 				if c > 0 {
@@ -346,11 +347,12 @@ func (m Model) proxyNode(gi, ni, width int) dashboardBlock {
 	g := m.snapshot.Groups[gi]
 	node := g.All[ni]
 	id := fmt.Sprintf("node.%d.%d", gi, ni)
+	referenceID := fmt.Sprintf("proxies.reference.%d.%d", gi, ni)
 	selected := g.Now == node && g.Type != "LoadBalance" && g.Type != "Relay"
 	surface := panel
 	if selected {
 		surface = selectionBackground
-	} else if m.hover == id {
+	} else if m.hover == id || m.hover == referenceID {
 		surface = hoverBackground
 	}
 	prefix := "  "
@@ -369,28 +371,41 @@ func (m Model) proxyNode(gi, ni, width int) dashboardBlock {
 	if m.busy && m.proxies.pendingGroup == g.Name && m.proxies.pendingNode == node {
 		value, color = m.tr("proxies.switching"), accent
 	}
-	valueWidth := min(ansi.StringWidth(value), max(0, width/2-2))
-	nameWidth := max(1, width-4-valueWidth-1)
-	line := edge + themed(prefix, focus, surface, false) + themed(cellPad(clean(node), nameWidth), text, surface, false) + themed(" "+cellCrop(value, valueWidth), color, surface, false)
-	metaWidth := max(0, width-4)
+	rightPadding := min(2, max(0, width-4))
+	contentWidth := max(0, width-4-rightPadding)
+	valueWidth := min(ansi.StringWidth(value), contentWidth/2)
+	nameWidth := max(0, contentWidth-valueWidth-1)
+	trailing := themed(strings.Repeat(" ", rightPadding), text, surface, false)
+	line := edge + themed(prefix, focus, surface, false) + themed(cellPad(clean(node), nameWidth), text, surface, false) + themed(" "+cellCrop(value, valueWidth), color, surface, false) + trailing
+	metaWidth := contentWidth
 	button, buttonWidth := "", 0
 	_, _, reference := m.proxyGroup(node)
 	if reference {
-		action := fmt.Sprintf("proxies.reference.%d.%d", gi, ni)
-		button = m.proxyButton(action, m.tr("proxies.enter"), surface, true)
+		button = m.proxyButton(referenceID, m.tr("proxies.enter"), surface, true)
 		buttonWidth = min(metaWidth, ansi.StringWidth(button))
 		metaWidth = max(0, metaWidth-buttonWidth-1)
 	}
 	meta := edge + themed("  "+cellPad(clean(m.proxyNodeMeta(node)), metaWidth), muted, surface, false)
-	b := dashboardBlock{lines: []string{cellPad(line, width)}, targets: []hitRegion{{ID: id, W: width, H: 1}}}
+	padding := edge + themed(strings.Repeat(" ", max(0, width-2)), text, surface, false)
+	b := dashboardBlock{lines: []string{cellCrop(padding, width), themed(cellPad(line, width), text, surface, false)}, targets: []hitRegion{{ID: id, W: width, H: 4}}}
 	if reference && buttonWidth > 0 {
-		meta = cellPad(meta, width-buttonWidth) + cellCrop(button, buttonWidth)
-		if !m.busy && !m.quitting {
-			b.targets = append(b.targets, hitRegion{ID: fmt.Sprintf("proxies.reference.%d.%d", gi, ni), X: width - buttonWidth, Y: 1, W: buttonWidth, H: 1})
+		buttonX := width - rightPadding - buttonWidth
+		meta = cellPad(meta, buttonX) + cellCrop(button, buttonWidth) + trailing
+		b.targets[0].W = buttonX
+		b.targets = append(b.targets,
+			hitRegion{ID: id, X: buttonX, W: width - buttonX, H: 2},
+			hitRegion{ID: id, X: buttonX, Y: 3, W: width - buttonX, H: 1},
+		)
+		if rightPadding > 0 {
+			b.targets = append(b.targets, hitRegion{ID: id, X: width - rightPadding, Y: 2, W: rightPadding, H: 1})
 		}
+		if !m.busy && !m.quitting {
+			b.targets = append(b.targets, hitRegion{ID: referenceID, X: buttonX, Y: 2, W: buttonWidth, H: 1})
+		}
+	} else {
+		meta += trailing
 	}
-	b.lines = append(b.lines, themed(cellPad(meta, width), text, surface, false))
-	b.targets = append(b.targets, hitRegion{ID: id, Y: 1, W: width - buttonWidth, H: 1})
+	b.lines = append(b.lines, themed(cellPad(meta, width), text, surface, false), cellCrop(padding, width))
 	return b
 }
 
