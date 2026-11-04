@@ -123,21 +123,22 @@ func (m Model) proxiesBody(width int) (string, []hitRegion) {
 			add(m.tr("proxies.no_groups"), muted)
 		}
 	}
-	for _, gi := range groups {
+	for i, gi := range groups {
+		if i > 0 {
+			b.blank()
+		}
 		g := m.snapshot.Groups[gi]
 		b.append(m.proxyGroupHeader(gi, width))
 		if m.proxies.expanded == g.Name {
 			b.append(m.proxyGroupBody(gi, width))
 		}
-		b.lines = append(b.lines, themed(strings.Repeat("─", width), divider, bg, false))
-	}
-	if m.proxies.testGroup != "" {
-		b.blank()
-		status := m.tr("proxies.test."+m.proxies.testStatus, clean(m.proxies.testGroup), m.proxies.completed, m.proxies.total)
-		if m.proxies.testing {
-			status = m.spinner.View() + " " + status
+		if g.Name == m.proxies.testGroup && m.proxies.total > 0 && (m.proxies.testing || m.proxies.testStatusVisible) {
+			status := m.tr("proxies.test."+m.proxies.testStatus, m.proxies.completed, m.proxies.total)
+			if m.proxies.testing {
+				status = m.spinner.View() + " " + status
+			}
+			add(status, muted)
 		}
-		add(status, muted)
 	}
 	return strings.Join(b.lines, "\n"), b.targets
 }
@@ -159,12 +160,9 @@ func (m Model) proxyGroupHeader(gi, width int) dashboardBlock {
 	if m.hover == id {
 		surface = hoverBackground
 	}
-	summary := strings.Join(m.proxyPath(g.Now), " → ")
+	summary := m.proxySummary(g.Now)
 	if g.Type == "LoadBalance" || g.Type == "Relay" {
 		summary = m.tr("proxies.distributed")
-	}
-	if summary == "" {
-		summary = m.tr("proxies.no_selection")
 	}
 	badgeWidth := 3
 	for _, group := range m.snapshot.Groups {
@@ -173,23 +171,32 @@ func (m Model) proxyGroupHeader(gi, width int) dashboardBlock {
 	badgeWidth = min(width, badgeWidth)
 	badge := themed(cellPad(" "+strconv.Itoa(len(g.All)), badgeWidth), muted, panel, false)
 	expanded := m.proxies.expanded == g.Name
-	test := ""
+	type headerAction struct{ id, value string }
+	var actions []headerAction
 	_, supported := m.backend.(proxyDelayBackend)
 	if expanded {
+		if m.proxies.sort != "default" {
+			actions = append(actions, headerAction{"proxies.sort", m.proxyButton("proxies.sort", m.tr("proxies.sort."+m.proxies.sort)+" ↑", surface, true)})
+		}
 		label := m.tr("proxies.test_group")
 		if m.proxies.testing {
 			label = m.tr("proxies.cancel_test")
 		}
-		test = m.proxyButton("proxies.test", label, surface, supported)
+		actions = append(actions, headerAction{"proxies.test", m.proxyButton("proxies.test", label, surface, supported)})
 	}
-	testWidth := ansi.StringWidth(test)
-	inlineTest := expanded && width >= max(52, testWidth+badgeWidth+24)
+	var actionValues []string
+	for _, action := range actions {
+		actionValues = append(actionValues, action.value)
+	}
+	actionText := strings.Join(actionValues, " ")
+	actionWidth := ansi.StringWidth(actionText)
+	inlineActions := expanded && width >= max(52, actionWidth+badgeWidth+24)
 	right := " " + badge
-	if inlineTest {
-		right = " " + test + right
+	if inlineActions {
+		right = " " + actionText + right
 	}
-	if width >= 60 {
-		right = themed("  "+g.Type, muted, surface, false) + right
+	if g.Type != "Selector" && g.Type != "LoadBalance" && g.Type != "Relay" {
+		right = themed(" "+m.tr("proxies.auto"), muted, surface, false) + right
 	}
 	leftWidth := max(1, width-ansi.StringWidth(right))
 	name := themed(lipgloss.NewStyle().Bold(true).Render(clean(g.Name)), color, surface, false)
@@ -197,9 +204,6 @@ func (m Model) proxyGroupHeader(gi, width int) dashboardBlock {
 	b := dashboardBlock{}
 	if m.proxiesNarrow() || width < 72 {
 		b.lines = []string{cellPad(prefix+name, leftWidth) + right, themed(cellPad("    "+clean(summary), width), muted, surface, false)}
-		if inlineTest {
-			b.targets = append(b.targets, hitRegion{ID: id, Y: 1, W: width, H: 1})
-		}
 	} else {
 		nameWidth := min(24, max(12, width/4))
 		left := prefix + cellPad(name, nameWidth) + themed("  ", text, surface, false)
@@ -207,22 +211,43 @@ func (m Model) proxyGroupHeader(gi, width int) dashboardBlock {
 		b.lines = []string{cellPad(left+themed(cellCrop(clean(summary), room), muted, surface, false), leftWidth) + right}
 	}
 	groupWidth := width
-	if inlineTest {
-		x := width - badgeWidth - 1 - testWidth
+	if inlineActions {
+		x := width - badgeWidth - 1 - actionWidth
 		groupWidth = x
-		if supported && !m.busy && !m.quitting {
-			b.targets = append(b.targets, hitRegion{ID: "proxies.test", X: x, W: testWidth, H: 1})
+		for _, action := range actions {
+			w := ansi.StringWidth(action.value)
+			if !m.busy && !m.quitting && (action.id != "proxies.test" || supported) {
+				b.targets = append(b.targets, hitRegion{ID: action.id, X: x, W: w, H: 1})
+			}
+			x += w + 1
 		}
 	}
-	headerHeight := 1
-	if !inlineTest && len(b.lines) == 2 {
-		headerHeight = 2
+	headerHeight := len(b.lines)
+	if inlineActions {
+		headerHeight = 1
 	}
 	b.targets = append(b.targets, hitRegion{ID: id, W: groupWidth, H: headerHeight})
-	if expanded && !inlineTest {
-		b.lines = append(b.lines, cellCrop(test, width))
-		if supported && !m.busy && !m.quitting {
-			b.targets = append(b.targets, hitRegion{ID: "proxies.test", Y: len(b.lines) - 1, W: min(width, testWidth), H: 1})
+	if inlineActions && len(b.lines) == 2 {
+		b.targets = append(b.targets, hitRegion{ID: id, Y: 1, W: width, H: 1})
+	}
+	if expanded && !inlineActions {
+		b.lines = append(b.lines, "")
+		x := 0
+		for _, action := range actions {
+			w := min(width, ansi.StringWidth(action.value))
+			if x > 0 && x+1+w > width {
+				b.lines = append(b.lines, "")
+				x = 0
+			}
+			if x > 0 {
+				b.lines[len(b.lines)-1] += " "
+				x++
+			}
+			b.lines[len(b.lines)-1] += cellCrop(action.value, w)
+			if !m.busy && !m.quitting && (action.id != "proxies.test" || supported) {
+				b.targets = append(b.targets, hitRegion{ID: action.id, X: x, Y: len(b.lines) - 1, W: w, H: 1})
+			}
+			x += w
 		}
 	}
 	return b
@@ -246,20 +271,6 @@ func (m Model) proxyGroupBody(gi, width int) dashboardBlock {
 		for _, line := range strings.Split(wrapText(themed(clean(v), color, bg, false), inner), "\n") {
 			b.lines = append(b.lines, themed(strings.Repeat(" ", indent), text, bg, false)+line)
 		}
-	}
-	if g.Type == "LoadBalance" || g.Type == "Relay" {
-		add(m.tr("proxies.distributed_hint"), muted)
-	} else {
-		add(m.tr("proxies.current", strings.Join(m.proxyPath(g.Now), " → ")), muted)
-	}
-	if g.Type != "Selector" && g.Type != "LoadBalance" && g.Type != "Relay" {
-		add(m.tr("proxies.automatic"), muted)
-	}
-	sortButton := m.proxyButton("proxies.sort", m.tr("proxies.sort_label", m.tr("proxies.sort."+m.proxies.sort)), bg, true)
-	sortWidth := min(inner, ansi.StringWidth(sortButton))
-	b.lines = append(b.lines, themed(strings.Repeat(" ", indent), text, bg, false)+cellCrop(sortButton, sortWidth))
-	if !m.busy && !m.quitting {
-		b.targets = append(b.targets, hitRegion{ID: "proxies.sort", X: indent, Y: len(b.lines) - 1, W: sortWidth, H: 1})
 	}
 	indices := m.proxyMembers(g)
 	columns := min(m.proxyColumns(width), max(1, len(indices)))
@@ -352,6 +363,9 @@ func (m Model) proxyNode(gi, ni, width int) dashboardBlock {
 	}
 	edge := themed(rail+" ", accent, surface, false)
 	value, color := m.proxyDelayLabel(g.Name, node)
+	if !m.proxyTestable(node) {
+		value = "—"
+	}
 	if m.busy && m.proxies.pendingGroup == g.Name && m.proxies.pendingNode == node {
 		value, color = m.tr("proxies.switching"), accent
 	}
@@ -367,7 +381,7 @@ func (m Model) proxyNode(gi, ni, width int) dashboardBlock {
 		buttonWidth = min(metaWidth, ansi.StringWidth(button))
 		metaWidth = max(0, metaWidth-buttonWidth-1)
 	}
-	meta := edge + themed("  "+cellPad(clean(m.proxyMeta(node)), metaWidth), muted, surface, false)
+	meta := edge + themed("  "+cellPad(clean(m.proxyNodeMeta(node)), metaWidth), muted, surface, false)
 	b := dashboardBlock{lines: []string{cellPad(line, width)}, targets: []hitRegion{{ID: id, W: width, H: 1}}}
 	if reference && buttonWidth > 0 {
 		meta = cellPad(meta, width-buttonWidth) + cellCrop(button, buttonWidth)
@@ -427,6 +441,11 @@ func (m Model) proxyDetail(width int) dashboardBlock {
 	}
 	add(m.tr("proxies.type", m.proxyMeta(name)), text)
 	add(m.tr("proxies.current", strings.Join(m.proxyPath(name), " → ")), muted)
+	if g.Type == "LoadBalance" || g.Type == "Relay" {
+		add(m.tr("proxies.distributed_hint"), muted)
+	} else if g.Type != "Selector" {
+		add(m.tr("proxies.automatic"), muted)
+	}
 	if _, _, ok := m.proxyGroup(name); ok {
 		button("proxies.enter", m.tr("proxies.enter_group"))
 	}

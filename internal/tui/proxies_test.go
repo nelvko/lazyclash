@@ -412,7 +412,11 @@ func TestProxiesDistantReferenceRevealsMembersAndRestoresParent(t *testing.T) {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			m, _ := proxiesModel(t, width, 20)
 			parent := m.snapshot.Groups[0]
-			parent.All = []string{"HK 01", "HK 02", "JP 01", "SG 01", "US 01", "DIRECT", "REJECT", "parent-leaf-7", "parent-leaf-8", "parent-leaf-9", "REMOTE"}
+			parent.All = []string{"HK 01", "HK 02", "JP 01", "SG 01", "US 01", "DIRECT", "REJECT"}
+			for i := 7; i < 16; i++ {
+				parent.All = append(parent.All, fmt.Sprintf("parent-leaf-%d", i))
+			}
+			parent.All = append(parent.All, "REMOTE")
 			parent.Now = "HK 01"
 			m.snapshot.Groups = []mihomo.Group{parent}
 			for i := 0; i < 24; i++ {
@@ -421,14 +425,15 @@ func TestProxiesDistantReferenceRevealsMembersAndRestoresParent(t *testing.T) {
 			target := len(m.snapshot.Groups)
 			m.snapshot.Groups = append(m.snapshot.Groups, mihomo.Group{Name: "REMOTE", Type: "Selector", Now: "JP 01", All: []string{"HK 01", "HK 02", "JP 01", "SG 01", "US 01"}})
 			m.proxies.search.SetValue("proxy")
-			m.focus, m.scroll = "proxies.reference.0.10", 4
+			reference := fmt.Sprintf("proxies.reference.0.%d", len(parent.All)-1)
+			m.focus, m.scroll = reference, 4
 			m.rememberPageView()
 			m.layout()
 			location := m.proxyLocation()
 			if location.scroll <= 0 {
 				t.Fatal("fixture did not retain a valid scrolled parent position")
 			}
-			m.proxyActivate("proxies.reference.0.10")
+			m.proxyActivate(reference)
 			m.layout()
 			if m.proxies.expanded != "REMOTE" || !hasAction(m.targets, fmt.Sprintf("node.%d.0", target)) {
 				t.Fatalf("distant reference revealed only its heading: expanded=%s scroll=%d targets=%+v", m.proxies.expanded, m.scroll, m.targets)
@@ -562,6 +567,143 @@ func TestProxiesGroupHeaderKeepsRightBadgeAndIndependentTestAction(t *testing.T)
 			defer m.stopProxyTests()
 			if !m.proxies.testing || m.proxies.expanded != "PROXY" {
 				t.Fatalf("group test action folded or switched the group: expanded=%s testing=%t", m.proxies.expanded, m.proxies.testing)
+			}
+		})
+	}
+}
+
+func TestProxiesGroupWhitespaceDoesNotCaptureSelection(t *testing.T) {
+	for _, test := range []struct {
+		width    int
+		expanded string
+	}{{160, ""}, {160, "PROXY"}, {80, ""}, {40, ""}} {
+		t.Run(fmt.Sprint(test.width, "/", test.expanded), func(t *testing.T) {
+			m, _ := proxiesModel(t, test.width, 40)
+			m.proxies.expanded = test.expanded
+			body, hits := m.proxiesBody(dashboardBodyWidth(m.dashboardOptions()))
+			lines := strings.Split(ansi.Strip(body), "\n")
+			groups := m.visibleProxyGroups()
+			for index := 1; index < len(groups); index++ {
+				previous, next := groups[index-1], groups[index]
+				end, start := 0, len(lines)
+				for _, hit := range hits {
+					if hit.ID == fmt.Sprintf("group.%d", previous) || strings.HasPrefix(hit.ID, fmt.Sprintf("node.%d.", previous)) || strings.HasPrefix(hit.ID, fmt.Sprintf("proxies.reference.%d.", previous)) {
+						end = max(end, hit.Y+hit.H)
+					}
+					if hit.ID == fmt.Sprintf("group.%d", next) {
+						start = min(start, hit.Y)
+					}
+				}
+				if start-end != 1 || strings.TrimSpace(lines[end]) != "" {
+					t.Fatalf("groups %d/%d lack one blank row: end=%d start=%d", previous, next, end, start)
+				}
+				for _, hit := range hits {
+					if hit.Y <= end && hit.Y+hit.H > end {
+						t.Fatalf("group whitespace activates a control: %+v", hit)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestProxiesExpandedGroupKeepsSortingInHeader(t *testing.T) {
+	for _, width := range []int{160, 80, 40} {
+		t.Run(fmt.Sprint(width), func(t *testing.T) {
+			m, _ := proxiesModel(t, width, 40)
+			bodyWidth := dashboardBodyWidth(m.dashboardOptions())
+			body := m.proxyGroupBody(0, bodyWidth)
+			if len(body.targets) == 0 || body.targets[0].Y != 0 || hasAction(body.targets, "proxies.sort") {
+				t.Fatalf("expanded group retained rows before its cards: %+v", body.targets)
+			}
+			if hasAction(m.proxyGroupHeader(0, bodyWidth).targets, "proxies.sort") {
+				t.Fatal("default sorting retained a header control")
+			}
+			m.sortProxies("delay")
+			header := m.proxyGroupHeader(0, bodyWidth)
+			if !hasAction(header.targets, "proxies.sort") || !hasAction(header.targets, "proxies.test") {
+				t.Fatalf("nondefault sorting lost its header control: %+v", header.targets)
+			}
+			assertRegions(t, header.targets, bodyWidth, len(header.lines))
+			for i, hit := range header.targets {
+				for _, other := range header.targets[i+1:] {
+					if regionsOverlap(hit, other) {
+						t.Fatalf("header controls overlap: %+v / %+v", hit, other)
+					}
+				}
+			}
+			m.layout()
+			m, _ = click(m, findTarget(t, m, "proxies.sort"))
+			if !m.menu.open || !m.proxies.sortMenu || m.proxies.expanded != "PROXY" {
+				t.Fatal("header sorting control folded the group or failed to open the menu")
+			}
+		})
+	}
+}
+
+func TestProxiesSummaryKeepsFullReferenceRouteInDetails(t *testing.T) {
+	m, _ := proxiesModel(t, 160, 40)
+	m.proxies.expanded = "YouTube"
+	header := ansi.Strip(strings.Join(m.proxyGroupHeader(3, 120).lines, "\n"))
+	card := ansi.Strip(strings.Join(m.proxyNode(3, 0, 60).lines, "\n"))
+	for _, value := range []string{header, card} {
+		if !strings.Contains(value, "HK 02") || strings.Contains(value, "PROXY →") || strings.Contains(value, "AUTO →") || strings.Contains(value, "Selector") {
+			t.Fatalf("reference summary did not reduce to its leaf: %q", value)
+		}
+	}
+	m.openProxyDetail("YouTube", "PROXY")
+	detail := ansi.Strip(strings.Join(m.proxyDetail(120).lines, "\n"))
+	if !strings.Contains(detail, "PROXY → AUTO → HK 02") || !strings.Contains(detail, "Selector") {
+		t.Fatalf("short summaries removed the full route or strategy type from details: %q", detail)
+	}
+}
+
+func TestProxiesTestStatusExpiresWithoutAffectingNewWork(t *testing.T) {
+	for _, result := range []string{"done", "canceled"} {
+		t.Run(result, func(t *testing.T) {
+			m, _ := proxiesModel(t, 160, 40)
+			m.testProxyGroup()
+			var expiry tea.Cmd
+			if result == "canceled" {
+				expiry = m.testProxyGroup()
+			} else {
+				for m.proxies.testing {
+					for key := range m.proxies.inflight {
+						node := strings.SplitN(key, "\x00", 2)[1]
+						expiry = m.acceptProxyDelay(proxyTestMessage(m, "PROXY", node, 44))
+						break
+					}
+				}
+			}
+			if expiry == nil || !m.proxies.testStatusVisible || m.proxies.testStatus != result || m.proxies.testing {
+				t.Fatalf("finished test did not expose a transient result: %+v", m.proxies)
+			}
+			generation, completed, measurements := m.proxies.generation, m.proxies.completed, len(m.proxies.results)
+			fraction := fmt.Sprintf("%d/%d", completed, m.proxies.total)
+			body, _ := m.proxiesBody(dashboardBodyWidth(m.dashboardOptions()))
+			if !strings.Contains(ansi.Strip(body), fraction) {
+				t.Fatal("transient test result was not visible in its group")
+			}
+			m, _ = update(m, proxyTestStatusExpiredMsg{generation: generation - 1})
+			if !m.proxies.testStatusVisible {
+				t.Fatal("stale expiry cleared a newer result")
+			}
+			m, _ = update(m, proxyTestStatusExpiredMsg{generation: generation})
+			if m.proxies.testStatusVisible || m.proxies.testStatus != result || m.proxies.completed != completed || len(m.proxies.results) != measurements {
+				t.Fatal("expiry removed measurements instead of only the visible status")
+			}
+			body, _ = m.proxiesBody(dashboardBodyWidth(m.dashboardOptions()))
+			if strings.Contains(ansi.Strip(body), fraction) {
+				t.Fatal("expired test status remained visible")
+			}
+			m.testProxyGroup()
+			m, _ = update(m, proxyTestStatusExpiredMsg{generation: generation})
+			if !m.proxies.testing {
+				t.Fatal("old expiry canceled a newly started test")
+			}
+			m.stopProxyTests()
+			if m.proxies.testStatusVisible {
+				t.Fatal("system cancellation exposed a stale result")
 			}
 		})
 	}
@@ -713,6 +855,34 @@ func TestProxiesSortingMenuReturnsToFocusedMember(t *testing.T) {
 	}
 }
 
+func TestProxiesDefaultSortReturnsToItsGroupAfterHeaderClick(t *testing.T) {
+	for _, width := range []int{160, 80} {
+		t.Run(fmt.Sprint(width), func(t *testing.T) {
+			m, _ := proxiesModel(t, width, 24)
+			m.proxies.expanded, m.focus = "AUTO", "group.1"
+			m.sortProxies("delay")
+			m.scroll = 3
+			m.rememberPageView()
+			m.layout()
+			before := m.scroll
+			if before == 0 {
+				t.Fatal("fixture did not retain a scrolled group heading")
+			}
+			m, _ = click(m, findTarget(t, m, "proxies.sort"))
+			if !m.menu.open || !m.proxies.sortMenu {
+				t.Fatal("header click did not open the sorting menu")
+			}
+			m, _ = update(m, menuMouse(m.menu, 0, tea.MouseLeft))
+			if m.menu.open || m.proxies.sort != "default" || m.proxies.expanded != "AUTO" || m.focus != "group.1" || m.scroll != before {
+				t.Fatalf("hiding the sorting control lost its group location: sort=%s expanded=%s focus=%s scroll=%d want=%d", m.proxies.sort, m.proxies.expanded, m.focus, m.scroll, before)
+			}
+			if hasAction(m.targets, "proxies.sort") || !hasAction(m.targets, "group.1") {
+				t.Fatal("default sorting retained its control or lost the restored group heading")
+			}
+		})
+	}
+}
+
 func TestProxiesDelaySchedulerIsBoundedAndKeepsFocus(t *testing.T) {
 	m, _ := proxiesModel(t, 160, 40)
 	m.focus = "node.0.1"
@@ -804,6 +974,10 @@ func TestProxiesUntestableRoutesAndHistoricalFailuresStayHonest(t *testing.T) {
 	m.proxies.expanded, m.focus = "EMPTY", "group.7"
 	if cmd := m.testProxyGroup(); cmd != nil || m.proxies.testing || m.proxies.cancel != nil {
 		t.Fatal("an empty test group retained work or its cancellation context")
+	}
+	body, _ := m.proxiesBody(dashboardBodyWidth(m.dashboardOptions()))
+	if m.proxies.testStatusVisible || strings.Contains(ansi.Strip(body), "0/0") {
+		t.Fatal("an untestable group retained an idle progress status")
 	}
 }
 

@@ -56,12 +56,13 @@ def wait_mode(terminal, label):
                for line in terminal.screen.text().splitlines()), "routing mode was not confirmed: " + label)
 
 
-def candidate_order(terminal):
+def candidate_order(terminal, reference_label):
     names = ("AUTO", "HK 01", "HK 02", "JP 01", "SG 01", "US 01", "DIRECT", "REJECT")
     rows = terminal.screen.text().splitlines()
     result = []
     for index, line in enumerate(rows[:-1]):
-        if not re.search(r"Shadowsocks|Trojan|VLESS|Hysteria2|VMess|URLTest|\bDirect\b|\bReject\b", rows[index + 1]):
+        if not (reference_label in rows[index + 1] or
+                re.search(r"Shadowsocks|Trojan|VLESS|Hysteria2|VMess|\bDirect\b|\bReject\b", rows[index + 1])):
             continue
         found = [(line.index(name), name) for name in names if name in line]
         result.extend(name for _, name in sorted(found))
@@ -87,7 +88,7 @@ def enter_reference(terminal, name, label):
     rows = terminal.screen.cells
     for y, row in enumerate(rows[:-1]):
         following = "".join(rows[y + 1])
-        if not re.search(r"Selector|URLTest|Fallback|LoadBalance|Relay", following):
+        if label not in following:
             continue
         for x, cell in enumerate(row):
             if cell and "".join(row[x:]).startswith(name):
@@ -116,13 +117,14 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait("v1.19.33")
         terminal.key(b"2")
         terminal.wait("PROXY")
-        terminal.wait("Selector")
         terminal.settle()
         # The summary remains visible; a group click expands its candidates.
         terminal.click_text("PROXY")
         terminal.wait("Shadowsocks")
         terminal.wait("Hysteria2")
         terminal.wait("UDP")
+        assert words["proxies.sort.default"] not in terminal.screen.text(), "default order added an unnecessary row"
+        assert "0/0" not in terminal.screen.text(), "idle measurement progress is visible"
         preview.capture(terminal, output, "groups-wide", args)
 
         # At 160 columns the adaptive grid has three candidate columns.
@@ -148,7 +150,7 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.key(b"\x1b[H")
         terminal.key(b"\x1b[C")
         enter_reference(terminal, "AUTO", words["proxies.enter"])
-        terminal.wait(words["proxies.automatic"])
+        terminal.wait(words["proxies.auto"])
         terminal.key(b"\x1b[C")
         terminal.key(b"\r")
         terminal.wait("Shadowsocks")
@@ -181,7 +183,7 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.key(b"\x1b[B")
         terminal.key(b"\r")
         terminal.settle()
-        before = candidate_order(terminal)
+        before = candidate_order(terminal, words["proxies.enter"])
         assert len(before) == 8, "incomplete candidate order before measurement: " + repr(before)
         terminal.key(b"t")
         terminal.wait(words["proxies.cancel_test"])
@@ -197,9 +199,15 @@ def exercise(preview, binary, output, language, profile, args):
         wait_until(terminal, lambda: words["proxies.cancel_test"] not in terminal.screen.text(), "measurement did not finish")
         terminal.wait("211 ms")
         terminal.wait(words["proxies.timeout"])
-        assert candidate_order(terminal) == before, "measurement silently reordered candidates"
+        completed_label = words["proxies.test.done"].split("%", 1)[0]
+        terminal.wait(completed_label)
+        assert candidate_order(terminal, words["proxies.enter"]) == before, "measurement silently reordered candidates"
         assert "777 ms" not in terminal.screen.text(), "late canceled value leaked into completed result"
         preview.capture(terminal, output, "measurement-complete", args)
+        wait_until(terminal, lambda: completed_label not in terminal.screen.text(), "completed measurement status stayed visible", timeout=5)
+        terminal.wait("211 ms")
+        assert candidate_order(terminal, words["proxies.enter"]) == before, "clearing measurement status changed candidate order"
+        preview.capture(terminal, output, "measurement-quiet", args)
 
         # Keep a node focused across terminal geometry changes. Each frame is
         # captured from the PTY after redraw rather than directly from Model.View.
@@ -222,7 +230,7 @@ def exercise(preview, binary, output, language, profile, args):
         # Group strategies are not drawn as one manually chosen server.
         search(terminal, "BALANCE")
         terminal.key(b"\x1b[C")
-        terminal.wait(words["proxies.distributed_hint"])
+        terminal.wait(words["proxies.distributed"])
         preview.capture(terminal, output, "load-balance", args)
         search(terminal, "EMPTY")
         terminal.key(b"\x1b[C")

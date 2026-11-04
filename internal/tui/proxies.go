@@ -36,6 +36,7 @@ type proxiesState struct {
 	inflight                      map[string]bool
 	completed, total              int
 	testGroup, testStatus         string
+	testStatusVisible             bool
 	pendingGroup, pendingNode     string
 }
 
@@ -56,6 +57,7 @@ type proxyDelayMsg struct {
 	result     mihomo.ProxyDelay
 	err        error
 }
+type proxyTestStatusExpiredMsg struct{ generation uint64 }
 type proxyDelayBackend interface {
 	TestProxyDelay(context.Context, string, string) (mihomo.ProxyDelay, error)
 }
@@ -136,6 +138,23 @@ func (m Model) proxyPath(name string) []string {
 	return path
 }
 func (m Model) proxyPathKey(name string) string { return strings.Join(m.proxyPath(name), "\x00") }
+func (m Model) proxySummary(name string) string {
+	path := m.proxyPath(name)
+	if len(path) == 0 {
+		return m.tr("proxies.no_selection")
+	}
+	return path[len(path)-1]
+}
+func (m Model) proxyNodeMeta(name string) string {
+	if _, g, ok := m.proxyGroup(name); ok {
+		summary := m.proxySummary(g.Now)
+		if g.Type == "LoadBalance" || g.Type == "Relay" {
+			summary = m.tr("proxies.distributed")
+		}
+		return m.tr("proxies.group_reference", summary)
+	}
+	return m.proxyMeta(name)
+}
 func (m Model) proxyMeta(name string) string {
 	if _, g, ok := m.proxyGroup(name); ok {
 		if g.Type == "LoadBalance" || g.Type == "Relay" {
@@ -282,7 +301,11 @@ func (m *Model) openProxySort() {
 	m.focus = "proxies.sort"
 	m.layout()
 	x, y := dashboardGeometry(m.dashboardOptions()).x, dashboardGeometry(m.dashboardOptions()).y
+	gi, _, _, expanded := m.proxyAtFocus()
 	for _, hit := range m.targets {
+		if expanded && hit.ID == fmt.Sprintf("group.%d", gi) {
+			x, y = hit.X, hit.Y+1
+		}
 		if hit.ID == "proxies.sort" {
 			x, y = hit.X, hit.Y+1
 			break
@@ -299,7 +322,11 @@ func (m *Model) proxyMenuResult(result menuResult) tea.Cmd {
 	if result.Action != "" && m.page == "proxies" {
 		m.sortProxies(result.Action)
 	}
-	m.restoreProxyLocation(m.proxies.sortReturn)
+	location := m.proxies.sortReturn
+	if location.focus == "proxies.sort" && m.proxies.sort == "default" {
+		location.identity = pageViewState{group: location.group}
+	}
+	m.restoreProxyLocation(location)
 	m.revealContentFocus()
 	return nil
 }
@@ -584,6 +611,7 @@ func indexOf(values []string, value string) int {
 }
 
 func (m *Model) stopProxyTests() {
+	m.proxies.testStatusVisible = false
 	if m.proxies.cancel != nil {
 		m.proxies.cancel()
 		m.proxies.cancel = nil
@@ -635,7 +663,7 @@ func (m *Model) syncProxies() {
 func (m *Model) testProxyGroup() tea.Cmd {
 	if m.proxies.testing {
 		m.stopProxyTests()
-		return nil
+		return m.showProxyTestStatus()
 	}
 	backend, ok := m.backend.(proxyDelayBackend)
 	if !ok || !m.proxiesReady() || m.busy || m.quitting {
@@ -646,6 +674,7 @@ func (m *Model) testProxyGroup() tea.Cmd {
 		return nil
 	}
 	m.proxies.generation++
+	m.proxies.testStatusVisible = false
 	m.proxies.testCtx, m.proxies.cancel = context.WithCancel(m.ctx)
 	m.proxies.queue = nil
 	m.proxies.inflight = make(map[string]bool)
@@ -708,6 +737,18 @@ func (m *Model) acceptProxyDelay(msg proxyDelayMsg) tea.Cmd {
 			m.proxies.cancel()
 			m.proxies.cancel = nil
 		}
+		return m.showProxyTestStatus()
 	}
 	return nil
+}
+
+func (m *Model) showProxyTestStatus() tea.Cmd {
+	if m.proxies.total == 0 {
+		return nil
+	}
+	m.proxies.testStatusVisible = true
+	generation := m.proxies.generation
+	return tea.Tick(2*time.Second, func(time.Time) tea.Msg {
+		return proxyTestStatusExpiredMsg{generation: generation}
+	})
 }

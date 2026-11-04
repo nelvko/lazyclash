@@ -251,6 +251,17 @@ class Terminal:
             self.read()
         raise AssertionError("PTY did not close expected screen: " + repr(needle) + "\n" + self.screen.text())
 
+    def wait_selected_proxy(self, name, timeout=20):
+        selected = re.compile(r"▌[ \t]*(?:›[ \t]*)?" + re.escape(name) + r"(?=[ \t]{2,}|$)")
+        end = time.monotonic() + timeout
+        while time.monotonic() < end:
+            if not self.screen.synchronized and any(selected.search(line) for line in self.screen.text().splitlines()):
+                return
+            self.read()
+            if self.closed:
+                break
+        raise AssertionError("PTY did not confirm selected proxy: " + repr(name) + "\n" + self.screen.text())
+
     def resize(self, columns, rows):
         fcntl.ioctl(self.fd, termios.TIOCSWINSZ, struct.pack("HHHH", rows, columns, 0, 0))
         self.screen.resize(columns, rows)
@@ -772,31 +783,34 @@ def main():
             terminal.wait("PROXY")
             terminal.key(b"\x1b[C")  # sidebar -> PROXY; GLOBAL is reserved for Global mode
             terminal.key(b"\r")
-            terminal.wait("Current selection: DIRECT")
-            terminal.wait("Selector")
-            terminal.wait("N/A")  # built-in choices never receive fabricated latency
+            terminal.wait_selected_proxy("DIRECT")
             terminal.wait("REJECT")
+            terminal.settle()
+            for name in ("DIRECT", "REJECT"):
+                unmeasured = re.compile(r"(?<!\S)" + re.escape(name) + r"[ \t]+—(?:[ \t]|$)")
+                if not any(unmeasured.search(line) for line in terminal.screen.text().splitlines()):
+                    raise AssertionError("Built-in proxy displayed a fabricated latency: " + name)
             terminal.key(b"\x1b[B")  # DIRECT
             terminal.key(b"\x1b[C")  # REJECT in the second column
             terminal.key(b"\r")
             terminal.wait("Node selected")
-            terminal.wait("Current selection: REJECT")
+            terminal.wait_selected_proxy("REJECT")
             check_proxy_selection("REJECT")
 
             # Exercise a real candidate click as well as the sidebar click.
             terminal.click_text("DIRECT")
-            terminal.wait("Current selection: DIRECT")
+            terminal.wait_selected_proxy("DIRECT")
             check_proxy_selection("DIRECT")
             terminal.key(b"\x1b[C")
             terminal.key(b"\r")
-            terminal.wait("Current selection: REJECT")
+            terminal.wait_selected_proxy("REJECT")
             check_proxy_selection("REJECT")
 
             # On this page r refreshes observations; it must not restart Mihomo.
             pid = cli("status")["Service"]["PID"]
             terminal.key(b"r")
             terminal.wait_absent("Refreshing")
-            terminal.wait("Current selection: REJECT")
+            terminal.wait_selected_proxy("REJECT")
             if cli("status")["Service"]["PID"] != pid:
                 raise AssertionError("Proxies refresh restarted the running core")
             terminal.key(b"3")

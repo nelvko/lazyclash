@@ -312,6 +312,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch v := msg.(type) {
 	case proxyDelayMsg:
 		cmd = m.acceptProxyDelay(v)
+	case proxyTestStatusExpiredMsg:
+		if v.generation == m.proxies.generation && !m.proxies.testing {
+			m.proxies.testStatusVisible = false
+		}
 	case keyHintsSavedMsg:
 		cmd = m.acceptKeyHintsSaved(v)
 	case notificationExpiredMsg:
