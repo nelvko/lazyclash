@@ -88,6 +88,100 @@ def click_cell(terminal, x, y):
     terminal.key(("\x1b[<0;%d;%dM\x1b[<0;%d;%dm" % (x + 1, y + 1, x + 1, y + 1)).encode())
 
 
+def cell_offset(row, text_offset):
+    consumed = 0
+    for column, cell in enumerate(row):
+        if not cell:
+            continue
+        if consumed >= text_offset:
+            return column
+        consumed += len(cell)
+    return len(row)
+
+
+def group_header(terminal, name):
+    for y, row in enumerate(terminal.screen.cells):
+        line = "".join(row)
+        match = re.search(r"(?<!\S)" + re.escape(name) + r"(?=[ \t]{2,})", line)
+        arrow = re.search(r"[▸▾][ \t]*$", line)
+        if match and arrow:
+            return cell_offset(row, match.start()), y, cell_offset(row, arrow.start()), line
+    raise AssertionError("Group header is not visible: " + name + "\n" + terminal.screen.text())
+
+
+def open_group(terminal, name):
+    terminal.settle()
+    x, y, arrow, line = group_header(terminal, name)
+    assert "▸" not in "".join(terminal.screen.cells[y][:x]) and "▾" not in "".join(terminal.screen.cells[y][:x]), "group retained a left disclosure arrow"
+    if line.rstrip().endswith("▸"):
+        click_cell(terminal, x, y)
+        terminal.settle()
+
+
+def collapse_all(terminal, words):
+    # Completed selection notices can cover the toolbar's right-hand action.
+    # Close their visible controls before deciding that no action is present.
+    for _ in range(8):
+        terminal.settle()
+        if "×" not in terminal.screen.text():
+            break
+        terminal.click_text("×")
+    else:
+        raise AssertionError("selection notices still obstruct the toolbar")
+    if words["proxies.collapse_all"] in terminal.screen.text():
+        terminal.click_text(words["proxies.collapse_all"])
+        terminal.settle()
+    assert words["proxies.collapse_all"] not in terminal.screen.text(), "collapse-all action did not clear expansion state"
+    assert not any(re.search(r"▾[ \t]*$", "".join(row)) for row in terminal.screen.cells), "collapse-all left a visible group open"
+
+
+def group_action(terminal, name, label):
+    terminal.settle()
+    _, y, _, line = group_header(terminal, name)
+    offset = line.find(label)
+    assert offset >= 0, "group action is absent: " + name + "/" + label
+    click_cell(terminal, cell_offset(terminal.screen.cells[y], offset), y)
+
+
+def group_has_action(terminal, name, label):
+    try:
+        return label in group_header(terminal, name)[3]
+    except AssertionError:
+        return False  # A resize/update can temporarily clear a header mid-frame.
+
+
+def assert_header_hover(terminal, name, words, profile):
+    terminal.key(b"\x1b[H")
+    terminal.settle()
+    x, y, arrow, line = group_header(terminal, name)
+    left, right = x - 2, arrow + 2
+    badge = re.search(r"(\d+)[ \t]+[▸▾][ \t]*$", line)
+    assert badge and y > 0, "header lacks right-aligned count and disclosure"
+    row = terminal.screen.cells[y]
+    excluded = set(range(cell_offset(row, badge.start(1)) - 1, cell_offset(row, badge.end(1)) + 1))
+    points = [(left, y - 1), (x + len(name) + 2, y), (right - 1, y + 1)]
+    for key in ("proxies.sort.delay", "proxies.test_group"):
+        button_offset = line.find(words[key])
+        assert button_offset >= 0, "expanded header lost its action: " + words[key]
+        points.append((cell_offset(row, button_offset), y))
+    terminal.key(b"\x1b[<35;1;1M")
+    terminal.settle()
+    normal = terminal.screen.styles[y - 1][left][1]
+    for hx, hy in points:
+        terminal.key(("\x1b[<35;%d;%dM" % (hx + 1, hy + 1)).encode())
+        terminal.settle()
+        assert group_header(terminal, name)[3].rstrip().endswith("▾"), "hover folded its group"
+        if profile == "no-color":
+            continue
+        hover = terminal.screen.styles[y - 1][left][1]
+        assert hover != normal, "header padding did not receive hover background"
+        for row in range(y - 1, y + 2):
+            for column in range(left, right):
+                if row == y and column in excluded:
+                    continue  # The numeric badge deliberately retains its panel.
+                assert terminal.screen.styles[row][column][1] == hover, "header hover surface has an uncolored gap at %d,%d" % (column, row)
+
+
 def click_candidate(terminal, name, padding=0):
     terminal.settle()
     x, y = candidate_position(terminal, name)
@@ -131,24 +225,29 @@ def enter_reference(terminal, name, label):
     raise AssertionError("Reference action is not visible: " + name + "\n" + terminal.screen.text())
 
 
-def exercise(preview, binary, output, language, profile, args):
-    output.mkdir(parents=True, exist_ok=True)
-    report = output / "calls.json"
-    words = labels(language)
+def fixture_terminal(preview, binary, report, language, profile, width=160, height=45):
     environment = {"LAZYCLASH_PROXIES_PTY_REPORT": str(report),
                    "LAZYCLASH_PROXIES_PTY_LANGUAGE": language}
     wrapper = preview.WRAPPER.replace("os.execv(sys.argv[5], sys.argv[5:])",
         "os.environ.update(" + repr(environment) + "); os.execv(sys.argv[5], sys.argv[5:])")
-    terminal = preview.SMOKE.Terminal([sys.executable, "-c", wrapper, "160", "45", profile,
+    terminal = preview.SMOKE.Terminal([sys.executable, "-c", wrapper, str(width), str(height), profile,
         language, str(binary.resolve()), "-test.run=^TestProxiesPTYFixture$", "-test.count=1"])
-    terminal.screen = preview.StyledScreen(160, 45)
+    terminal.screen = preview.StyledScreen(width, height)
+    return terminal
+
+
+def exercise(preview, binary, output, language, profile, args):
+    output.mkdir(parents=True, exist_ok=True)
+    report = output / "calls.json"
+    words = labels(language)
+    terminal = fixture_terminal(preview, binary, report, language, profile)
     try:
         terminal.wait("v1.19.33")
         terminal.key(b"2")
         terminal.wait("PROXY")
         terminal.settle()
         # The summary remains visible; a group click expands its candidates.
-        terminal.click_text("PROXY")
+        open_group(terminal, "PROXY")
         terminal.wait("Shadowsocks")
         terminal.wait("Hysteria2")
         terminal.wait("UDP")
@@ -210,6 +309,7 @@ def exercise(preview, binary, output, language, profile, args):
         wait_until(terminal, lambda: any(re.search(r"/\s*ChatGPT", line) for line in terminal.screen.text().splitlines()), "reference return lost search input")
         preview.capture(terminal, output, "search-reference-return", args)
         search(terminal, "")
+        collapse_all(terminal, words)
         terminal.key(b"\x1b[H")
         terminal.key(b"\x1b[C")
         terminal.wait("Hysteria2")
@@ -247,6 +347,9 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.settle()
         assert candidate_order(terminal, words["proxies.enter"]) == before, "clearing measurement status changed candidate order"
         preview.capture(terminal, output, "measurement-quiet", args)
+        assert_header_hover(terminal, "PROXY", words, profile)
+        preview.capture(terminal, output, "group-header-hover", args)
+        terminal.key(b"\x1b[<35;1;1M")
 
         # Keep a node focused across terminal geometry changes. Each frame is
         # captured from the PTY after redraw rather than directly from Model.View.
@@ -268,20 +371,23 @@ def exercise(preview, binary, output, language, profile, args):
         slots = assert_three_columns(terminal)
         span = latency_span(terminal, "HK 01")
         search(terminal, "Hong Kong")
-        terminal.click_text("▸ Hong Kong")
+        collapse_all(terminal, words)
+        open_group(terminal, "Hong Kong")
         terminal.wait("Trojan")
         terminal.settle()
         assert sorted(candidate_position(terminal, name)[0] for name in ("HK 01", "HK 02")) == slots[:2], "two-member group stretched its cards"
         assert latency_span(terminal, "HK 01") == span, "short-group card width changed"
         preview.capture(terminal, output, "two-members-240x40", args)
         search(terminal, "HK 01")
-        terminal.click_text("▸ PROXY")
+        collapse_all(terminal, words)
+        open_group(terminal, "PROXY")
         terminal.wait("Shadowsocks")
         terminal.settle()
         assert candidate_position(terminal, "HK 01")[0] == slots[0], "single filtered member moved out of its first slot"
         assert latency_span(terminal, "HK 01") == span, "single filtered member stretched across the row"
         preview.capture(terminal, output, "one-member-filter-240x40", args)
         search(terminal, "")
+        collapse_all(terminal, words)
         terminal.key(b"\x1b[H")
         terminal.key(b"\x1b[C")
         terminal.resize(80, 24)
@@ -323,6 +429,7 @@ def exercise(preview, binary, output, language, profile, args):
         preview.capture(terminal, output, "direct-mode", args)
         terminal.click_text(words["dashboard.mode.rule"])
         wait_mode(terminal, words["dashboard.mode.rule"])
+        collapse_all(terminal, words)
         terminal.wait("BALANCE")
         terminal.exit()
         calls = json.loads(report.read_text())
@@ -338,6 +445,70 @@ def exercise(preview, binary, output, language, profile, args):
             assert not preview.RGB.search(raw), "ANSI256 emitted RGB text"
         (output / "pty.raw").write_bytes(raw)
         print("PASS %s/%s: selection/padding, references, search, sort, cancel/late results, strategies, resize/three-column slots" % (language, profile), flush=True)
+    except Exception:
+        (output / "failed.txt").write_text(terminal.screen.text() + "\n")
+        (output / "failed.ansi").write_bytes(terminal.raw)
+        if args.png:
+            preview.png(terminal.screen, output / "failed.png", args.font, args.cjk_font, args.font_size)
+        raise
+    finally:
+        terminal.cleanup()
+
+
+def exercise_groups(preview, binary, output, args):
+    output.mkdir(parents=True, exist_ok=True)
+    language, profile = "zh-Hans", "truecolor"
+    words = labels(language)
+    report = output / "calls.json"
+    terminal = fixture_terminal(preview, binary, report, language, profile, 200, 50)
+    try:
+        terminal.wait("v1.19.33")
+        terminal.key(b"2")
+        terminal.wait("PROXY")
+        open_group(terminal, "PROXY")
+        open_group(terminal, "AUTO")
+        assert all(group_header(terminal, name)[3].rstrip().endswith("▾") for name in ("PROXY", "AUTO")), "opening a second group collapsed the first"
+        terminal.key(b"s")
+        terminal.wait(words["proxies.sort.name"])
+        terminal.click_text(words["proxies.sort.name"])
+        terminal.settle()
+        terminal.key(b"\x1b[H")
+        terminal.key(b"s")
+        terminal.wait(words["proxies.sort.delay"])
+        terminal.click_text(words["proxies.sort.delay"])
+        terminal.settle()
+        assert words["proxies.sort.delay"] in group_header(terminal, "PROXY")[3], "PROXY lost its independent delay sort"
+        assert words["proxies.sort.name"] in group_header(terminal, "AUTO")[3], "sorting PROXY replaced AUTO's name sort"
+        preview.capture(terminal, output, "multiple-expanded-independent-sort", args)
+
+        group_action(terminal, "PROXY", words["proxies.test_group"])
+        wait_until(terminal, lambda: group_has_action(terminal, "PROXY", words["proxies.cancel_test"]), "PROXY test did not start")
+        group_action(terminal, "AUTO", words["proxies.test_group"])
+        wait_until(terminal, lambda: group_has_action(terminal, "AUTO", words["proxies.cancel_test"]) and group_has_action(terminal, "PROXY", words["proxies.test_group"]) and not group_has_action(terminal, "PROXY", words["proxies.cancel_test"]), "cross-group testing did not transfer the active round")
+        preview.capture(terminal, output, "cross-group-testing", args)
+        wait_until(terminal, lambda: group_has_action(terminal, "AUTO", words["proxies.test_group"]) and not group_has_action(terminal, "AUTO", words["proxies.cancel_test"]), "AUTO testing did not finish")
+        terminal.settle()
+        assert "777 ms" not in terminal.screen.text(), "old group test generation published a late result"
+
+        group_action(terminal, "PROXY", words["proxies.test_group"])
+        wait_until(terminal, lambda: group_has_action(terminal, "PROXY", words["proxies.cancel_test"]), "second PROXY test did not start")
+        collapse_all(terminal, words)
+        assert all(group_header(terminal, name)[3].rstrip().endswith("▸") for name in ("PROXY", "AUTO")), "collapse all left a group open"
+        completed = words["proxies.test.done"] % (6, 6)
+        terminal.wait(completed)
+        terminal.settle()
+        assert "777 ms" not in terminal.screen.text(), "collapse all admitted an old generation's result"
+        preview.capture(terminal, output, "all-collapsed-testing-complete", args)
+        terminal.exit()
+        calls = json.loads(report.read_text())
+        assert calls["selections"] == 0 and calls["modes"] == 0, calls
+        # Canceled fixture calls deliberately return 80 ms late, so callbacks
+        # from two generations can overlap. The six isolated runs retain the
+        # four-request assertion for a single generation.
+        assert calls["tests"] >= 14 and calls["canceled"] > 0 and calls["max_tests"] <= 8, calls
+        assert calls["selected"]["PROXY"] == "AUTO", calls
+        (output / "pty.raw").write_bytes(terminal.raw)
+        print("PASS independent multi-group fixture: expansion, sort, cross-group cancellation/stale isolation, collapse-all preserves testing; " + json.dumps(calls, ensure_ascii=False), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")
         (output / "failed.ansi").write_bytes(terminal.raw)
@@ -364,6 +535,7 @@ def main():
     for language in args.lang or ("en", "zh-Hans"):
         for profile in args.profile or ("truecolor", "256", "no-color"):
             exercise(preview, args.binary, args.output.resolve() / language / profile, language, profile, args)
+    exercise_groups(preview, args.binary, args.output.resolve() / "multi-group", args)
 
 
 if __name__ == "__main__":
