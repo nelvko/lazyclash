@@ -1,5 +1,26 @@
 # 验证入口
 
+## Proxies 全宽布局与引用组就地浏览（2026-11-04）
+
+代理页使用全部可用正文宽度，按实际空间和成员数量分配节点列数；卡片之间保留紧凑间隔，选中竖条与键盘焦点独立。宽屏模式与搜索同行，数量徽标右对齐，测速移入展开组标题；引用卡片提供独立入口。多列方向键先访问同排相邻成员，宽屏引用跳转保留组列表并将目标组标题定位到视口上部，返回恢复原搜索、焦点和滚动位置；窄屏继续采用两级浏览。成员连续滚动，可见范围保留在按键提示上方，不使用分页。
+
+本轮实际通过：
+
+- 最终源码的宿主 macOS/arm64 `make check build`（全部 Go 测试、vet 和产品构建）、全包 `make race`，以及八项 Python 终端解析回归。最终 TUI race 用时 209.219 秒，通过。
+- `./scripts/verify-linux.sh lazyclash-e2e` 在已有专用 Debian 12/arm64、systemd 252 VM 内实际执行全部九个可运行测试包，通过。随后增加引用跳转锚点与切换等待期间的交互保护，最终源码另在同一 VM 重新执行整个 TUI 测试包，通过。两批日志分别保留，不将修复前的全包运行描述为最终源码的全包重跑。VM 普通用户 uid 501，user manager 为 running，Linger=yes；私有测试暂存目录已清理。
+- 最终源码的模型回归覆盖三列、四列与不完整末行导航、少量成员铺满可用行、左右相邻成员优先、引用入口与选择互不混触、远处目标组定位和返回恢复、实时成员重排、模式切换、busy 期间禁用入口、右侧徽标与独立测速命中区，以及裁切到部分卡片时的可见范围和固定底部布局。
+- 最终 `scripts/proxies-pty.py` 在真实 controlling PTY 完成中英文 × True Color、ANSI256、NO_COLOR 六组。每组实际记录 `selections=1`、`modes=3`、`tests=10`、`canceled=4`、`max_tests=4`，最终 `PROXY=HK 01`。覆盖独立引用入口与键盘往返、选择确认、自动组只读、排序稳定、取消与迟到结果、空组和负载均衡，以及 160×45、200×40、240×40、120×32、80×24、60×20、40×16、120×18 缩放；80×24 另以 PgDn 验证连续滚动后显示 `4–8 / 8`。该入口明确使用内存后端；PNG 按实际 PTY 字符格和颜色重绘，用于布局检查，不是原生终端截图，也不代表真实 Mihomo API 或远端节点网络测试通过。
+
+真实网络验收未完成，以下三次尝试均保留失败状态：
+
+1. 首次 `./scripts/e2e.sh lazyclash-e2e` 使用 direct 路线，通过 empty PTY 后，真实 download-network PTY 的官方版本查询报 `network connection`，未进入安装阶段。
+2. 对同一官方版本地址进行独立 direct HEAD 查询返回 HTTP 200 后，沿同一路线进行一次完整 E2E 重试。此次通过 empty 与 download-network PTY、未安装的只读版本查询和 v1.19.32 pinned dry-run，但实际 release 文件下载在 `0/20809592` 字节时报 `network connection`，尚未部署内核或进入 Proxies。
+3. 单独使用生产安装下载器，以明确的 environment 路线尝试获取官方 v1.19.33，供后续隔离的真实 Proxies 专项使用；release 文件连接探测同样报 `network connection`，未完成获取。既有 CONNECT observer 记录 `github=1`、`connected=1`，`rejected_api=0`、`other=0`、`upstream_failures=0`；这只证明经过明确选择的代理隧道，不能证明隧道后的 TLS 和下载已完成。全程保留 TLS 证书校验与生产下载大小限制，没有降低检查或在产品中增加路线回退。此次专项没有运行到真实 Proxies API/PTY。
+
+两次完整尝试和单独获取尝试的清理均为 `resources released=1`、`exit=1`；没有遗留本轮专用服务，默认与 audit TCP/UDP 端口可重新绑定，VM 私有暂存目录已清理。本轮没有真实 Proxies API/PTY 运行通过的记录，也未重跑 system scope/TUN 专项；下方 2026-11-03 的完整 E2E 成功属于前一轮的独立历史证据。实际 Linux 运行平台仍为 arm64，未在 amd64 运行。
+
+本轮脱敏证据位于忽略目录 `.test-artifacts/proxies-adaptive/`：`host-check-build.log`、`host-race.log`、`python-tests.log`、`linux-tests-pre-anchor.log`、`linux-tui-final.log`、`network-diagnostic.txt`，以及 `pty/`。两次完整尝试分别保存在 `first-attempt/`、`second-attempt/`，各自包含 E2E 日志、实际到达阶段的 PTY 记录和清理结果；`targeted-runtime/` 保存单独 environment 获取的生产下载日志、来源类别计数与清理记录。
+
 ## Proxies 分组与节点浏览重设计（2026-11-03）
 
 代理页改为折叠组摘要与双列成员；窄屏使用组列表、成员列表两级浏览。选择确认与键盘焦点分别显示，自动策略组只供查看；搜索、排序、引用组往返、延迟测试与取消均保留稳定焦点和过期结果保护。引用组不复用核心的历史延迟，只显示绑定当前解析路径的本轮测试结果；叶子节点仍可使用核心历史。
