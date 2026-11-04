@@ -307,6 +307,9 @@ func (m *Model) cancelTask(quit bool) {
 	}
 }
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if motion, ok := msg.(tea.MouseMotionMsg); ok && m.updateProxyHover(motion) {
+		return m, nil
+	}
 	var cmd tea.Cmd
 	previousPage := m.page
 	switch v := msg.(type) {
@@ -1403,6 +1406,10 @@ func (m Model) pageBody(width int) (string, []hitRegion) {
 }
 func (m *Model) layout() {
 	m.repairPageFocus()
+	m.renderLayout()
+}
+
+func (m *Model) renderLayout() {
 	if !m.logoVisible() {
 		m.stopLogoPulse()
 	}
