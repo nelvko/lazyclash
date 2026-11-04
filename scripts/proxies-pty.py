@@ -200,6 +200,8 @@ def assert_four_columns(terminal):
     positions = [candidate_position(terminal, name) for name in MEMBERS]
     xs = sorted({x for x, _ in positions})
     assert len(xs) == 4, "wide grid did not keep four columns: " + repr(positions)
+    ys = sorted({y for _, y in positions})
+    assert all(b - a == 4 for a, b in zip(ys, ys[1:])), "card rows did not retain a four-line pitch: " + repr(positions)
     first_y = min(y for _, y in positions)
     gap = terminal.screen.cells[first_y - 2][xs[0] - 4:]
     assert not "".join(gap).strip(), "group header touches the first card row"
@@ -266,14 +268,16 @@ def exercise(preview, binary, output, language, profile, args):
         # Selection goes through the asynchronous backend and snapshot readback.
         terminal.key(b"\r")
         wait_until(terminal, lambda: chosen(terminal, "HK 01"), "manual choice was not confirmed")
-        # Both blank padding rows belong to the card's selection surface.
+        # Top padding and the metadata row's right padding select the card.
         click_candidate(terminal, "HK 02", padding=-1)
         wait_until(terminal, lambda: chosen(terminal, "HK 02"), "top padding did not select its card")
-        click_candidate(terminal, "HK 01", padding=2)
-        wait_until(terminal, lambda: chosen(terminal, "HK 01"), "bottom padding did not select its card")
         terminal.settle()
         x, y = candidate_position(terminal, "HK 01")
-        assert all(terminal.screen.cells[row][x - 4] == "▌" for row in range(y - 1, y + 3)), "selection rail did not span the padded card"
+        click_cell(terminal, x + latency_span(terminal, "HK 01") + 1, y + 1)
+        wait_until(terminal, lambda: chosen(terminal, "HK 01"), "metadata right padding did not select its card")
+        terminal.settle()
+        x, y = candidate_position(terminal, "HK 01")
+        assert all(terminal.screen.cells[row][x - 4] == "▌" for row in range(y - 1, y + 2)), "selection rail did not span the three-line card"
         preview.capture(terminal, output, "selected", args)
         terminal.key(b"i")
         terminal.wait("Shadowsocks")

@@ -444,15 +444,12 @@ func (m Model) proxyNode(gi, ni, width int) dashboardBlock {
 	}
 	meta := edge + themed("  "+cellPad(clean(m.proxyNodeMeta(node)), metaWidth), muted, surface, false)
 	padding := edge + themed(strings.Repeat(" ", max(0, width-2)), text, surface, false)
-	b := dashboardBlock{lines: []string{cellCrop(padding, width), themed(cellPad(line, width), text, surface, false)}, targets: []hitRegion{{ID: id, W: width, H: 4}}}
+	b := dashboardBlock{lines: []string{cellCrop(padding, width), themed(cellPad(line, width), text, surface, false)}, targets: []hitRegion{{ID: id, W: width, H: 3}}}
 	if reference && buttonWidth > 0 {
 		buttonX := width - rightPadding - buttonWidth
 		meta = cellPad(meta, buttonX) + cellCrop(button, buttonWidth) + trailing
 		b.targets[0].W = buttonX
-		b.targets = append(b.targets,
-			hitRegion{ID: id, X: buttonX, W: width - buttonX, H: 2},
-			hitRegion{ID: id, X: buttonX, Y: 3, W: width - buttonX, H: 1},
-		)
+		b.targets = append(b.targets, hitRegion{ID: id, X: buttonX, W: width - buttonX, H: 2})
 		if rightPadding > 0 {
 			b.targets = append(b.targets, hitRegion{ID: id, X: width - rightPadding, Y: 2, W: rightPadding, H: 1})
 		}
@@ -462,7 +459,7 @@ func (m Model) proxyNode(gi, ni, width int) dashboardBlock {
 	} else {
 		meta += trailing
 	}
-	b.lines = append(b.lines, themed(cellPad(meta, width), text, surface, false), cellCrop(padding, width))
+	b.lines = append(b.lines, themed(cellPad(meta, width), text, surface, false))
 	return b
 }
 

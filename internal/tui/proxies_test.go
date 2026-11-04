@@ -52,7 +52,7 @@ func TestProxiesFocusAndObservedSelectionRemainIndependent(t *testing.T) {
 	current := ansi.Strip(strings.Join(m.proxyNode(0, 0, 50).lines, "\n"))
 	focused := ansi.Strip(strings.Join(m.proxyNode(0, 1, 50).lines, "\n"))
 	currentLines, focusedLines := strings.Split(current, "\n"), strings.Split(focused, "\n")
-	if len(currentLines) != 4 || len(focusedLines) != 4 || !strings.HasPrefix(currentLines[1], "▌   AUTO") || !strings.HasPrefix(focusedLines[1], "  › HK 01") || strings.Contains(current+focused, "✓") {
+	if len(currentLines) != 3 || len(focusedLines) != 3 || !strings.HasPrefix(currentLines[1], "▌   AUTO") || !strings.HasPrefix(focusedLines[1], "  › HK 01") || strings.Contains(current+focused, "✓") {
 		t.Fatalf("focus/selection markers confused: current=%q focused=%q", current, focused)
 	}
 	for _, line := range currentLines {
@@ -430,22 +430,22 @@ func TestProxiesCardPaddingKeepsItsReferenceActionIndependent(t *testing.T) {
 	m.focus = "node.0.0"
 	const width = 50
 	card := m.proxyNode(0, 0, width)
-	if len(card.lines) != 4 {
-		t.Fatalf("card has %d rows, want four including vertical padding", len(card.lines))
+	if len(card.lines) != 3 {
+		t.Fatalf("card has %d rows, want three including top padding", len(card.lines))
 	}
 	for y, line := range card.lines {
 		line = ansi.Strip(line)
 		if ansi.StringWidth(line) != width || !strings.HasPrefix(line, "▌ ") || !strings.HasSuffix(line, "  ") {
 			t.Fatalf("card row %d lost its rail or padding: %q", y, line)
 		}
-		if (y == 0 || y == 3) && strings.TrimSpace(strings.TrimPrefix(line, "▌")) != "" {
+		if y == 0 && strings.TrimSpace(strings.TrimPrefix(line, "▌")) != "" {
 			t.Fatalf("vertical padding row contains content: %q", line)
 		}
 	}
 	if !strings.HasPrefix(ansi.Strip(card.lines[1]), "▌ › AUTO") || !strings.HasPrefix(ansi.Strip(card.lines[2]), "▌   Proxy group") {
 		t.Fatalf("name and metadata lost their shared left padding: %+v", card.lines)
 	}
-	assertRegions(t, card.targets, width, 4)
+	assertRegions(t, card.targets, width, 3)
 	for i, hit := range card.targets {
 		for _, other := range card.targets[i+1:] {
 			if regionsOverlap(hit, other) {
@@ -453,7 +453,7 @@ func TestProxiesCardPaddingKeepsItsReferenceActionIndependent(t *testing.T) {
 			}
 		}
 	}
-	for y := 0; y < 4; y++ {
+	for y := 0; y < 3; y++ {
 		for x := 0; x < width; x++ {
 			var hitID string
 			for _, hit := range card.targets {
@@ -481,7 +481,7 @@ func TestProxiesCardPaddingKeepsItsReferenceActionIndependent(t *testing.T) {
 	if !hasAction(card.targets, "proxies.reference.0.0") {
 		t.Fatal("reference card lost its independent entrance")
 	}
-	for _, scroll := range []int{0, 3} {
+	for _, scroll := range []int{0, 2} {
 		if got := proxyVisibleRange(m.locale, card.targets, scroll, 1); got != "1–1 / 1" {
 			t.Fatalf("visible card padding disappeared from the range: row=%d got=%q", scroll, got)
 		}
@@ -489,25 +489,23 @@ func TestProxiesCardPaddingKeepsItsReferenceActionIndependent(t *testing.T) {
 }
 
 func TestProxiesCardPaddingMouseClicksSelectItsNode(t *testing.T) {
-	for _, position := range []string{"top left", "top right", "bottom left", "bottom right", "metadata right"} {
+	for _, position := range []string{"top left", "top right", "metadata left", "metadata right"} {
 		t.Run(position, func(t *testing.T) {
 			m, backend := proxiesModel(t, 160, 40)
 			m.snapshot.Groups[0].Now = "HK 01"
 			m.layout()
-			left, right, top, bottom := m.width, 0, m.height, 0
+			left, right, top := m.width, 0, m.height
 			for _, hit := range m.targets {
 				if hit.ID == "node.0.0" {
 					left, right = min(left, hit.X), max(right, hit.X+hit.W)
-					top, bottom = min(top, hit.Y), max(bottom, hit.Y+hit.H)
+					top = min(top, hit.Y)
 				}
 			}
 			x, y := left, top
 			if strings.Contains(position, "right") {
 				x = right - 1
 			}
-			if strings.Contains(position, "bottom") {
-				y = bottom - 1
-			} else if strings.Contains(position, "metadata") {
+			if strings.Contains(position, "metadata") {
 				y = top + 2
 			}
 			m, cmd := update(m, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
