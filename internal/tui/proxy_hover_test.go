@@ -27,7 +27,8 @@ func proxyHoverModel(t testing.TB, count int) Model {
 	m.snapshotReady, m.busy, m.logoIntro.used = true, false, true
 	m.width, m.height, m.page = 200, 45, "proxies"
 	m.syncProxies()
-	m.proxies.expanded, m.focus = "PROXY", "group.0"
+	m.expandProxyGroup("PROXY")
+	m.focus = "group.0"
 	m.layout()
 	return m
 }
@@ -112,5 +113,23 @@ func TestProxyHoverDefersToOpenMenu(t *testing.T) {
 	m, _ = update(m, tea.MouseMotionMsg(move))
 	if !m.menu.open || m.menu.selected != 1 {
 		t.Fatal("proxy hover intercepted the sorting menu's mouse motion")
+	}
+}
+
+func TestProxyResizeKeepsFocusedExpandedGroup(t *testing.T) {
+	m, _ := proxiesModel(t, 200, 40)
+	m.expandProxyGroup("AUTO")
+	m.expandProxyGroup("PROXY")
+	// Tab can reach another expanded group's action without changing the last
+	// active group. Narrow browsing must follow the actual keyboard location.
+	m.focus = "proxies.test.1"
+	m.layout()
+	m, _ = update(m, tea.WindowSizeMsg{Width: 80, Height: 24})
+	if m.proxies.activeGroup != "AUTO" || m.focus != "proxies.test.1" || !hasAction(m.targets, "node.1.0") {
+		t.Fatal("narrow resize lost the focused expanded group")
+	}
+	m, _ = update(m, tea.WindowSizeMsg{Width: 200, Height: 40})
+	if !m.proxyGroupExpanded("PROXY") || !m.proxyGroupExpanded("AUTO") {
+		t.Fatal("returning to wide layout lost the original expansion state")
 	}
 }

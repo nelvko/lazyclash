@@ -104,7 +104,7 @@ func TestDirectionalNavigationContentBackPreservesPageState(t *testing.T) {
 			m := pageNavigationModel()
 			m.snapshot.Installed, m.snapshot.Service.Active = true, true
 			m.snapshot.Groups = []mihomo.Group{{Name: "PROXY", Type: "Selector", Now: "DIRECT", All: []string{"DIRECT", "node"}}}
-			m.proxies.expanded = "PROXY"
+			setProxyTestGroup(&m, "PROXY")
 			m.navigate("proxies")
 			m.focus = "node.0.0"
 			return m
@@ -143,7 +143,7 @@ func TestDirectionalNavigationContentBackPreservesPageState(t *testing.T) {
 				if m.focus != focus || m.connections.selected != selectedConnection || m.rules.selected != selectedRule {
 					t.Fatal("returning to content lost its remembered focus or list selection")
 				}
-				if fixture.name == "proxies" && m.proxies.expanded != "PROXY" ||
+				if fixture.name == "proxies" && m.proxies.activeGroup != "PROXY" ||
 					fixture.name == "connections" && m.connections.search.Value() != "example" ||
 					fixture.name == "rules" && m.rules.search.Value() != "example" ||
 					fixture.name == "logs" && (m.logs.search.Value() != "retained" || !m.logs.paused || m.logs.offset != 4) {

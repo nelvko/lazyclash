@@ -41,10 +41,21 @@ func (m Model) proxyModes(width int) dashboardBlock {
 
 func (m Model) proxySearchWidth(width int) int {
 	modes := m.proxyModes(width)
-	if !m.proxiesNarrow() && len(modes.lines) == 1 && width-ansi.StringWidth(modes.lines[0])-2 >= 24 {
+	actionWidth := ansi.StringWidth(m.proxyCollapseButton())
+	if actionWidth > 0 {
+		actionWidth += 2
+	}
+	if !m.proxiesNarrow() && len(modes.lines) == 1 && width-ansi.StringWidth(modes.lines[0])-2 >= 24+actionWidth {
 		width -= ansi.StringWidth(modes.lines[0]) + 2
 	}
-	return max(1, width-ansi.StringWidth(m.proxies.search.Prompt)-1)
+	return max(1, width-actionWidth-ansi.StringWidth(m.proxies.search.Prompt)-1)
+}
+
+func (m Model) proxyCollapseButton() string {
+	if m.proxiesNarrow() || !m.hasExpandedProxyGroups() {
+		return ""
+	}
+	return m.proxyButton("proxies.collapse_all", m.tr("proxies.collapse_all"), bg, true)
 }
 
 func (m Model) proxiesToolbar(width int) dashboardBlock {
@@ -53,15 +64,28 @@ func (m Model) proxiesToolbar(width int) dashboardBlock {
 	input.Placeholder = m.tr("proxies.search_placeholder")
 	input.SetWidth(m.proxySearchWidth(width))
 	styleInput(&input, inputBackground, false)
+	action := m.proxyCollapseButton()
+	actionWidth := ansi.StringWidth(action)
+	actionSpace := 0
+	if actionWidth > 0 {
+		actionSpace = actionWidth + 2
+	}
 	x := 0
-	if !m.proxiesNarrow() && len(b.lines) == 1 && width-ansi.StringWidth(b.lines[0])-2 >= 24 {
+	if !m.proxiesNarrow() && len(b.lines) == 1 && width-ansi.StringWidth(b.lines[0])-2 >= 24+actionSpace {
 		x = ansi.StringWidth(b.lines[0]) + 2
 		b.lines[0] += "  "
 	} else {
 		b.lines = append(b.lines, "", "")
 	}
-	b.lines[len(b.lines)-1] += themed(cellPad(input.View(), width-x), text, inputBackground, false)
-	b.targets = append(b.targets, hitRegion{ID: "proxies.search", X: x, Y: len(b.lines) - 1, W: width - x, H: 1})
+	searchWidth := max(1, width-x-actionSpace)
+	b.lines[len(b.lines)-1] += themed(cellPad(input.View(), searchWidth), text, inputBackground, false)
+	b.targets = append(b.targets, hitRegion{ID: "proxies.search", X: x, Y: len(b.lines) - 1, W: searchWidth, H: 1})
+	if actionWidth > 0 {
+		b.lines[len(b.lines)-1] += "  " + action
+		if !m.busy && !m.quitting {
+			b.targets = append(b.targets, hitRegion{ID: "proxies.collapse_all", X: width - actionWidth, Y: len(b.lines) - 1, W: actionWidth, H: 1})
+		}
+	}
 	if !m.proxies.editing && m.proxies.search.Value() != "" {
 		value := m.proxyButton("proxies.clear", m.tr("proxies.clear"), bg, true)
 		b.targets = append(b.targets, hitRegion{ID: "proxies.clear", Y: len(b.lines), W: min(width, ansi.StringWidth(value)), H: 1})
@@ -112,7 +136,7 @@ func (m Model) proxiesBody(width int) (string, []hitRegion) {
 	}
 	if len(m.proxies.history) > 0 {
 		button("proxies.back", m.tr("proxies.back"))
-	} else if m.proxiesNarrow() && m.proxies.expanded != "" {
+	} else if m.proxiesNarrow() && m.proxies.activeGroup != "" {
 		button("proxies.directory", m.tr("proxies.directory"))
 	}
 	groups := m.visibleProxyGroups()
@@ -129,7 +153,7 @@ func (m Model) proxiesBody(width int) (string, []hitRegion) {
 		}
 		g := m.snapshot.Groups[gi]
 		b.append(m.proxyGroupHeader(gi, width))
-		if m.proxies.expanded == g.Name {
+		if m.proxyGroupExpanded(g.Name) {
 			b.blank()
 			b.append(m.proxyGroupBody(gi, width))
 		}
@@ -146,19 +170,18 @@ func (m Model) proxiesBody(width int) (string, []hitRegion) {
 func (m Model) proxyGroupHeader(gi, width int) dashboardBlock {
 	g := m.snapshot.Groups[gi]
 	id := fmt.Sprintf("group.%d", gi)
-	marker, arrow := "  ", "▸ "
+	testID, sortID := fmt.Sprintf("proxies.test.%d", gi), fmt.Sprintf("proxies.sort.%d", gi)
+	expanded := m.proxyGroupExpanded(g.Name)
+	marker, arrow := "  ", "▸"
 	if m.focus == id {
 		marker = "› "
 	}
-	if m.proxies.expanded == g.Name {
-		arrow = "▾ "
-	}
 	color := text
-	if m.proxies.expanded == g.Name {
-		color = accent
+	if expanded {
+		arrow, color = "▾", accent
 	}
 	surface := bg
-	if m.hover == id {
+	if m.hover == id || m.hover == testID || m.hover == sortID {
 		surface = hoverBackground
 	}
 	summary := m.proxySummary(g.Now)
@@ -170,20 +193,23 @@ func (m Model) proxyGroupHeader(gi, width int) dashboardBlock {
 		badgeWidth = max(badgeWidth, len(strconv.Itoa(len(group.All)))+2)
 	}
 	badgeWidth = min(width, badgeWidth)
-	badge := themed(cellPad(" "+strconv.Itoa(len(g.All)), badgeWidth), muted, panel, false)
-	expanded := m.proxies.expanded == g.Name
-	type headerAction struct{ id, value string }
+	count := strconv.Itoa(len(g.All))
+	badge := themed(strings.Repeat(" ", max(0, badgeWidth-len(count)-1))+count+" ", muted, panel, false)
+	type headerAction struct {
+		id, value string
+		enabled   bool
+	}
 	var actions []headerAction
 	_, supported := m.backend.(proxyDelayBackend)
 	if expanded {
-		if m.proxies.sort != "default" {
-			actions = append(actions, headerAction{"proxies.sort", m.proxyButton("proxies.sort", m.tr("proxies.sort."+m.proxies.sort)+" ↑", surface, true)})
+		if order := m.proxySort(g.Name); order != "default" {
+			actions = append(actions, headerAction{sortID, m.proxyButton(sortID, m.tr("proxies.sort."+order)+" ↑", surface, true), true})
 		}
 		label := m.tr("proxies.test_group")
-		if m.proxies.testing {
+		if m.proxies.testing && m.proxies.testGroup == g.Name {
 			label = m.tr("proxies.cancel_test")
 		}
-		actions = append(actions, headerAction{"proxies.test", m.proxyButton("proxies.test", label, surface, supported)})
+		actions = append(actions, headerAction{testID, m.proxyButton(testID, label, surface, supported), supported})
 	}
 	var actionValues []string
 	for _, action := range actions {
@@ -191,64 +217,95 @@ func (m Model) proxyGroupHeader(gi, width int) dashboardBlock {
 	}
 	actionText := strings.Join(actionValues, " ")
 	actionWidth := ansi.StringWidth(actionText)
-	inlineActions := expanded && width >= max(52, actionWidth+badgeWidth+24)
-	right := " " + badge
-	if inlineActions {
-		right = " " + actionText + right
-	}
+	right := " " + badge + themed(" "+arrow+" ", muted, surface, false)
 	if g.Type != "Selector" && g.Type != "LoadBalance" && g.Type != "Relay" {
 		right = themed(" "+m.tr("proxies.auto"), muted, surface, false) + right
 	}
+	suffixWidth := ansi.StringWidth(right)
+	inlineActions := expanded && width >= max(52, actionWidth+suffixWidth+24)
+	if inlineActions {
+		right = " " + actionText + right
+	}
 	leftWidth := max(1, width-ansi.StringWidth(right))
 	name := themed(lipgloss.NewStyle().Bold(true).Render(clean(g.Name)), color, surface, false)
-	prefix := themed(marker, focus, surface, false) + themed(arrow, muted, surface, false)
+	prefix := themed(marker, focus, surface, false)
 	b := dashboardBlock{}
 	if m.proxiesNarrow() || width < 72 {
-		b.lines = []string{cellPad(prefix+name, leftWidth) + right, themed(cellPad("    "+clean(summary), width), muted, surface, false)}
+		b.lines = []string{cellPad(prefix+name, leftWidth) + right, themed(cellPad("  "+clean(summary), width), muted, surface, false)}
 	} else {
 		nameWidth := min(24, max(12, width/4))
-		left := prefix + cellPad(name, nameWidth) + themed("  ", text, surface, false)
+		left := prefix + cellPad(name, nameWidth) + "  "
 		room := max(0, leftWidth-ansi.StringWidth(left))
 		b.lines = []string{cellPad(left+themed(cellCrop(clean(summary), room), muted, surface, false), leftWidth) + right}
 	}
-	groupWidth := width
-	if inlineActions {
-		x := width - badgeWidth - 1 - actionWidth
-		groupWidth = x
-		for _, action := range actions {
-			w := ansi.StringWidth(action.value)
-			if !m.busy && !m.quitting && (action.id != "proxies.test" || supported) {
-				b.targets = append(b.targets, hitRegion{ID: action.id, X: x, W: w, H: 1})
-			}
-			x += w + 1
+	// Reserve action rectangles even when disabled so clicking them never folds
+	// the group. The remaining header surface belongs to the folding target.
+	var actionRegions []hitRegion
+	appendAction := func(action headerAction, x, y, w int) {
+		hit := hitRegion{ID: action.id, X: x, Y: y, W: w, H: 1}
+		actionRegions = append(actionRegions, hit)
+		if action.enabled && !m.busy && !m.quitting {
+			b.targets = append(b.targets, hit)
 		}
 	}
-	headerHeight := len(b.lines)
 	if inlineActions {
-		headerHeight = 1
-	}
-	b.targets = append(b.targets, hitRegion{ID: id, W: groupWidth, H: headerHeight})
-	if inlineActions && len(b.lines) == 2 {
-		b.targets = append(b.targets, hitRegion{ID: id, Y: 1, W: width, H: 1})
-	}
-	if expanded && !inlineActions {
-		b.lines = append(b.lines, "")
-		x := 0
+		x := width - suffixWidth - actionWidth
 		for _, action := range actions {
-			w := min(width, ansi.StringWidth(action.value))
-			if x > 0 && x+1+w > width {
-				b.lines = append(b.lines, "")
-				x = 0
+			w := ansi.StringWidth(action.value)
+			appendAction(action, x, 0, w)
+			x += w + 1
+		}
+	} else if len(actions) > 0 {
+		b.lines = append(b.lines, "  ")
+		x := 2
+		for _, action := range actions {
+			w := min(max(1, width-2), ansi.StringWidth(action.value))
+			if x > 2 && x+1+w > width {
+				b.lines = append(b.lines, "  ")
+				x = 2
 			}
-			if x > 0 {
+			if x > 2 {
 				b.lines[len(b.lines)-1] += " "
 				x++
 			}
 			b.lines[len(b.lines)-1] += cellCrop(action.value, w)
-			if !m.busy && !m.quitting && (action.id != "proxies.test" || supported) {
-				b.targets = append(b.targets, hitRegion{ID: action.id, X: x, Y: len(b.lines) - 1, W: w, H: 1})
-			}
+			appendAction(action, x, len(b.lines)-1, w)
 			x += w
+		}
+	}
+	if !m.proxiesNarrow() && m.height >= 24 {
+		b.lines = append(append([]string{""}, b.lines...), "")
+		for i := range actionRegions {
+			actionRegions[i].Y++
+		}
+		for i := range b.targets {
+			b.targets[i].Y++
+		}
+	}
+	for i, line := range b.lines {
+		b.lines[i] = themed(cellPad(line, width), text, surface, false)
+	}
+	// The first, full-height region lets keyboard focus reveal the whole header.
+	groupWidth := width
+	for _, hit := range actionRegions {
+		groupWidth = min(groupWidth, hit.X)
+	}
+	b.targets = append(b.targets, hitRegion{ID: id, W: groupWidth, H: len(b.lines)})
+	if groupWidth < width {
+		for y := range b.lines {
+			x := groupWidth
+			for _, hit := range actionRegions {
+				if hit.Y != y {
+					continue
+				}
+				if hit.X > x {
+					b.targets = append(b.targets, hitRegion{ID: id, X: x, Y: y, W: hit.X - x, H: 1})
+				}
+				x = hit.X + hit.W
+			}
+			if x < width {
+				b.targets = append(b.targets, hitRegion{ID: id, X: x, Y: y, W: width - x, H: 1})
+			}
 		}
 	}
 	return b

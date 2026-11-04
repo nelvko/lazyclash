@@ -374,7 +374,7 @@ func TestOverviewReflectsSelectedGroupAndPrefersPROXY(t *testing.T) {
 		}
 	}
 	m := ready(&fakeBackend{snapshot: snapshot})
-	m.proxies.expanded = "Work"
+	setProxyTestGroup(&m, "Work")
 	m, _ = update(m, tea.WindowSizeMsg{Width: 160, Height: 45})
 	if !strings.Contains(ansi.Strip(m.View().Content), "work-node") {
 		t.Fatal("model did not pass session group selection to Overview")

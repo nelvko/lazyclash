@@ -1,5 +1,6 @@
 {
   "proxies.search_placeholder": "Search groups or nodes",
+  "proxies.collapse_all": "Collapse all",
   "proxies.clear": "Clear search",
   "proxies.loading": "Loading proxy groups…",
   "proxies.uninstalled": "Install Mihomo to browse proxy groups.",

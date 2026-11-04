@@ -15,6 +15,14 @@ import (
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
 
+func setProxyTestGroup(m *Model, name string) {
+	m.proxies.expanded = make(map[string]bool)
+	m.proxies.activeGroup = name
+	if name != "" {
+		m.proxies.expanded[name] = true
+	}
+}
+
 func proxiesModel(t *testing.T, width, height int) (Model, *proxiesPTYBackend) {
 	t.Helper()
 	b := newProxiesPTYBackend()
@@ -23,7 +31,7 @@ func proxiesModel(t *testing.T, width, height int) (Model, *proxiesPTYBackend) {
 	m.logoIntro.used = true
 	m.width, m.height = width, height
 	m.navigate("proxies")
-	m.proxies.expanded = "PROXY"
+	setProxyTestGroup(&m, "PROXY")
 	m.focus = "group.0"
 	m.syncProxies()
 	m.layout()
@@ -68,7 +76,8 @@ func TestProxiesFocusAndObservedSelectionRemainIndependent(t *testing.T) {
 
 func TestProxiesAutomaticGroupsOpenDetailsAndReferencesBrowse(t *testing.T) {
 	m, b := proxiesModel(t, 160, 40)
-	m.proxies.expanded, m.focus = "AUTO", "node.1.0"
+	setProxyTestGroup(&m, "AUTO")
+	m.focus = "node.1.0"
 	m.rememberPageView()
 	m.layout()
 	m, cmd := update(m, special(tea.KeyEnter))
@@ -76,17 +85,18 @@ func TestProxiesAutomaticGroupsOpenDetailsAndReferencesBrowse(t *testing.T) {
 		t.Fatal("automatic group submitted a manual selection instead of opening details")
 	}
 	m.proxyBack()
-	m.proxies.expanded, m.focus = "PROXY", "node.0.0"
+	setProxyTestGroup(&m, "PROXY")
+	m.focus = "node.0.0"
 	m.proxies.search.SetValue("proxy")
 	m.rememberPageView()
 	m.layout()
 	m.proxyActivate("proxies.reference.0.0")
 	m.layout()
-	if m.proxies.expanded != "AUTO" || m.proxies.search.Value() != "" || len(m.proxies.history) != 1 {
+	if m.proxies.activeGroup != "AUTO" || m.proxies.search.Value() != "" || len(m.proxies.history) != 1 {
 		t.Fatal("reference browsing retained an incompatible search")
 	}
 	m, _ = update(m, special(tea.KeyEscape))
-	if m.proxies.expanded != "PROXY" || m.proxies.search.Value() != "proxy" || m.focus != "proxies.reference.0.0" {
+	if m.proxies.activeGroup != "PROXY" || m.proxies.search.Value() != "proxy" || m.focus != "proxies.reference.0.0" {
 		t.Fatalf("reference return lost its location: %+v focus=%s", m.proxies, m.focus)
 	}
 }
@@ -111,8 +121,8 @@ func TestProxiesReturnRestoresNamesAfterGroupAndMemberReordering(t *testing.T) {
 			if origin == "reference" {
 				wantFocus = "proxies.reference.2.2"
 			}
-			if !m.proxyBack() || m.proxies.expanded != "PROXY" || m.focus != wantFocus {
-				t.Fatalf("return followed stale row indexes: group=%s focus=%s", m.proxies.expanded, m.focus)
+			if !m.proxyBack() || m.proxies.activeGroup != "PROXY" || m.focus != wantFocus {
+				t.Fatalf("return followed stale row indexes: group=%s focus=%s", m.proxies.activeGroup, m.focus)
 			}
 		})
 	}
@@ -149,7 +159,7 @@ func TestProxiesModeChangeResetsNarrowAndReferencedLocations(t *testing.T) {
 			if len(groups) != 1 || m.snapshot.Groups[groups[0]].Name != "GLOBAL" || len(m.proxies.history) != 0 || m.proxies.detail != "" {
 				t.Fatalf("global mode retained an earlier directory: %+v history=%+v", groups, m.proxies.history)
 			}
-			m.proxies.expanded = "GLOBAL"
+			setProxyTestGroup(&m, "GLOBAL")
 			m.focus = "node.8.0"
 			m.browseProxyReference("PROXY")
 			groups = m.visibleProxyGroups()
@@ -165,8 +175,8 @@ func TestProxiesModeChangeResetsNarrowAndReferencedLocations(t *testing.T) {
 				t.Fatalf("global mode prevented explicit reference browsing: got %v, want %v", names, want)
 			}
 			m.proxyBack()
-			if m.proxies.expanded != "GLOBAL" || m.focus != "node.8.0" {
-				t.Fatalf("global reference back failed: group=%s focus=%s", m.proxies.expanded, m.focus)
+			if m.proxies.activeGroup != "GLOBAL" || m.focus != "node.8.0" {
+				t.Fatalf("global reference back failed: group=%s focus=%s", m.proxies.activeGroup, m.focus)
 			}
 		})
 	}
@@ -501,8 +511,8 @@ func TestProxiesCardPaddingMouseClicksSelectItsNode(t *testing.T) {
 				y = top + 2
 			}
 			m, cmd := update(m, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
-			if cmd == nil || !m.busy || m.proxies.pendingNode != "AUTO" || m.proxies.expanded != "PROXY" {
-				t.Fatalf("padding click did not select its reference card: position=%s focus=%s pending=%s expanded=%s", position, m.focus, m.proxies.pendingNode, m.proxies.expanded)
+			if cmd == nil || !m.busy || m.proxies.pendingNode != "AUTO" || m.proxies.activeGroup != "PROXY" {
+				t.Fatalf("padding click did not select its reference card: position=%s focus=%s pending=%s expanded=%s", position, m.focus, m.proxies.pendingNode, m.proxies.activeGroup)
 			}
 			m, _ = update(m, actionCmd(t, cmd)())
 			if backend.selections != 1 || m.snapshot.Groups[0].Now != "AUTO" {
@@ -531,10 +541,10 @@ func TestProxiesReferenceTraversalKeepsWideDirectoryAndRestoresLocation(t *testi
 			} else if len(groups) != len(m.snapshot.Groups)-1 {
 				t.Fatalf("wide reference view hid root groups: %v", groups)
 			}
-			if m.proxies.expanded != "AUTO" || m.proxies.search.Value() != "" || !hasAction(m.targets, "group.1") {
-				t.Fatalf("reference target was not expanded and revealed: expanded=%s focus=%s scroll=%d", m.proxies.expanded, m.focus, m.scroll)
+			if m.proxies.activeGroup != "AUTO" || m.proxies.search.Value() != "" || !hasAction(m.targets, "group.1") {
+				t.Fatalf("reference target was not expanded and revealed: expanded=%s focus=%s scroll=%d", m.proxies.activeGroup, m.focus, m.scroll)
 			}
-			if !m.proxyBack() || m.proxies.expanded != location.group || m.proxies.search.Value() != location.query || m.focus != location.focus || m.scroll != location.scroll {
+			if !m.proxyBack() || m.proxies.activeGroup != location.group || m.proxies.search.Value() != location.query || m.focus != location.focus || m.scroll != location.scroll {
 				t.Fatalf("reference return lost parent location: got %+v, want %+v", m.proxyLocation(), location)
 			}
 		})
@@ -569,11 +579,11 @@ func TestProxiesDistantReferenceRevealsMembersAndRestoresParent(t *testing.T) {
 			}
 			m.proxyActivate(reference)
 			m.layout()
-			if m.proxies.expanded != "REMOTE" || !hasAction(m.targets, fmt.Sprintf("node.%d.0", target)) {
-				t.Fatalf("distant reference revealed only its heading: expanded=%s scroll=%d targets=%+v", m.proxies.expanded, m.scroll, m.targets)
+			if m.proxies.activeGroup != "REMOTE" || !hasAction(m.targets, fmt.Sprintf("node.%d.0", target)) {
+				t.Fatalf("distant reference revealed only its heading: expanded=%s scroll=%d targets=%+v", m.proxies.activeGroup, m.scroll, m.targets)
 			}
 			m, _ = update(m, special(tea.KeyEscape))
-			if m.proxies.expanded != location.group || m.proxies.search.Value() != location.query || m.focus != location.focus || m.scroll != location.scroll {
+			if m.proxies.activeGroup != location.group || m.proxies.search.Value() != location.query || m.focus != location.focus || m.scroll != location.scroll {
 				t.Fatalf("return from distant reference lost the parent location: got %+v, want %+v", m.proxyLocation(), location)
 			}
 		})
@@ -585,26 +595,26 @@ func TestProxiesReferenceKeysPreferAdjacentNodeBeforeBrowsing(t *testing.T) {
 	m.focus = "node.0.0"
 	m.rememberPageView()
 	m, _ = update(m, special(tea.KeyRight))
-	if m.focus != "node.0.1" || m.proxies.expanded != "PROXY" || len(m.proxies.history) != 0 {
-		t.Fatalf("Right entered a reference before moving to its adjacent node: focus=%s expanded=%s", m.focus, m.proxies.expanded)
+	if m.focus != "node.0.1" || m.proxies.activeGroup != "PROXY" || len(m.proxies.history) != 0 {
+		t.Fatalf("Right entered a reference before moving to its adjacent node: focus=%s expanded=%s", m.focus, m.proxies.activeGroup)
 	}
 	columns := m.proxyColumns(dashboardBodyWidth(m.dashboardOptions()))
 	m.snapshot.Groups[0].All[0], m.snapshot.Groups[0].All[columns-1] = m.snapshot.Groups[0].All[columns-1], m.snapshot.Groups[0].All[0]
 	m.focus = fmt.Sprintf("node.0.%d", columns-1)
 	m.rememberPageView()
 	m, _ = update(m, special(tea.KeyRight))
-	if m.proxies.expanded != "AUTO" || len(m.proxies.history) != 1 {
-		t.Fatalf("Right at the row edge did not enter its reference: expanded=%s history=%d", m.proxies.expanded, len(m.proxies.history))
+	if m.proxies.activeGroup != "AUTO" || len(m.proxies.history) != 1 {
+		t.Fatalf("Right at the row edge did not enter its reference: expanded=%s history=%d", m.proxies.activeGroup, len(m.proxies.history))
 	}
 	m.focus = "node.1.1"
 	m.rememberPageView()
 	m, _ = update(m, special(tea.KeyLeft))
-	if m.focus != "node.1.0" || m.proxies.expanded != "AUTO" || len(m.proxies.history) != 1 {
-		t.Fatalf("Left returned before moving to its adjacent node: focus=%s expanded=%s", m.focus, m.proxies.expanded)
+	if m.focus != "node.1.0" || m.proxies.activeGroup != "AUTO" || len(m.proxies.history) != 1 {
+		t.Fatalf("Left returned before moving to its adjacent node: focus=%s expanded=%s", m.focus, m.proxies.activeGroup)
 	}
 	m, _ = update(m, special(tea.KeyLeft))
-	if m.proxies.expanded != "PROXY" || m.focus != fmt.Sprintf("node.0.%d", columns-1) || len(m.proxies.history) != 0 {
-		t.Fatalf("Left at the row edge lost its parent reference: focus=%s expanded=%s", m.focus, m.proxies.expanded)
+	if m.proxies.activeGroup != "PROXY" || m.focus != fmt.Sprintf("node.0.%d", columns-1) || len(m.proxies.history) != 0 {
+		t.Fatalf("Left at the row edge lost its parent reference: focus=%s expanded=%s", m.focus, m.proxies.activeGroup)
 	}
 }
 
@@ -613,14 +623,14 @@ func TestProxiesReferenceActionDoesNotSelectItsNode(t *testing.T) {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			m, backend := proxiesModel(t, width, 40)
 			m, cmd := click(m, findTarget(t, m, "proxies.reference.0.0"))
-			if cmd != nil || m.busy || backend.selections != 0 || m.proxies.expanded != "AUTO" {
-				t.Fatalf("reference action selected its parent node: expanded=%s selections=%d busy=%t", m.proxies.expanded, backend.selections, m.busy)
+			if cmd != nil || m.busy || backend.selections != 0 || m.proxies.activeGroup != "AUTO" {
+				t.Fatalf("reference action selected its parent node: expanded=%s selections=%d busy=%t", m.proxies.activeGroup, backend.selections, m.busy)
 			}
 			m.proxyBack()
 			m.snapshot.Groups[0].Now = "HK 01"
 			m.layout()
 			m, cmd = click(m, findTarget(t, m, "node.0.0"))
-			if cmd == nil || !m.busy || m.proxies.expanded != "PROXY" || m.proxies.pendingNode != "AUTO" {
+			if cmd == nil || !m.busy || m.proxies.activeGroup != "PROXY" || m.proxies.pendingNode != "AUTO" {
 				t.Fatal("reference card body lost its normal selector action")
 			}
 			m, _ = update(m, actionCmd(t, cmd)())
@@ -632,11 +642,12 @@ func TestProxiesReferenceActionDoesNotSelectItsNode(t *testing.T) {
 	// An automatic strategy may contain references, which remain inspectable.
 	m, backend := proxiesModel(t, 160, 40)
 	m.snapshot.Groups[1].All = append(m.snapshot.Groups[1].All, "Japan")
-	m.proxies.expanded, m.focus = "AUTO", "group.1"
+	setProxyTestGroup(&m, "AUTO")
+	m.focus = "group.1"
 	m.layout()
 	m, cmd := click(m, findTarget(t, m, "proxies.reference.1.4"))
-	if cmd != nil || backend.selections != 0 || m.proxies.expanded != "Japan" {
-		t.Fatalf("automatic reference action was unavailable or selected a node: expanded=%s selections=%d", m.proxies.expanded, backend.selections)
+	if cmd != nil || backend.selections != 0 || m.proxies.activeGroup != "Japan" {
+		t.Fatalf("automatic reference action was unavailable or selected a node: expanded=%s selections=%d", m.proxies.activeGroup, backend.selections)
 	}
 }
 
@@ -680,9 +691,21 @@ func TestProxiesGroupHeaderKeepsRightBadgeAndIndependentTestAction(t *testing.T)
 			width := dashboardBodyWidth(m.dashboardOptions())
 			for _, gi := range []int{0, 1, 2} {
 				header := m.proxyGroupHeader(gi, width)
-				line := ansi.Strip(header.lines[0])
-				if ansi.StringWidth(line) != width || strings.TrimSpace(ansi.Cut(line, width-5, width)) != fmt.Sprint(len(m.snapshot.Groups[gi].All)) {
+				line := ""
+				for _, candidate := range header.lines {
+					if strings.TrimSpace(ansi.Strip(candidate)) != "" {
+						line = ansi.Strip(candidate)
+						break
+					}
+				}
+				count := fmt.Sprint(len(m.snapshot.Groups[gi].All))
+				index := strings.LastIndex(line, count)
+				if ansi.StringWidth(line) != width || index < 0 {
 					t.Fatalf("group %d count badge was not aligned to the fixed right column: %q", gi, line)
+				}
+				end := ansi.StringWidth(line[:index+len(count)])
+				if end != width-4 {
+					t.Fatalf("group %d count ended at %d, want shared right column %d: %q", gi, end, width-4, line)
 				}
 				for i, hit := range header.targets {
 					for _, other := range header.targets[i+1:] {
@@ -693,14 +716,14 @@ func TestProxiesGroupHeaderKeepsRightBadgeAndIndependentTestAction(t *testing.T)
 				}
 			}
 			m.layout()
-			group, test := findTarget(t, m, "group.0"), findTarget(t, m, "proxies.test")
-			if test.Y != group.Y || test.X <= group.X {
+			group, test := findTarget(t, m, "group.0"), findTarget(t, m, "proxies.test.0")
+			if test.Y < group.Y || test.Y >= group.Y+group.H || test.X <= group.X {
 				t.Fatalf("wide test action left the group heading: group=%+v test=%+v", group, test)
 			}
 			m, _ = click(m, test)
 			defer m.stopProxyTests()
-			if !m.proxies.testing || m.proxies.expanded != "PROXY" {
-				t.Fatalf("group test action folded or switched the group: expanded=%s testing=%t", m.proxies.expanded, m.proxies.testing)
+			if !m.proxies.testing || m.proxies.activeGroup != "PROXY" {
+				t.Fatalf("group test action folded or switched the group: expanded=%s testing=%t", m.proxies.activeGroup, m.proxies.testing)
 			}
 		})
 	}
@@ -713,7 +736,7 @@ func TestProxiesGroupWhitespaceDoesNotCaptureSelection(t *testing.T) {
 	}{{160, ""}, {160, "PROXY"}, {80, ""}, {40, ""}} {
 		t.Run(fmt.Sprint(test.width, "/", test.expanded), func(t *testing.T) {
 			m, _ := proxiesModel(t, test.width, 40)
-			m.proxies.expanded = test.expanded
+			setProxyTestGroup(&m, test.expanded)
 			body, hits := m.proxiesBody(dashboardBodyWidth(m.dashboardOptions()))
 			lines := strings.Split(ansi.Strip(body), "\n")
 			groups := m.visibleProxyGroups()
@@ -747,7 +770,7 @@ func TestProxiesExpandedGroupKeepsSortingInHeader(t *testing.T) {
 			m, _ := proxiesModel(t, width, 40)
 			bodyWidth := dashboardBodyWidth(m.dashboardOptions())
 			body := m.proxyGroupBody(0, bodyWidth)
-			if len(body.targets) == 0 || body.targets[0].Y != 0 || hasAction(body.targets, "proxies.sort") {
+			if len(body.targets) == 0 || body.targets[0].Y != 0 || hasAction(body.targets, "proxies.sort.0") {
 				t.Fatalf("expanded group retained rows before its cards: %+v", body.targets)
 			}
 			full, hits := m.proxiesBody(bodyWidth)
@@ -770,12 +793,12 @@ func TestProxiesExpandedGroupKeepsSortingInHeader(t *testing.T) {
 					t.Fatalf("header-to-card gap activates a control: %+v", hit)
 				}
 			}
-			if hasAction(m.proxyGroupHeader(0, bodyWidth).targets, "proxies.sort") {
+			if hasAction(m.proxyGroupHeader(0, bodyWidth).targets, "proxies.sort.0") {
 				t.Fatal("default sorting retained a header control")
 			}
 			m.sortProxies("delay")
 			header := m.proxyGroupHeader(0, bodyWidth)
-			if !hasAction(header.targets, "proxies.sort") || !hasAction(header.targets, "proxies.test") {
+			if !hasAction(header.targets, "proxies.sort.0") || !hasAction(header.targets, "proxies.test.0") {
 				t.Fatalf("nondefault sorting lost its header control: %+v", header.targets)
 			}
 			assertRegions(t, header.targets, bodyWidth, len(header.lines))
@@ -787,8 +810,8 @@ func TestProxiesExpandedGroupKeepsSortingInHeader(t *testing.T) {
 				}
 			}
 			m.layout()
-			m, _ = click(m, findTarget(t, m, "proxies.sort"))
-			if !m.menu.open || !m.proxies.sortMenu || m.proxies.expanded != "PROXY" {
+			m, _ = click(m, findTarget(t, m, "proxies.sort.0"))
+			if !m.menu.open || !m.proxies.sortMenu || m.proxies.activeGroup != "PROXY" {
 				t.Fatal("header sorting control folded the group or failed to open the menu")
 			}
 		})
@@ -797,7 +820,7 @@ func TestProxiesExpandedGroupKeepsSortingInHeader(t *testing.T) {
 
 func TestProxiesSummaryKeepsFullReferenceRouteInDetails(t *testing.T) {
 	m, _ := proxiesModel(t, 160, 40)
-	m.proxies.expanded = "YouTube"
+	setProxyTestGroup(&m, "YouTube")
 	header := ansi.Strip(strings.Join(m.proxyGroupHeader(3, 120).lines, "\n"))
 	card := ansi.Strip(strings.Join(m.proxyNode(3, 0, 60).lines, "\n"))
 	for _, value := range []string{header, card} {
@@ -933,11 +956,13 @@ func TestProxiesVisibleRangeFooterStaysAboveKeyHints(t *testing.T) {
 			if m.dashboardOptions().BodyRange {
 				t.Fatal("node details retained the group range footer")
 			}
-			m.proxies.detail, m.proxies.expanded = "", ""
+			m.proxies.detail = ""
+			setProxyTestGroup(&m, "")
 			if m.dashboardOptions().BodyRange {
 				t.Fatal("collapsed directory retained the group range footer")
 			}
-			m.proxies.expanded, m.snapshot.Service.Active = "PROXY", false
+			setProxyTestGroup(&m, "PROXY")
+			m.snapshot.Service.Active = false
 			if m.dashboardOptions().BodyRange {
 				t.Fatal("unavailable group retained the range footer")
 			}
@@ -999,8 +1024,8 @@ func TestProxiesSortingMenuReturnsToFocusedMember(t *testing.T) {
 	}
 	m, _ = update(m, special(tea.KeyDown))
 	m, _ = update(m, special(tea.KeyEnter))
-	if m.menu.open || m.proxies.sort != "delay" || m.focus != "node.0.1" || !hasAction(m.targets, m.focus) {
-		t.Fatalf("sort lost focused member: sort=%s focus=%s", m.proxies.sort, m.focus)
+	if m.menu.open || m.proxySort("PROXY") != "delay" || m.focus != "node.0.1" || !hasAction(m.targets, m.focus) {
+		t.Fatalf("sort lost focused member: sort=%s focus=%s", m.proxySort("PROXY"), m.focus)
 	}
 	m, _ = update(m, key("s"))
 	m, _ = update(m, special(tea.KeyEscape))
@@ -1013,7 +1038,8 @@ func TestProxiesDefaultSortReturnsToItsGroupAfterHeaderClick(t *testing.T) {
 	for _, width := range []int{160, 80} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			m, _ := proxiesModel(t, width, 24)
-			m.proxies.expanded, m.focus = "AUTO", "group.1"
+			setProxyTestGroup(&m, "AUTO")
+			m.focus = "group.1"
 			m.sortProxies("delay")
 			m.scroll = 3
 			m.rememberPageView()
@@ -1022,15 +1048,15 @@ func TestProxiesDefaultSortReturnsToItsGroupAfterHeaderClick(t *testing.T) {
 			if before == 0 {
 				t.Fatal("fixture did not retain a scrolled group heading")
 			}
-			m, _ = click(m, findTarget(t, m, "proxies.sort"))
+			m, _ = click(m, findTarget(t, m, "proxies.sort.1"))
 			if !m.menu.open || !m.proxies.sortMenu {
 				t.Fatal("header click did not open the sorting menu")
 			}
 			m, _ = update(m, menuMouse(m.menu, 0, tea.MouseLeft))
-			if m.menu.open || m.proxies.sort != "default" || m.proxies.expanded != "AUTO" || m.focus != "group.1" || m.scroll != before {
-				t.Fatalf("hiding the sorting control lost its group location: sort=%s expanded=%s focus=%s scroll=%d want=%d", m.proxies.sort, m.proxies.expanded, m.focus, m.scroll, before)
+			if m.menu.open || m.proxySort("AUTO") != "default" || m.proxies.activeGroup != "AUTO" || m.focus != "group.1" || m.scroll != before {
+				t.Fatalf("hiding the sorting control lost its group location: sort=%s expanded=%s focus=%s scroll=%d want=%d", m.proxySort("AUTO"), m.proxies.activeGroup, m.focus, m.scroll, before)
 			}
-			if hasAction(m.targets, "proxies.sort") || !hasAction(m.targets, "group.1") {
+			if hasAction(m.targets, "proxies.sort.1") || !hasAction(m.targets, "group.1") {
 				t.Fatal("default sorting retained its control or lost the restored group heading")
 			}
 		})
@@ -1125,7 +1151,8 @@ func TestProxiesUntestableRoutesAndHistoricalFailuresStayHonest(t *testing.T) {
 	if state := m.proxyDelay("PROXY", "HK 01").result.State; state != "failed" {
 		t.Fatalf("history without failure cause was classified as %s", state)
 	}
-	m.proxies.expanded, m.focus = "EMPTY", "group.7"
+	setProxyTestGroup(&m, "EMPTY")
+	m.focus = "group.7"
 	if cmd := m.testProxyGroup(); cmd != nil || m.proxies.testing || m.proxies.cancel != nil {
 		t.Fatal("an empty test group retained work or its cancellation context")
 	}

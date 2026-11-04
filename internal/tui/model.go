@@ -310,6 +310,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if motion, ok := msg.(tea.MouseMotionMsg); ok && m.updateProxyHover(motion) {
 		return m, nil
 	}
+	if wheel, ok := msg.(tea.MouseWheelMsg); ok && m.updateProxyWheel(wheel) {
+		return m, nil
+	}
 	var cmd tea.Cmd
 	previousPage := m.page
 	switch v := msg.(type) {
@@ -407,6 +410,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 	case tea.WindowSizeMsg:
+		if m.page == "proxies" && !m.proxiesNarrow() && max(1, v.Width) < 100 {
+			if _, group, _, ok := m.proxyAtFocus(); ok && m.proxyGroupExpanded(group.Name) {
+				m.proxies.activeGroup = group.Name
+			}
+		}
 		if m.logoIntro.sized && (m.width != max(1, v.Width) || m.height != max(1, v.Height)) {
 			m.stopLogoIntro()
 		}
@@ -1272,7 +1280,7 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 	if m.helpOpen {
 		return m.helpMouse(event)
 	}
-	if _, wheel := event.(tea.MouseWheelMsg); wheel {
+	if _, wheel := event.(tea.MouseWheelMsg); wheel && len(m.notification.items) > 0 {
 		o := m.dashboardOptions()
 		o.Body, o.BodyTargets = m.pageBody(dashboardGeometry(o).width)
 		o.Scroll = m.scroll
@@ -1424,7 +1432,7 @@ func (m *Model) renderLayout() {
 	}
 	o := m.dashboardOptions()
 	o.Sidebar = &m.sidebar
-	o.SelectedGroup, o.Snapshot, o.Focus, o.Hover = m.proxies.expanded, m.snapshot, m.focus, m.hover
+	o.SelectedGroup, o.Snapshot, o.Focus, o.Hover = m.proxies.activeGroup, m.snapshot, m.focus, m.hover
 	o.Help, o.GuideDismissed, o.Scroll, o.SidebarOpen = m.contextHelp(), m.snapshot.GuideDismissed, m.scroll, m.sidebarOpen
 	o.Runtime, o.RuntimeReceived, o.RuntimePending = m.runtime.snapshot, m.runtime.received, m.runtime.pending
 	o.StateUnavailable = !m.snapshotReady

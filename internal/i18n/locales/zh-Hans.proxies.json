@@ -1,5 +1,6 @@
 {
   "proxies.search_placeholder": "搜索组或节点",
+  "proxies.collapse_all": "全部收起",
   "proxies.clear": "清除搜索",
   "proxies.loading": "正在加载代理组…",
   "proxies.uninstalled": "安装 Mihomo 后即可浏览代理组。",

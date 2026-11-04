@@ -28,10 +28,9 @@ func (m *Model) rememberPageView() {
 			state.profile = m.profiles()[index]
 		}
 		var gi, ni int
-		if strings.HasPrefix(m.focus, "group.") {
-			gi, _ = strconv.Atoi(strings.TrimPrefix(m.focus, "group."))
-			if gi >= 0 && gi < len(m.snapshot.Groups) {
-				state.group = m.snapshot.Groups[gi].Name
+		if strings.HasPrefix(m.focus, "group.") || strings.HasPrefix(m.focus, "proxies.test.") || strings.HasPrefix(m.focus, "proxies.sort.") {
+			if _, group, _, ok := m.proxyAtFocus(); ok {
+				state.group = group.Name
 			}
 		} else if _, err := fmt.Sscanf(strings.Replace(m.focus, "proxies.reference.", "node.", 1), "node.%d.%d", &gi, &ni); err == nil && gi >= 0 && gi < len(m.snapshot.Groups) {
 			state.group = m.snapshot.Groups[gi].Name
@@ -99,7 +98,7 @@ func (m Model) navigationOptions() dashboardOptions {
 	o := m.dashboardOptions()
 	o.Snapshot, o.Focus, o.Hover = m.snapshot, m.focus, m.hover
 	o.GuideDismissed = m.snapshot.GuideDismissed
-	o.SelectedGroup = m.proxies.expanded
+	o.SelectedGroup = m.proxies.activeGroup
 	o.Runtime, o.RuntimeReceived, o.RuntimePending = m.runtime.snapshot, m.runtime.received, m.runtime.pending
 	o.StateUnavailable = !m.snapshotReady
 	return o
@@ -142,6 +141,11 @@ func (m Model) restoredContentFocus(state pageViewState) string {
 				continue
 			}
 			if state.node == "" {
+				for _, prefix := range []string{"proxies.test.", "proxies.sort."} {
+					if strings.HasPrefix(state.focus, prefix) {
+						return prefix + strconv.Itoa(gi)
+					}
+				}
 				return fmt.Sprintf("group.%d", gi)
 			}
 			for ni, node := range group.All {

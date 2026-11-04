@@ -164,6 +164,9 @@ func (m *Model) syncNotification() tea.Cmd {
 // and modal views pause the timer and retain the remaining display time.
 func (m *Model) syncNotificationTimers(now time.Time) tea.Cmd {
 	n := &m.notification
+	if len(n.items) == 0 {
+		return nil
+	}
 	visible := map[uint64]bool{}
 	if !n.panel.open && !m.menu.open {
 		o := m.dashboardOptions()
@@ -313,7 +316,7 @@ func (m Model) dashboardOptions() dashboardOptions {
 			}
 		}
 	}
-	return dashboardOptions{Locale: m.locale, Width: m.width, Height: m.height, Page: m.page, Busy: m.busy, PlainButtons: m.buttonPlain(), Dim: m.feedbackDialogOpen() || m.helpOpen || m.notification.panel.open, SidebarOpen: m.sidebarOpen, HideKeyHints: m.keyHints.hidden || m.wizard.open || m.wizard.networkOpen, GuideSkipped: m.guideSkipped, Notifications: items, Spinner: m.spinner.View(), LogoFrame: m.logoFrame, LogoIntroFrame: m.logoIntro.frame, InlineInstall: m.page == "overview" && m.inlineInstallVisible(), BodyRange: m.page == "proxies" && m.proxiesReady() && m.proxies.expanded != "" && m.proxies.detail == ""}
+	return dashboardOptions{Locale: m.locale, Width: m.width, Height: m.height, Page: m.page, Busy: m.busy, PlainButtons: m.buttonPlain(), Dim: m.feedbackDialogOpen() || m.helpOpen || m.notification.panel.open, SidebarOpen: m.sidebarOpen, HideKeyHints: m.keyHints.hidden || m.wizard.open || m.wizard.networkOpen, GuideSkipped: m.guideSkipped, Notifications: items, Spinner: m.spinner.View(), LogoFrame: m.logoFrame, LogoIntroFrame: m.logoIntro.frame, InlineInstall: m.page == "overview" && m.inlineInstallVisible(), BodyRange: m.page == "proxies" && m.proxiesReady() && m.hasExpandedProxyGroups() && m.proxies.detail == ""}
 }
 
 // Single-card adapter for geometry callers outside the dashboard.
