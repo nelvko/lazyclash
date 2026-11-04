@@ -35,6 +35,8 @@ type proxiesState struct {
 	testCtx                          context.Context
 	queue                            []proxyTestTarget
 	inflight                         map[string]bool
+	inflightPaths                    map[string]string
+	nodeTests                        proxyNodeTests
 	completed, total                 int
 	testGroup, testStatus            string
 	testStatusVisible                bool
@@ -123,7 +125,7 @@ func (m Model) proxyGroup(name string) (int, mihomo.Group, bool) {
 }
 func (m Model) proxyLocation() proxyLocation {
 	loc := proxyLocation{group: m.proxies.activeGroup, expanded: cloneProxyExpansion(m.proxies.expanded), focus: m.focus, query: m.proxies.search.Value(), scroll: m.scroll}
-	if _, g, n, ok := m.proxyAtFocus(); ok && (strings.HasPrefix(m.focus, "node.") || strings.HasPrefix(m.focus, "group.") || strings.HasPrefix(m.focus, "proxies.reference.") || strings.HasPrefix(m.focus, "proxies.sort.") || strings.HasPrefix(m.focus, "proxies.test.")) {
+	if _, g, n, ok := m.proxyAtFocus(); ok && (strings.HasPrefix(m.focus, "node.") || strings.HasPrefix(m.focus, "group.") || strings.HasPrefix(m.focus, "proxies.reference.") || strings.HasPrefix(m.focus, "proxies.delay.") || strings.HasPrefix(m.focus, "proxies.sort.") || strings.HasPrefix(m.focus, "proxies.test.")) {
 		loc.identity = pageViewState{group: g.Name, node: n, focus: m.focus}
 		if m.proxyGroupExpanded(g.Name) {
 			loc.group = g.Name
@@ -148,7 +150,7 @@ func (m *Model) restoreProxyLocation(loc proxyLocation) {
 }
 func (m Model) proxyAtFocus() (int, mihomo.Group, string, bool) {
 	var gi, ni int
-	nodeFocus := strings.Replace(m.focus, "proxies.reference.", "node.", 1)
+	nodeFocus := strings.Replace(strings.Replace(m.focus, "proxies.reference.", "node.", 1), "proxies.delay.", "node.", 1)
 	if _, err := fmt.Sscanf(nodeFocus, "node.%d.%d", &gi, &ni); err == nil && gi >= 0 && gi < len(m.snapshot.Groups) {
 		g := m.snapshot.Groups[gi]
 		if ni >= 0 && ni < len(g.All) {
@@ -523,8 +525,9 @@ func (m *Model) proxyHorizontal(delta int) bool {
 	}
 	_, hits := m.proxiesBody(dashboardBodyWidth(m.dashboardOptions()))
 	var current hitRegion
+	currentID := strings.Replace(m.focus, "proxies.delay.", "node.", 1)
 	for _, h := range hits {
-		if h.ID == m.focus && strings.HasPrefix(h.ID, "node.") {
+		if h.ID == currentID && strings.HasPrefix(h.ID, "node.") {
 			current = h
 			break
 		}
@@ -563,7 +566,7 @@ func (m *Model) proxyListKey(k tea.KeyPressMsg) bool {
 	_, hits := m.proxiesBody(dashboardBodyWidth(m.dashboardOptions()))
 	var list []hitRegion
 	index := -1
-	listFocus := m.focus
+	listFocus := strings.Replace(m.focus, "proxies.delay.", "node.", 1)
 	for _, prefix := range []string{"proxies.test.", "proxies.sort."} {
 		if strings.HasPrefix(listFocus, prefix) {
 			listFocus = "group." + strings.TrimPrefix(listFocus, prefix)
@@ -657,7 +660,9 @@ func (m *Model) proxyActivate(id string) tea.Cmd {
 		if !strings.HasPrefix(id, "group.") && m.proxyGroupExpanded(g.Name) {
 			m.proxies.activeGroup = g.Name
 		}
-		if strings.HasPrefix(id, "proxies.sort.") {
+		if strings.HasPrefix(id, "proxies.delay.") && node != "" {
+			return m.testProxyNode(g.Name, node)
+		} else if strings.HasPrefix(id, "proxies.sort.") {
 			m.openProxySort()
 		} else if strings.HasPrefix(id, "proxies.test.") {
 			return m.testProxyGroup()
@@ -710,6 +715,11 @@ func indexOf(values []string, value string) int {
 }
 
 func (m *Model) stopProxyTests() {
+	m.stopProxyGroupTests()
+	m.stopProxyNodeTests("")
+}
+
+func (m *Model) stopProxyGroupTests() {
 	m.proxies.testStatusVisible = false
 	if m.proxies.cancel != nil {
 		m.proxies.cancel()
@@ -722,8 +732,9 @@ func (m *Model) stopProxyTests() {
 	m.proxies.testing = false
 	m.proxies.queue = nil
 	m.proxies.inflight = nil
+	m.proxies.inflightPaths = nil
 }
-func (m *Model) syncProxies() {
+func (m *Model) syncProxies() tea.Cmd {
 	source := fmt.Sprintf("%s\x00%s\x00%d\x00%s", m.snapshot.Generation, m.snapshot.Applied, m.snapshot.Service.PID, m.snapshot.RunningVersion)
 	if m.proxies.sortMenu && (m.snapshot.Mode.Actual != m.proxies.mode || source != m.proxies.source) {
 		m.menu.dismiss()
@@ -731,6 +742,7 @@ func (m *Model) syncProxies() {
 		m.proxies.sortReturn = proxyLocation{}
 	}
 	if m.snapshot.Mode.Actual != m.proxies.mode {
+		m.stopProxyTests()
 		m.proxies.mode = m.snapshot.Mode.Actual
 		m.proxies.history = nil
 		m.proxies.detail, m.proxies.activeGroup = "", ""
@@ -767,6 +779,8 @@ func (m *Model) syncProxies() {
 			delete(m.proxies.results, key)
 		}
 	}
+	m.pruneProxyNodeTests()
+	return m.nextProxyNodeTests()
 }
 func (m *Model) pruneProxyGroups() {
 	for name := range m.proxies.expanded {
@@ -793,7 +807,7 @@ func (m *Model) testProxyGroup() tea.Cmd {
 		return nil
 	}
 	if m.proxies.testing {
-		m.stopProxyTests()
+		m.stopProxyGroupTests()
 		if m.proxies.testGroup == g.Name {
 			return m.showProxyTestStatus()
 		}
@@ -802,11 +816,13 @@ func (m *Model) testProxyGroup() tea.Cmd {
 	if !ok || !m.proxiesReady() || m.busy || m.quitting {
 		return nil
 	}
+	m.stopProxyNodeTests(g.Name)
 	m.proxies.generation++
 	m.proxies.testStatusVisible = false
 	m.proxies.testCtx, m.proxies.cancel = context.WithCancel(m.ctx)
 	m.proxies.queue = nil
 	m.proxies.inflight = make(map[string]bool)
+	m.proxies.inflightPaths = make(map[string]string)
 	for _, node := range g.All {
 		if m.proxyTestable(node) {
 			m.proxies.queue = append(m.proxies.queue, proxyTestTarget{g.Name, node, m.proxyPathKey(node)})
@@ -825,7 +841,7 @@ func (m *Model) testProxyGroup() tea.Cmd {
 	for range min(4, len(m.proxies.queue)) {
 		commands = append(commands, m.nextProxyTest(backend))
 	}
-	return tea.Batch(append(commands, m.spinner.Tick)...)
+	return tea.Batch(append(commands, m.spinner.Tick, m.nextProxyNodeTests())...)
 }
 func (m *Model) nextProxyTest(backend proxyDelayBackend) tea.Cmd {
 	if len(m.proxies.queue) == 0 {
@@ -833,7 +849,9 @@ func (m *Model) nextProxyTest(backend proxyDelayBackend) tea.Cmd {
 	}
 	target := m.proxies.queue[0]
 	m.proxies.queue = m.proxies.queue[1:]
-	m.proxies.inflight[proxyResultKey(target.group, target.node)] = true
+	key := proxyResultKey(target.group, target.node)
+	m.proxies.inflight[key] = true
+	m.proxies.inflightPaths[key] = target.path
 	ctx, id := m.proxies.testCtx, m.proxies.generation
 	return func() tea.Msg {
 		result, err := backend.TestProxyDelay(ctx, target.group, target.node)
@@ -849,6 +867,7 @@ func (m *Model) acceptProxyDelay(msg proxyDelayMsg) tea.Cmd {
 		return nil
 	}
 	delete(m.proxies.inflight, key)
+	delete(m.proxies.inflightPaths, key)
 	if !errors.Is(msg.err, context.Canceled) && msg.target.path == m.proxyPathKey(msg.target.node) {
 		if msg.err != nil {
 			msg.result = mihomo.ProxyDelay{State: "failed", Time: time.Now(), URL: mihomo.DefaultProxyDelayURL}

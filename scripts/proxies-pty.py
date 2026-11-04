@@ -188,12 +188,69 @@ def click_candidate(terminal, name, padding=0):
     click_cell(terminal, x, y + padding)
 
 
-def latency_span(terminal, name):
+def card_bounds(terminal, name):
     x, y = candidate_position(terminal, name)
-    row = "".join(terminal.screen.cells[y][x:])
-    value = re.search(r"\d+ ms", row)
-    assert value, "candidate has no numeric fixture latency: " + name
-    return value.end()
+    left = x - 4
+    columns = set()
+    for member in MEMBERS:
+        try:
+            columns.add(candidate_position(terminal, member)[0])
+        except AssertionError:
+            pass
+    slots = sorted(columns)
+    if len(slots) > 1:
+        width = min(b - a for a, b in zip(slots, slots[1:])) - 1
+        return left, y, left + width
+    # The blank top row has the same background across the complete card,
+    # including its delay/action areas. It also works for filtered short groups.
+    background = terminal.screen.styles[y - 1][left][1]
+    right = left
+    while right < terminal.screen.columns and terminal.screen.styles[y - 1][right][1] == background:
+        right += 1
+    if right < terminal.screen.columns:
+        return left, y, right
+    # NO_COLOR has no background boundary. At this wide filtered fixture the
+    # known 12-cell lane still determines the observed right edge of the card.
+    row = terminal.screen.cells[y]
+    value = re.search(r"\d+ ms", "".join(row[x:]))
+    assert value, "cannot locate the uncolored card's latency lane: " + name
+    value_x = x + cell_offset(row[x:], value.start())
+    right = value_x - (12 - len(value.group())) // 2 + 12 + 2
+    return left, y, right
+
+
+def delay_slot(terminal, name):
+    left, y, right = card_bounds(terminal, name)
+    width = min(12, (right - left - 6) // 2)
+    return right - 2 - width, y, width
+
+
+def delay_label(terminal, name):
+    x, y, width = delay_slot(terminal, name)
+    return "".join(terminal.screen.cells[y][x:x + width]).strip()
+
+
+def wait_delay(terminal, name, expected):
+    def ready():
+        try:
+            return delay_label(terminal, name) == expected
+        except AssertionError:
+            return False  # Incremental redraw can briefly clear a card row.
+    wait_until(terminal, ready, "delay did not become %r for %s" % (expected, name))
+
+
+def click_delay(terminal, name):
+    terminal.settle()
+    x, y, width = delay_slot(terminal, name)
+    click_cell(terminal, x + width // 2, y)
+
+
+def assert_delay_centered(terminal, name):
+    x, y, width = delay_slot(terminal, name)
+    cells = terminal.screen.cells[y][x:x + width]
+    first = next(index for index, cell in enumerate(cells) if cell != " ")
+    last = next(index for index, cell in enumerate(reversed(cells)) if cell != " ")
+    assert abs(first - last) <= 1, "delay is not centered in its card slot: %s %r" % (name, cells)
 
 
 def assert_four_columns(terminal):
@@ -227,9 +284,10 @@ def enter_reference(terminal, name, label):
     raise AssertionError("Reference action is not visible: " + name + "\n" + terminal.screen.text())
 
 
-def fixture_terminal(preview, binary, report, language, profile, width=160, height=45):
+def fixture_terminal(preview, binary, report, language, profile, width=160, height=45, extra_environment=None):
     environment = {"LAZYCLASH_PROXIES_PTY_REPORT": str(report),
                    "LAZYCLASH_PROXIES_PTY_LANGUAGE": language}
+    environment.update(extra_environment or {})
     wrapper = preview.WRAPPER.replace("os.execv(sys.argv[5], sys.argv[5:])",
         "os.environ.update(" + repr(environment) + "); os.execv(sys.argv[5], sys.argv[5:])")
     terminal = preview.SMOKE.Terminal([sys.executable, "-c", wrapper, str(width), str(height), profile,
@@ -272,8 +330,8 @@ def exercise(preview, binary, output, language, profile, args):
         click_candidate(terminal, "HK 02", padding=-1)
         wait_until(terminal, lambda: chosen(terminal, "HK 02"), "top padding did not select its card")
         terminal.settle()
-        x, y = candidate_position(terminal, "HK 01")
-        click_cell(terminal, x + latency_span(terminal, "HK 01") + 1, y + 1)
+        _, y, right = card_bounds(terminal, "HK 01")
+        click_cell(terminal, right - 1, y + 1)
         wait_until(terminal, lambda: chosen(terminal, "HK 01"), "metadata right padding did not select its card")
         terminal.settle()
         x, y = candidate_position(terminal, "HK 01")
@@ -384,14 +442,16 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.key(b"\x1b[C")
         terminal.settle()
         slots = assert_four_columns(terminal)
-        span = latency_span(terminal, "HK 01")
+        left, _, right = card_bounds(terminal, "HK 01")
+        card_width = right - left
         search(terminal, "Hong Kong")
         collapse_all(terminal, words)
         open_group(terminal, "Hong Kong")
         terminal.wait("Trojan")
         terminal.settle()
         assert sorted(candidate_position(terminal, name)[0] for name in ("HK 01", "HK 02")) == slots[:2], "two-member group stretched its cards"
-        assert latency_span(terminal, "HK 01") == span, "short-group card width changed"
+        left, _, right = card_bounds(terminal, "HK 01")
+        assert right - left == card_width, "short-group card width changed"
         preview.capture(terminal, output, "two-members-240x40", args)
         search(terminal, "HK 01")
         collapse_all(terminal, words)
@@ -399,7 +459,8 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait("Shadowsocks")
         terminal.settle()
         assert candidate_position(terminal, "HK 01")[0] == slots[0], "single filtered member moved out of its first slot"
-        assert latency_span(terminal, "HK 01") == span, "single filtered member stretched across the row"
+        left, _, right = card_bounds(terminal, "HK 01")
+        assert right - left == card_width, "single filtered member stretched across the row"
         preview.capture(terminal, output, "one-member-filter-240x40", args)
         search(terminal, "")
         collapse_all(terminal, words)
@@ -534,6 +595,66 @@ def exercise_groups(preview, binary, output, args):
         terminal.cleanup()
 
 
+def exercise_node_delay(preview, binary, output, args):
+    output.mkdir(parents=True, exist_ok=True)
+    language, profile = "zh-Hans", "truecolor"
+    words = labels(language)
+    report = output / "calls.json"
+    terminal = fixture_terminal(preview, binary, report, language, profile,
+        extra_environment={"LAZYCLASH_PROXIES_PTY_RETEST": "1"})
+    try:
+        terminal.wait("v1.19.33")
+        terminal.key(b"2")
+        terminal.wait("PROXY")
+        open_group(terminal, "PROXY")
+        terminal.wait("Hysteria2")
+        terminal.settle()
+        for name in MEMBERS:
+            assert_delay_centered(terminal, name)
+        preview.capture(terminal, output, "centered-initial-values-statuses", args)
+
+        # Existing and new values use the same independent, repeatable action.
+        for expected in ("45 ms", "46 ms"):
+            click_delay(terminal, "HK 01")
+            wait_delay(terminal, "HK 01", words["proxies.testing"])
+            assert_delay_centered(terminal, "HK 01")
+            wait_delay(terminal, "HK 01", expected)
+        click_delay(terminal, "US 01")
+        wait_delay(terminal, "US 01", words["proxies.testing"])
+        wait_delay(terminal, "US 01", "211 ms")
+
+        # A reference's delay retries failures without browsing or selecting it.
+        for _ in range(2):
+            click_delay(terminal, "AUTO")
+            wait_delay(terminal, "AUTO", words["proxies.testing"])
+            wait_delay(terminal, "AUTO", words["proxies.test_failed"])
+        for name in ("DIRECT", "REJECT"):
+            assert delay_label(terminal, name) == "—", "built-in has a testable delay"
+            click_delay(terminal, name)
+        terminal.settle()
+        assert chosen(terminal, "AUTO"), "delay click changed the selected proxy"
+        assert group_header(terminal, "AUTO")[3].rstrip().endswith("▸"), "reference delay click entered its group"
+        assert group_header(terminal, "PROXY")[3].rstrip().endswith("▾"), "delay click left its parent group"
+        for name in MEMBERS:
+            assert_delay_centered(terminal, name)
+        preview.capture(terminal, output, "centered-retested-values-failed-reference", args)
+        terminal.exit()
+        calls = json.loads(report.read_text())
+        assert calls["requests"] == {"PROXY/HK 01": 2, "PROXY/US 01": 1, "PROXY/AUTO": 2}, calls
+        assert calls["tests"] == 5 and calls["canceled"] == 0 and calls["max_tests"] == 1, calls
+        assert calls["selections"] == 0 and calls["modes"] == 0 and calls["selected"]["PROXY"] == "AUTO", calls
+        (output / "pty.raw").write_bytes(terminal.raw)
+        print("PASS independent node-delay fixture: centered values/statuses, repeat test, untested/failed actions, reference isolation, inert built-ins; " + json.dumps(calls, ensure_ascii=False), flush=True)
+    except Exception:
+        (output / "failed.txt").write_text(terminal.screen.text() + "\n")
+        (output / "failed.ansi").write_bytes(terminal.raw)
+        if args.png:
+            preview.png(terminal.screen, output / "failed.png", args.font, args.cjk_font, args.font_size)
+        raise
+    finally:
+        terminal.cleanup()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", required=True, type=Path)
@@ -551,6 +672,7 @@ def main():
         for profile in args.profile or ("truecolor", "256", "no-color"):
             exercise(preview, args.binary, args.output.resolve() / language / profile, language, profile, args)
     exercise_groups(preview, args.binary, args.output.resolve() / "multi-group", args)
+    exercise_node_delay(preview, args.binary, args.output.resolve() / "node-delay", args)
 
 
 if __name__ == "__main__":

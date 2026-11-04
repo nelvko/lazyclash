@@ -75,9 +75,9 @@ func BenchmarkProxyHover(b *testing.B) {
 
 func TestProxyHoverMatchesFullLayoutWithoutChangingSelection(t *testing.T) {
 	m, backend := proxiesModel(t, 200, 45)
-	// Enter and leave ordinary cards, the reference action, the sidebar and
+	// Enter and leave ordinary cards, delay/reference actions, the sidebar and
 	// noninteractive whitespace. Rendering must match a full fresh layout.
-	ids := []string{"node.0.1", "node.0.2", "proxies.reference.0.0", "node.0.0", "nav.profiles", ""}
+	ids := []string{"node.0.1", "proxies.delay.0.1", "node.0.2", "proxies.reference.0.0", "node.0.0", "nav.profiles", ""}
 	for _, id := range ids {
 		event := tea.MouseMotionMsg{X: 199, Y: 44}
 		if id != "" {

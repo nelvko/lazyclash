@@ -27,15 +27,13 @@ func (m *Model) rememberPageView() {
 		if index, ok := profileActionIndex(m.focus, "profile.", len(m.profiles())); ok {
 			state.profile = m.profiles()[index]
 		}
-		var gi, ni int
 		if strings.HasPrefix(m.focus, "group.") || strings.HasPrefix(m.focus, "proxies.test.") || strings.HasPrefix(m.focus, "proxies.sort.") {
 			if _, group, _, ok := m.proxyAtFocus(); ok {
 				state.group = group.Name
 			}
-		} else if _, err := fmt.Sscanf(strings.Replace(m.focus, "proxies.reference.", "node.", 1), "node.%d.%d", &gi, &ni); err == nil && gi >= 0 && gi < len(m.snapshot.Groups) {
-			state.group = m.snapshot.Groups[gi].Name
-			if ni >= 0 && ni < len(m.snapshot.Groups[gi].All) {
-				state.node = m.snapshot.Groups[gi].All[ni]
+		} else if strings.HasPrefix(m.focus, "node.") || strings.HasPrefix(m.focus, "proxies.reference.") || strings.HasPrefix(m.focus, "proxies.delay.") {
+			if _, group, node, ok := m.proxyAtFocus(); ok {
+				state.group, state.node = group.Name, node
 			}
 		}
 	}
@@ -150,6 +148,11 @@ func (m Model) restoredContentFocus(state pageViewState) string {
 			}
 			for ni, node := range group.All {
 				if node == state.node {
+					if strings.HasPrefix(state.focus, "proxies.delay.") {
+						if _, supported := m.backend.(proxyDelayBackend); supported && m.proxyTestable(node) && m.proxiesReady() && !m.busy && !m.quitting {
+							return fmt.Sprintf("proxies.delay.%d.%d", gi, ni)
+						}
+					}
 					if strings.HasPrefix(state.focus, "proxies.reference.") {
 						if _, _, reference := m.proxyGroup(node); reference {
 							return fmt.Sprintf("proxies.reference.%d.%d", gi, ni)

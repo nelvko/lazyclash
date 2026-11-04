@@ -22,6 +22,7 @@ func TestProxiesPTYFixture(t *testing.T) {
 		t.Skip("explicit Proxies PTY report path required")
 	}
 	b := newProxiesPTYBackend()
+	b.varyDelays = os.Getenv("LAZYCLASH_PROXIES_PTY_RETEST") == "1"
 	language := os.Getenv("LAZYCLASH_PROXIES_PTY_LANGUAGE")
 	if language == "" {
 		language = "en"
@@ -37,7 +38,8 @@ func TestProxiesPTYFixture(t *testing.T) {
 		Canceled   int               `json:"canceled"`
 		MaxTests   int               `json:"max_tests"`
 		Selected   map[string]string `json:"selected"`
-	}{b.selections, b.modes, b.tests, b.canceled, b.maxTests, b.selectedLocked()})
+		Requests   map[string]int    `json:"requests,omitempty"`
+	}{b.selections, b.modes, b.tests, b.canceled, b.maxTests, b.selectedLocked(), b.delayRequests})
 	b.mu.Unlock()
 	if err != nil {
 		t.Fatal(err)
@@ -52,6 +54,8 @@ type proxiesPTYBackend struct {
 	mu                                              sync.Mutex
 	selections, modes, tests, canceled, activeTests int
 	maxTests                                        int
+	varyDelays                                      bool
+	delayRequests                                   map[string]int
 }
 
 func newProxiesPTYBackend() *proxiesPTYBackend {
@@ -163,6 +167,15 @@ func (b *proxiesPTYBackend) Runtime(ctx context.Context) (app.RuntimeSnapshot, e
 func (b *proxiesPTYBackend) TestProxyDelay(ctx context.Context, group, node string) (mihomo.ProxyDelay, error) {
 	b.mu.Lock()
 	b.tests++
+	attempt := 1
+	if b.varyDelays {
+		if b.delayRequests == nil {
+			b.delayRequests = make(map[string]int)
+		}
+		key := group + "/" + node
+		b.delayRequests[key]++
+		attempt = b.delayRequests[key]
+	}
 	b.activeTests++
 	if b.activeTests > b.maxTests {
 		b.maxTests = b.activeTests
@@ -190,6 +203,9 @@ func (b *proxiesPTYBackend) TestProxyDelay(ctx context.Context, group, node stri
 		state = "timeout"
 	} else if delay == 0 {
 		state = "failed"
+	}
+	if state == "success" {
+		delay += attempt - 1
 	}
 	return mihomo.ProxyDelay{State: state, Delay: delay, Time: time.Now(), URL: "https://www.gstatic.com/generate_204"}, nil
 }

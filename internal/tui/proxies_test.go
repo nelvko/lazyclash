@@ -463,11 +463,19 @@ func TestProxiesCardPaddingKeepsItsReferenceActionIndependent(t *testing.T) {
 			}
 			want := "node.0.0"
 			for _, hit := range card.targets {
-				if hit.ID != "proxies.reference.0.0" {
+				switch hit.ID {
+				case "node.0.0":
 					continue
-				}
-				if hit.Y != 2 || hit.X+hit.W != width-2 {
-					t.Fatalf("reference action lost its metadata row or right padding: %+v", hit)
+				case "proxies.reference.0.0":
+					if hit.Y != 2 || hit.X+hit.W != width-2 {
+						t.Fatalf("reference action lost its metadata row or right padding: %+v", hit)
+					}
+				case "proxies.delay.0.0":
+					if hit.Y != 1 || hit.H != 1 || hit.W != 12 || hit.X+hit.W != width-2 {
+						t.Fatalf("delay action lost its fixed name-row slot or right padding: %+v", hit)
+					}
+				default:
+					t.Fatalf("unexpected card action: %+v", hit)
 				}
 				if y == hit.Y && x >= hit.X && x < hit.X+hit.W {
 					want = hit.ID
@@ -478,8 +486,8 @@ func TestProxiesCardPaddingKeepsItsReferenceActionIndependent(t *testing.T) {
 			}
 		}
 	}
-	if !hasAction(card.targets, "proxies.reference.0.0") {
-		t.Fatal("reference card lost its independent entrance")
+	if !hasAction(card.targets, "proxies.reference.0.0") || !hasAction(card.targets, "proxies.delay.0.0") {
+		t.Fatal("reference card lost its independent entrance or delay action")
 	}
 	for _, scroll := range []int{0, 2} {
 		if got := proxyVisibleRange(m.locale, card.targets, scroll, 1); got != "1–1 / 1" {

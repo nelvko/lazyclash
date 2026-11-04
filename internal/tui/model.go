@@ -318,6 +318,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch v := msg.(type) {
 	case proxyDelayMsg:
 		cmd = m.acceptProxyDelay(v)
+	case proxyNodeDelayMsg:
+		cmd = m.acceptProxyNodeDelay(v)
 	case proxyTestStatusExpiredMsg:
 		if v.generation == m.proxies.generation && !m.proxies.testing {
 			m.proxies.testStatusVisible = false
@@ -947,7 +949,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	inline := m.syncInlineInstall()
 	notification := m.syncNotification()
 	m.reconcileProfiles()
-	m.syncProxies()
+	nextProxies := m.syncProxies()
 	m.reconcileProfileMenu()
 	var completion tea.Cmd
 	if m.pathForm() {
@@ -964,8 +966,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.layout()
 	intro := m.syncLogoIntro()
 	timers := m.syncNotificationTimers(time.Now())
-	if inline != nil || notification != nil || timers != nil || completion != nil || next != nil || nextRules != nil || nextLogs != nil || intro != nil {
-		return m, tea.Batch(cmd, inline, notification, timers, completion, next, nextRules, nextLogs, intro)
+	if inline != nil || notification != nil || timers != nil || completion != nil || next != nil || nextRules != nil || nextLogs != nil || intro != nil || nextProxies != nil {
+		return m, tea.Batch(cmd, inline, notification, timers, completion, next, nextRules, nextLogs, intro, nextProxies)
 	}
 	return m, cmd
 }

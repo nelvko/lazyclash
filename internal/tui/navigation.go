@@ -43,7 +43,7 @@ func (m Model) focusTargets() []hitRegion {
 	for _, target := range body {
 		target.X += g.x
 		target.Y += g.y
-		if listTarget(target.ID) || strings.HasPrefix(target.ID, "overview.card.") || target.ID == "logs.list" {
+		if listTarget(target.ID) || strings.HasPrefix(target.ID, "proxies.delay.") || strings.HasPrefix(target.ID, "overview.card.") || target.ID == "logs.list" {
 			list = append(list, target)
 		} else {
 			controls = append(controls, target)

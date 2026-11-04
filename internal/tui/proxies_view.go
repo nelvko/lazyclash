@@ -373,13 +373,16 @@ func (m Model) proxyDelayLabel(group, node string) (string, string) {
 	if !m.proxyTestable(node) {
 		return m.tr("proxies.not_applicable"), muted
 	}
+	if state := m.proxyNodeTestState(group, node); state != "" {
+		return m.tr("proxies." + state), accent
+	}
 	if m.proxies.testing {
-		key := proxyResultKey(group, node)
-		if m.proxies.inflight[key] {
+		key, path := proxyResultKey(group, node), m.proxyPathKey(node)
+		if m.proxies.inflight[key] && m.proxies.inflightPaths[key] == path {
 			return m.tr("proxies.testing"), accent
 		}
 		for _, target := range m.proxies.queue {
-			if target.group == group && target.node == node {
+			if target.group == group && target.node == node && target.path == path {
 				return m.tr("proxies.queued"), muted
 			}
 		}
@@ -405,15 +408,16 @@ func (m Model) proxyNode(gi, ni, width int) dashboardBlock {
 	node := g.All[ni]
 	id := fmt.Sprintf("node.%d.%d", gi, ni)
 	referenceID := fmt.Sprintf("proxies.reference.%d.%d", gi, ni)
+	delayID := fmt.Sprintf("proxies.delay.%d.%d", gi, ni)
 	selected := g.Now == node && g.Type != "LoadBalance" && g.Type != "Relay"
 	surface := panel
 	if selected {
 		surface = selectionBackground
-	} else if m.hover == id || m.hover == referenceID {
+	} else if m.hover == id || m.hover == referenceID || m.hover == delayID {
 		surface = hoverBackground
 	}
 	prefix := "  "
-	if m.focus == id {
+	if m.focus == id || m.focus == delayID {
 		prefix = "› "
 	}
 	rail := " "
@@ -430,10 +434,18 @@ func (m Model) proxyNode(gi, ni, width int) dashboardBlock {
 	}
 	rightPadding := min(2, max(0, width-4))
 	contentWidth := max(0, width-4-rightPadding)
-	valueWidth := min(ansi.StringWidth(value), contentWidth/2)
+	valueWidth := min(12, contentWidth/2)
 	nameWidth := max(0, contentWidth-valueWidth-1)
+	_, delaySupported := m.backend.(proxyDelayBackend)
+	delayEnabled := delaySupported && m.proxyTestable(node) && m.proxiesReady() && !m.busy && !m.quitting
+	value = cellCrop(value, valueWidth)
+	leftPadding := max(0, (valueWidth-ansi.StringWidth(value))/2)
+	if delayEnabled && (m.hover == delayID || m.focus == delayID) {
+		value = lipgloss.NewStyle().Underline(true).Render(value)
+	}
+	value = cellPad(strings.Repeat(" ", leftPadding)+value, valueWidth)
 	trailing := themed(strings.Repeat(" ", rightPadding), text, surface, false)
-	line := edge + themed(prefix, focus, surface, false) + themed(cellPad(clean(node), nameWidth), text, surface, false) + themed(" "+cellCrop(value, valueWidth), color, surface, false) + trailing
+	line := edge + themed(prefix, focus, surface, false) + themed(cellPad(clean(node), nameWidth), text, surface, false) + themed(" "+value, color, surface, false) + trailing
 	metaWidth := contentWidth
 	button, buttonWidth := "", 0
 	_, _, reference := m.proxyGroup(node)
@@ -444,22 +456,44 @@ func (m Model) proxyNode(gi, ni, width int) dashboardBlock {
 	}
 	meta := edge + themed("  "+cellPad(clean(m.proxyNodeMeta(node)), metaWidth), muted, surface, false)
 	padding := edge + themed(strings.Repeat(" ", max(0, width-2)), text, surface, false)
-	b := dashboardBlock{lines: []string{cellCrop(padding, width), themed(cellPad(line, width), text, surface, false)}, targets: []hitRegion{{ID: id, W: width, H: 3}}}
+	b := dashboardBlock{lines: []string{cellCrop(padding, width), themed(cellPad(line, width), text, surface, false)}}
+	var actions []hitRegion
+	if valueWidth > 0 {
+		actions = append(actions, hitRegion{ID: delayID, X: width - rightPadding - valueWidth, Y: 1, W: valueWidth, H: 1})
+	}
 	if reference && buttonWidth > 0 {
 		buttonX := width - rightPadding - buttonWidth
 		meta = cellPad(meta, buttonX) + cellCrop(button, buttonWidth) + trailing
-		b.targets[0].W = buttonX
-		b.targets = append(b.targets, hitRegion{ID: id, X: buttonX, W: width - buttonX, H: 2})
-		if rightPadding > 0 {
-			b.targets = append(b.targets, hitRegion{ID: id, X: width - rightPadding, Y: 2, W: rightPadding, H: 1})
-		}
-		if !m.busy && !m.quitting {
-			b.targets = append(b.targets, hitRegion{ID: referenceID, X: buttonX, Y: 2, W: buttonWidth, H: 1})
-		}
+		actions = append(actions, hitRegion{ID: referenceID, X: buttonX, Y: 2, W: buttonWidth, H: 1})
 	} else {
 		meta += trailing
 	}
 	b.lines = append(b.lines, themed(cellPad(meta, width), text, surface, false))
+	// Keep one full-height left region for navigation, then fill each row around
+	// its independent actions. Disabled delay slots remain inert.
+	leftWidth := width
+	for _, action := range actions {
+		leftWidth = min(leftWidth, action.X)
+	}
+	b.targets = append(b.targets, hitRegion{ID: id, W: leftWidth, H: len(b.lines)})
+	for y := range b.lines {
+		x := leftWidth
+		for _, action := range actions {
+			if action.Y != y {
+				continue
+			}
+			if action.X > x {
+				b.targets = append(b.targets, hitRegion{ID: id, X: x, Y: y, W: action.X - x, H: 1})
+			}
+			if action.ID == delayID && delayEnabled || action.ID == referenceID && !m.busy && !m.quitting {
+				b.targets = append(b.targets, action)
+			}
+			x = action.X + action.W
+		}
+		if x < width {
+			b.targets = append(b.targets, hitRegion{ID: id, X: x, Y: y, W: width - x, H: 1})
+		}
+	}
 	return b
 }
 
