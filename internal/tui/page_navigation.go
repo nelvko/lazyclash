@@ -118,6 +118,8 @@ func (m Model) contentTargets() []hitRegion {
 	case "settings":
 		_, targets := settingsContent(o, width)
 		return targets
+	case "rules":
+		return m.rulesTargets(width)
 	default:
 		_, targets := m.pageBody(width)
 		return targets

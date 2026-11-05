@@ -171,7 +171,7 @@ func (m *Model) syncNotificationTimers(now time.Time) tea.Cmd {
 	if !n.panel.open && !m.menu.open {
 		o := m.dashboardOptions()
 		o.Scroll = m.scroll
-		o.Body, o.BodyTargets = m.pageBody(dashboardGeometry(o).width)
+		m.populatePageBody(&o)
 		for _, overlay := range notificationLayout(o) {
 			for _, id := range overlay.IDs {
 				visible[id] = true

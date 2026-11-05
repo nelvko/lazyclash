@@ -55,6 +55,9 @@ type dashboardOptions struct {
 	// BodyTop stays above the scrolling body; its rows share the body width.
 	BodyTopRows int
 	BodyTop     dashboardBlock
+	// A windowed body supplies only these logical rows, while targets retain
+	// their positions in the complete body for clipping and keyboard navigation.
+	BodyStart, BodyTotal int
 }
 
 type dashboardLayout struct {
@@ -194,10 +197,16 @@ func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
 		bodyLines = nil
 	}
 	total := len(bodyLines)
+	if o.BodyTotal > 0 {
+		total = o.BodyTotal
+	}
 	scroll := max(0, min(o.Scroll, max(0, total-g.height)))
 	o.Scroll = scroll
 	for i := 0; i < g.height && scroll+i < total; i++ {
-		put(g.x, g.y+i, cellPad(bodyLines[scroll+i], g.width))
+		index := scroll + i - o.BodyStart
+		if index >= 0 && index < len(bodyLines) {
+			put(g.x, g.y+i, cellPad(bodyLines[index], g.width))
+		}
 	}
 	for _, r := range bodyTargets {
 		r.X += g.x

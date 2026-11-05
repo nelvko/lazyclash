@@ -105,6 +105,9 @@ func (m Model) filteredRules() []mihomo.Rule {
 	if !m.rules.received || m.rules.snapshot.State != "ready" {
 		return nil
 	}
+	if strings.TrimSpace(m.rules.search.Value()) == "" {
+		return m.rules.snapshot.Rules
+	}
 	match, err := m.ruleMatcher()
 	if err != nil {
 		return nil
@@ -169,24 +172,14 @@ func (m *Model) reconcileRules() {
 	}
 }
 func (m *Model) revealRule() {
-	g := dashboardGeometry(m.dashboardOptions())
-	_, hits := m.rulesBody(g.width)
-	height := max(1, g.height)
-	for _, r := range m.filteredRules() {
+	width := dashboardBodyWidth(m.dashboardOptions())
+	prefix := m.rulesListPrefix(width)
+	for index, r := range m.filteredRules() {
 		if ruleIdentity(r) != m.rules.selected {
 			continue
 		}
-		for _, hit := range hits {
-			if hit.ID == "rule."+strconv.Itoa(r.Index) {
-				if hit.Y < m.scroll {
-					m.scroll = hit.Y
-				}
-				if hit.Y+hit.H > m.scroll+height {
-					m.scroll = max(0, hit.Y+hit.H-height)
-				}
-				return
-			}
-		}
+		m.revealBodyTarget(hitRegion{Y: prefix + index*3, H: 2})
+		return
 	}
 }
 func (m *Model) focusRulesSearch() tea.Cmd {

@@ -155,7 +155,17 @@ func notificationLayout(o dashboardOptions) []notificationOverlay {
 func notificationInputs(o dashboardOptions, g dashboardLayout) []hitRegion {
 	var targets []hitRegion
 	total := len(strings.Split(o.Body, "\n"))
+	if o.BodyTotal > 0 {
+		total = o.BodyTotal
+	}
 	scroll := max(0, min(o.Scroll, max(0, total-g.height)))
+	for _, target := range o.BodyTop.targets {
+		if target.ID == "rules.search" {
+			target.X += g.x
+			target.Y += g.y - o.BodyTopRows
+			targets = append(targets, target)
+		}
+	}
 	for _, target := range o.BodyTargets {
 		switch target.ID {
 		case "profiles.url", "conn.search", "rules.search", "logs.search":

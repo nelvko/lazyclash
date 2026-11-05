@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -22,7 +23,15 @@ func TestRulesPTYFixture(t *testing.T) {
 	if report == "" {
 		t.Skip("explicit Rules PTY report path required")
 	}
-	b := newRulesPTYBackend()
+	count := 60
+	if value := os.Getenv("LAZYCLASH_RULES_PTY_COUNT"); value != "" {
+		var err error
+		count, err = strconv.Atoi(value)
+		if err != nil || count < 20 {
+			t.Fatal("LAZYCLASH_RULES_PTY_COUNT must be an integer of at least 20")
+		}
+	}
+	b := newRulesPTYBackend(count)
 	language := os.Getenv("LAZYCLASH_RULES_PTY_LANGUAGE")
 	if language == "" {
 		language = "en"
@@ -33,6 +42,7 @@ func TestRulesPTYFixture(t *testing.T) {
 	raw, err := json.Marshal(map[string]int64{
 		"queries": b.queries.Load(), "service_changes": b.controls.Load(),
 		"modes": b.modes.Load(), "selections": b.selections.Load(),
+		"rules": int64(len(b.entries)),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -48,7 +58,7 @@ type rulesPTYBackend struct {
 	queries, controls, modes, selections atomic.Int64
 }
 
-func newRulesPTYBackend() *rulesPTYBackend {
+func newRulesPTYBackend(count int) *rulesPTYBackend {
 	var entries []mihomo.Rule
 	add := func(kind, payload, proxy string, size int) {
 		entries = append(entries, mihomo.Rule{Index: len(entries), Type: kind, Payload: payload, Proxy: proxy, Size: size})
@@ -70,7 +80,8 @@ func newRulesPTYBackend() *rulesPTYBackend {
 	add("Domain", "casesensitive.example.invalid", "PROXY", -1)
 	add("DomainSuffix", strings.Repeat("long-中文/", 18)+"example.invalid", "Long target 中文策略组", -1)
 	entries[len(entries)-1].Extra = &mihomo.RuleExtra{Disabled: true, HitCount: 4, MissCount: 9}
-	for i := 0; i < 40; i++ {
+	padding := count - len(entries) - 1
+	for i := 0; i < padding; i++ {
 		add("DomainSuffix", fmt.Sprintf("rule-%02d.example.invalid", i), "默认代理", -1)
 	}
 	add("Match", "", "DIRECT", -1)

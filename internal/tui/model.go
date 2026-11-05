@@ -307,6 +307,9 @@ func (m *Model) cancelTask(quit bool) {
 	}
 }
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if mouse, ok := msg.(tea.MouseMsg); ok && m.updateRulesMouse(mouse) {
+		return m, nil
+	}
 	if motion, ok := msg.(tea.MouseMotionMsg); ok && m.updateProxyHover(motion) {
 		return m, nil
 	}
@@ -568,7 +571,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.paths.update(v)
 		}
 	case tea.MouseMsg:
+		previousScroll := m.scroll
 		cmd = m.mouse(v)
+		if _, wheel := v.(tea.MouseWheelMsg); wheel && m.page == "rules" && m.scroll != previousScroll {
+			g := dashboardGeometry(m.dashboardOptions())
+			m.scroll = min(m.scroll, max(0, m.total-g.height))
+			point := v.Mouse()
+			m.hover = m.rulesPointerTarget(point.X, point.Y)
+		}
 	case tea.PasteMsg:
 		// Bracketed paste is text input, never a global command. In particular a
 		// pasted q or digit cannot quit or navigate out of a form.
@@ -1284,7 +1294,7 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 	}
 	if _, wheel := event.(tea.MouseWheelMsg); wheel && len(m.notification.items) > 0 {
 		o := m.dashboardOptions()
-		o.Body, o.BodyTargets = m.pageBody(dashboardGeometry(o).width)
+		m.populatePageBody(&o)
 		o.Scroll = m.scroll
 		for _, toast := range notificationLayout(o) {
 			if k.X >= toast.Bounds.X && k.X < toast.Bounds.X+toast.Bounds.W && k.Y >= toast.Bounds.Y && k.Y < toast.Bounds.Y+toast.Bounds.H {
@@ -1414,6 +1424,20 @@ func (m Model) pageBody(width int) (string, []hitRegion) {
 	}
 	return "", nil
 }
+
+func (m Model) populatePageBody(o *dashboardOptions) {
+	g := dashboardGeometry(*o)
+	if m.page == "rules" {
+		if o.BodyTopRows > 0 {
+			o.BodyTop = m.rulesToolbar(g.width, o.BodyTopRows)
+		}
+		body := m.rulesBodyWindow(g.width, m.scroll, g.height)
+		o.Body, o.BodyTargets = strings.Join(body.lines, "\n"), body.targets
+		o.BodyStart, o.BodyTotal = body.start, body.total
+		return
+	}
+	o.Body, o.BodyTargets = m.pageBody(g.width)
+}
 func (m *Model) layout() {
 	m.repairPageFocus()
 	m.renderLayout()
@@ -1445,10 +1469,7 @@ func (m *Model) renderLayout() {
 	m.connections.search.SetWidth(max(1, g.width-2))
 	m.rules.search.SetWidth(m.ruleSearchWidth(g.width))
 	m.rules.search.SetCursor(m.rules.search.Position())
-	if o.BodyTopRows > 0 {
-		o.BodyTop = m.rulesToolbar(g.width, o.BodyTopRows)
-	}
-	o.Body, o.BodyTargets = m.pageBody(g.width)
+	m.populatePageBody(&o)
 	base, hits, total := renderDashboard(o)
 	if o.Dim {
 		base = themed(base, backdropText, sidebarBackground, true)

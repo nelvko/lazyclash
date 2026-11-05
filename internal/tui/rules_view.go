@@ -86,9 +86,32 @@ func (m Model) rulesToolbar(width, rows int) dashboardBlock {
 	return b
 }
 
+type ruleBodyWindow struct {
+	dashboardBlock
+	start, total, prefix int
+}
+
 func (m Model) rulesBody(width int) (string, []hitRegion) {
+	body := m.rulesBodyWindow(width, 0, -1)
+	return strings.Join(body.lines, "\n"), body.targets
+}
+
+func (m Model) rulesTargets(width int) []hitRegion {
+	return m.rulesBodyWindow(width, 0, 0).targets
+}
+
+func (m Model) rulesListPrefix(width int) int {
+	return m.rulesBodyWindow(width, 0, 0).prefix
+}
+
+// Geometry covers the complete list; only rows intersecting the requested
+// window are styled. A negative height requests the complete body for export.
+func (m Model) rulesBodyWindow(width, start, height int) ruleBodyWindow {
 	var lines []string
 	var hits []hitRegion
+	static := func() ruleBodyWindow {
+		return ruleBodyWindow{dashboardBlock: dashboardBlock{lines: lines, targets: hits}, total: len(lines), prefix: len(lines)}
+	}
 	addText := func(value, color string) {
 		lines = append(lines, strings.Split(wrapText(themed(clean(value), color, bg, false), max(1, width)), "\n")...)
 	}
@@ -133,7 +156,7 @@ func (m Model) rulesBody(width int) (string, []hitRegion) {
 			addText(fmt.Sprintf(m.tr("rules.hits"), r.Extra.HitCount, r.Extra.MissCount), text)
 		}
 		addText(m.tr("rules.description"), muted)
-		return strings.Join(lines, "\n"), hits
+		return static()
 	}
 	// Very short terminals fold the fixed toolbar into the scrollable body.
 	if m.dashboardOptions().BodyTopRows == 0 {
@@ -154,7 +177,7 @@ func (m Model) rulesBody(width int) (string, []hitRegion) {
 	list := m.filteredRules()
 	if _, err := m.ruleMatcher(); err != nil {
 		addText(m.tr("rules.invalid_regex"), errorColor)
-		return strings.Join(lines, "\n"), hits
+		return static()
 	}
 	if m.rules.received && m.rules.snapshot.State == "ready" && len(list) == 0 {
 		message := m.tr("rules.empty")
@@ -163,19 +186,44 @@ func (m Model) rulesBody(width int) (string, []hitRegion) {
 		}
 		addText(message, muted)
 	}
+	if len(list) == 0 {
+		return static()
+	}
+	prefix := len(lines)
+	total := prefix + len(list)*3 - 1
+	if height < 0 {
+		start, height = 0, total
+	} else {
+		start = max(0, min(start, max(0, total-height)))
+	}
+	end := min(total, start+height)
+	leading := lines
+	lines = nil
+	for i := max(0, start); i < min(prefix, end); i++ {
+		lines = append(lines, leading[i])
+	}
 	numberWidth := 1
 	for _, r := range m.rules.snapshot.Rules {
 		numberWidth = max(numberWidth, len(strconv.Itoa(r.Index+1)))
 	}
 	for index, r := range list {
-		row := len(lines)
-		lines = append(lines, m.ruleRows(r, width, numberWidth)...)
+		row := prefix + index*3
 		hits = append(hits, hitRegion{ID: "rule." + strconv.Itoa(r.Index), Y: row, W: width, H: 2})
-		if index < len(list)-1 {
+		if row >= end || row+3 <= start {
+			continue
+		}
+		if row+2 > start {
+			for offset, line := range m.ruleRows(r, width, numberWidth) {
+				if row+offset >= start && row+offset < end {
+					lines = append(lines, line)
+				}
+			}
+		}
+		if index < len(list)-1 && row+2 >= start && row+2 < end {
 			lines = append(lines, themed(strings.Repeat("─", max(0, width)), divider, bg, false))
 		}
 	}
-	return strings.Join(lines, "\n"), hits
+	return ruleBodyWindow{dashboardBlock: dashboardBlock{lines: lines, targets: hits}, start: start, total: total, prefix: prefix}
 }
 
 // Bubbles textinput owns editing and horizontal scrolling. The dashboard owns
