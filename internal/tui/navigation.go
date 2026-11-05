@@ -174,6 +174,8 @@ func (m Model) contextHelp() string {
 			return tr("navigation.logsFollow")
 		case "logs.retry":
 			return tr("navigation.logsReconnect")
+		case "logs.clear":
+			return tr("logs.clear_hint")
 		case "network":
 			return tr("navigation.network")
 		default:

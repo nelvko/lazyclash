@@ -3,13 +3,10 @@ package tui
 import (
 	"context"
 	"errors"
-	"fmt"
-	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/i18n"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
@@ -32,8 +29,12 @@ type logsState struct {
 	updates                <-chan logsResultMsg
 	err                    error
 	observedAt             time.Time
-	offset                 int // visible rows back from the newest entry
 	gap                    bool
+	level                  int // local display filter: all, info, warning, error
+	compact, holding       bool
+	first                  uint64 // identity of the oldest retained entry
+	anchor                 logPosition
+	unread                 int
 }
 
 type logsResultMsg struct {
@@ -138,6 +139,9 @@ func (m *Model) syncLogs() tea.Cmd {
 }
 
 func (m *Model) appendLogs(entries []mihomo.LogEntry) {
+	if m.logs.holding {
+		m.logs.unread = min(retainedLogLimit, m.logs.unread+len(entries))
+	}
 	for _, entry := range entries {
 		// The application owns secret redaction; sanitize terminal controls again
 		// at the display boundary. A faulty backend cannot grow the UI unbounded.
@@ -151,6 +155,7 @@ func (m *Model) appendLogs(entries []mihomo.LogEntry) {
 		m.logs.observedAt = entry.Time
 	}
 	if len(m.logs.entries) > retainedLogLimit {
+		m.logs.first += uint64(len(m.logs.entries) - retainedLogLimit)
 		copy(m.logs.entries, m.logs.entries[len(m.logs.entries)-retainedLogLimit:])
 		m.logs.entries = m.logs.entries[:retainedLogLimit]
 	}
@@ -161,9 +166,6 @@ func (m *Model) acceptLogs(msg logsResultMsg) tea.Cmd {
 		return nil
 	}
 	m.appendLogs(msg.entries)
-	if !m.logs.paused {
-		m.logs.offset = 0
-	}
 	if msg.done {
 		if m.logs.cancel != nil {
 			m.logs.cancel()
@@ -190,7 +192,7 @@ func (m *Model) resumeLogs() tea.Cmd {
 	if interrupted {
 		m.logs.gap = true
 	}
-	m.logs.offset, m.scroll = 0, 0
+	m.resetLogsView()
 	// A quiet core may emit no events, so reconnect also refreshes the shared
 	// service observation used by Overview and other pages.
 	return tea.Batch(m.syncLogs(), m.refreshCoreStatus())
@@ -211,11 +213,32 @@ func (m *Model) logsActivate(id string) tea.Cmd {
 	case "logs.retry":
 		return m.resumeLogs()
 	case "logs.search":
-		m.pauseLogs()
 		m.logs.editing, m.focus, m.scroll = true, "logs.search", 0
 		return m.logs.search.Focus()
+	case "logs.level":
+		m.logs.level = (m.logs.level + 1) % 4
+		m.resetLogsView()
+	case "logs.view":
+		m.logs.compact = !m.logs.compact
+	case "logs.clear":
+		m.logs.first += uint64(len(m.logs.entries))
+		m.logs.entries = nil
+		m.logs.observedAt = time.Time{}
+		m.resetLogsView()
+	case "logs.reset-search":
+		m.logs.search.Reset()
+		m.resetLogsView()
+	case "logs.latest":
+		m.resetLogsView()
+		if !m.logs.active {
+			return m.resumeLogs()
+		}
 	}
 	return nil
+}
+
+func (m *Model) resetLogsView() {
+	m.logs.holding, m.logs.unread, m.scroll = false, 0, 0
 }
 
 func (m *Model) logsSearchKey(k tea.KeyPressMsg) tea.Cmd {
@@ -224,11 +247,21 @@ func (m *Model) logsSearchKey(k tea.KeyPressMsg) tea.Cmd {
 		m.logs.editing = false
 		m.logs.search.Blur()
 		m.focus = "logs.list"
+		if k.String() == "tab" {
+			m.focus = "logs.search"
+			m.cycleFocus(1)
+		} else if k.String() == "shift+tab" {
+			m.focus = "logs.search"
+			m.cycleFocus(-1)
+		}
 		return nil
 	}
+	before := m.logs.search.Value()
 	var cmd tea.Cmd
 	m.logs.search, cmd = m.logs.search.Update(k)
-	m.scroll = 0
+	if before != m.logs.search.Value() {
+		m.resetLogsView()
+	}
 	return cmd
 }
 
@@ -240,133 +273,47 @@ func (m *Model) logsKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 		return true, m.logsActivate("logs.retry")
 	case "f":
 		return true, m.logsActivate("logs.follow")
+	case "l":
+		return true, m.logsActivate("logs.level")
+	case "v":
+		return true, m.logsActivate("logs.view")
+	case "ctrl+l":
+		return true, m.logsActivate("logs.clear")
 	case "space", " ":
 		if m.focus == "logs.list" {
 			return true, m.logsActivate("logs.follow")
 		}
-	case "up", "k", "pgup", "home":
-		m.pauseLogs()
+	case "up", "k", "pgup", "home", "down", "j", "pgdown":
+		delta := 1
+		if k.String() == "pgup" || k.String() == "pgdown" {
+			delta = max(1, m.logsCapacity(dashboardBodyWidth(m.dashboardOptions()))-1)
+		}
 		if k.String() == "home" {
-			m.logs.offset = maxLogScrollRows
-			return true, nil
+			delta = maxLogScrollRows
 		}
-		step := 1
-		if k.String() == "pgup" {
-			step = min(maxLogScrollRows, max(1, m.height/2))
+		if k.String() == "up" || k.String() == "k" || k.String() == "pgup" || k.String() == "home" {
+			delta = -delta
 		}
-		m.logs.offset = min(maxLogScrollRows, max(0, min(maxLogScrollRows, m.logs.offset))+step)
-		return true, nil
-	case "down", "j", "pgdown":
-		m.pauseLogs()
-		step := 1
-		if k.String() == "pgdown" {
-			step = min(maxLogScrollRows, max(1, m.height/2))
-		}
-		m.logs.offset = max(0, min(maxLogScrollRows, m.logs.offset)-step)
+		m.logsScroll(delta)
 		return true, nil
 	case "end":
-		return true, m.resumeLogs()
+		return true, m.logsActivate("logs.latest")
 	}
 	return false, nil
 }
 
-// logsScroll is used by the page's mouse wheel. Positive delta scrolls down.
+// Only explicit pause stops capture. Browsing pins an entry and its wrapped row,
+// so newly appended entries, eviction, resize and layout changes cannot pull the
+// reader to the tail. If the anchor expires, the oldest retained row is shown.
 func (m *Model) logsScroll(delta int) {
-	m.pauseLogs()
-	delta = max(-maxLogScrollRows, min(maxLogScrollRows, delta))
-	current := max(0, min(maxLogScrollRows, m.logs.offset))
-	m.logs.offset = max(0, min(maxLogScrollRows, current-delta))
-}
-
-func (m Model) logsBody(width int) (string, []hitRegion) {
-	var lines []string
-	var hits []hitRegion
-	add := func(value, color string) {
-		lines = append(lines, strings.Split(wrapText(themed(value, color, bg, false), max(1, width)), "\n")...)
+	width := dashboardBodyWidth(m.dashboardOptions())
+	doc := m.logDocument(width)
+	view := m.logViewport(doc, width, m.logsCapacity(width))
+	view.ScrollDown(max(0, min(maxLogScrollRows, delta)))
+	view.ScrollUp(max(0, min(maxLogScrollRows, -delta)))
+	m.logs.holding = true
+	if len(doc.positions) > 0 {
+		m.logs.anchor = doc.positions[min(view.YOffset(), len(doc.positions)-1)]
 	}
-	button := func(id, label string) {
-		options := dashboardButtonOptions(id, m.navigationOptions(), false, bg)
-		options.Disabled = m.busy
-		value := renderButton(label, options)
-		if !options.Disabled {
-			hits = append(hits, hitRegion{ID: id, Y: len(lines), W: min(width, ansi.StringWidth(value)), H: 1})
-		}
-		lines = append(lines, cellCrop(value, width))
-	}
-	add(m.tr("logs.title"), text)
-	status, color := m.tr("logs.ended"), muted
-	if m.logs.active {
-		status, color = m.tr("logs.capturing"), info
-		if len(m.logs.entries) == 0 {
-			status = m.tr("logs.waiting")
-		}
-	} else if m.logs.paused {
-		status = m.tr("logs.paused")
-	} else if !m.logs.ended {
-		status = m.tr("logs.opening")
-	}
-	add(status, color)
-	add(m.tr("logs.retention"), muted)
-	if !m.logs.observedAt.IsZero() {
-		add(m.tr("logs.observed", m.logs.observedAt.Local().Format("15:04:05")), muted)
-	}
-	if m.logs.editing {
-		add(m.tr("logs.search_edit"), info)
-		m.logs.search.Placeholder = m.tr("logs.placeholder")
-		m.logs.search.SetWidth(max(1, width-2))
-		lines = append(lines, cellCrop(m.logs.search.View(), width))
-		hits = append(hits, hitRegion{ID: "logs.search", Y: len(lines) - 1, W: width, H: 1})
-	} else {
-		button("logs.search", m.tr("logs.search", clean(m.logs.search.Value())))
-	}
-	if m.logs.err != nil {
-		add(m.tr("logs.unavailable", cellCrop(m.localizeError(m.logs.err), 4096)), errorColor)
-	}
-	lines = append(lines, "")
-	query := strings.ToLower(strings.TrimSpace(m.logs.search.Value()))
-	count := 0
-	var rows []string
-	for _, entry := range m.logs.entries {
-		message := entry.Message
-		if entry.Level == "gap" && entry.Message == logCaptureGap {
-			message = m.tr(logCaptureGap)
-		}
-		if query != "" && !strings.Contains(strings.ToLower(entry.Level+" "+message), query) {
-			continue
-		}
-		count++
-		levelColor := muted
-		switch strings.ToLower(entry.Level) {
-		case "error", "fatal", "panic":
-			levelColor = errorColor
-		case "warn", "warning", "gap":
-			levelColor = warning
-		case "info":
-			levelColor = info
-		}
-		timestamp := "--:--:--"
-		if !entry.Time.IsZero() {
-			timestamp = entry.Time.Local().Format("15:04:05")
-		}
-		prefix := themed(timestamp+" ", muted, bg, false) + themed(strings.ToUpper(entry.Level)+" ", levelColor, bg, false)
-		rows = append(rows, strings.Split(wrapText(prefix+themed(message, text, bg, false), max(1, width)), "\n")...)
-	}
-	if count == 0 {
-		message := m.tr("logs.empty")
-		if query != "" {
-			message = m.tr("logs.no_matches")
-		}
-		rows = append(rows, strings.Split(wrapText(themed(message, muted, bg, false), max(1, width)), "\n")...)
-	}
-	height := dashboardGeometry(m.dashboardOptions()).height
-	capacity := max(1, height-len(lines)-1)
-	tail := max(0, len(rows)-capacity)
-	start := max(0, min(tail, tail-max(0, m.logs.offset)))
-	end := min(len(rows), start+capacity)
-	hits = append(hits, hitRegion{ID: "logs.list", Y: len(lines), W: width, H: max(1, end-start)})
-	lines = append(lines, rows[start:end]...)
-	if len(rows) > capacity {
-		add(fmt.Sprintf(m.tr("logs.rows"), start+1, end, len(rows)), muted)
-	}
-	return strings.Join(lines, "\n"), hits
+	m.scroll = 0
 }

@@ -133,6 +133,9 @@ func (m Model) fixedContentTargets() []hitRegion {
 	}
 	g := dashboardGeometry(o)
 	b := m.rulesToolbar(g.width, o.BodyTopRows)
+	if m.page == "logs" {
+		b = m.logsToolbar(g.width, o.BodyTopRows)
+	}
 	for i := range b.targets {
 		b.targets[i].X += g.x
 		b.targets[i].Y += g.y - o.BodyTopRows

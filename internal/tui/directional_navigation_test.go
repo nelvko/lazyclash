@@ -122,7 +122,7 @@ func TestDirectionalNavigationContentBackPreservesPageState(t *testing.T) {
 		{"logs", func(*testing.T) Model {
 			m := logsModel()
 			m.width, m.height = 120, 32
-			m.logs.paused, m.logs.offset = true, 4
+			m.logs.paused, m.logs.anchor.row = true, 4
 			m.logs.search.SetValue("retained")
 			return m
 		}},
@@ -146,7 +146,7 @@ func TestDirectionalNavigationContentBackPreservesPageState(t *testing.T) {
 				if fixture.name == "proxies" && m.proxies.activeGroup != "PROXY" ||
 					fixture.name == "connections" && m.connections.search.Value() != "example" ||
 					fixture.name == "rules" && m.rules.search.Value() != "example" ||
-					fixture.name == "logs" && (m.logs.search.Value() != "retained" || !m.logs.paused || m.logs.offset != 4) {
+					fixture.name == "logs" && (m.logs.search.Value() != "retained" || !m.logs.paused || m.logs.anchor.row != 4) {
 					t.Fatal("directional navigation reset page-specific state")
 				}
 			})

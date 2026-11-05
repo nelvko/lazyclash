@@ -30,7 +30,7 @@ func TestLogsRetainBoundedEventsWithFixedControlsAndScrollableHistory(t *testing
 	}
 	for _, size := range [][2]int{{160, 45}, {120, 32}, {80, 24}, {60, 20}, {120, 18}} {
 		m.width, m.height = size[0], size[1]
-		m.logs.offset = 0
+		m.resetLogsView()
 		body, hits := m.logsBody(dashboardBodyWidth(dashboardOptions{Width: m.width, Height: m.height, Page: m.page}))
 		plain := ansi.Strip(body)
 		if !strings.Contains(plain, "event-299") || strings.Contains(plain, "event-100") {
@@ -44,14 +44,14 @@ func TestLogsRetainBoundedEventsWithFixedControlsAndScrollableHistory(t *testing
 	for n := 0; n < 64; n++ {
 		m.logsKey(special(tea.KeyHome))
 		m.logsKey(special(tea.KeyUp))
-		if m.logs.offset != maxLogScrollRows {
-			t.Fatal("repeated Home and Up overflowed the bounded history offset")
+		if m.logs.anchor.entry != m.logs.first || m.logs.anchor.row != 0 {
+			t.Fatal("repeated Home and Up escaped the bounded history")
 		}
 		m.logsBody(80)
 	}
 	body, _ := m.logsBody(80)
-	if !m.logs.paused || !strings.Contains(ansi.Strip(body), "event-100") {
-		t.Fatal("Home did not pause and expose the oldest retained rows")
+	if !m.logs.holding || m.logs.paused || !strings.Contains(ansi.Strip(body), "event-100") {
+		t.Fatal("Home did not freeze the viewport and expose the oldest retained rows")
 	}
 }
 
@@ -107,7 +107,7 @@ func TestLogsSearchDigitsAndPasteStayWithinInput(t *testing.T) {
 	for _, value := range []string{"q", "1", "2", "3", "4", "5", "6", "7"} {
 		m, _ = update(m, key(value))
 	}
-	if m.page != "logs" || m.quitting || m.logs.search.Value() != "q1234567" || !m.logs.paused {
+	if m.page != "logs" || m.quitting || m.logs.search.Value() != "q1234567" || m.logs.paused {
 		t.Fatal("search input was stolen by global commands")
 	}
 	m.logs.search.Reset()

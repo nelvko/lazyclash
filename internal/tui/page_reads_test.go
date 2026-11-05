@@ -171,7 +171,7 @@ func TestPageLogsDepartureKeepsPauseQueryAndHistory(t *testing.T) {
 	m := logsModel()
 	m.logs.entries = []mihomo.LogEntry{{Level: "info", Message: "retained"}}
 	m.logs.search.SetValue("retained")
-	m.logs.paused, m.logs.offset = true, 12
+	m.logs.paused, m.logs.anchor.row = true, 12
 	m.logs.active, m.logs.pending, m.logs.generation = true, true, 7
 	ctx, cancel := context.WithCancel(t.Context())
 	m.logs.cancel = cancel
@@ -181,7 +181,7 @@ func TestPageLogsDepartureKeepsPauseQueryAndHistory(t *testing.T) {
 	}
 	m.acceptLogs(logsResultMsg{generation: 7, entries: []mihomo.LogEntry{{Message: "late"}}})
 	m.page = "logs"
-	if m.syncLogs() != nil || !m.logs.paused || m.logs.offset != 12 || m.logs.search.Value() != "retained" || len(m.logs.entries) != 1 {
+	if m.syncLogs() != nil || !m.logs.paused || m.logs.anchor.row != 12 || m.logs.search.Value() != "retained" || len(m.logs.entries) != 1 {
 		t.Fatal("returning logs resumed a paused capture or lost retained state")
 	}
 }

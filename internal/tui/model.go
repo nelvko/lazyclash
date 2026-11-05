@@ -631,9 +631,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.rules.search, cmd = m.rules.search.Update(v)
 			m.reconcileRules()
 		} else if m.logs.editing {
-			m.pauseLogs()
 			m.logs.search, cmd = m.logs.search.Update(v)
-			m.scroll = 0
+			m.resetLogsView()
 		}
 	case tea.KeyPressMsg:
 		key := v.String()
@@ -1427,6 +1426,9 @@ func (m Model) pageBody(width int) (string, []hitRegion) {
 
 func (m Model) populatePageBody(o *dashboardOptions) {
 	g := dashboardGeometry(*o)
+	if m.page == "logs" && o.BodyTopRows > 0 {
+		o.BodyTop = m.logsToolbar(g.width, o.BodyTopRows)
+	}
 	if m.page == "rules" {
 		if o.BodyTopRows > 0 {
 			o.BodyTop = m.rulesToolbar(g.width, o.BodyTopRows)

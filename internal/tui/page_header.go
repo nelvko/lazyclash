@@ -81,7 +81,7 @@ func (m Model) pageHeader() pageHeader {
 		} else if m.logs.ended {
 			h.summary = tr("header.ended")
 		}
-		h.actions = []headerAction{{"logs.follow", follow, compact, true}, {"logs.retry", tr("header.reconnect"), "↻", true}}
+		h.actions = []headerAction{{"logs.clear", tr("logs.clear"), "×", true}, {"logs.follow", follow, compact, true}, {"logs.retry", tr("header.reconnect"), "↻", true}}
 	case "settings":
 		h.actions = []headerAction{{"network", tr("header.network"), tr("header.networkCompact"), true}}
 	}

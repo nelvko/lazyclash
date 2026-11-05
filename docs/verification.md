@@ -1,5 +1,24 @@
 # 验证入口
 
+## Logs 固定工具栏与连续采集阅读（2026-11-05）
+
+日志页参考 CFW、Clash Verge、lnav 和 K9s，采用固定搜索、全部/Info/Warn/Error 本地筛选与简洁/详细切换。默认详细布局将时间和级别置于首行，正文换行并用细线分隔；简洁布局每条一行。页头提供清空、暂停/恢复和重连，底部显示采集/阅读状态、期间收到的新事件数与回到最新入口。复用 Bubbles textinput 与 viewport，工具栏随窄屏折行。
+
+滚动只停止跟随，搜索和级别筛选继续使用同一采集请求；按日志身份与条目内行号锚定阅读位置，窗口缩放、视图切换或新事件不跳到其他记录，锚点被 200 条上限淘汰后显示最早保留记录。显式暂停才断开请求，恢复产生的采集间隙不被筛选隐藏。清空只清内存记录，不重连，也不修改筛选设置或内核日志级别。健康空闲、无匹配、暂停与连接失败分别显示。
+
+本次独立暂存源码（排除其他会话正在实现的页面改动）通过 `make check build`，含全部 Go 测试、vet 与产品构建（TUI 33.034 秒）；日志生命周期、采集间隙与页面离开等定向 race 通过（15.327 秒）。`./scripts/verify-linux.sh lazyclash-e2e` 在 Debian/arm64 VM 内执行全部可运行包测试通过，脚本正常清理本轮临时目录。八项 Python 终端解析回归通过；既有真实内核日志 PTY 流程同步移除已移至固定状态栏的重复标题断言。
+
+`scripts/logs-pty.py` 使用真实 controlling PTY 与内存实时事件完成中英文 × True Color、ANSI256、NO_COLOR 六组，每组覆盖 160×45、120×32、80×24、60×20、40×16 及恢复。验证长中文完整换行、简洁截断、级别筛选、大小写搜索、数字与 q 输入隔离、固定栏滚轮、持续流中的锚定、暂停/End 恢复与 Error 筛选下的间隙提示，以及清空不中断采集、主动重连。每组 `streams=3`、`canceled=3`，服务/模式/节点变更均为 `0`。模型测试另覆盖记录淘汰、5×2 极小尺寸恢复、详细锚点重排、Tab 顺序及迟到结果隔离。已目视检查中文宽窄屏和英文无色布局。
+
+证据位于忽略目录 `.test-artifacts/logs-redesign/`，包含 `staged-check-build.log`、`staged-race.log`、`staged-linux.log`、`python-tests.log` 及 `pty/20261105-213219-6ca703/`。PNG 按实际 PTY 字符格与颜色重绘；本轮没有连接真实 Mihomo、操作系统服务或重跑 Mihomo/systemd/TUN 生命周期 E2E。复验入口：
+
+```sh
+go test -c ./internal/tui -o bin/logs-tui.test
+python3 scripts/logs-pty.py --binary bin/logs-tui.test \
+  --output .test-artifacts/logs-redesign/pty \
+  --profile truecolor --profile 256 --profile no-color
+```
+
 ## Rules 双行列表与固定筛选栏（2026-11-05）
 
 规则列表参考 Clash Verge，改为独立对齐的序号、匹配条件主行、类型与目标次行及细分隔线，使用完整可用正文宽度。固定筛选栏复用 Bubbles textinput；窄窗口将选项拆至下一行，极短窗口回退到正文内。支持大小写、Unicode 整词、正则组合筛选及清空，摘要显示匹配数；原始匹配顺序、只读详情、空 MATCH 数据、禁用观察、异步取消和迟到结果隔离保留。

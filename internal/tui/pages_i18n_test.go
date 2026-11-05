@@ -50,6 +50,10 @@ func TestDataPagesLocalizeControlsAndKeepObservedValues(t *testing.T) {
 					m.width, m.height = size[0], size[1]
 					width := dashboardBodyWidth(dashboardOptions{Width: m.width, Height: m.height, Page: m.page})
 					body, _ := m.pageBody(width)
+					if m.page == "logs" {
+						bar := m.logsToolbar(width, 4)
+						body = strings.Join(bar.lines, "\n") + "\n" + body
+					}
 					plain := ansi.Strip(body)
 					if !strings.Contains(plain, item.title) || !strings.Contains(plain, item.value) {
 						t.Fatalf("%s/%s at %v lost translated title or original data:\n%s", language.code, m.page, size, plain)
@@ -101,7 +105,7 @@ func TestProfileUpdateFormattingAndInputsUseSelectedLanguage(t *testing.T) {
 	if got := newProfilesState(i18n.New(i18n.Chinese)).url.Placeholder; got != "粘贴订阅 URL 或本地路径" {
 		t.Fatalf("unexpected subscription placeholder: %s", got)
 	}
-	if got := newLogsState(i18n.New(i18n.Chinese)).search.Placeholder; got != "日志级别或脱敏后的内容" {
+	if got := newLogsState(i18n.New(i18n.Chinese)).search.Placeholder; got != "筛选日志级别或内容" {
 		t.Fatalf("unexpected log placeholder: %s", got)
 	}
 }

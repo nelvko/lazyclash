@@ -156,7 +156,7 @@ func TestSidebarWheelDoesNotPauseOrScrollLogs(t *testing.T) {
 	offset := m.sidebar.viewport.YOffset()
 	hit := visibleSidebarTargets(m.targets)[0]
 	m, _ = update(m, tea.MouseWheelMsg{X: 2, Y: hit.Y + 1, Button: tea.MouseWheelUp})
-	if m.sidebar.viewport.YOffset() >= offset || m.logs.paused || m.logs.offset != 0 {
+	if m.sidebar.viewport.YOffset() >= offset || m.logs.paused || m.logs.holding {
 		t.Fatal("sidebar wheel paused or scrolled the log stream")
 	}
 }

@@ -678,7 +678,6 @@ def main():
             terminal.wait("Search retained entries · Enter / Esc finish")
             terminal.key(b"123q7")
             terminal.wait("123q7")
-            terminal.wait("Mihomo logs")
             terminal.key(b"\x05\x15")
             terminal.key(b"\r")
             terminal.wait_absent("Search retained entries · Enter / Esc finish")
