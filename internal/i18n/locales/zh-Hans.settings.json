@@ -1,0 +1,19 @@
+{
+  "settings.interface": "界面偏好",
+  "settings.languageHint": "自动保存，下次启动继续使用。",
+  "settings.keyHintsHint": "显示底部快捷键提示栏 · Ctrl+T",
+  "settings.theme": "主题",
+  "settings.serviceGroup": "服务与启动",
+  "settings.service": "内核服务",
+  "settings.autostart": "自动启动",
+  "settings.afterInstall": "安装内核后可用",
+  "settings.network": "网络与路由",
+  "settings.ports": "本地端口 / 控制 API",
+  "settings.edit": "编辑 ›",
+  "settings.unsupported": "当前作用域不支持",
+  "settings.manage": "管理 / 更新 ›",
+  "settings.profiles": "配置文件",
+  "settings.import": "导入 ›",
+  "settings.importHint": "添加订阅链接或本地配置文件。",
+  "settings.remove": "卸载内核"
+}

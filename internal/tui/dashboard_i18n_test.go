@@ -54,7 +54,7 @@ func TestLanguageControlsUseNativeNamesAndDisplayCellHits(t *testing.T) {
 	for _, language := range []string{"en", "zh-Hans"} {
 		for _, width := range []int{20, 30, 56, 80} {
 			o := dashboardOptions{Locale: i18n.New(language)}
-			block := languageSettings(o, width)
+			block := settingsInterface(o, width)
 			assertCanvas(t, strings.Join(block.lines, "\n"), width, len(block.lines))
 			assertRegions(t, block.targets, width, len(block.lines))
 			for id, name := range map[string]string{"language.en": "English", "language.zh-Hans": "简体中文"} {
@@ -77,8 +77,10 @@ func TestLanguageControlsUseNativeNamesAndDisplayCellHits(t *testing.T) {
 				}
 			}
 			o.Busy = true
-			if len(languageSettings(o, width).targets) != 0 {
-				t.Fatal("language switching remains clickable during an operation")
+			for _, hit := range settingsInterface(o, width).targets {
+				if strings.HasPrefix(hit.ID, "language.") {
+					t.Fatal("language switching remains clickable during an operation")
+				}
 			}
 		}
 	}

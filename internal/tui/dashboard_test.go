@@ -511,6 +511,7 @@ func TestDashboardMouseCoordinatesFollowScrolling(t *testing.T) {
 
 func TestSettingsOnlyOffersAvailableActions(t *testing.T) {
 	o := dashboardOptions{Width: 120, Height: 40, Page: "settings"}
+	o.Header = (Model{page: "settings"}).pageHeader()
 	_, regions, _ := renderDashboard(o)
 	for _, id := range []string{"install", "network", "import"} {
 		if !hasAction(regions, id) {

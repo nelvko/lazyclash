@@ -1,0 +1,19 @@
+{
+  "settings.interface": "Interface preferences",
+  "settings.languageHint": "Saved for the next launch.",
+  "settings.keyHintsHint": "Show the bottom shortcut bar · Ctrl+T",
+  "settings.theme": "Theme",
+  "settings.serviceGroup": "Service and startup",
+  "settings.service": "Core service",
+  "settings.autostart": "Autostart",
+  "settings.afterInstall": "Available after installation",
+  "settings.network": "Network and routing",
+  "settings.ports": "Local ports / Control API",
+  "settings.edit": "Edit ›",
+  "settings.unsupported": "Unavailable in this scope",
+  "settings.manage": "Manage / Update ›",
+  "settings.profiles": "Profiles",
+  "settings.import": "Import ›",
+  "settings.importHint": "Add a subscription URL or local profile.",
+  "settings.remove": "Remove core"
+}
