@@ -1,5 +1,16 @@
 # 验证入口
 
+## Connections 表格与实时检查（2026-11-05）
+
+连接页参考 Clash Verge、CFW 和 FlClash，使用完整正文宽度，固定统计、搜索、暂停及排序栏。正文至少 100 列时复用 Bubbles table，较宽时增加进程、规则及累计流量列；窄屏回退到双行列表。支持六种稳定排序、实时双向速率、时长、代理链、详情，以及默认取消的单条关闭确认。暂停只冻结页面观测，实时监控继续运行；API 失效、内核身份改变或计数器回退会丢弃旧快照。详见 `docs/connections.md`。
+
+最终工作区 `make check build` 通过（TUI 34.310 秒），连接页、运行监控和详情返回相关 race 通过（29.346 秒），八项 Python 终端解析回归通过；独立导出的连接页源码也已验证，未依赖其他会话的未完成草稿。`./scripts/verify-linux.sh lazyclash-e2e` 在已有 Debian/arm64 VM 中实际运行全部可运行测试包通过；普通用户 uid 501、systemd 用户 manager running、Linger=yes。新增回归覆盖速率来源时间戳、首次/空闲采样、计数器与内核重置、快照隔离、关闭目标消失、排序身份、搜索 Tab、Home/End/翻页，以及详情期间插入连接后返回时自动揭示原选中项。
+
+真实 controlling PTY 使用隔离内存后端完成中英文 × True Color、ANSI256、NO_COLOR 六组，每组验证 200×45、160×45、120×32、80×24、60×20、40×16 并回到宽屏。覆盖目标/进程/代理链筛选、六种实际排序、暂停期间至少两次后台采样、固定工具栏滚动、第二行点击、IPv6 详情、无匹配恢复和准确关闭指定 ID。每组仅关闭 `pty-connection-00` 一次，剩余 47 条；服务、模式及节点修改均为 0。已目视检查英文 200×45、中文宽屏与 40×16、英文无色 80×24，最终列宽让常见 RuleSet 载荷及 Duration 表头完整显示。初次详情返回回归使用了仅两条连接却设置八行滚动的无效 fixture，现改为真实可滚动列表并保留原位置断言；另有回归覆盖数据插入后自动揭示原选中 ID。
+
+证据在忽略目录 `.test-artifacts/connections-redesign/`：`final-check.log`、`final-race.log`、`final-linux.log` 和 `final-pty/20261105-214757-7e226f/`。PNG 根据真实 PTY 字符格与颜色重绘；本轮未访问实际 Mihomo 或操作系统服务，也未重跑 Mihomo/systemd/TUN 生命周期 E2E。复验命令见 `docs/connections.md`。
+
+
 ## Logs 固定工具栏与连续采集阅读（2026-11-05）
 
 日志页参考 CFW、Clash Verge、lnav 和 K9s，采用固定搜索、全部/Info/Warn/Error 本地筛选与简洁/详细切换。默认详细布局将时间和级别置于首行，正文换行并用细线分隔；简洁布局每条一行。页头提供清空、暂停/恢复和重连，底部显示采集/阅读状态、期间收到的新事件数与回到最新入口。复用 Bubbles textinput 与 viewport，工具栏随窄屏折行。

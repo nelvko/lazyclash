@@ -4,13 +4,11 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"sort"
 	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
 
@@ -21,27 +19,66 @@ type connectionsState struct {
 	selectedIndex, detailScroll int
 	detail                      *mihomo.Connection
 	confirming                  bool
+	sort                        connectionSort
+	rates                       connectionRatesState
+	paused                      bool
+	frozen                      *mihomo.ConnectionSnapshot
+	frozenRates                 connectionRatesState
+	frozenAt                    time.Time
+	frozenPID                   int
+	frozenVersion               string
+}
+
+func (m *Model) observeConnections(at time.Time) {
+	snapshot := m.runtime.snapshot
+	if m.connections.paused {
+		stale := snapshot.State != "ready" || snapshot.Connections == nil || m.connections.frozenPID != snapshot.Service.PID || m.connections.frozenVersion != snapshot.RunningVersion
+		if !stale && m.connections.frozen != nil {
+			stale = snapshot.Connections.UploadTotal < max(m.connections.frozen.UploadTotal, m.connections.rates.uploadTotal) || snapshot.Connections.DownloadTotal < max(m.connections.frozen.DownloadTotal, m.connections.rates.downloadTotal)
+		}
+		if stale {
+			m.connections.paused, m.connections.frozen = false, nil
+			m.connections.frozenRates = connectionRatesState{}
+		}
+	}
+	m.connections.rates.observe(snapshot, at)
+	m.reconcileConnections()
+}
+
+// Pause freezes this page's observation; runtime monitoring and exact-ID close
+// checks continue to use the live core snapshot.
+func (m Model) connectionSnapshot() *mihomo.ConnectionSnapshot {
+	if !m.runtime.received || m.runtime.snapshot.State != "ready" || m.runtime.snapshot.Connections == nil {
+		return nil
+	}
+	if m.connections.paused {
+		return m.connections.frozen
+	}
+	return m.runtime.snapshot.Connections
+}
+
+func (m Model) displayedConnectionRates() connectionRatesState {
+	if m.connections.paused {
+		return m.connections.frozenRates
+	}
+	return m.connections.rates
 }
 
 func (m Model) filteredConnections() []mihomo.Connection {
 	var out []mihomo.Connection
-	if !m.runtime.received || m.runtime.snapshot.State != "ready" || m.runtime.snapshot.Connections == nil {
+	snapshot := m.connectionSnapshot()
+	if snapshot == nil {
 		return out
 	}
 	query := strings.ToLower(strings.TrimSpace(m.connections.search.Value()))
-	for _, c := range m.runtime.snapshot.Connections.Connections {
+	for _, c := range snapshot.Connections {
 		md := c.Metadata
 		haystack := strings.Join([]string{c.ID, md.Host, md.SourceIP, md.SourcePort, md.DestinationIP, md.DestinationPort, md.Network, md.Type, md.Process, md.ProcessPath, c.Rule, c.RulePayload, strings.Join(c.Chains, " ")}, " ")
 		if query == "" || strings.Contains(strings.ToLower(haystack), query) {
 			out = append(out, c)
 		}
 	}
-	sort.Slice(out, func(i, j int) bool {
-		if out[i].Start.Equal(out[j].Start) {
-			return out[i].ID < out[j].ID
-		}
-		return out[i].Start.After(out[j].Start)
-	})
+	sortConnections(out, m.connections.sort, m.displayedConnectionRates())
 	return out
 }
 func (m *Model) reconcileConnections() {
@@ -106,10 +143,20 @@ func (m *Model) connectionSearchKey(k tea.KeyPressMsg) tea.Cmd {
 		m.connections.editing = false
 		m.connections.search.Blur()
 		m.reconcileConnections()
+		if k.String() == "tab" || k.String() == "shift+tab" {
+			m.focus = "conn.search"
+			direction := 1
+			if k.String() == "shift+tab" {
+				direction = -1
+			}
+			m.cycleFocus(direction)
+			return nil
+		}
 		m.focus = "connection." + m.connections.selected
 		if m.connections.selected == "" {
 			m.focus = "conn.search"
 		}
+		m.revealConnection(0)
 		return nil
 	}
 	var cmd tea.Cmd
@@ -139,6 +186,15 @@ func (m *Model) connectionKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 		return true, nil
 	}
 	switch key {
+	case "p", "s":
+		if m.connections.detail == nil {
+			id := "conn.pause"
+			if key == "s" {
+				id = "conn.sort"
+			}
+			return true, m.connectionActivate(id)
+		}
+		return true, nil
 	case "/":
 		return true, m.focusConnectionSearch()
 	case "x":
@@ -152,9 +208,10 @@ func (m *Model) connectionKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 			m.scroll = m.connections.detailScroll
 			m.focus = "connection." + m.connections.selected
 			m.reconcileConnections()
+			m.revealConnection(0)
 			return true, nil
 		}
-	case "down", "j", "up", "k":
+	case "down", "j", "up", "k", "home", "end", "pgup", "pgdown":
 		if m.connections.detail == nil {
 			list := m.filteredConnections()
 			if len(list) == 0 {
@@ -168,8 +225,22 @@ func (m *Model) connectionKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 				}
 			}
 			delta := 1
-			if key == "up" || key == "k" {
+			g := dashboardGeometry(m.dashboardOptions())
+			page := max(1, g.height)
+			if g.width < 100 {
+				page = max(1, page/2)
+			}
+			switch key {
+			case "up", "k":
 				delta = -1
+			case "pgup":
+				delta = -page
+			case "pgdown":
+				delta = page
+			case "home":
+				delta = -len(list)
+			case "end":
+				delta = len(list)
 			}
 			index = max(0, min(len(list)-1, index+delta))
 			m.connections.selectedIndex = index
@@ -224,6 +295,34 @@ func (m *Model) connectionActivate(id string) tea.Cmd {
 		m.openSelectedConnection()
 	case id == "conn.search":
 		return m.focusConnectionSearch()
+	case id == "conn.clear":
+		m.connections.search.Reset()
+		m.scroll = 0
+		m.reconcileConnections()
+		return m.focusConnectionSearch()
+	case id == "conn.sort":
+		m.connections.sort = (m.connections.sort + 1) % connectionSortCount
+		m.reconcileConnections()
+		m.revealConnection(0)
+	case id == "conn.pause":
+		if m.connections.paused {
+			m.connections.paused, m.connections.frozen = false, nil
+			m.connections.frozenRates = connectionRatesState{}
+		} else if snapshot := m.connectionSnapshot(); snapshot != nil {
+			copy := *snapshot
+			copy.Connections = append([]mihomo.Connection(nil), snapshot.Connections...)
+			for i := range copy.Connections {
+				copy.Connections[i].Chains = append([]string(nil), copy.Connections[i].Chains...)
+			}
+			m.connections.frozen = &copy
+			m.connections.frozenRates = m.connections.rates
+			m.connections.frozenAt = m.connectionNow()
+			m.connections.frozenPID = m.runtime.snapshot.Service.PID
+			m.connections.frozenVersion = m.runtime.snapshot.RunningVersion
+			m.connections.paused = true
+		}
+		m.reconcileConnections()
+		m.revealConnection(0)
 	case id == "conn.retry":
 		return m.retryRuntime()
 	case id == "conn.back":
@@ -232,6 +331,7 @@ func (m *Model) connectionActivate(id string) tea.Cmd {
 		m.scroll = m.connections.detailScroll
 		m.focus = "connection." + m.connections.selected
 		m.reconcileConnections()
+		m.revealConnection(0)
 	case id == "conn.close":
 		if m.detailActive() {
 			m.connections.confirming = true
@@ -259,109 +359,6 @@ func (m *Model) connectionActivate(id string) tea.Cmd {
 		return m.begin(m.tr("connections.closing"), m.tr("connections.close_requested"), func(ctx context.Context) error { return m.backend.CloseConnection(ctx, id) }, notificationOperation{Key: notificationKey("connection.close", id), Context: m.tr("connections.closing") + " · " + id})
 	}
 	return nil
-}
-func (m Model) connectionsBody(width int) (string, []hitRegion) {
-	var lines []string
-	var hits []hitRegion
-	addText := func(s string, color string) {
-		lines = append(lines, strings.Split(wrapText(themed(clean(s), color, bg, false), max(1, width)), "\n")...)
-	}
-	addButton := func(id, label string) {
-		options := dashboardButtonOptions(id, m.navigationOptions(), false, bg)
-		options.Disabled = m.busy
-		if id == "conn.close" {
-			options.Kind = buttonDanger
-		} else if id == "conn.confirm" {
-			options.Kind = buttonDangerConfirm
-		}
-		s := renderButton(label, options)
-		if !options.Disabled {
-			hits = append(hits, hitRegion{ID: id, Y: len(lines), W: min(width, ansi.StringWidth(s)), H: 1})
-		}
-		lines = append(lines, cellCrop(s, width))
-	}
-	if c := m.connections.detail; c != nil {
-		addText(m.tr("connections.details"), text)
-		if m.detailActive() {
-			addText(m.tr("connections.active"), text)
-		} else {
-			addText(m.tr("connections.inactive_detail"), warning)
-		}
-		lines = append(lines, "")
-		if m.connections.confirming {
-			addText(m.tr("connections.confirm_title"), warning)
-			addText(m.tr("connections.confirm_hint"), muted)
-			addButton("conn.cancel", m.tr("connections.cancel"))
-			addButton("conn.confirm", m.tr("connections.close"))
-		} else {
-			addButton("conn.back", m.tr("connections.back"))
-			if m.detailActive() {
-				addButton("conn.close", m.tr("connections.close_shortcut"))
-			}
-		}
-
-		md := c.Metadata
-		fields := [][2]string{{m.tr("connections.id"), c.ID}, {m.tr("connections.destination"), connectionDestination(*c)}, {m.tr("connections.resolved_ip"), md.DestinationIP}, {m.tr("connections.source"), joinAddress(md.SourceIP, md.SourcePort)}, {m.tr("connections.network_inbound"), md.Network + " / " + md.Type}, {m.tr("connections.process"), md.Process}, {m.tr("connections.process_path"), md.ProcessPath}, {m.tr("connections.rule"), c.Rule + " " + c.RulePayload}, {m.tr("connections.chain"), strings.Join(c.Chains, " → ")}, {m.tr("connections.started"), c.Start.Local().Format(time.RFC3339)}, {m.tr("connections.transfer"), formatBytes(c.Upload) + " / " + formatBytes(c.Download)}}
-		for _, f := range fields {
-			value := strings.TrimSpace(f[1])
-			if value == "" {
-				value = "--"
-			}
-			addText(f[0]+": "+value, text)
-		}
-		return strings.Join(lines, "\n"), hits
-	}
-	addText(m.tr("connections.title"), text)
-	status := runtimeStatus(m.runtime.snapshot, m.runtime.received, m.runtime.pending, m.snapshot.Installed, m.locale)
-	addText(status, muted)
-	if m.connections.editing {
-		m.connections.search.Placeholder = m.tr("connections.search_placeholder")
-		m.connections.search.SetWidth(max(1, width-2))
-		addText(m.tr("connections.search_edit"), accent)
-		hits = append(hits, hitRegion{ID: "conn.search", Y: len(lines), W: width, H: 1})
-		lines = append(lines, cellCrop(m.connections.search.View(), width))
-	} else {
-		addButton("conn.search", m.tr("connections.search", clean(m.connections.search.Value())))
-	}
-	addText(m.tr("connections.shortcuts"), muted)
-	lines = append(lines, "")
-	if err := m.runtime.snapshot.Error; err != "" {
-		addText(m.locale.Diagnostic(err, m.runtime.snapshot.Diagnostic), errorColor)
-	}
-	if err := m.runtime.snapshot.ConnectionsError; err != "" {
-		addText(m.locale.Diagnostic(err, m.runtime.snapshot.ConnectionsDiagnostic), errorColor)
-	}
-	list := m.filteredConnections()
-	if len(list) == 0 {
-		empty := m.tr("connections.empty")
-		if m.connections.search.Value() != "" {
-			empty = m.tr("connections.no_matches")
-		}
-		if m.runtime.snapshot.Connections == nil {
-			empty = m.tr("connections.unavailable_hint")
-		}
-		addText(empty, muted)
-	}
-	for _, c := range list {
-		prefix := "  "
-		if c.ID == m.connections.selected {
-			prefix = "› "
-		}
-		row := len(lines)
-		foreground := text
-		if m.focus == "connection."+c.ID {
-			foreground = focus
-		}
-		// Each item is exactly two clipped rows; detailed long values remain available in Details.
-		lines = append(lines, themed(cellCrop(prefix+connectionDestination(c)+" · "+clean(c.Metadata.Network), width), foreground, bg, false))
-		process := c.Metadata.Process
-		if process == "" {
-			process = "--"
-		}
-		lines = append(lines, themed(cellCrop("  "+clean(process)+" · ↑ "+formatBytes(c.Upload)+" ↓ "+formatBytes(c.Download)+" · "+clean(c.Rule), width), muted, bg, false))
-		hits = append(hits, hitRegion{ID: "connection." + c.ID, Y: row, W: width, H: 2})
-	}
-	return strings.Join(lines, "\n"), hits
 }
 func connectionDestination(c mihomo.Connection) string {
 	host := c.Metadata.Host

@@ -114,8 +114,8 @@ func (m *Model) acceptRuntime(v runtimeResultMsg) tea.Cmd {
 				m.snapshot.HasRun = true
 			}
 		}
-		m.reconcileConnections()
 	}
+	m.observeConnections(time.Now())
 	id := m.runtime.generation
 	tick := tea.Tick(time.Second, func(time.Time) tea.Msg { return runtimeTickMsg{generation: id} })
 	if v.err == nil && m.statusCancel == nil && (previousState != v.snapshot.State || previousService.State != m.snapshot.Service.State || previousService.PID != m.snapshot.Service.PID || previousService.Enabled != m.snapshot.Service.Enabled) {

@@ -1258,6 +1258,7 @@ func (m *Model) cycleFocus(delta int) {
 	}
 	if strings.HasPrefix(m.focus, "connection.") {
 		m.connections.selected = strings.TrimPrefix(m.focus, "connection.")
+		m.reconcileConnections()
 	}
 	if m.focus != "menu" && !strings.HasPrefix(m.focus, "nav.") {
 		for _, target := range m.contentTargets() {
@@ -1472,10 +1473,14 @@ func (m *Model) renderLayout() {
 	o.Header = m.pageHeader()
 	m.proxies.search.SetWidth(m.proxySearchWidth(g.width))
 	m.proxies.search.SetCursor(m.proxies.search.Position())
-	m.connections.search.SetWidth(max(1, g.width-2))
+	m.connections.search.SetWidth(m.connectionSearchWidth(g.width))
+	m.connections.search.SetCursor(m.connections.search.Position())
 	m.rules.search.SetWidth(m.ruleSearchWidth(g.width))
 	m.rules.search.SetCursor(m.rules.search.Position())
 	m.populatePageBody(&o)
+	if m.page == "connections" && o.BodyTopRows > 0 {
+		o.BodyTop = m.connectionsToolbar(g.width, o.BodyTopRows)
+	}
 	base, hits, total := renderDashboard(o)
 	if o.Dim {
 		base = themed(base, backdropText, sidebarBackground, true)

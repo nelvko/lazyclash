@@ -133,6 +133,9 @@ func (m Model) fixedContentTargets() []hitRegion {
 	}
 	g := dashboardGeometry(o)
 	b := m.rulesToolbar(g.width, o.BodyTopRows)
+	if m.page == "connections" {
+		b = m.connectionsToolbar(g.width, o.BodyTopRows)
+	}
 	if m.page == "logs" {
 		b = m.logsToolbar(g.width, o.BodyTopRows)
 	}

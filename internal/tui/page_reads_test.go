@@ -128,13 +128,19 @@ func TestPageRuleReorderingKeepsKeyboardFocusVisible(t *testing.T) {
 func TestPageDetailsReturnToRememberedListScroll(t *testing.T) {
 	t.Run("connections", func(t *testing.T) {
 		m := connectionsModel(t, &fakeBackend{})
+		// Use a scrollable list whose selected row is actually visible at the
+		// remembered offset; the two-row fixture cannot have a scroll of eight.
+		m.runtime.snapshot.Connections.Connections = nil
+		for index := range 30 {
+			m.runtime.snapshot.Connections.Connections = append(m.runtime.snapshot.Connections.Connections, fixtureConnection(fmt.Sprintf("connection-%02d", index), "example.invalid", 30-index))
+		}
 		m.scroll = 8
-		m.connectionActivate("connection.first")
+		m.connectionActivate("connection.connection-08")
 		if m.connections.detail == nil || m.scroll != 0 {
 			t.Fatal("connection details did not open")
 		}
 		m.connectionActivate("conn.back")
-		if m.scroll != 8 || m.focus != "connection.first" || m.connections.detail != nil {
+		if m.scroll != 8 || m.focus != "connection.connection-08" || m.connections.detail != nil {
 			t.Fatal("returning from connection details lost the list position")
 		}
 	})

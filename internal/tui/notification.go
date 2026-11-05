@@ -326,6 +326,13 @@ func (m Model) dashboardOptions() dashboardOptions {
 			}
 		}
 	}
+	if m.page == "connections" && m.connections.detail == nil {
+		g := dashboardGeometry(o)
+		rows := m.connectionToolbarRows(g.width)
+		if g.height >= rows+2 {
+			o.BodyTopRows = rows
+		}
+	}
 	return o
 }
 

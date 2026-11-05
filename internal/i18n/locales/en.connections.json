@@ -1,0 +1,19 @@
+{
+  "connections.pause": "Pause",
+  "connections.resume": "Resume",
+  "connections.paused": "Paused · viewing a snapshot",
+  "connections.sort": "Sort: %s",
+  "connections.sort_newest": "Newest",
+  "connections.sort_download_rate": "Download speed",
+  "connections.sort_upload_rate": "Upload speed",
+  "connections.sort_download_total": "Download total",
+  "connections.sort_upload_total": "Upload total",
+  "connections.sort_duration": "Duration",
+  "connections.count": "%d / %d active",
+  "connections.protocol": "Type",
+  "connections.download_speed": "↓ Speed",
+  "connections.upload_speed": "↑ Speed",
+  "connections.download_total": "↓ Total",
+  "connections.upload_total": "↑ Total",
+  "connections.duration": "Duration"
+}

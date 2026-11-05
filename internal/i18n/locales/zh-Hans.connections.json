@@ -1,0 +1,19 @@
+{
+  "connections.pause": "暂停",
+  "connections.resume": "继续",
+  "connections.paused": "已暂停 · 查看定格快照",
+  "connections.sort": "排序：%s",
+  "connections.sort_newest": "最新",
+  "connections.sort_download_rate": "下载速度",
+  "connections.sort_upload_rate": "上传速度",
+  "connections.sort_download_total": "下载总量",
+  "connections.sort_upload_total": "上传总量",
+  "connections.sort_duration": "时长",
+  "connections.count": "%d / %d 条活动连接",
+  "connections.protocol": "协议",
+  "connections.download_speed": "↓ 速度",
+  "connections.upload_speed": "↑ 速度",
+  "connections.download_total": "↓ 总量",
+  "connections.upload_total": "↑ 总量",
+  "connections.duration": "时长"
+}
