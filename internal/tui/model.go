@@ -1383,6 +1383,10 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 					if handled, cmd := m.profileCardClick(r.ID); handled {
 						return cmd
 					}
+					if m.page == "rules" && strings.HasPrefix(r.ID, "rule.") {
+						m.selectRule(r.ID)
+						return nil
+					}
 					return m.activate(r.ID)
 				}
 			}

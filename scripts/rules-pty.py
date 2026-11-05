@@ -93,13 +93,20 @@ def exercise(preview, binary, output, language, profile, args):
         first_y = position(terminal, "private_ip")[1]
         assert "RuleSet" in rows[first_y + 1] and "全球直连" in rows[first_y + 1], "rule metadata is not on its second row"
 
-        # Clicking either row must open the same rule rather than its neighbor.
-        x, y = position(terminal, "jumpdesktop.com")
-        click_cell(terminal, x, y + 1)
+        # Both rows select their exact rule and keep the list open. Use
+        # different rules so the metadata click must actually change focus.
+        for payload, offset in (("qichiyu.com", 0), ("jumpdesktop.com", 1)):
+            x, y = position(terminal, payload)
+            click_cell(terminal, x, y + offset)
+            screen = terminal.screen.text()
+            assert words["rules.details"] not in screen and "private_ip" in screen, "rule click left the list"
+            assert any(payload in row and re.search(r"[›▌]", row) for row in screen.splitlines()), "rule click did not select its exact row"
+        preview.capture(terminal, output, "row-clicks-select", args)
+        terminal.key(b"\r")
         terminal.wait(words["rules.details"])
         terminal.wait("jumpdesktop.com")
         terminal.wait("Jump Desktop")
-        preview.capture(terminal, output, "metadata-click-details", args)
+        preview.capture(terminal, output, "selected-enter-details", args)
         terminal.key(b"\x1b")
         terminal.wait("private_ip")
 
@@ -198,7 +205,7 @@ def exercise(preview, binary, output, language, profile, args):
         if profile == "no-color":
             assert not any(value not in (b"", b"0") for value in preview.SGR.findall(raw)), "NO_COLOR emitted styling"
         (output / "pty.raw").write_bytes(raw)
-        print("PASS %s/%s: two-row clicks, search options/invalid regex, details, fixed toolbar and five resize dimensions; %s" %
+        print("PASS %s/%s: row clicks select, Enter details, search options/invalid regex, fixed toolbar and five resize dimensions; %s" %
             (language, profile, json.dumps(calls)), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")

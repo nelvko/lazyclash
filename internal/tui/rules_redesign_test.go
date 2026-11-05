@@ -141,7 +141,7 @@ func TestRulesFixedToolbarRetainsScrollDuringTabNavigation(t *testing.T) {
 	}
 }
 
-func TestRulesBothRowLinesOpenTheSameRule(t *testing.T) {
+func TestRulesBothRowLinesSelectWithoutOpeningDetails(t *testing.T) {
 	for _, row := range []int{0, 1} {
 		t.Run(fmt.Sprint(row), func(t *testing.T) {
 			m := rulesModel(t, &fakeBackend{})
@@ -150,8 +150,12 @@ func TestRulesBothRowLinesOpenTheSameRule(t *testing.T) {
 				t.Fatalf("rule should occupy two interactive lines: %+v", target)
 			}
 			m, _ = update(m, tea.MouseClickMsg{X: target.X + target.W/2, Y: target.Y + row, Button: tea.MouseLeft})
+			if m.rules.detail != nil || m.focus != "rule.1" || m.rules.selected != ruleIdentity(sampleRules()[1]) || !hasAction(m.targets, "rules.search") {
+				t.Fatal("rule click did not keep the selected rule in the list")
+			}
+			m, _ = update(m, special(tea.KeyEnter))
 			if m.rules.detail == nil || m.rules.detail.Index != 1 || hasAction(m.targets, "rules.search") {
-				t.Fatal("rule line did not open its details without the list toolbar")
+				t.Fatal("Enter did not inspect the selected rule")
 			}
 			m, _ = update(m, special(tea.KeyEscape))
 			if m.rules.detail != nil || m.focus != "rule.1" || !hasAction(m.targets, "rules.search") {
@@ -173,8 +177,36 @@ func TestRulesDisabledAndMatchRowsRetainMeaning(t *testing.T) {
 		t.Fatal("list presentation changed the raw MATCH payload")
 	}
 	m, _ = click(m, findTarget(t, m, "rule.2"))
+	m, _ = update(m, special(tea.KeyEnter))
 	if !strings.Contains(ansi.Strip(m.screen), m.tr("rules.payload", m.tr("rules.empty_payload"))) {
 		t.Fatal("details did not preserve empty MATCH payload")
+	}
+}
+
+func TestRulesClickPreservesFilterAndScrolledPosition(t *testing.T) {
+	m := rulesMouseModel(t, 670, 160, 45)
+	m.rules.search.SetValue("中文规则")
+	m.rules.regex = true
+	m.rules.editing = true
+	m.rules.search.Focus()
+	m.scroll = 30
+	m.renderLayout()
+	scroll, generation := m.scroll, m.rules.generation
+	target := findTarget(t, m, "rule.15")
+	m, _ = update(m, tea.MouseClickMsg{X: target.X + target.W - 1, Y: target.Y + 1, Button: tea.MouseLeft})
+	if m.rules.detail != nil || m.focus != "rule.15" || m.rules.selectedIndex != 15 || m.scroll != scroll || m.rules.editing || m.rules.search.Focused() {
+		t.Fatal("click did not select in place and finish editing")
+	}
+	if m.rules.search.Value() != "中文规则" || !m.rules.regex || m.rules.generation != generation {
+		t.Fatal("click changed the filter or requested fresh data")
+	}
+	m, _ = update(m, special(tea.KeyEnter))
+	if m.rules.detail == nil || m.rules.detail.Index != 15 {
+		t.Fatal("Enter did not inspect the clicked rule")
+	}
+	m, _ = update(m, special(tea.KeyEscape))
+	if m.rules.detail != nil || m.focus != "rule.15" || m.scroll != scroll || m.rules.search.Value() != "中文规则" || !m.rules.regex {
+		t.Fatal("details return lost the clicked rule, filter or viewport")
 	}
 }
 

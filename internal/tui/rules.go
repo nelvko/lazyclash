@@ -275,17 +275,26 @@ func (m *Model) ruleActivate(id string) tea.Cmd {
 	case id == "rules.back":
 		m.backToRules()
 	case strings.HasPrefix(id, "rule."):
-		for index, r := range m.filteredRules() {
-			if id == "rule."+strconv.Itoa(r.Index) {
-				m.rules.selectedIndex, m.rules.detailScroll = index, m.scroll
-				copy := r
-				m.rules.selected, m.rules.detail = ruleIdentity(r), &copy
-				m.scroll, m.focus = 0, "rules.back"
-				break
-			}
+		if r, ok := m.selectRule(id); ok {
+			m.rules.detailScroll, m.rules.detail = m.scroll, &r
+			m.scroll, m.focus = 0, "rules.back"
 		}
 	}
 	return nil
+}
+
+// A click positions keyboard focus without interrupting list browsing. Enter
+// remains an explicit way to inspect full values and optional observations.
+func (m *Model) selectRule(id string) (mihomo.Rule, bool) {
+	for index, r := range m.filteredRules() {
+		if id == "rule."+strconv.Itoa(r.Index) {
+			m.rules.editing = false
+			m.rules.search.Blur()
+			m.rules.selectedIndex, m.rules.selected, m.focus = index, ruleIdentity(r), id
+			return r, true
+		}
+	}
+	return mihomo.Rule{}, false
 }
 func (m *Model) backToRules() {
 	m.rules.detail = nil

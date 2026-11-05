@@ -19,6 +19,27 @@ python3 scripts/logs-pty.py --binary bin/logs-tui.test \
   --profile truecolor --profile 256 --profile no-color
 ```
 
+## Rules 鼠标响应与列表点击（2026-11-05）
+
+规则列表改为只样式化当前可见的行，逻辑总行数与命中区域仍覆盖完整列表；焦点揭示按行位置计算。普通鼠标移动与滚轮跳过数据协调和焦点修复，同一命中区域移动及滚动边界不重绘；滚轮后按事件中的指针坐标重新命中。保留侧栏、菜单、通知和弹窗的事件所有权，通知避让使用逻辑总高度并保护固定搜索框。没有加入应用侧滚动动画、惯性或丢弃输入。
+
+单击规则的主行或次行只选中并定位规则，留在列表；Enter 可主动查看完整长条件与可选统计，返回后恢复筛选、选择和滚动位置。
+
+Apple M4 Pro 本机无通知正常页面的 `Update + View` 量级诊断：160×45、670 条规则的 hover/滚轮从约 63–64ms 降到约 3.7ms，2000 条从约 170–172ms 降到约 3.7ms；200×60 优化后约 5.1ms，同一命中区域约 0.6–0.9ms。基线每项三次、优化后每项二十次，测量不包含 SSH 或真实触摸板。真实 controlling PTY 的 25 条 motion 事件批次，670/2000 条规则由 831/2827ms 降到约 73/73ms；12 条下滚由 403/1253ms 降到 72/86ms，上滚由 400/1448ms 降到 75/78ms。最后 hover、滚动后重新命中、完整可见序号范围以及停止输入后 1.2 秒稳定均通过；终端只提供离散滚轮消息，不能据此声称控制了终端自身的触摸板惯性。
+
+最终 Rules 独立源码快照 `make check build` 通过（TUI 32.362 秒），包含全部 Go 测试、vet 和产品构建；Rules、PageHeader、PageReads、Notification 定向 race 通过（53.285 秒），八项 Python 终端解析回归通过。`./scripts/verify-linux.sh lazyclash-e2e` 在已有 Debian/arm64 VM 内执行全包测试，通过。新增模型测试覆盖七种状态、八种终端尺寸及七个偏移的窗口/完整渲染逐屏等价、半行裁切、筛选与稀疏索引、670/2000 条 hover/连续轮滚/边界、弹层所有权、通知输入避让及点击保留筛选与视口。
+
+最终主流程真实 PTY 在中英文 × True Color、ANSI256、NO_COLOR 六组全部通过，验证 160×45、120×32、80×24、60×20、40×16 再返回宽屏，包含主行/次行单击留在列表、Enter 详情、筛选和返回；每组 `queries=3`，服务、模式与节点变更均为零。证据位于 `.test-artifacts/rules-scroll/`，其中 `before/` 与 `after/` 保留性能对照，`final-main/` 与 `final-scroll/` 保存最终交互，`final-check.log`、`final-linux.log`、`final-race.log` 为最终验证记录；基准与 CPU 诊断位于 `.test-artifacts/rules-performance-review/`。
+
+验证快照只包含本轮 Rules 改动，不包含同时进行的连接、日志和设置页重构；后者的未提交内容及暂存状态保留原状。PTY 使用内存后端，PNG 为实际字符格与颜色重绘，本轮未操作实际 Mihomo/systemd/TUN 服务。滚动探针复验：
+
+```sh
+go test -c ./internal/tui -o bin/rules-tui.test
+python3 scripts/rules-pty.py --binary bin/rules-tui.test \
+  --output .test-artifacts/rules-scroll/recheck --scenario scroll \
+  --count 670 --count 2000 --require-wheel-hover
+```
+
 ## Rules 双行列表与固定筛选栏（2026-11-05）
 
 规则列表参考 Clash Verge，改为独立对齐的序号、匹配条件主行、类型与目标次行及细分隔线，使用完整可用正文宽度。固定筛选栏复用 Bubbles textinput；窄窗口将选项拆至下一行，极短窗口回退到正文内。支持大小写、Unicode 整词、正则组合筛选及清空，摘要显示匹配数；原始匹配顺序、只读详情、空 MATCH 数据、禁用观察、异步取消和迟到结果隔离保留。

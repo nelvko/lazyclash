@@ -249,8 +249,12 @@ func TestRulesKeyboardMouseAndResponsiveFocus(t *testing.T) {
 	}
 	m := rulesModel(t, &fakeBackend{})
 	m, _ = click(m, findTarget(t, m, "rule.1"))
+	if m.rules.detail != nil || m.focus != "rule.1" || m.rules.selected != ruleIdentity(sampleRules()[1]) {
+		t.Fatal("mouse click did not select its rule in the list")
+	}
+	m, _ = update(m, special(tea.KeyEnter))
 	if m.rules.detail == nil || m.rules.detail.Index != 1 {
-		t.Fatal("mouse did not open its exact rule")
+		t.Fatal("Enter did not open the clicked rule")
 	}
 	m, _ = click(m, findTarget(t, m, "rules.back"))
 	if m.rules.detail != nil {
