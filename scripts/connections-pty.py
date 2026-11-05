@@ -185,6 +185,8 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait("[2001:db8::42]:443")
         preview.capture(terminal, output, "ipv6-details", args)
         terminal.key(b"\x1b")
+        terminal.wait_absent(words["connections.details"])
+        terminal.settle()
         search(terminal, "no-such-connection-pty")
         terminal.wait(words["connections.no_matches"])
         preview.capture(terminal, output, "no-matches", args)

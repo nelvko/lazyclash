@@ -119,6 +119,7 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.key(b"\x1b")
         terminal.wait_absent(words["rules.details"])
         terminal.wait("github_domain")
+        terminal.settle()
         assert "GITHUB" in terminal.screen.text(), "return discarded the search query"
         preview.capture(terminal, output, "filtered-return", args)
 

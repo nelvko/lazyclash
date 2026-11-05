@@ -63,7 +63,7 @@ def event_numbers(terminal):
 def wait_long_payload(terminal):
     terminal.settle()
     terminal.wait("event-057")
-    left, _ = position(terminal, "/ long-message-end")
+    left, _ = position(terminal, "event-057")
     wait_until(terminal, lambda: "LONG-MESSAGE-END" in "".join(
         "".join(row[left:]).strip() for row in terminal.screen.cells), "detailed view lost the end of the wrapped payload")
 

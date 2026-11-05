@@ -72,6 +72,21 @@ func styleInput(input *textinput.Model, background string, invalid bool) {
 	input.SetStyles(s)
 }
 
+func inputFrame(lines []string, width int, edge, surface string) []string {
+	if width < 4 {
+		var out []string
+		for _, line := range lines {
+			out = append(out, cellCrop(line, width))
+		}
+		return out
+	}
+	rows := []string{themed("╭"+strings.Repeat("─", width-2)+"╮", edge, surface, false)}
+	for _, line := range lines {
+		rows = append(rows, themed("│ "+cellPad(line, width-4)+" │", edge, surface, false))
+	}
+	return append(rows, themed("╰"+strings.Repeat("─", width-2)+"╯", edge, surface, false))
+}
+
 func helpText(s, background string, dimmed bool) string {
 	// Keep key names brighter than explanations without changing cell geometry.
 	parts := strings.Fields(s)

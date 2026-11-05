@@ -96,7 +96,7 @@ func (m Model) profilesToolbar(width int) dashboardBlock {
 	if invalid {
 		edge = errorColor
 	}
-	field := profileInputFrame([]string{input.View()}, fieldWidth, edge, inputBackground)
+	field := inputFrame([]string{input.View()}, fieldWidth, edge, inputBackground)
 	body.lines = append(body.lines, field...)
 	body.targets = append(body.targets, hitRegion{ID: "profiles.url", W: fieldWidth, H: len(field)})
 	if inline {
@@ -295,21 +295,6 @@ func profileCardSurface(lines []string, width int, surface string, selected bool
 		rows = append(rows, row(line))
 	}
 	return append(rows, row(""))
-}
-
-func profileInputFrame(lines []string, width int, edge, surface string) []string {
-	if width < 4 {
-		var out []string
-		for _, line := range lines {
-			out = append(out, cellCrop(line, width))
-		}
-		return out
-	}
-	rows := []string{themed("╭"+strings.Repeat("─", width-2)+"╮", edge, surface, false)}
-	for _, line := range lines {
-		rows = append(rows, themed("│ "+cellPad(line, width-4)+" │", edge, surface, false))
-	}
-	return append(rows, themed("╰"+strings.Repeat("─", width-2)+"╯", edge, surface, false))
 }
 
 func profileUpdated(updated, now time.Time, locales ...i18n.Localizer) string {

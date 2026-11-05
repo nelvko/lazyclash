@@ -131,28 +131,9 @@ func (m Model) logsToolbar(width, rows int) dashboardBlock {
 		b.targets = append(b.targets, hitRegion{ID: item.id, X: ansi.StringWidth(buttons), W: ansi.StringWidth(value), H: 1})
 		buttons += value
 	}
-	input := m.logs.search
-	input.Prompt, input.Placeholder = "/ ", m.tr("logs.placeholder")
-	fieldWidth := width
-	if width >= 68 {
-		fieldWidth -= ansi.StringWidth(buttons) + 1
-	}
-	input.SetWidth(max(1, fieldWidth-3))
-	input.SetCursor(input.Position())
-	styleInput(&input, inputBackground, false)
-	b.lines = []string{themed(cellPad(input.View(), fieldWidth), text, inputBackground, false)}
-	b.targets = append(b.targets, hitRegion{ID: "logs.search", W: fieldWidth, H: 1})
-	if width >= 68 {
-		b.lines[0] += themed(" ", text, bg, false) + buttons
-		for i := 0; i < len(b.targets)-1; i++ {
-			b.targets[i].X += fieldWidth + 1
-		}
-	} else {
-		b.lines = append(b.lines, cellCrop(buttons, width))
-		for i := 0; i < len(b.targets)-1; i++ {
-			b.targets[i].Y++
-		}
-	}
+	b.lines = []string{buttons}
+	b = m.searchToolbar("logs.search", m.tr("logs.placeholder"), m.logs.search,
+		b, width, width >= 68, false)
 	count := 0
 	for _, entry := range m.logs.entries {
 		if m.logMatches(entry) {
@@ -189,7 +170,7 @@ func (m Model) logsToolbar(width, rows int) dashboardBlock {
 func (m Model) logsPrefix(width int) dashboardBlock {
 	var b dashboardBlock
 	if m.dashboardOptions().BodyTopRows == 0 {
-		b = m.logsToolbar(width, 3)
+		b = m.logsToolbar(width, filterToolbarRows(width))
 	}
 	if m.logs.err != nil {
 		value := m.tr("logs.unavailable", m.localizeError(m.logs.err))
@@ -229,7 +210,13 @@ func (m Model) logsBody(width int) (string, []hitRegion) {
 	// Even a tiny terminal must leave a row for the log viewport.
 	if len(b.lines) >= height-1 {
 		b.lines = b.lines[:max(0, height-2)]
-		b.targets = nil
+		visible := b.targets[:0]
+		for _, target := range b.targets {
+			if clipped, ok := clipRegion(target, 0, 0, width, len(b.lines)); ok {
+				visible = append(visible, clipped)
+			}
+		}
+		b.targets = visible
 	}
 	doc := m.logDocument(width)
 	if len(doc.lines) == 0 {

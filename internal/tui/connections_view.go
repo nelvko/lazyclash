@@ -94,16 +94,16 @@ func (m Model) connectionControls() dashboardBlock {
 
 func (m Model) connectionToolbarRows(width int) int {
 	if width >= 100 {
-		return 4
+		return 6
 	}
-	return 5
+	return 7
 }
 
 func (m Model) connectionSearchWidth(width int) int {
 	if width >= 100 {
-		width -= ansi.StringWidth(m.connectionControls().lines[0]) + 1
+		width -= ansi.StringWidth(m.connectionControls().lines[0]) + 2
 	}
-	return max(1, width-3)
+	return searchInputWidth(width)
 }
 
 func (m Model) connectionsToolbar(width, rows int) dashboardBlock {
@@ -114,33 +114,8 @@ func (m Model) connectionsToolbar(width, rows int) dashboardBlock {
 		stats += "   Σ ↓ " + formatBytes(snapshot.DownloadTotal) + "  ↑ " + formatBytes(snapshot.UploadTotal)
 	}
 	b.lines = append(b.lines, themed(cellCrop(stats, width), accent, bg, false))
-	buttons := m.connectionControls()
-	input := m.connections.search
-	input.Prompt, input.Placeholder = "/ ", m.tr("connections.search_placeholder")
-	input.SetWidth(m.connectionSearchWidth(width))
-	input.SetCursor(input.Position())
-	styleInput(&input, inputBackground, false)
-	fieldWidth := width
-	if width >= 100 {
-		fieldWidth -= ansi.StringWidth(buttons.lines[0]) + 1
-	}
-	b.lines = append(b.lines, themed(cellPad(input.View(), fieldWidth), text, inputBackground, false))
-	if !m.busy {
-		b.targets = append(b.targets, hitRegion{ID: "conn.search", Y: 1, W: fieldWidth, H: 1})
-	}
-	if width >= 100 {
-		b.lines[1] += themed(" ", text, bg, false) + buttons.lines[0]
-		for i := range buttons.targets {
-			buttons.targets[i].X += fieldWidth + 1
-			buttons.targets[i].Y = 1
-		}
-	} else {
-		b.lines = append(b.lines, cellCrop(buttons.lines[0], width))
-		for i := range buttons.targets {
-			buttons.targets[i].Y = 2
-		}
-	}
-	b.targets = append(b.targets, buttons.targets...)
+	b.append(m.searchToolbar("conn.search", m.tr("connections.search_placeholder"), m.connections.search,
+		m.connectionControls(), width, width >= 100, false))
 	status, color := runtimeStatus(m.runtime.snapshot, m.runtime.received, m.runtime.pending, m.snapshot.Installed, m.locale), muted
 	if m.connections.paused && m.connectionSnapshot() != nil {
 		status, color = m.tr("connections.paused"), warning

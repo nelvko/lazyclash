@@ -48,7 +48,7 @@ func (m Model) proxySearchWidth(width int) int {
 	if !m.proxiesNarrow() && len(modes.lines) == 1 && width-ansi.StringWidth(modes.lines[0])-2 >= 24+actionWidth {
 		width -= ansi.StringWidth(modes.lines[0]) + 2
 	}
-	return max(1, width-actionWidth-ansi.StringWidth(m.proxies.search.Prompt)-1)
+	return searchInputWidth(width - actionWidth)
 }
 
 func (m Model) proxyCollapseButton() string {
@@ -60,10 +60,6 @@ func (m Model) proxyCollapseButton() string {
 
 func (m Model) proxiesToolbar(width int) dashboardBlock {
 	b := m.proxyModes(width)
-	input := m.proxies.search
-	input.Placeholder = m.tr("proxies.search_placeholder")
-	input.SetWidth(m.proxySearchWidth(width))
-	styleInput(&input, inputBackground, false)
 	action := m.proxyCollapseButton()
 	actionWidth := ansi.StringWidth(action)
 	actionSpace := 0
@@ -71,19 +67,35 @@ func (m Model) proxiesToolbar(width int) dashboardBlock {
 		actionSpace = actionWidth + 2
 	}
 	x := 0
-	if !m.proxiesNarrow() && len(b.lines) == 1 && width-ansi.StringWidth(b.lines[0])-2 >= 24+actionSpace {
+	inline := !m.proxiesNarrow() && len(b.lines) == 1 && width-ansi.StringWidth(b.lines[0])-2 >= 24+actionSpace
+	if inline {
 		x = ansi.StringWidth(b.lines[0]) + 2
-		b.lines[0] += "  "
+		b.lines = []string{"", b.lines[0], ""}
+		for i := range b.targets {
+			b.targets[i].Y++
+		}
 	} else {
-		b.lines = append(b.lines, "", "")
+		b.blank()
 	}
-	searchWidth := max(1, width-x-actionSpace)
-	b.lines[len(b.lines)-1] += themed(cellPad(input.View(), searchWidth), text, inputBackground, false)
-	b.targets = append(b.targets, hitRegion{ID: "proxies.search", X: x, Y: len(b.lines) - 1, W: searchWidth, H: 1})
+	field := m.searchField("proxies.search", m.tr("proxies.search_placeholder"), m.proxies.search,
+		max(1, width-x-actionSpace), false)
+	y := len(b.lines)
+	if inline {
+		y = 0
+		for row, line := range field.lines {
+			b.lines[row] = themed(cellPad(b.lines[row], x), text, bg, false) + line
+		}
+		for _, hit := range field.targets {
+			hit.X += x
+			b.targets = append(b.targets, hit)
+		}
+	} else {
+		b.append(field)
+	}
 	if actionWidth > 0 {
-		b.lines[len(b.lines)-1] += "  " + action
+		b.lines[y+1] += themed("  ", text, bg, false) + action
 		if !m.busy && !m.quitting {
-			b.targets = append(b.targets, hitRegion{ID: "proxies.collapse_all", X: width - actionWidth, Y: len(b.lines) - 1, W: actionWidth, H: 1})
+			b.targets = append(b.targets, hitRegion{ID: "proxies.collapse_all", X: width - actionWidth, Y: y + 1, W: actionWidth, H: 1})
 		}
 	}
 	if !m.proxies.editing && m.proxies.search.Value() != "" {

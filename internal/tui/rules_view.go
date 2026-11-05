@@ -30,37 +30,15 @@ func (m Model) ruleFilterButtons() dashboardBlock {
 
 func (m Model) ruleSearchWidth(width int) int {
 	if width >= 68 {
-		width -= ansi.StringWidth(m.ruleFilterButtons().lines[0]) + 1
+		width -= ansi.StringWidth(m.ruleFilterButtons().lines[0]) + 2
 	}
-	return max(1, width-3)
+	return searchInputWidth(width)
 }
 
 func (m Model) rulesToolbar(width, rows int) dashboardBlock {
-	b := dashboardBlock{}
-	buttons := m.ruleFilterButtons()
-	input := m.rules.search
-	input.Prompt, input.Placeholder = "/ ", m.tr("rules.search_placeholder")
-	input.SetWidth(m.ruleSearchWidth(width))
-	input.SetCursor(input.Position())
-	styleInput(&input, inputBackground, false)
-	fieldWidth := width
-	if width >= 68 {
-		fieldWidth -= ansi.StringWidth(buttons.lines[0]) + 1
-	}
-	b.lines = append(b.lines, themed(cellPad(input.View(), fieldWidth), text, inputBackground, false))
-	b.targets = append(b.targets, hitRegion{ID: "rules.search", W: fieldWidth, H: 1})
-	if width >= 68 {
-		b.lines[0] += themed(" ", text, bg, false) + buttons.lines[0]
-		for i := range buttons.targets {
-			buttons.targets[i].X += fieldWidth + 1
-		}
-	} else {
-		b.lines = append(b.lines, cellCrop(buttons.lines[0], width))
-		for i := range buttons.targets {
-			buttons.targets[i].Y++
-		}
-	}
-	b.targets = append(b.targets, buttons.targets...)
+	_, matchErr := m.ruleMatcher()
+	b := m.searchToolbar("rules.search", m.tr("rules.search_placeholder"), m.rules.search,
+		m.ruleFilterButtons(), width, width >= 68, matchErr != nil)
 	status, color := m.rulesStatus(), muted
 	if m.rules.received && m.rules.snapshot.State == "ready" {
 		status += " · " + m.tr("rules.filtered_count", len(m.filteredRules()), len(m.rules.snapshot.Rules))
@@ -160,7 +138,7 @@ func (m Model) rulesBodyWindow(width, start, height int) ruleBodyWindow {
 	}
 	// Very short terminals fold the fixed toolbar into the scrollable body.
 	if m.dashboardOptions().BodyTopRows == 0 {
-		bar := m.rulesToolbar(width, 3)
+		bar := m.rulesToolbar(width, filterToolbarRows(width))
 		lines, hits = bar.lines, bar.targets
 	}
 	if m.rules.received {

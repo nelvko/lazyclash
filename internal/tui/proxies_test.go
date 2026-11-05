@@ -679,7 +679,7 @@ func TestProxiesToolbarKeepsModeAndSearchTogetherWhenWide(t *testing.T) {
 					t.Fatal("toolbar lost mode or search targets")
 				}
 				if width >= 100 {
-					if mode.Y != search.Y || search.X <= mode.X+mode.W {
+					if mode.Y != search.Y+1 || search.X <= mode.X+mode.W {
 						t.Fatalf("wide search did not share the mode row: mode=%+v search=%+v", mode, search)
 					}
 				} else if search.Y <= mode.Y || search.X != 0 {

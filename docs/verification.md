@@ -1,5 +1,15 @@
 # 验证入口
 
+## 四页统一搜索框（2026-11-05）
+
+代理、连接、规则和日志页复用 Bubbles textinput 与三行圆角框；文字左右留白，筛选按钮与文字居中对齐，窄屏移至框下。上下边框均可点击聚焦，悬停、聚焦和正则错误使用不同语义色。固定栏高度、长输入水平滚动和通知避让同步调整，日志极短窗口裁剪后仍保留可见控件命中区。设计参考见 `docs/theme-mariana.md`。
+
+最终 `make check build` 通过（TUI 34.119 秒），含全包测试、vet 和产品构建；`./scripts/verify-linux.sh lazyclash-e2e` 在已有 Debian/arm64 专用 VM 内实际执行全部可运行 Go 测试通过。八项 Python 终端解析回归通过。新增模型回归覆盖四页边框点击、中英文长 Unicode 输入从 160×45 缩至 5×2 再恢复、固定栏滚动和宽窄屏按钮对齐，以及 40×12、60×12 日志搜索框和选项点击。
+
+真实 controlling PTY 使用隔离内存后端：连接、规则和日志各完成中英文 × True Color、ANSI256、NO_COLOR 六组，共十八组；覆盖 160×45、120×32、80×24、60×20、40×16 及恢复，连接另含 200×45。各页原有搜索、清空、筛选、详情返回、暂停和滚动流程通过；代理页中文 True Color 完整 PTY 流程及独立组/延迟 fixture 通过。已目视中文宽屏搜索框及无色窄屏，PNG 按实际 PTY 字符格与颜色重绘。脚本同步移除“搜索文字与正文同一 X 坐标”的旧布局假设，详情返回后等待完整重绘再检查。
+
+证据位于忽略目录 `.test-artifacts/search-redesign/`：`final-check-build.log`、`final-linux.log`、`final-connections-pty/20261105-221216-e7924c/`、`final-rules-pty/20261105-221124-cc69f1/`、`final-logs-pty/20261105-221124-0d9636/` 和 `proxies-pty/`。本轮为布局改动，未重跑 race 或真实 Mihomo/systemd/TUN 生命周期 E2E；PTY 未访问实际内核、节点或操作系统服务。
+
 ## Connections 表格与实时检查（2026-11-05）
 
 连接页参考 Clash Verge、CFW 和 FlClash，使用完整正文宽度，固定统计、搜索、暂停及排序栏。正文至少 100 列时复用 Bubbles table，较宽时增加进程、规则及累计流量列；窄屏回退到双行列表。支持六种稳定排序、实时双向速率、时长、代理链、详情，以及默认取消的单条关闭确认。暂停只冻结页面观测，实时监控继续运行；API 失效、内核身份改变或计数器回退会丢弃旧快照。详见 `docs/connections.md`。
