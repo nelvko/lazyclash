@@ -209,9 +209,9 @@ func (m Model) rulesBodyWindow(width, start, height int) ruleBodyWindow {
 // and the core's order without introducing a second list viewport.
 func (m Model) ruleRows(r mihomo.Rule, width, numberWidth int) []string {
 	id := "rule." + strconv.Itoa(r.Index)
-	surface, marker := bg, "  "
+	surface, marker, secondMarker := bg, "  ", "  "
 	if ruleIdentity(r) == m.rules.selected {
-		marker = "▌ "
+		marker, secondMarker = "▌ ", "▌ "
 		surface = panel
 	}
 	if m.hover == id {
@@ -219,7 +219,7 @@ func (m Model) ruleRows(r mihomo.Rule, width, numberWidth int) []string {
 	}
 	markerColor := accent
 	if m.focus == id {
-		marker, markerColor = "› ", focus
+		marker, secondMarker, markerColor = "› ", "  ", focus
 	}
 	indent := 2 + numberWidth + 2
 	available := max(1, width-indent-1)
@@ -256,6 +256,6 @@ func (m Model) ruleRows(r mihomo.Rule, width, numberWidth int) []string {
 		badge := m.tr("rules.disabled_suffix")
 		meta = cellCrop(meta, max(0, available-ansi.StringWidth(badge))) + themed(badge, warning, surface, false)
 	}
-	second := themed(strings.Repeat(" ", indent), muted, surface, false) + meta
+	second := themed(secondMarker, markerColor, surface, false) + themed(strings.Repeat(" ", indent-2), muted, surface, false) + meta
 	return []string{themed(cellPad(first, width), text, surface, false), themed(cellPad(second, width), text, surface, false)}
 }

@@ -37,10 +37,11 @@ def wait_until(terminal, predicate, label, timeout=10):
     raise AssertionError(label + "\n" + terminal.screen.text())
 
 
-def position(terminal, label):
+def position(terminal, label, max_column=None):
     for y, row in enumerate(terminal.screen.cells):
-        for x, cell in enumerate(row):
-            if cell and "".join(row[x:]).startswith(label):
+        limit = len(row) if max_column is None else max_column
+        for x, cell in enumerate(row[:limit]):
+            if cell and "".join(row[x:limit]).startswith(label):
                 return x, y
     raise AssertionError("Visible text missing: " + label + "\n" + terminal.screen.text())
 
@@ -102,6 +103,22 @@ def exercise(preview, binary, output, language, profile, args):
             assert words["rules.details"] not in screen and "private_ip" in screen, "rule click left the list"
             assert any(payload in row and re.search(r"[›▌]", row) for row in screen.splitlines()), "rule click did not select its exact row"
         preview.capture(terminal, output, "row-clicks-select", args)
+
+        # Navigation owns focus after returning; selection still spans both
+        # content lines rather than leaving a half-height blue gutter.
+        click_cell(terminal, *position(terminal, words["dashboard.page.connections"], 20))
+        terminal.wait_absent("private_ip")
+        click_cell(terminal, *position(terminal, words["dashboard.page.rules"], 20))
+        terminal.wait("private_ip")
+        terminal.settle()
+        marker_x, marker_y = position(terminal, "▌")
+        assert marker_y == position(terminal, "jumpdesktop.com")[1], "return lost its selected rule"
+        assert terminal.screen.cells[marker_y + 1][marker_x] == "▌", "selected rule retained a half-height marker"
+        preview.capture(terminal, output, "selection-after-page-return", args)
+        terminal.key(b"\r")  # Enter the list, restoring its yellow focus arrow.
+        terminal.settle()
+        assert terminal.screen.cells[marker_y][marker_x] == "›", "content focus did not return to the selected rule"
+        assert terminal.screen.cells[marker_y + 1][marker_x] == " ", "selection bar leaked below its focus arrow"
         terminal.key(b"\r")
         terminal.wait(words["rules.details"])
         terminal.wait("jumpdesktop.com")
