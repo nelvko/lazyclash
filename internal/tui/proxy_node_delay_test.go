@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -147,6 +148,37 @@ func TestProxiesNodeDelaySlotHasFixedWidthAndCenteredValues(t *testing.T) {
 					}
 				}
 			})
+		}
+	}
+}
+
+func TestProxiesNodeDelayTimeoutDoesNotUnderlineOnHoverOrFocus(t *testing.T) {
+	underline := regexp.MustCompile("\x1b\\[4(?:;4)*m")
+	for _, language := range []string{i18n.English, i18n.Chinese} {
+		for _, state := range []string{"success", "timeout", "failed"} {
+			for _, interaction := range []string{"none", "hover", "focus"} {
+				t.Run(language+"/"+state+"/"+interaction, func(t *testing.T) {
+					m, _ := proxiesModel(t, 160, 40)
+					m.locale = i18n.New(language)
+					m.proxies.results[proxyResultKey("PROXY", "HK 01")] = proxyMeasurement{result: mihomo.ProxyDelay{State: state, Delay: 355}, path: m.proxyPathKey("HK 01")}
+					if interaction == "hover" {
+						m.hover = "proxies.delay.0.1"
+					} else if interaction == "focus" {
+						m.focus = "proxies.delay.0.1"
+					}
+					for _, width := range []int{18, 36, 50} {
+						card := m.proxyNode(0, 1, width)
+						wantUnderline := false
+						if got := underline.MatchString(card.lines[1]); got != wantUnderline {
+							t.Fatalf("delay underline changed incorrectly: width=%d state=%s interaction=%s underline=%t line=%q", width, state, interaction, got, card.lines[1])
+						}
+					}
+					label, color := m.proxyDelayLabel("PROXY", "HK 01")
+					if state == "timeout" && (label != m.tr("proxies.timeout") || color != errorColor) {
+						t.Fatalf("timeout text or color changed: label=%q color=%s", label, color)
+					}
+				})
+			}
 		}
 	}
 }
