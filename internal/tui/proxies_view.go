@@ -147,14 +147,17 @@ func (m Model) proxiesBody(width int) (string, []hitRegion) {
 			add(m.tr("proxies.no_groups"), muted)
 		}
 	}
+	compactGroups := m.proxiesNarrow() || m.height < 24
 	for i, gi := range groups {
-		if i > 0 {
+		if i > 0 && compactGroups {
 			b.blank()
 		}
 		g := m.snapshot.Groups[gi]
 		b.append(m.proxyGroupHeader(gi, width))
 		if m.proxyGroupExpanded(g.Name) {
-			b.blank()
+			if compactGroups {
+				b.blank()
+			}
 			b.append(m.proxyGroupBody(gi, width))
 		}
 		if g.Name == m.proxies.testGroup && m.proxies.total > 0 && (m.proxies.testing || m.proxies.testStatusVisible) {

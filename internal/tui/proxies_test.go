@@ -735,13 +735,13 @@ func TestProxiesGroupHeaderKeepsRightBadgeAndIndependentTestAction(t *testing.T)
 	}
 }
 
-func TestProxiesGroupWhitespaceDoesNotCaptureSelection(t *testing.T) {
+func TestProxiesGroupSpacingPreservesCompactWhitespace(t *testing.T) {
 	for _, test := range []struct {
-		width    int
-		expanded string
-	}{{160, ""}, {160, "PROXY"}, {80, ""}, {40, ""}} {
-		t.Run(fmt.Sprint(test.width, "/", test.expanded), func(t *testing.T) {
-			m, _ := proxiesModel(t, test.width, 40)
+		width, height, gap int
+		expanded           string
+	}{{200, 40, 0, ""}, {160, 40, 0, "PROXY"}, {100, 24, 0, ""}, {160, 23, 1, ""}, {120, 18, 1, "PROXY"}, {80, 40, 1, ""}, {40, 16, 1, ""}} {
+		t.Run(fmt.Sprint(test.width, "/", test.height, "/", test.expanded), func(t *testing.T) {
+			m, _ := proxiesModel(t, test.width, test.height)
 			setProxyTestGroup(&m, test.expanded)
 			body, hits := m.proxiesBody(dashboardBodyWidth(m.dashboardOptions()))
 			lines := strings.Split(ansi.Strip(body), "\n")
@@ -757,12 +757,17 @@ func TestProxiesGroupWhitespaceDoesNotCaptureSelection(t *testing.T) {
 						start = min(start, hit.Y)
 					}
 				}
-				if start-end != 1 || strings.TrimSpace(lines[end]) != "" {
-					t.Fatalf("groups %d/%d lack one blank row: end=%d start=%d", previous, next, end, start)
+				if start-end != test.gap {
+					t.Fatalf("groups %d/%d have the wrong external gap: end=%d start=%d want=%d", previous, next, end, start, test.gap)
 				}
-				for _, hit := range hits {
-					if hit.Y <= end && hit.Y+hit.H > end {
-						t.Fatalf("group whitespace activates a control: %+v", hit)
+				for y := end; y < start; y++ {
+					if strings.TrimSpace(lines[y]) != "" {
+						t.Fatalf("group whitespace contains content at row %d", y)
+					}
+					for _, hit := range hits {
+						if hit.Y <= y && hit.Y+hit.H > y {
+							t.Fatalf("group whitespace activates a control: %+v", hit)
+						}
 					}
 				}
 			}
@@ -771,9 +776,9 @@ func TestProxiesGroupWhitespaceDoesNotCaptureSelection(t *testing.T) {
 }
 
 func TestProxiesExpandedGroupKeepsSortingInHeader(t *testing.T) {
-	for _, width := range []int{160, 80, 40} {
-		t.Run(fmt.Sprint(width), func(t *testing.T) {
-			m, _ := proxiesModel(t, width, 40)
+	for _, test := range []struct{ width, height, gap int }{{200, 40, 0}, {160, 24, 0}, {100, 24, 0}, {160, 23, 1}, {120, 18, 1}, {80, 40, 1}, {40, 16, 1}} {
+		t.Run(fmt.Sprint(test.width, "/", test.height), func(t *testing.T) {
+			m, _ := proxiesModel(t, test.width, test.height)
 			bodyWidth := dashboardBodyWidth(m.dashboardOptions())
 			body := m.proxyGroupBody(0, bodyWidth)
 			if len(body.targets) == 0 || body.targets[0].Y != 0 || hasAction(body.targets, "proxies.sort.0") {
@@ -791,12 +796,17 @@ func TestProxiesExpandedGroupKeepsSortingInHeader(t *testing.T) {
 				}
 			}
 			gapY := groupY + len(m.proxyGroupHeader(0, bodyWidth).lines)
-			if firstNodeY-gapY != 1 || strings.TrimSpace(lines[gapY]) != "" {
-				t.Fatal("header-to-card gap contains content")
+			if firstNodeY-gapY != test.gap {
+				t.Fatalf("header-to-card gap is %d, want %d", firstNodeY-gapY, test.gap)
 			}
-			for _, hit := range hits {
-				if hit.Y <= gapY && hit.Y+hit.H > gapY {
-					t.Fatalf("header-to-card gap activates a control: %+v", hit)
+			for y := gapY; y < firstNodeY; y++ {
+				if strings.TrimSpace(lines[y]) != "" {
+					t.Fatal("header-to-card gap contains content")
+				}
+				for _, hit := range hits {
+					if hit.Y <= y && hit.Y+hit.H > y {
+						t.Fatalf("header-to-card gap activates a control: %+v", hit)
+					}
 				}
 			}
 			if hasAction(m.proxyGroupHeader(0, bodyWidth).targets, "proxies.sort.0") {
