@@ -124,6 +124,20 @@ func (m Model) contentTargets() []hitRegion {
 	}
 }
 
+func (m Model) fixedContentTargets() []hitRegion {
+	o := m.dashboardOptions()
+	if o.BodyTopRows == 0 {
+		return nil
+	}
+	g := dashboardGeometry(o)
+	b := m.rulesToolbar(g.width, o.BodyTopRows)
+	for i := range b.targets {
+		b.targets[i].X += g.x
+		b.targets[i].Y += g.y - o.BodyTopRows
+	}
+	return b.targets
+}
+
 func (m Model) restoredContentFocus(state pageViewState) string {
 	if state.profile != "" {
 		for index, name := range m.profiles() {
@@ -180,6 +194,12 @@ func (m *Model) enterContent() {
 		chosen = remembered
 	}
 	for _, target := range targets {
+		if target.ID == remembered {
+			chosen = remembered
+			break
+		}
+	}
+	for _, target := range m.fixedContentTargets() {
 		if target.ID == remembered {
 			chosen = remembered
 			break
@@ -503,7 +523,7 @@ func (m *Model) repairPageFocus() {
 	state := m.pageViews[m.page]
 	if !m.busy && m.focus != "content" && m.focus != "menu" && !strings.HasPrefix(m.focus, "nav.") && !strings.HasPrefix(m.focus, "notification.") {
 		valid := m.pageHeader().enabled(m.focus)
-		for _, target := range m.contentTargets() {
+		for _, target := range append(m.contentTargets(), m.fixedContentTargets()...) {
 			if target.ID == m.focus {
 				valid = true
 				break

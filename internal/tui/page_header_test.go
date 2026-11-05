@@ -110,7 +110,8 @@ func TestPageHeaderDividerBoundsAndBodyGapStayConsistentAcrossPages(t *testing.T
 				if actual := strings.Count(line, "▔"); actual != right-left {
 					t.Fatalf("divider spans %d cells, want %d", actual, right-left)
 				}
-				if g.y != g.headerHeight+2 || strings.TrimSpace(ansi.Strip(ansi.Cut(lines[g.y-1], left, right))) != "" {
+				bodyStart := g.y - m.dashboardOptions().BodyTopRows
+				if bodyStart != g.headerHeight+2 || strings.TrimSpace(ansi.Strip(ansi.Cut(lines[bodyStart-1], left, right))) != "" {
 					t.Fatal("header does not leave exactly one blank row before the body")
 				}
 				for _, action := range m.pageHeader().actions {

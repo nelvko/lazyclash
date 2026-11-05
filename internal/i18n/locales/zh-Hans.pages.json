@@ -177,8 +177,15 @@
   "rules.proxy": "代理：%s",
   "rules.state": "状态：%s",
   "rules.search": "搜索规则 (/)：%s",
-  "rules.search_placeholder": "类型、内容、代理或顺序",
+  "rules.search_placeholder": "筛选条件、类型、目标或序号",
   "logs.observed": "本地最后观测时间：%s",
   "logs.search": "搜索保留的记录 (/)：%s",
-  "logs.unavailable": "采集不可用：%s"
+  "logs.unavailable": "采集不可用：%s",
+  "rules.match_all": "所有剩余流量",
+  "rules.filtered_count": "%d / %d 条 · 按匹配顺序",
+  "rules.invalid_regex": "正则表达式无效",
+  "rules.filter_case": "Aa · 区分大小写 (Alt+C)",
+  "rules.filter_word": "ab · 整词匹配 (Alt+W)",
+  "rules.filter_regex": ".* · 正则表达式 (Alt+R)",
+  "rules.filter_clear": "× · 清空筛选"
 }

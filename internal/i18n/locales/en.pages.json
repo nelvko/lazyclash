@@ -177,8 +177,15 @@
   "rules.proxy": "Proxy: %s",
   "rules.state": "State: %s",
   "rules.search": "Search rules (/): %s",
-  "rules.search_placeholder": "Type, payload, proxy or order",
+  "rules.search_placeholder": "Filter by payload, type, proxy or order",
   "logs.observed": "Last observed locally: %s",
   "logs.search": "Search retained entries (/): %s",
-  "logs.unavailable": "Capture unavailable: %s"
+  "logs.unavailable": "Capture unavailable: %s",
+  "rules.match_all": "All remaining traffic",
+  "rules.filtered_count": "%d / %d rules · Matching order",
+  "rules.invalid_regex": "Invalid regular expression",
+  "rules.filter_case": "Aa · Match case (Alt+C)",
+  "rules.filter_word": "ab · Whole word (Alt+W)",
+  "rules.filter_regex": ".* · Regular expression (Alt+R)",
+  "rules.filter_clear": "× · Clear filter"
 }

@@ -1,5 +1,22 @@
 # 验证入口
 
+## Rules 双行列表与固定筛选栏（2026-11-05）
+
+规则列表参考 Clash Verge，改为独立对齐的序号、匹配条件主行、类型与目标次行及细分隔线，使用完整可用正文宽度。固定筛选栏复用 Bubbles textinput；窄窗口将选项拆至下一行，极短窗口回退到正文内。支持大小写、Unicode 整词、正则组合筛选及清空，摘要显示匹配数；原始匹配顺序、只读详情、空 MATCH 数据、禁用观察、异步取消和迟到结果隔离保留。
+
+最终源码 `make check build` 通过（TUI 34.037 秒），包含全部 Go 测试、vet 和产品构建；`go test -race ./internal/tui -run 'TestRules|TestPageHeader|TestPageReads' -count=1` 通过（66.853 秒），八项 Python 终端解析回归通过。`./scripts/verify-linux.sh lazyclash-e2e` 在已有 Debian/arm64 VM 内执行全部可运行包测试，通过并确认暂存目录已清理。新增模型回归覆盖 Unicode 边界、整词正则分支 `a|ab`、无效正则恢复、字段独立匹配、固定栏 Tab 顺序与滚动保持、双行点击、空 MATCH 与禁用状态，以及从 160×45 到 5×2 再恢复时的搜索、选择和详情返回。
+
+`scripts/rules-pty.py` 使用真实 controlling PTY 完成中英文 × True Color、ANSI256、NO_COLOR 六组，每组均验证 160×45、120×32、80×24、60×20、40×16 并返回宽屏；覆盖第二行点击、各匹配选项、正则错误恢复、无匹配与清空、详情返回、长禁用规则详情和固定栏滚轮。每组 `queries=3`，服务、模式与节点变更均为 `0`。已目视检查中文宽屏、40×16 及英文无色布局。
+
+证据位于忽略目录 `.test-artifacts/rules-redesign/`，Linux 运行日志为 `linux-tests.log`，最终 PTY 记录为 `pty/20261105-203324-c22e55/`。PNG 按实际 PTY 字符格与颜色重绘；PTY 使用隔离内存后端，未访问实际 Mihomo 或操作系统服务，本轮未重跑 Mihomo/systemd/TUN 生命周期 E2E。复验入口：
+
+```sh
+go test -c ./internal/tui -o bin/rules-tui.test
+python3 scripts/rules-pty.py --binary bin/rules-tui.test \
+  --output .test-artifacts/rules-redesign/pty \
+  --profile truecolor --profile 256 --profile no-color
+```
+
 ## Proxies 延迟交互去下划线（2026-11-05）
 
 延迟数值与状态统一移除下划线，悬浮或聚焦时只改变固定延迟区域的背景。复用较深的 `inputBackground`，保留成功、失败等原有文字颜色；分隔空白、卡片背景、选中竖条和外侧 padding 不变。测试中与等待中不显示局部背景强调，重复点击继续复用请求。

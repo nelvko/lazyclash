@@ -185,7 +185,7 @@ func New(ctx context.Context, backend Backend, languages ...string) Model {
 	m.rules.search.Placeholder = m.tr("model.rule_search")
 	m.logs = newLogsState(m.locale)
 	styleInput(&m.connections.search, bg, false)
-	styleInput(&m.rules.search, bg, false)
+	styleInput(&m.rules.search, inputBackground, false)
 	m.colorProfile = colorprofile.Env(os.Environ())
 	m.noColor = os.Getenv("NO_COLOR") != ""
 	m.colorProfile = themeProfile(os.Environ(), m.colorProfile)
@@ -1443,7 +1443,11 @@ func (m *Model) renderLayout() {
 	m.proxies.search.SetWidth(m.proxySearchWidth(g.width))
 	m.proxies.search.SetCursor(m.proxies.search.Position())
 	m.connections.search.SetWidth(max(1, g.width-2))
-	m.rules.search.SetWidth(max(1, g.width-2))
+	m.rules.search.SetWidth(m.ruleSearchWidth(g.width))
+	m.rules.search.SetCursor(m.rules.search.Position())
+	if o.BodyTopRows > 0 {
+		o.BodyTop = m.rulesToolbar(g.width, o.BodyTopRows)
+	}
 	o.Body, o.BodyTargets = m.pageBody(g.width)
 	base, hits, total := renderDashboard(o)
 	if o.Dim {

@@ -9,7 +9,6 @@ import (
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
@@ -23,6 +22,8 @@ type rulesState struct {
 	generation                  uint64
 	active, pending, received   bool
 	editing                     bool
+	caseSensitive, wholeWord    bool
+	regex                       bool
 	err                         error
 	cancel                      context.CancelFunc
 }
@@ -104,11 +105,13 @@ func (m Model) filteredRules() []mihomo.Rule {
 	if !m.rules.received || m.rules.snapshot.State != "ready" {
 		return nil
 	}
-	query := strings.ToLower(strings.TrimSpace(m.rules.search.Value()))
+	match, err := m.ruleMatcher()
+	if err != nil {
+		return nil
+	}
 	var result []mihomo.Rule
 	for _, r := range m.rules.snapshot.Rules {
-		value := fmt.Sprintf("#%d index:%d %s %s %s", r.Index+1, r.Index, r.Type, r.Payload, r.Proxy)
-		if query == "" || strings.Contains(strings.ToLower(value), query) {
+		if match(r) {
 			result = append(result, r)
 		}
 	}
@@ -193,8 +196,20 @@ func (m *Model) focusRulesSearch() tea.Cmd {
 	return m.rules.search.Focus()
 }
 func (m *Model) ruleSearchKey(k tea.KeyPressMsg) tea.Cmd {
+	if handled, cmd := m.ruleFilterKey(k); handled {
+		return cmd
+	}
 	switch k.String() {
-	case "enter", "esc", "tab", "shift+tab":
+	case "tab", "shift+tab":
+		m.rules.editing = false
+		m.rules.search.Blur()
+		if k.String() == "tab" {
+			m.cycleFocus(1)
+		} else {
+			m.cycleFocus(-1)
+		}
+		return nil
+	case "enter", "esc":
 		m.rules.editing = false
 		m.rules.search.Blur()
 		m.focus = "rule."
@@ -208,6 +223,9 @@ func (m *Model) ruleSearchKey(k tea.KeyPressMsg) tea.Cmd {
 	return cmd
 }
 func (m *Model) ruleKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
+	if handled, cmd := m.ruleFilterKey(k); handled {
+		return true, cmd
+	}
 	switch k.String() {
 	case "/":
 		return true, m.focusRulesSearch()
@@ -252,6 +270,13 @@ func (m *Model) ruleActivate(id string) tea.Cmd {
 	switch {
 	case id == "rules.search":
 		return m.focusRulesSearch()
+	case id == "rules.clear":
+		m.rules.search.Reset()
+		m.rules.selectedIndex = 0
+		m.reconcileRules()
+		return m.focusRulesSearch()
+	case id == "rules.case" || id == "rules.word" || id == "rules.regex":
+		m.toggleRuleFilter(id)
 	case id == "rules.retry":
 		return m.retryRules()
 	case id == "rules.back":
@@ -297,98 +322,4 @@ func (m Model) rulesStatus() string {
 	default:
 		return m.tr("rules.unavailable")
 	}
-}
-func (m Model) rulesBody(width int) (string, []hitRegion) {
-	var lines []string
-	var hits []hitRegion
-	addText := func(value, color string) {
-		lines = append(lines, strings.Split(wrapText(themed(clean(value), color, bg, false), max(1, width)), "\n")...)
-	}
-	addButton := func(id, label string) {
-		options := dashboardButtonOptions(id, m.navigationOptions(), false, bg)
-		options.Disabled = m.busy
-		value := renderButton(label, options)
-		if !options.Disabled {
-			hits = append(hits, hitRegion{ID: id, Y: len(lines), W: min(width, ansi.StringWidth(value)), H: 1})
-		}
-		lines = append(lines, cellCrop(value, width))
-	}
-	if r := m.rules.detail; r != nil {
-		addText(m.tr("rules.details"), text)
-		if m.ruleCurrent(*r) {
-			addText(m.tr("rules.observation"), muted)
-		} else {
-			addText(m.tr("rules.stale"), warning)
-		}
-		addButton("rules.back", m.tr("rules.back"))
-		addText(fmt.Sprintf(m.tr("rules.order"), r.Index+1, r.Index), text)
-		addText(m.tr("rules.type", r.Type), text)
-		payload := r.Payload
-		if payload == "" {
-			payload = m.tr("rules.empty_payload")
-		}
-		addText(m.tr("rules.payload", payload), text)
-		proxy := r.Proxy
-		if proxy == "" {
-			proxy = "--"
-		}
-		addText(m.tr("rules.proxy", proxy), text)
-		if r.Size >= 0 {
-			addText(fmt.Sprintf(m.tr("rules.entries"), r.Size), text)
-		}
-		if r.Extra != nil {
-			state := m.tr("rules.enabled")
-			if r.Extra.Disabled {
-				state = m.tr("rules.disabled")
-			}
-			addText(m.tr("rules.state", state), text)
-			addText(fmt.Sprintf(m.tr("rules.hits"), r.Extra.HitCount, r.Extra.MissCount), text)
-		}
-		addText(m.tr("rules.description"), muted)
-		return strings.Join(lines, "\n"), hits
-	}
-	addText(m.tr("rules.title"), text)
-	addText(m.rulesStatus(), muted)
-	addText(m.tr("rules.description"), muted)
-	if m.rules.editing {
-		addText(m.tr("rules.search_edit"), accent)
-		m.rules.search.Placeholder = m.tr("rules.search_placeholder")
-		lines = append(lines, cellCrop(m.rules.search.View(), width))
-		hits = append(hits, hitRegion{ID: "rules.search", Y: len(lines) - 1, W: width, H: 1})
-	} else {
-		addButton("rules.search", m.tr("rules.search", clean(m.rules.search.Value())))
-	}
-	addText(m.tr("rules.shortcuts"), muted)
-	if m.rules.received {
-		if m.rules.err != nil {
-			addText(m.localizeError(m.rules.err), errorColor)
-		} else if m.rules.snapshot.Error != "" {
-			addText(m.locale.Diagnostic(m.rules.snapshot.Error, m.rules.snapshot.Diagnostic), errorColor)
-		}
-	}
-	list := m.filteredRules()
-	if m.rules.received && m.rules.snapshot.State == "ready" && len(list) == 0 {
-		message := m.tr("rules.empty")
-		if m.rules.search.Value() != "" {
-			message = m.tr("rules.no_matches")
-		}
-		addText(message, muted)
-	}
-	for _, r := range list {
-		prefix, color := "  ", text
-		if ruleIdentity(r) == m.rules.selected {
-			prefix = "› "
-		}
-		if m.focus == "rule."+strconv.Itoa(r.Index) {
-			color = focus
-		}
-		label := fmt.Sprintf("%s#%d %s · %s → %s", prefix, r.Index+1, clean(r.Type), clean(r.Payload), clean(r.Proxy))
-		if r.Extra != nil && r.Extra.Disabled {
-			label += m.tr("rules.disabled_suffix")
-		}
-		row := len(lines)
-		lines = append(lines, themed(cellCrop(label, width), color, bg, false))
-		hits = append(hits, hitRegion{ID: "rule." + strconv.Itoa(r.Index), Y: row, W: width, H: 1})
-	}
-	return strings.Join(lines, "\n"), hits
 }

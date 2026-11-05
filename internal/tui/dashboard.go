@@ -52,6 +52,9 @@ type dashboardOptions struct {
 	BodyTargets   []hitRegion
 	BodyRange     bool
 	InlineInstall bool
+	// BodyTop stays above the scrolling body; its rows share the body width.
+	BodyTopRows int
+	BodyTop     dashboardBlock
 }
 
 type dashboardLayout struct {
@@ -71,7 +74,7 @@ func dashboardGeometry(o dashboardOptions) dashboardLayout {
 	}
 	headerX, headerWidth := left, available
 	width := min(112, available)
-	if o.Page == "proxies" {
+	if o.Page == "proxies" || o.Page == "rules" {
 		width = available
 	}
 	if o.Page == "" || o.Page == "overview" {
@@ -95,11 +98,13 @@ func dashboardGeometry(o dashboardOptions) dashboardLayout {
 	if o.Width < 70 && o.Height < 24 && o.Page != "" && o.Page != "overview" {
 		bodyY++
 	}
+	headerHeight := bodyY - 2
+	bodyY += o.BodyTopRows
 	height := max(0, dashboardContentBottom(o)-bodyY)
 	if o.BodyRange && height > 1 {
 		height--
 	}
-	return dashboardLayout{x: left, width: width, y: bodyY, height: height, headerX: headerX, headerWidth: headerWidth, headerY: headerY, headerHeight: bodyY - 2, sidebar: sidebar}
+	return dashboardLayout{x: left, width: width, y: bodyY, height: height, headerX: headerX, headerWidth: headerWidth, headerY: headerY, headerHeight: headerHeight, sidebar: sidebar}
 }
 func dashboardBodyWidth(o dashboardOptions) int { return dashboardGeometry(o).width }
 
@@ -157,6 +162,18 @@ func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
 	}
 	// A top-edge stroke aligns with the sidebar's background boundary.
 	put(g.headerX, g.headerHeight, themed(strings.Repeat("▔", g.headerWidth), divider, bg, o.Dim))
+	for i, line := range o.BodyTop.lines {
+		if i < o.BodyTopRows {
+			put(g.x, g.y-o.BodyTopRows+i, cellPad(line, g.width))
+		}
+	}
+	for _, hit := range o.BodyTop.targets {
+		hit.X += g.x
+		hit.Y += g.y - o.BodyTopRows
+		if hit, ok := clipRegion(hit, g.x, g.y-o.BodyTopRows, g.width, o.BodyTopRows); ok {
+			add(hit)
+		}
+	}
 
 	var body string
 	var bodyTargets []hitRegion
