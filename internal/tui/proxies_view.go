@@ -438,14 +438,16 @@ func (m Model) proxyNode(gi, ni, width int) dashboardBlock {
 	nameWidth := max(0, contentWidth-valueWidth-1)
 	_, delaySupported := m.backend.(proxyDelayBackend)
 	delayEnabled := delaySupported && m.proxyTestable(node) && m.proxiesReady() && !m.busy && !m.quitting
+	delaySurface := surface
+	delayPending := value == m.tr("proxies.testing") || value == m.tr("proxies.queued")
+	if delayEnabled && !delayPending && (m.hover == delayID || m.focus == delayID) {
+		delaySurface = inputBackground
+	}
 	value = cellCrop(value, valueWidth)
 	leftPadding := max(0, (valueWidth-ansi.StringWidth(value))/2)
-	if delayEnabled && (m.hover == delayID || m.focus == delayID) {
-		value = lipgloss.NewStyle().Underline(true).Render(value)
-	}
 	value = cellPad(strings.Repeat(" ", leftPadding)+value, valueWidth)
 	trailing := themed(strings.Repeat(" ", rightPadding), text, surface, false)
-	line := edge + themed(prefix, focus, surface, false) + themed(cellPad(clean(node), nameWidth), text, surface, false) + themed(" "+value, color, surface, false) + trailing
+	line := edge + themed(prefix, focus, surface, false) + themed(cellPad(clean(node), nameWidth), text, surface, false) + themed(" ", color, surface, false) + themed(value, color, delaySurface, false) + trailing
 	metaWidth := contentWidth
 	button, buttonWidth := "", 0
 	_, _, reference := m.proxyGroup(node)
