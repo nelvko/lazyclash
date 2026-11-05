@@ -231,7 +231,7 @@ func TestProxiesGridVerticalAndHorizontalTraversal(t *testing.T) {
 				m.snapshot.Groups[0].All = append(m.snapshot.Groups[0].All, fmt.Sprintf("leaf-%02d", i))
 			}
 			m.layout()
-			if columns := m.proxyColumns(dashboardBodyWidth(m.dashboardOptions())); columns != test.columns {
+			if columns := m.proxyGrid(dashboardBodyWidth(m.dashboardOptions())).columns; columns != test.columns {
 				t.Fatalf("width %d produced %d columns, want %d", test.width, columns, test.columns)
 			}
 			m, _ = update(m, special(tea.KeyDown))
@@ -359,66 +359,68 @@ func TestProxiesPendingSelectionKeepsVerticalGridNavigation(t *testing.T) {
 }
 
 func TestProxiesShortGroupsKeepTheAvailableColumnWidth(t *testing.T) {
-	for _, test := range []struct {
-		name  string
-		count int
-		query string
-	}{{"one member", 1, ""}, {"two members", 2, ""}, {"one filtered member", 8, "HK 01"}} {
-		t.Run(test.name, func(t *testing.T) {
-			m, _ := proxiesModel(t, 200, 40)
-			width := dashboardBodyWidth(m.dashboardOptions())
-			full := m.proxyGroupBody(0, width)
-			left, right := width, 0
-			for _, hit := range full.targets {
-				if hit.ID == "node.0.0" {
-					left, right = min(left, hit.X), max(right, hit.X+hit.W)
+	for _, size := range []struct{ width, columns int }{{80, 2}, {120, 2}, {200, 4}} {
+		for _, test := range []struct {
+			name  string
+			count int
+			query string
+		}{{"one member", 1, ""}, {"two members", 2, ""}, {"one filtered member", 8, "HK 01"}} {
+			t.Run(fmt.Sprint(size.width, "/", test.name), func(t *testing.T) {
+				m, _ := proxiesModel(t, size.width, 40)
+				width := dashboardBodyWidth(m.dashboardOptions())
+				full := m.proxyGroupBody(0, width)
+				left, right := width, 0
+				for _, hit := range full.targets {
+					if hit.ID == "node.0.0" {
+						left, right = min(left, hit.X), max(right, hit.X+hit.W)
+					}
 				}
-			}
-			cardWidth := right - left
-			m.snapshot.Groups[0].All = m.snapshot.Groups[0].All[:test.count]
-			m.proxies.search.SetValue(test.query)
-			body := m.proxyGroupBody(0, width)
-			type bounds struct{ left, right int }
-			cards := make(map[string]bounds)
-			for _, hit := range body.targets {
-				if !strings.HasPrefix(hit.ID, "node.") {
-					continue
+				cardWidth := right - left
+				m.snapshot.Groups[0].All = m.snapshot.Groups[0].All[:test.count]
+				m.proxies.search.SetValue(test.query)
+				body := m.proxyGroupBody(0, width)
+				type bounds struct{ left, right int }
+				cards := make(map[string]bounds)
+				for _, hit := range body.targets {
+					if !strings.HasPrefix(hit.ID, "node.") {
+						continue
+					}
+					card, found := cards[hit.ID]
+					if !found {
+						card.left = hit.X
+					}
+					card.left, card.right = min(card.left, hit.X), max(card.right, hit.X+hit.W)
+					cards[hit.ID] = card
 				}
-				card, found := cards[hit.ID]
-				if !found {
-					card.left = hit.X
+				wantCount := test.count
+				if test.query != "" {
+					wantCount = 1
 				}
-				card.left, card.right = min(card.left, hit.X), max(card.right, hit.X+hit.W)
-				cards[hit.ID] = card
-			}
-			wantCount := test.count
-			if test.query != "" {
-				wantCount = 1
-			}
-			if len(cards) != wantCount || m.proxyColumns(width) != 4 {
-				t.Fatalf("short group lost cards or the four-column grid: cards=%d columns=%d", len(cards), m.proxyColumns(width))
-			}
-			positions := make(map[int]bool)
-			for _, card := range cards {
-				if card.right-card.left != cardWidth {
-					t.Fatalf("short group stretched its card: bounds=%+v want width=%d", card, cardWidth)
+				if len(cards) != wantCount || m.proxyGrid(width).columns != size.columns {
+					t.Fatalf("short group lost cards or changed its available slots: cards=%d columns=%d", len(cards), m.proxyGrid(width).columns)
 				}
-				positions[card.left] = true
-			}
-			for column := 0; column < wantCount; column++ {
-				if !positions[2+column*(cardWidth+1)] {
-					t.Fatalf("short group did not retain left-aligned column slots: %+v", positions)
+				positions := make(map[int]bool)
+				for _, card := range cards {
+					if card.right-card.left != cardWidth {
+						t.Fatalf("short group stretched its card: bounds=%+v want width=%d", card, cardWidth)
+					}
+					positions[card.left] = true
 				}
-			}
-		})
+				for column := 0; column < wantCount; column++ {
+					if !positions[m.proxyGrid(width).indent+column*(cardWidth+1)] {
+						t.Fatalf("short group did not retain left-aligned column slots: %+v", positions)
+					}
+				}
+			})
+		}
 	}
 }
 
 func TestProxiesColumnsStopAtFourOnWideScreens(t *testing.T) {
-	for _, test := range []struct{ width, columns int }{{80, 1}, {120, 2}, {160, 3}, {200, 4}, {240, 4}, {400, 4}} {
+	for _, test := range []struct{ width, columns int }{{60, 1}, {76, 1}, {77, 2}, {80, 2}, {96, 2}, {100, 2}, {120, 2}, {137, 3}, {160, 3}, {174, 4}, {200, 4}, {240, 4}, {400, 4}} {
 		t.Run(fmt.Sprint(test.width), func(t *testing.T) {
 			m, _ := proxiesModel(t, test.width, 40)
-			if got := m.proxyColumns(dashboardBodyWidth(m.dashboardOptions())); got != test.columns {
+			if got := m.proxyGrid(dashboardBodyWidth(m.dashboardOptions())).columns; got != test.columns {
 				t.Fatalf("terminal width %d produced %d columns, want %d", test.width, got, test.columns)
 			}
 		})
@@ -604,7 +606,7 @@ func TestProxiesReferenceKeysPreferAdjacentNodeBeforeBrowsing(t *testing.T) {
 	if m.focus != "node.0.1" || m.proxies.activeGroup != "PROXY" || len(m.proxies.history) != 0 {
 		t.Fatalf("Right entered a reference before moving to its adjacent node: focus=%s expanded=%s", m.focus, m.proxies.activeGroup)
 	}
-	columns := m.proxyColumns(dashboardBodyWidth(m.dashboardOptions()))
+	columns := m.proxyGrid(dashboardBodyWidth(m.dashboardOptions())).columns
 	m.snapshot.Groups[0].All[0], m.snapshot.Groups[0].All[columns-1] = m.snapshot.Groups[0].All[columns-1], m.snapshot.Groups[0].All[0]
 	m.focus = fmt.Sprintf("node.0.%d", columns-1)
 	m.rememberPageView()
@@ -1054,6 +1056,8 @@ func TestProxiesDefaultSortReturnsToItsGroupAfterHeaderClick(t *testing.T) {
 	for _, width := range []int{160, 80} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			m, _ := proxiesModel(t, width, 24)
+			// Keep this location scrollable when compact browsing fits two columns.
+			m.snapshot.Groups[1].All = append(m.snapshot.Groups[1].All, "JP 02", "US 01", "DIRECT", "REJECT")
 			setProxyTestGroup(&m, "AUTO")
 			m.focus = "group.1"
 			m.sortProxies("delay")
@@ -1217,8 +1221,8 @@ func TestProxiesGeometryAtDesktopAndNarrowSizes(t *testing.T) {
 					}
 				}
 			}
-			if len(columns) != min(len(m.snapshot.Groups[0].All), m.proxyColumns(width)) {
-				t.Fatalf("rendered columns diverged from navigation: got %d, want %d", len(columns), m.proxyColumns(width))
+			if len(columns) != min(len(m.snapshot.Groups[0].All), m.proxyGrid(width).columns) {
+				t.Fatalf("rendered columns diverged from navigation: got %d, want %d", len(columns), m.proxyGrid(width).columns)
 			}
 			if size[0] < 100 {
 				if groups := m.visibleProxyGroups(); len(groups) != 1 || m.snapshot.Groups[groups[0]].Name != "PROXY" {

@@ -67,7 +67,7 @@ func TestProxiesScopedHeaderActionsNavigateFromTheirOwnGroup(t *testing.T) {
 				want := "node.1.0"
 				key := tea.KeyDown
 				if direction == "up" {
-					columns := m.proxyColumns(dashboardBodyWidth(m.dashboardOptions()))
+					columns := m.proxyGrid(dashboardBodyWidth(m.dashboardOptions())).columns
 					lastRow := (len(m.snapshot.Groups[0].All) - 1) / columns * columns
 					want = fmt.Sprintf("node.0.%d", lastRow)
 					key = tea.KeyUp

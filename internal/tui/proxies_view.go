@@ -314,42 +314,31 @@ func (m Model) proxyGroupHeader(gi, width int) dashboardBlock {
 	return b
 }
 
-func (m Model) proxyColumns(width int) int {
-	if m.proxiesNarrow() {
-		return 1
-	}
-	return min(4, max(1, (width-2+1)/37))
-}
 func (m Model) proxyGroupBody(gi, width int) dashboardBlock {
 	g := m.snapshot.Groups[gi]
 	b := dashboardBlock{}
-	indent := 2
-	if m.proxiesNarrow() {
-		indent = 0
-	}
-	inner := max(1, width-indent)
+	grid := m.proxyGrid(width)
+	inner := max(1, width-grid.indent)
 	add := func(v string, color string) {
 		for _, line := range strings.Split(wrapText(themed(clean(v), color, bg, false), inner), "\n") {
-			b.lines = append(b.lines, themed(strings.Repeat(" ", indent), text, bg, false)+line)
+			b.lines = append(b.lines, themed(strings.Repeat(" ", grid.indent), text, bg, false)+line)
 		}
 	}
 	indices := m.proxyMembers(g)
-	columns := m.proxyColumns(width)
-	cellWidth := (inner - (columns - 1)) / columns
-	for first := 0; first < len(indices); first += columns {
+	for first := 0; first < len(indices); first += grid.columns {
 		if first > 0 {
 			b.blank()
 		}
 		var cells []dashboardBlock
-		for c := 0; c < columns && first+c < len(indices); c++ {
-			cells = append(cells, m.proxyNode(gi, indices[first+c], cellWidth))
+		for c := 0; c < grid.columns && first+c < len(indices); c++ {
+			cells = append(cells, m.proxyNode(gi, indices[first+c], grid.cardWidth))
 		}
 		rowY := len(b.lines)
 		for y := range cells[0].lines {
-			line := themed(strings.Repeat(" ", indent), text, bg, false)
+			line := themed(strings.Repeat(" ", grid.indent), text, bg, false)
 			for c, cell := range cells {
 				if c > 0 {
-					line += themed(" ", text, bg, false)
+					line += themed(strings.Repeat(" ", proxyColumnGap), text, bg, false)
 				}
 				line += cell.lines[y]
 			}
@@ -357,7 +346,7 @@ func (m Model) proxyGroupBody(gi, width int) dashboardBlock {
 		}
 		for c, cell := range cells {
 			for _, hit := range cell.targets {
-				hit.X += indent + c*(cellWidth+1)
+				hit.X += grid.indent + c*(grid.cardWidth+proxyColumnGap)
 				hit.Y += rowY
 				b.targets = append(b.targets, hit)
 			}

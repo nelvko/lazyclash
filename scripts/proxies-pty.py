@@ -416,7 +416,7 @@ def exercise(preview, binary, output, language, profile, args):
         # Keep a node focused across terminal geometry changes. Each frame is
         # captured from the PTY after redraw rather than directly from Model.View.
         click_candidate(terminal, "HK 01")
-        for width, height in [(160, 45), (200, 40), (240, 40), (120, 32), (80, 24), (60, 20), (40, 16), (120, 18)]:
+        for width, height in [(160, 45), (200, 40), (240, 40), (120, 32), (96, 40), (80, 24), (60, 20), (40, 16), (120, 18)]:
             terminal.resize(width, height)
             terminal.settle()
             terminal.wait("HK 01")
@@ -425,6 +425,9 @@ def exercise(preview, binary, output, language, profile, args):
                 assert_four_columns(terminal)
             if width == 160:
                 assert len({candidate_position(terminal, name)[0] for name in MEMBERS}) == 3, "160-column grid lost its three-column layout"
+            if width < 100:
+                slots = {candidate_position(terminal, name)[0] for name in ("HK 01", "HK 02")}
+                assert len(slots) == (2 if width >= 77 else 1), "compact grid ignored its available width: " + repr(slots)
             if width == 200:
                 terminal.key(b"\x1b[C")  # HK 01 -> JP 01 -> AUTO, the fourth slot.
                 terminal.key(b"\x1b[C")
