@@ -149,7 +149,7 @@
   "navigation.network": "Enter Download method · Tab Content · ? Help",
   "navigation.refresh": "Enter Refresh · Tab Content · ? Help",
   "navigation.connections": "↑↓ Select · Enter Details · / Search · s Sort · p Pause · x Close · ? Help",
-  "navigation.rules": "↑↓ Select · Enter Expand · / Search · Ctrl+R Reload · ← / Esc Back · ? Help",
+  "navigation.rules": "↑↓ Browse · Enter Expand · / Search · Ctrl+R Reload · ← / Esc Back · ? Help",
   "navigation.logs": "↑↓ Browse · End Follow · / Search · l Level · v View · ← / Esc Back · ? Help",
   "navigation.profiles": "↑↓←→ Select · Enter Details · m Menu · Tab Actions · Esc Back · ? Help",
   "navigation.proxies": "↑↓ Move · ←→ Columns · Enter Select/Inspect · / Search · s Sort · t Test · r Refresh · Esc Back",

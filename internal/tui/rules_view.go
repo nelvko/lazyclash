@@ -201,16 +201,13 @@ func (m Model) rulesBodyWindow(width, start, height int) ruleBodyWindow {
 func (m Model) ruleRows(r mihomo.Rule, width, numberWidth int) []string {
 	id := "rule." + strconv.Itoa(r.Index)
 	surface, marker, secondMarker := bg, "  ", "  "
-	if ruleIdentity(r) == m.rules.selected {
-		marker, secondMarker = "▌ ", "▌ "
+	markerColor := focus
+	if m.focus == id {
+		marker = "› "
 		surface = panel
 	}
 	if m.hover == id {
 		surface = hoverBackground
-	}
-	markerColor := accent
-	if m.focus == id {
-		marker, secondMarker, markerColor = "› ", "  ", focus
 	}
 	indent := 2 + numberWidth + 2
 	available := max(1, width-indent-1)
@@ -251,8 +248,7 @@ func (m Model) ruleRows(r mihomo.Rule, width, numberWidth int) []string {
 		proxyColor = errorColor
 	}
 	// Reserve room for the target before clipping an unusually long rule type.
-	proxyWidth := min(ansi.StringWidth(proxy), max(1, available/2))
-	typeWidth := min(20, max(1, available-proxyWidth-3))
+	typeWidth := ruleTypeColumnWidth(proxy, available)
 	meta := themed(cellPad(clean(r.Type), typeWidth), muted, surface, false) + themed(" → ", muted, surface, false) + themed(cellCrop(proxy, max(1, available-typeWidth-3)), proxyColor, surface, false)
 	if r.Extra != nil && r.Extra.Disabled {
 		// Keep the disabled state visible even when the target is long.
@@ -261,7 +257,7 @@ func (m Model) ruleRows(r mihomo.Rule, width, numberWidth int) []string {
 	}
 	metaLines := []string{meta}
 	if expanded {
-		meta = themed(clean(r.Type), muted, surface, false) + themed(" → ", muted, surface, false) + themed(proxy, proxyColor, surface, false)
+		meta = themed(cellPad(clean(r.Type), max(typeWidth, ansi.StringWidth(clean(r.Type)))), muted, surface, false) + themed(" → ", muted, surface, false) + themed(proxy, proxyColor, surface, false)
 		if r.Extra != nil && r.Extra.Disabled {
 			meta += themed(m.tr("rules.disabled_suffix"), warning, surface, false)
 		}
@@ -272,7 +268,7 @@ func (m Model) ruleRows(r mihomo.Rule, width, numberWidth int) []string {
 		rows = append(rows, themed(cellPad(second, width), text, surface, false))
 	}
 	if expanded {
-		for _, line := range m.ruleObservationLines(r, available) {
+		for _, line := range m.ruleEntryCountLines(r, available) {
 			value := themed(secondMarker, markerColor, surface, false) + themed(strings.Repeat(" ", indent-2), muted, surface, false) + themed(line, muted, surface, false)
 			rows = append(rows, themed(cellPad(value, width), text, surface, false))
 		}
@@ -296,26 +292,20 @@ func (m Model) ruleHeight(r mihomo.Rule, width, numberWidth int) int {
 	if proxy == "" {
 		proxy = "--"
 	}
-	meta := clean(r.Type) + " → " + proxy
+	meta := cellPad(clean(r.Type), max(ruleTypeColumnWidth(proxy, available), ansi.StringWidth(clean(r.Type)))) + " → " + proxy
 	if r.Extra != nil && r.Extra.Disabled {
 		meta += m.tr("rules.disabled_suffix")
 	}
-	return len(strings.Split(wrapText(clean(payload), available), "\n")) + len(strings.Split(wrapText(meta, available), "\n")) + len(m.ruleObservationLines(r, available))
+	return len(strings.Split(wrapText(clean(payload), available), "\n")) + len(strings.Split(wrapText(meta, available), "\n")) + len(m.ruleEntryCountLines(r, available))
 }
-func (m Model) ruleObservationLines(r mihomo.Rule, width int) []string {
-	var fields []string
-	if r.Size >= 0 {
-		fields = append(fields, fmt.Sprintf(m.tr("rules.entries"), r.Size))
-	}
-	if r.Extra != nil {
-		state := m.tr("rules.enabled")
-		if r.Extra.Disabled {
-			state = m.tr("rules.disabled")
-		}
-		fields = append(fields, m.tr("rules.state", state), fmt.Sprintf(m.tr("rules.hits"), r.Extra.HitCount, r.Extra.MissCount))
-	}
-	if len(fields) == 0 {
+func ruleTypeColumnWidth(proxy string, available int) int {
+	proxyWidth := min(ansi.StringWidth(proxy), max(1, available/2))
+	return min(20, max(1, available-proxyWidth-3))
+}
+
+func (m Model) ruleEntryCountLines(r mihomo.Rule, width int) []string {
+	if r.Size < 0 {
 		return nil
 	}
-	return strings.Split(wrapText(clean(strings.Join(fields, " · ")), width), "\n")
+	return strings.Split(wrapText(m.tr("rules.entries", r.Size), width), "\n")
 }

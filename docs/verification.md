@@ -1,5 +1,15 @@
 # 验证入口
 
+## Rules 只显示浏览焦点（2026-11-06）
+
+生效规则列表移除常驻蓝色选中竖条及失焦后的选中背景，保留鼠标悬浮与键盘当前焦点的黄色箭头/背景；切页后仍记住浏览位置，进入内容可恢复焦点。中英文操作提示由「选择」改为「浏览」。展开内容移除启用状态及命中/未命中统计，保留完整条件、类型、目标、适用的集合条目数与实际禁用提示。展开与收起共用类型列宽，避免箭头和目标组名向左跳；长类型仍可完整展开。
+
+宿主 `make check build` 通过（TUI 71.025 秒），八项 Python 解析测试通过。调整既有回归，验证切页返回、焦点恢复、展开后失焦、hover、半行裁切和无色显示；规则计数为零仍如实显示，统计变化不关闭当前展开。新增 20/34/60/160 列展开前后列位置回归，以及 12/20/34/60/160 列长类型、中文目标、禁用提示与条目数的换行行高一致性回归。
+
+真实 controlling PTY 完成中英文 × True Color、ANSI256、NO_COLOR 六组，覆盖 160×45、120×32、80×24、60×20、40×16 及恢复。另断言 Enter 展开前后目标组名坐标不变。每组 `queries=4`，服务、模式和节点修改均为零。已目视检查宽屏失焦无标记、40×16 无色布局及长规则展开无统计。证据位于 `.test-artifacts/rules-focus-only/pty-final/20261106-111849-deefa7/`，PTY 日志为同目录上级的 `pty-final.log`；宿主及 Python 日志为 `.test-artifacts/rules-focus-only-{check-build,python}-final.log`。最终中文 True Color PNG 复核证据为 `.test-artifacts/rules-focus-only/pty-preview-final/20261106-131542-a0d24d/`，已目视展开后的列对齐。PNG 根据实际 PTY 字符格和颜色重绘，使用隔离内存后端；本次只调整呈现，未重跑 race 或真实 Mihomo/systemd/TUN 生命周期 E2E。
+
+`./scripts/verify-linux.sh lazyclash-e2e` 在专用 Debian/arm64 VM 内执行全部可运行包测试通过；临时目录清理检查通过。最终日志为 `.test-artifacts/rules-focus-only-linux-final.log`。
+
 ## 概览卡片间距恢复（2026-11-06）
 
 根据视觉反馈，恢复概览各组上下卡片之间的一行空白，包括窄屏单列时内核信息与环境卡片之间的间隔。`overviewContent` 与最初 `387f39f` 的实现逐行一致；共享分隔线和页头到正文的间距、状态精简、规则摘要均保持不变。顶部背景已在独立提交 `c7640b4` 恢复。

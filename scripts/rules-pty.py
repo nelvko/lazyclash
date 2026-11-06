@@ -101,28 +101,32 @@ def exercise(preview, binary, output, language, profile, args):
             click_cell(terminal, x, y + offset)
             screen = terminal.screen.text()
             assert "private_ip" in screen and "Rule details" not in screen and "规则详情" not in screen, "rule click left the list"
-            assert any(payload in row and re.search(r"[›▌]", row) for row in screen.splitlines()), "rule click did not select its exact row"
-        preview.capture(terminal, output, "row-clicks-select", args)
+            assert any(payload in row and "›" in row for row in screen.splitlines()), "rule click did not focus its exact row"
+        preview.capture(terminal, output, "row-clicks-focus", args)
 
-        # Navigation owns focus after returning; selection still spans both
-        # content lines rather than leaving a half-height blue gutter.
+        # Navigation owns focus after returning. Remembering a cursor position
+        # must not make a read-only rule look enabled or currently in use.
         click_cell(terminal, *position(terminal, words["dashboard.page.connections"], 20))
         terminal.wait_absent("private_ip")
         click_cell(terminal, *position(terminal, words["dashboard.page.rules"], 20))
         terminal.wait("private_ip")
         terminal.settle()
-        marker_x, marker_y = position(terminal, "▌")
-        assert marker_y == position(terminal, "jumpdesktop.com")[1], "return lost its selected rule"
-        assert terminal.screen.cells[marker_y + 1][marker_x] == "▌", "selected rule retained a half-height marker"
-        preview.capture(terminal, output, "selection-after-page-return", args)
+        marker_y = position(terminal, "jumpdesktop.com")[1]
+        assert "▌" not in terminal.screen.text(), "return decorated an inactive rule with a selection bar"
+        preview.capture(terminal, output, "inactive-rule-after-page-return", args)
         terminal.key(b"\r")  # Enter the list, restoring its yellow focus arrow.
         terminal.settle()
-        assert terminal.screen.cells[marker_y][marker_x] == "›", "content focus did not return to the selected rule"
-        assert terminal.screen.cells[marker_y + 1][marker_x] == " ", "selection bar leaked below its focus arrow"
+        marker_x, focus_y = position(terminal, "›", max_column=40)
+        assert focus_y == marker_y, "content focus did not return to the remembered rule"
+        assert terminal.screen.cells[marker_y][marker_x] == "›", "content focus did not return to the remembered rule"
+        assert terminal.screen.cells[marker_y + 1][marker_x] == " ", "focus arrow leaked onto the second row"
+        preview.capture(terminal, output, "remembered-rule-focused", args)
+        target_position = position(terminal, "Jump Desktop")
         terminal.key(b"\r")
         terminal.settle()
         terminal.wait("jumpdesktop.com")
         terminal.wait("Jump Desktop")
+        assert position(terminal, "Jump Desktop") == target_position, "expanding a rule moved its target group"
         assert "private_ip" in terminal.screen.text(), "inline expansion replaced its list"
         preview.capture(terminal, output, "selected-enter-inline", args)
         terminal.key(b"\x1b")
@@ -195,17 +199,19 @@ def exercise(preview, binary, output, language, profile, args):
             terminal.settle()
             terminal.wait_absent("private_ip")
             assert toolbar == {label: position(terminal, label) for label in toolbar}, "search options moved with the list"
+            assert "▌" not in terminal.screen.text(), "scrolled rules retained a selection bar"
             preview.capture(terminal, output, "scrolled-%dx%d" % (width, height), args)
             terminal.key(b"\x1b[H")
             terminal.settle()
             terminal.wait("private_ip")
             preview.capture(terminal, output, "rules-%dx%d" % (width, height), args)
 
-        # A long rule expands in place, including observations and full payload.
+        # A long rule expands its full payload without enabled/hit diagnostics.
         search(terminal, "long-")
         terminal.key(b"\r")
-        terminal.wait(words["rules.disabled"])
-        terminal.wait("4 / 9")
+        terminal.wait("example.invalid")
+        terminal.wait(words["rules.disabled_suffix"])
+        assert "4 / 9" not in terminal.screen.text(), "expanded rule retained hit diagnostics"
         assert "Aa" in terminal.screen.text(), "expanded rule replaced the list toolbar"
         preview.capture(terminal, output, "long-disabled-inline", args)
         terminal.key(b"\x1b")
@@ -225,7 +231,7 @@ def exercise(preview, binary, output, language, profile, args):
         if profile == "no-color":
             assert not any(value not in (b"", b"0") for value in preview.SGR.findall(raw)), "NO_COLOR emitted styling"
         (output / "pty.raw").write_bytes(raw)
-        print("PASS %s/%s: row clicks select, inline expansion, search options/invalid regex, fixed toolbar and five resize dimensions; %s" %
+        print("PASS %s/%s: focus-only feedback, inline payload expansion, search options/invalid regex, fixed toolbar and five resize dimensions; %s" %
             (language, profile, json.dumps(calls)), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")

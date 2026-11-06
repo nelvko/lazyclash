@@ -83,21 +83,26 @@ func TestRulesRefreshCollapsesExpansionWhenIndexIsReused(t *testing.T) {
 	fresh[0].Extra = &mihomo.RuleExtra{HitCount: 7}
 	m.rules.pending = true
 	m, _ = update(m, rulesResultMsg{generation: m.rules.generation, snapshot: app.RuleSnapshot{State: "ready", Rules: fresh}})
-	if m.rules.expanded != ruleIdentity(fresh[0]) || !strings.Contains(ansi.Strip(m.screen), "7 / 0") {
-		t.Fatal("updated observations lost a current expansion")
+	if m.rules.expanded != ruleIdentity(fresh[0]) || !strings.Contains(ansi.Strip(m.screen), fresh[0].Payload) {
+		t.Fatal("updated statistics lost a current expansion")
 	}
 }
 
-func TestRulesOptionalObservationsAndZeroSizeRemainReadOnly(t *testing.T) {
+func TestRulesExpandedCountOmitsDiagnosticStatistics(t *testing.T) {
 	m := rulesModel(t, &fakeBackend{})
 	r := sampleRules()[0]
 	r.Size, r.Extra = 0, &mihomo.RuleExtra{Disabled: true, HitCount: 4, MissCount: 9}
 	m.rules.snapshot.Rules[0] = r
 	m, _ = update(m, special(tea.KeyEnter))
 	plain := ansi.Strip(m.screen)
-	for _, expected := range []string{"Entries: 0", "State: Disabled", "Hits / misses: 4 / 9"} {
+	for _, expected := range []string{"Entries: 0", m.tr("rules.disabled_suffix")} {
 		if !strings.Contains(plain, expected) {
-			t.Fatalf("missing observation %q", expected)
+			t.Fatalf("missing rule metadata %q", expected)
+		}
+	}
+	for _, removed := range []string{"State:", "Enabled", "Hits / misses:", "4 / 9"} {
+		if strings.Contains(plain, removed) {
+			t.Fatalf("expanded rule retained diagnostic field %q", removed)
 		}
 	}
 	for _, target := range m.targets {

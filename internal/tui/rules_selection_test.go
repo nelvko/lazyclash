@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nelvko/lazyclash/internal/mihomo"
 )
 
 func assertRuleSelectionGutter(t *testing.T, screen string, target hitRegion, markers []string, surface string) {
@@ -33,8 +34,6 @@ func assertRuleSelectionGutter(t *testing.T, screen string, target hitRegion, ma
 		}
 		foreground := ""
 		switch marker {
-		case "▌ ":
-			foreground = accent
 		case "› ":
 			foreground = focus
 		}
@@ -49,7 +48,7 @@ func assertRuleSelectionGutter(t *testing.T, screen string, target hitRegion, ma
 	}
 }
 
-func TestRulesSelectionSurvivesPageBrowsingWithoutHalfMarker(t *testing.T) {
+func TestRulesSelectionStaysAsNavigationAnchorAcrossPages(t *testing.T) {
 	m := rulesMouseModel(t, 40, 160, 45)
 	m, _ = click(m, findTarget(t, m, "rule.3"))
 	selected := m.rules.selected
@@ -66,7 +65,7 @@ func TestRulesSelectionSurvivesPageBrowsingWithoutHalfMarker(t *testing.T) {
 	if m.page != "rules" || m.focus != "nav.rules" || m.rules.selected != selected || m.rules.expanded != "" {
 		t.Fatal("browsing back lost rule selection or navigation focus")
 	}
-	assertRuleSelectionGutter(t, m.screen, findTarget(t, m, "rule.3"), []string{"▌ ", "▌ "}, panel)
+	assertRuleSelectionGutter(t, m.screen, findTarget(t, m, "rule.3"), []string{"  ", "  "}, bg)
 	m, _ = update(m, special(tea.KeyEnter))
 	if m.focus != "rule.3" || m.rules.selected != selected || m.rules.expanded != "" {
 		t.Fatal("entering content did not restore the selected rule focus")
@@ -76,9 +75,17 @@ func TestRulesSelectionSurvivesPageBrowsingWithoutHalfMarker(t *testing.T) {
 	if m.rules.expanded != ruleIdentity(m.rules.snapshot.Rules[3]) {
 		t.Fatal("Enter on the focused rule did not expand in place")
 	}
+	m.returnToNavigation()
+	m.layout()
+	target := findTarget(t, m, "rule.3")
+	markers := make([]string, target.H)
+	for i := range markers {
+		markers[i] = "  "
+	}
+	assertRuleSelectionGutter(t, m.screen, target, markers, bg)
 }
 
-func TestRulesSelectionAndHoverKeepIndependentMarkers(t *testing.T) {
+func TestRulesSelectionAndHoverKeepIndependentFeedback(t *testing.T) {
 	m := rulesMouseModel(t, 40, 160, 45)
 	m, _ = click(m, findTarget(t, m, "rule.3"))
 	m.returnToNavigation()
@@ -90,11 +97,11 @@ func TestRulesSelectionAndHoverKeepIndependentMarkers(t *testing.T) {
 		if m.rules.selected != selected || m.focus != "nav.rules" || m.rules.expanded != "" {
 			t.Fatal("hover changed selection or keyboard ownership")
 		}
-		surface := panel
+		surface := bg
 		if id == "rule.3" {
 			surface = hoverBackground
 		}
-		assertRuleSelectionGutter(t, m.screen, findTarget(t, m, "rule.3"), []string{"▌ ", "▌ "}, surface)
+		assertRuleSelectionGutter(t, m.screen, findTarget(t, m, "rule.3"), []string{"  ", "  "}, surface)
 		if id == "rule.5" {
 			assertRuleSelectionGutter(t, m.screen, target, []string{"  ", "  "}, hoverBackground)
 		}
@@ -107,7 +114,7 @@ func TestRulesSelectionAndHoverKeepIndependentMarkers(t *testing.T) {
 	assertRuleSelectionGutter(t, m.screen, findTarget(t, m, "rule.3"), []string{"› ", "  "}, hoverBackground)
 }
 
-func TestRulesSelectionMarkerClipsWithItsTwoRowTarget(t *testing.T) {
+func TestRulesSelectionDoesNotDecorateClippedRows(t *testing.T) {
 	for _, size := range [][2]int{{160, 45}, {80, 24}, {60, 20}, {40, 9}} {
 		t.Run(fmt.Sprint(size), func(t *testing.T) {
 			m := rulesMouseModel(t, 60, size[0], size[1])
@@ -122,8 +129,8 @@ func TestRulesSelectionMarkerClipsWithItsTwoRowTarget(t *testing.T) {
 			if target.Y != g.y || target.H != 1 {
 				t.Fatalf("second-line target did not clip to top: %+v", target)
 			}
-			assertRuleSelectionGutter(t, m.screen, target, []string{"▌ "}, panel)
-			// The separator has no selection decoration after both lines leave.
+			assertRuleSelectionGutter(t, m.screen, target, []string{"  "}, bg)
+			// Neither the remembered row nor its separator has selection decoration.
 			m.scroll = row + 2
 			m.renderLayout()
 			line := strings.Split(m.screen, "\n")[g.y]
@@ -137,14 +144,14 @@ func TestRulesSelectionMarkerClipsWithItsTwoRowTarget(t *testing.T) {
 			if target.Y != g.y+g.height-1 || target.H != 1 {
 				t.Fatalf("first-line target did not clip to bottom: %+v", target)
 			}
-			assertRuleSelectionGutter(t, m.screen, target, []string{"▌ "}, panel)
+			assertRuleSelectionGutter(t, m.screen, target, []string{"  "}, bg)
 			assertCanvas(t, m.screen, size[0], size[1])
 			assertRegions(t, m.targets, size[0], size[1])
 		})
 	}
 }
 
-func TestRulesSelectionRemainsReadableWithoutColor(t *testing.T) {
+func TestRulesSelectionOnlyShowsCurrentFocusWithoutColor(t *testing.T) {
 	for _, noColor := range []bool{false, true} {
 		t.Run(fmt.Sprintf("NO_COLOR=%t", noColor), func(t *testing.T) {
 			m := rulesMouseModel(t, 40, 160, 45)
@@ -159,10 +166,65 @@ func TestRulesSelectionRemainsReadableWithoutColor(t *testing.T) {
 			if strings.Contains(content, "\x1b") {
 				t.Fatal("monochrome view retained terminal styling")
 			}
-			assertRuleSelectionGutter(t, content, findTarget(t, m, "rule.3"), []string{"▌ ", "▌ "}, "")
+			assertRuleSelectionGutter(t, content, findTarget(t, m, "rule.3"), []string{"  ", "  "}, "")
 			m.focus = "rule.3"
 			m.layout()
 			assertRuleSelectionGutter(t, m.View().Content, findTarget(t, m, "rule.3"), []string{"› ", "  "}, "")
 		})
+	}
+}
+
+// Expanding a browsed rule must not move the metadata columns while revealing
+// its complete values below the same payload.
+func TestRulesExpansionKeepsMetadataColumns(t *testing.T) {
+	for _, width := range []int{20, 34, 60, 160} {
+		t.Run(fmt.Sprintf("width=%d", width), func(t *testing.T) {
+			m := rulesModel(t, &fakeBackend{})
+			r := sampleRules()[2]
+			r.Payload, r.Proxy = "all", "组名"
+			collapsed := ansi.Strip(m.ruleRows(r, width, 1)[1])
+			m.rules.expanded = ruleIdentity(r)
+			expanded := ansi.Strip(m.ruleRows(r, width, 1)[1])
+			for _, value := range []string{"→", r.Proxy} {
+				before, _, found := strings.Cut(collapsed, value)
+				if !found {
+					t.Fatalf("collapsed row missing %q: %q", value, collapsed)
+				}
+				after, _, found := strings.Cut(expanded, value)
+				if !found || ansi.StringWidth(before) != ansi.StringWidth(after) {
+					t.Fatalf("expansion moved %q column: collapsed=%q expanded=%q", value, collapsed, expanded)
+				}
+			}
+		})
+	}
+}
+
+func TestRulesExpandedMetadataHeightMatchesWrappedRows(t *testing.T) {
+	m := rulesModel(t, &fakeBackend{})
+	for _, width := range []int{12, 20, 34, 60, 160} {
+		for _, ruleType := range []string{"Match", "DomainSuffix", "UnusuallyLongRuleTypeName"} {
+			t.Run(fmt.Sprintf("width=%d/type=%s", width, ruleType), func(t *testing.T) {
+				r := sampleRules()[0]
+				r.Type, r.Proxy = ruleType, "一个完整的目标组名-with-a-long-target"
+				r.Size, r.Extra = 12345, &mihomo.RuleExtra{Disabled: true}
+				m.rules.expanded = ruleIdentity(r)
+				rows := m.ruleRows(r, width, 1)
+				if height := m.ruleHeight(r, width, 1); height != len(rows) {
+					t.Fatalf("geometry height=%d, rendered=%d: %q", height, len(rows), rows)
+				}
+				var complete strings.Builder
+				for _, row := range rows {
+					if cells := ansi.StringWidth(row); cells > width {
+						t.Fatalf("wrapped row exceeds width %d: %d cells", width, cells)
+					}
+					complete.WriteString(strings.TrimSpace(ansi.Strip(ansi.Cut(row, 5, width))))
+				}
+				for _, value := range []string{r.Type, r.Proxy} {
+					if width >= 20 && !strings.Contains(complete.String(), value) {
+						t.Fatalf("expanded metadata lost full value %q: %q", value, complete.String())
+					}
+				}
+			})
+		}
 	}
 }
