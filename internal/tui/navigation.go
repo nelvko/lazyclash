@@ -13,7 +13,7 @@ func listTarget(id string) bool {
 		_, err := strconv.Atoi(strings.TrimPrefix(id, "profile."))
 		return err == nil
 	}
-	for _, prefix := range []string{"rules.provider.", "rules.custom-row.", "connection.", "rule.", "group.", "node."} {
+	for _, prefix := range []string{"rules.provider.", "connection.", "rule.", "group.", "node."} {
 		if strings.HasPrefix(id, prefix) {
 			return true
 		}
@@ -188,9 +188,6 @@ func (m Model) contextHelp() string {
 	case "rules":
 		if m.rules.view == "providers" {
 			return tr("rules.providers.keys")
-		}
-		if m.rules.view == "custom" {
-			return tr("custom_rules.keys")
 		}
 		return tr("navigation.rules")
 	case "logs":

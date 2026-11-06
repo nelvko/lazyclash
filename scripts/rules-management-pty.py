@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise custom rules and rule providers in a real controlling PTY.
+"""Exercise rule providers in a real controlling PTY.
 
 Build with `go test -c ./internal/tui -o bin/rules-management-tui.test`.
 The opt-in fixture has isolated memory state and never contacts a core,
@@ -17,10 +17,6 @@ import uuid
 
 sys.dont_write_bytecode = True
 SIZES = ((120, 32), (80, 24), (60, 20), (40, 16), (160, 45))
-ADDED = "DOMAIN,q1234567.example.invalid,DIRECT"
-EDITED = "DOMAIN-SUFFIX," + "中文规则." * 16 + "example.invalid,PROXY"
-DISPOSABLE = "DOMAIN,delete-me.example.invalid,DIRECT"
-DISCARDED = "DOMAIN,discard-me.example.invalid,DIRECT"
 
 
 def load_module(name, path):
@@ -68,24 +64,6 @@ def calls(report):
     return json.loads(report.read_text())
 
 
-def add_rule(terminal, words, value):
-    terminal.key(b"a")
-    terminal.wait(words["custom_rules.add_rule"])
-    RULES.paste(terminal, value)
-    terminal.key(b"\r")
-    terminal.settle()
-    terminal.wait(words["custom_rules.unsaved"])
-
-
-def confirm(terminal, words, key, accept):
-    terminal.wait(words[key])
-    if accept:
-        terminal.key(b"\t")
-    terminal.key(b"\r")
-    terminal.settle()
-    terminal.wait_absent(words[key])
-
-
 def exercise(preview, binary, output, language, profile, args):
     output.mkdir(parents=True)
     words = RULES.labels(language)
@@ -95,101 +73,6 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait("v1.19.33")
         terminal.key(b"5")
         terminal.wait("source.example.invalid")
-        click_label(terminal, words["custom_rules.title"], header=True)
-        terminal.wait("DOMAIN,one.example.invalid,DIRECT")
-        preview.capture(terminal, output, "custom-clean", args)
-
-        # Text that resembles global quit/page/service shortcuts stays in the
-        # Bubbles input. Add, edit and reorder affect the local draft only.
-        terminal.key(b"a")
-        terminal.wait(words["custom_rules.add_rule"])
-        terminal.key(ADDED.encode())
-        terminal.key(b"\r")
-        terminal.settle()
-        terminal.wait(ADDED)
-        terminal.key(b"\x1b[1;3A")
-        terminal.settle()
-        screen = terminal.screen.text()
-        assert screen.index(ADDED) < screen.index("DOMAIN-SUFFIX,two.example.invalid,PROXY"), "Alt+Up did not move the selected draft rule"
-        terminal.key(b"e")
-        terminal.wait(words["custom_rules.edit_rule"])
-        terminal.key(b"\x15")
-        RULES.paste(terminal, EDITED)
-        terminal.settle()
-        preview.capture(terminal, output, "custom-input", args)
-        terminal.resize(40, 16)
-        terminal.settle()
-        preview.capture(terminal, output, "custom-input-40x16", args)
-        terminal.resize(160, 45)
-        terminal.settle()
-        terminal.key(b"\r")
-        terminal.settle()
-        terminal.wait("中文规则")
-        add_rule(terminal, words, DISPOSABLE)
-        terminal.wait(DISPOSABLE)
-        terminal.key(b"x")
-        confirm(terminal, words, "custom_rules.delete_confirm", False)
-        terminal.wait(DISPOSABLE)
-        terminal.key(b"d")
-        confirm(terminal, words, "custom_rules.delete_confirm", True)
-        terminal.wait_absent(DISPOSABLE)
-        assert calls(report)["saves"] == calls(report)["applies"] == 0, "draft edits escaped to the backend"
-        preview.capture(terminal, output, "custom-unsaved", args)
-
-        # A draft survives visiting another page and resizing. Long Chinese
-        # rules wrap in the selected row rather than overflowing the canvas.
-        terminal.key(b"3")
-        terminal.wait_absent("中文规则")
-        terminal.key(b"5")
-        terminal.wait("中文规则")
-        terminal.key(b"\x1b[H\x1b[B")
-        terminal.settle()
-        for width, height in SIZES:
-            terminal.resize(width, height)
-            terminal.settle()
-            terminal.key(b"\x1b[H\x1b[B")
-            terminal.settle()
-            assert "中文规则" in terminal.screen.text(), "resizing lost the selected draft rule"
-            preview.capture(terminal, output, "custom-%dx%d" % (width, height), args)
-        terminal.key(b"s")
-        terminal.wait(words["custom_rules.saved"])
-        before_apply = calls(report)
-        expected = ["DOMAIN,one.example.invalid,DIRECT", EDITED, "DOMAIN-SUFFIX,two.example.invalid,PROXY"]
-        assert before_apply["saved_rules"] == expected and before_apply["applies"] == 0, before_apply
-        assert before_apply["applied_rules"] == [expected[0], expected[2]], "Save changed the live rules before Apply"
-        preview.capture(terminal, output, "custom-saved-pending", args)
-
-        click_label(terminal, words["custom_rules.apply"], header=True)
-        preview.capture(terminal, output, "custom-apply-confirm", args)
-        terminal.resize(40, 16)
-        terminal.settle()
-        preview.capture(terminal, output, "custom-apply-confirm-40x16", args)
-        terminal.resize(160, 45)
-        terminal.settle()
-        confirm(terminal, words, "custom_rules.apply_confirm", False)
-        assert calls(report)["applies"] == 0, "default Apply confirmation applied the draft"
-        click_label(terminal, words["custom_rules.apply"], header=True)
-        confirm(terminal, words, "custom_rules.apply_confirm", True)
-        terminal.wait(words["custom_rules.applied"])
-        assert calls(report)["applies"] == 1 and calls(report)["applied_rules"] == expected, calls(report)
-        preview.capture(terminal, output, "custom-applied", args)
-
-        add_rule(terminal, words, DISCARDED)
-        terminal.key(b"\x1b")
-        confirm(terminal, words, "custom_rules.discard_confirm", False)
-        terminal.wait(DISCARDED)
-        terminal.key(b"\x1b")
-        confirm(terminal, words, "custom_rules.discard_confirm", True)
-        terminal.wait("source.example.invalid")
-        click_label(terminal, words["custom_rules.title"], header=True)
-        terminal.wait("中文规则")
-        terminal.wait_absent(DISCARDED)
-        # Clean reload uses the custom action, never the global restart key.
-        terminal.key(b"r")
-        terminal.wait(words["custom_rules.saved_state"])
-        terminal.key(b"\x1b")
-        terminal.wait("source.example.invalid")
-
         click_label(terminal, words["rules.providers.title"], header=True)
         terminal.wait("remote_rules")
         terminal.wait("inline_rules")
@@ -231,8 +114,6 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait("source.example.invalid")
         terminal.exit()
         result = calls(report)
-        assert result["saves"] == result["applies"] == 1 and result["loads"] >= 3, result
-        assert result["saved_rules"] == result["applied_rules"] == expected, result
         assert result["service_changes"] == result["modes"] == result["selections"] == 0, result
         raw = bytes(terminal.raw)
         assert not preview.OSC_SET.search(raw), "application changed the terminal palette"
@@ -241,8 +122,8 @@ def exercise(preview, binary, output, language, profile, args):
         if profile == "no-color":
             assert not any(value not in (b"", b"0") for value in preview.SGR.findall(raw)), "NO_COLOR emitted styling"
         (output / "pty.raw").write_bytes(raw)
-        summary = {key: value for key, value in result.items() if key not in ("saved_rules", "applied_rules")}
-        print("PASS %s/%s: CRUD, reorder, draft retention, explicit Save/Apply, default-cancel confirmations, partial provider failure/retry and five sizes; %s" %
+        summary = result
+        print("PASS %s/%s: partial provider failure/retry, filtering and five sizes; %s" %
             (language, profile, json.dumps(summary)), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")

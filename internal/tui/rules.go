@@ -211,9 +211,6 @@ func (m *Model) ruleKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 	if m.rules.view == "providers" {
 		return m.ruleProvidersKey(k)
 	}
-	if m.rules.view == "custom" {
-		return m.customRulesKey(k)
-	}
 	if handled, cmd := m.ruleFilterKey(k); handled {
 		return true, cmd
 	}
@@ -257,14 +254,8 @@ func (m *Model) ruleActivate(id string) tea.Cmd {
 	if id == "rules.providers" {
 		return m.openRuleProviders()
 	}
-	if id == "rules.custom" {
-		return m.openCustomRules()
-	}
 	if m.rules.view == "providers" {
 		return m.ruleProvidersActivate(id)
-	}
-	if m.rules.view == "custom" {
-		return m.customRulesActivate(id)
 	}
 	if id != "rules.search" {
 		m.rules.editing = false

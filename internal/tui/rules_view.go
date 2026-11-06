@@ -39,9 +39,6 @@ func (m Model) rulesToolbar(width, rows int) dashboardBlock {
 	if m.rules.view == "providers" {
 		return m.ruleProvidersToolbar(width, rows)
 	}
-	if m.rules.view == "custom" {
-		return m.customRulesToolbar(width, rows)
-	}
 	_, matchErr := m.ruleMatcher()
 	b := m.searchToolbar("rules.search", m.tr("rules.search_placeholder"), m.rules.search,
 		m.ruleFilterButtons(), width, width >= 68, matchErr != nil)
@@ -96,9 +93,6 @@ func (m Model) rulesListPrefix(width int) int {
 func (m Model) rulesBodyWindow(width, start, height int) ruleBodyWindow {
 	if m.rules.view == "providers" {
 		return m.ruleProvidersBodyWindow(width, start, height)
-	}
-	if m.rules.view == "custom" {
-		return m.customRulesBodyWindow(width, start, height)
 	}
 	var lines []string
 	var hits []hitRegion

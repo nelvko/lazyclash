@@ -44,7 +44,6 @@ func (m *Model) rememberPageView() {
 func (m *Model) browsePage(page string) {
 	m.ruleProviders.editing = false
 	m.ruleProviders.search.Blur()
-	m.customRules.input.Blur()
 	m.sidebar.reveal = true
 	if page != m.page {
 		m.stopProxyTests()
@@ -76,7 +75,6 @@ func (m *Model) browsePage(page string) {
 func (m *Model) returnToNavigation() {
 	m.ruleProviders.editing = false
 	m.ruleProviders.search.Blur()
-	m.customRules.input.Blur()
 	m.rememberPageView()
 	m.proxies.editing = false
 	m.proxies.search.Blur()
@@ -277,15 +275,6 @@ func (m *Model) enterContent() {
 				}
 				break
 			}
-			if m.rules.view == "custom" {
-				chosen = "rules.custom-back"
-				if m.customRules.inputOpen {
-					chosen = "rules.custom-input"
-				} else if m.customRules.loaded && len(m.customRules.draft.Rules) > 0 {
-					chosen = "rules.custom-row." + strconv.Itoa(m.customRules.selected)
-				}
-				break
-			}
 			for _, rule := range m.filteredRules() {
 				if ruleIdentity(rule) == m.rules.selected {
 					chosen = "rule." + strconv.Itoa(rule.Index)
@@ -312,9 +301,6 @@ func (m *Model) enterContent() {
 		chosen = "content"
 	}
 	m.focus = chosen
-	if chosen == "rules.custom-input" {
-		m.customRules.input.Focus()
-	}
 	if chosen == "rules.providers-search" {
 		m.ruleProviders.editing = true
 		m.ruleProviders.search.Focus()
@@ -537,42 +523,7 @@ func (m *Model) decorateContentFocus(g dashboardLayout, overlays []notificationO
 }
 
 func (m *Model) requestQuit() tea.Cmd {
-	if m.customRules.saving || m.customRules.applying {
-		m.stopRules()
-		m.stopRuleProviders()
-		m.stopRuntime()
-		m.stopLogs()
-		m.quitting = true
-		if m.customRules.cancel != nil {
-			m.customRules.cancel()
-		}
-		if m.busy {
-			m.cancelTask(true)
-		}
-		return nil
-	}
-
-	if m.customRulesUnsaved() {
-		m.page = "rules"
-		m.sidebarOpen = false
-		m.helpOpen = false
-		m.menu.open = false
-		m.ports.open = false
-		m.wizard.open, m.wizard.networkOpen = false, false
-		m.form = ""
-		m.notification.panel.open = false
-		m.rules.view = "custom"
-		m.customRules.confirm = "quit"
-		m.focus = "rules.custom-cancel"
-		return nil
-	}
 	m.stopRuleProviders()
-	if m.customRules.cancel != nil {
-		m.customRules.cancel()
-		m.customRules.cancel = nil
-		m.customRules.generation++
-	}
-
 	m.stopProxyTests()
 	m.stopRuntime()
 	m.stopRules()

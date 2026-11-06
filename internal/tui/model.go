@@ -157,7 +157,6 @@ type Model struct {
 	connections           connectionsState
 	rules                 rulesState
 	ruleProviders         ruleProvidersState
-	customRules           customRulesState
 	logs                  logsState
 	ports                 portsState
 }
@@ -186,7 +185,6 @@ func New(ctx context.Context, backend Backend, languages ...string) Model {
 	m.rules.search.CharLimit = 512
 	m.rules.search.Placeholder = m.tr("model.rule_search")
 	m.ruleProviders = newRuleProvidersState(m.locale)
-	m.customRules = newCustomRulesState()
 	m.logs = newLogsState(m.locale)
 	styleInput(&m.connections.search, bg, false)
 	styleInput(&m.rules.search, inputBackground, false)
@@ -356,7 +354,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.message, m.failure = m.tr("language.saved"), ""
 			m.refreshLocalizedInputs()
 		}
-		if m.quitting && !m.customRules.saving && !m.customRules.applying && !m.keyHints.pending {
+		if m.quitting && !m.keyHints.pending {
 			return m, tea.Quit
 		}
 	case portsMsg:
@@ -364,7 +362,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.acceptPorts(v)
-		if m.quitting && !m.customRules.saving && !m.customRules.applying && !m.busy && !m.keyHints.pending {
+		if m.quitting && !m.busy && !m.keyHints.pending {
 			return m, tea.Quit
 		}
 	case logsResultMsg:
@@ -401,8 +399,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.ruleProviders.active && v.generation == m.ruleProviders.generation && v.request == m.ruleProviders.request {
 			cmd = m.ruleProvidersCmd()
 		}
-	case customRulesResultMsg:
-		cmd = m.acceptCustomRules(v)
 	case rulesResultMsg:
 		accepted := m.rules.active && v.generation == m.rules.generation
 		cmd = m.acceptRules(v)
@@ -426,13 +422,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.stopRuleProviders()
 		m.stopLogs()
 		m.stopCoreStatus()
-		if m.customRules.saving || m.customRules.applying {
-			m.quitting = true
-			if m.customRules.cancel != nil {
-				m.customRules.cancel()
-			}
-			break
-		}
 		if m.busy {
 			m.cancelTask(true)
 		} else {
@@ -525,7 +514,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.messageTransient = v.transient
 			m.failure = ""
 		}
-		if m.quitting && !m.customRules.saving && !m.customRules.applying && !m.keyHints.pending {
+		if m.quitting && !m.keyHints.pending {
 			return m, tea.Quit
 		}
 		if m.wizard.inline && m.wizard.step == stepResult && m.notification.operation.Key == "service.start" && v.actionSucceeded {
@@ -562,7 +551,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.failure = m.localizeError(v.err)
 			}
 		}
-		if m.quitting && !m.customRules.saving && !m.customRules.applying && !m.keyHints.pending {
+		if m.quitting && !m.keyHints.pending {
 			return m, tea.Quit
 		}
 	case networkMsg:
@@ -570,7 +559,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		cmd = m.handleNetworkResult(v)
-		if m.quitting && !m.customRules.saving && !m.customRules.applying && !m.busy && !m.keyHints.pending {
+		if m.quitting && !m.busy && !m.keyHints.pending {
 			return m, tea.Quit
 		}
 	case nextProgressMsg:
@@ -655,12 +644,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.ruleProviders.search, cmd = m.ruleProviders.search.Update(v)
 			m.scroll = 0
 			m.reconcileRuleProviders()
-		} else if m.customRulesInputActive() {
-			if strings.ContainsAny(v.Content, "\r\n") {
-				m.customRules.err = errors.New(m.tr("custom_rules.single_line"))
-			} else {
-				m.customRules.input, cmd = m.customRules.input.Update(v)
-			}
 		} else if m.rules.editing {
 			m.rules.search, cmd = m.rules.search.Update(v)
 			m.reconcileRules()
@@ -723,10 +706,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.page == "rules" && m.rules.view == "providers" && m.ruleProviders.editing {
 			cmd = m.ruleProvidersSearchKey(v)
-			break
-		}
-		if m.page == "rules" && m.rules.view == "custom" && (m.customRulesInputActive() || m.customRules.confirm != "") {
-			cmd = m.customRulesInputKey(v)
 			break
 		}
 		if m.page == "rules" && m.rules.editing {
@@ -993,8 +972,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.connections.search, cmd = m.connections.search.Update(msg)
 		} else if m.page == "rules" && m.rules.view == "providers" && m.ruleProviders.editing {
 			m.ruleProviders.search, cmd = m.ruleProviders.search.Update(msg)
-		} else if m.customRulesInputActive() {
-			m.customRules.input, cmd = m.customRules.input.Update(msg)
 		} else if m.rules.editing {
 			m.rules.search, cmd = m.rules.search.Update(msg)
 		} else if m.logs.editing {
@@ -1310,9 +1287,6 @@ func (m *Model) cycleFocus(delta int) {
 	if strings.HasPrefix(m.focus, "rules.provider.") {
 		m.ruleProvidersActivate(m.focus)
 	}
-	if strings.HasPrefix(m.focus, "rules.custom-row.") {
-		m.customRulesActivate(m.focus)
-	}
 	if m.focus != "menu" && !strings.HasPrefix(m.focus, "nav.") {
 		for _, target := range m.contentTargets() {
 			if target.ID == m.focus {
@@ -1391,9 +1365,6 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 		if k.X >= r.X && k.X < r.X+r.W && k.Y >= r.Y && k.Y < r.Y+r.H {
 			m.hover = r.ID
 			if pressed && k.Button == tea.MouseLeft {
-				if m.page == "rules" && m.rules.view == "custom" && m.customRules.confirm != "" && r.ID != "rules.custom-confirm" && r.ID != "rules.custom-cancel" {
-					return nil
-				}
 				if m.page == "connections" && m.connections.confirming && r.ID != "conn.cancel" && r.ID != "conn.confirm" {
 					return nil
 				}

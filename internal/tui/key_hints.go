@@ -68,7 +68,7 @@ func (m *Model) acceptKeyHintsSaved(msg keyHintsSavedMsg) tea.Cmd {
 		})
 		n.visible = true
 	}
-	if m.quitting && !m.busy && !m.customRules.saving && !m.customRules.applying {
+	if m.quitting && !m.busy {
 		return tea.Quit
 	}
 	return nil
@@ -81,7 +81,7 @@ func (m *Model) keyHintsShortcut(k tea.KeyPressMsg) (bool, tea.Cmd) {
 	if !m.helpOpen && (m.inlineInputActive() || (m.page == "profiles" && m.focus == "profiles.url" && !m.sidebarOpen) ||
 		(m.page == "proxies" && m.proxies.editing) ||
 		(m.page == "connections" && (m.connections.editing || m.connections.confirming)) ||
-		(m.page == "rules" && (m.rules.editing || m.ruleProviders.editing || m.customRules.inputOpen || m.customRules.confirm != "")) || (m.page == "logs" && m.logs.editing)) {
+		(m.page == "rules" && (m.rules.editing || m.ruleProviders.editing)) || (m.page == "logs" && m.logs.editing)) {
 		return false, nil
 	}
 	return true, m.toggleKeyHints()
