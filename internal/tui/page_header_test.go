@@ -87,8 +87,8 @@ func TestPageHeadersUsePageActionsAcrossSizesAndFocus(t *testing.T) {
 	if hasAction(m.targets, "help.open") || hasAction(m.focusTargets(), "help.open") {
 		t.Fatal("Overview retained a help button or Tab stop")
 	}
-	if !strings.Contains(ansi.Strip(strings.Split(m.screen, "\n")[1]), "Mihomo · Running") {
-		t.Fatal("Overview lost its core summary")
+	if strings.Contains(headerText(m), "Mihomo ·") || !strings.Contains(ansi.Strip(m.screen), "Running") {
+		t.Fatal("Overview must keep the core state in its control card without repeating it in the header")
 	}
 }
 

@@ -107,7 +107,7 @@ func (m Model) pageHeader() pageHeader {
 // scrolling body, with compact labels when the full labels do not fit.
 func renderPageHeader(o dashboardOptions, g dashboardLayout, titleX, titleWidth int) (string, int, int, []hitRegion) {
 	h := o.Header
-	if o.Page == "overview" {
+	if o.Page == "overview" && (o.InlineInstall || overviewSetupVisible(o)) {
 		status, _ := coreSummary(o.Snapshot, o.Locale)
 		h = pageHeader{summary: "Mihomo · " + status}
 	}

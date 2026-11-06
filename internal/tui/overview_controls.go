@@ -189,8 +189,7 @@ func overviewSystemCard(o dashboardOptions, width int) dashboardBlock {
 func overviewKernelCard(o dashboardOptions, width int) dashboardBlock {
 	tr := o.Locale.T
 	s := o.Snapshot
-	status, color := coreSummary(s, o.Locale)
-	lines := []string{themed(status, color, panel, o.Dim)}
+	var lines []string
 	if s.Installed {
 		version := clean(s.Version)
 		if version == "" {
