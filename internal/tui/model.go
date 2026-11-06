@@ -431,7 +431,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.page == "connections" && m.connections.detail == nil && strings.HasPrefix(m.focus, "connection.") {
 			m.revealConnection(0)
 		}
-		if m.page == "rules" && m.rules.detail == nil && strings.HasPrefix(m.focus, "rule.") {
+		if m.page == "rules" && strings.HasPrefix(m.focus, "rule.") {
 			m.revealRule()
 		}
 		if m.page == "profiles" && !m.sidebarOpen {

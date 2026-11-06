@@ -96,7 +96,7 @@ func TestRulesSearchTabVisitsFiltersAndClearRestoresInput(t *testing.T) {
 		t.Fatal("clear did not restore a focused empty search and complete results")
 	}
 	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
-	if m.focus != "rules.retry" || m.rules.editing || m.rules.search.Focused() {
+	if m.focus != "nav.rules" || m.rules.editing || m.rules.search.Focused() {
 		t.Fatalf("Shift+Tab did not return to the preceding fixed control: %s", m.focus)
 	}
 }
@@ -125,7 +125,11 @@ func TestRulesFixedToolbarRetainsScrollDuringTabNavigation(t *testing.T) {
 				t.Fatal("long list did not scroll to its selected rule")
 			}
 			scroll := m.scroll
-			for _, id := range []string{"rules.clear", "rules.regex", "rules.word", "rules.case", "rules.search", "rules.retry"} {
+			navigation := "menu"
+			if dashboardGeometry(m.dashboardOptions()).sidebar {
+				navigation = "nav.rules"
+			}
+			for _, id := range []string{"rules.clear", "rules.regex", "rules.word", "rules.case", "rules.search", navigation} {
 				m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
 				if m.focus != id || m.scroll != scroll {
 					t.Fatalf("fixed control %s changed list viewport: focus=%s scroll=%d want=%d", id, m.focus, m.scroll, scroll)
@@ -141,7 +145,7 @@ func TestRulesFixedToolbarRetainsScrollDuringTabNavigation(t *testing.T) {
 	}
 }
 
-func TestRulesBothRowLinesSelectWithoutOpeningDetails(t *testing.T) {
+func TestRulesBothRowLinesSelectWithoutExpanding(t *testing.T) {
 	for _, row := range []int{0, 1} {
 		t.Run(fmt.Sprint(row), func(t *testing.T) {
 			m := rulesModel(t, &fakeBackend{})
@@ -150,16 +154,16 @@ func TestRulesBothRowLinesSelectWithoutOpeningDetails(t *testing.T) {
 				t.Fatalf("rule should occupy two interactive lines: %+v", target)
 			}
 			m, _ = update(m, tea.MouseClickMsg{X: target.X + target.W/2, Y: target.Y + row, Button: tea.MouseLeft})
-			if m.rules.detail != nil || m.focus != "rule.1" || m.rules.selected != ruleIdentity(sampleRules()[1]) || !hasAction(m.targets, "rules.search") {
+			if m.rules.expanded != "" || m.focus != "rule.1" || m.rules.selected != ruleIdentity(sampleRules()[1]) || !hasAction(m.targets, "rules.search") {
 				t.Fatal("rule click did not keep the selected rule in the list")
 			}
 			m, _ = update(m, special(tea.KeyEnter))
-			if m.rules.detail == nil || m.rules.detail.Index != 1 || hasAction(m.targets, "rules.search") {
-				t.Fatal("Enter did not inspect the selected rule")
+			if m.rules.expanded != ruleIdentity(sampleRules()[1]) || !hasAction(m.targets, "rules.search") || m.focus != "rule.1" || hasAction(m.targets, "rules.back") {
+				t.Fatal("Enter did not expand the selected rule in place")
 			}
 			m, _ = update(m, special(tea.KeyEscape))
-			if m.rules.detail != nil || m.focus != "rule.1" || !hasAction(m.targets, "rules.search") {
-				t.Fatal("return from details did not restore rule and toolbar")
+			if m.rules.expanded != "" || m.focus != "rule.1" || !hasAction(m.targets, "rules.search") {
+				t.Fatal("collapsing did not retain the rule and toolbar")
 			}
 		})
 	}
@@ -178,8 +182,8 @@ func TestRulesDisabledAndMatchRowsRetainMeaning(t *testing.T) {
 	}
 	m, _ = click(m, findTarget(t, m, "rule.2"))
 	m, _ = update(m, special(tea.KeyEnter))
-	if !strings.Contains(ansi.Strip(m.screen), m.tr("rules.payload", m.tr("rules.empty_payload"))) {
-		t.Fatal("details did not preserve empty MATCH payload")
+	if m.rules.snapshot.Rules[2].Payload != "" || !strings.Contains(ansi.Strip(m.screen), m.tr("rules.match_all")) {
+		t.Fatal("inline MATCH presentation changed its empty payload")
 	}
 }
 
@@ -194,23 +198,23 @@ func TestRulesClickPreservesFilterAndScrolledPosition(t *testing.T) {
 	scroll, generation := m.scroll, m.rules.generation
 	target := findTarget(t, m, "rule.15")
 	m, _ = update(m, tea.MouseClickMsg{X: target.X + target.W - 1, Y: target.Y + 1, Button: tea.MouseLeft})
-	if m.rules.detail != nil || m.focus != "rule.15" || m.rules.selectedIndex != 15 || m.scroll != scroll || m.rules.editing || m.rules.search.Focused() {
+	if m.rules.expanded != "" || m.focus != "rule.15" || m.rules.selectedIndex != 15 || m.scroll != scroll || m.rules.editing || m.rules.search.Focused() {
 		t.Fatal("click did not select in place and finish editing")
 	}
 	if m.rules.search.Value() != "中文规则" || !m.rules.regex || m.rules.generation != generation {
 		t.Fatal("click changed the filter or requested fresh data")
 	}
 	m, _ = update(m, special(tea.KeyEnter))
-	if m.rules.detail == nil || m.rules.detail.Index != 15 {
+	if m.rules.expanded != ruleIdentity(m.rules.snapshot.Rules[15]) {
 		t.Fatal("Enter did not inspect the clicked rule")
 	}
 	m, _ = update(m, special(tea.KeyEscape))
-	if m.rules.detail != nil || m.focus != "rule.15" || m.scroll != scroll || m.rules.search.Value() != "中文规则" || !m.rules.regex {
-		t.Fatal("details return lost the clicked rule, filter or viewport")
+	if m.rules.expanded != "" || m.focus != "rule.15" || m.scroll != scroll || m.rules.search.Value() != "中文规则" || !m.rules.regex {
+		t.Fatal("collapsing lost the clicked rule, filter or viewport")
 	}
 }
 
-func TestRulesResizeAndDetailsPreserveFilteredSelection(t *testing.T) {
+func TestRulesResizeAndExpansionPreserveFilteredSelection(t *testing.T) {
 	m := longRedesignedRules(t, 160, 45)
 	m.rules.search.SetValue("example")
 	m.rules.wholeWord, m.rules.regex = true, true
@@ -232,11 +236,11 @@ func TestRulesResizeAndDetailsPreserveFilteredSelection(t *testing.T) {
 	}
 	scroll := m.scroll
 	m, _ = update(m, special(tea.KeyEnter))
-	if m.rules.detail == nil || m.rules.detail.Index != 20 {
-		t.Fatal("selected filtered rule did not open")
+	if m.rules.expanded != identity {
+		t.Fatal("selected filtered rule did not expand")
 	}
 	m, _ = update(m, special(tea.KeyEscape))
-	if m.rules.detail != nil || m.rules.selected != identity || m.focus != "rule.20" || m.scroll != scroll || m.rules.search.Value() != "example" || !m.rules.wholeWord || !m.rules.regex {
-		t.Fatal("details return lost selected rule, viewport or search modes")
+	if m.rules.expanded != "" || m.rules.selected != identity || m.focus != "rule.20" || m.scroll != scroll || m.rules.search.Value() != "example" || !m.rules.wholeWord || !m.rules.regex {
+		t.Fatal("collapsing lost selected rule, viewport or search modes")
 	}
 }

@@ -35,8 +35,8 @@ func headerModel(page string, width, height int) Model {
 func TestPageHeadersUsePageActionsAcrossSizesAndFocus(t *testing.T) {
 	for page, actions := range map[string][]string{
 		"proxies": {"page.refresh"}, "profiles": {"profiles.update-all"},
-		"connections": {"conn.retry"}, "rules": {"rules.retry"},
-		"logs": {"logs.follow", "logs.retry"}, "settings": {"network"},
+		"connections": {"conn.retry"},
+		"logs":        {"logs.follow", "logs.retry"}, "settings": {"network"},
 	} {
 		for _, size := range [][2]int{{20, 7}, {30, 12}, {60, 20}, {70, 20}, {80, 24}, {120, 32}, {160, 45}, {216, 55}} {
 			for _, focused := range actions {
@@ -240,7 +240,7 @@ func headerText(m Model) string {
 	return ansi.Strip(strings.Join(strings.Split(m.screen, "\n")[:g.headerHeight], "\n"))
 }
 
-func TestRuntimePageHeaderRefreshesUseExistingReaders(t *testing.T) {
+func TestRuntimePageRefreshesUseExistingReaders(t *testing.T) {
 	for _, page := range []string{"connections", "rules"} {
 		t.Run(page, func(t *testing.T) {
 			calls := 0
@@ -255,6 +255,10 @@ func TestRuntimePageHeaderRefreshesUseExistingReaders(t *testing.T) {
 					return app.RuleSnapshot{State: "ready", Rules: sampleRules()}, nil
 				},
 			}
+			if page == "rules" {
+				m.rules.snapshot.State = "unavailable"
+				m.layout()
+			}
 			id := map[string]string{"connections": "conn.retry", "rules": "rules.retry"}[page]
 			m, cmd := click(m, findTarget(t, m, id))
 			if cmd == nil || m.busy {
@@ -268,6 +272,19 @@ func TestRuntimePageHeaderRefreshesUseExistingReaders(t *testing.T) {
 			m.stopRules()
 			m.stopCoreStatus()
 		})
+	}
+}
+
+func TestRulesReadyHeaderOmitsRefreshAndFailureOffersRetry(t *testing.T) {
+	m := headerModel("rules", 120, 32)
+	if hasAction(m.targets, "rules.retry") || hasAction(m.focusTargets(), "rules.retry") || m.pageHeader().owns("rules.retry") {
+		t.Fatal("available rules retained a permanent refresh action")
+	}
+	m.rules.snapshot = app.RuleSnapshot{State: "unavailable", Error: "fixture unavailable"}
+	m.layout()
+	target := findTarget(t, m, "rules.retry")
+	if target.Y < dashboardGeometry(m.dashboardOptions()).y {
+		t.Fatal("failed rules placed retry in the permanent header")
 	}
 }
 

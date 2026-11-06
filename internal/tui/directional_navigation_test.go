@@ -171,7 +171,7 @@ func TestDirectionalNavigationDetailsBackOneLayerDuringBackgroundWork(t *testing
 					}
 					id := m.id
 					m, _ = update(m, directionKey(back))
-					if m.page != page || m.focus != selected || m.connections.detail != nil || m.rules.detail != nil {
+					if m.page != page || m.focus != selected || m.connections.detail != nil || m.rules.expanded != "" {
 						t.Fatalf("first %s bypassed the list layer: focus=%s", back, m.focus)
 					}
 					m, _ = update(m, directionKey(back))

@@ -57,7 +57,7 @@ func (m *Model) toggleRuleFilter(id string) {
 
 func (m *Model) ruleFilterKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 	id := map[string]string{"alt+c": "rules.case", "alt+w": "rules.word", "alt+r": "rules.regex"}[k.String()]
-	if id == "" || m.rules.detail != nil {
+	if id == "" {
 		return false, nil
 	}
 	m.toggleRuleFilter(id)

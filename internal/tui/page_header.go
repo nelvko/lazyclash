@@ -69,7 +69,6 @@ func (m Model) pageHeader() pageHeader {
 		if m.rules.received && m.rules.snapshot.State == "ready" {
 			h.summary = tr("header.rules", len(m.rules.snapshot.Rules))
 		}
-		h.actions = []headerAction{{"rules.retry", tr("header.refresh"), "↻", true}}
 	case "logs":
 		h.summary = tr("header.connecting")
 		follow, compact := tr("header.resume"), "▶"

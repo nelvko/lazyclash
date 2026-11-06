@@ -146,14 +146,18 @@ func TestPageDetailsReturnToRememberedListScroll(t *testing.T) {
 	})
 	t.Run("rules", func(t *testing.T) {
 		m := rulesModel(t, &fakeBackend{})
-		m.scroll = 8
-		m.ruleActivate("rule.0")
-		if m.rules.detail == nil || m.scroll != 0 {
-			t.Fatal("rule details did not open")
+		for index := 3; index < 35; index++ {
+			m.rules.snapshot.Rules = append(m.rules.snapshot.Rules, mihomo.Rule{Index: index, Type: "Domain", Payload: "example.invalid", Proxy: "DIRECT", Size: -1})
 		}
-		m.ruleActivate("rules.back")
-		if m.scroll != 8 || m.focus != "rule.0" || m.rules.detail != nil {
-			t.Fatal("returning from rule details lost the list position")
+		m.selectRule("rule.8")
+		m.scroll = 8
+		m.ruleActivate("rule.8")
+		if m.rules.expanded != ruleIdentity(m.rules.snapshot.Rules[8]) || m.focus != "rule.8" || m.scroll != 8 {
+			t.Fatal("inline expansion lost the list position")
+		}
+		m.ruleActivate("rule.8")
+		if m.scroll != 8 || m.focus != "rule.8" || m.rules.expanded != "" {
+			t.Fatal("collapsing an inline rule lost the list position")
 		}
 	})
 }

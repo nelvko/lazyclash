@@ -213,7 +213,7 @@ func TestMarianaSidebarCurrentHoverAndFocusAreIndependent(t *testing.T) {
 }
 
 func TestThemedHeaderHitRegionsFollowRenderedButtons(t *testing.T) {
-	for _, page := range []string{"connections", "rules"} {
+	for _, page := range []string{"connections"} {
 		m := ready(&fakeBackend{})
 		m.page = page
 		m.width, m.height = 120, 32

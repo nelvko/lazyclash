@@ -14,18 +14,18 @@ import (
 )
 
 type rulesState struct {
-	snapshot                    app.RuleSnapshot
-	search                      textinput.Model
-	selected                    string
-	selectedIndex, detailScroll int
-	detail                      *mihomo.Rule
-	generation                  uint64
-	active, pending, received   bool
-	editing                     bool
-	caseSensitive, wholeWord    bool
-	regex                       bool
-	err                         error
-	cancel                      context.CancelFunc
+	snapshot                  app.RuleSnapshot
+	search                    textinput.Model
+	selected                  string
+	selectedIndex             int
+	expanded                  string
+	generation                uint64
+	active, pending, received bool
+	editing                   bool
+	caseSensitive, wholeWord  bool
+	regex                     bool
+	err                       error
+	cancel                    context.CancelFunc
 }
 type rulesResultMsg struct {
 	generation uint64
@@ -120,17 +120,6 @@ func (m Model) filteredRules() []mihomo.Rule {
 	}
 	return result
 }
-func (m Model) ruleCurrent(r mihomo.Rule) bool {
-	if !m.rules.received || m.rules.snapshot.State != "ready" {
-		return false
-	}
-	for _, candidate := range m.rules.snapshot.Rules {
-		if ruleIdentity(candidate) == ruleIdentity(r) {
-			return true
-		}
-	}
-	return false
-}
 func (m *Model) reconcileRules() {
 	previousIndex := m.rules.selectedIndex
 	list := m.filteredRules()
@@ -148,16 +137,19 @@ func (m *Model) reconcileRules() {
 			m.rules.selected = ruleIdentity(list[m.rules.selectedIndex])
 		}
 	}
-	if m.rules.detail != nil && m.rules.snapshot.State == "ready" {
-		for _, r := range m.rules.snapshot.Rules {
-			if ruleIdentity(r) == ruleIdentity(*m.rules.detail) {
-				copy := r
-				m.rules.detail = &copy
+	if m.rules.expanded != "" {
+		current := false
+		for _, r := range list {
+			if ruleIdentity(r) == m.rules.expanded {
+				current = true
 				break
 			}
 		}
+		if !current {
+			m.rules.expanded = ""
+		}
 	}
-	if m.page == "rules" && m.rules.detail == nil && strings.HasPrefix(m.focus, "rule.") {
+	if m.page == "rules" && strings.HasPrefix(m.focus, "rule.") {
 		previous := m.focus
 		m.focus = "content"
 		for _, r := range list {
@@ -173,17 +165,16 @@ func (m *Model) reconcileRules() {
 }
 func (m *Model) revealRule() {
 	width := dashboardBodyWidth(m.dashboardOptions())
-	prefix := m.rulesListPrefix(width)
-	for index, r := range m.filteredRules() {
-		if ruleIdentity(r) != m.rules.selected {
-			continue
+	index, _, _ := strings.Cut(m.rules.selected, "\x00")
+	for _, target := range m.rulesTargets(width) {
+		if target.ID == "rule."+index {
+			target.H = min(target.H, max(1, dashboardGeometry(m.dashboardOptions()).height))
+			m.revealBodyTarget(target)
+			return
 		}
-		m.revealBodyTarget(hitRegion{Y: prefix + index*3, H: 2})
-		return
 	}
 }
 func (m *Model) focusRulesSearch() tea.Cmd {
-	m.rules.detail = nil
 	m.rules.editing = true
 	m.focus, m.scroll = "rules.search", 0
 	return m.rules.search.Focus()
@@ -223,14 +214,14 @@ func (m *Model) ruleKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 	case "/":
 		return true, m.focusRulesSearch()
 	case "esc":
-		if m.rules.detail != nil {
-			m.backToRules()
+		if m.rules.expanded != "" {
+			m.rules.expanded = ""
 			return true, nil
 		}
 	case "g", "ctrl+r":
 		return true, m.retryRules()
 	case "up", "k", "down", "j":
-		if m.rules.detail == nil {
+		{
 			list := m.filteredRules()
 			if len(list) == 0 {
 				return true, nil
@@ -272,19 +263,22 @@ func (m *Model) ruleActivate(id string) tea.Cmd {
 		m.toggleRuleFilter(id)
 	case id == "rules.retry":
 		return m.retryRules()
-	case id == "rules.back":
-		m.backToRules()
 	case strings.HasPrefix(id, "rule."):
 		if r, ok := m.selectRule(id); ok {
-			m.rules.detailScroll, m.rules.detail = m.scroll, &r
-			m.scroll, m.focus = 0, "rules.back"
+			identity := ruleIdentity(r)
+			if m.rules.expanded == identity {
+				m.rules.expanded = ""
+			} else {
+				m.rules.expanded = identity
+			}
+			m.revealRule()
 		}
 	}
 	return nil
 }
 
 // A click positions keyboard focus without interrupting list browsing. Enter
-// remains an explicit way to inspect full values and optional observations.
+// expands full values and optional observations in place.
 func (m *Model) selectRule(id string) (mihomo.Rule, bool) {
 	for index, r := range m.filteredRules() {
 		if id == "rule."+strconv.Itoa(r.Index) {
@@ -296,18 +290,6 @@ func (m *Model) selectRule(id string) (mihomo.Rule, bool) {
 	}
 	return mihomo.Rule{}, false
 }
-func (m *Model) backToRules() {
-	m.rules.detail = nil
-	m.scroll, m.focus = m.rules.detailScroll, "content"
-	m.reconcileRules()
-	for _, r := range m.filteredRules() {
-		if ruleIdentity(r) == m.rules.selected {
-			m.focus = "rule." + strconv.Itoa(r.Index)
-			break
-		}
-	}
-}
-
 func (m Model) rulesStatus() string {
 	if !m.rules.received {
 		return m.tr("rules.loading")

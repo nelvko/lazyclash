@@ -41,7 +41,7 @@ func rulesMouseModel(t testing.TB, count, width, height int) Model {
 }
 
 func TestRulesWindowMatchesCompleteBody(t *testing.T) {
-	for _, state := range []string{"list", "filtered sparse", "empty", "error", "invalid regex", "loading", "detail"} {
+	for _, state := range []string{"list", "filtered sparse", "empty", "error", "invalid regex", "loading", "expanded"} {
 		for _, size := range [][2]int{{160, 45}, {200, 60}, {80, 24}, {60, 20}, {40, 16}, {40, 9}, {20, 7}, {5, 2}} {
 			t.Run(fmt.Sprintf("%s/%v", state, size), func(t *testing.T) {
 				m := rulesMouseModel(t, 30, size[0], size[1])
@@ -65,11 +65,12 @@ func TestRulesWindowMatchesCompleteBody(t *testing.T) {
 					m.rules.regex = true
 				case "loading":
 					m.rules.received = false
-				case "detail":
+				case "expanded":
 					r := m.rules.snapshot.Rules[0]
 					r.Payload = strings.Repeat("中文🚀.example.invalid/", 12)
 					r.Extra = &mihomo.RuleExtra{Disabled: true, HitCount: 4, MissCount: 8}
-					m.rules.detail, m.focus = &r, "rules.back"
+					m.rules.snapshot.Rules[0] = r
+					m.rules.expanded, m.rules.selected, m.focus = ruleIdentity(r), ruleIdentity(r), "rule.0"
 				}
 				for _, offset := range []int{0, 1, 2, 3, 17, 80, 10000} {
 					m.scroll = offset
@@ -115,7 +116,7 @@ func TestRulesMouseHoverMatchesFreshLayout(t *testing.T) {
 					if m.screen != want.screen || !reflect.DeepEqual(m.targets, want.targets) {
 						t.Fatalf("hover %q differs from fresh layout", id)
 					}
-					if cmd != nil || m.focus != focus || m.rules.selected != selected || m.rules.generation != generation || m.scroll != scroll || m.rules.detail != nil {
+					if cmd != nil || m.focus != focus || m.rules.selected != selected || m.rules.generation != generation || m.scroll != scroll || m.rules.expanded != "" {
 						t.Fatalf("hover %q changed focus, selection, request or viewport", id)
 					}
 					screen := m.screen
@@ -147,7 +148,7 @@ func TestRulesWheelPreservesSelectionAndMapsNewHover(t *testing.T) {
 						if m.scroll != offset || m.hover != fmt.Sprintf("rule.%d", offset/3) {
 							t.Fatalf("wheel lost viewport or hovered old rule: scroll=%d hover=%q want=%d", m.scroll, m.hover, offset)
 						}
-						if cmd != nil || m.focus != focus || m.rules.selected != selected || m.rules.generation != generation || m.rules.detail != nil {
+						if cmd != nil || m.focus != focus || m.rules.selected != selected || m.rules.generation != generation || m.rules.expanded != "" {
 							t.Fatal("wheel changed focus, selection or request")
 						}
 					}

@@ -145,7 +145,7 @@
   "rules.description": "由内核加载；在规则模式下按顺序匹配。仅供查看。",
   "rules.title": "生效规则",
   "rules.search_edit": "搜索规则（Enter / Esc 完成）",
-  "rules.shortcuts": "↑↓ 选择 · Enter 详情 · / 搜索 · g 刷新",
+  "rules.shortcuts": "↑↓ 选择 · Enter 展开 · / 搜索 · g 重读",
   "rules.empty": "Mihomo 未返回生效规则",
   "rules.no_matches": "没有匹配的规则",
   "rules.disabled_suffix": " [已禁用]",
@@ -202,5 +202,6 @@
   "logs.view_hint": "视图 (v) · 简洁单行 / 详细换行",
   "logs.reset_hint": "× · 清除搜索文本",
   "logs.clear_hint": "清空保留的记录 (Ctrl+L) · 不改变采集状态",
-  "logs.empty_inactive": "尚无保留的日志。恢复采集后可接收新事件。"
+  "logs.empty_inactive": "尚无保留的日志。恢复采集后可接收新事件。",
+  "rules.retry_label": "重试"
 }

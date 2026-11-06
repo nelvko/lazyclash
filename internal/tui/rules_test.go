@@ -29,7 +29,7 @@ func rulesModel(t *testing.T, b *fakeBackend) Model {
 	return m
 }
 
-func TestRulesPreserveOrderAndSearchInputOpensDetails(t *testing.T) {
+func TestRulesPreserveOrderAndSearchInputExpandsInPlace(t *testing.T) {
 	m := rulesModel(t, &fakeBackend{})
 	// API sequence is authoritative, even if a response uses sparse indexes.
 	m.rules.snapshot.Rules = []mihomo.Rule{sampleRules()[2], sampleRules()[0], sampleRules()[1]}
@@ -51,37 +51,40 @@ func TestRulesPreserveOrderAndSearchInputOpensDetails(t *testing.T) {
 		t.Fatal("case-insensitive payload search failed")
 	}
 	m, _ = update(m, special(tea.KeyEnter))
-	if m.rules.editing || m.focus != "rule.1" || m.rules.detail != nil {
+	if m.rules.editing || m.focus != "rule.1" || m.rules.expanded != "" {
 		t.Fatal("finishing search did not focus its first result")
 	}
 	m, _ = update(m, special(tea.KeyEnter))
 	plain := ansi.Strip(m.screen)
-	if m.rules.detail == nil || m.rules.detail.Index != 1 || !strings.Contains(plain, "Rule details") || !strings.Contains(plain, "needle.example.invalid") || !strings.Contains(plain, "REJECT") {
-		t.Fatal("details did not show the matched rule")
+	if m.rules.expanded != ruleIdentity(sampleRules()[1]) || !hasAction(m.targets, "rules.search") || !hasAction(m.targets, "rule.1") || !strings.Contains(plain, "needle.example.invalid") || !strings.Contains(plain, "REJECT") {
+		t.Fatal("matched rule did not expand within its list")
 	}
-	if strings.Contains(plain, "Entries:") || strings.Contains(plain, "Enable rule") || strings.Contains(plain, "Disable rule") {
-		t.Fatal("inapplicable count or mutation action was displayed")
+	if strings.Contains(plain, "Entries:") || strings.Contains(plain, "Rule details") || hasAction(m.targets, "rules.back") {
+		t.Fatal("inapplicable count or removed details page was displayed")
 	}
 	m, _ = update(m, special(tea.KeyEscape))
-	if m.rules.detail != nil || m.focus != "rule.1" || m.rules.search.Value() != "NEEDLE" {
-		t.Fatal("return lost query or selection")
+	if m.rules.expanded != "" || m.focus != "rule.1" || m.rules.search.Value() != "NEEDLE" {
+		t.Fatal("collapsing lost query or selection")
 	}
 }
 
-func TestRulesRefreshDoesNotRetargetDetailsWhenIndexIsReused(t *testing.T) {
+func TestRulesRefreshCollapsesExpansionWhenIndexIsReused(t *testing.T) {
 	m := rulesModel(t, &fakeBackend{})
 	m, _ = update(m, special(tea.KeyEnter))
-	before := *m.rules.detail
+	before := m.rules.expanded
 	fresh := sampleRules()
 	fresh[0].Payload = "replacement.example.invalid"
 	m.rules.pending = true
 	m, _ = update(m, rulesResultMsg{generation: m.rules.generation, snapshot: app.RuleSnapshot{State: "ready", Rules: fresh}})
-	if m.rules.detail == nil || ruleIdentity(*m.rules.detail) != ruleIdentity(before) || m.ruleCurrent(*m.rules.detail) || !strings.Contains(ansi.Strip(m.screen), "Last observed rule") {
-		t.Fatal("index reuse silently replaced the displayed rule")
+	if before == "" || m.rules.expanded != "" || m.rules.selected != ruleIdentity(fresh[0]) || strings.Contains(ansi.Strip(m.screen), "one.example.invalid") {
+		t.Fatal("index reuse retargeted an expansion or retained a stale rule")
 	}
-	m, _ = update(m, special(tea.KeyEscape))
-	if m.rules.detail != nil || m.rules.selected != ruleIdentity(fresh[0]) {
-		t.Fatal("return did not reconcile against the fresh list")
+	m, _ = update(m, special(tea.KeyEnter))
+	fresh[0].Extra = &mihomo.RuleExtra{HitCount: 7}
+	m.rules.pending = true
+	m, _ = update(m, rulesResultMsg{generation: m.rules.generation, snapshot: app.RuleSnapshot{State: "ready", Rules: fresh}})
+	if m.rules.expanded != ruleIdentity(fresh[0]) || !strings.Contains(ansi.Strip(m.screen), "7 / 0") {
+		t.Fatal("updated observations lost a current expansion")
 	}
 }
 
@@ -92,14 +95,14 @@ func TestRulesOptionalObservationsAndZeroSizeRemainReadOnly(t *testing.T) {
 	m.rules.snapshot.Rules[0] = r
 	m, _ = update(m, special(tea.KeyEnter))
 	plain := ansi.Strip(m.screen)
-	for _, expected := range []string{"Entries: 0", "State: Disabled", "Hits / misses: 4 / 9", "Read only"} {
+	for _, expected := range []string{"Entries: 0", "State: Disabled", "Hits / misses: 4 / 9"} {
 		if !strings.Contains(plain, expected) {
 			t.Fatalf("missing observation %q", expected)
 		}
 	}
 	for _, target := range m.targets {
-		if strings.HasPrefix(target.ID, "rules.") && target.ID != "rules.back" && target.ID != "rules.retry" {
-			t.Fatalf("unexpected details action %s", target.ID)
+		if target.ID == "rules.back" || strings.Contains(target.ID, "enable") || strings.Contains(target.ID, "disable") {
+			t.Fatalf("unexpected inspection action %s", target.ID)
 		}
 	}
 }
@@ -242,23 +245,23 @@ func TestRulesKeyboardMouseAndResponsiveFocus(t *testing.T) {
 			assertCanvas(t, m.screen, size[0], size[1])
 			assertRegions(t, m.targets, size[0], size[1])
 			m, _ = update(m, special(tea.KeyEscape))
-			if m.rules.detail != nil {
-				t.Fatal("tiny rules detail could not be exited")
+			if m.rules.expanded != "" {
+				t.Fatal("tiny rules expansion could not be collapsed")
 			}
 		})
 	}
 	m := rulesModel(t, &fakeBackend{})
 	m, _ = click(m, findTarget(t, m, "rule.1"))
-	if m.rules.detail != nil || m.focus != "rule.1" || m.rules.selected != ruleIdentity(sampleRules()[1]) {
+	if m.rules.expanded != "" || m.focus != "rule.1" || m.rules.selected != ruleIdentity(sampleRules()[1]) {
 		t.Fatal("mouse click did not select its rule in the list")
 	}
 	m, _ = update(m, special(tea.KeyEnter))
-	if m.rules.detail == nil || m.rules.detail.Index != 1 {
+	if m.rules.expanded != ruleIdentity(sampleRules()[1]) {
 		t.Fatal("Enter did not open the clicked rule")
 	}
-	m, _ = click(m, findTarget(t, m, "rules.back"))
-	if m.rules.detail != nil {
-		t.Fatal("mouse Back did not return to list")
+	m, _ = update(m, special(tea.KeyEnter))
+	if m.rules.expanded != "" {
+		t.Fatal("Enter did not collapse its inline expansion")
 	}
 }
 
@@ -269,5 +272,49 @@ func TestRulesNavigationMatchesMenuShortcuts(t *testing.T) {
 		if m.page != item.page {
 			t.Fatalf("%s went to %s", item.key, m.page)
 		}
+	}
+}
+
+func TestRulesInlineExpansionWrapsFullPayloadAndKeepsListControls(t *testing.T) {
+	m := rulesModel(t, &fakeBackend{})
+	m.width, m.height = 80, 24
+	r := sampleRules()[0]
+	r.Payload = strings.Repeat("中文规则🚀", 35) + "tail.example.invalid"
+	m.rules.snapshot.Rules[0] = r
+	m.reconcileRules()
+	m.layout()
+	if target := findTarget(t, m, "rule.0"); target.H != 2 {
+		t.Fatal("collapsed rule wrapped without an explicit expansion")
+	}
+	m, _ = update(m, special(tea.KeyEnter))
+	if m.rules.expanded != ruleIdentity(r) || m.focus != "rule.0" || !hasAction(m.targets, "rules.search") || hasAction(m.targets, "rules.back") {
+		t.Fatal("expansion did not remain within the list")
+	}
+	width := dashboardBodyWidth(m.dashboardOptions())
+	body, targets := m.rulesBody(width)
+	var expanded hitRegion
+	for _, target := range targets {
+		if target.ID == "rule.0" {
+			expanded = target
+		}
+	}
+	if expanded.H < 4 {
+		t.Fatal("long payload did not expand to multiple lines")
+	}
+	var complete strings.Builder
+	for _, line := range strings.Split(body, "\n")[expanded.Y : expanded.Y+expanded.H-1] {
+		complete.WriteString(strings.TrimSpace(ansi.Strip(ansi.Cut(line, 5, width-1))))
+	}
+	if complete.String() != r.Payload {
+		t.Fatalf("wrapped expansion changed its payload: %q", complete.String())
+	}
+	m, _ = update(m, special(tea.KeyDown))
+	if m.focus != "rule.1" || m.rules.expanded == ruleIdentity(sampleRules()[1]) {
+		t.Fatal("moving selection automatically expanded the next rule")
+	}
+	m, _ = update(m, key("/"))
+	m, _ = update(m, tea.PasteMsg{Content: "needle"})
+	if m.rules.expanded != "" || len(m.filteredRules()) != 1 {
+		t.Fatal("filtering away an expanded rule retained its expansion")
 	}
 }

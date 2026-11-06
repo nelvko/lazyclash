@@ -53,7 +53,7 @@ func TestRulesSelectionSurvivesPageBrowsingWithoutHalfMarker(t *testing.T) {
 	m := rulesMouseModel(t, 40, 160, 45)
 	m, _ = click(m, findTarget(t, m, "rule.3"))
 	selected := m.rules.selected
-	if m.focus != "rule.3" || m.rules.detail != nil {
+	if m.focus != "rule.3" || m.rules.expanded != "" {
 		t.Fatal("click did not select a list rule")
 	}
 	m.returnToNavigation()
@@ -63,18 +63,18 @@ func TestRulesSelectionSurvivesPageBrowsingWithoutHalfMarker(t *testing.T) {
 		t.Fatal("navigation did not leave Rules")
 	}
 	m, _ = update(m, special(tea.KeyDown))
-	if m.page != "rules" || m.focus != "nav.rules" || m.rules.selected != selected || m.rules.detail != nil {
+	if m.page != "rules" || m.focus != "nav.rules" || m.rules.selected != selected || m.rules.expanded != "" {
 		t.Fatal("browsing back lost rule selection or navigation focus")
 	}
 	assertRuleSelectionGutter(t, m.screen, findTarget(t, m, "rule.3"), []string{"▌ ", "▌ "}, panel)
 	m, _ = update(m, special(tea.KeyEnter))
-	if m.focus != "rule.3" || m.rules.selected != selected || m.rules.detail != nil {
+	if m.focus != "rule.3" || m.rules.selected != selected || m.rules.expanded != "" {
 		t.Fatal("entering content did not restore the selected rule focus")
 	}
 	assertRuleSelectionGutter(t, m.screen, findTarget(t, m, "rule.3"), []string{"› ", "  "}, panel)
 	m, _ = update(m, special(tea.KeyEnter))
-	if m.rules.detail == nil || m.rules.detail.Index != 3 {
-		t.Fatal("Enter on the focused rule did not open details")
+	if m.rules.expanded != ruleIdentity(m.rules.snapshot.Rules[3]) {
+		t.Fatal("Enter on the focused rule did not expand in place")
 	}
 }
 
@@ -87,7 +87,7 @@ func TestRulesSelectionAndHoverKeepIndependentMarkers(t *testing.T) {
 	for _, id := range []string{"rule.3", "rule.5", "rule.3"} {
 		target := findTarget(t, m, id)
 		m, _ = update(m, tea.MouseMotionMsg{X: target.X + 8, Y: target.Y + 1})
-		if m.rules.selected != selected || m.focus != "nav.rules" || m.rules.detail != nil {
+		if m.rules.selected != selected || m.focus != "nav.rules" || m.rules.expanded != "" {
 			t.Fatal("hover changed selection or keyboard ownership")
 		}
 		surface := panel

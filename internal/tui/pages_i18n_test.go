@@ -13,8 +13,8 @@ import (
 
 func TestDataPagesLocalizeControlsAndKeepObservedValues(t *testing.T) {
 	for _, language := range []struct{ code, profiles, connections, rules, logs string }{
-		{i18n.English, "Configurations", "Connection details", "Rule details", "Mihomo logs"},
-		{i18n.Chinese, "配置", "连接详情", "规则详情", "Mihomo 日志"},
+		{i18n.English, "Configurations", "Connection details", "Entries: 0", "Mihomo logs"},
+		{i18n.Chinese, "配置", "连接详情", "条目：0", "Mihomo 日志"},
 	} {
 		t.Run(language.code, func(t *testing.T) {
 			profiles := ready(&fakeBackend{snapshot: app.Snapshot{
@@ -31,8 +31,8 @@ func TestDataPagesLocalizeControlsAndKeepObservedValues(t *testing.T) {
 			connections.runtime.snapshot.Connections.Connections = []mihomo.Connection{connection}
 			connections.connections.selected, connections.connections.detail = connection.ID, &connection
 			rules := rulesModel(t, &fakeBackend{})
-			rule := mihomo.Rule{Index: 0, Type: "Domain", Payload: "Active", Proxy: "Ready", Size: -1}
-			rules.rules.snapshot.Rules, rules.rules.detail = []mihomo.Rule{rule}, &rule
+			rule := mihomo.Rule{Index: 0, Type: "Domain", Payload: "Active", Proxy: "Ready", Size: 0}
+			rules.rules.snapshot.Rules, rules.rules.expanded, rules.rules.selected = []mihomo.Rule{rule}, ruleIdentity(rule), ruleIdentity(rule)
 			logs := logsModel()
 			logs.appendLogs([]mihomo.LogEntry{{Level: "info", Message: "Active Ready Rule"}})
 			for _, item := range []struct {

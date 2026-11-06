@@ -100,7 +100,7 @@ def exercise(preview, binary, output, language, profile, args):
             x, y = position(terminal, payload)
             click_cell(terminal, x, y + offset)
             screen = terminal.screen.text()
-            assert words["rules.details"] not in screen and "private_ip" in screen, "rule click left the list"
+            assert "private_ip" in screen and "Rule details" not in screen and "规则详情" not in screen, "rule click left the list"
             assert any(payload in row and re.search(r"[›▌]", row) for row in screen.splitlines()), "rule click did not select its exact row"
         preview.capture(terminal, output, "row-clicks-select", args)
 
@@ -120,10 +120,11 @@ def exercise(preview, binary, output, language, profile, args):
         assert terminal.screen.cells[marker_y][marker_x] == "›", "content focus did not return to the selected rule"
         assert terminal.screen.cells[marker_y + 1][marker_x] == " ", "selection bar leaked below its focus arrow"
         terminal.key(b"\r")
-        terminal.wait(words["rules.details"])
+        terminal.settle()
         terminal.wait("jumpdesktop.com")
         terminal.wait("Jump Desktop")
-        preview.capture(terminal, output, "selected-enter-details", args)
+        assert "private_ip" in terminal.screen.text(), "inline expansion replaced its list"
+        preview.capture(terminal, output, "selected-enter-inline", args)
         terminal.key(b"\x1b")
         terminal.wait("private_ip")
 
@@ -131,10 +132,11 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait("github_domain")
         assert "private_ip" not in terminal.screen.text(), "case-insensitive search kept an unrelated rule"
         terminal.key(b"\r")
-        terminal.wait(words["rules.details"])
+        terminal.settle()
         terminal.wait("github_domain")
+        assert "Aa" in terminal.screen.text(), "inline inspection removed the fixed search controls"
         terminal.key(b"\x1b")
-        terminal.wait_absent(words["rules.details"])
+        terminal.settle()
         terminal.wait("github_domain")
         terminal.settle()
         assert "GITHUB" in terminal.screen.text(), "return discarded the search query"
@@ -199,13 +201,13 @@ def exercise(preview, binary, output, language, profile, args):
             terminal.wait("private_ip")
             preview.capture(terminal, output, "rules-%dx%d" % (width, height), args)
 
-        # A long disabled rule must retain complete fields in its details.
+        # A long rule expands in place, including observations and full payload.
         search(terminal, "long-")
         terminal.key(b"\r")
-        terminal.wait(words["rules.details"])
         terminal.wait(words["rules.disabled"])
         terminal.wait("4 / 9")
-        preview.capture(terminal, output, "long-disabled-details", args)
+        assert "Aa" in terminal.screen.text(), "expanded rule replaced the list toolbar"
+        preview.capture(terminal, output, "long-disabled-inline", args)
         terminal.key(b"\x1b")
         search(terminal, "")
         terminal.key(b"\x1b[H")
@@ -223,7 +225,7 @@ def exercise(preview, binary, output, language, profile, args):
         if profile == "no-color":
             assert not any(value not in (b"", b"0") for value in preview.SGR.findall(raw)), "NO_COLOR emitted styling"
         (output / "pty.raw").write_bytes(raw)
-        print("PASS %s/%s: row clicks select, Enter details, search options/invalid regex, fixed toolbar and five resize dimensions; %s" %
+        print("PASS %s/%s: row clicks select, inline expansion, search options/invalid regex, fixed toolbar and five resize dimensions; %s" %
             (language, profile, json.dumps(calls)), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")

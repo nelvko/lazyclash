@@ -102,40 +102,6 @@ func (m Model) rulesBodyWindow(width, start, height int) ruleBodyWindow {
 		}
 		lines = append(lines, cellCrop(value, width))
 	}
-	if r := m.rules.detail; r != nil {
-		addText(m.tr("rules.details"), text)
-		if m.ruleCurrent(*r) {
-			addText(m.tr("rules.observation"), muted)
-		} else {
-			addText(m.tr("rules.stale"), warning)
-		}
-		addButton("rules.back", m.tr("rules.back"))
-		addText(fmt.Sprintf(m.tr("rules.order"), r.Index+1, r.Index), text)
-		addText(m.tr("rules.type", r.Type), text)
-		payload := r.Payload
-		if payload == "" {
-			payload = m.tr("rules.empty_payload")
-		}
-		addText(m.tr("rules.payload", payload), text)
-		proxy := r.Proxy
-		if proxy == "" {
-			proxy = "--"
-		}
-		addText(m.tr("rules.proxy", proxy), text)
-		if r.Size >= 0 {
-			addText(fmt.Sprintf(m.tr("rules.entries"), r.Size), text)
-		}
-		if r.Extra != nil {
-			state := m.tr("rules.enabled")
-			if r.Extra.Disabled {
-				state = m.tr("rules.disabled")
-			}
-			addText(m.tr("rules.state", state), text)
-			addText(fmt.Sprintf(m.tr("rules.hits"), r.Extra.HitCount, r.Extra.MissCount), text)
-		}
-		addText(m.tr("rules.description"), muted)
-		return static()
-	}
 	// Very short terminals fold the fixed toolbar into the scrollable body.
 	if m.dashboardOptions().BodyTopRows == 0 {
 		bar := m.rulesToolbar(width, filterToolbarRows(width))
@@ -151,6 +117,9 @@ func (m Model) rulesBodyWindow(width, start, height int) ruleBodyWindow {
 	if !m.rules.received || m.rules.snapshot.State != "ready" {
 		addText(m.rulesStatus(), muted)
 		addText(m.tr("rules.description"), muted)
+	}
+	if m.rules.received && m.rules.snapshot.State != "ready" {
+		addButton("rules.retry", m.tr("rules.retry_label"))
 	}
 	list := m.filteredRules()
 	if _, err := m.ruleMatcher(); err != nil {
@@ -168,7 +137,18 @@ func (m Model) rulesBodyWindow(width, start, height int) ruleBodyWindow {
 		return static()
 	}
 	prefix := len(lines)
-	total := prefix + len(list)*3 - 1
+	numberWidth := 1
+	for _, r := range m.rules.snapshot.Rules {
+		numberWidth = max(numberWidth, len(strconv.Itoa(r.Index+1)))
+	}
+	firstTarget := len(hits)
+	total := prefix
+	for _, r := range list {
+		h := m.ruleHeight(r, width, numberWidth)
+		hits = append(hits, hitRegion{ID: "rule." + strconv.Itoa(r.Index), Y: total, W: width, H: h})
+		total += h + 1
+	}
+	total--
 	if height < 0 {
 		start, height = 0, total
 	} else {
@@ -180,24 +160,20 @@ func (m Model) rulesBodyWindow(width, start, height int) ruleBodyWindow {
 	for i := max(0, start); i < min(prefix, end); i++ {
 		lines = append(lines, leading[i])
 	}
-	numberWidth := 1
-	for _, r := range m.rules.snapshot.Rules {
-		numberWidth = max(numberWidth, len(strconv.Itoa(r.Index+1)))
-	}
 	for index, r := range list {
-		row := prefix + index*3
-		hits = append(hits, hitRegion{ID: "rule." + strconv.Itoa(r.Index), Y: row, W: width, H: 2})
-		if row >= end || row+3 <= start {
+		target := hits[firstTarget+index]
+		row, h := target.Y, target.H
+		if row >= end || row+h+1 <= start {
 			continue
 		}
-		if row+2 > start {
+		if row+h > start {
 			for offset, line := range m.ruleRows(r, width, numberWidth) {
 				if row+offset >= start && row+offset < end {
 					lines = append(lines, line)
 				}
 			}
 		}
-		if index < len(list)-1 && row+2 >= start && row+2 < end {
+		if index < len(list)-1 && row+h >= start && row+h < end {
 			lines = append(lines, themed(strings.Repeat("─", max(0, width)), divider, bg, false))
 		}
 	}
@@ -235,7 +211,19 @@ func (m Model) ruleRows(r mihomo.Rule, width, numberWidth int) []string {
 		primaryColor = muted
 	}
 	number := fmt.Sprintf("%*d  ", numberWidth, r.Index+1)
-	first := themed(marker, markerColor, surface, false) + themed(number, muted, surface, false) + themed(cellPad(clean(payload), available), primaryColor, surface, false)
+	payloadLines := []string{cellCrop(clean(payload), available)}
+	expanded := m.rules.expanded == ruleIdentity(r)
+	if expanded {
+		payloadLines = strings.Split(wrapText(clean(payload), available), "\n")
+	}
+	var rows []string
+	for i, line := range payloadLines {
+		gutter := themed(marker, markerColor, surface, false) + themed(number, muted, surface, false)
+		if i > 0 {
+			gutter = themed(secondMarker, markerColor, surface, false) + themed(strings.Repeat(" ", indent-2), muted, surface, false)
+		}
+		rows = append(rows, themed(cellPad(gutter+themed(cellPad(line, available), primaryColor, surface, false), width), text, surface, false))
+	}
 	proxy := clean(r.Proxy)
 	if proxy == "" {
 		proxy = "--"
@@ -256,6 +244,63 @@ func (m Model) ruleRows(r mihomo.Rule, width, numberWidth int) []string {
 		badge := m.tr("rules.disabled_suffix")
 		meta = cellCrop(meta, max(0, available-ansi.StringWidth(badge))) + themed(badge, warning, surface, false)
 	}
-	second := themed(secondMarker, markerColor, surface, false) + themed(strings.Repeat(" ", indent-2), muted, surface, false) + meta
-	return []string{themed(cellPad(first, width), text, surface, false), themed(cellPad(second, width), text, surface, false)}
+	metaLines := []string{meta}
+	if expanded {
+		meta = themed(clean(r.Type), muted, surface, false) + themed(" → ", muted, surface, false) + themed(proxy, proxyColor, surface, false)
+		if r.Extra != nil && r.Extra.Disabled {
+			meta += themed(m.tr("rules.disabled_suffix"), warning, surface, false)
+		}
+		metaLines = strings.Split(wrapText(meta, available), "\n")
+	}
+	for _, line := range metaLines {
+		second := themed(secondMarker, markerColor, surface, false) + themed(strings.Repeat(" ", indent-2), muted, surface, false) + line
+		rows = append(rows, themed(cellPad(second, width), text, surface, false))
+	}
+	if expanded {
+		for _, line := range m.ruleObservationLines(r, available) {
+			value := themed(secondMarker, markerColor, surface, false) + themed(strings.Repeat(" ", indent-2), muted, surface, false) + themed(line, muted, surface, false)
+			rows = append(rows, themed(cellPad(value, width), text, surface, false))
+		}
+	}
+	return rows
+}
+
+func (m Model) ruleHeight(r mihomo.Rule, width, numberWidth int) int {
+	if m.rules.expanded == "" || m.rules.expanded != ruleIdentity(r) {
+		return 2
+	}
+	available := max(1, width-(2+numberWidth+2)-1)
+	payload := r.Payload
+	if payload == "" {
+		payload = m.tr("rules.empty_payload")
+		if strings.EqualFold(r.Type, "Match") {
+			payload = m.tr("rules.match_all")
+		}
+	}
+	proxy := clean(r.Proxy)
+	if proxy == "" {
+		proxy = "--"
+	}
+	meta := clean(r.Type) + " → " + proxy
+	if r.Extra != nil && r.Extra.Disabled {
+		meta += m.tr("rules.disabled_suffix")
+	}
+	return len(strings.Split(wrapText(clean(payload), available), "\n")) + len(strings.Split(wrapText(meta, available), "\n")) + len(m.ruleObservationLines(r, available))
+}
+func (m Model) ruleObservationLines(r mihomo.Rule, width int) []string {
+	var fields []string
+	if r.Size >= 0 {
+		fields = append(fields, fmt.Sprintf(m.tr("rules.entries"), r.Size))
+	}
+	if r.Extra != nil {
+		state := m.tr("rules.enabled")
+		if r.Extra.Disabled {
+			state = m.tr("rules.disabled")
+		}
+		fields = append(fields, m.tr("rules.state", state), fmt.Sprintf(m.tr("rules.hits"), r.Extra.HitCount, r.Extra.MissCount))
+	}
+	if len(fields) == 0 {
+		return nil
+	}
+	return strings.Split(wrapText(clean(strings.Join(fields, " · ")), width), "\n")
 }

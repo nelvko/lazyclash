@@ -145,7 +145,7 @@
   "rules.description": "Loaded by the core; matching order applies in Rule mode. Read only.",
   "rules.title": "Effective rules",
   "rules.search_edit": "Search rules (Enter / Esc finish)",
-  "rules.shortcuts": "↑↓ Select · Enter Details · / Search · g Refresh",
+  "rules.shortcuts": "↑↓ Select · Enter Expand · / Search · g Refresh",
   "rules.empty": "No effective rules returned by Mihomo",
   "rules.no_matches": "No rules match this search",
   "rules.disabled_suffix": " [disabled]",
@@ -202,5 +202,6 @@
   "logs.view_hint": "View (v) · Compact rows / wrapped details",
   "logs.reset_hint": "× · Clear search text",
   "logs.clear_hint": "Clear retained logs (Ctrl+L) · Capture unchanged",
-  "logs.empty_inactive": "No retained logs. Resume capture to receive new events."
+  "logs.empty_inactive": "No retained logs. Resume capture to receive new events.",
+  "rules.retry_label": "Retry"
 }
