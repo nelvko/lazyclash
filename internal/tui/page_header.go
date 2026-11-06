@@ -66,8 +66,27 @@ func (m Model) pageHeader() pageHeader {
 		}
 		h.actions = []headerAction{{"conn.retry", tr("header.refresh"), "↻", !m.connections.confirming}}
 	case "rules":
-		if m.rules.received && m.rules.snapshot.State == "ready" {
-			h.summary = tr("header.rules", len(m.rules.snapshot.Rules))
+		_, providersSupported := m.backend.(ruleProviderBackend)
+		_, customSupported := m.backend.(customRulesBackend)
+		switch m.rules.view {
+		case "providers":
+			h.summary = tr("rules.providers.title")
+			h.actions = []headerAction{{"rules.providers-back", tr("rules.management.back"), "←", true}, {"rules.providers-all", tr("rules.providers.update_all"), "↻", m.ruleProvidersCanUpdateAll()}}
+		case "custom":
+			s := m.customRules
+			available := s.loaded && !s.loading && !s.saving && !s.applying && !s.inputOpen && s.confirm == ""
+			h.summary = tr("custom_rules.title")
+			h.actions = []headerAction{
+				{"rules.custom-back", tr("rules.management.back"), "←", !s.saving && !s.applying},
+				{"rules.custom-add", tr("custom_rules.add"), "+", available},
+				{"rules.custom-save", tr("custom_rules.save"), "✓", available && m.customRulesDirty()},
+				{"rules.custom-apply", tr("custom_rules.apply"), "▶", available && !m.customRulesDirty() && s.draft.Pending},
+			}
+		default:
+			if m.rules.received && m.rules.snapshot.State == "ready" {
+				h.summary = tr("header.rules", len(m.rules.snapshot.Rules))
+			}
+			h.actions = []headerAction{{"rules.providers", tr("rules.providers.title"), "≡", providersSupported}, {"rules.custom", tr("custom_rules.title"), "✎", customSupported && m.snapshot.Applied != "" && m.snapshot.Applied != "default"}}
 		}
 	case "logs":
 		h.summary = tr("header.connecting")

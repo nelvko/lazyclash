@@ -320,6 +320,14 @@ func (m Model) dashboardOptions() dashboardOptions {
 	if m.page == "rules" || m.page == "logs" {
 		g := dashboardGeometry(o)
 		rows := filterToolbarRows(g.width)
+		if m.page == "rules" {
+			if m.rules.view == "providers" {
+				rows = 5
+			}
+			if m.rules.view == "custom" {
+				rows = m.customRulesToolbarRows(g.width)
+			}
+		}
 		if g.height >= rows+2 {
 			o.BodyTopRows = rows
 		}

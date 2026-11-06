@@ -14,6 +14,7 @@ import (
 )
 
 type rulesState struct {
+	view                      string
 	snapshot                  app.RuleSnapshot
 	search                    textinput.Model
 	selected                  string
@@ -45,7 +46,7 @@ func (m *Model) stopRules() {
 	m.rules.active, m.rules.pending = false, false
 }
 func (m Model) rulesVisible() bool {
-	return m.page == "rules" && !m.busy && !m.quitting && !m.helpOpen && !m.ports.open && !m.wizard.open && !m.wizard.networkOpen && m.form == "" && m.ctx.Err() == nil
+	return m.page == "rules" && m.rules.view == "" && !m.busy && !m.quitting && !m.helpOpen && !m.ports.open && !m.wizard.open && !m.wizard.networkOpen && m.form == "" && m.ctx.Err() == nil
 }
 func (m *Model) syncRules() tea.Cmd {
 	if !m.rulesVisible() {
@@ -207,6 +208,12 @@ func (m *Model) ruleSearchKey(k tea.KeyPressMsg) tea.Cmd {
 	return cmd
 }
 func (m *Model) ruleKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
+	if m.rules.view == "providers" {
+		return m.ruleProvidersKey(k)
+	}
+	if m.rules.view == "custom" {
+		return m.customRulesKey(k)
+	}
 	if handled, cmd := m.ruleFilterKey(k); handled {
 		return true, cmd
 	}
@@ -247,6 +254,18 @@ func (m *Model) ruleKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 	return false, nil
 }
 func (m *Model) ruleActivate(id string) tea.Cmd {
+	if id == "rules.providers" {
+		return m.openRuleProviders()
+	}
+	if id == "rules.custom" {
+		return m.openCustomRules()
+	}
+	if m.rules.view == "providers" {
+		return m.ruleProvidersActivate(id)
+	}
+	if m.rules.view == "custom" {
+		return m.customRulesActivate(id)
+	}
 	if id != "rules.search" {
 		m.rules.editing = false
 		m.rules.search.Blur()

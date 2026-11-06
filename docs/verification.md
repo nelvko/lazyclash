@@ -1,5 +1,30 @@
 # 验证入口
 
+## Rules 集合管理与独立自定义规则（2026-11-06）
+
+主规则列表取消独立详情页，Enter 原位展开完整条件与可选统计；取消常驻刷新按钮，保留 Ctrl+R / g 和失败重试。页头新增规则集合与自定义规则入口。集合支持搜索、元数据、单项更新、最多三个并发的更新全部，以及逐项失败重试；Inline 不参与更新。当前 Profile 的自定义规则独立保存于 `prepend-rules`，支持增改删排序；保存不应用，应用单独确认，运行中应用会重启服务并中断连接。
+
+模型及应用层回归覆盖：提供器重复调度、部分失败、离页取消、迟到响应、旧计时器及重入身份；自定义规则保存与应用分离、订阅更新保留、完整配方冲突、Profile 绑定、校验失败和回滚、未提交输入丢弃确认、跨页草稿、退出时等待保存/应用与其他持久化完成。生效列表仍只绘制当前可见行，保留滚动响应与全高选择标记。
+
+实际 controlling PTY 使用隔离内存后端完成中英文 × True Color、ANSI256、NO_COLOR 六组，验证增改删排序、长中文、跨页、保存与应用、默认取消、集合单更、批量部分失败及独立重试，以及 160×45、120×32、80×24、60×20、40×16。每组 `loads=4`、`saves=1`、`applies=1`，集合更新尝试四次，成功三次、一次模拟 File 来源失败；无 Inline 更新，服务、模式和节点修改计数均为零。已目视检查宽屏部分失败和窄屏输入/确认。PNG 按实际 PTY 字符格和颜色重绘，不是原生终端截图。
+
+最终源码通过 `make check build`（TUI 73.453 秒）、上述 Rules 管理生命周期定向 race（28.374 秒）和八项 Python 解析测试。管理页六组终端证据在 `.test-artifacts/rule-management/final-pty/20261106-093542-c44e15/`；补充退出边界后，最终源码中文 True Color 复验也通过，位于 `final-source-pty/20261106-094254-972d88/`。宿主、race、Python 和 Linux 日志使用 `.test-artifacts/rules-management-*.log`。PTY 只验证终端交互，持久化及事务由应用层文件/HTTP fixture 验证；本轮未向用户实际提供器发起更新，也未重跑真实 Mihomo/systemd/TUN 生命周期 E2E。
+
+Linux 首次并行运行及随后单独运行均触及原脚本的三分钟整包总时限，仍在执行既有布局测试，无断言失败；原始日志分别保留在 `rules-management-linux-initial.log` 和 `rules-management-linux-3m-serial.log`。验证脚本的整包时限调整为五分钟，测试断言及各项操作超时保持不变。最终 `./scripts/verify-linux.sh lazyclash-e2e` 在已有 Linux/arm64 VM 中执行全部可运行测试包通过，临时目录清理检查通过；未在 Linux/amd64 运行。
+
+复验入口：
+
+```sh
+make check build
+go test -race ./internal/tui -run 'TestCustomRules|TestRulesProviders|TestRulesInline|TestRulesSelection' -count=1
+python3 -m unittest discover -s scripts -p 'test_*.py'
+./scripts/verify-linux.sh lazyclash-e2e
+go test -c ./internal/tui -o bin/rules-management-tui.test
+python3 scripts/rules-management-pty.py --binary bin/rules-management-tui.test \
+  --output .test-artifacts/rule-management/recheck \
+  --profile truecolor --profile 256 --profile no-color
+```
+
 ## Rules 切页后选中标记（2026-11-05）
 
 修复规则在切页返回、焦点仍属于侧栏时只在第一行显示蓝条的问题。选中标记现在覆盖规则的两行内容；恢复规则焦点后只在首行显示黄色箭头，次行留白。Hover 背景与选择标记独立，分隔线不带竖条，视口边缘按实际可见行裁切，无色终端仍能识别选择。

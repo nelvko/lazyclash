@@ -174,7 +174,7 @@
   "help.connections.keys": "/: search · s: sort · p: pause/resume · Enter: details · x: review closing one connection",
   "help.connections.confirm": "Closing requires confirmation of the displayed connection; other connections stay active.",
   "help.rules.keys": "/: search · Enter: expand in place · g / Ctrl+R: reload",
-  "help.rules.readOnly": "Rules are read only and remain in the core's matching order.",
+  "help.rules.readOnly": "Effective rules remain read only; custom rules are saved separately and applied explicitly.",
   "help.settings.ports": "Runtime settings / Ports: edit local proxy and control API ports.",
   "help.settings.review": "Review changed listeners and restart impact before applying; existing API credentials remain private.",
   "help.settings.persistence": "Routing mode and autostart use the same persistent settings as the CLI.",

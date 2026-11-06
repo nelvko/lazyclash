@@ -115,6 +115,9 @@ func TestPageHeaderDividerBoundsAndBodyGapStayConsistentAcrossPages(t *testing.T
 					t.Fatal("header does not leave exactly one blank row before the body")
 				}
 				for _, action := range m.pageHeader().actions {
+					if !action.enabled {
+						continue
+					}
 					if hit := findTarget(t, m, action.id); hit.X+hit.W > right {
 						t.Fatalf("header action exceeds the shared right edge: %+v", hit)
 					}

@@ -174,7 +174,7 @@
   "help.connections.keys": "/：搜索 · s：排序 · p：暂停/继续 · Enter：详情 · x：审阅关闭单条连接",
   "help.connections.confirm": "关闭前需要确认当前显示的连接；其他连接保持活动。",
   "help.rules.keys": "/：搜索 · Enter：原位展开 · g / Ctrl+R：重读",
-  "help.rules.readOnly": "规则为只读，并保持内核的匹配顺序。",
+  "help.rules.readOnly": "生效规则保持只读；自定义规则独立保存，并须明确应用。",
   "help.settings.ports": "运行设置 / 端口：修改本地代理和控制 API 端口。",
   "help.settings.review": "应用前审阅监听端口变化及重启影响；已有 API 凭据保持私密。",
   "help.settings.persistence": "路由模式和自动启动与 CLI 共用持久设置。",
