@@ -101,12 +101,12 @@ func TestOverviewContentFillsAreaBesideNavigationAndReservesUsableRows(t *testin
 	for _, width := range []int{100, 120, 140, 160, 197, 240, 320} {
 		g := dashboardGeometry(dashboardOptions{Width: width, Height: 45})
 		left, right := g.x-sidebarWidth, width-g.x-g.width
-		if left-right > 1 || right-left > 1 || g.width != width-sidebarWidth-5 || g.y != 5 || g.height != 39 {
+		if left-right > 1 || right-left > 1 || g.width != width-sidebarWidth-5 || g.y != 4 || g.height != 40 {
 			t.Fatalf("Overview does not fill the area beside the navigation: %+v", g)
 		}
 	}
 	g := dashboardGeometry(dashboardOptions{Width: 80, Height: 24})
-	if g.sidebar || g.x != 2 || g.height != 18 {
+	if g.sidebar || g.x != 2 || g.height != 19 {
 		t.Fatalf("compact frame wasted content space: %+v", g)
 	}
 	g = dashboardGeometry(dashboardOptions{Width: 240, Height: 45, Page: "proxies"})

@@ -81,6 +81,14 @@ func TestNotificationHeaderRetainsTitleAndShowsShortCompleteMessage(t *testing.T
 			o.BodyTargets = []hitRegion{{ID: "profiles.url", W: g.width, H: 3}}
 			o.Notifications = []notificationItem{{ID: 1, Page: "profiles", Context: strings.Repeat("Fetching subscription ", 8), Kind: "error", Message: "Save failed. Please retry.", Details: "full diagnostic"}}
 			layers := notificationLayout(o)
+			if g.y == 2 {
+				// The compact header has one row before the input; retain the
+				// existing overflow entry instead of covering the input.
+				if len(layers) != 1 || len(layers[0].IDs) != 0 || layers[0].Targets[0].ID != "notification.expand" {
+					t.Fatalf("%v/%s: compact notification lost its entry point: %+v", size, language, layers)
+				}
+				continue
+			}
 			if len(layers) != 1 || len(layers[0].IDs) != 1 {
 				t.Fatalf("%v/%s: short message unnecessarily hidden behind overflow: %+v", size, language, layers)
 			}

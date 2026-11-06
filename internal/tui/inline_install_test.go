@@ -439,7 +439,11 @@ func TestInlinePresentationRetainsSidebarAndFitsTerminal(t *testing.T) {
 							t.Fatalf("inline body must cap at 96 cells and align with the full header: %+v", g)
 						}
 						divider := ansi.Strip(strings.Split(m.screen, "\n")[g.headerHeight])
-						if strings.Count(divider, "▔") != g.headerWidth {
+						dividerWidth := size[0]
+						if g.sidebar {
+							dividerWidth -= sidebarWidth
+						}
+						if strings.Count(divider, "▔") != dividerWidth {
 							t.Fatal("bounded inline body narrowed the page divider")
 						}
 					}

@@ -99,9 +99,9 @@ func TestPageHeaderDividerBoundsAndBodyGapStayConsistentAcrossPages(t *testing.T
 				m := headerModel(page, size[0], size[1])
 				g := dashboardGeometry(m.dashboardOptions())
 				lines := strings.Split(m.screen, "\n")
-				left, right := 2, size[0]-2
+				left, right := 0, size[0]
 				if size[0] >= 100 && size[1] >= 20 {
-					left, right = sidebarWidth+2, size[0]-3
+					left = sidebarWidth
 				}
 				line := ansi.Strip(lines[g.headerHeight])
 				if first := ansi.StringWidth(strings.SplitN(line, "▔", 2)[0]); first != left {
@@ -111,14 +111,19 @@ func TestPageHeaderDividerBoundsAndBodyGapStayConsistentAcrossPages(t *testing.T
 					t.Fatalf("divider spans %d cells, want %d", actual, right-left)
 				}
 				bodyStart := g.y - m.dashboardOptions().BodyTopRows
-				if bodyStart != g.headerHeight+2 || strings.TrimSpace(ansi.Strip(ansi.Cut(lines[bodyStart-1], left, right))) != "" {
-					t.Fatal("header does not leave exactly one blank row before the body")
+				if bodyStart != g.headerHeight+1 {
+					t.Fatal("body does not start immediately below the divider")
+				}
+				for y := 0; y < g.headerHeight; y++ {
+					if padding := ansi.Cut(lines[y], right-1, right); !strings.Contains(padding, themed(" ", text, sidebarBackground, false)) {
+						t.Fatalf("header background does not reach the right edge: %q", padding)
+					}
 				}
 				for _, action := range m.pageHeader().actions {
 					if !action.enabled {
 						continue
 					}
-					if hit := findTarget(t, m, action.id); hit.X+hit.W > right {
+					if hit := findTarget(t, m, action.id); hit.X+hit.W > g.headerX+g.headerWidth {
 						t.Fatalf("header action exceeds the shared right edge: %+v", hit)
 					}
 				}

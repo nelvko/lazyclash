@@ -48,6 +48,7 @@ func TestButtonRolesAndSurfacesRemainSeparate(t *testing.T) {
 		options                             buttonOptions
 	}{
 		{"page", "Edit", text, panel, buttonOptions{}},
+		{"header", "Edit", text, panel, buttonOptions{Surface: sidebarBackground}},
 		{"card", "Edit", text, raised, buttonOptions{Surface: panel}},
 		{"modal", "Edit", text, raised, buttonOptions{Surface: raised}},
 		{"primary", "Apply", primaryButtonForeground, primaryButtonBackground, buttonOptions{Kind: buttonPrimary}},

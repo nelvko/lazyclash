@@ -33,7 +33,7 @@ func renderButton(label string, o buttonOptions) string {
 		o.Surface = bg
 	}
 	foreground, background := text, panel
-	if o.Surface != bg {
+	if o.Surface != bg && o.Surface != sidebarBackground {
 		background = raised
 	}
 	bold, underline := false, false

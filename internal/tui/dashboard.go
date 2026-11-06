@@ -102,7 +102,7 @@ func dashboardGeometry(o dashboardOptions) dashboardLayout {
 		bodyY++
 	}
 	headerHeight := bodyY - 2
-	bodyY += o.BodyTopRows
+	bodyY = headerHeight + 1 + o.BodyTopRows
 	height := max(0, dashboardContentBottom(o)-bodyY)
 	if o.BodyRange && height > 1 {
 		height--
@@ -147,24 +147,31 @@ func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
 		}
 		return strings.Join(rows, "\n"), targets, 0
 	}
+	headerLeft := 0
+	if g.sidebar {
+		headerLeft = sidebarWidth
+	}
+	for y := 0; y < g.headerHeight; y++ {
+		put(headerLeft, y, themed(strings.Repeat(" ", o.Width-headerLeft), text, sidebarBackground, o.Dim))
+	}
 	titleX := g.headerX
 	if !g.sidebar {
-		label := dashboardButton("menu", tr("dashboard.menu"), o, false)
+		label := renderButton(tr("dashboard.menu"), dashboardButtonOptions("menu", o, false, sidebarBackground))
 		put(1, g.headerY, label)
 		add(hitRegion{ID: "menu", X: 1, Y: g.headerY, W: ansi.StringWidth(label), H: 1})
 		titleX = max(12, g.headerX)
 		if o.Width >= 50 {
-			titleText = logoText(bg, o.Dim) + " / " + titleText
+			titleText = logoText(sidebarBackground, o.Dim) + " / " + titleText
 		}
 	}
-	put(titleX, g.headerY, themed(cellCrop(titleText, max(1, g.headerX+g.headerWidth-titleX)), text, bg, o.Dim))
+	put(titleX, g.headerY, themed(cellCrop(titleText, max(1, g.headerX+g.headerWidth-titleX)), text, sidebarBackground, o.Dim))
 	header, headerX, headerY, headerTargets := renderPageHeader(o, g, titleX, ansi.StringWidth(titleText))
 	put(headerX, headerY, header)
 	for _, hit := range headerTargets {
 		add(hit)
 	}
 	// A top-edge stroke aligns with the sidebar's background boundary.
-	put(g.headerX, g.headerHeight, themed(strings.Repeat("▔", g.headerWidth), divider, bg, o.Dim))
+	put(headerLeft, g.headerHeight, themed(strings.Repeat("▔", o.Width-headerLeft), divider, bg, o.Dim))
 	for i, line := range o.BodyTop.lines {
 		if i < o.BodyTopRows {
 			put(g.x, g.y-o.BodyTopRows+i, cellPad(line, g.width))
@@ -356,10 +363,6 @@ func sidebarTraffic(o dashboardOptions, width int) []string {
 		return style(arrow, muted) + style(strings.Repeat(" ", gap)+value, text)
 	}
 	return []string{style(strings.Repeat("─", inner), divider), rate("↑", up), rate("↓", down)}
-}
-
-func dashboardButton(id, label string, o dashboardOptions, primary bool) string {
-	return renderButton(label, dashboardButtonOptions(id, o, primary, bg))
 }
 
 type dashboardBlock struct {
