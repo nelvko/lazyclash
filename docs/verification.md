@@ -1,5 +1,32 @@
 # 验证入口
 
+## TUI 顶栏、概览与规则摘要（2026-11-06）
+
+共享标题栏统一使用侧栏 `sidebarBackground`，标题文字和操作按钮保留原位置及状态样式。分隔线从侧栏右边界铺至终端右边界，无侧栏时铺满全宽；正文紧接横线下一行，统一释放原来的一行留白。概览上下卡片之间各移除一行额外空白，卡片内部和横向间距不变。实际内核状态保留在操作卡，内核信息不再重复状态，版本、PID、期望状态与漂移诊断保持完整；没有操作卡的安装引导仍保留页头状态。
+
+规则数量只在搜索区显示：默认「670 条规则 · 按匹配顺序」，输入搜索或开启匹配选项后显示「显示 32 / 670 条 · 按匹配顺序」。无效正则、加载失败、原有选项提示及所有操作入口保留，没有修改业务逻辑、快捷键或动作守卫。
+
+真实 controlling PTY 的 Rules 中英文 × True Color、ANSI256、NO_COLOR 六组通过，覆盖 160×45、120×32、80×24、60×20、40×16 及恢复；每组 `queries=4`，服务、模式和节点修改均为零。另用中文 True Color、670 条规则检查七页 × 五种尺寸共 35 组，逐格核对标题底色与横线边界，默认数量和搜索后 `1 / 670` 均仅一处；该探针 `queries=2`，其他修改计数为零。概览运行、停止、未安装状态均已检查；后两种状态复用隔离安装内存 fixture，在 160×45、80×24 完成成功/取消四组，`starts=0`。PNG 由实际 PTY 字符格和颜色重绘，已目视检查宽窄屏概览、默认规则及搜索结果；未操作真实 Mihomo 或系统服务。
+
+首轮全包检查暴露三处测试假设：代理网格 fixture 伪造就绪后残留 Loading 消息，被既有通知同步机制转换为浮层；短日志窗口的固定栏因新增一行而提前可用；侧栏样式断言依赖了多余的结尾 ANSI reset。分别清理 fixture 消息、将 fallback 尺寸从 12 行调整到 11 行、移除无关的 reset 匹配，保留完整卡片可见、输入与选项可点击及前景/背景/粗体断言。没有为这些问题修改产品逻辑。
+
+最终源码通过 `make check build`（TUI 74.224 秒），包含全部 Go 测试、vet 与产品构建；八项 Python 终端解析测试通过。`./scripts/verify-linux.sh lazyclash-e2e` 在已有专用 Debian/arm64 VM 执行全部可运行测试包通过，临时目录清理检查通过；未在 Linux/amd64 运行。最终宿主与 Linux 日志分别为 `.test-artifacts/tui-layout-check-build-final.log`、`.test-artifacts/tui-layout-linux-final.log`。此次只调整绘制和摘要，未重跑 race 或真实 Mihomo/systemd/TUN 生命周期 E2E。
+
+证据位于忽略目录 `.test-artifacts/tui-layout/`：`layout-probe/` 保存七页边界与 670 条规则的截图、ANSI、文字和 `checks.json`；`pty/20261106-100008-c264bc/` 保存六组 Rules 流程；`onboarding/20261106-100132-2d997d/` 保存停止及未安装状态；`before/`、`shared/`、`final/` 是字体渲染的模型预览。首轮宿主和 Linux 失败记录分别保留在 `.test-artifacts/tui-layout-check-build.log`、`.test-artifacts/tui-layout-linux-initial.log`。
+
+实现涉及 `internal/tui/{dashboard,page_header,button,overview_controls,rules_view}.go` 和 `internal/i18n/locales/{en,zh-Hans}.pages.json`。同步调整已有测试 `internal/tui/{dashboard,page_header,button,inline_install,notification_view,rules,proxy_hover,search_field,theme}_test.go`，以及 `docs/{theme-mariana,rules,verification}.md`。
+
+复验入口：
+
+```sh
+make check build
+python3 -m unittest discover -s scripts -p 'test_*.py'
+./scripts/verify-linux.sh lazyclash-e2e
+go test -c ./internal/tui -o bin/tui-layout-pty.test
+python3 scripts/rules-pty.py --binary bin/tui-layout-pty.test \
+  --output .test-artifacts/tui-layout/recheck --png
+```
+
 ## Rules 集合管理与独立自定义规则（2026-11-06）
 
 主规则列表取消独立详情页，Enter 原位展开完整条件与可选统计；取消常驻刷新按钮，保留 Ctrl+R / g 和失败重试。页头新增规则集合与自定义规则入口。集合支持搜索、元数据、单项更新、最多三个并发的更新全部，以及逐项失败重试；Inline 不参与更新。当前 Profile 的自定义规则独立保存于 `prepend-rules`，支持增改删排序；保存不应用，应用单独确认，运行中应用会重启服务并中断连接。
