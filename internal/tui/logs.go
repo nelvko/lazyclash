@@ -13,28 +13,29 @@ import (
 
 const (
 	retainedLogLimit = 200
-	// Store a message identity so retained capture gaps follow language changes.
-	logCaptureGap    = "logs.gap"
 	maxLogScrollRows = 1 << 20
 )
 
 type logsState struct {
-	entries                []mihomo.LogEntry
-	search                 textinput.Model
-	editing, paused, ended bool
-	active, pending        bool
-	generation             uint64
-	cancel                 context.CancelFunc
-	ctx                    context.Context
-	updates                <-chan logsResultMsg
-	err                    error
-	observedAt             time.Time
-	gap                    bool
-	level                  int // local display filter: all, info, warning, error
-	compact, holding       bool
-	first                  uint64 // identity of the oldest retained entry
-	anchor                 logPosition
-	unread                 int
+	entries               []mihomo.LogEntry
+	search                textinput.Model
+	editing, paused       bool
+	active, pending       bool
+	generation            uint64
+	cancel                context.CancelFunc
+	ctx                   context.Context
+	updates               <-chan logsResultMsg
+	err                   error
+	observedAt            time.Time
+	started, reconnecting bool
+	recovered             bool
+	frozen                []mihomo.LogEntry
+	frozenFirst           uint64
+	level                 int // local display filter: all, info, warning, error
+	compact, holding      bool
+	first                 uint64 // identity of the oldest retained entry
+	anchor                logPosition
+	unread                int
 }
 
 type logsResultMsg struct {
@@ -63,13 +64,14 @@ func (m *Model) stopLogs() {
 	}
 	if m.logs.active || m.logs.pending {
 		m.logs.generation++
-		m.logs.gap = true
 	}
 	m.logs.active, m.logs.pending = false, false
 }
 
-func (m Model) logsVisible() bool {
-	return m.page == "logs" && !m.busy && !m.quitting && !m.helpOpen && !m.ports.open && !m.wizard.open && !m.wizard.networkOpen && m.form == "" && m.ctx.Err() == nil
+// The first running snapshot starts collection. Visiting Logs also starts a
+// session so unavailable cores get an explicit diagnostic and automatic retry.
+func (m Model) logsWanted() bool {
+	return m.logs.started || m.page == "logs" || m.snapshotReady && m.snapshot.Installed && m.snapshot.Service.Active
 }
 
 // One owner reads a bounded channel; the stream blocks at that boundary until
@@ -102,36 +104,55 @@ func waitLogs(ctx context.Context, updates <-chan logsResultMsg) tea.Cmd {
 	}
 }
 
+// Retry only after a stream ends, never on a quiet live connection. A single
+// session owns both streaming and backoff, and cancellation releases either.
+func logRetryDelay(attempt int) time.Duration {
+	return min(30*time.Second, time.Second<<min(5, max(0, attempt)))
+}
+
 func (m *Model) syncLogs() tea.Cmd {
-	if !m.logsVisible() {
+	if m.quitting || m.ctx.Err() != nil {
 		m.stopLogs()
 		return nil
 	}
-	if m.logs.active || m.logs.paused || m.logs.ended {
+	if !m.logsWanted() || m.logs.active {
 		return nil
 	}
-	if m.logs.gap {
-		m.appendLogs([]mihomo.LogEntry{{Time: time.Now(), Level: "gap", Message: logCaptureGap}})
-		m.logs.gap = false
-	}
+	m.logs.started = true
 	m.logs.generation++
 	id := m.logs.generation
 	ctx, cancel := context.WithCancel(m.ctx)
 	updates := make(chan logsResultMsg, 32)
-	m.logs.active, m.logs.pending, m.logs.err = true, true, nil
+	m.logs.active, m.logs.pending = true, true
 	m.logs.cancel, m.logs.ctx, m.logs.updates = cancel, ctx, updates
 	backend := m.backend
 	run := func() tea.Msg {
 		defer close(updates)
-		err := backend.StreamLogs(ctx, func(entry mihomo.LogEntry) {
-			select {
-			case updates <- logsResultMsg{generation: id, entries: []mihomo.LogEntry{entry}}:
-			case <-ctx.Done():
+		attempt := 0
+		for ctx.Err() == nil {
+			err := backend.StreamLogs(ctx, func(entry mihomo.LogEntry) {
+				attempt = 0
+				select {
+				case updates <- logsResultMsg{generation: id, entries: []mihomo.LogEntry{entry}}:
+				case <-ctx.Done():
+				}
+			})
+			if ctx.Err() != nil {
+				return nil
 			}
-		})
-		select {
-		case updates <- logsResultMsg{generation: id, done: true, err: err}:
-		case <-ctx.Done():
+			select {
+			case updates <- logsResultMsg{generation: id, done: true, err: err}:
+			case <-ctx.Done():
+				return nil
+			}
+			timer := time.NewTimer(logRetryDelay(attempt))
+			attempt = min(5, attempt+1)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return nil
+			case <-timer.C:
+			}
 		}
 		return nil
 	}
@@ -139,7 +160,7 @@ func (m *Model) syncLogs() tea.Cmd {
 }
 
 func (m *Model) appendLogs(entries []mihomo.LogEntry) {
-	if m.logs.holding {
+	if m.logs.holding || m.logs.paused {
 		m.logs.unread = min(retainedLogLimit, m.logs.unread+len(entries))
 	}
 	for _, entry := range entries {
@@ -167,35 +188,47 @@ func (m *Model) acceptLogs(msg logsResultMsg) tea.Cmd {
 	}
 	m.appendLogs(msg.entries)
 	if msg.done {
-		if m.logs.cancel != nil {
-			m.logs.cancel()
-			m.logs.cancel = nil
+		m.logs.reconnecting, m.logs.recovered = true, false
+		m.logs.err = msg.err
+		if errors.Is(msg.err, context.Canceled) {
+			m.logs.err = nil
 		}
-		m.logs.active, m.logs.pending, m.logs.ended = false, false, true
-		if msg.err != nil && !errors.Is(msg.err, context.Canceled) {
-			m.logs.err = msg.err
-		}
-		return nil
+	} else if len(msg.entries) > 0 {
+		m.logs.recovered = m.logs.recovered || m.logs.reconnecting
+		m.logs.reconnecting, m.logs.err = false, nil
 	}
 	return waitLogs(m.logs.ctx, m.logs.updates)
 }
 
+// Freeze an independent bounded display snapshot; the live session keeps
+// accepting events even when its ring evicts entries shown in this snapshot.
 func (m *Model) pauseLogs() {
-	m.stopLogs()
+	if m.logs.paused {
+		return
+	}
+	m.logsScroll(0)
+	m.logs.frozen = append([]mihomo.LogEntry(nil), m.logs.entries...)
+	m.logs.frozenFirst = m.logs.first
 	m.logs.paused = true
 }
 
 func (m *Model) resumeLogs() tea.Cmd {
-	interrupted := m.logs.paused || (m.logs.ended && len(m.logs.entries) > 0)
-	m.stopLogs()
-	m.logs.paused, m.logs.ended = false, false
-	if interrupted {
-		m.logs.gap = true
-	}
+	m.logs.paused, m.logs.frozen = false, nil
 	m.resetLogsView()
-	// A quiet core may emit no events, so reconnect also refreshes the shared
-	// service observation used by Overview and other pages.
+	return m.syncLogs()
+}
+
+func (m *Model) reconnectLogs() tea.Cmd {
+	m.stopLogs()
+	m.logs.started, m.logs.reconnecting, m.logs.recovered, m.logs.err = true, true, false, nil
 	return tea.Batch(m.syncLogs(), m.refreshCoreStatus())
+}
+
+func (m Model) logsDisplayEntries() ([]mihomo.LogEntry, uint64) {
+	if m.logs.paused {
+		return m.logs.frozen, m.logs.frozenFirst
+	}
+	return m.logs.entries, m.logs.first
 }
 
 func (m *Model) logsActivate(id string) tea.Cmd {
@@ -205,13 +238,13 @@ func (m *Model) logsActivate(id string) tea.Cmd {
 	}
 	switch id {
 	case "logs.follow":
-		if m.logs.active {
+		if !m.logs.paused {
 			m.pauseLogs()
 			return nil
 		}
 		return m.resumeLogs()
 	case "logs.retry":
-		return m.resumeLogs()
+		return m.reconnectLogs()
 	case "logs.search":
 		m.logs.editing, m.focus, m.scroll = true, "logs.search", 0
 		return m.logs.search.Focus()
@@ -222,17 +255,16 @@ func (m *Model) logsActivate(id string) tea.Cmd {
 		m.logs.compact = !m.logs.compact
 	case "logs.clear":
 		m.logs.first += uint64(len(m.logs.entries))
-		m.logs.entries = nil
+		m.logs.entries, m.logs.frozen = nil, nil
+		m.logs.frozenFirst = m.logs.first
+		m.logs.recovered = false
 		m.logs.observedAt = time.Time{}
 		m.resetLogsView()
 	case "logs.reset-search":
 		m.logs.search.Reset()
 		m.resetLogsView()
 	case "logs.latest":
-		m.resetLogsView()
-		if !m.logs.active {
-			return m.resumeLogs()
-		}
+		return m.resumeLogs()
 	}
 	return nil
 }
@@ -302,7 +334,7 @@ func (m *Model) logsKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 	return false, nil
 }
 
-// Only explicit pause stops capture. Browsing pins an entry and its wrapped row,
+// Browsing pins an entry and its wrapped row without affecting capture,
 // so newly appended entries, eviction, resize and layout changes cannot pull the
 // reader to the tail. If the anchor expires, the oldest retained row is shown.
 func (m *Model) logsScroll(delta int) {

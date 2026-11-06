@@ -60,9 +60,24 @@ def event_numbers(terminal):
     return [int(value) for value in re.findall(r"event-(\d+)", terminal.screen.text())]
 
 
+def assert_stream(terminal, report, streams, canceled=0, failures=0):
+    current = calls(report)
+    assert current["streams"] == streams and current["canceled"] == canceled and current["failures"] == failures, current
+    assert not re.search(r"\bGAP\b", terminal.screen.text()), "stream lifecycle leaked a synthetic GAP log entry"
+
+
+def assert_continuing(terminal, report, seconds=0.8):
+    before = calls(report)
+    observe(terminal, seconds)
+    after = calls(report)
+    assert after["emitted"] > before["emitted"], "background collection stopped"
+    assert_stream(terminal, report, before["streams"], before["canceled"], before["failures"])
+
+
 def wait_long_payload(terminal):
     terminal.settle()
     terminal.wait("event-057")
+    terminal.wait("LONG-MESSAGE-")
     left, _ = position(terminal, "event-057")
     wait_until(terminal, lambda: "LONG-MESSAGE-END" in "".join(
         "".join(row[left:]).strip() for row in terminal.screen.cells), "detailed view lost the end of the wrapped payload")
@@ -94,6 +109,9 @@ def exercise(preview, binary, output, language, profile, args):
     terminal = fixture_terminal(preview, binary, report, language, profile)
     try:
         terminal.wait("v1.19.33")
+        wait_until(terminal, lambda: calls(report).get("emitted", 0) >= 60, "session did not collect logs before opening Logs")
+        assert_continuing(terminal, report)
+        preview.capture(terminal, output, "collecting-from-overview", args)
         terminal.key(b"6")
         terminal.wait("event-059")
         terminal.settle()
@@ -113,6 +131,35 @@ def exercise(preview, binary, output, language, profile, args):
         assert event_numbers(terminal) == retained, "new events pulled the browsing viewport to the tail"
         assert after["emitted"] > before["emitted"] and after["streams"] == 1 and after["canceled"] == 0, after
         preview.capture(terminal, output, "browsing-live-stream", args)
+
+        # Navigation, a read-only busy refresh, help and a canceled form keep
+        # the session's collector alive instead of replacing its HTTP request.
+        terminal.key(b"1")
+        terminal.settle()
+        before = calls(report)
+        terminal.key(b"g")
+        wait_until(terminal, lambda: calls(report).get("snapshots", 0) > before["snapshots"], "Overview refresh did not run")
+        assert_continuing(terminal, report)
+        assert_stream(terminal, report, 1)
+        terminal.key(b"6")
+        terminal.key(b"\x1b[F")
+        terminal.settle()
+        terminal.key(b"?")
+        terminal.wait(words["help.currentPage"].split("%s")[0])
+        assert_continuing(terminal, report)
+        preview.capture(terminal, output, "help-continuing-stream", args)
+        terminal.key(b"1234567")
+        terminal.key(b"?")
+        wait_until(terminal, lambda: words["help.currentPage"].split("%s")[0] not in terminal.screen.text(), "help did not close")
+        terminal.settle()
+        terminal.key(b"n")
+        terminal.wait(words["wizard.network.title"])
+        assert_continuing(terminal, report)
+        preview.capture(terminal, output, "form-continuing-stream", args)
+        terminal.key(b"\x1b")
+        wait_until(terminal, lambda: words["wizard.network.title"] not in terminal.screen.text(), "network form did not close")
+        terminal.settle()
+        assert_stream(terminal, report, 1)
 
         # Filters operate on retained events without reconnecting or pausing.
         terminal.key(b"/")
@@ -178,23 +225,38 @@ def exercise(preview, binary, output, language, profile, args):
             preview.capture(terminal, output, "following-%dx%d" % (width, height), args)
         assert calls(report)["streams"] == 1 and calls(report)["canceled"] == 0, calls(report)
 
-        # Only an explicit capture pause disconnects; resume discloses the gap.
-        for _ in range(3):
-            terminal.key(b"l")  # Error-only filtering must not hide a capture gap.
-        terminal.settle()
+        # Pause freezes the visible snapshot, while a large incoming burst
+        # still enters the bounded cache. Resume reveals only the newest 200.
         terminal.key(b"f")
-        wait_until(terminal, lambda: calls(report).get("canceled") == 1, "pause did not cancel capture")
+        terminal.wait(words["logs.resume_display"])
         terminal.settle()
-        paused = calls(report)
-        observe(terminal, 1.0)
-        assert calls(report)["emitted"] == paused["emitted"], calls(report)
-        preview.capture(terminal, output, "capture-paused", args)
+        frozen = event_numbers(terminal)
+        assert frozen, "pause lost the visible snapshot"
+        (output / "burst-events").touch()
+        wait_until(terminal, lambda: calls(report).get("burst_events") == 230, "paused view stopped the background burst")
+        assert_continuing(terminal, report)
+        assert event_numbers(terminal) == frozen, "paused display changed after cache eviction"
+        assert_stream(terminal, report, 1)
+        preview.capture(terminal, output, "display-paused-cache-continues", args)
+        terminal.key(b" ")
+        terminal.wait(words["logs.pause_display"])
+        wait_until(terminal, lambda: event_numbers(terminal) and max(event_numbers(terminal)) > max(frozen) + 200, "Space did not resume the latest cached entries")
+        terminal.wait(words["logs.summary"] % (200, 200))
+        terminal.key(b"\x1b[H")
+        terminal.settle()
+        assert min(event_numbers(terminal)) > max(frozen), "resumed cache retained evicted old entries"
+        preview.capture(terminal, output, "resumed-cache-limit", args)
         terminal.key(b"\x1b[F")
-        wait_until(terminal, lambda: calls(report).get("streams") == 2, "End did not resume capture")
-        terminal.wait(words["logs.gap"])
-        preview.capture(terminal, output, "capture-resumed-gap", args)
-        terminal.key(b"l")  # All.
         terminal.settle()
+        terminal.click_text(words["logs.pause_display"])
+        terminal.wait(words["logs.resume_display"])
+        frozen = event_numbers(terminal)
+        assert_continuing(terminal, report)
+        assert event_numbers(terminal) == frozen, "Pause button failed to freeze display"
+        terminal.key(b"\x1b[F")
+        terminal.wait(words["logs.pause_display"])
+        assert_stream(terminal, report, 1)
+        preview.capture(terminal, output, "end-resumes-without-reconnect", args)
 
         # Clear affects the local buffer. The owned request must stay connected.
         before = calls(report)
@@ -202,15 +264,33 @@ def exercise(preview, binary, output, language, profile, args):
         wait_until(terminal, lambda: calls(report).get("emitted", 0) > before["emitted"], "clear stopped incoming events")
         terminal.settle()
         after = calls(report)
-        assert after["streams"] == 2 and after["canceled"] == 1, after
-        assert "event-000" not in terminal.screen.text() and words["logs.gap"] not in terminal.screen.text(), "clear retained old entries"
+        assert_stream(terminal, report, 1)
+        assert "event-000" not in terminal.screen.text(), "clear retained old entries"
         assert all(value >= before["emitted"] for value in event_numbers(terminal)), "clear retained old event IDs"
         preview.capture(terminal, output, "clear-continuing-stream", args)
         terminal.key(b"g")
-        wait_until(terminal, lambda: calls(report).get("streams") == 3, "reconnect did not replace the request")
+        wait_until(terminal, lambda: calls(report).get("streams") == 2, "manual reconnect did not replace the request")
+        assert_continuing(terminal, report)
+        assert_stream(terminal, report, 2, 1)
+        preview.capture(terminal, output, "manual-reconnect-once", args)
+
+        # A single real backend error must recover without pressing g, and the
+        # interruption belongs to status rather than an invented log record.
+        (output / "break-stream").touch()
+        wait_until(terminal, lambda: calls(report).get("failures") == 1, "fixture did not interrupt the active request")
+        terminal.wait(words["logs.reconnecting"])
+        preview.capture(terminal, output, "interrupted-retrying-status", args)
+        wait_until(terminal, lambda: calls(report).get("streams") == 3, "interrupted stream did not reconnect automatically")
+        assert_continuing(terminal, report)
+        assert_stream(terminal, report, 3, 1, 1)
+        preview.capture(terminal, output, "automatic-recovery-no-gap-entry", args)
+        search(terminal, "GAP")
+        terminal.wait(words["logs.no_matches"])
+        preview.capture(terminal, output, "no-synthetic-gap-record", args)
+        search(terminal, "")
         terminal.exit()
         final = calls(report)
-        assert final["streams"] == 3 and final["canceled"] == 3, final
+        assert final["streams"] == 3 and final["canceled"] == 2 and final["failures"] == 1 and final["burst_events"] == 230, final
         assert final["service_changes"] == final["modes"] == final["selections"] == 0, final
         raw = bytes(terminal.raw)
         assert not preview.OSC_SET.search(raw), "application changed the terminal palette"
@@ -219,7 +299,7 @@ def exercise(preview, binary, output, language, profile, args):
         if profile == "no-color":
             assert not any(value not in (b"", b"0") for value in preview.SGR.findall(raw)), "NO_COLOR emitted styling"
         (output / "pty.raw").write_bytes(raw)
-        print("PASS %s/%s: detailed/compact, local search/levels, continuous capture while browsing, fixed toolbar across five dimensions, pause/gap/clear/reconnect; %s" %
+        print("PASS %s/%s: detailed/compact, local search/levels, session capture across navigation/help/form, frozen display with 200-entry live cache, fixed toolbar at five sizes, clear/manual reconnect/automatic recovery without GAP entries; %s" %
               (language, profile, json.dumps(final)), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")

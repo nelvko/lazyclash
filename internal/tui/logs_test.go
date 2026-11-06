@@ -82,21 +82,29 @@ func TestLogsStreamIsSingleCancellableTaskAndRejectsLateMessages(t *testing.T) {
 	if next == nil || len(m.logs.entries) != 1 || m.logs.entries[0].Message != "captured event" {
 		t.Fatal("stream event did not enter the bounded retained view")
 	}
-	id := m.logs.generation
+	id, ctx := m.logs.generation, m.logs.ctx
 	m.pauseLogs()
 	select {
 	case <-stopped:
+		t.Fatal("pausing display canceled capture")
+	default:
+	}
+	m.acceptLogs(logsResultMsg{generation: id, entries: []mihomo.LogEntry{{Level: "info", Message: "while paused"}}})
+	if len(m.logs.entries) != 2 || len(m.logs.frozen) != 1 || !m.logs.active || ctx.Err() != nil {
+		t.Fatal("paused display did not keep collecting into its independent live buffer")
+	}
+	if m.resumeLogs() != nil || m.logs.generation != id || len(m.logs.entries) != 2 {
+		t.Fatal("resuming display replaced capture or injected a synthetic record")
+	}
+	m.stopLogs()
+	select {
+	case <-stopped:
 	case <-time.After(time.Second):
-		t.Fatal("pause did not cancel the owned capture")
+		t.Fatal("stopping the session did not cancel the owned stream")
 	}
 	m.acceptLogs(logsResultMsg{generation: id, entries: []mihomo.LogEntry{{Message: "late event"}}})
-	if len(m.logs.entries) != 1 || m.logs.active {
-		t.Fatal("late event changed a paused capture")
-	}
-	m.resumeLogs()
-	defer m.stopLogs()
-	if len(m.logs.entries) != 2 || m.logs.entries[1].Level != "gap" {
-		t.Fatal("resume did not disclose the uncollected time gap")
+	if len(m.logs.entries) != 2 || m.logs.active {
+		t.Fatal("late event changed a stopped session")
 	}
 }
 
@@ -122,27 +130,26 @@ func TestLogsSearchDigitsAndPasteStayWithinInput(t *testing.T) {
 	}
 }
 
-func TestLogsFailureDoesNotLoopAndKeepsObservedEntriesClearlyMarked(t *testing.T) {
+func TestLogsFailureKeepsSessionAliveAndRetainedEntriesClearlyMarked(t *testing.T) {
 	m := logsModel()
 	m.logs.active, m.logs.pending, m.logs.generation = true, true, 8
 	m.acceptLogs(logsResultMsg{generation: 8, entries: []mihomo.LogEntry{{Level: "info", Message: "observed earlier"}}, done: true, err: errors.New("Mihomo is not running")})
-	if m.syncLogs() != nil || !m.logs.ended || m.logs.active {
+	if m.syncLogs() != nil || !m.logs.reconnecting || !m.logs.active {
 		t.Fatal("failed stream immediately restarted in a tight loop")
 	}
 	body, _ := m.logsBody(80)
-	for _, part := range []string{"last observed", "Mihomo is not running", "observed earlier"} {
+	for _, part := range []string{m.tr("logs.reconnecting"), "Mihomo is not running", "observed earlier"} {
 		if !strings.Contains(ansi.Strip(body), part) {
 			t.Fatalf("missing failure observation %q", part)
 		}
 	}
-	m.resumeLogs()
-	defer m.stopLogs()
-	if m.logs.entries[len(m.logs.entries)-1].Level != "gap" {
-		t.Fatal("reconnecting after failure did not mark its observation gap")
+	m.acceptLogs(logsResultMsg{generation: 8, entries: []mihomo.LogEntry{{Level: "info", Message: "restored"}}})
+	if !m.logs.recovered || m.logs.reconnecting || m.logs.err != nil || len(m.logs.entries) != 2 {
+		t.Fatal("recovery did not clear the error or injected a synthetic record")
 	}
 }
 
-func TestLogsResizeHelpAndDepartureCancelWithoutLosingRetainedState(t *testing.T) {
+func TestLogsResizeHelpAndDepartureKeepTheSameSessionAndHistory(t *testing.T) {
 	m := logsModel()
 	m.appendLogs([]mihomo.LogEntry{{Level: "info", Message: "kept"}})
 	m.syncLogs()
@@ -156,14 +163,17 @@ func TestLogsResizeHelpAndDepartureCancelWithoutLosingRetainedState(t *testing.T
 		assertRegions(t, m.targets, size[0], size[1])
 	}
 	m.helpOpen = true
-	m.syncLogs()
-	if ctx.Err() == nil || m.logs.active || len(m.logs.entries) != 1 {
-		t.Fatal("help did not cancel capture while retaining the observation")
+	if m.syncLogs() != nil || ctx.Err() != nil || !m.logs.active {
+		t.Fatal("help interrupted the session")
 	}
 	m.helpOpen = false
-	m.syncLogs()
+	m.browsePage("overview")
+	if m.syncLogs() != nil || ctx.Err() != nil || m.logs.generation != id {
+		t.Fatal("page departure interrupted the session")
+	}
+	m.browsePage("logs")
 	defer m.stopLogs()
-	if len(m.logs.entries) != 2 || m.logs.entries[1].Level != "gap" {
-		t.Fatal("return from help silently concealed the capture gap")
+	if m.syncLogs() != nil || len(m.logs.entries) != 1 || m.logs.generation != id {
+		t.Fatal("returning to logs restarted capture or inserted a synthetic entry")
 	}
 }

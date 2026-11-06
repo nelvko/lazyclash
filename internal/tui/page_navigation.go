@@ -67,7 +67,6 @@ func (m *Model) browsePage(page string) {
 			m.stopRuntime()
 		}
 		m.stopRules()
-		m.stopLogs()
 		m.page = page
 		m.scroll = m.pageViews[page].scroll
 		m.hover = ""

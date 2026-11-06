@@ -84,12 +84,12 @@ func themeSample(name string) Model {
 	case "logs":
 		m.snapshot = app.Snapshot{Installed: true, ConfigReady: true, Version: "v1.19.33", Service: service.Status{Active: true, State: "active"}}
 		m.page, m.focus = "logs", "logs.follow"
-		m.logs.paused = true
 		m.logs.entries = []mihomo.LogEntry{
 			{Level: "info", Message: "[TCP] example.invalid:443 uses PROXY[Example node]"},
 			{Level: "warning", Message: "Download unavailable: [URL redacted]"},
-			{Level: "gap", Message: "Capture paused; logs during this interval are not collected."},
+			{Level: "error", Message: "[DNS] upstream lookup failed"},
 		}
+		m.pauseLogs()
 	default:
 		m.openManagementWizard(false)
 		switch name {

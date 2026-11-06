@@ -1,70 +1,54 @@
 package tui
 
 import (
+	"errors"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/nelvko/lazyclash/internal/app"
+	"github.com/nelvko/lazyclash/internal/mihomo"
 	"github.com/nelvko/lazyclash/internal/service"
 )
 
-func TestBusyLogsEndExecutesStatusReadAndAllowsLaterObservation(t *testing.T) {
+func TestBusyLogsEndResumesDisplayWithoutReplacingTheSession(t *testing.T) {
 	b := &fakeBackend{snapshot: app.Snapshot{Installed: true, Service: service.Status{State: "inactive"}}}
 	m := ready(b)
-	m.width, m.height = 120, 32
+	m.width, m.height, m.page, m.focus = 120, 32, "logs", "logs.list"
+	m.syncLogs()
+	defer m.stopLogs()
+	m.pauseLogs()
+	ctx, generation := m.logs.ctx, m.logs.generation
 	m.newJob("action")
-	m.page, m.focus, m.logs.paused = "logs", "logs.list", true
-	m.message = "Updating subscription"
-	m.layout()
-	defer func() {
-		m.stopRuntime()
-		m.stopLogs()
-		m.stopCoreStatus()
-		if m.cancel != nil {
-			m.cancel()
-		}
-	}()
-
-	var cmd tea.Cmd
-	m, cmd = update(m, special(tea.KeyEnd))
-	if m.statusCancel == nil || !m.busy {
-		t.Fatal("End did not request an independent status read during the operation")
+	defer m.cancel()
+	m, _ = update(m, special(tea.KeyEnd))
+	if !m.busy || m.logs.paused || !m.logs.active || ctx.Err() != nil || m.logs.generation != generation || m.statusCancel != nil {
+		t.Fatal("busy End replaced the session or failed to resume display independently")
 	}
-	var status *coreStatusMsg
-	var execute func(tea.Cmd)
-	execute = func(next tea.Cmd) {
-		if next == nil {
-			return
-		}
-		switch msg := next().(type) {
-		case tea.BatchMsg:
-			for _, child := range msg {
-				execute(child)
-			}
-		case coreStatusMsg:
-			status = &msg
-		}
-	}
-	execute(cmd)
-	if status == nil {
-		t.Fatal("busy End discarded the command that completes the pending status read")
-	}
-	m, _ = update(m, *status)
-	if m.statusCancel != nil || !m.busy {
-		t.Fatal("status completion did not release its own pending state independently of the operation")
-	}
-
 	m, _ = update(m, resultMsg{id: m.id, snapshot: b.snapshot, hasSnapshot: true})
-	if m.busy {
-		t.Fatal("operation did not finish")
-	}
 	b.snapshot.Service = service.Status{Active: true, State: "active"}
-	cmd = m.observeCoreState("ready")
+	cmd := m.observeCoreState("ready")
 	if cmd == nil || m.statusCancel == nil {
-		t.Fatal("the prior busy End left status observation permanently suppressed")
+		t.Fatal("resuming display suppressed later service observations")
 	}
 	m, _ = update(m, cmd())
 	if m.statusCancel != nil || !m.snapshot.Service.Active {
-		t.Fatal("later observation did not refresh and release the shared service state")
+		t.Fatal("later observation did not refresh and release its pending state")
+	}
+}
+
+func TestBusyLogResultsKeepCollectionWithoutRacingTheForegroundSnapshot(t *testing.T) {
+	m := logsModel()
+	m.syncLogs()
+	defer m.stopLogs()
+	m.newJob("action")
+	defer m.cancel()
+	generation := m.logs.generation
+	m, _ = update(m, logsResultMsg{generation: generation, done: true, err: errors.New("fixture connection interrupted")})
+	if !m.logs.active || !m.logs.reconnecting || m.statusCancel != nil {
+		t.Fatal("a background disconnect started a snapshot read during a foreground operation")
+	}
+	m, _ = update(m, logsResultMsg{generation: generation, entries: []mihomo.LogEntry{{Level: "info", Message: "collecting during the operation"}}})
+	if len(m.logs.entries) != 1 || !m.logs.active || m.statusCancel != nil || !m.busy {
+		t.Fatal("a background event interrupted capture or raced the foreground snapshot")
 	}
 }

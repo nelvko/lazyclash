@@ -225,7 +225,6 @@ func (m *Model) newJob(kind string) context.Context {
 	m.stopRuntime()
 	m.stopRules()
 	m.stopRuleProviders()
-	m.stopLogs()
 	m.stopCoreStatus()
 	if m.cancel != nil {
 		m.cancel()
@@ -294,7 +293,9 @@ func (m *Model) cancelTask(quit bool) {
 	m.stopProxyTests()
 	m.stopRuntime()
 	m.stopRules()
-	m.stopLogs()
+	if quit {
+		m.stopLogs()
+	}
 	m.stopCoreStatus()
 	if m.cancel != nil {
 		m.cancel()
@@ -369,10 +370,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		accepted := m.logs.active && v.generation == m.logs.generation
 		refreshStatus := accepted && v.done && v.err != nil && !errors.Is(v.err, context.Canceled)
 		cmd = m.acceptLogs(v)
-		if accepted && !v.done && len(v.entries) > 0 {
+		if accepted && !m.busy && !v.done && len(v.entries) > 0 {
 			cmd = tea.Batch(cmd, m.observeCoreState("ready"))
 		}
-		if refreshStatus {
+		// Foreground results own their full snapshot. Continue caching logs
+		// during the operation without starting a competing snapshot read.
+		if refreshStatus && !m.busy {
 			cmd = tea.Batch(cmd, m.refreshCoreStatus())
 		}
 	case coreStatusMsg:

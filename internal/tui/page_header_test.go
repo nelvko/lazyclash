@@ -305,20 +305,20 @@ func TestRulesReadyHeaderOmitsRefreshAndFailureOffersRetry(t *testing.T) {
 	}
 }
 
-func TestLogsHeaderPauseResumeEndsSearchAndOwnsCapture(t *testing.T) {
+func TestLogsHeaderPauseResumeEndsSearchAndKeepsCapture(t *testing.T) {
 	m := headerModel("logs", 120, 32)
 	m.logs.editing = true
 	m.logs.search.Focus()
 	m.layout()
 	m, cmd := click(m, findTarget(t, m, "logs.follow"))
-	if cmd == nil || !m.logs.active || m.logs.editing || m.logs.search.Focused() {
-		t.Fatal("Resume did not leave search and own a new capture")
+	if cmd != nil || !m.logs.active || m.logs.paused || m.logs.editing || m.logs.search.Focused() {
+		t.Fatal("Resume did not leave search and preserve the existing capture")
 	}
 	defer m.stopLogs()
 	defer m.stopCoreStatus()
 	m, _ = click(m, findTarget(t, m, "logs.follow"))
-	if m.logs.active || !m.logs.paused {
-		t.Fatal("Pause did not stop the capture")
+	if !m.logs.active || !m.logs.paused {
+		t.Fatal("Pause interrupted capture instead of freezing display")
 	}
 }
 

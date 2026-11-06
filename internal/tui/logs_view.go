@@ -26,8 +26,6 @@ func logLevel(level string) (string, string) {
 		return strings.ToUpper(level), errorColor
 	case "warn", "warning":
 		return "WARN", warning
-	case "gap":
-		return "GAP", warning
 	case "info":
 		return "INFO", info
 	default:
@@ -35,18 +33,7 @@ func logLevel(level string) (string, string) {
 	}
 }
 
-func (m Model) logMessage(entry mihomo.LogEntry) string {
-	if entry.Level == "gap" && entry.Message == logCaptureGap {
-		return m.tr(logCaptureGap)
-	}
-	return entry.Message
-}
-
 func (m Model) logMatches(entry mihomo.LogEntry) bool {
-	// Gaps describe the observation itself and must survive display filters.
-	if entry.Level == "gap" {
-		return true
-	}
 	level, _ := logLevel(entry.Level)
 	if m.logs.level != 0 && level != []string{"", "INFO", "WARN", "ERROR"}[m.logs.level] {
 		// Fatal events belong to the error filter as well.
@@ -55,13 +42,14 @@ func (m Model) logMatches(entry mihomo.LogEntry) bool {
 		}
 	}
 	query := strings.ToLower(strings.TrimSpace(m.logs.search.Value()))
-	return query == "" || strings.Contains(strings.ToLower(entry.Level+" "+m.logMessage(entry)), query)
+	return query == "" || strings.Contains(strings.ToLower(entry.Level+" "+entry.Message), query)
 }
 
 func (m Model) logDocument(width int) logDocument {
 	width = max(1, width)
 	var doc logDocument
-	for index, entry := range m.logs.entries {
+	entries, first := m.logsDisplayEntries()
+	for index, entry := range entries {
 		if !m.logMatches(entry) {
 			continue
 		}
@@ -71,23 +59,19 @@ func (m Model) logDocument(width int) logDocument {
 			stamp = entry.Time.Local().Format("15:04:05")
 		}
 		level, color := logLevel(entry.Level)
-		message := m.logMessage(entry)
+		message := entry.Message
 		var rows []string
-		if m.logs.compact && entry.Level != "gap" {
+		if m.logs.compact {
 			prefix := themed(stamp+"  ", muted, bg, false) + themed(cellPad(level, 5)+"  ", color, bg, false)
 			rows = []string{cellCrop(prefix+themed(message, text, bg, false), width)}
 		} else {
 			rows = append(rows, cellCrop(themed(stamp+"  ", muted, bg, false)+themed(level, color, bg, false), width))
-			messageColor := text
-			if entry.Level == "gap" {
-				messageColor = warning
-			}
-			rows = append(rows, strings.Split(wrapText(themed(message, messageColor, bg, false), width), "\n")...)
+			rows = append(rows, strings.Split(wrapText(themed(message, text, bg, false), width), "\n")...)
 			rows = append(rows, themed(strings.Repeat("─", width), border, bg, false))
 		}
 		for row, value := range rows {
 			doc.lines = append(doc.lines, value)
-			doc.positions = append(doc.positions, logPosition{entry: m.logs.first + uint64(index), row: row})
+			doc.positions = append(doc.positions, logPosition{entry: first + uint64(index), row: row})
 		}
 	}
 	return doc
@@ -135,12 +119,13 @@ func (m Model) logsToolbar(width, rows int) dashboardBlock {
 	b = m.searchToolbar("logs.search", m.tr("logs.placeholder"), m.logs.search,
 		b, width, width >= 68, false)
 	count := 0
-	for _, entry := range m.logs.entries {
+	entries, _ := m.logsDisplayEntries()
+	for _, entry := range entries {
 		if m.logMatches(entry) {
 			count++
 		}
 	}
-	status := m.tr("logs.summary", count, len(m.logs.entries))
+	status := m.tr("logs.summary", count, len(entries))
 	if m.logs.editing {
 		status = m.tr("logs.search_edit")
 	} else if !m.logs.observedAt.IsZero() {
@@ -177,6 +162,9 @@ func (m Model) logsPrefix(width int) dashboardBlock {
 		lines := strings.Split(wrapText(themed(value, errorColor, bg, false), max(1, width)), "\n")
 		b.lines = append(b.lines, lines[:min(2, len(lines))]...)
 	}
+	if m.logs.recovered && !m.logs.reconnecting {
+		b.lines = append(b.lines, themed(cellCrop(m.tr("logs.recovered"), width), muted, bg, false))
+	}
 	return b
 }
 
@@ -185,11 +173,11 @@ func (m Model) logsCapacity(width int) int {
 }
 
 func (m Model) logsStatus() (string, string) {
-	if m.logs.paused {
-		return m.tr("logs.paused"), warning
+	if m.logs.reconnecting {
+		return m.tr("logs.reconnecting"), warning
 	}
-	if m.logs.ended {
-		return m.tr("logs.ended"), muted
+	if m.logs.paused {
+		return m.tr("logs.display_paused"), warning
 	}
 	if !m.logs.active {
 		return m.tr("logs.opening"), muted
@@ -221,10 +209,11 @@ func (m Model) logsBody(width int) (string, []hitRegion) {
 	doc := m.logDocument(width)
 	if len(doc.lines) == 0 {
 		message := m.tr("logs.empty")
-		if m.logs.paused || m.logs.ended {
+		if m.logs.reconnecting {
 			message = m.tr("logs.empty_inactive")
 		}
-		if len(m.logs.entries) > 0 || m.logs.search.Value() != "" || m.logs.level != 0 {
+		entries, _ := m.logsDisplayEntries()
+		if len(entries) > 0 || m.logs.search.Value() != "" || m.logs.level != 0 {
 			message = m.tr("logs.no_matches")
 		}
 		doc.lines = strings.Split(wrapText(themed(message, muted, bg, false), width), "\n")
@@ -236,12 +225,12 @@ func (m Model) logsBody(width int) (string, []hitRegion) {
 	if len(b.lines) < height {
 		status, color := m.logsStatus()
 		label := m.tr("logs.latest")
-		if m.logs.holding && m.logs.unread > 0 {
+		if (m.logs.holding || m.logs.paused) && m.logs.unread > 0 {
 			label += fmt.Sprintf(" +%d", m.logs.unread)
 		}
 		if width < 60 {
 			label = "↓"
-			if m.logs.holding && m.logs.unread > 0 {
+			if (m.logs.holding || m.logs.paused) && m.logs.unread > 0 {
 				label += fmt.Sprintf(" +%d", m.logs.unread)
 			}
 		}

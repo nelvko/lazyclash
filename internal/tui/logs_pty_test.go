@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -47,10 +48,12 @@ func TestLogsPTYFixture(t *testing.T) {
 
 type logsPTYBackend struct {
 	*fakeBackend
-	report                                                  string
-	reportMu                                                sync.Mutex
-	streamTasks                                             sync.WaitGroup
-	streams, canceled, emitted, controls, modes, selections atomic.Int64
+	report                                            string
+	reportMu                                          sync.Mutex
+	streamTasks                                       sync.WaitGroup
+	broken, burst                                     atomic.Bool
+	streams, canceled, failures, emitted, burstEvents atomic.Int64
+	snapshots, controls, modes, selections            atomic.Int64
 }
 
 func (b *logsPTYBackend) writeReport() {
@@ -58,6 +61,7 @@ func (b *logsPTYBackend) writeReport() {
 	defer b.reportMu.Unlock()
 	raw, _ := json.Marshal(map[string]int64{
 		"streams": b.streams.Load(), "canceled": b.canceled.Load(), "emitted": b.emitted.Load(),
+		"failures": b.failures.Load(), "burst_events": b.burstEvents.Load(), "snapshots": b.snapshots.Load(),
 		"service_changes": b.controls.Load(), "modes": b.modes.Load(), "selections": b.selections.Load(),
 	})
 	file, err := os.CreateTemp(filepath.Dir(b.report), ".calls-*")
@@ -81,7 +85,9 @@ func (b *logsPTYBackend) StreamLogs(ctx context.Context, emit func(mihomo.LogEnt
 	stream := b.streams.Add(1)
 	b.writeReport()
 	defer func() {
-		b.canceled.Add(1)
+		if ctx.Err() != nil {
+			b.canceled.Add(1)
+		}
 		b.writeReport()
 	}()
 	entry := func() {
@@ -114,8 +120,36 @@ func (b *logsPTYBackend) StreamLogs(ctx context.Context, emit func(mihomo.LogEnt
 		case <-ctx.Done():
 			return ctx.Err()
 		case <-ticker.C:
+			if _, err := os.Stat(filepath.Join(filepath.Dir(b.report), "break-stream")); err == nil && b.broken.CompareAndSwap(false, true) {
+				b.failures.Add(1)
+				b.writeReport()
+				return errors.New("synthetic log stream interrupted")
+			}
+			if _, err := os.Stat(filepath.Join(filepath.Dir(b.report), "burst-events")); err == nil && b.burst.CompareAndSwap(false, true) {
+				for index := 0; index < 230; index++ {
+					if ctx.Err() != nil {
+						return ctx.Err()
+					}
+					entry()
+					b.burstEvents.Add(1)
+				}
+				b.writeReport()
+			}
 			entry()
 		}
+	}
+}
+
+func (b *logsPTYBackend) Snapshot(ctx context.Context) (app.Snapshot, error) {
+	b.snapshots.Add(1)
+	b.writeReport()
+	timer := time.NewTimer(120 * time.Millisecond)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return app.Snapshot{}, ctx.Err()
+	case <-timer.C:
+		return b.snapshot, nil
 	}
 }
 

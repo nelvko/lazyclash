@@ -26,28 +26,21 @@ func TestRulesObservedStopUpdatesSharedStateAndPageStatus(t *testing.T) {
 	}
 }
 
-func TestLogFailureRefreshesStatusWithoutBlockingOrRestartingCapture(t *testing.T) {
+func TestLogFailureRefreshesStatusWhileSessionWaitsForRetry(t *testing.T) {
 	b := &fakeBackend{snapshot: app.Snapshot{Installed: true}}
 	m := ready(b)
 	m.page = "logs"
 	m.snapshot.Service = service.Status{Active: true, State: "active"}
 	m.logs.active, m.logs.generation = true, 8
 	m, cmd := update(m, logsResultMsg{generation: 8, done: true, err: errors.New("Core stopped; reconnect logs")})
-	if cmd == nil || m.busy || !m.logs.ended || m.logs.active {
+	if cmd == nil || m.busy || !m.logs.reconnecting || !m.logs.active {
 		t.Fatal("log failure blocked the UI or restarted a failed stream")
 	}
-	msg := cmd()
-	if batch, ok := msg.(tea.BatchMsg); ok {
-		for _, child := range batch {
-			if child != nil {
-				m, _ = update(m, child())
-			}
-		}
-	} else {
-		m, _ = update(m, msg)
-	}
-	if m.snapshot.Service.Active || m.logs.active {
-		t.Fatal("background status read kept stale service state or reconnected capture")
+	// The first command waits for the next session update; only execute the
+	// independent status read here, without inventing a second stream.
+	m, _ = update(m, commandBatch(t, cmd)[1]())
+	if m.snapshot.Service.Active || !m.logs.active || !m.logs.reconnecting {
+		t.Fatal("background status read kept stale service state or ended the session")
 	}
 	old := m.statusGeneration
 	m.newJob("action")
@@ -83,10 +76,10 @@ func TestLogEventsRefreshSystemdStateWithoutInventingRunningState(t *testing.T) 
 func TestQuietReconnectRefreshesHeaderWithoutWaitingForLogEvents(t *testing.T) {
 	b := &fakeBackend{snapshot: app.Snapshot{Installed: true}}
 	m := ready(b)
-	m.page, m.logs.ended = "logs", true
+	m.page = "logs"
 	// A different client starts the service while this view is disconnected.
 	b.snapshot.Service = service.Status{Active: true, State: "active"}
-	cmd := m.resumeLogs()
+	cmd := m.reconnectLogs()
 	defer m.stopLogs()
 	defer m.stopCoreStatus()
 	commands := commandBatch(t, cmd)

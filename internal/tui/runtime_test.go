@@ -28,6 +28,10 @@ func runtimeModel(t *testing.T, b *fakeBackend) Model {
 	m.messageTransient = true
 	m.syncNotification()
 	m.width, m.height = 120, 32
+	// Model a completed initial observation, including ownership of the
+	// independent log session. Page tests drive only their finite requests.
+	m.syncLogs()
+	t.Cleanup(func() { m.stopLogs() })
 	m.layout()
 	return m
 }

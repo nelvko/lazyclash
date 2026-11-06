@@ -197,7 +197,7 @@ func TestRuntimePortsModalStopsBackgroundAndDoesNotClickThrough(t *testing.T) {
 	background := findTarget(t, m, "nav.overview")
 	m, cmd := click(m, findTarget(t, m, "runtime-settings"))
 	m, _ = update(m, actionCmd(t, cmd)())
-	if m.runtimeVisible() || m.rulesVisible() || m.logsVisible() {
+	if m.runtimeVisible() || m.rulesVisible() {
 		t.Fatal("background monitoring remained visible through the modal")
 	}
 	for _, hit := range m.targets {

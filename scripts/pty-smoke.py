@@ -666,13 +666,17 @@ def main():
             terminal.wait("[TCP]")
             # Numeric page navigation already enters the page content.
             terminal.key(b"f")
-            terminal.wait("Paused")
+            terminal.wait("Resume")
+            paused_source = log_event()
+            terminal.read(0.2)
+            if "127.0.0.1:%s" % paused_source in terminal.screen.text():
+                raise AssertionError("Paused display showed a newly collected log")
             mark = len(terminal.text())
             terminal.resize(60, 20)
             terminal.wait("Mihomo logs", after=mark)
             mark = len(terminal.text())
             terminal.resize(120, 40)
-            terminal.wait("Paused", after=mark)
+            terminal.wait("Resume", after=mark)
 
             terminal.key(b"/")
             terminal.wait("Search retained entries · Enter / Esc finish")
@@ -688,9 +692,11 @@ def main():
             terminal.wait("Current page: Logs")
             terminal.key(b"\x1b")
             terminal.wait_absent("Current page: Logs")
-            terminal.key(b"\x1b[F")  # End: reconnect and follow newest entries
+            terminal.key(b"\x1b[F")  # End: reveal cached entries without reconnecting.
             terminal.wait("Capturing live events")
-            terminal.wait("Capture resumed")
+            terminal.wait("127.0.0.1:%s" % paused_source)
+            if re.search(r"\bGAP\b", terminal.screen.text()):
+                raise AssertionError("Display resume invented a GAP log entry")
 
             cli("service", "stop")
             cli("logs", "--lines", "1", "--duration", "1s", success=False)
@@ -702,13 +708,16 @@ def main():
             started = json.loads(cli("status"))["Service"]
             if not started["Active"] or started["State"] != "active":
                 raise AssertionError("Dedicated log-test service did not restart")
-            terminal.key(b"g")
-            terminal.wait("Capturing live events")
             recovered_source = None
-            for _ in range(5):
+            for _ in range(20):
                 recovered_source = log_event()
-                terminal.read(0.15)
+                terminal.read(0.3)
+                if "127.0.0.1:%s" % recovered_source in terminal.screen.text():
+                    break
+            terminal.wait("Capturing live events")
             terminal.wait("127.0.0.1:%s" % recovered_source)
+            if re.search(r"\bGAP\b", terminal.screen.text()):
+                raise AssertionError("Automatic recovery invented a GAP log entry")
             terminal.exit()
         elif args.mode == "runtime":
             if not args.connection_id:

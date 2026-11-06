@@ -70,14 +70,15 @@ func (m Model) pageHeader() pageHeader {
 		h.actions = []headerAction{{"rules.providers", tr("rules.providers.title"), "≡", providersSupported}}
 	case "logs":
 		h.summary = tr("header.connecting")
-		follow, compact := tr("header.resume"), "▶"
-		if m.logs.active {
+		follow, compact := tr("logs.pause_display"), "Ⅱ"
+		if m.logs.reconnecting {
+			h.summary = tr("header.connecting")
+		} else if m.logs.active {
 			h.summary = tr("header.live")
-			follow, compact = tr("header.pause"), "Ⅱ"
-		} else if m.logs.paused {
+		}
+		if m.logs.paused {
 			h.summary = tr("header.paused")
-		} else if m.logs.ended {
-			h.summary = tr("header.ended")
+			follow, compact = tr("logs.resume_display"), "▶"
 		}
 		h.actions = []headerAction{{"logs.clear", tr("logs.clear"), "×", true}, {"logs.follow", follow, compact, true}, {"logs.retry", tr("header.reconnect"), "↻", true}}
 	case "settings":

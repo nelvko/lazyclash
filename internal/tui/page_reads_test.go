@@ -181,17 +181,18 @@ func TestPageLogsDepartureKeepsPauseQueryAndHistory(t *testing.T) {
 	m := logsModel()
 	m.logs.entries = []mihomo.LogEntry{{Level: "info", Message: "retained"}}
 	m.logs.search.SetValue("retained")
-	m.logs.paused, m.logs.anchor.row = true, 12
-	m.logs.active, m.logs.pending, m.logs.generation = true, true, 7
-	ctx, cancel := context.WithCancel(t.Context())
-	m.logs.cancel = cancel
-	m.page = "settings"
-	if m.syncLogs() != nil || ctx.Err() == nil {
-		t.Fatal("leaving logs did not cancel the request")
+	m.syncLogs()
+	defer m.stopLogs()
+	m.pauseLogs()
+	m.logs.anchor.row = 12
+	ctx, generation := m.logs.ctx, m.logs.generation
+	m.browsePage("settings")
+	if m.syncLogs() != nil || ctx.Err() != nil {
+		t.Fatal("leaving logs interrupted the session")
 	}
-	m.acceptLogs(logsResultMsg{generation: 7, entries: []mihomo.LogEntry{{Message: "late"}}})
-	m.page = "logs"
-	if m.syncLogs() != nil || !m.logs.paused || m.logs.anchor.row != 12 || m.logs.search.Value() != "retained" || len(m.logs.entries) != 1 {
-		t.Fatal("returning logs resumed a paused capture or lost retained state")
+	m.acceptLogs(logsResultMsg{generation: generation, entries: []mihomo.LogEntry{{Message: "received while away"}}})
+	m.browsePage("logs")
+	if m.syncLogs() != nil || !m.logs.paused || m.logs.anchor.row != 12 || m.logs.search.Value() != "retained" || len(m.logs.entries) != 2 || len(m.logs.frozen) != 1 {
+		t.Fatal("returning to logs replaced the session, resumed display or lost history")
 	}
 }

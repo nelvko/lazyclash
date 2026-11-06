@@ -67,30 +67,27 @@ func TestDataPagesLocalizeControlsAndKeepObservedValues(t *testing.T) {
 	}
 }
 
-func TestLogCaptureGapFollowsLanguageWithoutTranslatingCoreMessages(t *testing.T) {
+func TestLogRecoveryStatusLocalizesWithoutChangingCoreMessages(t *testing.T) {
 	m := logsModel()
 	m.width, m.height = 120, 45
-	raw := "Capture resumed; logs while inactive were not collected."
-	m.appendLogs([]mihomo.LogEntry{{Level: "gap", Message: logCaptureGap}, {Level: "info", Message: raw}})
-	m.locale = i18n.New(i18n.Chinese)
-	body, _ := m.logsBody(112)
-	plain := ansi.Strip(body)
-	if !strings.Contains(plain, "已恢复采集") || !strings.Contains(plain, raw) {
-		t.Fatalf("capture gap or original core message changed:\n%s", plain)
+	raw := "Connection restored; original core message"
+	m.appendLogs([]mihomo.LogEntry{{Level: "info", Message: raw}})
+	m.logs.recovered = true
+	for _, language := range []string{i18n.Chinese, i18n.English} {
+		m.locale = i18n.New(language)
+		body, _ := m.logsBody(112)
+		if got := ansi.Strip(body); !strings.Contains(got, m.tr("logs.recovered")) || strings.Count(got, raw) != 1 {
+			t.Fatalf("recovery notice or original core message changed:\n%s", got)
+		}
+		m.logs.search.SetValue("nonexistent")
+		body, _ = m.logsBody(112)
+		if got := ansi.Strip(body); !strings.Contains(got, m.tr("logs.recovered")) || strings.Contains(got, raw) || m.logDocument(112).matched != 0 {
+			t.Fatal("recovery status entered the filtered log list or changed its count")
+		}
+		m.logs.search.Reset()
 	}
-	if m.logs.entries[0].Message != logCaptureGap || m.logs.entries[1].Message != raw {
-		t.Fatal("rendering rewrote retained log data")
-	}
-	m.logs.search.SetValue("暂停期间")
-	body, _ = m.logsBody(112)
-	if !strings.Contains(ansi.Strip(body), "已恢复采集") || strings.Contains(ansi.Strip(body), raw) {
-		t.Fatal("search did not use the displayed capture gap text")
-	}
-	m.logs.search.Reset()
-	m.locale = i18n.New(i18n.English)
-	body, _ = m.logsBody(112)
-	if strings.Count(ansi.Strip(body), raw) != 2 {
-		t.Fatal("retained capture gap did not follow the new language")
+	if len(m.logs.entries) != 1 || m.logs.entries[0].Message != raw {
+		t.Fatal("recovery or language changes inserted a synthetic log entry")
 	}
 }
 

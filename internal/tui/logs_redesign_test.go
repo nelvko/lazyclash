@@ -9,7 +9,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/nelvko/lazyclash/internal/i18n"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
 
@@ -98,13 +97,12 @@ func TestLogsPinnedEntrySurvivesResizeAndCompactReflow(t *testing.T) {
 	}
 }
 
-func TestLogsLevelAndTextFiltersKeepSeverityAndCaptureGaps(t *testing.T) {
+func TestLogsLevelAndTextFiltersKeepOnlyMatchingCoreEvents(t *testing.T) {
 	m := logsModel()
 	for _, entry := range []mihomo.LogEntry{
 		{Level: "info", Message: "Alpha message"}, {Level: "warning", Message: "Alpha warning"},
 		{Level: "warn", Message: "Alpha alias"}, {Level: "error", Message: "Alpha error"},
 		{Level: "fatal", Message: "Alpha fatal"}, {Level: "debug", Message: "Alpha debug"},
-		{Level: "gap", Message: logCaptureGap},
 	} {
 		m.appendLogs([]mihomo.LogEntry{entry})
 	}
@@ -113,11 +111,11 @@ func TestLogsLevelAndTextFiltersKeepSeverityAndCaptureGaps(t *testing.T) {
 		query string
 		want  []string
 	}{
-		{0, "aLpHa", []string{"info", "warning", "warn", "error", "fatal", "debug", "gap"}},
-		{1, "", []string{"info", "gap"}},
-		{2, "", []string{"warning", "warn", "gap"}},
-		{3, "alpha", []string{"error", "fatal", "gap"}},
-		{3, "nonexistent", []string{"gap"}},
+		{0, "aLpHa", []string{"info", "warning", "warn", "error", "fatal", "debug"}},
+		{1, "", []string{"info"}},
+		{2, "", []string{"warning", "warn"}},
+		{3, "alpha", []string{"error", "fatal"}},
+		{3, "nonexistent", nil},
 	} {
 		m.logs.level = tc.level
 		m.logs.search.SetValue(tc.query)
@@ -131,10 +129,7 @@ func TestLogsLevelAndTextFiltersKeepSeverityAndCaptureGaps(t *testing.T) {
 			t.Fatalf("level=%d query=%q: got %v; want %v", tc.level, tc.query, got, tc.want)
 		}
 	}
-	m.locale = i18n.New(i18n.Chinese)
-	if got := strings.Join(m.logDocument(70).lines, "\n"); !strings.Contains(ansi.Strip(got), m.tr(logCaptureGap)) {
-		t.Fatal("filters hid the localized capture gap")
-	}
+
 }
 
 func TestLogsClearOnlyRemovesRetainedEntriesAndPreservesStreamAndFilters(t *testing.T) {
@@ -164,8 +159,8 @@ func TestLogsClearOnlyRemovesRetainedEntriesAndPreservesStreamAndFilters(t *test
 	}
 	m.pauseLogs()
 	m.logsActivate("logs.clear")
-	if !m.logs.paused || m.logs.active || !m.logs.gap {
-		t.Fatal("clearing a paused capture resumed it or concealed the pending capture gap")
+	if !m.logs.paused || !m.logs.active || len(m.logs.frozen) != 0 {
+		t.Fatal("clearing paused display changed capture or retained its frozen records")
 	}
 }
 
@@ -182,8 +177,8 @@ func TestLogsIdleFilteringAndFailureHaveDistinctStates(t *testing.T) {
 	}
 	m.acceptLogs(logsResultMsg{generation: m.logs.generation, done: true, err: errors.New("fixture disconnected")})
 	m.layout()
-	if got := ansi.Strip(m.screen); !strings.Contains(got, "fixture disconnected") || !strings.Contains(got, m.tr("logs.ended")) || m.syncLogs() != nil {
-		t.Fatal("failed capture concealed the failure or retried automatically")
+	if got := ansi.Strip(m.screen); !strings.Contains(got, "fixture disconnected") || !strings.Contains(got, m.tr("logs.reconnecting")) || m.syncLogs() != nil {
+		t.Fatal("failed capture concealed the failure or spawned a duplicate session")
 	}
 }
 
