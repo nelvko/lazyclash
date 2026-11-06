@@ -24,6 +24,9 @@ func listTarget(id string) bool {
 // Navigation and the active list each form one Tab stop; arrows move inside
 // those groups. All other controls retain their visual reading order.
 func (m Model) focusTargets() []hitRegion {
+	if m.ruleProviders.open {
+		return m.ruleProviders.controls
+	}
 	if m.sidebarOpen {
 		return []hitRegion{{ID: "nav." + m.page}}
 	}
@@ -186,7 +189,7 @@ func (m Model) contextHelp() string {
 	case "connections":
 		return tr("navigation.connections")
 	case "rules":
-		if m.rules.view == "providers" {
+		if m.ruleProviders.open {
 			return tr("rules.providers.keys")
 		}
 		return tr("navigation.rules")

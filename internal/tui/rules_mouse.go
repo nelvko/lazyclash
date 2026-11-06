@@ -5,7 +5,7 @@ import tea "charm.land/bubbletea/v2"
 // Motion and wheel messages only change pointer styling and the viewport.
 // Avoid data reconciliation and focus repair for these high frequency events.
 func (m *Model) updateRulesMouse(event tea.MouseMsg) bool {
-	if m.page != "rules" || m.rules.view != "" || m.menu.open || m.ports.open || m.helpOpen || m.wizard.open || m.wizard.networkOpen || m.form != "" || m.notification.panel.open || len(m.notification.items) > 0 {
+	if m.page != "rules" || m.ruleProviders.open || m.menu.open || m.ports.open || m.helpOpen || m.wizard.open || m.wizard.networkOpen || m.form != "" || m.notification.panel.open || len(m.notification.items) > 0 {
 		return false
 	}
 	switch event.(type) {

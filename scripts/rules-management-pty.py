@@ -42,22 +42,49 @@ def fixture_terminal(preview, binary, report, language, profile):
     return terminal
 
 
-def click_label(terminal, label, header=False):
-    # Match a complete button face, never Save inside Saved or Update inside
-    # Update all. Header-only lookup also avoids title/body label collisions.
+def label_position(terminal, label, header=False):
+    # Match a complete button face, never Update inside Update all. Modal
+    # controls may sit in the middle of the screen rather than the page header.
     rows = terminal.screen.cells[:5] if header else terminal.screen.cells
     pattern = re.compile(r"(?<![^\s\[])" + re.escape(label) + r"(?=\s|\]|$)")
+    positions = []
     for y, row in enumerate(rows):
-        match = pattern.search("".join(row))
-        if match:
+        for match in pattern.finditer("".join(row)):
             x = 0
             for index, cell in enumerate(row):
                 if len("".join(row[:index])) == match.start():
                     x = index
                     break
-            RULES.click_cell(terminal, x, y)
-            return
+            positions.append((x, y))
+    if positions:
+        # The footer's help also says Close. Its actual button is aligned to
+        # the right, so choose the rightmost complete label.
+        return max(positions)
     raise AssertionError("Button missing: " + label + "\n" + terminal.screen.text())
+
+
+def click_label(terminal, label, header=False):
+    RULES.click_cell(terminal, *label_position(terminal, label, header))
+
+
+def wheel(terminal, x, y, down=True, count=1):
+    code = 65 if down else 64
+    terminal.key(("\x1b[<%d;%d;%dM" % (code, x + 1, y + 1)).encode() * count)
+    terminal.settle()
+
+
+def rule_positions(terminal):
+    result = {}
+    pattern = re.compile(r"source(?:-\d+)?\.example\.invalid")
+    for y, row in enumerate(terminal.screen.cells):
+        for match in pattern.finditer("".join(row)):
+            result[match.group()] = y
+    return result
+
+
+def fixed_controls(terminal, words):
+    return {key: label_position(terminal, words[key]) for key in
+            ("rules.providers.update_all", "rules.providers.close")}
 
 
 def calls(report):
@@ -73,17 +100,53 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait("v1.19.33")
         terminal.key(b"5")
         terminal.wait("source.example.invalid")
+        RULES.search(terminal, "source")
+        terminal.key(b"\x1b[F")
+        terminal.settle()
+        terminal.wait("source-59.example.invalid")
+        main_positions = rule_positions(terminal)
+        assert "source.example.invalid" not in main_positions, "main-list fixture never scrolled"
         click_label(terminal, words["rules.providers.title"], header=True)
         terminal.wait("remote_rules")
         terminal.wait("inline_rules")
+        terminal.wait(words["rules.providers.close"])
         preview.capture(terminal, output, "providers-clean", args)
+
+        # A modal owns normal keys, clicks and wheels. Neither navigation nor
+        # service shortcuts may reach the dimmed main page behind it.
+        controls = fixed_controls(terminal, words)
+        terminal.key(b"123r?")
+        terminal.settle()
+        nav_x, nav_y = RULES.position(terminal, words["dashboard.page.profiles"], max_column=20)
+        RULES.click_cell(terminal, nav_x, nav_y)
+        wheel(terminal, 24, 20, count=6)
+        terminal.wait("remote_rules")
+        assert fixed_controls(terminal, words) == controls, "background input displaced modal controls"
+        terminal.key(b"/")
+        terminal.key(b"q123")
+        terminal.settle()
+        terminal.wait(words["rules.providers.no_matches"])
+        terminal.key(b"\x1b")  # Finish input, retaining the modal.
+        terminal.settle()
+        terminal.wait(words["rules.providers.close"])
+        terminal.wait(words["rules.providers.no_matches"])
+        RULES.search(terminal, "")
+        terminal.wait("remote_rules")
+
+        # A long Inline-only fixture verifies independent body scrolling. The
+        # title/actions and footer stay fixed while body rows leave the screen.
+        first_x, first_y = RULES.position(terminal, "remote_rules")
+        wheel(terminal, first_x + 2, first_y + 1, count=8)
+        terminal.wait_absent("remote_rules")
+        assert fixed_controls(terminal, words) == controls, "modal title or footer scrolled with providers"
+        preview.capture(terminal, output, "providers-scrolled", args)
         terminal.key(b"\x1b[H")
         terminal.settle()
         # Home selects the first source in the backend's observed order.
         terminal.key(b"u")
         RULES.wait_until(terminal, lambda: report.exists() and calls(report)["provider_updates"] == ["remote_rules"], "single HTTP provider update did not finish")
         terminal.wait(words["rules.providers.success"])
-        click_label(terminal, words["rules.providers.update_all"], header=True)
+        click_label(terminal, words["rules.providers.update_all"])
         RULES.wait_until(terminal, lambda: len(calls(report)["provider_attempts"] or []) == 3, "Update all did not attempt its external providers")
         failure = words["rules.providers.failed"] % "fixture local source read failed"
         terminal.wait(failure)
@@ -109,9 +172,29 @@ def exercise(preview, binary, output, language, profile, args):
             terminal.resize(width, height)
             terminal.settle()
             terminal.wait("inline_rules")
+            fixed = fixed_controls(terminal, words)
+            first_x, first_y = RULES.position(terminal, "inline_rules")
+            wheel(terminal, first_x + 1, first_y + 1, count=8)
+            terminal.wait_absent("inline_rules")
+            assert fixed_controls(terminal, words) == fixed, "resizing mixed fixed controls with scrolling content"
+            preview.capture(terminal, output, "providers-scrolled-%dx%d" % (width, height), args)
+            terminal.key(b"\x1b[H")
+            terminal.settle()
+            terminal.wait("inline_rules")
             preview.capture(terminal, output, "providers-filtered-%dx%d" % (width, height), args)
-        terminal.key(b"\x1b")
-        terminal.wait("source.example.invalid")
+        click_label(terminal, words["rules.providers.close"])
+        terminal.wait("source-59.example.invalid")
+        assert rule_positions(terminal) == main_positions, "closing modal lost the main rule-list position"
+        assert "/ source" in terminal.screen.text(), "closing modal lost the main rule search"
+        preview.capture(terminal, output, "main-rules-restored", args)
+        terminal.key(b"\r")  # Focus returns to the original header button.
+        terminal.wait("inline_rules")
+        terminal.settle()
+        terminal.key(b"q")
+        terminal.wait_absent("inline_rules")
+        terminal.settle()
+        terminal.wait("source-59.example.invalid")
+        assert rule_positions(terminal) == main_positions, "q-close lost the main rule-list position"
         terminal.exit()
         result = calls(report)
         assert result["service_changes"] == result["modes"] == result["selections"] == 0, result
@@ -123,7 +206,7 @@ def exercise(preview, binary, output, language, profile, args):
             assert not any(value not in (b"", b"0") for value in preview.SGR.findall(raw)), "NO_COLOR emitted styling"
         (output / "pty.raw").write_bytes(raw)
         summary = result
-        print("PASS %s/%s: partial provider failure/retry, filtering and five sizes; %s" %
+        print("PASS %s/%s: modal input ownership, independent scrolling, partial failure/retry, main-list restoration and five sizes; %s" %
             (language, profile, json.dumps(summary)), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")

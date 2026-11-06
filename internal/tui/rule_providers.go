@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"charm.land/bubbles/v2/textinput"
+	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/i18n"
@@ -28,7 +29,11 @@ type ruleProvidersState struct {
 	snapshot                    app.RuleProviderSnapshot
 	search                      textinput.Model
 	selected                    string
-	selectedIndex, returnScroll int
+	selectedIndex               int
+	open                        bool
+	viewport                    viewport.Model
+	controls, rowTargets        []hitRegion
+	bounds, bodyBounds          hitRegion
 	editing, active, pending    bool
 	received                    bool
 	generation, request, nextID uint64
@@ -57,22 +62,29 @@ func newRuleProvidersState(locale i18n.Localizer) ruleProvidersState {
 	search.CharLimit = 512
 	search.Placeholder = locale.T("rules.providers.search_placeholder")
 	styleInput(&search, inputBackground, false)
-	return ruleProvidersState{search: search, updates: make(map[string]ruleProviderUpdate)}
+	return ruleProvidersState{search: search, viewport: viewport.New(), updates: make(map[string]ruleProviderUpdate)}
 }
 
 func (m Model) ruleProvidersVisible() bool {
-	return m.page == "rules" && m.rules.view == "providers" && !m.busy && !m.quitting && !m.sidebarOpen && !m.helpOpen && !m.ports.open && !m.wizard.open && !m.wizard.networkOpen && m.form == "" && !m.notification.panel.open && m.ctx.Err() == nil
+	return m.page == "rules" && m.ruleProviders.open && !m.busy && !m.quitting && !m.sidebarOpen && !m.helpOpen && !m.ports.open && !m.wizard.open && !m.wizard.networkOpen && m.form == "" && !m.notification.panel.open && m.ctx.Err() == nil
 }
 
 func (m *Model) openRuleProviders() tea.Cmd {
-	if m.rules.view != "providers" {
-		m.ruleProviders.returnScroll = m.scroll
-	}
 	m.rules.editing = false
 	m.rules.search.Blur()
 	m.stopRules()
-	m.rules.view, m.scroll, m.focus = "providers", 0, "rules.providers-search"
+	m.ruleProviders.open = true
+	m.ruleProviders.viewport.GotoTop()
+	m.sidebarOpen = false
+	m.focus, m.hover = "rules.providers-search", ""
 	return m.syncRuleProviders()
+}
+
+func (m *Model) closeRuleProviders() {
+	m.stopRuleProviders()
+	m.ruleProviders.open = false
+	m.ruleProviders.controls, m.ruleProviders.rowTargets = nil, nil
+	m.focus, m.hover = "rules.providers", ""
 }
 
 func (m *Model) stopRuleProviders() {
@@ -314,7 +326,8 @@ func (m *Model) acceptRuleProviderUpdate(result ruleProviderUpdateResultMsg) tea
 
 func (m *Model) focusRuleProvidersSearch() tea.Cmd {
 	m.ruleProviders.editing = true
-	m.focus, m.scroll = "rules.providers-search", 0
+	m.focus = "rules.providers-search"
+	m.ruleProviders.viewport.GotoTop()
 	return m.ruleProviders.search.Focus()
 }
 
@@ -328,6 +341,7 @@ func (m *Model) ruleProvidersSearchKey(key tea.KeyPressMsg) tea.Cmd {
 		m.focus = "rules.providers-search"
 		if p.selected != "" {
 			m.focus = "rules.provider." + p.selected
+			m.revealRuleProvider()
 		}
 		return nil
 	case "tab", "shift+tab":
@@ -337,18 +351,18 @@ func (m *Model) ruleProvidersSearchKey(key tea.KeyPressMsg) tea.Cmd {
 		if key.String() == "shift+tab" {
 			delta = -1
 		}
-		m.cycleFocus(delta)
+		m.cycleRuleProvidersFocus(delta)
 		return nil
 	}
 	var command tea.Cmd
 	p.search, command = p.search.Update(key)
-	m.scroll = 0
+	p.viewport.GotoTop()
 	m.reconcileRuleProviders()
 	return command
 }
 
 func (m *Model) ruleProvidersKey(key tea.KeyPressMsg) (bool, tea.Cmd) {
-	if m.rules.view != "providers" {
+	if !m.ruleProviders.open {
 		return false, nil
 	}
 	if m.ruleProviders.editing {
@@ -357,8 +371,18 @@ func (m *Model) ruleProvidersKey(key tea.KeyPressMsg) (bool, tea.Cmd) {
 	switch key.String() {
 	case "/":
 		return true, m.focusRuleProvidersSearch()
-	case "esc":
-		return true, m.ruleProvidersActivate("rules.providers-back")
+	case "esc", "q":
+		m.closeRuleProviders()
+		return true, nil
+	case "tab", "shift+tab":
+		delta := 1
+		if key.String() == "shift+tab" {
+			delta = -1
+		}
+		m.cycleRuleProvidersFocus(delta)
+		return true, nil
+	case "enter", "space", " ":
+		return true, m.ruleProvidersActivate(m.focus)
 	case "g", "ctrl+r":
 		return true, m.retryRuleProviders()
 	case "u":
@@ -379,9 +403,9 @@ func (m *Model) ruleProvidersKey(key tea.KeyPressMsg) (bool, tea.Cmd) {
 		case "end":
 			index = len(list) - 1
 		case "pgup":
-			index -= max(1, dashboardGeometry(m.dashboardOptions()).height/4)
+			index -= max(1, m.ruleProviders.viewport.Height()/4)
 		case "pgdown":
-			index += max(1, dashboardGeometry(m.dashboardOptions()).height/4)
+			index += max(1, m.ruleProviders.viewport.Height()/4)
 		}
 		index = max(0, min(index, len(list)-1))
 		m.ruleProviders.selectedIndex, m.ruleProviders.selected = index, list[index].Name
@@ -389,17 +413,85 @@ func (m *Model) ruleProvidersKey(key tea.KeyPressMsg) (bool, tea.Cmd) {
 		m.revealRuleProvider()
 		return true, nil
 	}
-	return false, nil
+	return true, nil
 }
 
 func (m *Model) revealRuleProvider() {
-	width := dashboardBodyWidth(m.dashboardOptions())
-	for _, target := range m.ruleProvidersBodyWindow(width, 0, 0).targets {
-		if target.ID == "rules.provider."+m.ruleProviders.selected {
-			m.revealBodyTarget(target)
-			return
+	p := &m.ruleProviders
+	for _, target := range p.rowTargets {
+		if target.ID != m.focus && target.ID != "rules.provider."+p.selected {
+			continue
+		}
+		if target.H > p.viewport.Height() || target.Y < p.viewport.YOffset() {
+			p.viewport.SetYOffset(target.Y)
+		} else if target.Y+target.H > p.viewport.YOffset()+p.viewport.Height() {
+			p.viewport.SetYOffset(target.Y + target.H - p.viewport.Height())
+		}
+		return
+	}
+}
+
+func (m *Model) cycleRuleProvidersFocus(delta int) {
+	p := &m.ruleProviders
+	if len(p.controls) == 0 {
+		return
+	}
+	index := -1
+	for i, target := range p.controls {
+		if target.ID == m.focus {
+			index = i
+			break
 		}
 	}
+	index = (index + delta + len(p.controls)) % len(p.controls)
+	m.focus = p.controls[index].ID
+	p.editing = false
+	p.search.Blur()
+	if strings.HasPrefix(m.focus, "rules.provider.") {
+		m.ruleProvidersActivate(m.focus)
+	} else if strings.HasPrefix(m.focus, "rules.provider-update.") {
+		name := strings.TrimPrefix(m.focus, "rules.provider-update.")
+		for i, provider := range m.filteredRuleProviders() {
+			if provider.Name == name {
+				p.selectedIndex, p.selected = i, name
+				break
+			}
+		}
+	}
+	if strings.HasPrefix(m.focus, "rules.provider.") || strings.HasPrefix(m.focus, "rules.provider-update.") {
+		m.revealRuleProvider()
+	}
+}
+
+func (m *Model) ruleProvidersMouse(event tea.MouseMsg) tea.Cmd {
+	p, point := &m.ruleProviders, event.Mouse()
+	inside := func(hit hitRegion) bool {
+		return point.X >= hit.X && point.X < hit.X+hit.W && point.Y >= hit.Y && point.Y < hit.Y+hit.H
+	}
+	if !inside(p.bounds) {
+		m.hover = ""
+		return nil
+	}
+	if _, wheel := event.(tea.MouseWheelMsg); wheel {
+		if inside(p.bodyBounds) {
+			p.viewport, _ = p.viewport.Update(event)
+		}
+		m.hover = ""
+		return nil
+	}
+	m.hover = ""
+	for _, hit := range m.targets {
+		if !inside(hit) {
+			continue
+		}
+		m.hover = hit.ID
+		if _, click := event.(tea.MouseClickMsg); click && point.Button == tea.MouseLeft {
+			m.focus = hit.ID
+			return m.ruleProvidersActivate(hit.ID)
+		}
+		break
+	}
+	return nil
 }
 
 func (m *Model) ruleProvidersActivate(id string) tea.Cmd {
@@ -411,8 +503,7 @@ func (m *Model) ruleProvidersActivate(id string) tea.Cmd {
 	case id == "rules.providers-search":
 		return m.focusRuleProvidersSearch()
 	case id == "rules.providers-back":
-		m.stopRuleProviders()
-		m.rules.view, m.scroll, m.focus = "", m.ruleProviders.returnScroll, "rules.providers"
+		m.closeRuleProviders()
 	case id == "rules.providers-reload":
 		return m.retryRuleProviders()
 	case id == "rules.providers-all":
@@ -425,7 +516,14 @@ func (m *Model) ruleProvidersActivate(id string) tea.Cmd {
 		}
 		return m.startRuleProviderUpdates(names)
 	case strings.HasPrefix(id, "rules.provider-update."):
-		return m.startRuleProviderUpdates([]string{strings.TrimPrefix(id, "rules.provider-update.")})
+		name := strings.TrimPrefix(id, "rules.provider-update.")
+		for index, provider := range m.filteredRuleProviders() {
+			if provider.Name == name {
+				m.ruleProviders.selectedIndex, m.ruleProviders.selected = index, name
+				break
+			}
+		}
+		return m.startRuleProviderUpdates([]string{name})
 	case strings.HasPrefix(id, "rules.provider."):
 		name := strings.TrimPrefix(id, "rules.provider.")
 		for index, provider := range m.filteredRuleProviders() {

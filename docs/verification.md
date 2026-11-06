@@ -1,5 +1,17 @@
 # 验证入口
 
+## 规则集合弹窗（2026-11-06）
+
+参考 Clash Verge 的规则集合窗口，将提供器管理从规则子页面改为覆盖主列表的弹窗。终端至少 110×30 时居中展示，最大 96×34；窄屏使用全屏覆盖，极小尺寸保留关闭入口。标题与更新全部、搜索/状态、底部关闭固定，正文复用 Bubbles viewport 独立滚动。关闭恢复主规则页的筛选、展开与滚动位置；弹窗期间键盘、点击和滚轮不穿透，关闭取消集合请求及更新队列并拒绝迟到响应。
+
+最终 `make check build` 通过（TUI 66.975 秒），八项 Python 脚本回归通过。模型回归覆盖固定头尾、1×1 至 160×45 的画布/命中区裁切、Tab 与更新对象一致、正文限定滚轮、搜索结束后焦点可见、宽窄缩放后的焦点定位，以及主规则页状态恢复。搜索中 q 和数字作为输入，其他状态 Esc/q 关闭。
+
+真实 controlling PTY 完成中英文 × True Color、ANSI256、NO_COLOR 六组，覆盖 160×45、120×32、80×24、60×20、40×16。每组完成单项更新、更新全部的部分失败及独立重试、长列表滚动、背景输入隔离、关闭后恢复主列表与重新打开；服务、模式、节点修改均为零。证据为 `.test-artifacts/provider-modal-pty-final/20261106-163842-600439/`；焦点修复后的最终中文 True Color 流程与 PNG 位于 `.test-artifacts/provider-modal-pty-focus-final/20261106-164044-311f00/`，已目视复核宽屏布局。PNG 按实际 PTY 字符格与颜色重绘，后端使用隔离内存 fixture，没有操作实际 Mihomo 或系统服务。本轮未重跑 race 或真实内核/systemd/TUN 生命周期 E2E。
+
+宿主与脚本日志为 `.test-artifacts/rule-providers-modal-{check-build-final,python}.log`、`.test-artifacts/provider-modal-pty-final.log` 和 `.test-artifacts/provider-modal-pty-focus-final.log`。
+
+最终 `./scripts/verify-linux.sh lazyclash-e2e` 在专用 Debian/arm64 VM 实际执行全部可运行包测试通过，测试临时目录清理检查通过；日志为 `.test-artifacts/rule-providers-modal-linux-final.log`。
+
 ## 移除 TUI 自定义规则编辑（2026-11-06）
 
 按当前界面取舍移除自定义规则编辑入口、视图、草稿与保存/应用路由，以及对应 TUI 回归和文案；保留应用层独立覆盖能力、已保存配置和后端诊断。规则集合的 PTY fixture 与脚本改为只验证提供器管理。

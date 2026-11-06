@@ -67,13 +67,7 @@ func (m Model) pageHeader() pageHeader {
 		h.actions = []headerAction{{"conn.retry", tr("header.refresh"), "↻", !m.connections.confirming}}
 	case "rules":
 		_, providersSupported := m.backend.(ruleProviderBackend)
-		switch m.rules.view {
-		case "providers":
-			h.summary = tr("rules.providers.title")
-			h.actions = []headerAction{{"rules.providers-back", tr("rules.management.back"), "←", true}, {"rules.providers-all", tr("rules.providers.update_all"), "↻", m.ruleProvidersCanUpdateAll()}}
-		default:
-			h.actions = []headerAction{{"rules.providers", tr("rules.providers.title"), "≡", providersSupported}}
-		}
+		h.actions = []headerAction{{"rules.providers", tr("rules.providers.title"), "≡", providersSupported}}
 	case "logs":
 		h.summary = tr("header.connecting")
 		follow, compact := tr("header.resume"), "▶"

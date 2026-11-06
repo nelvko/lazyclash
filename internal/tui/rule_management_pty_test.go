@@ -58,7 +58,7 @@ type ruleManagementPTYReport struct {
 }
 
 func newRuleManagementPTYBackend(report string) *ruleManagementPTYBackend {
-	return &ruleManagementPTYBackend{
+	b := &ruleManagementPTYBackend{
 		fakeBackend: &fakeBackend{snapshot: app.Snapshot{
 			Installed: true, ConfigReady: true, HasRun: true, Version: "v1.19.33", RunningVersion: "v1.19.33",
 			Applied: "work", AppliedName: "PTY rule providers", Generation: "rule-management-pty",
@@ -74,6 +74,10 @@ func newRuleManagementPTYBackend(report string) *ruleManagementPTYBackend {
 			{Name: "inline_rules", Type: "Rule", VehicleType: "Inline", Behavior: "domain", RuleCount: 4},
 		},
 	}
+	for index := range 15 {
+		b.providers = append(b.providers, mihomo.RuleProvider{Name: fmt.Sprintf("inline-extra-%02d", index), Type: "Rule", VehicleType: "Inline", Behavior: "domain", RuleCount: 100 + index})
+	}
+	return b
 }
 
 // Caller holds mu. Replacing the file lets the PTY inspect completed operations
@@ -93,6 +97,9 @@ func (b *ruleManagementPTYBackend) Rules(ctx context.Context) (app.RuleSnapshot,
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	rules := []mihomo.Rule{{Index: 0, Type: "Domain", Payload: "source.example.invalid", Proxy: "PROXY", Size: -1}}
+	for index := 1; index < 60; index++ {
+		rules = append(rules, mihomo.Rule{Index: index, Type: "DomainSuffix", Payload: fmt.Sprintf("source-%02d.example.invalid", index), Proxy: "PROXY", Size: -1})
+	}
 	return app.RuleSnapshot{State: "ready", Rules: rules, ObservedAt: time.Now()}, ctx.Err()
 }
 

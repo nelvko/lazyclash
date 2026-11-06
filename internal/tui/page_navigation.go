@@ -42,6 +42,9 @@ func (m *Model) rememberPageView() {
 
 // Browsing changes the page while retaining ownership of the navigation keys.
 func (m *Model) browsePage(page string) {
+	if m.ruleProviders.open {
+		m.ruleProvidersActivate("rules.providers-back")
+	}
 	m.ruleProviders.editing = false
 	m.ruleProviders.search.Blur()
 	m.sidebar.reveal = true
@@ -73,6 +76,9 @@ func (m *Model) browsePage(page string) {
 }
 
 func (m *Model) returnToNavigation() {
+	if m.ruleProviders.open {
+		m.ruleProvidersActivate("rules.providers-back")
+	}
 	m.ruleProviders.editing = false
 	m.ruleProviders.search.Blur()
 	m.rememberPageView()
@@ -268,13 +274,6 @@ func (m *Model) enterContent() {
 				chosen = "connection." + m.connections.selected
 			}
 		case "rules":
-			if m.rules.view == "providers" {
-				chosen = "rules.providers-search"
-				if m.ruleProviders.selected != "" {
-					chosen = "rules.provider." + m.ruleProviders.selected
-				}
-				break
-			}
 			for _, rule := range m.filteredRules() {
 				if ruleIdentity(rule) == m.rules.selected {
 					chosen = "rule." + strconv.Itoa(rule.Index)
@@ -301,10 +300,6 @@ func (m *Model) enterContent() {
 		chosen = "content"
 	}
 	m.focus = chosen
-	if chosen == "rules.providers-search" {
-		m.ruleProviders.editing = true
-		m.ruleProviders.search.Focus()
-	}
 	if chosen == "profiles.url" {
 		m.profilesUI.editing = true
 		m.profilesUI.url.Focus()
@@ -319,7 +314,7 @@ func (m *Model) enterContent() {
 }
 
 func (m *Model) revealContentFocus() {
-	if m.helpOpen || m.form != "" || m.wizard.open || m.wizard.networkOpen || m.ports.open || m.notification.panel.open || m.menu.open || m.sidebarOpen {
+	if m.ruleProviders.open || m.helpOpen || m.form != "" || m.wizard.open || m.wizard.networkOpen || m.ports.open || m.notification.panel.open || m.menu.open || m.sidebarOpen {
 		return
 	}
 	for _, target := range m.contentTargets() {
@@ -541,7 +536,7 @@ func (m *Model) requestQuit() tea.Cmd {
 }
 
 func (m *Model) repairPageFocus() {
-	if m.helpOpen || m.form != "" || m.wizard.open || m.wizard.networkOpen || m.ports.open || m.notification.panel.open || m.menu.open {
+	if m.ruleProviders.open || m.helpOpen || m.form != "" || m.wizard.open || m.wizard.networkOpen || m.ports.open || m.notification.panel.open || m.menu.open {
 		return
 	}
 	state := m.pageViews[m.page]

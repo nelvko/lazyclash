@@ -1,5 +1,4 @@
 {
-  "rules.management.back": "Back",
   "rules.providers.title": "Rule providers",
   "rules.providers.update_all": "Update all",
   "rules.providers.search_placeholder": "Name, source type or behavior",
@@ -33,5 +32,7 @@
   "diagnostic.runtime.ruleProvidersChanged": "core changed while loading rule providers; refresh to read its current providers",
   "diagnostic.runtime.ruleProviderChanged": "core changed during the rule provider update; refresh and retry",
   "diagnostic.runtime.ruleProviderNotRunning": "Mihomo is not running; start it before updating rule providers",
-  "rules.providers.keys": "↑↓ Select · / Search · u Update · Ctrl+R Reload · Esc Back"
+  "rules.providers.keys": "↑↓ Browse · / Search · u Update · Ctrl+R Reload · Esc Close",
+  "rules.providers.close": "Close",
+  "rules.providers.modal_help": "Esc / q Close · u Update"
 }

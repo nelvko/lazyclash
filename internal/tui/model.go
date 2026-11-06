@@ -599,6 +599,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			break
 		} else if m.menu.open {
 			break
+		} else if m.ruleProviders.open {
+			if m.ruleProviders.editing {
+				m.ruleProviders.search, cmd = m.ruleProviders.search.Update(v)
+				m.ruleProviders.viewport.GotoTop()
+				m.reconcileRuleProviders()
+			}
 		} else if m.ports.open {
 			cmd = m.updatePortsInput(v)
 		} else if m.helpOpen {
@@ -640,10 +646,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else if m.connections.editing {
 			m.connections.search, cmd = m.connections.search.Update(v)
 			m.reconcileConnections()
-		} else if m.page == "rules" && m.rules.view == "providers" && m.ruleProviders.editing {
-			m.ruleProviders.search, cmd = m.ruleProviders.search.Update(v)
-			m.scroll = 0
-			m.reconcileRuleProviders()
 		} else if m.rules.editing {
 			m.rules.search, cmd = m.rules.search.Update(v)
 			m.reconcileRules()
@@ -658,6 +660,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd != nil {
 				return m, cmd
 			}
+			break
+		}
+		if m.ruleProviders.open {
+			_, cmd = m.ruleProvidersKey(v)
 			break
 		}
 		if handled, next := m.keyHintsShortcut(v); handled {
@@ -702,10 +708,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.page == "proxies" && m.proxies.editing {
 			cmd = m.proxySearchKey(v)
-			break
-		}
-		if m.page == "rules" && m.rules.view == "providers" && m.ruleProviders.editing {
-			cmd = m.ruleProvidersSearchKey(v)
 			break
 		}
 		if m.page == "rules" && m.rules.editing {
@@ -946,7 +948,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	default:
 		// Forward cursor/clipboard messages to the focused Bubbles input. The
 		// child model ignores messages it does not own, including key releases.
-		if m.ports.open {
+		if m.ruleProviders.open {
+			if m.ruleProviders.editing {
+				m.ruleProviders.search, cmd = m.ruleProviders.search.Update(msg)
+			}
+		} else if m.ports.open {
 			cmd = m.updatePortsInput(msg)
 		} else if m.helpOpen {
 			break
@@ -970,8 +976,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.proxies.search, cmd = m.proxies.search.Update(msg)
 		} else if m.connections.editing {
 			m.connections.search, cmd = m.connections.search.Update(msg)
-		} else if m.page == "rules" && m.rules.view == "providers" && m.ruleProviders.editing {
-			m.ruleProviders.search, cmd = m.ruleProviders.search.Update(msg)
 		} else if m.rules.editing {
 			m.rules.search, cmd = m.rules.search.Update(msg)
 		} else if m.logs.editing {
@@ -1247,6 +1251,10 @@ func (m *Model) activate(id string) tea.Cmd {
 	return nil
 }
 func (m *Model) cycleFocus(delta int) {
+	if m.ruleProviders.open {
+		m.cycleRuleProvidersFocus(delta)
+		return
+	}
 	targets := m.focusTargets()
 	if len(targets) == 0 {
 		return
@@ -1305,6 +1313,9 @@ func (m *Model) cycleFocus(delta int) {
 	}
 }
 func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
+	if m.ruleProviders.open {
+		return m.ruleProvidersMouse(event)
+	}
 	k := event.Mouse()
 	if m.notification.panel.open {
 		m.notificationAction(m.notification.panel.mouse(event))
@@ -1486,7 +1497,7 @@ func (m *Model) renderLayout() {
 	}
 	if m.width >= 100 && m.height >= 20 {
 		m.sidebarOpen = false
-	} else if strings.HasPrefix(m.focus, "nav.") && !m.ports.open && !m.wizard.open && !m.wizard.networkOpen && m.form == "" && !m.helpOpen && m.width >= 20 && m.height >= 12 {
+	} else if strings.HasPrefix(m.focus, "nav.") && !m.ruleProviders.open && !m.ports.open && !m.wizard.open && !m.wizard.networkOpen && m.form == "" && !m.helpOpen && m.width >= 20 && m.height >= 12 {
 		// Preserve a focused navigation item when its persistent sidebar folds.
 		m.sidebarOpen = true
 	}
@@ -1544,6 +1555,8 @@ func (m *Model) renderLayout() {
 		m.screen, m.targets = m.renderProfileForm(base)
 	} else if m.notification.panel.open {
 		m.screen, m.targets = m.notification.panel.render(m.notification.items, m.width, m.height, m.locale, m.buttonPlain())
+	} else if m.ruleProviders.open {
+		m.screen, m.targets = m.renderRuleProviders(base)
 	} else if m.menu.open {
 		m.screen = m.menu.render(base, m.width, m.height)
 	}

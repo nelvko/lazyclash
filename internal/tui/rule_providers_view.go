@@ -35,7 +35,7 @@ func (m Model) ruleProvidersStatus() string {
 
 func (m Model) ruleProvidersToolbar(width, rows int) dashboardBlock {
 	b := m.searchField("rules.providers-search", m.tr("rules.providers.search_placeholder"), m.ruleProviders.search, width, false)
-	b.lines = append(b.lines, themed(cellCrop(m.ruleProvidersStatus(), width), muted, bg, false), "")
+	b.lines = append(b.lines, themed(cellCrop(m.ruleProvidersStatus(), width), muted, raised, false), "")
 	b.lines = b.lines[:min(rows, len(b.lines))]
 	visible := b.targets[:0]
 	for _, target := range b.targets {
@@ -75,8 +75,8 @@ func (m Model) ruleProviderUpdateButton(provider mihomo.RuleProvider, width int)
 	if label == "" || width < ansi.StringWidth(label)+8 {
 		return ""
 	}
-	options := dashboardButtonOptions("rules.provider-update."+provider.Name, m.navigationOptions(), false, bg)
-	options.Disabled = !enabled
+	options := dashboardButtonOptions("rules.provider-update."+provider.Name, m.navigationOptions(), false, raised)
+	options.Dim, options.Disabled = false, !enabled
 	update := m.ruleProviders.updates[provider.Name]
 	options.Busy = update.state == "queued" || update.state == "updating"
 	return renderButton(label, options)
@@ -84,17 +84,14 @@ func (m Model) ruleProviderUpdateButton(provider mihomo.RuleProvider, width int)
 
 func (m Model) ruleProviderRows(provider mihomo.RuleProvider, width int) []string {
 	id := "rules.provider." + provider.Name
-	surface := bg
-	if m.ruleProviders.selected == provider.Name {
+	surface := raised
+	if m.focus == id {
 		surface = panel
 	}
 	if m.hover == id {
 		surface = hoverBackground
 	}
-	marker, nextMarker, markerColor := "  ", "  ", accent
-	if m.ruleProviders.selected == provider.Name {
-		marker, nextMarker = "▌ ", "▌ "
-	}
+	marker, nextMarker, markerColor := "  ", "  ", focus
 	if m.focus == id {
 		marker, nextMarker, markerColor = "› ", "  ", focus
 	}
@@ -147,10 +144,7 @@ func (m Model) ruleProvidersBodyWindow(width, start, height int) ruleBodyWindow 
 	p := m.ruleProviders
 	var b dashboardBlock
 	add := func(value, color string) {
-		b.lines = append(b.lines, strings.Split(wrapText(themed(clean(value), color, bg, false), max(1, width)), "\n")...)
-	}
-	if m.dashboardOptions().BodyTopRows == 0 {
-		b = m.ruleProvidersToolbar(width, 5)
+		b.lines = append(b.lines, strings.Split(wrapText(themed(clean(value), color, raised, false), max(1, width)), "\n")...)
 	}
 	if p.err != nil {
 		add(m.localizeError(p.err), errorColor)
@@ -160,8 +154,8 @@ func (m Model) ruleProvidersBodyWindow(width, start, height int) ruleBodyWindow 
 	if !p.received || p.snapshot.State != "ready" {
 		add(m.ruleProvidersStatus(), muted)
 		if p.received {
-			options := dashboardButtonOptions("rules.providers-reload", m.navigationOptions(), false, bg)
-			options.Disabled = p.pending || m.busy || !p.active
+			options := dashboardButtonOptions("rules.providers-reload", m.navigationOptions(), false, raised)
+			options.Dim, options.Disabled = false, p.pending || m.busy || !p.active
 			label := renderButton(m.tr("rules.providers.retry"), options)
 			if !options.Disabled {
 				b.targets = append(b.targets, hitRegion{ID: "rules.providers-reload", Y: len(b.lines), W: min(width, ansi.StringWidth(label)), H: 1})
@@ -214,7 +208,7 @@ func (m Model) ruleProvidersBodyWindow(width, start, height int) ruleBodyWindow 
 			}
 		}
 		if index < len(list)-1 && row+3 >= start && row+3 < end {
-			b.lines = append(b.lines, themed(strings.Repeat("─", max(0, width)), divider, bg, false))
+			b.lines = append(b.lines, themed(strings.Repeat("─", max(0, width)), divider, raised, false))
 		}
 	}
 	return ruleBodyWindow{dashboardBlock: b, start: start, total: total, prefix: prefix}
@@ -232,4 +226,111 @@ func (m Model) ruleProvidersCanUpdateAll() bool {
 		}
 	}
 	return false
+}
+
+// The provider viewport is separate from the effective-rule list underneath it.
+func (m *Model) renderRuleProviders(base string) (string, []hitRegion) {
+	p := &m.ruleProviders
+	w, h, x, y := m.width, m.height, 0, 0
+	modal := w >= 110 && h >= 30
+	if modal {
+		w, h = min(96, w-12), min(34, h-4)
+		x, y = (m.width-w)/2, (m.height-h)/2
+	} else {
+		base = ""
+	}
+	p.bounds = hitRegion{X: x, Y: y, W: w, H: h}
+	p.controls, p.rowTargets = nil, nil
+	p.bodyBounds = hitRegion{}
+	if w <= 0 || h <= 0 {
+		return base, nil
+	}
+	rows := make([]string, h)
+	for i := range rows {
+		rows[i] = themed(strings.Repeat(" ", w), text, raised, false)
+	}
+	button := func(id, label string, disabled, primary bool) string {
+		kind := buttonSecondary
+		if primary {
+			kind = buttonPrimary
+		}
+		return renderButton(label, buttonOptions{Kind: kind, Surface: raised, Focused: m.focus == id,
+			Hovered: m.hover == id, Disabled: disabled, Plain: m.buttonPlain()})
+	}
+	close := button("rules.providers-back", m.tr("rules.providers.close"), false, false)
+	if w < 24 || h < 13 {
+		putRows(rows, 0, 0, themed(cellCrop(m.tr("rules.providers.title"), w), text, raised, false), w)
+		closeY := h - 1
+		putRows(rows, 0, closeY, cellCrop(close, w), w)
+		hits := []hitRegion{{ID: "rules.providers-back", X: x, Y: y + closeY, W: min(w, ansi.StringWidth(close)), H: 1}}
+		p.controls = hits
+		return overlay(base, strings.Join(rows, "\n"), x, y, m.width, m.height), hits
+	}
+	inner := w - 6
+	for i := 1; i < h-1; i++ {
+		putRows(rows, 0, i, themed("│", border, raised, false), w)
+		putRows(rows, w-1, i, themed("│", border, raised, false), w)
+	}
+	putRows(rows, 0, 0, themed("╭"+strings.Repeat("─", w-2)+"╮", border, raised, false), w)
+	putRows(rows, 0, h-1, themed("╰"+strings.Repeat("─", w-2)+"╯", border, raised, false), w)
+	allEnabled := m.ruleProvidersCanUpdateAll()
+	all := button("rules.providers-all", m.tr("rules.providers.update_all"), !allEnabled, true)
+	allWidth := min(inner, ansi.StringWidth(all))
+	putRows(rows, 3, 1, themed(cellCrop(m.tr("rules.providers.title"), max(1, inner-allWidth-2)), text, raised, false), w)
+	putRows(rows, w-3-allWidth, 1, all, w)
+	var hits []hitRegion
+	if allEnabled {
+		hit := hitRegion{ID: "rules.providers-all", X: x + w - 3 - allWidth, Y: y + 1, W: allWidth, H: 1}
+		hits = append(hits, hit)
+		p.controls = append(p.controls, hit)
+	}
+	p.search.SetWidth(searchInputWidth(inner))
+	p.search.SetCursor(p.search.Position())
+	search := m.ruleProvidersToolbar(inner, 4)
+	for i, line := range search.lines {
+		putRows(rows, 3, 3+i, themed(cellPad(line, inner), text, raised, false), w)
+	}
+	for _, target := range search.targets {
+		target.X, target.Y = target.X+x+3, target.Y+y+3
+		hits = append(hits, target)
+		p.controls = append(p.controls, target)
+	}
+	putRows(rows, 2, 7, themed(strings.Repeat("─", w-4), divider, raised, false), w)
+	bodyY, bodyH := 8, max(1, h-12)
+	p.bodyBounds = hitRegion{X: x + 3, Y: y + bodyY, W: inner, H: bodyH}
+	resized := p.viewport.Width() != inner || p.viewport.Height() != bodyH
+	p.viewport.SetWidth(inner)
+	p.viewport.SetHeight(bodyH)
+	doc := m.ruleProvidersBodyWindow(inner, 0, -1)
+	p.rowTargets = doc.targets
+	p.viewport.SetContent(strings.Join(doc.lines, "\n"))
+	if resized && (strings.HasPrefix(m.focus, "rules.provider.") || strings.HasPrefix(m.focus, "rules.provider-update.")) {
+		m.revealRuleProvider()
+	}
+	for i, line := range strings.Split(p.viewport.View(), "\n") {
+		if i >= bodyH {
+			break
+		}
+		putRows(rows, 3, bodyY+i, themed(cellPad(line, inner), text, raised, false), w)
+	}
+	for _, target := range doc.targets {
+		target.X += p.bodyBounds.X
+		target.Y += p.bodyBounds.Y - p.viewport.YOffset()
+		p.controls = append(p.controls, target)
+		if clipped, ok := clipRegion(target, p.bodyBounds.X, p.bodyBounds.Y, inner, bodyH); ok {
+			hits = append(hits, clipped)
+		}
+	}
+	putRows(rows, 2, h-4, themed(strings.Repeat("─", w-4), divider, raised, false), w)
+	closeWidth := min(inner, ansi.StringWidth(close))
+	putRows(rows, w-3-closeWidth, h-2, close, w)
+	closeHit := hitRegion{ID: "rules.providers-back", X: x + w - 3 - closeWidth, Y: y + h - 2, W: closeWidth, H: 1}
+	hits, p.controls = append(hits, closeHit), append(p.controls, closeHit)
+	if room := inner - closeWidth - 2; room > 0 {
+		putRows(rows, 3, h-2, helpText(cellCrop(m.tr("rules.providers.modal_help"), room), raised, false), w)
+	}
+	if p.viewport.TotalLineCount() > bodyH {
+		putRows(rows, w-2, bodyY+bodyH-1, themed("↕", info, raised, false), w)
+	}
+	return overlay(base, strings.Join(rows, "\n"), x, y, m.width, m.height), hits
 }

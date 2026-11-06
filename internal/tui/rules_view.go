@@ -36,9 +36,6 @@ func (m Model) ruleSearchWidth(width int) int {
 }
 
 func (m Model) rulesToolbar(width, rows int) dashboardBlock {
-	if m.rules.view == "providers" {
-		return m.ruleProvidersToolbar(width, rows)
-	}
 	_, matchErr := m.ruleMatcher()
 	b := m.searchToolbar("rules.search", m.tr("rules.search_placeholder"), m.rules.search,
 		m.ruleFilterButtons(), width, width >= 68, matchErr != nil)
@@ -91,9 +88,6 @@ func (m Model) rulesListPrefix(width int) int {
 // Geometry covers the complete list; only rows intersecting the requested
 // window are styled. A negative height requests the complete body for export.
 func (m Model) rulesBodyWindow(width, start, height int) ruleBodyWindow {
-	if m.rules.view == "providers" {
-		return m.ruleProvidersBodyWindow(width, start, height)
-	}
 	var lines []string
 	var hits []hitRegion
 	static := func() ruleBodyWindow {

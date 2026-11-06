@@ -1,5 +1,4 @@
 {
-  "rules.management.back": "返回规则",
   "rules.providers.title": "规则集合",
   "rules.providers.update_all": "更新全部",
   "rules.providers.search_placeholder": "名称、来源类型或规则类型",
@@ -33,5 +32,7 @@
   "diagnostic.runtime.ruleProvidersChanged": "读取规则集合期间内核已变更，请重新读取",
   "diagnostic.runtime.ruleProviderChanged": "更新规则集合期间内核已变更，请重新读取",
   "diagnostic.runtime.ruleProviderNotRunning": "仅可在受管理的内核运行时更新规则集合",
-  "rules.providers.keys": "↑↓ 选择 · / 搜索 · u 更新 · Ctrl+R 重读 · Esc 返回"
+  "rules.providers.keys": "↑↓ 浏览 · / 搜索 · u 更新 · Ctrl+R 重读 · Esc 关闭",
+  "rules.providers.close": "关闭",
+  "rules.providers.modal_help": "Esc / q 关闭 · u 更新"
 }

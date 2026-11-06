@@ -53,13 +53,13 @@ func ruleProvidersModel(t *testing.T, count int) (Model, *ruleProvidersTestBacke
 		})
 	}
 	m := rulesModel(t, backend.fakeBackend)
-	m.backend, m.rules.view = backend, "providers"
+	m.backend = backend
 	m.width, m.height, m.scroll = 160, 45, 0
 	m.logoIntro.used, m.message = true, ""
 	m.notification.items = nil
 	m.notification.source = m.notificationSource()
 	m.ruleProviders = newRuleProvidersState(m.locale)
-	m.ruleProviders.active, m.ruleProviders.received = true, true
+	m.ruleProviders.open, m.ruleProviders.active, m.ruleProviders.received = true, true, true
 	m.ruleProviders.generation = 7
 	m.ruleProviders.snapshot = app.RuleProviderSnapshot{State: "ready", Providers: backend.providers}
 	m.reconcileRuleProviders()
@@ -223,7 +223,7 @@ func TestRulesProvidersDepartureCancelsQueueAndLateUpdates(t *testing.T) {
 			t.Fatal("late update scheduled work after leaving")
 		}
 	}
-	if m.rules.view != "" || m.focus != "rules.providers" || m.ruleProviders.running() != 0 || len(m.ruleProviders.queue) != 0 || len(m.ruleProviders.updates) != 0 {
+	if m.ruleProviders.open || m.focus != "rules.providers" || m.ruleProviders.running() != 0 || len(m.ruleProviders.queue) != 0 || len(m.ruleProviders.updates) != 0 {
 		t.Fatal("departed view retained pending or successful update indicators")
 	}
 }
@@ -375,7 +375,7 @@ func TestRulesProvidersUnavailableDropsRowsAndQueuedUpdates(t *testing.T) {
 
 func TestRulesProvidersPageOwnsSearchKeysAndExactUpdateActions(t *testing.T) {
 	m, backend := ruleProvidersModel(t, 5)
-	m.rules.view, m.focus = "", "rules.providers"
+	m.ruleProviders.open, m.focus = false, "rules.providers"
 	m.ruleProviders.active, m.ruleProviders.received = false, false
 	m.ruleProviders.snapshot = app.RuleProviderSnapshot{}
 	m.layout()
@@ -391,7 +391,7 @@ func TestRulesProvidersPageOwnsSearchKeysAndExactUpdateActions(t *testing.T) {
 			m, _ = update(m, result)
 		}
 	}
-	if m.rules.view != "providers" || !m.ruleProviders.received || !hasAction(m.targets, "rules.providers-search") {
+	if !m.ruleProviders.open || !m.ruleProviders.received || !hasAction(m.targets, "rules.providers-search") {
 		t.Fatal("header entry did not load and render its provider view")
 	}
 	m, _ = update(m, key("/"))
@@ -422,7 +422,7 @@ func TestRulesProvidersPageOwnsSearchKeysAndExactUpdateActions(t *testing.T) {
 			m, command = update(m, result)
 		}
 	}
-	if !reflect.DeepEqual(updated, []string{file}) || m.ruleProviders.updates[file].state != "success" || m.rules.view != "providers" {
+	if !reflect.DeepEqual(updated, []string{file}) || m.ruleProviders.updates[file].state != "success" || !m.ruleProviders.open {
 		t.Fatalf("mouse update reached the wrong provider: %#v", updated)
 	}
 	for _, result := range providerMessages(command) {
@@ -431,7 +431,7 @@ func TestRulesProvidersPageOwnsSearchKeysAndExactUpdateActions(t *testing.T) {
 		}
 	}
 	m, _ = update(m, special(tea.KeyEscape))
-	if m.rules.view != "" || m.ruleProviders.active || m.ruleProviders.running() != 0 {
+	if m.ruleProviders.open || m.ruleProviders.active || m.ruleProviders.running() != 0 {
 		t.Fatal("provider Back did not return to the current effective rules")
 	}
 }
@@ -485,4 +485,127 @@ func TestRulesProvidersTabSelectionMatchesItsFocusedRow(t *testing.T) {
 		return
 	}
 	t.Fatal("Tab traversal never reached the provider list")
+}
+
+func TestRulesProvidersModalKeepsFixedControlsAndClipsEverySize(t *testing.T) {
+	for _, size := range [][2]int{{160, 45}, {110, 30}, {80, 24}, {60, 20}, {40, 16}, {24, 13}, {20, 7}, {5, 2}, {1, 1}} {
+		t.Run(fmt.Sprint(size), func(t *testing.T) {
+			m, _ := ruleProvidersModel(t, 35)
+			m.width, m.height = size[0], size[1]
+			m.layout()
+			assertCanvas(t, m.screen, size[0], size[1])
+			assertRegions(t, m.targets, size[0], size[1])
+			close := findTarget(t, m, "rules.providers-back")
+			if size[0] >= 24 && size[1] >= 13 {
+				search := findTarget(t, m, "rules.providers-search")
+				all := findTarget(t, m, "rules.providers-all")
+				m.ruleProviders.viewport.GotoBottom()
+				m.layout()
+				if findTarget(t, m, "rules.providers-back") != close || findTarget(t, m, "rules.providers-search") != search || findTarget(t, m, "rules.providers-all") != all {
+					t.Fatal("provider scrolling moved the fixed header or footer")
+				}
+				if m.ruleProviders.bounds.W != size[0] && size[0] < 110 {
+					t.Fatal("narrow terminal did not use the full screen")
+				}
+			}
+			m.ruleProvidersKey(special(tea.KeyEscape))
+			if m.ruleProviders.open || m.focus != "rules.providers" {
+				t.Fatal("Escape did not close the provider modal at a supported size")
+			}
+		})
+	}
+}
+
+func TestRulesProvidersModalWheelOnlyScrollsItsBody(t *testing.T) {
+	m, _ := ruleProvidersModel(t, 35)
+	m.layout()
+	p := &m.ruleProviders
+	for _, point := range [][2]int{{0, 0}, {p.bounds.X + 3, p.bounds.Y + 1}, {p.bounds.X + 3, p.bounds.Y + p.bounds.H - 2}} {
+		m.ruleProvidersMouse(tea.MouseWheelMsg{X: point[0], Y: point[1], Button: tea.MouseWheelDown})
+		if p.viewport.YOffset() != 0 {
+			t.Fatal("wheel outside the provider body moved its viewport")
+		}
+	}
+	m.ruleProvidersMouse(tea.MouseWheelMsg{X: p.bodyBounds.X + 1, Y: p.bodyBounds.Y + 1, Button: tea.MouseWheelDown})
+	if p.viewport.YOffset() == 0 {
+		t.Fatal("wheel inside the provider body did not move its viewport")
+	}
+	m.layout()
+	m.ruleProvidersKey(special(tea.KeyEnd))
+	m.layout()
+	last := m.filteredRuleProviders()[34]
+	if !hasAction(m.targets, "rules.provider."+last.Name) {
+		t.Fatal("End did not reveal its selected provider inside the modal viewport")
+	}
+}
+
+func TestRulesProvidersModalSearchEscapeThenClose(t *testing.T) {
+	m, _ := ruleProvidersModel(t, 5)
+	m.layout()
+	m.focusRuleProvidersSearch()
+	m.ruleProvidersKey(key("q"))
+	if !m.ruleProviders.open || m.ruleProviders.search.Value() != "q" {
+		t.Fatal("search q closed the provider modal")
+	}
+	m.ruleProvidersKey(special(tea.KeyEscape))
+	if !m.ruleProviders.open || m.ruleProviders.editing || m.ruleProviders.search.Focused() {
+		t.Fatal("first Escape should end provider search editing")
+	}
+	m.ruleProvidersKey(key("q"))
+	if m.ruleProviders.open || m.quitting || m.focus != "rules.providers" {
+		t.Fatal("normal q should close the modal without quitting the application")
+	}
+}
+
+func TestRulesProvidersEndingSearchRevealsItsFocusedProvider(t *testing.T) {
+	for _, finish := range []tea.KeyPressMsg{special(tea.KeyEnter), special(tea.KeyEscape)} {
+		t.Run(finish.String(), func(t *testing.T) {
+			m, backend := ruleProvidersModel(t, 35)
+			m.layout()
+			m.ruleProvidersKey(special(tea.KeyEnd))
+			m.ruleProvidersKey(special(tea.KeyUp))
+			m.layout()
+			selected := m.ruleProviders.selected
+			m.focusRuleProvidersSearch()
+			m.layout()
+			if m.ruleProviders.viewport.YOffset() != 0 {
+				t.Fatal("starting provider search did not reveal its top")
+			}
+			m.ruleProvidersKey(finish)
+			m.layout()
+			if m.focus != "rules.provider."+selected || !hasAction(m.targets, m.focus) {
+				t.Fatal("ending unchanged search left its focused provider outside the viewport")
+			}
+			var updated string
+			backend.update = func(_ context.Context, name string) error { updated = name; return nil }
+			_, command := m.ruleProvidersKey(key("u"))
+			providerMessages(command)
+			if updated != selected {
+				t.Fatalf("update targeted %q instead of the visible focused provider %q", updated, selected)
+			}
+		})
+	}
+}
+
+func TestRulesProvidersResizeRevealsFocusWithoutPinningWheelScrolling(t *testing.T) {
+	m, _ := ruleProvidersModel(t, 35)
+	m.layout()
+	m.ruleProvidersKey(special(tea.KeyEnd))
+	m.layout()
+	focused := m.focus
+	m.width, m.height = 80, 24
+	m.layout()
+	if m.focus != focused || !hasAction(m.targets, focused) {
+		t.Fatal("shrinking the provider modal hid its focused provider")
+	}
+	m.ruleProviders.viewport.GotoTop()
+	m.layout()
+	if m.ruleProviders.viewport.YOffset() != 0 || hasAction(m.targets, focused) {
+		t.Fatal("a normal render overrode independent provider scrolling")
+	}
+	m.width, m.height = 40, 16
+	m.layout()
+	if !hasAction(m.targets, focused) {
+		t.Fatal("a subsequent provider resize did not restore focus visibility")
+	}
 }
