@@ -115,7 +115,7 @@ func TestPageHeaderDividerBoundsAndBodyGapStayConsistentAcrossPages(t *testing.T
 					t.Fatal("body does not start immediately below the divider")
 				}
 				for y := 0; y < g.headerHeight; y++ {
-					if padding := ansi.Cut(lines[y], right-1, right); !strings.Contains(padding, themed(" ", text, sidebarBackground, false)) {
+					if padding := ansi.Cut(lines[y], right-1, right); !strings.Contains(padding, themed(" ", text, bg, false)) {
 						t.Fatalf("header background does not reach the right edge: %q", padding)
 					}
 				}

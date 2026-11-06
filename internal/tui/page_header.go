@@ -129,7 +129,7 @@ func renderPageHeader(o dashboardOptions, g dashboardLayout, titleX, titleWidth 
 			if squeeze && ansi.StringWidth(label) > 1 {
 				label = string([]rune(label)[0])
 			}
-			options := dashboardButtonOptions(action.id, o, false, sidebarBackground)
+			options := dashboardButtonOptions(action.id, o, false, bg)
 			options.Disabled = !action.enabled || o.Busy
 			value := renderButton(label, options)
 			values = append(values, value)
@@ -158,16 +158,16 @@ func renderPageHeader(o dashboardOptions, g dashboardLayout, titleX, titleWidth 
 		}
 		x += w + gap
 	}
-	value := strings.Join(values, themed(strings.Repeat(" ", gap), text, sidebarBackground, o.Dim))
+	value := strings.Join(values, themed(strings.Repeat(" ", gap), text, bg, o.Dim))
 	if h.summary != "" {
 		summaryWidth := available - width
 		if width > 0 {
 			summaryWidth -= 2
 		}
 		if summaryWidth >= ansi.StringWidth(h.summary) {
-			prefix := themed(h.summary, muted, sidebarBackground, o.Dim)
+			prefix := themed(h.summary, muted, bg, o.Dim)
 			if width > 0 {
-				prefix += themed("  ", text, sidebarBackground, o.Dim)
+				prefix += themed("  ", text, bg, o.Dim)
 			}
 			value = prefix + value
 		}

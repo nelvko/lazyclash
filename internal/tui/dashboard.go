@@ -151,20 +151,17 @@ func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
 	if g.sidebar {
 		headerLeft = sidebarWidth
 	}
-	for y := 0; y < g.headerHeight; y++ {
-		put(headerLeft, y, themed(strings.Repeat(" ", o.Width-headerLeft), text, sidebarBackground, o.Dim))
-	}
 	titleX := g.headerX
 	if !g.sidebar {
-		label := renderButton(tr("dashboard.menu"), dashboardButtonOptions("menu", o, false, sidebarBackground))
+		label := renderButton(tr("dashboard.menu"), dashboardButtonOptions("menu", o, false, bg))
 		put(1, g.headerY, label)
 		add(hitRegion{ID: "menu", X: 1, Y: g.headerY, W: ansi.StringWidth(label), H: 1})
 		titleX = max(12, g.headerX)
 		if o.Width >= 50 {
-			titleText = logoText(sidebarBackground, o.Dim) + " / " + titleText
+			titleText = logoText(bg, o.Dim) + " / " + titleText
 		}
 	}
-	put(titleX, g.headerY, themed(cellCrop(titleText, max(1, g.headerX+g.headerWidth-titleX)), text, sidebarBackground, o.Dim))
+	put(titleX, g.headerY, themed(cellCrop(titleText, max(1, g.headerX+g.headerWidth-titleX)), text, bg, o.Dim))
 	header, headerX, headerY, headerTargets := renderPageHeader(o, g, titleX, ansi.StringWidth(titleText))
 	put(headerX, headerY, header)
 	for _, hit := range headerTargets {
