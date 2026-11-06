@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -91,13 +92,62 @@ func TestNavigationArrowsAndTabHaveIndependentRegions(t *testing.T) {
 		t.Fatal("reverse Tab did not restore the navigation group")
 	}
 	m, _ = update(m, tea.WindowSizeMsg{Width: 80, Height: 24})
-	if !m.sidebarOpen || m.focus != "nav.overview" || !hasAction(m.targets, m.focus) {
-		t.Fatal("folding the sidebar hid or reset the focused navigation item")
+	if m.sidebarOpen || m.focus != "menu" || !hasAction(m.targets, m.focus) || hasAction(m.targets, "nav.overview") {
+		t.Fatal("folding the sidebar did not collapse navigation into its menu entry")
 	}
 	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 32})
 	m, _ = update(m, special(tea.KeyTab))
 	if m.sidebarOpen || strings.HasPrefix(m.focus, "nav.") {
 		t.Fatal("restoring the sidebar trapped focus in the compact navigation popup")
+	}
+}
+
+func TestSidebarFoldsWithoutOpeningDrawerAcrossResize(t *testing.T) {
+	for _, size := range [][2]int{{99, 32}, {80, 24}, {120, 19}, {20, 7}} {
+		t.Run(fmt.Sprint(size), func(t *testing.T) {
+			m := pageNavigationModel()
+			directionCleanup(t, &m)
+			m.browsePage("rules")
+			m.layout()
+			m, _ = update(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+			// Repeated size and ordinary redraws must not reopen navigation.
+			m, _ = update(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+			m.layout()
+			if m.page != "rules" || m.sidebarOpen || m.focus != "menu" || !hasAction(m.targets, "menu") {
+				t.Fatalf("folding left a drawer or inaccessible focus: page=%s open=%t focus=%s", m.page, m.sidebarOpen, m.focus)
+			}
+			for _, target := range m.targets {
+				if strings.HasPrefix(target.ID, "nav.") {
+					t.Fatal("folded sidebar retained a navigation overlay")
+				}
+			}
+			m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 32})
+			if m.sidebarOpen || m.focus != "nav.rules" || !hasAction(m.targets, m.focus) {
+				t.Fatal("expanding did not restore focus to the persistent sidebar")
+			}
+		})
+	}
+}
+
+func TestSidebarResizePreservesContentAndExplicitDrawer(t *testing.T) {
+	m := pageNavigationModel()
+	directionCleanup(t, &m)
+	m.navigate("settings")
+	m.focus = "key-hints.toggle"
+	m.layout()
+	m, _ = update(m, tea.WindowSizeMsg{Width: 80, Height: 24})
+	if m.focus != "key-hints.toggle" || m.sidebarOpen || !hasAction(m.targets, m.focus) {
+		t.Fatal("folding navigation disturbed content focus")
+	}
+	m.activate("menu")
+	m.layout()
+	m, _ = update(m, tea.WindowSizeMsg{Width: 70, Height: 24})
+	if !m.sidebarOpen || m.focus != "nav.settings" || !hasAction(m.targets, m.focus) {
+		t.Fatal("resizing a manually opened compact menu dismissed it")
+	}
+	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 32})
+	if m.sidebarOpen || m.focus != "nav.settings" || !hasAction(m.targets, m.focus) {
+		t.Fatal("expanding left the compact drawer over the persistent sidebar")
 	}
 }
 

@@ -1495,11 +1495,15 @@ func (m *Model) renderLayout() {
 	if !m.logoIntroVisible() {
 		m.stopLogoIntro()
 	}
-	if m.width >= 100 && m.height >= 20 {
+	if dashboardGeometry(m.dashboardOptions()).sidebar {
 		m.sidebarOpen = false
-	} else if strings.HasPrefix(m.focus, "nav.") && !m.ruleProviders.open && !m.ports.open && !m.wizard.open && !m.wizard.networkOpen && m.form == "" && !m.helpOpen && m.width >= 20 && m.height >= 12 {
-		// Preserve a focused navigation item when its persistent sidebar folds.
-		m.sidebarOpen = true
+		if m.focus == "menu" {
+			m.focus = "nav." + m.page
+		}
+	} else if !m.sidebarOpen && strings.HasPrefix(m.focus, "nav.") {
+		// Folding navigation leaves content visible; only an explicit menu
+		// action opens the compact drawer.
+		m.focus = "menu"
 	}
 	o := m.dashboardOptions()
 	o.Sidebar = &m.sidebar
