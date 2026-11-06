@@ -1,5 +1,13 @@
 # 验证入口
 
+## 概览卡片间距恢复（2026-11-06）
+
+根据视觉反馈，恢复概览各组上下卡片之间的一行空白，包括窄屏单列时内核信息与环境卡片之间的间隔。`overviewContent` 与最初 `387f39f` 的实现逐行一致；共享分隔线和页头到正文的间距、状态精简、规则摘要均保持不变。顶部背景已在独立提交 `c7640b4` 恢复。
+
+宿主概览、页头、画布边界及导航相关现有测试通过（4.098 秒），`make build` 通过。已目视检查 160×45 的概览模型字体预览；预览位于 `.test-artifacts/tui-overview-spacing/preview/`，宿主测试、构建与预览日志使用 `.test-artifacts/tui-overview-spacing-{tests,build,preview}.log`。模型预览不代表真实内核或系统服务运行。
+
+`./scripts/verify-linux.sh lazyclash-e2e` 在专用 Debian/arm64 VM 中执行全部可运行测试包通过，临时目录清理检查通过，日志为 `.test-artifacts/tui-overview-spacing-linux.log`。本次未运行真实 Mihomo/systemd/TUN 生命周期 E2E。
+
 ## 顶栏恢复正文底色（2026-11-06）
 
 根据视觉反馈，右侧标题区、摘要和操作按钮周围恢复原来的正文 `bg`（`#303841`），窄窗口的 Menu 周围与 Logo 背景同步恢复；常驻侧栏保持独立深色背景。全宽分隔线、正文及卡片间距、概览状态精简和规则摘要均保持上一轮结果。同步移除仅为深色页头加入的按钮底色特例。

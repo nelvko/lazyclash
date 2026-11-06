@@ -489,6 +489,7 @@ func overviewContent(o dashboardOptions, width int) (string, []hitRegion) {
 				return overviewControlPanel(o, cardWidth, title, cards[card][1:], buttons)
 			}
 		}))
+		body.blank()
 	}
 	if columns == 2 {
 		body.append(overviewTrafficSummary(o, cards[2], width))
@@ -499,6 +500,7 @@ func overviewContent(o dashboardOptions, width int) (string, []hitRegion) {
 		}
 		body.append(dashboardBlock{lines: panelFrame(lines, width, len(lines)+2, o)})
 	}
+	body.blank()
 	if o.Snapshot.Installed {
 		body.append(overviewRow(o, width, columns, func(column, cardWidth int) dashboardBlock {
 			if column == 0 {
@@ -507,6 +509,7 @@ func overviewContent(o dashboardOptions, width int) (string, []hitRegion) {
 			return overviewSystemCard(o, cardWidth)
 		}))
 		if columns == 1 {
+			body.blank()
 			body.append(overviewSystemCard(o, width))
 		}
 	} else {
