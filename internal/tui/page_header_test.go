@@ -227,10 +227,10 @@ func TestProxiesHeaderRefreshReadsSharedSnapshot(t *testing.T) {
 	}
 }
 
-func TestPageHeaderCountsRequireAvailableObservations(t *testing.T) {
-	for _, page := range []string{"proxies", "connections", "rules"} {
+func TestPageCountsRequireAvailableObservations(t *testing.T) {
+	for _, page := range []string{"proxies", "connections"} {
 		m := headerModel(page, 120, 32)
-		expected := map[string]string{"proxies": "2 groups", "connections": "2 active", "rules": "3 rules"}[page]
+		expected := map[string]string{"proxies": "2 groups", "connections": "2 active"}[page]
 		if !strings.Contains(headerText(m), expected) {
 			t.Fatalf("%s lost its observed count", page)
 		}
@@ -240,6 +240,15 @@ func TestPageHeaderCountsRequireAvailableObservations(t *testing.T) {
 		if strings.Contains(headerText(m), expected) {
 			t.Fatalf("%s header presented an unavailable observation as current", page)
 		}
+	}
+	m := headerModel("rules", 120, 32)
+	if strings.Contains(headerText(m), "3 rules") || strings.Count(ansi.Strip(m.screen), "3 rules · Matching order") != 1 {
+		t.Fatal("rules count must appear once in the search toolbar")
+	}
+	m.rules.received = false
+	m.layout()
+	if strings.Contains(ansi.Strip(m.screen), "3 rules") {
+		t.Fatal("rules presented an unavailable count as current")
 	}
 }
 

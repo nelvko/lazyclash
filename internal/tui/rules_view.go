@@ -47,7 +47,10 @@ func (m Model) rulesToolbar(width, rows int) dashboardBlock {
 		m.ruleFilterButtons(), width, width >= 68, matchErr != nil)
 	status, color := m.rulesStatus(), muted
 	if m.rules.received && m.rules.snapshot.State == "ready" {
-		status += " · " + m.tr("rules.filtered_count", len(m.filteredRules()), len(m.rules.snapshot.Rules))
+		status = m.tr("rules.count", len(m.rules.snapshot.Rules))
+		if strings.TrimSpace(m.rules.search.Value()) != "" || m.rules.caseSensitive || m.rules.wholeWord || m.rules.regex {
+			status = m.tr("rules.filtered_count", len(m.filteredRules()), len(m.rules.snapshot.Rules))
+		}
 	}
 	if _, err := m.ruleMatcher(); err != nil {
 		status, color = m.tr("rules.invalid_regex"), errorColor

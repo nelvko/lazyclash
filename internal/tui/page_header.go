@@ -83,9 +83,6 @@ func (m Model) pageHeader() pageHeader {
 				{"rules.custom-apply", tr("custom_rules.apply"), "▶", available && !m.customRulesDirty() && s.draft.Pending},
 			}
 		default:
-			if m.rules.received && m.rules.snapshot.State == "ready" {
-				h.summary = tr("header.rules", len(m.rules.snapshot.Rules))
-			}
 			h.actions = []headerAction{{"rules.providers", tr("rules.providers.title"), "≡", providersSupported}, {"rules.custom", tr("custom_rules.title"), "✎", customSupported && m.snapshot.Applied != "" && m.snapshot.Applied != "default"}}
 		}
 	case "logs":
