@@ -15,7 +15,8 @@ import time
 import uuid
 
 
-SIZES = ((160, 45), (120, 32), (80, 24), (60, 20), (40, 16), (160, 45))
+SIZES = ((240, 45), (200, 40), (160, 45), (120, 32), (105, 32), (104, 32),
+         (100, 28), (99, 28), (84, 24), (83, 24), (80, 24), (60, 20), (40, 16), (240, 45))
 
 
 def labels(language):
@@ -103,12 +104,28 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.key(b"\x14")  # Ctrl+T restores the hidden footer.
         terminal.settle()
 
+        # Completed preference Toasts can cover the right card's top border.
+        # Close them through their real mouse targets before measuring layout.
+        for _ in range(8):
+            if "×" not in terminal.screen.text():
+                break
+            click(terminal, position(terminal, "×"))
+            terminal.settle()
+        assert "×" not in terminal.screen.text(), "preference Toasts still cover the Settings cards"
+
         for width, height in SIZES:
             terminal.resize(width, height)
             terminal.settle()
             terminal.key(b"\x1b[H")
             terminal.settle()
             terminal.wait(words["settings.interface"])
+            sidebar = width >= 100 and height >= 20
+            left, right = (22, width - 4) if sidebar else (2, width - 3)
+            columns = 2 if right - left + 1 >= 80 and height >= 20 else 1
+            borders = [row for row in terminal.screen.cells if row[left] == "┌"]
+            assert borders, "Settings cards have no visible top border"
+            assert borders[0][right] == "┐", "Settings cards did not stretch to the available right edge"
+            assert borders[0].count("┌") == columns, "Settings column count did not follow the available width"
             preview.capture(terminal, output, "settings-%dx%d" % (width, height), args)
 
             # Scroll down and up in the body. The short view must reveal lower
@@ -149,7 +166,7 @@ def exercise(preview, binary, output, language, profile, args):
         if profile == "no-color":
             assert not any(value not in (b"", b"0") for value in preview.SGR.findall(raw)), "NO_COLOR emitted styling"
         (output / "pty.raw").write_bytes(raw)
-        print("PASS %s/%s: language/busy, hints, five dimensions, wheel, Tab and ports return; %s" % (language, profile, json.dumps(calls)), flush=True)
+        print("PASS %s/%s: language/busy, hints, adaptive width/columns, wheel, Tab and ports return; %s" % (language, profile, json.dumps(calls)), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")
         (output / "failed.ansi").write_bytes(terminal.raw)

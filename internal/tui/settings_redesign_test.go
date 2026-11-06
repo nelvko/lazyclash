@@ -33,6 +33,33 @@ func settingsPaintedTarget(t *testing.T, body string, hits []hitRegion, id strin
 	return ""
 }
 
+func TestSettingsFillWindowWidthAcrossSidebarAndColumnBreakpoints(t *testing.T) {
+	for _, language := range []string{i18n.English, i18n.Chinese} {
+		for _, size := range []struct{ width, height, bodyWidth, columns int }{
+			{240, 45, 215, 2}, {200, 40, 175, 2}, {160, 45, 135, 2}, {120, 32, 95, 2},
+			{105, 32, 80, 2}, {104, 32, 79, 1}, {100, 28, 75, 1}, {99, 28, 95, 2},
+			{84, 24, 80, 2}, {83, 24, 79, 1}, {80, 24, 76, 1}, {40, 16, 36, 1},
+			{240, 19, 236, 1},
+		} {
+			t.Run(fmt.Sprintf("%s/%dx%d", language, size.width, size.height), func(t *testing.T) {
+				o := dashboardOptions{Locale: i18n.New(language), Page: "settings", Width: size.width, Height: size.height, Snapshot: settingsTestSnapshot()}
+				o.Header = (Model{page: "settings", locale: o.Locale}).pageHeader()
+				g := dashboardGeometry(o)
+				if g.width != size.bodyWidth {
+					t.Fatalf("settings body width=%d, want available width %d", g.width, size.bodyWidth)
+				}
+				screen, hits, _ := renderDashboard(o)
+				assertCanvas(t, screen, size.width, size.height)
+				assertRegions(t, hits, size.width, size.height)
+				top := ansi.Strip(strings.Split(screen, "\n")[g.y])
+				if strings.Count(top, "┌") != size.columns || ansi.Cut(top, g.x+size.bodyWidth-1, g.x+size.bodyWidth) != "┐" {
+					t.Fatalf("settings cards do not fill the available width with %d columns: %q", size.columns, top)
+				}
+			})
+		}
+	}
+}
+
 func TestSettingsGroupsAdaptToBodyWidthAndShortTerminals(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		for _, size := range [][2]int{{160, 45}, {80, 24}, {79, 24}, {60, 20}, {120, 18}, {20, 7}, {3, 2}, {1, 1}} {
@@ -207,7 +234,7 @@ func TestSettingsRepeatedResizePreservesFocusAndTabRevealsEveryAction(t *testing
 		m := ready(&fakeBackend{snapshot: settingsTestSnapshot()})
 		directionCleanup(t, &m)
 		m.locale, m.page, m.focus = i18n.New(language), "settings", "runtime-settings"
-		for _, size := range [][2]int{{160, 45}, {120, 32}, {80, 24}, {60, 20}, {40, 16}, {5, 2}, {120, 18}, {160, 45}} {
+		for _, size := range [][2]int{{240, 45}, {200, 40}, {160, 45}, {120, 32}, {105, 32}, {104, 32}, {100, 28}, {99, 28}, {84, 24}, {83, 24}, {80, 24}, {60, 20}, {40, 16}, {5, 2}, {120, 18}, {240, 45}} {
 			m, _ = update(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
 			assertCanvas(t, m.screen, size[0], size[1])
 			assertRegions(t, m.targets, size[0], size[1])

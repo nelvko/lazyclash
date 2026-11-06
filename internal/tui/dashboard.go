@@ -77,7 +77,7 @@ func dashboardGeometry(o dashboardOptions) dashboardLayout {
 	}
 	headerX, headerWidth := left, available
 	width := min(112, available)
-	if o.Page == "proxies" || o.Page == "rules" || o.Page == "logs" || o.Page == "connections" {
+	if o.Page == "proxies" || o.Page == "rules" || o.Page == "logs" || o.Page == "connections" || o.Page == "settings" {
 		width = available
 	}
 	if o.Page == "" || o.Page == "overview" {
