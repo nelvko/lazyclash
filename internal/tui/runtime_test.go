@@ -203,7 +203,7 @@ func TestRuntimeStoppedAndRestartedCountersReplacePreviousValues(t *testing.T) {
 
 func TestRuntimeCardDistinguishesMissingValuesFromZero(t *testing.T) {
 	o := dashboardOptions{Snapshot: app.Snapshot{Installed: true}, Runtime: liveRuntime(), RuntimeReceived: true}
-	card := func() string { return ansi.Strip(strings.Join(overviewCards(o)[2], "\n")) }
+	card := func() string { return ansi.Strip(strings.Join(overviewTrafficCard(o, 72).lines, "\n")) }
 	if value := card(); !strings.Contains(value, "Since core start") || !strings.Contains(value, "1.0 MiB") || !strings.Contains(value, "2.0 KiB/s") || !strings.Contains(value, "16.0 MiB") {
 		t.Fatalf("actual runtime metrics missing: %s", value)
 	}
@@ -224,7 +224,7 @@ func TestRuntimeUnknownServiceStateIsNeverShownAsStopped(t *testing.T) {
 	if m.snapshot.ServiceError == "" || !m.snapshot.Service.Active {
 		t.Fatal("unknown service observation replaced the previous state with stopped")
 	}
-	card := ansi.Strip(strings.Join(overviewCards(dashboardOptions{Snapshot: m.snapshot})[3], "\n"))
+	card := ansi.Strip(strings.Join(overviewCoreCard(dashboardOptions{Snapshot: m.snapshot}, 72).lines, "\n"))
 	if !strings.Contains(card, "Unavailable") || strings.Contains(card, "Stopped") {
 		t.Fatalf("unknown service was presented as stopped: %s", card)
 	}
@@ -235,7 +235,7 @@ func TestRuntimeUnknownServiceStateIsNeverShownAsStopped(t *testing.T) {
 	if m.snapshot.ServiceError != "" || !m.snapshot.Service.Active {
 		t.Fatal("API failure incorrectly hid a confirmed running service")
 	}
-	group := ansi.Strip(strings.Join(overviewCards(dashboardOptions{Snapshot: m.snapshot})[1], "\n"))
+	group := ansi.Strip(strings.Join(overviewGroupLines(dashboardOptions{Snapshot: m.snapshot}), "\n"))
 	if !strings.Contains(group, "API unavailable") || strings.Contains(group, "Ready to select") {
 		t.Fatal("API failure presented cached proxy groups as ready")
 	}

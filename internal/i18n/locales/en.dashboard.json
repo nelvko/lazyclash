@@ -236,5 +236,16 @@
   "tun.confirm_restart": "Mihomo will restart if running. The system service retains this setting across restarts and boot when autostart is enabled.",
   "tun.applying": "Updating host TUN…",
   "tun.saved": "Host TUN setting saved",
-  "tun.saved_state": "Saved: %s"
+  "tun.saved_state": "Saved: %s",
+  "dashboard.overview.service": "Core and service",
+  "dashboard.overview.route": "Proxy route",
+  "dashboard.overview.traffic": "Live traffic",
+  "dashboard.overview.environment": "Runtime environment",
+  "dashboard.overview.currentProxy": "Current proxy",
+  "dashboard.overview.versionAligned": "Mihomo %s · installed and running",
+  "dashboard.overview.modeAligned": "%s · running and saved",
+  "dashboard.overview.savedProfiles": "%d saved profiles",
+  "dashboard.overview.upload": "↑ Upload",
+  "dashboard.overview.download": "↓ Download",
+  "dashboard.overview.systemProxy": "System proxy · Unmanaged (control unavailable)"
 }

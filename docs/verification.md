@@ -1,5 +1,25 @@
 # 验证入口
 
+## 概览信息层次与非对称卡片（2026-11-06）
+
+将原来的七张概览卡片重新组织为五张：内核与服务合并运行控制和版本/PID/期望状态/漂移诊断，代理路径合并模式切换和所选代理组，实时流量突出上传/下载与连接/内存，当前配置突出名称，运行环境集中平台、作用域、自启动、TUN 和系统代理说明。已知版本或模式一致时合并文字，不一致、未知和诊断仍分别保留；缺失指标不展示为零。正文至少 90 列且终端至少 20 行时采用约 3:2 的独立双栏及底部环境通栏，其余尺寸单列；不再补齐卡片高度。卡片语义区域直接由布局返回，替代扫描边框后按顺序分配身份的做法，缩放保留焦点。
+
+最终 `make check build` 通过（TUI 63.834 秒），包含全部 Go 测试、vet 和产品构建；八项 Python 回归及四个变更脚本的语法检查通过。`./scripts/verify-linux.sh lazyclash-e2e` 在现有专用 Linux/arm64 VM 实际运行全部可运行包测试通过，测试临时目录按脚本清理。另构建 `bin/linux-arm64/lazyclash`。模型回归覆盖中英文的五卡片身份、非对称自然尺寸、操作归属与命中区、长名称/诊断、模式和版本的确认/未知语义，以及安全进入卡片与显式管理操作。完整检查发现的旧滚动与通知夹具已改为依据实际布局验证可见操作坐标及焦点边框遮挡，没有放宽原有断言。
+
+真实 controlling PTY 完成中英文 × True Color、ANSI256、NO_COLOR 六组，覆盖 160×45、120×32、80×24、60×20、40×16 及恢复，验证卡片进入不触发操作、Tab 自动揭示全部控件、配置/代理入口鼠标点击及底栏。另在中文 True Color 验证停止、状态不可用、版本与模式不一致三种场景。所有组的服务、模式、节点修改次数均为零，已目视复核最终宽屏与 40×16 无色 PNG。PTY 使用隔离内存后端，PNG 从实际终端字符格与颜色重绘；没有操作真实 Mihomo/systemd/TUN，也未重跑其完整生命周期 E2E。既有引导、主题与服务 PTY 脚本仅同步受影响的概览标题/状态断言，未重跑其完整流程；本轮未运行 race。
+
+最终证据为 `.test-artifacts/overview-check-build-verified.log`、`overview-linux-verified.log`、`overview-python-verified.log`，以及 `.test-artifacts/overview-redesign/pty-final/20261106-222456-8b3868/` 与 `pty-edges-final/20261106-222456-760304/` 中的 PNG/ANSI/TXT、原始 PTY 输出和操作计数。首次沙箱端口限制与旧夹具失败日志保留，不作为最终通过依据。复验入口：
+
+```sh
+go test -c ./internal/tui -o bin/overview-tui.test
+python3 scripts/overview-pty.py --binary bin/overview-tui.test \
+  --output .test-artifacts/overview-redesign/pty --png
+python3 scripts/overview-pty.py --binary bin/overview-tui.test \
+  --output .test-artifacts/overview-redesign/pty-edges --png \
+  --lang zh-Hans --profile truecolor \
+  --scenario stopped --scenario unavailable --scenario drift
+```
+
 ## 日志会话级持续采集与暂停显示（2026-11-06）
 
 保留已验证的 HTTP `/logs?level=info` NDJSON 长连接，将采集生命周期从日志页提升到整个 TUI 会话：初始观测到已安装且运行的内核时自动开始，首次打开日志页也可触发不可用诊断。切页、帮助、表单、普通任务及其取消均不停止采集。一个会话任务拥有读流与 1/2/4/8/16/30 秒退避重试，收到日志后重置退避，安静的长连接不会定时重连；每次重试沿用应用层的安装归属、身份和进程校验。退出或父上下文取消会释放读流、等待命令与计时器；手动重连使旧代事件和错误失效。

@@ -236,5 +236,16 @@
   "tun.confirm_restart": "正在运行的 Mihomo 将重启。该设置由系统服务保存，服务重启后保留，启用自启动时也在开机后生效。",
   "tun.applying": "正在修改主机 TUN…",
   "tun.saved": "主机 TUN 设置已保存",
-  "tun.saved_state": "已保存：%s"
+  "tun.saved_state": "已保存：%s",
+  "dashboard.overview.service": "内核与服务",
+  "dashboard.overview.route": "代理路径",
+  "dashboard.overview.traffic": "实时流量",
+  "dashboard.overview.environment": "运行环境",
+  "dashboard.overview.currentProxy": "当前代理",
+  "dashboard.overview.versionAligned": "Mihomo %s · 已安装并运行",
+  "dashboard.overview.modeAligned": "%s模式 · 已生效并保存",
+  "dashboard.overview.savedProfiles": "已保存 %d 份配置",
+  "dashboard.overview.upload": "↑ 上传",
+  "dashboard.overview.download": "↓ 下载",
+  "dashboard.overview.systemProxy": "系统代理 · 未接管（控制尚不可用）"
 }

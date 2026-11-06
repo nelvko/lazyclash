@@ -99,8 +99,12 @@ func TestCoreSummaryPreservesSystemdTransitionsAndFailure(t *testing.T) {
 		}
 	}
 	s := app.Snapshot{Installed: true, Desired: app.DesiredState{Known: true, Running: true}, Drift: "desired running; service failed", Service: service.Status{State: "failed"}}
-	card := ansi.Strip(strings.Join(overviewCards(dashboardOptions{Snapshot: s})[3], "\n"))
-	if !strings.Contains(card, "Desired state") || !strings.Contains(card, s.Drift) || !strings.Contains(card, "Unsupported in user service") {
-		t.Fatal("environment card hid lifecycle drift or TUN capability")
+	card := ansi.Strip(strings.Join(overviewCoreCard(dashboardOptions{Snapshot: s}, 72).lines, "\n"))
+	if !strings.Contains(card, "Desired state") || !strings.Contains(card, s.Drift) {
+		t.Fatal("core card hid lifecycle intent or drift")
+	}
+	environment := ansi.Strip(strings.Join(overviewSystemCard(dashboardOptions{Snapshot: s}, 72).lines, "\n"))
+	if !strings.Contains(environment, "Not supported by the user service.") {
+		t.Fatal("environment card hid TUN capability")
 	}
 }

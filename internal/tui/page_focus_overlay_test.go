@@ -22,6 +22,36 @@ func TestPageNavigationCardFocusPreservesOverlappingTaskNotice(t *testing.T) {
 
 	o := m.navigationOptions()
 	g := dashboardGeometry(o)
+	// Choose a card from the actual layout whose focus border the notice
+	// covers; shorter, independently flowing cards can move between columns.
+	focused := false
+	for _, card := range overviewCardRegionsFromModel(m) {
+		bounds := card
+		bounds.X += g.x
+		bounds.Y += g.y - m.scroll
+		edges := []hitRegion{
+			{X: bounds.X, Y: bounds.Y, W: bounds.W, H: 1},
+			{X: bounds.X, Y: bounds.Y + bounds.H - 1, W: bounds.W, H: 1},
+			{X: bounds.X, Y: bounds.Y, W: 1, H: bounds.H},
+			{X: bounds.X + bounds.W - 1, Y: bounds.Y, W: 1, H: bounds.H},
+		}
+		for _, overlay := range notificationLayout(o) {
+			for _, edge := range edges {
+				if regionsOverlap(edge, overlay.Bounds) {
+					m.focus, focused = card.ID, true
+				}
+			}
+		}
+		if focused {
+			break
+		}
+	}
+	if !focused {
+		t.Fatal("fixture has no card focus border underneath the task notice")
+	}
+	m.layout()
+	o = m.navigationOptions()
+	g = dashboardGeometry(o)
 	o.Body, o.BodyTargets = m.pageBody(g.width)
 	rows := strings.Split(m.screen, "\n")
 	intersects := false

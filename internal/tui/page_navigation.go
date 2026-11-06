@@ -122,8 +122,8 @@ func (m Model) contentTargets() []hitRegion {
 			_, targets := m.inlineInstallBody(width)
 			return targets
 		}
-		body, actions := overviewContent(o, width)
-		return append(overviewCardRegions(body, o), actions...)
+		body := overviewLayout(o, width)
+		return append(body.cards, body.targets...)
 	case "settings":
 		_, targets := settingsContent(o, width)
 		return targets
@@ -389,55 +389,10 @@ func overviewCardRegionsFromModel(m Model) []hitRegion {
 		return nil
 	}
 	o := m.navigationOptions()
-	body, _ := overviewContent(o, dashboardBodyWidth(o))
-	return overviewCardRegions(body, o)
-}
-
-// The existing frames are the card geometry; keyboard navigation adds no new
-// clickable surface and cannot overlap a card's real action buttons.
-func overviewCardRegions(body string, o dashboardOptions) []hitRegion {
-	lines := strings.Split(body, "\n")
-	names := []string{"dashboard.control.core", "dashboard.control.routingMode", "dashboard.profile.title", "dashboard.groups.title", "dashboard.traffic.title"}
-	if o.Snapshot.Installed {
-		names = append(names, "dashboard.kernel.title")
-	}
-	names = append(names, "dashboard.system.title")
 	if overviewSetupVisible(o) {
-		names = []string{"dashboard.guide.title"}
+		return nil
 	}
-	var cards []hitRegion
-	for y, line := range lines {
-		plain := ansi.Strip(line)
-		for x, r := range plain {
-			if r != '┌' {
-				continue
-			}
-			// Frame rows contain only single-cell border characters; x is a byte
-			// position, so convert the prefix before using terminal cell coordinates.
-			left := ansi.StringWidth(plain[:x])
-			tail := plain[x+len("┌"):]
-			right := strings.Index(tail, "┐")
-			if right < 0 {
-				continue
-			}
-			width := ansi.StringWidth(tail[:right]) + 2
-			bottom := y + 1
-			for ; bottom < len(lines); bottom++ {
-				if ansi.Strip(ansi.Cut(lines[bottom], left, left+1)) == "└" {
-					break
-				}
-			}
-			if bottom >= len(lines) {
-				continue
-			}
-			id := fmt.Sprintf("overview.card.%d", len(cards))
-			if len(cards) < len(names) {
-				id = "overview.card." + names[len(cards)]
-			}
-			cards = append(cards, hitRegion{ID: id, X: left, Y: y, W: width, H: bottom - y + 1})
-		}
-	}
-	return cards
+	return overviewLayout(o, dashboardBodyWidth(o)).cards
 }
 
 func (m *Model) enterOverviewCard() {

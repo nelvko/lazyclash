@@ -1,8 +1,6 @@
 package tui
 
 import (
-	"fmt"
-	"runtime"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -365,6 +363,7 @@ func sidebarTraffic(o dashboardOptions, width int) []string {
 type dashboardBlock struct {
 	lines   []string
 	targets []hitRegion
+	cards   []hitRegion
 	footerY int
 }
 
@@ -374,6 +373,10 @@ func (b *dashboardBlock) append(block dashboardBlock) {
 	for _, r := range block.targets {
 		r.Y += offset
 		b.targets = append(b.targets, r)
+	}
+	for _, r := range block.cards {
+		r.Y += offset
+		b.cards = append(b.cards, r)
 	}
 }
 func (b *dashboardBlock) blank() { b.lines = append(b.lines, "") }
@@ -459,182 +462,8 @@ func panelFrame(lines []string, width, height int, o dashboardOptions, edge ...s
 }
 
 func overviewContent(o dashboardOptions, width int) (string, []hitRegion) {
-	var body dashboardBlock
-	if overviewSetupVisible(o) {
-		setup := getStarted(o, width)
-		return strings.Join(setup.lines, "\n"), setup.targets
-	}
-	columns := 1
-	if width >= 76 && o.Height >= 20 {
-		columns = 2
-	}
-	cards := overviewCards(o)
-	for first := 0; first < 4; first += columns {
-		body.append(overviewRow(o, width, columns, func(column, cardWidth int) dashboardBlock {
-			switch index := first + column; index {
-			case 0:
-				return overviewCoreCard(o, cardWidth)
-			case 1:
-				return overviewModeCard(o, cardWidth)
-			default:
-				card := index - 2
-				title := o.Locale.T("dashboard.profile.title")
-				if card == 1 {
-					title = o.Locale.T("dashboard.groups.title")
-				}
-				var buttons []overviewControlButton
-				if id, label := overviewAction(o, card); id != "" {
-					buttons = append(buttons, overviewControlButton{id: id, label: label, enabled: !o.Busy})
-				}
-				return overviewControlPanel(o, cardWidth, title, cards[card][1:], buttons)
-			}
-		}))
-		body.blank()
-	}
-	if columns == 2 {
-		body.append(overviewTrafficSummary(o, cards[2], width))
-	} else {
-		var lines []string
-		for _, line := range cards[2] {
-			lines = append(lines, strings.Split(wrapText(line, max(1, width-4)), "\n")...)
-		}
-		body.append(dashboardBlock{lines: panelFrame(lines, width, len(lines)+2, o)})
-	}
-	body.blank()
-	if o.Snapshot.Installed {
-		body.append(overviewRow(o, width, columns, func(column, cardWidth int) dashboardBlock {
-			if column == 0 {
-				return overviewKernelCard(o, cardWidth)
-			}
-			return overviewSystemCard(o, cardWidth)
-		}))
-		if columns == 1 {
-			body.blank()
-			body.append(overviewSystemCard(o, width))
-		}
-	} else {
-		body.append(overviewSystemCard(o, width))
-	}
+	body := overviewLayout(o, width)
 	return strings.Join(body.lines, "\n"), body.targets
-}
-
-func overviewAction(o dashboardOptions, index int) (string, string) {
-	tr := o.Locale.T
-	s := o.Snapshot
-	switch index {
-	case 0:
-		return "card.profiles", tr("dashboard.action.profiles")
-	case 1:
-		if s.Service.Active && len(s.Groups) > 0 {
-			return "card.proxies", tr("dashboard.action.openProxies")
-		}
-	}
-	return "", ""
-}
-
-type overviewField struct{ label, value string }
-
-func overviewTrafficFields(o dashboardOptions) []overviewField {
-	tr := o.Locale.T
-	connections, rate, totals, memory := "--", "--", "--", "--"
-	observed := o.Runtime
-	if o.RuntimeReceived && observed.State == "ready" {
-		if observed.Connections != nil {
-			connections = fmt.Sprint(len(observed.Connections.Connections))
-			totals = "↑ " + formatBytes(observed.Connections.UploadTotal) + "  ↓ " + formatBytes(observed.Connections.DownloadTotal)
-		}
-		if observed.Traffic != nil {
-			rate = "↑ " + formatBytes(observed.Traffic.Up) + "/s  ↓ " + formatBytes(observed.Traffic.Down) + "/s"
-		}
-		if observed.Memory != nil {
-			memory = formatBytes(int64(*observed.Memory))
-		}
-	}
-	return []overviewField{{tr("dashboard.field.uploadDownload"), rate}, {tr("dashboard.field.sinceStart"), totals}, {tr("dashboard.field.connections"), connections}, {tr("dashboard.field.coreMemory"), memory}}
-}
-
-func overviewEnvironmentFields(s app.Snapshot, locales ...i18n.Localizer) []overviewField {
-	tr := dashboardLocale(locales).T
-	tun := tr("dashboard.field.tunUnsupported")
-	if s.Capabilities.TUN.Supported {
-		tun = tr("dashboard.control.off")
-		if s.TUN {
-			tun = tr("dashboard.control.on")
-		}
-		tun = tr("tun.saved_state", tun) + " · " + tr("tun.host_scope")
-	}
-	fields := []overviewField{{tr("dashboard.field.platform"), runtime.GOOS + "/" + runtime.GOARCH}, {tr("dashboard.field.systemProxy"), tr("dashboard.field.unchanged")}, {tr("dashboard.field.tun"), tun}}
-	if s.Installed {
-		fields = append(fields, overviewField{tr("dashboard.field.installedVersion"), s.Version})
-		if s.Service.Active {
-			running := s.RunningVersion
-			if running == "" {
-				running = tr("dashboard.status.unavailable")
-			}
-			fields = append(fields, overviewField{tr("dashboard.field.runningVersion"), running})
-		}
-		if s.Desired.Known {
-			desired := tr("dashboard.status.stopped")
-			if s.Desired.Running {
-				desired = tr("dashboard.status.running")
-			}
-			fields = append(fields, overviewField{tr("dashboard.field.desiredState"), desired})
-		}
-	}
-	return fields
-}
-
-// Live metrics use two or four columns as the Overview content area grows.
-func overviewTrafficSummary(o dashboardOptions, card []string, width int) dashboardBlock {
-	inner := width - 4
-	b := dashboardBlock{}
-	heading := card[0] + themed(" · ", muted, panel, o.Dim) + card[1]
-	lines := []string{heading}
-	var fields []overviewField
-	var notes []string
-	if o.RuntimeReceived && o.Runtime.State == "ready" {
-		fields = overviewTrafficFields(o)
-		notes = card[3+len(fields):]
-	} else {
-		notes = card[2:]
-	}
-	fieldLines := func(field overviewField, width int) []string {
-		label := themed(field.label, muted, panel, o.Dim)
-		value := themed(clean(field.value), text, panel, o.Dim)
-		return append(strings.Split(wrapText(label, width), "\n"), strings.Split(wrapText(value, width), "\n")...)
-	}
-	columns := 2
-	if inner >= 142 {
-		columns = 4
-	}
-	columnWidth := (inner - 2*(columns-1)) / columns
-	for i := 0; i < len(fields); i += columns {
-		cells := make([][]string, columns)
-		height := 0
-		for column := range cells {
-			cells[column] = fieldLines(fields[i+column], columnWidth)
-			height = max(height, len(cells[column]))
-		}
-		for y := 0; y < height; y++ {
-			line := ""
-			for column, cell := range cells {
-				if column > 0 {
-					line += themed("  ", text, panel, o.Dim)
-				}
-				value := ""
-				if y < len(cell) {
-					value = cell[y]
-				}
-				line += cellPad(value, columnWidth)
-			}
-			lines = append(lines, line)
-		}
-	}
-	for _, note := range notes {
-		lines = append(lines, strings.Split(wrapText(note, inner), "\n")...)
-	}
-	b.lines = panelFrame(lines, width, len(lines)+2, o)
-	return b
 }
 
 func overviewSetupVisible(o dashboardOptions) bool {
@@ -695,32 +524,11 @@ func getStarted(o dashboardOptions, width int) dashboardBlock {
 	return b
 }
 
-func overviewCards(o dashboardOptions) [][]string {
+func overviewGroupLines(o dashboardOptions) []string {
 	tr := o.Locale.T
 	s := o.Snapshot
 	style := func(value, color string) string { return themed(clean(value), color, panel, o.Dim) }
-	title := func(value string) string { return lipgloss.NewStyle().Bold(true).Render(style(value, text)) }
-	label := func(name, value string) string { return style(cellPad(name, 20), muted) + style(value, text) }
-	configured, active := tr("dashboard.profile.notApplied"), tr("dashboard.profile.none")
-	if s.ConfigReady {
-		configured = tr("dashboard.profile.ready")
-		active = snapshotProfileName(s, s.Applied, o.Locale)
-		if active == "" {
-			active = tr("profiles.builtin_name")
-		}
-	}
-	saved := 0
-	for _, name := range s.Profiles {
-		if name != "default" {
-			saved++
-		}
-	}
-	profile := []string{title(tr("dashboard.profile.title")), style(configured, text)}
-	if s.ConfigReady || saved > 0 {
-		profile = append(profile, "", style(tr("dashboard.profile.active"), muted), style(active, text), label(tr("dashboard.profile.saved"), fmt.Sprint(saved)))
-	} else {
-		profile = append(profile, style(tr("dashboard.profile.importHint"), muted))
-	}
+	label := func(name, value string) string { return style(name+"  ", muted) + style(value, text) }
 	groupName, node, groupStatus := "--", "--", tr("dashboard.groups.inactive")
 	if s.Service.Active {
 		groupStatus = tr("dashboard.groups.empty")
@@ -764,45 +572,17 @@ func overviewCards(o dashboardOptions) [][]string {
 	} else if s.Service.Active && s.APIError != "" {
 		groupName, node, groupStatus = "--", "--", tr("dashboard.groups.apiUnavailable")
 	}
-	groups := []string{title(tr("dashboard.groups.title")), style(groupStatus, muted)}
+	var groups []string
 	if groupName != "--" {
-		groups = append(groups, "", label(tr("dashboard.groups.group"), groupName), label(tr("dashboard.groups.node"), node))
-	} else if s.Installed && !s.Service.Active {
-		groups = append(groups, style(tr("dashboard.groups.startHint"), muted))
-	}
-	observed := o.Runtime
-	status := runtimeStatus(observed, o.RuntimeReceived, o.RuntimePending, s.Installed, o.Locale)
-	if !s.Installed {
-		status = tr("dashboard.traffic.startHint")
-	}
-	traffic := []string{title(tr("dashboard.traffic.title")), style(status, muted)}
-	if o.RuntimeReceived && observed.State == "ready" {
-		traffic = append(traffic, "")
-		for _, field := range overviewTrafficFields(o) {
-			traffic = append(traffic, label(field.label, field.value))
-		}
-		traffic = append(traffic, style(tr("dashboard.traffic.resetHint"), muted))
-	} else if s.Installed {
-		traffic = append(traffic, style(tr("dashboard.traffic.startHint"), muted))
-	}
-	for _, issue := range []struct {
-		text  string
-		cause error
-	}{{observed.Error, observed.Diagnostic}, {observed.ConnectionsError, observed.ConnectionsDiagnostic}, {observed.TrafficError, observed.TrafficDiagnostic}, {observed.MemoryError, observed.MemoryDiagnostic}} {
-		if issue.text != "" {
-			traffic = append(traffic, style(o.Locale.Diagnostic(issue.text, issue.cause), errorColor))
-			break
+		groups = append(groups, label(tr("dashboard.groups.group"), groupName),
+			style(tr("dashboard.groups.node")+"  ", muted)+lipgloss.NewStyle().Bold(true).Render(style(node, text)))
+	} else {
+		groups = append(groups, style(groupStatus, muted))
+		if s.Installed && !s.Service.Active {
+			groups = append(groups, style(tr("dashboard.groups.startHint"), muted))
 		}
 	}
-	coreStatus, color := coreSummary(s, o.Locale)
-	kernel := []string{title(tr("dashboard.kernel.environment")), style(coreStatus, color), ""}
-	for _, field := range overviewEnvironmentFields(s, o.Locale) {
-		kernel = append(kernel, label(field.label, field.value))
-	}
-	if s.Installed && s.Drift != "" {
-		kernel = append(kernel, style(clean(o.Locale.Detail(s.Drift)), warning))
-	}
-	return [][]string{profile, groups, traffic, kernel}
+	return groups
 }
 
 func dashboardModeLabel(mode string, locale i18n.Localizer) string {

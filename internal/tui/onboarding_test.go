@@ -259,7 +259,7 @@ func TestOnboardingPresentationHasOnePreparationStepAcrossLanguagesAndSizes(t *t
 				if strings.Contains(plain, "1 / 3") || strings.Contains(plain, locale.T("dashboard.guide.steps", 1)) || hasAction(actions, "import") || hasAction(actions, "dismiss") {
 					t.Fatal("initial setup retained a fixed import/start checklist or a persistent-dismiss action")
 				}
-				if cards := overviewCardRegions(body, o); len(cards) > 1 {
+				if cards := overviewLayout(o, dashboardBodyWidth(o)).cards; len(cards) > 1 {
 					t.Fatal("unavailable dashboard cards distract from the initial installation panel")
 				}
 				for _, label := range []string{locale.T("dashboard.control.routingMode"), locale.T("dashboard.traffic.title")} {

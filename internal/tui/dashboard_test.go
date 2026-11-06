@@ -355,26 +355,29 @@ func TestOverviewRowsSizeIndependentlyAndEmptyMetricsStayClear(t *testing.T) {
 	if strings.Contains(plain, "Connections         --") || strings.Contains(plain, "You can explore") {
 		t.Fatal("empty cards retained unavailable metric rows or setup filler")
 	}
-	// The first row has no dependency on the second row's potentially long
-	// runtime details; a lengthy error must not stretch both pairs of cards.
+	// Runtime diagnostics can extend the right column without stretching the
+	// core card or moving the proxy route in the left column.
 	_, _, shortHeight := renderDashboard(o)
 	o.Runtime = app.RuntimeSnapshot{State: "unavailable", Error: strings.Repeat("runtime diagnostic ", 50)}
 	_, _, tallHeight := renderDashboard(o)
 	if tallHeight <= shortHeight {
 		t.Fatal("long diagnostic was not retained in the scrollable card")
 	}
-	shortBody, _ := overviewContent(dashboardOptions{Height: 45, GuideDismissed: true}, 112)
-	tallBody, _ := overviewContent(o, 112)
-	firstTraffic := func(value string) int {
-		for i, row := range strings.Split(ansi.Strip(value), "\n") {
-			if strings.Contains(row, "Traffic statistics") {
-				return i
+	card := func(value dashboardBlock, id string) hitRegion {
+		for _, region := range value.cards {
+			if region.ID == id {
+				return region
 			}
 		}
-		return -1
+		t.Fatalf("missing card %s", id)
+		return hitRegion{}
 	}
-	if firstTraffic(shortBody) != firstTraffic(tallBody) {
-		t.Fatal("a second-row diagnostic stretched the first card row")
+	short := overviewLayout(dashboardOptions{Height: 45, GuideDismissed: true}, 112)
+	tall := overviewLayout(o, 112)
+	for _, id := range []string{"overview.card.dashboard.control.core", "overview.card.dashboard.control.routingMode"} {
+		if card(short, id) != card(tall, id) {
+			t.Fatalf("runtime diagnostic changed the independent card %s", id)
+		}
 	}
 }
 
@@ -396,7 +399,7 @@ func TestOverviewLayoutPreservesDetailsAndActionTargets(t *testing.T) {
 			for _, word := range strings.Fields(strings.ReplaceAll(ansi.Strip(body), "│", " ")) {
 				words[word]++
 			}
-			for _, value := range []string{"Connections", "Upload / download", "Since core start", "Core memory", "1.0 MiB", "2.0 MiB", "2.0 KiB/s", "4.0 KiB/s", "16.0 MiB", "Not supported by the user service.", "Installed version:", "v1.20.0", "Running version:", "v1.19.33", "Desired state:", "Stopped", strings.TrimSpace(drift)} {
+			for _, value := range []string{"Connections", "↑ Upload", "↓ Download", "Since core start", "Core memory", "1.0 MiB", "2.0 MiB", "2.0 KiB/s", "4.0 KiB/s", "16.0 MiB", "Not supported by the user service.", "Installed version:", "v1.20.0", "Running version:", "v1.19.33", "Desired state:", "Stopped", strings.TrimSpace(drift)} {
 				for _, word := range strings.Fields(value) {
 					if words[word] == 0 {
 						t.Errorf("overview lost word %q from detail %q", word, value)
@@ -432,7 +435,7 @@ func TestOverviewLayoutPreservesDetailsAndActionTargets(t *testing.T) {
 	}
 	t.Run("uninstalled", func(t *testing.T) {
 		o := dashboardOptions{Snapshot: app.Snapshot{ServiceError: "Service management is unsupported on macOS"}}
-		group := ansi.Strip(strings.Join(overviewCards(o)[1], "\n"))
+		group := ansi.Strip(strings.Join(overviewGroupLines(o), "\n"))
 		if !strings.Contains(group, "Proxy groups appear after the core starts.") || strings.Contains(group, "Service unavailable") {
 			t.Fatalf("uninstalled core was presented as a service failure: %s", group)
 		}
@@ -481,10 +484,31 @@ func TestDashboardMouseCoordinatesFollowScrolling(t *testing.T) {
 	}
 	o.Scroll = 10000
 	value, regions, _ = renderDashboard(o)
-	if hasAction(regions, "core.install") || hasAction(regions, "card.profiles") {
-		t.Fatal("scrolled-away actions retained mouse targets")
+	g := dashboardGeometry(o)
+	scroll := max(0, total-g.height)
+	body := overviewLayout(o, g.width)
+	scrolledAway := 0
+	for _, target := range body.targets {
+		visible, ok := clipRegion(target, 0, scroll, g.width, g.height)
+		if hasAction(regions, target.ID) != ok {
+			t.Fatalf("scroll %d: action %s visibility disagrees with card geometry", scroll, target.ID)
+		}
+		if !ok {
+			scrolledAway++
+			continue
+		}
+		visible.X += g.x
+		visible.Y += g.y - scroll
+		for _, region := range regions {
+			if region.ID == target.ID && region != visible {
+				t.Fatalf("scrolled action target misses its visible button: got %+v, want %+v", region, visible)
+			}
+		}
 	}
-	if !strings.Contains(ansi.Strip(value), "Environment") {
+	if scrolledAway == 0 || hasAction(regions, "core.install") {
+		t.Fatal("fixture did not scroll away the initial core action")
+	}
+	if !strings.Contains(ansi.Strip(value), o.Locale.T("dashboard.overview.environment")) {
 		t.Fatal("bottom card is not reachable by scrolling")
 	}
 	if !hasAction(regions, "menu") {

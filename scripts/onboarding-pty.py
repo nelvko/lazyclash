@@ -260,14 +260,14 @@ def focus_control(terminal, label):
 def words(language):
     return ({"overview": "概览", "title": "安装 Mihomo 内核", "later": "稍后设置",
              "install": "下载并安装", "downloading": "正在下载", "cancelled": "安装已取消，清理已完成",
-             "routing": "路由模式", "profiles": "配置", "quit": "q 退出", "more": "更多选项",
+             "routing": "代理路径", "profiles": "配置", "quit": "q 退出", "more": "更多选项",
              "method": "下载方式", "network": "下载方式", "prefix": "加速地址",
              "choices": ("直连", "使用环境代理", "GitHub 加速"), "retry": "重试", "back": "返回概览",
              "start": "启动内核", "ready": "默认配置已就绪", "apply": "应用"}
             if language == "zh-Hans" else
             {"overview": "Overview", "title": "Install the Mihomo core", "later": "Set up later",
              "install": "Download and install", "downloading": "Downloading", "cancelled": "Installation canceled; cleanup completed",
-             "routing": "Routing mode", "profiles": "Profiles", "quit": "q Quit", "more": "More options",
+             "routing": "Proxy route", "profiles": "Profiles", "quit": "q Quit", "more": "More options",
              "method": "Download method", "network": "Download method", "prefix": "Acceleration URL",
              "choices": ("Direct", "Use environment proxy", "GitHub acceleration"), "retry": "Retry", "back": "Back to overview",
              "start": "Start core", "ready": "default configuration is ready", "apply": "Apply"})

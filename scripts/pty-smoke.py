@@ -577,9 +577,10 @@ def main():
                     break
             terminal.wait("[TCP]")
             terminal.key(b"1")
-            terminal.wait("Traffic statistics")
-            terminal.wait("Live")
-            terminal.wait("Mihomo · Running")
+            terminal.wait("Live traffic")
+            terminal.wait("↑ Upload")
+            terminal.wait("Since core start")
+            terminal.wait("● Running")
             terminal.exit()
         elif args.mode == "rules":
             def cli(*arguments, success=True):
@@ -730,8 +731,9 @@ def main():
                     raise AssertionError("Dedicated test CLI action failed: " + " ".join(arguments[:2]))
                 return completed.stdout
 
+            terminal.wait("Live traffic")
+            terminal.wait("↑ Upload")
             terminal.wait("Since core start")
-            terminal.wait("Live")
             terminal.key(b"4")
             terminal.wait("Active connections")
             terminal.wait("Live")
@@ -759,14 +761,15 @@ def main():
                 raise AssertionError("Closing connections lost their cumulative bytes")
 
             terminal.key(b"1")
-            terminal.wait("Traffic statistics")
+            terminal.wait("Live traffic")
             cli("service", "stop")
             terminal.wait("Stopped")
             stopped = json.loads(cli("stats"))
             if stopped["State"] != "stopped" or stopped["Traffic"] is not None:
                 raise AssertionError("Stopped core retained live telemetry")
             cli("service", "start")
-            terminal.wait("Live")
+            terminal.wait("● Running")
+            terminal.wait("↑ Upload")
             terminal.wait("Since core start")
             terminal.exit()
         else:

@@ -95,12 +95,21 @@ func TestPageNavigationOverviewStartsAtCardBeforeItsControls(t *testing.T) {
 func TestPageNavigationInstalledKernelManageRequiresExplicitActivation(t *testing.T) {
 	m := pageNavigationModel()
 	m.snapshot = onboardingDefaultSnapshot()
-	m.focus = "overview.card.dashboard.kernel.title"
+	m.focus = "overview.card.dashboard.control.core"
 	m.layout()
 	id := m.id
 	m, _ = update(m, special(tea.KeyEnter))
+	if m.focus != "core.start" || m.wizard.open || m.busy || m.id != id {
+		t.Fatal("entering the core card did not focus its first control without activating it")
+	}
+	for range len(m.focusTargets()) {
+		if m.focus == "card.install" {
+			break
+		}
+		m, _ = update(m, special(tea.KeyTab))
+	}
 	if m.focus != "card.install" || m.wizard.open || m.busy || m.id != id {
-		t.Fatal("entering the kernel card did not focus Manage without activating it")
+		t.Fatal("Tab did not reach Manage without activating it")
 	}
 	m, _ = update(m, special(tea.KeyEnter))
 	if !m.wizard.open || m.wizard.inline || m.wizard.step != stepCore || m.busy || m.id != id {
@@ -356,11 +365,7 @@ func TestPageNavigationOverviewCardIDsRemainUniqueAndStableAcrossResize(t *testi
 				if !setup {
 					wantIDs = []string{
 						"overview.card.dashboard.control.core", "overview.card.dashboard.control.routingMode",
-						"overview.card.dashboard.profile.title", "overview.card.dashboard.groups.title",
-						"overview.card.dashboard.traffic.title",
-					}
-					if state.installed {
-						wantIDs = append(wantIDs, "overview.card.dashboard.kernel.title")
+						"overview.card.dashboard.traffic.title", "overview.card.dashboard.profile.title",
 					}
 					wantIDs = append(wantIDs, "overview.card.dashboard.system.title")
 				}

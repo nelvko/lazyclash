@@ -69,9 +69,39 @@ func overviewCoreCard(o dashboardOptions, width int) dashboardBlock {
 	s := o.Snapshot
 	style := func(value, color string) string { return themed(clean(value), color, panel, o.Dim) }
 	status, color := coreSummary(s, o.Locale)
-	lines := []string{lipgloss.NewStyle().Bold(true).Render(style(status, color))}
+	lines := []string{lipgloss.NewStyle().Bold(true).Render(style("● "+status, color))}
 	if !s.Installed {
-		return overviewControlPanel(o, width, tr("dashboard.control.core"), lines, []overviewControlButton{{id: "core.install", label: tr("dashboard.action.install"), enabled: !o.Busy}})
+		return overviewControlPanel(o, width, tr("dashboard.overview.service"), lines, []overviewControlButton{{id: "core.install", label: tr("dashboard.action.install"), enabled: !o.Busy}})
+	}
+	installed := overviewVersion(s.Version, "dashboard.status.unknown", o.Locale)
+	if s.Service.Active && s.ServiceError == "" && s.RunningVersion != "" && s.RunningVersion == s.Version {
+		lines = append(lines, style(tr("dashboard.overview.versionAligned", installed), muted))
+	} else {
+		lines = append(lines, style(tr("dashboard.kernel.installed", installed), muted))
+		if s.Service.Active {
+			running := overviewVersion(s.RunningVersion, "dashboard.status.unavailable", o.Locale)
+			if s.ServiceError != "" {
+				running = tr("dashboard.status.unavailable")
+			}
+			lines = append(lines, style(tr("dashboard.kernel.running", running), warning))
+		}
+	}
+	var details []string
+	if s.Service.Active && s.ServiceError == "" && s.Service.PID > 0 {
+		details = append(details, tr("dashboard.kernel.pid", strconv.Itoa(s.Service.PID)))
+	}
+	if s.Desired.Known {
+		desired := tr("dashboard.status.stopped")
+		if s.Desired.Running {
+			desired = tr("dashboard.status.running")
+		}
+		details = append(details, tr("dashboard.kernel.desired", desired))
+	}
+	if len(details) > 0 {
+		lines = append(lines, style(strings.Join(details, " · "), muted))
+	}
+	if s.Drift != "" {
+		lines = append(lines, style(o.Locale.Detail(s.Drift), warning))
 	}
 	if !s.Service.Active && !s.HasRun && s.ConfigReady && (s.Applied == "default" || s.Applied == "") {
 		lines = append(lines, style(tr("dashboard.profile.builtinReady"), muted))
@@ -93,14 +123,15 @@ func overviewCoreCard(o dashboardOptions, width int) dashboardBlock {
 	if o.Busy {
 		lines = append(lines, style(tr("dashboard.control.busy"), muted))
 	}
-	return overviewControlPanel(o, width, tr("dashboard.control.core"), lines, buttons)
+	buttons = append(buttons, overviewControlButton{id: "card.install", label: tr("dashboard.action.manage"), enabled: !o.Busy})
+	return overviewControlPanel(o, width, tr("dashboard.overview.service"), lines, buttons)
 }
 
 func overviewModeCard(o dashboardOptions, width int) dashboardBlock {
 	tr := o.Locale.T
 	s := o.Snapshot
 	if !s.Installed {
-		return overviewControlPanel(o, width, tr("dashboard.control.routingMode"), []string{
+		return overviewControlPanel(o, width, tr("dashboard.overview.route"), []string{
 			themed(tr("dashboard.control.modeAfterInstall"), muted, panel, o.Dim),
 		}, nil)
 	}
@@ -115,7 +146,11 @@ func overviewModeCard(o dashboardOptions, width int) dashboardBlock {
 		if actual == "" || s.Mode.Error != "" || s.ServiceError != "" {
 			actual = tr("dashboard.status.unknown")
 		}
-		lines = append(lines, themed(tr("dashboard.control.runningMode", actual), muted, panel, o.Dim))
+		if modeNames[s.Mode.Actual] != "" && s.Mode.Actual == s.Mode.Desired && s.Mode.Error == "" && s.ServiceError == "" {
+			lines = []string{themed(tr("dashboard.overview.modeAligned", actual), muted, panel, o.Dim)}
+		} else {
+			lines = append(lines, themed(tr("dashboard.control.runningMode", actual), warning, panel, o.Dim))
+		}
 	}
 	if s.Mode.Error != "" {
 		lines = append(lines, themed(clean(o.Locale.Diagnostic(s.Mode.Error, s.Mode.ErrorDiagnostic)), warning, panel, o.Dim))
@@ -128,7 +163,7 @@ func overviewModeCard(o dashboardOptions, width int) dashboardBlock {
 	for _, mode := range []string{"rule", "global", "direct"} {
 		buttons = append(buttons, overviewControlButton{id: "mode." + mode, label: modeNames[mode], enabled: s.Installed && !o.Busy && issue == "", selected: s.Mode.Desired == mode})
 	}
-	return overviewControlPanel(o, width, tr("dashboard.control.routingMode"), lines, buttons)
+	return overviewControlPanel(o, width, tr("dashboard.overview.route"), lines, buttons)
 }
 
 func overviewSystemCard(o dashboardOptions, width int) dashboardBlock {
@@ -160,11 +195,8 @@ func overviewSystemCard(o dashboardOptions, width int) dashboardBlock {
 		}
 	}
 	lines := []string{
-		themed(tr("dashboard.system.os", runtime.GOOS), text, panel, o.Dim),
-		themed(tr("dashboard.system.architecture", runtime.GOARCH), text, panel, o.Dim),
-		themed(tr("dashboard.system.scope", scope), muted, panel, o.Dim),
-		themed(tr("dashboard.system.serviceManager", manager), muted, panel, o.Dim),
-		themed(tr("dashboard.system.autostart", autostart), muted, panel, o.Dim),
+		themed(runtime.GOOS+" / "+runtime.GOARCH+" · "+scope+" · "+manager, muted, panel, o.Dim),
+		themed(tr("dashboard.system.autostart", autostart), text, panel, o.Dim),
 	}
 	var buttons []overviewControlButton
 	tunHint := tr("dashboard.control.tunHint")
@@ -176,50 +208,10 @@ func overviewSystemCard(o dashboardOptions, width int) dashboardBlock {
 		tunHint = tr("tun.saved_state", state) + " · " + tr("tun.host_scope")
 		buttons = append(buttons, overviewControlButton{id: id, label: label, enabled: !o.Busy && runtimeControlIssue(s, o.Locale) == ""})
 	}
-	lines = append(lines, "", themed(tr("dashboard.field.tun")+" · "+tunHint, muted, panel, o.Dim))
+	lines = append(lines, themed(tr("dashboard.field.tun")+" · "+tunHint, muted, panel, o.Dim))
 	if s.TUNError != "" {
 		lines = append(lines, themed(clean(o.Locale.Detail(s.TUNError)), warning, panel, o.Dim))
 	}
-	lines = append(lines,
-		themed(tr("dashboard.field.systemProxy")+" · "+tr("dashboard.control.unmanaged"), text, panel, o.Dim),
-		themed(tr("dashboard.control.systemProxyHint"), muted, panel, o.Dim))
-	return overviewControlPanel(o, width, tr("dashboard.system.title"), lines, buttons)
-}
-
-func overviewKernelCard(o dashboardOptions, width int) dashboardBlock {
-	tr := o.Locale.T
-	s := o.Snapshot
-	var lines []string
-	if s.Installed {
-		version := clean(s.Version)
-		if version == "" {
-			version = tr("dashboard.status.unknown")
-		}
-		lines = append(lines, themed(tr("dashboard.kernel.installed", version), text, panel, o.Dim))
-		if s.Service.Active {
-			running := clean(s.RunningVersion)
-			if running == "" || s.ServiceError != "" {
-				running = tr("dashboard.status.unavailable")
-			}
-			lines = append(lines, themed(tr("dashboard.kernel.running", running), text, panel, o.Dim))
-			if s.Service.PID > 0 && s.ServiceError == "" {
-				lines = append(lines, themed(tr("dashboard.kernel.pid", strconv.Itoa(s.Service.PID)), muted, panel, o.Dim))
-			}
-		}
-		if s.Desired.Known {
-			desired := tr("dashboard.status.stopped")
-			if s.Desired.Running {
-				desired = tr("dashboard.status.running")
-			}
-			lines = append(lines, themed(tr("dashboard.kernel.desired", desired), muted, panel, o.Dim))
-		}
-		if s.Drift != "" {
-			lines = append(lines, themed(clean(o.Locale.Detail(s.Drift)), warning, panel, o.Dim))
-		}
-	}
-	label := tr("dashboard.action.install")
-	if s.Installed {
-		label = tr("dashboard.action.manage")
-	}
-	return overviewControlPanel(o, width, tr("dashboard.kernel.title"), lines, []overviewControlButton{{id: "card.install", label: label, enabled: !o.Busy, primary: !s.Installed}})
+	lines = append(lines, themed(tr("dashboard.overview.systemProxy"), muted, panel, o.Dim))
+	return overviewControlPanel(o, width, tr("dashboard.overview.environment"), lines, buttons)
 }

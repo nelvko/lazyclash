@@ -165,7 +165,7 @@ def exercise_notifications(terminal, output, profile):
     terminal.wait_absent(validation)
     terminal.key(b"\t")  # End editing before using a page shortcut.
     terminal.key(b"1")
-    terminal.wait("Routing mode")
+    terminal.wait("Proxy route")
     terminal.wait_absent(validation)
     terminal.key(b"s")
     terminal.wait("Start service")  # The same failure can be shown again after closing.
@@ -186,7 +186,7 @@ def exercise_notifications(terminal, output, profile):
     save_screen(terminal, output, profile, "notification-canceled")
     terminal.wait_absent("Input canceled", timeout=8)
     terminal.resize(160, 45)
-    terminal.wait("Routing mode")
+    terminal.wait("Proxy route")
 
 
 def exercise(binary, output, profile):
@@ -205,7 +205,7 @@ def exercise(binary, output, profile):
             terminal.resize(160, 45)
             terminal.wait("Install the Mihomo core", after=mark)
             terminal.click_text("Set up later")
-            terminal.wait("Routing mode")
+            terminal.wait("Proxy route")
             terminal.key(b"1")  # Enter Overview content before runtime shortcuts.
             save_screen(terminal, output, profile, "overview")
             exercise_notifications(terminal, output, profile)
@@ -237,7 +237,7 @@ def exercise(binary, output, profile):
             terminal.wait_absent(PREFIX)
             terminal.key(b"\x1b")
             terminal.wait_absent("Use environment proxy")
-            terminal.wait("Routing mode")
+            terminal.wait("Proxy route")
             terminal.exit()
 
             raw = bytes(terminal.raw)
