@@ -215,15 +215,18 @@ func settingsSection(o dashboardOptions, width int, title string, rows []setting
 		if len(row.actions) > 0 {
 			var values []string
 			total := 0
+			selectionWidth := overviewSelectionWidth(row.actions)
 			for _, action := range row.actions {
 				options := dashboardButtonOptions(action.id, o, action.primary, panel)
 				options.Disabled, options.Selected = !action.enabled, action.selected
-				options.Selectable = strings.HasPrefix(action.id, "language.") || strings.HasPrefix(action.id, "mode.") || action.id == "key-hints.toggle" || strings.HasPrefix(action.id, "autostart-") || strings.HasPrefix(action.id, "tun.")
+				options.Selectable = action.selectable() || strings.HasPrefix(action.id, "autostart-") || strings.HasPrefix(action.id, "tun.")
+				if options.Selectable {
+					options.Width = max(6, selectionWidth)
+				}
 				value := cellCrop(renderButton(action.label, options), inner)
 				values = append(values, value)
 				total += ansi.StringWidth(value)
 			}
-			total += len(values) - 1
 			x := 0
 			if row.value != "" && row.label != "" && ansi.StringWidth(label)+ansi.StringWidth(value)+3+total <= inner {
 				x = inner - total
@@ -250,10 +253,6 @@ func settingsSection(o dashboardOptions, width int, title string, rows []setting
 				}
 				b.lines[len(b.lines)-1] += values[i]
 				x += w
-				if i < len(row.actions)-1 && x < inner {
-					b.lines[len(b.lines)-1] += style(" ", text)
-					x++
-				}
 			}
 		}
 		if row.note != "" {

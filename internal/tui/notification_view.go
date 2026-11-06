@@ -205,11 +205,11 @@ func notificationCard(item notificationItem, o dashboardOptions, width int, comp
 	if compact && showDetails {
 		// Keep the heading visible when fixed focus gutters consume a large
 		// share of a compact card. Full details remain one click away.
-		if detailsWidth+closeWidth+2 >= inner {
+		if detailsWidth+closeWidth+1 >= inner {
 			detailsLabel = notificationButton(detailsID, "⋯", inner, o)
 			detailsWidth = ansi.StringWidth(detailsLabel)
 		}
-		controlWidth += detailsWidth + 1
+		controlWidth += detailsWidth
 	}
 	heading := notificationHeading(item, o.Locale, o.Spinner)
 	message := strings.Split(wrapText(notificationText(item.Message), inner), "\n")
@@ -228,7 +228,7 @@ func notificationCard(item notificationItem, o dashboardOptions, width int, comp
 	value = cellPad(value, max(1, inner-controlWidth))
 	if compact && showDetails {
 		targets = append(targets, hitRegion{ID: detailsID, X: padding + inner - controlWidth, Y: len(lines), W: detailsWidth, H: 1})
-		value += detailsLabel + themed(" ", text, raised, false)
+		value += detailsLabel
 	}
 	value += closeLabel
 	targets = append(targets, hitRegion{ID: closeID, X: padding + inner - closeWidth, Y: len(lines), W: closeWidth, H: 1})

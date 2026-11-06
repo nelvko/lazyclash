@@ -69,11 +69,17 @@ Mariana 的背景变量 `blue3 = hsl(210, 15%, 22%)` 未取整 RGB 为 `(47.685,
 | `divider` | `#444c54` | B 计算 / C 用途，Adaptive black/white tint 体系，white alpha .10 覆盖正文背景，用作装饰分隔线 |
 | `selectionBackground` | `#4c5864` | B，Mariana 的半透明选区覆盖正文背景；列表及弹出菜单当前项使用该不透明结果 |
 | `selectionForeground` | `#d8dee9` | A，Mariana 正文；明确配对，不继承任意终端颜色 |
-| `hoverBackground` | `#3c444c` | B 计算 / C 用途，Adaptive sidebar hover white alpha .06 覆盖正文背景；用于按钮、列表及弹出菜单悬停 |
+| `hoverBackground` | `#3c444c` | B 计算 / C 用途，Adaptive sidebar hover white alpha .06 覆盖正文背景；用于列表及弹出菜单悬停 |
 | `accent`、`info` | `#85b3e0` | C，原 `blue-vibrant=hsl(210,60%,60%)` 亮度提高到 70%，使交互提示在 raised 上可读 |
 | `focus` | `#f9ae58` | A 颜色 / C 用途，Mariana caret 的 `orange=hsl(32,93%,66%)`，用于键盘焦点 |
 | `primaryButtonBackground` | `#5c99d6` | A，Mariana 原始 `accent=blue-vibrant` |
 | `primaryButtonForeground` | `#1d2227` | B 颜色 / C 用途，与按钮底色配对，以深色正文保证对比 |
+| `buttonHoverBackground` | `#46515c` | C，按钮专用中性悬停色，避免与 `raised` 的差异过小 |
+| `buttonSelectedBackground` | `#425d78` | C，按钮专用蓝灰选中态，与列表选区及普通悬停分离 |
+| `buttonSelectedHoverBackground` | `#46617b` | C，保留选中含义的轻微提亮，正文对比约 4.77:1 |
+| `buttonPrimaryHoverBackground` | `#6aa4df` | C，沿主操作蓝色提亮 |
+| `buttonDangerForeground` | `#f5a3a8` | C，危险按钮文字，在中性按钮背景上对比约 5.19:1 |
+| `buttonDangerHoverBackground` | `#493940` | C，危险入口专用暗红悬停背景 |
 | `success` | `#99c794` | A 颜色 / C 语义，Mariana `green=hsl(114,31%,68%)` |
 | `warning` | `#f9ae58` | A 颜色 / C 语义，Mariana `orange`；通过警告文字与焦点符号区分用途 |
 | `errorColor` | `#f28d92` | C，Mariana `red=hsl(357,79%,65%)` 亮度提高到 75%，保证错误原因在 raised 上可读 |
@@ -109,15 +115,17 @@ Logo 使用加粗和 `accent` 强调色，与普通菜单文字形成层级；�
 | 用途 | 表现 |
 | --- | --- |
 | 主操作 | `primaryButtonBackground` 蓝底、`primaryButtonForeground` 深色文字、加粗 |
-| 次操作 | 正文色；页面内使用 `panel`，卡片和弹窗内使用 `raised` |
+| 次操作 | 正文色与 `raised` 底色；所在容器已是 `raised` 时改用 `panel`，保持边界可辨识 |
 | 文字操作 | 沿用所在容器背景、`accent` 文字，悬停时加下划线 |
-| 危险操作入口 | `errorColor` 文字、中性表面 |
+| 危险操作入口 | `buttonDangerForeground` 文字、中性表面；悬停使用 `buttonDangerHoverBackground` |
 | 最终危险确认 | `errorColor` 底色、深色文字、加粗 |
-| 已选择项 | `selectionBackground` 和正文色，固定预留勾号列，以 `✓` 标识选择 |
+| 已选择项 | `buttonSelectedBackground`、正文色与加粗；悬停使用 `buttonSelectedHoverBackground`，不添加勾号 |
 
-按钮左侧固定预留两列；键盘焦点在其中显示橙色 `› `，默认不加下划线。切换焦点、悬停或颜色能力时，标签、后续按钮和命中区位置不变。普通彩色按钮去掉方括号，两侧各留一列空白；ANSI16 与 `NO_COLOR` 使用同宽的 `[标签]` 保留边界。文字操作继续依靠文字及焦点标记。
+按钮左侧固定预留两列；键盘焦点显示橙色 ` ›`，与前一个按钮色块相隔一格，紧邻当前色块。相邻按钮不再叠加额外间距。切换焦点、悬停、选择或颜色能力时，标签、后续按钮和命中区位置不变。彩色按钮两侧各留一列空白；ANSI16 与 `NO_COLOR` 使用同宽的 `[标签]`，已选项改用 `<标签>`，不依赖颜色或 SGR 装饰。文字操作继续依靠文字及焦点标记。
 
-运行状态与操作分开：运行中显示状态，按钮明确标为停止；路由模式等已选状态不复用主操作蓝底。执行中的按钮使用次要文字，禁用按钮使用禁用色，均不生成可操作命中区；现有进度与 spinner 继续表达任务状态，可取消任务保留取消入口，等待取消清理时禁止再次触发。
+`buttonOptions.Width` 表示不含焦点槽及两侧内边距的最小正文字符格宽度，标签在其中居中。路由和语言等选项组由调用方按最长标签统一宽度，正文至少六格；`Aa / ab / .*` 等短筛选开关保留自然宽度，避免窄屏挤掉清空入口。窄屏整颗按钮换行，绘制和命中区共用实际宽度。按钮保持单行，不添加上下整行内边距。概览、设置与代理页的路由选择统一表示保存的目标模式，运行中模式不同或未知时单独说明。
+
+运行状态与操作分开：运行中显示状态，按钮明确标为停止；路由模式等已选状态不复用主操作蓝底。执行中的普通按钮使用次要文字，禁用按钮使用禁用色，均不生成可操作命中区；已选项保留底色和正文，避免当前选择消失。现有进度与 spinner 继续表达任务状态，可取消任务保留取消入口，等待取消清理时禁止再次触发。
 
 配置删除确认默认聚焦取消；输入名称后需明确确认，名称匹配校验继续保留。普通菜单仍采用列表选择语义，焦点箭头使用独立橙色，危险项文字保留红色。
 
@@ -140,6 +148,11 @@ Logo 使用加粗和 `accent` 强调色，与普通菜单文字形成层级；�
 | 说明 `#a9afbc` / raised `#3a424a` | 4.64:1 |
 | 选中文字 `#d8dee9` / 选区 `#4c5864` | 5.38:1 |
 | 主按钮字 `#1d2227` / 按钮 `#5c99d6` | 5.33:1 |
+| 按钮正文 `#d8dee9` / 悬停 `#46515c` | 6.00:1 |
+| 按钮正文 `#d8dee9` / 已选 `#425d78` | 5.07:1 |
+| 按钮正文 `#d8dee9` / 已选悬停 `#46617b` | 4.77:1 |
+| 危险按钮字 `#f5a3a8` / raised `#3a424a` | 5.19:1 |
+| 危险按钮字 `#f5a3a8` / 悬停 `#493940` | 5.50:1 |
 | 错误 `#f28d92` / 输入底色 `#282b2f` | 6.09:1 |
 | 提示 `#85b3e0` / raised `#3a424a` | 4.63:1 |
 | 焦点 `#f9ae58` / raised `#3a424a` | 5.45:1 |
@@ -199,6 +212,12 @@ Bubble Tea v2 在启动时通过当前输出终端、环境变量、terminfo 及
 | `accent`、`info` | 110 | 14（亮青） |
 | `focus`、`warning` | 215 | 11（亮黄） |
 | `primaryButtonBackground` | 68 | 14（亮青） |
+| `buttonHoverBackground` | 239 | 0 |
+| `buttonSelectedBackground` | 24 | 4 |
+| `buttonSelectedHoverBackground` | 25 | 4 |
+| `buttonPrimaryHoverBackground` | 75 | 14 |
+| `buttonDangerForeground` | 217 | 9 |
+| `buttonDangerHoverBackground` | 238 | 0 |
 | `success` | 114 | 10（亮绿） |
 | `errorColor` | 210 | 9（亮红） |
 

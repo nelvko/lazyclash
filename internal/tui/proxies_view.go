@@ -20,9 +20,14 @@ func (m Model) proxyButton(id, label string, surface string, enabled bool) strin
 func (m Model) proxyModes(width int) dashboardBlock {
 	b := dashboardBlock{lines: []string{""}}
 	x := 0
+	selectionWidth := 6
+	for _, mode := range []string{"rule", "global", "direct"} {
+		selectionWidth = max(selectionWidth, ansi.StringWidth(m.tr("dashboard.mode."+mode)))
+	}
 	for _, mode := range []string{"rule", "global", "direct"} {
 		o := dashboardButtonOptions("mode."+mode, m.navigationOptions(), false, bg)
-		o.Selectable, o.Selected = true, m.snapshot.Mode.Actual == mode
+		o.Selectable, o.Selected = true, m.snapshot.Mode.Desired == mode
+		o.Width = selectionWidth
 		o.Disabled = m.busy || !m.proxiesReady() || m.snapshot.Mode.Error != ""
 		v := renderButton(m.tr("dashboard.mode."+mode), o)
 		w := min(width, ansi.StringWidth(v))
@@ -142,6 +147,11 @@ func (m Model) proxiesBody(width int) (string, []hitRegion) {
 	if m.snapshot.Mode.Error != "" {
 		add(m.locale.Diagnostic(m.snapshot.Mode.Error, m.snapshot.Mode.ErrorDiagnostic), warning)
 	}
+	if m.snapshot.Mode.Actual == "" || m.snapshot.Mode.Error != "" {
+		add(m.tr("dashboard.settings.actualMode", m.tr("dashboard.status.unknown")), muted)
+	} else if m.snapshot.Mode.Actual != m.snapshot.Mode.Desired {
+		add(m.tr("dashboard.settings.actualMode", dashboardModeLabel(m.snapshot.Mode.Actual, m.locale)), muted)
+	}
 	if m.snapshot.Mode.Actual == "direct" {
 		add(m.tr("proxies.direct_mode"), muted)
 		b.blank()
@@ -230,7 +240,7 @@ func (m Model) proxyGroupHeader(gi, width int) dashboardBlock {
 	for _, action := range actions {
 		actionValues = append(actionValues, action.value)
 	}
-	actionText := strings.Join(actionValues, " ")
+	actionText := strings.Join(actionValues, "")
 	actionWidth := ansi.StringWidth(actionText)
 	right := " " + badge + themed(" "+arrow+" ", muted, surface, false)
 	if g.Type != "Selector" && g.Type != "LoadBalance" && g.Type != "Relay" {
@@ -268,20 +278,16 @@ func (m Model) proxyGroupHeader(gi, width int) dashboardBlock {
 		for _, action := range actions {
 			w := ansi.StringWidth(action.value)
 			appendAction(action, x, 0, w)
-			x += w + 1
+			x += w
 		}
 	} else if len(actions) > 0 {
 		b.lines = append(b.lines, "  ")
 		x := 2
 		for _, action := range actions {
 			w := min(max(1, width-2), ansi.StringWidth(action.value))
-			if x > 2 && x+1+w > width {
+			if x > 2 && x+w > width {
 				b.lines = append(b.lines, "  ")
 				x = 2
-			}
-			if x > 2 {
-				b.lines[len(b.lines)-1] += " "
-				x++
 			}
 			b.lines[len(b.lines)-1] += cellCrop(action.value, w)
 			appendAction(action, x, len(b.lines)-1, w)

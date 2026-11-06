@@ -77,7 +77,7 @@ func (m Model) profilesToolbar(width int) dashboardBlock {
 	buttons := []profileButton{{"profiles.add", m.tr("profiles.add"), true}, {"profiles.create", m.tr("profiles.create"), false}}
 	buttonWidth := 0
 	for _, b := range buttons {
-		buttonWidth += ansi.StringWidth(m.profileButtonView(b, bg)) + 2
+		buttonWidth += ansi.StringWidth(m.profileButtonView(b, bg))
 	}
 	inline := width >= 70
 	fieldWidth := width
@@ -101,13 +101,14 @@ func (m Model) profilesToolbar(width int) dashboardBlock {
 	body.targets = append(body.targets, hitRegion{ID: "profiles.url", W: fieldWidth, H: len(field)})
 	if inline {
 		x := fieldWidth + 2
+		body.lines[1] += themed("  ", text, bg, false)
 		for _, b := range buttons {
 			value := m.profileButtonView(b, bg)
-			body.lines[1] += themed("  ", text, bg, false) + value
+			body.lines[1] += value
 			if !m.busy && !m.quitting {
 				body.targets = append(body.targets, hitRegion{ID: b.id, X: x, Y: 1, W: ansi.StringWidth(value), H: 1})
 			}
-			x += ansi.StringWidth(value) + 2
+			x += ansi.StringWidth(value)
 		}
 		body.lines[1] = cellCrop(body.lines[1], width)
 	}
@@ -149,14 +150,11 @@ func (m Model) profileButtons(buttons []profileButton, width int) dashboardBlock
 			body.lines = append(body.lines, "")
 			x, y = 0, y+1
 		}
-		if x > 0 {
-			body.lines[y] += themed("  ", text, bg, false)
-		}
 		body.lines[y] += cellCrop(value, w)
 		if b.id != "" && !m.busy && !m.quitting {
 			body.targets = append(body.targets, hitRegion{ID: b.id, X: x, Y: y, W: w, H: 1})
 		}
-		x += w + 2
+		x += w
 	}
 	return body
 }

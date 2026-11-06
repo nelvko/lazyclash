@@ -15,6 +15,20 @@ type overviewControlButton struct {
 	primary           bool
 }
 
+func (b overviewControlButton) selectable() bool {
+	return strings.HasPrefix(b.id, "mode.") || strings.HasPrefix(b.id, "language.") || b.id == "key-hints.toggle"
+}
+
+func overviewSelectionWidth(buttons []overviewControlButton) int {
+	width := 0
+	for _, button := range buttons {
+		if button.selectable() {
+			width = max(width, 6, ansi.StringWidth(button.label))
+		}
+	}
+	return width
+}
+
 func overviewControlPanel(o dashboardOptions, width int, title string, content []string, buttons []overviewControlButton) dashboardBlock {
 	inner, left, top := max(1, width-4), 2, 1
 	if width < 4 {
@@ -29,21 +43,21 @@ func overviewControlPanel(o dashboardOptions, width int, title string, content [
 		lines = append(lines, "")
 		b.footerY = top + len(lines)
 		row, x := "", 0
+		selectionWidth := overviewSelectionWidth(buttons)
 		for _, button := range buttons {
 			options := dashboardButtonOptions(button.id, o, button.primary, panel)
 			options.Disabled = !button.enabled
 			options.Selected = button.selected
-			options.Selectable = strings.HasPrefix(button.id, "mode.") || strings.HasPrefix(button.id, "language.") || button.id == "key-hints.toggle"
+			options.Selectable = button.selectable()
+			if options.Selectable {
+				options.Width = selectionWidth
+			}
 			value := renderButton(button.label, options)
 			value = cellCrop(value, inner)
 			buttonWidth := ansi.StringWidth(value)
-			if x > 0 && x+2+buttonWidth > inner {
+			if x > 0 && x+buttonWidth > inner {
 				lines = append(lines, row)
 				row, x = "", 0
-			}
-			if x > 0 {
-				row += themed("  ", text, panel, o.Dim)
-				x += 2
 			}
 			if button.enabled {
 				b.targets = append(b.targets, hitRegion{ID: button.id, X: left + x, Y: top + len(lines), W: buttonWidth, H: 1})

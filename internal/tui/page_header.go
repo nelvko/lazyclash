@@ -101,7 +101,7 @@ func renderPageHeader(o dashboardOptions, g dashboardLayout, titleX, titleWidth 
 	}
 	right := g.headerX + g.headerWidth
 	available := max(0, right-left)
-	gap, squeeze := 2, false
+	squeeze := false
 	buttons := func(compact bool) ([]string, int) {
 		var values []string
 		total := 0
@@ -119,14 +119,14 @@ func renderPageHeader(o dashboardOptions, g dashboardLayout, titleX, titleWidth 
 			values = append(values, value)
 			total += ansi.StringWidth(value)
 		}
-		return values, total + max(0, len(values)-1)*gap
+		return values, total
 	}
 	values, width := buttons(false)
 	if width > available {
 		values, width = buttons(true)
 	}
 	if width > available {
-		gap, squeeze = 0, true
+		squeeze = true
 		values, width = buttons(true)
 	}
 	for width > available && len(h.actions) > 1 {
@@ -140,9 +140,9 @@ func renderPageHeader(o dashboardOptions, g dashboardLayout, titleX, titleWidth 
 		if action.enabled && !o.Busy {
 			hits = append(hits, hitRegion{ID: action.id, X: x, Y: y, W: w, H: 1})
 		}
-		x += w + gap
+		x += w
 	}
-	value := strings.Join(values, themed(strings.Repeat(" ", gap), text, bg, o.Dim))
+	value := strings.Join(values, "")
 	if h.summary != "" {
 		summaryWidth := available - width
 		if width > 0 {

@@ -53,7 +53,7 @@ func TestLocalizedDashboardPreservesCanvasAndActions(t *testing.T) {
 func TestLanguageControlsUseNativeNamesAndDisplayCellHits(t *testing.T) {
 	for _, language := range []string{"en", "zh-Hans"} {
 		for _, width := range []int{20, 30, 56, 80} {
-			o := dashboardOptions{Locale: i18n.New(language)}
+			o := dashboardOptions{Locale: i18n.New(language), PlainButtons: true}
 			block := settingsInterface(o, width)
 			assertCanvas(t, strings.Join(block.lines, "\n"), width, len(block.lines))
 			assertRegions(t, block.targets, width, len(block.lines))
@@ -67,7 +67,7 @@ func TestLanguageControlsUseNativeNamesAndDisplayCellHits(t *testing.T) {
 					if !strings.Contains(painted, name) || ansi.StringWidth(painted) != hit.W {
 						t.Fatalf("%s/%d: language target misses label: %s=%q", language, width, id, painted)
 					}
-					if strings.Contains(painted, "✓") != (id == "language."+language) {
+					if strings.Contains(painted, "<") != (id == "language."+language) || strings.Contains(painted, "✓") {
 						t.Fatalf("%s: selected language marker follows text instead of language ID", language)
 					}
 					found = true
@@ -99,7 +99,7 @@ func TestLocalizedHelpCloseHitMatchesPaintedButton(t *testing.T) {
 			hit := hits[0]
 			painted := ansi.Strip(ansi.Cut(strings.Split(screen, "\n")[hit.Y], hit.X, hit.X+hit.W))
 			label := strings.Trim(m.tr("help.close"), "[] ")
-			if strings.Trim(painted, "› ") != label || hit.W != ansi.StringWidth(label)+4 || !strings.HasPrefix(painted, "›  ") || !strings.HasSuffix(painted, " ") {
+			if strings.Trim(painted, "› ") != label || hit.W != ansi.StringWidth(label)+4 || !strings.HasPrefix(painted, " › ") || !strings.HasSuffix(painted, " ") {
 				t.Fatalf("%s: close hit includes adjacent hint or misses translated label: %q", language, painted)
 			}
 			m.targets = hits

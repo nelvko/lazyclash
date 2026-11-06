@@ -468,12 +468,9 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 			Focused: p.focus == button.ID, Hovered: m.hover == button.ID,
 			Disabled: blocked && !m.busy, Busy: blocked && m.busy, Plain: m.buttonPlain()})
 		width := min(inner, ansi.StringWidth(value))
-		if line != "" && ansi.StringWidth(line)+2+width > inner {
+		if line != "" && ansi.StringWidth(line)+width > inner {
 			footer = append(footer, line)
 			line = ""
-		}
-		if line != "" {
-			line += themed("  ", text, raised, false)
 		}
 		if !blocked {
 			footerHits = append(footerHits, hitRegion{ID: button.ID, X: ansi.StringWidth(line), Y: len(footer), W: width, H: 1})

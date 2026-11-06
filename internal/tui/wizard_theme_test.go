@@ -42,7 +42,7 @@ func TestWizardFocusAndCurrentStepRemainVisibleWithoutColor(t *testing.T) {
 		}
 		r := findTarget(t, m, "install")
 		row := strings.Split(m.screen, "\n")[r.Y]
-		if !strings.Contains(ansi.Strip(ansi.Cut(row, r.X, r.X+r.W)), "› [Install]") {
+		if !strings.Contains(ansi.Strip(ansi.Cut(row, r.X, r.X+r.W)), " ›[Install]") {
 			t.Fatalf("size %v lost the focused footer marker", size)
 		}
 	}

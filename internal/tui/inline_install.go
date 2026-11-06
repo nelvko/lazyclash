@@ -364,12 +364,9 @@ func (d *inlineInstallDocument) buttons(buttons ...wizardButton) {
 		})
 		label = cellCrop(label, d.width)
 		width := ansi.StringWidth(label)
-		if line != "" && ansi.StringWidth(line)+2+width > d.width {
+		if line != "" && ansi.StringWidth(line)+width > d.width {
 			d.lines = append(d.lines, line)
 			line = ""
-		}
-		if line != "" {
-			line += "  "
 		}
 		if !blocked {
 			d.targets = append(d.targets, hitRegion{ID: id, X: ansi.StringWidth(line), Y: len(d.lines), W: width, H: 1})

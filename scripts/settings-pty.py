@@ -41,7 +41,7 @@ def click(terminal, point):
 
 
 def focus(terminal, label):
-    pattern = re.compile(r"›\s*(?:\[\s*)?(?:✓\s*)?" + re.escape(label))
+    pattern = re.compile(r"›\s*(?:[<\[]\s*)?" + re.escape(label))
     for _ in range(36):
         terminal.settle()
         if pattern.search(terminal.screen.text()):

@@ -40,7 +40,7 @@ def fixture_terminal(preview, binary, report, language, profile, scenario):
 
 def focused(terminal, label):
     # Button focus has a dedicated arrow gutter in every color capability.
-    pattern = r"›\s+(?:\[\s*)?(?:✓\s+)?" + re.escape(label) + r"(?:\s|\]|$)"
+    pattern = r"›\s*(?:[<\[]\s*)?" + re.escape(label) + r"(?:\s|[>\]]|$)"
     return any(re.search(pattern, row) for row in terminal.screen.text().splitlines())
 
 

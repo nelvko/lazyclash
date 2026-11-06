@@ -272,7 +272,7 @@ def main():
             assert profile_id("pty-local") is None, "Tab created the selected file profile before Enter"
             terminal.wait("› pty-local")
             terminal.key(b"\t")
-            terminal.wait("› [Create]")
+            terminal.wait("›[Create]")
             terminal.key(b"\r")
             wait_until(terminal, lambda: profile_id("pty-local") is not None, "new local profile was not persisted")
             terminal.wait_absent("Creating profile")
@@ -312,11 +312,11 @@ def main():
             paste(terminal, remote_address)
             terminal.wait("Source type: Remote URL")
             terminal.key(b"\t")  # no path matches: source -> Create
-            terminal.wait("› [Create]")
+            terminal.wait("›[Create]")
             terminal.key(b"\t")
-            terminal.wait("› [Cancel]")
+            terminal.wait("›[Cancel]")
             terminal.key(b"\x1b[Z")  # Cancel -> Create
-            terminal.wait("› [Create]")
+            terminal.wait("›[Create]")
             before = len(requests)
             terminal.key(b"\r")
             wait_until(terminal, remote_started.is_set, "New profile did not start its remote download")
@@ -359,7 +359,7 @@ def main():
             terminal.wait("3 custom · 1 built-in")
             (output / "profiles-header.txt").write_text(terminal.screen.text())
 
-            for key, action in [(b"2", "[Refresh]"), (b"4", "[Refresh]"), (b"5", "[Refresh]"), (b"6", "[Reconnect]"), (b"7", "[Download method]")]:
+            for key, action in [(b"2", "[Refresh]"), (b"4", "[Refresh]"), (b"5", "[Rule providers]"), (b"6", "[Reconnect]"), (b"7", "[Download method]")]:
                 terminal.key(key)
                 header_row(terminal, action)
             terminal.key(b"1")
@@ -423,18 +423,18 @@ def main():
             mouse_text(terminal, "pty-snapshot", button=2)
             mouse_text(terminal, "Delete…")
             terminal.wait("Delete recipe")
-            terminal.wait("› [Cancel]")
+            terminal.wait("›[Cancel]")
             terminal.key(b"\r")
             terminal.wait_absent("Delete recipe")
             assert profile_id("pty-snapshot") == snapshot_id, "default Enter deleted a profile instead of canceling"
 
             mouse_text(terminal, "pty-snapshot", button=2)
             mouse_text(terminal, "Delete…")
-            terminal.wait("› [Cancel]")
+            terminal.wait("›[Cancel]")
             terminal.key(b"\x1b[Z")  # Cancel -> name input
             paste(terminal, "wrong-name")
             terminal.key(b"\r")  # Input Enter only focuses confirmation.
-            terminal.wait("› [Delete]")
+            terminal.wait("›[Delete]")
             assert profile_id("pty-snapshot") == snapshot_id, "input Enter bypassed explicit deletion confirmation"
             terminal.key(b"\r")
             terminal.wait("Enter the exact name")

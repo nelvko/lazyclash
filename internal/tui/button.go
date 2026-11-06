@@ -1,8 +1,11 @@
 package tui
 
 import (
+	"strings"
+
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/colorprofile"
+	"github.com/charmbracelet/x/ansi"
 )
 
 type buttonKind uint8
@@ -22,6 +25,9 @@ type buttonOptions struct {
 	Disabled, Busy       bool
 	Selected, Selectable bool
 	Plain, Dim           bool
+	// Width is the minimum label width in terminal cells, excluding padding
+	// and the focus gutter. Selectable peers pass their longest label width.
+	Width int
 }
 
 // renderButton owns appearance only; callers own activation guards and hit
@@ -32,10 +38,11 @@ func renderButton(label string, o buttonOptions) string {
 	if o.Surface == "" {
 		o.Surface = bg
 	}
-	foreground, background := text, panel
-	if o.Surface != bg {
-		background = raised
+	neutral := raised
+	if o.Surface == raised {
+		neutral = panel
 	}
+	foreground, background := text, neutral
 	bold, underline := false, false
 	switch o.Kind {
 	case buttonPrimary:
@@ -43,45 +50,59 @@ func renderButton(label string, o buttonOptions) string {
 	case buttonText:
 		foreground, background = accent, o.Surface
 	case buttonDanger:
-		foreground = errorColor
+		foreground = buttonDangerForeground
 	case buttonDangerConfirm:
 		foreground, background, bold = primaryButtonForeground, errorColor, true
 	}
-	if o.Selectable {
-		check := "  "
-		if o.Selected {
-			check = "✓ "
-			foreground, background = selectionForeground, selectionBackground
-		}
-		label = check + label
+	selected := o.Selectable && o.Selected
+	if selected {
+		foreground, background, bold = text, buttonSelectedBackground, true
 	}
 	if o.Hovered && !o.Disabled && !o.Busy {
 		switch {
+		case selected:
+			background = buttonSelectedHoverBackground
 		case o.Kind == buttonText:
 			underline = true
 		case o.Kind == buttonPrimary:
-			background = accent
-		case o.Kind == buttonDangerConfirm || o.Selected:
-			// Preserve the destructive/selected surface's meaning.
+			background = buttonPrimaryHoverBackground
+		case o.Kind == buttonDanger:
+			background = buttonDangerHoverBackground
+		case o.Kind == buttonDangerConfirm:
+			background = buttonDangerForeground
 		default:
-			background = hoverBackground
+			background = buttonHoverBackground
 		}
 	}
-	if o.Disabled {
-		foreground, background, bold = disabled, o.Surface, false
-	} else if o.Busy {
-		foreground, background, bold = muted, o.Surface, false
+	if (o.Disabled || o.Busy) && !selected {
+		foreground, background, bold = muted, neutral, false
+		if o.Kind == buttonText {
+			background = o.Surface
+		}
+		if o.Disabled {
+			foreground = disabled
+		}
 	}
+	width := max(ansi.StringWidth(label), o.Width)
+	padding := width - ansi.StringWidth(label)
+	label = strings.Repeat(" ", padding/2) + label + strings.Repeat(" ", padding-padding/2)
 	face := " " + label + " "
-	if o.Plain && o.Kind != buttonText {
+	if o.Plain && (o.Kind != buttonText || o.Selectable) {
 		face = "[" + label + "]"
+		if selected {
+			face = "<" + label + ">"
+		}
 	}
 	face = lipgloss.NewStyle().Bold(bold).Underline(underline).Render(face)
 	marker := "  "
+	markerColor := focus
 	if o.Focused && !o.Disabled {
-		marker = "› "
+		marker = " ›"
 	}
-	return themed(marker, focus, o.Surface, o.Dim) + themed(face, foreground, background, o.Dim)
+	if o.Busy {
+		markerColor = muted
+	}
+	return themed(marker, markerColor, o.Surface, o.Dim) + themed(face, foreground, background, o.Dim)
 }
 
 func (m Model) buttonPlain() bool {

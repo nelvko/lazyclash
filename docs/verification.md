@@ -1,5 +1,27 @@
 # 验证入口
 
+## 共享按钮组件与状态配色（2026-11-07）
+
+所有命令按钮与互斥选择继续由 `internal/tui/button.go` 统一渲染：固定两格 ` ›` 焦点槽，相邻按钮之间不叠加空白，箭头距前一个色块一格、距当前色块零格。新增正文最小字符格宽度，路由与语言组等宽居中，移除勾号占位；ANSI16/NO_COLOR 使用同宽的 `[标签]` 与 `<标签>` 区分选择。按钮专用的普通、主操作、已选和危险悬停色不修改列表的原有颜色；处理中或禁用时保留当前选择。页头、配置表单、引导、端口、TUN、通知及页内按钮同步调整绘制、换行和命中区域，忙碌的规则/日志按钮不再生成可点击目标。代理页的路由选择统一表示保存的目标模式，运行中模式不同或未知时单独说明。
+
+最终宿主 `make check build` 通过（TUI 63.856 秒），含全部 Go 测试、vet 与产品构建；组件、调用、选择组、窄屏规则、终端配色与相关引导定向 race 通过（11.161 秒），八项 Python 回归与 PTY 脚本语法检查通过。回归覆盖十一类真实按钮调用、中英文、颜色能力、等宽与焦点组合、命中区域、不可操作守卫，以及正常/悬停/选中/危险各文字配对在真彩与 256 色下达到 4.5:1。新增 34/40 列规则筛选回归，先复现统一最小宽度挤掉清空按钮，再将六格最小宽度移至路由/语言等调用方，短筛选开关使用自然宽度。首次测试发现的旧勾号断言与状态不完整夹具已修正，失败日志独立保留。
+
+`./scripts/verify-linux.sh lazyclash-e2e` 在已有专用 Linux/arm64 VM 实际执行全部可运行包测试通过。窄屏修复后的最终源码另编译 TUI 测试二进制，在同一 VM 的独立临时目录实际执行共享按钮、选择组、设置及规则回归通过，清理目录成功；没有将交叉编译当作运行验证。
+
+真实 controlling PTY 的专用按钮夹具、概览、设置和代理页各完成中英文 × True Color、ANSI256、NO_COLOR 六组。专用夹具验证全部按钮角色、悬停、焦点与选择分离、处理中/禁用防误触，以及 160×45、120×32、80×24、60×20、40×16 与恢复；概览验证安全进入、Tab 揭示和页面入口，设置覆盖十四种尺寸及语言保存、滚轮与端口弹窗返回。代理另有多组与节点延迟两组，六组主流程各进行三次虚拟节点选择、三次虚拟模式切换和十次虚拟测速。窄屏修复后重建二进制并复验专用按钮六组，以及规则中文 NO_COLOR 常规流程；另在测试进程内将既有规则脚本尺寸改为 34×16 → 40×16 → 160×45，确认四个筛选控件单行可见，滚轮后坐标稳定（脚本固定摘要仍写五尺寸，此补充实测为上述三种）。配置页使用隔离的生产二进制完成英文 NO_COLOR 全流程，覆盖创建、刷新、路径补全、繁忙防重复、重开持久化与删除确认；同步修正了脚本里过期的 Rules 页头名称断言。已目视复核中文真彩概览、选中悬停及无色窄屏等 PNG。
+
+证据位于忽略目录 `.test-artifacts/buttons/`：宿主 `check-build-complete.log`、`race-complete.log`，Linux 全包 `linux-verified.log` 与最终窄屏 `linux-narrow-complete.log`；最终专用按钮 `pty-narrow-final/20261107-000539-668665/`，概览 `overview-pty/20261106-235248-10af52/`，设置 `settings-pty/20261106-235248-67ddef/`，代理 `proxies-pty/`，配置 `profiles-pty/20261106-buttons-final/`，规则 `rules-narrow-final/20261107-000539-b8ff1d/` 与 `rules-34-final/20261107-000714-6eba11/`。PNG 根据实际 PTY 字符格与样式重绘，页面后端为隔离内存 fixture；配置页仅访问 loopback HTTP 并写入临时数据目录。本轮未操作真实 Mihomo/systemd/TUN 服务，也未重跑其完整生命周期 E2E。
+
+```sh
+make check build
+go test -race ./internal/tui -run 'Test(Button|SelectableButton|ActionButtonGroups|BusyToolbarButtons|NarrowRulesFilters|SelectionGroups|ProxyModeSelection|BusyModeControls|MarianaTrueColor|MarianaTerminal|WizardFooter|WizardCancelling|HeaderButton)' -count=1
+python3 -m unittest discover -s scripts -p 'test_*.py'
+go test -c ./internal/tui -o bin/buttons-tui.test
+# --png requires a Python environment with Pillow and the existing fonts.
+python3 scripts/buttons-pty.py --binary bin/buttons-tui.test \
+  --output .test-artifacts/buttons/pty --png
+```
+
 ## 概览信息层次与非对称卡片（2026-11-06）
 
 将原来的七张概览卡片重新组织为五张：内核与服务合并运行控制和版本/PID/期望状态/漂移诊断，代理路径合并模式切换和所选代理组，实时流量突出上传/下载与连接/内存，当前配置突出名称，运行环境集中平台、作用域、自启动、TUN 和系统代理说明。已知版本或模式一致时合并文字，不一致、未知和诊断仍分别保留；缺失指标不展示为零。正文至少 90 列且终端至少 20 行时采用约 3:2 的独立双栏及底部环境通栏，其余尺寸单列；不再补齐卡片高度。卡片语义区域直接由布局返回，替代扫描边框后按顺序分配身份的做法，缩放保留焦点。

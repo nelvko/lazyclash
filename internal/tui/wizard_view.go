@@ -604,13 +604,10 @@ func (m *Model) renderWizard(base string) (string, []hitRegion) {
 			Disabled: blocked && !m.busy, Busy: blocked && m.busy, Plain: m.buttonPlain(),
 		})
 		bw := min(innerW, ansi.StringWidth(label))
-		if ansi.StringWidth(line) > 0 && ansi.StringWidth(line)+2+bw > innerW {
+		if ansi.StringWidth(line) > 0 && ansi.StringWidth(line)+bw > innerW {
 			footer = append(footer, cellPad(line, innerW))
 			line = ""
 			row++
-		}
-		if line != "" {
-			line += "  "
 		}
 		bx := ansi.StringWidth(line)
 		line += cellCrop(label, innerW)

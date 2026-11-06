@@ -72,6 +72,15 @@ func TestMarianaTrueColorAnd256Contrast(t *testing.T) {
 		{"muted on modal", muted, raised},
 		{"selection", selectionForeground, selectionBackground},
 		{"button", primaryButtonForeground, primaryButtonBackground},
+		{"button hover", text, buttonHoverBackground},
+		{"button selected", text, buttonSelectedBackground},
+		{"button selected hover", text, buttonSelectedHoverBackground},
+		{"button primary hover", primaryButtonForeground, buttonPrimaryHoverBackground},
+		{"button danger", buttonDangerForeground, raised},
+		{"button modal danger", buttonDangerForeground, panel},
+		{"button danger hover", buttonDangerForeground, buttonDangerHoverBackground},
+		{"button danger confirm", primaryButtonForeground, errorColor},
+		{"button danger confirm hover", primaryButtonForeground, buttonDangerForeground},
 		{"error", errorColor, inputBackground},
 		{"focus", focus, raised},
 		{"accent", accent, raised},
@@ -84,6 +93,20 @@ func TestMarianaTrueColorAnd256Contrast(t *testing.T) {
 					t.Fatalf("contrast %.2f:1 is below 4.5:1", ratio)
 				}
 			})
+		}
+	}
+}
+
+func TestButtonTerminalFallbacksKeepHoverAndSelectionDistinct(t *testing.T) {
+	for _, profile := range []colorprofile.Profile{colorprofile.TrueColor, colorprofile.ANSI256} {
+		colors := []string{raised, buttonHoverBackground, buttonSelectedBackground, buttonSelectedHoverBackground}
+		seen := map[color.Color]bool{}
+		for _, value := range colors {
+			c := terminalColor(lipgloss.Color(value), profile)
+			if seen[c] {
+				t.Fatalf("%s collapsed distinct button states at %s", profile, value)
+			}
+			seen[c] = true
 		}
 	}
 }

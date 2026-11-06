@@ -56,8 +56,15 @@ def chosen(terminal, name):
 
 
 def wait_mode(terminal, label):
-    wait_until(terminal, lambda: any(re.search(r"✓\s*" + re.escape(label) + r"(?:\s|\]|$)", line)
-               for line in terminal.screen.text().splitlines()), "routing mode was not confirmed: " + label)
+    def selected():
+        if re.search(r"<\s*" + re.escape(label) + r"\s*>", terminal.screen.text()):
+            return True
+        for y, row in enumerate(terminal.screen.cells):
+            for x, cell in enumerate(row):
+                if cell and re.match(re.escape(label) + r"(?:\s|$)", "".join(row[x:])) and terminal.screen.styles[y][x][2]:
+                    return True
+        return False
+    wait_until(terminal, selected, "routing mode was not confirmed: " + label)
 
 
 def candidate_order(terminal, reference_label):

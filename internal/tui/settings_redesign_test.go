@@ -166,7 +166,7 @@ func TestSettingsUninstalledActionsAndHeaderOwnership(t *testing.T) {
 
 func TestSettingsPreservesSavedStateScopeAndDiagnostics(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
-		o := dashboardOptions{Locale: i18n.New(language), Height: 32, Snapshot: settingsTestSnapshot()}
+		o := dashboardOptions{Locale: i18n.New(language), Height: 32, Snapshot: settingsTestSnapshot(), PlainButtons: true}
 		o.Snapshot.Service.Result, o.Snapshot.Service.ExitCode = "exit-code", 17
 		o.Snapshot.ServiceError, o.Snapshot.Drift = "service fixture diagnostic", "saved state differs from service"
 		body, hits := settingsContent(o, 120)
@@ -182,7 +182,7 @@ func TestSettingsPreservesSavedStateScopeAndDiagnostics(t *testing.T) {
 		}
 		for _, mode := range []string{"rule", "global", "direct"} {
 			painted := settingsPaintedTarget(t, body, hits, "mode."+mode)
-			if strings.Contains(painted, "✓") != (mode == "rule") {
+			if strings.Contains(painted, "<") != (mode == "rule") {
 				t.Fatalf("saved mode selection used the running mode: %q", painted)
 			}
 		}

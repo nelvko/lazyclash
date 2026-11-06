@@ -112,7 +112,9 @@ func (m Model) logsToolbar(width, rows int) dashboardBlock {
 		o := dashboardButtonOptions(item.id, m.navigationOptions(), false, bg)
 		o.Disabled = m.busy
 		value := renderButton(item.label, o)
-		b.targets = append(b.targets, hitRegion{ID: item.id, X: ansi.StringWidth(buttons), W: ansi.StringWidth(value), H: 1})
+		if !o.Disabled {
+			b.targets = append(b.targets, hitRegion{ID: item.id, X: ansi.StringWidth(buttons), W: ansi.StringWidth(value), H: 1})
+		}
 		buttons += value
 	}
 	b.lines = []string{buttons}

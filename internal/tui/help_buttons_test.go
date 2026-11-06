@@ -33,7 +33,7 @@ func TestHelpButtonsKeepTheirHitBoundsWhenFocusMoves(t *testing.T) {
 						painted := ansi.Strip(ansi.Cut(strings.Split(screen, "\n")[target.Y], target.X, target.X+target.W))
 						marker := "  "
 						if target.ID == m.keyHints.helpFocus {
-							marker = "› "
+							marker = " ›"
 						}
 						if !strings.HasPrefix(painted, marker) || ansi.StringWidth(painted) != target.W {
 							t.Fatalf("button hit does not cover its fixed focus gutter: %q %+v", painted, target)

@@ -63,10 +63,10 @@ func TestPageHeadersUsePageActionsAcrossSizesAndFocus(t *testing.T) {
 							t.Fatalf("%s overlaps the divider or body: %+v", id, target)
 						}
 						painted := ansi.Strip(ansi.Cut(lines[target.Y], target.X, target.X+target.W))
-						if strings.TrimSpace(strings.TrimPrefix(painted, "›")) == "" {
+						if strings.TrimSpace(strings.TrimPrefix(painted, " ›")) == "" {
 							t.Fatalf("header button was clipped: %s=%q", id, painted)
 						}
-						if id == focused && !strings.HasPrefix(painted, "› ") {
+						if id == focused && !strings.HasPrefix(painted, " ›") {
 							t.Fatalf("header focus marker was clipped: %s=%q", id, painted)
 						}
 						count := 0

@@ -324,7 +324,7 @@ func (m Model) renderProfileCreateForm(base string) (string, []hitRegion) {
 	cancelButton := renderButton(m.tr("profiles.create_cancel"), buttonOptions{Surface: raised,
 		Focused: m.focus == "profile-create.cancel", Hovered: m.hover == "profile-create.cancel",
 		Disabled: m.busy || m.quitting, Plain: m.buttonPlain()})
-	lines = append(lines, cancelButton+"  "+createButton, themed(cellCrop(m.tr("profiles.create_footer"), inner), muted, raised, false))
+	lines = append(lines, cancelButton+createButton, themed(cellCrop(m.tr("profiles.create_footer"), inner), muted, raised, false))
 	if m.failure != "" {
 		lines = append(lines, themed(cellCrop(m.failure, inner), errorColor, raised, false))
 	} else if m.busy {
@@ -336,7 +336,7 @@ func (m Model) renderProfileCreateForm(base string) (string, []hitRegion) {
 	} else {
 		targets = append(targets,
 			hitRegion{ID: "profile-create.cancel", X: x + 2, Y: y + buttonRow + 1, W: ansi.StringWidth(cancelButton), H: 1},
-			hitRegion{ID: "profile-create.save", X: x + 2 + ansi.StringWidth(cancelButton) + 2, Y: y + buttonRow + 1, W: ansi.StringWidth(createButton), H: 1})
+			hitRegion{ID: "profile-create.save", X: x + 2 + ansi.StringWidth(cancelButton), Y: y + buttonRow + 1, W: ansi.StringWidth(createButton), H: 1})
 	}
 	return overlay(base, themed(box, text, raised, false), x, y, m.width, m.height), targets
 }

@@ -206,12 +206,12 @@ func (p *notificationPanel) render(items []notificationItem, width, height int, 
 			lineY := len(lines)
 			p.actions = append(p.actions, hitRegion{ID: detailsID, Y: lineY, W: ansi.StringWidth(details), H: 1})
 			actionLabels = append(actionLabels, detailsLabel, dismissLabel)
-			if ansi.StringWidth(details)+ansi.StringWidth(dismiss)+2 > inner {
+			if ansi.StringWidth(details)+ansi.StringWidth(dismiss) > inner {
 				lines = append(lines, details, dismiss, "")
 				p.actions = append(p.actions, hitRegion{ID: dismissID, Y: lineY + 1, W: ansi.StringWidth(dismiss), H: 1})
 			} else {
-				lines = append(lines, details+"  "+dismiss, "")
-				p.actions = append(p.actions, hitRegion{ID: dismissID, X: ansi.StringWidth(details) + 2, Y: lineY, W: ansi.StringWidth(dismiss), H: 1})
+				lines = append(lines, details+dismiss, "")
+				p.actions = append(p.actions, hitRegion{ID: dismissID, X: ansi.StringWidth(details), Y: lineY, W: ansi.StringWidth(dismiss), H: 1})
 			}
 			if item.Kind == "working" {
 				id := fmt.Sprintf("notification.cancel.%d", item.ID)

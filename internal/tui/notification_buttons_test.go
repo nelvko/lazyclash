@@ -36,7 +36,7 @@ func TestNotificationButtonsKeepTheirBoundsAndMessageWhenFocused(t *testing.T) {
 							painted := ansi.Strip(ansi.Cut(strings.Split(after.Content, "\n")[hit.Y], hit.X, hit.X+hit.W))
 							marker := "  "
 							if hit.ID == target.ID {
-								marker = "› "
+								marker = " ›"
 							}
 							if !strings.HasPrefix(painted, marker) || !strings.HasSuffix(painted, " ") || strings.Trim(painted, "› ") == "" {
 								t.Fatalf("toast button hit lost its marker, label, or padding: %q", painted)
@@ -73,7 +73,7 @@ func TestNotificationPanelTabMovesMarkerWithoutMovingButtons(t *testing.T) {
 							t.Fatalf("notification button moved after Tab: before=%+v after=%+v", before[index], target)
 						}
 						painted := ansi.Strip(ansi.Cut(strings.Split(screen, "\n")[target.Y], target.X, target.X+target.W))
-						if target.ID == "notification.panel.dismiss.1" && !strings.HasPrefix(painted, "›  ") {
+						if target.ID == "notification.panel.dismiss.1" && !strings.HasPrefix(painted, " › ") {
 							t.Fatalf("focused Close button lost its separate gutter: %q", painted)
 						}
 						if action := panel.mouse(tea.MouseClickMsg{X: target.X + target.W - 1, Y: target.Y, Button: tea.MouseLeft}); action != target.ID {

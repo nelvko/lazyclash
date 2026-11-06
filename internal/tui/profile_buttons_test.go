@@ -32,7 +32,7 @@ func TestProfileCardControlsKeepGeometryAcrossFocusAndColor(t *testing.T) {
 						}
 					}
 					painted := ansi.Strip(ansi.Cut(after.lines[target.Y], target.X, target.X+target.W))
-					if !strings.HasPrefix(painted, "› ") || target.X+target.W > width {
+					if !strings.HasPrefix(painted, " ›") || target.X+target.W > width {
 						t.Fatalf("control hit does not match focused button: %+v %q", target, painted)
 					}
 				}

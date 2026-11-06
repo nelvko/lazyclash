@@ -21,7 +21,9 @@ func (m Model) ruleFilterButtons() dashboardBlock {
 		o.Disabled = m.busy
 		o.Selectable, o.Selected = item.id != "rules.clear", item.selected
 		value := renderButton(item.label, o)
-		b.targets = append(b.targets, hitRegion{ID: item.id, X: ansi.StringWidth(line), W: ansi.StringWidth(value), H: 1})
+		if !o.Disabled {
+			b.targets = append(b.targets, hitRegion{ID: item.id, X: ansi.StringWidth(line), W: ansi.StringWidth(value), H: 1})
+		}
 		line += value
 	}
 	b.lines = []string{line}

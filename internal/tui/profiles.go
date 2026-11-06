@@ -580,14 +580,10 @@ func (m *Model) renderProfileDeleteForm(base string) (string, []hitRegion) {
 			Focused: m.profilesUI.deleteFocus == button.id, Hovered: m.hover == button.id,
 			Disabled: m.busy || m.quitting, Plain: m.buttonPlain()})
 		w := min(inner, ansi.StringWidth(value))
-		if bx > 0 && bx+2+w > inner {
+		if bx > 0 && bx+w > inner {
 			put(buttonRow, line)
 			buttonRow++
 			line, bx = "", 0
-		}
-		if bx > 0 {
-			line += themed("  ", text, raised, false)
-			bx += 2
 		}
 		targets = append(targets, hitRegion{ID: button.id, X: x + 2 + bx, Y: y + buttonRow, W: w, H: 1})
 		line += cellCrop(value, inner)

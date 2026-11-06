@@ -491,14 +491,10 @@ func getStarted(o dashboardOptions, width int) dashboardBlock {
 		label := renderButton(button.label, dashboardButtonOptions(button.id, o, button.primary, panel))
 		label = cellCrop(label, inner)
 		w := ansi.StringWidth(label)
-		if x > 0 && x+2+w > inner {
+		if x > 0 && x+w > inner {
 			lines = append(lines, cellPad(buttonLine, inner))
 			buttonLine = ""
 			x = 0
-		}
-		if x > 0 {
-			buttonLine += themed("  ", text, panel, o.Dim)
-			x += 2
 		}
 		left, top := 2, 1
 		if width < 4 {

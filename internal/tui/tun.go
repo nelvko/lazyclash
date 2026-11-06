@@ -103,14 +103,10 @@ func (m *Model) renderTUNConfirmation(base string) (string, []hitRegion) {
 	}{{"tun.cancel", m.tr("wizard.cancel"), buttonSecondary}, {"tun.confirm", m.tr("tun.enable"), buttonDangerConfirm}} {
 		value := renderButton(button.label, buttonOptions{Kind: button.kind, Surface: raised, Focused: m.tunFocus == button.id, Hovered: m.hover == button.id, Plain: m.buttonPlain()})
 		buttonWidth := min(inner, ansi.StringWidth(value))
-		if column > 0 && column+2+buttonWidth > inner {
+		if column > 0 && column+buttonWidth > inner {
 			lines = append(lines, line)
 			line, column = "", 0
 			buttonRow++
-		}
-		if column > 0 {
-			line += "  "
-			column += 2
 		}
 		targets = append(targets, hitRegion{ID: button.id, X: column + 2, Y: buttonRow + 1, W: buttonWidth, H: 1})
 		line += cellCrop(value, inner)

@@ -29,7 +29,7 @@ func TestButtonFocusAndColorFallbackPreserveGeometry(t *testing.T) {
 							t.Fatalf("%s moved the button label", state)
 						}
 						plain := ansi.Strip(terminalTheme(value, profile))
-						if state == "focus" && !strings.HasPrefix(plain, "› ") {
+						if state == "focus" && !strings.HasPrefix(plain, " ›") {
 							t.Fatal("focus marker does not own its fixed gutter")
 						}
 						if o.Plain && kind != buttonText && !strings.Contains(plain, "["+label+"]") {
@@ -47,12 +47,12 @@ func TestButtonRolesAndSurfacesRemainSeparate(t *testing.T) {
 		name, label, foreground, background string
 		options                             buttonOptions
 	}{
-		{"page", "Edit", text, panel, buttonOptions{}},
+		{"page", "Edit", text, raised, buttonOptions{}},
 		{"card", "Edit", text, raised, buttonOptions{Surface: panel}},
-		{"modal", "Edit", text, raised, buttonOptions{Surface: raised}},
+		{"modal", "Edit", text, panel, buttonOptions{Surface: raised}},
 		{"primary", "Apply", primaryButtonForeground, primaryButtonBackground, buttonOptions{Kind: buttonPrimary}},
-		{"selected", "✓ Rule", selectionForeground, selectionBackground, buttonOptions{Selected: true, Selectable: true}},
-		{"danger", "Delete", errorColor, panel, buttonOptions{Kind: buttonDanger}},
+		{"selected", "Rule", text, buttonSelectedBackground, buttonOptions{Selected: true, Selectable: true}},
+		{"danger", "Delete", buttonDangerForeground, raised, buttonOptions{Kind: buttonDanger}},
 		{"confirmation", "Delete", primaryButtonForeground, errorColor, buttonOptions{Kind: buttonDangerConfirm}},
 		{"text", "More", accent, panel, buttonOptions{Kind: buttonText, Surface: panel}},
 	} {
@@ -66,7 +66,7 @@ func TestButtonRolesAndSurfacesRemainSeparate(t *testing.T) {
 			if !strings.Contains(plain, sample.label) || strings.ContainsAny(plain, "[]") {
 				t.Fatalf("colored button has the wrong face: %q", plain)
 			}
-			bold := sample.options.Kind == buttonPrimary || sample.options.Kind == buttonDangerConfirm
+			bold := sample.options.Kind == buttonPrimary || sample.options.Kind == buttonDangerConfirm || sample.options.Selected
 			want := themed(lipgloss.NewStyle().Bold(bold).Render(plain), sample.foreground, sample.background, false)
 			if !strings.Contains(face, want) {
 				t.Fatalf("button lost its role colors: got %q want %q", face, want)
@@ -74,8 +74,86 @@ func TestButtonRolesAndSurfacesRemainSeparate(t *testing.T) {
 		})
 	}
 	value := renderButton("Rule", buttonOptions{Selected: true, Selectable: true, Focused: true})
-	if !strings.Contains(value, themed("› ", focus, bg, false)) {
+	if !strings.Contains(value, themed(" ›", focus, bg, false)) {
 		t.Fatal("selected state replaced the separate orange focus marker")
+	}
+}
+
+func TestSelectableButtonCentersLabelsWithoutMovingAcrossStates(t *testing.T) {
+	for _, label := range []string{"Rule", "全局", "English", "简体中文"} {
+		for _, plain := range []bool{false, true} {
+			o := buttonOptions{Selectable: true, Surface: panel, Width: 8, Plain: plain}
+			idle := ansi.Strip(renderButton(label, o))
+			for _, state := range []string{"selected", "focused", "hovered", "busy", "disabled"} {
+				o.Selected = true
+				o.Focused, o.Hovered = state == "focused", state == "hovered"
+				o.Busy, o.Disabled = state == "busy", state == "disabled"
+				value := renderButton(label, o)
+				stripped := ansi.Strip(value)
+				if ansi.StringWidth(stripped) != 12 || strings.Contains(stripped, "✓") {
+					t.Fatalf("%s/%s changed the group's width or restored the check: %q", label, state, stripped)
+				}
+				faceText := ansi.Cut(stripped, 2, 12)
+				before, after, _ := strings.Cut(faceText, label)
+				if delta := ansi.StringWidth(after) - ansi.StringWidth(before); delta < 0 || delta > 1 {
+					t.Fatalf("%s/%s has asymmetric label padding: %q", label, state, stripped)
+				}
+				idleBefore, _, _ := strings.Cut(idle, label)
+				selectedBefore, _, _ := strings.Cut(stripped, label)
+				if ansi.StringWidth(idleBefore) != ansi.StringWidth(selectedBefore) {
+					t.Fatalf("%s/%s moved the label", label, state)
+				}
+				if plain && (!strings.HasPrefix(faceText, "<") || !strings.HasSuffix(faceText, ">")) {
+					t.Fatalf("%s/%s lost its monochrome selection: %q", label, state, stripped)
+				}
+				if !plain && (o.Busy || o.Disabled) {
+					face := ansi.Cut(value, 2, 12)
+					want := themed(lipgloss.NewStyle().Bold(true).Render(ansi.Strip(face)), text, buttonSelectedBackground, false)
+					if !strings.Contains(face, want) {
+						t.Fatalf("%s/%s cleared or dimmed the current selection", label, state)
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestButtonGutterKeepsFocusNextToItsOwnFace(t *testing.T) {
+	first := renderButton("规则", buttonOptions{Selectable: true, Surface: panel, Width: 6})
+	second := renderButton("全局", buttonOptions{Selectable: true, Surface: panel, Width: 6, Focused: true})
+	width := ansi.StringWidth(first)
+	row := ansi.Strip(first + second)
+	if got := ansi.Cut(row, width, width+2); got != " ›" {
+		t.Fatalf("focus needs one empty cell after the preceding face: %q", got)
+	}
+	if !strings.HasPrefix(second, themed(" ›", focus, panel, false)) {
+		t.Fatal("focus is not immediately followed by its own painted face")
+	}
+	if ansi.StringWidth(first) != 10 || ansi.StringWidth(second) != 10 {
+		t.Fatal("selectable buttons no longer have an eight-cell face and two-cell gutter")
+	}
+}
+
+func TestButtonHoverKeepsItsSemanticRole(t *testing.T) {
+	for _, sample := range []struct {
+		kind       buttonKind
+		selected   bool
+		foreground string
+		background string
+	}{
+		{buttonSecondary, false, text, buttonHoverBackground},
+		{buttonSecondary, true, text, buttonSelectedHoverBackground},
+		{buttonPrimary, false, primaryButtonForeground, buttonPrimaryHoverBackground},
+		{buttonDanger, false, buttonDangerForeground, buttonDangerHoverBackground},
+		{buttonDangerConfirm, false, primaryButtonForeground, buttonDangerForeground},
+	} {
+		o := buttonOptions{Kind: sample.kind, Hovered: true, Selected: sample.selected, Selectable: sample.selected, Surface: panel}
+		face := ansi.Cut(renderButton("Action", o), 2, 100)
+		bold := sample.kind == buttonPrimary || sample.kind == buttonDangerConfirm || sample.selected
+		want := themed(lipgloss.NewStyle().Bold(bold).Render(ansi.Strip(face)), sample.foreground, sample.background, false)
+		if !strings.Contains(face, want) {
+			t.Fatalf("kind %d selected=%t lost its hover role", sample.kind, sample.selected)
+		}
 	}
 }
 

@@ -35,6 +35,15 @@ const (
 	warning                 = focus
 	errorColor              = "#f28d92"
 	info                    = accent
+
+	// Buttons keep their own interaction colors so changing an action does not
+	// also restyle list rows, navigation or other selected surfaces.
+	buttonHoverBackground         = "#46515c"
+	buttonSelectedBackground      = "#425d78"
+	buttonSelectedHoverBackground = "#46617b"
+	buttonPrimaryHoverBackground  = "#6aa4df"
+	buttonDangerForeground        = "#f5a3a8"
+	buttonDangerHoverBackground   = "#493940"
 )
 
 func themed(s, foreground, background string, dimmed bool) string {

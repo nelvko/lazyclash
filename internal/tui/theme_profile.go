@@ -122,6 +122,12 @@ func terminalColor(c color.Color, profile colorprofile.Profile) color.Color {
 		{accent, 110, 14},
 		{focus, 215, 11},
 		{primaryButtonBackground, 68, 14},
+		{buttonHoverBackground, 239, 0},
+		{buttonSelectedBackground, 24, 4},
+		{buttonSelectedHoverBackground, 25, 4},
+		{buttonPrimaryHoverBackground, 75, 14},
+		{buttonDangerForeground, 217, 9},
+		{buttonDangerHoverBackground, 238, 0},
 		{success, 114, 10},
 		{errorColor, 210, 9},
 	}
