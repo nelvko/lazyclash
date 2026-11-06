@@ -73,7 +73,7 @@ func TestSearchFieldBorderClicksFocusInput(t *testing.T) {
 func TestSearchFieldLogsShortWindowRetainsVisibleTargets(t *testing.T) {
 	for _, width := range []int{40, 60} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
-			m, id := searchFieldModel(t, "logs", width, 12)
+			m, id := searchFieldModel(t, "logs", width, 11)
 			if m.dashboardOptions().BodyTopRows != 0 {
 				t.Fatal("fixture did not use the short-window toolbar fallback")
 			}
@@ -90,8 +90,8 @@ func TestSearchFieldLogsShortWindowRetainsVisibleTargets(t *testing.T) {
 			if m.logs.level != 1 {
 				t.Fatal("visible short-window filter control did not accept a click")
 			}
-			assertCanvas(t, m.screen, width, 12)
-			assertRegions(t, m.targets, width, 12)
+			assertCanvas(t, m.screen, width, 11)
+			assertRegions(t, m.targets, width, 11)
 		})
 	}
 }

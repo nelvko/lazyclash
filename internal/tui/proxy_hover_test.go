@@ -25,6 +25,7 @@ func proxyHoverModel(t testing.TB, count int) Model {
 	t.Cleanup(m.cancel)
 	m.snapshot = backend.snapshot
 	m.snapshotReady, m.busy, m.logoIntro.used = true, false, true
+	m.message = ""
 	m.width, m.height, m.page = 200, 45, "proxies"
 	m.syncProxies()
 	m.expandProxyGroup("PROXY")

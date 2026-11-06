@@ -184,7 +184,7 @@ func TestMarianaSidebarCurrentHoverAndFocusAreIndependent(t *testing.T) {
 		t.Fatal("keyboard focus lost its separate orange marker")
 	}
 	currentLabel := lipgloss.NewStyle().Bold(true).Render("Overview")
-	if !strings.Contains(screen, themed(currentLabel, selectionForeground, bg, false)) {
+	if !strings.Contains(screen, strings.TrimSuffix(themed(currentLabel, selectionForeground, bg, false), "\x1b[m")) {
 		t.Fatal("current page lost its body background or bold label")
 	}
 	labelTail := func(label string) string {
