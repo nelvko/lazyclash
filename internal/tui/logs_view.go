@@ -100,14 +100,12 @@ func (m Model) logViewport(doc logDocument, width, height int) viewport.Model {
 	return v
 }
 
-func (m Model) logsToolbar(width, rows int) dashboardBlock {
-	width = max(1, width)
+func (m Model) logControls() dashboardBlock {
 	var b dashboardBlock
 	buttons := ""
 	for _, item := range []struct{ id, label string }{
 		{"logs.level", m.tr([]string{"logs.level_all", "logs.level_info", "logs.level_warn", "logs.level_error"}[m.logs.level])},
 		{"logs.view", m.tr(map[bool]string{false: "logs.detailed", true: "logs.compact"}[m.logs.compact])},
-		{"logs.reset-search", "×"},
 	} {
 		o := dashboardButtonOptions(item.id, m.navigationOptions(), false, bg)
 		o.Disabled = m.busy
@@ -118,8 +116,20 @@ func (m Model) logsToolbar(width, rows int) dashboardBlock {
 		buttons += value
 	}
 	b.lines = []string{buttons}
-	b = m.searchToolbar("logs.search", m.tr("logs.placeholder"), m.logs.search,
-		b, width, width >= 68, false)
+	return b
+}
+
+func (m Model) logSearchWidth(width int) int {
+	if width >= 68 {
+		width -= ansi.StringWidth(m.logControls().lines[0]) + 2
+	}
+	return searchInputWidth(width)
+}
+
+func (m Model) logsToolbar(width, rows int) dashboardBlock {
+	width = max(1, width)
+	b := m.searchToolbar("logs.search", m.tr("logs.placeholder"), m.logs.search,
+		m.logControls(), width, width >= 68, false)
 	count := 0
 	entries, _ := m.logsDisplayEntries()
 	for _, entry := range entries {
@@ -128,19 +138,20 @@ func (m Model) logsToolbar(width, rows int) dashboardBlock {
 		}
 	}
 	status := m.tr("logs.summary", count, len(entries))
+	hint := ""
 	if m.logs.editing {
-		status = m.tr("logs.search_edit")
+		hint = m.tr("logs.search_edit")
 	} else if !m.logs.observedAt.IsZero() {
-		observed := " · " + m.tr("logs.observed", m.logs.observedAt.Local().Format("15:04:05"))
-		if ansi.StringWidth(status+observed) <= width {
-			status += observed
-		}
+		hint = m.tr("logs.observed", m.logs.observedAt.Local().Format("15:04:05"))
 	}
 	for _, item := range []struct{ id, key string }{{"logs.level", "logs.level_hint"}, {"logs.view", "logs.view_hint"}, {"logs.reset-search", "logs.reset_hint"}} {
 		if m.hover == item.id || m.focus == item.id {
-			status = m.tr(item.key)
+			hint = m.tr(item.key)
 			break
 		}
+	}
+	if hint != "" && ansi.StringWidth(status+" · "+hint) <= width {
+		status += " · " + hint
 	}
 	b.lines = append(b.lines, themed(cellCrop(status, width), muted, bg, false), "")
 	b.lines = b.lines[:min(rows, len(b.lines))]

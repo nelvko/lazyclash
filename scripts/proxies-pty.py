@@ -375,7 +375,7 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait("Hysteria2")
         terminal.key(b"\x1b[D")
         terminal.wait("ChatGPT")
-        wait_until(terminal, lambda: any(re.search(r"/\s*ChatGPT", line) for line in terminal.screen.text().splitlines()), "reference return lost search input")
+        wait_until(terminal, lambda: any(re.search(r"(?:^|\s)ChatGPT\s+" + re.escape(words["search.clear"]) + r"(?:\s|$)", line) for line in terminal.screen.text().splitlines()), "reference return lost search input")
         preview.capture(terminal, output, "search-reference-return", args)
         search(terminal, "")
         collapse_all(terminal, words)

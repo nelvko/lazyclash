@@ -59,6 +59,7 @@ type ruleProviderUpdateResultMsg struct {
 
 func newRuleProvidersState(locale i18n.Localizer) ruleProvidersState {
 	search := textinput.New()
+	search.SetVirtualCursor(false)
 	search.CharLimit = 512
 	search.Placeholder = locale.T("rules.providers.search_placeholder")
 	styleInput(&search, inputBackground, false)
@@ -501,6 +502,9 @@ func (m *Model) ruleProvidersActivate(id string) tea.Cmd {
 	}
 	switch {
 	case id == "rules.providers-search":
+		return m.focusRuleProvidersSearch()
+	case id == "rules.providers-clear":
+		m.ruleProviders.search.Reset()
 		return m.focusRuleProvidersSearch()
 	case id == "rules.providers-back":
 		m.closeRuleProviders()

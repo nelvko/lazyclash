@@ -284,16 +284,23 @@ func (m *Model) renderRuleProviders(base string) (string, []hitRegion) {
 		hits = append(hits, hit)
 		p.controls = append(p.controls, hit)
 	}
-	p.search.SetWidth(searchInputWidth(inner))
-	p.search.SetCursor(p.search.Position())
+	resizeSearchInput(&p.search, searchInputWidth(inner))
 	search := m.ruleProvidersToolbar(inner, 4)
 	for i, line := range search.lines {
 		putRows(rows, 3, 3+i, themed(cellPad(line, inner), text, raised, false), w)
 	}
+	var clearTarget hitRegion
 	for _, target := range search.targets {
 		target.X, target.Y = target.X+x+3, target.Y+y+3
 		hits = append(hits, target)
-		p.controls = append(p.controls, target)
+		if target.ID == "rules.providers-clear" {
+			clearTarget = target
+		} else {
+			p.controls = append(p.controls, target)
+		}
+	}
+	if clearTarget.ID != "" {
+		p.controls = append(p.controls, clearTarget)
 	}
 	putRows(rows, 2, 7, themed(strings.Repeat("─", w-4), divider, raised, false), w)
 	bodyY, bodyH := 8, max(1, h-12)

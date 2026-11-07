@@ -85,10 +85,16 @@ func TestRulesSearchTabVisitsFiltersAndClearRestoresInput(t *testing.T) {
 	m, _ = update(m, tea.WindowSizeMsg{Width: 160, Height: 45})
 	m, _ = update(m, key("/"))
 	m, _ = update(m, tea.PasteMsg{Content: "NEEDLE"})
-	for _, id := range []string{"rules.case", "rules.word", "rules.regex", "rules.clear"} {
+	for _, id := range []string{"rules.clear", "rules.case", "rules.word", "rules.regex"} {
 		m, _ = update(m, special(tea.KeyTab))
 		if m.focus != id || m.rules.editing || m.rules.search.Focused() {
 			t.Fatalf("Tab should visit %s after leaving input; focus=%s editing=%t", id, m.focus, m.rules.editing)
+		}
+	}
+	for _, id := range []string{"rules.word", "rules.case", "rules.clear"} {
+		m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
+		if m.focus != id {
+			t.Fatalf("Shift+Tab should return to %s; got %s", id, m.focus)
 		}
 	}
 	m, _ = update(m, special(tea.KeyEnter))
@@ -129,7 +135,7 @@ func TestRulesFixedToolbarRetainsScrollDuringTabNavigation(t *testing.T) {
 			if dashboardGeometry(m.dashboardOptions()).sidebar {
 				navigation = "nav.rules"
 			}
-			for _, id := range []string{"rules.clear", "rules.regex", "rules.word", "rules.case", "rules.search", navigation} {
+			for _, id := range []string{"rules.regex", "rules.word", "rules.case", "rules.search", navigation} {
 				m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
 				if m.focus != id || m.scroll != scroll {
 					t.Fatalf("fixed control %s changed list viewport: focus=%s scroll=%d want=%d", id, m.focus, m.scroll, scroll)

@@ -179,9 +179,11 @@ func New(ctx context.Context, backend Backend, languages ...string) Model {
 	m.profilesUI = newProfilesState(m.locale)
 	m.message = m.tr("model.loading")
 	m.connections.search = textinput.New()
+	m.connections.search.SetVirtualCursor(false)
 	m.connections.search.CharLimit = 256
 	m.connections.search.Placeholder = m.tr("model.connection_search")
 	m.rules.search = textinput.New()
+	m.rules.search.SetVirtualCursor(false)
 	m.rules.search.CharLimit = 512
 	m.rules.search.Placeholder = m.tr("model.rule_search")
 	m.ruleProviders = newRuleProvidersState(m.locale)
@@ -1516,12 +1518,10 @@ func (m *Model) renderLayout() {
 	o.StateUnavailable = !m.snapshotReady
 	g := dashboardGeometry(o)
 	o.Header = m.pageHeader()
-	m.proxies.search.SetWidth(m.proxySearchWidth(g.width))
-	m.proxies.search.SetCursor(m.proxies.search.Position())
-	m.connections.search.SetWidth(m.connectionSearchWidth(g.width))
-	m.connections.search.SetCursor(m.connections.search.Position())
-	m.rules.search.SetWidth(m.ruleSearchWidth(g.width))
-	m.rules.search.SetCursor(m.rules.search.Position())
+	resizeSearchInput(&m.proxies.search, m.proxySearchWidth(g.width))
+	resizeSearchInput(&m.connections.search, m.connectionSearchWidth(g.width))
+	resizeSearchInput(&m.rules.search, m.ruleSearchWidth(g.width))
+	resizeSearchInput(&m.logs.search, m.logSearchWidth(g.width))
 	m.populatePageBody(&o)
 	if m.page == "connections" && o.BodyTopRows > 0 {
 		o.BodyTop = m.connectionsToolbar(g.width, o.BodyTopRows)
@@ -1578,6 +1578,7 @@ func (m Model) View() tea.View {
 	view := tea.NewView(terminalTheme(themed(m.screen, text, bg, false), profile))
 	view.AltScreen = true
 	view.MouseMode = tea.MouseModeAllMotion
+	view.Cursor = m.searchCursor()
 	return view
 }
 func clean(s string) string {

@@ -1,4 +1,5 @@
 {
+  "search.clear": "Clear",
   "profiles.url_placeholder": "Paste subscription URL or local path",
   "profiles.fetching": "Fetching and validating configuration…",
   "profiles.saved_select": "Subscription saved; select its card to apply",
@@ -183,7 +184,7 @@
   "rules.filter_case": "Aa · Match case (Alt+C)",
   "rules.filter_word": "ab · Whole word (Alt+W)",
   "rules.filter_regex": ".* · Regular expression (Alt+R)",
-  "rules.filter_clear": "× · Clear filter",
+  "rules.filter_clear": "Clear filter",
   "logs.browsing": "Capturing live events · Reading history",
   "logs.summary": "Mihomo logs · %d / %d entries",
   "logs.level_all": "All",
@@ -196,7 +197,7 @@
   "logs.clear": "Clear",
   "logs.level_hint": "Level (l) · Filter received events; capture stays unchanged",
   "logs.view_hint": "View (v) · Compact rows / wrapped details",
-  "logs.reset_hint": "× · Clear search text",
+  "logs.reset_hint": "Clear search text",
   "logs.clear_hint": "Clear retained logs (Ctrl+L) · Capture unchanged",
   "logs.empty_inactive": "No retained logs. Check connection status or reconnect.",
   "rules.retry_label": "Retry"

@@ -69,7 +69,8 @@ type proxyDelayBackend interface {
 func newProxiesState() proxiesState {
 	input := textinput.New()
 	input.CharLimit = 256
-	input.Prompt = "/ "
+	input.Prompt = ""
+	input.SetVirtualCursor(false)
 	styleInput(&input, inputBackground, false)
 	return proxiesState{search: input, expanded: make(map[string]bool), sorts: make(map[string]string), order: make(map[string][]string), results: make(map[string]proxyMeasurement)}
 }
@@ -633,7 +634,7 @@ func (m *Model) proxyActivate(id string) tea.Cmd {
 		return m.focusProxySearch()
 	case "proxies.clear":
 		m.proxies.search.SetValue("")
-		m.focus = "proxies.search"
+		return m.focusProxySearch()
 	case "proxies.collapse_all":
 		m.proxies.expanded = make(map[string]bool)
 		m.proxies.activeGroup, m.proxies.detail = "", ""

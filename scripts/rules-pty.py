@@ -180,7 +180,7 @@ def exercise(preview, binary, output, language, profile, args):
         search(terminal, "no-such-rule-pty")
         terminal.wait(words["rules.no_matches"])
         preview.capture(terminal, output, "no-matches", args)
-        toggle(terminal, "×")
+        toggle(terminal, words["search.clear"])
         terminal.key(b"\r")  # Clear returns focus to the search input.
         terminal.settle()
         terminal.wait("private_ip")

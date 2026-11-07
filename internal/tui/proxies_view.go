@@ -103,11 +103,6 @@ func (m Model) proxiesToolbar(width int) dashboardBlock {
 			b.targets = append(b.targets, hitRegion{ID: "proxies.collapse_all", X: width - actionWidth, Y: y + 1, W: actionWidth, H: 1})
 		}
 	}
-	if !m.proxies.editing && m.proxies.search.Value() != "" {
-		value := m.proxyButton("proxies.clear", m.tr("proxies.clear"), bg, true)
-		b.targets = append(b.targets, hitRegion{ID: "proxies.clear", Y: len(b.lines), W: min(width, ansi.StringWidth(value)), H: 1})
-		b.lines = append(b.lines, cellCrop(value, width))
-	}
 	return b
 }
 func (m Model) proxiesBody(width int) (string, []hitRegion) {

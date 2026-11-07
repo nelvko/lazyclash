@@ -102,7 +102,7 @@ func TestBusyModeControlsKeepSelectionWithoutHitRegions(t *testing.T) {
 
 func TestNarrowRulesFiltersKeepEveryLabelAndStableHitRegions(t *testing.T) {
 	filters := []struct{ id, label string }{
-		{"rules.case", "Aa"}, {"rules.word", "ab"}, {"rules.regex", ".*"}, {"rules.clear", "×"},
+		{"rules.case", "Aa"}, {"rules.word", "ab"}, {"rules.regex", ".*"},
 	}
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		for _, width := range []int{34, 40} {

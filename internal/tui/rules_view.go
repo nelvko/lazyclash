@@ -16,11 +16,11 @@ func (m Model) ruleFilterButtons() dashboardBlock {
 	for _, item := range []struct {
 		id, label string
 		selected  bool
-	}{{"rules.case", "Aa", m.rules.caseSensitive}, {"rules.word", "ab", m.rules.wholeWord}, {"rules.regex", ".*", m.rules.regex}, {"rules.clear", "×", false}} {
+	}{{"rules.case", "Aa", m.rules.caseSensitive}, {"rules.word", "ab", m.rules.wholeWord}, {"rules.regex", ".*", m.rules.regex}} {
 		o := dashboardButtonOptions(item.id, navigation, false, bg)
 		o.Disabled = m.busy
-		o.Selectable, o.Selected = item.id != "rules.clear", item.selected
-		value := renderButton(item.label, o)
+		o.Selected = item.selected
+		value := renderRuleSearchToggle(item.label, o)
 		if !o.Disabled {
 			b.targets = append(b.targets, hitRegion{ID: item.id, X: ansi.StringWidth(line), W: ansi.StringWidth(value), H: 1})
 		}
@@ -28,6 +28,34 @@ func (m Model) ruleFilterButtons() dashboardBlock {
 	}
 	b.lines = []string{line}
 	return b
+}
+
+// Search options share a compact face; selection and keyboard focus keep
+// separate textual markers, including terminals without color.
+func renderRuleSearchToggle(label string, o buttonOptions) string {
+	foreground, surface := muted, bg
+	face := " " + label + " "
+	if o.Selected {
+		foreground, surface = accent, panel
+		face = "✓" + label + " "
+	}
+	if o.Plain {
+		face = "[" + label + "]"
+		if o.Selected {
+			face = "<" + label + ">"
+		}
+	}
+	if o.Hovered && !o.Disabled && !o.Selected {
+		foreground = text
+	}
+	if o.Disabled {
+		foreground = disabled
+	}
+	marker := " "
+	if o.Focused && !o.Disabled {
+		marker = "›"
+	}
+	return themed(marker, focus, bg, o.Dim) + themed(face, foreground, surface, o.Dim)
 }
 
 func (m Model) ruleSearchWidth(width int) int {
@@ -41,23 +69,25 @@ func (m Model) rulesToolbar(width, rows int) dashboardBlock {
 	_, matchErr := m.ruleMatcher()
 	b := m.searchToolbar("rules.search", m.tr("rules.search_placeholder"), m.rules.search,
 		m.ruleFilterButtons(), width, width >= 68, matchErr != nil)
-	status, color := m.rulesStatus(), muted
+	status := m.rulesStatus()
 	if m.rules.received && m.rules.snapshot.State == "ready" {
-		status = m.tr("rules.count", len(m.rules.snapshot.Rules))
-		if strings.TrimSpace(m.rules.search.Value()) != "" || m.rules.caseSensitive || m.rules.wholeWord || m.rules.regex {
-			status = m.tr("rules.filtered_count", len(m.filteredRules()), len(m.rules.snapshot.Rules))
-		}
+		status = m.tr("rules.filtered_count", len(m.filteredRules()), len(m.rules.snapshot.Rules))
 	}
-	if _, err := m.ruleMatcher(); err != nil {
-		status, color = m.tr("rules.invalid_regex"), errorColor
-	}
+	line := themed(cellCrop(status, width), muted, bg, false)
 	for _, item := range []struct{ id, key string }{{"rules.case", "rules.filter_case"}, {"rules.word", "rules.filter_word"}, {"rules.regex", "rules.filter_regex"}, {"rules.clear", "rules.filter_clear"}} {
-		if m.focus == item.id || m.hover == item.id {
-			status, color = m.tr(item.key), accent
+		if matchErr == nil && (m.focus == item.id || m.hover == item.id) {
+			hint := " · " + m.tr(item.key)
+			if ansi.StringWidth(status+hint) <= width {
+				line += themed(hint, accent, bg, false)
+			}
 			break
 		}
 	}
-	b.lines = append(b.lines, themed(cellCrop(status, width), color, bg, false), "")
+	diagnostic := ""
+	if matchErr != nil {
+		diagnostic = themed(cellCrop(m.tr("rules.invalid_regex"), width), errorColor, bg, false)
+	}
+	b.lines = append(b.lines, line, diagnostic)
 	b.lines = b.lines[:min(rows, len(b.lines))]
 	visible := b.targets[:0]
 	for _, target := range b.targets {

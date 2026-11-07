@@ -161,7 +161,12 @@ func (m Model) contextHelp() string {
 		return tr("overview.cardHint")
 	}
 	if m.focus == "content" {
-		return tr("navigation.content")
+		switch m.page {
+		case "proxies", "connections", "rules", "logs":
+			// Page searches remain discoverable before entering a list.
+		default:
+			return tr("navigation.content")
+		}
 	}
 	if strings.HasPrefix(m.focus, "nav.") {
 		return tr("navigation.sidebar")

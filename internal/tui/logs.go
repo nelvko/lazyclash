@@ -51,6 +51,7 @@ func newLogsState(locales ...i18n.Localizer) logsState {
 		locale = locales[0]
 	}
 	search := textinput.New()
+	search.SetVirtualCursor(false)
 	search.CharLimit = 256
 	search.Placeholder = locale.T("logs.placeholder")
 	styleInput(&search, bg, false)
@@ -232,7 +233,7 @@ func (m Model) logsDisplayEntries() ([]mihomo.LogEntry, uint64) {
 }
 
 func (m *Model) logsActivate(id string) tea.Cmd {
-	if id != "logs.search" {
+	if id != "logs.search" && id != "logs.reset-search" {
 		m.logs.editing = false
 		m.logs.search.Blur()
 	}
@@ -263,6 +264,7 @@ func (m *Model) logsActivate(id string) tea.Cmd {
 	case "logs.reset-search":
 		m.logs.search.Reset()
 		m.resetLogsView()
+		return m.logsActivate("logs.search")
 	case "logs.latest":
 		return m.resumeLogs()
 	}

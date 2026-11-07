@@ -77,7 +77,7 @@ func (m Model) connectionControls() dashboardBlock {
 		pause = m.tr("connections.resume")
 	}
 	for _, item := range []struct{ id, label string }{
-		{"conn.clear", "×"}, {"conn.pause", pause},
+		{"conn.pause", pause},
 		{"conn.sort", m.tr("connections.sort", m.tr(m.connections.sort.key()))},
 	} {
 		o := dashboardButtonOptions(item.id, m.navigationOptions(), false, bg)

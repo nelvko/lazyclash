@@ -185,7 +185,7 @@ def exercise(preview, binary, output, language, profile, args):
         click_label(terminal, words["rules.providers.close"])
         terminal.wait("source-59.example.invalid")
         assert rule_positions(terminal) == main_positions, "closing modal lost the main rule-list position"
-        assert "/ source" in terminal.screen.text(), "closing modal lost the main rule search"
+        assert any(re.search(r"(?:^|\s)source\s+" + re.escape(words["search.clear"]) + r"(?:\s|$)", row) for row in terminal.screen.text().splitlines()), "closing modal lost the main rule search"
         preview.capture(terminal, output, "main-rules-restored", args)
         terminal.key(b"\r")  # Focus returns to the original header button.
         terminal.wait("inline_rules")
