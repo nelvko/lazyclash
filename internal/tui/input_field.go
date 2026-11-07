@@ -103,9 +103,9 @@ func renderInputField(input textinput.Model, o inputFieldOptions) dashboardBlock
 	if clearWidth > 0 {
 		clear := strings.Repeat(" ", clearWidth)
 		if input.Value() != "" && !o.Disabled {
-			label, color := " ×", muted
+			label, color := " ✖", muted
 			if o.ClearFocused {
-				label, color = "›×", focus
+				label, color = "›✖", focus
 			} else if o.ClearHovered {
 				color = text
 			}
