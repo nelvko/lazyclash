@@ -68,7 +68,7 @@ func TestInputFieldKeepsClearBeforeOptionsAndGenericRightInset(t *testing.T) {
 				input.SetValue("needle")
 				options := inputFieldOptions{ID: "input", ClearID: "clear", Width: width, Surface: bg}
 				if withControls {
-					options.Trailing = dashboardBlock{lines: []string{" Aa  ab  .* "}, targets: []hitRegion{{ID: "option", W: 4, H: 1}}}
+					options.Trailing = dashboardBlock{lines: []string{" Aa ab .*"}, targets: []hitRegion{{ID: "option", W: 3, H: 1}}}
 				}
 				var baseline []hitRegion
 				for _, state := range []string{"idle", "input-focus", "clear-focus", "hover"} {
@@ -83,7 +83,7 @@ func TestInputFieldKeepsClearBeforeOptionsAndGenericRightInset(t *testing.T) {
 					for _, profile := range []colorprofile.Profile{colorprofile.TrueColor, colorprofile.ASCII} {
 						line := ansi.Strip(terminalTheme(field.lines[1], profile))
 						if inline {
-							if !strings.Contains(line, "× │ Aa  ab  .* ") {
+							if !strings.Contains(line, "× │ Aa ab .*") {
 								t.Fatalf("%s/%s clear no longer precedes matching options: %q", state, profile, line)
 							}
 						} else if got := ansi.Cut(line, width-3, width); got != "× │" {
@@ -96,7 +96,7 @@ func TestInputFieldKeepsClearBeforeOptionsAndGenericRightInset(t *testing.T) {
 						}
 						wantX := width - 4
 						if inline {
-							wantX -= 2 + 12 // separator and matching options follow clear.
+							wantX -= 2 + 9 // separator and matching options follow clear.
 						}
 						if hit.X != wantX || hit.W != 2 || hit.Y != 1 {
 							t.Fatalf("clear action moved from its reserved slot: %+v, want x=%d", hit, wantX)
@@ -111,7 +111,7 @@ func TestInputFieldKeepsClearBeforeOptionsAndGenericRightInset(t *testing.T) {
 func TestInputFieldEmptyQueryKeepsOptionsStillAndHidesSeparator(t *testing.T) {
 	input := textinput.New()
 	options := inputFieldOptions{ID: "input", ClearID: "clear", Width: 40,
-		Trailing: dashboardBlock{lines: []string{" Aa  ab  .* "}, targets: []hitRegion{{ID: "option", W: 4, H: 1}}}}
+		Trailing: dashboardBlock{lines: []string{" Aa ab .*"}, targets: []hitRegion{{ID: "option", W: 3, H: 1}}}}
 	empty := renderInputField(input, options)
 	input.SetValue("needle")
 	populated := renderInputField(input, options)
@@ -141,7 +141,7 @@ func TestInputFieldEmptyQueryKeepsOptionsStillAndHidesSeparator(t *testing.T) {
 	if strings.Count(emptyLine, "│") != 2 || strings.Count(populatedLine, "│") != 3 {
 		t.Fatalf("separator should appear only beside a visible clear action: empty=%q populated=%q", emptyLine, populatedLine)
 	}
-	if !strings.HasSuffix(populatedLine, "× │ Aa  ab  .*  │") {
+	if !strings.HasSuffix(populatedLine, "× │ Aa ab .* │") {
 		t.Fatalf("clear, separator and matching options are out of order: %q", populatedLine)
 	}
 }

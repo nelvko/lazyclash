@@ -30,8 +30,9 @@ func (m Model) ruleFilterButtons() dashboardBlock {
 	return b
 }
 
-// Selection uses text emphasis while focus retains its own marker. The
-// whole-word icon is always underlined, including when the option is off.
+// One status cell per toggle keeps adjacent labels one cell apart. Plain
+// terminals combine selection and focus in that cell; color uses text emphasis.
+// The whole-word icon is always underlined, including when the option is off.
 func renderRuleSearchToggle(label string, o buttonOptions) string {
 	foreground := muted
 	if o.Selected {
@@ -43,15 +44,18 @@ func renderRuleSearchToggle(label string, o buttonOptions) string {
 	if o.Disabled {
 		foreground = disabled
 	}
-	marker, suffix := " ", " "
+	marker := " "
+	if o.Plain && o.Selected {
+		marker = "*"
+	}
 	if o.Focused && !o.Disabled {
 		marker = "›"
-	}
-	if o.Plain && o.Selected {
-		suffix = "*"
+		if o.Plain && o.Selected {
+			marker = "+"
+		}
 	}
 	face := lipgloss.NewStyle().Bold(o.Selected).Underline(label == "ab").Render(label)
-	return themed(marker, focus, bg, o.Dim) + themed(face+suffix, foreground, bg, o.Dim)
+	return themed(marker, focus, bg, o.Dim) + themed(face, foreground, bg, o.Dim)
 }
 
 func (m Model) ruleSearchWidth(width int) int {

@@ -15,8 +15,9 @@ import (
 
 func TestSearchControlsKeepCompactSelectionAndFocusReadableWithoutColor(t *testing.T) {
 	m := rulesModel(t, &fakeBackend{})
+	m.noColor = false
 	baseline := m.ruleFilterButtons()
-	if len(baseline.targets) != 3 || ansi.StringWidth(baseline.lines[0]) > 15 {
+	if len(baseline.targets) != 3 || ansi.Strip(baseline.lines[0]) != " Aa ab .*" {
 		t.Fatalf("matching options are not a compact three-option group: %+v", baseline)
 	}
 	for _, profile := range []colorprofile.Profile{colorprofile.TrueColor, colorprofile.ASCII} {
@@ -31,15 +32,23 @@ func TestSearchControlsKeepCompactSelectionAndFocusReadableWithoutColor(t *testi
 				t.Fatalf("selection or color capability moved matching options: profile=%s state=%d", profile, state)
 			}
 			plain := ansi.Strip(terminalTheme(block.lines[0], profile))
-			if !strings.HasPrefix(plain, "›") {
+			focusMarker := "›"
+			if profile == colorprofile.ASCII && m.rules.caseSensitive {
+				focusMarker = "+"
+			}
+			if !strings.HasPrefix(plain, focusMarker) {
 				t.Fatalf("keyboard focus lost its independent marker: %q", plain)
 			}
 			if profile == colorprofile.ASCII {
 				for index, label := range []string{"Aa", "ab", ".*"} {
-					want := label + " "
+					marker := " "
 					if state&(1<<index) != 0 {
-						want = label + "*"
+						marker = "*"
 					}
+					if index == 0 {
+						marker = focusMarker
+					}
+					want := marker + label
 					if !strings.Contains(plain, want) {
 						t.Fatalf("monochrome option lost its selected state: %q lacks %s", plain, want)
 					}
@@ -147,7 +156,7 @@ func TestSearchMatchingOptionsUseTextEmphasisAndWholeWordIcon(t *testing.T) {
 					color = accent
 				}
 				face := lipgloss.NewStyle().Bold(selected).Underline(label == "ab").Render(label)
-				want := themed(" ", focus, bg, false) + themed(face+" ", color, bg, false)
+				want := themed(" ", focus, bg, false) + themed(face, color, bg, false)
 				if value != want {
 					t.Fatalf("selected=%t label=%s changed the page surface or icon emphasis: got %q want %q", selected, label, value, want)
 				}
