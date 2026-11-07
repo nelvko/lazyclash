@@ -107,7 +107,8 @@ func (m Model) logControls() dashboardBlock {
 		{"logs.level", m.tr([]string{"logs.level_all", "logs.level_info", "logs.level_warn", "logs.level_error"}[m.logs.level])},
 		{"logs.view", m.tr(map[bool]string{false: "logs.detailed", true: "logs.compact"}[m.logs.compact])},
 	} {
-		o := dashboardButtonOptions(item.id, m.navigationOptions(), false, bg)
+		o := m.searchControlOptions(item.id)
+		o.Kind = buttonText
 		o.Disabled = m.busy
 		value := renderButton(item.label, o)
 		if !o.Disabled {
@@ -120,16 +121,19 @@ func (m Model) logControls() dashboardBlock {
 }
 
 func (m Model) logSearchWidth(width int) int {
-	if width >= 68 {
-		width -= ansi.StringWidth(m.logControls().lines[0]) + 2
-	}
-	return searchInputWidth(width)
+	return inputFieldTextWidth(min(inputFieldMaxWidth, max(1, width)), searchControlWidth(m.logControls()), true)
 }
 
 func (m Model) logsToolbar(width, rows int) dashboardBlock {
 	width = max(1, width)
 	b := m.searchToolbar("logs.search", m.tr("logs.placeholder"), m.logs.search,
-		m.logControls(), width, width >= 68, false)
+		m.logControls(), width, false)
+	if m.searchToolbarGap() > 0 {
+		b.lines = append([]string{""}, b.lines...)
+		for i := range b.targets {
+			b.targets[i].Y++
+		}
+	}
 	count := 0
 	entries, _ := m.logsDisplayEntries()
 	for _, entry := range entries {
@@ -168,7 +172,7 @@ func (m Model) logsToolbar(width, rows int) dashboardBlock {
 func (m Model) logsPrefix(width int) dashboardBlock {
 	var b dashboardBlock
 	if m.dashboardOptions().BodyTopRows == 0 {
-		b = m.logsToolbar(width, filterToolbarRows(width))
+		b = m.logsToolbar(width, m.filterToolbarRows(width))
 	}
 	if m.logs.err != nil {
 		value := m.tr("logs.unavailable", m.localizeError(m.logs.err))

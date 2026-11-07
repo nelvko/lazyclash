@@ -42,6 +42,7 @@ type portsMsg struct {
 func newPortsState() portsState {
 	input := func() textinput.Model {
 		v := textinput.New()
+		v.SetVirtualCursor(false)
 		v.CharLimit = 16
 		styleInput(&v, inputBackground, false)
 		return v
@@ -211,6 +212,9 @@ func (m *Model) closePorts() {
 }
 
 func (m *Model) portsActivate(id string) tea.Cmd {
+	if handled, cmd := m.clearInputField(id); handled {
+		return cmd
+	}
 	if m.ports.cancelling && id == "ports.cancel" {
 		return nil
 	}
@@ -327,6 +331,9 @@ func (m *Model) portsMouse(event tea.MouseMsg) tea.Cmd {
 		}
 		m.hover = hit.ID
 		if _, clicked := event.(tea.MouseClickMsg); clicked && k.Button == tea.MouseLeft {
+			if handled, cmd := m.clearInputField(hit.ID); handled {
+				return cmd
+			}
 			m.ports.focus = hit.ID
 			return m.portsActivate(hit.ID)
 		}
@@ -479,7 +486,11 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 	}
 	footer = append(footer, line)
 	footerY := h - len(footer) - 3
-	bodyY, bodyH := 5, max(1, footerY-6)
+	bodyY := 5
+	if h < 16 {
+		bodyY = 2
+	}
+	bodyH := max(1, footerY-bodyY-1)
 	if p.reveal {
 		for _, hit := range doc.targets {
 			if hit.ID == p.focus {
@@ -505,14 +516,16 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 		putRows(rows, w-1, i, themed("│", border, raised, false), w)
 	}
 	putRows(rows, 3, 1, themed(m.tr("ports.title"), text, raised, false), w)
-	putRows(rows, 3, 2, themed(subtitle, muted, raised, false), w)
-	putRows(rows, 2, 3, themed(strings.Repeat("─", w-4), divider, raised, false), w)
+	if bodyY == 5 {
+		putRows(rows, 3, 2, themed(subtitle, muted, raised, false), w)
+		putRows(rows, 2, 3, themed(strings.Repeat("─", w-4), divider, raised, false), w)
+	}
 	var hits []hitRegion
 	for i := 0; i < bodyH && i+p.scroll < len(doc.lines); i++ {
 		putRows(rows, 3, i+bodyY, themed(cellPad(doc.lines[i+p.scroll], inner), text, raised, false), w)
 	}
 	for _, hit := range doc.targets {
-		hit.X, hit.Y = 3, bodyY+hit.Y-p.scroll
+		hit.X, hit.Y = hit.X+3, bodyY+hit.Y-p.scroll
 		if clipped, ok := clipRegion(hit, 3, bodyY, inner, bodyH); ok {
 			clipped.X, clipped.Y = clipped.X+x, clipped.Y+y
 			hits = append(hits, clipped)

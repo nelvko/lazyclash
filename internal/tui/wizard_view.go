@@ -101,9 +101,10 @@ func (d *wizardDocument) field(id, label string, input *textinput.Model, focus s
 		labelColor = errorColor
 		label += d.tr("wizard.invalid_suffix")
 	}
+	if len(d.lines) > 0 && d.lines[len(d.lines)-1] != "" {
+		d.space()
+	}
 	d.line(themed(label, labelColor, raised, false))
-	styleInput(input, inputBackground, input.Err != nil)
-	input.SetWidth(max(1, d.width-4))
 	if id == focus {
 		if !input.Focused() {
 			input.Focus()
@@ -111,15 +112,17 @@ func (d *wizardDocument) field(id, label string, input *textinput.Model, focus s
 	} else if input.Focused() {
 		input.Blur()
 	}
-	value := input.View()
-	if id == focus {
-		value = "› " + value
-	} else {
-		value = "  " + value
+	width := min(d.width, inputFieldMaxWidth)
+	*input = prepareInputField(*input, inputFieldTextWidth(width, 0, true), raised, input.Err != nil)
+	blocked := d.disabled != nil && d.disabled(id)
+	field := renderInputField(*input, inputFieldOptions{ID: id, ClearID: id + ".clear", ClearHovered: d.hover == id+".clear", ClearFocused: focus == id+".clear", Width: width, Surface: raised,
+		Focused: id == focus, Hovered: id == d.hover, Invalid: input.Err != nil, Disabled: blocked})
+	for _, hit := range field.targets {
+		hit.Y += len(d.lines)
+		d.targets = append(d.targets, hit)
 	}
-	y := len(d.lines)
-	d.line(themed(cellPad(value, d.width), text, inputBackground, false))
-	d.targets = append(d.targets, hitRegion{ID: id, Y: y, W: d.width, H: 1})
+	d.lines = append(d.lines, field.lines...)
+	d.space()
 }
 func checkColor(status string) string {
 	switch status {
@@ -622,6 +625,9 @@ func (m *Model) renderWizard(base string) (string, []hitRegion) {
 		y = (m.height - boxH) / 2
 	}
 	bodyY := 5
+	if boxH < 16 {
+		bodyY = 2
+	}
 	bodyH := max(1, boxH-bodyY-footerH-4)
 	w.controls = nil
 	for _, r := range doc.targets {
@@ -661,8 +667,10 @@ func (m *Model) renderWizard(base string) (string, []hitRegion) {
 	if w.networkOpen {
 		step = m.tr("wizard.network.subtitle")
 	}
-	putRows(rows, 3, 2, themed(cellCrop(step, innerW), muted, raised, false), boxW)
-	putRows(rows, 2, 3, themed(strings.Repeat("─", boxW-4), border, raised, false), boxW)
+	if bodyY == 5 {
+		putRows(rows, 3, 2, themed(cellCrop(step, innerW), muted, raised, false), boxW)
+		putRows(rows, 2, 3, themed(strings.Repeat("─", boxW-4), border, raised, false), boxW)
+	}
 	for i := 0; i < bodyH && w.scroll+i < len(doc.lines); i++ {
 		putRows(rows, 3, bodyY+i, themed(cellPad(doc.lines[w.scroll+i], innerW), text, raised, false), boxW)
 	}

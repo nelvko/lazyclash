@@ -7,7 +7,6 @@ import (
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/configuration"
@@ -38,6 +37,9 @@ func newProfileCreateState() profileCreateState {
 	description.CharLimit = configuration.MaxDescriptionRunes
 	source.CharLimit = 8192
 	name.Prompt, description.Prompt, source.Prompt = "", "", ""
+	name.SetVirtualCursor(false)
+	description.SetVirtualCursor(false)
+	source.SetVirtualCursor(false)
 	return profileCreateState{name: name, description: description, source: source}
 }
 
@@ -270,73 +272,86 @@ func (m Model) profileCreateType() string {
 	return m.tr("profiles.create_local")
 }
 
-func profileCreateInputView(input *textinput.Model, width int, invalid bool) string {
-	styleInput(input, inputBackground, invalid)
-	input.SetWidth(max(1, width-2-ansi.StringWidth(input.Prompt)))
-	input.SetCursor(input.Position())
-	return input.View()
-}
-
 func (m Model) renderProfileCreateForm(base string) (string, []hitRegion) {
-	boxW := min(112, max(1, m.width-2))
-	boxH := min(20, max(1, m.height-2))
+	boxW, boxH := min(inputImportMaxWidth+4, m.width), min(27, max(1, m.height-2))
 	if boxW < 38 || boxH < 12 {
 		return overlay(base, m.tr("profiles.enlarge"), 0, 0, m.width, m.height), nil
 	}
 	inner := boxW - 4
-	m.profileCreate.name.SetWidth(max(1, inner-2))
-	m.profileCreate.description.SetWidth(max(1, inner-2))
-	m.profileCreate.source.SetWidth(max(1, inner-2))
-	m.profileCreate.name.SetCursor(m.profileCreate.name.Position())
-	m.profileCreate.description.SetCursor(m.profileCreate.description.Position())
-	m.profileCreate.source.SetCursor(m.profileCreate.source.Position())
-	name := profileCreateInputView(&m.profileCreate.name, inner, false)
-	description := profileCreateInputView(&m.profileCreate.description, inner, false)
-	source := profileCreateInputView(&m.profileCreate.source, inner, m.failure != "" && m.profileCreate.field == profileCreateSource)
 	x, y := (m.width-boxW)/2, (m.height-boxH)/2
-	lines := []string{themed(cellCrop(m.tr("profiles.create_title"), inner), text, raised, false)}
-	if boxH >= 16 {
-		lines = append(lines, themed(cellCrop(m.tr("profiles.create_hint"), inner), muted, raised, false))
+	rows := profileDialogCanvas(boxW, boxH)
+	put := func(row int, value string) { putRows(rows, 2, row, cellPad(value, inner), boxW) }
+	put(1, themed(cellCrop(m.tr("profiles.create_title"), inner), text, raised, false))
+	bodyY := 2
+	if boxH >= 24 {
+		put(2, themed(cellCrop(m.tr("profiles.create_hint"), inner), muted, raised, false))
+		put(3, themed(cellCrop(m.tr("profiles.create_type", m.profileCreateType()), inner), muted, raised, false))
+		bodyY = 5
 	}
-	if boxH >= 13 {
-		lines = append(lines, themed(cellCrop(m.tr("profiles.create_type", m.profileCreateType()), inner), muted, raised, false))
-	}
-	var targets []hitRegion
-	for _, field := range []struct{ id, label, value string }{
-		{"profile-create.name", m.tr("profiles.create_name"), name},
-		{"profile-create.description", m.tr("profiles.create_description"), description},
-		{"profile-create.source", m.tr("profiles.create_source"), source},
-	} {
-		lines = append(lines, cellCrop(field.label, inner), field.value)
-		targets = append(targets, hitRegion{ID: field.id, X: x + 2, Y: y + len(lines), W: inner, H: 1})
-	}
-	// Always reserve visible rows for the actions, keyboard hint and result.
-	// Completion rows use the remaining space, so resizing cannot hide buttons
-	// while leaving their mouse targets over unrelated content.
-	if m.profileCreate.field == profileCreateSource {
-		rows := max(0, boxH-2-len(lines)-3)
-		lines = append(lines, m.paths.view(inner, rows, m.locale)...)
-	}
-	buttonRow := len(lines)
 	createButton := renderButton(m.tr("profiles.create_save"), buttonOptions{Kind: buttonPrimary, Surface: raised,
 		Focused: m.focus == "profile-create.save", Hovered: m.hover == "profile-create.save", Busy: m.busy,
 		Disabled: m.quitting, Plain: m.buttonPlain()})
 	cancelButton := renderButton(m.tr("profiles.create_cancel"), buttonOptions{Surface: raised,
 		Focused: m.focus == "profile-create.cancel", Hovered: m.hover == "profile-create.cancel",
 		Disabled: m.busy || m.quitting, Plain: m.buttonPlain()})
-	lines = append(lines, cancelButton+createButton, themed(cellCrop(m.tr("profiles.create_footer"), inner), muted, raised, false))
+	buttonRow := boxH - 4
+	put(buttonRow, cancelButton+createButton)
+	put(boxH-3, themed(cellCrop(m.tr("profiles.create_footer"), inner), muted, raised, false))
 	if m.failure != "" {
-		lines = append(lines, themed(cellCrop(m.failure, inner), errorColor, raised, false))
+		put(boxH-2, themed(cellCrop(m.failure, inner), errorColor, raised, false))
 	} else if m.busy {
-		lines = append(lines, themed(cellCrop(m.spinner.View()+" "+m.message, inner), accent, raised, false))
+		put(boxH-2, themed(cellCrop(m.spinner.View()+" "+m.message, inner), accent, raised, false))
 	}
-	box := lipgloss.NewStyle().Background(lipgloss.Color(raised)).Border(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color(focus)).Width(boxW).Height(boxH).Padding(0, 1).Render(strings.Join(lines, "\n"))
-	if m.busy || m.quitting {
-		targets = nil
-	} else {
+	var doc dashboardBlock
+	for _, field := range []struct {
+		id, label string
+		input     *textinput.Model
+	}{
+		{"profile-create.name", m.tr("profiles.create_name"), &m.profileCreate.name},
+		{"profile-create.description", m.tr("profiles.create_description"), &m.profileCreate.description},
+		{"profile-create.source", m.tr("profiles.create_source"), &m.profileCreate.source},
+	} {
+		if len(doc.lines) > 0 {
+			doc.lines = append(doc.lines, "")
+		}
+		doc.lines = append(doc.lines, themed(cellCrop(field.label, inner), muted, raised, false))
+		width := min(inner, inputFieldMaxWidth)
+		if field.id == "profile-create.source" {
+			width = inner
+		}
+		invalid := m.failure != "" && m.focus == field.id
+		doc.append(renderInputField(*field.input, inputFieldOptions{ID: field.id, ClearID: field.id + ".clear", Width: width, Surface: raised,
+			Focused: m.focus == field.id, Hovered: m.hover == field.id, Invalid: invalid,
+			Disabled: m.busy || m.quitting, ClearHovered: m.hover == field.id+".clear", ClearFocused: m.focus == field.id+".clear"}))
+	}
+	bodyH := max(1, buttonRow-bodyY-1)
+	if m.profileCreate.field == profileCreateSource && bodyH > len(doc.lines) {
+		doc.lines = append(doc.lines, m.paths.view(inner, bodyH-len(doc.lines), m.locale)...)
+	}
+	// Keep the active editor's complete frame in the viewport. Actions and
+	// validation remain outside that viewport at every supported height.
+	scroll := 0
+	active := profileCreateFieldID(min(m.profileCreate.field, profileCreateSource))
+	for _, hit := range doc.targets {
+		if hit.ID == active {
+			scroll = max(0, hit.Y+hit.H-bodyH)
+		}
+	}
+	for row := 0; row < bodyH && row+scroll < len(doc.lines); row++ {
+		put(bodyY+row, doc.lines[row+scroll])
+	}
+	var targets []hitRegion
+	for _, hit := range doc.targets {
+		hit.Y -= scroll
+		if clipped, ok := clipRegion(hit, 0, 0, inner, bodyH); ok {
+			clipped.X, clipped.Y = clipped.X+x+2, clipped.Y+y+bodyY
+			targets = append(targets, clipped)
+		}
+	}
+	if !m.busy && !m.quitting {
 		targets = append(targets,
-			hitRegion{ID: "profile-create.cancel", X: x + 2, Y: y + buttonRow + 1, W: ansi.StringWidth(cancelButton), H: 1},
-			hitRegion{ID: "profile-create.save", X: x + 2 + ansi.StringWidth(cancelButton), Y: y + buttonRow + 1, W: ansi.StringWidth(createButton), H: 1})
+			hitRegion{ID: "profile-create.cancel", X: x + 2, Y: y + buttonRow, W: ansi.StringWidth(cancelButton), H: 1},
+			hitRegion{ID: "profile-create.save", X: x + 2 + ansi.StringWidth(cancelButton), Y: y + buttonRow, W: ansi.StringWidth(createButton), H: 1})
 	}
-	return overlay(base, themed(box, text, raised, false), x, y, m.width, m.height), targets
+	return overlay(base, strings.Join(rows, "\n"), x, y, m.width, m.height), targets
 }

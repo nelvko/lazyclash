@@ -27,7 +27,24 @@ func (b *profileBackend) Apply(context.Context, string) error {
 func finishProfileJob(t *testing.T, m Model, cmd tea.Cmd) Model {
 	t.Helper()
 	batch := commandBatch(t, cmd)
-	m, _ = update(m, batch[0]())
+	msg := batch[0]()
+	// Update may batch an operation together with runtime or notification
+	// subscriptions. Run the operation through those wrappers before updating
+	// the model; a BatchMsg itself does not execute any backend work.
+	for {
+		nested, ok := msg.(tea.BatchMsg)
+		if !ok {
+			break
+		}
+		if len(nested) == 0 {
+			t.Fatal("empty nested operation batch")
+		}
+		msg = nested[0]()
+	}
+	if _, ok := msg.(resultMsg); !ok {
+		t.Fatalf("profile operation produced %T instead of a result", msg)
+	}
+	m, _ = update(m, msg)
 	return m
 }
 
@@ -339,6 +356,9 @@ func TestProfileDisplayNameEditsKeepActionsOnStableID(t *testing.T) {
 	m.input.SetValue("机场 A")
 	m.profileDeleteSetFocus("profile-delete.confirm")
 	m, cmd = update(m, special(tea.KeyEnter))
+	// Keep the backend identity check effective when the operation is wrapped
+	// alongside an independently scheduled subscription.
+	cmd = tea.Batch(cmd, func() tea.Msg { return nil })
 	m = finishProfileJob(t, m, cmd)
 	if deletedID != id {
 		t.Fatal("display-name delete confirmation changed its backend identity")

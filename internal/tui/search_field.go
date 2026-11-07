@@ -1,34 +1,15 @@
 package tui
 
 import (
-	"strings"
-
 	"charm.land/bubbles/v2/textinput"
-	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 )
 
-// Two cells of horizontal padding on either side, Bubbles' cursor cell, and
-// a stable clear-action slot. Very small fields give that slot back to editing.
-func searchClearWidth(width int) int {
-	if width >= 20 {
-		return 7
-	}
-	return 0
+func searchInputWidth(width int) int {
+	return inputFieldTextWidth(min(inputFieldMaxWidth, width), 0, true)
 }
 
-func searchInputWidth(width int) int { return max(1, width-5-searchClearWidth(width)) }
-
-// Bubbles does not recalculate a scrolled viewport when a new width still
-// contains the logical cursor. Rebuild it on resize, then restore the position.
-func resizeSearchInput(input *textinput.Model, width int) {
-	position := input.Position()
-	if input.Width() != width {
-		input.SetWidth(width)
-		input.CursorEnd()
-	}
-	input.SetCursor(position)
-}
+func resizeSearchInput(input *textinput.Model, width int) { resizeInputField(input, width) }
 
 func searchClearID(id string) string {
 	switch id {
@@ -46,91 +27,53 @@ func searchClearID(id string) string {
 	return ""
 }
 
-func prepareSearchInput(input textinput.Model, width int, surface string, invalid bool) textinput.Model {
-	input.Prompt = ""
-	resizeSearchInput(&input, searchInputWidth(width))
-	styleInput(&input, surface, invalid)
-	input.SetVirtualCursor(false)
-	styles := input.Styles()
-	styles.Cursor.Shape = tea.CursorBar
-	input.SetStyles(styles)
-	return input
-}
-
-func (m Model) searchSurface(id string, input textinput.Model) string {
-	if m.focus == id || m.focus == searchClearID(id) || input.Focused() {
-		return raised
-	}
-	if m.hover == id || m.hover == searchClearID(id) {
-		return panel
-	}
-	return inputBackground
-}
-
 func (m Model) searchField(id, placeholder string, input textinput.Model, width int, invalid bool) dashboardBlock {
-	width = max(1, width)
-	surface := m.searchSurface(id, input)
+	return m.searchToolbar(id, placeholder, input, dashboardBlock{}, width, invalid)
+}
+
+// Search fields use the same surface as their containing page or dialog. Their
+// outline and trailing controls own a single bounded region, capped at 60 cells.
+func (m Model) searchToolbar(id, placeholder string, input textinput.Model, controls dashboardBlock, width int, invalid bool) dashboardBlock {
+	surface := bg
+	if id == "rules.providers-search" {
+		surface = raised
+	}
 	input.Placeholder = placeholder
-	input = prepareSearchInput(input, width, surface, invalid)
-	// Bubbles' placeholder padding may contain NULs with wide characters.
-	value := cellPad(strings.ReplaceAll(input.View(), "\x00", ""), searchInputWidth(width)+1)
-	clearID, clearWidth := searchClearID(id), searchClearWidth(width)
-	canClear := clearID != "" && clearWidth > 0 && input.Value() != "" && !m.busy && !m.quitting
-	clear := strings.Repeat(" ", clearWidth)
-	if canClear {
-		marker, color := " ", muted
-		if m.focus == clearID {
-			marker, color = "›", focus
-		} else if m.hover == clearID {
-			color = text
-		}
-		clear = themed(marker+cellPad(m.tr("search.clear"), 5)+" ", color, surface, false)
-	}
-	content := value + clear
-	blank := themed(strings.Repeat(" ", width), text, surface, false)
-	b := dashboardBlock{lines: []string{blank, themed(cellPad("  "+content, width), text, surface, false), blank}}
-	if m.buttonPlain() {
-		edge := divider
-		if m.focus == id || input.Focused() {
-			edge = focus
-		}
-		if invalid {
-			edge = errorColor
-		}
-		b.lines = inputFrame([]string{content}, width, edge, surface)
-	}
-	if !m.busy && !m.quitting {
-		if canClear {
-			b.targets = append(b.targets, hitRegion{ID: clearID, X: width - 2 - clearWidth, Y: 1, W: clearWidth, H: 1})
-		}
-		b.targets = append(b.targets, hitRegion{ID: id, W: width, H: len(b.lines)})
-	}
-	return b
+	clearID := searchClearID(id)
+	return renderInputField(input, inputFieldOptions{
+		ID: id, ClearID: clearID, Surface: surface, Width: min(inputFieldMaxWidth, max(1, width)),
+		Focused: m.focus == id, Hovered: m.hover == id, Invalid: invalid,
+		Disabled:     m.busy || m.quitting,
+		ClearFocused: m.focus == clearID, ClearHovered: m.hover == clearID, Trailing: controls,
+	})
 }
 
-// Controls sit on the text baseline, or below the field on narrow terminals.
-func (m Model) searchToolbar(id, placeholder string, input textinput.Model, controls dashboardBlock, width int, inline, invalid bool) dashboardBlock {
-	fieldWidth := width
-	if inline {
-		fieldWidth -= ansi.StringWidth(controls.lines[0]) + 2
-	}
-	b := m.searchField(id, placeholder, input, fieldWidth, invalid)
-	if inline {
-		b.lines[1] += themed("  ", text, bg, false) + controls.lines[0]
-		for _, hit := range controls.targets {
-			hit.X += fieldWidth + 2
-			hit.Y++
-			b.targets = append(b.targets, hit)
-		}
-	} else {
-		b.append(controls)
-	}
-	return b
+func (m Model) searchControlOptions(id string) buttonOptions {
+	return buttonOptions{Surface: bg, Focused: m.focus == id, Hovered: m.hover == id,
+		Plain: m.buttonPlain(), Dim: m.feedbackDialogOpen() || m.helpOpen || m.notification.panel.open || m.ruleProviders.open}
 }
 
-func filterToolbarRows(width int) int {
-	if width >= 68 {
-		return 5
+func searchControlWidth(controls dashboardBlock) int {
+	if len(controls.lines) == 0 {
+		return 0
 	}
-	return 6
+	return ansi.StringWidth(controls.lines[0])
+}
+
+func (m Model) searchToolbarGap() int {
+	if m.height >= 24 {
+		return 1
+	}
+	return 0
+}
+
+func (m Model) searchToolbarRows(width int, controls dashboardBlock) int {
+	return inputFieldRows(min(inputFieldMaxWidth, max(1, width)), searchControlWidth(controls), true) + 2 + m.searchToolbarGap()
+}
+
+func (m Model) filterToolbarRows(width int) int {
+	if m.page == "logs" {
+		return m.searchToolbarRows(width, m.logControls())
+	}
+	return m.searchToolbarRows(width, m.ruleFilterButtons())
 }

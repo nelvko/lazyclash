@@ -319,7 +319,7 @@ func (m Model) dashboardOptions() dashboardOptions {
 	o := dashboardOptions{Locale: m.locale, Width: m.width, Height: m.height, Page: m.page, Busy: m.busy, PlainButtons: m.buttonPlain(), Dim: m.feedbackDialogOpen() || m.helpOpen || m.notification.panel.open || m.ruleProviders.open, SidebarOpen: m.sidebarOpen, HideKeyHints: m.keyHints.hidden || m.wizard.open || m.wizard.networkOpen, GuideSkipped: m.guideSkipped, Notifications: items, Spinner: m.spinner.View(), LogoFrame: m.logoFrame, LogoIntroFrame: m.logoIntro.frame, InlineInstall: m.page == "overview" && m.inlineInstallVisible(), BodyRange: m.page == "proxies" && m.proxiesReady() && m.hasExpandedProxyGroups() && m.proxies.detail == ""}
 	if m.page == "rules" || m.page == "logs" {
 		g := dashboardGeometry(o)
-		rows := filterToolbarRows(g.width)
+		rows := m.filterToolbarRows(g.width)
 		if g.height >= rows+2 {
 			o.BodyTopRows = rows
 		}

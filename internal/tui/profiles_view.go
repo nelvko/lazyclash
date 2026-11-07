@@ -18,7 +18,11 @@ func (m Model) profilesBody(width int) (string, []hitRegion) {
 	if !m.snapshotReady {
 		return m.unavailableProfiles(width)
 	}
-	body := m.profilesToolbar(width)
+	var body dashboardBlock
+	if m.searchToolbarGap() > 0 {
+		body.blank()
+	}
+	body.append(m.profilesToolbar(width))
 	body.blank()
 	count := len(m.profiles()) - 1
 	summary := fmt.Sprintf(m.tr("profiles.summary"), count)
@@ -80,25 +84,14 @@ func (m Model) profilesToolbar(width int) dashboardBlock {
 		buttonWidth += ansi.StringWidth(m.profileButtonView(b, bg))
 	}
 	inline := width >= 70
-	fieldWidth := width
+	fieldWidth := min(width, inputImportMaxWidth)
 	if inline {
-		fieldWidth -= buttonWidth + 2
+		fieldWidth = min(inputImportMaxWidth, width-buttonWidth-2)
 	}
-	// Bubbles reserves one additional cell for the cursor, outside Width.
-	input.SetWidth(max(1, fieldWidth-5-ansi.StringWidth(input.Prompt)))
-	input.SetCursor(input.Position())
 	invalid := m.profilesUI.urlError != "" && m.profilesUI.urlErrorValue == input.Value()
-	styleInput(&input, inputBackground, invalid)
-	edge := border
-	if m.focus == "profiles.url" {
-		edge = focus
-	}
-	if invalid {
-		edge = errorColor
-	}
-	field := inputFrame([]string{input.View()}, fieldWidth, edge, inputBackground)
-	body.lines = append(body.lines, field...)
-	body.targets = append(body.targets, hitRegion{ID: "profiles.url", W: fieldWidth, H: len(field)})
+	body = renderInputField(input, inputFieldOptions{ID: "profiles.url", ClearID: "profiles.url.clear", ClearHovered: m.hover == "profiles.url.clear", ClearFocused: m.focus == "profiles.url.clear", Width: fieldWidth, Surface: bg,
+		Focused: m.focus == "profiles.url", Hovered: m.hover == "profiles.url", Invalid: invalid,
+		Disabled: m.busy || m.quitting})
 	if inline {
 		x := fieldWidth + 2
 		body.lines[1] += themed("  ", text, bg, false)

@@ -72,6 +72,7 @@ type wizardState struct {
 func newWizard() wizardState {
 	input := func(hint string, hidden bool) textinput.Model {
 		v := textinput.New()
+		v.SetVirtualCursor(false)
 		v.CharLimit = 8192
 		styleInput(&v, inputBackground, false)
 		v.Placeholder = hint
@@ -638,6 +639,9 @@ func (m *Model) wizardInput() *textinput.Model {
 	return nil
 }
 func (m *Model) wizardActivate(id string) tea.Cmd {
+	if handled, cmd := m.clearInputField(id); handled {
+		return cmd
+	}
 	if m.wizardControlDisabled(id) {
 		return nil
 	}

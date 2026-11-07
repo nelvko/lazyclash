@@ -10,7 +10,6 @@ import (
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/diagnostic"
 	"github.com/nelvko/lazyclash/internal/i18n"
@@ -34,6 +33,7 @@ func newProfilesState(locales ...i18n.Localizer) profilesState {
 		locale = locales[0]
 	}
 	input := textinput.New()
+	input.SetVirtualCursor(false)
 	input.CharLimit = 8192
 	input.Placeholder = locale.T("profiles.url_placeholder")
 	styleInput(&input, inputBackground, false)
@@ -465,6 +465,16 @@ func readProfileOverrides(path string) ([]byte, error) {
 	return raw, nil
 }
 
+func profileDialogCanvas(width, height int) []string {
+	rows := make([]string, height)
+	for row := range rows {
+		rows[row] = themed("│"+strings.Repeat(" ", width-2)+"│", border, raised, false)
+	}
+	rows[0] = themed("╭"+strings.Repeat("─", width-2)+"╮", border, raised, false)
+	rows[height-1] = themed("╰"+strings.Repeat("─", width-2)+"╯", border, raised, false)
+	return rows
+}
+
 func (m *Model) renderProfileForm(base string) (string, []hitRegion) {
 	if m.form == "profile-create" {
 		return m.renderProfileCreateForm(base)
@@ -472,7 +482,11 @@ func (m *Model) renderProfileForm(base string) (string, []hitRegion) {
 	if m.form == "profile-delete" {
 		return m.renderProfileDeleteForm(base)
 	}
-	boxW, boxH := min(76, m.width), min(12, m.height)
+	limit := inputFieldMaxWidth
+	if m.pathForm() {
+		limit = inputImportMaxWidth
+	}
+	boxW, boxH := min(limit+4, m.width), min(12, m.height)
 	if m.pathForm() {
 		boxH = min(18, m.height)
 	}
@@ -497,28 +511,34 @@ func (m *Model) renderProfileForm(base string) (string, []hitRegion) {
 	case "profile-overrides":
 		title, label = m.tr("profiles.overrides_title", clean(m.profileInfo(m.name).Name)), m.tr("profiles.overrides_path")
 		hint = m.tr("profiles.overrides_hint")
-	case "profile-delete":
-		title, label = m.tr("profiles.delete_title", clean(m.profileInfo(m.name).Name)), m.tr("profiles.delete_label")
-		hint = m.tr("profiles.delete_hint")
 	}
-	m.input.SetWidth(max(1, boxW-7-ansi.StringWidth(m.input.Prompt)))
-	m.input.SetCursor(m.input.Position())
-	styleInput(&m.input, inputBackground, m.failure != "")
-	lines := []string{
-		themed(cellCrop(title, boxW-4), text, raised, false),
-		themed(cellCrop(hint, boxW-4), muted, raised, false),
-		cellCrop(label, boxW-4), "",
-		themed(m.input.View(), text, inputBackground, false),
+	inner := boxW - 4
+	rows := profileDialogCanvas(boxW, boxH)
+	put := func(row int, value string) { putRows(rows, 2, row, cellPad(value, inner), boxW) }
+	put(1, themed(cellCrop(title, inner), text, raised, false))
+	inputRow := 2
+	if boxH >= 11 {
+		put(2, themed(cellCrop(hint, inner), muted, raised, false))
+		put(3, themed(cellCrop(label, inner), muted, raised, false))
+		inputRow = 5
+	} else if boxH >= 9 {
+		put(2, themed(cellCrop(label, inner), muted, raised, false))
+		inputRow = 3
 	}
-	inputRow := 5
-	if boxH < 10 {
-		lines = []string{themed(cellCrop(title, boxW-4), text, raised, false), themed(m.input.View(), text, inputBackground, false)}
-		inputRow = 2
+	m.input = prepareInputField(m.input, inputFieldTextWidth(inner, 0, true), raised, m.failure != "")
+	field := renderInputField(m.input, inputFieldOptions{ID: "import-input", ClearID: "import-input.clear", ClearHovered: m.hover == "import-input.clear", ClearFocused: m.focus == "import-input.clear", Width: inner, Surface: raised,
+		Focused: m.input.Focused(), Hovered: m.hover == "import-input", Invalid: m.failure != "",
+		Disabled: m.busy || m.quitting})
+	for row, line := range field.lines {
+		put(inputRow+row, line)
 	}
 	footer := m.tr("profiles.form_footer")
 	if m.pathForm() {
-		rows := max(0, boxH-len(lines)-5)
-		lines = append(lines, m.paths.view(boxW-4, rows, m.locale)...)
+		completionRow := inputRow + len(field.lines) + 1
+		capacity := max(0, boxH-3-completionRow)
+		for row, line := range m.paths.view(inner, capacity, m.locale) {
+			put(completionRow+row, line)
+		}
 		footer = m.tr("profiles.path_footer")
 		if boxW < 60 {
 			footer = m.tr("profiles.path_footer_short")
@@ -527,76 +547,87 @@ func (m *Model) renderProfileForm(base string) (string, []hitRegion) {
 			footer = m.tr("profiles.path_footer_tiny")
 		}
 	}
-	lines = append(lines, "", themed(cellCrop(footer, boxW-4), muted, raised, false))
-	if m.failure != "" {
-		lines = append(lines, themed(cellCrop(m.failure, boxW-4), errorColor, raised, false))
+	if m.failure != "" && inputRow+len(field.lines) < boxH-2 {
+		put(boxH-3, themed(cellCrop(m.failure, inner), errorColor, raised, false))
 	}
-	box := lipgloss.NewStyle().Background(lipgloss.Color(raised)).Border(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color(focus)).Width(boxW).Height(boxH).Padding(0, 1).Render(strings.Join(lines, "\n"))
-	return overlay(base, themed(box, text, raised, false), x, y, m.width, m.height), []hitRegion{{ID: "import-input", X: x + 2, Y: y + inputRow, W: max(1, boxW-4), H: 1}}
+	put(boxH-2, themed(cellCrop(footer, inner), muted, raised, false))
+	for i := range field.targets {
+		field.targets[i].X += x + 2
+		field.targets[i].Y += y + inputRow
+	}
+	return overlay(base, strings.Join(rows, "\n"), x, y, m.width, m.height), field.targets
 }
 
 func (m *Model) renderProfileDeleteForm(base string) (string, []hitRegion) {
-	width, height := min(76, m.width), min(14, m.height)
+	width, height := min(inputFieldMaxWidth+4, m.width), min(16, m.height)
 	if width < 24 || height < 7 {
 		return overlay("", m.tr("profiles.enlarge"), 0, 0, m.width, m.height), nil
 	}
 	x, y := (m.width-width)/2, (m.height-height)/2
 	inner := width - 4
-	rows := make([]string, height)
-	for i := range rows {
-		rows[i] = themed(strings.Repeat(" ", width), text, raised, false)
-	}
+	rows := profileDialogCanvas(width, height)
 	put := func(row int, value string) { putRows(rows, 2, row, cellPad(value, inner), width) }
-	for row := range rows {
-		putRows(rows, 0, row, themed("│", border, raised, false), width)
-		putRows(rows, width-1, row, themed("│", border, raised, false), width)
-	}
-	putRows(rows, 0, 0, themed("┌"+strings.Repeat("─", width-2)+"┐", border, raised, false), width)
-	putRows(rows, 0, height-1, themed("└"+strings.Repeat("─", width-2)+"┘", border, raised, false), width)
-	put(1, themed(m.tr("profiles.delete_title", clean(m.profileInfo(m.name).Name)), text, raised, false))
-	inputRow := 2
-	if height >= 10 {
-		put(2, themed(m.tr("profiles.delete_hint"), muted, raised, false))
-		put(3, themed(m.tr("profiles.delete_label"), muted, raised, false))
-		inputRow = 4
-	}
-	m.input.SetWidth(max(1, inner-2-ansi.StringWidth(m.input.Prompt)))
-	m.input.SetCursor(m.input.Position())
-	styleInput(&m.input, inputBackground, m.failure != "")
-	put(inputRow, themed(cellPad(m.input.View(), inner), text, inputBackground, false))
-	buttons := []struct {
+	put(1, themed(cellCrop(m.tr("profiles.delete_title", clean(m.profileInfo(m.name).Name)), inner), text, raised, false))
+	var buttons dashboardBlock
+	buttons.lines = []string{""}
+	for _, button := range []struct {
 		id, label string
 		kind      buttonKind
 	}{
 		{"profile-delete.cancel", m.tr("profiles.create_cancel"), buttonSecondary},
 		{"profile-delete.confirm", m.tr("profiles.delete"), buttonDangerConfirm},
-	}
-	buttonRow := height - 4
-	var targets []hitRegion
-	targets = append(targets, hitRegion{ID: "import-input", X: x + 2, Y: y + inputRow, W: inner, H: 1})
-	line, bx := "", 0
-	for _, button := range buttons {
+	} {
 		value := renderButton(button.label, buttonOptions{Kind: button.kind, Surface: raised,
 			Focused: m.profilesUI.deleteFocus == button.id, Hovered: m.hover == button.id,
 			Disabled: m.busy || m.quitting, Plain: m.buttonPlain()})
-		w := min(inner, ansi.StringWidth(value))
-		if bx > 0 && bx+w > inner {
-			put(buttonRow, line)
-			buttonRow++
-			line, bx = "", 0
+		last := len(buttons.lines) - 1
+		if buttons.lines[last] != "" && ansi.StringWidth(buttons.lines[last])+ansi.StringWidth(value) > inner {
+			buttons.lines = append(buttons.lines, "")
+			last++
 		}
-		targets = append(targets, hitRegion{ID: button.id, X: x + 2 + bx, Y: y + buttonRow, W: w, H: 1})
-		line += cellCrop(value, inner)
-		bx += w
+		if !m.busy && !m.quitting {
+			buttons.targets = append(buttons.targets, hitRegion{ID: button.id, X: ansi.StringWidth(buttons.lines[last]), Y: last, W: min(inner, ansi.StringWidth(value)), H: 1})
+		}
+		buttons.lines[last] += cellCrop(value, inner)
 	}
-	put(buttonRow, line)
+	buttonRow := height - 3 - len(buttons.lines)
+	if height < 9 {
+		buttonRow = height - 1 - len(buttons.lines)
+	}
+	inputRow := 2
+	if buttonRow >= 9 {
+		put(2, themed(cellCrop(m.tr("profiles.delete_hint"), inner), muted, raised, false))
+		put(3, themed(cellCrop(m.tr("profiles.delete_label"), inner), muted, raised, false))
+		inputRow = 5
+	} else if buttonRow >= 7 {
+		put(2, themed(cellCrop(m.tr("profiles.delete_label"), inner), muted, raised, false))
+		inputRow = 3
+	}
+	m.input = prepareInputField(m.input, inputFieldTextWidth(inner, 0, true), raised, m.failure != "")
+	field := renderInputField(m.input, inputFieldOptions{ID: "import-input", ClearID: "import-input.clear", ClearHovered: m.hover == "import-input.clear", ClearFocused: m.focus == "import-input.clear", Width: inner, Surface: raised,
+		Focused: m.profilesUI.deleteFocus == "import-input", Hovered: m.hover == "import-input", Invalid: m.failure != "",
+		Disabled: m.busy || m.quitting})
+	for row, line := range field.lines {
+		put(inputRow+row, line)
+	}
+	var targets []hitRegion
+	for _, hit := range field.targets {
+		hit.X, hit.Y = hit.X+x+2, hit.Y+y+inputRow
+		targets = append(targets, hit)
+	}
+	for row, line := range buttons.lines {
+		put(buttonRow+row, line)
+	}
+	for _, hit := range buttons.targets {
+		hit.X, hit.Y = hit.X+x+2, hit.Y+y+buttonRow
+		targets = append(targets, hit)
+	}
 	message, color := m.tr("profiles.create_footer"), muted
 	if m.failure != "" {
 		message, color = m.failure, errorColor
 	}
-	put(height-2, themed(cellCrop(message, inner), color, raised, false))
-	if m.busy || m.quitting {
-		targets = nil
+	if height >= 9 {
+		put(height-2, themed(cellCrop(message, inner), color, raised, false))
 	}
 	return overlay(base, strings.Join(rows, "\n"), x, y, m.width, m.height), targets
 }

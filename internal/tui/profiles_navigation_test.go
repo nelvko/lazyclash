@@ -219,8 +219,16 @@ func TestProfileURLInputOwnsTextPasteAndFocusKeys(t *testing.T) {
 		t.Fatal("subscription URL is not visible for editing")
 	}
 	m, _ = update(m, special(tea.KeyTab))
+	if m.focus != "profiles.url.clear" || m.profilesUI.editing || m.profilesUI.url.Focused() {
+		t.Fatalf("Tab did not reach the nonempty field's clear control: %s", m.focus)
+	}
+	m, _ = update(m, special(tea.KeyTab))
 	if m.focus != "profiles.add" || m.profilesUI.editing || m.profilesUI.url.Focused() {
 		t.Fatalf("Tab did not leave the URL editor for Add: %s", m.focus)
+	}
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
+	if m.focus != "profiles.url.clear" {
+		t.Fatalf("Shift+Tab did not return to the clear control: %s", m.focus)
 	}
 	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
 	if m.focus != "profiles.url" || !m.profilesUI.editing || !m.profilesUI.url.Focused() {

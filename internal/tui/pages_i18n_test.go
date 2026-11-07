@@ -51,7 +51,7 @@ func TestDataPagesLocalizeControlsAndKeepObservedValues(t *testing.T) {
 					width := dashboardBodyWidth(dashboardOptions{Width: m.width, Height: m.height, Page: m.page})
 					body, _ := m.pageBody(width)
 					if m.page == "logs" {
-						bar := m.logsToolbar(width, filterToolbarRows(width))
+						bar := m.logsToolbar(width, m.filterToolbarRows(width))
 						body = strings.Join(bar.lines, "\n") + "\n" + body
 					}
 					plain := ansi.Strip(body)

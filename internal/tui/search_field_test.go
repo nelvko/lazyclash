@@ -74,7 +74,7 @@ func TestSearchFieldPaddingClicksFocusInput(t *testing.T) {
 func TestSearchFieldLogsShortWindowRetainsVisibleTargets(t *testing.T) {
 	for _, width := range []int{40, 60} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
-			m, id := searchFieldModel(t, "logs", width, 11)
+			m, id := searchFieldModel(t, "logs", width, 10)
 			if m.dashboardOptions().BodyTopRows != 0 {
 				t.Fatal("fixture did not use the short-window toolbar fallback")
 			}
@@ -91,8 +91,8 @@ func TestSearchFieldLogsShortWindowRetainsVisibleTargets(t *testing.T) {
 			if m.logs.level != 1 {
 				t.Fatal("visible short-window filter control did not accept a click")
 			}
-			assertCanvas(t, m.screen, width, 11)
-			assertRegions(t, m.targets, width, 11)
+			assertCanvas(t, m.screen, width, 10)
+			assertRegions(t, m.targets, width, 10)
 		})
 	}
 }
@@ -112,7 +112,7 @@ func TestSearchFieldUnicodeQueryRetainsCursorAcrossResize(t *testing.T) {
 					if input.Value() != query || input.Position() != len([]rune(query)) {
 						t.Fatalf("resize to %v lost query or cursor: value=%q position=%d", size, input.Value(), input.Position())
 					}
-					if size[0] >= 40 && !strings.Contains(ansi.Strip(m.screen), "VISIBLE-TAIL") {
+					if size[0] >= 40 && !strings.Contains(ansi.Strip(m.screen), "BLE-TAIL") {
 						t.Fatalf("resize to %v hid the current query tail:\n%s", size, ansi.Strip(m.screen))
 					}
 					assertCanvas(t, m.screen, size[0], size[1])
@@ -145,13 +145,14 @@ func TestSearchFieldFixedControlsAlignWithFrame(t *testing.T) {
 				field := findTarget(t, m, id)
 				controlID := map[string]string{"connections": "conn.pause", "rules": "rules.case", "logs": "logs.level"}[page]
 				control := findTarget(t, m, controlID)
-				if width >= 100 {
-					if control.Y != field.Y+1 || control.X < field.X+field.W {
-						t.Fatalf("wide controls should align with the input row: field=%+v control=%+v", field, control)
+				if control.Y == field.Y+1 {
+					if control.X < field.X+2+field.InputWidth || control.X+control.W > field.X+field.W-1 {
+						t.Fatalf("inline controls left the frame or overlapped text: field=%+v control=%+v", field, control)
 					}
 				} else if control.Y < field.Y+field.H {
 					t.Fatalf("narrow controls overlap the search frame: field=%+v control=%+v", field, control)
 				}
+
 				if page == "logs" {
 					m.logsScroll(-20)
 				} else {
@@ -169,7 +170,7 @@ func TestSearchFieldFixedControlsAlignWithFrame(t *testing.T) {
 	}
 }
 
-func TestSearchFieldFilledPaddingKeepsPlaceholderReadable(t *testing.T) {
+func TestSearchFieldOutlineKeepsSurfaceAndPlaceholderReadable(t *testing.T) {
 	m, id := searchFieldModel(t, "rules", 120, 32)
 	m.noColor, m.colorProfile = false, colorprofile.TrueColor
 	input := m.rules.search
@@ -180,15 +181,15 @@ func TestSearchFieldFilledPaddingKeepsPlaceholderReadable(t *testing.T) {
 	m.focus = id
 	focused := m.searchField(id, "筛选条件", input, 40, false)
 	for _, field := range []dashboardBlock{blurred, focused} {
-		if len(field.lines) != 3 || ansi.Strip(field.lines[0]) != strings.Repeat(" ", 40) || ansi.Strip(field.lines[2]) != strings.Repeat(" ", 40) {
-			t.Fatal("colored search field lost its full-width vertical padding")
+		if len(field.lines) != 3 || ansi.Strip(field.lines[0]) != "╭"+strings.Repeat("─", 38)+"╮" || ansi.Strip(field.lines[2]) != "╰"+strings.Repeat("─", 38)+"╯" {
+			t.Fatal("search field lost its rounded outline")
 		}
-		if !strings.HasPrefix(ansi.Strip(field.lines[1]), "  筛选条件") || strings.Contains(strings.Join(field.lines, ""), "\x00") {
+		if !strings.HasPrefix(ansi.Strip(field.lines[1]), "│ 筛选条件") || strings.Contains(strings.Join(field.lines, ""), "\x00") {
 			t.Fatal("search prompt or virtual cursor covered the placeholder")
 		}
 	}
 	if blurred.lines[0] == focused.lines[0] {
-		t.Fatal("focus did not distinguish the input surface")
+		t.Fatal("focus did not distinguish the input outline")
 	}
 	m.noColor = true
 	plain := m.searchField(id, "筛选条件", input, 40, false)
@@ -210,8 +211,8 @@ func TestSearchFieldClearClickReturnsToEditableInput(t *testing.T) {
 				m, _ = click(m, findTarget(t, m, id))
 				m, _ = update(m, tea.PasteMsg{Content: "needle"})
 				field, clear := findTarget(t, m, id), findTarget(t, m, clearID)
-				if clear.Y != field.Y+1 || clear.X < field.X || clear.X+clear.W > field.X+field.W {
-					t.Fatalf("clear action left its input: field=%+v clear=%+v", field, clear)
+				if clear.Y != field.Y+1 || clear.X != field.X+field.InputWidth+3 || clear.W != 2 {
+					t.Fatalf("clear action no longer follows the editor: field=%+v clear=%+v", field, clear)
 				}
 				m, _ = click(m, clear)
 				var input *textinput.Model
@@ -249,5 +250,55 @@ func TestSearchFieldPageFooterKeepsSearchShortcut(t *testing.T) {
 				})
 			}
 		}
+	}
+}
+
+func TestSearchFieldKeepsClearAndTrailingOptionsStableAcrossColorAndFocus(t *testing.T) {
+	for _, width := range []int{40, 160} {
+		t.Run(fmt.Sprint(width), func(t *testing.T) {
+			m, id := searchFieldModel(t, "rules", width, 32)
+			m.colorProfile = colorprofile.TrueColor
+			m.rules.caseSensitive, m.rules.wholeWord = true, true
+			m.layout()
+			frame := findTarget(t, m, id)
+			caseTarget, wordTarget, regexTarget := findTarget(t, m, "rules.case"), findTarget(t, m, "rules.word"), findTarget(t, m, "rules.regex")
+			for _, noColor := range []bool{false, true} {
+				for _, value := range []string{"", "needle"} {
+					for _, focus := range []string{id, "rules.case", "rules.clear"} {
+						m.noColor = noColor
+						m.focus, m.hover = focus, "rules.word"
+						m.rules.search.SetValue(value)
+						m.rules.editing = focus == id
+						if m.rules.editing {
+							m.rules.search.Focus()
+						} else {
+							m.rules.search.Blur()
+						}
+						m.layout()
+						if findTarget(t, m, id) != frame || findTarget(t, m, "rules.case") != caseTarget || findTarget(t, m, "rules.word") != wordTarget || findTarget(t, m, "rules.regex") != regexTarget {
+							t.Fatalf("noColor=%t value=%q focus=%s moved the editor or matching controls", noColor, value, focus)
+						}
+						if value == "" {
+							if hasAction(m.targets, "rules.clear") {
+								t.Fatal("empty search exposed a clear action")
+							}
+							continue
+						}
+						clear := findTarget(t, m, "rules.clear")
+						if clear.X != frame.X+frame.InputWidth+3 || clear.W != 2 || caseTarget.X != clear.X+clear.W+2 {
+							t.Fatalf("clear and separator no longer precede matching options: case=%+v clear=%+v frame=%+v", caseTarget, clear, frame)
+						}
+						view := m.View().Content
+						if noColor && strings.Contains(view, "\x1b") {
+							t.Fatal("NO_COLOR search retained style escapes")
+						}
+						rows := strings.Split(view, "\n")
+						if got := ansi.Strip(ansi.Cut(rows[frame.Y+1], clear.X+1, clear.X+4)); got != "× │" {
+							t.Fatalf("search clear icon and separator have an incorrect order: %q", got)
+						}
+					}
+				}
+			}
+		})
 	}
 }

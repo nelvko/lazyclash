@@ -6,6 +6,8 @@ import (
 	"strings"
 	"testing"
 
+	"charm.land/lipgloss/v2"
+
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/i18n"
@@ -34,9 +36,9 @@ func TestSearchControlsKeepCompactSelectionAndFocusReadableWithoutColor(t *testi
 			}
 			if profile == colorprofile.ASCII {
 				for index, label := range []string{"Aa", "ab", ".*"} {
-					want := "[" + label + "]"
+					want := label + " "
 					if state&(1<<index) != 0 {
-						want = "<" + label + ">"
+						want = label + "*"
 					}
 					if !strings.Contains(plain, want) {
 						t.Fatalf("monochrome option lost its selected state: %q lacks %s", plain, want)
@@ -62,7 +64,7 @@ func TestSearchControlsKeepRuleCountsAndInvalidExpressionVisible(t *testing.T) {
 					m.rules.editing = true
 					for _, id := range []string{"rules.search", "rules.case", "rules.word", "rules.regex", "rules.clear"} {
 						m.focus, m.hover = id, id
-						bar := m.rulesToolbar(width, filterToolbarRows(width))
+						bar := m.rulesToolbar(width, m.filterToolbarRows(width))
 						plain := ansi.Strip(strings.Join(bar.lines, "\n"))
 						if want := m.tr("rules.filtered_count", len(m.filteredRules()), len(sampleRules())); !strings.Contains(plain, want) {
 							t.Fatalf("editing or hint %s hid rule counts at width %d:\n%s", id, width, plain)
@@ -72,7 +74,7 @@ func TestSearchControlsKeepRuleCountsAndInvalidExpressionVisible(t *testing.T) {
 				m.rules.regex = true
 				m.rules.search.SetValue("[")
 				m.focus, m.hover = "rules.case", "rules.word"
-				bar := m.rulesToolbar(width, filterToolbarRows(width))
+				bar := m.rulesToolbar(width, m.filterToolbarRows(width))
 				plain := ansi.Strip(strings.Join(bar.lines, "\n"))
 				if !strings.Contains(plain, m.tr("rules.filtered_count", 0, len(sampleRules()))) || !strings.Contains(plain, m.tr("rules.invalid_regex")) {
 					t.Fatalf("matching-option hint hid invalid expression or counts:\n%s", plain)
@@ -94,7 +96,7 @@ func TestSearchControlsKeepLogCountsWhileEditingOrInspectingOptions(t *testing.T
 					m.logs.editing = editing
 					for _, id := range []string{"logs.search", "logs.level", "logs.view", "logs.reset-search"} {
 						m.focus, m.hover = id, id
-						bar := m.logsToolbar(width, filterToolbarRows(width))
+						bar := m.logsToolbar(width, m.filterToolbarRows(width))
 						plain := ansi.Strip(strings.Join(bar.lines, "\n"))
 						if !strings.Contains(plain, m.tr("logs.summary", 1, 12)) {
 							t.Fatalf("editing=%t or hint %s hid retained-log counts:\n%s", editing, id, plain)
@@ -128,5 +130,28 @@ func TestSearchControlsLogClearReturnsToInputWithoutChangingCollection(t *testin
 				t.Fatal("clearing search changed collection, pause, entries or other display settings")
 			}
 		})
+	}
+}
+
+func TestSearchMatchingOptionsUseTextEmphasisAndWholeWordIcon(t *testing.T) {
+	for _, selected := range []bool{false, true} {
+		for _, hovered := range []bool{false, true} {
+			for _, label := range []string{"Aa", "ab", ".*"} {
+				o := buttonOptions{Selected: selected, Hovered: hovered}
+				value := renderRuleSearchToggle(label, o)
+				color := muted
+				if hovered {
+					color = text
+				}
+				if selected {
+					color = accent
+				}
+				face := lipgloss.NewStyle().Bold(selected).Underline(label == "ab").Render(label)
+				want := themed(" ", focus, bg, false) + themed(face+" ", color, bg, false)
+				if value != want {
+					t.Fatalf("selected=%t label=%s changed the page surface or icon emphasis: got %q want %q", selected, label, value, want)
+				}
+			}
+		}
 	}
 }

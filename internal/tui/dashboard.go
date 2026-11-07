@@ -14,6 +14,9 @@ const sidebarWidth = 20
 type hitRegion struct {
 	ID         string
 	X, Y, W, H int
+	// Nonzero only for a complete shared input frame. The editor starts two
+	// cells from its left edge and one row below its top edge.
+	InputWidth int
 }
 type dashboardOptions struct {
 	Locale                          i18n.Localizer
@@ -333,9 +336,13 @@ func coreSummary(s app.Snapshot, locales ...i18n.Localizer) (string, string) {
 }
 
 func clipRegion(r hitRegion, x, y, w, h int) (hitRegion, bool) {
+	original := r
 	right, bottom := min(r.X+r.W, x+w), min(r.Y+r.H, y+h)
 	r.X, r.Y = max(r.X, x), max(r.Y, y)
 	r.W, r.H = right-r.X, bottom-r.Y
+	if r.X != original.X || r.Y != original.Y || r.W != original.W || r.H != original.H {
+		r.InputWidth = 0
+	}
 	return r, r.W > 0 && r.H > 0
 }
 func regionsOverlap(a, b hitRegion) bool {

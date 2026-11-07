@@ -323,7 +323,13 @@ func findTarget(t *testing.T, m Model, id string) hitRegion {
 	return hitRegion{}
 }
 func click(m Model, r hitRegion) (Model, tea.Cmd) {
-	return update(m, tea.MouseClickMsg{X: r.X + r.W/2, Y: r.Y + r.H/2, Button: tea.MouseLeft})
+	x, y := r.X+r.W/2, r.Y+r.H/2
+	if r.InputWidth > 0 {
+		// A shared input frame also contains inner actions. Clicking the input
+		// target means its editor, rather than an action at the frame's center.
+		x, y = r.X+2+r.InputWidth/2, r.Y+1
+	}
+	return update(m, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
 }
 func expectQuit(t *testing.T, cmd tea.Cmd) {
 	t.Helper()

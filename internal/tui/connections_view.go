@@ -80,7 +80,8 @@ func (m Model) connectionControls() dashboardBlock {
 		{"conn.pause", pause},
 		{"conn.sort", m.tr("connections.sort", m.tr(m.connections.sort.key()))},
 	} {
-		o := dashboardButtonOptions(item.id, m.navigationOptions(), false, bg)
+		o := m.searchControlOptions(item.id)
+		o.Kind = buttonText
 		o.Disabled = m.busy || (item.id == "conn.pause" && m.connectionSnapshot() == nil && !m.connections.paused)
 		value := renderButton(item.label, o)
 		if !o.Disabled {
@@ -93,17 +94,11 @@ func (m Model) connectionControls() dashboardBlock {
 }
 
 func (m Model) connectionToolbarRows(width int) int {
-	if width >= 100 {
-		return 6
-	}
-	return 7
+	return m.searchToolbarRows(width, m.connectionControls()) + 1
 }
 
 func (m Model) connectionSearchWidth(width int) int {
-	if width >= 100 {
-		width -= ansi.StringWidth(m.connectionControls().lines[0]) + 2
-	}
-	return searchInputWidth(width)
+	return inputFieldTextWidth(min(inputFieldMaxWidth, max(1, width)), searchControlWidth(m.connectionControls()), true)
 }
 
 func (m Model) connectionsToolbar(width, rows int) dashboardBlock {
@@ -114,8 +109,11 @@ func (m Model) connectionsToolbar(width, rows int) dashboardBlock {
 		stats += "   Σ ↓ " + formatBytes(snapshot.DownloadTotal) + "  ↑ " + formatBytes(snapshot.UploadTotal)
 	}
 	b.lines = append(b.lines, themed(cellCrop(stats, width), accent, bg, false))
+	if m.searchToolbarGap() > 0 {
+		b.blank()
+	}
 	b.append(m.searchToolbar("conn.search", m.tr("connections.search_placeholder"), m.connections.search,
-		m.connectionControls(), width, width >= 100, false))
+		m.connectionControls(), width, false))
 	status, color := runtimeStatus(m.runtime.snapshot, m.runtime.received, m.runtime.pending, m.snapshot.Installed, m.locale), muted
 	if m.connections.paused && m.connectionSnapshot() != nil {
 		status, color = m.tr("connections.paused"), warning

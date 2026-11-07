@@ -242,6 +242,9 @@ func (m *Model) inlineInstallKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 }
 
 func (m *Model) inlineInstallActivate(id string) tea.Cmd {
+	if handled, cmd := m.clearInputField(id); handled {
+		return cmd
+	}
 	if !strings.HasPrefix(id, "setup.") || !m.inlineInstallVisible() || m.quitting {
 		return nil
 	}
@@ -334,18 +337,25 @@ func (d *inlineInstallDocument) control(action, label string) {
 }
 
 func (d *inlineInstallDocument) field(action, label string, input textinput.Model) {
+	if len(d.lines) > 0 && d.lines[len(d.lines)-1] != "" {
+		d.space()
+	}
 	d.line(label, muted)
 	id := "setup." + action
-	styleInput(&input, inputBackground, input.Err != nil)
-	input.SetWidth(max(1, d.width-2))
 	if d.model.focus == id {
 		input.Focus()
 	} else {
 		input.Blur()
 	}
-	row := len(d.lines)
-	d.lines = append(d.lines, themed(cellPad(input.View(), d.width), text, inputBackground, false))
-	d.targets = append(d.targets, hitRegion{ID: id, Y: row, W: d.width, H: 1})
+	field := renderInputField(input, inputFieldOptions{ID: id, ClearID: id + ".clear", ClearHovered: d.model.hover == id+".clear", ClearFocused: d.model.focus == id+".clear", Width: min(d.width, inputFieldMaxWidth), Surface: panel,
+		Focused: d.model.focus == id, Hovered: d.model.hover == id, Invalid: input.Err != nil,
+		Disabled: d.model.busy || d.model.quitting})
+	for _, hit := range field.targets {
+		hit.Y += len(d.lines)
+		d.targets = append(d.targets, hit)
+	}
+	d.lines = append(d.lines, field.lines...)
+	d.space()
 }
 
 func (d *inlineInstallDocument) buttons(buttons ...wizardButton) {

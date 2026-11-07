@@ -1147,6 +1147,9 @@ func (m *Model) serviceAction(action string) tea.Cmd {
 	return m.begin(m.tr("model.service_"+action), m.tr("model.service_"+action+"_done"), func(ctx context.Context) error { return m.backend.Control(ctx, action) }, notificationOperation{Key: "service." + action, Context: m.tr("notification.service." + action)})
 }
 func (m *Model) activate(id string) tea.Cmd {
+	if handled, cmd := m.clearInputField(id); handled {
+		return cmd
+	}
 	if m.page == "proxies" && id != "proxies.search" {
 		m.proxies.editing = false
 		m.proxies.search.Blur()
@@ -1384,6 +1387,9 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 				if m.page == "connections" && m.connections.confirming && r.ID != "conn.cancel" && r.ID != "conn.confirm" {
 					return nil
 				}
+				if handled, cmd := m.clearInputField(r.ID); handled {
+					return cmd
+				}
 				if m.wizard.open || m.wizard.networkOpen {
 					m.wizard.focus = r.ID
 					return m.wizardActivate(r.ID)
@@ -1578,7 +1584,7 @@ func (m Model) View() tea.View {
 	view := tea.NewView(terminalTheme(themed(m.screen, text, bg, false), profile))
 	view.AltScreen = true
 	view.MouseMode = tea.MouseModeAllMotion
-	view.Cursor = m.searchCursor()
+	view.Cursor = m.inputCursor()
 	return view
 }
 func clean(s string) string {

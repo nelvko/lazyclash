@@ -102,7 +102,12 @@ func TestRuntimePortsInputOwnsDigitsPasteAndNormalCharacters(t *testing.T) {
 	}
 	m.ports.mixed.SetValue("")
 	m, _ = update(m, tea.PasteMsg{Content: "18080"})
-	m, _ = update(m, special(tea.KeyTab))
+	for steps := 0; m.ports.focus != "ports.controller" && steps < len(m.ports.controls); steps++ {
+		m, _ = update(m, special(tea.KeyTab))
+	}
+	if m.ports.focus != "ports.controller" || m.ports.mixed.Value() != "18080" {
+		t.Fatal("Tab did not reach the controller editor while preserving the proxy port")
+	}
 	m.ports.controller.SetValue("")
 	m, _ = update(m, tea.PasteMsg{Content: "18080"})
 	m, _ = update(m, special(tea.KeyEnter))

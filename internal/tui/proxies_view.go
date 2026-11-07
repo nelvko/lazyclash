@@ -83,7 +83,7 @@ func (m Model) proxiesToolbar(width int) dashboardBlock {
 		b.blank()
 	}
 	field := m.searchField("proxies.search", m.tr("proxies.search_placeholder"), m.proxies.search,
-		max(1, width-x-actionSpace), false)
+		min(inputFieldMaxWidth, max(1, width-x-actionSpace)), false)
 	y := len(b.lines)
 	if inline {
 		y = 0
@@ -100,7 +100,13 @@ func (m Model) proxiesToolbar(width int) dashboardBlock {
 	if actionWidth > 0 {
 		b.lines[y+1] += themed("  ", text, bg, false) + action
 		if !m.busy && !m.quitting {
-			b.targets = append(b.targets, hitRegion{ID: "proxies.collapse_all", X: width - actionWidth, Y: y + 1, W: actionWidth, H: 1})
+			b.targets = append(b.targets, hitRegion{ID: "proxies.collapse_all", X: x + min(inputFieldMaxWidth, max(1, width-x-actionSpace)) + 2, Y: y + 1, W: actionWidth, H: 1})
+		}
+	}
+	if m.searchToolbarGap() > 0 {
+		b.lines = append([]string{""}, b.lines...)
+		for i := range b.targets {
+			b.targets[i].Y++
 		}
 	}
 	return b

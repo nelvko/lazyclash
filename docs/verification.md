@@ -1,5 +1,23 @@
 # 验证入口
 
+## 统一圆角输入框（2026-11-08）
+
+全部输入框改为共享 `input_field.go`，继续复用 Charm Bubbles textinput 的编辑、验证、粘贴、隐藏与补全能力。普通输入和五处搜索最大 60 列，配置来源导入最多 72 列；三行圆角细描边、与所在页面/卡片/弹窗相同内底、统一外部间距，短窗口压缩留白。匹配控件在框内右侧紧凑排列，顺序为文字、`×`、分隔线、`Aa ab .*`；清除是图标组第一项，没有尾部选项时距右边框只留一格，空间不足时选项在下一行居右，清除仍留在框内右侧。选中只用高亮文字及粗体，匹配按键与 `×` 悬停只提亮文字，`ab` 固定下划线；NO_COLOR 保留独立选中和焦点标记。清空只修改当前文本并返回编辑，沿用各表单的校验、补全及计划失效逻辑，不提交或更改匹配选项。配置创建、端口和安装窗口的正文滚动及固定操作区同步适配三行输入，删除确认仍支持 24×7。
+
+所有输入使用真实闪烁竖线光标，编辑区宽度由共享组件随命中区域返回，完整帧才允许硬件光标；中英文水平滚动、居中弹窗、尺寸变化及裁切复用同一坐标。修复 Bubbles 未着色的光标字符继承边框强调色的问题。原本只展开一层命令批次的配置测试辅助函数补充递归展开，防止把未执行操作误判为稳定 ID 回归；端口及配置导航断言覆盖新增清空停靠点。
+
+为保留共享工作区其他会话的概览与流量改动，从 `5eea958` 导出隔离源码，只叠加本次输入框相关文件或代码块后验证。最终隔离源码 `make check build`、输入/搜索/配置创建及端口定向 race、已有专用 `lazyclash-e2e` Linux/arm64 VM 实际全包测试通过；匹配与清除图标的悬停样式和紧凑尾部布局另补宿主与 Linux 搜索控件定向验证及构建。Python 八项回归通过。原始失败日志保留：沙箱拒绝临时本地监听，以及首次完整检查中旧导航断言和极小删除窗口布局的问题均在最终验证前修复。
+
+真实 controlling PTY 覆盖 20 类输入，中英文 × TrueColor / NO_COLOR 共 80 个用例、320 次尺寸检查，尺寸为 160×45、80×24、60×20、40×16。包含中文、长查询、中间编辑、水平滚动、缩放恢复、真实光标协议、密码遮蔽、框内背景、清空和焦点、匹配选项保留；所有后端修改计数为零。光标字符颜色修复后另完成 12 个代表性用例、48 次尺寸检查，最终清除在前的布局另完成全部二十类输入的英文真彩，以及中英文规则/配置来源的真彩与无色代表性复验，共 26 个用例、104 次尺寸检查，所有活动输入完整可见且后端修改次数为零。已目视检查宽屏规则、小窗口配置创建和光标字符颜色。PNG 根据真实终端字符格与样式重绘；PTY 使用隔离内存后端，没有访问真实 Mihomo 或执行安装、systemd、TUN 生命周期操作。
+
+证据位于 `.test-artifacts/input-unification/`：`final-clear-first-check-build.log`、`final-clear-first-race.log`、`final-isolated-linux.log`、`clear-first-tests.log`、`final-clear-first-linux.log`、`python-tests.log`，PTY 为 `final-pty/`、`final-forms-pty/`、`final-glyph-pty/`、`final-hover-pty/`、`final-hover-clean-pty/`、`final-clear-hover-pty/`、`final-clear-first-pty/`。隔离源码及文件归属清单位于 `isolated-source/` 与 `task-files.json`。复验入口：
+
+```sh
+go test -c ./internal/tui -o bin/input-fields-tui.test
+python3 scripts/input-fields-pty.py --binary "$PWD/bin/input-fields-tui.test" \
+  --output .test-artifacts/input-unification/pty --png
+```
+
 ## 填色搜索区与真实竖线光标（2026-11-08）
 
 代理、连接、规则、日志及规则集合弹窗统一采用三行填色留白搜索区；默认深底、聚焦稍亮，彩色模式去掉外轮廓，低色与无色终端保留同尺寸边界。移除框内 `/`，页脚优先展示搜索快捷键；清空移至输入尾部，仅非空时参与点击与 Tab，激活后继续编辑。规则匹配选项缩为紧凑组，计数不再被提示覆盖。实现细节见 `docs/theme-mariana.md`。

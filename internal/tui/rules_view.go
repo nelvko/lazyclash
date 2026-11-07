@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
@@ -12,12 +13,11 @@ import (
 func (m Model) ruleFilterButtons() dashboardBlock {
 	var b dashboardBlock
 	line := ""
-	navigation := m.navigationOptions()
 	for _, item := range []struct {
 		id, label string
 		selected  bool
 	}{{"rules.case", "Aa", m.rules.caseSensitive}, {"rules.word", "ab", m.rules.wholeWord}, {"rules.regex", ".*", m.rules.regex}} {
-		o := dashboardButtonOptions(item.id, navigation, false, bg)
+		o := m.searchControlOptions(item.id)
 		o.Disabled = m.busy
 		o.Selected = item.selected
 		value := renderRuleSearchToggle(item.label, o)
@@ -30,20 +30,12 @@ func (m Model) ruleFilterButtons() dashboardBlock {
 	return b
 }
 
-// Search options share a compact face; selection and keyboard focus keep
-// separate textual markers, including terminals without color.
+// Selection uses text emphasis while focus retains its own marker. The
+// whole-word icon is always underlined, including when the option is off.
 func renderRuleSearchToggle(label string, o buttonOptions) string {
-	foreground, surface := muted, bg
-	face := " " + label + " "
+	foreground := muted
 	if o.Selected {
-		foreground, surface = accent, panel
-		face = "✓" + label + " "
-	}
-	if o.Plain {
-		face = "[" + label + "]"
-		if o.Selected {
-			face = "<" + label + ">"
-		}
+		foreground = accent
 	}
 	if o.Hovered && !o.Disabled && !o.Selected {
 		foreground = text
@@ -51,24 +43,31 @@ func renderRuleSearchToggle(label string, o buttonOptions) string {
 	if o.Disabled {
 		foreground = disabled
 	}
-	marker := " "
+	marker, suffix := " ", " "
 	if o.Focused && !o.Disabled {
 		marker = "›"
 	}
-	return themed(marker, focus, bg, o.Dim) + themed(face, foreground, surface, o.Dim)
+	if o.Plain && o.Selected {
+		suffix = "*"
+	}
+	face := lipgloss.NewStyle().Bold(o.Selected).Underline(label == "ab").Render(label)
+	return themed(marker, focus, bg, o.Dim) + themed(face+suffix, foreground, bg, o.Dim)
 }
 
 func (m Model) ruleSearchWidth(width int) int {
-	if width >= 68 {
-		width -= ansi.StringWidth(m.ruleFilterButtons().lines[0]) + 2
-	}
-	return searchInputWidth(width)
+	return inputFieldTextWidth(min(inputFieldMaxWidth, max(1, width)), searchControlWidth(m.ruleFilterButtons()), true)
 }
 
 func (m Model) rulesToolbar(width, rows int) dashboardBlock {
 	_, matchErr := m.ruleMatcher()
 	b := m.searchToolbar("rules.search", m.tr("rules.search_placeholder"), m.rules.search,
-		m.ruleFilterButtons(), width, width >= 68, matchErr != nil)
+		m.ruleFilterButtons(), width, matchErr != nil)
+	if m.searchToolbarGap() > 0 {
+		b.lines = append([]string{""}, b.lines...)
+		for i := range b.targets {
+			b.targets[i].Y++
+		}
+	}
 	status := m.rulesStatus()
 	if m.rules.received && m.rules.snapshot.State == "ready" {
 		status = m.tr("rules.filtered_count", len(m.filteredRules()), len(m.rules.snapshot.Rules))
@@ -139,7 +138,7 @@ func (m Model) rulesBodyWindow(width, start, height int) ruleBodyWindow {
 	}
 	// Very short terminals fold the fixed toolbar into the scrollable body.
 	if m.dashboardOptions().BodyTopRows == 0 {
-		bar := m.rulesToolbar(width, filterToolbarRows(width))
+		bar := m.rulesToolbar(width, m.filterToolbarRows(width))
 		lines, hits = bar.lines, bar.targets
 	}
 	if m.rules.received {
