@@ -2,9 +2,11 @@ package tui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/i18n"
@@ -46,8 +48,11 @@ func TestOverviewFlowingLayoutKeepsCardGeometryAndActionOwnership(t *testing.T) 
 								t.Fatalf("card frames overlap: %+v / %+v", card, other)
 							}
 						}
-						if cell := ansi.Strip(ansi.Cut(body.lines[card.Y+card.H-1], card.X, card.X+card.W)); !strings.HasPrefix(cell, "└") || !strings.HasSuffix(cell, "┘") {
-							t.Fatalf("semantic region does not match the natural card frame: %+v / %q", card, cell)
+						for row := 0; row < card.H; row++ {
+							cells := ansi.Strip(ansi.Cut(body.lines[card.Y+row], card.X, card.X+card.W))
+							if !strings.HasPrefix(cells, " ") || !strings.HasSuffix(cells, " ") || (row == 0 || row == card.H-1) && strings.TrimSpace(cells) != "" {
+								t.Fatalf("normal card perimeter is not blank: %+v row %d / %q", card, row, cells)
+							}
 						}
 					}
 					if len(cards) != 5 {
@@ -86,6 +91,90 @@ func TestOverviewFlowingLayoutKeepsCardGeometryAndActionOwnership(t *testing.T) 
 				})
 			}
 		}
+	}
+}
+
+func TestOverviewOutlineFollowsCardFocusWithoutMovingContents(t *testing.T) {
+	for _, size := range []struct{ width, height, scroll int }{{160, 45, 0}, {80, 24, 0}, {40, 16, 0}, {80, 12, 1}} {
+		t.Run(fmt.Sprintf("%dx%d/scroll%d", size.width, size.height, size.scroll), func(t *testing.T) {
+			m := themeSample("overview-running")
+			m.width, m.height, m.scroll = size.width, size.height, size.scroll
+			m.focus = "nav.overview"
+			m.layout()
+			o := m.navigationOptions()
+			baseline := overviewLayout(o, dashboardBodyWidth(o))
+			assertOverviewCardPerimeters(t, m, "")
+			if size.scroll > 0 && m.scroll != size.scroll {
+				t.Fatal("fixture did not leave the core card partially scrolled")
+			}
+			assertGeometry := func() {
+				t.Helper()
+				o := m.navigationOptions()
+				current := overviewLayout(o, dashboardBodyWidth(o))
+				if !slices.Equal(baseline.cards, current.cards) || !slices.Equal(baseline.targets, current.targets) {
+					t.Fatal("card focus changed semantic card or action geometry")
+				}
+			}
+			m.focus = "overview.card.dashboard.control.core"
+			m.layout()
+			assertOverviewCardPerimeters(t, m, m.focus)
+			assertGeometry()
+			m, _ = update(m, special(tea.KeyEnter))
+			if m.focus != "core.stop" || m.busy {
+				t.Fatal("entering the core controls did not safely focus Stop")
+			}
+			assertOverviewCardPerimeters(t, m, "")
+			assertGeometry()
+			m.returnToNavigation()
+			m.layout()
+			assertOverviewCardPerimeters(t, m, "")
+			assertGeometry()
+		})
+	}
+}
+
+func assertOverviewCardPerimeters(t *testing.T, m Model, focused string) {
+	t.Helper()
+	g := dashboardGeometry(m.navigationOptions())
+	rows := strings.Split(m.screen, "\n")
+	checked := 0
+	for _, card := range overviewCardRegionsFromModel(m) {
+		for row := 0; row < card.H; row++ {
+			y := g.y + card.Y + row - m.scroll
+			if y < g.y || y >= g.y+g.height {
+				continue
+			}
+			x := g.x + card.X
+			check := func(x, width int, expected string) {
+				t.Helper()
+				actual := ansi.Strip(ansi.Cut(rows[y], x, x+width))
+				if actual != expected {
+					t.Fatalf("card %s perimeter (%d,%d): got %q, want %q", card.ID, x, y, actual, expected)
+				}
+				checked++
+			}
+			if row == 0 || row == card.H-1 {
+				border := strings.Repeat(" ", card.W)
+				if card.ID == focused {
+					left, right := "┌", "┐"
+					if row == card.H-1 {
+						left, right = "└", "┘"
+					}
+					border = left + strings.Repeat("─", card.W-2) + right
+				}
+				check(x, card.W, border)
+			} else {
+				border := " "
+				if card.ID == focused {
+					border = "│"
+				}
+				check(x, 1, border)
+				check(x+card.W-1, 1, border)
+			}
+		}
+	}
+	if checked == 0 {
+		t.Fatal("fixture did not expose any card perimeter")
 	}
 }
 

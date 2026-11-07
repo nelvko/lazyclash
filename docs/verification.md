@@ -1,5 +1,21 @@
 # 验证入口
 
+## 概览常态无边框（2026-11-07）
+
+五张普通概览卡片改为常态无外边框，保留独立底色、内边距、卡间空白及代理路径的内部分隔线。始终预留原来的周边字符格；键盘浏览聚焦某一卡片时显式绘制黄色轮廓，进入按钮或返回导航后移除，内容与命中区不移动。无色终端仍显示焦点轮廓。首次安装引导与其他页面沿用原来的边框。焦点轮廓继续避开通知覆盖的字符格。
+
+共享工作区同时存在另一会话未完成的搜索输入改动。本轮从 `4a8b74f` 导出隔离源码，只叠加本次三个产品文件、布局回归与概览 PTY 脚本后验证；这些文件逐字节与本次工作内容一致，SHA256 清单记录于 `.test-artifacts/overview-borderless/source-manifest.json`。隔离快照通过完整 `make check build`（TUI 65.894 秒），包含全包 Go 测试、vet 和构建；`./scripts/verify-linux.sh lazyclash-e2e` 在现有专用 Linux/arm64 VM 实际执行全部可运行测试包通过，脚本完成临时目录清理。八项 Python 回归及概览 PTY 脚本语法检查通过。没有覆盖、回退或纳入另一会话的改动。
+
+真实 controlling PTY 完成中英文 × True Color、ANSI256、NO_COLOR 六组，覆盖 160×45、120×32、80×24、60×20、40×16 及恢复；断言导航时无卡片外框、卡片焦点只有一个完整轮廓且彩色时为黄色、进入按钮后无轮廓残留、内部分隔线保留，并验证 Tab 揭示全部操作及配置/代理入口。各组服务、模式、节点修改均为零。已目视复核中文宽屏常态与 40×16 焦点画面。模型回归另外覆盖部分滚动后的轮廓裁切、卡片/按钮几何不变和通知内容不被焦点轮廓覆盖。
+
+日志为 `.test-artifacts/overview-borderless/{check-build,linux,python}.log`；最终 PTY 证据为 `.test-artifacts/overview-borderless/pty/20261107-210854-df56d4/`，包含 PNG/ANSI/TXT、原始 PTY 输出与操作计数。PNG 从实际终端字符格和颜色重绘，后端为隔离内存 fixture；没有操作真实 Mihomo/systemd/TUN，也未运行其完整生命周期 E2E 或 race。复验命令：
+
+```sh
+go test -c ./internal/tui -o bin/overview-borderless-tui.test
+python3 scripts/overview-pty.py --binary bin/overview-borderless-tui.test \
+  --output .test-artifacts/overview-borderless/pty --png
+```
+
 ## 共享按钮组件与状态配色（2026-11-07）
 
 所有命令按钮与互斥选择继续由 `internal/tui/button.go` 统一渲染：固定两格 ` ›` 焦点槽，相邻按钮之间不叠加空白，箭头距前一个色块一格、距当前色块零格。新增正文最小字符格宽度，路由与语言组等宽居中，移除勾号占位；ANSI16/NO_COLOR 使用同宽的 `[标签]` 与 `<标签>` 区分选择。按钮专用的普通、主操作、已选和危险悬停色不修改列表的原有颜色；处理中或禁用时保留当前选择。页头、配置表单、引导、端口、TUN、通知及页内按钮同步调整绘制、换行和命中区域，忙碌的规则/日志按钮不再生成可点击目标。代理页的路由选择统一表示保存的目标模式，运行中模式不同或未知时单独说明。

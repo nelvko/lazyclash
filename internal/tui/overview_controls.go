@@ -67,7 +67,7 @@ func overviewControlPanel(o dashboardOptions, width int, title string, content [
 		}
 		lines = append(lines, row)
 	}
-	b.lines = panelFrame(lines, width, len(lines)+2, o)
+	b.lines = overviewSurface(lines, width, len(lines)+2, o)
 	visible := b.targets[:0]
 	for _, target := range b.targets {
 		if target, ok := clipRegion(target, 0, 0, width, len(b.lines)); ok {

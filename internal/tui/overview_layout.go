@@ -56,6 +56,26 @@ func overviewNamedCard(id string, block dashboardBlock, width int) dashboardBloc
 	return block
 }
 
+// Reserve the same perimeter as a framed panel so focus can draw an outline
+// without moving the content, actions or adjacent cards.
+func overviewSurface(lines []string, width, height int, o dashboardOptions) []string {
+	if width < 4 {
+		return panelFrame(lines, width, height, o)
+	}
+	height = max(height, len(lines)+2)
+	result := make([]string, height)
+	result[0] = themed(strings.Repeat(" ", width), text, panel, o.Dim)
+	for y := 1; y < height-1; y++ {
+		content := ""
+		if y-1 < len(lines) {
+			content = lines[y-1]
+		}
+		result[y] = themed("  ", text, panel, o.Dim) + themed(cellPad(content, width-4), text, panel, o.Dim) + themed("  ", text, panel, o.Dim)
+	}
+	result[height-1] = result[0]
+	return result
+}
+
 func overviewColumns(o dashboardOptions, left, right dashboardBlock, leftWidth, rightWidth int) dashboardBlock {
 	var b dashboardBlock
 	for y := 0; y < max(len(left.lines), len(right.lines)); y++ {
@@ -122,7 +142,7 @@ func overviewRouteCard(o dashboardOptions, width int) dashboardBlock {
 		return b
 	}
 	offset := len(b.lines) - 1
-	separator := panelFrame([]string{themed(strings.Repeat("─", max(0, width-4)), divider, panel, o.Dim)}, width, 3, o)[1]
+	separator := overviewSurface([]string{themed(strings.Repeat("─", max(0, width-4)), divider, panel, o.Dim)}, width, 3, o)[1]
 	b.lines = append(b.lines[:offset], separator)
 	b.lines = append(b.lines, group.lines[1:]...)
 	for _, hit := range group.targets {

@@ -436,7 +436,8 @@ func (m *Model) decorateContentFocus(g dashboardLayout, overlays []notificationO
 		return
 	}
 	rows := strings.Split(m.screen, "\n")
-	highlight := func(x, y, width int) {
+	outline := func(x, y int, value string) {
+		width := ansi.StringWidth(value)
 		for offset := 0; offset < width; {
 			if covered(x+offset, y) {
 				offset++
@@ -446,8 +447,8 @@ func (m *Model) decorateContentFocus(g dashboardLayout, overlays []notificationO
 			for offset < width && !covered(x+offset, y) {
 				offset++
 			}
-			value := ansi.Cut(rows[y], x+start, x+offset)
-			putRows(rows, x+start, y, themed(ansi.Strip(value), focus, panel, false), m.width)
+			part := ansi.Cut(value, start, offset)
+			putRows(rows, x+start, y, themed(part, focus, panel, false), m.width)
 		}
 	}
 	for _, card := range overviewCardRegionsFromModel(*m) {
@@ -460,11 +461,13 @@ func (m *Model) decorateContentFocus(g dashboardLayout, overlays []notificationO
 				continue
 			}
 			x := g.x + card.X
-			if row == 0 || row == card.H-1 {
-				highlight(x, y, card.W)
+			if row == 0 {
+				outline(x, y, "┌"+strings.Repeat("─", card.W-2)+"┐")
+			} else if row == card.H-1 {
+				outline(x, y, "└"+strings.Repeat("─", card.W-2)+"┘")
 			} else {
-				highlight(x, y, 1)
-				highlight(x+card.W-1, y, 1)
+				outline(x, y, "│")
+				outline(x+card.W-1, y, "│")
 			}
 		}
 	}

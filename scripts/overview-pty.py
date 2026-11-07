@@ -73,6 +73,32 @@ def check_profile(preview, terminal, profile):
         assert not any(value not in (b"", b"0") for value in preview.SGR.findall(raw)), "NO_COLOR emitted styling"
 
 
+def assert_borderless(terminal):
+    assert not any(value in terminal.screen.text() for value in "┌┐└┘│"), "inactive card retained an outer border"
+
+
+def assert_card_outline(terminal, profile, complete=True):
+    cells = terminal.screen.cells
+    corners = [(x, y) for y, row in enumerate(cells) for x, value in enumerate(row) if value == "┌"]
+    assert len(corners) == 1, "card focus did not draw exactly one top-left corner"
+    left, top = corners[0]
+    right = next((x for x in range(left + 1, len(cells[top])) if cells[top][x] == "┐"), None)
+    assert right is not None, "card focus omitted its top-right corner"
+    assert all(value == "─" for value in cells[top][left + 1:right]), "card focus has an incomplete top edge"
+    bottom = next((y for y in range(top + 1, len(cells)) if cells[y][left] == "└"), None)
+    if complete:
+        assert bottom is not None, "card focus omitted its bottom-left corner"
+    if bottom is not None:
+        assert cells[bottom][right] == "┘", "card focus omitted its bottom-right corner"
+        assert all(value == "─" for value in cells[bottom][left + 1:right]), "card focus has an incomplete bottom edge"
+        assert all(cells[y][left] == cells[y][right] == "│" for y in range(top + 1, bottom)), "card focus has incomplete side edges"
+    if profile != "no-color":
+        color = terminal.screen.styles[top][left][0]
+        if isinstance(color, str):
+            color = tuple(int(color[index:index + 2], 16) for index in (1, 3, 5))
+        assert color[0] > 190 and color[0] >= color[1] > color[2] and color[1] >= 110, "card outline lost its yellow focus color"
+
+
 def exercise(preview, binary, output, language, profile, scenario, args):
     output.mkdir(parents=True)
     words = labels(language)
@@ -98,13 +124,18 @@ def exercise(preview, binary, output, language, profile, scenario, args):
         # navigation before checking both safe Enter transitions.
         terminal.key(b"\x1b")
         terminal.settle()
+        assert_borderless(terminal)
+        assert "─────" in terminal.screen.text(), "borderless cards removed the internal route divider"
+        preview.capture(terminal, output, "overview-navigation", args)
         terminal.key(b"\r")
         terminal.settle()
+        assert_card_outline(terminal, profile)
         preview.capture(terminal, output, "card-focus", args)
         terminal.key(b"\r")
         terminal.settle()
         lifecycle = words["dashboard.action.start" if scenario == "stopped" else "dashboard.action.stop"]
         assert focused(terminal, lifecycle), "entering the service card did not focus its first control"
+        assert_borderless(terminal)
         preview.capture(terminal, output, "control-focus", args)
 
         expected = [lifecycle, words["dashboard.action.manage"], words["dashboard.action.profiles"]]
@@ -120,6 +151,20 @@ def exercise(preview, binary, output, language, profile, scenario, args):
             terminal.key(b"\x1b[H")
             terminal.settle()
             preview.capture(terminal, output, "overview-%dx%d" % (width, height), args)
+            terminal.key(b"\x1b")
+            terminal.settle()
+            assert_borderless(terminal)
+            preview.capture(terminal, output, "navigation-%dx%d" % (width, height), args)
+            # Navigation's next Tab stop is the safe card-browsing surface.
+            terminal.key(b"\t")
+            terminal.settle()
+            assert_card_outline(terminal, profile, complete=scenario == "running" or height >= 32)
+            preview.capture(terminal, output, "card-focus-%dx%d" % (width, height), args)
+            terminal.key(b"\r")
+            terminal.settle()
+            assert_borderless(terminal)
+            assert focused(terminal, lifecycle), "card entry did not retain the first lifecycle control"
+            preview.capture(terminal, output, "control-focus-%dx%d" % (width, height), args)
             tab_controls(terminal, expected)
             preview.capture(terminal, output, "tab-revealed-%dx%d" % (width, height), args)
             assert words["dashboard.footer.quit"] in terminal.screen.text().splitlines()[-1], "Quit hint left the footer"
@@ -146,7 +191,7 @@ def exercise(preview, binary, output, language, profile, scenario, args):
         assert calls["runtime_queries"] > 0, calls
         check_profile(preview, terminal, profile)
         (output / "pty.raw").write_bytes(terminal.raw)
-        print("PASS %s/%s/%s: five dimensions, safe card entry, Tab reveal and read-only page actions; %s" %
+        print("PASS %s/%s/%s: five dimensions, borderless cards, complete yellow card focus, clean button focus, Tab reveal and read-only page actions; %s" %
               (language, profile, scenario, json.dumps(calls)), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")
