@@ -44,18 +44,6 @@ func (m Model) proxyModes(width int) dashboardBlock {
 	return b
 }
 
-func (m Model) proxySearchWidth(width int) int {
-	modes := m.proxyModes(width)
-	actionWidth := ansi.StringWidth(m.proxyCollapseButton())
-	if actionWidth > 0 {
-		actionWidth += 2
-	}
-	if !m.proxiesNarrow() && len(modes.lines) == 1 && width-ansi.StringWidth(modes.lines[0])-2 >= 24+actionWidth {
-		width -= ansi.StringWidth(modes.lines[0]) + 2
-	}
-	return searchInputWidth(width - actionWidth)
-}
-
 func (m Model) proxyCollapseButton() string {
 	if m.proxiesNarrow() || !m.hasExpandedProxyGroups() {
 		return ""
@@ -65,42 +53,16 @@ func (m Model) proxyCollapseButton() string {
 
 func (m Model) proxiesToolbar(width int) dashboardBlock {
 	b := m.proxyModes(width)
-	action := m.proxyCollapseButton()
-	actionWidth := ansi.StringWidth(action)
-	actionSpace := 0
-	if actionWidth > 0 {
-		actionSpace = actionWidth + 2
-	}
-	x := 0
-	inline := !m.proxiesNarrow() && len(b.lines) == 1 && width-ansi.StringWidth(b.lines[0])-2 >= 24+actionSpace
-	if inline {
-		x = ansi.StringWidth(b.lines[0]) + 2
-		b.lines = []string{"", b.lines[0], ""}
-		for i := range b.targets {
-			b.targets[i].Y++
+	if action := m.proxyCollapseButton(); action != "" {
+		x := max(0, width-ansi.StringWidth(action))
+		row := len(b.lines) - 1
+		if x < ansi.StringWidth(b.lines[row])+2 {
+			b.blank()
+			row = len(b.lines) - 1
 		}
-	} else {
-		b.blank()
-	}
-	field := m.searchField("proxies.search", m.tr("proxies.search_placeholder"), m.proxies.search,
-		min(inputFieldMaxWidth, max(1, width-x-actionSpace)), false)
-	y := len(b.lines)
-	if inline {
-		y = 0
-		for row, line := range field.lines {
-			b.lines[row] = themed(cellPad(b.lines[row], x), text, bg, false) + line
-		}
-		for _, hit := range field.targets {
-			hit.X += x
-			b.targets = append(b.targets, hit)
-		}
-	} else {
-		b.append(field)
-	}
-	if actionWidth > 0 {
-		b.lines[y+1] += themed("  ", text, bg, false) + action
+		b.lines[row] = cellPad(b.lines[row], x) + cellCrop(action, width-x)
 		if !m.busy && !m.quitting {
-			b.targets = append(b.targets, hitRegion{ID: "proxies.collapse_all", X: x + min(inputFieldMaxWidth, max(1, width-x-actionSpace)) + 2, Y: y + 1, W: actionWidth, H: 1})
+			b.targets = append(b.targets, hitRegion{ID: "proxies.collapse_all", X: x, Y: row, W: min(width-x, ansi.StringWidth(action)), H: 1})
 		}
 	}
 	if m.searchToolbarGap() > 0 {
@@ -164,11 +126,7 @@ func (m Model) proxiesBody(width int) (string, []hitRegion) {
 	}
 	groups := m.visibleProxyGroups()
 	if len(groups) == 0 {
-		if m.proxies.search.Value() != "" {
-			add(m.tr("proxies.no_matches"), muted)
-		} else {
-			add(m.tr("proxies.no_groups"), muted)
-		}
+		add(m.tr("proxies.no_groups"), muted)
 	}
 	compactGroups := m.proxiesNarrow() || m.height < 24
 	for i, gi := range groups {
@@ -372,11 +330,7 @@ func (m Model) proxyGroupBody(gi, width int) dashboardBlock {
 		}
 	}
 	if len(indices) == 0 {
-		label := m.tr("proxies.empty_group")
-		if len(g.All) > 0 {
-			label = m.tr("proxies.no_matches")
-		}
-		add(label, muted)
+		add(m.tr("proxies.empty_group"), muted)
 	}
 	return b
 }

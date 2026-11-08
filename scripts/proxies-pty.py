@@ -48,18 +48,6 @@ def assert_proxy_header(terminal, words):
     assert not re.search(r"\b\d+\s+groups\b|\d+\s*个代理组", header), "proxy header retained the group total"
 
 
-def paste(terminal, value):
-    terminal.key(b"\x1b[200~" + value.encode() + b"\x1b[201~")
-
-
-def search(terminal, value):
-    terminal.key(b"/")
-    terminal.key(b"\x15")
-    paste(terminal, value)
-    terminal.key(b"\r")
-    terminal.settle()
-
-
 def chosen(terminal, name):
     return any(re.search(r"▌\s*(?:›\s*)?" + re.escape(name) + r"(?:\s|$)", line)
                for line in terminal.screen.text().splitlines())
@@ -150,6 +138,23 @@ def collapse_all(terminal, words):
         terminal.settle()
     assert words["proxies.collapse_all"] not in terminal.screen.text(), "collapse-all action did not clear expansion state"
     assert not any(re.search(r"▾[ \t]*$", "".join(row)) for row in terminal.screen.cells), "collapse-all left a visible group open"
+
+
+def browse_group(terminal, words, name):
+    collapse_all(terminal, words)
+    terminal.key(b"\x1b[H")
+    terminal.settle()
+    # Move through collapsed headers so the viewport reveals off-screen groups.
+    for _ in range(12):
+        try:
+            group_header(terminal, name)
+        except AssertionError:
+            terminal.key(b"\x1b[B")
+            terminal.settle()
+            continue
+        open_group(terminal, name)
+        return
+    raise AssertionError("Group could not be reached: " + name + "\n" + terminal.screen.text())
 
 
 def group_action(terminal, name, label):
@@ -384,18 +389,15 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait("Hysteria2")
         wait_until(terminal, lambda: chosen(terminal, "HK 01"), "reference return lost parent choice")
 
-        # Search locates another group; browsing its reference clears the filter,
-        # and returning restores it. Native search input owns typed shortcuts.
-        search(terminal, "ChatGPT")
-        terminal.wait("ChatGPT")
-        terminal.key(b"\x1b[C")
+        # Browsing a reference returns to the source group's expanded cards.
+        browse_group(terminal, words, "ChatGPT")
         enter_reference(terminal, "PROXY", words["proxies.enter"])
         terminal.wait("Hysteria2")
         terminal.key(b"\x1b[D")
         terminal.wait("ChatGPT")
-        wait_until(terminal, lambda: any(re.search(r"(?:^|\s)ChatGPT\s+" + re.escape(words["search.clear"]) + r"(?:\s|$)", line) for line in terminal.screen.text().splitlines()), "reference return lost search input")
-        preview.capture(terminal, output, "search-reference-return", args)
-        search(terminal, "")
+        terminal.settle()
+        assert group_header(terminal, "ChatGPT")[3].rstrip().endswith("▾"), "reference return lost the source group's expansion"
+        preview.capture(terminal, output, "group-reference-return", args)
         collapse_all(terminal, words)
         terminal.key(b"\x1b[H")
         terminal.key(b"\x1b[C")
@@ -465,7 +467,7 @@ def exercise(preview, binary, output, language, profile, args):
                 assert any(re.search(r"›\s*HK 01", line) for line in terminal.screen.text().splitlines()), "horizontal navigation did not return from the fourth card"
             preview.capture(terminal, output, "selected-%dx%d" % (width, height), args)
 
-        # Short groups and member filters retain the same slots as a full grid.
+        # Short groups retain the same slots and card widths as a full grid.
         terminal.resize(240, 40)
         terminal.key(b"\x1b[H")
         terminal.key(b"\x1b[C")
@@ -473,25 +475,13 @@ def exercise(preview, binary, output, language, profile, args):
         slots = assert_four_columns(terminal)
         left, _, right = card_bounds(terminal, "HK 01")
         card_width = right - left
-        search(terminal, "Hong Kong")
-        collapse_all(terminal, words)
-        open_group(terminal, "Hong Kong")
+        browse_group(terminal, words, "Hong Kong")
         terminal.wait("Trojan")
         terminal.settle()
         assert sorted(candidate_position(terminal, name)[0] for name in ("HK 01", "HK 02")) == slots[:2], "two-member group stretched its cards"
         left, _, right = card_bounds(terminal, "HK 01")
         assert right - left == card_width, "short-group card width changed"
         preview.capture(terminal, output, "two-members-240x40", args)
-        search(terminal, "HK 01")
-        collapse_all(terminal, words)
-        open_group(terminal, "PROXY")
-        terminal.wait("Shadowsocks")
-        terminal.settle()
-        assert candidate_position(terminal, "HK 01")[0] == slots[0], "single filtered member moved out of its first slot"
-        left, _, right = card_bounds(terminal, "HK 01")
-        assert right - left == card_width, "single filtered member stretched across the row"
-        preview.capture(terminal, output, "one-member-filter-240x40", args)
-        search(terminal, "")
         collapse_all(terminal, words)
         terminal.key(b"\x1b[H")
         terminal.key(b"\x1b[C")
@@ -505,16 +495,12 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.settle()
 
         # Group strategies are not drawn as one manually chosen server.
-        search(terminal, "BALANCE")
-        terminal.key(b"\x1b[C")
+        browse_group(terminal, words, "BALANCE")
         terminal.wait(words["proxies.distributed"])
         preview.capture(terminal, output, "load-balance", args)
-        search(terminal, "EMPTY")
-        terminal.key(b"\x1b[C")
+        browse_group(terminal, words, "EMPTY")
         terminal.wait(words["proxies.empty_group"])
         preview.capture(terminal, output, "empty-group", args)
-        search(terminal, "")
-        terminal.settle()
         # Global exposes GLOBAL and allows following its references. Returning
         # to Rule restores ordinary groups; Direct explains retained choices.
         terminal.click_text(words["dashboard.mode.global"])
@@ -551,7 +537,7 @@ def exercise(preview, binary, output, language, profile, args):
         if profile == "256":
             assert not preview.RGB.search(raw), "ANSI256 emitted RGB text"
         (output / "pty.raw").write_bytes(raw)
-        print("PASS %s/%s: plain page header, removed refresh shortcuts, selection/padding, references, search, sort, cancel/late results, strategies, resize/four-column cap" % (language, profile), flush=True)
+        print("PASS %s/%s: plain page header, removed refresh shortcuts, selection/padding, references, group navigation, sort, cancel/late results, strategies, resize/four-column cap" % (language, profile), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")
         (output / "failed.ansi").write_bytes(terminal.raw)

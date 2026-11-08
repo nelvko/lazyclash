@@ -9,18 +9,16 @@ import (
 	"strings"
 	"time"
 
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
 
-// Bubbles supplies the editor, spinner and key bindings. The adaptive grouped
-// list uses the shell's scrolling and hit regions rather than a second viewport.
+// The adaptive grouped list uses the shell's scrolling and hit regions rather
+// than a second viewport.
 type proxiesState struct {
 	expanded                         map[string]bool
 	activeGroup, detail, detailGroup string
-	search                           textinput.Model
-	editing, sortMenu                bool
+	sortMenu                         bool
 	sorts                            map[string]string
 	order                            map[string][]string
 	history                          []proxyLocation
@@ -44,10 +42,10 @@ type proxiesState struct {
 }
 
 type proxyLocation struct {
-	group, focus, query string
-	expanded            map[string]bool
-	identity            pageViewState
-	scroll              int
+	group, focus string
+	expanded     map[string]bool
+	identity     pageViewState
+	scroll       int
 }
 type proxyTestTarget struct{ group, node, path string }
 type proxyMeasurement struct {
@@ -67,12 +65,7 @@ type proxyDelayBackend interface {
 }
 
 func newProxiesState() proxiesState {
-	input := textinput.New()
-	input.CharLimit = 256
-	input.Prompt = ""
-	input.SetVirtualCursor(false)
-	styleInput(&input, inputBackground, false)
-	return proxiesState{search: input, expanded: make(map[string]bool), sorts: make(map[string]string), order: make(map[string][]string), results: make(map[string]proxyMeasurement)}
+	return proxiesState{expanded: make(map[string]bool), sorts: make(map[string]string), order: make(map[string][]string), results: make(map[string]proxyMeasurement)}
 }
 
 func (m Model) proxiesReady() bool {
@@ -125,7 +118,7 @@ func (m Model) proxyGroup(name string) (int, mihomo.Group, bool) {
 	return 0, mihomo.Group{}, false
 }
 func (m Model) proxyLocation() proxyLocation {
-	loc := proxyLocation{group: m.proxies.activeGroup, expanded: cloneProxyExpansion(m.proxies.expanded), focus: m.focus, query: m.proxies.search.Value(), scroll: m.scroll}
+	loc := proxyLocation{group: m.proxies.activeGroup, expanded: cloneProxyExpansion(m.proxies.expanded), focus: m.focus, scroll: m.scroll}
 	if _, g, n, ok := m.proxyAtFocus(); ok && (strings.HasPrefix(m.focus, "node.") || strings.HasPrefix(m.focus, "group.") || strings.HasPrefix(m.focus, "proxies.reference.") || strings.HasPrefix(m.focus, "proxies.delay.") || strings.HasPrefix(m.focus, "proxies.sort.") || strings.HasPrefix(m.focus, "proxies.test.")) {
 		loc.identity = pageViewState{group: g.Name, node: n, focus: m.focus}
 		if m.proxyGroupExpanded(g.Name) {
@@ -138,7 +131,6 @@ func (m *Model) restoreProxyLocation(loc proxyLocation) {
 	m.proxies.activeGroup = loc.group
 	m.proxies.expanded = cloneProxyExpansion(loc.expanded)
 	m.pruneProxyGroups()
-	m.proxies.search.SetValue(loc.query)
 	m.focus, m.scroll = loc.focus, loc.scroll
 	if loc.identity.group != "" {
 		if restored := m.restoredContentFocus(loc.identity); restored != "" {
@@ -269,7 +261,6 @@ func (m Model) proxyDelay(group, node string) proxyMeasurement {
 }
 func (m Model) visibleProxyGroups() []int {
 	var out []int
-	query := strings.ToLower(strings.TrimSpace(m.proxies.search.Value()))
 	for i, g := range m.snapshot.Groups {
 		if m.proxiesNarrow() && m.proxies.activeGroup != "" {
 			if g.Name != m.proxies.activeGroup {
@@ -278,23 +269,14 @@ func (m Model) visibleProxyGroups() []int {
 		} else if !(len(m.proxies.history) > 0 && m.proxies.expanded[g.Name]) && (m.snapshot.Mode.Actual == "global" && g.Name != "GLOBAL" || m.snapshot.Mode.Actual != "global" && g.Name == "GLOBAL") {
 			continue
 		}
-		matches := query == "" || strings.Contains(strings.ToLower(g.Name), query)
-		for _, node := range g.All {
-			matches = matches || strings.Contains(strings.ToLower(node), query)
-		}
-		if matches {
-			out = append(out, i)
-		}
+		out = append(out, i)
 	}
 	return out
 }
 func (m Model) proxyMembers(g mihomo.Group) []int {
 	indices := make([]int, 0, len(g.All))
-	query := strings.ToLower(strings.TrimSpace(m.proxies.search.Value()))
-	for i, n := range g.All {
-		if query == "" || strings.Contains(strings.ToLower(g.Name), query) || strings.Contains(strings.ToLower(n), query) {
-			indices = append(indices, i)
-		}
+	for i := range g.All {
+		indices = append(indices, i)
 	}
 	switch m.proxySort(g.Name) {
 	case "name":
@@ -355,8 +337,6 @@ func (m *Model) openProxySort() {
 		items = append(items, menuItem{ID: order, Label: label})
 	}
 	m.proxies.sortMenu = true
-	m.proxies.search.Blur()
-	m.proxies.editing = false
 	sortID := fmt.Sprintf("proxies.sort.%d", gi)
 	m.focus = fmt.Sprintf("group.%d", gi)
 	if m.proxyGroupExpanded(g.Name) && m.proxySort(g.Name) != "default" {
@@ -392,33 +372,6 @@ func (m *Model) proxyMenuResult(result menuResult) tea.Cmd {
 	m.revealContentFocus()
 	return nil
 }
-func (m *Model) focusProxySearch() tea.Cmd {
-	m.proxies.detail = ""
-	m.proxies.activeGroup = ""
-	m.proxies.history = nil
-	m.proxies.editing = true
-	m.focus, m.scroll = "proxies.search", 0
-	return m.proxies.search.Focus()
-}
-func (m *Model) proxySearchKey(k tea.KeyPressMsg) tea.Cmd {
-	switch k.String() {
-	case "enter", "esc", "tab", "shift+tab":
-		m.proxies.editing = false
-		m.proxies.search.Blur()
-		m.focus = "content"
-		for _, hit := range m.contentTargets() {
-			if listTarget(hit.ID) {
-				m.focus = hit.ID
-				break
-			}
-		}
-		return nil
-	}
-	var cmd tea.Cmd
-	m.proxies.search, cmd = m.proxies.search.Update(k)
-	m.scroll = 0
-	return cmd
-}
 func (m *Model) browseProxyReference(name string) {
 	gi, _, ok := m.proxyGroup(name)
 	if !ok {
@@ -432,7 +385,6 @@ func (m *Model) browseProxyReference(name string) {
 	m.proxies.history = append(m.proxies.history, m.proxyLocation())
 	m.expandProxyGroup(name)
 	m.proxies.detail = ""
-	m.proxies.search.SetValue("")
 	m.focus, m.scroll = fmt.Sprintf("group.%d", gi), 0
 	if !m.proxiesNarrow() {
 		_, hits := m.proxiesBody(dashboardBodyWidth(m.dashboardOptions()))
@@ -477,8 +429,6 @@ func (m *Model) proxyKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 		return false, nil
 	}
 	switch k.String() {
-	case "/":
-		return true, m.focusProxySearch()
 	case "s":
 		m.openProxySort()
 		return true, nil
@@ -620,16 +570,7 @@ func (m *Model) proxyListKey(k tea.KeyPressMsg) bool {
 	return true
 }
 func (m *Model) proxyActivate(id string) tea.Cmd {
-	if id != "proxies.search" {
-		m.proxies.editing = false
-		m.proxies.search.Blur()
-	}
 	switch id {
-	case "proxies.search":
-		return m.focusProxySearch()
-	case "proxies.clear":
-		m.proxies.search.SetValue("")
-		return m.focusProxySearch()
 	case "proxies.collapse_all":
 		m.proxies.expanded = make(map[string]bool)
 		m.proxies.activeGroup, m.proxies.detail = "", ""
@@ -745,9 +686,6 @@ func (m *Model) syncProxies() tea.Cmd {
 		m.proxies.expanded = make(map[string]bool)
 		m.proxies.sorts = make(map[string]string)
 		m.proxies.order = make(map[string][]string)
-		m.proxies.editing = false
-		m.proxies.search.Blur()
-		m.proxies.search.SetValue("")
 		if m.page == "proxies" && !strings.HasPrefix(m.focus, "nav.") {
 			m.focus, m.scroll = "content", 0
 		}

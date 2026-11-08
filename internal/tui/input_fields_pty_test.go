@@ -172,8 +172,6 @@ func (m inputFieldsPTY) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m *inputFieldsPTY) input() *textinput.Model {
 	switch m.scenario {
-	case "search-proxies":
-		return &m.model.proxies.search
 	case "search-connections":
 		return &m.model.connections.search
 	case "search-rules":

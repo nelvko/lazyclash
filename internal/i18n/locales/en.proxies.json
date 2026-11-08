@@ -1,13 +1,10 @@
 {
-  "proxies.search_placeholder": "Search groups or nodes",
   "proxies.collapse_all": "Collapse all",
-  "proxies.clear": "Clear search",
   "proxies.loading": "Loading proxy groups…",
   "proxies.uninstalled": "Install Mihomo to browse proxy groups.",
   "proxies.stopped": "Start Mihomo to browse current proxy groups.",
   "proxies.unavailable": "Current proxy groups are unavailable. Check the API diagnostic.",
   "proxies.no_groups": "The core returned no proxy groups for this mode.",
-  "proxies.no_matches": "No matching groups or nodes. Clear search to show all choices.",
   "proxies.empty_group": "This group has no members.",
   "proxies.no_selection": "No current selection",
   "proxies.members": "%d options",
@@ -47,5 +44,5 @@
   "proxies.test_url": "Test target: %s",
   "proxies.core_target": "Core history; target unavailable",
   "proxies.test_hint": "A result describes this test target only. A failed test does not establish that the node is offline.",
-  "help.proxies.tools": "/ searches; s sorts; t tests/cancels the current group. Search input owns printable keys and digits."
+  "help.proxies.tools": "s sorts; t tests/cancels the current group."
 }

@@ -169,7 +169,7 @@ func notificationInputs(o dashboardOptions, g dashboardLayout) []hitRegion {
 	}
 	for _, target := range o.BodyTargets {
 		switch target.ID {
-		case "profiles.url", "proxies.search", "conn.search", "rules.search", "rules.providers-search", "logs.search":
+		case "profiles.url", "conn.search", "rules.search", "rules.providers-search", "logs.search":
 			target.X += g.x
 			target.Y += g.y - scroll
 			if target, ok := clipRegion(target, g.x, g.y, g.width, g.height); ok {

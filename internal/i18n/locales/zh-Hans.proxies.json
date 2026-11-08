@@ -1,13 +1,10 @@
 {
-  "proxies.search_placeholder": "搜索组或节点",
   "proxies.collapse_all": "全部收起",
-  "proxies.clear": "清除搜索",
   "proxies.loading": "正在加载代理组…",
   "proxies.uninstalled": "安装 Mihomo 后即可浏览代理组。",
   "proxies.stopped": "启动 Mihomo 后即可浏览当前代理组。",
   "proxies.unavailable": "无法读取当前代理组，请查看 API 诊断。",
   "proxies.no_groups": "内核在当前模式下未返回代理组。",
-  "proxies.no_matches": "没有匹配的组或节点。清除搜索可显示全部选项。",
   "proxies.empty_group": "此代理组没有成员。",
   "proxies.no_selection": "暂无当前选择",
   "proxies.members": "%d 项",
@@ -47,5 +44,5 @@
   "proxies.test_url": "测试目标：%s",
   "proxies.core_target": "内核历史记录，未提供目标",
   "proxies.test_hint": "结果仅对应本次测试目标。测试失败不能据此判定节点离线。",
-  "help.proxies.tools": "/ 搜索，s 排序，t 测速或取消当前组测试。搜索输入中的数字和可打印按键正常输入。"
+  "help.proxies.tools": "s 排序，t 测速或取消当前组测试。"
 }

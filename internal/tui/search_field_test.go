@@ -17,8 +17,6 @@ func searchFieldModel(t *testing.T, page string, width, height int) (Model, stri
 	var m Model
 	id := page + ".search"
 	switch page {
-	case "proxies":
-		m, _ = proxiesModel(t, width, height)
 	case "connections":
 		m = connectionsModel(t, &fakeBackend{})
 		id = "conn.search"
@@ -36,8 +34,6 @@ func searchFieldModel(t *testing.T, page string, width, height int) (Model, stri
 
 func pageSearchInput(m *Model) *textinput.Model {
 	switch m.page {
-	case "proxies":
-		return &m.proxies.search
 	case "connections":
 		return &m.connections.search
 	case "rules":
@@ -49,7 +45,7 @@ func pageSearchInput(m *Model) *textinput.Model {
 }
 
 func TestSearchFieldPaddingClicksFocusInput(t *testing.T) {
-	for _, page := range []string{"proxies", "connections", "rules", "logs"} {
+	for _, page := range []string{"connections", "rules", "logs"} {
 		for _, size := range [][2]int{{160, 45}, {80, 24}, {40, 16}} {
 			t.Run(fmt.Sprint(page, "/", size), func(t *testing.T) {
 				m, id := searchFieldModel(t, page, size[0], size[1])
@@ -99,7 +95,7 @@ func TestSearchFieldLogsShortWindowRetainsVisibleTargets(t *testing.T) {
 
 func TestSearchFieldUnicodeQueryRetainsCursorAcrossResize(t *testing.T) {
 	query := strings.Repeat("中文-query-", 20) + "VISIBLE-TAIL"
-	for _, page := range []string{"proxies", "connections", "rules", "logs"} {
+	for _, page := range []string{"connections", "rules", "logs"} {
 		for _, language := range []string{i18n.English, i18n.Chinese} {
 			t.Run(page+"/"+language, func(t *testing.T) {
 				m, id := searchFieldModel(t, page, 160, 45)
@@ -199,7 +195,7 @@ func TestSearchFieldOutlineKeepsSurfaceAndPlaceholderReadable(t *testing.T) {
 }
 
 func TestSearchFieldClearClickReturnsToEditableInput(t *testing.T) {
-	for _, page := range []string{"proxies", "connections", "rules", "logs", "providers"} {
+	for _, page := range []string{"connections", "rules", "logs", "providers"} {
 		for _, language := range []string{i18n.English, i18n.Chinese} {
 			t.Run(page+"/"+language, func(t *testing.T) {
 				m, id := cursorSearchModel(t, page)
@@ -233,7 +229,7 @@ func TestSearchFieldClearClickReturnsToEditableInput(t *testing.T) {
 }
 
 func TestSearchFieldPageFooterKeepsSearchShortcut(t *testing.T) {
-	for _, page := range []string{"proxies", "connections", "rules", "logs"} {
+	for _, page := range []string{"connections", "rules", "logs"} {
 		for _, language := range []string{i18n.English, i18n.Chinese} {
 			for _, size := range [][2]int{{160, 45}, {80, 24}, {60, 20}, {40, 16}} {
 				t.Run(fmt.Sprint(page, "/", language, "/", size), func(t *testing.T) {

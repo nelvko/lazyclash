@@ -87,16 +87,15 @@ func TestProxiesAutomaticGroupsOpenDetailsAndReferencesBrowse(t *testing.T) {
 	m.proxyBack()
 	setProxyTestGroup(&m, "PROXY")
 	m.focus = "node.0.0"
-	m.proxies.search.SetValue("proxy")
 	m.rememberPageView()
 	m.layout()
 	m.proxyActivate("proxies.reference.0.0")
 	m.layout()
-	if m.proxies.activeGroup != "AUTO" || m.proxies.search.Value() != "" || len(m.proxies.history) != 1 {
-		t.Fatal("reference browsing retained an incompatible search")
+	if m.proxies.activeGroup != "AUTO" || len(m.proxies.history) != 1 {
+		t.Fatal("reference browsing did not preserve the parent location")
 	}
 	m, _ = update(m, special(tea.KeyEscape))
-	if m.proxies.activeGroup != "PROXY" || m.proxies.search.Value() != "proxy" || m.focus != "proxies.reference.0.0" {
+	if m.proxies.activeGroup != "PROXY" || m.focus != "proxies.reference.0.0" {
 		t.Fatalf("reference return lost its location: %+v focus=%s", m.proxies, m.focus)
 	}
 }
@@ -182,43 +181,15 @@ func TestProxiesModeChangeResetsNarrowAndReferencedLocations(t *testing.T) {
 	}
 }
 
-func TestProxiesSearchOwnsKeysAndLongQueryCursorAcrossResize(t *testing.T) {
+func TestProxiesClickingModeUsesSharedAction(t *testing.T) {
 	m, _ := proxiesModel(t, 160, 40)
-	m, _ = update(m, key("/"))
-	for _, text := range []string{"q", "1", "2", "3", "t", "s"} {
-		m, _ = update(m, key(text))
-	}
-	if m.quitting || m.page != "proxies" || m.proxies.search.Value() != "q123ts" || m.proxies.testing || m.menu.open {
-		t.Fatal("search text triggered page shortcuts")
-	}
-	m.proxies.search.Reset()
-	query := strings.Repeat("long-query-", 18) + "VISIBLE-TAIL"
-	m, _ = update(m, tea.PasteMsg{Content: query})
-	for _, width := range []int{160, 80, 40, 120} {
-		m, _ = update(m, tea.WindowSizeMsg{Width: width, Height: 24})
-		if m.proxies.search.Width() <= 0 || !strings.Contains(ansi.Strip(m.screen), "VISIBLE-TAIL") || m.proxies.search.Position() != len([]rune(query)) {
-			t.Fatalf("width %d hid current query cursor: inputWidth=%d position=%d\n%s", width, m.proxies.search.Width(), m.proxies.search.Position(), ansi.Strip(m.screen))
-		}
-		assertCanvas(t, m.View().Content, width, 24)
-	}
-	m.proxies.search.Reset()
-	m, _ = update(m, tea.PasteMsg{Content: "hk 02"})
-	m, _ = update(m, special(tea.KeyEnter))
-	if m.proxies.editing || len(m.visibleProxyGroups()) == 0 || m.proxies.search.Value() != "hk 02" {
-		t.Fatal("search completion lost its filtered result")
-	}
-}
-
-func TestProxiesClickingModeLeavesSearchEditing(t *testing.T) {
-	m, _ := proxiesModel(t, 160, 40)
-	m, _ = update(m, key("/"))
 	m, cmd := click(m, findTarget(t, m, "mode.global"))
 	if !m.busy || cmd == nil {
 		t.Fatal("mode click did not begin its action")
 	}
 	m, _ = update(m, actionCmd(t, cmd)())
-	if m.proxies.editing || m.proxies.search.Focused() || m.focus == "proxies.search" || m.snapshot.Mode.Actual != "global" {
-		t.Fatalf("mode click left a hidden input editing: editing=%t focused=%t focus=%s mode=%s", m.proxies.editing, m.proxies.search.Focused(), m.focus, m.snapshot.Mode.Actual)
+	if m.busy || m.snapshot.Mode.Actual != "global" {
+		t.Fatalf("mode click did not adopt the confirmed mode: busy=%t mode=%s", m.busy, m.snapshot.Mode.Actual)
 	}
 }
 
@@ -363,8 +334,7 @@ func TestProxiesShortGroupsKeepTheAvailableColumnWidth(t *testing.T) {
 		for _, test := range []struct {
 			name  string
 			count int
-			query string
-		}{{"one member", 1, ""}, {"two members", 2, ""}, {"one filtered member", 8, "HK 01"}} {
+		}{{"one member", 1}, {"two members", 2}} {
 			t.Run(fmt.Sprint(size.width, "/", test.name), func(t *testing.T) {
 				m, _ := proxiesModel(t, size.width, 40)
 				width := dashboardBodyWidth(m.dashboardOptions())
@@ -377,7 +347,6 @@ func TestProxiesShortGroupsKeepTheAvailableColumnWidth(t *testing.T) {
 				}
 				cardWidth := right - left
 				m.snapshot.Groups[0].All = m.snapshot.Groups[0].All[:test.count]
-				m.proxies.search.SetValue(test.query)
 				body := m.proxyGroupBody(0, width)
 				type bounds struct{ left, right int }
 				cards := make(map[string]bounds)
@@ -393,9 +362,6 @@ func TestProxiesShortGroupsKeepTheAvailableColumnWidth(t *testing.T) {
 					cards[hit.ID] = card
 				}
 				wantCount := test.count
-				if test.query != "" {
-					wantCount = 1
-				}
 				if len(cards) != wantCount || m.proxyGrid(width).columns != size.columns {
 					t.Fatalf("short group lost cards or changed its available slots: cards=%d columns=%d", len(cards), m.proxyGrid(width).columns)
 				}
@@ -534,7 +500,6 @@ func TestProxiesReferenceTraversalKeepsWideDirectoryAndRestoresLocation(t *testi
 	for _, width := range []int{80, 160} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			m, _ := proxiesModel(t, width, 20)
-			m.proxies.search.SetValue("proxy")
 			m.focus = "node.0.0"
 			m.scroll = 4
 			m.rememberPageView()
@@ -549,10 +514,10 @@ func TestProxiesReferenceTraversalKeepsWideDirectoryAndRestoresLocation(t *testi
 			} else if len(groups) != len(m.snapshot.Groups)-1 {
 				t.Fatalf("wide reference view hid root groups: %v", groups)
 			}
-			if m.proxies.activeGroup != "AUTO" || m.proxies.search.Value() != "" || !hasAction(m.targets, "group.1") {
+			if m.proxies.activeGroup != "AUTO" || !hasAction(m.targets, "group.1") {
 				t.Fatalf("reference target was not expanded and revealed: expanded=%s focus=%s scroll=%d", m.proxies.activeGroup, m.focus, m.scroll)
 			}
-			if !m.proxyBack() || m.proxies.activeGroup != location.group || m.proxies.search.Value() != location.query || m.focus != location.focus || m.scroll != location.scroll {
+			if !m.proxyBack() || m.proxies.activeGroup != location.group || m.focus != location.focus || m.scroll != location.scroll {
 				t.Fatalf("reference return lost parent location: got %+v, want %+v", m.proxyLocation(), location)
 			}
 		})
@@ -576,7 +541,6 @@ func TestProxiesDistantReferenceRevealsMembersAndRestoresParent(t *testing.T) {
 			}
 			target := len(m.snapshot.Groups)
 			m.snapshot.Groups = append(m.snapshot.Groups, mihomo.Group{Name: "REMOTE", Type: "Selector", Now: "JP 01", All: []string{"HK 01", "HK 02", "JP 01", "SG 01", "US 01"}})
-			m.proxies.search.SetValue("proxy")
 			reference := fmt.Sprintf("proxies.reference.0.%d", len(parent.All)-1)
 			m.focus, m.scroll = reference, 4
 			m.rememberPageView()
@@ -591,7 +555,7 @@ func TestProxiesDistantReferenceRevealsMembersAndRestoresParent(t *testing.T) {
 				t.Fatalf("distant reference revealed only its heading: expanded=%s scroll=%d targets=%+v", m.proxies.activeGroup, m.scroll, m.targets)
 			}
 			m, _ = update(m, special(tea.KeyEscape))
-			if m.proxies.activeGroup != location.group || m.proxies.search.Value() != location.query || m.focus != location.focus || m.scroll != location.scroll {
+			if m.proxies.activeGroup != location.group || m.focus != location.focus || m.scroll != location.scroll {
 				t.Fatalf("return from distant reference lost the parent location: got %+v, want %+v", m.proxyLocation(), location)
 			}
 		})
@@ -659,7 +623,7 @@ func TestProxiesReferenceActionDoesNotSelectItsNode(t *testing.T) {
 	}
 }
 
-func TestProxiesToolbarKeepsModeAndSearchTogetherWhenWide(t *testing.T) {
+func TestProxiesToolbarKeepsModesAndCollapseActionReachable(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		for _, width := range []int{160, 80, 40} {
 			t.Run(fmt.Sprint(language, "/", width), func(t *testing.T) {
@@ -674,16 +638,16 @@ func TestProxiesToolbarKeepsModeAndSearchTogetherWhenWide(t *testing.T) {
 						t.Fatalf("toolbar hit exceeds its rendered content: %+v", hit)
 					}
 				}
-				mode, search := targets["mode.global"], targets["proxies.search"]
-				if mode.ID == "" || search.ID == "" {
-					t.Fatal("toolbar lost mode or search targets")
+				for _, mode := range []string{"rule", "global", "direct"} {
+					if targets["mode."+mode].ID == "" {
+						t.Fatalf("toolbar lost %s mode", mode)
+					}
 				}
 				if width >= 100 {
-					if mode.Y != search.Y+1 || search.X <= mode.X+mode.W {
-						t.Fatalf("wide search did not share the mode row: mode=%+v search=%+v", mode, search)
+					mode, collapse := targets["mode.direct"], targets["proxies.collapse_all"]
+					if collapse.ID == "" || collapse.Y != mode.Y || collapse.X < mode.X+mode.W {
+						t.Fatalf("wide collapse action overlaps or left the mode row: mode=%+v collapse=%+v", mode, collapse)
 					}
-				} else if search.Y <= mode.Y || search.X != 0 {
-					t.Fatalf("narrow toolbar did not give search a full row: mode=%+v search=%+v", mode, search)
 				}
 			})
 		}

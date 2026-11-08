@@ -75,7 +75,7 @@ func assertSearchCursorCell(t *testing.T, m Model, want string) {
 }
 
 func TestSearchCursorTracksChineseAndScrolledMiddleEditing(t *testing.T) {
-	for _, page := range []string{"proxies", "connections", "rules", "logs", "providers"} {
+	for _, page := range []string{"connections", "rules", "logs", "providers"} {
 		t.Run(page, func(t *testing.T) {
 			m, id := cursorSearchModel(t, page)
 			m, _ = click(m, findTarget(t, m, id))

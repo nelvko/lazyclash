@@ -645,9 +645,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.profilesUI.editing = true
 			m.profilesUI.url.Focus()
 			m.profilesUI.url, cmd = m.profilesUI.url.Update(v)
-		} else if m.proxies.editing {
-			m.proxies.search, cmd = m.proxies.search.Update(v)
-			m.scroll = 0
+
 		} else if m.connections.editing {
 			m.connections.search, cmd = m.connections.search.Update(v)
 			m.reconcileConnections()
@@ -709,10 +707,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.page == "connections" && m.connections.editing {
 			cmd = m.connectionSearchKey(v)
-			break
-		}
-		if m.page == "proxies" && m.proxies.editing {
-			cmd = m.proxySearchKey(v)
 			break
 		}
 		if m.page == "rules" && m.rules.editing {
@@ -981,8 +975,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		} else if m.page == "profiles" && m.focus == "profiles.url" {
 			m.profilesUI.url, cmd = m.profilesUI.url.Update(msg)
-		} else if m.proxies.editing {
-			m.proxies.search, cmd = m.proxies.search.Update(msg)
+
 		} else if m.connections.editing {
 			m.connections.search, cmd = m.connections.search.Update(msg)
 		} else if m.rules.editing {
@@ -1153,10 +1146,6 @@ func (m *Model) serviceAction(action string) tea.Cmd {
 func (m *Model) activate(id string) tea.Cmd {
 	if handled, cmd := m.clearInputField(id); handled {
 		return cmd
-	}
-	if m.page == "proxies" && id != "proxies.search" {
-		m.proxies.editing = false
-		m.proxies.search.Blur()
 	}
 	if m.page == "proxies" && (strings.HasPrefix(id, "proxies.") || strings.HasPrefix(id, "group.") || strings.HasPrefix(id, "node.")) {
 		return m.proxyActivate(id)
@@ -1528,7 +1517,6 @@ func (m *Model) renderLayout() {
 	o.StateUnavailable = !m.snapshotReady
 	g := dashboardGeometry(o)
 	o.Header = m.pageHeader()
-	resizeSearchInput(&m.proxies.search, m.proxySearchWidth(g.width))
 	resizeSearchInput(&m.connections.search, m.connectionSearchWidth(g.width))
 	resizeSearchInput(&m.rules.search, m.ruleSearchWidth(g.width))
 	resizeSearchInput(&m.logs.search, m.logSearchWidth(g.width))

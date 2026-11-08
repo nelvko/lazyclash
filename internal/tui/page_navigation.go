@@ -50,8 +50,6 @@ func (m *Model) browsePage(page string) {
 	m.sidebar.reveal = true
 	if page != m.page {
 		m.stopProxyTests()
-		m.proxies.editing = false
-		m.proxies.search.Blur()
 		m.rememberPageView()
 		m.blurInlineInput()
 		m.dismissProfileMenu()
@@ -81,8 +79,6 @@ func (m *Model) returnToNavigation() {
 	m.ruleProviders.editing = false
 	m.ruleProviders.search.Blur()
 	m.rememberPageView()
-	m.proxies.editing = false
-	m.proxies.search.Blur()
 	m.blurInlineInput()
 	m.profilesUI.editing = false
 	m.profilesUI.url.Blur()

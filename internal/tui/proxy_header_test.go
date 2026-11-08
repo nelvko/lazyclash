@@ -99,3 +99,25 @@ func TestApplyingProfileAutomaticallyUpdatesProxyGroups(t *testing.T) {
 		t.Fatal("new proxy metadata was not adopted with the groups")
 	}
 }
+
+func TestProxiesPageHasNoSearchInputOrShortcut(t *testing.T) {
+	m, _ := proxiesModel(t, 160, 40)
+	before := m.focus
+	m, _ = update(m, tea.KeyPressMsg{Code: '/', Text: "/"})
+	m, _ = update(m, tea.PasteMsg{Content: "must not filter proxies"})
+	if m.focus != before || m.busy {
+		t.Fatal("removed search shortcut changed focus or started a job")
+	}
+	if _, _, active := m.activeInputField(); active {
+		t.Fatal("proxy page retained an active text input")
+	}
+	for _, target := range m.targets {
+		if target.ID == "proxies.search" || target.ID == "proxies.clear" {
+			t.Fatal("removed search retained a focus or mouse target")
+		}
+	}
+	if got := len(m.proxyMembers(m.snapshot.Groups[0])); got != len(m.snapshot.Groups[0].All) {
+		t.Fatal("proxy members were filtered after pasting text")
+	}
+	m.stopRuntime()
+}
