@@ -34,7 +34,7 @@ func headerModel(page string, width, height int) Model {
 
 func TestPageHeadersUsePageActionsAcrossSizesAndFocus(t *testing.T) {
 	for page, actions := range map[string][]string{
-		"proxies": {"page.refresh"}, "profiles": {"profiles.update-all"},
+		"profiles":    {"profiles.update-all"},
 		"connections": {"conn.retry"},
 		"logs":        {"logs.follow", "logs.retry"}, "settings": {"network"},
 	} {
@@ -215,22 +215,10 @@ func TestProfilesHeaderLosingLastSubscriptionRepairsFocusAndBlocksUpdate(t *test
 	}
 }
 
-func TestProxiesHeaderRefreshReadsSharedSnapshot(t *testing.T) {
-	m := headerModel("proxies", 120, 32)
-	snapshot := m.snapshot
-	snapshot.Version = "refreshed-version"
-	m.backend = &fakeBackend{snapshot: snapshot}
-	m, cmd := click(m, findTarget(t, m, "page.refresh"))
-	m, _ = update(m, actionCmd(t, cmd)())
-	if m.busy || m.snapshot.Version != "refreshed-version" {
-		t.Fatal("Proxies header Refresh did not use the shared snapshot reader")
-	}
-}
-
 func TestPageCountsRequireAvailableObservations(t *testing.T) {
-	for _, page := range []string{"proxies", "connections"} {
+	for _, page := range []string{"connections"} {
 		m := headerModel(page, 120, 32)
-		expected := map[string]string{"proxies": "2 groups", "connections": "2 active"}[page]
+		expected := "2 active"
 		if !strings.Contains(headerText(m), expected) {
 			t.Fatalf("%s lost its observed count", page)
 		}

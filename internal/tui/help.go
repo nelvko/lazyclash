@@ -26,7 +26,10 @@ func (m Model) helpLines(width int) []string {
 	default:
 		lines = append(lines, tr("help.overview.install"), tr("help.overview.import"), tr("help.overview.controls"), tr("help.overview.refresh"), tr("help.overview.unavailable"))
 	}
-	lines = append(lines, "", tr("help.core.title"), tr("help.core.actions"), tr("help.core.refresh"), tr("help.core.quit"), "", tr("help.forms.title"), tr("help.forms.keys"), tr("help.forms.input"), tr("help.forms.modal"), "", tr("help.messages.title"), tr("help.messages.toast"), tr("help.messages.dismiss"), tr("help.messages.shared"))
+	if m.page != "proxies" {
+		lines = append(lines, "", tr("help.core.title"), tr("help.core.actions"), tr("help.core.refresh"))
+	}
+	lines = append(lines, tr("help.core.quit"), "", tr("help.forms.title"), tr("help.forms.keys"), tr("help.forms.input"), tr("help.forms.modal"), "", tr("help.messages.title"), tr("help.messages.toast"), tr("help.messages.dismiss"), tr("help.messages.shared"))
 	var wrapped []string
 	for _, line := range lines {
 		wrapped = append(wrapped, strings.Split(wrapText(line, max(1, width)), "\n")...)

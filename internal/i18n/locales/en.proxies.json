@@ -5,7 +5,7 @@
   "proxies.loading": "Loading proxy groups…",
   "proxies.uninstalled": "Install Mihomo to browse proxy groups.",
   "proxies.stopped": "Start Mihomo to browse current proxy groups.",
-  "proxies.unavailable": "Current proxy groups are unavailable. Resolve the API diagnostic, then refresh.",
+  "proxies.unavailable": "Current proxy groups are unavailable. Check the API diagnostic.",
   "proxies.no_groups": "The core returned no proxy groups for this mode.",
   "proxies.no_matches": "No matching groups or nodes. Clear search to show all choices.",
   "proxies.empty_group": "This group has no members.",
@@ -40,12 +40,12 @@
   "proxies.test.testing": "Testing %d/%d",
   "proxies.test.done": "Tested %d/%d",
   "proxies.test.canceled": "Canceled · retained %d/%d",
-  "proxies.removed": "This member is no longer in its group. Return to the list and refresh.",
+  "proxies.removed": "This member is no longer in its group. Return to the list.",
   "proxies.type": "Type: %s",
   "proxies.delay": "Delay: %s",
   "proxies.test_time": "Test time: %s",
   "proxies.test_url": "Test target: %s",
   "proxies.core_target": "Core history; target unavailable",
   "proxies.test_hint": "A result describes this test target only. A failed test does not establish that the node is offline.",
-  "help.proxies.tools": "/ searches; s sorts; t tests/cancels the current group; r, g or Ctrl+R refresh state without testing. Search input owns printable keys and digits."
+  "help.proxies.tools": "/ searches; s sorts; t tests/cancels the current group. Search input owns printable keys and digits."
 }

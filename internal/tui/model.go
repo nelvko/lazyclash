@@ -923,8 +923,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cmd = m.openForm()
 			}
 		case "s", "x", "r":
-			action := map[string]string{"s": "start", "x": "stop", "r": "restart"}[key]
-			cmd = m.serviceAction(action)
+			if m.page != "proxies" || key != "r" {
+				action := map[string]string{"s": "start", "x": "stop", "r": "restart"}[key]
+				cmd = m.serviceAction(action)
+			}
 		case "tab":
 			m.cycleFocus(1)
 		case "shift+tab":
@@ -948,7 +950,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "esc":
 			m.returnToNavigation()
 		case "g", "ctrl+r":
-			cmd = m.refresh()
+			if m.page != "proxies" {
+				cmd = m.refresh()
+			}
 		}
 	default:
 		// Forward cursor/clipboard messages to the focused Bubbles input. The
@@ -1187,7 +1191,7 @@ func (m *Model) activate(id string) tea.Cmd {
 		m.navigate("profiles")
 		return nil
 	case "page.refresh":
-		if !m.busy && !m.quitting {
+		if m.page == "profiles" && !m.busy && !m.quitting {
 			return m.refresh()
 		}
 		return nil

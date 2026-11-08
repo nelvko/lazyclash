@@ -479,11 +479,6 @@ func (m *Model) proxyKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 	switch k.String() {
 	case "/":
 		return true, m.focusProxySearch()
-	case "r", "g", "ctrl+r":
-		if !m.busy {
-			return true, m.refresh()
-		}
-		return true, nil
 	case "s":
 		m.openProxySort()
 		return true, nil

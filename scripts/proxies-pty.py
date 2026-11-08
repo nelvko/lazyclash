@@ -38,6 +38,16 @@ def labels(language):
     return result
 
 
+def assert_proxy_header(terminal, words):
+    rows = terminal.screen.text().splitlines()
+    divider = next((index for index, line in enumerate(rows) if "▔" in line), None)
+    assert divider is not None, "proxy page lost its header divider"
+    header = "\n".join(rows[:divider])
+    assert words["dashboard.page.proxies"] in header, "proxy header lost its page title"
+    assert words["header.refresh"] not in header and "↻" not in header, "proxy header retained a manual refresh action"
+    assert not re.search(r"\b\d+\s+groups\b|\d+\s*个代理组", header), "proxy header retained the group total"
+
+
 def paste(terminal, value):
     terminal.key(b"\x1b[200~" + value.encode() + b"\x1b[201~")
 
@@ -313,6 +323,14 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.key(b"2")
         terminal.wait("PROXY")
         terminal.settle()
+        assert_proxy_header(terminal, words)
+        # The old page refresh shortcuts must neither read state nor fall
+        # through to the global service-restart shortcut. Model tests count
+        # backend calls; the real terminal must also retain the current view.
+        before = terminal.screen.text()
+        terminal.key(b"rg\x12")
+        terminal.settle()
+        assert terminal.screen.text() == before, "removed refresh shortcuts changed the proxy page"
         # The summary remains visible; a group click expands its candidates.
         open_group(terminal, "PROXY")
         terminal.wait("Shadowsocks")
@@ -428,6 +446,7 @@ def exercise(preview, binary, output, language, profile, args):
             terminal.settle()
             terminal.wait("HK 01")
             terminal.wait("ms")
+            assert_proxy_header(terminal, words)
             if width in (200, 240):
                 assert_four_columns(terminal)
             if width == 160:
@@ -502,6 +521,7 @@ def exercise(preview, binary, output, language, profile, args):
         wait_mode(terminal, words["dashboard.mode.global"])
         terminal.wait("GLOBAL")
         terminal.settle()
+        assert_proxy_header(terminal, words)
         terminal.click_text("GLOBAL")
         terminal.key(b"\x1b[C")
         enter_reference(terminal, "PROXY", words["proxies.enter"])
@@ -512,6 +532,7 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.click_text(words["dashboard.mode.direct"])
         wait_mode(terminal, words["dashboard.mode.direct"])
         terminal.wait(words["proxies.direct_mode"][:40])
+        assert_proxy_header(terminal, words)
         preview.capture(terminal, output, "direct-mode", args)
         terminal.click_text(words["dashboard.mode.rule"])
         wait_mode(terminal, words["dashboard.mode.rule"])
@@ -530,7 +551,7 @@ def exercise(preview, binary, output, language, profile, args):
         if profile == "256":
             assert not preview.RGB.search(raw), "ANSI256 emitted RGB text"
         (output / "pty.raw").write_bytes(raw)
-        print("PASS %s/%s: selection/padding, references, search, sort, cancel/late results, strategies, resize/four-column cap" % (language, profile), flush=True)
+        print("PASS %s/%s: plain page header, removed refresh shortcuts, selection/padding, references, search, sort, cancel/late results, strategies, resize/four-column cap" % (language, profile), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")
         (output / "failed.ansi").write_bytes(terminal.raw)

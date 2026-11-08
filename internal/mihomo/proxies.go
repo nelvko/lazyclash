@@ -86,7 +86,7 @@ type ProxyDelay struct {
 func (c Client) TestProxyDelay(ctx context.Context, node string) (ProxyDelay, error) {
 	result := ProxyDelay{URL: DefaultProxyDelayURL}
 	if node == "" {
-		return result, diagnostic.New("diagnostic.api.nodeUnavailable", "the group or node is no longer available; refresh the nodes page")
+		return result, diagnostic.New("diagnostic.api.nodeUnavailable", "the group or node is no longer available")
 	}
 	// Allow the core's five-second timer to produce its authoritative HTTP 504
 	// before our bounded HTTP request expires. Preserve the caller's deadline.

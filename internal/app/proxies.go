@@ -55,7 +55,7 @@ func (a *App) TestProxyDelay(ctx context.Context, group, node string) (mihomo.Pr
 			return err
 		}
 		if currentID != identity || generation != currentGeneration || before.Service.PID != current.Service.PID {
-			return diagnostic.New("diagnostic.runtime.delayCoreChanged", "core changed during the delay test; refresh and retry")
+			return diagnostic.New("diagnostic.runtime.delayCoreChanged", "core changed during the delay test; retry after it is ready")
 		}
 		return queryErr
 	})
@@ -79,13 +79,13 @@ func testableProxy(proxies map[string]mihomo.Proxy, group, node string) error {
 		member = member || name == node
 	}
 	if !exists || !g.IsGroup() || !member {
-		return diagnostic.New("diagnostic.api.nodeUnavailable", "the group or node is no longer available; refresh the nodes page")
+		return diagnostic.New("diagnostic.api.nodeUnavailable", "the group or node is no longer available")
 	}
 	seen := make(map[string]bool)
 	for {
 		p, exists := proxies[node]
 		if !exists || seen[node] {
-			return diagnostic.New("diagnostic.api.nodeUnavailable", "the group or node is no longer available; refresh the nodes page")
+			return diagnostic.New("diagnostic.api.nodeUnavailable", "the group or node is no longer available")
 		}
 		seen[node] = true
 		switch strings.ToLower(p.Type) {
@@ -100,7 +100,7 @@ func testableProxy(proxies map[string]mihomo.Proxy, group, node string) error {
 			selectedMember = selectedMember || member == p.Now
 		}
 		if p.Now == "" || !selectedMember {
-			return diagnostic.New("diagnostic.api.nodeUnavailable", "the group or node is no longer available; refresh the nodes page")
+			return diagnostic.New("diagnostic.api.nodeUnavailable", "the group or node is no longer available")
 		}
 		node = p.Now
 	}

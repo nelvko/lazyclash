@@ -188,7 +188,7 @@ func (c Client) Select(ctx context.Context, group, node string) error {
 		}
 	}
 	if !found {
-		return diagnostic.New("diagnostic.api.nodeUnavailable", "the group or node is no longer available; refresh the nodes page")
+		return diagnostic.New("diagnostic.api.nodeUnavailable", "the group or node is no longer available")
 	}
 	payload, _ := json.Marshal(map[string]string{"name": node})
 	_, err = c.request(ctx, http.MethodPut, "/proxies/"+url.PathEscape(group), payload)
@@ -204,7 +204,7 @@ func (c Client) Select(ctx context.Context, group, node string) error {
 			return nil
 		}
 	}
-	return diagnostic.New("diagnostic.api.selectUnapplied", "Mihomo did not apply the requested node selection; refresh the nodes page")
+	return diagnostic.New("diagnostic.api.selectUnapplied", "Mihomo did not apply the requested node selection")
 }
 
 type Configuration struct {

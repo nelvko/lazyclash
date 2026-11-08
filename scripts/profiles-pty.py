@@ -359,7 +359,13 @@ def main():
             terminal.wait("3 custom · 1 built-in")
             (output / "profiles-header.txt").write_text(terminal.screen.text())
 
-            for key, action in [(b"2", "[Refresh]"), (b"4", "[Refresh]"), (b"5", "[Rule providers]"), (b"6", "[Reconnect]"), (b"7", "[Download method]")]:
+            terminal.key(b"2")
+            terminal.wait("Install Mihomo to browse proxy groups.")
+            terminal.settle()
+            proxy_header = "\n".join(terminal.screen.text().splitlines()[:3])
+            assert "Proxies" in proxy_header, "proxy header lost its page title"
+            assert "Refresh" not in proxy_header and "↻" not in proxy_header, "proxy header retained a refresh action"
+            for key, action in [(b"4", "[Refresh]"), (b"5", "[Rule providers]"), (b"6", "[Reconnect]"), (b"7", "[Download method]")]:
                 terminal.key(key)
                 header_row(terminal, action)
             terminal.key(b"1")
