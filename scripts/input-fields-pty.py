@@ -75,7 +75,8 @@ def hover_clear(terminal, report, state):
     state = wait_state(terminal, report, lambda s: s["hover"] == clear_id, "mouse motion did not hover the clear symbol")
     assert state["value_hash"] == value_hash and state.get("matching") == matching, "clear hover changed the query or matching selection"
     y = region["Y"]
-    x = next(x for x in range(region["X"], region["X"] + region["W"]) if terminal.screen.cells[y][x] == "✖")
+    x = next(x for x in range(region["X"], region["X"] + region["W"]) if terminal.screen.cells[y][x] == "x")
+    assert not terminal.screen.styles[y][x][2], "clear symbol became bold on hover"
     assert not terminal.screen.styles[y][x][3], "clear symbol gained an underline on hover"
     assert_clear_layout(terminal, state)
     return state
@@ -92,7 +93,7 @@ def assert_clear_layout(terminal, state):
     inline = clear_x + 2 < field["X"] + field["W"] - 2
     if clear:
         assert clear["Y"] == y and clear["X"] == clear_x and clear["W"] == 2, "clear hit region does not follow the editor"
-        assert terminal.screen.cells[y][right] == "✖", "clear symbol does not follow the input text"
+        assert terminal.screen.cells[y][right] == "x", "clear symbol does not follow the input text"
     if inline:
         assert terminal.screen.cells[y][clear_x + 2:clear_x + 4] == ([" ", "│"] if clear else [" ", " "]), "clear separator does not follow the nonempty-input state"
     else:

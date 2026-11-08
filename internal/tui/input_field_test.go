@@ -83,10 +83,10 @@ func TestInputFieldKeepsClearBeforeOptionsAndGenericRightInset(t *testing.T) {
 					for _, profile := range []colorprofile.Profile{colorprofile.TrueColor, colorprofile.ASCII} {
 						line := ansi.Strip(terminalTheme(field.lines[1], profile))
 						if inline {
-							if !strings.Contains(line, "✖ │ Aa ab .*") {
+							if !strings.Contains(line, "x │ Aa ab .*") {
 								t.Fatalf("%s/%s clear no longer precedes matching options: %q", state, profile, line)
 							}
-						} else if got := ansi.Cut(line, width-3, width); got != "✖ │" {
+						} else if got := ansi.Cut(line, width-3, width); got != "x │" {
 							t.Fatalf("%s/%s ordinary clear icon lost its one-cell inset: %q", state, profile, line)
 						}
 					}
@@ -141,7 +141,7 @@ func TestInputFieldEmptyQueryKeepsOptionsStillAndHidesSeparator(t *testing.T) {
 	if strings.Count(emptyLine, "│") != 2 || strings.Count(populatedLine, "│") != 3 {
 		t.Fatalf("separator should appear only beside a visible clear action: empty=%q populated=%q", emptyLine, populatedLine)
 	}
-	if !strings.HasSuffix(populatedLine, "✖ │ Aa ab .* │") {
+	if !strings.HasSuffix(populatedLine, "x │ Aa ab .* │") {
 		t.Fatalf("clear, separator and matching options are out of order: %q", populatedLine)
 	}
 }

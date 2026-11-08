@@ -293,7 +293,7 @@ func TestSearchFieldKeepsClearAndTrailingOptionsStableAcrossColorAndFocus(t *tes
 							t.Fatal("NO_COLOR search retained style escapes")
 						}
 						rows := strings.Split(view, "\n")
-						if got := ansi.Strip(ansi.Cut(rows[frame.Y+1], clear.X+1, clear.X+4)); got != "✖ │" {
+						if got := ansi.Strip(ansi.Cut(rows[frame.Y+1], clear.X+1, clear.X+4)); got != "x │" {
 							t.Fatalf("search clear icon and separator have an incorrect order: %q", got)
 						}
 					}
