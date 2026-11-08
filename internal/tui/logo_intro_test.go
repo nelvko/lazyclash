@@ -237,11 +237,11 @@ func TestSidebarLogoIntroKeepsWordmarkFixedWhileGrowingSleepyCenter(t *testing.T
 			t.Fatalf("invalid intro frame %d center = %q, want the resting emoji", frame, got)
 		}
 	}
-	if logoIntroColor(0) != accent || logoIntroColor(logoIntroFrames) != accent || logoIntroColor(logoIntroFrames/2) != "#c5efff" {
-		t.Fatal("intro did not start and finish at the accent around its pale cyan peak")
+	if logoGradientColor(0, 0) != logoGradientStart || logoGradientColor(0, logoIntroFrames) != logoGradientStart || logoGradientColor(0, logoIntroFrames/2) != "#c5efff" {
+		t.Fatal("intro did not restore the blue gradient endpoint after its pale cyan peak")
 	}
 	brightness := func(frame int) uint32 {
-		r, g, b, _ := lipgloss.Color(logoIntroColor(frame)).RGBA()
+		r, g, b, _ := lipgloss.Color(logoGradientColor(0, frame)).RGBA()
 		return r + g + b
 	}
 	for frame := 1; frame <= logoIntroFrames; frame++ {
@@ -249,7 +249,7 @@ func TestSidebarLogoIntroKeepsWordmarkFixedWhileGrowingSleepyCenter(t *testing.T
 		if frame <= logoIntroFrames/2 && current < previous || frame > logoIntroFrames/2 && current > previous {
 			t.Fatalf("brightness reversed direction at frame %d", frame)
 		}
-		if logoIntroColor(frame) != logoIntroColor(logoIntroFrames-frame) {
+		if logoGradientColor(0, frame) != logoGradientColor(0, logoIntroFrames-frame) {
 			t.Fatalf("intro faded out differently from its rise at frame %d", frame)
 		}
 	}

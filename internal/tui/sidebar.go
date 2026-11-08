@@ -101,7 +101,7 @@ func drawSidebar(rows []string, o dashboardOptions, popup bool) []hitRegion {
 		frame := logoFrameAt(o.LogoFrame)
 		if header.headerY > 0 && frame.bubble != "" {
 			x := (g.width-1-ansi.StringWidth(logo))/2 + ansi.StringWidth("la") + frame.offset
-			color := accent
+			color := logoGradientColor(ansi.StringWidth("la")+frame.offset, 0)
 			if frame.dim {
 				color = disabled
 			}

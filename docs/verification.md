@@ -1,5 +1,22 @@
 # 验证入口
 
+## Logo 月光渐变（2026-11-08）
+
+Logo 常态采用月光蓝 `#8fc9ef` → 薰衣草紫 `#c4a7e7`，复用 Lip Gloss 的 CIELAB 一维混色，按固定显示字符格分配颜色；原 emoji 占两格，进场和点击切换字符时两侧字标及其颜色保持原位。进场沿用 `z → Z → 💤`，渐变两端同时提亮至 `#c5efff` / `#ead7ff` 再恢复；点击惊醒短暂使用暖金，后续回到渐变。模态背景仍统一弱化，无色模式移除样式，未增加常驻动画。
+
+共享工作区存在其他会话的概览与实时会话改动，本轮从 `817395e` 导出隔离源码，只叠加 logo 渲染与回归后验证；没有覆盖或提交这些未完成改动。隔离源码通过 `make check build`，并通过 `./scripts/verify-linux.sh lazyclash-e2e` 在已有 Linux/arm64 专用 VM 实际运行全部可运行包测试。工作区的 Logo 定向回归与 Python 脚本语法检查通过。
+
+真实 controlling PTY 完成 True Color、ANSI256、NO_COLOR × 160×45、120×24、100×20 共九组，各模式另验证 80×24 启动后扩大。真彩八个 ASCII 字符格保留八种渐变色，256 色保留四级，无色没有 SGR 样式；进场逐格提亮恢复、字标固定、无进场梦泡、切页/缩放/关闭帮助不重播以及点击完整剧情均通过。预览 PNG 从实际 PTY 字符格与颜色重绘；emoji 本体由终端的彩色字体绘制。
+
+记录位于 `.test-artifacts/logo-gradient/`：`validation/` 保存隔离源码的主机与 Linux 测试日志，`pty/run-20261108-213851-dbfecd/` 保存逐尺寸颜色、当前屏幕、原始 ANSI 及局部 PNG，`pty/verification-summary.json` 汇总九组结果。PTY 使用隔离的未安装实例，未安装内核或修改服务；本轮未重跑真实 Mihomo/systemd/TUN 生命周期 E2E。
+
+```sh
+make build
+python3 scripts/logo-intro-pty.py --binary bin/lazyclash \
+  --output .test-artifacts/logo-gradient/pty \
+  --profile truecolor --profile ansi256 --profile no-color --png
+```
+
 ## 统一圆角输入框（2026-11-08）
 
 清除图标最终确定为普通字重的单格小写 `x`，保留清除在前、原间距及点击区域，悬停只提亮文字，不加粗或添加下划线。按用户要求，这次小写字形调整未运行测试或重新构建；下方大写 `X` 的记录与 `.test-artifacts/input-clear-x/` 的二进制和 PNG 仅对应此前方案。

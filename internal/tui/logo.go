@@ -3,19 +3,28 @@ package tui
 import (
 	"fmt"
 	"math"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/colorprofile"
+	"github.com/charmbracelet/x/ansi"
 )
 
 const logo = "la💤yClash"
 
 const (
+	logoGradientStart = "#8fc9ef"
+	logoGradientEnd   = "#c4a7e7"
 	logoIntroDelay    = 200 * time.Millisecond
 	logoIntroInterval = 40 * time.Millisecond
 	logoIntroFrames   = 20
+)
+
+var (
+	logoGradient      = lipgloss.Blend1D(ansi.StringWidth(logo), lipgloss.Color(logoGradientStart), lipgloss.Color(logoGradientEnd))
+	logoIntroGradient = lipgloss.Blend1D(ansi.StringWidth(logo), lipgloss.Color("#c5efff"), lipgloss.Color("#ead7ff"))
 )
 
 type logoIntroState struct {
@@ -65,14 +74,26 @@ func logoText(background string, dimmed bool) string {
 
 func logoTextFrame(index, intro int, background string, dimmed bool) string {
 	frame := logoFrameAt(index)
-	color := accent
-	if frame.wake {
-		color = focus
-	} else if index == 0 {
+	if index == 0 {
 		frame.center = logoIntroCenter(intro)
-		color = logoIntroColor(intro)
+	} else {
+		intro = 0
 	}
-	return themed(lipgloss.NewStyle().Bold(true).Render("la"+frame.center+"yClash"), color, background, dimmed)
+	wordmark := "la" + frame.center + "yClash"
+	style := lipgloss.NewStyle().Bold(true)
+	if dimmed || frame.wake {
+		return themed(style.Render(wordmark), focus, background, dimmed)
+	}
+	var out strings.Builder
+	column := 0
+	for _, char := range wordmark {
+		glyph := string(char)
+		out.WriteString(themed(style.Render(glyph), logoGradientColor(column, intro), background, false))
+		// The emoji occupies two cells; all following letters keep their colors
+		// when the center switches between the emoji and two ASCII characters.
+		column += ansi.StringWidth(glyph)
+	}
+	return out.String()
 }
 
 func logoIntroCenter(frame int) string {
@@ -86,14 +107,14 @@ func logoIntroCenter(frame int) string {
 	}
 }
 
-func logoIntroColor(frame int) string {
-	if frame <= 0 || frame >= logoIntroFrames {
-		return accent
+func logoGradientColor(column, intro int) string {
+	column = max(0, min(column, len(logoGradient)-1))
+	var amount float64
+	if intro > 0 && intro < logoIntroFrames {
+		amount = math.Pow(math.Sin(math.Pi*float64(intro)/logoIntroFrames), 2)
 	}
-	// Ease to a lighter cyan and back without changing the wordmark's cells.
-	amount := math.Pow(math.Sin(math.Pi*float64(frame)/logoIntroFrames), 2)
-	r, g, b, _ := lipgloss.Color(accent).RGBA()
-	pr, pg, pb, _ := lipgloss.Color("#c5efff").RGBA()
+	r, g, b, _ := logoGradient[column].RGBA()
+	pr, pg, pb, _ := logoIntroGradient[column].RGBA()
 	mix := func(base, peak uint32) uint8 {
 		return uint8(math.Round((float64(base) + (float64(peak)-float64(base))*amount) / 257))
 	}
