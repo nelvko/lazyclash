@@ -2,6 +2,7 @@ package tui
 
 import (
 	"strings"
+	"time"
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -47,6 +48,9 @@ type dashboardOptions struct {
 	Header                          pageHeader
 	Runtime                         app.RuntimeSnapshot
 	RuntimeReceived, RuntimePending bool
+	TrafficHistory                  []trafficPoint
+	TrafficNow                      time.Time
+	TrafficScale                    trafficChartScale
 	// Body and its targets are relative to the first content row beneath the
 	// page header. They are used by the Proxies, Profiles, Connections, Rules and Logs pages.
 	Body          string

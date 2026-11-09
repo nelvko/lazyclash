@@ -29,6 +29,7 @@ type Snapshot struct {
 	ServiceError        string
 	ServiceDiagnostic   error `json:"-"`
 	Controller          string
+	MixedPort           int
 	ProfilePending      bool
 	Generation          string
 	Applied             string
@@ -66,6 +67,7 @@ func (a *App) Snapshot(ctx context.Context) (Snapshot, error) {
 			out.ConfigReady = true
 			out.Version = m.Version
 			out.Controller = m.Controller
+			out.MixedPort = m.Port
 			out.Applied = m.Applied
 			out.Generation = generation
 			r, _, err := a.loadRuntimeRecord(m)

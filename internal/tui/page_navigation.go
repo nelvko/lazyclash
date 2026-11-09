@@ -61,9 +61,6 @@ func (m *Model) browsePage(page string) {
 		m.rules.search.Blur()
 		m.logs.editing = false
 		m.logs.search.Blur()
-		if !dashboardGeometry(m.dashboardOptions()).sidebar {
-			m.stopRuntime()
-		}
 		m.stopRules()
 		m.page = page
 		m.scroll = m.pageViews[page].scroll
@@ -475,7 +472,6 @@ func (m *Model) requestQuit() tea.Cmd {
 	m.stopProxyTests()
 	m.stopRuntime()
 	m.stopRules()
-	m.stopLogs()
 	m.stopCoreStatus()
 	m.quitting = true
 	if m.busy {

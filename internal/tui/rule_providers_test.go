@@ -54,6 +54,9 @@ func ruleProvidersModel(t *testing.T, count int) (Model, *ruleProvidersTestBacke
 	}
 	m := rulesModel(t, backend.fakeBackend)
 	m.backend = backend
+	// The shared realtime session already belongs to the application. These
+	// tests execute only the finite provider commands, not background readers.
+	m.syncRuntime()
 	m.width, m.height, m.scroll = 160, 45, 0
 	m.logoIntro.used, m.message = true, ""
 	m.notification.items = nil

@@ -246,5 +246,15 @@
   "dashboard.overview.savedProfiles": "已保存 %d 份配置",
   "dashboard.overview.upload": "↑ 上传",
   "dashboard.overview.download": "↓ 下载",
-  "dashboard.overview.systemProxy": "系统代理 · 未接管（控制尚不可用）"
+  "dashboard.overview.systemProxy": "系统代理 · 未接管（控制尚不可用）",
+  "dashboard.overview.access": "本机接入",
+  "dashboard.overview.proxyAddress": "已配置的 HTTP / SOCKS5 地址",
+  "dashboard.overview.controller": "控制 API：%s",
+  "dashboard.overview.tunActual": "运行中的 TUN：%s",
+  "dashboard.overview.source": "来源：%s",
+  "dashboard.overview.overrides": "包含覆写配置",
+  "dashboard.overview.trafficNow": "现在",
+  "dashboard.overview.historyWindow": "最近 60 秒",
+  "dashboard.overview.totalUpload": "累计上传",
+  "dashboard.overview.totalDownload": "累计下载"
 }

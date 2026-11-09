@@ -4,6 +4,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -26,69 +27,66 @@ func TestRulesObservedStopUpdatesSharedStateAndPageStatus(t *testing.T) {
 	}
 }
 
-func TestLogFailureRefreshesStatusWhileSessionWaitsForRetry(t *testing.T) {
-	b := &fakeBackend{snapshot: app.Snapshot{Installed: true}}
-	m := ready(b)
-	m.page = "logs"
-	m.snapshot.Service = service.Status{Active: true, State: "active"}
-	m.logs.active, m.logs.generation = true, 8
-	m, cmd := update(m, logsResultMsg{generation: 8, done: true, err: errors.New("Core stopped; reconnect logs")})
-	if cmd == nil || m.busy || !m.logs.reconnecting || !m.logs.active {
-		t.Fatal("log failure blocked the UI or restarted a failed stream")
+func TestLogFailureDoesNotInferStoppedServiceOrStartAnotherStatusWatcher(t *testing.T) {
+	m := sessionLogsModel(t, &fakeBackend{})
+	m.syncRuntime()
+	primeLogRuntime(m)
+	m.runtime.snapshot.Traffic = &mihomo.Traffic{Up: 12, Down: 34}
+	generation := m.runtime.generation
+	transition := m.acceptRuntimeEvent(app.RuntimeEvent{Source: app.RuntimeLogs, Instance: 1, ObservedAt: time.Now(), Err: errors.New("log stream interrupted")})
+	if transition || m.statusCancel != nil || m.busy || !m.logs.reconnecting || !m.logs.active || !m.snapshot.Service.Active || m.runtime.snapshot.Traffic.Down != 34 {
+		t.Fatal("a source failure invented a stopped process or duplicated the central status watcher")
 	}
-	// The first command waits for the next session update; only execute the
-	// independent status read here, without inventing a second stream.
-	m, _ = update(m, commandBatch(t, cmd)[1]())
-	if m.snapshot.Service.Active || !m.logs.active || !m.logs.reconnecting {
-		t.Fatal("background status read kept stale service state or ended the session")
+	if m.syncRuntime() != nil || m.runtime.generation != generation {
+		t.Fatal("log failure replaced the shared session")
 	}
+	m.acceptRuntimeEvent(app.RuntimeEvent{Source: app.RuntimeStatus, Instance: 2, ObservedAt: time.Now(), Snapshot: app.RuntimeSnapshot{State: "stopped", Service: service.Status{State: "inactive"}}})
+	if m.snapshot.Service.Active || m.runtime.snapshot.State != "stopped" || !m.logs.active {
+		t.Fatal("central status could not independently confirm a stopped process")
+	}
+}
+
+func TestBufferedLogEventsCannotInventOrReplaceSystemdState(t *testing.T) {
+	m := sessionLogsModel(t, &fakeBackend{})
+	m.syncRuntime()
+	m.acceptRuntimeEvent(app.RuntimeEvent{Source: app.RuntimeStatus, Instance: 1, ObservedAt: time.Now(), Snapshot: app.RuntimeSnapshot{State: "stopped", Service: service.Status{State: "inactive"}}})
+	m.acceptRuntimeEvent(logSessionEvent("Buffered event from the owned core"))
+	if m.snapshot.Service.Active || m.statusCancel != nil {
+		t.Fatal("buffered log event invented a running process or started another ownership query")
+	}
+	m.acceptRuntimeEvent(app.RuntimeEvent{Source: app.RuntimeStatus, Instance: 2, ObservedAt: time.Now(), Snapshot: app.RuntimeSnapshot{State: "ready", Service: service.Status{Active: true, State: "active", PID: 4243}}})
+	if !m.snapshot.Service.Active || m.snapshot.Service.State != "active" || m.snapshot.Service.PID != 4243 {
+		t.Fatal("confirmed central state kept the old Stopped process")
+	}
+	before := len(m.logs.entries)
+	m.acceptRuntimeEvent(logSessionEvent("Old process buffered event"))
+	if len(m.logs.entries) != before || m.snapshot.Service.PID != 4243 {
+		t.Fatal("old-instance log event entered the new process or changed systemd state")
+	}
+}
+
+func TestQuietSharedStatusUpdatesTheHeaderWithoutWaitingForLogEvents(t *testing.T) {
+	m := sessionLogsModel(t, &fakeBackend{})
+	m.snapshot.Service = service.Status{State: "inactive"}
+	m.syncRuntime()
+	generation := m.runtime.generation
+	m.acceptRuntimeEvent(app.RuntimeEvent{Source: app.RuntimeStatus, Instance: 1, ObservedAt: time.Now(), Snapshot: app.RuntimeSnapshot{State: "ready", Service: service.Status{Active: true, State: "active", PID: 4242}}})
+	m.layout()
+	if !m.snapshot.Service.Active || !m.logs.active || m.runtime.generation != generation || len(m.logs.entries) != 0 {
+		t.Fatal("quiet central status needed log data, replaced the session, or invented a record")
+	}
+}
+
+func TestLateFullStatusReadCannotOverwriteForegroundOperation(t *testing.T) {
+	m := sessionLogsModel(t, &fakeBackend{})
+	m.snapshot.Service = service.Status{State: "inactive"}
+	m.refreshCoreStatus()
 	old := m.statusGeneration
 	m.newJob("action")
 	defer m.cancel()
-	m, _ = update(m, coreStatusMsg{generation: old, snapshot: app.Snapshot{Installed: true, Service: service.Status{Active: true}}})
+	updated, _ := update(*m, coreStatusMsg{generation: old, snapshot: app.Snapshot{Installed: true, Service: service.Status{Active: true}}})
+	*m = updated
 	if m.snapshot.Service.Active {
 		t.Fatal("late status read overwrote a newer foreground operation")
-	}
-}
-
-func TestLogEventsRefreshSystemdStateWithoutInventingRunningState(t *testing.T) {
-	b := &fakeBackend{snapshot: app.Snapshot{Installed: true, Service: service.Status{State: "inactive"}}}
-	m := ready(b)
-	m.page = "logs"
-	m.logs.active, m.logs.generation = true, 9
-	var cmd tea.Cmd
-	m, cmd = update(m, logsResultMsg{generation: 9, entries: []mihomo.LogEntry{{Level: "info", Message: "Buffered event from the owned core"}}})
-	if m.snapshot.Service.Active {
-		t.Fatal("buffered log event invented a running systemd process")
-	}
-	m, _ = update(m, commandBatch(t, cmd)[1]())
-	if m.snapshot.Service.Active {
-		t.Fatal("systemd observation was overridden by a buffered API event")
-	}
-	b.snapshot.Service = service.Status{Active: true, State: "active"}
-	m, cmd = update(m, logsResultMsg{generation: 9, entries: []mihomo.LogEntry{{Level: "info", Message: "Fresh event"}}})
-	m, _ = update(m, commandBatch(t, cmd)[1]())
-	if !m.snapshot.Service.Active || m.snapshot.Service.State != "active" {
-		t.Fatal("confirmed systemd state kept a stale Stopped header")
-	}
-}
-
-func TestQuietReconnectRefreshesHeaderWithoutWaitingForLogEvents(t *testing.T) {
-	b := &fakeBackend{snapshot: app.Snapshot{Installed: true}}
-	m := ready(b)
-	m.page = "logs"
-	// A different client starts the service while this view is disconnected.
-	b.snapshot.Service = service.Status{Active: true, State: "active"}
-	cmd := m.reconnectLogs()
-	defer m.stopLogs()
-	defer m.stopCoreStatus()
-	commands := commandBatch(t, cmd)
-	if len(commands) != 2 {
-		t.Fatal("reconnect did not independently request the current service snapshot")
-	}
-	// Execute only the snapshot command. The stream has not emitted any event.
-	m, _ = update(m, commands[1]())
-	if !m.snapshot.Service.Active || !m.logs.active {
-		t.Fatal("quiet reconnect left the prior Stopped summary")
 	}
 }

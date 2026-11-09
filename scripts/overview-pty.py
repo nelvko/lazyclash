@@ -77,6 +77,30 @@ def assert_borderless(terminal):
     assert not any(value in terminal.screen.text() for value in "┌┐└┘│"), "inactive card retained an outer border"
 
 
+def return_navigation(terminal, words):
+    terminal.settle()
+    wide = terminal.screen.columns >= 100 and terminal.screen.rows >= 20
+    prefix = words["navigation.sidebar" if wide else "navigation.menu"].split(" · ")[0]
+    if terminal.screen.text().splitlines()[-1].lstrip().startswith(prefix):
+        return
+    terminal.key(b"\x1b")
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline:
+        terminal.read(0.05)
+        if (not terminal.screen.synchronized and terminal.screen.state == "text"
+                and terminal.screen.text().splitlines()[-1].lstrip().startswith(prefix)):
+            return
+    raise AssertionError("Esc did not restore navigation focus\n" + terminal.screen.text())
+
+
+def text_point(terminal, label):
+    for y, row in enumerate(terminal.screen.cells):
+        for x, value in enumerate(row):
+            if value and "".join(row[x:]).startswith(label):
+                return x, y
+    return None
+
+
 def assert_card_outline(terminal, profile, complete=True):
     cells = terminal.screen.cells
     corners = [(x, y) for y, row in enumerate(cells) for x, value in enumerate(row) if value == "┌"]
@@ -97,6 +121,56 @@ def assert_card_outline(terminal, profile, complete=True):
         if isinstance(color, str):
             color = tuple(int(color[index:index + 2], 16) for index in (1, 3, 5))
         assert color[0] > 190 and color[0] >= color[1] > color[2] and color[1] >= 110, "card outline lost its yellow focus color"
+    return {"x": left, "y": top, "width": right - left + 1,
+            "height": bottom - top + 1 if bottom is not None else None}
+
+
+def inspect_row_cards(preview, terminal, output, width, height, words, profile, scenario, args):
+    names = ("service", "profile", "route", "access", "traffic", "environment")
+    titles = [words["dashboard.profile.title"] if name == "profile" else
+              words["dashboard.overview." + name] for name in names]
+    initial_positions = [text_point(terminal, title) for title in titles]
+    geometry = []
+    for index, (name, title) in enumerate(zip(names, titles)):
+        outline = assert_card_outline(terminal, profile)
+        point = text_point(terminal, title)
+        assert point is not None and outline["x"] < point[0] < outline["x"] + outline["width"], "card browsing lost semantic identity: " + name
+        assert outline["y"] < point[1] < outline["y"] + outline["height"], "card outline surrounds the wrong title: " + name
+        geometry.append(outline)
+        if name == "traffic" and scenario in ("running", "pending", "drift"):
+            for value in ("12.0 KiB/s", "2.2 MiB/s"):
+                assert value in terminal.screen.text(), "traffic card omitted a live rate: " + value
+        if name == "access":
+            assert "127.0.0.1:17897" in terminal.screen.text(), "local-access card omitted its configured proxy endpoint"
+            assert "127.0.0.1:19097" in terminal.screen.text(), "local-access card omitted its control API address"
+            if scenario == "pending":
+                assert words["tun.disable"] in terminal.screen.text(), "saved TUN state lost its explicit disable control"
+                assert words["tun.saved_state"] % words["dashboard.control.on"] in terminal.screen.text(), "saved TUN state was not retained"
+                assert words["dashboard.overview.tunActual"] % words["dashboard.control.off"] in terminal.screen.text(), "observed TUN state was confused with the saved state"
+        preview.capture(terminal, output, "%s-card-%dx%d" % (name, width, height), args)
+        if index + 1 < len(names):
+            terminal.key(b"\x1b[B")
+            terminal.settle()
+    for first in (0, 2):
+        assert abs(geometry[first]["width"] - geometry[first + 1]["width"]) <= 1, "paired cards have unequal column widths"
+        left, right = initial_positions[first:first + 2]
+        if left is not None and right is not None:
+            assert left[1] == right[1], "paired card titles do not start on the same row"
+    if scenario in ("running", "pending"):
+        assert geometry[0]["height"] != geometry[1]["height"], "first-row cards were padded to equal heights"
+    for first in (2, 4):
+        before, current = initial_positions[first - 2], initial_positions[first]
+        if before is not None and current is not None:
+            expected = before[1] + max(geometry[first - 2]["height"], geometry[first - 1]["height"]) + 1
+            assert current[1] == expected, "next card row does not follow the taller card and one blank row"
+    for index in (4, 5):
+        assert geometry[index]["width"] == width - 25, "traffic/environment card does not span the complete body"
+    if initial_positions[4] is not None and initial_positions[5] is not None:
+        assert initial_positions[5][1] == initial_positions[4][1] + geometry[4]["height"] + 1, "environment does not follow the fullwidth traffic card"
+    (output / ("card-geometry-%dx%d.json" % (width, height))).write_text(json.dumps(dict(zip(names, geometry)), indent=2) + "\n")
+    return_navigation(terminal, words)
+    terminal.key(b"\t")
+    terminal.settle()
 
 
 def exercise(preview, binary, output, language, profile, scenario, args):
@@ -109,8 +183,8 @@ def exercise(preview, binary, output, language, profile, scenario, args):
         terminal.settle()
         preview.capture(terminal, output, "overview-initial", args)
         screen = terminal.screen.text()
-        if scenario == "running":
-            for value in ("12.0 KiB/s", "2.2 MiB/s", "4242", "PROXY", "香港 01", "日常订阅"):
+        if scenario in ("running", "pending"):
+            for value in ("4242", "PROXY", "香港 01", "日常订阅"):
                 assert value in screen, "missing initial observation: " + value
         elif scenario == "drift":
             for value in ("v1.20.0", "v1.19.33", "Fixture running service differs from saved settings"):
@@ -119,11 +193,13 @@ def exercise(preview, binary, output, language, profile, scenario, args):
             assert words["dashboard.action.start"] in screen, "stopped service lost Start"
         else:
             assert "12.0 KiB/s" not in screen, "unavailable observation retained live metrics"
+        assert "subscription.example" in screen, "profile card omitted its source origin"
+        if scenario == "pending":
+            assert words["profiles.changes_pending"] in screen, "profile card hid its unapplied changes"
 
         # The first observation may already focus a card. Start explicitly from
         # navigation before checking both safe Enter transitions.
-        terminal.key(b"\x1b")
-        terminal.settle()
+        return_navigation(terminal, words)
         assert_borderless(terminal)
         assert "─────" in terminal.screen.text(), "borderless cards removed the internal route divider"
         preview.capture(terminal, output, "overview-navigation", args)
@@ -138,12 +214,14 @@ def exercise(preview, binary, output, language, profile, scenario, args):
         assert_borderless(terminal)
         preview.capture(terminal, output, "control-focus", args)
 
-        expected = [lifecycle, words["dashboard.action.manage"], words["dashboard.action.profiles"]]
+        expected = [lifecycle, words["dashboard.action.manage"], words["dashboard.action.profiles"], words["dashboard.settings.ports"]]
         if scenario != "unavailable":
             expected.extend([words["dashboard.action.restart"],
                              *[words["dashboard.mode." + mode] for mode in ("rule", "global", "direct")]])
         if scenario not in ("stopped", "unavailable"):
             expected.append(words["dashboard.action.openProxies"])
+        if scenario == "pending":
+            expected.append(words["tun.disable"])
 
         for width, height in SIZES:
             terminal.resize(width, height)
@@ -151,8 +229,7 @@ def exercise(preview, binary, output, language, profile, scenario, args):
             terminal.key(b"\x1b[H")
             terminal.settle()
             preview.capture(terminal, output, "overview-%dx%d" % (width, height), args)
-            terminal.key(b"\x1b")
-            terminal.settle()
+            return_navigation(terminal, words)
             assert_borderless(terminal)
             preview.capture(terminal, output, "navigation-%dx%d" % (width, height), args)
             # Navigation's next Tab stop is the safe card-browsing surface.
@@ -160,6 +237,8 @@ def exercise(preview, binary, output, language, profile, scenario, args):
             terminal.settle()
             assert_card_outline(terminal, profile, complete=scenario == "running" or height >= 32)
             preview.capture(terminal, output, "card-focus-%dx%d" % (width, height), args)
+            if width >= 120:
+                inspect_row_cards(preview, terminal, output, width, height, words, profile, scenario, args)
             terminal.key(b"\r")
             terminal.settle()
             assert_borderless(terminal)
@@ -188,10 +267,11 @@ def exercise(preview, binary, output, language, profile, scenario, args):
         terminal.exit()
         calls = json.loads(report.read_text())
         assert calls["service_changes"] == calls["modes"] == calls["selections"] == 0, calls
+        assert calls["tun_changes"] == 0, calls
         assert calls["runtime_queries"] > 0, calls
         check_profile(preview, terminal, profile)
         (output / "pty.raw").write_bytes(terminal.raw)
-        print("PASS %s/%s/%s: five dimensions, borderless cards, complete yellow card focus, clean button focus, Tab reveal and read-only page actions; %s" %
+        print("PASS %s/%s/%s: paired natural-height cards and fullwidth traffic/environment, five dimensions, borderless/focus states, local access, Tab reveal and read-only page actions; %s" %
               (language, profile, scenario, json.dumps(calls)), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")
@@ -209,7 +289,7 @@ def main():
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--lang", choices=["en", "zh-Hans"], action="append")
     parser.add_argument("--profile", choices=["truecolor", "256", "no-color"], action="append")
-    parser.add_argument("--scenario", choices=["running", "stopped", "unavailable", "drift"], action="append")
+    parser.add_argument("--scenario", choices=["running", "stopped", "unavailable", "drift", "pending"], action="append")
     sys.dont_write_bytecode = True
     spec = importlib.util.spec_from_file_location("overview_pty_preview", Path(__file__).with_name("onboarding-pty.py"))
     preview = importlib.util.module_from_spec(spec)

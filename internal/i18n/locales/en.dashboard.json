@@ -246,5 +246,15 @@
   "dashboard.overview.savedProfiles": "%d saved profiles",
   "dashboard.overview.upload": "↑ Upload",
   "dashboard.overview.download": "↓ Download",
-  "dashboard.overview.systemProxy": "System proxy · Unmanaged (control unavailable)"
+  "dashboard.overview.systemProxy": "System proxy · Unmanaged (control unavailable)",
+  "dashboard.overview.access": "Local access",
+  "dashboard.overview.proxyAddress": "Configured HTTP / SOCKS5 address",
+  "dashboard.overview.controller": "Control API: %s",
+  "dashboard.overview.tunActual": "Running TUN: %s",
+  "dashboard.overview.source": "Source: %s",
+  "dashboard.overview.overrides": "Includes overrides",
+  "dashboard.overview.trafficNow": "Now",
+  "dashboard.overview.historyWindow": "Last 60 seconds",
+  "dashboard.overview.totalUpload": "Total upload",
+  "dashboard.overview.totalDownload": "Total download"
 }

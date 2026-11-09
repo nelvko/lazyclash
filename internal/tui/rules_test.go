@@ -21,6 +21,9 @@ func sampleRules() []mihomo.Rule {
 func rulesModel(t *testing.T, b *fakeBackend) Model {
 	t.Helper()
 	m := runtimeModel(t, b)
+	// Rules tests drive their finite reader while the application already owns
+	// its independent realtime session.
+	m.syncRuntime()
 	m.page, m.focus = "rules", "rule.0"
 	m.rules.active, m.rules.received = true, true
 	m.rules.snapshot = app.RuleSnapshot{State: "ready", Rules: sampleRules(), ObservedAt: time.Now()}

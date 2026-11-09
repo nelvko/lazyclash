@@ -164,3 +164,7 @@ func (b *ruleManagementPTYBackend) Select(ctx context.Context, _, _ string) erro
 	b.calls.Selections++
 	return ctx.Err()
 }
+
+func (b *ruleManagementPTYBackend) StreamRuntime(ctx context.Context, emit func(app.RuntimeEvent)) error {
+	return streamRuntimeFixture(ctx, b, emit)
+}

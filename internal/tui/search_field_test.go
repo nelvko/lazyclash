@@ -135,7 +135,7 @@ func TestSearchFieldFixedControlsAlignWithFrame(t *testing.T) {
 					m = longRedesignedRules(t, width, 32)
 				case "logs":
 					m = redesignedLogsModel(width, 32, 50)
-					defer m.stopLogs()
+					defer m.stopRuntime()
 				}
 				m.layout()
 				field := findTarget(t, m, id)

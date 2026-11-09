@@ -209,3 +209,7 @@ func (b *proxiesPTYBackend) TestProxyDelay(ctx context.Context, group, node stri
 	}
 	return mihomo.ProxyDelay{State: state, Delay: delay, Time: time.Now(), URL: "https://www.gstatic.com/generate_204"}, nil
 }
+
+func (b *proxiesPTYBackend) StreamRuntime(ctx context.Context, emit func(app.RuntimeEvent)) error {
+	return streamRuntimeFixture(ctx, b, emit)
+}

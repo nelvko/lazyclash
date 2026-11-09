@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -267,9 +268,11 @@ func TestRuntimePageRefreshesUseExistingReaders(t *testing.T) {
 			calls := 0
 			m := headerModel(page, 120, 32)
 			m.backend = &fakeBackend{snapshot: m.snapshot,
-				runtime: func(context.Context) (app.RuntimeSnapshot, error) {
+				streamRuntime: func(ctx context.Context, emit func(app.RuntimeEvent)) error {
 					calls++
-					return app.RuntimeSnapshot{State: "ready"}, nil
+					emit(app.RuntimeEvent{Source: app.RuntimeStatus, Instance: 1, ObservedAt: time.Now(), Snapshot: app.RuntimeSnapshot{State: "ready"}})
+					<-ctx.Done()
+					return ctx.Err()
 				},
 				rules: func(context.Context) (app.RuleSnapshot, error) {
 					calls++
@@ -285,7 +288,20 @@ func TestRuntimePageRefreshesUseExistingReaders(t *testing.T) {
 			if cmd == nil || m.busy {
 				t.Fatal("header refresh did not start an independent page reader")
 			}
-			m, _ = update(m, cmd())
+			if page == "connections" {
+				commands := commandBatch(t, cmd)
+				done := make(chan struct{})
+				go func() { commands[0](); close(done) }()
+				m, _ = update(m, commands[1]())
+				m.stopRuntime()
+				select {
+				case <-done:
+				case <-time.After(time.Second):
+					t.Fatal("retry reader did not cancel")
+				}
+			} else {
+				m, _ = update(m, cmd())
+			}
 			if calls != 1 {
 				t.Fatalf("header refresh read the wrong use case: %d reads", calls)
 			}
@@ -318,7 +334,7 @@ func TestLogsHeaderPauseResumeEndsSearchAndKeepsCapture(t *testing.T) {
 	if cmd != nil || !m.logs.active || m.logs.paused || m.logs.editing || m.logs.search.Focused() {
 		t.Fatal("Resume did not leave search and preserve the existing capture")
 	}
-	defer m.stopLogs()
+	defer m.stopRuntime()
 	defer m.stopCoreStatus()
 	m, _ = click(m, findTarget(t, m, "logs.follow"))
 	if !m.logs.active || !m.logs.paused {

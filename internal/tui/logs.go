@@ -1,8 +1,6 @@
 package tui
 
 import (
-	"context"
-	"errors"
 	"time"
 
 	"charm.land/bubbles/v2/textinput"
@@ -20,11 +18,7 @@ type logsState struct {
 	entries               []mihomo.LogEntry
 	search                textinput.Model
 	editing, paused       bool
-	active, pending       bool
-	generation            uint64
-	cancel                context.CancelFunc
-	ctx                   context.Context
-	updates               <-chan logsResultMsg
+	active                bool
 	err                   error
 	observedAt            time.Time
 	started, reconnecting bool
@@ -38,13 +32,6 @@ type logsState struct {
 	unread                int
 }
 
-type logsResultMsg struct {
-	generation uint64
-	entries    []mihomo.LogEntry
-	done       bool
-	err        error
-}
-
 func newLogsState(locales ...i18n.Localizer) logsState {
 	var locale i18n.Localizer
 	if len(locales) > 0 {
@@ -56,108 +43,6 @@ func newLogsState(locales ...i18n.Localizer) logsState {
 	search.Placeholder = locale.T("logs.placeholder")
 	styleInput(&search, bg, false)
 	return logsState{search: search}
-}
-
-func (m *Model) stopLogs() {
-	if m.logs.cancel != nil {
-		m.logs.cancel()
-		m.logs.cancel = nil
-	}
-	if m.logs.active || m.logs.pending {
-		m.logs.generation++
-	}
-	m.logs.active, m.logs.pending = false, false
-}
-
-// The first running snapshot starts collection. Visiting Logs also starts a
-// session so unavailable cores get an explicit diagnostic and automatic retry.
-func (m Model) logsWanted() bool {
-	return m.logs.started || m.page == "logs" || m.snapshotReady && m.snapshot.Installed && m.snapshot.Service.Active
-}
-
-// One owner reads a bounded channel; the stream blocks at that boundary until
-// the next command can drain it. Cancellation releases either side promptly.
-func waitLogs(ctx context.Context, updates <-chan logsResultMsg) tea.Cmd {
-	return func() tea.Msg {
-		var result logsResultMsg
-		select {
-		case <-ctx.Done():
-			return nil
-		case msg, ok := <-updates:
-			if !ok {
-				return nil
-			}
-			result = msg
-		}
-		for n := 1; n < 32 && !result.done; n++ {
-			select {
-			case msg, ok := <-updates:
-				if !ok {
-					return result
-				}
-				result.entries = append(result.entries, msg.entries...)
-				result.done, result.err = msg.done, msg.err
-			default:
-				return result
-			}
-		}
-		return result
-	}
-}
-
-// Retry only after a stream ends, never on a quiet live connection. A single
-// session owns both streaming and backoff, and cancellation releases either.
-func logRetryDelay(attempt int) time.Duration {
-	return min(30*time.Second, time.Second<<min(5, max(0, attempt)))
-}
-
-func (m *Model) syncLogs() tea.Cmd {
-	if m.quitting || m.ctx.Err() != nil {
-		m.stopLogs()
-		return nil
-	}
-	if !m.logsWanted() || m.logs.active {
-		return nil
-	}
-	m.logs.started = true
-	m.logs.generation++
-	id := m.logs.generation
-	ctx, cancel := context.WithCancel(m.ctx)
-	updates := make(chan logsResultMsg, 32)
-	m.logs.active, m.logs.pending = true, true
-	m.logs.cancel, m.logs.ctx, m.logs.updates = cancel, ctx, updates
-	backend := m.backend
-	run := func() tea.Msg {
-		defer close(updates)
-		attempt := 0
-		for ctx.Err() == nil {
-			err := backend.StreamLogs(ctx, func(entry mihomo.LogEntry) {
-				attempt = 0
-				select {
-				case updates <- logsResultMsg{generation: id, entries: []mihomo.LogEntry{entry}}:
-				case <-ctx.Done():
-				}
-			})
-			if ctx.Err() != nil {
-				return nil
-			}
-			select {
-			case updates <- logsResultMsg{generation: id, done: true, err: err}:
-			case <-ctx.Done():
-				return nil
-			}
-			timer := time.NewTimer(logRetryDelay(attempt))
-			attempt = min(5, attempt+1)
-			select {
-			case <-ctx.Done():
-				timer.Stop()
-				return nil
-			case <-timer.C:
-			}
-		}
-		return nil
-	}
-	return tea.Batch(run, waitLogs(ctx, updates))
 }
 
 func (m *Model) appendLogs(entries []mihomo.LogEntry) {
@@ -183,24 +68,6 @@ func (m *Model) appendLogs(entries []mihomo.LogEntry) {
 	}
 }
 
-func (m *Model) acceptLogs(msg logsResultMsg) tea.Cmd {
-	if !m.logs.active || msg.generation != m.logs.generation {
-		return nil
-	}
-	m.appendLogs(msg.entries)
-	if msg.done {
-		m.logs.reconnecting, m.logs.recovered = true, false
-		m.logs.err = msg.err
-		if errors.Is(msg.err, context.Canceled) {
-			m.logs.err = nil
-		}
-	} else if len(msg.entries) > 0 {
-		m.logs.recovered = m.logs.recovered || m.logs.reconnecting
-		m.logs.reconnecting, m.logs.err = false, nil
-	}
-	return waitLogs(m.logs.ctx, m.logs.updates)
-}
-
 // Freeze an independent bounded display snapshot; the live session keeps
 // accepting events even when its ring evicts entries shown in this snapshot.
 func (m *Model) pauseLogs() {
@@ -216,13 +83,12 @@ func (m *Model) pauseLogs() {
 func (m *Model) resumeLogs() tea.Cmd {
 	m.logs.paused, m.logs.frozen = false, nil
 	m.resetLogsView()
-	return m.syncLogs()
+	return m.syncRuntime()
 }
 
 func (m *Model) reconnectLogs() tea.Cmd {
-	m.stopLogs()
-	m.logs.started, m.logs.reconnecting, m.logs.recovered, m.logs.err = true, true, false, nil
-	return tea.Batch(m.syncLogs(), m.refreshCoreStatus())
+	m.logs.reconnecting, m.logs.recovered, m.logs.err = true, false, nil
+	return tea.Batch(m.retryRuntime(), m.refreshCoreStatus())
 }
 
 func (m Model) logsDisplayEntries() ([]mihomo.LogEntry, uint64) {

@@ -355,8 +355,8 @@ func TestOverviewRowsSizeIndependentlyAndEmptyMetricsStayClear(t *testing.T) {
 	if strings.Contains(plain, "Connections         --") || strings.Contains(plain, "You can explore") {
 		t.Fatal("empty cards retained unavailable metric rows or setup filler")
 	}
-	// Runtime diagnostics can extend the right column without stretching the
-	// core card or moving the proxy route in the left column.
+	// Traffic diagnostics enlarge only the full-width card and move the
+	// environment below it; earlier paired controls keep their natural geometry.
 	_, _, shortHeight := renderDashboard(o)
 	o.Runtime = app.RuntimeSnapshot{State: "unavailable", Error: strings.Repeat("runtime diagnostic ", 50)}
 	_, _, tallHeight := renderDashboard(o)
@@ -374,10 +374,13 @@ func TestOverviewRowsSizeIndependentlyAndEmptyMetricsStayClear(t *testing.T) {
 	}
 	short := overviewLayout(dashboardOptions{Height: 45, GuideDismissed: true}, 112)
 	tall := overviewLayout(o, 112)
-	for _, id := range []string{"overview.card.dashboard.control.core", "overview.card.dashboard.control.routingMode"} {
+	for _, id := range []string{"overview.card.dashboard.control.core", "overview.card.dashboard.profile.title", "overview.card.dashboard.control.routingMode", "overview.card.dashboard.overview.access"} {
 		if card(short, id) != card(tall, id) {
-			t.Fatalf("runtime diagnostic changed the independent card %s", id)
+			t.Fatalf("traffic diagnostic changed an earlier control card: %s", id)
 		}
+	}
+	if card(tall, "overview.card.dashboard.system.title").Y <= card(short, "overview.card.dashboard.system.title").Y {
+		t.Fatal("long traffic diagnostics did not move the environment below the traffic card")
 	}
 }
 

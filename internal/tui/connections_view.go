@@ -8,12 +8,16 @@ import (
 	"charm.land/bubbles/v2/table"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
 
 func (m Model) connectionNow() time.Time {
 	if m.connections.paused && m.connections.detail == nil {
 		return m.connections.frozenAt
+	}
+	if observed := m.runtime.observed[app.RuntimeConnections]; !observed.IsZero() {
+		return observed
 	}
 	if !m.runtime.snapshot.ObservedAt.IsZero() {
 		return m.runtime.snapshot.ObservedAt

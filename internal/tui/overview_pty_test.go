@@ -35,6 +35,7 @@ func TestOverviewPTYFixture(t *testing.T) {
 	raw, err := json.Marshal(map[string]int64{
 		"service_changes": b.controls.Load(), "modes": b.modes.Load(),
 		"selections": b.selections.Load(), "runtime_queries": b.runtimeQueries.Load(),
+		"tun_changes": b.tunChanges.Load(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -48,6 +49,7 @@ type overviewPTYBackend struct {
 	*fakeBackend
 	scenario                                    string
 	controls, modes, selections, runtimeQueries atomic.Int64
+	tunChanges                                  atomic.Int64
 }
 
 func newOverviewPTYBackend(scenario string) *overviewPTYBackend {
@@ -57,7 +59,11 @@ func newOverviewPTYBackend(scenario string) *overviewPTYBackend {
 		Version: "v1.19.33", RunningVersion: "v1.19.33",
 		Applied: "overview-preview", AppliedName: "日常订阅 · 工作与生活.yaml", Generation: "overview-pty-generation",
 		Profiles: []string{"default", "overview-preview", "travel"},
-		Groups:   groups, Proxies: map[string]mihomo.Proxy{
+		ProfileDetails: []app.ProfileInfo{{ID: "overview-preview", Name: "日常订阅 · 工作与生活.yaml",
+			Core: "mihomo", Kind: "remote", Origin: "subscription.example", Refreshable: true, Validated: true,
+			UpdatedAt: time.Date(2026, 11, 8, 4, 30, 0, 0, time.UTC)}},
+		MixedPort: 17897, Controller: "127.0.0.1:19097",
+		Groups: groups, Proxies: map[string]mihomo.Proxy{
 			"PROXY":        {Name: "PROXY", Type: "Selector", Now: groups[0].Now, All: groups[0].All},
 			"香港 01 · 日常线路": {Name: "香港 01 · 日常线路", Type: "Trojan"},
 			"DIRECT":       {Name: "DIRECT", Type: "Direct"},
@@ -81,6 +87,12 @@ func newOverviewPTYBackend(scenario string) *overviewPTYBackend {
 		s.Version = "v1.20.0"
 		s.Mode.Actual = "global"
 		s.Drift = "Fixture running service differs from saved settings"
+	case "pending":
+		s.ProfilePending, s.ProfileDetails[0].Pending = true, true
+		s.Capabilities.Scope, s.Capabilities.TUN.Supported = "system", true
+		s.TUN = true
+		actual := false
+		s.TUNActual = &actual
 	}
 	return &overviewPTYBackend{fakeBackend: &fakeBackend{snapshot: s}, scenario: scenario}
 }
@@ -112,4 +124,13 @@ func (b *overviewPTYBackend) SetMode(ctx context.Context, _ string) error {
 func (b *overviewPTYBackend) Select(ctx context.Context, _, _ string) error {
 	b.selections.Add(1)
 	return ctx.Err()
+}
+
+func (b *overviewPTYBackend) SetTUN(ctx context.Context, _ bool) error {
+	b.tunChanges.Add(1)
+	return ctx.Err()
+}
+
+func (b *overviewPTYBackend) StreamRuntime(ctx context.Context, emit func(app.RuntimeEvent)) error {
+	return streamRuntimeFixture(ctx, b, emit)
 }

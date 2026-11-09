@@ -51,10 +51,9 @@ type Backend interface {
 	Apply(context.Context, string) error
 	Control(context.Context, string) error
 	Select(context.Context, string, string) error
-	Runtime(context.Context) (app.RuntimeSnapshot, error)
+	StreamRuntime(context.Context, func(app.RuntimeEvent)) error
 	CloseConnection(context.Context, string) error
 	Rules(context.Context) (app.RuleSnapshot, error)
-	StreamLogs(context.Context, func(mihomo.LogEntry)) error
 	GetRuntimeSettings(context.Context) (app.RuntimeSettings, error)
 	PrepareRuntimeSettings(context.Context, app.RuntimeSettings) (app.RuntimeSettingsPlan, error)
 	ApplyRuntimeSettings(context.Context, app.RuntimeSettingsPlan) (app.RuntimeSettingsResult, error)
@@ -224,7 +223,6 @@ func (m Model) snapshotCmd(id uint64, ctx context.Context, initial bool) tea.Cmd
 }
 func (m *Model) newJob(kind string) context.Context {
 	m.stopProxyTests()
-	m.stopRuntime()
 	m.stopRules()
 	m.stopProviders()
 	m.stopCoreStatus()
@@ -293,10 +291,9 @@ func waitProgress(ctx context.Context, updates <-chan progressMsg) tea.Cmd {
 func (m *Model) cancelTask(quit bool) {
 	m.stopProviders()
 	m.stopProxyTests()
-	m.stopRuntime()
 	m.stopRules()
 	if quit {
-		m.stopLogs()
+		m.stopRuntime()
 	}
 	m.stopCoreStatus()
 	if m.cancel != nil {
@@ -368,18 +365,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.quitting && !m.busy && !m.keyHints.pending {
 			return m, tea.Quit
 		}
-	case logsResultMsg:
-		accepted := m.logs.active && v.generation == m.logs.generation
-		refreshStatus := accepted && v.done && v.err != nil && !errors.Is(v.err, context.Canceled)
-		cmd = m.acceptLogs(v)
-		if accepted && !m.busy && !v.done && len(v.entries) > 0 {
-			cmd = tea.Batch(cmd, m.observeCoreState("ready"))
-		}
-		// Foreground results own their full snapshot. Continue caching logs
-		// during the operation without starting a competing snapshot read.
-		if refreshStatus && !m.busy {
-			cmd = tea.Batch(cmd, m.refreshCoreStatus())
-		}
 	case coreStatusMsg:
 		if v.generation == m.statusGeneration {
 			if m.statusCancel != nil {
@@ -387,8 +372,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.statusCancel = nil
 			}
 			if v.err == nil {
-				m.snapshot = v.snapshot
-				m.snapshotReady = true
+				m.adoptSnapshot(v.snapshot)
 			} else if !errors.Is(v.err, context.Canceled) {
 				m.snapshot.ServiceError = "Service status unavailable; refresh or check doctor"
 			}
@@ -416,16 +400,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case runtimeResultMsg:
 		cmd = m.acceptRuntime(v)
-	case runtimeTickMsg:
-		if m.runtime.active && v.generation == m.runtime.generation && m.runtimeVisible() {
-			cmd = m.runtimeCmd()
+	case runtimeEndedMsg:
+		cmd = m.acceptRuntimeEnded(v)
+	case runtimeRetryMsg:
+		if v.generation == m.runtime.generation && !m.runtime.active {
+			cmd = m.syncRuntime()
 		}
 	case parentCanceledMsg:
 		m.stopProxyTests()
 		m.stopRuntime()
 		m.stopRules()
 		m.stopProviders()
-		m.stopLogs()
 		m.stopCoreStatus()
 		if m.busy {
 			m.cancelTask(true)
@@ -473,8 +458,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.job = ""
 		m.proxies.pendingGroup, m.proxies.pendingNode = "", ""
 		if v.hasSnapshot {
-			m.snapshot = v.snapshot
-			m.snapshotReady = true
+			m.adoptSnapshot(v.snapshot)
 		}
 		if m.profilesUI.importing {
 			if v.err == nil {
@@ -538,8 +522,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.busy = false
 		m.job = ""
 		if v.hasSnapshot {
-			m.snapshot = v.snapshot
-			m.snapshotReady = true
+			m.adoptSnapshot(v.snapshot)
 		}
 		cmd = m.handleInlineWizardResult(v)
 		if v.kind == "install" || v.kind == "upgrade" {
@@ -998,15 +981,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	next := m.syncRuntime()
 	nextRules := m.syncRules()
 	nextRuleProviders := m.syncProviders()
-	nextLogs := m.syncLogs()
 	if m.page != previousPage {
 		m.stopLogoIntro()
 	}
 	m.layout()
 	intro := m.syncLogoIntro()
 	timers := m.syncNotificationTimers(time.Now())
-	if inline != nil || notification != nil || timers != nil || completion != nil || next != nil || nextRules != nil || nextRuleProviders != nil || nextLogs != nil || intro != nil || nextProxies != nil {
-		return m, tea.Batch(cmd, inline, notification, timers, completion, next, nextRules, nextRuleProviders, nextLogs, intro, nextProxies)
+	if inline != nil || notification != nil || timers != nil || completion != nil || next != nil || nextRules != nil || nextRuleProviders != nil || intro != nil || nextProxies != nil {
+		return m, tea.Batch(cmd, inline, notification, timers, completion, next, nextRules, nextRuleProviders, intro, nextProxies)
 	}
 	return m, cmd
 }
@@ -1195,6 +1177,10 @@ func (m *Model) activate(id string) tea.Cmd {
 	case "card.proxies":
 		m.navigate("proxies")
 		return nil
+	case "card.access":
+		m.navigate("settings")
+		m.focus = "runtime-settings"
+		return m.openPorts()
 	case "logo":
 		return m.startLogoPulse()
 	}

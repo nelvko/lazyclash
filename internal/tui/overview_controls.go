@@ -212,20 +212,5 @@ func overviewSystemCard(o dashboardOptions, width int) dashboardBlock {
 		themed(runtime.GOOS+" / "+runtime.GOARCH+" · "+scope+" · "+manager, muted, panel, o.Dim),
 		themed(tr("dashboard.system.autostart", autostart), text, panel, o.Dim),
 	}
-	var buttons []overviewControlButton
-	tunHint := tr("dashboard.control.tunHint")
-	if s.Capabilities.TUN.Supported {
-		state, id, label := tr("dashboard.control.off"), "tun.enable", tr("tun.enable")
-		if s.TUN {
-			state, id, label = tr("dashboard.control.on"), "tun.disable", tr("tun.disable")
-		}
-		tunHint = tr("tun.saved_state", state) + " · " + tr("tun.host_scope")
-		buttons = append(buttons, overviewControlButton{id: id, label: label, enabled: !o.Busy && runtimeControlIssue(s, o.Locale) == ""})
-	}
-	lines = append(lines, themed(tr("dashboard.field.tun")+" · "+tunHint, muted, panel, o.Dim))
-	if s.TUNError != "" {
-		lines = append(lines, themed(clean(o.Locale.Detail(s.TUNError)), warning, panel, o.Dim))
-	}
-	lines = append(lines, themed(tr("dashboard.overview.systemProxy"), muted, panel, o.Dim))
-	return overviewControlPanel(o, width, tr("dashboard.overview.environment"), lines, buttons)
+	return overviewControlPanel(o, width, tr("dashboard.overview.environment"), lines, nil)
 }

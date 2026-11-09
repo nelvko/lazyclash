@@ -62,3 +62,33 @@ func (m *Model) observeCoreState(state string) tea.Cmd {
 	}
 	return nil
 }
+
+// A full settings/profile read can finish after a newer live ownership check.
+// Merge that newer process observation while keeping the read's profile data.
+func (m *Model) adoptSnapshot(snapshot app.Snapshot) {
+	latest := m.runtime.observed[app.RuntimeStatus]
+	if !snapshot.ServiceObservedAt.IsZero() && latest.After(snapshot.ServiceObservedAt) {
+		runtime := m.runtime.snapshot
+		if runtime.Service.State != "" {
+			snapshot.Service = runtime.Service
+			snapshot.ServiceError, snapshot.ServiceDiagnostic = "", nil
+		} else if runtime.State == "unavailable" || runtime.State == "unsupported" {
+			snapshot.ServiceError, snapshot.ServiceDiagnostic = runtime.Error, runtime.Diagnostic
+		}
+		snapshot.ServiceObservedAt = latest
+		snapshot.RunningVersion = runtime.RunningVersion
+		if runtime.State == "ready" || runtime.State == "stopped" {
+			snapshot.Installed = true
+		}
+		if runtime.State == "stopped" || runtime.State == "uninstalled" {
+			snapshot.Groups, snapshot.Proxies = nil, nil
+		}
+		if runtime.State == "uninstalled" {
+			snapshot.Installed, snapshot.ConfigReady = false, false
+		}
+	}
+	m.snapshot, m.snapshotReady = snapshot, true
+	if !m.runtime.active || !snapshot.ServiceObservedAt.IsZero() {
+		m.runtime.history.observeSnapshot(snapshot)
+	}
+}

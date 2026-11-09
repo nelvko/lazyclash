@@ -10,6 +10,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
 
@@ -55,56 +56,48 @@ func TestLogsRetainBoundedEventsWithFixedControlsAndScrollableHistory(t *testing
 	}
 }
 
-func TestLogsStreamIsSingleCancellableTaskAndRejectsLateMessages(t *testing.T) {
+func TestLogsStreamUsesTheSharedRuntimeAndRejectsLateMessages(t *testing.T) {
 	started := make(chan struct{})
 	stopped := make(chan struct{})
-	b := &fakeBackend{streamLogs: func(ctx context.Context, emit func(mihomo.LogEntry)) error {
+	b := &fakeBackend{streamRuntime: func(ctx context.Context, emit func(app.RuntimeEvent)) error {
 		close(started)
-		emit(mihomo.LogEntry{Level: "info", Message: "captured event"})
+		emit(logSessionEvent("captured event"))
 		<-ctx.Done()
 		close(stopped)
 		return ctx.Err()
 	}}
-	m := logsModel()
-	m.backend = b
-	commands := commandBatch(t, m.syncLogs())
-	if len(commands) != 2 || m.syncLogs() != nil || m.busy {
-		t.Fatal("log capture did not have an independent single-task lifecycle")
-	}
-	go commands[0]()
+	m := sessionLogsModel(t, b)
+	cmd := m.syncRuntime()
+	primeLogRuntime(m)
+	reader, done := runLogSession(t, cmd)
 	select {
 	case <-started:
 	case <-time.After(time.Second):
-		t.Fatal("stream did not start")
+		t.Fatal("shared stream did not start")
 	}
-	msg := commands[1]().(logsResultMsg)
-	next := m.acceptLogs(msg)
-	if next == nil || len(m.logs.entries) != 1 || m.logs.entries[0].Message != "captured event" {
-		t.Fatal("stream event did not enter the bounded retained view")
+	reader = m.acceptRuntime(readLogSessionMessage(t, reader))
+	if reader == nil || len(m.logs.entries) != 1 || m.logs.entries[0].Message != "captured event" {
+		t.Fatal("shared stream event did not enter the retained log view")
 	}
-	id, ctx := m.logs.generation, m.logs.ctx
+	id, ctx := m.runtime.generation, m.runtime.ctx
 	m.pauseLogs()
 	select {
 	case <-stopped:
 		t.Fatal("pausing display canceled capture")
 	default:
 	}
-	m.acceptLogs(logsResultMsg{generation: id, entries: []mihomo.LogEntry{{Level: "info", Message: "while paused"}}})
+	m.acceptRuntime(runtimeResultMsg{generation: id, events: []app.RuntimeEvent{logSessionEvent("while paused")}})
 	if len(m.logs.entries) != 2 || len(m.logs.frozen) != 1 || !m.logs.active || ctx.Err() != nil {
 		t.Fatal("paused display did not keep collecting into its independent live buffer")
 	}
-	if m.resumeLogs() != nil || m.logs.generation != id || len(m.logs.entries) != 2 {
+	if m.resumeLogs() != nil || m.runtime.generation != id || len(m.logs.entries) != 2 {
 		t.Fatal("resuming display replaced capture or injected a synthetic record")
 	}
-	m.stopLogs()
-	select {
-	case <-stopped:
-	case <-time.After(time.Second):
-		t.Fatal("stopping the session did not cancel the owned stream")
-	}
-	m.acceptLogs(logsResultMsg{generation: id, entries: []mihomo.LogEntry{{Message: "late event"}}})
+	m.stopRuntime()
+	waitLogSessionExit(t, done)
+	m.acceptRuntime(runtimeResultMsg{generation: id, events: []app.RuntimeEvent{logSessionEvent("late event")}})
 	if len(m.logs.entries) != 2 || m.logs.active {
-		t.Fatal("late event changed a stopped session")
+		t.Fatal("late event changed a stopped shared session")
 	}
 }
 
@@ -130,50 +123,53 @@ func TestLogsSearchDigitsAndPasteStayWithinInput(t *testing.T) {
 	}
 }
 
-func TestLogsFailureKeepsSessionAliveAndRetainedEntriesClearlyMarked(t *testing.T) {
-	m := logsModel()
-	m.logs.active, m.logs.pending, m.logs.generation = true, true, 8
-	m.acceptLogs(logsResultMsg{generation: 8, entries: []mihomo.LogEntry{{Level: "info", Message: "observed earlier"}}, done: true, err: errors.New("Mihomo is not running")})
-	if m.syncLogs() != nil || !m.logs.reconnecting || !m.logs.active {
-		t.Fatal("failed stream immediately restarted in a tight loop")
+func TestLogsFailureKeepsSharedSessionAndOtherSourcesAvailable(t *testing.T) {
+	m := sessionLogsModel(t, &fakeBackend{})
+	m.syncRuntime()
+	primeLogRuntime(m)
+	m.acceptRuntimeEvent(logSessionEvent("observed earlier"))
+	m.runtime.snapshot.Traffic = &mihomo.Traffic{Up: 123, Down: 456}
+	m.acceptRuntimeEvent(app.RuntimeEvent{Source: app.RuntimeLogs, Instance: 1, ObservedAt: time.Now(), Err: errors.New("Mihomo log stream interrupted")})
+	if m.syncRuntime() != nil || !m.logs.reconnecting || !m.logs.active || !m.runtime.active || m.runtime.snapshot.Traffic.Down != 456 {
+		t.Fatal("log failure stopped the shared session or erased another source")
 	}
 	body, _ := m.logsBody(80)
-	for _, part := range []string{m.tr("logs.reconnecting"), "Mihomo is not running", "observed earlier"} {
+	for _, part := range []string{m.tr("logs.reconnecting"), "Mihomo log stream interrupted", "observed earlier"} {
 		if !strings.Contains(ansi.Strip(body), part) {
 			t.Fatalf("missing failure observation %q", part)
 		}
 	}
-	m.acceptLogs(logsResultMsg{generation: 8, entries: []mihomo.LogEntry{{Level: "info", Message: "restored"}}})
+	m.acceptRuntimeEvent(logSessionEvent("restored"))
 	if !m.logs.recovered || m.logs.reconnecting || m.logs.err != nil || len(m.logs.entries) != 2 {
-		t.Fatal("recovery did not clear the error or injected a synthetic record")
+		t.Fatal("recovery did not clear only the log error or injected a synthetic record")
 	}
 }
 
-func TestLogsResizeHelpAndDepartureKeepTheSameSessionAndHistory(t *testing.T) {
-	m := logsModel()
+func TestLogsResizeHelpAndDepartureKeepTheSharedSessionAndHistory(t *testing.T) {
+	m := sessionLogsModel(t, &fakeBackend{})
 	m.appendLogs([]mihomo.LogEntry{{Level: "info", Message: "kept"}})
-	m.syncLogs()
-	id, ctx := m.logs.generation, m.logs.ctx
+	m.syncRuntime()
+	id, ctx := m.runtime.generation, m.runtime.ctx
 	for _, size := range [][2]int{{160, 45}, {120, 32}, {80, 24}, {60, 20}, {120, 18}} {
-		m, _ = update(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
-		if m.logs.generation != id || ctx.Err() != nil || len(m.logs.entries) != 1 {
-			t.Fatal("resize replaced the log task or its retained data")
+		updated, _ := update(*m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+		*m = updated
+		if m.runtime.generation != id || ctx.Err() != nil || len(m.logs.entries) != 1 {
+			t.Fatal("resize replaced the shared task or its retained data")
 		}
 		assertCanvas(t, m.screen, size[0], size[1])
 		assertRegions(t, m.targets, size[0], size[1])
 	}
 	m.helpOpen = true
-	if m.syncLogs() != nil || ctx.Err() != nil || !m.logs.active {
-		t.Fatal("help interrupted the session")
+	if m.syncRuntime() != nil || ctx.Err() != nil || !m.logs.active {
+		t.Fatal("help interrupted the shared session")
 	}
 	m.helpOpen = false
 	m.browsePage("overview")
-	if m.syncLogs() != nil || ctx.Err() != nil || m.logs.generation != id {
-		t.Fatal("page departure interrupted the session")
+	if m.syncRuntime() != nil || ctx.Err() != nil || m.runtime.generation != id {
+		t.Fatal("page departure interrupted the shared session")
 	}
 	m.browsePage("logs")
-	defer m.stopLogs()
-	if m.syncLogs() != nil || len(m.logs.entries) != 1 || m.logs.generation != id {
+	if m.syncRuntime() != nil || len(m.logs.entries) != 1 || m.runtime.generation != id {
 		t.Fatal("returning to logs restarted capture or inserted a synthetic entry")
 	}
 }

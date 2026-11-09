@@ -171,3 +171,7 @@ func (b *logsPTYBackend) Select(ctx context.Context, _, _ string) error {
 	b.selections.Add(1)
 	return ctx.Err()
 }
+
+func (b *logsPTYBackend) StreamRuntime(ctx context.Context, emit func(app.RuntimeEvent)) error {
+	return streamRuntimeFixture(ctx, b, emit)
+}

@@ -9,6 +9,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
 
@@ -18,7 +19,8 @@ func redesignedLogsModel(width, height, count int) Model {
 	for n := 0; n < count; n++ {
 		m.appendLogs([]mihomo.LogEntry{{Time: time.Unix(int64(n), 0), Level: "info", Message: fmt.Sprintf("event-%03d 中文🚀", n)}})
 	}
-	m.syncLogs()
+	m.syncRuntime()
+	primeLogRuntime(&m)
 	m.layout()
 	return m
 }
@@ -31,21 +33,21 @@ func logReadingView(m Model) string {
 
 func TestLogsBrowsingPinsVisibleRowsWhileCaptureContinuesAndEntriesExpire(t *testing.T) {
 	m := redesignedLogsModel(120, 32, retainedLogLimit)
-	defer m.stopLogs()
-	ctx, generation := m.logs.ctx, m.logs.generation
+	defer m.stopRuntime()
+	ctx, generation := m.runtime.ctx, m.runtime.generation
 	m.logsScroll(-20)
 	before := logReadingView(m)
 	anchor := m.logs.anchor
 	for n := retainedLogLimit; n < retainedLogLimit+12; n++ {
-		m.acceptLogs(logsResultMsg{generation: generation, entries: []mihomo.LogEntry{{Level: "info", Message: fmt.Sprintf("event-%03d", n)}}})
+		acceptLogFixture(&m, generation, mihomo.LogEntry{Level: "info", Message: fmt.Sprintf("event-%03d", n)})
 	}
 	if got := logReadingView(m); got != before || m.logs.anchor != anchor {
 		t.Fatalf("incoming entries moved the pinned reading view:\nbefore:\n%s\nafter:\n%s", before, got)
 	}
-	if !m.logs.active || m.logs.paused || ctx.Err() != nil || m.logs.generation != generation || m.logs.unread != 12 {
+	if !m.logs.active || m.logs.paused || ctx.Err() != nil || m.runtime.generation != generation || m.logs.unread != 12 {
 		t.Fatal("browsing changed capture ownership or failed to count new events")
 	}
-	if cmd := m.logsActivate("logs.latest"); cmd != nil || m.logs.holding || m.logs.unread != 0 || m.logs.generation != generation {
+	if cmd := m.logsActivate("logs.latest"); cmd != nil || m.logs.holding || m.logs.unread != 0 || m.runtime.generation != generation {
 		t.Fatal("returning to the live tail restarted capture or kept the unread state")
 	}
 	if !strings.Contains(logReadingView(m), "event-211") {
@@ -65,17 +67,17 @@ func TestLogsBrowsingPinsVisibleRowsWhileCaptureContinuesAndEntriesExpire(t *tes
 
 func TestLogsPinnedEntrySurvivesResizeAndCompactReflow(t *testing.T) {
 	m := redesignedLogsModel(80, 24, 0)
-	defer m.stopLogs()
+	defer m.stopRuntime()
 	for n := 0; n < 40; n++ {
 		m.appendLogs([]mihomo.LogEntry{{Level: "info", Message: fmt.Sprintf("event-%03d ", n) + strings.Repeat("中文🚀 segment ", 16)}})
 	}
 	m.logs.holding, m.logs.anchor = true, logPosition{entry: 8, row: 4}
-	ctx, generation := m.logs.ctx, m.logs.generation
+	ctx, generation := m.runtime.ctx, m.runtime.generation
 	for _, size := range [][2]int{{160, 45}, {40, 16}, {120, 32}, {5, 2}, {80, 24}} {
 		m, _ = update(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
 		assertCanvas(t, m.screen, size[0], size[1])
 		assertRegions(t, m.targets, size[0], size[1])
-		if ctx.Err() != nil || m.logs.generation != generation || m.logs.anchor.entry != 8 || !m.logs.holding {
+		if ctx.Err() != nil || m.runtime.generation != generation || m.logs.anchor.entry != 8 || !m.logs.holding {
 			t.Fatal("resize replaced capture or the pinned event")
 		}
 		width := dashboardBodyWidth(m.dashboardOptions())
@@ -92,7 +94,7 @@ func TestLogsPinnedEntrySurvivesResizeAndCompactReflow(t *testing.T) {
 		t.Fatalf("compact reflow skipped or hid the pinned event:\n%s", ansi.Strip(view.View()))
 	}
 	m.logsActivate("logs.view")
-	if m.logs.compact || m.logs.anchor.entry != 8 || m.logs.generation != generation {
+	if m.logs.compact || m.logs.anchor.entry != 8 || m.runtime.generation != generation {
 		t.Fatal("returning to details discarded the pinned event or restarted capture")
 	}
 }
@@ -134,22 +136,22 @@ func TestLogsLevelAndTextFiltersKeepOnlyMatchingCoreEvents(t *testing.T) {
 
 func TestLogsClearOnlyRemovesRetainedEntriesAndPreservesStreamAndFilters(t *testing.T) {
 	m := redesignedLogsModel(120, 32, 20)
-	defer m.stopLogs()
+	defer m.stopRuntime()
 	m.logs.search.SetValue("Needle")
 	m.logs.level, m.logs.compact = 3, true
 	m.logs.holding, m.logs.unread = true, 7
-	ctx, generation := m.logs.ctx, m.logs.generation
+	ctx, generation := m.runtime.ctx, m.runtime.generation
 	if cmd := m.logsActivate("logs.clear"); cmd != nil {
 		t.Fatal("clear unexpectedly started a backend operation")
 	}
 	if len(m.logs.entries) != 0 || !m.logs.observedAt.IsZero() || m.logs.holding || m.logs.unread != 0 || m.logs.search.Value() != "Needle" || m.logs.level != 3 || !m.logs.compact {
 		t.Fatal("clear did not reset only retained log data and reading state")
 	}
-	if ctx.Err() != nil || !m.logs.active || m.logs.paused || m.logs.generation != generation || m.logs.first != 20 {
+	if ctx.Err() != nil || !m.logs.active || m.logs.paused || m.runtime.generation != generation || m.logs.first != 20 {
 		t.Fatal("clear interrupted capture or reused expired entry identities")
 	}
-	m.acceptLogs(logsResultMsg{generation: generation - 1, entries: []mihomo.LogEntry{{Level: "error", Message: "Needle stale"}}})
-	m.acceptLogs(logsResultMsg{generation: generation, entries: []mihomo.LogEntry{{Level: "error", Message: "Needle current"}}})
+	acceptLogFixture(&m, generation-1, mihomo.LogEntry{Level: "error", Message: "Needle stale"})
+	acceptLogFixture(&m, generation, mihomo.LogEntry{Level: "error", Message: "Needle current"})
 	if len(m.logs.entries) != 1 || m.logs.entries[0].Message != "Needle current" || !strings.Contains(logReadingView(m), "Needle current") {
 		t.Fatal("clear accepted an old stream result or failed to continue the existing stream")
 	}
@@ -166,7 +168,7 @@ func TestLogsClearOnlyRemovesRetainedEntriesAndPreservesStreamAndFilters(t *test
 
 func TestLogsIdleFilteringAndFailureHaveDistinctStates(t *testing.T) {
 	m := redesignedLogsModel(120, 32, 0)
-	defer m.stopLogs()
+	defer m.stopRuntime()
 	if got := ansi.Strip(m.screen); !strings.Contains(got, m.tr("logs.empty")) || !strings.Contains(got, m.tr("logs.waiting")) || strings.Contains(got, "Start Mihomo") {
 		t.Fatalf("healthy idle capture gave misleading guidance:\n%s", got)
 	}
@@ -175,9 +177,9 @@ func TestLogsIdleFilteringAndFailureHaveDistinctStates(t *testing.T) {
 	if got := ansi.Strip(m.screen); !strings.Contains(got, m.tr("logs.no_matches")) || !m.logs.active {
 		t.Fatal("empty filtered view looked like a stopped capture")
 	}
-	m.acceptLogs(logsResultMsg{generation: m.logs.generation, done: true, err: errors.New("fixture disconnected")})
+	m.acceptRuntimeEvent(app.RuntimeEvent{Source: app.RuntimeLogs, Instance: m.runtime.instance, ObservedAt: time.Now(), Err: errors.New("fixture disconnected")})
 	m.layout()
-	if got := ansi.Strip(m.screen); !strings.Contains(got, "fixture disconnected") || !strings.Contains(got, m.tr("logs.reconnecting")) || m.syncLogs() != nil {
+	if got := ansi.Strip(m.screen); !strings.Contains(got, "fixture disconnected") || !strings.Contains(got, m.tr("logs.reconnecting")) || m.syncRuntime() != nil {
 		t.Fatal("failed capture concealed the failure or spawned a duplicate session")
 	}
 }
@@ -186,8 +188,8 @@ func TestLogsToolbarKeepsKeyboardOrderAndMouseTargetsWhileBrowsing(t *testing.T)
 	for _, size := range [][2]int{{160, 45}, {80, 24}, {60, 20}, {40, 16}} {
 		t.Run(fmt.Sprint(size), func(t *testing.T) {
 			m := redesignedLogsModel(size[0], size[1], 50)
-			defer m.stopLogs()
-			ctx, generation := m.logs.ctx, m.logs.generation
+			defer m.stopRuntime()
+			ctx, generation := m.runtime.ctx, m.runtime.generation
 			search := findTarget(t, m, "logs.search")
 			m, _ = update(m, special(tea.KeyHome))
 			m, _ = update(m, special(tea.KeyDown))
@@ -206,7 +208,7 @@ func TestLogsToolbarKeepsKeyboardOrderAndMouseTargetsWhileBrowsing(t *testing.T)
 				}
 			}
 			m, _ = click(m, findTarget(t, m, "logs.level"))
-			if m.logs.level != 1 || ctx.Err() != nil || m.logs.generation != generation {
+			if m.logs.level != 1 || ctx.Err() != nil || m.runtime.generation != generation {
 				t.Fatal("level click changed capture instead of only filtering display")
 			}
 			m, _ = click(m, findTarget(t, m, "logs.view"))

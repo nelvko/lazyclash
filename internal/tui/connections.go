@@ -9,6 +9,7 @@ import (
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
 
@@ -31,6 +32,9 @@ type connectionsState struct {
 
 func (m *Model) observeConnections(at time.Time) {
 	snapshot := m.runtime.snapshot
+	if observed := m.runtime.observed[app.RuntimeConnections]; !observed.IsZero() {
+		snapshot.ObservedAt = observed
+	}
 	if m.connections.paused {
 		stale := snapshot.State != "ready" || snapshot.Connections == nil || m.connections.frozenPID != snapshot.Service.PID || m.connections.frozenVersion != snapshot.RunningVersion
 		if !stale && m.connections.frozen != nil {

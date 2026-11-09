@@ -149,8 +149,7 @@ func (m *Model) acceptPorts(msg portsMsg) {
 		p.err = clean(m.localizeError(msg.err))
 	}
 	if msg.hasSnapshot {
-		m.snapshot = msg.snapshot
-		m.snapshotReady = true
+		m.adoptSnapshot(msg.snapshot)
 	}
 	switch msg.kind {
 	case "load":

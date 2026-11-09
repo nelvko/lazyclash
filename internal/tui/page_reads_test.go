@@ -9,7 +9,7 @@ import (
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
 
-func TestPageRuntimeDepartureKeepsCacheAndRejectsCanceledResult(t *testing.T) {
+func TestPageRuntimeStoppedSessionKeepsCacheAndRejectsCanceledResult(t *testing.T) {
 	m := runtimeModel(t, &fakeBackend{})
 	m.runtime.snapshot, m.runtime.received = liveRuntime(), true
 	m.runtime.active, m.runtime.pending, m.runtime.generation = true, true, 10
@@ -20,7 +20,7 @@ func TestPageRuntimeDepartureKeepsCacheAndRejectsCanceledResult(t *testing.T) {
 	if ctx.Err() == nil || m.runtime.active || m.runtime.pending || !m.runtime.received || m.runtime.snapshot.State != "ready" {
 		t.Fatal("leaving runtime did not cancel its request while retaining the observation")
 	}
-	m.acceptRuntime(runtimeResultMsg{generation: 10, snapshot: app.RuntimeSnapshot{State: "stopped"}})
+	m.acceptRuntime(runtimeResultMsg{generation: 10, events: fixtureRuntimeEvents(app.RuntimeSnapshot{State: "stopped"}, 1)})
 	if m.runtime.snapshot.State != "ready" || m.connections.search.Value() != "keep query" {
 		t.Fatal("late canceled runtime result replaced cached state")
 	}
@@ -181,18 +181,19 @@ func TestPageLogsDepartureKeepsPauseQueryAndHistory(t *testing.T) {
 	m := logsModel()
 	m.logs.entries = []mihomo.LogEntry{{Level: "info", Message: "retained"}}
 	m.logs.search.SetValue("retained")
-	m.syncLogs()
-	defer m.stopLogs()
+	m.syncRuntime()
+	primeLogRuntime(&m)
+	defer m.stopRuntime()
 	m.pauseLogs()
 	m.logs.anchor.row = 12
-	ctx, generation := m.logs.ctx, m.logs.generation
+	ctx, generation := m.runtime.ctx, m.runtime.generation
 	m.browsePage("settings")
-	if m.syncLogs() != nil || ctx.Err() != nil {
+	if m.syncRuntime() != nil || ctx.Err() != nil {
 		t.Fatal("leaving logs interrupted the session")
 	}
-	m.acceptLogs(logsResultMsg{generation: generation, entries: []mihomo.LogEntry{{Message: "received while away"}}})
+	acceptLogFixture(&m, generation, mihomo.LogEntry{Message: "received while away"})
 	m.browsePage("logs")
-	if m.syncLogs() != nil || !m.logs.paused || m.logs.anchor.row != 12 || m.logs.search.Value() != "retained" || len(m.logs.entries) != 2 || len(m.logs.frozen) != 1 {
+	if m.syncRuntime() != nil || !m.logs.paused || m.logs.anchor.row != 12 || m.logs.search.Value() != "retained" || len(m.logs.entries) != 2 || len(m.logs.frozen) != 1 {
 		t.Fatal("returning to logs replaced the session, resumed display or lost history")
 	}
 }

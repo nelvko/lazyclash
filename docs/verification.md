@@ -1,5 +1,11 @@
 # 验证入口
 
+## 共享工作区整体验收（2026-11-09）
+
+本次在最终合并工作树上复验代理/规则集合、共享 WebSocket 实时会话、概览接入信息及自适应流量图，确认各独立会话的最终改动共同工作。`make check build` 全部通过（应用 40.965 秒、TUI 42.911 秒），包括全包测试、`go vet ./...` 和产品构建。针对实时流、WebSocket、运行时生命周期、流量图、概览及集合管理的 app/mihomo/TUI race 分别通过（19.359 / 9.795 / 35.507 秒）。`./scripts/verify-linux.sh lazyclash-e2e` 使用仓库原脚本，在既有 Debian/arm64 专用 VM 实际执行全部九个可运行包测试，通过并清理本轮临时目录。
+
+八项 Python 终端解析测试通过；概览、代理集合、规则管理、流量卡和图表预览脚本语法检查通过。`test.sh` 手动流量生成器仅执行 `bash -n`，本轮未用它请求外部测速站点。各功能真实 PTY、隔离内核及图像证据见下方对应段落；本轮没有重跑服务安装或 TUN 生命周期 E2E。WebSocket 后端还从独立暂存树完成一次全包 `make check build`，确认该提交可单独构建与验证。最终合并日志位于 `.test-artifacts/workspace-commit-20261109/{check-build,race,linux,ws-isolated-check}.log`。
+
 ## 代理与规则集合共用管理面板（2026-11-09）
 
 代理页头左侧显示规则、全局、直连模式，右侧进入代理集合；宽度不足时页头换行，低于 50 列时模式保留在正文。主代理页已移除搜索、组总数和手动刷新，包括对应快捷键；集合面板继续提供独立搜索、读取与更新。代理和规则集合复用 Bubbles textinput、viewport 及三并发更新调度，关闭或切页取消未完成任务。HTTP/File 代理来源允许更新，Inline/Compatible/未知来源只读；面板只显示名称、类型、数量及更新时间。代理更新完成后，即使面板已关闭或取消，仍观察并同步主节点列表。
@@ -9,6 +15,48 @@
 中文 True Color 的实际 controlling PTY 完成代理集合、规则集合及原代理页面回归。集合覆盖 160×45、120×32、80×24、60×20、40×16，验证搜索输入归属、固定控件与滚动、HTTP/File 更新、File 失败重试、只读来源、三并发、关闭取消及返回后节点同步。代理集合夹具记录八次尝试、六次成功、一次失败、一次取消，最大并发三；服务及模式修改均为零。规则集合保留搜索与位置恢复，原代理页覆盖主流程、多组及单节点重测。PNG 按实际 PTY 字符格和颜色重绘；PTY 使用内存后端，不表示真实远端节点测试，也未操作系统服务。
 
 独立源码及 SHA-256 清单为 `.test-artifacts/proxy-providers-final/{source-path.txt,source-manifest.json}`；验证日志为 `isolated-{check-build,linux,race,real-core,python}.log`。最终 PTY 日志为 `pty/{provider-isolated-final2,rules-isolated,proxies-isolated}.log`，代理集合图像为 `pty/provider-isolated/20261109-095421-9237ab/zh-Hans/truecolor/`。先前脚本输入状态与视口等待失败的原始证据保留，最终修正未放宽更新、取消或服务边界断言。
+
+## 流量图坐标、零值与量程优化（2026-11-08）
+
+本轮保留单轨道双曲线、2×4 Braille、Bresenham、六行/四行高度及原卡片布局。代码检查确认旧曲线已按完整子点高度线性映射，并非离散点绘图；问题在于标签和 `┄` 网格另外按整字符行选位，与曲线的子点坐标不一致。零流量白线由两方向的有效零线段叠加后使用正文色产生；字体的点距与字符行留白属于终端限制。旧量程每次从窗口最大值重算，没有延迟收缩状态。
+
+统一坐标为 `y = round((1-rate/maximum) × (4h-1))`。曲线与 Braille 网格线在同一子点行，标签取包含该子点的字符行 `y/4`。以六行、上限 2 MiB/s 为例（均为零起始坐标）：
+
+| 刻度 | 旧标签/网格字符行 | 旧曲线子点行 | 新统一子点行 | 新标签字符行 |
+| --- | ---: | ---: | ---: | ---: |
+| 2 MiB/s | 0 | 0 | 0 | 0 |
+| 1 MiB/s | 2 | 11 | 12 | 3 |
+| 0 | 5 | 23 | 23 | 5 |
+
+新相邻半量程距离为 12 与 11 个子点，差一个子点；整字符标签仍可能呈现 3/2 行的间距。文字不能在字符格内任意定位，字体子点间距也不保证与行间空隙相同，因此验收以统一数值坐标及真实终端呈现共同评估，不把标签字面居中当成数值映射公式。
+
+正式修复还包括：每方向隐藏零到零水平数据线，保留非零与零之间的过渡和全部历史零样本；低对比度零网格仍可见。上传橙 `#F9AE58`、图表专用下载蓝 `#7BAED0` 和其 sRGB 50:50 平均 `#BAAE94` 统一用于曲线、图例与方向数字，同字符不同子点也混色；其他 `accent` 用途不变。量程为共同窗口峰值加 15% 后取友好刻度，至少 1 KiB/s；立即扩容，仅在较低目标不超过当前 60% 且连续有效 10 秒后收缩，缺测重置计时。横轴在足够宽时增加四分位时间标签，保留原高度和窄屏降级。
+
+自动化回归覆盖端点/中点/等间隔子点误差、不同高度与极端量程、网格标签一致性、全零/单方向零/过渡/缺测、同点及同字符异点配色、真实历史不变、动态扩容/峰值过期/延迟收缩/单位边界、缩放不推进计时，以及中英文极窄画布。Original、Thick、Smooth 的确定性实验分别使用原 Bresenham、同子点列向下扩一子点、分段保形 PCHIP；PCHIP 测试检查通过原点、局部上下界、非负、尖峰和缺口，三个方案只影响测试渲染，不改变产品默认。
+
+`make check build` 已通过，完整日志为 `.test-artifacts/traffic-chart-optimization/check-build.log`。54 组 ANSI/controlling PTY 对比已完成：六类固定数据（稳定、缓变、尖峰、高频、交叉、零与缺测）× 128×6 / 80×4 / 40×4 × True Color / ANSI256 / NO_COLOR，每组内并列三个方案。`manifest.json` 保留每场景相同数据的 SHA-256、共享量程和绘图区参数；`summary.json` 确认正式默认是 Original、替代方案仅在测试二进制、输出经过真实 controlling PTY。每组 `.ansi`、`.txt`、`.pty.raw`、`.screen.txt` 和 PNG 位于 `.test-artifacts/traffic-chart-optimization/experiments/`。PNG 使用既有 ANSI 解析器捕获字符格后按字体排版，非 SVG 示意，也不是原生终端截图。正式卡片的动态 PTY 与最终检查结果见下段。
+
+
+宿主 `make check build` 通过（TUI 101.738 秒）；最终固定源码快照再次通过 `make check build`（TUI 41.472 秒），均含全包 Go 测试、`go vet ./...` 和产品构建。全部图表相关定向 race 通过（3.960 秒），八项 Python 回归及两个流量预览脚本语法检查通过。补充集成回归确认只有真实流量帧推进量程；流量缺测、服务不可用与会话结束均中断低峰计时，重绘/缩放不推进；新内核首帧缺测后恢复也重新初始化量程，不继承旧峰值。日志为 `.test-artifacts/traffic-chart-optimization/{check-build-final,snapshot-check-build,race-final,python}.log`。
+
+正式卡片完成中英文 × True Color / ANSI256 / NO_COLOR × 正常 / 全零 / 缺测 / 重启共 24 组真实 controlling PTY，均覆盖 160×45、120×32、80×24、60×20、40×16 及恢复。全零只留下低对比参考线，没有亮色数据点；缺测保留三个无效样本，重启清除旧峰值，全部服务/模式/节点/TUN 修改计数为零。已目视核对中文正常和全零卡片。证据与汇总为 `.test-artifacts/traffic-chart-optimization/live-pty/summary.json`，PNG 从隔离内存后端的实际 PTY 字符格重绘，不冒充真实 Mihomo 流量。固定源码快照在专用 Linux/arm64 VM 的全部可运行包测试也已通过，记录为 `linux-snapshot.log`；脚本完成临时目录清理。图表单独的 Linux 回归为 `linux-traffic-final.log`。
+
+
+共享工作区的其他会话同时调整代理搜索与规则集合，因此最终复验使用 `.test-artifacts/traffic-chart-optimization/source-final/` 的固定源码快照，文件 SHA-256 与路径记录在 `source-snapshot.json`；未覆盖原工作区或暂存区。图表独立文件和共享文件中的流量字段注入保持一致。首次 Linux 全套触发既有脚本的五分钟总时限；一次后续测试二进制还捕获了代理搜索调整中旧用例与新夹具不一致的状态。两份原始失败日志保留为 `linux-final.log`、`linux-tui-final.log`，不算通过记录。最终固定快照的隔离验证脚本只将每包总超时从五分钟放宽至十五分钟，产品源码、测试断言与仓库脚本不变，全包完成并通过。本轮未修改采样接口、安装服务或执行真实主机网络配置。
+
+复验入口：
+
+```sh
+go test ./internal/tui -run 'TestTraffic|TestRuntime|TestOverviewTraffic' -count=1
+make check build
+go test -c ./internal/tui -o bin/traffic-chart.test
+python3 scripts/traffic-chart-preview.py --binary bin/traffic-chart.test \
+  --output .test-artifacts/traffic-chart-optimization/experiments --png
+./scripts/verify-linux.sh lazyclash-e2e
+```
+
+`.ansi` 文件可用 `cat` 直接在用户终端比较字体与行高。当前推荐保留 Original：它直接连接原始采样，尖峰与突变表达明确，零线与重合面积最克制；Thick 更醒目但增加共享色块，Smooth 的保形约束可避免虚假极值，但六行紧凑图上的收益依赖数据形状，暂不作为默认替换。
+
 
 ## Logo 月光渐变（2026-11-08）
 
@@ -25,6 +73,27 @@ make build
 python3 scripts/logo-intro-pty.py --binary bin/lazyclash \
   --output .test-artifacts/logo-gradient/pty \
   --profile truecolor --profile ansi256 --profile no-color --png
+```
+
+## 共享 WebSocket 实时会话（2026-11-08）
+
+`/logs`、`/traffic`、`/memory`、`/connections` 改为四条独立、应用内共享的 WebSocket。集中异步检查归属、PID 和安装身份；来源独立退避重连，版本按实例缓存，页面切换、临时弹窗和普通操作继续复用会话。流量逐帧写入有界真实时间历史，累计量来自同帧内核计数；连接数和连接页使用同一快照，连接速率使用本来源时间。内存每次连接跳过一次人工首帧零；指标流八秒无帧后报告不可用，安静日志不超时。握手成功与实际数据分别通知，安静的重连也能恢复状态。身份变化、手动和连续重试均先关闭并等待旧读取者退出，旧排队消息被丢弃；整体会话意外结束时清除失效指标、保留历史断点并延迟重试。完整快照与流式服务状态按观察时间合并。
+
+CLI 的有限运行观察保留 HTTP；日志观察同样使用 WS。版本可达但 WS 握手失败时返回不可用，成功握手后安静等待仍允许输出空数组。只有版本认证成功、安装身份和 PID 复查一致后才记录首次运行；服务处于 active 状态本身不触发该记录。归属检查在独立任务中等待前台操作的文件锁；八秒检查超时从取得锁后开始，长操作等待不重建健康会话。九点二秒持锁回归同时保持三个指标流和安静日志，检查持续及时交付及恰好四次握手。
+
+宿主 `make check build` 通过（应用 32.663 秒、TUI 85.547 秒），包括全包 Go 测试、vet 与产品构建；三个改动包的实时相关 race 通过（应用 12.522 秒、Mihomo 9.849 秒、TUI 31.053 秒）。`./scripts/verify-linux.sh lazyclash-e2e` 在专用 Linux/arm64 VM 内实际执行全部可运行包测试通过并完成临时目录清理。最后的长锁等待修复另有普通与 race 回归通过（9.665 / 10.821 秒），并另跑最终应用包、vet/构建及 Linux 实时会话回归。Python 八项回归通过。覆盖来源独立交付、每来源单一连接、版本缓存、归属/PID 切换、暂停显示、错误隔离、取消、旧代拒绝、手动连续重试、迟到完整快照、首帧与安静连接。
+
+真实 Mihomo v1.19.32 darwin/arm64 使用隔离目录、随机 loopback 端口和纯本地 HTTP 代理传输，持续接收六十个真实流量帧。间隔最小/中位/最大为 997.282 / 999.977 / 1002.813 毫秒；四个接口各恰好一次 WS 握手。收到五十九个有效内存帧和六十个连接快照，日志零事件但连接保持，实际速率与累计量非零，取消后四个读取者及时退出。没有预填历史或倍速回放。真实记录经产品绘图函数渲染为 `real-core-chart.png`，标题明确标注为采样记录；这是实际数据的回看，不把隔离 PTY fixture 当作真实内核采样证明。
+
+真实 controlling PTY 完成中文 True Color 的正常、缺测、重启三场景及 NO_COLOR 正常场景，覆盖 160×45、120×32、80×24、60×20、40×16 及恢复；缺测恰好三个点，PID 变化清除旧刻度，累计值来自同帧流量计数。最终累计量修正后再完成中文真彩全尺寸复验，服务、模式、节点和 TUN 修改计数均为零。已目视复核真实曲线、宽屏卡片与无色小窗口。PTY 使用隔离内存后端，不执行实际服务或主机网络配置操作；本轮没有重跑安装/systemd/TUN 生命周期 E2E。
+
+证据位于 `.test-artifacts/shared-ws/`：`check-build-final.log`、`race-final.log`、`linux-final.log`、`app-lock-final.log`、`linux-lock-final.log`、`real-core.log`、`real-core.json`、`real-core-chart.{png,ansi,txt}`；最终 PTY 为 `pty-final/20261108-185507-61524e/`，缺测与重启为 `pty/20261108-185243-02f4b8/`，无色为 `pty/20261108-185254-dbbaea/`。早期未完成迁移的 HTTP 日志 fixture、有限读取测试及取栈记录保留，最终验证已修正。复验真实内核入口：
+
+```sh
+LAZYCLASH_TEST_MIHOMO=/absolute/path/to/mihomo \
+LAZYCLASH_WS_INTEGRATION_SAMPLES=60 \
+LAZYCLASH_WS_INTEGRATION_REPORT=.test-artifacts/shared-ws/real-core.json \
+go test ./internal/mihomo -run '^TestMihomoWebSocketIntegration$' -count=1 -v
 ```
 
 ## 统一圆角输入框（2026-11-08）
@@ -51,6 +120,52 @@ python3 scripts/logo-intro-pty.py --binary bin/lazyclash \
 go test -c ./internal/tui -o bin/input-fields-tui.test
 python3 scripts/input-fields-pty.py --binary "$PWD/bin/input-fields-tui.test" \
   --output .test-artifacts/input-unification/pty --png
+```
+
+## 通栏细点阵流量双曲线（2026-11-08）
+
+实时流量改为独占一整行的 Braille 细点阵双曲线，上方上传橙色、下载蓝色、共享自适应速率轴与最近 60 秒时间轴，下方整合上传/下载速率、连接数、累计上传/下载和内存。前两排调整为内核与服务 / 当前配置、代理路径 / 本机接入，底部环境为紧凑通栏；原等宽对齐、自然高度、常态无边框与黄色焦点轮廓继续保留。窄/短屏缩减图高与刻度，指标降为两列或单列。本地 Bubbles v2.2.1 没有曲线组件，本轮使用现有 Lip Gloss/ANSI 封装纯绘制函数，没有增加依赖。
+
+历史仅复用现有有界 `Runtime` 结果，在 TUI 内存保留实际 `ObservedAt` 最近 60 秒、最多 128 点；相邻观测的启动时间至少间隔一秒，慢请求完成后立即进入下一轮，不再额外等待一秒。实际频率仍受 `Runtime` 请求耗时限制，不增加独立采样循环，不预填、补零、加速回放或落盘。缺失/失败/非法速率和超过三秒的间隔断线，真实零速率正常绘制。暂停时保留未过期历史；确认停止/卸载、不同 PID 或安装归属变化时清除，未知 PID 时可用累计计数下降识别重启。旧代结果先被原守卫拒绝，同代旧时间/重复/未来数据也不会覆盖历史或运行状态，仍正常调度下一次采样。两项连接暂停夹具的固定未来时间改为当前时间前十秒，原速率与暂停断言不变。
+
+最终 `make check build` 通过（TUI 74.342 秒），包括全包测试、vet 和主机构建；`go test -race ./internal/tui -run 'Test(Traffic|Runtime|ConnectionsPause)' -count=1` 通过（16.695 秒）。`./scripts/verify-linux.sh lazyclash-e2e` 在已有专用 Linux/arm64 VM 实际运行全部可运行包测试通过，脚本完成临时目录清理；另构建 `bin/linux-arm64/lazyclash`。八项 Python 回归及两个变更 PTY 脚本语法检查通过。模型回归覆盖真实时间位置、空白历史/零值/缺测、三秒断线阈值、共享缩放与二进制单位、MaxInt64、宽度 1～160 和高度 1～9 的中英文画布、128 点/60 秒边界、PID/计数/状态变化、旧代与时间异常、暂停及既有连接状态。
+
+真实 controlling PTY 完成中英文 × True Color、ANSI256、NO_COLOR 六组，覆盖 160×45、120×32、80×24、60×20、40×16 及恢复；检查真实等待后形成的点阵、双曲线颜色、通栏宽度、刻度/单位、无边框/焦点与缩放。缺测夹具返回三次无流量观测并恢复，重启夹具从 PID 4242 变为 4243、下降速率/计数，确认旧 MiB 刻度和旧曲线消失。另让测试 TUI 按真实墙钟等待 60 秒，共收到 66 次运行观测，绘出完整窗口；没有预填历史或倍速回放。原概览脚本同步布局后完成中文真彩回归。所有服务、模式、节点、TUN 修改计数均为零。已目视复核完整 60 秒宽屏与 40×16 无色画面。PTY 后端是产生变化观测的隔离内存 fixture，PNG 从实际终端字符格重绘；没有访问实际 Mihomo 或系统服务，也未运行其完整生命周期 E2E。
+
+证据位于 `.test-artifacts/traffic-chart/`：`check-build.log`、`race.log`、`linux.log`、`python.log`；最终六组为 `pty-final/20261108-020005-a3d344/`，缺测/重启为 `pty-edges-final/20261108-020005-43d155/`，原概览为 `overview-final/20261108-020005-66977d/`，真实 60 秒预览为 `pty-60-seconds/20261108-015815-9d7190/`。早期 Esc 解码与测试脚本同步失败记录保留，最终脚本在导航页脚已显示时不重复发送 Esc，否则等待页脚状态转换，避免 Esc+Tab 被解析成组合键。复验入口：
+
+```sh
+go test -c ./internal/tui -o bin/traffic-tui.test
+python3 scripts/traffic-pty.py --binary bin/traffic-tui.test \
+  --output .test-artifacts/traffic-chart/pty --png
+python3 scripts/traffic-pty.py --binary bin/traffic-tui.test \
+  --output .test-artifacts/traffic-chart/edges --png \
+  --lang zh-Hans --profile truecolor --scenario gap --scenario restart
+python3 scripts/traffic-pty.py --binary bin/traffic-tui.test \
+  --output .test-artifacts/traffic-chart/full-minute --png \
+  --lang zh-Hans --profile truecolor --samples 60
+```
+
+## 六卡片等宽逐行概览（2026-11-08）
+
+参考 Clash Verge 的信息分组，将概览组织为六张卡片：第一排内核与服务 / 实时流量，第二排代理路径 / 当前配置，第三排本机接入 / 运行环境。两卡同排时等宽且顶边对齐，奇数列最多相差一格；各卡保留自然高度，下一排从较高卡片下方一行空白后开始，不补齐短卡片高度。正文不足 90 列或终端不足 20 行时单列。无边框底色、焦点轮廓、内部路由分隔线与稳定语义身份沿用。
+
+配置卡补充应用层已脱敏的来源类型/域名、更新时间、覆写与待应用/待验证状态。本机接入显示已配置的 HTTP/SOCKS5 本机地址及控制 API 地址，新增 `Snapshot.MixedPort` 从现有 manifest 读取真实混合端口，缺失时不使用控制端口或默认值代替；控制地址仅显示 host:port。TUN 和系统代理说明集中到接入卡，系统实例明确分开保存策略与已观测的 TUN，未知/不一致保留提示；运行环境仅展示平台、作用域、管理器与自启动。新增入口打开既有设置页端口弹窗，只读取现有配置，后续变更仍走原审阅和应用流程。没有增加出口 IP、网站测试或历史流量采集。
+
+最终 `make check build` 通过（TUI 72.744 秒），含全部 Go 测试、vet 和产品构建；`./scripts/verify-linux.sh lazyclash-e2e` 在已有 Linux/arm64 专用 VM 实际运行全部可运行包测试通过，临时目录清理成功。八项 Python 回归和变更脚本语法检查通过。模型回归覆盖中英文 × 宽窄/奇数列、自然高度/排起点、卡片和操作归属、焦点与通知遮挡、配置待应用/未验证/来源隐私、真实端口快照、控制地址脱敏、TUN 已保存/已观测/未知，以及端口弹窗读取与取消不应用。初次定向检查暴露的旧断言只允许接入卡零操作，已修正为验证用户服务无 TUN 操作并允许新的端口入口。
+
+真实 controlling PTY 完成中英文 × True Color、ANSI256、NO_COLOR 六组，覆盖 160×45、120×32、80×24、60×20、40×16 及恢复。分别浏览六张卡，核对等宽与每排共同起点、不同自然高度、第三排滚动、无边框/焦点/按钮切换及全部操作可达。另在中文真彩验证停止、不可用、版本/模式漂移、待应用配置和主机 TUN 保存/实际不一致四种场景。所有服务、模式、节点、TUN 修改均为零；已目视复核最终宽屏、无色窄屏和待应用场景。脚本等待 Esc 后的导航页脚再发送下一按键，避免繁忙时将 Esc+Tab 合成为 Alt+Tab。PNG 从实际 PTY 字符格与样式重绘，使用隔离内存后端，没有操作真实 Mihomo/systemd/TUN 或重跑其完整生命周期 E2E；本轮未运行 race。
+
+宿主与 Linux/Python 日志为 `.test-artifacts/overview-equal-rows/{check-build,linux,python}.log`。最终 PTY 证据位于 `.test-artifacts/overview-six-cards/pty-final/20261108-012336-3c8592/` 和 `pty-edges-final/20261108-012336-262073/`，含 PNG/ANSI/TXT、原始输出与操作计数。复验入口：
+
+```sh
+go test -c ./internal/tui -o bin/overview-tui.test
+python3 scripts/overview-pty.py --binary bin/overview-tui.test \
+  --output .test-artifacts/overview-six-cards/pty --png
+python3 scripts/overview-pty.py --binary bin/overview-tui.test \
+  --output .test-artifacts/overview-six-cards/pty-edges --png \
+  --lang zh-Hans --profile truecolor --scenario stopped \
+  --scenario unavailable --scenario drift --scenario pending
 ```
 
 ## 填色搜索区与真实竖线光标（2026-11-08）

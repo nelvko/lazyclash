@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -18,10 +17,13 @@ import (
 func sessionLogsModel(t *testing.T, backend *fakeBackend) *Model {
 	t.Helper()
 	m := logsModel()
+	m.ctx = t.Context()
 	m.backend = backend
+	m.snapshotReady, m.snapshot.Installed = true, true
+	m.snapshot.Service = service.Status{Active: true, State: "active", PID: 4242}
 	m.width, m.height = 120, 32
 	t.Cleanup(func() {
-		m.stopLogs()
+		m.stopRuntime()
 		m.stopCoreStatus()
 		if m.cancel != nil {
 			m.cancel()
@@ -30,11 +32,31 @@ func sessionLogsModel(t *testing.T, backend *fakeBackend) *Model {
 	return &m
 }
 
+func primeLogRuntime(m *Model) {
+	m.acceptRuntimeEvent(app.RuntimeEvent{Source: app.RuntimeStatus, Instance: 1, ObservedAt: time.Now(), Snapshot: app.RuntimeSnapshot{
+		State: "ready", Service: m.snapshot.Service,
+	}})
+}
+
+func logSessionEvent(message string) app.RuntimeEvent {
+	at := time.Now()
+	return app.RuntimeEvent{Source: app.RuntimeLogs, Instance: 1, ObservedAt: at,
+		Log: &mihomo.LogEntry{Time: at, Level: "info", Message: message}}
+}
+
+func acceptLogFixture(m *Model, generation uint64, entries ...mihomo.LogEntry) {
+	events := make([]app.RuntimeEvent, 0, len(entries))
+	for _, entry := range entries {
+		events = append(events, app.RuntimeEvent{Source: app.RuntimeLogs, Instance: m.runtime.instance, ObservedAt: time.Now(), Log: &entry})
+	}
+	m.acceptRuntime(runtimeResultMsg{generation: generation, events: events})
+}
+
 func runLogSession(t *testing.T, cmd tea.Cmd) (tea.Cmd, <-chan struct{}) {
 	t.Helper()
 	commands := commandBatch(t, cmd)
 	if len(commands) != 2 {
-		t.Fatalf("expected one session owner and one message reader; got %d commands", len(commands))
+		t.Fatalf("expected one shared session owner and one message reader; got %d commands", len(commands))
 	}
 	done := make(chan struct{})
 	go func() {
@@ -44,23 +66,23 @@ func runLogSession(t *testing.T, cmd tea.Cmd) (tea.Cmd, <-chan struct{}) {
 	return commands[1], done
 }
 
-func readLogSessionMessage(t *testing.T, cmd tea.Cmd) logsResultMsg {
+func readLogSessionMessage(t *testing.T, cmd tea.Cmd) runtimeResultMsg {
 	t.Helper()
 	if cmd == nil {
-		t.Fatal("missing log message reader")
+		t.Fatal("missing shared runtime message reader")
 	}
 	result := make(chan tea.Msg, 1)
 	go func() { result <- cmd() }()
 	select {
 	case raw := <-result:
-		message, ok := raw.(logsResultMsg)
+		message, ok := raw.(runtimeResultMsg)
 		if !ok {
-			t.Fatalf("expected a log result; got %T", raw)
+			t.Fatalf("expected a shared runtime result; got %T", raw)
 		}
 		return message
 	case <-time.After(3 * time.Second):
-		t.Fatal("session did not deliver its next log result")
-		return logsResultMsg{}
+		t.Fatal("shared session did not deliver its next result")
+		return runtimeResultMsg{}
 	}
 }
 
@@ -69,51 +91,54 @@ func waitLogSessionExit(t *testing.T, done <-chan struct{}) {
 	select {
 	case <-done:
 	case <-time.After(time.Second):
-		t.Fatal("log session did not release its stream or retry timer after cancellation")
+		t.Fatal("shared session did not release its streams after cancellation")
 	}
 }
 
 func TestLogsSessionStartsFromRunningSnapshotBeforeOpeningLogs(t *testing.T) {
 	m := New(t.Context(), &fakeBackend{}, "en")
-	defer m.stopLogs()
-	if m.page != "overview" || m.syncLogs() != nil || m.logs.active {
-		t.Fatal("an unobserved installation started background log polling")
+	defer m.stopRuntime()
+	if m.page != "overview" || m.syncRuntime() != nil || m.logs.active {
+		t.Fatal("an unobserved installation started background subscriptions")
 	}
 	running := app.Snapshot{Installed: true, Service: service.Status{Active: true, State: "active", PID: 4242}}
 	m, cmd := update(m, resultMsg{id: m.id, snapshot: running, hasSnapshot: true})
-	if cmd == nil || m.page != "overview" || !m.logs.active || !m.logs.started || m.logs.ctx == nil {
-		t.Fatal("the first running snapshot did not start session log collection from Overview")
+	if cmd == nil || m.page != "overview" || !m.runtime.active || !m.logs.active || !m.logs.started || m.runtime.ctx == nil {
+		t.Fatal("the first running snapshot did not start shared collection from Overview")
 	}
-	ctx, generation := m.logs.ctx, m.logs.generation
+	ctx, generation := m.runtime.ctx, m.runtime.generation
 	m.browsePage("logs")
-	if m.syncLogs() != nil || m.logs.ctx != ctx || m.logs.generation != generation {
-		t.Fatal("opening Logs replaced the already collecting session")
+	if m.syncRuntime() != nil || m.runtime.ctx != ctx || m.runtime.generation != generation {
+		t.Fatal("opening Logs replaced the already collecting shared session")
 	}
 
 	unavailable := sessionLogsModel(t, &fakeBackend{})
-	if unavailable.syncLogs() == nil || !unavailable.logs.active {
-		t.Fatal("opening Logs did not start a diagnostic attempt for an unavailable core")
+	unavailable.snapshot.Installed = false
+	if unavailable.syncRuntime() == nil || !unavailable.logs.active {
+		t.Fatal("opening Logs did not start a diagnostic session for an unavailable core")
 	}
 }
 
 func TestLogsSessionKeepsCollectingAcrossNavigationOverlaysAndOrdinaryJobs(t *testing.T) {
 	started := make(chan context.Context, 1)
-	input := make(chan mihomo.LogEntry, 1)
-	backend := &fakeBackend{streamLogs: func(ctx context.Context, emit func(mihomo.LogEntry)) error {
+	input := make(chan app.RuntimeEvent, 1)
+	backend := &fakeBackend{streamRuntime: func(ctx context.Context, emit func(app.RuntimeEvent)) error {
 		started <- ctx
 		for {
 			select {
-			case entry := <-input:
-				emit(entry)
+			case event := <-input:
+				emit(event)
 			case <-ctx.Done():
 				return ctx.Err()
 			}
 		}
 	}}
 	m := sessionLogsModel(t, backend)
-	reader, done := runLogSession(t, m.syncLogs())
+	cmd := m.syncRuntime()
+	primeLogRuntime(m)
+	reader, done := runLogSession(t, cmd)
 	ctx := <-started
-	generation := m.logs.generation
+	generation := m.runtime.generation
 	stages := []struct {
 		name string
 		act  func()
@@ -129,12 +154,12 @@ func TestLogsSessionKeepsCollectingAcrossNavigationOverlaysAndOrdinaryJobs(t *te
 	}
 	for index, stage := range stages {
 		stage.act()
-		if m.syncLogs() != nil || !m.logs.active || m.logs.ctx != ctx || ctx.Err() != nil || m.logs.generation != generation {
-			t.Fatalf("%s interrupted or replaced session collection", stage.name)
+		if m.syncRuntime() != nil || !m.logs.active || m.runtime.ctx != ctx || ctx.Err() != nil || m.runtime.generation != generation {
+			t.Fatalf("%s interrupted or replaced shared session collection", stage.name)
 		}
 		message := fmt.Sprintf("off-page event %d", index)
-		input <- mihomo.LogEntry{Level: "info", Message: message}
-		reader = m.acceptLogs(readLogSessionMessage(t, reader))
+		input <- logSessionEvent(message)
+		reader = m.acceptRuntime(readLogSessionMessage(t, reader))
 		if m.logs.entries[len(m.logs.entries)-1].Message != message {
 			t.Fatalf("%s discarded a live event outside the Logs page", stage.name)
 		}
@@ -142,21 +167,22 @@ func TestLogsSessionKeepsCollectingAcrossNavigationOverlaysAndOrdinaryJobs(t *te
 	if m.page != "profiles" || len(m.logs.entries) != len(stages) {
 		t.Fatal("background capture navigated the page or failed to keep the session cache")
 	}
-	m.stopLogs()
+	m.stopRuntime()
 	waitLogSessionExit(t, done)
 }
 
 func TestLogsSessionPauseFreezesIndependentHistoryWhileLiveCacheRemainsBounded(t *testing.T) {
 	m := sessionLogsModel(t, &fakeBackend{})
-	m.syncLogs()
-	ctx, generation := m.logs.ctx, m.logs.generation
+	m.syncRuntime()
+	primeLogRuntime(m)
+	ctx, generation := m.runtime.ctx, m.runtime.generation
 	for index := 0; index < retainedLogLimit; index++ {
 		m.appendLogs([]mihomo.LogEntry{{Level: "info", Message: fmt.Sprintf("before-%03d", index)}})
 	}
 	m.pauseLogs()
 	frozen := strings.Join(m.logDocument(90).lines, "\n")
 	for index := 0; index < retainedLogLimit+50; index++ {
-		m.acceptLogs(logsResultMsg{generation: generation, entries: []mihomo.LogEntry{{Level: "info", Message: fmt.Sprintf("after-%03d", index)}}})
+		m.acceptRuntimeEvent(logSessionEvent(fmt.Sprintf("after-%03d", index)))
 	}
 	if got := strings.Join(m.logDocument(90).lines, "\n"); got != frozen {
 		t.Fatal("live-cache eviction overwrote the paused display snapshot")
@@ -164,10 +190,10 @@ func TestLogsSessionPauseFreezesIndependentHistoryWhileLiveCacheRemainsBounded(t
 	if len(m.logs.entries) != retainedLogLimit || len(m.logs.frozen) != retainedLogLimit || m.logs.entries[0].Message != "after-050" || m.logs.frozen[0].Message != "before-000" {
 		t.Fatal("pause retained unbounded storage or shared the mutable live-cache slice")
 	}
-	if !m.logs.active || ctx.Err() != nil || m.logs.ctx != ctx || m.logs.generation != generation || m.logs.unread != retainedLogLimit {
+	if !m.logs.active || ctx.Err() != nil || m.runtime.ctx != ctx || m.runtime.generation != generation || m.logs.unread != retainedLogLimit {
 		t.Fatal("pausing display interrupted collection or lost its bounded new-event count")
 	}
-	if cmd := m.resumeLogs(); cmd != nil || m.logs.paused || m.logs.frozen != nil || m.logs.holding || m.logs.unread != 0 || m.logs.generation != generation {
+	if cmd := m.resumeLogs(); cmd != nil || m.logs.paused || m.logs.frozen != nil || m.logs.holding || m.logs.unread != 0 || m.runtime.generation != generation {
 		t.Fatal("resuming display replaced the stream or retained the frozen reading state")
 	}
 	if got := logReadingView(*m); !strings.Contains(got, "after-249") || strings.Contains(got, "before-") {
@@ -180,69 +206,63 @@ func TestLogsSessionPauseFreezesIndependentHistoryWhileLiveCacheRemainsBounded(t
 	}
 }
 
-func TestLogsSessionRetriesAfterDisconnectAndRecoversWithoutChangingGeneration(t *testing.T) {
-	attempted := make(chan time.Time, 2)
-	var calls atomic.Int32
-	backend := &fakeBackend{streamLogs: func(ctx context.Context, emit func(mihomo.LogEntry)) error {
-		attempted <- time.Now()
-		if calls.Add(1) == 1 {
-			return errors.New("fixture stream disconnected")
-		}
-		emit(mihomo.LogEntry{Level: "info", Message: "restored event"})
+func TestLogsSessionSourceFailureAndRecoveryLeaveTheSharedGenerationIntact(t *testing.T) {
+	m := sessionLogsModel(t, &fakeBackend{})
+	m.syncRuntime()
+	primeLogRuntime(m)
+	ctx, generation := m.runtime.ctx, m.runtime.generation
+	m.acceptRuntimeEvent(app.RuntimeEvent{Source: app.RuntimeLogs, Instance: 1, ObservedAt: time.Now(), Err: errors.New("fixture stream disconnected")})
+	if !m.logs.active || !m.logs.reconnecting || m.logs.err == nil || ctx.Err() != nil || m.syncRuntime() != nil {
+		t.Fatal("a disconnected log source lost the shared session or started a duplicate session")
+	}
+	m.acceptRuntimeEvent(logSessionEvent("restored event"))
+	if !m.logs.active || m.logs.reconnecting || !m.logs.recovered || m.logs.err != nil || m.runtime.generation != generation || m.runtime.ctx != ctx {
+		t.Fatal("source recovery replaced the shared session")
+	}
+	if len(m.logs.entries) != 1 || m.logs.entries[0].Message != "restored event" {
+		t.Fatal("source recovery inserted synthetic records or lost the resumed real event")
+	}
+}
+
+func TestLogsQuietHandshakeRecoversWithoutInventingAnEvent(t *testing.T) {
+	m := sessionLogsModel(t, &fakeBackend{})
+	m.syncRuntime()
+	primeLogRuntime(m)
+	generation := m.runtime.generation
+	m.acceptRuntimeEvent(app.RuntimeEvent{Source: app.RuntimeLogs, Instance: 1, ObservedAt: time.Now(), Err: errors.New("fixture stream disconnected")})
+	m.acceptRuntimeEvent(app.RuntimeEvent{Source: app.RuntimeLogs, Instance: 1, ObservedAt: time.Now(), Connected: true})
+	if m.logs.err != nil || m.logs.reconnecting || !m.logs.recovered || !m.logs.active || len(m.logs.entries) != 0 || m.runtime.generation != generation {
+		t.Fatal("quiet successful handshake waited for a log event, invented one, or replaced the session")
+	}
+}
+
+func TestLogsSessionManualReconnectRejectsAllOldMessagesAndPreservesPausedView(t *testing.T) {
+	backend := &fakeBackend{streamRuntime: func(ctx context.Context, _ func(app.RuntimeEvent)) error {
 		<-ctx.Done()
 		return ctx.Err()
 	}}
 	m := sessionLogsModel(t, backend)
-	reader, done := runLogSession(t, m.syncLogs())
-	first := <-attempted
-	ctx, generation := m.logs.ctx, m.logs.generation
-	reader = m.acceptLogs(readLogSessionMessage(t, reader))
-	if !m.logs.active || !m.logs.reconnecting || m.logs.err == nil || ctx.Err() != nil || m.syncLogs() != nil {
-		t.Fatal("a disconnected stream lost the session owner or started a duplicate retry loop")
-	}
-	reader = m.acceptLogs(readLogSessionMessage(t, reader))
-	second := <-attempted
-	if second.Sub(first) < 900*time.Millisecond {
-		t.Fatal("failed stream retried without the initial backoff")
-	}
-	if calls.Load() != 2 || !m.logs.active || m.logs.reconnecting || !m.logs.recovered || m.logs.err != nil || m.logs.generation != generation || m.logs.ctx != ctx {
-		t.Fatal("automatic recovery failed to restore observation within the existing session")
-	}
-	if len(m.logs.entries) != 1 || m.logs.entries[0].Message != "restored event" {
-		t.Fatal("recovery inserted synthetic records or lost the resumed real event")
-	}
-	m.stopLogs()
-	waitLogSessionExit(t, done)
-	if reader() != nil {
-		t.Fatal("cancelled quiet-session reader produced a new result")
-	}
-}
-
-func TestLogsSessionManualReconnectCancelsBackoffAndRejectsAllOldMessages(t *testing.T) {
-	backend := &fakeBackend{streamLogs: func(context.Context, func(mihomo.LogEntry)) error {
-		return errors.New("fixture cannot connect")
-	}}
-	m := sessionLogsModel(t, backend)
-	reader, done := runLogSession(t, m.syncLogs())
-	ctx, generation := m.logs.ctx, m.logs.generation
-	reader = m.acceptLogs(readLogSessionMessage(t, reader))
+	cmd := m.syncRuntime()
+	primeLogRuntime(m)
+	reader, done := runLogSession(t, cmd)
+	ctx, generation := m.runtime.ctx, m.runtime.generation
 	m.appendLogs([]mihomo.LogEntry{{Level: "info", Message: "retained before reconnect"}})
 	m.pauseLogs()
 	frozen := strings.Join(m.logDocument(80).lines, "\n")
-	if m.reconnectLogs() == nil || ctx.Err() == nil || m.logs.ctx == ctx || m.logs.generation == generation || !m.logs.active {
-		t.Fatal("manual reconnect did not replace and invalidate the old session")
+	if m.reconnectLogs() == nil || ctx.Err() == nil || m.runtime.ctx == ctx || m.runtime.generation == generation || !m.logs.active {
+		t.Fatal("manual reconnect did not replace and invalidate the shared session")
 	}
 	waitLogSessionExit(t, done)
 	if reader() != nil {
-		t.Fatal("cancelled retry reader did not release promptly")
+		t.Fatal("cancelled shared reader did not release promptly")
 	}
-	newGeneration := m.logs.generation
-	for _, old := range []logsResultMsg{
-		{generation: generation, entries: []mihomo.LogEntry{{Level: "error", Message: "stale old event"}}},
-		{generation: generation, done: true, err: errors.New("stale old failure")},
+	newGeneration := m.runtime.generation
+	for _, event := range []app.RuntimeEvent{
+		logSessionEvent("stale old event"),
+		{Source: app.RuntimeLogs, Instance: 1, ObservedAt: time.Now(), Err: errors.New("stale old failure")},
 	} {
-		if m.acceptLogs(old) != nil || m.logs.generation != newGeneration || m.logs.err != nil || len(m.logs.entries) != 1 {
-			t.Fatal("an old stream event or failure changed the replacement session")
+		if m.acceptRuntime(runtimeResultMsg{generation: generation, events: []app.RuntimeEvent{event}}) != nil || m.runtime.generation != newGeneration || len(m.logs.entries) != 1 {
+			t.Fatal("an old source event or failure changed the replacement session")
 		}
 	}
 	if got := strings.Join(m.logDocument(80).lines, "\n"); !m.logs.paused || got != frozen {
@@ -250,11 +270,11 @@ func TestLogsSessionManualReconnectCancelsBackoffAndRejectsAllOldMessages(t *tes
 	}
 }
 
-func TestLogsSessionQuitAndParentCancellationReleaseQuietStreams(t *testing.T) {
+func TestLogsSessionQuitAndParentCancellationReleaseQuietSharedStreams(t *testing.T) {
 	for _, mode := range []string{"quit", "parent"} {
 		t.Run(mode, func(t *testing.T) {
 			started := make(chan struct{})
-			backend := &fakeBackend{streamLogs: func(ctx context.Context, _ func(mihomo.LogEntry)) error {
+			backend := &fakeBackend{streamRuntime: func(ctx context.Context, _ func(app.RuntimeEvent)) error {
 				close(started)
 				<-ctx.Done()
 				return ctx.Err()
@@ -263,29 +283,18 @@ func TestLogsSessionQuitAndParentCancellationReleaseQuietStreams(t *testing.T) {
 			parent, cancel := context.WithCancel(t.Context())
 			defer cancel()
 			m.ctx = parent
-			reader, done := runLogSession(t, m.syncLogs())
+			reader, done := runLogSession(t, m.syncRuntime())
 			<-started
 			if mode == "quit" {
 				m.requestQuit()
 			} else {
 				cancel()
-				m.syncLogs()
+				m.syncRuntime()
 			}
 			waitLogSessionExit(t, done)
-			if m.logs.active || m.logs.pending || m.logs.ctx.Err() == nil || m.syncLogs() != nil || reader() != nil {
-				t.Fatal("exit left a quiet stream active, restarted it, or blocked its reader")
+			if m.runtime.active || m.runtime.pending || m.logs.active || m.runtime.ctx.Err() == nil || m.syncRuntime() != nil || reader() != nil {
+				t.Fatal("exit left a quiet shared stream active, restarted it, or blocked its reader")
 			}
 		})
-	}
-}
-
-func TestLogsSessionRetryDelayIsBoundedAndNeverSpins(t *testing.T) {
-	for _, tc := range []struct {
-		attempt int
-		want    time.Duration
-	}{{-1, time.Second}, {0, time.Second}, {1, 2 * time.Second}, {2, 4 * time.Second}, {3, 8 * time.Second}, {4, 16 * time.Second}, {5, 30 * time.Second}, {1000, 30 * time.Second}} {
-		if got := logRetryDelay(tc.attempt); got != tc.want {
-			t.Fatalf("attempt %d: got %s; want %s", tc.attempt, got, tc.want)
-		}
 	}
 }

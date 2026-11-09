@@ -3,49 +3,50 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"charm.land/lipgloss/v2"
+	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/i18n"
 )
 
 // Keep card identities independent of their position and translated contents.
-// The two columns flow independently; short cards never acquire filler rows.
+// Paired cards share a top edge and equal widths, keeping their natural heights.
 func overviewLayout(o dashboardOptions, width int) dashboardBlock {
 	if overviewSetupVisible(o) {
 		return overviewNamedCard("dashboard.guide.title", getStarted(o, width), width)
 	}
-	core := func(w int) dashboardBlock {
-		return overviewNamedCard("dashboard.control.core", overviewCoreCard(o, w), w)
+	cards := []struct {
+		id     string
+		render func(dashboardOptions, int) dashboardBlock
+	}{
+		{"dashboard.control.core", overviewCoreCard},
+		{"dashboard.profile.title", overviewProfileCard},
+		{"dashboard.control.routingMode", overviewRouteCard},
+		{"dashboard.overview.access", overviewAccessCard},
+		{"dashboard.traffic.title", overviewTrafficCard},
+		{"dashboard.system.title", overviewSystemCard},
 	}
-	route := func(w int) dashboardBlock {
-		return overviewNamedCard("dashboard.control.routingMode", overviewRouteCard(o, w), w)
-	}
-	traffic := func(w int) dashboardBlock {
-		return overviewNamedCard("dashboard.traffic.title", overviewTrafficCard(o, w), w)
-	}
-	profile := func(w int) dashboardBlock {
-		return overviewNamedCard("dashboard.profile.title", overviewProfileCard(o, w), w)
-	}
+	paired := width >= 90 && o.Height >= 20
 	var body dashboardBlock
-	if width >= 90 && o.Height >= 20 {
-		leftWidth := (width - 2) * 3 / 5
-		rightWidth := width - 2 - leftWidth
-		left, right := core(leftWidth), traffic(rightWidth)
-		left.blank()
-		left.append(route(leftWidth))
-		right.blank()
-		right.append(profile(rightWidth))
-		body = overviewColumns(o, left, right, leftWidth, rightWidth)
-	} else {
-		for _, render := range []func(int) dashboardBlock{core, route, traffic, profile} {
-			if len(body.lines) > 0 {
-				body.blank()
-			}
-			body.append(render(width))
+	for index := 0; index < len(cards); {
+		if index > 0 {
+			body.blank()
+		}
+		render := func(index, w int) dashboardBlock {
+			card := cards[index]
+			return overviewNamedCard(card.id, card.render(o, w), w)
+		}
+		if paired && index < 4 {
+			leftWidth := (width - 2) / 2
+			rightWidth := width - 2 - leftWidth
+			body.append(overviewColumns(o, render(index, leftWidth), render(index+1, rightWidth), leftWidth, rightWidth))
+			index += 2
+		} else {
+			body.append(render(index, width))
+			index++
 		}
 	}
-	body.blank()
-	body.append(overviewNamedCard("dashboard.system.title", overviewSystemCard(o, width), width))
 	return body
 }
 
@@ -111,6 +112,19 @@ func overviewProfileCard(o dashboardOptions, width int) dashboardBlock {
 			name = tr("profiles.builtin_name")
 		}
 	}
+	var info app.ProfileInfo
+	for _, candidate := range s.ProfileDetails {
+		if candidate.ID == s.Applied {
+			info = candidate
+			break
+		}
+	}
+	statusColor := muted
+	if s.ConfigReady && (s.ProfilePending || info.Pending) {
+		status, statusColor = tr("profiles.changes_pending"), warning
+	} else if s.ConfigReady && info.ID != "" && !info.Validated {
+		status, statusColor = tr("profiles.validation_pending"), warning
+	}
 	saved := 0
 	for _, name := range s.Profiles {
 		if name != "default" {
@@ -119,9 +133,29 @@ func overviewProfileCard(o dashboardOptions, width int) dashboardBlock {
 	}
 	lines := []string{
 		themed(lipgloss.NewStyle().Bold(true).Render(clean(name)), text, panel, o.Dim),
-		themed(status, muted, panel, o.Dim),
-		themed(tr("dashboard.overview.savedProfiles", saved), muted, panel, o.Dim),
+		themed(status, statusColor, panel, o.Dim),
 	}
+	if info.ID != "" {
+		origin := clean(info.Origin)
+		switch info.Kind {
+		case "local":
+			origin = tr("profiles.create_local")
+		case "imported":
+			origin = tr("profiles.imported_origin")
+		case "builtin":
+			origin = tr("profiles.builtin_origin")
+		}
+		if origin != "" {
+			lines = append(lines, themed(tr("dashboard.overview.source", origin), muted, panel, o.Dim))
+		}
+		if !info.UpdatedAt.IsZero() {
+			lines = append(lines, themed(profileUpdated(info.UpdatedAt, time.Now(), o.Locale), muted, panel, o.Dim))
+		}
+		if info.HasOverrides {
+			lines = append(lines, themed(tr("dashboard.overview.overrides"), muted, panel, o.Dim))
+		}
+	}
+	lines = append(lines, themed(tr("dashboard.overview.savedProfiles", saved), muted, panel, o.Dim))
 	if !s.ConfigReady && saved == 0 {
 		lines = append(lines, themed(tr("dashboard.profile.importHint"), muted, panel, o.Dim))
 	}
@@ -152,7 +186,7 @@ func overviewRouteCard(o dashboardOptions, width int) dashboardBlock {
 	return b
 }
 
-type overviewField struct{ label, value string }
+type overviewField struct{ label, value, color string }
 
 // Use aligned cells with natural wrapping, including long translated labels.
 func overviewFieldGrid(o dashboardOptions, fields []overviewField, width, columns int) []string {
@@ -164,8 +198,12 @@ func overviewFieldGrid(o dashboardOptions, fields []overviewField, width, column
 		height := 0
 		for j := range cells {
 			f := fields[i+j]
-			label := themed(f.label, muted, panel, o.Dim)
-			value := themed(lipgloss.NewStyle().Bold(true).Render(clean(f.value)), text, panel, o.Dim)
+			labelColor, valueColor := muted, text
+			if f.color != "" {
+				labelColor, valueColor = f.color, f.color
+			}
+			label := themed(f.label, labelColor, panel, o.Dim)
+			value := themed(lipgloss.NewStyle().Bold(true).Render(clean(f.value)), valueColor, panel, o.Dim)
 			cells[j] = append(strings.Split(wrapText(label, cellWidth), "\n"), strings.Split(wrapText(value, cellWidth), "\n")...)
 			height = max(height, len(cells[j]))
 		}
@@ -188,14 +226,22 @@ func overviewTrafficCard(o dashboardOptions, width int) dashboardBlock {
 	tr := o.Locale.T
 	s := o.Runtime
 	status := runtimeStatus(s, o.RuntimeReceived, o.RuntimePending, o.Snapshot.Installed, o.Locale)
-	var lines []string
+	colors := trafficCurveColors()
+	legend := themed(tr("dashboard.overview.upload"), colors.upload, panel, o.Dim) + themed("   ", text, panel, o.Dim) + themed(tr("dashboard.overview.download"), colors.download, panel, o.Dim) + themed(" · "+tr("dashboard.overview.historyWindow"), muted, panel, o.Dim)
+	lines := []string{legend}
 	if !o.RuntimeReceived || s.State != "ready" || s.Traffic == nil || s.Connections == nil || s.Memory == nil {
 		lines = append(lines, themed(status, muted, panel, o.Dim))
 	}
+	plotHeight := 6
+	if width < 76 || o.Height < 24 {
+		plotHeight = 4
+	}
+	lines = append(lines, overviewTrafficChart(o, max(1, width-4), plotHeight)...)
 	if o.RuntimeReceived && s.State == "ready" {
-		up, down, connections, memory := "--", "--", "--", "--"
+		up, down, connections, totalUp, totalDown, memory := "--", "--", "--", "--", "--", "--"
 		if s.Traffic != nil {
 			up, down = formatBytes(s.Traffic.Up)+"/s", formatBytes(s.Traffic.Down)+"/s"
+			totalUp, totalDown = formatBytes(s.Traffic.UpTotal), formatBytes(s.Traffic.DownTotal)
 		}
 		if s.Connections != nil {
 			connections = fmt.Sprint(len(s.Connections.Connections))
@@ -204,20 +250,18 @@ func overviewTrafficCard(o dashboardOptions, width int) dashboardBlock {
 			memory = formatBytes(int64(*s.Memory))
 		}
 		columns := 1
-		if width >= 34 {
+		if width >= 72 {
+			columns = 3
+		} else if width >= 34 {
 			columns = 2
 		}
-		fields := []overviewField{{tr("dashboard.overview.upload"), up}, {tr("dashboard.overview.download"), down}, {tr("dashboard.field.connections"), connections}, {tr("dashboard.field.coreMemory"), memory}}
-		if len(lines) > 0 {
-			lines = append(lines, "")
+		fields := []overviewField{
+			{tr("dashboard.overview.upload"), up, colors.upload}, {tr("dashboard.overview.download"), down, colors.download}, {tr("dashboard.field.connections"), connections, ""},
+			{tr("dashboard.overview.totalUpload"), totalUp, colors.upload}, {tr("dashboard.overview.totalDownload"), totalDown, colors.download}, {tr("dashboard.field.coreMemory"), memory, ""},
 		}
+		lines = append(lines, "")
 		lines = append(lines, overviewFieldGrid(o, fields, max(1, width-4), columns)...)
-		lines = append(lines, "", themed(tr("dashboard.field.sinceStart"), muted, panel, o.Dim))
-		total := "--"
-		if s.Connections != nil {
-			total = "↑ " + formatBytes(s.Connections.UploadTotal) + "  ↓ " + formatBytes(s.Connections.DownloadTotal)
-		}
-		lines = append(lines, themed(total, text, panel, o.Dim), themed(tr("dashboard.traffic.resetHint"), muted, panel, o.Dim))
+		lines = append(lines, themed(tr("dashboard.field.sinceStart")+" · "+tr("dashboard.traffic.resetHint"), muted, panel, o.Dim))
 	} else {
 		lines = append(lines, themed(tr("dashboard.traffic.startHint"), muted, panel, o.Dim))
 	}

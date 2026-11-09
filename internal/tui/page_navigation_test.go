@@ -364,8 +364,9 @@ func TestPageNavigationOverviewCardIDsRemainUniqueAndStableAcrossResize(t *testi
 				var wantIDs []string
 				if !setup {
 					wantIDs = []string{
-						"overview.card.dashboard.control.core", "overview.card.dashboard.control.routingMode",
-						"overview.card.dashboard.traffic.title", "overview.card.dashboard.profile.title",
+						"overview.card.dashboard.control.core", "overview.card.dashboard.profile.title",
+						"overview.card.dashboard.control.routingMode", "overview.card.dashboard.overview.access",
+						"overview.card.dashboard.traffic.title",
 					}
 					wantIDs = append(wantIDs, "overview.card.dashboard.system.title")
 				}

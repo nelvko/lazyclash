@@ -94,6 +94,10 @@ func TestRuntimeSettingsPreserveAppliedConfigurationAndSources(t *testing.T) {
 	if err != nil || settings != proposed {
 		t.Fatal("saved runtime settings not returned", err)
 	}
+	snapshot, err := a.Snapshot(t.Context())
+	if err != nil || snapshot.MixedPort != proposed.MixedPort || snapshot.Controller != after.Controller {
+		t.Fatalf("overview snapshot confused configured proxy and controller endpoints: %+v %v", snapshot, err)
+	}
 	if err := a.Apply(t.Context(), "default"); err != nil {
 		t.Fatal(err)
 	}

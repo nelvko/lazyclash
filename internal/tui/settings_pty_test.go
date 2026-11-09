@@ -121,3 +121,7 @@ func (b *settingsPTYBackend) SetMode(ctx context.Context, _ string) error {
 	b.modes.Add(1)
 	return ctx.Err()
 }
+
+func (b *settingsPTYBackend) StreamRuntime(ctx context.Context, emit func(app.RuntimeEvent)) error {
+	return streamRuntimeFixture(ctx, b, emit)
+}

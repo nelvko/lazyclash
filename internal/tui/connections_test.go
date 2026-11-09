@@ -72,7 +72,8 @@ func TestConnectionsSelectionAndConfirmationStayBoundToID(t *testing.T) {
 	m.runtime.pending = true
 	fresh := liveRuntime()
 	fresh.Connections.Connections = []mihomo.Connection{fixtureConnection("newest", "new.example.invalid", 10), fixtureConnection("first", "one.example.invalid", 1), fixtureConnection("second", "two.example.invalid", 0)}
-	m, _ = update(m, runtimeResultMsg{generation: m.runtime.generation, snapshot: fresh})
+	m = acceptRuntimeFixture(m, fresh)
+	m.layout()
 	if m.connections.detail.ID != "first" || m.connections.selected != "first" || !m.connections.confirming {
 		t.Fatal("refresh retargeted selection or confirmation")
 	}
@@ -87,7 +88,7 @@ func TestConnectionsSelectionAndConfirmationStayBoundToID(t *testing.T) {
 		t.Fatalf("wrong or duplicate connection closed: %v", closed)
 	}
 	m, _ = update(m, result)
-	if m.busy || m.failure != "" || m.message != "Connection close requested" || !m.runtime.pending {
+	if m.busy || m.failure != "" || m.message != "Connection close requested" || !m.runtime.active {
 		t.Fatal("close did not refresh data and report its result")
 	}
 }
@@ -99,7 +100,8 @@ func TestConnectionsGoneDuringConfirmationNeverCloseAnotherRow(t *testing.T) {
 	fresh := liveRuntime()
 	fresh.Connections.Connections = []mihomo.Connection{fixtureConnection("second", "two.example.invalid", 0)}
 	m.runtime.pending = true
-	m, _ = update(m, runtimeResultMsg{generation: m.runtime.generation, snapshot: fresh})
+	m = acceptRuntimeFixture(m, fresh)
+	m.layout()
 	m, _ = update(m, key("y"))
 	if m.busy || closed != 0 || m.connections.confirming || m.connections.detail.ID != "first" || !strings.Contains(m.failure, "no longer active") {
 		t.Fatal("disappearing target changed confirmation to another connection")
@@ -118,7 +120,8 @@ func TestConnectionCloseFailurePreservesDetailsAndCanRetry(t *testing.T) {
 	}
 	fresh := liveRuntime()
 	fresh.Connections.Connections = []mihomo.Connection{fixtureConnection("first", "one.example.invalid", 1)}
-	m, _ = update(m, runtimeResultMsg{generation: m.runtime.generation, snapshot: fresh})
+	m = acceptRuntimeFixture(m, fresh)
+	m.layout()
 	m, _ = update(m, key("x"))
 	m, cmd = update(m, key("y"))
 	_ = actionCmd(t, cmd)()
@@ -198,14 +201,16 @@ func TestLiveConnectionsRefreshKeepsFocusVisibleAndRepairsRemovedSelection(t *te
 	}
 	fresh.Connections.Connections = append(fresh.Connections.Connections, fixtureConnection("first", "one.example.invalid", 1))
 	m.runtime.pending = true
-	m, _ = update(m, runtimeResultMsg{generation: m.runtime.generation, snapshot: fresh})
+	m = acceptRuntimeFixture(m, fresh)
+	m.layout()
 	if m.focus != "connection.first" || !hasAction(m.targets, m.focus) {
 		t.Fatal("live insertion moved the focused connection outside the viewport")
 	}
 	fresh = liveRuntime()
 	fresh.Connections.Connections = []mihomo.Connection{fixtureConnection("second", "two.example.invalid", 0)}
 	m.runtime.pending = true
-	m, _ = update(m, runtimeResultMsg{generation: m.runtime.generation, snapshot: fresh})
+	m = acceptRuntimeFixture(m, fresh)
+	m.layout()
 	if m.connections.selected != "second" || m.focus != "connection.second" || !hasAction(m.targets, m.focus) {
 		t.Fatal("removed connection left focus pointing to a dead row")
 	}

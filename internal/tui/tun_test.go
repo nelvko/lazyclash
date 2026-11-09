@@ -112,8 +112,13 @@ func TestSystemEnvironmentShowsScopeAndHostTUNWhileUserControlsStayUnavailable(t
 	o := dashboardOptions{Snapshot: b.snapshot}
 	block := overviewSystemCard(o, 64)
 	plain := ansi.Strip(strings.Join(block.lines, "\n"))
-	if !strings.Contains(plain, "system (root instance)") || !strings.Contains(plain, "systemd system") || !strings.Contains(plain, "Entire host") || len(block.targets) != 1 || block.targets[0].ID != "tun.enable" {
-		t.Fatal("system environment omitted its scope or TUN control")
+	if !strings.Contains(plain, "system (root instance)") || !strings.Contains(plain, "systemd system") || len(block.targets) != 0 {
+		t.Fatal("system environment omitted its scope or retained duplicate TUN controls")
+	}
+	block = overviewAccessCard(o, 64)
+	plain = ansi.Strip(strings.Join(block.lines, "\n"))
+	if !strings.Contains(plain, "Entire host") || !hasAction(block.targets, "tun.enable") {
+		t.Fatal("access card omitted host TUN scope or control")
 	}
 	b.snapshot.Capabilities = app.Capabilities{Scope: "user", Runtime: app.Capability{Supported: true}}
 	m := ready(b)

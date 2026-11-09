@@ -2,7 +2,6 @@ package tui
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"reflect"
 	"strings"
@@ -18,14 +17,15 @@ import (
 
 func acceptConnectionsSample(m Model, snapshot app.RuntimeSnapshot) Model {
 	m.runtime.active, m.runtime.pending = true, true
-	m, _ = update(m, runtimeResultMsg{generation: m.runtime.generation, snapshot: snapshot})
+	m = acceptRuntimeFixture(m, snapshot)
+	m.layout()
 	return m
 }
 
 func TestConnectionsPauseFreezesRowsRatesAndTotalsWhileMonitoringContinues(t *testing.T) {
 	m := connectionsModel(t, &fakeBackend{})
 	base := liveRuntime()
-	base.ObservedAt = time.Unix(1_800_000_000, 0)
+	base.ObservedAt = time.Now().Add(-10 * time.Second)
 	base.Connections.Connections = []mihomo.Connection{fixtureConnection("first", "one.example.invalid", 1)}
 	m = acceptConnectionsSample(m, base)
 	second := base
@@ -97,7 +97,8 @@ func TestConnectionsUnavailableOrNewCoreDiscardsFrozenObservation(t *testing.T) 
 			m, _ = update(m, key("p"))
 			if transition == "unavailable" {
 				m.runtime.pending = true
-				m, _ = update(m, runtimeResultMsg{generation: m.runtime.generation, err: errors.New("fixture API unavailable")})
+				m = acceptRuntimeFixture(m, app.RuntimeSnapshot{State: "unavailable", Error: "fixture API unavailable"})
+				m.layout()
 				if len(m.filteredConnections()) != 0 || m.connectionSnapshot() != nil {
 					t.Fatal("unavailable runtime still advertised frozen rows as active")
 				}
@@ -123,7 +124,7 @@ func TestConnectionsPauseDetectsCounterResetAboveFrozenTotals(t *testing.T) {
 		t.Run(counter, func(t *testing.T) {
 			m := connectionsModel(t, &fakeBackend{})
 			base := liveRuntime()
-			base.ObservedAt = time.Unix(1_800_000_000, 0)
+			base.ObservedAt = time.Now().Add(-10 * time.Second)
 			base.Service.PID = 10
 			base.Connections = &mihomo.ConnectionSnapshot{UploadTotal: 1000, DownloadTotal: 2000, Connections: []mihomo.Connection{fixtureConnection("first", "one.example.invalid", 1)}}
 			m = acceptConnectionsSample(m, base)

@@ -103,8 +103,8 @@ func TestCoreSummaryPreservesSystemdTransitionsAndFailure(t *testing.T) {
 	if !strings.Contains(card, "Desired state") || !strings.Contains(card, s.Drift) {
 		t.Fatal("core card hid lifecycle intent or drift")
 	}
-	environment := ansi.Strip(strings.Join(overviewSystemCard(dashboardOptions{Snapshot: s}, 72).lines, "\n"))
-	if !strings.Contains(environment, "Not supported by the user service.") {
-		t.Fatal("environment card hid TUN capability")
+	access := ansi.Strip(strings.Join(overviewAccessCard(dashboardOptions{Snapshot: s}, 72).lines, "\n"))
+	if !strings.Contains(access, "Not supported by the user service.") {
+		t.Fatal("access card hid TUN capability")
 	}
 }

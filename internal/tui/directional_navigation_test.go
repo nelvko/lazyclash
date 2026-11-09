@@ -27,7 +27,6 @@ func directionCleanup(t *testing.T, m *Model) {
 	t.Cleanup(func() {
 		m.stopRuntime()
 		m.stopRules()
-		m.stopLogs()
 		m.stopCoreStatus()
 		if m.cancel != nil {
 			m.cancel()

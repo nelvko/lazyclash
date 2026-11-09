@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -44,6 +45,7 @@ type fakeBackend struct {
 	mode                 func(context.Context, string) error
 	tun                  func(context.Context, bool) error
 	runtime              func(context.Context) (app.RuntimeSnapshot, error)
+	streamRuntime        func(context.Context, func(app.RuntimeEvent)) error
 	rules                func(context.Context) (app.RuleSnapshot, error)
 	streamLogs           func(context.Context, func(mihomo.LogEntry)) error
 	closeConnection      func(context.Context, string) error
@@ -220,6 +222,129 @@ func (f *fakeBackend) Control(ctx context.Context, action string) error {
 	return nil
 }
 func (f *fakeBackend) Select(context.Context, string, string) error { return nil }
+
+// Fixture backends generate source events through the same public session seam
+// as production. Polling here is only a test data generator, never TUI behavior.
+func (f *fakeBackend) StreamRuntime(ctx context.Context, emit func(app.RuntimeEvent)) error {
+	if f.streamRuntime != nil {
+		return f.streamRuntime(ctx, emit)
+	}
+	return streamRuntimeFixture(ctx, f, emit)
+}
+
+type runtimeFixtureBackend interface {
+	Runtime(context.Context) (app.RuntimeSnapshot, error)
+	StreamLogs(context.Context, func(mihomo.LogEntry)) error
+}
+
+func streamRuntimeFixture(ctx context.Context, backend runtimeFixtureBackend, emit func(app.RuntimeEvent)) error {
+	var emitMu sync.Mutex
+	send := func(event app.RuntimeEvent) { emitMu.Lock(); defer emitMu.Unlock(); emit(event) }
+	logDone := make(chan struct{})
+	startLogs := func() {
+		go func() {
+			defer close(logDone)
+			for ctx.Err() == nil {
+				err := backend.StreamLogs(ctx, func(entry mihomo.LogEntry) {
+					send(app.RuntimeEvent{Source: app.RuntimeLogs, Instance: 1, ObservedAt: time.Now(), Log: &entry})
+				})
+				if ctx.Err() != nil {
+					return
+				}
+				send(app.RuntimeEvent{Source: app.RuntimeLogs, Instance: 1, ObservedAt: time.Now(), Err: err})
+				timer := time.NewTimer(time.Second)
+				select {
+				case <-ctx.Done():
+					timer.Stop()
+					return
+				case <-timer.C:
+				}
+			}
+		}()
+	}
+	logsStarted := false
+	defer func() {
+		if logsStarted {
+			<-logDone
+		}
+	}()
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	instance, pid := uint64(1), 0
+	for ctx.Err() == nil {
+		sample, err := backend.Runtime(ctx)
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if err != nil {
+			sample = app.RuntimeSnapshot{State: "unavailable", Error: err.Error()}
+		}
+		if sample.ObservedAt.IsZero() {
+			sample.ObservedAt = time.Now()
+		}
+		if pid != 0 && sample.Service.PID != pid {
+			instance++
+		}
+		pid = sample.Service.PID
+		for _, event := range fixtureRuntimeEvents(sample, instance) {
+			send(event)
+		}
+		if !logsStarted {
+			logsStarted = true
+			startLogs()
+		}
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+		}
+	}
+	return ctx.Err()
+}
+
+func fixtureRuntimeEvents(s app.RuntimeSnapshot, instance uint64) []app.RuntimeEvent {
+	at := s.ObservedAt
+	if at.IsZero() {
+		at = time.Now()
+	}
+	events := []app.RuntimeEvent{{Source: app.RuntimeStatus, Instance: instance, ObservedAt: at, Snapshot: s}}
+	if s.State != "ready" {
+		return events
+	}
+	events = append(events,
+		app.RuntimeEvent{Source: app.RuntimeVersion, Instance: instance, ObservedAt: at, Snapshot: s},
+		app.RuntimeEvent{Source: app.RuntimeTraffic, Instance: instance, ObservedAt: at, Traffic: s.Traffic},
+		app.RuntimeEvent{Source: app.RuntimeMemory, Instance: instance, ObservedAt: at, Memory: s.Memory},
+		app.RuntimeEvent{Source: app.RuntimeConnections, Instance: instance, ObservedAt: at, Connections: s.Connections},
+	)
+	if s.TrafficError != "" {
+		events[2].Err = errors.New(s.TrafficError)
+	}
+	if s.MemoryError != "" {
+		events[3].Err = errors.New(s.MemoryError)
+	}
+	if s.ConnectionsError != "" {
+		events[4].Err = errors.New(s.ConnectionsError)
+	}
+	return events
+}
+
+func acceptRuntimeFixture(m Model, s app.RuntimeSnapshot) Model {
+	if !m.runtime.active {
+		m.runtime.active = true
+	}
+	instance := m.runtime.instance
+	if instance == 0 {
+		instance = 1
+	}
+	if m.runtime.snapshot.Service.PID > 0 && s.Service.PID != m.runtime.snapshot.Service.PID {
+		instance++
+	}
+	for _, event := range fixtureRuntimeEvents(s, instance) {
+		m.acceptRuntimeEvent(event)
+	}
+	return m
+}
 
 func (f *fakeBackend) Runtime(ctx context.Context) (app.RuntimeSnapshot, error) {
 	if f.runtime != nil {

@@ -98,7 +98,7 @@ func TestSearchControlsKeepLogCountsWhileEditingOrInspectingOptions(t *testing.T
 		for _, width := range []int{60, 120} {
 			t.Run(fmt.Sprint(language, "/", width), func(t *testing.T) {
 				m := redesignedLogsModel(160, 45, 12)
-				defer m.stopLogs()
+				defer m.stopRuntime()
 				m.locale = i18n.New(language)
 				m.logs.search.SetValue("event-001")
 				for _, editing := range []bool{false, true} {
@@ -121,7 +121,7 @@ func TestSearchControlsLogClearReturnsToInputWithoutChangingCollection(t *testin
 	for _, paused := range []bool{false, true} {
 		t.Run(fmt.Sprint("paused=", paused), func(t *testing.T) {
 			m := redesignedLogsModel(120, 32, 12)
-			defer m.stopLogs()
+			defer m.stopRuntime()
 			if paused {
 				m.pauseLogs()
 			}
@@ -129,13 +129,13 @@ func TestSearchControlsLogClearReturnsToInputWithoutChangingCollection(t *testin
 			m.logs.level, m.logs.compact = 2, true
 			m.logs.search.Blur()
 			m.logs.editing, m.focus = false, "logs.reset-search"
-			ctx, generation := m.logs.ctx, m.logs.generation
+			ctx, generation := m.runtime.ctx, m.runtime.generation
 			retained, frozen := len(m.logs.entries), len(m.logs.frozen)
 			m.logsActivate("logs.reset-search")
 			if m.logs.search.Value() != "" || !m.logs.editing || !m.logs.search.Focused() || m.focus != "logs.search" {
 				t.Fatal("clearing search did not return to an editable empty input")
 			}
-			if !m.logs.active || ctx.Err() != nil || m.logs.generation != generation || m.logs.paused != paused || len(m.logs.entries) != retained || len(m.logs.frozen) != frozen || m.logs.level != 2 || !m.logs.compact {
+			if !m.logs.active || ctx.Err() != nil || m.runtime.generation != generation || m.logs.paused != paused || len(m.logs.entries) != retained || len(m.logs.frozen) != frozen || m.logs.level != 2 || !m.logs.compact {
 				t.Fatal("clearing search changed collection, pause, entries or other display settings")
 			}
 		})

@@ -36,7 +36,6 @@ func TestInputFieldsPTYFixture(t *testing.T) {
 	}
 	final := result.(inputFieldsPTY)
 	final.model.stopRuntime()
-	final.model.stopLogs()
 	final.model.stopRules()
 	final.model.stopProviders()
 	final.writeState()

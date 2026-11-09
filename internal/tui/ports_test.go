@@ -30,6 +30,34 @@ func portsModel(t *testing.T, backend *fakeBackend) Model {
 	return m
 }
 
+func TestOverviewAccessOpensPortSettingsWithoutApplying(t *testing.T) {
+	reads, writes := 0, 0
+	backend := &fakeBackend{snapshot: onboardingDefaultSnapshot()}
+	backend.getSettings = func(context.Context) (app.RuntimeSettings, error) {
+		reads++
+		return app.RuntimeSettings{MixedPort: 17890, ControllerPort: 19090}, nil
+	}
+	backend.applySettings = func(context.Context, app.RuntimeSettingsPlan) (app.RuntimeSettingsResult, error) {
+		writes++
+		return app.RuntimeSettingsResult{}, nil
+	}
+	m := ready(backend)
+	m.width, m.height = 160, 60
+	m.layout()
+	m, cmd := click(m, findTarget(t, m, "card.access"))
+	if m.page != "settings" || !m.ports.open || !m.busy || m.ports.step != "loading" || reads != 0 || writes != 0 {
+		t.Fatal("access action did not open the existing settings dialog with an asynchronous read")
+	}
+	m, _ = update(m, actionCmd(t, cmd)())
+	if m.busy || m.ports.step != "edit" || reads != 1 || writes != 0 || m.ports.mixed.Value() != "17890" || m.ports.controller.Value() != "19090" {
+		t.Fatal("access action applied settings or failed to show the current configured ports")
+	}
+	m, _ = update(m, special(tea.KeyEscape))
+	if m.ports.open || m.page != "settings" || m.focus != "runtime-settings" || writes != 0 {
+		t.Fatal("closing unchanged port settings failed to restore its settings entry point")
+	}
+}
+
 func reviewPorts(t *testing.T, m Model) Model {
 	t.Helper()
 	m.ports.mixed.SetValue("18080")
@@ -195,15 +223,15 @@ func TestRuntimePortsCancellingDisablesRepeatedCancelAction(t *testing.T) {
 	}
 }
 
-func TestRuntimePortsModalStopsBackgroundAndDoesNotClickThrough(t *testing.T) {
+func TestRuntimePortsModalKeepsSharedSessionAndDoesNotClickThrough(t *testing.T) {
 	m := ready(&fakeBackend{snapshot: app.Snapshot{Installed: true}})
 	m.width, m.height, m.page, m.focus = 120, 32, "settings", "runtime-settings"
 	m.layout()
 	background := findTarget(t, m, "nav.overview")
 	m, cmd := click(m, findTarget(t, m, "runtime-settings"))
 	m, _ = update(m, actionCmd(t, cmd)())
-	if m.runtimeVisible() || m.rulesVisible() {
-		t.Fatal("background monitoring remained visible through the modal")
+	if !m.runtime.active || m.rulesVisible() {
+		t.Fatal("modal interrupted shared monitoring or kept rules polling visible")
 	}
 	for _, hit := range m.targets {
 		if !strings.HasPrefix(hit.ID, "ports.") {

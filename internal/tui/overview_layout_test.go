@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -14,7 +15,7 @@ import (
 	"github.com/nelvko/lazyclash/internal/service"
 )
 
-func TestOverviewFlowingLayoutKeepsCardGeometryAndActionOwnership(t *testing.T) {
+func TestOverviewPairedLayoutKeepsNaturalCardHeightsAndActionOwnership(t *testing.T) {
 	snapshot := app.Snapshot{
 		Installed: true, ConfigReady: true, HasRun: true, Applied: "default",
 		Version: "v1.19.33", RunningVersion: "v1.19.33",
@@ -26,10 +27,15 @@ func TestOverviewFlowingLayoutKeepsCardGeometryAndActionOwnership(t *testing.T) 
 	owners := map[string]string{
 		"core.stop": "dashboard.control.core", "core.restart": "dashboard.control.core", "card.install": "dashboard.control.core",
 		"mode.rule": "dashboard.control.routingMode", "mode.global": "dashboard.control.routingMode", "mode.direct": "dashboard.control.routingMode", "card.proxies": "dashboard.control.routingMode",
-		"card.profiles": "dashboard.profile.title", "tun.enable": "dashboard.system.title",
+		"card.profiles": "dashboard.profile.title", "tun.enable": "dashboard.overview.access", "card.access": "dashboard.overview.access",
+	}
+	renders := map[string]func(dashboardOptions, int) dashboardBlock{
+		"dashboard.control.core": overviewCoreCard, "dashboard.traffic.title": overviewTrafficCard,
+		"dashboard.control.routingMode": overviewRouteCard, "dashboard.profile.title": overviewProfileCard,
+		"dashboard.overview.access": overviewAccessCard, "dashboard.system.title": overviewSystemCard,
 	}
 	for _, language := range []string{i18n.English, i18n.Chinese} {
-		for _, width := range []int{16, 40, 72, 89, 90, 112, 180} {
+		for _, width := range []int{16, 40, 72, 89, 90, 91, 112, 180} {
 			for _, height := range []int{19, 20, 45} {
 				t.Run(fmt.Sprintf("%s/%dx%d", language, width, height), func(t *testing.T) {
 					o := dashboardOptions{Locale: i18n.New(language), Snapshot: snapshot, Runtime: liveRuntime(), RuntimeReceived: true, Height: height}
@@ -43,6 +49,10 @@ func TestOverviewFlowingLayoutKeepsCardGeometryAndActionOwnership(t *testing.T) 
 							t.Fatalf("duplicate card %s", card.ID)
 						}
 						cards[card.ID] = card
+						render := renders[strings.TrimPrefix(card.ID, "overview.card.")]
+						if render == nil || card.H != len(render(o, card.W).lines) {
+							t.Fatalf("card %s was stretched beyond its natural height", card.ID)
+						}
 						for _, other := range body.cards[index+1:] {
 							if regionsOverlap(card, other) {
 								t.Fatalf("card frames overlap: %+v / %+v", card, other)
@@ -55,19 +65,32 @@ func TestOverviewFlowingLayoutKeepsCardGeometryAndActionOwnership(t *testing.T) 
 							}
 						}
 					}
-					if len(cards) != 5 {
-						t.Fatalf("got %d cards, want five", len(cards))
+					if len(cards) != 6 {
+						t.Fatalf("got %d cards, want six", len(cards))
 					}
-					core := cards["overview.card.dashboard.control.core"]
-					route := cards["overview.card.dashboard.control.routingMode"]
-					traffic := cards["overview.card.dashboard.traffic.title"]
-					profile := cards["overview.card.dashboard.profile.title"]
 					if width >= 90 && height >= 20 {
-						if core.W <= traffic.W || core.Y != traffic.Y || route.Y != core.Y+core.H+1 || profile.Y != traffic.Y+traffic.H+1 {
-							t.Fatalf("cards lost asymmetric widths or independent flow: core=%+v route=%+v traffic=%+v profile=%+v", core, route, traffic, profile)
+						y := 0
+						for first := 0; first < 4; first += 2 {
+							left, right := body.cards[first], body.cards[first+1]
+							if left.X != 0 || right.X != left.W+2 || left.W+right.W+2 != width || left.W-right.W < -1 || left.W-right.W > 1 || left.Y != y || right.Y != y {
+								t.Fatalf("paired cards lost equal widths or aligned row starts: %+v / %+v at y=%d", left, right, y)
+							}
+							y += max(left.H, right.H) + 1
 						}
-					} else if core.X != route.X || core.W != width || route.Y != core.Y+core.H+1 || traffic.Y != route.Y+route.H+1 || profile.Y != traffic.Y+traffic.H+1 {
-						t.Fatal("compact layout did not preserve content order and natural spacing")
+						for _, card := range body.cards[4:] {
+							if card.X != 0 || card.W != width || card.Y != y {
+								t.Fatalf("full-width traffic/environment card lost its row: %+v at y=%d", card, y)
+							}
+							y += card.H + 1
+						}
+					} else {
+						y := 0
+						for _, card := range body.cards {
+							if card.X != 0 || card.W != width || card.Y != y {
+								t.Fatalf("compact layout lost content order or natural spacing: %+v at y=%d", card, y)
+							}
+							y += card.H + 1
+						}
 					}
 					for id, owner := range owners {
 						found := false
@@ -214,6 +237,117 @@ func TestOverviewAlignedVersionsAndModesCollapseOnlyConfirmedState(t *testing.T)
 				if value := mode(); !strings.Contains(value, locale.T("dashboard.control.runningMode", locale.T("dashboard.status.unknown"))) || strings.Contains(value, locale.T("dashboard.overview.modeAligned", locale.T("dashboard.status.unknown"))) {
 					t.Fatalf("matching unknown modes appeared confirmed: %s", value)
 				}
+			}
+		})
+	}
+}
+
+func TestOverviewProfileKeepsSafeMetadataAndUnappliedChangesExplicit(t *testing.T) {
+	updated := time.Now().AddDate(0, 0, -40)
+	for _, language := range []string{i18n.English, i18n.Chinese} {
+		t.Run(language, func(t *testing.T) {
+			locale := i18n.New(language)
+			o := dashboardOptions{Locale: locale, Snapshot: app.Snapshot{
+				Installed: true, ConfigReady: true, Applied: "work", Profiles: []string{"default", "work"},
+				ProfileDetails: []app.ProfileInfo{{ID: "work", Name: "Work", Kind: "remote", Origin: "subscription.example.invalid", UpdatedAt: updated, Validated: true, HasOverrides: true, Description: "hidden-profile-description"}},
+			}}
+			card := func() string { return ansi.Strip(strings.Join(overviewProfileCard(o, 100).lines, "\n")) }
+			if value := card(); !strings.Contains(value, "Work") || !strings.Contains(value, locale.T("dashboard.overview.source", "subscription.example.invalid")) || !strings.Contains(value, profileUpdated(updated, time.Now(), locale)) || !strings.Contains(value, locale.T("dashboard.overview.overrides")) || strings.Contains(value, "hidden-profile-description") {
+				t.Fatalf("overview lost useful safe profile metadata or exposed its description: %s", value)
+			}
+			for _, fromSnapshot := range []bool{true, false} {
+				o.Snapshot.ProfilePending = fromSnapshot
+				o.Snapshot.ProfileDetails[0].Pending = !fromSnapshot
+				if value := card(); !strings.Contains(value, locale.T("profiles.changes_pending")) || strings.Contains(value, locale.T("dashboard.profile.ready")) {
+					t.Fatalf("unapplied profile changes appeared ready: %s", value)
+				}
+			}
+			o.Snapshot.ProfilePending, o.Snapshot.ProfileDetails[0].Pending = false, false
+			o.Snapshot.ProfileDetails[0].Validated = false
+			if value := card(); !strings.Contains(value, locale.T("profiles.validation_pending")) || strings.Contains(value, locale.T("dashboard.profile.ready")) {
+				t.Fatalf("unvalidated profile appeared ready: %s", value)
+			}
+			for kind, origin := range map[string]string{"local": locale.T("profiles.create_local"), "imported": locale.T("profiles.imported_origin"), "builtin": locale.T("profiles.builtin_origin")} {
+				o.Snapshot.ProfileDetails[0].Kind = kind
+				o.Snapshot.ProfileDetails[0].Origin = "/private/profile-source.yaml"
+				if value := card(); !strings.Contains(value, locale.T("dashboard.overview.source", origin)) || strings.Contains(value, "/private/profile-source.yaml") {
+					t.Fatalf("profile kind %s lost its safe source label: %s", kind, value)
+				}
+			}
+		})
+	}
+}
+
+func TestOverviewAccessKeepsProxyAndControlAddressesDistinctAndSafe(t *testing.T) {
+	for _, language := range []string{i18n.English, i18n.Chinese} {
+		t.Run(language, func(t *testing.T) {
+			locale := i18n.New(language)
+			o := dashboardOptions{Locale: locale, Snapshot: app.Snapshot{
+				Installed: true, MixedPort: 17890, Controller: "http://private-user:private-password@127.0.0.1:19090/private-path?token=private-token#private-fragment",
+			}}
+			card := func() string { return ansi.Strip(strings.Join(overviewAccessCard(o, 100).lines, "\n")) }
+			if value := card(); !strings.Contains(value, "127.0.0.1:17890") || !strings.Contains(value, locale.T("dashboard.overview.controller", "127.0.0.1:19090")) {
+				t.Fatalf("configured proxy/control addresses lost their separate ports: %s", value)
+			}
+			for _, secret := range []string{"private-user", "private-password", "private-path", "private-token", "private-fragment"} {
+				if strings.Contains(card(), secret) {
+					t.Fatalf("controller metadata leaked %s", secret)
+				}
+			}
+			for _, invalid := range []int{0, -1, 65536} {
+				o.Snapshot.MixedPort = invalid
+				if value := card(); strings.Contains(value, "127.0.0.1:17890") || strings.Contains(value, "127.0.0.1:7897") || strings.Count(value, "127.0.0.1:19090") != 1 {
+					t.Fatalf("unavailable proxy port was replaced by a stale/default/controller port: %s", value)
+				}
+			}
+			o.Snapshot.Installed, o.Snapshot.MixedPort = false, 17890
+			if value := card(); strings.Contains(value, "127.0.0.1:") || len(overviewAccessCard(o, 100).targets) != 0 {
+				t.Fatal("uninstalled access card exposed stale addresses or actions")
+			}
+		})
+	}
+	for _, sample := range []struct{ input, want string }{
+		{"127.0.0.1:19090", "127.0.0.1:19090"},
+		{"http://user:password@[::1]:19090/path?token=secret", "[::1]:19090"},
+		{"127.0.0.1:not-a-port", "--"}, {"127.0.0.1:0", "--"}, {"127.0.0.1:65536", "--"}, {"", "--"},
+	} {
+		if got := overviewControllerAddress(sample.input); got != sample.want {
+			t.Fatalf("controller display %q: got %q, want %q", sample.input, got, sample.want)
+		}
+	}
+}
+
+func TestOverviewAccessSeparatesSavedAndObservedHostTUN(t *testing.T) {
+	for _, language := range []string{i18n.English, i18n.Chinese} {
+		t.Run(language, func(t *testing.T) {
+			locale := i18n.New(language)
+			actual := false
+			o := dashboardOptions{Locale: locale, Snapshot: app.Snapshot{
+				Installed: true, TUN: true, TUNActual: &actual, TUNError: "Host TUN differs from its saved policy",
+				Service:      service.Status{Active: true, State: "active"},
+				Capabilities: app.Capabilities{Scope: "system", Runtime: app.Capability{Supported: true}, TUN: app.Capability{Supported: true}},
+			}}
+			card := func() string { return ansi.Strip(strings.Join(overviewAccessCard(o, 100).lines, "\n")) }
+			if value := card(); !strings.Contains(value, locale.T("tun.saved_state", locale.T("dashboard.control.on"))) || !strings.Contains(value, locale.T("dashboard.overview.tunActual", locale.T("dashboard.control.off"))) || !strings.Contains(value, locale.T("tun.host_scope")) || !strings.Contains(value, o.Snapshot.TUNError) || !hasAction(overviewAccessCard(o, 100).targets, "tun.disable") {
+				t.Fatalf("host TUN mismatch lost saved/observed distinction, scope or recovery action: %s", value)
+			}
+			for _, missing := range []string{"no observation", "service error", "API error"} {
+				o.Snapshot.TUNActual, o.Snapshot.ServiceError, o.Snapshot.APIError = &actual, "", ""
+				switch missing {
+				case "no observation":
+					o.Snapshot.TUNActual = nil
+				case "service error":
+					o.Snapshot.ServiceError = "Service unavailable"
+				case "API error":
+					o.Snapshot.APIError = "Controller unavailable"
+				}
+				if value := card(); !strings.Contains(value, locale.T("dashboard.overview.tunActual", locale.T("dashboard.status.unknown"))) || strings.Contains(value, locale.T("dashboard.overview.tunActual", locale.T("dashboard.control.on"))) || strings.Contains(value, locale.T("dashboard.overview.tunActual", locale.T("dashboard.control.off"))) {
+					t.Fatalf("%s presented saved or stale TUN as observed: %s", missing, value)
+				}
+			}
+			o.Busy = true
+			if len(overviewAccessCard(o, 100).targets) != 0 {
+				t.Fatal("busy access card retained an actionable control")
 			}
 		})
 	}

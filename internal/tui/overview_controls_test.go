@@ -95,10 +95,10 @@ func TestOverviewControlStatesRemainExplicit(t *testing.T) {
 		Capabilities: app.Capabilities{Scope: "user", Runtime: app.Capability{Supported: true}},
 		Mode:         app.ModeStatus{Desired: "rule", Actual: "rule", Running: true},
 	}}
-	block := overviewSystemCard(o, 56)
+	block := overviewAccessCard(o, 56)
 	plain := ansi.Strip(strings.Join(block.lines, "\n"))
-	if len(block.targets) != 0 || !strings.Contains(plain, "TUN") || !strings.Contains(plain, "Not supported by the user service.") || !strings.Contains(plain, "Unmanaged") {
-		t.Fatal("environment hid capability explanations or made them actionable")
+	if hasAction(block.targets, "tun.enable") || hasAction(block.targets, "tun.disable") || !strings.Contains(plain, "TUN") || !strings.Contains(plain, "Not supported by the user service.") || !strings.Contains(plain, "Unmanaged") {
+		t.Fatal("access card hid capability explanations or made them actionable")
 	}
 	o.Busy = true
 	for _, block := range []dashboardBlock{overviewCoreCard(o, 56), overviewModeCard(o, 56)} {
