@@ -18,7 +18,7 @@ lazyclash is a Go 1.26+ Mihomo proxy manager with a TUI-first interface.
 - `make check`: run Go tests and `go vet ./...`.
 - `make race`: run tests with the race detector.
 - `python3 -m unittest discover -s scripts -p 'test_*.py'`: test terminal-screen parsing.
-- `./scripts/dev.sh VM_NAME`: cross-build and enter an existing dedicated OrbStack Linux VM.
+- `./scripts/dev.sh VM_NAME`: enter an existing dedicated OrbStack Linux VM; each `lazyclash` invocation cross-builds the latest code on macOS before running.
 
 ## Coding Style & Naming Conventions
 

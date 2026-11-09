@@ -19,7 +19,7 @@ go run .
 
 发行打包使用 `make package VERSION=dev`：在 `bin/packages/` 生成 `lazyclash_dev_linux_amd64.tar.gz`、`lazyclash_dev_linux_arm64.tar.gz` 和 `lazyclash_dev_SHA256SUMS`。每个归档包含一个 lazyclash 可执行程序及 README；Mihomo 在使用时下载或从明确选择的本地文件安装。管理员使用 root 实例前，应把可信发行程序安装到受保护的位置，例如 `/usr/local/bin/lazyclash`。
 
-在 macOS 终端执行 `./scripts/dev.sh` 可构建并进入现有的专用 OrbStack 虚拟机；进入后直接输入 `lazyclash`。脚本自动选择唯一的 `lazyclash` / `lazyclash-*` 虚拟机并检测其架构，构建产物为 `bin/linux-架构/lazyclash`，仅向当前虚拟机 Shell 的 PATH 添加该目录。程序使用正常默认数据目录和服务名，安装及启动由你在 TUI 中操作。多个专用虚拟机时可用 `./scripts/dev.sh VM_NAME` 选择；`exit` 返回 macOS。
+在 macOS 终端执行 `./scripts/dev.sh` 可进入现有的专用 OrbStack 虚拟机；进入后直接输入 `lazyclash`，每次都会先在 macOS 上构建最新代码，再在虚拟机里运行。修改代码后只需退出 lazyclash 并重新执行 `lazyclash`，无需退出虚拟机或重新执行脚本；构建失败时显示错误，不启动旧版本。脚本自动选择唯一的 `lazyclash` / `lazyclash-*` 虚拟机并检测其架构，构建产物为 `bin/linux-架构/lazyclash`，开发启动器位于其 `dev/` 子目录，仅将启动器目录加入当前虚拟机 Shell 的 PATH。程序使用正常默认数据目录和服务名，安装及启动由你在 TUI 中操作。多个专用虚拟机时可用 `./scripts/dev.sh VM_NAME` 选择；`exit` 返回 macOS。
 
 ## 界面语言
 

@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# Build on macOS, then open a normal user shell in an OrbStack Linux VM.
+# Open an OrbStack Linux shell where lazyclash builds on macOS before each run.
 set -euo pipefail
 
 usage() {
   printf 'Usage: %s [ORBSTACK_VM]\n' "$0"
   printf 'Without an argument, select the single lazyclash or lazyclash-* VM.\n'
-  printf 'Build lazyclash for its architecture, then enter the VM; type lazyclash to run.\n'
+  printf 'Enter the VM; each lazyclash invocation builds the latest code on macOS.\n'
 }
 if [[ ${1:-} == --help || ${1:-} == -h ]]; then
   usage
@@ -54,6 +54,7 @@ orb -m "$vm" sh -ec '
     exit 1
   fi
   command -v getent >/dev/null
+  command -v mac >/dev/null
   systemctl --user show --property=SystemState --value >/dev/null
 '
 machine_arch=$(orb -m "$vm" uname -m)
@@ -64,17 +65,34 @@ case "$machine_arch" in
 esac
 
 output_dir="$root/bin/linux-$goarch"
-mkdir -p "$output_dir"
+launcher_dir="$output_dir/dev"
+mkdir -p "$launcher_dir"
+cat > "$launcher_dir/lazyclash" <<'LAUNCHER'
+#!/bin/sh
+set -eu
+
+output_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+root=$(CDPATH= cd -- "$output_dir/../.." && pwd)
+goarch=${output_dir##*/linux-}
+mac bash -s -- "$root" "$goarch" <<'BUILD'
+set -euo pipefail
+root=$1
+goarch=$2
+output_dir="$root/bin/linux-$goarch"
 stage=$(mktemp "$output_dir/.lazyclash-build.XXXXXX")
 trap 'rm -f -- "$stage"' EXIT
-printf 'Building lazyclash for Linux/%s…\n' "$goarch"
+printf 'Building lazyclash for Linux/%s…\n' "$goarch" >&2
 (cd "$root" && CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" go build -o "$stage" .)
 chmod 755 "$stage"
 mv -f -- "$stage" "$output_dir/lazyclash"
-trap - EXIT
+BUILD
 
-printf 'Entering %s. Type lazyclash to start; exit to return to macOS.\n' "$vm"
-# Only this shell receives the build directory in PATH. Normal lazyclash data
+exec "$output_dir/lazyclash" "$@"
+LAUNCHER
+chmod 755 "$launcher_dir/lazyclash"
+
+printf 'Entering %s. Type lazyclash to build and run the latest code; exit to return to macOS.\n' "$vm"
+# Only this shell receives the launcher directory in PATH. Normal lazyclash data
 # and service defaults apply; no shell startup files or services are modified.
 exec orb -m "$vm" -p -w "$root" sh -ec '
   PATH="$1:$PATH"
@@ -82,4 +100,4 @@ exec orb -m "$vm" -p -w "$root" sh -ec '
   user_shell=$(getent passwd "$(id -u)" | cut -d: -f7)
   test -n "$user_shell" && test -x "$user_shell"
   exec "$user_shell" -i
-' sh "$output_dir"
+' sh "$launcher_dir"
