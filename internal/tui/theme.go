@@ -19,6 +19,7 @@ const (
 	sidebarBackground       = "#1d2227"
 	inputBackground         = "#282b2f"
 	text                    = "#d8dee9"
+	pageTitleForeground     = "#f2f4f8"
 	muted                   = "#a9afbc"
 	disabled                = "#7b8896"
 	backdropText            = disabled

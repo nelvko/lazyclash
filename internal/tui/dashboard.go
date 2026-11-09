@@ -99,15 +99,17 @@ func dashboardGeometry(o dashboardOptions) dashboardLayout {
 			width, left = o.Width, 0
 		}
 	}
-	headerY, bodyY := 0, 3
+	headerY, headerHeight := 0, 1
 	if o.Height >= 24 {
-		headerY, bodyY = 1, 5
+		headerY, headerHeight = 1, 3
+	}
+	if o.Height >= 30 {
+		headerY, headerHeight = 2, 5
 	}
 	if (o.Width < 70 || o.Page == "proxies" && o.Width < 100) && o.Height < 24 && o.Page != "" && o.Page != "overview" {
-		bodyY++
+		headerHeight++
 	}
-	headerHeight := bodyY - 2
-	bodyY = headerHeight + 1 + o.BodyTopRows
+	bodyY := headerHeight + 1 + o.BodyTopRows
 	height := max(0, dashboardContentBottom(o)-bodyY)
 	if o.BodyRange && height > 1 {
 		height--
@@ -143,7 +145,8 @@ func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
 			targets = append(targets, r)
 		}
 	}
-	titleText := lipgloss.NewStyle().Bold(true).Render(pageTitle(o.Page, o.Locale))
+	titleText := themed("▎ ", accent, bg, o.Dim) +
+		themed(lipgloss.NewStyle().Bold(true).Render(pageTitle(o.Page, o.Locale)), pageTitleForeground, bg, o.Dim)
 	if o.Height < 7 || o.Width < 20 {
 		put(0, 0, themed(cellCrop(logoText(bg, o.Dim)+" / "+titleText, o.Width), text, bg, o.Dim))
 		if o.Height > 1 {

@@ -82,7 +82,7 @@ func notificationLayout(o dashboardOptions) []notificationOverlay {
 	} else {
 		// The card may replace right-side header actions, but the page title
 		// and compact navigation remain usable while notifications arrive.
-		titleEnd := g.x + ansi.StringWidth(pageTitle(o.Page, o.Locale)) + 2
+		titleEnd := g.x + ansi.StringWidth("▎ "+pageTitle(o.Page, o.Locale)) + 2
 		width = min(width, o.Width-right-titleEnd)
 	}
 	x := o.Width - right - width

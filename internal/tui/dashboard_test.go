@@ -101,7 +101,7 @@ func TestOverviewContentFillsAreaBesideNavigationAndReservesUsableRows(t *testin
 	for _, width := range []int{100, 120, 140, 160, 197, 240, 320} {
 		g := dashboardGeometry(dashboardOptions{Width: width, Height: 45})
 		left, right := g.x-sidebarWidth, width-g.x-g.width
-		if left-right > 1 || right-left > 1 || g.width != width-sidebarWidth-5 || g.y != 4 || g.height != 40 {
+		if left-right > 1 || right-left > 1 || g.width != width-sidebarWidth-5 || g.y != 6 || g.height != 38 {
 			t.Fatalf("Overview does not fill the area beside the navigation: %+v", g)
 		}
 	}
@@ -292,7 +292,7 @@ func TestSidebarTrafficPreservesNavigationAndStaysOutOfPopup(t *testing.T) {
 	for _, tc := range []struct {
 		width, height int
 		visible       bool
-	}{{160, 45, true}, {120, 31, true}, {120, 28, false}, {100, 20, false}, {80, 45, false}} {
+	}{{160, 45, true}, {120, 33, true}, {120, 31, false}, {120, 28, false}, {100, 20, false}, {80, 45, false}} {
 		t.Run(fmt.Sprintf("%dx%d", tc.width, tc.height), func(t *testing.T) {
 			o := dashboardOptions{Width: tc.width, Height: tc.height, Page: "proxies", SidebarOpen: true, Snapshot: app.Snapshot{Installed: true}, Runtime: liveRuntime(), RuntimeReceived: true}
 			screen, targets, _ := renderDashboard(o)

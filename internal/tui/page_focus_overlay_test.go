@@ -16,7 +16,7 @@ func TestPageNavigationCardFocusPreservesOverlappingTaskNotice(t *testing.T) {
 	m.focus = "overview.card.dashboard.control.routingMode"
 	m.newJob("action")
 	defer m.cancel()
-	m.message = "Updating subscription; existing connections remain available while this task runs."
+	m.message = "Updating subscription; existing connections remain available while this task runs. The saved configuration remains available until the update finishes."
 	m.syncNotification()
 	m.layout()
 

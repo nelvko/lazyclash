@@ -96,7 +96,7 @@ func TestNotificationHeaderRetainsTitleAndShowsShortCompleteMessage(t *testing.T
 			if !g.sidebar {
 				titleX = max(12, g.x)
 			}
-			title := hitRegion{X: titleX, Y: g.headerY, W: ansi.StringWidth(pageTitle(o.Page, o.Locale)), H: 1}
+			title := hitRegion{X: titleX, Y: g.headerY, W: ansi.StringWidth("▎ " + pageTitle(o.Page, o.Locale)), H: 1}
 			if regionsOverlap(title, layers[0].Bounds) {
 				t.Fatalf("%v/%s: notification covered page title", size, language)
 			}
