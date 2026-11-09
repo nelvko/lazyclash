@@ -44,11 +44,18 @@ func (m Model) proxyNodeTestState(group, node string) string {
 }
 
 func (m Model) proxyNodeTargetValid(target proxyTestTarget) bool {
+	if m.proxiesDirect() {
+		return false
+	}
 	_, group, exists := m.proxyGroup(target.group)
 	return exists && target.node != "" && indexOf(group.All, target.node) >= 0 && m.proxyTestable(target.node) && target.path == m.proxyPathKey(target.node)
 }
 
 func (m *Model) testProxyNode(group, node string) tea.Cmd {
+	if m.proxiesDirect() {
+		m.stopProxyTests()
+		return nil
+	}
 	if _, supported := m.backend.(proxyDelayBackend); !supported || m.page != "proxies" || !m.proxiesReady() || m.busy || m.quitting {
 		return nil
 	}
@@ -85,6 +92,10 @@ func (m *Model) testProxyNode(group, node string) tea.Cmd {
 
 func (m *Model) nextProxyNodeTests() tea.Cmd {
 	backend, supported := m.backend.(proxyDelayBackend)
+	if m.proxiesDirect() {
+		m.stopProxyTests()
+		return nil
+	}
 	if !supported || m.page != "proxies" || !m.proxiesReady() || m.busy || m.quitting {
 		return nil
 	}
@@ -112,6 +123,10 @@ func (m *Model) nextProxyNodeTests() tea.Cmd {
 }
 
 func (m *Model) acceptProxyNodeDelay(msg proxyNodeDelayMsg) tea.Cmd {
+	if m.proxiesDirect() {
+		m.stopProxyTests()
+		return nil
+	}
 	key := proxyResultKey(msg.target.group, msg.target.node)
 	request, exists := m.proxies.nodeTests.running[key]
 	if !exists || request.generation != msg.generation {

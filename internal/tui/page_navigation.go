@@ -158,6 +158,9 @@ func (m Model) restoredContentFocus(state pageViewState) string {
 		return ""
 	}
 	if state.group != "" {
+		if m.proxiesDirect() {
+			return ""
+		}
 		for gi, group := range m.snapshot.Groups {
 			if group.Name != state.group {
 				continue

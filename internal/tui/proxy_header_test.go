@@ -187,7 +187,7 @@ func TestProxiesContentFocusDoesNotPaintOrphanMarker(t *testing.T) {
 				}
 				m.focus = "group.0"
 				m.layout()
-				if mode != "global" && !strings.Contains(ansi.Strip(m.screen), "› PROXY") {
+				if mode == "rule" && !strings.Contains(ansi.Strip(m.screen), "› PROXY") {
 					t.Fatal("removing the standalone marker also removed the group's keyboard focus")
 				}
 			})

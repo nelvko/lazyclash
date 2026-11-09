@@ -1,5 +1,7 @@
 {
   "proxies.collapse_all": "Collapse all",
+  "proxies.direct.description": "All traffic connects directly.",
+  "proxies.direct.keys": "Tab Switch controls · Enter Activate · Esc Back",
   "proxies.loading": "Loading proxy groups…",
   "proxies.uninstalled": "Install Mihomo to browse proxy groups.",
   "proxies.stopped": "Start Mihomo to browse current proxy groups.",

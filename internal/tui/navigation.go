@@ -212,6 +212,9 @@ func (m Model) contextHelp() string {
 	case "profiles":
 		return tr("navigation.profiles")
 	case "proxies":
+		if m.proxiesDirect() {
+			return tr("proxies.direct.keys")
+		}
 		return tr("navigation.proxies")
 	default:
 		return tr("navigation.default")

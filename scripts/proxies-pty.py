@@ -93,6 +93,55 @@ def assert_compact_proxy_body(terminal, words, first_group):
     return first_y
 
 
+def assert_direct_empty(terminal, words):
+    assert_proxy_header(terminal, words)
+    description = words["proxies.direct.description"]
+    title, _, _, header_bottom = proxy_header_positions(terminal, words)
+    columns, rows = terminal.screen.columns, terminal.screen.rows
+    sidebar = columns >= 100 and rows >= 20
+    left = title[0] - 2 if sidebar else 2
+    right = columns - (3 if sidebar else 2)
+    # The content uses the full height below the fixed header and above the
+    # one-line key hints. A header divider, when present, is outside that area.
+    top = max(3 if rows >= 24 or columns < 100 else 2, header_bottom + 1)
+    bottom = rows - 1
+    for y in range(header_bottom + 1, min(5, bottom)):
+        value = "".join(terminal.screen.cells[y][left:right]).strip()
+        if value and set(value) == {"▔"}:
+            top = max(top, y + 1)
+
+    content = []
+    state = None
+    for y in range(top, bottom):
+        row = terminal.screen.cells[y]
+        value = "".join(row[left:right]).strip()
+        if not value:
+            continue
+        if columns < 50 and all(words["dashboard.mode." + mode] in value for mode in ("rule", "global", "direct")):
+            top = y + 1  # Narrow modes remain outside the centered message area.
+            continue
+        content.append(value)
+        for x in range(left, right):
+            cell = row[x]
+            if cell and "".join(row[x:]).startswith(description):
+                assert state is None, "Direct empty state is duplicated"
+                state = (x, y, cell_offset(row[x:], len(description)))
+                break
+    assert content == [description], "Direct body retained groups, nodes or extra controls: " + repr(content)
+    assert state is not None, "Direct empty state is missing\n" + terminal.screen.text()
+    state_x, state_y, state_width = state
+    horizontal_error = abs(2 * state_x + state_width - left - right) / 2
+    vertical_error = abs(2 * state_y + 1 - top - bottom) / 2
+    assert horizontal_error <= 1, (
+        "Direct message is not horizontally centered: message=%s, body=%s" %
+        (state, (left, top, right, bottom)))
+    assert vertical_error <= 1, (
+        "Direct message is not vertically centered below fixed controls: message=%s, body=%s" %
+        (state, (left, top, right, bottom)))
+    return {"body": [left, top, right, bottom], "message": list(state),
+            "horizontal_error_cells": horizontal_error, "vertical_error_rows": vertical_error}
+
+
 def chosen(terminal, name):
     return any(re.search(r"▌\s*(?:›\s*)?" + re.escape(name) + r"(?:\s|$)", line)
                for line in terminal.screen.text().splitlines())
@@ -547,7 +596,43 @@ def exercise(preview, binary, output, language, profile, args):
         browse_group(terminal, words, "EMPTY")
         terminal.wait(words["proxies.empty_group"])
         preview.capture(terminal, output, "empty-group", args)
-        # All routing modes start their groups at the same content row.
+        # Direct hides the list without erasing its expansion, sort or choice.
+        # Keep the original three mode writes by checking Direct before Global.
+        browse_group(terminal, words, "PROXY")
+        terminal.wait("Hysteria2")
+        terminal.settle()
+        order_before_direct = candidate_order(terminal, words["proxies.enter"])
+        assert len(order_before_direct) == 8, "Direct restoration fixture lost its initial candidates"
+        terminal.click_text(words["dashboard.mode.direct"])
+        wait_mode(terminal, words["dashboard.mode.direct"])
+        terminal.wait(words["proxies.direct.description"])
+        terminal.settle()
+        assert_direct_empty(terminal, words)
+        terminal.key(b"sti")
+        terminal.settle()
+        metrics = assert_direct_empty(terminal, words)
+        (output / "direct-mode-centering.json").write_text(json.dumps(metrics, indent=2) + "\n")
+        preview.capture(terminal, output, "direct-mode", args)
+        terminal.resize(40, 16)
+        terminal.settle()
+        terminal.wait(words["proxies.direct.description"])
+        metrics = assert_direct_empty(terminal, words)
+        (output / "direct-mode-40x16-centering.json").write_text(json.dumps(metrics, indent=2) + "\n")
+        preview.capture(terminal, output, "direct-mode-40x16", args)
+        terminal.resize(160, 45)
+        terminal.settle()
+        terminal.click_text(words["dashboard.mode.rule"])
+        wait_mode(terminal, words["dashboard.mode.rule"])
+        terminal.wait("Hysteria2")
+        terminal.settle()
+        assert group_header(terminal, "PROXY")[3].rstrip().endswith("▾"), "Direct return lost the expanded group"
+        assert candidate_order(terminal, words["proxies.enter"]) == order_before_direct, "Direct return lost the candidate order"
+        assert chosen(terminal, "HK 01"), "Direct return lost the selected node"
+        assert words["proxies.sort.delay"] in group_header(terminal, "PROXY")[3], "Direct return lost its explicit sort"
+        preview.capture(terminal, output, "direct-return-expanded", args)
+        collapse_all(terminal, words)
+        assert assert_compact_proxy_body(terminal, words, "PROXY") == first_group_y, "returning to Rule moved the first group row"
+
         # Global exposes GLOBAL and allows following its references.
         terminal.click_text(words["dashboard.mode.global"])
         wait_mode(terminal, words["dashboard.mode.global"])
@@ -562,18 +647,6 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.key(b"\x1b[D")
         terminal.wait("GLOBAL")
         preview.capture(terminal, output, "global-reference-return", args)
-        terminal.click_text(words["dashboard.mode.direct"])
-        wait_mode(terminal, words["dashboard.mode.direct"])
-        terminal.wait("PROXY")
-        terminal.settle()
-        assert_proxy_header(terminal, words)
-        assert assert_compact_proxy_body(terminal, words, "PROXY") == first_group_y, "Direct moved the first group row"
-        preview.capture(terminal, output, "direct-mode", args)
-        terminal.click_text(words["dashboard.mode.rule"])
-        wait_mode(terminal, words["dashboard.mode.rule"])
-        collapse_all(terminal, words)
-        terminal.wait("BALANCE")
-        assert assert_compact_proxy_body(terminal, words, "PROXY") == first_group_y, "returning to Rule moved the first group row"
         terminal.exit()
         calls = json.loads(report.read_text())
         assert calls["selections"] == 3 and calls["selected"]["PROXY"] == "HK 01", calls
@@ -587,7 +660,7 @@ def exercise(preview, binary, output, language, profile, args):
         if profile == "256":
             assert not preview.RGB.search(raw), "ANSI256 emitted RGB text"
         (output / "pty.raw").write_bytes(raw)
-        print("PASS %s/%s: plain page header, removed refresh shortcuts, selection/padding, references, group navigation, sort, cancel/late results, strategies, resize/four-column cap" % (language, profile), flush=True)
+        print("PASS %s/%s: plain page header, removed refresh shortcuts, selection/padding, references, group navigation, sort, cancel/late results, strategies, centered Direct empty state/restoration, resize/four-column cap" % (language, profile), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")
         (output / "failed.ansi").write_bytes(terminal.raw)

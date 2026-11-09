@@ -169,6 +169,59 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.cleanup()
 
 
+def exercise_direct(preview, binary, output, args):
+    output.mkdir(parents=True)
+    words = RULES.labels("zh-Hans")
+    report = output / "calls.json"
+    terminal = fixture_terminal(preview, binary, report, "zh-Hans", "truecolor")
+    try:
+        terminal.wait("v1.19.33")
+        terminal.key(b"2")
+        terminal.wait("PROXY")
+        PROXIES.open_group(terminal, "PROXY")
+        terminal.wait("Hysteria2")
+        terminal.click_text(words["dashboard.mode.direct"])
+        PROXIES.wait_mode(terminal, words["dashboard.mode.direct"])
+        terminal.wait(words["proxies.direct.description"])
+        terminal.settle()
+        metrics = PROXIES.assert_direct_empty(terminal, words)
+        (output / "direct-before-providers-centering.json").write_text(json.dumps(metrics, indent=2) + "\n")
+        preview.capture(terminal, output, "direct-before-providers", args)
+        terminal.resize(40, 16)
+        terminal.settle()
+        PROXIES.assert_direct_empty(terminal, words)
+        PANEL.click_label(terminal, words["providers.title.proxies"], header=True)
+        terminal.wait("remote_nodes")
+        terminal.wait(words["providers.close"])
+        preview.capture(terminal, output, "direct-providers-40x16", args)
+        PANEL.click_label(terminal, words["providers.close"])
+        terminal.wait_absent("remote_nodes")
+        terminal.settle()
+        metrics = PROXIES.assert_direct_empty(terminal, words)
+        (output / "direct-after-providers-40x16-centering.json").write_text(json.dumps(metrics, indent=2) + "\n")
+        preview.capture(terminal, output, "direct-after-providers-40x16", args)
+        terminal.resize(160, 45)
+        terminal.settle()
+        terminal.click_text(words["dashboard.mode.rule"])
+        PROXIES.wait_mode(terminal, words["dashboard.mode.rule"])
+        terminal.wait("Hysteria2")
+        terminal.settle()
+        assert PROXIES.group_header(terminal, "PROXY")[3].rstrip().endswith("▾"), "closing Direct providers lost the saved expansion"
+        terminal.exit()
+        result = calls(report)
+        assert result["modes"] == 2 and result["service"] == 0 and result["reads"] == 1 and not result["attempts"], result
+        (output / "pty.raw").write_bytes(terminal.raw)
+        print("PASS independent Direct provider fixture: centered empty state, narrow provider access, close and expanded Rule restoration; " + json.dumps(result), flush=True)
+    except Exception:
+        (output / "failed.txt").write_text(terminal.screen.text() + "\n")
+        (output / "failed.ansi").write_bytes(terminal.raw)
+        if args.png:
+            preview.png(terminal.screen, output / "failed.png", args.font, args.cjk_font, args.font_size)
+        raise
+    finally:
+        terminal.cleanup()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", required=True, type=Path)
@@ -183,6 +236,7 @@ def main():
     for language in args.lang or ("en", "zh-Hans"):
         for profile in args.profile or ("truecolor",):
             exercise(preview, args.binary, output / language / profile, language, profile, args)
+    exercise_direct(preview, args.binary, output / "direct-mode", args)
     print("Evidence:", output)
 
 

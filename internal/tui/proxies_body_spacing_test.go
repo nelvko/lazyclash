@@ -64,7 +64,7 @@ func TestProxiesCollapseToolbarStartsOnItsActionRow(t *testing.T) {
 	}
 }
 
-func TestProxiesDirectModeOmitsExplanation(t *testing.T) {
+func TestProxiesDirectModeOmitsRedundantModeNotice(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		m, _ := proxiesModel(t, 160, 40)
 		m.locale = i18n.New(language)
@@ -72,7 +72,7 @@ func TestProxiesDirectModeOmitsExplanation(t *testing.T) {
 		setProxyTestGroup(&m, "")
 		body, _ := m.proxiesBody(120)
 		if strings.Contains(ansi.Strip(body), "Direct mode:") || strings.Contains(ansi.Strip(body), "Direct 模式：") {
-			t.Fatal("Direct mode retained its explanatory text")
+			t.Fatal("Direct mode retained its legacy explanatory paragraph")
 		}
 		if strings.Contains(ansi.Strip(body), m.tr("dashboard.settings.actualMode", m.tr("dashboard.mode.direct"))) {
 			t.Fatal("matching Direct mode added an unnecessary observed-mode notice")

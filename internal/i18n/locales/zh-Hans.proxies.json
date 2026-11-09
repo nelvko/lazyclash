@@ -1,5 +1,7 @@
 {
   "proxies.collapse_all": "全部收起",
+  "proxies.direct.description": "所有流量均直接连接。",
+  "proxies.direct.keys": "Tab 切换控件 · Enter 操作 · Esc 返回",
   "proxies.loading": "正在加载代理组…",
   "proxies.uninstalled": "安装 Mihomo 后即可浏览代理组。",
   "proxies.stopped": "启动 Mihomo 后即可浏览当前代理组。",

@@ -45,7 +45,7 @@ func (m Model) proxyModes(width int) dashboardBlock {
 }
 
 func (m Model) proxyCollapseButton() string {
-	if m.proxiesNarrow() || !m.hasExpandedProxyGroups() {
+	if m.proxiesDirect() || m.proxiesNarrow() || !m.hasExpandedProxyGroups() {
 		return ""
 	}
 	return m.proxyButton("proxies.collapse_all", m.tr("proxies.collapse_all"), bg, true)
@@ -102,10 +102,6 @@ func (m Model) proxiesBody(width int) (string, []hitRegion) {
 		}
 		return strings.Join(b.lines, "\n"), b.targets
 	}
-	if m.proxies.detail != "" {
-		b.append(m.proxyDetail(width))
-		return strings.Join(b.lines, "\n"), b.targets
-	}
 	if m.snapshot.Mode.Error != "" {
 		add(m.locale.Diagnostic(m.snapshot.Mode.Error, m.snapshot.Mode.ErrorDiagnostic), warning)
 	}
@@ -113,6 +109,17 @@ func (m Model) proxiesBody(width int) (string, []hitRegion) {
 		add(m.tr("dashboard.settings.actualMode", m.tr("dashboard.status.unknown")), muted)
 	} else if m.snapshot.Mode.Actual != m.snapshot.Mode.Desired {
 		add(m.tr("dashboard.settings.actualMode", dashboardModeLabel(m.snapshot.Mode.Actual, m.locale)), muted)
+	}
+	if m.proxiesDirect() {
+		height := max(1, dashboardGeometry(m.dashboardOptions()).height-len(b.lines))
+		message := wrapText(clean(m.tr("proxies.direct.description")), width)
+		centered := lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, message)
+		b.lines = append(b.lines, strings.Split(themed(centered, muted, bg, false), "\n")...)
+		return strings.Join(b.lines, "\n"), b.targets
+	}
+	if m.proxies.detail != "" {
+		b.append(m.proxyDetail(width))
+		return strings.Join(b.lines, "\n"), b.targets
 	}
 	if len(m.proxies.history) > 0 {
 		button("proxies.back", m.tr("proxies.back"))
