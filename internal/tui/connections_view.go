@@ -98,28 +98,17 @@ func (m Model) connectionControls() dashboardBlock {
 }
 
 func (m Model) connectionToolbarRows(width int) int {
-	return m.searchToolbarRows(width, m.connectionControls()) + len(m.connectionSummary(width))
+	return len(m.connectionFilterBar(width).lines) + 2
 }
 
 func (m Model) connectionSearchWidth(width int) int {
-	return inputFieldTextWidth(min(inputFieldMaxWidth, max(1, width)), searchControlWidth(m.connectionControls()), true)
+	fieldWidth, _ := m.connectionSearchGeometry(width)
+	return inputFieldTextWidth(fieldWidth, searchControlWidth(m.connectionControls()), true)
 }
 
 func (m Model) connectionsToolbar(width, rows int) dashboardBlock {
-	var b dashboardBlock
-	b.lines = append(b.lines, m.connectionSummary(width)...)
-	if m.searchToolbarGap() > 0 {
-		b.blank()
-	}
-	b.append(m.searchToolbar("conn.search", m.tr("connections.search_placeholder"), m.connections.search,
-		m.connectionControls(), width, false))
-	status, color := runtimeStatus(m.runtime.snapshot, m.runtime.received, m.runtime.pending, m.snapshot.Installed, m.locale), muted
-	if m.connections.paused && m.connectionSnapshot() != nil {
-		status, color = m.tr("connections.paused"), warning
-	}
-	if snapshot := m.connectionSnapshot(); snapshot != nil {
-		status = m.tr("connections.count", len(m.filteredConnections()), len(snapshot.Connections)) + " · " + status
-	}
+	b := m.connectionFilterBar(width)
+	status, color := m.connectionStatus()
 	b.lines = append(b.lines, themed(cellCrop(status, width), color, bg, false))
 	if width >= 100 {
 		b.lines = append(b.lines, m.connectionTable(nil, width)[0])
@@ -172,10 +161,10 @@ func (m Model) connectionTable(list []mihomo.Connection, width int) []string {
 	var rows []table.Row
 	for _, c := range list {
 		marker := " "
-		if c.ID == m.connections.selected {
+		if m.connectionRowKey(c) == m.connections.selected {
 			marker = "▌"
 		}
-		if m.focus == "connection."+c.ID {
+		if m.focus == "connection."+m.connectionRowKey(c) {
 			marker = "›"
 		}
 		row := table.Row{marker, connectionDestination(c), strings.ToUpper(clean(c.Metadata.Network))}
@@ -186,12 +175,12 @@ func (m Model) connectionTable(list []mihomo.Connection, width int) []string {
 		if width >= 125 {
 			row = append(row, connectionRule(c))
 		}
-		rate := m.displayedConnectionRates().get(c.ID)
+		rate := m.connectionRowRate(c)
 		row = append(row, connectionSpeed(rate.Download), connectionSpeed(rate.Upload))
 		if width >= 155 {
 			row = append(row, formatBytes(c.Download), formatBytes(c.Upload))
 		}
-		row = append(row, connectionDuration(c, m.connectionNow()))
+		row = append(row, connectionDuration(c, m.connectionRowTime(c)))
 		rows = append(rows, row)
 	}
 	style := func(fg, surface string) lipgloss.Style {
@@ -203,13 +192,13 @@ func (m Model) connectionTable(list []mihomo.Connection, width int) []string {
 	lines := strings.Split(t.View(), "\n")[:len(rows)+1]
 	for i, c := range list {
 		foreground, surface := text, bg
-		if c.ID == m.connections.selected {
+		if m.connectionRowKey(c) == m.connections.selected {
 			surface = selectionBackground
 		}
-		if m.hover == "connection."+c.ID {
+		if m.hover == "connection."+m.connectionRowKey(c) {
 			surface = hoverBackground
 		}
-		if m.focus == "connection."+c.ID {
+		if m.focus == "connection."+m.connectionRowKey(c) {
 			foreground = focus
 		}
 		lines[i+1] = themed(cellPad(lines[i+1], width), foreground, surface, false)
@@ -218,8 +207,8 @@ func (m Model) connectionTable(list []mihomo.Connection, width int) []string {
 }
 
 func (m Model) compactConnectionRows(c mihomo.Connection, width int) []string {
-	id, surface, marker := "connection."+c.ID, bg, "  "
-	if c.ID == m.connections.selected {
+	id, surface, marker := "connection."+m.connectionRowKey(c), bg, "  "
+	if m.connectionRowKey(c) == m.connections.selected {
 		surface, marker = panel, "▌ "
 	}
 	if m.hover == id {
@@ -229,9 +218,9 @@ func (m Model) compactConnectionRows(c mihomo.Connection, width int) []string {
 	if m.focus == id {
 		marker, foreground = "› ", focus
 	}
-	rate := m.displayedConnectionRates().get(c.ID)
+	rate := m.connectionRowRate(c)
 	first := marker + connectionDestination(c) + " · " + strings.ToUpper(clean(c.Metadata.Network))
-	second := "  ↓ " + connectionSpeed(rate.Download) + " ↑ " + connectionSpeed(rate.Upload) + " · " + connectionValue(c.Metadata.Process) + " · " + connectionChain(c) + " · " + connectionRule(c) + " · " + connectionDuration(c, m.connectionNow())
+	second := "  ↓ " + connectionSpeed(rate.Download) + " ↑ " + connectionSpeed(rate.Upload) + " · " + connectionValue(c.Metadata.Process) + " · " + connectionChain(c) + " · " + connectionRule(c) + " · " + connectionDuration(c, m.connectionRowTime(c))
 	return []string{themed(cellPad(first, width), foreground, surface, false), themed(cellPad(second, width), muted, surface, false)}
 }
 
@@ -264,7 +253,10 @@ func (m Model) connectionsBody(width int) (string, []hitRegion) {
 	}
 	if c := m.connections.detail; c != nil {
 		addText(m.tr("connections.details"), text)
-		if m.detailActive() {
+		if m.connections.detailHistorical || !m.connections.detailClosedAt.IsZero() {
+			addText(m.tr("connections.archived"), muted)
+			addText(m.tr("connections.archived_hint"), muted)
+		} else if m.detailActive() {
 			addText(m.tr("connections.active"), success)
 		} else {
 			addText(m.tr("connections.inactive_detail"), warning)
@@ -295,12 +287,15 @@ func (m Model) connectionsBody(width int) (string, []hitRegion) {
 			{m.tr("connections.download_speed"), connectionSpeed(rate.Download)}, {m.tr("connections.upload_speed"), connectionSpeed(rate.Upload)},
 			{m.tr("connections.download_total"), formatBytes(c.Download)}, {m.tr("connections.upload_total"), formatBytes(c.Upload)},
 			{m.tr("connections.chain"), connectionChain(*c)}, {m.tr("connections.rule"), connectionRule(*c)},
-			{m.tr("connections.duration"), connectionDuration(*c, m.connectionNow())}, {m.tr("connections.started"), started},
+			{m.tr("connections.duration"), connectionDuration(*c, m.connectionRowTime(*c))}, {m.tr("connections.started"), started},
 			{m.tr("connections.source"), joinAddress(md.SourceIP, md.SourcePort)}, {m.tr("connections.resolved_ip"), md.DestinationIP},
 			{m.tr("connections.network_inbound"), md.Network + " / " + md.Type}, {m.tr("connections.process_path"), md.ProcessPath}, {m.tr("connections.id"), c.ID},
 		}
 		for _, f := range fields {
 			addText(f[0]+": "+connectionValue(f[1]), text)
+		}
+		if !m.connections.detailClosedAt.IsZero() {
+			addText(m.tr("connections.closed_observed")+": "+m.connections.detailClosedAt.Local().Format(time.RFC3339), text)
 		}
 		return strings.Join(lines, "\n"), hits
 	}
@@ -312,17 +307,20 @@ func (m Model) connectionsBody(width int) (string, []hitRegion) {
 		message string
 		err     error
 	}{{m.runtime.snapshot.Error, m.runtime.snapshot.Diagnostic}, {m.runtime.snapshot.ConnectionsError, m.runtime.snapshot.ConnectionsDiagnostic}} {
-		if diagnostic.message != "" {
+		if !m.connections.closedView && diagnostic.message != "" {
 			addText(m.locale.Diagnostic(diagnostic.message, diagnostic.err), errorColor)
 		}
 	}
 	list := m.filteredConnections()
 	if len(list) == 0 {
 		empty := m.tr("connections.empty")
+		if m.connections.closedView {
+			empty = m.tr("connections.closed_empty")
+		}
 		if m.connections.search.Value() != "" {
 			empty = m.tr("connections.no_matches")
 		}
-		if m.connectionSnapshot() == nil {
+		if !m.connections.closedView && m.connectionSnapshot() == nil {
 			empty = m.tr("connections.unavailable_hint")
 		}
 		addText(empty, muted)
@@ -351,7 +349,7 @@ func (m Model) connectionsBody(width int) (string, []hitRegion) {
 		} else {
 			lines = append(lines, m.compactConnectionRows(c, width)...)
 		}
-		hits = append(hits, hitRegion{ID: "connection." + c.ID, Y: row, W: width, H: len(lines) - row})
+		hits = append(hits, hitRegion{ID: "connection." + m.connectionRowKey(c), Y: row, W: width, H: len(lines) - row})
 	}
 	return strings.Join(lines, "\n"), hits
 }

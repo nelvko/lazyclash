@@ -25,6 +25,12 @@
   "connections.close_all_hint": "Enter 确认关闭全部连接 · Tab 内容 · ? 帮助",
   "connections.summary_download": "累计下载",
   "connections.summary_upload": "累计上传",
-  "connections.summary_memory": "内存占用",
-  "connections.summary_active": "活动连接"
+  "connections.tab_active": "活跃 %s",
+  "connections.tab_closed": "已关闭 %s",
+  "connections.archived": "已关闭 · 本次保留",
+  "connections.archived_hint": "仅记录本次运行观察到的最近 500 条。流量为最后一次采样值；短连接及断线期间可能遗漏。只读。",
+  "connections.history_scope": "本次观察 · 最近 500 条",
+  "connections.closed_empty": "尚未观察到已关闭连接",
+  "connections.closed_count": "%d / %d 条已关闭连接",
+  "connections.closed_observed": "观测结束时间"
 }

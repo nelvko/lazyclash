@@ -12,9 +12,10 @@ type headerAction struct {
 }
 
 type pageHeader struct {
-	summary string
-	leading []headerAction
-	actions []headerAction
+	summary        string
+	compactSummary string
+	leading        []headerAction
+	actions        []headerAction
 }
 
 func (h pageHeader) owns(id string) bool {
@@ -58,6 +59,7 @@ func (m Model) pageHeader() pageHeader {
 	case "profiles":
 		h.actions = []headerAction{{"profiles.update-all", tr("header.updateAll"), "↻", m.hasRefreshableProfiles()}}
 	case "connections":
+		h.summary, h.compactSummary = m.connectionTotals(false), m.connectionTotals(true)
 		h.actions = []headerAction{{"conn.close-all", tr("connections.close_all"), "×", !m.connections.confirming && m.canCloseAllConnections()}}
 	case "rules":
 		h.actions = []headerAction{{"rules.providers", tr("providers.title.rules"), "≡", m.providersSupported(providerRules)}}
@@ -131,6 +133,12 @@ func renderPageHeader(o dashboardOptions, g dashboardLayout, titleX, titleWidth 
 	for width > available && len(h.actions) > 1 {
 		h.actions = h.actions[1:]
 		values, width = buttons(true)
+	}
+	if h.compactSummary != "" && ansi.StringWidth(h.summary)+width+2 > available {
+		h.summary = h.compactSummary
+		if ansi.StringWidth(h.summary)+width+2 > available {
+			values, width = buttons(true)
+		}
 	}
 	var hits []hitRegion
 	x := max(left, right-width)

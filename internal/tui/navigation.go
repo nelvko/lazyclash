@@ -69,6 +69,16 @@ func (m Model) focusTargets() []hitRegion {
 	}
 	sort.SliceStable(controls[1:], func(i, j int) bool {
 		a, b := controls[i+1], controls[j+1]
+		if m.page == "connections" {
+			// Read the input at its text row, alongside the tabs, rather than
+			// sorting its top frame above the tabs to its left.
+			if a.ID == "conn.search" {
+				a.Y++
+			}
+			if b.ID == "conn.search" {
+				b.Y++
+			}
+		}
 		if a.Y == b.Y {
 			return a.X < b.X
 		}
@@ -201,6 +211,9 @@ func (m Model) contextHelp() string {
 	}
 	switch m.page {
 	case "connections":
+		if m.connections.closedView {
+			return tr("navigation.connections_closed")
+		}
 		return tr("navigation.connections")
 	case "rules":
 		if m.providers.open {

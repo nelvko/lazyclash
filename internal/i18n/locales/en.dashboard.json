@@ -147,7 +147,7 @@
   "navigation.logsReconnect": "Enter Reconnect · Tab Content · ? Help",
   "navigation.network": "Enter Download method · Tab Content · ? Help",
   "navigation.refresh": "Enter Refresh · Tab Content · ? Help",
-  "navigation.connections": "/ Search · ↑↓ Select · Enter Details · s Sort · p Pause · x Close · ? Help",
+  "navigation.connections": "/ Search · v Active/Closed · ↑↓ Select · Enter Details · s Sort · p Pause · x Close · ? Help",
   "navigation.rules": "/ Search · ↑↓ Browse · Enter Expand · Ctrl+R Reload · ← / Esc Back · ? Help",
   "navigation.logs": "/ Search · ↑↓ Browse · End Latest · f Pause display · l Level · v View · ← / Esc Back · ? Help",
   "navigation.profiles": "↑↓←→ Select · Enter Details · m Menu · Tab Actions · Esc Back · ? Help",
@@ -170,7 +170,7 @@
   "help.profiles.update": "Update / Update all saves configuration changes without loading them into the core.",
   "help.profiles.overrides": "Overrides imports a separate overrides YAML draft.",
   "help.profiles.delete": "Delete requires the exact display name. The selected profile is protected.",
-  "help.connections.keys": "/: search · s: sort · p: pause/resume · Enter: details · x: review closing one connection",
+  "help.connections.keys": "/: search · v: active/closed · s: sort · p: pause/resume · Enter: details · x: review closing one live connection",
   "help.connections.confirm": "Closing requires confirmation of the displayed connection; other connections stay active.",
   "help.rules.keys": "/: search · Enter: expand in place · g / Ctrl+R: reload",
   "help.rules.readOnly": "Effective rules remain read only; custom rules are saved separately and applied explicitly.",
@@ -256,5 +256,6 @@
   "dashboard.overview.trafficNow": "Now",
   "dashboard.overview.historyWindow": "Last 60 seconds",
   "dashboard.overview.totalUpload": "Total upload",
-  "dashboard.overview.totalDownload": "Total download"
+  "dashboard.overview.totalDownload": "Total download",
+  "navigation.connections_closed": "/ Search · v Active/Closed · ↑↓ Select · Enter Details · s Sort · p Pause · Read only · ? Help"
 }

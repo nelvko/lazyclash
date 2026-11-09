@@ -2,8 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"math"
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -14,76 +12,53 @@ import (
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
 
-var connectionSummaryKeys = []string{"connections.summary_download", "connections.summary_upload", "connections.summary_memory", "connections.summary_active"}
-
-func summaryMetric(t *testing.T, m Model, rows []string, key string) string {
-	t.Helper()
-	label := m.tr(key)
-	for _, row := range rows {
-		plain := ansi.Strip(row)
-		start := strings.Index(plain, label)
-		if start < 0 {
-			continue
-		}
-		value := plain[start+len(label):]
-		for _, other := range connectionSummaryKeys {
-			if next := strings.Index(value, m.tr(other)); next >= 0 {
-				value = value[:next]
-			}
-		}
-		return strings.Trim(value, " :│\t")
-	}
-	t.Fatalf("summary field %q missing from %q", label, rows)
-	return ""
-}
-
-func summaryFixture(t *testing.T, language string) Model {
+func totalsFixture(t *testing.T, language string) Model {
 	t.Helper()
 	m := connectionsModel(t, &fakeBackend{})
 	m.locale = i18n.New(language)
 	m.runtime.snapshot.Connections.DownloadTotal = 3 << 20
 	m.runtime.snapshot.Connections.UploadTotal = 5 << 20
 	m.runtime.snapshot.Connections.Memory = 7 << 20
-	otherMemory := uint64(91 << 20)
-	m.runtime.snapshot.Memory = &otherMemory
+	m.runtime.snapshot.Traffic.DownTotal = 91 << 20
+	m.runtime.snapshot.Traffic.UpTotal = 93 << 20
 	m.notification.items = nil
 	m.layout()
 	return m
 }
 
-func TestConnectionsSummaryShowsResponseTotalsMemoryAndUnfilteredCount(t *testing.T) {
+func TestConnectionsHeaderTotalsUseResponseAndExcludeMemory(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		t.Run(language, func(t *testing.T) {
-			m := summaryFixture(t, language)
-			rows := m.connectionSummary(160)
-			for key, want := range map[string]string{
-				"connections.summary_download": "3.0 MiB", "connections.summary_upload": "5.0 MiB",
-				"connections.summary_memory": "7.0 MiB", "connections.summary_active": "2",
-			} {
-				if got := summaryMetric(t, m, rows, key); got != want {
-					t.Fatalf("%s = %q, want %q", key, got, want)
+			m := totalsFixture(t, language)
+			for _, compact := range []bool{false, true} {
+				value := ansi.Strip(m.connectionTotals(compact))
+				if !strings.Contains(value, "3.0 MiB") || !strings.Contains(value, "5.0 MiB") || strings.Contains(value, "7.0 MiB") || strings.Contains(value, "91.0 MiB") || strings.Contains(value, "93.0 MiB") {
+					t.Fatalf("header totals used the wrong source or included memory: %q", value)
 				}
 			}
+			header := m.pageHeader()
+			if header.summary != m.connectionTotals(false) || header.compactSummary != m.connectionTotals(true) {
+				t.Fatal("connection totals are missing from the page header")
+			}
+			before := m.connectionTotals(false)
 			m.connections.search.SetValue("one.example.invalid")
-			m.reconcileConnections()
-			if got := m.connectionSummary(160); !reflect.DeepEqual(got, rows) {
-				t.Fatal("filter changed response totals or total active count")
+			m.connectionActivate("conn.closed")
+			if m.connectionTotals(false) != before {
+				t.Fatal("search or archive selection changed core-wide cumulative totals")
 			}
 			bar := m.connectionsToolbar(160, m.connectionToolbarRows(160))
-			if !strings.Contains(ansi.Strip(strings.Join(bar.lines[len(rows):], "\n")), m.tr("connections.count", 1, 2)) {
-				t.Fatal("filtered count is missing from the status below the summary")
-			}
-			if m.pageHeader().summary != "" {
-				t.Fatal("header duplicates a live count that conflicts with paused summary data")
+			body := ansi.Strip(strings.Join(bar.lines, "\n"))
+			if strings.Contains(body, m.tr("connections.summary_download")) || strings.Contains(body, m.tr("connections.summary_upload")) || strings.Contains(body, "7.0 MiB") {
+				t.Fatal("old summary metrics remain in the list toolbar")
 			}
 		})
 	}
 }
 
-func TestConnectionsSummaryDistinguishesUnavailableAndEmpty(t *testing.T) {
+func TestConnectionsHeaderTotalsDistinguishUnavailableAndEmpty(t *testing.T) {
 	for _, state := range []string{"nil", "unreceived", "unavailable", "empty"} {
 		t.Run(state, func(t *testing.T) {
-			m := summaryFixture(t, i18n.English)
+			m := totalsFixture(t, i18n.English)
 			switch state {
 			case "nil":
 				m.runtime.snapshot.Connections = nil
@@ -94,115 +69,60 @@ func TestConnectionsSummaryDistinguishesUnavailableAndEmpty(t *testing.T) {
 			case "empty":
 				m.runtime.snapshot.Connections.Connections = []mihomo.Connection{}
 			}
-			rows := m.connectionSummary(160)
-			for _, key := range connectionSummaryKeys {
-				want := "--"
+			for _, compact := range []bool{false, true} {
+				value := ansi.Strip(m.connectionTotals(compact))
 				if state == "empty" {
-					want = map[string]string{"connections.summary_download": "3.0 MiB", "connections.summary_upload": "5.0 MiB", "connections.summary_memory": "7.0 MiB", "connections.summary_active": "0"}[key]
-				}
-				if got := summaryMetric(t, m, rows, key); got != want {
-					t.Fatalf("%s = %q, want %q", key, got, want)
+					if !strings.Contains(value, "3.0 MiB") || !strings.Contains(value, "5.0 MiB") {
+						t.Fatalf("empty active array discarded cumulative totals: %q", value)
+					}
+				} else if strings.Count(value, "--") != 2 || strings.Contains(value, "0 B") {
+					t.Fatalf("unavailable totals were displayed as observed zeroes: %q", value)
 				}
 			}
 		})
 	}
 }
 
-func TestConnectionsSummaryFreezesResponseMemoryWithPause(t *testing.T) {
-	m := summaryFixture(t, i18n.English)
+func TestConnectionsHeaderTotalsFreezeWithPauseAndResume(t *testing.T) {
+	m := totalsFixture(t, i18n.English)
 	m, _ = update(m, key("p"))
-	before := m.connectionSummary(160)
+	before := m.connectionTotals(false)
 	fresh := liveRuntime()
 	fresh.ObservedAt = time.Now()
-	fresh.Connections = &mihomo.ConnectionSnapshot{DownloadTotal: 13 << 20, UploadTotal: 15 << 20, Memory: 11 << 20, Connections: []mihomo.Connection{fixtureConnection("new", "new.example.invalid", 20)}}
-	independentMemory := uint64(123 << 20)
-	fresh.Memory = &independentMemory
+	fresh.Connections = &mihomo.ConnectionSnapshot{DownloadTotal: 13 << 20, UploadTotal: 15 << 20, Connections: []mihomo.Connection{fixtureConnection("new", "new.example.invalid", 20)}}
 	m = acceptConnectionsSample(m, fresh)
-	if !m.connections.paused || !reflect.DeepEqual(m.connectionSummary(160), before) {
-		t.Fatal("live connections or independent memory updates changed the paused summary")
+	if !m.connections.paused || m.connectionTotals(false) != before {
+		t.Fatal("live connection updates changed paused header totals")
 	}
 	m, _ = update(m, key("p"))
-	rows := m.connectionSummary(160)
-	if summaryMetric(t, m, rows, "connections.summary_memory") != "11.0 MiB" || summaryMetric(t, m, rows, "connections.summary_download") != "13.0 MiB" || summaryMetric(t, m, rows, "connections.summary_active") != "1" {
-		t.Fatalf("resume did not use the latest connections response: rows=%q paused=%v live=%+v focus=%s pending=%v", rows, m.connections.paused, m.runtime.snapshot.Connections, m.focus, m.runtime.pending)
+	value := ansi.Strip(m.connectionTotals(false))
+	if !strings.Contains(value, "13.0 MiB") || !strings.Contains(value, "15.0 MiB") {
+		t.Fatalf("resume did not display latest header totals: %q", value)
 	}
 }
 
-func TestConnectionsSummaryFormatsUnsignedMemoryWithoutOverflow(t *testing.T) {
-	m := summaryFixture(t, i18n.English)
-	m.runtime.snapshot.Connections.Memory = math.MaxUint64
-	value := summaryMetric(t, m, m.connectionSummary(160), "connections.summary_memory")
-	if value == "--" || strings.HasPrefix(value, "-") || !strings.Contains(value, "EiB") {
-		t.Fatalf("unsigned response memory overflowed: %q", value)
-	}
-}
-
-func TestConnectionsSummaryResponsiveRowsAndToolbarHeight(t *testing.T) {
+func TestConnectionsHeaderTotalsAndTabsRemainBoundedAcrossSizes(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
-		for _, item := range []struct{ width, height, rows int }{{160, 45, 1}, {120, 32, 2}, {80, 24, 2}, {60, 20, 2}, {40, 16, 4}} {
-			t.Run(fmt.Sprintf("%s/%dx%d", language, item.width, item.height), func(t *testing.T) {
-				m := summaryFixture(t, language)
-				m, _ = update(m, tea.WindowSizeMsg{Width: item.width, Height: item.height})
-				o := m.dashboardOptions()
-				g := dashboardGeometry(o)
-				rows := m.connectionSummary(g.width)
-				wantRows := item.rows
-				if language == i18n.Chinese && item.width == 120 {
-					wantRows = 1
+		m := totalsFixture(t, language)
+		for _, size := range [][2]int{{160, 45}, {120, 32}, {80, 24}, {60, 20}, {40, 16}, {40, 10}, {20, 7}, {5, 2}, {160, 45}} {
+			t.Run(fmt.Sprintf("%s/%dx%d", language, size[0], size[1]), func(t *testing.T) {
+				m, _ = update(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+				assertCanvas(t, m.screen, size[0], size[1])
+				assertRegions(t, m.targets, size[0], size[1])
+				if size[0] >= 40 && size[1] >= 16 {
+					findTarget(t, m, "conn.search")
+					findTarget(t, m, "conn.active")
+					findTarget(t, m, "conn.closed")
+					findTarget(t, m, "connection.first")
 				}
-				if len(rows) != wantRows {
-					t.Fatalf("summary at body width %d has %d rows, want %d", g.width, len(rows), wantRows)
-				}
-				for _, row := range rows {
-					if ansi.StringWidth(row) > g.width {
-						t.Fatalf("summary exceeded body width %d: %q", g.width, row)
+				if size[0] == 160 {
+					g := dashboardGeometry(m.dashboardOptions())
+					header := ansi.Strip(strings.Join(strings.Split(m.screen, "\n")[:g.y], "\n"))
+					if !strings.Contains(header, "3.0 MiB") || !strings.Contains(header, "5.0 MiB") {
+						t.Fatal("wide header did not render both cumulative totals above the list")
 					}
 				}
-				for _, key := range connectionSummaryKeys {
-					_ = summaryMetric(t, m, rows, key)
-				}
-				wantHeight := len(rows) + m.searchToolbarRows(g.width, m.connectionControls())
-				if got := m.connectionToolbarRows(g.width); got != wantHeight {
-					t.Fatalf("toolbar height %d does not include summary rows: want %d", got, wantHeight)
-				}
-				bar := m.connectionsToolbar(g.width, wantHeight)
-				if len(bar.lines) != wantHeight {
-					t.Fatalf("toolbar rendered %d rows, reserved %d", len(bar.lines), wantHeight)
-				}
-				if o.BodyTopRows == 0 || g.height < 2 {
-					t.Fatalf("summary displaced the fixed toolbar or two-row list at %dx%d", item.width, item.height)
-				}
-				findTarget(t, m, "conn.search")
-				findTarget(t, m, "connection.first")
-				assertCanvas(t, m.screen, item.width, item.height)
-				assertRegions(t, m.targets, item.width, item.height)
 			})
-		}
-	}
-}
-
-func TestConnectionsSummaryResizeFallbackAndNotificationsKeepSearchUsable(t *testing.T) {
-	m := summaryFixture(t, i18n.English)
-	for _, size := range [][2]int{{160, 45}, {80, 24}, {60, 20}, {40, 16}, {40, 10}, {20, 7}, {5, 2}, {120, 32}} {
-		m, _ = update(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
-		assertCanvas(t, m.screen, size[0], size[1])
-		assertRegions(t, m.targets, size[0], size[1])
-		if size == [2]int{40, 10} && m.dashboardOptions().BodyTopRows != 0 {
-			t.Fatal("short terminal did not retain the scrolling toolbar fallback")
-		}
-		if m.connections.selected != "first" {
-			t.Fatal("resize changed the selected connection identity")
-		}
-	}
-	m.notification.items = []notificationItem{{ID: 42, Kind: "error", Page: "connections", Message: "Controller temporarily unavailable; retry later."}}
-	m.layout()
-	input := findTarget(t, m, "conn.search")
-	o := m.dashboardOptions()
-	g := dashboardGeometry(o)
-	o.BodyTop = m.connectionsToolbar(g.width, o.BodyTopRows)
-	for _, layer := range notificationLayout(o) {
-		if regionsOverlap(input, layer.Bounds) {
-			t.Fatalf("notification covers search below the summary: %+v", layer.Bounds)
 		}
 	}
 }

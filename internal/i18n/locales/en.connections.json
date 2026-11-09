@@ -25,6 +25,12 @@
   "connections.close_all_hint": "Enter Review closing all connections · Tab Content · ? Help",
   "connections.summary_download": "Downloaded",
   "connections.summary_upload": "Uploaded",
-  "connections.summary_memory": "Memory",
-  "connections.summary_active": "Active"
+  "connections.tab_active": "Active %s",
+  "connections.tab_closed": "Closed %s",
+  "connections.archived": "Closed · retained locally",
+  "connections.archived_hint": "Observed in this session, latest 500 only. Traffic counters are the last sampled values; short-lived connections and gaps may be missed. Read only.",
+  "connections.history_scope": "This session · latest 500",
+  "connections.closed_empty": "No closed connections observed yet",
+  "connections.closed_count": "%d / %d closed",
+  "connections.closed_observed": "Observed closed"
 }

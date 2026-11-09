@@ -22,6 +22,12 @@ type connectionsState struct {
 	confirming                  bool
 	closeAll                    bool
 	closeAllScroll              int
+	closedView                  bool
+	history                     connectionHistoryState
+	frozenClosed                []closedConnection
+	detailHistorical            bool
+	detailClosedAt              time.Time
+	detailGeneration            uint64
 	sort                        connectionSort
 	rates                       connectionRatesState
 	paused                      bool
@@ -37,13 +43,16 @@ func (m *Model) observeConnections(at time.Time) {
 	if observed := m.runtime.observed[app.RuntimeConnections]; !observed.IsZero() {
 		snapshot.ObservedAt = observed
 	}
+	generation := m.connections.history.generation
+	m.connections.history.observe(snapshot, at, 0, m.runtime.installation)
 	if m.connections.paused {
-		stale := snapshot.State != "ready" || snapshot.Connections == nil || m.connections.frozenPID != snapshot.Service.PID || m.connections.frozenVersion != snapshot.RunningVersion
+		stale := generation != m.connections.history.generation || snapshot.State != "ready" || snapshot.Connections == nil || m.connections.frozenPID != snapshot.Service.PID || m.connections.frozenVersion != snapshot.RunningVersion
 		if !stale && m.connections.frozen != nil {
 			stale = snapshot.Connections.UploadTotal < max(m.connections.frozen.UploadTotal, m.connections.rates.uploadTotal) || snapshot.Connections.DownloadTotal < max(m.connections.frozen.DownloadTotal, m.connections.rates.downloadTotal)
 		}
 		if stale {
 			m.connections.paused, m.connections.frozen = false, nil
+			m.connections.frozenClosed = nil
 			m.connections.frozenRates = connectionRatesState{}
 		}
 	}
@@ -70,29 +79,12 @@ func (m Model) displayedConnectionRates() connectionRatesState {
 	return m.connections.rates
 }
 
-func (m Model) filteredConnections() []mihomo.Connection {
-	var out []mihomo.Connection
-	snapshot := m.connectionSnapshot()
-	if snapshot == nil {
-		return out
-	}
-	query := strings.ToLower(strings.TrimSpace(m.connections.search.Value()))
-	for _, c := range snapshot.Connections {
-		md := c.Metadata
-		haystack := strings.Join([]string{c.ID, md.Host, md.SourceIP, md.SourcePort, md.DestinationIP, md.DestinationPort, md.Network, md.Type, md.Process, md.ProcessPath, c.Rule, c.RulePayload, strings.Join(c.Chains, " ")}, " ")
-		if query == "" || strings.Contains(strings.ToLower(haystack), query) {
-			out = append(out, c)
-		}
-	}
-	sortConnections(out, m.connections.sort, m.displayedConnectionRates())
-	return out
-}
 func (m *Model) reconcileConnections() {
 	previousIndex := m.connections.selectedIndex
 	list := m.filteredConnections()
 	found := false
 	for index, c := range list {
-		if c.ID == m.connections.selected {
+		if m.connectionRowKey(c) == m.connections.selected {
 			m.connections.selectedIndex, found = index, true
 			break
 		}
@@ -101,7 +93,7 @@ func (m *Model) reconcileConnections() {
 		m.connections.selected = ""
 		if len(list) > 0 {
 			m.connections.selectedIndex = min(m.connections.selectedIndex, len(list)-1)
-			m.connections.selected = list[m.connections.selectedIndex].ID
+			m.connections.selected = m.connectionRowKey(list[m.connections.selectedIndex])
 		}
 	}
 	if m.page == "connections" && m.connections.detail == nil && strings.HasPrefix(m.focus, "connection.") {
@@ -115,21 +107,28 @@ func (m *Model) reconcileConnections() {
 		}
 	}
 	if m.connections.detail != nil && m.runtime.snapshot.Connections != nil {
+		if m.connections.detailHistorical || m.connections.detailGeneration != m.connections.history.generation {
+			return
+		}
 		for _, c := range m.runtime.snapshot.Connections.Connections {
-			if c.ID == m.connections.detail.ID {
+			if c.ID == m.connections.detail.ID && c.Start.Equal(m.connections.detail.Start) {
 				copy := c
 				m.connections.detail = &copy
 				break
 			}
 		}
+		if entry, ok := m.connections.history.find(*m.connections.detail); ok {
+			m.connections.detailHistorical = true
+			m.connections.detailClosedAt = entry.ClosedAt
+		}
 	}
 }
 func (m Model) detailActive() bool {
-	if m.connections.detail == nil || m.runtime.snapshot.State != "ready" || m.runtime.snapshot.Connections == nil || !m.runtime.received {
+	if m.connections.detail == nil || m.connections.detailHistorical || m.connections.detailGeneration != m.connections.history.generation || m.runtime.snapshot.State != "ready" || m.runtime.snapshot.Connections == nil || !m.runtime.received {
 		return false
 	}
 	for _, c := range m.runtime.snapshot.Connections.Connections {
-		if c.ID == m.connections.detail.ID {
+		if c.ID == m.connections.detail.ID && c.Start.Equal(m.connections.detail.Start) {
 			return true
 		}
 	}
@@ -194,6 +193,15 @@ func (m *Model) connectionKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 		return true, nil
 	}
 	switch key {
+	case "v":
+		if m.connections.detail == nil {
+			id := "conn.closed"
+			if m.connections.closedView {
+				id = "conn.active"
+			}
+			return true, m.connectionActivate(id)
+		}
+		return true, nil
 	case "p", "s":
 		if m.connections.detail == nil {
 			id := "conn.pause"
@@ -206,6 +214,9 @@ func (m *Model) connectionKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 	case "/":
 		return true, m.focusConnectionSearch()
 	case "x":
+		if m.connections.closedView || (m.connections.detail != nil && m.connections.detailHistorical) {
+			return true, nil
+		}
 		if m.connections.detail == nil {
 			m.openSelectedConnection()
 		}
@@ -227,7 +238,7 @@ func (m *Model) connectionKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 			}
 			index := 0
 			for i, c := range list {
-				if c.ID == m.connections.selected {
+				if m.connectionRowKey(c) == m.connections.selected {
 					index = i
 					break
 				}
@@ -252,8 +263,8 @@ func (m *Model) connectionKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 			}
 			index = max(0, min(len(list)-1, index+delta))
 			m.connections.selectedIndex = index
-			m.connections.selected = list[index].ID
-			m.focus = "connection." + list[index].ID
+			m.connections.selected = m.connectionRowKey(list[index])
+			m.focus = "connection." + m.connectionRowKey(list[index])
 			m.revealConnection(index)
 			return true, nil
 		}
@@ -279,10 +290,16 @@ func (m *Model) revealConnection(_ int) {
 }
 func (m *Model) openSelectedConnection() {
 	for index, c := range m.filteredConnections() {
-		if c.ID == m.connections.selected {
+		if m.connectionRowKey(c) == m.connections.selected {
 			m.connections.selectedIndex, m.connections.detailScroll = index, m.scroll
 			copy := c
 			m.connections.detail = &copy
+			m.connections.detailHistorical = m.connections.closedView
+			m.connections.detailGeneration = m.connections.history.generation
+			m.connections.detailClosedAt = time.Time{}
+			if entry, ok := m.closedEntry(c); m.connections.closedView && ok {
+				m.connections.detailClosedAt = entry.ClosedAt
+			}
 			m.connections.confirming = false
 			m.scroll = 0
 			m.focus = "conn.back"
@@ -296,6 +313,15 @@ func (m *Model) connectionActivate(id string) tea.Cmd {
 		m.connections.search.Blur()
 	}
 	switch {
+	case id == "conn.active" || id == "conn.closed":
+		if m.connections.confirming || m.busy {
+			return nil
+		}
+		m.connections.closedView = id == "conn.closed"
+		m.connections.detail, m.connections.confirming = nil, false
+		m.connections.selected, m.connections.selectedIndex = "", 0
+		m.scroll, m.focus = 0, id
+		m.reconcileConnections()
 	case strings.HasPrefix(id, "connection."):
 		m.connections.selected = strings.TrimPrefix(id, "connection.")
 		m.openSelectedConnection()
@@ -313,6 +339,7 @@ func (m *Model) connectionActivate(id string) tea.Cmd {
 	case id == "conn.pause":
 		if m.connections.paused {
 			m.connections.paused, m.connections.frozen = false, nil
+			m.connections.frozenClosed = nil
 			m.connections.frozenRates = connectionRatesState{}
 		} else if snapshot := m.connectionSnapshot(); snapshot != nil {
 			copy := *snapshot
@@ -322,6 +349,7 @@ func (m *Model) connectionActivate(id string) tea.Cmd {
 			}
 			m.connections.frozen = &copy
 			m.connections.frozenRates = m.connections.rates
+			m.connections.frozenClosed = m.connections.history.entries()
 			m.connections.frozenAt = m.connectionNow()
 			m.connections.frozenPID = m.runtime.snapshot.Service.PID
 			m.connections.frozenVersion = m.runtime.snapshot.RunningVersion
@@ -372,6 +400,7 @@ func (m *Model) connectionActivate(id string) tea.Cmd {
 			// The operation affects the live core, including connections hidden by
 			// filtering or pause. Resume the live view to observe its result.
 			m.connections.paused, m.connections.frozen = false, nil
+			m.connections.frozenClosed = nil
 			m.connections.frozenRates = connectionRatesState{}
 			return m.begin(m.tr("connections.closing_all"), m.tr("connections.close_all_requested"), m.backend.CloseAllConnections, notificationOperation{Key: "connections.close-all", Context: m.tr("connections.closing_all")})
 		}
