@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"time"
 
 	"github.com/nelvko/lazyclash/internal/mihomo"
 	"github.com/nelvko/lazyclash/internal/service"
@@ -23,6 +24,7 @@ type Snapshot struct {
 	HasRun              bool
 	GuideDismissed      bool
 	UnvalidatedProfiles []string
+	ServiceObservedAt   time.Time `json:"-"`
 	Service             service.Status
 	ServiceError        string
 	ServiceDiagnostic   error `json:"-"`
@@ -101,6 +103,7 @@ func (a *App) Snapshot(ctx context.Context) (Snapshot, error) {
 				out.ServiceDiagnostic = err
 			}
 		}
+		out.ServiceObservedAt = time.Now()
 		if out.Installed && a.Service != nil && out.ServiceError == "" {
 			bin, config, data := a.paths()
 			if err := a.Service.Verify(ctx, bin, config, data); err != nil {

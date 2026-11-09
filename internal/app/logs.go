@@ -85,6 +85,8 @@ func (a *App) StreamLogs(ctx context.Context, emit func(mihomo.LogEntry)) error 
 			}
 		}
 	}()
+	connected := false
+	client.StreamReady = func() { connected = true }
 	err = client.StreamLogs(streamCtx, emit)
 	if streamCtx.Err() == nil {
 		if checkErr := check(); checkErr != nil {
@@ -94,12 +96,16 @@ func (a *App) StreamLogs(ctx context.Context, emit func(mihomo.LogEntry)) error 
 	cancel()
 	<-done
 	if ctx.Err() != nil {
-		return ctx.Err()
+		err = ctx.Err()
+	} else {
+		select {
+		case ownerErr := <-changed:
+			err = ownerErr
+		default:
+		}
 	}
-	select {
-	case ownerErr := <-changed:
-		return ownerErr
-	default:
-		return err
+	if !connected {
+		return diagnostic.New("diagnostic.logs.failure", "%w: %w", ErrLogsNotReady, err)
 	}
+	return err
 }

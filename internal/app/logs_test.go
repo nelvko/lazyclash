@@ -61,11 +61,15 @@ func TestLogsAreReadOnlyAndParentCancellationClosesLiveConnection(t *testing.T) 
 		if r.URL.Path != "/logs" {
 			t.Error("unexpected endpoint")
 		}
+		conn := runtimeWebSocket(t, w, r)
+		if conn == nil {
+			return
+		}
+		defer conn.CloseNow()
 		close(started)
 		defer close(finished)
-		fmt.Fprintf(w, "{\"type\":\"info\",\"payload\":\"current secret %s\"}\n", manifest.Secret)
-		w.(http.Flusher).Flush()
-		<-r.Context().Done()
+		writeRuntimeWebSocket(t, conn, map[string]string{"type": "info", "payload": "current secret " + manifest.Secret})
+		<-conn.CloseRead(r.Context()).Done()
 	})
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
@@ -102,8 +106,13 @@ func TestLogsDetectChangedCoreEvenWhileStreamIsQuiet(t *testing.T) {
 			fmt.Fprint(w, `{"version":"v1.19.33"}`)
 			return
 		}
+		conn := runtimeWebSocket(t, w, r)
+		if conn == nil {
+			return
+		}
+		defer conn.CloseNow()
 		close(started)
-		<-r.Context().Done()
+		<-conn.CloseRead(r.Context()).Done()
 	})
 	done := make(chan error, 1)
 	go func() {
@@ -130,8 +139,13 @@ func TestQuietLogsDoNotHoldServiceActionLock(t *testing.T) {
 			fmt.Fprint(w, `{"version":"v1.19.33"}`)
 			return
 		}
+		conn := runtimeWebSocket(t, w, r)
+		if conn == nil {
+			return
+		}
+		defer conn.CloseNow()
 		close(started)
-		<-r.Context().Done()
+		<-conn.CloseRead(r.Context()).Done()
 	})
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()

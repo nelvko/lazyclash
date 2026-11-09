@@ -1,10 +1,8 @@
 package mihomo
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
-	"net/http"
 	"regexp"
 	"strings"
 	"time"
@@ -66,28 +64,18 @@ func SafeLogMessage(message, controllerSecret string) string {
 	return message
 }
 
-// StreamLogs owns one authenticated, cancellable, live NDJSON connection. It
+// StreamLogs owns one authenticated, cancellable, live WebSocket connection. It
 // never writes raw messages to disk. emit runs serially and must return promptly.
 func (c Client) StreamLogs(ctx context.Context, emit func(LogEntry)) error {
 	if emit == nil {
 		return diagnostic.New("diagnostic.logs.consumer", "a log consumer is required")
 	}
-	body, err := c.openRequest(ctx, http.MethodGet, "/logs?level=info", nil, true)
-	if err != nil {
-		return err
-	}
-	defer body.Close()
-	scanner := bufio.NewScanner(body)
-	scanner.Buffer(make([]byte, 4096), maxLogFrame)
-	for scanner.Scan() {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
+	return c.streamJSON(ctx, "/logs?level=info", maxLogFrame, 0, func(raw []byte) error {
 		var event struct {
 			Type    *string `json:"type"`
 			Payload *string `json:"payload"`
 		}
-		if json.Unmarshal(scanner.Bytes(), &event) != nil || event.Type == nil || event.Payload == nil {
+		if json.Unmarshal(raw, &event) != nil || event.Type == nil || event.Payload == nil {
 			return diagnostic.New("diagnostic.logs.event", "invalid Mihomo log event")
 		}
 		switch *event.Type {
@@ -96,12 +84,6 @@ func (c Client) StreamLogs(ctx context.Context, emit func(LogEntry)) error {
 			return diagnostic.New("diagnostic.logs.level", "invalid Mihomo log level")
 		}
 		emit(LogEntry{Time: time.Now(), Level: *event.Type, Message: SafeLogMessage(*event.Payload, c.Secret)})
-	}
-	if ctx.Err() != nil {
-		return ctx.Err()
-	}
-	if scanner.Err() != nil {
-		return diagnostic.New("diagnostic.logs.interrupted", "Mihomo log stream was interrupted or exceeded the 64 KiB event limit")
-	}
-	return diagnostic.New("diagnostic.logs.ended", "Mihomo log stream ended; reconnect to continue")
+		return nil
+	})
 }

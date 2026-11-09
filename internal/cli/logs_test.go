@@ -5,12 +5,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"strings"
+	"sync/atomic"
 	"testing"
 
+	"github.com/coder/websocket"
 	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
@@ -42,15 +45,54 @@ func executeLogs(t *testing.T, a *app.App, args ...string) (string, error) {
 	return out.String(), err
 }
 
+func logsControllerFixture(t *testing.T, a *app.App, handler http.HandlerFunc) {
+	t.Helper()
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+	target, err := url.Parse(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	transport.Proxy = nil
+	t.Cleanup(transport.CloseIdleConnections)
+	a.HTTP = &http.Client{Transport: rulesTransport(func(request *http.Request) (*http.Response, error) {
+		copy := request.Clone(request.Context())
+		destination := *request.URL
+		destination.Scheme, destination.Host = target.Scheme, target.Host
+		copy.URL = &destination
+		return transport.RoundTrip(copy)
+	})}
+}
+
 func TestLogsCLICollectsOnlyBoundedRedactedLiveEntries(t *testing.T) {
 	a := logsBackend(t)
-	a.HTTP = &http.Client{Transport: rulesTransport(func(r *http.Request) (*http.Response, error) {
-		body := `{"version":"v1.19.33"}`
-		if r.URL.Path == "/logs" {
-			body = "{\"type\":\"warning\",\"payload\":\"source https://user:private-token@example.invalid/private-path?q=private-query\"}\n{\"type\":\"info\",\"payload\":\"safe message\"}\n"
+	logsControllerFixture(t, a, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/version" {
+			fmt.Fprint(w, `{"version":"v1.19.33"}`)
+			return
 		}
-		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body)), Request: r}, nil
-	})}
+		if r.URL.Path != "/logs" || r.URL.Query().Get("level") != "info" || !strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ") {
+			t.Errorf("unexpected or unauthenticated logs subscription: %s", r.URL)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		conn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		defer conn.CloseNow()
+		for _, raw := range []string{
+			`{"type":"warning","payload":"source https://user:private-token@example.invalid/private-path?q=private-query"}`,
+			`{"type":"info","payload":"safe message"}`,
+		} {
+			if err := conn.Write(r.Context(), websocket.MessageText, []byte(raw)); err != nil {
+				return
+			}
+		}
+		<-conn.CloseRead(r.Context()).Done()
+	})
 	output, err := executeLogs(t, a, "--lines", "2")
 	var entries []mihomo.LogEntry
 	if err != nil || json.Unmarshal([]byte(output), &entries) != nil || len(entries) != 2 || strings.Contains(output, "private-") {
@@ -61,27 +103,61 @@ func TestLogsCLICollectsOnlyBoundedRedactedLiveEntries(t *testing.T) {
 	}
 }
 
-type quietLogBody struct{ ctx context.Context }
-
-func (b quietLogBody) Read(p []byte) (int, error) { <-b.ctx.Done(); return 0, b.ctx.Err() }
-func (b quietLogBody) Close() error               { return nil }
-
 func TestLogsCLIDistinguishesQuietObservationFromUnreachableAPI(t *testing.T) {
 	for _, ready := range []bool{true, false} {
 		t.Run(fmt.Sprint(ready), func(t *testing.T) {
 			a := logsBackend(t)
-			a.HTTP = &http.Client{Transport: rulesTransport(func(r *http.Request) (*http.Response, error) {
-				if r.URL.Path == "/version" && ready {
-					return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"version":"v1.19.33"}`)), Request: r}, nil
+			var subscriptions atomic.Int32
+			logsControllerFixture(t, a, func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/version" {
+					if ready {
+						fmt.Fprint(w, `{"version":"v1.19.33"}`)
+					} else {
+						<-r.Context().Done()
+					}
+					return
 				}
-				return &http.Response{StatusCode: 200, Header: make(http.Header), Body: quietLogBody{r.Context()}, Request: r}, nil
-			})}
-			output, err := executeLogs(t, a, "--duration", "30ms")
-			if ready && (err != nil || strings.TrimSpace(output) != "[]") {
+				conn, err := websocket.Accept(w, r, nil)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				defer conn.CloseNow()
+				subscriptions.Add(1)
+				<-conn.CloseRead(r.Context()).Done()
+			})
+			output, err := executeLogs(t, a, "--duration", "200ms")
+			if ready && (err != nil || strings.TrimSpace(output) != "[]" || subscriptions.Load() != 1) {
 				t.Fatalf("quiet window treated as failure: %q %v", output, err)
 			}
-			if !ready && (err == nil || output != "") {
+			if !ready && (err == nil || output != "" || subscriptions.Load() != 0) {
 				t.Fatalf("unreachable API treated as valid empty logs: %q %v", output, err)
+			}
+		})
+	}
+}
+
+func TestLogsCLIDoesNotTreatAnUnestablishedWebSocketAsQuietLogs(t *testing.T) {
+	for _, stalled := range []bool{false, true} {
+		t.Run(fmt.Sprint(stalled), func(t *testing.T) {
+			a := logsBackend(t)
+			var attempts atomic.Int32
+			logsControllerFixture(t, a, func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/version" {
+					fmt.Fprint(w, `{"version":"v1.19.33"}`)
+					return
+				}
+				attempts.Add(1)
+				if stalled {
+					<-r.Context().Done()
+					return
+				}
+				w.WriteHeader(http.StatusBadGateway)
+				fmt.Fprint(w, "private-handshake-response")
+			})
+			output, err := executeLogs(t, a, "--duration", "200ms")
+			if err == nil || output != "" || attempts.Load() != 1 || strings.Contains(err.Error(), "private-") {
+				t.Fatalf("failed WS handshake became a valid empty window: %q %v, attempts=%d", output, err, attempts.Load())
 			}
 		})
 	}

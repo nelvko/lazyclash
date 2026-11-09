@@ -14,12 +14,13 @@ import (
 	"github.com/nelvko/lazyclash/internal/diagnostic"
 )
 
-// Traffic is Mihomo's most recent one-second upload/download sample, in bytes.
-// Cumulative values are read from ConnectionSnapshot rather than integrated
-// from samples, which would lose traffic whenever the UI is disconnected.
+// Traffic contains the latest per-second rates and the core's cumulative byte
+// counters. Totals are never integrated from potentially missing observations.
 type Traffic struct {
-	Up   int64 `json:"up"`
-	Down int64 `json:"down"`
+	Up        int64 `json:"up"`
+	Down      int64 `json:"down"`
+	UpTotal   int64 `json:"upTotal"`
+	DownTotal int64 `json:"downTotal"`
 }
 
 type ConnectionMetadata struct {
@@ -74,6 +75,10 @@ func (c Client) Connections(ctx context.Context) (ConnectionSnapshot, error) {
 	if err != nil {
 		return ConnectionSnapshot{}, err
 	}
+	return decodeConnections(raw)
+}
+
+func decodeConnections(raw []byte) (ConnectionSnapshot, error) {
 	var value struct {
 		UploadTotal   *int64          `json:"uploadTotal"`
 		DownloadTotal *int64          `json:"downloadTotal"`
@@ -157,32 +162,56 @@ func (c Client) sample(ctx context.Context, path string, frames int) (json.RawMe
 }
 
 func (c Client) Traffic(ctx context.Context) (Traffic, error) {
-	var value struct {
-		Up   *int64 `json:"up"`
-		Down *int64 `json:"down"`
-	}
 	raw, err := c.sample(ctx, "/traffic", 1)
 	if err != nil {
 		return Traffic{}, err
 	}
-	if json.Unmarshal(raw, &value) != nil || value.Up == nil || value.Down == nil || *value.Up < 0 || *value.Down < 0 {
-		return Traffic{}, diagnostic.New("diagnostic.api.trafficResponse", "invalid Mihomo traffic response")
-	}
-	return Traffic{Up: *value.Up, Down: *value.Down}, nil
+	return decodeTraffic(raw, false)
 }
 
-func (c Client) Memory(ctx context.Context) (uint64, error) {
+func decodeTraffic(raw []byte, requireTotals bool) (Traffic, error) {
+	var value struct {
+		Up        *int64 `json:"up"`
+		Down      *int64 `json:"down"`
+		UpTotal   *int64 `json:"upTotal"`
+		DownTotal *int64 `json:"downTotal"`
+	}
+	invalid := diagnostic.New("diagnostic.api.trafficResponse", "invalid Mihomo traffic response")
+	if json.Unmarshal(raw, &value) != nil || value.Up == nil || value.Down == nil || *value.Up < 0 || *value.Down < 0 || requireTotals && (value.UpTotal == nil || value.DownTotal == nil) {
+		return Traffic{}, invalid
+	}
+	result := Traffic{Up: *value.Up, Down: *value.Down}
+	if value.UpTotal != nil {
+		if *value.UpTotal < 0 {
+			return Traffic{}, invalid
+		}
+		result.UpTotal = *value.UpTotal
+	}
+	if value.DownTotal != nil {
+		if *value.DownTotal < 0 {
+			return Traffic{}, invalid
+		}
+		result.DownTotal = *value.DownTotal
+	}
+	return result, nil
+}
+
+func decodeMemory(raw []byte) (uint64, error) {
 	var value struct {
 		Inuse *uint64 `json:"inuse"`
 	}
+	if json.Unmarshal(raw, &value) != nil || value.Inuse == nil {
+		return 0, diagnostic.New("diagnostic.api.memoryResponse", "invalid Mihomo memory response")
+	}
+	return *value.Inuse, nil
+}
+
+func (c Client) Memory(ctx context.Context) (uint64, error) {
 	// Mihomo emits a synthetic zero as the first /memory frame. A second frame
 	// is required to report actual RSS rather than displaying that placeholder.
 	raw, err := c.sample(ctx, "/memory", 2)
 	if err != nil {
 		return 0, err
 	}
-	if json.Unmarshal(raw, &value) != nil || value.Inuse == nil {
-		return 0, diagnostic.New("diagnostic.api.memoryResponse", "invalid Mihomo memory response")
-	}
-	return *value.Inuse, nil
+	return decodeMemory(raw)
 }

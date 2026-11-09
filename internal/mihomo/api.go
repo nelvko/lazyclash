@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"strings"
@@ -18,6 +17,10 @@ type Client struct {
 	BaseURL string
 	Secret  string
 	HTTP    *http.Client
+	// StreamReady runs once after a WebSocket handshake succeeds, including
+	// quiet log streams. The callback must return promptly and is separate
+	// from data delivery; connecting never invents a metric or log event.
+	StreamReady func()
 }
 
 type Group struct {
@@ -30,10 +33,6 @@ type Group struct {
 // open keeps buffered requests and streaming samples on the same authenticated,
 // loopback-only transport. The returned body owns the private transport cleanup.
 func (c Client) open(ctx context.Context, method, path string, body []byte) (io.ReadCloser, error) {
-	return c.openRequest(ctx, method, path, body, false)
-}
-
-func (c Client) openRequest(ctx context.Context, method, path string, body []byte, stream bool) (io.ReadCloser, error) {
 	base, err := url.Parse(c.BaseURL)
 	if err != nil || (base.Scheme != "http" && base.Scheme != "https") || base.User != nil || base.RawQuery != "" || base.Fragment != "" || (base.Path != "" && base.Path != "/") {
 		return nil, diagnostic.New("diagnostic.api.controllerURL", "invalid local controller URL")
@@ -48,11 +47,6 @@ func (c Client) openRequest(ctx context.Context, method, path string, body []byt
 	if cl.Timeout <= 0 {
 		cl.Timeout = 5 * time.Second
 	}
-	if stream {
-		// A quiet /logs connection intentionally has no response headers until
-		// its first event. Bound connection setup, then let its owner cancel it.
-		cl.Timeout = 0
-	}
 	transport := cl.Transport
 	if transport == nil {
 		transport = http.DefaultTransport
@@ -61,11 +55,6 @@ func (c Client) openRequest(ctx context.Context, method, path string, body []byt
 	if tr, ok := transport.(*http.Transport); ok {
 		tr = tr.Clone()
 		tr.Proxy = nil
-		if stream {
-			tr.DialContext = (&net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}).DialContext
-			tr.TLSHandshakeTimeout = 5 * time.Second
-			tr.ResponseHeaderTimeout = 0
-		}
 		transport = tr
 		closeIdle = tr.CloseIdleConnections
 	}
