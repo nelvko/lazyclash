@@ -98,7 +98,7 @@ func (m Model) connectionControls() dashboardBlock {
 }
 
 func (m Model) connectionToolbarRows(width int) int {
-	return m.searchToolbarRows(width, m.connectionControls()) + 1
+	return m.searchToolbarRows(width, m.connectionControls()) + len(m.connectionSummary(width))
 }
 
 func (m Model) connectionSearchWidth(width int) int {
@@ -107,12 +107,7 @@ func (m Model) connectionSearchWidth(width int) int {
 
 func (m Model) connectionsToolbar(width, rows int) dashboardBlock {
 	var b dashboardBlock
-	stats := m.tr("connections.count", 0, 0)
-	if snapshot := m.connectionSnapshot(); snapshot != nil {
-		stats = m.tr("connections.count", len(m.filteredConnections()), len(snapshot.Connections))
-		stats += "   Σ ↓ " + formatBytes(snapshot.DownloadTotal) + "  ↑ " + formatBytes(snapshot.UploadTotal)
-	}
-	b.lines = append(b.lines, themed(cellCrop(stats, width), accent, bg, false))
+	b.lines = append(b.lines, m.connectionSummary(width)...)
 	if m.searchToolbarGap() > 0 {
 		b.blank()
 	}
@@ -121,6 +116,9 @@ func (m Model) connectionsToolbar(width, rows int) dashboardBlock {
 	status, color := runtimeStatus(m.runtime.snapshot, m.runtime.received, m.runtime.pending, m.snapshot.Installed, m.locale), muted
 	if m.connections.paused && m.connectionSnapshot() != nil {
 		status, color = m.tr("connections.paused"), warning
+	}
+	if snapshot := m.connectionSnapshot(); snapshot != nil {
+		status = m.tr("connections.count", len(m.filteredConnections()), len(snapshot.Connections)) + " · " + status
 	}
 	b.lines = append(b.lines, themed(cellCrop(status, width), color, bg, false))
 	if width >= 100 {

@@ -113,14 +113,15 @@ func (b *connectionsPTYBackend) Runtime(ctx context.Context) (app.RuntimeSnapsho
 		b.entries[i].Upload += int64(i+1) * 512
 		b.entries[i].Download += int64(i+1) * 4096
 	}
-	memory := uint64(32 * 1024 * 1024)
+	memory := uint64(64 * 1024 * 1024)
 	return app.RuntimeSnapshot{
 		State: "ready", Service: b.snapshot.Service, RunningVersion: b.snapshot.RunningVersion,
 		ObservedAt: time.Now(), Traffic: &mihomo.Traffic{Up: 128 * 1024, Down: 2 * 1024 * 1024}, Memory: &memory,
 		Connections: &mihomo.ConnectionSnapshot{
-			UploadTotal:   128*1024*1024 + b.queries.Load()*8192,
-			DownloadTotal: 2*1024*1024*1024 + b.queries.Load()*1024*1024,
+			UploadTotal:   128*1024*1024 + b.queries.Load()*16*1024*1024,
+			DownloadTotal: 2*1024*1024*1024 + b.queries.Load()*64*1024*1024,
 			Connections:   append([]mihomo.Connection(nil), b.entries...),
+			Memory:        32 * 1024 * 1024,
 		},
 	}, ctx.Err()
 }

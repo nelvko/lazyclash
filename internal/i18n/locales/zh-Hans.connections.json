@@ -22,5 +22,9 @@
   "connections.closing_all": "正在关闭全部连接…",
   "connections.close_all_requested": "已请求关闭全部连接",
   "connections.close_all_unavailable": "连接不可用或已全部结束",
-  "connections.close_all_hint": "Enter 确认关闭全部连接 · Tab 内容 · ? 帮助"
+  "connections.close_all_hint": "Enter 确认关闭全部连接 · Tab 内容 · ? 帮助",
+  "connections.summary_download": "累计下载",
+  "connections.summary_upload": "累计上传",
+  "connections.summary_memory": "内存占用",
+  "connections.summary_active": "活动连接"
 }

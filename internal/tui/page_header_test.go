@@ -232,19 +232,6 @@ func TestProfilesHeaderLosingLastSubscriptionRepairsFocusAndBlocksUpdate(t *test
 }
 
 func TestPageCountsRequireAvailableObservations(t *testing.T) {
-	for _, page := range []string{"connections"} {
-		m := headerModel(page, 120, 32)
-		expected := "2 active"
-		if !strings.Contains(headerText(m), expected) {
-			t.Fatalf("%s lost its observed count", page)
-		}
-		m.snapshot.Service.Active = false
-		m.runtime.received, m.rules.received = false, false
-		m.layout()
-		if strings.Contains(headerText(m), expected) {
-			t.Fatalf("%s header presented an unavailable observation as current", page)
-		}
-	}
 	m := headerModel("rules", 120, 32)
 	if strings.Contains(headerText(m), "3 rules") || strings.Count(ansi.Strip(m.screen), "3 rules · Matching order") != 1 {
 		t.Fatal("rules count must appear once in the search toolbar")

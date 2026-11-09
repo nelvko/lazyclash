@@ -58,9 +58,6 @@ func (m Model) pageHeader() pageHeader {
 	case "profiles":
 		h.actions = []headerAction{{"profiles.update-all", tr("header.updateAll"), "↻", m.hasRefreshableProfiles()}}
 	case "connections":
-		if m.runtime.received && m.runtime.snapshot.State == "ready" && m.runtime.snapshot.Connections != nil {
-			h.summary = tr("header.active", len(m.runtime.snapshot.Connections.Connections))
-		}
 		h.actions = []headerAction{{"conn.close-all", tr("connections.close_all"), "×", !m.connections.confirming && m.canCloseAllConnections()}}
 	case "rules":
 		h.actions = []headerAction{{"rules.providers", tr("providers.title.rules"), "≡", m.providersSupported(providerRules)}}

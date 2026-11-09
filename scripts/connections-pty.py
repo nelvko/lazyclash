@@ -9,6 +9,7 @@ import argparse
 import importlib.util
 import json
 from pathlib import Path
+import re
 import sys
 import time
 import uuid
@@ -80,6 +81,27 @@ def host_rows(terminal, host, count=1):
     return rows[y:y + count]
 
 
+SUMMARY_FIELDS = ("download", "upload", "memory", "active")
+
+
+def summary_values(terminal, words, active=None):
+    screen = terminal.screen.text()
+    values = {}
+    for field in SUMMARY_FIELDS:
+        label = words["connections.summary_" + field]
+        match = re.search(re.escape(label) + r":\s*([0-9.]+(?: (?:B|KiB|MiB|GiB|TiB))?)", screen)
+        assert match, "missing connection summary field: " + label + "\n" + screen
+        values[field] = match.group(1)
+    assert values["memory"] == "32.0 MiB", "summary used standalone runtime memory: " + repr(values)
+    if active is not None:
+        assert values["active"] == str(active), "summary active count follows filter or lost live data: " + repr(values)
+    return values
+
+
+def summary_positions(terminal, words):
+    return {field: position(terminal, words["connections.summary_" + field]) for field in SUMMARY_FIELDS}
+
+
 def exercise(preview, binary, output, language, profile, args):
     output.mkdir(parents=True)
     words = labels(language)
@@ -92,15 +114,26 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait(words["connections.pause"])
         wait_until(terminal, lambda: query_count(report) >= 2, "second runtime sample missing")
         terminal.settle()
+        summary_values(terminal, words, active=48)
         preview.capture(terminal, output, "connections-wide", args)
 
-        # Search each field independently and retain the query across details.
-        for query, present, absent in (("github-agent", "api.github.com", "www.youtube.com"),
-                ("streaming", "www.youtube.com", "api.github.com"),
-                ("HK 01", "api.github.com", "www.youtube.com")):
+        # Freeze the observation so any difference while searching can only
+        # come from filtering, rather than the next live traffic sample.
+        terminal.key(b"p")
+        terminal.wait(words["connections.resume"])
+        terminal.settle()
+        unfiltered_summary = summary_values(terminal, words, active=48)
+        for query, present, absent, matches in (("github-agent", "api.github.com", "www.youtube.com", 1),
+                ("streaming", "www.youtube.com", "api.github.com", 1),
+                ("HK 01", "api.github.com", "www.youtube.com", 24)):
             search(terminal, query)
             terminal.wait(present)
             terminal.wait_absent(absent)
+            terminal.wait(words["connections.count"] % (matches, 48))
+            assert summary_values(terminal, words, active=48) == unfiltered_summary, "search changed core summary values"
+        preview.capture(terminal, output, "filtered-summary", args)
+        terminal.key(b"p")
+        terminal.wait(words["connections.pause"])
         search(terminal, "github-agent")
         terminal.key(b"\r")
         terminal.wait(words["connections.details"])
@@ -121,15 +154,19 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait(words["connections.resume"])
         terminal.settle()
         frozen = host_rows(terminal, "api.github.com", 2)
+        frozen_summary = summary_values(terminal, words, active=48)
         queries_before = query_count(report)
         wait_until(terminal, lambda: query_count(report) >= queries_before + 2,
             "pause stopped background runtime monitoring", timeout=8)
         assert frozen == host_rows(terminal, "api.github.com", 2), "paused connection counters or age changed"
+        assert frozen_summary == summary_values(terminal, words, active=48), "paused summary changed while runtime continued"
         preview.capture(terminal, output, "paused-snapshot", args)
         terminal.key(b"p")
         terminal.wait(words["connections.pause"])
         wait_until(terminal, lambda: frozen != host_rows(terminal, "api.github.com", 2),
             "resuming did not show the current connection data")
+        wait_until(terminal, lambda: frozen_summary != summary_values(terminal, words, active=48),
+            "resuming did not show the current summary totals")
 
         # Each sort mode remains reachable from content focus and preserves
         # the filter; six presses complete the cycle back to newest.
@@ -157,12 +194,18 @@ def exercise(preview, binary, output, language, profile, args):
             terminal.key(b"\x1b[H")
             terminal.settle()
             terminal.wait("api.github.com")
+            summary_values(terminal, words, active=48)
+            positions = summary_positions(terminal, words)
+            expected_rows = 1 if width >= 160 or (width == 120 and language == "zh-Hans") else 2 if width >= 60 else 4
+            assert len({point[1] for point in positions.values()}) == expected_rows, "summary did not adapt its columns to terminal width"
             pause_position = position(terminal, words["connections.pause"])
             for _ in range(5):
-                terminal.key(("\x1b[<65;%d;%dM" % (width - 3, height // 2)).encode())
+                terminal.key(("\x1b[<65;%d;%dM" % (width - 3, height - 3)).encode())
             terminal.settle()
             terminal.wait_absent("api.github.com")
             assert pause_position == position(terminal, words["connections.pause"]), "scroll moved the fixed toolbar"
+            assert positions == summary_positions(terminal, words), "scroll moved the fixed summary"
+            summary_values(terminal, words, active=48)
             preview.capture(terminal, output, "scrolled-%dx%d" % (width, height), args)
             terminal.key(b"\x1b[H")
             terminal.settle()
@@ -233,6 +276,12 @@ def exercise(preview, binary, output, language, profile, args):
         search(terminal, "")
         terminal.wait(words["connections.empty"])
         terminal.wait_absent("www.youtube.com")
+        # Success toasts can temporarily cover the first summary row. Inspect
+        # the underlying counters once both operation notifications expire.
+        wait_until(terminal, lambda: all(words["connections.summary_" + field] + ":" in terminal.screen.text()
+            for field in SUMMARY_FIELDS), "summary stayed obscured after closing all connections", timeout=12)
+        values = summary_values(terminal, words, active=0)
+        assert values["download"].endswith("GiB") and values["upload"].endswith("MiB"), "close-all cleared cumulative traffic"
         preview.capture(terminal, output, "close-all-empty", args)
         terminal.exit()
         calls = json.loads(report.read_text())
@@ -247,7 +296,7 @@ def exercise(preview, binary, output, language, profile, args):
         if profile == "no-color":
             assert not any(value not in (b"", b"0") for value in preview.SGR.findall(raw)), "NO_COLOR emitted styling"
         (output / "pty.raw").write_bytes(raw)
-        print("PASS %s/%s: search, rate samples, live pause, six sorts, details/two-row clicks, fixed toolbar, six sizes, exact close, filtered close-all cancellation/confirmation; %s" %
+        print("PASS %s/%s: search, rate samples, live pause, six sorts, details/two-row clicks, fixed toolbar, six sizes, four fixed summary fields, exact close, filtered close-all cancellation/confirmation; %s" %
             (language, profile, json.dumps(calls)), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")
