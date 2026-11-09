@@ -32,7 +32,7 @@ cleanup() {
 trap cleanup EXIT
 linux_stage=$(orb -m "$vm" mktemp -d /tmp/lazyclash-linux.XXXXXX)
 index=0
-go list ./... > "$host_stage/packages"
+go list ./... github.com/charmbracelet/ultraviolet/... > "$host_stage/packages"
 while IFS= read -r package <&3; do
   index=$((index + 1))
   testbin="$host_stage/$index.test"

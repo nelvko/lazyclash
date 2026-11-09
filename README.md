@@ -221,6 +221,8 @@ orb list
 
 普通测试仅用临时目录、fixture 与 fake 服务，不创建 VM 或修改真实代理。真实 Linux、PTY 与 Mihomo/systemd 测试显式执行，使用临时目录、随机专用 unit、冲突检查和失败清理，详情见 [验证说明](docs/verification.md)。未实测平台不得由交叉编译推断为已通过。
 
+`third_party/ultraviolet` 保存固定的上游源码与中文行重绘补丁，`go.mod` 指向仓库内副本，构建时需要保留该目录。上述 `make test/check/race` 和 Linux 验证入口包含该依赖的原有测试，补丁维护方式见 [说明](third_party/ultraviolet/LAZYCLASH.md)。
+
 程序入口为根目录 `main.go`。`internal/cli` 保留 Cobra 子命令与 Shell 集成，`internal/tui` 负责交互与响应式渲染；二者直接调用 `internal/app` 的共用用例，包括运行采样和单连接关闭。`internal/downloadnet` 负责来源与连接，`internal/mihomo` 负责发布、下载、降权校验、TUN 配置和控制 API，`internal/service` 负责 systemd user/system 服务及有限 TUN 生命周期，`internal/store` 负责作用域数据路径、原子文件与进程锁。具体边界见 [代码结构](docs/architecture.md)。
 
 [路线图](docs/roadmap.md)。参考旧项目仅用于只读研究，不读取旧运行配置，不继承历史、提供旧别名或实现迁移层。
