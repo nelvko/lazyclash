@@ -14,7 +14,6 @@
   "proxies.group_reference": "Proxy group · %s",
   "proxies.distributed": "No fixed single node",
   "proxies.distributed_hint": "The core applies this group's strategy; members are available for inspection.",
-  "proxies.direct_mode": "Direct mode: ordinary traffic connects directly. Group choices remain saved for Rule mode.",
   "proxies.cycle": "Reference cycle",
   "proxies.unknown_type": "Type unavailable",
   "proxies.back": "← Back",

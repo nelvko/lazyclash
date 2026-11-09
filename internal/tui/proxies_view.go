@@ -52,14 +52,17 @@ func (m Model) proxyCollapseButton() string {
 }
 
 func (m Model) proxiesToolbar(width int) dashboardBlock {
-	b := dashboardBlock{lines: []string{""}}
+	b := dashboardBlock{}
 	if m.width < 50 {
 		b = m.proxyModes(width)
 	}
 	if action := m.proxyCollapseButton(); action != "" {
+		if len(b.lines) == 0 {
+			b.blank()
+		}
 		x := max(0, width-ansi.StringWidth(action))
 		row := len(b.lines) - 1
-		if x < ansi.StringWidth(b.lines[row])+2 {
+		if b.lines[row] != "" && x < ansi.StringWidth(b.lines[row])+2 {
 			b.blank()
 			row = len(b.lines) - 1
 		}
@@ -68,18 +71,11 @@ func (m Model) proxiesToolbar(width int) dashboardBlock {
 			b.targets = append(b.targets, hitRegion{ID: "proxies.collapse_all", X: x, Y: row, W: min(width-x, ansi.StringWidth(action)), H: 1})
 		}
 	}
-	if m.searchToolbarGap() > 0 {
-		b.lines = append([]string{""}, b.lines...)
-		for i := range b.targets {
-			b.targets[i].Y++
-		}
-	}
 	return b
 }
 func (m Model) proxiesBody(width int) (string, []hitRegion) {
 	width = max(1, width)
 	b := m.proxiesToolbar(width)
-	b.blank()
 	add := func(value, color string) {
 		b.lines = append(b.lines, strings.Split(wrapText(themed(clean(value), color, bg, false), width), "\n")...)
 	}
@@ -117,10 +113,6 @@ func (m Model) proxiesBody(width int) (string, []hitRegion) {
 		add(m.tr("dashboard.settings.actualMode", m.tr("dashboard.status.unknown")), muted)
 	} else if m.snapshot.Mode.Actual != m.snapshot.Mode.Desired {
 		add(m.tr("dashboard.settings.actualMode", dashboardModeLabel(m.snapshot.Mode.Actual, m.locale)), muted)
-	}
-	if m.snapshot.Mode.Actual == "direct" {
-		add(m.tr("proxies.direct_mode"), muted)
-		b.blank()
 	}
 	if len(m.proxies.history) > 0 {
 		button("proxies.back", m.tr("proxies.back"))

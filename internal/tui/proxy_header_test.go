@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/i18n"
 	"github.com/nelvko/lazyclash/internal/mihomo"
@@ -156,8 +157,39 @@ func TestProxyProvidersHeaderKeepsModeOrderAcrossSizes(t *testing.T) {
 					}
 					previous = target
 				}
+				if size[0] >= 50 {
+					if provider.X+provider.W != g.headerX+g.headerWidth {
+						t.Fatal("provider action is not aligned to the header's right edge")
+					}
+					if gap := provider.X - previous.X - previous.W; gap != 4 {
+						t.Fatalf("mode choices should sit beside providers with a four-cell gap, got %d", gap)
+					}
+				}
 				assertCanvas(t, m.screen, size[0], size[1])
 				assertRegions(t, m.targets, size[0], size[1])
+			})
+		}
+	}
+}
+
+func TestProxiesContentFocusDoesNotPaintOrphanMarker(t *testing.T) {
+	for _, mode := range []string{"rule", "global", "direct"} {
+		for _, size := range [][2]int{{40, 16}, {80, 24}, {120, 32}, {216, 55}} {
+			t.Run(fmt.Sprintf("%s/%dx%d", mode, size[0], size[1]), func(t *testing.T) {
+				m := headerModel("proxies", size[0], size[1])
+				m.snapshot.Mode = app.ModeStatus{Desired: mode, Actual: mode}
+				m.focus = "content"
+				m.layout()
+				g := dashboardGeometry(m.dashboardOptions())
+				line := strings.Split(m.screen, "\n")[g.y]
+				if ansi.Strip(ansi.Cut(line, max(0, g.x-1), g.x)) == "›" {
+					t.Fatal("proxy content focus painted a standalone marker above the group list")
+				}
+				m.focus = "group.0"
+				m.layout()
+				if mode != "global" && !strings.Contains(ansi.Strip(m.screen), "› PROXY") {
+					t.Fatal("removing the standalone marker also removed the group's keyboard focus")
+				}
 			})
 		}
 	}

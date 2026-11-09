@@ -8,7 +8,6 @@ import argparse
 import importlib.util
 import json
 from pathlib import Path
-import re
 import sys
 import time
 import uuid
@@ -43,21 +42,14 @@ def calls(report):
     return json.loads(report.read_text())
 
 
-def assert_header(terminal, words, width):
-    rows = terminal.screen.text().splitlines()
-    divider = next(i for i, row in enumerate(rows) if "▔" in row)
-    header = "\n".join(rows[:divider])
-    assert words["header.refresh"] not in header and "↻" not in header, "manual refresh returned"
-    assert not re.search(r"\b\d+\s+groups\b|\d+\s*个代理组", header), "group total returned"
+def assert_header(terminal, words):
+    PROXIES.assert_proxy_header(terminal, words)
     assert words["providers.search.proxies"] not in terminal.screen.text(), "main-page search returned"
-    mode_positions = [RULES.position(terminal, words["dashboard.mode." + mode]) for mode in ("rule", "global", "direct")]
-    if width >= 50:
-        assert all(y < divider for _, y in mode_positions), "modes did not move into page header"
-        assert [x for x, _ in mode_positions] == sorted(x for x, _ in mode_positions), "mode order changed"
-        provider_x, provider_y = PANEL.label_position(terminal, words["providers.title.proxies"], header=True)
-        assert provider_y < divider and provider_x > mode_positions[-1][0], "provider action not right-aligned after modes"
-    else:
-        assert all(y > divider for _, y in mode_positions), "narrow modes disappeared from body"
+    if terminal.screen.columns < 50:
+        _, _, _, bottom = PROXIES.proxy_header_positions(terminal, words)
+        modes = [RULES.position(terminal, words["dashboard.mode." + mode]) for mode in ("rule", "global", "direct")]
+        assert all(y > bottom for _, y in modes), "narrow modes disappeared from the body"
+    PROXIES.assert_compact_proxy_body(terminal, words, "PROXY")
 
 
 def search(terminal, value):
@@ -77,7 +69,7 @@ def exercise(preview, binary, output, language, profile, args):
         for width, height in ((160, 45), (80, 24), (60, 20), (40, 16), (160, 45)):
             terminal.resize(width, height)
             terminal.settle()
-            assert_header(terminal, words, width)
+            assert_header(terminal, words)
             preview.capture(terminal, output, "header-%dx%d" % (width, height), args)
         PANEL.click_label(terminal, words["providers.title.proxies"], header=True)
         terminal.wait("remote_nodes")

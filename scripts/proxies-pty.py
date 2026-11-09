@@ -38,14 +38,59 @@ def labels(language):
     return result
 
 
+def proxy_header_positions(terminal, words):
+    # Header appearance can include a divider or just background spacing.
+    # Locate its actual controls instead of using a decorative stroke as a
+    # semantic boundary. All fixed-header controls fit in the first five rows.
+    def position(label):
+        for y, row in enumerate(terminal.screen.cells[:5]):
+            for x, cell in enumerate(row):
+                if cell and "".join(row[x:]).startswith(label):
+                    return x, y
+        raise AssertionError("Header control is missing: " + label + "\n" + terminal.screen.text())
+
+    title = position(words["dashboard.page.proxies"])
+    try:
+        provider = position(words["providers.title.proxies"])
+    except AssertionError:
+        provider = position("≡")
+    modes = []
+    bottom = max(title[1], provider[1])
+    if terminal.screen.columns >= 50:
+        modes = [position(words["dashboard.mode." + mode]) for mode in ("rule", "global", "direct")]
+        bottom = max(bottom, *(y for _, y in modes))
+    return title, modes, provider, bottom
+
+
 def assert_proxy_header(terminal, words):
     rows = terminal.screen.text().splitlines()
-    divider = next((index for index, line in enumerate(rows) if "▔" in line), None)
-    assert divider is not None, "proxy page lost its header divider"
-    header = "\n".join(rows[:divider])
+    _, modes, provider, bottom = proxy_header_positions(terminal, words)
+    header = "\n".join(rows[:bottom + 1])
     assert words["dashboard.page.proxies"] in header, "proxy header lost its page title"
     assert words["header.refresh"] not in header and "↻" not in header, "proxy header retained a manual refresh action"
     assert not re.search(r"\b\d+\s+groups\b|\d+\s*个代理组", header), "proxy header retained the group total"
+    if terminal.screen.columns >= 50:
+        assert len({y for _, y in modes + [provider]}) == 1, "mode choices and provider action do not share a header row"
+        assert [x for x, _ in modes] == sorted(x for x, _ in modes), "routing mode order changed"
+        direct_x, direct_y = modes[-1]
+        direct_width = cell_offset(terminal.screen.cells[direct_y][direct_x:], len(words["dashboard.mode.direct"]))
+        gap = provider[0] - direct_x - direct_width
+        assert 8 <= gap <= 10, "mode/provider spacing is not the compact four-cell gap: %d" % gap
+        provider_label = words["providers.title.proxies"]
+        if not "".join(terminal.screen.cells[provider[1]][provider[0]:]).startswith(provider_label):
+            provider_label = "≡"
+        provider_width = cell_offset(terminal.screen.cells[provider[1]][provider[0]:], len(provider_label))
+        assert terminal.screen.columns - provider[0] - provider_width <= 4, "mode/provider cluster is not right-aligned"
+
+
+def assert_compact_proxy_body(terminal, words, first_group):
+    _, _, _, header_bottom = proxy_header_positions(terminal, words)
+    x, first_y, _, _ = group_header(terminal, first_group)
+    body = ["".join(row[max(0, x - 2):]).strip()
+            for row in terminal.screen.cells[header_bottom + 1:-2]]
+    assert "›" not in body, "proxy body retained a standalone focus-arrow row"
+    assert not any(prefix in row for row in body for prefix in ("Direct mode:", "Direct 模式：")), "Direct explanation still occupies the proxy body"
+    return first_y
 
 
 def chosen(terminal, name):
@@ -329,6 +374,7 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait("PROXY")
         terminal.settle()
         assert_proxy_header(terminal, words)
+        first_group_y = assert_compact_proxy_body(terminal, words, "PROXY")
         # The old page refresh shortcuts must neither read state nor fall
         # through to the global service-restart shortcut. Model tests count
         # backend calls; the real terminal must also retain the current view.
@@ -501,13 +547,14 @@ def exercise(preview, binary, output, language, profile, args):
         browse_group(terminal, words, "EMPTY")
         terminal.wait(words["proxies.empty_group"])
         preview.capture(terminal, output, "empty-group", args)
-        # Global exposes GLOBAL and allows following its references. Returning
-        # to Rule restores ordinary groups; Direct explains retained choices.
+        # All routing modes start their groups at the same content row.
+        # Global exposes GLOBAL and allows following its references.
         terminal.click_text(words["dashboard.mode.global"])
         wait_mode(terminal, words["dashboard.mode.global"])
         terminal.wait("GLOBAL")
         terminal.settle()
         assert_proxy_header(terminal, words)
+        assert assert_compact_proxy_body(terminal, words, "GLOBAL") == first_group_y, "Global moved the first group row"
         terminal.click_text("GLOBAL")
         terminal.key(b"\x1b[C")
         enter_reference(terminal, "PROXY", words["proxies.enter"])
@@ -517,13 +564,16 @@ def exercise(preview, binary, output, language, profile, args):
         preview.capture(terminal, output, "global-reference-return", args)
         terminal.click_text(words["dashboard.mode.direct"])
         wait_mode(terminal, words["dashboard.mode.direct"])
-        terminal.wait(words["proxies.direct_mode"][:40])
+        terminal.wait("PROXY")
+        terminal.settle()
         assert_proxy_header(terminal, words)
+        assert assert_compact_proxy_body(terminal, words, "PROXY") == first_group_y, "Direct moved the first group row"
         preview.capture(terminal, output, "direct-mode", args)
         terminal.click_text(words["dashboard.mode.rule"])
         wait_mode(terminal, words["dashboard.mode.rule"])
         collapse_all(terminal, words)
         terminal.wait("BALANCE")
+        assert assert_compact_proxy_body(terminal, words, "PROXY") == first_group_y, "returning to Rule moved the first group row"
         terminal.exit()
         calls = json.loads(report.read_text())
         assert calls["selections"] == 3 and calls["selected"]["PROXY"] == "HK 01", calls

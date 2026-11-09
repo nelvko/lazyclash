@@ -161,8 +161,8 @@ func renderPageHeader(o dashboardOptions, g dashboardLayout, titleX, titleWidth 
 	return value, max(left, right-ansi.StringWidth(value)), y, hits
 }
 
-// Keep the mode choices beside the title when they fit. On smaller terminals
-// the controls share a dedicated header row, with the provider action at right.
+// Align the mode choices and provider action at the right, with a fixed gap
+// between the two groups. Smaller terminals use a dedicated header row.
 func renderLeadingPageHeader(o dashboardOptions, g dashboardLayout, left int) (string, int, int, []hitRegion) {
 	h := o.Header
 	var leading []string
@@ -193,13 +193,15 @@ func renderLeadingPageHeader(o dashboardOptions, g dashboardLayout, left int) (s
 	modeWidth := ansi.StringWidth(strings.Join(leading, ""))
 	actionWidth := ansi.StringWidth(strings.Join(actions, ""))
 	y, right := g.headerY, g.headerX+g.headerWidth
-	if modeWidth+2+actionWidth > right-left {
+	gap := 4
+	if modeWidth+gap+actionWidth > right-left {
 		y, left = g.headerY+1, g.headerX
 	}
-	if modeWidth+2+actionWidth > right-left {
+	if modeWidth+gap+actionWidth > right-left {
 		actions = renderActions(true)
 		actionWidth = ansi.StringWidth(strings.Join(actions, ""))
 	}
+	left = max(left, right-modeWidth-gap-actionWidth)
 	var hits []hitRegion
 	x := left
 	for i, action := range h.leading {
@@ -209,7 +211,6 @@ func renderLeadingPageHeader(o dashboardOptions, g dashboardLayout, left int) (s
 		}
 		x += w
 	}
-	gap := max(2, right-x-actionWidth)
 	x += gap
 	for i, action := range h.actions {
 		w := ansi.StringWidth(actions[i])

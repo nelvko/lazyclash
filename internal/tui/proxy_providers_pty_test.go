@@ -196,3 +196,7 @@ func (b *proxyProvidersPTYBackend) Runtime(ctx context.Context) (app.RuntimeSnap
 	defer b.mu.Unlock()
 	return app.RuntimeSnapshot{State: "ready", Service: b.snapshot.Service, RunningVersion: b.snapshot.RunningVersion}, ctx.Err()
 }
+
+func (b *proxyProvidersPTYBackend) StreamRuntime(ctx context.Context, emit func(app.RuntimeEvent)) error {
+	return streamRuntimeFixture(ctx, b, emit)
+}

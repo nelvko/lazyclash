@@ -417,6 +417,9 @@ func (m *Model) decorateContentFocus(g dashboardLayout, overlays []notificationO
 		return false
 	}
 	if m.focus == "content" {
+		if m.page == "proxies" {
+			return
+		}
 		rows := strings.Split(m.screen, "\n")
 		x := max(0, g.x-1)
 		if !covered(x, g.y) {

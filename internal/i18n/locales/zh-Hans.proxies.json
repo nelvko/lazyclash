@@ -14,7 +14,6 @@
   "proxies.group_reference": "策略组 · %s",
   "proxies.distributed": "无固定单一节点",
   "proxies.distributed_hint": "由内核按此组的策略处理，成员仅供查看。",
-  "proxies.direct_mode": "Direct 模式：普通流量直连。组选择仍保留，切回 Rule 后继续使用。",
   "proxies.cycle": "引用循环",
   "proxies.unknown_type": "类型不可用",
   "proxies.back": "← 返回",
