@@ -213,21 +213,17 @@ func TestMarianaSidebarCurrentHoverAndFocusAreIndependent(t *testing.T) {
 }
 
 func TestThemedHeaderHitRegionsFollowRenderedButtons(t *testing.T) {
-	for _, page := range []string{"connections"} {
-		m := ready(&fakeBackend{})
-		m.page = page
-		m.width, m.height = 120, 32
-		m.focus = map[string]string{"connections": "conn.retry", "rules": "rules.retry"}[page]
-		m.layout()
-		target := findTarget(t, m, m.focus)
-		if target.Y >= dashboardGeometry(dashboardOptions{Width: m.width, Height: m.height, Page: page}).y {
-			t.Fatalf("%s refresh action is outside the fixed header", page)
-		}
-		line := strings.Split(m.screen, "\n")[target.Y]
-		painted := ansi.Strip(ansi.Cut(line, target.X, target.X+target.W))
-		if ansi.StringWidth(painted) != target.W || (!strings.Contains(painted, "Refresh") && !strings.Contains(painted, "↻")) {
-			t.Fatalf("%s refresh hit does not match the painted button: %q, %+v", page, painted, target)
-		}
+	m := headerModel("connections", 120, 32)
+	m.focus = "conn.close-all"
+	m.layout()
+	target := findTarget(t, m, m.focus)
+	if target.Y >= dashboardGeometry(dashboardOptions{Width: m.width, Height: m.height, Page: m.page}).y {
+		t.Fatal("Close all action is outside the fixed header")
+	}
+	line := strings.Split(m.screen, "\n")[target.Y]
+	painted := ansi.Strip(ansi.Cut(line, target.X, target.X+target.W))
+	if ansi.StringWidth(painted) != target.W || !strings.Contains(painted, "Close all") {
+		t.Fatalf("Close all hit does not match the painted button: %q, %+v", painted, target)
 	}
 }
 

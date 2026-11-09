@@ -246,8 +246,9 @@ func TestRuntimeSampleCancellationAndHTTPFailures(t *testing.T) {
 		_, memoryErr := c.Memory(t.Context())
 		_, connectionsErr := c.Connections(t.Context())
 		closeErr := c.CloseConnection(t.Context(), "safe-id")
+		closeAllErr := c.CloseAllConnections(t.Context())
 		server.Close()
-		for _, err := range []error{trafficErr, memoryErr, connectionsErr, closeErr} {
+		for _, err := range []error{trafficErr, memoryErr, connectionsErr, closeErr, closeAllErr} {
 			if err == nil || strings.Contains(err.Error(), "private-") {
 				t.Fatalf("unsafe HTTP %d error: %v", code, err)
 			}
@@ -282,5 +283,68 @@ func TestConnectionsResponseLimitAndRuntimeTransportPolicy(t *testing.T) {
 	remote := Client{BaseURL: "http://example.invalid:19090"}
 	if _, err := remote.Traffic(t.Context()); err == nil {
 		t.Fatal("accepted remote controller")
+	}
+}
+
+func TestCloseAllConnectionsUsesOneAuthenticatedBulkRequest(t *testing.T) {
+	var calls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		if r.Method != http.MethodDelete || r.URL.Path != "/connections" || r.URL.RawQuery != "" {
+			t.Errorf("unexpected bulk close route: %s %s", r.Method, r.URL)
+		}
+		if r.Header.Get("Authorization") != "Bearer private-api-secret" {
+			t.Error("bulk close omitted managed authentication")
+		}
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer server.Close()
+	client := Client{BaseURL: server.URL, Secret: "private-api-secret"}
+	if err := client.CloseAllConnections(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("bulk close made %d requests, want one", calls.Load())
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := client.CloseAllConnections(ctx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("pre-canceled bulk close lost cancellation: %v", err)
+	}
+	if calls.Load() != 1 {
+		t.Fatal("pre-canceled bulk close reached the controller")
+	}
+}
+
+func TestCloseAllConnectionsCancelsInFlightRequest(t *testing.T) {
+	started, canceled := make(chan struct{}), make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(started)
+		<-r.Context().Done()
+		close(canceled)
+	}))
+	defer server.Close()
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- (Client{BaseURL: server.URL}).CloseAllConnections(ctx) }()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("bulk close did not reach the fixture")
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("bulk close lost cancellation: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("canceled bulk close remained blocked")
+	}
+	select {
+	case <-canceled:
+	case <-time.After(time.Second):
+		t.Fatal("canceled bulk close retained its HTTP request")
 	}
 }

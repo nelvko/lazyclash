@@ -61,7 +61,7 @@ func (m Model) pageHeader() pageHeader {
 		if m.runtime.received && m.runtime.snapshot.State == "ready" && m.runtime.snapshot.Connections != nil {
 			h.summary = tr("header.active", len(m.runtime.snapshot.Connections.Connections))
 		}
-		h.actions = []headerAction{{"conn.retry", tr("header.refresh"), "↻", !m.connections.confirming}}
+		h.actions = []headerAction{{"conn.close-all", tr("connections.close_all"), "×", !m.connections.confirming && m.canCloseAllConnections()}}
 	case "rules":
 		h.actions = []headerAction{{"rules.providers", tr("providers.title.rules"), "≡", m.providersSupported(providerRules)}}
 	case "logs":
@@ -113,6 +113,9 @@ func renderPageHeader(o dashboardOptions, g dashboardLayout, titleX, titleWidth 
 				label = string([]rune(label)[0])
 			}
 			options := dashboardButtonOptions(action.id, o, false, bg)
+			if action.id == "conn.close-all" {
+				options.Kind = buttonDanger
+			}
 			options.Disabled = !action.enabled || o.Busy
 			value := renderButton(label, options)
 			values = append(values, value)

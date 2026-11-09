@@ -191,8 +191,8 @@ func (a *App) Connections(ctx context.Context) (mihomo.ConnectionSnapshot, error
 }
 
 // CloseConnection serializes the ownership check and exact-ID close against
-// local service/configuration changes. There is deliberately no close-all use
-// case. A disappearing connection is reported without closing another one.
+// local service/configuration changes. A disappearing connection is reported
+// without closing another one.
 func (a *App) CloseConnection(ctx context.Context, id string) error {
 	if !mihomo.ValidConnectionID(id) {
 		return diagnostic.New("diagnostic.runtime.connectionID", "invalid connection ID")
@@ -217,5 +217,22 @@ func (a *App) CloseConnection(ctx context.Context, id string) error {
 			}
 		}
 		return diagnostic.New("diagnostic.runtime.connectionGone", "connection is no longer active; refresh the list")
+	})
+}
+
+// CloseAllConnections serializes the ownership check and bulk close against
+// local service/configuration changes, using the core's bulk endpoint.
+func (a *App) CloseAllConnections(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	return a.locked(ctx, func() error {
+		s, client, _, err := a.inspectRuntimeLocked(ctx)
+		if err != nil {
+			return err
+		}
+		if s.State != "ready" {
+			return runtimeError(s)
+		}
+		return client.CloseAllConnections(ctx)
 	})
 }

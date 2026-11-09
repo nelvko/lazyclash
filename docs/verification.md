@@ -1,5 +1,18 @@
 # 验证入口
 
+## Connections 关闭全部（2026-11-09）
+
+连接页头以危险操作样式的“关闭全部”替换刷新按钮，移除 `conn.retry` 动作和 `g` / `Ctrl+R` 在连接页的刷新行为，并为新按钮提供独立底栏帮助。数据仍由共享实时会话更新。批量操作复用默认取消的确认流程，提示范围包含筛选和暂停画面之外的全部活动连接；取消保留原详情与滚动，确认执行时恢复实时画面并保留搜索。空列表、数据不可用、忙碌或确认期间禁止启动，确认前再次核对 live 状态。
+
+新增应用用例沿用管理锁和服务归属/ready 检查，通过独立的 `Client.CloseAllConnections` 一次发送 `DELETE /connections`，不先列举连接；原有单条关闭继续使用 ID 校验和独立路径。测试覆盖默认取消、重复确认去重、失败重试、暂停/筛选范围、空或失效 live 状态、背景鼠标阻断、原详情恢复、刷新入口退役，以及 HTTP 认证、取消、锁释放、归属拒绝、重定向拒绝及错误脱敏。
+
+最终 `make check build` 通过，包含应用及仓库内 Ultraviolet 的测试、vet 和产品构建；app/mihomo/TUI 相关 race、八项 Python 终端解析回归通过。`./scripts/verify-linux.sh lazyclash-e2e` 在已有 Debian/arm64 专用 VM 实际执行全部可运行应用和 Ultraviolet 测试，通过。首次全包测试遇到错误通知暂时遮挡页头，已让失败重试用例先通过通知关闭按钮恢复页头后重试，未放宽批量操作断言。
+
+真实 controlling PTY 完成中英文 × True Color、ANSI256、NO_COLOR 六组，保留 200×45 至 40×16 六种尺寸的列表截图及原搜索、暂停、排序、详情与滚动回归。每组单条关闭一次后，在仅筛选到一条时先点击“关闭全部”并按 Enter 默认取消，再次进入并按 y 确认，后台剩余 47 条全部关闭；最终 `closes=1`、`close_all=1`、`connections=0`，服务、模式及节点修改均为零。补充中文 True Color 检查最终页头聚焦后的独立帮助文本。PNG 根据真实 PTY 字符格与颜色重绘，使用隔离内存后端；本轮未操作真实 Mihomo、系统服务或 TUN。
+
+记录位于 `.test-artifacts/connections-close-all/`，包括 `check-build.log`、`race.log`、`final-tui-race.log`、`linux.log` 和 `pty/20261109-155114-3ed0cd/`；最终帮助文本检查位于同目录 `final-pty/`。
+
+
 ## Termius 中文页面横向黑条（2026-11-09）
 
 用户录屏显示流量刷新时，静态中文控件所在行短暂出现横向黑条；用户随后在 Termius 中确认英文正常、中文异常。当前 Ultraviolet 的 `paintLine` 对含宽字符的 touched 行直接擦行重写，没有先比较行是否变化；Bubble Tea 每个变更帧都会清空并重画内部 cell buffer，因此未变化的中文行也会反复输出。项目固定版本及当前可用的新版本均保留这一行为。

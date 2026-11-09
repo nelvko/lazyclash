@@ -20,6 +20,8 @@ type connectionsState struct {
 	selectedIndex, detailScroll int
 	detail                      *mihomo.Connection
 	confirming                  bool
+	closeAll                    bool
+	closeAllScroll              int
 	sort                        connectionSort
 	rates                       connectionRatesState
 	paused                      bool
@@ -133,6 +135,9 @@ func (m Model) detailActive() bool {
 	}
 	return false
 }
+func (m Model) canCloseAllConnections() bool {
+	return !m.busy && !m.quitting && m.runtime.received && m.runtime.snapshot.State == "ready" && m.runtime.snapshot.Connections != nil && len(m.runtime.snapshot.Connections.Connections) > 0
+}
 func (m *Model) focusConnectionSearch() tea.Cmd {
 	m.connections.detail = nil
 	m.connections.confirming = false
@@ -174,8 +179,7 @@ func (m *Model) connectionKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 	if m.connections.confirming {
 		switch key {
 		case "esc", "n":
-			m.connections.confirming = false
-			m.focus = "conn.close"
+			return true, m.connectionActivate("conn.cancel")
 		case "y":
 			return true, m.connectionActivate("conn.confirm")
 		case "tab", "shift+tab":
@@ -253,8 +257,6 @@ func (m *Model) connectionKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 			m.revealConnection(index)
 			return true, nil
 		}
-	case "g", "ctrl+r":
-		return true, m.retryRuntime()
 	}
 	return false, nil
 }
@@ -327,8 +329,12 @@ func (m *Model) connectionActivate(id string) tea.Cmd {
 		}
 		m.reconcileConnections()
 		m.revealConnection(0)
-	case id == "conn.retry":
-		return m.retryRuntime()
+	case id == "conn.close-all":
+		if !m.connections.confirming && m.canCloseAllConnections() {
+			m.connections.closeAllScroll = m.scroll
+			m.connections.confirming, m.connections.closeAll = true, true
+			m.scroll, m.focus = 0, "conn.cancel"
+		}
 	case id == "conn.back":
 		m.connections.detail = nil
 		m.connections.confirming = false
@@ -337,16 +343,39 @@ func (m *Model) connectionActivate(id string) tea.Cmd {
 		m.reconcileConnections()
 		m.revealConnection(0)
 	case id == "conn.close":
-		if m.detailActive() {
+		if !m.busy && !m.connections.confirming && m.detailActive() {
 			m.connections.confirming = true
+			m.connections.closeAll = false
 			m.scroll = 0
 			m.focus = "conn.cancel"
 		}
 	case id == "conn.cancel":
 		m.connections.confirming = false
-		m.focus = "conn.close"
+		if m.connections.closeAll {
+			m.connections.closeAll = false
+			m.scroll, m.focus = m.connections.closeAllScroll, "conn.close-all"
+		} else {
+			m.focus = "conn.close"
+		}
 	case id == "conn.confirm":
-		if !m.connections.confirming || m.connections.detail == nil {
+		if !m.connections.confirming || m.busy {
+			return nil
+		}
+		if m.connections.closeAll {
+			available := m.canCloseAllConnections()
+			m.connectionActivate("conn.cancel")
+			if !available {
+				m.prepareNotification("connections.close-all", m.tr("connections.closing_all"))
+				m.failure = m.tr("connections.close_all_unavailable")
+				return nil
+			}
+			// The operation affects the live core, including connections hidden by
+			// filtering or pause. Resume the live view to observe its result.
+			m.connections.paused, m.connections.frozen = false, nil
+			m.connections.frozenRates = connectionRatesState{}
+			return m.begin(m.tr("connections.closing_all"), m.tr("connections.close_all_requested"), m.backend.CloseAllConnections, notificationOperation{Key: "connections.close-all", Context: m.tr("connections.closing_all")})
+		}
+		if m.connections.detail == nil {
 			return nil
 		}
 		if !m.detailActive() {

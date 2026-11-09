@@ -185,6 +185,8 @@ func (m Model) contextHelp() string {
 			return tr("providers.open_hint")
 		case "profiles.update-all":
 			return tr("navigation.updateProfiles")
+		case "conn.close-all":
+			return tr("connections.close_all_hint")
 		case "logs.follow":
 			return tr("navigation.logsFollow")
 		case "logs.retry":

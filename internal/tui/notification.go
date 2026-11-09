@@ -328,7 +328,7 @@ func (m Model) dashboardOptions() dashboardOptions {
 			o.BodyTopRows = rows
 		}
 	}
-	if m.page == "connections" && m.connections.detail == nil {
+	if m.page == "connections" && m.connections.detail == nil && !m.connections.confirming {
 		g := dashboardGeometry(o)
 		rows := m.connectionToolbarRows(g.width)
 		if g.height >= rows+2 {

@@ -205,11 +205,40 @@ def exercise(preview, binary, output, language, profile, args):
         search(terminal, "")
         terminal.wait("www.youtube.com")
         terminal.wait_absent("api.github.com")
+
+        # The header action always closes the live core's entire connection
+        # list, including rows hidden by this filter. Enter first exercises
+        # the default Cancel action before explicitly confirming a new attempt.
+        search(terminal, "streaming")
+        terminal.wait("www.youtube.com")
+        terminal.wait_absent("flow-04.example.invalid")
+        terminal.click_text(words["connections.close_all"])
+        terminal.wait(words["connections.confirm_all_title"])
+        preview.capture(terminal, output, "close-all-default-cancel", args)
+        terminal.key(b"\r")
+        terminal.wait_absent(words["connections.confirm_all_title"])
+        terminal.wait("www.youtube.com")
+        terminal.wait(words["connections.close_all_hint"])
+        terminal.settle()
+        footer = terminal.screen.text().splitlines()[-1]
+        assert words["connections.close_all_hint"] in footer, "header focus lost the close-all help text"
+        assert words["header.refresh"] not in footer, "close-all header still advertises refresh"
+        preview.capture(terminal, output, "focused-close-all", args)
+        terminal.click_text(words["connections.close_all"])
+        terminal.wait(words["connections.confirm_all_title"])
+        preview.capture(terminal, output, "close-all-confirmation", args)
+        terminal.key(b"y")
+        terminal.wait(words["connections.close_all_requested"])
+        terminal.wait(words["connections.no_matches"])
+        search(terminal, "")
+        terminal.wait(words["connections.empty"])
+        terminal.wait_absent("www.youtube.com")
+        preview.capture(terminal, output, "close-all-empty", args)
         terminal.exit()
         calls = json.loads(report.read_text())
         assert calls["runtime_queries"] >= 4, calls
         assert calls["closes"] == 1 and calls["closed_ids"] == ["pty-connection-00"], calls
-        assert calls["connections"] == 47, calls
+        assert calls["close_all"] == 1 and calls["connections"] == 0, calls
         assert calls["service_changes"] == calls["modes"] == calls["selections"] == 0, calls
         raw = bytes(terminal.raw)
         assert not preview.OSC_SET.search(raw), "application changed the terminal palette"
@@ -218,7 +247,7 @@ def exercise(preview, binary, output, language, profile, args):
         if profile == "no-color":
             assert not any(value not in (b"", b"0") for value in preview.SGR.findall(raw)), "NO_COLOR emitted styling"
         (output / "pty.raw").write_bytes(raw)
-        print("PASS %s/%s: search, rate samples, live pause, six sorts, details/two-row clicks, fixed toolbar, six sizes, exact close; %s" %
+        print("PASS %s/%s: search, rate samples, live pause, six sorts, details/two-row clicks, fixed toolbar, six sizes, exact close, filtered close-all cancellation/confirmation; %s" %
             (language, profile, json.dumps(calls)), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")

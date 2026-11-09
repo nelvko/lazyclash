@@ -257,6 +257,13 @@ func (m Model) connectionsBody(width int) (string, []hitRegion) {
 		}
 		lines = append(lines, cellCrop(s, width))
 	}
+	if m.connections.confirming && m.connections.closeAll {
+		addText(m.tr("connections.confirm_all_title"), warning)
+		addText(m.tr("connections.confirm_all_hint"), muted)
+		addButton("conn.cancel", m.tr("connections.cancel"))
+		addButton("conn.confirm", m.tr("connections.close_all"))
+		return strings.Join(lines, "\n"), hits
+	}
 	if c := m.connections.detail; c != nil {
 		addText(m.tr("connections.details"), text)
 		if m.detailActive() {

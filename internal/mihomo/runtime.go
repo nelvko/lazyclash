@@ -121,12 +121,18 @@ func decodeConnections(raw []byte) (ConnectionSnapshot, error) {
 	return result, nil
 }
 
-// CloseConnection deliberately has no empty-ID or close-all variant.
+// CloseConnection only closes one validated opaque connection ID.
 func (c Client) CloseConnection(ctx context.Context, id string) error {
 	if !ValidConnectionID(id) {
 		return diagnostic.New("diagnostic.api.connectionID", "invalid connection ID; refresh the connections list")
 	}
 	_, err := c.request(ctx, http.MethodDelete, "/connections/"+url.PathEscape(id), nil)
+	return err
+}
+
+// CloseAllConnections closes the current core's connections in one request.
+func (c Client) CloseAllConnections(ctx context.Context) error {
+	_, err := c.request(ctx, http.MethodDelete, "/connections", nil)
 	return err
 }
 

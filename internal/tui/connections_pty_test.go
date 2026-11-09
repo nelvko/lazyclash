@@ -37,7 +37,7 @@ func TestConnectionsPTYFixture(t *testing.T) {
 	raw, err := json.Marshal(map[string]any{
 		"runtime_queries": b.queries.Load(), "closes": len(b.closedIDs), "closed_ids": b.closedIDs,
 		"service_changes": b.controls.Load(), "modes": b.modes.Load(), "selections": b.selections.Load(),
-		"connections": len(b.entries),
+		"connections": len(b.entries), "close_all": b.closeAllCalls,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -52,6 +52,7 @@ type connectionsPTYBackend struct {
 	mu                                   sync.Mutex
 	entries                              []mihomo.Connection
 	closedIDs                            []string
+	closeAllCalls                        int
 	queryReport                          string
 	queries, controls, modes, selections atomic.Int64
 }
@@ -138,6 +139,17 @@ func (b *connectionsPTYBackend) CloseConnection(ctx context.Context, id string) 
 		}
 	}
 	return fmt.Errorf("fixture connection is no longer active")
+}
+
+func (b *connectionsPTYBackend) CloseAllConnections(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.closeAllCalls++
+	b.entries = nil
+	return nil
 }
 
 func (b *connectionsPTYBackend) Control(ctx context.Context, _ string) error {

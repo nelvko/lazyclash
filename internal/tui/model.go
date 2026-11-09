@@ -53,6 +53,7 @@ type Backend interface {
 	Select(context.Context, string, string) error
 	StreamRuntime(context.Context, func(app.RuntimeEvent)) error
 	CloseConnection(context.Context, string) error
+	CloseAllConnections(context.Context) error
 	Rules(context.Context) (app.RuleSnapshot, error)
 	GetRuntimeSettings(context.Context) (app.RuntimeSettings, error)
 	PrepareRuntimeSettings(context.Context, app.RuntimeSettings) (app.RuntimeSettingsPlan, error)
@@ -927,7 +928,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "esc":
 			m.returnToNavigation()
 		case "g", "ctrl+r":
-			if m.page != "proxies" {
+			if m.page != "proxies" && m.page != "connections" {
 				cmd = m.refresh()
 			}
 		}

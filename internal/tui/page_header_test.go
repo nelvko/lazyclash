@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"strings"
 	"testing"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -52,7 +51,7 @@ func TestPageHeadersUsePageActionsAcrossSizesAndFocus(t *testing.T) {
 	for page, actions := range map[string][]string{
 		"proxies":     {"proxies.providers"},
 		"profiles":    {"profiles.update-all"},
-		"connections": {"conn.retry"},
+		"connections": {"conn.close-all"},
 		"logs":        {"logs.follow", "logs.retry"}, "settings": {"network"},
 	} {
 		for _, size := range [][2]int{{20, 7}, {30, 12}, {60, 20}, {70, 20}, {80, 24}, {120, 32}, {160, 45}, {216, 55}} {
@@ -262,54 +261,26 @@ func headerText(m Model) string {
 	return ansi.Strip(strings.Join(strings.Split(m.screen, "\n")[:g.headerHeight], "\n"))
 }
 
-func TestRuntimePageRefreshesUseExistingReaders(t *testing.T) {
-	for _, page := range []string{"connections", "rules"} {
-		t.Run(page, func(t *testing.T) {
-			calls := 0
-			m := headerModel(page, 120, 32)
-			m.backend = &fakeBackend{snapshot: m.snapshot,
-				streamRuntime: func(ctx context.Context, emit func(app.RuntimeEvent)) error {
-					calls++
-					emit(app.RuntimeEvent{Source: app.RuntimeStatus, Instance: 1, ObservedAt: time.Now(), Snapshot: app.RuntimeSnapshot{State: "ready"}})
-					<-ctx.Done()
-					return ctx.Err()
-				},
-				rules: func(context.Context) (app.RuleSnapshot, error) {
-					calls++
-					return app.RuleSnapshot{State: "ready", Rules: sampleRules()}, nil
-				},
-			}
-			if page == "rules" {
-				m.rules.snapshot.State = "unavailable"
-				m.layout()
-			}
-			id := map[string]string{"connections": "conn.retry", "rules": "rules.retry"}[page]
-			m, cmd := click(m, findTarget(t, m, id))
-			if cmd == nil || m.busy {
-				t.Fatal("header refresh did not start an independent page reader")
-			}
-			if page == "connections" {
-				commands := commandBatch(t, cmd)
-				done := make(chan struct{})
-				go func() { commands[0](); close(done) }()
-				m, _ = update(m, commands[1]())
-				m.stopRuntime()
-				select {
-				case <-done:
-				case <-time.After(time.Second):
-					t.Fatal("retry reader did not cancel")
-				}
-			} else {
-				m, _ = update(m, cmd())
-			}
-			if calls != 1 {
-				t.Fatalf("header refresh read the wrong use case: %d reads", calls)
-			}
-			m.stopRuntime()
-			m.stopRules()
-			m.stopCoreStatus()
-		})
+func TestRulesFailureRetryUsesExistingReader(t *testing.T) {
+	calls := 0
+	m := headerModel("rules", 120, 32)
+	m.backend = &fakeBackend{snapshot: m.snapshot, rules: func(context.Context) (app.RuleSnapshot, error) {
+		calls++
+		return app.RuleSnapshot{State: "ready", Rules: sampleRules()}, nil
+	}}
+	m.rules.snapshot.State = "unavailable"
+	m.layout()
+	m, cmd := click(m, findTarget(t, m, "rules.retry"))
+	if cmd == nil || m.busy {
+		t.Fatal("rules retry did not start an independent page reader")
 	}
+	m, _ = update(m, cmd())
+	if calls != 1 {
+		t.Fatalf("rules retry read the wrong use case: %d reads", calls)
+	}
+	m.stopRuntime()
+	m.stopRules()
+	m.stopCoreStatus()
 }
 
 func TestRulesReadyHeaderOmitsRefreshAndFailureOffersRetry(t *testing.T) {
@@ -356,8 +327,8 @@ func TestHeaderActionsAreUnavailableDuringBusyOrConnectionConfirmation(t *testin
 	m.connections.confirming = true
 	m.layout()
 	for _, hit := range m.targets {
-		if hit.ID == "conn.retry" {
-			t.Fatal("connection confirmation retained a clickable Refresh action")
+		if hit.ID == "conn.close-all" {
+			t.Fatal("connection confirmation retained a clickable Close all action")
 		}
 	}
 }

@@ -15,5 +15,12 @@
   "connections.upload_speed": "↑ Speed",
   "connections.download_total": "↓ Total",
   "connections.upload_total": "↑ Total",
-  "connections.duration": "Duration"
+  "connections.duration": "Duration",
+  "connections.close_all": "Close all",
+  "connections.confirm_all_title": "Close all connections?",
+  "connections.confirm_all_hint": "Close every active connection in Mihomo, including connections outside the filter or paused view and new arrivals. y Confirm · Esc Cancel",
+  "connections.closing_all": "Closing all connections…",
+  "connections.close_all_requested": "All connections close requested",
+  "connections.close_all_unavailable": "Connections are unavailable or already closed",
+  "connections.close_all_hint": "Enter Review closing all connections · Tab Content · ? Help"
 }

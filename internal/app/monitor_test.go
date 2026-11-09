@@ -93,6 +93,9 @@ func TestRuntimeUnavailableStatesNeverContactController(t *testing.T) {
 			if err := a.CloseConnection(t.Context(), monitorConnectionID); err == nil {
 				t.Fatal("close accepted an unavailable owned service")
 			}
+			if err := a.CloseAllConnections(t.Context()); err == nil {
+				t.Fatal("bulk close accepted an unavailable or unowned service")
+			}
 			if calls.Load() != 0 {
 				t.Fatal("unavailable service caused controller requests")
 			}
@@ -382,5 +385,102 @@ func TestCloseConnectionRechecksExactIDWithoutCloseAll(t *testing.T) {
 	snapshot, err := a.Connections(t.Context())
 	if err != nil || deletes.Load() != 1 || len(snapshot.Connections) != 1 || snapshot.Connections[0].ID != monitorOtherID || snapshot.UploadTotal != 100 {
 		t.Fatalf("unrelated connection or counters changed: %+v, deletes=%d, err=%v", snapshot, deletes.Load(), err)
+	}
+}
+
+func TestCloseAllConnectionsUsesBulkEndpointWithoutListingRows(t *testing.T) {
+	a, svc := installedApp(t)
+	svc.active = true
+	var calls atomic.Int32
+	monitorFixture(t, a, func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		if r.Method != http.MethodDelete || r.URL.Path != "/connections" || r.URL.RawQuery != "" {
+			t.Errorf("unexpected bulk close request: %s %s", r.Method, r.URL)
+			w.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+	if err := a.CloseAllConnections(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if calls.Load() != 1 {
+		t.Fatalf("bulk close made %d controller requests, want one", calls.Load())
+	}
+}
+
+func TestCloseAllConnectionsHoldsManagementLockUntilCancellation(t *testing.T) {
+	a, svc := installedApp(t)
+	svc.active = true
+	started, canceled := make(chan struct{}), make(chan struct{})
+	monitorFixture(t, a, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete || r.URL.Path != "/connections" {
+			t.Errorf("unexpected bulk close request: %s %s", r.Method, r.URL.Path)
+		}
+		close(started)
+		<-r.Context().Done()
+		close(canceled)
+	})
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	done := make(chan error, 1)
+	go func() { done <- a.CloseAllConnections(ctx) }()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("bulk close did not reach the fixture")
+	}
+	acquired := make(chan struct{})
+	lockDone := make(chan error, 1)
+	go func() { lockDone <- a.locked(t.Context(), func() error { close(acquired); return nil }) }()
+	select {
+	case <-acquired:
+		t.Fatal("bulk close released management lock before request completed")
+	case <-time.After(30 * time.Millisecond):
+	}
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("bulk close lost cancellation: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("canceled bulk close remained blocked")
+	}
+	select {
+	case err := <-lockDone:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("bulk close did not release management lock after cancellation")
+	}
+	select {
+	case <-canceled:
+	case <-time.After(time.Second):
+		t.Fatal("canceled bulk close retained its HTTP request")
+	}
+}
+
+func TestCloseAllConnectionsHTTPFailureDoesNotExposeResponse(t *testing.T) {
+	for _, code := range []int{http.StatusUnauthorized, http.StatusInternalServerError, http.StatusFound} {
+		t.Run(fmt.Sprint(code), func(t *testing.T) {
+			a, svc := installedApp(t)
+			svc.active = true
+			var calls atomic.Int32
+			monitorFixture(t, a, func(w http.ResponseWriter, r *http.Request) {
+				calls.Add(1)
+				w.Header().Set("Location", "https://example.invalid/private-location-secret")
+				w.WriteHeader(code)
+				_, _ = w.Write([]byte("private-response-secret"))
+			})
+			err := a.CloseAllConnections(t.Context())
+			if err == nil || strings.Contains(err.Error(), "private-") {
+				t.Fatalf("unsafe bulk close HTTP error: %v", err)
+			}
+			if calls.Load() != 1 {
+				t.Fatalf("HTTP failure retried or redirected bulk close: %d requests", calls.Load())
+			}
+		})
 	}
 }
