@@ -58,12 +58,13 @@ func ruleProvidersModel(t *testing.T, count int) (Model, *ruleProvidersTestBacke
 	m.logoIntro.used, m.message = true, ""
 	m.notification.items = nil
 	m.notification.source = m.notificationSource()
-	m.ruleProviders = newRuleProvidersState(m.locale)
-	m.ruleProviders.open, m.ruleProviders.active, m.ruleProviders.received = true, true, true
-	m.ruleProviders.generation = 7
-	m.ruleProviders.snapshot = app.RuleProviderSnapshot{State: "ready", Providers: backend.providers}
-	m.reconcileRuleProviders()
-	m.focus = "rules.provider." + m.ruleProviders.selected
+	m.providers = newProviderPanelState(m.locale)
+	m.providers.open, m.providers.active, m.providers.received = true, true, true
+	m.providers.generation = 7
+	m.providers.snapshot = ruleProviderSnapshot(app.RuleProviderSnapshot{State: "ready", Providers: backend.providers})
+	m.providers.source = m.providerSource()
+	m.reconcileProviders()
+	m.focus = "provider.row." + m.providers.selected
 	return m, backend
 }
 
@@ -84,35 +85,35 @@ func providerMessages(command tea.Cmd) []tea.Msg {
 
 func TestRulesProvidersReadCancelsAndRejectsStaleRequests(t *testing.T) {
 	m, backend := ruleProvidersModel(t, 4)
-	m.ruleProviders.active, m.ruleProviders.received = false, false
+	m.providers.active, m.providers.received = false, false
 	var requests []context.Context
 	backend.read = func(ctx context.Context) (app.RuleProviderSnapshot, error) {
 		requests = append(requests, ctx)
 		return app.RuleProviderSnapshot{State: "ready", Providers: backend.providers}, nil
 	}
-	first := m.syncRuleProviders()
-	if first == nil || !m.ruleProviders.pending || m.syncRuleProviders() != nil {
+	first := m.syncProviders()
+	if first == nil || !m.providers.pending || m.syncProviders() != nil {
 		t.Fatal("provider reader did not start exactly one request")
 	}
-	old := first().(ruleProvidersResultMsg)
-	second := m.retryRuleProviders()
+	old := first().(providersResultMsg)
+	second := m.retryProviders()
 	if requests[0].Err() == nil || second == nil {
 		t.Fatal("explicit reload did not cancel its prior request")
 	}
-	m.acceptRuleProviders(old)
-	if m.ruleProviders.received || !m.ruleProviders.pending {
+	m.acceptProviders(old)
+	if m.providers.received || !m.providers.pending {
 		t.Fatal("old read result replaced the fresh request")
 	}
-	fresh := second().(ruleProvidersResultMsg)
-	if m.acceptRuleProviders(fresh) == nil || m.ruleProviders.pending || !m.ruleProviders.received || len(m.filteredRuleProviders()) != 4 {
+	fresh := second().(providersResultMsg)
+	if m.acceptProviders(fresh) == nil || m.providers.pending || !m.providers.received || len(m.filteredProviders()) != 4 {
 		t.Fatal("fresh provider observation did not publish or schedule polling")
 	}
-	third := m.ruleProvidersCmd()
-	late := third().(ruleProvidersResultMsg)
-	m.stopRuleProviders()
-	generation := m.ruleProviders.generation
-	m.acceptRuleProviders(late)
-	if m.ruleProviders.active || m.ruleProviders.pending || generation != m.ruleProviders.generation {
+	third := m.providersCmd()
+	late := third().(providersResultMsg)
+	m.stopProviders()
+	generation := m.providers.generation
+	m.acceptProviders(late)
+	if m.providers.active || m.providers.pending || generation != m.providers.generation {
 		t.Fatal("response after leaving reactivated the provider reader")
 	}
 }
@@ -120,37 +121,37 @@ func TestRulesProvidersReadCancelsAndRejectsStaleRequests(t *testing.T) {
 func TestRulesProvidersReopeningWaitsForCurrentCoreObservation(t *testing.T) {
 	m, backend := ruleProvidersModel(t, 3)
 	oldName := backend.providers[0].Name
-	m.ruleProviders.search.SetValue("provider")
-	m.ruleProvidersActivate("rules.providers-back")
+	m.providers.search.SetValue("provider")
+	m.providersActivate("providers.back")
 	backend.providers = []mihomo.RuleProvider{{Name: "current-provider", VehicleType: "HTTP", Behavior: "Domain"}}
-	command := m.openRuleProviders()
-	if command == nil || m.ruleProviders.received || len(m.filteredRuleProviders()) != 0 || m.ruleProvidersCanUpdateAll() {
+	command := m.openProviders(providerRules)
+	if command == nil || m.providers.received || len(m.filteredProviders()) != 0 || m.providersCanUpdateAll() {
 		t.Fatal("reopened panel exposed cached mutation targets before reading the current core")
 	}
-	if m.ruleProviders.search.Value() != "provider" || m.ruleProviders.selected != oldName {
+	if m.providers.search.Value() != "provider" || m.providers.selected != oldName {
 		t.Fatal("reopening unexpectedly discarded the prior query or selection")
 	}
-	if m.ruleProvidersActivate("rules.provider-update."+oldName) != nil {
+	if m.providersActivate("provider.update."+oldName) != nil {
 		t.Fatal("cached source remained mutable before a current observation")
 	}
-	m.acceptRuleProviders(command().(ruleProvidersResultMsg))
-	if list := m.filteredRuleProviders(); len(list) != 1 || list[0].Name != "current-provider" || m.ruleProviders.selected != "current-provider" {
+	m.acceptProviders(command().(providersResultMsg))
+	if list := m.filteredProviders(); len(list) != 1 || list[0].Name != "current-provider" || m.providers.selected != "current-provider" {
 		t.Fatal("fresh observation did not replace cached sources and reconcile selection")
 	}
 }
 
 func TestRulesProvidersReloadDiscardsPriorPollingTimer(t *testing.T) {
 	m, _ := ruleProvidersModel(t, 3)
-	first := m.ruleProvidersCmd()().(ruleProvidersResultMsg)
-	m.acceptRuleProviders(first)
-	second := m.retryRuleProviders()().(ruleProvidersResultMsg)
-	m.acceptRuleProviders(second)
-	m, _ = update(m, ruleProvidersTickMsg{generation: first.generation, request: first.request})
-	if m.ruleProviders.pending {
+	first := m.providersCmd()().(providersResultMsg)
+	m.acceptProviders(first)
+	second := m.retryProviders()().(providersResultMsg)
+	m.acceptProviders(second)
+	m, _ = update(m, providersTickMsg{kind: first.kind, source: first.source, generation: first.generation, request: first.request})
+	if m.providers.pending {
 		t.Fatal("a superseded read timer started another polling chain")
 	}
-	m, command := update(m, ruleProvidersTickMsg{generation: second.generation, request: second.request})
-	if command == nil || !m.ruleProviders.pending {
+	m, command := update(m, providersTickMsg{kind: second.kind, source: second.source, generation: second.generation, request: second.request})
+	if command == nil || !m.providers.pending {
 		t.Fatal("the current read timer did not continue polling")
 	}
 }
@@ -166,11 +167,11 @@ func TestRulesProvidersUpdateAllIsBoundedDeduplicatedAndReportsFailures(t *testi
 		}
 		return ctx.Err()
 	}
-	command := m.ruleProvidersActivate("rules.providers-all")
-	if m.ruleProviders.running() != 3 || len(m.ruleProviders.queue) != 4 {
-		t.Fatalf("bulk update did not reserve three slots: running=%d queued=%d", m.ruleProviders.running(), len(m.ruleProviders.queue))
+	command := m.providersActivate("providers.all")
+	if m.providers.running() != 3 || len(m.providers.queue) != 4 {
+		t.Fatalf("bulk update did not reserve three slots: running=%d queued=%d", m.providers.running(), len(m.providers.queue))
 	}
-	if duplicate := m.ruleProvidersActivate("rules.providers-all"); duplicate != nil || len(m.ruleProviders.queue) != 4 {
+	if duplicate := m.providersActivate("providers.all"); duplicate != nil || len(m.providers.queue) != 4 {
 		t.Fatal("duplicate Update All created more work")
 	}
 	messages := providerMessages(command)
@@ -180,23 +181,23 @@ func TestRulesProvidersUpdateAllIsBoundedDeduplicatedAndReportsFailures(t *testi
 	for len(messages) > 0 {
 		message := messages[0]
 		messages = messages[1:]
-		if result, ok := message.(ruleProviderUpdateResultMsg); ok {
-			messages = append(messages, providerMessages(m.acceptRuleProviderUpdate(result))...)
+		if result, ok := message.(providerUpdateResultMsg); ok {
+			messages = append(messages, providerMessages(m.acceptProviderUpdate(result))...)
 		}
-		if m.ruleProviders.running() > 3 {
+		if m.providers.running() > 3 {
 			t.Fatal("a completion overfilled the update worker budget")
 		}
 	}
-	if len(calls) != 7 || calls[backend.providers[7].Name] != 0 || m.ruleProviders.running() != 0 || len(m.ruleProviders.queue) != 0 {
+	if len(calls) != 7 || calls[backend.providers[7].Name] != 0 || m.providers.running() != 0 || len(m.providers.queue) != 0 {
 		t.Fatalf("updates omitted a source or included Inline: %#v", calls)
 	}
-	if m.ruleProviders.updates[fail].state != "failed" || m.ruleProviders.updates[backend.providers[0].Name].state != "success" {
+	if m.providers.updates[fail].state != "failed" || m.providers.updates[backend.providers[0].Name].state != "success" {
 		t.Fatal("individual failure erased another provider's success")
 	}
-	for _, result := range providerMessages(m.ruleProvidersActivate("rules.provider-update." + fail)) {
-		m.acceptRuleProviderUpdate(result.(ruleProviderUpdateResultMsg))
+	for _, result := range providerMessages(m.providersActivate("provider.update." + fail)) {
+		m.acceptProviderUpdate(result.(providerUpdateResultMsg))
 	}
-	if calls[fail] != 2 || m.ruleProviders.updates[fail].state != "success" {
+	if calls[fail] != 2 || m.providers.updates[fail].state != "success" {
 		t.Fatal("retry did not update exactly its failed source")
 	}
 }
@@ -208,22 +209,22 @@ func TestRulesProvidersDepartureCancelsQueueAndLateUpdates(t *testing.T) {
 		contexts = append(contexts, ctx)
 		return nil
 	}
-	results := providerMessages(m.ruleProvidersActivate("rules.providers-all"))
+	results := providerMessages(m.providersActivate("providers.all"))
 	if len(contexts) != 3 {
 		t.Fatal("fixture did not start a full batch")
 	}
-	m.ruleProvidersActivate("rules.providers-back")
+	m.providersActivate("providers.back")
 	for _, ctx := range contexts {
 		if ctx.Err() == nil {
 			t.Fatal("leaving provider view did not cancel a running update")
 		}
 	}
 	for _, message := range results {
-		if m.acceptRuleProviderUpdate(message.(ruleProviderUpdateResultMsg)) != nil {
+		if m.acceptProviderUpdate(message.(providerUpdateResultMsg)) != nil {
 			t.Fatal("late update scheduled work after leaving")
 		}
 	}
-	if m.ruleProviders.open || m.focus != "rules.providers" || m.ruleProviders.running() != 0 || len(m.ruleProviders.queue) != 0 || len(m.ruleProviders.updates) != 0 {
+	if m.providers.open || m.focus != "rules.providers" || m.providers.running() != 0 || len(m.providers.queue) != 0 || len(m.providers.updates) != 0 {
 		t.Fatal("departed view retained pending or successful update indicators")
 	}
 }
@@ -249,9 +250,9 @@ func TestRulesProvidersQuitAndCancellationStopReadsAndUpdates(t *testing.T) {
 				contexts = append(contexts, ctx)
 				return nil
 			}
-			read := m.ruleProvidersCmd()().(ruleProvidersResultMsg)
-			updates := providerMessages(m.ruleProvidersActivate("rules.providers-all"))
-			if len(contexts) != 4 || len(m.ruleProviders.queue) != 3 {
+			read := m.providersCmd()().(providersResultMsg)
+			updates := providerMessages(m.providersActivate("providers.all"))
+			if len(contexts) != 4 || len(m.providers.queue) != 3 {
 				t.Fatal("fixture did not begin one read, three updates and queued work")
 			}
 			trigger.stop(&m)
@@ -260,14 +261,14 @@ func TestRulesProvidersQuitAndCancellationStopReadsAndUpdates(t *testing.T) {
 					t.Fatal("exit path retained a provider request context")
 				}
 			}
-			if m.ruleProviders.active || m.ruleProviders.pending || m.ruleProviders.running() != 0 || len(m.ruleProviders.queue) != 0 {
+			if m.providers.active || m.providers.pending || m.providers.running() != 0 || len(m.providers.queue) != 0 {
 				t.Fatal("exit path retained provider work")
 			}
-			if m.acceptRuleProviders(read) != nil {
+			if m.acceptProviders(read) != nil {
 				t.Fatal("late provider read restarted polling after cancellation")
 			}
 			for _, message := range updates {
-				if m.acceptRuleProviderUpdate(message.(ruleProviderUpdateResultMsg)) != nil {
+				if m.acceptProviderUpdate(message.(providerUpdateResultMsg)) != nil {
 					t.Fatal("late provider update scheduled work after cancellation")
 				}
 			}
@@ -277,42 +278,42 @@ func TestRulesProvidersQuitAndCancellationStopReadsAndUpdates(t *testing.T) {
 
 func TestRulesProvidersSearchPreservesNamesAndInlineIsReadOnly(t *testing.T) {
 	m, backend := ruleProvidersModel(t, 4)
-	m.ruleProviders.search.SetValue("inline")
-	m.reconcileRuleProviders()
-	list := m.filteredRuleProviders()
+	m.providers.search.SetValue("inline")
+	m.reconcileProviders()
+	list := m.filteredProviders()
 	if len(list) != 1 || list[0].Name != backend.providers[3].Name {
 		t.Fatal("provider source type search lost its exact provider")
 	}
-	if m.ruleProvidersActivate("rules.provider-update."+list[0].Name) != nil || len(m.ruleProviders.updates) != 0 {
+	if m.providersActivate("provider.update."+list[0].Name) != nil || len(m.providers.updates) != 0 {
 		t.Fatal("Inline provider exposed an update operation")
 	}
-	body := m.ruleProvidersBodyWindow(100, 0, -1)
+	body := m.providersBodyWindow(100, 0, -1)
 	for _, target := range body.targets {
-		if strings.HasPrefix(target.ID, "rules.provider-update.") {
+		if strings.HasPrefix(target.ID, "provider.update.") {
 			t.Fatal("Inline row included a mouse update target")
 		}
 	}
-	m.ruleProviders.search.SetValue("provider-01")
-	m.reconcileRuleProviders()
-	if m.ruleProviders.selected != backend.providers[1].Name {
+	m.providers.search.SetValue("provider-01")
+	m.reconcileProviders()
+	if m.providers.selected != backend.providers[1].Name {
 		t.Fatal("filtered provider selection did not reconcile by name")
 	}
-	m.ruleProviders.editing = true
-	m.ruleProviders.search.Focus()
-	m.ruleProvidersSearchKey(special(tea.KeyEnter))
-	if m.ruleProviders.editing || m.ruleProviders.search.Focused() || m.focus != "rules.provider."+backend.providers[1].Name {
+	m.providers.editing = true
+	m.providers.search.Focus()
+	m.providersSearchKey(special(tea.KeyEnter))
+	if m.providers.editing || m.providers.search.Focused() || m.focus != "provider.row."+backend.providers[1].Name {
 		t.Fatal("finishing search did not focus its matching provider")
 	}
 }
 
 func TestRulesProvidersNarrowRowsKeepNamesWithoutInvisibleUpdateTargets(t *testing.T) {
-	m, backend := ruleProvidersModel(t, 3)
-	provider := backend.providers[0]
-	label, _ := m.ruleProviderUpdateLabel(provider)
+	m, _ := ruleProvidersModel(t, 3)
+	provider := m.providers.snapshot.Providers[0]
+	label, _ := m.providerUpdateLabel(provider)
 	for _, width := range []int{1, 5, 10, ansi.StringWidth(label) + 7} {
-		body := m.ruleProvidersBodyWindow(width, 0, -1)
+		body := m.providersBodyWindow(width, 0, -1)
 		for _, target := range body.targets {
-			if strings.HasPrefix(target.ID, "rules.provider-update.") {
+			if strings.HasPrefix(target.ID, "provider.update.") {
 				t.Fatalf("width %d retained an action where its button cannot fit", width)
 			}
 		}
@@ -322,8 +323,8 @@ func TestRulesProvidersNarrowRowsKeepNamesWithoutInvisibleUpdateTargets(t *testi
 			}
 		}
 	}
-	m.ruleProvidersActivate("rules.provider." + provider.Name)
-	if command := m.startRuleProviderUpdates([]string{provider.Name}); command == nil {
+	m.providersActivate("provider.row." + provider.Name)
+	if command := m.startProviderUpdates([]string{provider.Name}); command == nil {
 		t.Fatal("hiding narrow mouse actions also disabled the selected provider update")
 	}
 }
@@ -333,17 +334,17 @@ func TestRulesProvidersWindowMatchesCompleteBody(t *testing.T) {
 		t.Run(fmt.Sprint(size), func(t *testing.T) {
 			m, backend := ruleProvidersModel(t, 35)
 			m.width, m.height = size[0], size[1]
-			m.ruleProviders.updates[backend.providers[1].Name] = ruleProviderUpdate{state: "failed", err: errors.New("fixture update failure")}
+			m.providers.updates[backend.providers[1].Name] = providerUpdate{state: "failed", err: errors.New("fixture update failure")}
 			for _, offset := range []int{0, 1, 2, 3, 9, 87, 10000} {
 				m.scroll = offset
 				o := m.navigationOptions()
 				o.Scroll = offset
 				g := dashboardGeometry(o)
 				if o.BodyTopRows > 0 {
-					o.BodyTop = m.ruleProvidersToolbar(g.width, o.BodyTopRows)
+					o.BodyTop = m.providersToolbar(g.width, o.BodyTopRows)
 				}
-				full := m.ruleProvidersBodyWindow(g.width, 0, -1)
-				window := m.ruleProvidersBodyWindow(g.width, offset, g.height)
+				full := m.providersBodyWindow(g.width, 0, -1)
+				window := m.providersBodyWindow(g.width, offset, g.height)
 				o.Body, o.BodyTargets = strings.Join(full.lines, "\n"), full.targets
 				want, wantHits, wantTotal := renderDashboard(o)
 				o.Body, o.BodyTargets, o.BodyStart, o.BodyTotal = strings.Join(window.lines, "\n"), window.targets, window.start, window.total
@@ -360,13 +361,13 @@ func TestRulesProvidersWindowMatchesCompleteBody(t *testing.T) {
 
 func TestRulesProvidersUnavailableDropsRowsAndQueuedUpdates(t *testing.T) {
 	m, _ := ruleProvidersModel(t, 6)
-	m.ruleProvidersActivate("rules.providers-all")
-	m.ruleProviders.pending, m.ruleProviders.request = true, 2
-	m.acceptRuleProviders(ruleProvidersResultMsg{generation: m.ruleProviders.generation, request: 2, snapshot: app.RuleProviderSnapshot{State: "stopped"}})
-	if len(m.filteredRuleProviders()) != 0 || len(m.ruleProviders.updates) != 0 || m.ruleProviders.running() != 0 || len(m.ruleProviders.queue) != 0 {
+	m.providersActivate("providers.all")
+	m.providers.pending, m.providers.request = true, 2
+	m.acceptProviders(providersResultMsg{generation: m.providers.generation, request: 2, kind: m.providers.kind, source: m.providers.source, snapshot: providerSnapshot{State: "stopped"}})
+	if len(m.filteredProviders()) != 0 || len(m.providers.updates) != 0 || m.providers.running() != 0 || len(m.providers.queue) != 0 {
 		t.Fatal("stopped core retained old provider data or queued mutations")
 	}
-	body := m.ruleProvidersBodyWindow(100, 0, -1)
+	body := m.providersBodyWindow(100, 0, -1)
 	plain := ansi.Strip(strings.Join(body.lines, "\n"))
 	if strings.Contains(plain, "provider-00") {
 		t.Fatal("stopped core displayed stale provider names")
@@ -375,9 +376,9 @@ func TestRulesProvidersUnavailableDropsRowsAndQueuedUpdates(t *testing.T) {
 
 func TestRulesProvidersPageOwnsSearchKeysAndExactUpdateActions(t *testing.T) {
 	m, backend := ruleProvidersModel(t, 5)
-	m.ruleProviders.open, m.focus = false, "rules.providers"
-	m.ruleProviders.active, m.ruleProviders.received = false, false
-	m.ruleProviders.snapshot = app.RuleProviderSnapshot{}
+	m.providers.open, m.focus = false, "rules.providers"
+	m.providers.active, m.providers.received = false, false
+	m.providers.snapshot = providerSnapshot{}
 	m.layout()
 	var updated []string
 	backend.update = func(ctx context.Context, name string) error {
@@ -387,24 +388,24 @@ func TestRulesProvidersPageOwnsSearchKeysAndExactUpdateActions(t *testing.T) {
 	var command tea.Cmd
 	m, command = update(m, special(tea.KeyEnter))
 	for _, result := range providerMessages(command) {
-		if _, ok := result.(ruleProvidersResultMsg); ok {
+		if _, ok := result.(providersResultMsg); ok {
 			m, _ = update(m, result)
 		}
 	}
-	if !m.ruleProviders.open || !m.ruleProviders.received || !hasAction(m.targets, "rules.providers-search") {
+	if !m.providers.open || !m.providers.received || !hasAction(m.targets, "providers.search") {
 		t.Fatal("header entry did not load and render its provider view")
 	}
 	m, _ = update(m, key("/"))
 	for _, value := range []string{"q", "1", "2", "3"} {
 		m, _ = update(m, key(value))
 	}
-	if m.quitting || m.page != "rules" || m.ruleProviders.search.Value() != "q123" {
+	if m.quitting || m.page != "rules" || m.providers.search.Value() != "q123" {
 		t.Fatal("provider search input leaked into global navigation or quit")
 	}
 	m, _ = update(m, tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
 	m, _ = update(m, tea.PasteMsg{Content: "inline"})
 	m, _ = update(m, special(tea.KeyEnter))
-	if m.ruleProviders.editing || m.ruleProviders.selected != backend.providers[4].Name {
+	if m.providers.editing || m.providers.selected != backend.providers[4].Name {
 		t.Fatal("provider search did not select its matching source")
 	}
 	m, command = update(m, key("u"))
@@ -416,22 +417,22 @@ func TestRulesProvidersPageOwnsSearchKeysAndExactUpdateActions(t *testing.T) {
 	m, _ = update(m, special(tea.KeyEnter))
 	m.layout()
 	file := backend.providers[1].Name
-	m, command = click(m, findTarget(t, m, "rules.provider-update."+file))
+	m, command = click(m, findTarget(t, m, "provider.update."+file))
 	for _, result := range providerMessages(command) {
-		if _, ok := result.(ruleProviderUpdateResultMsg); ok {
+		if _, ok := result.(providerUpdateResultMsg); ok {
 			m, command = update(m, result)
 		}
 	}
-	if !reflect.DeepEqual(updated, []string{file}) || m.ruleProviders.updates[file].state != "success" || !m.ruleProviders.open {
+	if !reflect.DeepEqual(updated, []string{file}) || m.providers.updates[file].state != "success" || !m.providers.open {
 		t.Fatalf("mouse update reached the wrong provider: %#v", updated)
 	}
 	for _, result := range providerMessages(command) {
-		if _, ok := result.(ruleProvidersResultMsg); ok {
+		if _, ok := result.(providersResultMsg); ok {
 			m, _ = update(m, result)
 		}
 	}
 	m, _ = update(m, special(tea.KeyEscape))
-	if m.ruleProviders.open || m.ruleProviders.active || m.ruleProviders.running() != 0 {
+	if m.providers.open || m.providers.active || m.providers.running() != 0 {
 		t.Fatal("provider Back did not return to the current effective rules")
 	}
 }
@@ -446,9 +447,9 @@ func TestRulesProvidersReturningToNavigationReleasesSearchKeys(t *testing.T) {
 	} {
 		t.Run(navigate.name, func(t *testing.T) {
 			m, _ := ruleProvidersModel(t, 5)
-			m.focusRuleProvidersSearch()
+			m.focusProvidersSearch()
 			navigate.goTo(&m)
-			if m.ruleProviders.editing || m.ruleProviders.search.Focused() || m.focus != "nav.rules" {
+			if m.providers.editing || m.providers.search.Focused() || m.focus != "nav.rules" {
 				t.Fatal("navigation retained ownership in the provider search input")
 			}
 			m, _ = update(m, special(tea.KeyDown))
@@ -466,20 +467,20 @@ func TestRulesProvidersTabSelectionMatchesItsFocusedRow(t *testing.T) {
 		updated = append(updated, name)
 		return ctx.Err()
 	}
-	m.ruleProvidersActivate("rules.provider." + backend.providers[3].Name)
-	m.focus = "rules.providers-search"
+	m.providersActivate("provider.row." + backend.providers[3].Name)
+	m.focus = "providers.search"
 	m.layout()
 	for range len(m.focusTargets()) {
 		m.cycleFocus(1)
-		if !strings.HasPrefix(m.focus, "rules.provider.") {
+		if !strings.HasPrefix(m.focus, "provider.row.") {
 			continue
 		}
-		if name := strings.TrimPrefix(m.focus, "rules.provider."); m.ruleProviders.selected != name || m.filteredRuleProviders()[m.ruleProviders.selectedIndex].Name != name {
+		if name := strings.TrimPrefix(m.focus, "provider.row."); m.providers.selected != name || m.filteredProviders()[m.providers.selectedIndex].Name != name {
 			t.Fatal("Tab focused one provider while row shortcuts still targeted another")
 		}
 		_, command := update(m, key("u"))
 		providerMessages(command)
-		if !reflect.DeepEqual(updated, []string{strings.TrimPrefix(m.focus, "rules.provider.")}) {
+		if !reflect.DeepEqual(updated, []string{strings.TrimPrefix(m.focus, "provider.row.")}) {
 			t.Fatalf("update shortcut did not target the row reached by Tab: %#v", updated)
 		}
 		return
@@ -495,21 +496,21 @@ func TestRulesProvidersModalKeepsFixedControlsAndClipsEverySize(t *testing.T) {
 			m.layout()
 			assertCanvas(t, m.screen, size[0], size[1])
 			assertRegions(t, m.targets, size[0], size[1])
-			close := findTarget(t, m, "rules.providers-back")
+			close := findTarget(t, m, "providers.back")
 			if size[0] >= 24 && size[1] >= 13 {
-				search := findTarget(t, m, "rules.providers-search")
-				all := findTarget(t, m, "rules.providers-all")
-				m.ruleProviders.viewport.GotoBottom()
+				search := findTarget(t, m, "providers.search")
+				all := findTarget(t, m, "providers.all")
+				m.providers.viewport.GotoBottom()
 				m.layout()
-				if findTarget(t, m, "rules.providers-back") != close || findTarget(t, m, "rules.providers-search") != search || findTarget(t, m, "rules.providers-all") != all {
+				if findTarget(t, m, "providers.back") != close || findTarget(t, m, "providers.search") != search || findTarget(t, m, "providers.all") != all {
 					t.Fatal("provider scrolling moved the fixed header or footer")
 				}
-				if m.ruleProviders.bounds.W != size[0] && size[0] < 110 {
+				if m.providers.bounds.W != size[0] && size[0] < 110 {
 					t.Fatal("narrow terminal did not use the full screen")
 				}
 			}
-			m.ruleProvidersKey(special(tea.KeyEscape))
-			if m.ruleProviders.open || m.focus != "rules.providers" {
+			m.providersKey(special(tea.KeyEscape))
+			if m.providers.open || m.focus != "rules.providers" {
 				t.Fatal("Escape did not close the provider modal at a supported size")
 			}
 		})
@@ -519,22 +520,22 @@ func TestRulesProvidersModalKeepsFixedControlsAndClipsEverySize(t *testing.T) {
 func TestRulesProvidersModalWheelOnlyScrollsItsBody(t *testing.T) {
 	m, _ := ruleProvidersModel(t, 35)
 	m.layout()
-	p := &m.ruleProviders
+	p := &m.providers
 	for _, point := range [][2]int{{0, 0}, {p.bounds.X + 3, p.bounds.Y + 1}, {p.bounds.X + 3, p.bounds.Y + p.bounds.H - 2}} {
-		m.ruleProvidersMouse(tea.MouseWheelMsg{X: point[0], Y: point[1], Button: tea.MouseWheelDown})
+		m.providersMouse(tea.MouseWheelMsg{X: point[0], Y: point[1], Button: tea.MouseWheelDown})
 		if p.viewport.YOffset() != 0 {
 			t.Fatal("wheel outside the provider body moved its viewport")
 		}
 	}
-	m.ruleProvidersMouse(tea.MouseWheelMsg{X: p.bodyBounds.X + 1, Y: p.bodyBounds.Y + 1, Button: tea.MouseWheelDown})
+	m.providersMouse(tea.MouseWheelMsg{X: p.bodyBounds.X + 1, Y: p.bodyBounds.Y + 1, Button: tea.MouseWheelDown})
 	if p.viewport.YOffset() == 0 {
 		t.Fatal("wheel inside the provider body did not move its viewport")
 	}
 	m.layout()
-	m.ruleProvidersKey(special(tea.KeyEnd))
+	m.providersKey(special(tea.KeyEnd))
 	m.layout()
-	last := m.filteredRuleProviders()[34]
-	if !hasAction(m.targets, "rules.provider."+last.Name) {
+	last := m.filteredProviders()[34]
+	if !hasAction(m.targets, "provider.row."+last.Name) {
 		t.Fatal("End did not reveal its selected provider inside the modal viewport")
 	}
 }
@@ -542,17 +543,17 @@ func TestRulesProvidersModalWheelOnlyScrollsItsBody(t *testing.T) {
 func TestRulesProvidersModalSearchEscapeThenClose(t *testing.T) {
 	m, _ := ruleProvidersModel(t, 5)
 	m.layout()
-	m.focusRuleProvidersSearch()
-	m.ruleProvidersKey(key("q"))
-	if !m.ruleProviders.open || m.ruleProviders.search.Value() != "q" {
+	m.focusProvidersSearch()
+	m.providersKey(key("q"))
+	if !m.providers.open || m.providers.search.Value() != "q" {
 		t.Fatal("search q closed the provider modal")
 	}
-	m.ruleProvidersKey(special(tea.KeyEscape))
-	if !m.ruleProviders.open || m.ruleProviders.editing || m.ruleProviders.search.Focused() {
+	m.providersKey(special(tea.KeyEscape))
+	if !m.providers.open || m.providers.editing || m.providers.search.Focused() {
 		t.Fatal("first Escape should end provider search editing")
 	}
-	m.ruleProvidersKey(key("q"))
-	if m.ruleProviders.open || m.quitting || m.focus != "rules.providers" {
+	m.providersKey(key("q"))
+	if m.providers.open || m.quitting || m.focus != "rules.providers" {
 		t.Fatal("normal q should close the modal without quitting the application")
 	}
 }
@@ -562,23 +563,23 @@ func TestRulesProvidersEndingSearchRevealsItsFocusedProvider(t *testing.T) {
 		t.Run(finish.String(), func(t *testing.T) {
 			m, backend := ruleProvidersModel(t, 35)
 			m.layout()
-			m.ruleProvidersKey(special(tea.KeyEnd))
-			m.ruleProvidersKey(special(tea.KeyUp))
+			m.providersKey(special(tea.KeyEnd))
+			m.providersKey(special(tea.KeyUp))
 			m.layout()
-			selected := m.ruleProviders.selected
-			m.focusRuleProvidersSearch()
+			selected := m.providers.selected
+			m.focusProvidersSearch()
 			m.layout()
-			if m.ruleProviders.viewport.YOffset() != 0 {
+			if m.providers.viewport.YOffset() != 0 {
 				t.Fatal("starting provider search did not reveal its top")
 			}
-			m.ruleProvidersKey(finish)
+			m.providersKey(finish)
 			m.layout()
-			if m.focus != "rules.provider."+selected || !hasAction(m.targets, m.focus) {
+			if m.focus != "provider.row."+selected || !hasAction(m.targets, m.focus) {
 				t.Fatal("ending unchanged search left its focused provider outside the viewport")
 			}
 			var updated string
 			backend.update = func(_ context.Context, name string) error { updated = name; return nil }
-			_, command := m.ruleProvidersKey(key("u"))
+			_, command := m.providersKey(key("u"))
 			providerMessages(command)
 			if updated != selected {
 				t.Fatalf("update targeted %q instead of the visible focused provider %q", updated, selected)
@@ -590,7 +591,7 @@ func TestRulesProvidersEndingSearchRevealsItsFocusedProvider(t *testing.T) {
 func TestRulesProvidersResizeRevealsFocusWithoutPinningWheelScrolling(t *testing.T) {
 	m, _ := ruleProvidersModel(t, 35)
 	m.layout()
-	m.ruleProvidersKey(special(tea.KeyEnd))
+	m.providersKey(special(tea.KeyEnd))
 	m.layout()
 	focused := m.focus
 	m.width, m.height = 80, 24
@@ -598,9 +599,9 @@ func TestRulesProvidersResizeRevealsFocusWithoutPinningWheelScrolling(t *testing
 	if m.focus != focused || !hasAction(m.targets, focused) {
 		t.Fatal("shrinking the provider modal hid its focused provider")
 	}
-	m.ruleProviders.viewport.GotoTop()
+	m.providers.viewport.GotoTop()
 	m.layout()
-	if m.ruleProviders.viewport.YOffset() != 0 || hasAction(m.targets, focused) {
+	if m.providers.viewport.YOffset() != 0 || hasAction(m.targets, focused) {
 		t.Fatal("a normal render overrode independent provider scrolling")
 	}
 	m.width, m.height = 40, 16

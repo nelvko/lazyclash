@@ -43,7 +43,7 @@ scripts/                显式运行的 Linux、PTY 和端到端验证
 - `runtime.go`：端口检查、启动/停止/重启、API 就绪及节点选择。
 - `monitor.go`：有超时的运行采样、活动连接列表与按 ID 关闭；网络采样期间不持有应用锁。
 - `rules.go`：读取当前内核的规则，保留匹配顺序，查询前后校验服务及安装身份；不把规则加入高频监控快照。
-- `rule_providers.go`：读取规则集合元数据及更新单项提供器，HTTP 请求不持有应用锁，前后核对内核归属与身份。TUI 负责有界批量调度及逐项结果。
+- `providers.go`：规则与代理集合共用内核归属、generation、PID 检查和锁外 HTTP 事务。`rule_providers.go` / `proxy_providers.go` 分别提供类型化元数据与更新用例；TUI 的 `provider_panel.go` / `provider_panel_view.go` 共用读取、三并发队列、取消、搜索与滚动，代理更新完成后自动观察主列表。
 - `custom_rules.go`：以 Profile 稳定 ID 和完整配置配方指纹绑定独立 `prepend-rules` 草稿，原子保存及显式应用复用现有配置构建、校验和回滚事务；订阅源规则与自定义规则分开存储。
 - `logs.go`：验证归属与当前运行进程后，订阅认证控制 API 的实时日志；持续校验进程身份，取消时关闭流，不启用原始日志落盘。
 - `snapshot.go`：供界面和 CLI 使用的运行及安装状态。

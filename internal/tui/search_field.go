@@ -19,8 +19,8 @@ func searchClearID(id string) string {
 		return "rules.clear"
 	case "logs.search":
 		return "logs.reset-search"
-	case "rules.providers-search":
-		return "rules.providers-clear"
+	case "providers.search":
+		return "providers.clear"
 	}
 	return ""
 }
@@ -33,7 +33,7 @@ func (m Model) searchField(id, placeholder string, input textinput.Model, width 
 // outline and trailing controls own a single bounded region, capped at 60 cells.
 func (m Model) searchToolbar(id, placeholder string, input textinput.Model, controls dashboardBlock, width int, invalid bool) dashboardBlock {
 	surface := bg
-	if id == "rules.providers-search" {
+	if id == "providers.search" {
 		surface = raised
 	}
 	input.Placeholder = placeholder
@@ -48,7 +48,7 @@ func (m Model) searchToolbar(id, placeholder string, input textinput.Model, cont
 
 func (m Model) searchControlOptions(id string) buttonOptions {
 	return buttonOptions{Surface: bg, Focused: m.focus == id, Hovered: m.hover == id,
-		Plain: m.buttonPlain(), Dim: m.feedbackDialogOpen() || m.helpOpen || m.notification.panel.open || m.ruleProviders.open}
+		Plain: m.buttonPlain(), Dim: m.feedbackDialogOpen() || m.helpOpen || m.notification.panel.open || m.providers.open}
 }
 
 func searchControlWidth(controls dashboardBlock) int {

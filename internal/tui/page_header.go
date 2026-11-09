@@ -13,11 +13,12 @@ type headerAction struct {
 
 type pageHeader struct {
 	summary string
+	leading []headerAction
 	actions []headerAction
 }
 
 func (h pageHeader) owns(id string) bool {
-	for _, action := range h.actions {
+	for _, action := range append(h.leading, h.actions...) {
 		if action.id == id {
 			return true
 		}
@@ -26,7 +27,7 @@ func (h pageHeader) owns(id string) bool {
 }
 
 func (h pageHeader) enabled(id string) bool {
-	for _, action := range h.actions {
+	for _, action := range append(h.leading, h.actions...) {
 		if action.id == id {
 			return action.enabled
 		}
@@ -47,6 +48,13 @@ func (m Model) pageHeader() pageHeader {
 	tr := m.tr
 	h := pageHeader{}
 	switch m.page {
+	case "proxies":
+		if m.width >= 50 {
+			for _, mode := range []string{"rule", "global", "direct"} {
+				h.leading = append(h.leading, headerAction{"mode." + mode, tr("dashboard.mode." + mode), "", m.proxiesReady() && m.snapshot.Mode.Error == ""})
+			}
+		}
+		h.actions = []headerAction{{"proxies.providers", tr("providers.title.proxies"), "≡", m.providersSupported(providerProxies)}}
 	case "profiles":
 		h.actions = []headerAction{{"profiles.update-all", tr("header.updateAll"), "↻", m.hasRefreshableProfiles()}}
 	case "connections":
@@ -55,8 +63,7 @@ func (m Model) pageHeader() pageHeader {
 		}
 		h.actions = []headerAction{{"conn.retry", tr("header.refresh"), "↻", !m.connections.confirming}}
 	case "rules":
-		_, providersSupported := m.backend.(ruleProviderBackend)
-		h.actions = []headerAction{{"rules.providers", tr("rules.providers.title"), "≡", providersSupported}}
+		h.actions = []headerAction{{"rules.providers", tr("providers.title.rules"), "≡", m.providersSupported(providerRules)}}
 	case "logs":
 		h.summary = tr("header.connecting")
 		follow, compact := tr("logs.pause_display"), "Ⅱ"
@@ -80,6 +87,9 @@ func (m Model) pageHeader() pageHeader {
 // scrolling body, with compact labels when the full labels do not fit.
 func renderPageHeader(o dashboardOptions, g dashboardLayout, titleX, titleWidth int) (string, int, int, []hitRegion) {
 	h := o.Header
+	if len(h.leading) > 0 {
+		return renderLeadingPageHeader(o, g, titleX+titleWidth+2)
+	}
 	if o.Page == "overview" && (o.InlineInstall || overviewSetupVisible(o)) {
 		status, _ := coreSummary(o.Snapshot, o.Locale)
 		h = pageHeader{summary: "Mihomo · " + status}
@@ -146,4 +156,64 @@ func renderPageHeader(o dashboardOptions, g dashboardLayout, titleX, titleWidth 
 		}
 	}
 	return value, max(left, right-ansi.StringWidth(value)), y, hits
+}
+
+// Keep the mode choices beside the title when they fit. On smaller terminals
+// the controls share a dedicated header row, with the provider action at right.
+func renderLeadingPageHeader(o dashboardOptions, g dashboardLayout, left int) (string, int, int, []hitRegion) {
+	h := o.Header
+	var leading []string
+	labelWidth := 6
+	for _, action := range h.leading {
+		labelWidth = max(labelWidth, ansi.StringWidth(action.label))
+	}
+	for _, action := range h.leading {
+		options := dashboardButtonOptions(action.id, o, false, bg)
+		options.Selectable, options.Selected = true, o.Snapshot.Mode.Desired == strings.TrimPrefix(action.id, "mode.")
+		options.Width, options.Disabled = labelWidth, !action.enabled || o.Busy
+		leading = append(leading, renderButton(action.label, options))
+	}
+	renderActions := func(compact bool) []string {
+		var values []string
+		for _, action := range h.actions {
+			label := action.label
+			if compact {
+				label = action.compact
+			}
+			options := dashboardButtonOptions(action.id, o, false, bg)
+			options.Disabled = !action.enabled || o.Busy
+			values = append(values, renderButton(label, options))
+		}
+		return values
+	}
+	actions := renderActions(false)
+	modeWidth := ansi.StringWidth(strings.Join(leading, ""))
+	actionWidth := ansi.StringWidth(strings.Join(actions, ""))
+	y, right := g.headerY, g.headerX+g.headerWidth
+	if modeWidth+2+actionWidth > right-left {
+		y, left = g.headerY+1, g.headerX
+	}
+	if modeWidth+2+actionWidth > right-left {
+		actions = renderActions(true)
+		actionWidth = ansi.StringWidth(strings.Join(actions, ""))
+	}
+	var hits []hitRegion
+	x := left
+	for i, action := range h.leading {
+		w := ansi.StringWidth(leading[i])
+		if action.enabled && !o.Busy {
+			hits = append(hits, hitRegion{ID: action.id, X: x, Y: y, W: w, H: 1})
+		}
+		x += w
+	}
+	gap := max(2, right-x-actionWidth)
+	x += gap
+	for i, action := range h.actions {
+		w := ansi.StringWidth(actions[i])
+		if action.enabled && !o.Busy {
+			hits = append(hits, hitRegion{ID: action.id, X: x, Y: y, W: w, H: 1})
+		}
+		x += w
+	}
+	return strings.Join(leading, "") + themed(strings.Repeat(" ", gap), text, bg, o.Dim) + strings.Join(actions, ""), left, y, hits
 }

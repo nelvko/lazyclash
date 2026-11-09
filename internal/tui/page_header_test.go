@@ -13,6 +13,20 @@ import (
 	"github.com/nelvko/lazyclash/internal/service"
 )
 
+type headerProviderBackend struct{ *fakeBackend }
+
+func (b *headerProviderBackend) RuleProviders(context.Context) (app.RuleProviderSnapshot, error) {
+	return app.RuleProviderSnapshot{State: "ready"}, nil
+}
+
+func (b *headerProviderBackend) UpdateRuleProvider(context.Context, string) error { return nil }
+
+func (b *headerProviderBackend) ProxyProviders(context.Context) (app.ProxyProviderSnapshot, error) {
+	return app.ProxyProviderSnapshot{State: "ready"}, nil
+}
+
+func (b *headerProviderBackend) UpdateProxyProvider(context.Context, string) error { return nil }
+
 func headerModel(page string, width, height int) Model {
 	profiles := profileFixtures("default", "alpha", "beta", "gamma", "delta", "epsilon")
 	profiles[1].Refreshable = true
@@ -23,6 +37,7 @@ func headerModel(page string, width, height int) Model {
 		Groups:         []mihomo.Group{{Name: "PROXY", Type: "Selector"}, {Name: "AUTO", Type: "URLTest"}},
 	}})
 	m.page, m.width, m.height = page, width, height
+	m.backend = &headerProviderBackend{fakeBackend: m.backend.(*fakeBackend)}
 	m.runtime.received = true
 	m.runtime.snapshot = app.RuntimeSnapshot{State: "ready", Connections: &mihomo.ConnectionSnapshot{Connections: []mihomo.Connection{{ID: "one"}, {ID: "two"}}}}
 	m.rules.received = true
@@ -34,6 +49,7 @@ func headerModel(page string, width, height int) Model {
 
 func TestPageHeadersUsePageActionsAcrossSizesAndFocus(t *testing.T) {
 	for page, actions := range map[string][]string{
+		"proxies":     {"proxies.providers"},
 		"profiles":    {"profiles.update-all"},
 		"connections": {"conn.retry"},
 		"logs":        {"logs.follow", "logs.retry"}, "settings": {"network"},

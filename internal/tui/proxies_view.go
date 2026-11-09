@@ -52,7 +52,10 @@ func (m Model) proxyCollapseButton() string {
 }
 
 func (m Model) proxiesToolbar(width int) dashboardBlock {
-	b := m.proxyModes(width)
+	b := dashboardBlock{lines: []string{""}}
+	if m.width < 50 {
+		b = m.proxyModes(width)
+	}
 	if action := m.proxyCollapseButton(); action != "" {
 		x := max(0, width-ansi.StringWidth(action))
 		row := len(b.lines) - 1

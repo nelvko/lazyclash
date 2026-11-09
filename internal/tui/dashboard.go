@@ -99,7 +99,7 @@ func dashboardGeometry(o dashboardOptions) dashboardLayout {
 	if o.Height >= 24 {
 		headerY, bodyY = 1, 5
 	}
-	if o.Width < 70 && o.Height < 24 && o.Page != "" && o.Page != "overview" {
+	if (o.Width < 70 || o.Page == "proxies" && o.Width < 100) && o.Height < 24 && o.Page != "" && o.Page != "overview" {
 		bodyY++
 	}
 	headerHeight := bodyY - 2

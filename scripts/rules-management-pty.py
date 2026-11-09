@@ -84,7 +84,7 @@ def rule_positions(terminal):
 
 def fixed_controls(terminal, words):
     return {key: label_position(terminal, words[key]) for key in
-            ("rules.providers.update_all", "rules.providers.close")}
+            ("providers.update_all", "providers.close")}
 
 
 def calls(report):
@@ -106,10 +106,10 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait("source-59.example.invalid")
         main_positions = rule_positions(terminal)
         assert "source.example.invalid" not in main_positions, "main-list fixture never scrolled"
-        click_label(terminal, words["rules.providers.title"], header=True)
+        click_label(terminal, words["providers.title.rules"], header=True)
         terminal.wait("remote_rules")
         terminal.wait("inline_rules")
-        terminal.wait(words["rules.providers.close"])
+        terminal.wait(words["providers.close"])
         preview.capture(terminal, output, "providers-clean", args)
 
         # A modal owns normal keys, clicks and wheels. Neither navigation nor
@@ -125,11 +125,11 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.key(b"/")
         terminal.key(b"q123")
         terminal.settle()
-        terminal.wait(words["rules.providers.no_matches"])
+        terminal.wait(words["providers.no_matches"])
         terminal.key(b"\x1b")  # Finish input, retaining the modal.
         terminal.settle()
-        terminal.wait(words["rules.providers.close"])
-        terminal.wait(words["rules.providers.no_matches"])
+        terminal.wait(words["providers.close"])
+        terminal.wait(words["providers.no_matches"])
         RULES.search(terminal, "")
         terminal.wait("remote_rules")
 
@@ -145,17 +145,17 @@ def exercise(preview, binary, output, language, profile, args):
         # Home selects the first source in the backend's observed order.
         terminal.key(b"u")
         RULES.wait_until(terminal, lambda: report.exists() and calls(report)["provider_updates"] == ["remote_rules"], "single HTTP provider update did not finish")
-        terminal.wait(words["rules.providers.success"])
-        click_label(terminal, words["rules.providers.update_all"])
+        terminal.wait(words["providers.success"])
+        click_label(terminal, words["providers.update_all"])
         RULES.wait_until(terminal, lambda: len(calls(report)["provider_attempts"] or []) == 3, "Update all did not attempt its external providers")
-        failure = words["rules.providers.failed"] % "fixture local source read failed"
+        failure = words["providers.failed"] % "fixture local source read failed"
         terminal.wait(failure)
         terminal.settle()
         partial = calls(report)
         assert sorted(partial["provider_attempts"]) == ["local_rules", "remote_rules", "remote_rules"], partial
         assert partial["provider_updates"] == ["remote_rules", "remote_rules"] and partial["provider_failures"] == ["local_rules"], partial
         preview.capture(terminal, output, "providers-partial-failure", args)
-        click_label(terminal, words["rules.providers.retry"])
+        click_label(terminal, words["providers.retry"])
         RULES.wait_until(terminal, lambda: len(calls(report)["provider_attempts"] or []) == 4, "failed File source did not retry independently")
         terminal.wait_absent(failure)
         terminal.settle()
@@ -167,7 +167,7 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.settle()
         terminal.wait("inline_rules")
         terminal.wait_absent("remote_rules")
-        assert words["rules.providers.inline_readonly"] in terminal.screen.text(), "inline source was not presented read only"
+        assert words["providers.readonly"] in terminal.screen.text(), "inline source was not presented read only"
         for width, height in SIZES:
             terminal.resize(width, height)
             terminal.settle()
@@ -182,10 +182,10 @@ def exercise(preview, binary, output, language, profile, args):
             terminal.settle()
             terminal.wait("inline_rules")
             preview.capture(terminal, output, "providers-filtered-%dx%d" % (width, height), args)
-        click_label(terminal, words["rules.providers.close"])
+        click_label(terminal, words["providers.close"])
         terminal.wait("source-59.example.invalid")
         assert rule_positions(terminal) == main_positions, "closing modal lost the main rule-list position"
-        assert any(re.search(r"(?:^|\s)source\s+" + re.escape(words["search.clear"]) + r"(?:\s|$)", row) for row in terminal.screen.text().splitlines()), "closing modal lost the main rule search"
+        assert any(re.search(r"(?:^|\s)source\s+" + r"x" + r"(?:\s|$)", row) for row in terminal.screen.text().splitlines()), "closing modal lost the main rule search"
         preview.capture(terminal, output, "main-rules-restored", args)
         terminal.key(b"\r")  # Focus returns to the original header button.
         terminal.wait("inline_rules")

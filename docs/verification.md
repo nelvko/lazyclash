@@ -1,5 +1,15 @@
 # 验证入口
 
+## 代理与规则集合共用管理面板（2026-11-09）
+
+代理页头左侧显示规则、全局、直连模式，右侧进入代理集合；宽度不足时页头换行，低于 50 列时模式保留在正文。主代理页已移除搜索、组总数和手动刷新，包括对应快捷键；集合面板继续提供独立搜索、读取与更新。代理和规则集合复用 Bubbles textinput、viewport 及三并发更新调度，关闭或切页取消未完成任务。HTTP/File 代理来源允许更新，Inline/Compatible/未知来源只读；面板只显示名称、类型、数量及更新时间。代理更新完成后，即使面板已关闭或取消，仍观察并同步主节点列表。
+
+最终功能源码从暂存区导出至独立目录验证，排除共享工作区其他实时会话及图表改动。`make check build`、app/mihomo/TUI 的 Provider 与页头定向 race、八项 Python 解析器测试全部通过。`./scripts/verify-linux.sh lazyclash-e2e` 在既有 Debian/arm64 专用 VM 实际执行全部九个可运行包测试，通过并清理本轮临时目录；未删除此前其他任务遗留的目录。真实 Mihomo Meta v1.19.33 darwin/arm64 使用临时 home、随机 loopback 端口与本地 HTTP fixture 验证代理集合 GET/PUT、成员替换、更新时间及隐私边界，TUN 保持关闭。
+
+中文 True Color 的实际 controlling PTY 完成代理集合、规则集合及原代理页面回归。集合覆盖 160×45、120×32、80×24、60×20、40×16，验证搜索输入归属、固定控件与滚动、HTTP/File 更新、File 失败重试、只读来源、三并发、关闭取消及返回后节点同步。代理集合夹具记录八次尝试、六次成功、一次失败、一次取消，最大并发三；服务及模式修改均为零。规则集合保留搜索与位置恢复，原代理页覆盖主流程、多组及单节点重测。PNG 按实际 PTY 字符格和颜色重绘；PTY 使用内存后端，不表示真实远端节点测试，也未操作系统服务。
+
+独立源码及 SHA-256 清单为 `.test-artifacts/proxy-providers-final/{source-path.txt,source-manifest.json}`；验证日志为 `isolated-{check-build,linux,race,real-core,python}.log`。最终 PTY 日志为 `pty/{provider-isolated-final2,rules-isolated,proxies-isolated}.log`，代理集合图像为 `pty/provider-isolated/20261109-095421-9237ab/zh-Hans/truecolor/`。先前脚本输入状态与视口等待失败的原始证据保留，最终修正未放宽更新、取消或服务边界断言。
+
 ## Logo 月光渐变（2026-11-08）
 
 Logo 常态采用月光蓝 `#8fc9ef` → 薰衣草紫 `#c4a7e7`，复用 Lip Gloss 的 CIELAB 一维混色，按固定显示字符格分配颜色；原 emoji 占两格，进场和点击切换字符时两侧字标及其颜色保持原位。进场沿用 `z → Z → 💤`，渐变两端同时提亮至 `#c5efff` / `#ead7ff` 再恢复；点击惊醒短暂使用暖金，后续回到渐变。模态背景仍统一弱化，无色模式移除样式，未增加常驻动画。

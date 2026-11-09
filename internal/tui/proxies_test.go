@@ -623,32 +623,21 @@ func TestProxiesReferenceActionDoesNotSelectItsNode(t *testing.T) {
 	}
 }
 
-func TestProxiesToolbarKeepsModesAndCollapseActionReachable(t *testing.T) {
+func TestProxiesModesAndCollapseActionRemainReachableAcrossWidths(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		for _, width := range []int{160, 80, 40} {
 			t.Run(fmt.Sprint(language, "/", width), func(t *testing.T) {
 				m, _ := proxiesModel(t, width, 40)
 				m.locale = i18n.New(language)
-				bodyWidth := dashboardBodyWidth(m.dashboardOptions())
-				toolbar := m.proxiesToolbar(bodyWidth)
-				targets := make(map[string]hitRegion)
-				for _, hit := range toolbar.targets {
-					targets[hit.ID] = hit
-					if hit.X+hit.W > bodyWidth || hit.Y+hit.H > len(toolbar.lines) {
-						t.Fatalf("toolbar hit exceeds its rendered content: %+v", hit)
-					}
-				}
+				m.layout()
 				for _, mode := range []string{"rule", "global", "direct"} {
-					if targets["mode."+mode].ID == "" {
-						t.Fatalf("toolbar lost %s mode", mode)
-					}
+					findTarget(t, m, "mode."+mode)
 				}
 				if width >= 100 {
-					mode, collapse := targets["mode.direct"], targets["proxies.collapse_all"]
-					if collapse.ID == "" || collapse.Y != mode.Y || collapse.X < mode.X+mode.W {
-						t.Fatalf("wide collapse action overlaps or left the mode row: mode=%+v collapse=%+v", mode, collapse)
-					}
+					findTarget(t, m, "proxies.collapse_all")
 				}
+				assertCanvas(t, m.screen, width, 40)
+				assertRegions(t, m.targets, width, 40)
 			})
 		}
 	}

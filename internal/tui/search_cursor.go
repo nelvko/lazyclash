@@ -61,8 +61,8 @@ func (m Model) activeInputField() (textinput.Model, string, bool) {
 		}
 		return textinput.Model{}, "", false
 	}
-	if m.ruleProviders.open {
-		return m.ruleProviders.search, "rules.providers-search", m.ruleProviders.editing && m.focus == "rules.providers-search"
+	if m.providers.open {
+		return m.providers.search, "providers.search", m.providers.editing && m.focus == "providers.search"
 	}
 	if m.inlineInputActive() {
 		if m.focus == "setup.local" {

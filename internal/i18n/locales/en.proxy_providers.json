@@ -1,0 +1,9 @@
+{
+  "diagnostic.api.proxyProvidersResponse": "invalid Mihomo proxy providers response",
+  "diagnostic.api.proxyProviderName": "proxy provider name must not be empty",
+  "diagnostic.api.proxyProviderReadOnly": "this proxy provider has no supported external source to update",
+  "diagnostic.api.proxyProviderUnavailable": "proxy provider is no longer available; reopen the provider list",
+  "diagnostic.runtime.proxyProvidersChanged": "core changed while loading proxy providers; reopen the provider list",
+  "diagnostic.runtime.proxyProviderChanged": "core changed during the proxy provider update; reopen and retry",
+  "diagnostic.runtime.proxyProviderNotRunning": "Mihomo is not running; start it before updating proxy providers"
+}

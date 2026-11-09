@@ -213,7 +213,7 @@ func TestSearchFieldClearClickReturnsToEditableInput(t *testing.T) {
 				m, _ = click(m, clear)
 				var input *textinput.Model
 				if page == "providers" {
-					input = &m.ruleProviders.search
+					input = &m.providers.search
 				} else {
 					input = pageSearchInput(&m)
 				}

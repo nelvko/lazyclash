@@ -13,7 +13,7 @@ func listTarget(id string) bool {
 		_, err := strconv.Atoi(strings.TrimPrefix(id, "profile."))
 		return err == nil
 	}
-	for _, prefix := range []string{"rules.provider.", "connection.", "rule.", "group.", "node."} {
+	for _, prefix := range []string{"provider.row.", "connection.", "rule.", "group.", "node."} {
 		if strings.HasPrefix(id, prefix) {
 			return true
 		}
@@ -24,8 +24,8 @@ func listTarget(id string) bool {
 // Navigation and the active list each form one Tab stop; arrows move inside
 // those groups. All other controls retain their visual reading order.
 func (m Model) focusTargets() []hitRegion {
-	if m.ruleProviders.open {
-		return m.ruleProviders.controls
+	if m.providers.open {
+		return m.providers.controls
 	}
 	if m.sidebarOpen {
 		return []hitRegion{{ID: "nav." + m.page}}
@@ -142,6 +142,9 @@ func (m *Model) revealBodyTarget(hit hitRegion) {
 
 func (m Model) contextHelp() string {
 	tr := m.tr
+	if m.providers.open {
+		return tr("providers.keys")
+	}
 	if m.menu.open {
 		return tr("navigation.actionMenu")
 	}
@@ -176,6 +179,10 @@ func (m Model) contextHelp() string {
 	}
 	if m.pageHeader().owns(m.focus) {
 		switch m.focus {
+		case "mode.rule", "mode.global", "mode.direct":
+			return tr("providers.mode_hint")
+		case "rules.providers", "proxies.providers":
+			return tr("providers.open_hint")
 		case "profiles.update-all":
 			return tr("navigation.updateProfiles")
 		case "logs.follow":
@@ -194,8 +201,8 @@ func (m Model) contextHelp() string {
 	case "connections":
 		return tr("navigation.connections")
 	case "rules":
-		if m.ruleProviders.open {
-			return tr("rules.providers.keys")
+		if m.providers.open {
+			return tr("providers.keys")
 		}
 		return tr("navigation.rules")
 	case "logs":

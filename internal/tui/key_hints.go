@@ -75,12 +75,12 @@ func (m *Model) acceptKeyHintsSaved(msg keyHintsSavedMsg) tea.Cmd {
 }
 
 func (m *Model) keyHintsShortcut(k tea.KeyPressMsg) (bool, tea.Cmd) {
-	if k.String() != "ctrl+t" || m.ruleProviders.open || m.menu.open || m.ports.open || m.wizard.open || m.wizard.networkOpen || m.form != "" || m.notification.panel.open {
+	if k.String() != "ctrl+t" || m.providers.open || m.menu.open || m.ports.open || m.wizard.open || m.wizard.networkOpen || m.form != "" || m.notification.panel.open {
 		return false, nil
 	}
 	if !m.helpOpen && (m.inlineInputActive() || (m.page == "profiles" && m.focus == "profiles.url" && !m.sidebarOpen) ||
 		(m.page == "connections" && (m.connections.editing || m.connections.confirming)) ||
-		(m.page == "rules" && (m.rules.editing || m.ruleProviders.editing)) || (m.page == "logs" && m.logs.editing)) {
+		(m.page == "rules" && (m.rules.editing || m.providers.editing)) || (m.page == "logs" && m.logs.editing)) {
 		return false, nil
 	}
 	return true, m.toggleKeyHints()

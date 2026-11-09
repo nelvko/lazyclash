@@ -156,7 +156,7 @@ type Model struct {
 	runtime               runtimeState
 	connections           connectionsState
 	rules                 rulesState
-	ruleProviders         ruleProvidersState
+	providers             providerPanelState
 	logs                  logsState
 	ports                 portsState
 }
@@ -186,7 +186,7 @@ func New(ctx context.Context, backend Backend, languages ...string) Model {
 	m.rules.search.SetVirtualCursor(false)
 	m.rules.search.CharLimit = 512
 	m.rules.search.Placeholder = m.tr("model.rule_search")
-	m.ruleProviders = newRuleProvidersState(m.locale)
+	m.providers = newProviderPanelState(m.locale)
 	m.logs = newLogsState(m.locale)
 	styleInput(&m.connections.search, bg, false)
 	styleInput(&m.rules.search, inputBackground, false)
@@ -226,7 +226,7 @@ func (m *Model) newJob(kind string) context.Context {
 	m.stopProxyTests()
 	m.stopRuntime()
 	m.stopRules()
-	m.stopRuleProviders()
+	m.stopProviders()
 	m.stopCoreStatus()
 	if m.cancel != nil {
 		m.cancel()
@@ -291,7 +291,7 @@ func waitProgress(ctx context.Context, updates <-chan progressMsg) tea.Cmd {
 	}
 }
 func (m *Model) cancelTask(quit bool) {
-	m.stopRuleProviders()
+	m.stopProviders()
 	m.stopProxyTests()
 	m.stopRuntime()
 	m.stopRules()
@@ -396,13 +396,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.ColorProfileMsg:
 		m.colorProfile = v.Profile
 		m.logoIntro.colored = true
-	case ruleProvidersResultMsg:
-		cmd = m.acceptRuleProviders(v)
-	case ruleProviderUpdateResultMsg:
-		cmd = m.acceptRuleProviderUpdate(v)
-	case ruleProvidersTickMsg:
-		if m.ruleProviders.active && v.generation == m.ruleProviders.generation && v.request == m.ruleProviders.request {
-			cmd = m.ruleProvidersCmd()
+	case providersResultMsg:
+		cmd = m.acceptProviders(v)
+	case providerUpdateResultMsg:
+		cmd = m.acceptProviderUpdate(v)
+	case providersTickMsg:
+		if m.providers.active && v.kind == m.providers.kind && v.source == m.providerSource() && v.generation == m.providers.generation && v.request == m.providers.request {
+			cmd = m.providersCmd()
 		}
 	case rulesResultMsg:
 		accepted := m.rules.active && v.generation == m.rules.generation
@@ -424,7 +424,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.stopProxyTests()
 		m.stopRuntime()
 		m.stopRules()
-		m.stopRuleProviders()
+		m.stopProviders()
 		m.stopLogs()
 		m.stopCoreStatus()
 		if m.busy {
@@ -604,11 +604,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			break
 		} else if m.menu.open {
 			break
-		} else if m.ruleProviders.open {
-			if m.ruleProviders.editing {
-				m.ruleProviders.search, cmd = m.ruleProviders.search.Update(v)
-				m.ruleProviders.viewport.GotoTop()
-				m.reconcileRuleProviders()
+		} else if m.providers.open {
+			if m.providers.editing {
+				m.providers.search, cmd = m.providers.search.Update(v)
+				m.providers.viewport.GotoTop()
+				m.reconcileProviders()
 			}
 		} else if m.ports.open {
 			cmd = m.updatePortsInput(v)
@@ -665,8 +665,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			break
 		}
-		if m.ruleProviders.open {
-			_, cmd = m.ruleProvidersKey(v)
+		if m.providers.open {
+			_, cmd = m.providersKey(v)
 			break
 		}
 		if handled, next := m.keyHintsShortcut(v); handled {
@@ -951,9 +951,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	default:
 		// Forward cursor/clipboard messages to the focused Bubbles input. The
 		// child model ignores messages it does not own, including key releases.
-		if m.ruleProviders.open {
-			if m.ruleProviders.editing {
-				m.ruleProviders.search, cmd = m.ruleProviders.search.Update(msg)
+		if m.providers.open {
+			if m.providers.editing {
+				m.providers.search, cmd = m.providers.search.Update(msg)
 			}
 		} else if m.ports.open {
 			cmd = m.updatePortsInput(msg)
@@ -997,7 +997,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	next := m.syncRuntime()
 	nextRules := m.syncRules()
-	nextRuleProviders := m.syncRuleProviders()
+	nextRuleProviders := m.syncProviders()
 	nextLogs := m.syncLogs()
 	if m.page != previousPage {
 		m.stopLogoIntro()
@@ -1252,8 +1252,8 @@ func (m *Model) activate(id string) tea.Cmd {
 	return nil
 }
 func (m *Model) cycleFocus(delta int) {
-	if m.ruleProviders.open {
-		m.cycleRuleProvidersFocus(delta)
+	if m.providers.open {
+		m.cycleProvidersFocus(delta)
 		return
 	}
 	targets := m.focusTargets()
@@ -1293,8 +1293,8 @@ func (m *Model) cycleFocus(delta int) {
 		m.connections.selected = strings.TrimPrefix(m.focus, "connection.")
 		m.reconcileConnections()
 	}
-	if strings.HasPrefix(m.focus, "rules.provider.") {
-		m.ruleProvidersActivate(m.focus)
+	if strings.HasPrefix(m.focus, "provider.row.") {
+		m.providersActivate(m.focus)
 	}
 	if m.focus != "menu" && !strings.HasPrefix(m.focus, "nav.") {
 		for _, target := range m.contentTargets() {
@@ -1314,8 +1314,8 @@ func (m *Model) cycleFocus(delta int) {
 	}
 }
 func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
-	if m.ruleProviders.open {
-		return m.ruleProvidersMouse(event)
+	if m.providers.open {
+		return m.providersMouse(event)
 	}
 	k := event.Mouse()
 	if m.notification.panel.open {
@@ -1560,8 +1560,8 @@ func (m *Model) renderLayout() {
 		m.screen, m.targets = m.renderProfileForm(base)
 	} else if m.notification.panel.open {
 		m.screen, m.targets = m.notification.panel.render(m.notification.items, m.width, m.height, m.locale, m.buttonPlain())
-	} else if m.ruleProviders.open {
-		m.screen, m.targets = m.renderRuleProviders(base)
+	} else if m.providers.open {
+		m.screen, m.targets = m.renderProviders(base)
 	} else if m.menu.open {
 		m.screen = m.menu.render(base, m.width, m.height)
 	}

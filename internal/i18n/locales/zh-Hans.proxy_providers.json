@@ -1,0 +1,9 @@
+{
+  "diagnostic.api.proxyProvidersResponse": "Mihomo 代理集合响应无效",
+  "diagnostic.api.proxyProviderName": "代理集合名称不能为空",
+  "diagnostic.api.proxyProviderReadOnly": "此代理集合没有支持更新的外部来源",
+  "diagnostic.api.proxyProviderUnavailable": "代理集合已不可用，请重新打开集合列表",
+  "diagnostic.runtime.proxyProvidersChanged": "读取代理集合期间内核已变更，请重新打开集合列表",
+  "diagnostic.runtime.proxyProviderChanged": "更新代理集合期间内核已变更，请重新打开后重试",
+  "diagnostic.runtime.proxyProviderNotRunning": "仅可在受管理的内核运行时更新代理集合"
+}

@@ -41,8 +41,8 @@ func TestProxiesHeaderOmitsGroupTotalAndManualRefresh(t *testing.T) {
 				m := headerModel("proxies", size[0], size[1])
 				m.locale = i18n.New(lang)
 				m.layout()
-				if header := m.pageHeader(); header.summary != "" || len(header.actions) != 0 {
-					t.Fatalf("proxy header retained a count or action: %+v", header)
+				if header := m.pageHeader(); header.summary != "" || header.owns("page.refresh") {
+					t.Fatalf("proxy header retained a count or manual refresh action: %+v", header)
 				}
 				if hasAction(m.targets, "page.refresh") || hasAction(m.focusTargets(), "page.refresh") {
 					t.Fatal("manual refresh retained a mouse target or Tab stop")
@@ -120,4 +120,45 @@ func TestProxiesPageHasNoSearchInputOrShortcut(t *testing.T) {
 		t.Fatal("proxy members were filtered after pasting text")
 	}
 	m.stopRuntime()
+}
+
+func TestProxyProvidersHeaderKeepsModeOrderAcrossSizes(t *testing.T) {
+	for _, lang := range []string{i18n.English, i18n.Chinese} {
+		for _, size := range [][2]int{{20, 7}, {40, 16}, {50, 18}, {60, 20}, {80, 24}, {100, 20}, {120, 32}, {216, 55}} {
+			t.Run(fmt.Sprintf("%s/%dx%d", lang, size[0], size[1]), func(t *testing.T) {
+				m := headerModel("proxies", size[0], size[1])
+				m.locale = i18n.New(lang)
+				m.snapshot.Mode = app.ModeStatus{Desired: "rule", Actual: "rule"}
+				m.layout()
+				provider := findTarget(t, m, "proxies.providers")
+				g := dashboardGeometry(m.dashboardOptions())
+				if provider.Y >= g.headerHeight {
+					t.Fatal("provider button escaped the fixed header")
+				}
+				if size[1] < 13 {
+					for _, mode := range []string{"rule", "global", "direct"} {
+						if !hasAction(m.contentTargets(), "mode."+mode) {
+							t.Fatal("short terminal lost an offscreen mode control")
+						}
+					}
+					assertCanvas(t, m.screen, size[0], size[1])
+					assertRegions(t, m.targets, size[0], size[1])
+					return
+				}
+				previous := hitRegion{}
+				for _, mode := range []string{"rule", "global", "direct"} {
+					target := findTarget(t, m, "mode."+mode)
+					if previous.ID != "" && (target.Y < previous.Y || target.Y == previous.Y && target.X < previous.X+previous.W) {
+						t.Fatalf("mode choices overlap or changed order: %+v %+v", previous, target)
+					}
+					if size[0] >= 50 && (target.Y != provider.Y || target.X+target.W > provider.X) {
+						t.Fatalf("mode should precede providers in the same header row: mode=%+v providers=%+v", target, provider)
+					}
+					previous = target
+				}
+				assertCanvas(t, m.screen, size[0], size[1])
+				assertRegions(t, m.targets, size[0], size[1])
+			})
+		}
+	}
 }

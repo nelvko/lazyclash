@@ -571,6 +571,8 @@ func (m *Model) proxyListKey(k tea.KeyPressMsg) bool {
 }
 func (m *Model) proxyActivate(id string) tea.Cmd {
 	switch id {
+	case "proxies.providers":
+		return m.openProviders(providerProxies)
 	case "proxies.collapse_all":
 		m.proxies.expanded = make(map[string]bool)
 		m.proxies.activeGroup, m.proxies.detail = "", ""

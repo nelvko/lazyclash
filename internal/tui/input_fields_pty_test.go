@@ -38,7 +38,7 @@ func TestInputFieldsPTYFixture(t *testing.T) {
 	final.model.stopRuntime()
 	final.model.stopLogs()
 	final.model.stopRules()
-	final.model.stopRuleProviders()
+	final.model.stopProviders()
 	final.writeState()
 }
 
@@ -51,9 +51,9 @@ func inputFieldsScenario(t *testing.T, scenario, language string) (Model, string
 		var id string
 		if page == "providers" {
 			m, _ = ruleProvidersModel(t, 3)
-			id = "rules.providers-search"
-			m.ruleProviders.editing = true
-			m.ruleProviders.search.Focus()
+			id = "providers.search"
+			m.providers.editing = true
+			m.providers.search.Focus()
 			m.focus = id
 		} else {
 			m, id = searchFieldModel(t, page, 160, 45)
@@ -179,7 +179,7 @@ func (m *inputFieldsPTY) input() *textinput.Model {
 	case "search-logs":
 		return &m.model.logs.search
 	case "search-providers":
-		return &m.model.ruleProviders.search
+		return &m.model.providers.search
 	case "profile-url":
 		return &m.model.profilesUI.url
 	case "generic-form", "masked-form", "rename-form", "delete-form":

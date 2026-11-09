@@ -21,13 +21,13 @@ func TestRulesProviderModalOwnsInputAndRestoresUnderlyingList(t *testing.T) {
 	scroll, selected, expanded := m.scroll, m.rules.selected, m.rules.expanded
 	backgroundNavigation := findTarget(t, m, "nav.logs")
 	view := m.pageViews["rules"]
-	command := m.openRuleProviders()
+	command := m.openProviders(providerRules)
 	if command == nil {
 		t.Fatal("opening providers did not request a current observation")
 	}
-	m.acceptRuleProviders(command().(ruleProvidersResultMsg))
+	m.acceptProviders(command().(providersResultMsg))
 	m.layout()
-	if !m.ruleProviders.open || !m.dashboardOptions().Dim || m.scroll != scroll {
+	if !m.providers.open || !m.dashboardOptions().Dim || m.scroll != scroll {
 		t.Fatal("opening modal moved or failed to dim its underlying list")
 	}
 	for _, input := range []tea.KeyPressMsg{key("1"), key("2"), key("r"), key("?"), special(tea.KeyLeft), {Code: 't', Mod: tea.ModCtrl}} {
@@ -35,22 +35,22 @@ func TestRulesProviderModalOwnsInputAndRestoresUnderlyingList(t *testing.T) {
 	}
 	m, _ = click(m, backgroundNavigation)
 	m, _ = update(m, tea.MouseWheelMsg{X: 0, Y: 0, Button: tea.MouseWheelDown})
-	if !m.ruleProviders.open || m.page != "rules" || m.helpOpen || m.sidebarOpen || m.scroll != scroll {
+	if !m.providers.open || m.page != "rules" || m.helpOpen || m.sidebarOpen || m.scroll != scroll {
 		t.Fatal("modal let navigation, keyboard shortcuts or background wheel events escape")
 	}
 	if !reflect.DeepEqual(m.pageViews["rules"], view) {
 		t.Fatal("modal controls overwrote the remembered rule page focus")
 	}
-	row := findTarget(t, m, "rules.provider."+backend.providers[0].Name)
+	row := findTarget(t, m, "provider.row."+backend.providers[0].Name)
 	m, _ = update(m, tea.MouseWheelMsg{X: row.X + row.W/2, Y: row.Y, Button: tea.MouseWheelDown})
-	if m.ruleProviders.viewport.YOffset() == 0 || m.scroll != scroll {
+	if m.providers.viewport.YOffset() == 0 || m.scroll != scroll {
 		t.Fatal("provider wheel did not scroll independently from the main rules")
 	}
 	m, _ = update(m, special(tea.KeyEscape))
-	if m.ruleProviders.open || m.focus != "rules.providers" || m.scroll != scroll || m.rules.selected != selected || m.rules.expanded != expanded || m.rules.search.Value() != "中文" || !m.rules.caseSensitive {
+	if m.providers.open || m.focus != "rules.providers" || m.scroll != scroll || m.rules.selected != selected || m.rules.expanded != expanded || m.rules.search.Value() != "中文" || !m.rules.caseSensitive {
 		t.Fatal("closing provider modal lost the underlying rules query, cursor, expansion or scroll")
 	}
-	if m.ruleProviders.active || m.ruleProviders.pending {
+	if m.providers.active || m.providers.pending {
 		t.Fatal("closed provider modal retained observation work")
 	}
 }

@@ -50,7 +50,7 @@ func cursorSearchModel(t *testing.T, page string) (Model, string) {
 	if page == "providers" {
 		m, _ := ruleProvidersModel(t, 3)
 		m.layout()
-		return m, "rules.providers-search"
+		return m, "providers.search"
 	}
 	return searchFieldModel(t, page, 120, 32)
 }
