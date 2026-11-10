@@ -186,6 +186,7 @@ func TestOnboardingDefaultConfigurationNeedsNoSubscriptionOrGuideCompletion(t *t
 				}
 				b.snapshot.Service = service.Status{Active: true, State: "active"}
 				b.snapshot.RunningVersion = b.snapshot.Version
+				b.snapshot.Mode.Actual, b.snapshot.Mode.Running = b.snapshot.Mode.Desired, true
 				b.snapshot.Groups = []mihomo.Group{{Name: "PROXY", Type: "Selector", Now: "DIRECT", All: []string{"DIRECT", "REJECT"}}}
 				return nil
 			}
@@ -217,7 +218,7 @@ func TestOnboardingDefaultConfigurationNeedsNoSubscriptionOrGuideCompletion(t *t
 			}
 			body, _ = overviewContent(m.navigationOptions(), dashboardBodyWidth(m.dashboardOptions()))
 			plain = ansi.Strip(body)
-			for _, label := range []string{"PROXY", "DIRECT"} {
+			for _, label := range []string{m.tr("dashboard.overview.currentNode"), "DIRECT"} {
 				if !strings.Contains(plain, label) {
 					t.Fatalf("normal built-in running strategy missing %q", label)
 				}

@@ -219,5 +219,6 @@
   "wizard.network.prefix_help": "填写 HTTP(S) 前缀，后面会拼接完整 GitHub URL。",
   "wizard.network.preview_toggle": "预览完整 URL",
   "wizard.network.scope": "版本查询和安装包均使用所选方式。",
-  "wizard.network.summary": "下载方式：%s"
+  "wizard.network.summary": "下载方式：%s",
+  "ports.proxy_address": "HTTP / SOCKS5 地址"
 }

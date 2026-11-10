@@ -35,7 +35,8 @@ func TestOverviewPTYFixture(t *testing.T) {
 	raw, err := json.Marshal(map[string]int64{
 		"service_changes": b.controls.Load(), "modes": b.modes.Load(),
 		"selections": b.selections.Load(), "runtime_queries": b.runtimeQueries.Load(),
-		"tun_changes": b.tunChanges.Load(),
+		"tun_changes":    b.tunChanges.Load(),
+		"settings_reads": b.settingsReads.Load(), "settings_writes": b.settingsWrites.Load(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -50,6 +51,7 @@ type overviewPTYBackend struct {
 	scenario                                    string
 	controls, modes, selections, runtimeQueries atomic.Int64
 	tunChanges                                  atomic.Int64
+	settingsReads, settingsWrites               atomic.Int64
 }
 
 func newOverviewPTYBackend(scenario string) *overviewPTYBackend {
@@ -62,7 +64,7 @@ func newOverviewPTYBackend(scenario string) *overviewPTYBackend {
 		ProfileDetails: []app.ProfileInfo{{ID: "overview-preview", Name: "日常订阅 · 工作与生活.yaml",
 			Core: "mihomo", Kind: "remote", Origin: "subscription.example", Refreshable: true, Validated: true,
 			UpdatedAt: time.Date(2026, 11, 8, 4, 30, 0, 0, time.UTC)}},
-		MixedPort: 17897, Controller: "127.0.0.1:19097",
+		MixedPort: 17897, Controller: "http://private-user:private-password@127.0.0.1:19097/private-path?token=private-token#private-fragment",
 		Groups: groups, Proxies: map[string]mihomo.Proxy{
 			"PROXY":        {Name: "PROXY", Type: "Selector", Now: groups[0].Now, All: groups[0].All},
 			"香港 01 · 日常线路": {Name: "香港 01 · 日常线路", Type: "Trojan"},
@@ -86,7 +88,11 @@ func newOverviewPTYBackend(scenario string) *overviewPTYBackend {
 	case "drift":
 		s.Version = "v1.20.0"
 		s.Mode.Actual = "global"
+		s.Groups = append(s.Groups, mihomo.Group{Name: "GLOBAL", Type: "Selector", Now: groups[0].Now, All: groups[0].All})
+		s.Proxies["GLOBAL"] = mihomo.Proxy{Name: "GLOBAL", Type: "Selector", Now: groups[0].Now, All: groups[0].All}
 		s.Drift = "Fixture running service differs from saved settings"
+	case "direct":
+		s.Mode.Desired, s.Mode.Actual = "direct", "direct"
 	case "pending":
 		s.ProfilePending, s.ProfileDetails[0].Pending = true, true
 		s.Capabilities.Scope, s.Capabilities.TUN.Supported = "system", true
@@ -129,6 +135,16 @@ func (b *overviewPTYBackend) Select(ctx context.Context, _, _ string) error {
 func (b *overviewPTYBackend) SetTUN(ctx context.Context, _ bool) error {
 	b.tunChanges.Add(1)
 	return ctx.Err()
+}
+
+func (b *overviewPTYBackend) GetRuntimeSettings(ctx context.Context) (app.RuntimeSettings, error) {
+	b.settingsReads.Add(1)
+	return app.RuntimeSettings{MixedPort: b.snapshot.MixedPort, ControllerPort: 19097}, ctx.Err()
+}
+
+func (b *overviewPTYBackend) ApplyRuntimeSettings(ctx context.Context, _ app.RuntimeSettingsPlan) (app.RuntimeSettingsResult, error) {
+	b.settingsWrites.Add(1)
+	return app.RuntimeSettingsResult{}, ctx.Err()
 }
 
 func (b *overviewPTYBackend) StreamRuntime(ctx context.Context, emit func(app.RuntimeEvent)) error {

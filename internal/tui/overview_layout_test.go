@@ -27,12 +27,12 @@ func TestOverviewPairedLayoutAlignsBothEdgesAndKeepsActionOwnership(t *testing.T
 	owners := map[string]string{
 		"core.stop": "dashboard.control.core", "core.restart": "dashboard.control.core",
 		"mode.rule": "dashboard.control.routingMode", "mode.global": "dashboard.control.routingMode", "mode.direct": "dashboard.control.routingMode", "card.proxies": "dashboard.control.routingMode",
-		"card.profiles": "dashboard.profile.title", "tun.enable": "dashboard.overview.access", "card.access": "dashboard.overview.access",
+		"card.profiles": "dashboard.profile.title", "tun.enable": "dashboard.overview.network", "card.network": "dashboard.overview.network",
 	}
 	renders := map[string]func(dashboardOptions, int) dashboardBlock{
 		"dashboard.control.core": overviewCoreCard, "dashboard.traffic.title": overviewTrafficCard,
-		"dashboard.control.routingMode": overviewRouteCard, "dashboard.profile.title": overviewProfileCard,
-		"dashboard.overview.access": overviewAccessCard, "dashboard.system.title": overviewSystemCard,
+		"dashboard.control.routingMode": overviewModeCard, "dashboard.profile.title": overviewProfileCard,
+		"dashboard.overview.network": overviewNetworkCard, "dashboard.system.title": overviewSystemCard,
 	}
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		for _, width := range []int{16, 40, 72, 89, 90, 91, 112, 180} {
@@ -223,7 +223,7 @@ func TestOverviewAlignedVersionsAndModesCollapseOnlyConfirmedState(t *testing.T)
 			}
 			mode := func() string { return ansi.Strip(strings.Join(overviewModeCard(o, 100).lines, "\n")) }
 			rule := locale.T("dashboard.mode.rule")
-			if value := mode(); !strings.Contains(value, locale.T("dashboard.overview.modeAligned", rule)) || strings.Contains(value, locale.T("dashboard.control.savedMode", rule)) || strings.Contains(value, locale.T("dashboard.control.runningMode", rule)) {
+			if value := mode(); !strings.Contains(value, locale.T("dashboard.overview.modeRule")) || strings.Contains(value, locale.T("dashboard.control.savedMode", rule)) || strings.Contains(value, locale.T("dashboard.control.runningMode", rule)) {
 				t.Fatalf("confirmed aligned mode retained duplicate state lines: %s", value)
 			}
 			o.Snapshot.Mode.Actual = "global"
@@ -231,12 +231,12 @@ func TestOverviewAlignedVersionsAndModesCollapseOnlyConfirmedState(t *testing.T)
 				t.Fatalf("mode mismatch lost explicit saved/running distinction: %s", value)
 			}
 			o.Snapshot.Mode.Actual = ""
-			if value := mode(); !strings.Contains(value, locale.T("dashboard.control.runningMode", locale.T("dashboard.status.unknown"))) || strings.Contains(value, locale.T("dashboard.overview.modeAligned", rule)) {
+			if value := mode(); !strings.Contains(value, locale.T("dashboard.control.runningMode", locale.T("dashboard.status.unknown"))) || strings.Contains(value, locale.T("dashboard.overview.modeRule")) {
 				t.Fatalf("unobserved mode appeared aligned: %s", value)
 			}
 			for _, unknown := range []string{"", "unrecognized"} {
 				o.Snapshot.Mode.Desired, o.Snapshot.Mode.Actual = unknown, unknown
-				if value := mode(); !strings.Contains(value, locale.T("dashboard.control.runningMode", locale.T("dashboard.status.unknown"))) || strings.Contains(value, locale.T("dashboard.overview.modeAligned", locale.T("dashboard.status.unknown"))) {
+				if value := mode(); !strings.Contains(value, locale.T("dashboard.control.runningMode", locale.T("dashboard.status.unknown"))) || strings.Contains(value, locale.T("dashboard.overview.modeRule")) {
 					t.Fatalf("matching unknown modes appeared confirmed: %s", value)
 				}
 			}
@@ -254,8 +254,13 @@ func TestOverviewProfileKeepsSafeMetadataAndUnappliedChangesExplicit(t *testing.
 				ProfileDetails: []app.ProfileInfo{{ID: "work", Name: "Work", Kind: "remote", Origin: "subscription.example.invalid", UpdatedAt: updated, Validated: true, HasOverrides: true, Description: "hidden-profile-description"}},
 			}}
 			card := func() string { return ansi.Strip(strings.Join(overviewProfileCard(o, 100).lines, "\n")) }
-			if value := card(); !strings.Contains(value, "Work") || !strings.Contains(value, locale.T("dashboard.overview.source", "subscription.example.invalid")) || !strings.Contains(value, profileUpdated(updated, time.Now(), locale)) || !strings.Contains(value, locale.T("dashboard.overview.overrides")) || strings.Contains(value, "hidden-profile-description") {
+			if value := card(); !strings.Contains(value, "Work") || !strings.Contains(value, "subscription.example.invalid") || !strings.Contains(value, updated.Format("2006-01-02")) || strings.Contains(value, "hidden-profile-description") {
 				t.Fatalf("overview lost useful safe profile metadata or exposed its description: %s", value)
+			}
+			for _, obsolete := range []string{"Includes overrides", "包含覆写配置", "1 saved profiles", "已保存 1 份配置"} {
+				if strings.Contains(card(), obsolete) {
+					t.Fatalf("overview retained detail-only profile metadata %q", obsolete)
+				}
 			}
 			for _, fromSnapshot := range []bool{true, false} {
 				o.Snapshot.ProfilePending = fromSnapshot
@@ -272,7 +277,7 @@ func TestOverviewProfileKeepsSafeMetadataAndUnappliedChangesExplicit(t *testing.
 			for kind, origin := range map[string]string{"local": locale.T("profiles.create_local"), "imported": locale.T("profiles.imported_origin"), "builtin": locale.T("profiles.builtin_origin")} {
 				o.Snapshot.ProfileDetails[0].Kind = kind
 				o.Snapshot.ProfileDetails[0].Origin = "/private/profile-source.yaml"
-				if value := card(); !strings.Contains(value, locale.T("dashboard.overview.source", origin)) || strings.Contains(value, "/private/profile-source.yaml") {
+				if value := card(); !strings.Contains(value, origin) || strings.Contains(value, "/private/profile-source.yaml") {
 					t.Fatalf("profile kind %s lost its safe source label: %s", kind, value)
 				}
 			}
@@ -280,16 +285,16 @@ func TestOverviewProfileKeepsSafeMetadataAndUnappliedChangesExplicit(t *testing.
 	}
 }
 
-func TestOverviewAccessKeepsProxyAndControlAddressesDistinctAndSafe(t *testing.T) {
+func TestOverviewNetworkMovesAddressesToDetailsAndKeepsControllerMetadataSafe(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		t.Run(language, func(t *testing.T) {
 			locale := i18n.New(language)
 			o := dashboardOptions{Locale: locale, Snapshot: app.Snapshot{
 				Installed: true, MixedPort: 17890, Controller: "http://private-user:private-password@127.0.0.1:19090/private-path?token=private-token#private-fragment",
 			}}
-			card := func() string { return ansi.Strip(strings.Join(overviewAccessCard(o, 100).lines, "\n")) }
-			if value := card(); !strings.Contains(value, "127.0.0.1:17890") || !strings.Contains(value, locale.T("dashboard.overview.controller", "127.0.0.1:19090")) {
-				t.Fatalf("configured proxy/control addresses lost their separate ports: %s", value)
+			card := func() string { return ansi.Strip(strings.Join(overviewNetworkCard(o, 100).lines, "\n")) }
+			if value := card(); strings.Contains(value, "127.0.0.1:") || !hasAction(overviewNetworkCard(o, 100).targets, "card.network") {
+				t.Fatalf("network overview retained detail addresses or lost its settings entry: %s", value)
 			}
 			for _, secret := range []string{"private-user", "private-password", "private-path", "private-token", "private-fragment"} {
 				if strings.Contains(card(), secret) {
@@ -298,13 +303,13 @@ func TestOverviewAccessKeepsProxyAndControlAddressesDistinctAndSafe(t *testing.T
 			}
 			for _, invalid := range []int{0, -1, 65536} {
 				o.Snapshot.MixedPort = invalid
-				if value := card(); strings.Contains(value, "127.0.0.1:17890") || strings.Contains(value, "127.0.0.1:7897") || strings.Count(value, "127.0.0.1:19090") != 1 {
-					t.Fatalf("unavailable proxy port was replaced by a stale/default/controller port: %s", value)
+				if value := card(); strings.Contains(value, "127.0.0.1:") {
+					t.Fatalf("network summary exposed a default, stale or detail-only address: %s", value)
 				}
 			}
 			o.Snapshot.Installed, o.Snapshot.MixedPort = false, 17890
-			if value := card(); strings.Contains(value, "127.0.0.1:") || len(overviewAccessCard(o, 100).targets) != 0 {
-				t.Fatal("uninstalled access card exposed stale addresses or actions")
+			if value := card(); strings.Contains(value, "127.0.0.1:") || len(overviewNetworkCard(o, 100).targets) != 0 {
+				t.Fatal("uninstalled network card exposed stale addresses or actions")
 			}
 		})
 	}
@@ -319,7 +324,7 @@ func TestOverviewAccessKeepsProxyAndControlAddressesDistinctAndSafe(t *testing.T
 	}
 }
 
-func TestOverviewAccessSeparatesSavedAndObservedHostTUN(t *testing.T) {
+func TestOverviewNetworkSeparatesSavedAndObservedHostTUN(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		t.Run(language, func(t *testing.T) {
 			locale := i18n.New(language)
@@ -329,8 +334,8 @@ func TestOverviewAccessSeparatesSavedAndObservedHostTUN(t *testing.T) {
 				Service:      service.Status{Active: true, State: "active"},
 				Capabilities: app.Capabilities{Scope: "system", Runtime: app.Capability{Supported: true}, TUN: app.Capability{Supported: true}},
 			}}
-			card := func() string { return ansi.Strip(strings.Join(overviewAccessCard(o, 100).lines, "\n")) }
-			if value := card(); !strings.Contains(value, locale.T("tun.saved_state", locale.T("dashboard.control.on"))) || !strings.Contains(value, locale.T("dashboard.overview.tunActual", locale.T("dashboard.control.off"))) || !strings.Contains(value, locale.T("tun.host_scope")) || !strings.Contains(value, o.Snapshot.TUNError) || !hasAction(overviewAccessCard(o, 100).targets, "tun.disable") {
+			card := func() string { return ansi.Strip(strings.Join(overviewNetworkCard(o, 100).lines, "\n")) }
+			if value := card(); !strings.Contains(value, locale.T("tun.saved_state", locale.T("dashboard.control.on"))) || !strings.Contains(value, locale.T("dashboard.overview.tunActual", locale.T("dashboard.control.off"))) || !strings.Contains(value, locale.T("tun.host_scope")) || !strings.Contains(value, o.Snapshot.TUNError) || !hasAction(overviewNetworkCard(o, 100).targets, "tun.disable") {
 				t.Fatalf("host TUN mismatch lost saved/observed distinction, scope or recovery action: %s", value)
 			}
 			for _, missing := range []string{"no observation", "service error", "API error"} {
@@ -348,9 +353,55 @@ func TestOverviewAccessSeparatesSavedAndObservedHostTUN(t *testing.T) {
 				}
 			}
 			o.Busy = true
-			if len(overviewAccessCard(o, 100).targets) != 0 {
-				t.Fatal("busy access card retained an actionable control")
+			if len(overviewNetworkCard(o, 100).targets) != 0 {
+				t.Fatal("busy network card retained an actionable control")
 			}
 		})
+	}
+}
+
+func TestOverviewModeUsesActualModeAndDoesNotExposeStaleNodeSelection(t *testing.T) {
+	for _, language := range []string{i18n.English, i18n.Chinese} {
+		for _, state := range []struct {
+			name, desired, actual, serviceError, apiError, modeError, want string
+			missingGlobal, unsupported                                     bool
+		}{
+			{name: "rule", desired: "rule", actual: "rule", want: "proxy-node"},
+			{name: "global ignores stale group selection", desired: "global", actual: "global", want: "global-node"},
+			{name: "saved direct does not hide actual rule", desired: "direct", actual: "rule", want: "proxy-node"},
+			{name: "actual direct hides old node", desired: "rule", actual: "direct"},
+			{name: "missing global does not use rule proxy", desired: "global", actual: "global", missingGlobal: true},
+			{name: "unknown mode", desired: "rule"},
+			{name: "service unavailable", desired: "rule", actual: "rule", serviceError: "fixture service unavailable"},
+			{name: "API unavailable", desired: "rule", actual: "rule", apiError: "fixture API unavailable"},
+			{name: "mode unavailable", desired: "rule", actual: "rule", modeError: "fixture mode unavailable"},
+			{name: "readable mode with unavailable runtime controls", desired: "rule", actual: "rule", unsupported: true, want: "proxy-node"},
+		} {
+			t.Run(language+"/"+state.name, func(t *testing.T) {
+				o := dashboardOptions{Locale: i18n.New(language), SelectedGroup: "PROXY", Snapshot: app.Snapshot{
+					Installed: true, Service: service.Status{Active: true, State: "active"},
+					Mode:         app.ModeStatus{Desired: state.desired, Actual: state.actual, Running: true, Error: state.modeError},
+					ServiceError: state.serviceError, APIError: state.apiError,
+					Groups:       []mihomo.Group{{Name: "PROXY", Type: "Selector", Now: "proxy-node"}, {Name: "GLOBAL", Type: "Selector", Now: "global-node"}},
+					Capabilities: app.Capabilities{Scope: "user", Runtime: app.Capability{Supported: !state.unsupported}},
+				}}
+				if state.missingGlobal {
+					o.Snapshot.Groups = o.Snapshot.Groups[:1]
+				}
+				block := overviewModeCard(o, 72)
+				plain := ansi.Strip(strings.Join(block.lines, "\n"))
+				for _, node := range []string{"proxy-node", "global-node"} {
+					if strings.Contains(plain, node) != (node == state.want) {
+						t.Fatalf("mode card exposed or hid an unrelated node %q:\n%s", node, plain)
+					}
+				}
+				if state.actual == "direct" && !strings.Contains(plain, o.Locale.T("dashboard.overview.modeDirect")) {
+					t.Fatal("confirmed Direct lost its mode explanation")
+				}
+				if state.unsupported && (!strings.Contains(plain, o.Locale.T("dashboard.overview.modeRule")) || hasAction(block.targets, "mode.global")) {
+					t.Fatal("control availability was confused with a valid observed mode")
+				}
+			})
+		}
 	}
 }

@@ -533,67 +533,6 @@ func getStarted(o dashboardOptions, width int) dashboardBlock {
 	return b
 }
 
-func overviewGroupLines(o dashboardOptions) []string {
-	tr := o.Locale.T
-	s := o.Snapshot
-	style := func(value, color string) string { return themed(clean(value), color, panel, o.Dim) }
-	label := func(name, value string) string { return style(name+"  ", muted) + style(value, text) }
-	groupName, node, groupStatus := "--", "--", tr("dashboard.groups.inactive")
-	if s.Service.Active {
-		groupStatus = tr("dashboard.groups.empty")
-		if len(s.Groups) > 0 {
-
-			g := s.Groups[0]
-			found := false
-			if o.SelectedGroup != "" {
-				for _, candidate := range s.Groups {
-					if candidate.Name == o.SelectedGroup {
-						g = candidate
-						found = true
-						break
-					}
-				}
-			}
-			if !found {
-				for _, candidate := range s.Groups {
-					if candidate.Name == "PROXY" {
-						g = candidate
-						found = true
-						break
-					}
-				}
-			}
-			if !found {
-				for _, candidate := range s.Groups {
-					if candidate.Type == "Selector" {
-						g = candidate
-						break
-					}
-				}
-			}
-			groupName, node, groupStatus = g.Name, g.Now, tr("dashboard.groups.ready")
-		}
-	}
-	if !s.Installed {
-		groupName, node, groupStatus = "--", "--", tr("dashboard.groups.afterStart")
-	} else if s.ServiceError != "" {
-		groupName, node, groupStatus = "--", "--", tr("dashboard.groups.serviceUnavailable")
-	} else if s.Service.Active && s.APIError != "" {
-		groupName, node, groupStatus = "--", "--", tr("dashboard.groups.apiUnavailable")
-	}
-	var groups []string
-	if groupName != "--" {
-		groups = append(groups, label(tr("dashboard.groups.group"), groupName),
-			style(tr("dashboard.groups.node")+"  ", muted)+lipgloss.NewStyle().Bold(true).Render(style(node, text)))
-	} else {
-		groups = append(groups, style(groupStatus, muted))
-		if s.Installed && !s.Service.Active {
-			groups = append(groups, style(tr("dashboard.groups.startHint"), muted))
-		}
-	}
-	return groups
-}
-
 func dashboardModeLabel(mode string, locale i18n.Localizer) string {
 	switch mode {
 	case "rule", "global", "direct":

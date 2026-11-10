@@ -95,7 +95,7 @@ func TestOverviewControlStatesRemainExplicit(t *testing.T) {
 		Capabilities: app.Capabilities{Scope: "user", Runtime: app.Capability{Supported: true}},
 		Mode:         app.ModeStatus{Desired: "rule", Actual: "rule", Running: true},
 	}}
-	block := overviewAccessCard(o, 56)
+	block := overviewNetworkCard(o, 56)
 	plain := ansi.Strip(strings.Join(block.lines, "\n"))
 	if hasAction(block.targets, "tun.enable") || hasAction(block.targets, "tun.disable") || !strings.Contains(plain, "TUN") || !strings.Contains(plain, "Not supported by the user service.") || !strings.Contains(plain, "Unmanaged") {
 		t.Fatal("access card hid capability explanations or made them actionable")

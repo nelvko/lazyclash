@@ -128,7 +128,7 @@ func TestCoreStatusKeepsFailuresTransitionsAndMissingTimingExplicit(t *testing.T
 	}
 }
 
-func TestOverviewTitlesAndPairedFootersHaveDedicatedSpacing(t *testing.T) {
+func TestOverviewTitlesKeepSpacingAndNavigationActionsStayInHeading(t *testing.T) {
 	o := dashboardOptions{Height: 45, Snapshot: app.Snapshot{
 		Installed: true, Version: "v1.19.33", Service: service.Status{Active: true, State: "active"},
 		ConfigReady: true, Applied: "work", Profiles: []string{"default", "work"},
@@ -145,10 +145,13 @@ func TestOverviewTitlesAndPairedFootersHaveDedicatedSpacing(t *testing.T) {
 		}
 	}
 	for _, hit := range body.targets {
-		if hit.ID == "core.stop" || hit.ID == "card.profiles" {
+		if hit.ID == "core.stop" {
 			if hit.Y != core.Y+core.H-2 {
-				t.Fatalf("paired action did not stay above the bottom padding: %+v / %+v", hit, core)
+				t.Fatalf("core action did not stay above the bottom padding: %+v / %+v", hit, core)
 			}
+		}
+		if hit.ID == "card.profiles" && hit.Y != profile.Y+1 {
+			t.Fatalf("profile navigation did not stay in its heading: %+v / %+v", hit, profile)
 		}
 	}
 }

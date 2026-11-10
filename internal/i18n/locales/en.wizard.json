@@ -219,5 +219,6 @@
   "wizard.network.prefix_help": "Enter an HTTP(S) prefix; the full GitHub URL is appended.",
   "wizard.network.preview_toggle": "Preview full URL",
   "wizard.network.scope": "Version checks and packages use this method.",
-  "wizard.network.summary": "Download method: %s"
+  "wizard.network.summary": "Download method: %s",
+  "ports.proxy_address": "HTTP / SOCKS5 address"
 }

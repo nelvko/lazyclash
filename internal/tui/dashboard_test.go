@@ -374,7 +374,7 @@ func TestOverviewRowsSizeIndependentlyAndEmptyMetricsStayClear(t *testing.T) {
 	}
 	short := overviewLayout(dashboardOptions{Height: 45, GuideDismissed: true}, 112)
 	tall := overviewLayout(o, 112)
-	for _, id := range []string{"overview.card.dashboard.control.core", "overview.card.dashboard.profile.title", "overview.card.dashboard.control.routingMode", "overview.card.dashboard.overview.access"} {
+	for _, id := range []string{"overview.card.dashboard.control.core", "overview.card.dashboard.profile.title", "overview.card.dashboard.control.routingMode", "overview.card.dashboard.overview.network"} {
 		if card(short, id) != card(tall, id) {
 			t.Fatalf("traffic diagnostic changed an earlier control card: %s", id)
 		}
@@ -402,7 +402,7 @@ func TestOverviewLayoutPreservesDetailsAndActionTargets(t *testing.T) {
 			for _, word := range strings.Fields(strings.ReplaceAll(ansi.Strip(body), "│", " ")) {
 				words[word]++
 			}
-			for _, value := range []string{"Connections", "↑ Upload", "↓ Download", "Since core start", "Core memory", "1.0 MiB", "2.0 MiB", "2.0 KiB/s", "4.0 KiB/s", "16.0 MiB", "Not supported by the user service.", "Installed version:", "v1.20.0", "Running version:", "v1.19.33", "Restart to use the installed version", "Stop was requested; the process is still running"} {
+			for _, value := range []string{"Connections", "↑ Upload", "↓ Download", "1.0 MiB", "2.0 MiB", "2.0 KiB/s", "4.0 KiB/s", "16.0 MiB", "Not supported by the user service.", "Installed version:", "v1.20.0", "Running version:", "v1.19.33", "Restart to use the installed version", "Stop was requested; the process is still running"} {
 				for _, word := range strings.Fields(value) {
 					if words[word] == 0 {
 						t.Errorf("overview lost word %q from detail %q", word, value)
@@ -412,7 +412,7 @@ func TestOverviewLayoutPreservesDetailsAndActionTargets(t *testing.T) {
 			}
 			assertCanvas(t, body, width, len(rows))
 			assertRegions(t, hits, width, len(rows))
-			for id, label := range map[string]string{"card.profiles": "Manage profiles", "card.proxies": "Open Proxies"} {
+			for id, label := range map[string]string{"card.profiles": o.Locale.T("dashboard.overview.profilesAction"), "card.network": o.Locale.T("dashboard.overview.settingsAction"), "card.proxies": o.Locale.T("dashboard.overview.proxiesAction")} {
 				found := false
 				for _, hit := range hits {
 					if hit.ID == id {
@@ -438,7 +438,7 @@ func TestOverviewLayoutPreservesDetailsAndActionTargets(t *testing.T) {
 	}
 	t.Run("uninstalled", func(t *testing.T) {
 		o := dashboardOptions{Snapshot: app.Snapshot{ServiceError: "Service management is unsupported on macOS"}}
-		group := ansi.Strip(strings.Join(overviewGroupLines(o), "\n"))
+		group := ansi.Strip(strings.Join(overviewNodeLines(o), "\n"))
 		if !strings.Contains(group, "Proxy groups appear after the core starts.") || strings.Contains(group, "Service unavailable") {
 			t.Fatalf("uninstalled core was presented as a service failure: %s", group)
 		}
@@ -476,7 +476,7 @@ func TestDashboardMouseCoordinatesFollowScrolling(t *testing.T) {
 		t.Fatal("short viewport should require scrolling")
 	}
 	lines := strings.Split(value, "\n")
-	labels := map[string]string{"core.install": "Install core", "card.profiles": "Manage profiles", "card.install": "Manage core"}
+	labels := map[string]string{"core.install": "Install core", "card.profiles": o.Locale.T("dashboard.overview.profilesAction")}
 	for _, r := range regions {
 		if label, ok := labels[r.ID]; ok {
 			cells := ansi.Strip(ansi.Cut(lines[r.Y], r.X, r.X+r.W))

@@ -126,7 +126,7 @@ def assert_card_outline(terminal, profile, complete=True):
 
 
 def inspect_row_cards(preview, terminal, output, width, height, words, profile, scenario, args):
-    names = ("service", "profile", "route", "access", "traffic", "environment")
+    names = ("service", "profile", "network", "route", "traffic", "environment")
     titles = [words["dashboard.profile.title"] if name == "profile" else
               words["dashboard.overview." + name] for name in names]
     initial_positions = [text_point(terminal, title) for title in titles]
@@ -137,14 +137,13 @@ def inspect_row_cards(preview, terminal, output, width, height, words, profile, 
         assert point is not None and outline["x"] < point[0] < outline["x"] + outline["width"], "card browsing lost semantic identity: " + name
         assert outline["y"] < point[1] < outline["y"] + outline["height"], "card outline surrounds the wrong title: " + name
         geometry.append(outline)
-        if name == "traffic" and scenario in ("running", "pending", "drift"):
+        if name == "traffic" and scenario in ("running", "pending", "drift", "direct"):
             for value in ("12.0 KiB/s", "2.2 MiB/s"):
                 assert value in terminal.screen.text(), "traffic card omitted a live rate: " + value
-        if name == "access":
-            assert "127.0.0.1:17897" in terminal.screen.text(), "local-access card omitted its configured proxy endpoint"
-            assert "127.0.0.1:19097" in terminal.screen.text(), "local-access card omitted its control API address"
+        if name == "network":
+            assert "127.0.0.1:" not in terminal.screen.text(), "network summary retained detail-only listener addresses"
             if scenario == "pending":
-                assert words["tun.disable"] in terminal.screen.text(), "saved TUN state lost its explicit disable control"
+                assert words["dashboard.network.disable"] in terminal.screen.text(), "saved TUN state lost its explicit disable control"
                 assert words["tun.saved_state"] % words["dashboard.control.on"] in terminal.screen.text(), "saved TUN state was not retained"
                 assert words["dashboard.overview.tunActual"] % words["dashboard.control.off"] in terminal.screen.text(), "observed TUN state was confused with the saved state"
         preview.capture(terminal, output, "%s-card-%dx%d" % (name, width, height), args)
@@ -183,7 +182,7 @@ def exercise(preview, binary, output, language, profile, scenario, args):
         preview.capture(terminal, output, "overview-initial", args)
         screen = terminal.screen.text()
         if scenario in ("running", "pending"):
-            for value in ("02:18:", "PROXY", "香港 01", "日常订阅"):
+            for value in ("02:18:", "香港 01", "日常订阅"):
                 assert value in screen, "missing initial observation: " + value
             assert "4242" not in screen, "core status retained diagnostic PID"
         elif scenario == "drift":
@@ -191,9 +190,13 @@ def exercise(preview, binary, output, language, profile, scenario, args):
                 assert value in screen, "missing state discrepancy: " + value
         elif scenario == "stopped":
             assert words["dashboard.core.start"] in screen, "stopped service lost Start"
+        elif scenario == "direct":
+            assert words["dashboard.overview.modeDirect"] in screen, "actual Direct omitted its explanation"
+            assert "香港 01" not in screen, "Direct retained a stale selected node"
         else:
             assert "12.0 KiB/s" not in screen, "unavailable observation retained live metrics"
         assert "subscription.example" in screen, "profile card omitted its source origin"
+        assert "127.0.0.1:" not in screen, "overview retained addresses intended for network details"
         if scenario == "pending":
             assert words["profiles.changes_pending"] in screen, "profile card hid its unapplied changes"
 
@@ -201,7 +204,7 @@ def exercise(preview, binary, output, language, profile, scenario, args):
         # navigation before checking both safe Enter transitions.
         return_navigation(terminal, words)
         assert_borderless(terminal)
-        assert "─────" in terminal.screen.text(), "borderless cards removed the internal route divider"
+        assert "─────" in terminal.screen.text(), "borderless cards removed the internal network divider"
         preview.capture(terminal, output, "overview-navigation", args)
         terminal.key(b"\r")
         terminal.settle()
@@ -214,14 +217,12 @@ def exercise(preview, binary, output, language, profile, scenario, args):
         assert_borderless(terminal)
         preview.capture(terminal, output, "control-focus", args)
 
-        expected = [lifecycle, words["dashboard.action.profiles"], words["dashboard.settings.ports"]]
+        expected = [lifecycle, words["dashboard.overview.profilesAction"], words["dashboard.overview.settingsAction"], words["dashboard.overview.proxiesAction"]]
         if scenario != "unavailable":
             expected.extend([words["dashboard.action.restart"],
                              *[words["dashboard.mode." + mode] for mode in ("rule", "global", "direct")]])
-        if scenario not in ("stopped", "unavailable"):
-            expected.append(words["dashboard.action.openProxies"])
         if scenario == "pending":
-            expected.append(words["tun.disable"])
+            expected.append(words["dashboard.network.disable"])
 
         for width, height in SIZES:
             terminal.resize(width, height)
@@ -248,18 +249,34 @@ def exercise(preview, binary, output, language, profile, scenario, args):
             preview.capture(terminal, output, "tab-revealed-%dx%d" % (width, height), args)
             assert words["dashboard.footer.quit"] in terminal.screen.text().splitlines()[-1], "Quit hint left the footer"
 
+        # Network addresses moved into the existing read-only edit preview.
+        focus_control(terminal, words["dashboard.overview.settingsAction"])
+        terminal.click_text(words["dashboard.overview.settingsAction"])
+        terminal.wait("127.0.0.1:17897")
+        terminal.wait("127.0.0.1:19097")
+        for secret in ("private-user", "private-password", "private-path", "private-token", "private-fragment"):
+            assert secret not in terminal.screen.text(), "network details leaked controller metadata: " + secret
+        preview.capture(terminal, output, "network-details-from-overview", args)
+        terminal.key(b"\x1b")
+        terminal.settle()
+        for secret in ("private-user", "private-password", "private-path", "private-token", "private-fragment"):
+            assert secret not in terminal.screen.text(), "returning to Settings leaked controller metadata: " + secret
+        terminal.key(b"1")
+        terminal.settle()
+
         # Read-only page transitions use the card's real mouse target.
-        focus_control(terminal, words["dashboard.action.profiles"])
-        terminal.click_text(words["dashboard.action.profiles"])
+        focus_control(terminal, words["dashboard.overview.profilesAction"])
+        terminal.click_text(words["dashboard.overview.profilesAction"])
         terminal.wait(words["dashboard.page.profiles"])
         terminal.wait_absent(words["dashboard.action.restart"])
         preview.capture(terminal, output, "profiles-from-overview", args)
         terminal.key(b"1")
         terminal.settle()
         if scenario not in ("stopped", "unavailable"):
-            focus_control(terminal, words["dashboard.action.openProxies"])
-            terminal.click_text(words["dashboard.action.openProxies"])
-            terminal.wait("PROXY")
+            focus_control(terminal, words["dashboard.overview.proxiesAction"])
+            terminal.click_text(words["dashboard.overview.proxiesAction"])
+            expected_proxy = words["proxies.direct.description"] if scenario == "direct" else "GLOBAL" if scenario == "drift" else "PROXY"
+            terminal.wait(expected_proxy)
             terminal.wait_absent(words["dashboard.action.restart"])
             preview.capture(terminal, output, "proxies-from-overview", args)
             terminal.key(b"1")
@@ -268,10 +285,11 @@ def exercise(preview, binary, output, language, profile, scenario, args):
         calls = json.loads(report.read_text())
         assert calls["service_changes"] == calls["modes"] == calls["selections"] == 0, calls
         assert calls["tun_changes"] == 0, calls
+        assert calls["settings_reads"] == 1 and calls["settings_writes"] == 0, calls
         assert calls["runtime_queries"] > 0, calls
         check_profile(preview, terminal, profile)
         (output / "pty.raw").write_bytes(terminal.raw)
-        print("PASS %s/%s/%s: paired equal-size cards and fullwidth traffic/environment, five dimensions, borderless/focus states, local access, Tab reveal and read-only page actions; %s" %
+        print("PASS %s/%s/%s: paired equal-size cards, network/mode order, fullwidth traffic/environment, five dimensions, borderless/focus states, heading actions, Tab reveal and read-only network details; %s" %
               (language, profile, scenario, json.dumps(calls)), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")
@@ -289,7 +307,7 @@ def main():
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--lang", choices=["en", "zh-Hans"], action="append")
     parser.add_argument("--profile", choices=["truecolor", "256", "no-color"], action="append")
-    parser.add_argument("--scenario", choices=["running", "stopped", "unavailable", "drift", "pending"], action="append")
+    parser.add_argument("--scenario", choices=["running", "stopped", "unavailable", "drift", "pending", "direct"], action="append")
     sys.dont_write_bytecode = True
     spec = importlib.util.spec_from_file_location("overview_pty_preview", Path(__file__).with_name("onboarding-pty.py"))
     preview = importlib.util.module_from_spec(spec)

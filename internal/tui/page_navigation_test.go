@@ -92,6 +92,35 @@ func TestPageNavigationOverviewStartsAtCardBeforeItsControls(t *testing.T) {
 	}
 }
 
+func TestOverviewHeadingActionsRequireExplicitActivationAfterEnteringCard(t *testing.T) {
+	for _, action := range []struct{ card, id string }{
+		{"dashboard.profile.title", "card.profiles"},
+		{"dashboard.overview.network", "card.network"},
+		{"dashboard.control.routingMode", "card.proxies"},
+	} {
+		t.Run(action.id, func(t *testing.T) {
+			reads, mutations := 0, 0
+			backend := &fakeBackend{snapshot: app.Snapshot{
+				Installed: true, ConfigReady: true, HasRun: true, GuideDismissed: true,
+				Service: service.Status{Active: true, State: "active"},
+				Mode:    app.ModeStatus{Desired: "rule", Actual: "rule", Running: true},
+			}}
+			backend.getSettings = func(context.Context) (app.RuntimeSettings, error) { reads++; return app.RuntimeSettings{}, nil }
+			backend.control = func(context.Context, string) error { mutations++; return nil }
+			backend.mode = func(context.Context, string) error { mutations++; return nil }
+			m := ready(backend)
+			defer m.stopRuntime()
+			m.width, m.height, m.focus = 160, 45, "overview.card."+action.card
+			m.layout()
+			id := m.id
+			m, _ = update(m, special(tea.KeyEnter))
+			if m.page != "overview" || m.focus != action.id || m.id != id || m.busy || m.ports.open || m.wizard.open || reads != 0 || mutations != 0 {
+				t.Fatalf("entering a card activated its heading navigation: page=%s focus=%s", m.page, m.focus)
+			}
+		})
+	}
+}
+
 func TestPageNavigationInstalledKernelManagementStaysInSettings(t *testing.T) {
 	m := pageNavigationModel()
 	m.snapshot = onboardingDefaultSnapshot()
@@ -369,7 +398,7 @@ func TestPageNavigationOverviewCardIDsRemainUniqueAndStableAcrossResize(t *testi
 				if !setup {
 					wantIDs = []string{
 						"overview.card.dashboard.control.core", "overview.card.dashboard.profile.title",
-						"overview.card.dashboard.control.routingMode", "overview.card.dashboard.overview.access",
+						"overview.card.dashboard.overview.network", "overview.card.dashboard.control.routingMode",
 						"overview.card.dashboard.traffic.title",
 					}
 					wantIDs = append(wantIDs, "overview.card.dashboard.system.title")

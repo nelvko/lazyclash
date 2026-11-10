@@ -121,7 +121,7 @@ func settingsNetwork(o dashboardOptions, width int) dashboardBlock {
 	ports := settingsRow{label: tr("settings.ports"), value: tr("settings.afterInstall")}
 	if s.Installed {
 		ports.value = ""
-		ports.note = clean(s.Controller)
+		ports.note = overviewControllerAddress(s.Controller)
 		ports.actions = []overviewControlButton{{id: "runtime-settings", label: tr("settings.edit"), enabled: !o.Busy}}
 	}
 	tun := settingsRow{label: tr("dashboard.field.tun"), value: tr("settings.unsupported"), note: tr("dashboard.control.tunHint")}

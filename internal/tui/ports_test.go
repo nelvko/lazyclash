@@ -30,9 +30,11 @@ func portsModel(t *testing.T, backend *fakeBackend) Model {
 	return m
 }
 
-func TestOverviewAccessOpensPortSettingsWithoutApplying(t *testing.T) {
+func TestOverviewNetworkOpensAddressDetailsWithoutApplying(t *testing.T) {
 	reads, writes := 0, 0
 	backend := &fakeBackend{snapshot: onboardingDefaultSnapshot()}
+	backend.snapshot.MixedPort = 17890
+	backend.snapshot.Controller = "http://private-user:private-password@127.0.0.1:19090/private-path?token=private-token#private-fragment"
 	backend.getSettings = func(context.Context) (app.RuntimeSettings, error) {
 		reads++
 		return app.RuntimeSettings{MixedPort: 17890, ControllerPort: 19090}, nil
@@ -44,7 +46,7 @@ func TestOverviewAccessOpensPortSettingsWithoutApplying(t *testing.T) {
 	m := ready(backend)
 	m.width, m.height = 160, 60
 	m.layout()
-	m, cmd := click(m, findTarget(t, m, "card.access"))
+	m, cmd := click(m, findTarget(t, m, "card.network"))
 	if m.page != "settings" || !m.ports.open || !m.busy || m.ports.step != "loading" || reads != 0 || writes != 0 {
 		t.Fatal("access action did not open the existing settings dialog with an asynchronous read")
 	}
@@ -52,9 +54,25 @@ func TestOverviewAccessOpensPortSettingsWithoutApplying(t *testing.T) {
 	if m.busy || m.ports.step != "edit" || reads != 1 || writes != 0 || m.ports.mixed.Value() != "17890" || m.ports.controller.Value() != "19090" {
 		t.Fatal("access action applied settings or failed to show the current configured ports")
 	}
+	plain := ansi.Strip(m.screen)
+	for _, address := range []string{"127.0.0.1:17890", "127.0.0.1:19090"} {
+		if !strings.Contains(plain, address) {
+			t.Fatalf("network details omitted %s:\n%s", address, plain)
+		}
+	}
+	for _, secret := range []string{"private-user", "private-password", "private-path", "private-token", "private-fragment"} {
+		if strings.Contains(plain, secret) {
+			t.Fatalf("network details leaked %s", secret)
+		}
+	}
 	m, _ = update(m, special(tea.KeyEscape))
 	if m.ports.open || m.page != "settings" || m.focus != "runtime-settings" || writes != 0 {
 		t.Fatal("closing unchanged port settings failed to restore its settings entry point")
+	}
+	for _, secret := range []string{"private-user", "private-password", "private-path", "private-token", "private-fragment"} {
+		if strings.Contains(ansi.Strip(m.screen), secret) {
+			t.Fatalf("returning from network details exposed %s in Settings", secret)
+		}
 	}
 }
 

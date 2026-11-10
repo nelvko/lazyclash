@@ -1181,7 +1181,7 @@ func (m *Model) activate(id string) tea.Cmd {
 	case "card.logs":
 		m.navigate("logs")
 		return nil
-	case "card.access":
+	case "card.network":
 		m.navigate("settings")
 		m.focus = "runtime-settings"
 		return m.openPorts()

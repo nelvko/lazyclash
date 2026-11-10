@@ -364,10 +364,10 @@ func TestNewWizardClearsPreviousFailureAndNetworkPreviewIsActual(t *testing.T) {
 }
 
 func TestOverviewReflectsSelectedGroupAndPrefersPROXY(t *testing.T) {
-	snapshot := app.Snapshot{Installed: true, Groups: []mihomo.Group{{Name: "GLOBAL", Type: "Selector", Now: "global-node"}, {Name: "PROXY", Type: "Selector", Now: "proxy-node"}, {Name: "Work", Type: "Selector", Now: "work-node"}}}
+	snapshot := app.Snapshot{Installed: true, Mode: app.ModeStatus{Desired: "rule", Actual: "rule", Running: true}, Groups: []mihomo.Group{{Name: "GLOBAL", Type: "Selector", Now: "global-node"}, {Name: "PROXY", Type: "Selector", Now: "proxy-node"}, {Name: "Work", Type: "Selector", Now: "work-node"}}}
 	snapshot.Service.Active = true
 	for _, tc := range []struct{ selected, want string }{{"", "proxy-node"}, {"Work", "work-node"}, {"GLOBAL", "global-node"}, {"missing", "proxy-node"}} {
-		lines := overviewGroupLines(dashboardOptions{Snapshot: snapshot, SelectedGroup: tc.selected})
+		lines := overviewNodeLines(dashboardOptions{Snapshot: snapshot, SelectedGroup: tc.selected})
 		value := ansi.Strip(strings.Join(lines, "\n"))
 		if !strings.Contains(value, tc.want) {
 			t.Fatalf("selected %q: %s", tc.selected, value)

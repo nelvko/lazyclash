@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"strconv"
 	"strings"
 	"time"
@@ -359,6 +360,15 @@ func (m *Model) portsDocument(width int) (wizardDocument, []wizardButton, string
 		d.line(m.tr("ports.review_boundary"))
 	case "edit":
 		d.label(m.tr("ports.listeners"))
+		proxy, controller := "--", "--"
+		if p.current.MixedPort > 0 && p.current.MixedPort <= 65535 {
+			proxy = net.JoinHostPort("127.0.0.1", strconv.Itoa(p.current.MixedPort))
+		}
+		if host, _, err := net.SplitHostPort(overviewControllerAddress(m.snapshot.Controller)); err == nil && p.current.ControllerPort > 0 && p.current.ControllerPort <= 65535 {
+			controller = net.JoinHostPort(host, strconv.Itoa(p.current.ControllerPort))
+		}
+		d.pair(m.tr("ports.proxy_address"), proxy)
+		d.pair(m.tr("ports.controller"), controller)
 		d.line(m.tr("ports.edit_boundary"))
 		d.space()
 		d.field("ports.mixed", m.tr("ports.proxy_field"), &p.mixed, p.focus)
