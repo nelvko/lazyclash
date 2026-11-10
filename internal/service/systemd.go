@@ -51,6 +51,11 @@ type Status struct {
 	Linger      bool
 	LingerKnown bool
 	PID         int
+	// StartTimestampMonotonic is systemd's current main-process creation time
+	// in microseconds since boot. StartedAt carries a local monotonic anchor
+	// so callers can advance uptime without further systemd queries.
+	StartTimestampMonotonic uint64    `json:"-"`
+	StartedAt               time.Time `json:"-"`
 }
 
 // Name excludes the .service suffix. UnitDir is the systemd user unit directory.
@@ -222,7 +227,7 @@ func (s *Systemd) inspect(ctx context.Context) (Status, error) {
 	if err != nil {
 		return Status{}, err
 	}
-	out, err := s.command(ctx, "systemctl", "--user", "show", name, "--property=LoadState,ActiveState,SubState,MainPID,Result,ExecMainStatus,NRestarts,UnitFileState")
+	out, err := s.command(ctx, "systemctl", "--user", "show", name, "--property=LoadState,ActiveState,SubState,MainPID,ExecMainPID,ExecMainStartTimestampMonotonic,Result,ExecMainStatus,NRestarts,UnitFileState")
 	if err != nil {
 		return Status{}, diagnostic.New("diagnostic.service.inspect", "inspect service: %w", err)
 	}
@@ -269,6 +274,19 @@ func (s *Systemd) inspect(ctx context.Context) (Status, error) {
 		status.State = "not-found"
 	}
 	status.Active = status.State == "active"
+	// ExecMain* can describe the last run even after exit. Only associate its
+	// timestamp with an active, matching current MainPID.
+	mainPID, _ := strconv.Atoi(systemdProperty(out, "ExecMainPID"))
+	start, _ := strconv.ParseUint(systemdProperty(out, "ExecMainStartTimestampMonotonic"), 10, 64)
+	if status.Active && status.PID > 0 && mainPID == status.PID && start > 0 {
+		now, monotonic, err := processClock()
+		if err == nil {
+			status.StartedAt = processStartedAt(start, now, monotonic)
+			if !status.StartedAt.IsZero() {
+				status.StartTimestampMonotonic = start
+			}
+		}
+	}
 	if err := ctx.Err(); err != nil {
 		return Status{}, err
 	}

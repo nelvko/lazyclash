@@ -234,81 +234,91 @@ func TestStreamRuntimeReconnectsOnlyFailedSource(t *testing.T) {
 	cancel()
 }
 
-func TestStreamRuntimePIDChangeJoinsOldReadersBeforeNewInstance(t *testing.T) {
-	a, svc := installedApp(t)
-	var pid atomic.Int32
-	pid.Store(101)
-	a.Service = monitorService{Services: svc, inspect: func(ctx context.Context) (service.Status, error) {
-		return service.Status{Active: true, State: "active", PID: int(pid.Load())}, ctx.Err()
-	}}
-	var active, opened, versions atomic.Int32
-	monitorFixture(t, a, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/version" {
-			versions.Add(1)
-			fmt.Fprint(w, `{"version":"v1.19.33"}`)
-			return
-		}
-		conn := runtimeWebSocket(t, w, r)
-		if conn == nil {
-			return
-		}
-		defer conn.CloseNow()
-		closed := conn.CloseRead(r.Context())
-		active.Add(1)
-		opened.Add(1)
-		defer active.Add(-1)
-		if r.URL.Path == "/traffic" {
-			value := pid.Load()
-			writeRuntimeWebSocket(t, conn, map[string]int32{"up": value, "down": value, "upTotal": value, "downTotal": value})
-		}
-		<-closed.Done()
-	})
-	events, cancel, _ := runRuntimeStream(t, a)
-	var initial uint64
-	gotTraffic, gotVersion := false, false
-	for !gotTraffic || !gotVersion {
-		event := readRuntimeEvent(t, events)
-		if event.Source == RuntimeStatus {
-			initial = event.Instance
-		}
-		if event.Source == RuntimeTraffic && event.Traffic != nil {
-			gotTraffic = true
-		}
-		if event.Source == RuntimeVersion && event.Err == nil {
-			gotVersion = true
-		}
-	}
-	pid.Store(202)
-	changed := false
-	for {
-		event := readRuntimeEvent(t, events)
-		if event.Source == RuntimeStatus && event.Instance > initial {
-			if event.Snapshot.Service.PID != 202 {
-				t.Fatalf("new instance did not describe the new process: %+v", event)
+func TestStreamRuntimeProcessChangeJoinsOldReadersBeforeNewInstance(t *testing.T) {
+	for _, nextPID := range []int32{202, 101} {
+		t.Run(fmt.Sprintf("next-pid-%d", nextPID), func(t *testing.T) {
+			a, svc := installedApp(t)
+			var changedProcess atomic.Bool
+			a.Service = monitorService{Services: svc, inspect: func(ctx context.Context) (service.Status, error) {
+				pid, started := 101, uint64(100)
+				if changedProcess.Load() {
+					pid, started = int(nextPID), 200
+				}
+				return service.Status{Active: true, State: "active", PID: pid, StartTimestampMonotonic: started}, ctx.Err()
+			}}
+			var active, opened, versions atomic.Int32
+			monitorFixture(t, a, func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/version" {
+					versions.Add(1)
+					fmt.Fprint(w, `{"version":"v1.19.33"}`)
+					return
+				}
+				conn := runtimeWebSocket(t, w, r)
+				if conn == nil {
+					return
+				}
+				defer conn.CloseNow()
+				closed := conn.CloseRead(r.Context())
+				active.Add(1)
+				opened.Add(1)
+				defer active.Add(-1)
+				if r.URL.Path == "/traffic" {
+					value := 100
+					if changedProcess.Load() {
+						value = 200
+					}
+					writeRuntimeWebSocket(t, conn, map[string]int{"up": value, "down": value, "upTotal": value, "downTotal": value})
+				}
+				<-closed.Done()
+			})
+			events, cancel, _ := runRuntimeStream(t, a)
+			var initial uint64
+			gotTraffic, gotVersion := false, false
+			for !gotTraffic || !gotVersion {
+				event := readRuntimeEvent(t, events)
+				if event.Source == RuntimeStatus {
+					initial = event.Instance
+				}
+				if event.Source == RuntimeTraffic && event.Traffic != nil {
+					gotTraffic = true
+				}
+				if event.Source == RuntimeVersion && event.Err == nil {
+					gotVersion = true
+				}
 			}
-			changed = true
-		}
-		if !changed {
-			continue
-		}
-		if event.Instance <= initial {
-			t.Fatal("old reader event survived instance invalidation")
-		}
-		if event.Source == RuntimeTraffic && event.Traffic != nil {
-			if event.Traffic.Up != 202 {
-				t.Fatal("new instance retained old traffic")
+			changedProcess.Store(true)
+			changed := false
+			for {
+				event := readRuntimeEvent(t, events)
+				if event.Source == RuntimeStatus && event.Instance > initial {
+					if event.Snapshot.Service.PID != int(nextPID) || event.Snapshot.Service.StartTimestampMonotonic != 200 {
+						t.Fatalf("new instance did not describe the new process: %+v", event)
+					}
+					changed = true
+				}
+				if !changed {
+					continue
+				}
+				if event.Instance <= initial {
+					t.Fatal("old reader event survived instance invalidation")
+				}
+				if event.Source == RuntimeTraffic && event.Traffic != nil {
+					if event.Traffic.Up != 200 {
+						t.Fatal("new instance retained old traffic")
+					}
+					break
+				}
 			}
-			break
-		}
+			deadline := time.Now().Add(time.Second)
+			for (opened.Load() < 8 || versions.Load() < 2 || active.Load() != 4) && time.Now().Before(deadline) {
+				time.Sleep(time.Millisecond)
+			}
+			if opened.Load() != 8 || active.Load() != 4 || versions.Load() != 2 {
+				t.Fatalf("old readers or version cache survived restart: open=%d active=%d version=%d", opened.Load(), active.Load(), versions.Load())
+			}
+			cancel()
+		})
 	}
-	deadline := time.Now().Add(time.Second)
-	for (opened.Load() < 8 || versions.Load() < 2 || active.Load() != 4) && time.Now().Before(deadline) {
-		time.Sleep(time.Millisecond)
-	}
-	if opened.Load() != 8 || active.Load() != 4 || versions.Load() != 2 {
-		t.Fatalf("old readers or version cache survived restart: open=%d active=%d version=%d", opened.Load(), active.Load(), versions.Load())
-	}
-	cancel()
 }
 
 func TestStreamRuntimeQuietReadersReleaseTheServiceActionLock(t *testing.T) {

@@ -327,7 +327,11 @@ func (m *Model) acceptRuntimeEvent(event app.RuntimeEvent) bool {
 		}
 		m.runtime.history.observeSnapshot(m.snapshot)
 		m.snapshot.RunningVersion = s.RunningVersion
-		return previous.State != current.State || previousService != m.snapshot.Service
+		// The anchor is recalibrated on each ownership check; its tiny clock
+		// differences must not trigger a full profile/settings read every second.
+		currentService := m.snapshot.Service
+		previousService.StartedAt, currentService.StartedAt = time.Time{}, time.Time{}
+		return previous.State != current.State || previousService != currentService
 	case app.RuntimeVersion:
 		if event.Err == nil {
 			s.RunningVersion = event.Snapshot.RunningVersion

@@ -24,6 +24,7 @@ type trafficHistory struct {
 	points                     []trafficPoint
 	lastAt                     time.Time
 	pid                        int
+	started                    uint64
 	generation                 string
 	totalsKnown                bool
 	uploadTotal, downloadTotal int64
@@ -32,6 +33,7 @@ type trafficHistory struct {
 func (h *trafficHistory) clear() {
 	h.points = h.points[:0]
 	h.pid, h.totalsKnown = 0, false
+	h.started = 0
 	// Keep the timestamp watermark so a delayed pre-reset sample cannot return.
 }
 
@@ -44,13 +46,17 @@ func (h *trafficHistory) observeSnapshot(s app.Snapshot) {
 		pid = s.Service.PID
 	}
 	stablePID := pid > 0 && pid == h.pid
+	processChanged := pid > 0 && s.Service.StartTimestampMonotonic > 0 && h.started > 0 && s.Service.StartTimestampMonotonic != h.started
 	changed := s.Generation != "" && h.generation != "" && s.Generation != h.generation
 	stopped := s.ServiceError == "" && !s.Service.Active && (s.Service.State == "inactive" || s.Service.State == "failed")
-	if !s.Installed || stopped || changed && !stablePID || pid > 0 && h.pid > 0 && pid != h.pid {
+	if !s.Installed || stopped || changed && !stablePID || pid > 0 && h.pid > 0 && pid != h.pid || processChanged {
 		h.clear()
 	}
 	if pid > 0 {
 		h.pid = pid
+		if s.Service.StartTimestampMonotonic > 0 {
+			h.started = s.Service.StartTimestampMonotonic
+		}
 	}
 	if s.Generation != "" {
 		h.generation = s.Generation
@@ -80,10 +86,13 @@ func (h *trafficHistory) observe(s app.RuntimeSnapshot, now time.Time) bool {
 		return true
 	}
 	if s.Service.PID > 0 {
-		if h.pid > 0 && s.Service.PID != h.pid {
+		if h.pid > 0 && s.Service.PID != h.pid || h.started > 0 && s.Service.StartTimestampMonotonic > 0 && s.Service.StartTimestampMonotonic != h.started {
 			h.clear()
 		}
 		h.pid = s.Service.PID
+		if s.Service.StartTimestampMonotonic > 0 {
+			h.started = s.Service.StartTimestampMonotonic
+		}
 	}
 	if s.State == "ready" && s.Traffic != nil && s.TrafficError == "" {
 		up, down := s.Traffic.UpTotal, s.Traffic.DownTotal

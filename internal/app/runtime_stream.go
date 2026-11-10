@@ -42,6 +42,7 @@ type RuntimeEvent struct {
 type runtimeIdentity struct {
 	installation, controller, secret string
 	pid                              int
+	started                          uint64
 }
 
 type runtimeInspection struct {
@@ -177,7 +178,7 @@ func (a *App) inspectRuntimeSession(ctx context.Context) (RuntimeSnapshot, mihom
 	if snapshot.State != "ready" {
 		return snapshot, mihomo.Client{}, runtimeIdentity{}
 	}
-	return snapshot, client, runtimeIdentity{installation: installation, controller: client.BaseURL, secret: client.Secret, pid: snapshot.Service.PID}
+	return snapshot, client, runtimeIdentity{installation: installation, controller: client.BaseURL, secret: client.Secret, pid: snapshot.Service.PID, started: snapshot.Service.StartTimestampMonotonic}
 }
 
 // Remember an authenticated running core only after confirming that the owned
@@ -189,7 +190,7 @@ func (a *App) rememberRuntimeStarted(ctx context.Context, expected runtimeIdenti
 		if err != nil {
 			return err
 		}
-		identity := runtimeIdentity{installation: installation, controller: client.BaseURL, secret: client.Secret, pid: current.Service.PID}
+		identity := runtimeIdentity{installation: installation, controller: client.BaseURL, secret: client.Secret, pid: current.Service.PID, started: current.Service.StartTimestampMonotonic}
 		if current.State != "ready" || identity != expected {
 			return diagnostic.New("diagnostic.runtime.changed", "Core changed while observing runtime; reconnecting")
 		}
