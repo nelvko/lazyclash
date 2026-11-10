@@ -43,6 +43,8 @@ type dashboardOptions struct {
 	LogoFrame                       int
 	LogoIntroFrame                  int
 	Busy                            bool
+	CoreAction                      string
+	Now                             time.Time
 	PlainButtons                    bool
 	StateUnavailable                bool
 	Header                          pageHeader

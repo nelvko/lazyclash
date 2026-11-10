@@ -15,7 +15,7 @@ import (
 	"github.com/nelvko/lazyclash/internal/service"
 )
 
-func TestOverviewPairedLayoutKeepsNaturalCardHeightsAndActionOwnership(t *testing.T) {
+func TestOverviewPairedLayoutAlignsBothEdgesAndKeepsActionOwnership(t *testing.T) {
 	snapshot := app.Snapshot{
 		Installed: true, ConfigReady: true, HasRun: true, Applied: "default",
 		Version: "v1.19.33", RunningVersion: "v1.19.33",
@@ -25,7 +25,7 @@ func TestOverviewPairedLayoutKeepsNaturalCardHeightsAndActionOwnership(t *testin
 		Capabilities: app.Capabilities{Scope: "system", Runtime: app.Capability{Supported: true}, TUN: app.Capability{Supported: true}},
 	}
 	owners := map[string]string{
-		"core.stop": "dashboard.control.core", "core.restart": "dashboard.control.core", "card.install": "dashboard.control.core",
+		"core.stop": "dashboard.control.core", "core.restart": "dashboard.control.core",
 		"mode.rule": "dashboard.control.routingMode", "mode.global": "dashboard.control.routingMode", "mode.direct": "dashboard.control.routingMode", "card.proxies": "dashboard.control.routingMode",
 		"card.profiles": "dashboard.profile.title", "tun.enable": "dashboard.overview.access", "card.access": "dashboard.overview.access",
 	}
@@ -50,8 +50,8 @@ func TestOverviewPairedLayoutKeepsNaturalCardHeightsAndActionOwnership(t *testin
 						}
 						cards[card.ID] = card
 						render := renders[strings.TrimPrefix(card.ID, "overview.card.")]
-						if render == nil || card.H != len(render(o, card.W).lines) {
-							t.Fatalf("card %s was stretched beyond its natural height", card.ID)
+						if render == nil || card.H < len(render(o, card.W).lines) {
+							t.Fatalf("card %s clipped its required contents", card.ID)
 						}
 						for _, other := range body.cards[index+1:] {
 							if regionsOverlap(card, other) {
@@ -72,8 +72,10 @@ func TestOverviewPairedLayoutKeepsNaturalCardHeightsAndActionOwnership(t *testin
 						y := 0
 						for first := 0; first < 4; first += 2 {
 							left, right := body.cards[first], body.cards[first+1]
-							if left.X != 0 || right.X != left.W+2 || left.W+right.W+2 != width || left.W-right.W < -1 || left.W-right.W > 1 || left.Y != y || right.Y != y {
-								t.Fatalf("paired cards lost equal widths or aligned row starts: %+v / %+v at y=%d", left, right, y)
+							wantHeight := max(len(renders[strings.TrimPrefix(left.ID, "overview.card.")](o, left.W).lines),
+								len(renders[strings.TrimPrefix(right.ID, "overview.card.")](o, right.W).lines))
+							if left.X != 0 || right.X != left.W+2 || width-left.W-right.W-2 != width%2 || left.W != right.W || left.H != right.H || left.H != wantHeight || left.Y != y || right.Y != y {
+								t.Fatalf("paired cards lost equal dimensions or aligned edges: %+v / %+v at y=%d", left, right, y)
 							}
 							y += max(left.H, right.H) + 1
 						}
@@ -212,8 +214,8 @@ func TestOverviewAlignedVersionsAndModesCollapseOnlyConfirmedState(t *testing.T)
 				Mode:    app.ModeStatus{Desired: "rule", Actual: "rule", Running: true},
 			}}
 			core := func() string { return ansi.Strip(strings.Join(overviewCoreCard(o, 100).lines, "\n")) }
-			if value := core(); strings.Count(value, "v1.19.33") != 1 || !strings.Contains(value, locale.T("dashboard.overview.versionAligned", "v1.19.33")) || !strings.Contains(value, locale.T("dashboard.kernel.pid", "456")) || !strings.Contains(value, locale.T("dashboard.kernel.desired", locale.T("dashboard.status.running"))) {
-				t.Fatalf("merged card duplicated aligned versions or hid process/intent: %s", value)
+			if value := core(); strings.Count(value, "v1.19.33") != 1 || strings.Contains(value, "456") || strings.Contains(value, locale.T("dashboard.kernel.desired", locale.T("dashboard.status.running"))) {
+				t.Fatalf("normal core card duplicated versions or retained diagnostic fields: %s", value)
 			}
 			o.Snapshot.Version = "v1.20.0"
 			if value := core(); !strings.Contains(value, locale.T("dashboard.kernel.installed", "v1.20.0")) || !strings.Contains(value, locale.T("dashboard.kernel.running", "v1.19.33")) {

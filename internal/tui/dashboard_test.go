@@ -402,7 +402,7 @@ func TestOverviewLayoutPreservesDetailsAndActionTargets(t *testing.T) {
 			for _, word := range strings.Fields(strings.ReplaceAll(ansi.Strip(body), "│", " ")) {
 				words[word]++
 			}
-			for _, value := range []string{"Connections", "↑ Upload", "↓ Download", "Since core start", "Core memory", "1.0 MiB", "2.0 MiB", "2.0 KiB/s", "4.0 KiB/s", "16.0 MiB", "Not supported by the user service.", "Installed version:", "v1.20.0", "Running version:", "v1.19.33", "Desired state:", "Stopped", strings.TrimSpace(drift)} {
+			for _, value := range []string{"Connections", "↑ Upload", "↓ Download", "Since core start", "Core memory", "1.0 MiB", "2.0 MiB", "2.0 KiB/s", "4.0 KiB/s", "16.0 MiB", "Not supported by the user service.", "Installed version:", "v1.20.0", "Running version:", "v1.19.33", "Restart to use the installed version", "Stop was requested; the process is still running"} {
 				for _, word := range strings.Fields(value) {
 					if words[word] == 0 {
 						t.Errorf("overview lost word %q from detail %q", word, value)
@@ -412,7 +412,7 @@ func TestOverviewLayoutPreservesDetailsAndActionTargets(t *testing.T) {
 			}
 			assertCanvas(t, body, width, len(rows))
 			assertRegions(t, hits, width, len(rows))
-			for id, label := range map[string]string{"card.profiles": "Manage profiles", "card.proxies": "Open Proxies", "card.install": "Manage core"} {
+			for id, label := range map[string]string{"card.profiles": "Manage profiles", "card.proxies": "Open Proxies"} {
 				found := false
 				for _, hit := range hits {
 					if hit.ID == id {
@@ -446,7 +446,7 @@ func TestOverviewLayoutPreservesDetailsAndActionTargets(t *testing.T) {
 }
 
 func TestInstalledCoreDoesNotRequireGuideOrSubscription(t *testing.T) {
-	o := dashboardOptions{Width: 160, Height: 45, Page: "overview", Snapshot: app.Snapshot{Installed: true}}
+	o := dashboardOptions{Width: 160, Height: 45, Page: "overview", Snapshot: app.Snapshot{Installed: true, Service: service.Status{State: "inactive"}}}
 	value, targets, _ := renderDashboard(o)
 	if strings.Contains(ansi.Strip(value), "Get started") || !strings.Contains(ansi.Strip(value), "Not applied") {
 		t.Fatal("missing runnable configuration must be shown as state, not a mandatory guide")

@@ -92,7 +92,7 @@ func TestPageNavigationOverviewStartsAtCardBeforeItsControls(t *testing.T) {
 	}
 }
 
-func TestPageNavigationInstalledKernelManageRequiresExplicitActivation(t *testing.T) {
+func TestPageNavigationInstalledKernelManagementStaysInSettings(t *testing.T) {
 	m := pageNavigationModel()
 	m.snapshot = onboardingDefaultSnapshot()
 	m.focus = "overview.card.dashboard.control.core"
@@ -102,14 +102,18 @@ func TestPageNavigationInstalledKernelManageRequiresExplicitActivation(t *testin
 	if m.focus != "core.start" || m.wizard.open || m.busy || m.id != id {
 		t.Fatal("entering the core card did not focus its first control without activating it")
 	}
+	if hasAction(m.contentTargets(), "card.install") {
+		t.Fatal("overview retained its permanent core management action")
+	}
+	m, _ = update(m, key("7"))
 	for range len(m.focusTargets()) {
-		if m.focus == "card.install" {
+		if m.focus == "install" {
 			break
 		}
 		m, _ = update(m, special(tea.KeyTab))
 	}
-	if m.focus != "card.install" || m.wizard.open || m.busy || m.id != id {
-		t.Fatal("Tab did not reach Manage without activating it")
+	if m.page != "settings" || m.focus != "install" || m.wizard.open || m.busy || m.id != id {
+		t.Fatal("Settings did not retain explicit core management")
 	}
 	m, _ = update(m, special(tea.KeyEnter))
 	if !m.wizard.open || m.wizard.inline || m.wizard.step != stepCore || m.busy || m.id != id {

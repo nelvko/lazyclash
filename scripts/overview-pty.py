@@ -152,12 +152,11 @@ def inspect_row_cards(preview, terminal, output, width, height, words, profile, 
             terminal.key(b"\x1b[B")
             terminal.settle()
     for first in (0, 2):
-        assert abs(geometry[first]["width"] - geometry[first + 1]["width"]) <= 1, "paired cards have unequal column widths"
+        assert geometry[first]["width"] == geometry[first + 1]["width"], "paired cards have unequal column widths"
+        assert geometry[first]["height"] == geometry[first + 1]["height"], "paired cards have unequal heights"
         left, right = initial_positions[first:first + 2]
         if left is not None and right is not None:
             assert left[1] == right[1], "paired card titles do not start on the same row"
-    if scenario in ("running", "pending"):
-        assert geometry[0]["height"] != geometry[1]["height"], "first-row cards were padded to equal heights"
     for first in (2, 4):
         before, current = initial_positions[first - 2], initial_positions[first]
         if before is not None and current is not None:
@@ -184,13 +183,14 @@ def exercise(preview, binary, output, language, profile, scenario, args):
         preview.capture(terminal, output, "overview-initial", args)
         screen = terminal.screen.text()
         if scenario in ("running", "pending"):
-            for value in ("4242", "PROXY", "香港 01", "日常订阅"):
+            for value in ("02:18:", "PROXY", "香港 01", "日常订阅"):
                 assert value in screen, "missing initial observation: " + value
+            assert "4242" not in screen, "core status retained diagnostic PID"
         elif scenario == "drift":
-            for value in ("v1.20.0", "v1.19.33", "Fixture running service differs from saved settings"):
+            for value in ("v1.20.0", "v1.19.33", words["dashboard.core.restartVersion"]):
                 assert value in screen, "missing state discrepancy: " + value
         elif scenario == "stopped":
-            assert words["dashboard.action.start"] in screen, "stopped service lost Start"
+            assert words["dashboard.core.start"] in screen, "stopped service lost Start"
         else:
             assert "12.0 KiB/s" not in screen, "unavailable observation retained live metrics"
         assert "subscription.example" in screen, "profile card omitted its source origin"
@@ -209,12 +209,12 @@ def exercise(preview, binary, output, language, profile, scenario, args):
         preview.capture(terminal, output, "card-focus", args)
         terminal.key(b"\r")
         terminal.settle()
-        lifecycle = words["dashboard.action.start" if scenario == "stopped" else "dashboard.action.stop"]
+        lifecycle = words["dashboard.core.start" if scenario == "stopped" else "dashboard.core.stop"]
         assert focused(terminal, lifecycle), "entering the service card did not focus its first control"
         assert_borderless(terminal)
         preview.capture(terminal, output, "control-focus", args)
 
-        expected = [lifecycle, words["dashboard.action.manage"], words["dashboard.action.profiles"], words["dashboard.settings.ports"]]
+        expected = [lifecycle, words["dashboard.action.profiles"], words["dashboard.settings.ports"]]
         if scenario != "unavailable":
             expected.extend([words["dashboard.action.restart"],
                              *[words["dashboard.mode." + mode] for mode in ("rule", "global", "direct")]])
@@ -271,7 +271,7 @@ def exercise(preview, binary, output, language, profile, scenario, args):
         assert calls["runtime_queries"] > 0, calls
         check_profile(preview, terminal, profile)
         (output / "pty.raw").write_bytes(terminal.raw)
-        print("PASS %s/%s/%s: paired natural-height cards and fullwidth traffic/environment, five dimensions, borderless/focus states, local access, Tab reveal and read-only page actions; %s" %
+        print("PASS %s/%s/%s: paired equal-size cards and fullwidth traffic/environment, five dimensions, borderless/focus states, local access, Tab reveal and read-only page actions; %s" %
               (language, profile, scenario, json.dumps(calls)), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")

@@ -68,7 +68,7 @@ func newOverviewPTYBackend(scenario string) *overviewPTYBackend {
 			"香港 01 · 日常线路": {Name: "香港 01 · 日常线路", Type: "Trojan"},
 			"DIRECT":       {Name: "DIRECT", Type: "Direct"},
 		},
-		Service:      service.Status{Active: true, State: "active", PID: 4242, EnableState: "disabled"},
+		Service:      service.Status{Active: true, State: "active", PID: 4242, EnableState: "disabled", StartedAt: time.Now().Add(-2*time.Hour - 18*time.Minute - 34*time.Second)},
 		Mode:         app.ModeStatus{Desired: "rule", Actual: "rule", Running: true},
 		Desired:      app.DesiredState{Known: true, Running: true},
 		Capabilities: app.Capabilities{Scope: "user", Runtime: app.Capability{Supported: true}},

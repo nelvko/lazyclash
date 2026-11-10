@@ -100,8 +100,8 @@ func TestCoreSummaryPreservesSystemdTransitionsAndFailure(t *testing.T) {
 	}
 	s := app.Snapshot{Installed: true, Desired: app.DesiredState{Known: true, Running: true}, Drift: "desired running; service failed", Service: service.Status{State: "failed"}}
 	card := ansi.Strip(strings.Join(overviewCoreCard(dashboardOptions{Snapshot: s}, 72).lines, "\n"))
-	if !strings.Contains(card, "Desired state") || !strings.Contains(card, s.Drift) {
-		t.Fatal("core card hid lifecycle intent or drift")
+	if strings.Contains(card, "Desired state") || !strings.Contains(card, "Failed") || !strings.Contains(card, "View logs") {
+		t.Fatal("failed core did not show concise status and recovery")
 	}
 	access := ansi.Strip(strings.Join(overviewAccessCard(dashboardOptions{Snapshot: s}, 72).lines, "\n"))
 	if !strings.Contains(access, "Not supported by the user service.") {
