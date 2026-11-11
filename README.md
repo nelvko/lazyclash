@@ -188,15 +188,21 @@ lazyclash doctor
 
 网络 flags：`--download-method direct|environment|accelerated`、`--acceleration-prefix URL`、`--remember-download-settings`。未指定的设置复用已保存偏好。
 
-子进程和 TUI 无法修改父 Shell；显式求值：
+概览 → 网络设置 → **终端代理**控制当前交互式 Shell。首次开启时确认安装 Shell Integration，退出 TUI 后按提示执行一次 `source`；这次 source 会立即应用已保存请求，无须重新进入 TUI。以后直接运行 `lazyclash`，切换后退出即自动同步，关闭会恢复接管前的原始变量。
+
+```sh
+lazyclash shell status           # 当前 Shell、安装/加载/回执与代理状态
+lazyclash shell status --json
+lazyclash shell uninstall        # 当前 Shell 恢复后移除自己的初始化引用
+```
+
+第一阶段支持 Linux 的 Bash、Zsh、Fish 交互会话；每个终端独立，不包装 `lazyclash` 命令。安装脚本位于 `$XDG_CONFIG_HOME/lazyclash/shell`，状态位于 `$XDG_CACHE_HOME/lazyclash/shell`。当前 Shell 未加载时显示“待激活”，也可在卡片中查看激活命令。详见 [Shell Integration](docs/shell-integration.md)。
+
+手动输出 POSIX exports 的 `env` 仍可用于自动化；它不会保存或恢复原始变量，也不属于上述会话集成。旧 `init`、`lazyclash_on`、`lazyclash_off` 已移除。
 
 ```sh
 eval "$(lazyclash env)"
-eval "$(lazyclash env --unset)" # 配置损坏或 namespace 无效仍可清理
-
-eval "$(lazyclash init --shell zsh)" # bash 同样支持；只输出函数，不编辑启动文件
-lazyclash_on   # 启动成功后设置当前 Shell 环境
-lazyclash_off  # 清除环境，不停止服务
+eval "$(lazyclash env --unset)" # 手动清理；配置损坏时仍可输出
 ```
 
 默认服务名为 `lazyclash-mihomo.service`，user/system manager 各自管理，不共享配置或安装记录。API 默认 `127.0.0.1:9097`、mixed 默认 `127.0.0.1:7897`；并存实例须调整端口，冲突时不会停止其他服务腾位置。API 密钥自动生成和注入，状态不输出密钥。服务 stdout/stderr 丢弃，避免 provider URL 凭据进入 journal；退出原因通过 systemd Result、退出状态和重启计数查询。

@@ -197,8 +197,9 @@ func (c Client) Select(ctx context.Context, group, node string) error {
 }
 
 type Configuration struct {
-	Mode string
-	TUN  bool
+	Mode      string
+	TUN       bool
+	MixedPort *int
 }
 
 // Configuration returns observed engine settings, never an optimistic copy of
@@ -209,15 +210,19 @@ func (c Client) Configuration(ctx context.Context) (Configuration, error) {
 		return Configuration{}, err
 	}
 	var cfg struct {
-		Mode string `json:"mode"`
-		TUN  *struct {
+		Mode      string `json:"mode"`
+		MixedPort *int   `json:"mixed-port"`
+		TUN       *struct {
 			Enable *bool `json:"enable"`
 		} `json:"tun"`
 	}
 	if json.Unmarshal(raw, &cfg) != nil || !ValidMode(cfg.Mode) || cfg.TUN == nil || cfg.TUN.Enable == nil {
 		return Configuration{}, diagnostic.New("diagnostic.api.configResponse", "invalid Mihomo runtime configuration response")
 	}
-	return Configuration{Mode: cfg.Mode, TUN: *cfg.TUN.Enable}, nil
+	if cfg.MixedPort != nil && (*cfg.MixedPort < 0 || *cfg.MixedPort > 65535) {
+		return Configuration{}, diagnostic.New("diagnostic.api.configResponse", "invalid Mihomo runtime configuration response")
+	}
+	return Configuration{Mode: cfg.Mode, TUN: *cfg.TUN.Enable, MixedPort: cfg.MixedPort}, nil
 }
 
 func (c Client) SetMode(ctx context.Context, mode string) error {

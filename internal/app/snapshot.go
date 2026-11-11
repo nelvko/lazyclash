@@ -10,6 +10,7 @@ import (
 
 	"github.com/nelvko/lazyclash/internal/mihomo"
 	"github.com/nelvko/lazyclash/internal/service"
+	"github.com/nelvko/lazyclash/internal/shellintegration"
 	"github.com/nelvko/lazyclash/internal/store"
 )
 
@@ -30,6 +31,7 @@ type Snapshot struct {
 	ServiceDiagnostic   error `json:"-"`
 	Controller          string
 	MixedPort           int
+	TerminalProxy       shellintegration.Status
 	ProfilePending      bool
 	Generation          string
 	Applied             string
@@ -49,6 +51,8 @@ type Snapshot struct {
 
 func (a *App) Snapshot(ctx context.Context) (Snapshot, error) {
 	var out Snapshot
+	observedMixedPort := 0
+	var terminalPublicationError error
 	err := a.locked(ctx, func() error {
 		out.Capabilities = a.Capabilities()
 		prefs, _, err := a.loadPreferencesLocked()
@@ -166,6 +170,9 @@ func (a *App) Snapshot(ctx context.Context) (Snapshot, error) {
 				out.Mode.ErrorDiagnostic = err
 			} else {
 				out.Mode.Actual = cfg.Mode
+				if cfg.MixedPort != nil && *cfg.MixedPort > 0 {
+					observedMixedPort = *cfg.MixedPort
+				}
 				out.TUNActual = &cfg.TUN
 				if cfg.TUN != out.TUN {
 					out.TUNError = "Running TUN differs from the saved policy; restart the service"
@@ -178,7 +185,14 @@ func (a *App) Snapshot(ctx context.Context) (Snapshot, error) {
 		if out.Drift == "" && out.Mode.Actual != "" && out.Mode.Desired != out.Mode.Actual {
 			out.Drift = "The running mode differs from the saved configuration; apply the desired mode again"
 		}
+		if observedMixedPort > 0 {
+			terminalPublicationError = a.publishTerminalEndpoint(observedMixedPort)
+		}
 		return ctx.Err()
 	})
+	out.TerminalProxy = a.terminalProxyStatus()
+	if terminalPublicationError != nil {
+		out.TerminalProxy.Detail = terminalPublicationError.Error()
+	}
 	return out, err
 }

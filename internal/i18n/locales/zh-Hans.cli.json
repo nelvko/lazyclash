@@ -51,7 +51,6 @@
   "cli.command.nodes.short": "以 JSON 输出当前代理组和节点",
   "cli.command.select.short": "在手动选择组中选择节点",
   "cli.command.env.short": "输出 POSIX Shell 环境变量命令，请在父 Shell 中求值",
-  "cli.command.init.short": "输出 bash/zsh 辅助函数，保留 Shell 文件",
   "cli.command.stats.short": "以 JSON 输出运行数据，累计流量随内核重启清零",
   "cli.command.connections.short": "以 JSON 列出 Mihomo 活动连接",
   "cli.command.connections.close.short": "请求关闭指定的一条活动连接",
@@ -87,7 +86,6 @@
   "cli.flag.profile.add.name": "使用自定义显示名称",
   "cli.flag.profile.add.remember-source": "在本机私密保存来源 URL/路径及 URL 凭据，以便显式刷新",
   "cli.flag.env.unset": "即使未安装或配置损坏，也输出清理变量的命令",
-  "cli.flag.init.shell": "Shell 辅助函数语法：bash 或 zsh",
   "cli.flag.logs.lines": "最多采集的新日志条数（1–500）",
   "cli.flag.logs.duration": "采集时间窗口（大于零，最多 1m）",
   "cli.flag.settings.ports.mixed-port": "本机 HTTP/SOCKS 代理端口（1024–65535）",
@@ -99,7 +97,6 @@
   "diagnostic.cli.no_terminal": "TUI 需要终端；自动化操作请使用 status、doctor 或 --help",
   "diagnostic.cli.ports_required": "请指定 --mixed-port 或 --controller-port",
   "diagnostic.cli.restart_required": "内核正在运行；请先使用 --dry-run 审阅，再通过 --restart 确认中断连接并重启",
-  "diagnostic.cli.shell": "支持的 Shell：bash、zsh",
   "diagnostic.cli.core_required": "尚未安装 Mihomo；请运行 lazyclash 进行安装",
   "diagnostic.cli.name_required": "自定义名称不能为空",
   "diagnostic.cli.config_path": "配置输入必须为文件的绝对路径",
@@ -122,5 +119,12 @@
   "diagnostic.cli.accelerationMethod": "--acceleration-prefix 需要 --download-method accelerated 或已保存的加速设置",
   "cli.command.tun.long": "TUN 会改变整台主机的流量路由与 DNS，影响其他用户和服务。启用须使用 root，并传入 --scope host 与 --confirm-host。普通用户服务不能启用 TUN。",
   "cli.flag.tun.scope": "TUN 流量作用域；启用时必须为 host",
-  "cli.flag.tun.confirm-host": "确认 TUN 可以改变整台主机的路由与 DNS"
+  "cli.flag.tun.confirm-host": "确认 TUN 可以改变整台主机的路由与 DNS",
+  "cli.command.shell.short": "管理当前终端的 Shell Integration",
+  "cli.command.shell.status.short": "查看当前 Shell 的集成与代理状态",
+  "cli.command.shell.uninstall.short": "恢复当前 Shell 并移除集成引用",
+  "cli.shell.status": "Shell：%s\n已安装：%t\n已加载：%t\nHook 已确认：%t\n代理状态：%s\n存在待激活请求：%t",
+  "cli.shell.uninstallPending": "卸载待完成。命令返回后，Shell 会恢复原始环境变量，随后移除集成引用。",
+  "cli.shell.activationNotice": "终端代理请求已保存，Shell Integration 已安装。\n当前 Shell 尚未加载初始化脚本。\n请在当前终端执行以下命令完成首次激活：\n\n%s\n\n执行后立即应用最新请求，无须重新进入 TUI。",
+  "cli.flag.shell.status.json": "以 JSON 输出集成状态"
 }

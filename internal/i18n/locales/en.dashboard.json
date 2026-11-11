@@ -290,5 +290,22 @@
   "dashboard.network.enable": "Enable",
   "dashboard.network.disable": "Disable",
   "dashboard.network.systemProxyState": "Unmanaged · control unavailable",
-  "dashboard.network.tun": "TUN mode"
+  "dashboard.network.tun": "TUN mode",
+  "terminal.title": "Terminal proxy",
+  "terminal.installTitle": "Install Shell Integration?",
+  "terminal.installDetail": "Detected shell: %s. Install the integration script and add an initialization reference to your shell startup file.",
+  "terminal.installNotice": "Only this terminal is controlled. After leaving the TUI, first activation requires one source command.",
+  "terminal.install": "Install",
+  "terminal.updating": "Saving terminal proxy request",
+  "terminal.saved": "Terminal proxy request saved; the shell synchronizes after leaving the TUI",
+  "terminal.activationAction": "View activation command",
+  "terminal.activation": "Run once in this terminal:\n%s",
+  "terminal.state.unsupported": "Unavailable: requires a verified Linux interactive Bash, Zsh or Fish session",
+  "terminal.state.uninstalled": "Shell Integration not installed",
+  "terminal.state.off": "Off · this terminal",
+  "terminal.state.on": "On · applied in this terminal",
+  "terminal.state.pending": "Pending activation · load Shell Integration",
+  "terminal.state.enabling": "Turning on · applies after leaving the TUI",
+  "terminal.state.disabling": "Turning off · restores after leaving the TUI",
+  "terminal.state.error": "Shell synchronization failed · inspect shell status"
 }

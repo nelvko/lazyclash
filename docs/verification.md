@@ -1,5 +1,20 @@
 # 验证入口
 
+## 终端代理 Shell Integration（2026-11-12）
+
+概览「网络设置」新增终端代理，首次经 TUI 确认安装 Linux Bash/Zsh/Fish 初始化脚本和启动引用。移除旧 `init` 与生成的 on/off 函数，保留手动 `env`。pending 以真实 Shell 身份绑定；第一次 source 注册 Hook 后立即同步并迁移会话，之后提示符只读小型变更记录。Shell 内存保存八项原始变量及 export 属性，关闭恢复；状态区分用户请求与实际回执。端口发布与应用观察/提交共用管理锁，防止较旧观测覆盖新端口。卸载先恢复当前 Shell，再由限时清理进程清理；持久票据支持失败后重试，保留其他待激活及已加载终端。
+
+本轮从 `a9b1d7a` 导出本功能独立源码，排除共享工作区另一会话的六个顶栏/侧栏文件。完整 `make check build`（全部 Go 与 Ultraviolet 测试、vet、构建）、终端代理相关 race、8 项 Python 回归通过。`./scripts/verify-linux.sh lazyclash-e2e` 实际运行 Linux/arm64 的全部可运行包测试通过，包含真实 controlling PTY 的三 Shell 身份/祖先验证。共享树较早全测中的既有 80 列代理滚动夹具失败来自另一会话布局草稿；未修改夹具或把草稿纳入本功能。
+
+最终实际 Linux Shell：Bash 5.2.15、Zsh 5.9、Fish 3.6.0。`shell-integration-pty.py` 用同一 Manager API 写入请求，实际生产 CLI 执行 attach/finalize/status，三个 Shell 均验证：首次 source 同一条命令内立即生效、大小写原始值不同、多行/引号/空值/unset/未导出值精确恢复、重复 source、端口同步、A 关闭而 B 保持开启。脚本/Go 回归另覆盖 PROMPT_COMMAND 数组与状态、原有 Zsh Hook、Fish universal 不变、自定义提示符、readonly 拒绝接管、损坏/缺失状态保留环境、退出清理、安装/卸载中断、待激活请求保留及卸载后其他已加载终端继续开关。
+
+`shell-startup-pty.py` 七场通过：Bash 非登录、数组 Prompt、三种实际优先登录文件，Zsh ZDOTDIR 与 Fish conf.d；每场验证自动加载和原提示符继续执行。
+
+`shell-tui-e2e.py` 使用真实产品 TUI、已有 v1.19.33 Mihomo 的本地副本和随机隔离 systemd 用户服务，实际通过 Bash 全流程：点击开启并确认安装、恢复终端后只提示一次 source、首次 source 即生效、`curl -I https://github.com` 经本地代理 CONNECT 隧道取得 HTTP 200、运行端口提交后自动更新、TUI 关闭代理恢复原值、SIGKILL TUI 保留已应用环境、卸载在恢复回执后移除脚本。HOME/cache/data 为临时目录；为使 systemd 发现服务，随机 unit 写入 VM 正常用户 unit 目录，集成脚本仅使用事前确认不存在的专用 shell 子目录。测试后自己的服务、unit、脚本及临时目录清理；未修改真实用户的 Shell 启动文件或现有代理服务。
+
+证据在 `.test-artifacts/shell-integration/`：`source-path.txt`、`source-manifest.json`、`final-check-build.log`、`final-linux.log`、`final-race.log`、`final-python.log`；实际 PTY 为 `hooks-final/`、`startup-final/`；真实 TUI、curl 与网络卡片文本为 `tui-final/`。使用与支持边界见 [Shell Integration](shell-integration.md)。完整 Mihomo/systemd TUI 流程实际覆盖 Bash；Zsh/Fish 的环境同步和启动链由上述真实 Shell PTY 覆盖，没有将它们称为真实服务 TUI 全流程。
+
+
 ## 概览卡片信息层级与网络设置（2026-11-10）
 
 按已确认的预览落实六卡片：第一排内核状态 / 当前配置，第二排网络设置 / 代理模式，下方为通栏实时流量与运行环境。同排等宽等高，窄屏单列；配置、网络、代理入口位于标题右侧，放不下时换行，进入卡片仍只移动焦点。配置名称和状态突出，来源与更新对齐；网络卡显示系统代理与 TUN 的能力、状态及操作，地址移至既有端口详情。系统代理仍不可用，主机 TUN 保留原有确认、状态守卫及异步应用。实际 Direct 隐藏节点，Global 使用 GLOBAL；未知与漂移状态保持明确。流量按上传 / 累计上传、下载 / 累计下载、连接数 / 内存分组，运行环境按平台、服务、自启动排列。

@@ -23,6 +23,9 @@ func New(args ...string) *cobra.Command {
 		if _, ok := i18n.Normalize(language); !ok {
 			return diagnostic.New("diagnostic.cli.language", "Language must be en, zh-Hans or auto")
 		}
+		if cmd.Parent() != nil && cmd.Parent().Name() == "shell" {
+			return nil
+		}
 		if cmd.Name() == "env" {
 			if unset, _ := cmd.Flags().GetBool("unset"); unset {
 				return nil
@@ -36,7 +39,9 @@ func New(args ...string) *cobra.Command {
 		if !term.IsTerminal(os.Stdin.Fd()) || !term.IsTerminal(os.Stdout.Fd()) {
 			return diagnostic.New("diagnostic.cli.no_terminal", "TUI requires a terminal; use status, doctor or --help for automation")
 		}
-		return tui.Run(cmd.Context(), backend, language)
+		runErr := tui.Run(cmd.Context(), backend, language)
+		printShellActivationNotice(cmd)
+		return runErr
 	}
 	current := func() *app.App { return backend }
 	root.AddCommand(
@@ -48,7 +53,7 @@ func New(args ...string) *cobra.Command {
 		newNodesCommand(current),
 		newSelectCommand(current),
 		newEnvCommand(current),
-		newInitCommand(&home, &name),
+		newShellCommand(),
 		newDoctorCommand(current),
 		newStatsCommand(current),
 		newConnectionsCommand(current),

@@ -290,5 +290,22 @@
   "dashboard.network.enable": "启用",
   "dashboard.network.disable": "停用",
   "dashboard.network.systemProxyState": "未接管 · 控制暂不可用",
-  "dashboard.network.tun": "TUN 模式"
+  "dashboard.network.tun": "TUN 模式",
+  "terminal.title": "终端代理",
+  "terminal.installTitle": "安装 Shell Integration？",
+  "terminal.installDetail": "检测到当前 Shell：%s。将安装初始化脚本，并在 Shell 启动配置中添加引用。",
+  "terminal.installNotice": "仅控制当前终端。退出 TUI 后，首次激活需要执行一次 source 命令。",
+  "terminal.install": "安装",
+  "terminal.updating": "正在保存终端代理请求",
+  "terminal.saved": "终端代理请求已保存，退出 TUI 后由 Shell 同步",
+  "terminal.activationAction": "查看激活命令",
+  "terminal.activation": "在当前终端执行一次：\n%s",
+  "terminal.state.unsupported": "不可用：需要可验证的 Linux 交互式 Bash、Zsh 或 Fish 会话",
+  "terminal.state.uninstalled": "Shell Integration 未安装",
+  "terminal.state.off": "未开启 · 当前终端",
+  "terminal.state.on": "已开启 · 当前终端已应用",
+  "terminal.state.pending": "待激活 · 请加载 Shell Integration",
+  "terminal.state.enabling": "正在开启 · 退出 TUI 后生效",
+  "terminal.state.disabling": "正在关闭 · 退出 TUI 后恢复",
+  "terminal.state.error": "Shell 同步失败 · 请查看 shell status"
 }

@@ -51,7 +51,6 @@
   "cli.command.nodes.short": "Print current proxy groups and nodes as JSON",
   "cli.command.select.short": "Select a node in a manual selector group",
   "cli.command.env.short": "Print POSIX shell exports; evaluate them in the parent shell",
-  "cli.command.init.short": "Print bash/zsh helpers; does not edit shell files",
   "cli.command.stats.short": "Sample runtime data as JSON; cumulative traffic resets with the core",
   "cli.command.connections.short": "List active Mihomo connections as JSON",
   "cli.command.connections.close.short": "Request closure of exactly one active connection",
@@ -87,7 +86,6 @@
   "cli.flag.profile.add.name": "Use a custom display name instead of automatic naming",
   "cli.flag.profile.add.remember-source": "Store the source URL/path and any URL credentials privately on this machine for explicit refresh",
   "cli.flag.env.unset": "Print unset commands even when uninstalled or configuration is damaged",
-  "cli.flag.init.shell": "Shell helper syntax: bash or zsh",
   "cli.flag.logs.lines": "Maximum new entries to collect (1–500)",
   "cli.flag.logs.duration": "Observation window (greater than zero, at most 1m)",
   "cli.flag.settings.ports.mixed-port": "Local HTTP/SOCKS proxy port (1024–65535)",
@@ -99,7 +97,6 @@
   "diagnostic.cli.no_terminal": "TUI requires a terminal; use status, doctor or --help for automation",
   "diagnostic.cli.ports_required": "specify --mixed-port or --controller-port",
   "diagnostic.cli.restart_required": "the core is running; review with --dry-run, then use --restart to acknowledge interrupting its connections",
-  "diagnostic.cli.shell": "supported shells: bash, zsh",
   "diagnostic.cli.core_required": "Mihomo is not installed; run lazyclash to install",
   "diagnostic.cli.name_required": "custom name must not be empty",
   "diagnostic.cli.config_path": "configuration input must be an absolute file path",
@@ -122,5 +119,12 @@
   "diagnostic.cli.accelerationMethod": "--acceleration-prefix requires --download-method accelerated or saved accelerated settings",
   "cli.command.tun.long": "TUN changes traffic routing and DNS for this host, including other users and services. Enabling it requires root, --scope host and --confirm-host. The ordinary user service cannot enable TUN.",
   "cli.flag.tun.scope": "TUN traffic scope; enabling requires host",
-  "cli.flag.tun.confirm-host": "Confirm that TUN may change routing and DNS for the entire host"
+  "cli.flag.tun.confirm-host": "Confirm that TUN may change routing and DNS for the entire host",
+  "cli.command.shell.short": "Manage per-terminal Shell Integration",
+  "cli.command.shell.status.short": "Show the calling shell's integration and proxy state",
+  "cli.command.shell.uninstall.short": "Restore this shell and remove owned integration references",
+  "cli.shell.status": "Shell: %s\nInstalled: %t\nLoaded: %t\nHook acknowledged: %t\nProxy state: %s\nPending activation: %t",
+  "cli.shell.uninstallPending": "Uninstall pending. After this command returns, the shell restores its original environment; owned integration references are then removed.",
+  "cli.shell.activationNotice": "Terminal proxy request saved. Shell Integration is installed.\nThe current shell has not loaded its initialization script.\nRun once in this terminal:\n\n%s\n\nThis immediately applies the latest request; no need to reopen the TUI.",
+  "cli.flag.shell.status.json": "Print integration status as JSON"
 }

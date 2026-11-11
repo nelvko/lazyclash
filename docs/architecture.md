@@ -96,3 +96,10 @@ TUI 在共享事件接收路径保存最近 60 秒、最多 128 点的流量历�
 首次安装由 `tui/inline_install.go` 在 Overview 正文内呈现，复用 wizard 的检查、解析、预检与安装状态机。`wizard.inline` 与管理弹窗互斥，页面导航、焦点、滚动仍由概览管理；后台结果不会抢夺其他页面焦点。首屏只读查询最新稳定版，明确点击安装后才继续下载，完成后明确启动。下载设置统一为 direct/environment/accelerated；`downloadnet.Config.URL` 应用于版本文本及文件的所有请求。
 
 latest 安装和升级检查从官方 `version.txt` 固定稳定标签，指定版本安装直接固定用户输入的标签；再由 `mihomo.Resolver` 按设备能力构造资源 URL，并以有限 Range 请求探测兼容候选。不存在 GitHub Release API 生产路径。下载器检查响应、大小、gzip 完整性和精确可执行版本，应用层继续负责配置验证、事务发布与回滚；不提供上游预期摘要或签名验证。本地安装记录中的摘要用于文件变化和恢复身份检测，不能冒充上游真实性证明。
+
+
+## 终端代理集成
+
+`internal/shellintegration` 独立管理用户的 Shell 安装、Linux 进程身份、pending 请求、正式会话、请求/回执和卸载日志；它不依赖内核 manifest 或服务恢复。`internal/app/terminal_proxy.go` 负责验证可信的运行内核、读取实际 Mixed Port 并保存当前 Shell 的意图，TUI 直接调用共享用例。已提交端口设置和可信运行时观测按 Home/Service namespace 发布端口，不使用全局代理 enabled 标志。
+
+Shell 私有 Hook 保存原始变量并在提示符同步小型状态记录；source 阶段主动 attach/sync/finalize，普通提示符不运行 Go 进程。CLI 仅在 Bubble Tea 返回后尝试打印一次激活命令。卸载采用恢复请求、Shell 回执、限时独立清理进程和持久待完成票据，不能在 Go 子进程中直接恢复父进程变量。协议、安装边界和支持限制见 [Shell Integration](shell-integration.md)。

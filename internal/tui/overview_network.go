@@ -28,6 +28,23 @@ func overviewNetworkCard(o dashboardOptions, width int) dashboardBlock {
 		themed(strings.Repeat("─", inner), divider, panel, o.Dim),
 	}, inner))
 	content.blank()
+	terminal := s.TerminalProxy
+	state := terminal.State
+	if state == "" {
+		state = "unsupported"
+	}
+	terminalButton := overviewControlButton{id: "terminal.enable", label: tr("dashboard.network.enable"), enabled: !o.Busy && state != "unsupported" && s.Installed && s.Service.Active}
+	if terminal.Desired || terminal.Applied {
+		terminalButton = overviewControlButton{id: "terminal.disable", label: tr("dashboard.network.disable"), enabled: !o.Busy && state != "unsupported"}
+	}
+	content.append(overviewLabelControl(o, inner, label(tr("terminal.title")), terminalButton, buttonSecondary))
+	content.append(overviewTextBlock([]string{themed(tr("terminal.state."+state), muted, panel, o.Dim)}, inner))
+	if terminal.Pending && terminal.ActivationCommand != "" {
+		content.append(overviewButtons(o, inner, []overviewControlButton{{id: "terminal.activation", label: tr("terminal.activationAction"), enabled: !o.Busy}}))
+	}
+	content.blank()
+	content.append(overviewTextBlock([]string{themed(strings.Repeat("─", inner), divider, panel, o.Dim)}, inner))
+	content.blank()
 	button := overviewControlButton{id: "tun.enable", label: tr("dashboard.network.enable")}
 	tun := tr("dashboard.control.tunHint")
 	var actualLine string

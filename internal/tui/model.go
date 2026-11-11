@@ -602,7 +602,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.updateWizardInput(v)
 		} else if m.inlineInputActive() {
 			cmd = m.updateInlineInput(v)
-		} else if m.form == "tun-confirm" {
+		} else if m.controlConfirmation() {
 			break
 		} else if m.form != "" {
 			if m.form == "profile-create" {
@@ -947,7 +947,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.updateWizardInput(msg)
 		} else if m.inlineInputActive() {
 			cmd = m.updateInlineInput(msg)
-		} else if m.form == "tun-confirm" {
+		} else if m.controlConfirmation() {
 			break
 		} else if m.form != "" {
 			if m.form == "profile-create" {
@@ -1047,7 +1047,7 @@ func (m *Model) openForm() tea.Cmd {
 	return textinput.Blink
 }
 func (m *Model) formKey(k tea.KeyPressMsg) tea.Cmd {
-	if m.form == "tun-confirm" {
+	if m.controlConfirmation() {
 		return m.tunConfirmationKey(k)
 	}
 	if handled, cmd := m.profileCreateKey(k); handled {
@@ -1173,6 +1173,13 @@ func (m *Model) activate(id string) tea.Cmd {
 		return m.serviceAction("start")
 	case "core.start", "core.stop", "core.restart":
 		return m.serviceAction(strings.TrimPrefix(id, "core."))
+	case "terminal.enable", "terminal.disable":
+		return m.terminalProxyAction(id == "terminal.enable")
+	case "terminal.activation":
+		m.prepareNotification("terminal-proxy", m.tr("terminal.title"))
+		m.message = m.tr("terminal.activation", m.snapshot.TerminalProxy.ActivationCommand)
+		m.messageInformational = true
+		return nil
 	case "tun.enable", "tun.disable":
 		return m.tunAction(id == "tun.enable")
 	case "card.proxies":
@@ -1378,7 +1385,7 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 					return m.wizardActivate(r.ID)
 				}
 				if m.form != "" {
-					if m.form == "tun-confirm" {
+					if m.controlConfirmation() {
 						return m.tunConfirmationAction(r.ID)
 					}
 					if m.form == "profile-create" {
@@ -1544,7 +1551,7 @@ func (m *Model) renderLayout() {
 		m.screen, m.targets = m.renderHelp(base)
 	} else if m.wizard.open || m.wizard.networkOpen {
 		m.screen, m.targets = m.renderWizard(base)
-	} else if m.form == "tun-confirm" {
+	} else if m.controlConfirmation() {
 		m.screen, m.targets = m.renderTUNConfirmation(base)
 	} else if m.form != "" {
 		m.screen, m.targets = m.renderProfileForm(base)
