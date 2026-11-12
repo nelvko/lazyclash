@@ -413,6 +413,11 @@ func (m *Model) acceptProviderUpdate(result providerUpdateResultMsg) tea.Cmd {
 	// independently of whether the panel still accepts this row completion.
 	// A response from a different applied profile or process cannot trigger it.
 	var observed tea.Cmd
+	if result.kind == providerRules && result.source == m.providerSource() {
+		// Closing the panel may race a request that already updated the core.
+		// Refresh visible rules even when this row's completion is now stale.
+		m.stopRules()
+	}
 	if result.kind == providerProxies && result.source == m.providerSource() {
 		observed = m.refreshCoreStatus()
 	}

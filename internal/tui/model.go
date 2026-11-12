@@ -390,14 +390,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.providersCmd()
 		}
 	case rulesResultMsg:
-		accepted := m.rules.active && v.generation == m.rules.generation
+		accepted := m.rules.active && m.rules.pending && v.generation == m.rules.generation && m.rules.source == m.currentRulesSource()
 		cmd = m.acceptRules(v)
 		if accepted && v.err == nil {
 			cmd = tea.Batch(cmd, m.observeCoreState(v.snapshot.State))
-		}
-	case rulesTickMsg:
-		if m.rules.active && v.generation == m.rules.generation && m.rulesVisible() {
-			cmd = m.rulesCmd()
 		}
 	case runtimeResultMsg:
 		cmd = m.acceptRuntime(v)

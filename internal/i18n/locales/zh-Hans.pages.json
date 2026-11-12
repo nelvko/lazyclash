@@ -138,7 +138,7 @@
   "rules.description": "由内核加载；在规则模式下按顺序匹配。仅供查看。",
   "rules.title": "生效规则",
   "rules.search_edit": "搜索规则（Enter / Esc 完成）",
-  "rules.shortcuts": "↑↓ 浏览 · Enter 展开 · / 搜索 · g 重读",
+  "rules.shortcuts": "↑↓ 浏览 · Enter 展开 · / 搜索",
   "rules.empty": "Mihomo 未返回生效规则",
   "rules.no_matches": "没有匹配的规则",
   "rules.disabled_suffix": " [已禁用]",

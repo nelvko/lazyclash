@@ -102,7 +102,20 @@ def exercise(preview, binary, output, language, profile, args):
             screen = terminal.screen.text()
             assert "private_ip" in screen and "Rule details" not in screen and "规则详情" not in screen, "rule click left the list"
             assert any(payload in row and "›" in row for row in screen.splitlines()), "rule click did not focus its exact row"
+        footer = terminal.screen.text().splitlines()[-1]
+        assert "Ctrl+R" not in footer, "rules footer retained the manual reload hint"
+        assert "Enter" in footer, "rules footer lost the existing expand hint"
         preview.capture(terminal, output, "row-clicks-focus", args)
+
+        # Stay on the rules list beyond its former polling interval. The final
+        # exact query count detects any automatic reload during this idle time
+        # or while searching, browsing, expanding and resizing below.
+        idle_end = time.monotonic() + 6.2
+        while time.monotonic() < idle_end:
+            terminal.read(0.1)
+            assert not terminal.closed, "rules fixture exited while idle"
+        terminal.settle()
+        preview.capture(terminal, output, "rules-idle-without-polling", args)
 
         # Navigation owns focus after returning. Remembering a cursor position
         # must not make a read-only rule look enabled or currently in use.
@@ -180,7 +193,8 @@ def exercise(preview, binary, output, language, profile, args):
         search(terminal, "no-such-rule-pty")
         terminal.wait(words["rules.no_matches"])
         preview.capture(terminal, output, "no-matches", args)
-        toggle(terminal, words["search.clear"])
+        clear_x, clear_y = position(terminal, " x │")
+        click_cell(terminal, clear_x + 1, clear_y)
         terminal.key(b"\r")  # Clear returns focus to the search input.
         terminal.settle()
         terminal.wait("private_ip")
@@ -220,9 +234,10 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.settle()
         terminal.key(b"g")
         terminal.wait("private_ip")
+        terminal.settle()
         terminal.exit()
         calls = json.loads(report.read_text())
-        assert calls["queries"] >= 2, calls
+        assert calls["queries"] == 3, ("expected initial entry, page return and manual reload only", calls)
         assert calls["service_changes"] == calls["modes"] == calls["selections"] == 0, calls
         raw = bytes(terminal.raw)
         assert not preview.OSC_SET.search(raw), "application changed the terminal palette"
@@ -231,7 +246,7 @@ def exercise(preview, binary, output, language, profile, args):
         if profile == "no-color":
             assert not any(value not in (b"", b"0") for value in preview.SGR.findall(raw)), "NO_COLOR emitted styling"
         (output / "pty.raw").write_bytes(raw)
-        print("PASS %s/%s: focus-only feedback, inline payload expansion, search options/invalid regex, fixed toolbar and five resize dimensions; %s" %
+        print("PASS %s/%s: event-triggered reads without idle polling, focus-only feedback, inline expansion, search options, fixed toolbar and five resize dimensions; %s" %
             (language, profile, json.dumps(calls)), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")

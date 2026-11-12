@@ -26,6 +26,7 @@ func rulesModel(t *testing.T, b *fakeBackend) Model {
 	m.syncRuntime()
 	m.page, m.focus = "rules", "rule.0"
 	m.rules.active, m.rules.received = true, true
+	m.rules.source = m.currentRulesSource()
 	m.rules.snapshot = app.RuleSnapshot{State: "ready", Rules: sampleRules(), ObservedAt: time.Now()}
 	m.reconcileRules()
 	m.layout()
@@ -135,25 +136,18 @@ func TestRulesQueriesRemainIndependentAndRejectLateMessages(t *testing.T) {
 	second := m.retryRules()
 	secondID := m.rules.generation
 	m, _ = update(m, first())
-	if !m.rules.pending || m.rules.received || m.rules.generation != secondID {
+	if !m.rules.pending || !m.rules.received || m.rules.generation != secondID {
 		t.Fatal("late response replaced retry")
 	}
-	m, next := update(m, second())
-	if calls != 2 || m.rules.pending || !m.rules.received || next == nil {
-		t.Fatal("rules result did not schedule its refresh")
+	if next := m.acceptRules(second().(rulesResultMsg)); next != nil {
+		t.Fatal("rules result scheduled periodic work")
 	}
-	m, request := update(m, rulesTickMsg{generation: secondID})
-	current := m.rules.generation
-	if request == nil || !m.rules.pending || current == secondID {
-		t.Fatal("refresh did not start a distinct task")
+	if calls != 2 || m.rules.pending || !m.rules.received || m.syncRules() != nil {
+		t.Fatal("completed rules read did not settle without another request")
 	}
-	m, duplicate := update(m, rulesTickMsg{generation: secondID})
-	if duplicate != nil || m.rules.generation != current {
-		t.Fatal("duplicate tick created a second query")
-	}
-	m, _ = update(m, rulesResultMsg{generation: secondID, snapshot: app.RuleSnapshot{State: "stopped"}})
-	if !m.rules.pending || m.rules.snapshot.State != "ready" {
-		t.Fatal("older message replaced current query")
+	m, _ = update(m, rulesResultMsg{generation: firstID, snapshot: app.RuleSnapshot{State: "stopped"}})
+	if m.rules.pending || m.rules.snapshot.State != "ready" || calls != 2 {
+		t.Fatal("older message replaced the completed current observation")
 	}
 }
 
@@ -207,9 +201,9 @@ func TestRulesEmptyFailuresAndRecoveryDoNotShowOldRows(t *testing.T) {
 			if state == "error" {
 				result.err = errors.New("query interrupted")
 			}
-			m, retry := update(m, result)
-			if len(m.filteredRules()) != 0 || strings.Contains(ansi.Strip(m.screen), "one.example.invalid") || retry == nil {
-				t.Fatal("unavailable/empty query displayed stale data or stopped retrying")
+			m, _ = update(m, result)
+			if len(m.filteredRules()) != 0 || strings.Contains(ansi.Strip(m.screen), "one.example.invalid") {
+				t.Fatal("unavailable/empty query displayed stale data")
 			}
 			if state == "empty" && !strings.Contains(ansi.Strip(m.screen), "No effective rules") {
 				t.Fatal("valid empty rules did not have a distinct status")

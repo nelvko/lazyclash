@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -14,14 +15,24 @@ import (
 )
 
 func TestRulesObservedStopUpdatesSharedStateAndPageStatus(t *testing.T) {
-	b := &fakeBackend{snapshot: app.Snapshot{Installed: true, Service: service.Status{Active: true, State: "active"}}}
+	b := &fakeBackend{snapshot: app.Snapshot{Installed: true, Service: service.Status{Active: true, State: "active"}}, rules: func(context.Context) (app.RuleSnapshot, error) {
+		return app.RuleSnapshot{State: "stopped"}, nil
+	}}
 	m := ready(b)
 	b.snapshot.Service = service.Status{State: "inactive"}
 	m.width, m.height, m.page = 120, 32, "rules"
 	m.rules.active, m.rules.pending, m.rules.generation = true, true, 4
+	m.rules.source = m.currentRulesSource()
 	var cmd tea.Cmd
 	m, cmd = update(m, rulesResultMsg{generation: 4, snapshot: app.RuleSnapshot{State: "stopped"}})
-	m, _ = update(m, commandBatch(t, cmd)[1]())
+	if cmd == nil {
+		t.Fatal("stopped rules observation did not request shared core status")
+	}
+	m, cmd = update(m, cmd())
+	if cmd == nil || !m.rules.pending {
+		t.Fatal("confirmed stopped process did not refresh its rules observation")
+	}
+	m, _ = update(m, cmd())
 	if m.snapshot.Service.Active || !strings.Contains(ansi.Strip(m.screen), "Core stopped") {
 		t.Fatal("Rules kept stale running state after observing a stopped core")
 	}

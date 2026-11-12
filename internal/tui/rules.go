@@ -13,7 +13,28 @@ import (
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
 
+// rulesSource identifies the applied configuration and the running process.
+// The wall-clock StartedAt anchor is intentionally excluded: the runtime owner
+// recalibrates it without changing the process.
+type rulesSource struct {
+	generation, profile, controller string
+	installed, configured, running  bool
+	serviceUnavailable              bool
+	pid                             int
+	started                         uint64
+}
+
+func (m Model) currentRulesSource() rulesSource {
+	return rulesSource{
+		generation: m.snapshot.Generation, profile: m.snapshot.Applied, controller: m.snapshot.Controller,
+		installed: m.snapshot.Installed, configured: m.snapshot.ConfigReady, running: m.snapshot.Service.Active,
+		pid: m.snapshot.Service.PID, started: m.snapshot.Service.StartTimestampMonotonic,
+		serviceUnavailable: m.snapshot.ServiceError != "",
+	}
+}
+
 type rulesState struct {
+	source                    rulesSource
 	snapshot                  app.RuleSnapshot
 	search                    textinput.Model
 	selected                  string
@@ -32,7 +53,6 @@ type rulesResultMsg struct {
 	snapshot   app.RuleSnapshot
 	err        error
 }
-type rulesTickMsg struct{ generation uint64 }
 
 func (m *Model) stopRules() {
 	if m.rules.cancel != nil {
@@ -51,6 +71,12 @@ func (m *Model) syncRules() tea.Cmd {
 	if !m.rulesVisible() {
 		m.stopRules()
 		return nil
+	}
+	source := m.currentRulesSource()
+	if m.rules.source != source {
+		m.stopRules()
+		m.rules.source = source
+		m.rules.snapshot, m.rules.err, m.rules.received = app.RuleSnapshot{}, nil, false
 	}
 	if m.rules.active {
 		return nil
@@ -72,7 +98,7 @@ func (m *Model) rulesCmd() tea.Cmd {
 	}
 }
 func (m *Model) acceptRules(v rulesResultMsg) tea.Cmd {
-	if !m.rules.active || !m.rules.pending || v.generation != m.rules.generation {
+	if !m.rules.active || !m.rules.pending || v.generation != m.rules.generation || m.rules.source != m.currentRulesSource() {
 		return nil
 	}
 	if m.rules.cancel != nil {
@@ -87,12 +113,13 @@ func (m *Model) acceptRules(v rulesResultMsg) tea.Cmd {
 		m.rules.snapshot = v.snapshot
 	}
 	m.reconcileRules()
-	id := m.rules.generation
-	return tea.Tick(5*time.Second, func(time.Time) tea.Msg { return rulesTickMsg{generation: id} })
+	return nil
 }
 func (m *Model) retryRules() tea.Cmd {
 	m.stopRules()
-	m.rules.received = false
+	if m.rules.snapshot.State != "ready" {
+		m.rules.received = false
+	}
 	return m.syncRules()
 }
 

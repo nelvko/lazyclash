@@ -27,6 +27,7 @@ func rulesMouseModel(t testing.TB, count, width, height int) Model {
 	m.width, m.height, m.page, m.focus = width, height, "rules", "rule.0"
 	m.colorProfile, m.noColor = colorprofile.TrueColor, false
 	m.rules.active, m.rules.received = true, true
+	m.rules.source = m.currentRulesSource()
 	rules := make([]mihomo.Rule, count)
 	for i := range rules {
 		rules[i] = mihomo.Rule{Index: i, Type: "RuleSet", Payload: fmt.Sprintf("%04d.中文规则.example.invalid", i), Proxy: "默认代理", Size: 100}

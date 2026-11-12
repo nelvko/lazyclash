@@ -1,5 +1,17 @@
 # 验证入口
 
+## 规则列表按事件读取（2026-11-12）
+
+生效规则列表移除每轮结束后的五秒轮询，改为进入/返回页面读取一次；已应用配置、控制地址、内核进程（含同 PID 不同单调起点）或服务检查可用性变化时取消旧任务并重读。规则集合完成事件即使在弹窗关闭后到达，也会使同来源的规则观测失效。订阅仅下载未应用、名称和待应用元数据变化、运行时长校时、首次版本补齐及独立 API 指标错误不触发整表读取。g / Ctrl+R 保留于帮助及失败重试入口，中英文底栏不再常驻重读提示。相同来源重读期间保留可用列表、筛选、焦点、展开与滚动位置；来源变化或查询失败不将旧数据当作当前规则。
+
+从 `827ac70` 导出独立源码，仅叠加本任务的十四个源码/文案/脚本文件，排除共享工作区其余顶栏和侧栏草稿。最终 `make check build` 通过（含仓库内 Ultraviolet 测试、vet 与产品构建，TUI 51.449 秒），规则事件生命周期定向 race 通过（3.541 秒），八项 Python 回归通过。新回归先在旧轮询实现复现失败，再验证进入/返回、配置与进程来源切换、旧响应与取消、未应用订阅、服务检查失败/恢复、手动重读保留状态，以及弹窗关闭后的集合完成事件。旧结果被来源守卫拒绝时，也不会继续影响共享核心状态。
+
+真实 controlling PTY 完成中英文 × True Color、ANSI256、NO_COLOR 六组，各覆盖 160×45、120×32、80×24、60×20、40×16 及恢复。每组在规则页停留 6.2 秒，整个流程精确 `queries=3`（首次进入、切页返回、手动 g），服务、模式、节点修改均为零；检查底栏无 Ctrl+R、搜索与行内展开保留。最终独立源码另完成中文 True Color 全流程并目视宽屏底栏，证据分别为 `.test-artifacts/rules-events/pty-final/20261112-104005-32887f/` 与 `.test-artifacts/rules-events/isolated-pty/20261112-104346-246d22/`。PNG 根据实际 PTY 字符格与颜色重绘，后端为隔离内存 fixture，没有操作实际 Mihomo 或系统服务。
+
+`./scripts/verify-linux.sh lazyclash-e2e` 在专用 Debian/arm64 VM 实际执行全部可运行包测试及仓库内 Ultraviolet 测试通过，脚本成功清理本轮暂存；日志为 `.test-artifacts/rules-events/isolated-linux.log`。
+
+独立源码、清单及日志位于 `.test-artifacts/rules-events/`：`source/`、`source-manifest.json`、`isolated-check-build.log`、`isolated-race.log`、`isolated-python.log` 和 `isolated-pty.log`；六组 PTY 汇总为 `.test-artifacts/rules-events-pty-final.log`。
+
 ## 终端代理 Shell Integration（2026-11-12）
 
 概览「网络设置」新增终端代理，首次经 TUI 确认安装 Linux Bash/Zsh/Fish 初始化脚本和启动引用。移除旧 `init` 与生成的 on/off 函数，保留手动 `env`。pending 以真实 Shell 身份绑定；第一次 source 注册 Hook 后立即同步并迁移会话，之后提示符只读小型变更记录。Shell 内存保存八项原始变量及 export 属性，关闭恢复；状态区分用户请求与实际回执。端口发布与应用观察/提交共用管理锁，防止较旧观测覆盖新端口。卸载先恢复当前 Shell，再由限时清理进程清理；持久票据支持失败后重试，保留其他待激活及已加载终端。

@@ -51,8 +51,8 @@ func TestPageRulesDepartureKeepsCacheAndRejectsCanceledResult(t *testing.T) {
 		t.Fatal("returning rules hid the cache while refreshing")
 	}
 	m.retryRules()
-	if m.rules.received {
-		t.Fatal("explicit retry did not reset its unavailable observation")
+	if !m.rules.received || m.rules.snapshot.State != "ready" {
+		t.Fatal("explicit reread discarded a usable same-source observation")
 	}
 	m.stopRules()
 }

@@ -138,7 +138,7 @@
   "rules.description": "Loaded by the core; matching order applies in Rule mode. Read only.",
   "rules.title": "Effective rules",
   "rules.search_edit": "Search rules (Enter / Esc finish)",
-  "rules.shortcuts": "↑↓ Browse · Enter Expand · / Search · g Refresh",
+  "rules.shortcuts": "↑↓ Browse · Enter Expand · / Search",
   "rules.empty": "No effective rules returned by Mihomo",
   "rules.no_matches": "No rules match this search",
   "rules.disabled_suffix": " [disabled]",
