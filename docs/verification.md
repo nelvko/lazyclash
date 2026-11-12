@@ -1,5 +1,17 @@
 # 验证入口
 
+## 通用 Toggle 组件（2026-11-12）
+
+新增包内 `toggleModel`、外部状态同步、只读切换意图和 `renderToggle`，复用 Mariana 主题、Bubbles key 及现有显示格宽度工具。零值为 Unknown，只有 On/Off 可以产生意图；Pending 保留最后确认状态，Unavailable、Unsupported、Unknown 拦截操作。支持六种文案覆盖、固定或自然稳定宽度、左右对齐、主题焦点下划线和弹窗弱化。未接入或修改任何业务页面。API 与父级异步约定见 [TUI Toggle 组件](tui-toggle.md)。
+
+从 `1351190` 导出独立源码，仅叠加 Toggle 源码、测试、PTY 脚本和复用文档，排除共享树另会话的六个顶栏/侧栏草稿文件。`make check build` 通过（全部 Go 和仓库内 Ultraviolet 测试、vet、产品构建，TUI 51.220 秒）；Toggle 定向 race 通过（1.993 秒），八项 Python 回归通过；共享树的 Toggle 定向测试、vet 和产品构建也通过。共享树全测另有 `TestProxiesDefaultSortReturnsToItsGroupAfterHeaderClick/80` 失败，已在未添加 Toggle、仅含原有六个布局草稿的基线中复现相同失败，未修改其他会话的测试或实现。
+
+`./scripts/verify-linux.sh lazyclash-e2e` 在已有专用 Debian/arm64 VM 实际执行全部可运行 Go 和 Ultraviolet 测试通过，并完成临时二进制清理。普通用户 uid 501，systemd 用户 manager running，Linger=yes。
+
+`scripts/toggle-pty.py` 使用真实 controlling PTY 完成中文、英文 × True Color、ANSI256、NO_COLOR 六组，每组覆盖 160×45、120×32、80×24、60×20、40×16 及恢复。检查六种状态和颜色、右对齐、焦点下划线、两个控件的输入归属、Pending 连续按键、不支持/不可用/未知的操作拦截，以及新权威观测使旧结果失效。每组操作计数均为 `[2, 1]`、拒绝旧结果一次、最终两个控件均 Off；未设置终端默认颜色。已目视中文宽屏和 40 列窄屏的 PNG；PNG 由实际 PTY 字符格与样式重绘，后端仅为组件内存夹具，没有操作实际 Mihomo、系统服务、代理或 TUN。
+
+独立源码、清单和日志位于 `.test-artifacts/toggle/`：`source/`、`source-manifest.json`、`check-build.log`、`linux.log`、`python.log`、`shared-baseline.log`、`pty.log`。含截图的六组终端证据位于 `pty-png/20261112-203058-28eb22/`。
+
 ## 规则列表按事件读取（2026-11-12）
 
 生效规则列表移除每轮结束后的五秒轮询，改为进入/返回页面读取一次；已应用配置、控制地址、内核进程（含同 PID 不同单调起点）或服务检查可用性变化时取消旧任务并重读。规则集合完成事件即使在弹窗关闭后到达，也会使同来源的规则观测失效。订阅仅下载未应用、名称和待应用元数据变化、运行时长校时、首次版本补齐及独立 API 指标错误不触发整表读取。g / Ctrl+R 保留于帮助及失败重试入口，中英文底栏不再常驻重读提示。相同来源重读期间保留可用列表、筛选、焦点、展开与滚动位置；来源变化或查询失败不将旧数据当作当前规则。
