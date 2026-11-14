@@ -193,6 +193,8 @@ func (m Model) contextHelp() string {
 			return tr("providers.mode_hint")
 		case "rules.providers", "proxies.providers":
 			return tr("providers.open_hint")
+		case "proxies.search-open":
+			return m.proxiesContextHelp()
 		case "profiles.update-all":
 			return tr("navigation.updateProfiles")
 		case "conn.close-all":
@@ -225,11 +227,65 @@ func (m Model) contextHelp() string {
 	case "profiles":
 		return tr("navigation.profiles")
 	case "proxies":
-		if m.proxiesDirect() {
-			return tr("proxies.direct.keys")
-		}
-		return tr("navigation.proxies")
+		return m.proxiesContextHelp()
 	default:
 		return tr("navigation.default")
 	}
+}
+
+func (m Model) proxiesContextHelp() string {
+	tr := m.tr
+	if m.proxiesDirect() {
+		return tr("proxies.direct.keys")
+	}
+	if m.proxies.editing {
+		return tr("navigation.proxies.searching")
+	}
+	control := ""
+	switch m.focus {
+	case "proxies.back":
+		control = "back"
+	case "proxies.directory":
+		control = "directory"
+	case "proxies.enter":
+		control = "open"
+	case "proxies.collapse_all":
+		control = "collapseAll"
+	case "proxies.search", "proxies.search-open":
+		control = "search"
+	case "proxies.clear":
+		control = "clear"
+	}
+	for prefix, action := range map[string]string{
+		"proxies.reference.": "open", "proxies.delay.": "testNode", "proxies.sort.": "sort", "proxies.test.": "testGroup",
+	} {
+		if strings.HasPrefix(m.focus, prefix) {
+			control = action
+		}
+	}
+	if control == "testGroup" && m.proxies.testing {
+		control = "cancelTest"
+	}
+	if control != "" {
+		return tr("navigation.proxies.control", tr("navigation.proxies.action."+control))
+	}
+	_, group, node, ok := m.proxyAtFocus()
+	if ok && strings.HasPrefix(m.focus, "group.") {
+		action := "expand"
+		if m.proxyGroupExpanded(group.Name) {
+			action = "collapse"
+			if m.proxiesNarrow() {
+				action = "directory"
+			}
+		}
+		return tr("navigation.proxies.groups", tr("navigation.proxies.action."+action))
+	}
+	if ok && node != "" && strings.HasPrefix(m.focus, "node.") {
+		action := "inspect"
+		if group.Type == "Selector" {
+			action = "select"
+		}
+		return tr("navigation.proxies.nodes", tr("navigation.proxies.action."+action))
+	}
+	return tr("navigation.proxies.browse")
 }

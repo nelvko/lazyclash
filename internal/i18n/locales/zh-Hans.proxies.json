@@ -49,5 +49,5 @@
   "proxies.test_url": "测试目标：%s",
   "proxies.core_target": "内核历史记录，未提供目标",
   "proxies.test_hint": "结果仅对应本次测试目标。测试失败不能据此判定节点离线。",
-  "help.proxies.tools": "s 排序，t 测速或取消当前组测试。"
+  "help.proxies.tools": "/ 搜索代理组和节点，s 排序，t 测速或取消当前组测试。"
 }

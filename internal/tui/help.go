@@ -9,7 +9,7 @@ import (
 
 func (m Model) helpLines(width int) []string {
 	tr := m.tr
-	lines := []string{tr("help.navigation"), tr("help.pages.first"), tr("help.pages.second"), "", tr("help.navigation.tab"), tr("help.navigation.arrows"), tr("help.navigation.scroll"), tr("help.navigation.cancel"), tr("help.keyHints.shortcut"), "", tr("help.currentPage", pageTitle(m.page, m.locale))}
+	lines := []string{tr("help.currentPage", pageTitle(m.page, m.locale))}
 	switch m.page {
 	case "proxies":
 		if m.proxiesDirect() {
@@ -30,6 +30,7 @@ func (m Model) helpLines(width int) []string {
 	default:
 		lines = append(lines, tr("help.overview.install"), tr("help.overview.import"), tr("help.overview.controls"), tr("help.overview.refresh"), tr("help.overview.unavailable"))
 	}
+	lines = append(lines, "", tr("help.navigation"), tr("help.pages.first"), tr("help.pages.second"), "", tr("help.navigation.tab"), tr("help.navigation.arrows"), tr("help.navigation.scroll"), tr("help.navigation.cancel"), tr("help.keyHints.shortcut"))
 	if m.page != "proxies" {
 		lines = append(lines, "", tr("help.core.title"), tr("help.core.actions"), tr("help.core.refresh"))
 	}

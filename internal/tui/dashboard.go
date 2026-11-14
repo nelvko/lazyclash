@@ -247,25 +247,18 @@ func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
 	}
 	if !g.sidebar && o.SidebarOpen {
 		menuWidth := min(sidebarWidth, o.Width)
+		menuTop := g.y - o.BodyTopRows
 		// Underlying buttons must not receive a click through the navigation menu.
 		kept := targets[:0]
 		for _, r := range targets {
-			if !regionsOverlap(r, hitRegion{X: 0, Y: g.headerHeight + 1, W: menuWidth, H: max(0, dashboardContentBottom(o)-g.headerHeight-1)}) {
+			if !regionsOverlap(r, hitRegion{X: 0, Y: menuTop, W: menuWidth, H: max(0, dashboardContentBottom(o)-menuTop)}) {
 				kept = append(kept, r)
 			}
 		}
 		targets = append(kept, drawSidebar(rows, o, true)...)
 	}
 	if !o.HideKeyHints {
-		help := o.Help
-		if help == "" {
-			help = tr("dashboard.footer.default")
-		}
-		quit := tr("dashboard.footer.quit")
-		put(2, o.Height-1, helpText(cellCrop(help, max(1, o.Width-ansi.StringWidth(quit)-6)), bg, o.Dim))
-		if o.Width >= 16 {
-			put(o.Width-ansi.StringWidth(quit)-2, o.Height-1, helpText(quit, bg, o.Dim))
-		}
+		put(2, o.Height-1, dashboardKeyHints(o))
 	}
 	for _, notification := range notificationLayout(o) {
 		bounds := notification.Bounds

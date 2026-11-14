@@ -240,7 +240,11 @@ func TestSearchFieldPageFooterKeepsSearchShortcut(t *testing.T) {
 					if language == i18n.Chinese {
 						want = "/ 搜索"
 					}
-					if !strings.Contains(ansi.Strip(m.View().Content), want) {
+					footer := ansi.Strip(strings.Split(m.View().Content, "\n")[size[1]-1])
+					if !strings.Contains(footer, m.tr("dashboard.footer.help")) || strings.Contains(footer, "…") {
+						t.Fatalf("footer lost help or cut a shortcut mid-item: %q", footer)
+					}
+					if size[0] >= 60 && !strings.Contains(footer, want) {
 						t.Fatal("removing the input prefix hid the page's search shortcut")
 					}
 				})

@@ -1,0 +1,22 @@
+{
+  "dashboard.footer.help": "? Help",
+  "navigation.proxies.groups": "%s · / Search · ↑↓ Groups · s Sort · t Test · Esc Back",
+  "navigation.proxies.nodes": "%s · / Search · ↑↓ Move · ←→ Columns · i Details · s Sort · t Test · Esc Back",
+  "navigation.proxies.control": "%s · Tab Controls · Esc Back",
+  "navigation.proxies.browse": "/ Search · ↑↓ Browse · Tab Controls · Esc Back",
+  "navigation.proxies.searching": "Enter Results · Esc End search",
+  "navigation.proxies.action.expand": "Enter Expand",
+  "navigation.proxies.action.collapse": "Enter Collapse",
+  "navigation.proxies.action.directory": "Enter Groups",
+  "navigation.proxies.action.select": "Enter Select",
+  "navigation.proxies.action.inspect": "Enter Details",
+  "navigation.proxies.action.open": "Enter Open group",
+  "navigation.proxies.action.testNode": "Enter Test node",
+  "navigation.proxies.action.testGroup": "Enter Test group",
+  "navigation.proxies.action.cancelTest": "Enter Cancel test",
+  "navigation.proxies.action.sort": "Enter Sort",
+  "navigation.proxies.action.back": "Enter Back",
+  "navigation.proxies.action.collapseAll": "Enter Collapse all",
+  "navigation.proxies.action.search": "Enter Search",
+  "navigation.proxies.action.clear": "Enter Clear search"
+}

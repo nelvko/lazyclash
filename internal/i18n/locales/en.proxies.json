@@ -49,5 +49,5 @@
   "proxies.test_url": "Test target: %s",
   "proxies.core_target": "Core history; target unavailable",
   "proxies.test_hint": "A result describes this test target only. A failed test does not establish that the node is offline.",
-  "help.proxies.tools": "s sorts; t tests/cancels the current group."
+  "help.proxies.tools": "/ searches groups and nodes; s sorts; t tests/cancels the current group."
 }
