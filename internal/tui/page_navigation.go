@@ -321,6 +321,9 @@ func (m *Model) revealContentFocus() {
 }
 
 func (m *Model) contentNavigationKey(k tea.KeyPressMsg) bool {
+	if m.overviewScrollKey(k) {
+		return true
+	}
 	if strings.HasPrefix(m.focus, "overview.card.") {
 		cards := overviewCardRegionsFromModel(*m)
 		current := 0
