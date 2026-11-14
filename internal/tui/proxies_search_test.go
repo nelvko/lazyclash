@@ -125,6 +125,9 @@ func TestProxiesStickyGroupFollowsScrollWithoutMovingFocus(t *testing.T) {
 		{Name: "first", Type: "Selector", All: []string{"one", "two", "three", "four", "five", "six"}, Now: "one"},
 		{Name: "second", Type: "Selector", All: []string{"seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen"}, Now: "seven"},
 	}
+	for i := range 30 {
+		m.snapshot.Groups[1].All = append(m.snapshot.Groups[1].All, fmt.Sprintf("tail-%02d", i))
+	}
 	setProxyTestGroup(&m, "first")
 	m.expandProxyGroup("second")
 	m.focus = "node.0.0"

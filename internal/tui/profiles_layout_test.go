@@ -16,6 +16,7 @@ func TestProfileCardsKeepBoundedMetadataAndAlignedStatus(t *testing.T) {
 		for _, width := range []int{12, 16, 28, 55} {
 			t.Run(fmt.Sprintf("%s/%d", language, width), func(t *testing.T) {
 				m := profilesPreview(false)
+				m.width, m.height = 160, 40
 				m.locale = i18n.New(language)
 				m.snapshot.ProfileDetails[1].Origin = strings.Repeat("long-source.", 12) + "example"
 				for index := range m.profiles() {
@@ -47,6 +48,7 @@ func TestProfileCardsKeepBoundedMetadataAndAlignedStatus(t *testing.T) {
 
 func TestProfileMetadataWrapsWithoutEmptySeparatorAndUsesReadableColors(t *testing.T) {
 	m := profilesPreview(false)
+	m.width, m.height = 160, 40
 	m.focus, m.hover = "", ""
 	info := &m.snapshot.ProfileDetails[2]
 	info.Kind, info.Origin = "remote", "subscription.example"

@@ -144,17 +144,14 @@ func (m Model) proxiesBody(width int) (string, []hitRegion) {
 			add(m.tr("proxies.no_groups"), muted)
 		}
 	}
-	compactGroups := m.proxiesNarrow() || m.height < 24
+	compactGroups := m.compactProxyCards()
 	for i, gi := range groups {
-		if i > 0 && compactGroups {
+		if i > 0 && compactGroups && (m.proxyGroupExpanded(m.snapshot.Groups[gi].Name) || m.proxyGroupExpanded(m.snapshot.Groups[groups[i-1]].Name)) {
 			b.blank()
 		}
 		g := m.snapshot.Groups[gi]
 		b.append(m.proxyGroupHeader(gi, width))
 		if m.proxyGroupExpanded(g.Name) {
-			if compactGroups {
-				b.blank()
-			}
 			b.append(m.proxyGroupBody(gi, width))
 		}
 		if g.Name == m.proxies.testGroup && m.proxies.total > 0 && (m.proxies.testing || m.proxies.testStatusVisible) {
@@ -230,7 +227,7 @@ func (m Model) proxyGroupHeader(gi, width int) dashboardBlock {
 	name := themed(lipgloss.NewStyle().Bold(true).Render(clean(g.Name)), color, surface, false)
 	prefix := themed(marker, focus, surface, false)
 	b := dashboardBlock{}
-	if m.proxiesNarrow() || width < 72 {
+	if (m.proxiesNarrow() || width < 72) && (expanded || width < 60) {
 		b.lines = []string{cellPad(prefix+name, leftWidth) + right, themed(cellPad("  "+clean(summary), width), muted, surface, false)}
 	} else {
 		nameWidth := min(24, max(12, width/4))
@@ -269,7 +266,7 @@ func (m Model) proxyGroupHeader(gi, width int) dashboardBlock {
 			x += w
 		}
 	}
-	if !m.proxiesNarrow() && m.height >= 24 {
+	if !m.compactProxyCards() {
 		b.lines = append(append([]string{""}, b.lines...), "")
 		for i := range actionRegions {
 			actionRegions[i].Y++
@@ -319,7 +316,7 @@ func (m Model) proxyGroupBody(gi, width int) dashboardBlock {
 	}
 	indices := m.proxyMembers(g)
 	for first := 0; first < len(indices); first += grid.columns {
-		if first > 0 {
+		if first > 0 && !m.compactProxyCards() {
 			b.blank()
 		}
 		var cells []dashboardBlock
@@ -443,15 +440,20 @@ func (m Model) proxyNode(gi, ni, width int) dashboardBlock {
 	}
 	meta := edge + themed("  "+cellPad(clean(m.proxyNodeMeta(node)), metaWidth), muted, surface, false)
 	padding := edge + themed(strings.Repeat(" ", max(0, width-2)), text, surface, false)
-	b := dashboardBlock{lines: []string{cellCrop(padding, width), themed(cellPad(line, width), text, surface, false)}}
+	var b dashboardBlock
+	if !m.compactProxyCards() {
+		b.lines = append(b.lines, cellCrop(padding, width))
+	}
+	nameRow := len(b.lines)
+	b.lines = append(b.lines, themed(cellPad(line, width), text, surface, false))
 	var actions []hitRegion
 	if valueWidth > 0 {
-		actions = append(actions, hitRegion{ID: delayID, X: width - rightPadding - valueWidth, Y: 1, W: valueWidth, H: 1})
+		actions = append(actions, hitRegion{ID: delayID, X: width - rightPadding - valueWidth, Y: nameRow, W: valueWidth, H: 1})
 	}
 	if reference && buttonWidth > 0 {
 		buttonX := width - rightPadding - buttonWidth
 		meta = cellPad(meta, buttonX) + cellCrop(button, buttonWidth) + trailing
-		actions = append(actions, hitRegion{ID: referenceID, X: buttonX, Y: 2, W: buttonWidth, H: 1})
+		actions = append(actions, hitRegion{ID: referenceID, X: buttonX, Y: nameRow + 1, W: buttonWidth, H: 1})
 	} else {
 		meta += trailing
 	}

@@ -694,7 +694,7 @@ func TestProxiesGroupSpacingPreservesCompactWhitespace(t *testing.T) {
 	for _, test := range []struct {
 		width, height, gap int
 		expanded           string
-	}{{200, 40, 0, ""}, {160, 40, 0, "PROXY"}, {100, 24, 0, ""}, {160, 23, 1, ""}, {120, 18, 1, "PROXY"}, {80, 40, 1, ""}, {40, 16, 1, ""}} {
+	}{{200, 40, 0, ""}, {160, 40, 0, "PROXY"}, {100, 24, 0, ""}, {160, 23, 0, ""}, {120, 18, 1, "PROXY"}, {80, 40, 0, ""}, {40, 16, 0, ""}} {
 		t.Run(fmt.Sprint(test.width, "/", test.height, "/", test.expanded), func(t *testing.T) {
 			m, _ := proxiesModel(t, test.width, test.height)
 			setProxyTestGroup(&m, test.expanded)
@@ -712,8 +712,12 @@ func TestProxiesGroupSpacingPreservesCompactWhitespace(t *testing.T) {
 						start = min(start, hit.Y)
 					}
 				}
-				if start-end != test.gap {
-					t.Fatalf("groups %d/%d have the wrong external gap: end=%d start=%d want=%d", previous, next, end, start, test.gap)
+				gap := test.gap
+				if !m.proxyGroupExpanded(m.snapshot.Groups[previous].Name) && !m.proxyGroupExpanded(m.snapshot.Groups[next].Name) {
+					gap = 0
+				}
+				if start-end != gap {
+					t.Fatalf("groups %d/%d have the wrong external gap: end=%d start=%d want=%d", previous, next, end, start, gap)
 				}
 				for y := end; y < start; y++ {
 					if strings.TrimSpace(lines[y]) != "" {
@@ -731,7 +735,7 @@ func TestProxiesGroupSpacingPreservesCompactWhitespace(t *testing.T) {
 }
 
 func TestProxiesExpandedGroupKeepsSortingInHeader(t *testing.T) {
-	for _, test := range []struct{ width, height, gap int }{{200, 40, 0}, {160, 24, 0}, {100, 24, 0}, {160, 23, 1}, {120, 18, 1}, {80, 40, 1}, {40, 16, 1}} {
+	for _, test := range []struct{ width, height, gap int }{{200, 40, 0}, {160, 24, 0}, {100, 24, 0}, {160, 23, 0}, {120, 18, 0}, {80, 40, 0}, {40, 16, 0}} {
 		t.Run(fmt.Sprint(test.width, "/", test.height), func(t *testing.T) {
 			m, _ := proxiesModel(t, test.width, test.height)
 			bodyWidth := dashboardBodyWidth(m.dashboardOptions())
@@ -1010,7 +1014,9 @@ func TestProxiesDefaultSortReturnsToItsGroupAfterHeaderClick(t *testing.T) {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			m, _ := proxiesModel(t, width, 24)
 			// Keep this location scrollable when compact browsing fits two columns.
-			m.snapshot.Groups[1].All = append(m.snapshot.Groups[1].All, "JP 02", "US 01", "DIRECT", "REJECT")
+			for i := range 30 {
+				m.snapshot.Groups[1].All = append(m.snapshot.Groups[1].All, fmt.Sprintf("sort-fixture-%02d", i))
+			}
 			setProxyTestGroup(&m, "AUTO")
 			m.focus = "group.1"
 			m.sortProxies("delay")

@@ -64,9 +64,10 @@ func TestProxyGridKeepsUnicodeCardsInsideTheirSlots(t *testing.T) {
 			}
 			for i := range names {
 				card := m.proxyNode(0, i, grid.cardWidth)
-				if len(card.lines) != 3 {
+				if len(card.lines) != len(m.proxyNode(0, 0, grid.cardWidth).lines) {
 					t.Fatal("node type or name changed the card height")
 				}
+				nameRow, metaRow := len(card.lines)-2, len(card.lines)-1
 				for _, line := range card.lines {
 					if ansi.StringWidth(line) != grid.cardWidth {
 						t.Fatalf("Unicode card changed its slot width: %q", ansi.Strip(line))
@@ -76,10 +77,10 @@ func TestProxyGridKeepsUnicodeCardsInsideTheirSlots(t *testing.T) {
 				if i == 1 {
 					prefix = "▌   "
 				}
-				if !strings.Contains(ansi.Strip(card.lines[1]), "42 ms") || !strings.HasPrefix(ansi.Strip(card.lines[2]), prefix+"Shadowsocks") {
+				if !strings.Contains(ansi.Strip(card.lines[nameRow]), "42 ms") || !strings.HasPrefix(ansi.Strip(card.lines[metaRow]), prefix+"Shadowsocks") {
 					t.Fatal("node name displaced its delay or protocol")
 				}
-				if i >= 1 && i <= 4 && !strings.Contains(ansi.Strip(card.lines[1]), "…") {
+				if i >= 1 && i <= 4 && !strings.Contains(ansi.Strip(card.lines[nameRow]), "…") {
 					t.Fatal("long node name was not truncated within its name slot")
 				}
 			}
@@ -104,7 +105,8 @@ func TestProxyGridResizeKeepsNodeIdentityAndRevealsItsNewRow(t *testing.T) {
 			}
 			g := dashboardGeometry(m.dashboardOptions())
 			hit := findTarget(t, m, m.focus)
-			if hit.H != 3 || hit.Y < g.y || hit.Y+hit.H > g.y+g.height || m.scroll < 0 || m.scroll > max(0, m.total-g.height) {
+			cardHeight := len(m.proxyNode(0, 37, m.proxyGrid(g.width).cardWidth).lines)
+			if hit.H != cardHeight || hit.Y < g.y || hit.Y+hit.H > g.y+g.height || m.scroll < 0 || m.scroll > max(0, m.total-g.height) {
 				t.Fatalf("resize failed to reveal the new card row: hit=%+v scroll=%d", hit, m.scroll)
 			}
 			assertCanvas(t, m.View().Content, size[0], size[1])

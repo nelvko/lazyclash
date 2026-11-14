@@ -322,7 +322,7 @@ func TestProxiesDirectReturnRestoresLocationBeforeInterruptedSortMenu(t *testing
 func TestProxiesDirectReturnRestoresScrollWhileNavigationKeepsFocus(t *testing.T) {
 	m := proxyHoverModel(t, 120)
 	m.height = 24
-	m.focus = "node.0.25"
+	m.focus = "node.0.95"
 	m.revealContentFocus()
 	m.layout()
 	m.returnToNavigation()

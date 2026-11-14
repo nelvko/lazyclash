@@ -17,6 +17,7 @@ func TestProxyWheelScrollsPastFocusAndBack(t *testing.T) {
 					m.width, m.focus = width, focused
 					m.layout()
 					g := dashboardGeometry(m.dashboardOptions())
+					maximum := max(0, m.total-g.height)
 					initial := m.screen
 					selected := m.snapshot.Groups[0].Now
 					for _, button := range []tea.MouseButton{tea.MouseWheelDown, tea.MouseWheelUp} {
@@ -32,9 +33,9 @@ func TestProxyWheelScrollsPastFocusAndBack(t *testing.T) {
 							if i == 0 && (m.screen != want.screen || !reflect.DeepEqual(m.targets, want.targets)) {
 								t.Fatal("wheel viewport differs from a fresh full layout")
 							}
-							offset := 3 * (i + 1)
+							offset := min(maximum, 3*(i+1))
 							if button == tea.MouseWheelUp {
-								offset = 18 - offset
+								offset = max(0, min(18, maximum)-3*(i+1))
 							}
 							if cmd != nil || m.scroll != offset || m.focus != focused || m.snapshot.Groups[0].Now != selected {
 								t.Fatalf("wheel changed focus/selection or lost scrolling: offset=%d focus=%s", m.scroll, m.focus)

@@ -10,6 +10,10 @@ type proxyGridLayout struct {
 	indent, columns, cardWidth int
 }
 
+func (m Model) compactProxyCards() bool {
+	return m.proxiesNarrow() || m.height <= 24
+}
+
 // bodyWidth already excludes the sidebar and the dashboard's outer margins.
 // Keep the same slots for short groups and incomplete final rows.
 func layoutProxyGrid(bodyWidth, indent int) proxyGridLayout {

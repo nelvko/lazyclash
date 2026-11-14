@@ -19,11 +19,14 @@ func (m Model) profilesBody(width int) (string, []hitRegion) {
 		return m.unavailableProfiles(width)
 	}
 	var body dashboardBlock
-	if m.searchToolbarGap() > 0 {
+	compact := m.compactProfileCards()
+	if !compact && m.searchToolbarGap() > 0 {
 		body.blank()
 	}
 	body.append(m.profilesToolbar(width))
-	body.blank()
+	if !compact {
+		body.blank()
+	}
 	count := len(m.profiles()) - 1
 	summary := fmt.Sprintf(m.tr("profiles.summary"), count)
 	if m.snapshot.Applied != "" {
@@ -259,13 +262,18 @@ func (m Model) profileCard(index, width int) dashboardBlock {
 		lines = append(lines, themed(value, muted, surface, false))
 	}
 	lines = append(lines, themed(cellCrop(status, inner), statusColor, surface, false))
-	block := dashboardBlock{lines: profileCardSurface(lines, width, surface, selected)}
+	compact := m.compactProfileCards()
+	block := dashboardBlock{lines: profileCardSurface(lines, width, surface, selected, compact)}
 	// Card controls win hit testing over the containing card.
 	x := 2 + titleWidth
+	titleRow := 1
+	if compact {
+		titleRow = 0
+	}
 	for i, control := range controls {
 		w := ansi.StringWidth(controlViews[i])
 		if !m.busy && !m.quitting {
-			block.targets = append(block.targets, hitRegion{ID: control.id, X: x, Y: 1, W: w, H: 1})
+			block.targets = append(block.targets, hitRegion{ID: control.id, X: x, Y: titleRow, W: w, H: 1})
 		}
 		x += w
 	}
@@ -273,7 +281,11 @@ func (m Model) profileCard(index, width int) dashboardBlock {
 	return block
 }
 
-func profileCardSurface(lines []string, width int, surface string, selected bool) []string {
+func (m Model) compactProfileCards() bool {
+	return dashboardBodyWidth(m.dashboardOptions()) < 86 || m.height <= 24
+}
+
+func profileCardSurface(lines []string, width int, surface string, selected, compact bool) []string {
 	marker := " "
 	if selected {
 		marker = themed("▌", accent, surface, false)
@@ -281,11 +293,17 @@ func profileCardSurface(lines []string, width int, surface string, selected bool
 	row := func(line string) string {
 		return themed(cellPad(marker+" "+cellPad(line, max(0, width-4))+"  ", width), text, surface, false)
 	}
-	rows := []string{row("")}
+	var rows []string
+	if !compact {
+		rows = append(rows, row(""))
+	}
 	for _, line := range lines {
 		rows = append(rows, row(line))
 	}
-	return append(rows, row(""))
+	if !compact {
+		rows = append(rows, row(""))
+	}
+	return rows
 }
 
 func profileUpdated(updated, now time.Time, locales ...i18n.Localizer) string {
