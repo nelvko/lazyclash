@@ -31,6 +31,8 @@ type notificationItem struct {
 	Key, Page, Context, Message, Details string
 	Kind                                 string
 	Critical                             bool
+	Silent                               bool
+	showAfter                            time.Time
 	generation                           uint64
 	remaining                            time.Duration
 	started                              time.Time
@@ -128,6 +130,15 @@ func (m *Model) syncNotification() tea.Cmd {
 	if source.busy && n.retainDialog {
 		item.Critical = true
 	}
+	// Routine completion is already reflected by the page. Keep its short-lived
+	// record available in the notification list without covering the interface.
+	item.Silent = !item.Critical && (kind == "done" || kind == "info")
+	if kind == "working" && !item.Critical {
+		item.showAfter = time.Now().Add(500 * time.Millisecond)
+		if index >= 0 && n.items[index].Kind == "working" {
+			item.showAfter = n.items[index].showAfter
+		}
+	}
 	if kind == "error" {
 		item.Details = n.details
 		if item.Details == "" {
@@ -160,8 +171,8 @@ func (m *Model) syncNotification() tea.Cmd {
 	return nil
 }
 
-// Only fully expanded, unobscured cards consume their display time. Overflow
-// and modal views pause the timer and retain the remaining display time.
+// Visible cards and quiet records consume their display time. Overflow and
+// modal views pause the timer and retain the remaining display time.
 func (m *Model) syncNotificationTimers(now time.Time) tea.Cmd {
 	n := &m.notification
 	if len(n.items) == 0 {
@@ -169,6 +180,11 @@ func (m *Model) syncNotificationTimers(now time.Time) tea.Cmd {
 	}
 	visible := map[uint64]bool{}
 	if !n.panel.open && !m.menu.open {
+		for _, item := range n.items {
+			if item.Silent && !m.feedbackDialogOpen() && !m.helpOpen && !m.sidebarOpen {
+				visible[item.ID] = true
+			}
+		}
 		o := m.dashboardOptions()
 		o.Scroll = m.scroll
 		m.populatePageBody(&o)

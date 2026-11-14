@@ -27,6 +27,10 @@ func publishNotice(m *Model, operation, kind, message string) uint64 {
 		m.failure = message
 	}
 	m.syncNotification()
+	// These fixtures exercise visible-card timing and interaction independently
+	// of the arrival policy covered by notification_policy_test.go.
+	item := &m.notification.items[len(m.notification.items)-1]
+	item.Silent, item.showAfter = false, time.Time{}
 	m.layout()
 	m.syncNotificationTimers(time.Now())
 	return m.notification.items[len(m.notification.items)-1].ID
@@ -204,6 +208,7 @@ func TestNotificationCloseWorksWithMouseAndTabWithoutCancelingTask(t *testing.T)
 		m := noticeModel()
 		m.begin("Updating", "Saved", func(context.Context) error { return nil }, notificationOperation{Key: "work", Context: "Update"})
 		m.syncNotification()
+		m.notification.items[0].showAfter = time.Time{}
 		m.layout()
 		id := m.notification.items[0].ID
 		action := fmt.Sprintf("notification.close.%d", id)

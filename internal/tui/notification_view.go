@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/charmbracelet/x/ansi"
@@ -65,6 +66,20 @@ func notificationText(value string) string {
 
 func notificationLayout(o dashboardOptions) []notificationOverlay {
 	if o.Dim || o.SidebarOpen || len(o.Notifications) == 0 || o.Width < 20 || o.Height < 7 {
+		return nil
+	}
+	now := o.Now
+	if now.IsZero() {
+		now = time.Now()
+	}
+	items := make([]notificationItem, 0, len(o.Notifications))
+	for _, item := range o.Notifications {
+		if !item.Silent && (item.showAfter.IsZero() || !now.Before(item.showAfter)) {
+			items = append(items, item)
+		}
+	}
+	o.Notifications = items
+	if len(items) == 0 {
 		return nil
 	}
 	g := dashboardGeometry(o)

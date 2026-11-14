@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -35,6 +36,7 @@ func TestNotificationPanelCancelsFoldedTaskWithoutQuitting(t *testing.T) {
 					defer m.cancel()
 					task := actionCmd(t, cmd)
 					m.syncNotification()
+					m.notification.items[0].showAfter = time.Time{}
 					m.layout()
 					id := m.notification.items[0].ID
 					cancelID := fmt.Sprintf("notification.cancel.%d", id)
