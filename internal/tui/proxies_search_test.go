@@ -132,15 +132,57 @@ func TestProxiesStickyGroupFollowsScrollWithoutMovingFocus(t *testing.T) {
 	m.expandProxyGroup("second")
 	m.focus = "node.0.0"
 	width := dashboardBodyWidth(m.dashboardOptions())
-	_, hits := m.proxiesBody(width)
+	body, hits := m.proxiesBody(width)
 	for _, hit := range hits {
 		if hit.ID == "node.1.0" {
 			m.scroll = hit.Y
 			break
 		}
 	}
-	bar := m.proxiesFixedToolbar(width, m.dashboardOptions().BodyTopRows)
+	o := m.dashboardOptions()
+	o.Body, o.BodyTargets = body, hits
+	bar := m.proxiesFixedToolbar(o)
 	if !strings.Contains(ansi.Strip(strings.Join(bar.lines, "\n")), "second") || m.focus != "node.0.0" {
 		t.Fatalf("group label followed focus instead of scroll: %q focus=%s", ansi.Strip(strings.Join(bar.lines, "\n")), m.focus)
+	}
+}
+
+func TestProxiesStickyGroupClampsAfterContentShrinks(t *testing.T) {
+	m, _ := proxiesModel(t, 160, 40)
+	m.snapshot.Groups = []mihomo.Group{
+		{Name: "first", Type: "Selector", All: []string{"one"}, Now: "one"},
+		{Name: "second", Type: "Selector", All: []string{"two"}, Now: "two"},
+	}
+	setProxyTestGroup(&m, "first")
+	m.expandProxyGroup("second")
+	m.scroll = 100000
+	o := m.dashboardOptions()
+	m.populatePageBody(&o)
+	if len(strings.Split(o.Body, "\n")) > dashboardGeometry(o).height {
+		t.Fatal("fixture should fit after the group contents shrink")
+	}
+	plain := ansi.Strip(strings.Join(o.BodyTop.lines, "\n"))
+	if !strings.Contains(plain, "first") || strings.Contains(plain, "second") {
+		t.Fatalf("fixed group used stale scroll instead of the current body geometry: %s", plain)
+	}
+}
+
+func TestProxiesFixedTargetsMatchSearchControls(t *testing.T) {
+	for _, width := range []int{80, 160} {
+		for _, query := range []string{"", "HK"} {
+			m, _ := proxiesModel(t, width, 24)
+			m.proxies.search.SetValue(query)
+			o := m.dashboardOptions()
+			m.populatePageBody(&o)
+			g := dashboardGeometry(o)
+			want := append([]hitRegion(nil), o.BodyTop.targets...)
+			for i := range want {
+				want[i].X += g.x
+				want[i].Y += g.y - o.BodyTopRows
+			}
+			if got := m.fixedContentTargets(); !reflect.DeepEqual(got, want) {
+				t.Fatalf("%d columns query %q: logical search targets differ from painted controls: got=%+v want=%+v", width, query, got, want)
+			}
+		}
 	}
 }

@@ -1487,9 +1487,6 @@ func (m Model) pageBody(width int) (string, []hitRegion) {
 
 func (m Model) populatePageBody(o *dashboardOptions) {
 	g := dashboardGeometry(*o)
-	if m.page == "proxies" && o.BodyTopRows > 0 {
-		o.BodyTop = m.proxiesFixedToolbar(g.width, o.BodyTopRows)
-	}
 	if m.page == "logs" && o.BodyTopRows > 0 {
 		o.BodyTop = m.logsToolbar(g.width, o.BodyTopRows)
 	}
@@ -1503,6 +1500,9 @@ func (m Model) populatePageBody(o *dashboardOptions) {
 		return
 	}
 	o.Body, o.BodyTargets = m.pageBody(g.width)
+	if m.page == "proxies" && o.BodyTopRows > 0 {
+		o.BodyTop = m.proxiesFixedToolbar(*o)
+	}
 }
 func (m *Model) layout() {
 	m.repairPageFocus()

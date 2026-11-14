@@ -141,14 +141,16 @@ func (m Model) proxySearchFixed(rows int) bool {
 	return m.proxySearchVisible() && rows > groupRows
 }
 
-func (m Model) proxiesFixedToolbar(width, rows int) dashboardBlock {
+func (m Model) proxiesFixedToolbar(o dashboardOptions) dashboardBlock {
+	g := dashboardGeometry(o)
 	var bar dashboardBlock
-	if m.proxySearchFixed(rows) {
-		bar = m.proxySearchBlock(width)
+	if m.proxySearchFixed(o.BodyTopRows) {
+		bar = m.proxySearchBlock(g.width)
 	}
-	if rows > len(bar.lines) && m.proxyGroupLabelVisible() {
-		if group := m.proxyVisibleGroup(width); group != "" {
-			bar.lines = append(bar.lines, themed(cellPad(m.tr("proxies.search_group", clean(group)), width), accent, bg, false))
+	if o.BodyTopRows > len(bar.lines) && m.proxyGroupLabelVisible() {
+		scroll := min(m.scroll, max(0, len(strings.Split(o.Body, "\n"))-g.height))
+		if group := m.proxyVisibleGroup(o.BodyTargets, scroll); group != "" {
+			bar.lines = append(bar.lines, themed(cellPad(m.tr("proxies.search_group", clean(group)), g.width), accent, bg, false))
 		} else {
 			bar.blank()
 		}
@@ -158,9 +160,7 @@ func (m Model) proxiesFixedToolbar(width, rows int) dashboardBlock {
 
 // Follow the section at the viewport's top, not keyboard focus: wheel scrolling
 // intentionally keeps focus unchanged, and several wide-screen groups may be open.
-func (m Model) proxyVisibleGroup(width int) string {
-	body, hits := m.proxiesBody(width)
-	scroll := min(m.scroll, max(0, len(strings.Split(body, "\n"))-dashboardGeometry(m.dashboardOptions()).height))
+func (m Model) proxyVisibleGroup(hits []hitRegion, scroll int) string {
 	group, lastY := "", -1
 	for _, hit := range hits {
 		var index int
