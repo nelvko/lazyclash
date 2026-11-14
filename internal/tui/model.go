@@ -506,7 +506,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.wizard.inline && m.wizard.step == stepResult && m.notification.operation.Key == "service.start" && v.actionSucceeded {
 			m.wizard.inline = false
 			if m.page == "overview" && strings.HasPrefix(m.focus, "setup.") {
-				m.focus = "core.stop"
+				m.focus = "core.toggle"
 			}
 		}
 	case wizardMsg:
@@ -897,7 +897,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				cmd = m.openForm()
 			}
 		case "s", "x", "r":
-			if m.page != "proxies" || key != "r" {
+			if key != "r" || m.page != "proxies" && m.page != "overview" {
 				action := map[string]string{"s": "start", "x": "stop", "r": "restart"}[key]
 				cmd = m.serviceAction(action)
 			}
@@ -906,7 +906,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "shift+tab":
 			m.cycleFocus(-1)
 		case "enter", "space", " ":
-			cmd = m.activate(m.focus)
+			if m.focus == "core.toggle" && m.page == "overview" {
+				cmd = m.coreToggleKey(v)
+			} else {
+				cmd = m.activate(m.focus)
+			}
 		case "down", "j":
 			m.scroll++
 		case "up", "k":
@@ -1167,8 +1171,15 @@ func (m *Model) activate(id string) tea.Cmd {
 		return m.openWizard(false)
 	case "card.start":
 		return m.serviceAction("start")
+	case "core.toggle":
+		return m.coreToggleAction()
 	case "core.start", "core.stop", "core.restart":
-		return m.serviceAction(strings.TrimPrefix(id, "core."))
+		// Other pages retain their existing recovery/start actions. Overview
+		// exposes only its observed-state toggle.
+		if m.page != "overview" {
+			return m.serviceAction(strings.TrimPrefix(id, "core."))
+		}
+		return nil
 	case "terminal.enable", "terminal.disable":
 		return m.terminalProxyAction(id == "terminal.enable")
 	case "terminal.activation":

@@ -435,5 +435,6 @@
   "diagnostic.install.systemPath": "system service data contains an unsafe file or directory",
   "diagnostic.install.systemFileOwner": "system service managed files must be ordinary files owned by root and not writable by other accounts",
   "diagnostic.install.lifecycleModified": "the protected service lifecycle executable was modified; refusing to operate",
-  "diagnostic.snapshot.tunMismatch": "Running TUN differs from the saved policy; restart the service"
+  "diagnostic.snapshot.tunMismatch": "Running TUN differs from the saved policy; restart the service",
+  "diagnostic.core.toggleChanged": "core status is unavailable or changing; wait for a confirmed state before toggling"
 }

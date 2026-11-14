@@ -52,21 +52,21 @@ func TestPageNavigationArrowsSwitchContentWithoutLeavingSidebar(t *testing.T) {
 
 func TestPageNavigationEnterRestoresActionFocusWithoutActivatingIt(t *testing.T) {
 	calls := 0
-	backend := &fakeBackend{control: func(context.Context, string) error { calls++; return nil }}
+	backend := &fakeBackend{snapshot: app.Snapshot{Installed: true, ConfigReady: true, HasRun: true, GuideDismissed: true, Service: service.Status{Active: true, State: "active"}}, control: func(context.Context, string) error { calls++; return nil }}
 	m := ready(backend)
 	m.width, m.height = 120, 32
 	m.snapshot = app.Snapshot{Installed: true, ConfigReady: true, HasRun: true, GuideDismissed: true, Service: service.Status{Active: true, State: "active"}}
-	m.focus = "core.stop"
+	m.focus = "core.toggle"
 	m.returnToNavigation()
 	m.layout()
 	id := m.id
 	m, _ = update(m, special(tea.KeyEnter))
-	if m.focus != "core.stop" || m.page != "overview" || m.id != id || m.busy || m.failure != "" || calls != 0 {
+	if m.focus != "core.toggle" || m.page != "overview" || m.id != id || m.busy || m.failure != "" || calls != 0 {
 		t.Fatalf("entering content activated the restored action: focus=%s busy=%v calls=%d failure=%q", m.focus, m.busy, calls, m.failure)
 	}
 	m, cmd := update(m, special(tea.KeyEnter))
 	if !m.busy || m.id == id {
-		t.Fatal("a subsequent Enter on the focused stop button did not activate it")
+		t.Fatal("a subsequent Enter on the focused core toggle did not activate it")
 	}
 	actionCmd(t, cmd)()
 	if calls != 1 {
@@ -128,7 +128,7 @@ func TestPageNavigationInstalledKernelManagementStaysInSettings(t *testing.T) {
 	m.layout()
 	id := m.id
 	m, _ = update(m, special(tea.KeyEnter))
-	if m.focus != "core.start" || m.wizard.open || m.busy || m.id != id {
+	if m.focus != "core.toggle" || m.wizard.open || m.busy || m.id != id {
 		t.Fatal("entering the core card did not focus its first control without activating it")
 	}
 	if hasAction(m.contentTargets(), "card.install") {

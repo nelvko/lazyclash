@@ -435,5 +435,6 @@
   "diagnostic.install.systemPath": "系统服务数据中包含不安全的文件或目录",
   "diagnostic.install.systemFileOwner": "系统服务受管理的文件必须为 root 拥有的普通文件，且不允许其他账号写入",
   "diagnostic.install.lifecycleModified": "受保护的服务生命周期程序已被修改；拒绝操作",
-  "diagnostic.snapshot.tunMismatch": "运行中的 TUN 与已保存策略不一致；请重启服务"
+  "diagnostic.snapshot.tunMismatch": "运行中的 TUN 与已保存策略不一致；请重启服务",
+  "diagnostic.core.toggleChanged": "内核状态不可用或正在切换，请等待状态确认后再操作"
 }

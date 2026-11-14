@@ -1,5 +1,17 @@
 # 验证入口
 
+## 概览内核状态 Toggle（2026-11-15）
+
+内核卡复用通用 Toggle，将实际运行状态与启停入口合并。标题、右上版本、Mihomo 名称和原主题保留，有效运行时长在左、Toggle 在右，窄屏分行；移除独立启停、重启和重复状态文字。操作先读取实际 Snapshot，保留明确的启动或停止意图，再调用既有 Control；成功与失败均由既有 begin 流程回读状态，沿用任务 ID、状态代次和运行观测时间水位拒绝旧消息。过渡、未知、不可用及忙碌状态拒绝重复输入。概览 r 不再重启；设置页、CLI 和底层重启能力保留。
+
+从 `824c3b6` 导出独立源码，仅叠加本任务文件与 `dashboard_test.go` 中两处卡片断言，排除其他会话的六个顶栏/侧栏草稿。完整 `make check build`、`./scripts/verify-linux.sh lazyclash-e2e`、Toggle/生命周期定向 race 和八项 Python 解析回归通过。Linux 验证实际执行专用 Debian/arm64 VM 中的全部可运行包测试及仓库内 Ultraviolet 测试，并清理临时二进制。单元回归覆盖启停预检、失败回读、外部状态变化、异步旧结果、重复按键、状态与时长展示、单一焦点、窄屏及生命周期布局稳定。长时长回归先复现超过 99 小时在临界宽度换行导致的控件跳动，再验证按完整时长范围预留布局后，中英文、100 小时及最大 Duration 的 on/pending/off 高度与命中区域保持一致。
+
+真实 controlling PTY 完成中英文 × True Color、ANSI256、NO_COLOR 六组，覆盖 160×45、120×32、80×24、60×20、40×16 及恢复；服务、模式、节点和 TUN 修改均为零。长时长布局修正后，重建最终二进制，再完成中英文 True Color 的五尺寸与恢复并目视宽屏、40 列窄屏 PNG；英文 40 列固定分行，中文 40 列同排。PNG 根据真实 PTY 字符格与样式重绘，后端为隔离内存夹具。
+
+`scripts/core-toggle-e2e.py` 使用真实产品、已有 Mihomo 的本地副本及随机隔离 systemd 用户服务，通过鼠标启动、Space 停止、忙碌时重复输入、实际端口冲突启动失败后回读停止状态、外部 CLI 启停同步、CLI 重启后 PID/运行时长重置、概览 r 无效和窄屏恢复。测试只创建并清理自己的服务与临时目录。实际捕获启动中帧；停止操作过快，未捕获完整停止中帧，该过渡显示由模型测试覆盖，不将其宣称为实际截图验证。
+
+证据位于 `.test-artifacts/core-toggle/`：`source-path.txt`、`source-manifest.json`、`final-check-build.log`、`final-linux.log`、`race.log`、`final-python.log`；六组 PTY 为 `overview-final/20261112-205120-80d4b9/`，真实服务结果为 `e2e/result.json`，最终布局截图为 `pty-layout-final/20261115-001024-75d79a/`。
+
 ## 通用 Toggle 组件（2026-11-12）
 
 新增包内 `toggleModel`、外部状态同步、只读切换意图和 `renderToggle`，复用 Mariana 主题、Bubbles key 及现有显示格宽度工具。零值为 Unknown，只有 On/Off 可以产生意图；Pending 保留最后确认状态，Unavailable、Unsupported、Unknown 拦截操作。支持六种文案覆盖、固定或自然稳定宽度、左右对齐、主题焦点下划线和弹窗弱化。未接入或修改任何业务页面。API 与父级异步约定见 [TUI Toggle 组件](tui-toggle.md)。

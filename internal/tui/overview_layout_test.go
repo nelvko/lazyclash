@@ -25,8 +25,8 @@ func TestOverviewPairedLayoutAlignsBothEdgesAndKeepsActionOwnership(t *testing.T
 		Capabilities: app.Capabilities{Scope: "system", Runtime: app.Capability{Supported: true}, TUN: app.Capability{Supported: true}},
 	}
 	owners := map[string]string{
-		"core.stop": "dashboard.control.core", "core.restart": "dashboard.control.core",
-		"mode.rule": "dashboard.control.routingMode", "mode.global": "dashboard.control.routingMode", "mode.direct": "dashboard.control.routingMode", "card.proxies": "dashboard.control.routingMode",
+		"core.toggle": "dashboard.control.core",
+		"mode.rule":   "dashboard.control.routingMode", "mode.global": "dashboard.control.routingMode", "mode.direct": "dashboard.control.routingMode", "card.proxies": "dashboard.control.routingMode",
 		"card.profiles": "dashboard.profile.title", "tun.enable": "dashboard.overview.network", "card.network": "dashboard.overview.network",
 	}
 	renders := map[string]func(dashboardOptions, int) dashboardBlock{
@@ -145,7 +145,7 @@ func TestOverviewOutlineFollowsCardFocusWithoutMovingContents(t *testing.T) {
 			assertOverviewCardPerimeters(t, m, m.focus)
 			assertGeometry()
 			m, _ = update(m, special(tea.KeyEnter))
-			if m.focus != "core.stop" || m.busy {
+			if m.focus != "core.toggle" || m.busy {
 				t.Fatal("entering the core controls did not safely focus Stop")
 			}
 			assertOverviewCardPerimeters(t, m, "")
@@ -218,7 +218,7 @@ func TestOverviewAlignedVersionsAndModesCollapseOnlyConfirmedState(t *testing.T)
 				t.Fatalf("normal core card duplicated versions or retained diagnostic fields: %s", value)
 			}
 			o.Snapshot.Version = "v1.20.0"
-			if value := core(); !strings.Contains(value, locale.T("dashboard.kernel.installed", "v1.20.0")) || !strings.Contains(value, locale.T("dashboard.kernel.running", "v1.19.33")) {
+			if value := core(); !strings.Contains(value, locale.T("dashboard.kernel.installed", "v1.20.0")) || strings.Count(value, "v1.19.33") != 1 {
 				t.Fatalf("version mismatch lost explicit installed/running distinction: %s", value)
 			}
 			mode := func() string { return ansi.Strip(strings.Join(overviewModeCard(o, 100).lines, "\n")) }

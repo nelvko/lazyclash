@@ -203,10 +203,10 @@ func TestOnboardingDefaultConfigurationNeedsNoSubscriptionOrGuideCompletion(t *t
 			if name := snapshotProfileName(m.snapshot, m.snapshot.Applied, m.locale); name != m.tr("profiles.builtin_name") {
 				t.Fatalf("the default configuration uses an internal identifier instead of its normal display name: %q", name)
 			}
-			if overviewSetupVisible(m.navigationOptions()) || hasAction(actions, "install") || hasAction(actions, "guide.later") || !hasAction(actions, "core.start") || calls != 0 || m.busy {
+			if overviewSetupVisible(m.navigationOptions()) || hasAction(actions, "install") || hasAction(actions, "guide.later") || !hasAction(actions, "core.toggle") || calls != 0 || m.busy {
 				t.Fatal("a subscription or completed guide was required before explicitly starting the built-in configuration")
 			}
-			m.focus = "core.start"
+			m.focus = "core.toggle"
 			m.layout()
 			m, cmd := update(m, special(tea.KeyEnter))
 			if !m.busy || calls != 0 || m.snapshot.Service.Active {
@@ -244,7 +244,7 @@ func TestOnboardingInstallationResultKeepsDefaultReadyAndStopped(t *testing.T) {
 		t.Fatal("installation did not retain the ready, stopped built-in configuration")
 	}
 	m, _ = activateWizard(m, "done")
-	if m.wizard.open || m.page != "overview" || overviewSetupVisible(m.navigationOptions()) || !hasAction(m.contentTargets(), "core.start") || calls != 0 {
+	if m.wizard.open || m.page != "overview" || overviewSetupVisible(m.navigationOptions()) || !hasAction(m.contentTargets(), "core.toggle") || calls != 0 {
 		t.Fatal("leaving the installation result required another onboarding step or started the core implicitly")
 	}
 }

@@ -997,7 +997,7 @@ func TestFailedRefreshPreservesLastSnapshotAndProfilesDeduplicate(t *testing.T) 
 	b := &fakeBackend{snapshot: app.Snapshot{Installed: true, Version: "known", Profiles: []string{"default", "work", "work"}}, snapshotErr: errors.New("lock timeout")}
 	m := New(context.Background(), b, "en")
 	m, _ = update(m, resultMsg{id: m.id, snapshot: b.snapshot, hasSnapshot: true})
-	m, cmd := update(m, key("r"))
+	cmd := m.serviceAction("restart")
 	m, _ = update(m, actionCmd(t, cmd)())
 	if !m.snapshot.Installed || m.snapshot.Version != "known" || !strings.Contains(m.failure, "refresh current state") {
 		t.Fatal("failed refresh erased valid dashboard state")

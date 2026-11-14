@@ -41,7 +41,7 @@ func TestDirectionalNavigationSidebarRestoresWithoutActivating(t *testing.T) {
 				m := pageNavigationModel()
 				directionCleanup(t, &m)
 				m.snapshot = app.Snapshot{Installed: true, ConfigReady: true, HasRun: true, GuideDismissed: true, Service: service.Status{Active: true, State: "active"}}
-				m.focus = "core.stop"
+				m.focus = "core.toggle"
 				if busy {
 					// Actions are disabled during a write; logical card focus remains
 					// available and must restore without entering its controls.

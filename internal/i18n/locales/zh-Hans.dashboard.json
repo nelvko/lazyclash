@@ -183,11 +183,11 @@
   "help.logs.retention": "视图最多在内存中保留 200 条脱敏记录，不写入原始日志历史。",
   "help.overview.install": "i：安装/管理内核 · b：安装本地可执行文件",
   "help.overview.import": "n：下载方式 · a：添加/导入配置",
-  "help.overview.controls": "内核：启动、停止或重启；路由模式：规则 / 全局 / 直连。",
+  "help.overview.controls": "聚焦内核状态开关，按 Enter / Space 启动或停止；代理模式：规则 / 全局 / 直连。",
   "help.overview.refresh": "操作完成后会重新读取实际状态。",
   "help.overview.unavailable": "尚不支持系统代理控制。主机 TUN 需要 root 系统实例并明确确认。",
   "help.core.title": "内核与配置",
-  "help.core.actions": "内容区：s 启动 · x 停止 · r 重启（连接页使用 x 关闭单条连接）。",
+  "help.core.actions": "内容区：s 启动 · x 停止；概览之外可用 r 重启（连接页 x 关闭单条连接）。",
   "help.core.refresh": "g / Ctrl+R：刷新当前数据",
   "help.core.quit": "退出仅关闭界面；Mihomo 继续由 systemd 管理。",
   "help.forms.title": "表单与对话框",
@@ -307,5 +307,12 @@
   "terminal.state.pending": "待激活 · 请加载 Shell Integration",
   "terminal.state.enabling": "正在开启 · 退出 TUI 后生效",
   "terminal.state.disabling": "正在关闭 · 退出 TUI 后恢复",
-  "terminal.state.error": "Shell 同步失败 · 请查看 shell status"
+  "terminal.state.error": "Shell 同步失败 · 请查看 shell status",
+  "dashboard.core.toggle.on": "运行中",
+  "dashboard.core.toggle.off": "已停止",
+  "dashboard.core.toggle.starting": "启动中…",
+  "dashboard.core.toggle.stopping": "停止中…",
+  "dashboard.core.toggle.restarting": "重启中…",
+  "dashboard.core.toggle.unknown": "状态未知",
+  "dashboard.core.toggle.unavailable": "不可用"
 }

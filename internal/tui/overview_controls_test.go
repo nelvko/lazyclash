@@ -6,32 +6,36 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/service"
 )
 
 func TestOverviewRuntimeControlsWaitForObservedState(t *testing.T) {
-	for _, id := range []string{"core.start", "core.stop", "core.restart", "mode.rule", "mode.global", "mode.direct"} {
-		t.Run(id, func(t *testing.T) {
+	for _, tc := range []struct{ name, id, action string }{
+		{"toggle starts", "core.toggle", "start"},
+		{"toggle stops", "core.toggle", "stop"},
+		{"rule", "mode.rule", ""}, {"global", "mode.global", ""}, {"direct", "mode.direct", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
 			b := &fakeBackend{snapshot: app.Snapshot{
 				Installed: true, ConfigReady: true, HasRun: true,
-				Service:        service.Status{Active: id != "core.start", State: "active"},
+				Service:        service.Status{Active: tc.action != "start", State: "active"},
 				Mode:           app.ModeStatus{Desired: "rule", Actual: "rule", Running: true},
-				RunningVersion: "v1.19.33",
-				Capabilities:   app.Capabilities{Scope: "user", Runtime: app.Capability{Supported: true}},
+				RunningVersion: "v1.19.33", Capabilities: app.Capabilities{Scope: "user", Runtime: app.Capability{Supported: true}},
 			}}
-			if id == "core.start" {
+			if tc.action == "start" {
 				b.snapshot.Service.State = "inactive"
 			}
-			if id == "mode.rule" {
+			if tc.id == "mode.rule" {
 				b.snapshot.Mode.Desired, b.snapshot.Mode.Actual = "direct", "direct"
 			}
 			calls := 0
 			b.control = func(_ context.Context, action string) error {
 				calls++
-				if action != strings.TrimPrefix(id, "core.") {
-					t.Fatalf("unexpected lifecycle action %q for %s", action, id)
+				if action != tc.action {
+					t.Fatalf("unexpected lifecycle action %q for %s", action, tc.name)
 				}
 				b.snapshot.Service.Active = action != "stop"
 				b.snapshot.Service.State = "inactive"
@@ -43,8 +47,8 @@ func TestOverviewRuntimeControlsWaitForObservedState(t *testing.T) {
 			}
 			b.mode = func(_ context.Context, mode string) error {
 				calls++
-				if "mode."+mode != id {
-					t.Fatalf("unexpected routing mode %q for %s", mode, id)
+				if "mode."+mode != tc.id {
+					t.Fatalf("unexpected routing mode %q for %s", mode, tc.id)
 				}
 				b.snapshot.Mode.Desired, b.snapshot.Mode.Actual = mode, mode
 				return nil
@@ -54,7 +58,7 @@ func TestOverviewRuntimeControlsWaitForObservedState(t *testing.T) {
 			m.width, m.height = 160, 60
 			m.layout()
 			beforeService, beforeMode, beforeVersion := m.snapshot.Service, m.snapshot.Mode, m.snapshot.RunningVersion
-			m, cmd := click(m, findTarget(t, m, id))
+			m, cmd := click(m, findTarget(t, m, tc.id))
 			if calls != 0 || !m.busy || m.snapshot.Service != beforeService || m.snapshot.Mode != beforeMode || m.snapshot.RunningVersion != beforeVersion {
 				t.Fatal("overview control ran inline or changed observed state optimistically")
 			}
@@ -101,10 +105,12 @@ func TestOverviewControlStatesRemainExplicit(t *testing.T) {
 		t.Fatal("access card hid capability explanations or made them actionable")
 	}
 	o.Busy = true
-	for _, block := range []dashboardBlock{overviewCoreCard(o, 56), overviewModeCard(o, 56)} {
-		if len(block.targets) != 0 {
-			t.Fatal("busy runtime control retained an actionable target")
-		}
+	core := overviewCoreCard(o, 56)
+	if len(core.targets) != 1 || core.targets[0].ID != "core.toggle" {
+		t.Fatal("busy core toggle lost its stable focus target")
+	}
+	if block := overviewModeCard(o, 56); len(block.targets) != 0 {
+		t.Fatal("busy mode control retained an actionable target")
 	}
 	o.Busy = false
 	for _, mode := range []app.ModeStatus{
@@ -151,7 +157,14 @@ func TestRuntimeControlGuardsPreserveRecoveryStop(t *testing.T) {
 				}
 				m.job, m.message = "existing operation", "Working"
 				beforeID := m.id
-				cmd := m.activate(id)
+				var cmd tea.Cmd
+				if strings.HasPrefix(id, "core.") {
+					// Recovery controls remain available in their existing Settings
+					// and CLI paths; the Overview toggle has stricter observed-state guards.
+					cmd = m.serviceAction(strings.TrimPrefix(id, "core."))
+				} else {
+					cmd = m.activate(id)
+				}
 				if state.recovery && id == "core.stop" {
 					if cmd == nil {
 						t.Fatal("recovery Stop was disabled by a service error or transition")

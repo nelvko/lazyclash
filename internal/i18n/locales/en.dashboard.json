@@ -183,11 +183,11 @@
   "help.logs.retention": "The view retains at most 200 redacted entries in memory. No raw log history is written.",
   "help.overview.install": "i: install/manage core · b: install a local executable",
   "help.overview.import": "n: download method · a: add/import profile",
-  "help.overview.controls": "Core: start, stop or restart; routing mode: Rule / Global / Direct.",
+  "help.overview.controls": "Focus the core status toggle and press Enter / Space to start or stop; routing mode: Rule / Global / Direct.",
   "help.overview.refresh": "Controls refresh the observed state after the operation.",
   "help.overview.unavailable": "System proxy controls are unavailable. Host TUN requires the root system instance and explicit confirmation.",
   "help.core.title": "Core and configuration",
-  "help.core.actions": "In content: s start · x stop · r restart (Connections uses x for one connection).",
+  "help.core.actions": "In content: s start · x stop · r restart outside Overview (Connections uses x for one connection).",
   "help.core.refresh": "g / Ctrl+R: refresh current data",
   "help.core.quit": "Quitting closes this interface; systemd continues to own Mihomo.",
   "help.forms.title": "Forms and dialogs",
@@ -307,5 +307,12 @@
   "terminal.state.pending": "Pending activation · load Shell Integration",
   "terminal.state.enabling": "Turning on · applies after leaving the TUI",
   "terminal.state.disabling": "Turning off · restores after leaving the TUI",
-  "terminal.state.error": "Shell synchronization failed · inspect shell status"
+  "terminal.state.error": "Shell synchronization failed · inspect shell status",
+  "dashboard.core.toggle.on": "Running",
+  "dashboard.core.toggle.off": "Stopped",
+  "dashboard.core.toggle.starting": "Starting…",
+  "dashboard.core.toggle.stopping": "Stopping…",
+  "dashboard.core.toggle.restarting": "Restarting…",
+  "dashboard.core.toggle.unknown": "Unknown",
+  "dashboard.core.toggle.unavailable": "Unavailable"
 }
