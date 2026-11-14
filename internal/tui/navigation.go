@@ -187,6 +187,9 @@ func (m Model) contextHelp() string {
 	if m.focus == "menu" {
 		return tr("navigation.menu")
 	}
+	if m.focus == "core.start" || m.focus == "card.install" {
+		return tr("navigation.default")
+	}
 	if m.pageHeader().owns(m.focus) {
 		switch m.focus {
 		case "mode.rule", "mode.global", "mode.direct":

@@ -12,7 +12,7 @@ import (
 
 func TestStoppedPagesOfferStartAndDoNotReportReconnecting(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
-		for _, page := range []string{"logs", "rules", "connections"} {
+		for _, page := range []string{"logs", "rules", "connections", "proxies"} {
 			t.Run(language+"/"+page, func(t *testing.T) {
 				m := themeSample("overview-running")
 				m.locale = i18n.New(language)
@@ -35,11 +35,19 @@ func TestStoppedPagesOfferStartAndDoNotReportReconnecting(t *testing.T) {
 				if hasAction(m.targets, "rules.retry") || hasAction(m.targets, "logs.retry") || hasAction(m.targets, "logs.follow") {
 					t.Fatal("stopped page retained its live retry/follow controls")
 				}
+				m.focus = "core.start"
+				if m.contextHelp() != m.tr("navigation.default") {
+					t.Fatal("Start action advertised an unrelated list or refresh shortcut")
+				}
 				m.snapshot.Installed = false
 				m.rules.snapshot.State, m.runtime.snapshot.State = "uninstalled", "uninstalled"
 				m.layout()
 				if !hasAction(m.targets, "card.install") || hasAction(m.targets, "core.start") {
 					t.Fatalf("uninstalled page did not replace Start with Install: %+v", m.targets)
+				}
+				m.focus = "card.install"
+				if m.contextHelp() != m.tr("navigation.default") {
+					t.Fatal("Install action advertised an unrelated list or refresh shortcut")
 				}
 			})
 		}
