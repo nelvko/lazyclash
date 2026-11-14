@@ -227,7 +227,7 @@ func TestWrappedPageBodyTargetsMatchTheirPaintedRows(t *testing.T) {
 		body, hits = m.pageBody(width)
 		lines = strings.Split(body, "\n")
 		for _, r := range hits {
-			if r.ID == "profile.1" && (r.Y+r.H > len(lines) || !strings.Contains(ansi.Strip(lines[r.Y+1]), "work")) {
+			if r.ID == "profile.1" && (r.H != 4 || r.Y+r.H > len(lines) || !strings.Contains(ansi.Strip(lines[r.Y]), "work")) {
 				t.Fatalf("wrapped import explanation shifted profile target: %+v", r)
 			}
 		}
