@@ -336,7 +336,7 @@ func (m *Model) renderProviders(base string) (string, []hitRegion) {
 	closeHit := hitRegion{ID: "providers.back", X: x + w - 3 - closeWidth, Y: y + h - 2, W: closeWidth, H: 1}
 	hits, p.controls = append(hits, closeHit), append(p.controls, closeHit)
 	if room := inner - closeWidth - 2; room > 0 {
-		putRows(rows, 3, h-2, helpText(cellCrop(m.tr("providers.modal_help"), room), raised, false), w)
+		putRows(rows, 3, h-2, helpText(m.providersFooterHelp(room), raised, false), w)
 	}
 	if p.viewport.TotalLineCount() > bodyH {
 		putRows(rows, w-2, bodyY+bodyH-1, themed("↕", info, raised, false), w)

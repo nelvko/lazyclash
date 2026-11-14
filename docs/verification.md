@@ -1,5 +1,15 @@
 # 验证入口
 
+## 全页按键提示与实际操作对齐（2026-11-15）
+
+按当前焦点和输入处理顺序生成提示：Connections 区分搜索、详情、关闭确认、历史只读、空列表与暂停状态；Logs 区分搜索、暂停/恢复、级别和视图。Proxies 隐藏当前已选节点的空操作，按实际组与测速状态提示开始或取消，Direct、空结果、只读详情及不可进入的引用不再显示无效动作。集合弹窗区分编辑、更新资格和具体控件。Profiles 区分 URL 输入、卡片、菜单和详情操作；Overview 只读卡及不可用 Toggle 不提示 Enter；Settings 按具体控件说明操作。共同提示另覆盖端口、删除确认和通知按钮；独占按键的菜单/确认框提示关闭后才能打开帮助，极窄屏保留可用的 Esc。连接页帮助不再将 s 排序误写为启动，或提示无效的全局重读。
+
+从独立源码验证，排除原有六个页头/侧栏草稿及验证期间其他会话新增的规则计数布局。TUI 和 i18n 全部测试通过（TUI 153.159 秒），相关包 vet、产品构建与八项 Python 解析测试通过；最终按键提示、规则展开、帮助及返回层级回归在专用 Debian/arm64 VM 实际执行通过并清理临时文件。全量检查发现前一轮短规则不再展开后，两处跨页测试仍使用完整短规则；改为有条目数的 RuleSet，并新增展开成功的前置检查，原层级、后台任务与滚动断言保留，独立提交为 `f6b38a6`。修改前的失败在上一轮独立源码复现，最终全量复跑通过。
+
+真实 controlling PTY 完成 Proxies、Providers、Connections、Logs、Overview、Settings 及 Profiles URL 的中英文 True Color 验证，涵盖 40 列窄屏至宽屏及尺寸恢复。重点目视检查当前节点无选择提示、历史连接详情无关闭或列表操作、暂停日志提示恢复、确认框取消动作、只读概览卡、输入框导入和设置控件。Profiles 详情/菜单另导出 23 份模型文本并核对 PNG；其旧完整 runner 要求生产 CLI，未用测试二进制冒充该流程。后端为隔离内存夹具，本轮未操作实际 Mihomo/systemd/TUN 或真实订阅。
+
+证据位于 `.test-artifacts/page-key-hints/`：`source-manifest.json`、`tests.log`、`final-isolated-hints.log`、`final-linux-hints.log`、`vet.log`、`build.log`、`python.log`，以及 `pty-connections/`、`pty-logs/`、`pty-proxies/`、`pty-providers/`、`pty-overview/`、`pty-settings/`、Profiles 输入和模型转储目录。其他会话的未完成改动及原有草稿未纳入本次提交。
+
 ## 规则页按实际隐藏内容提示展开（2026-11-15）
 
 底栏仅在当前规则有被截断的条件、类型、目标或额外条目数时显示「Enter 查看完整内容」，展开后显示「Enter 收起」；完整短规则不显示该提示，Enter 不再切换不可见的展开状态。判断复用当前行的实际渲染，随焦点和窗口宽度更新；已展开后拉宽仍可显式收起，搜索中的 Enter 继续只结束输入并聚焦结果。

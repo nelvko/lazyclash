@@ -1,0 +1,18 @@
+{
+  "dashboard.footer.helpAfterClose": "关闭后 ? 帮助",
+  "navigation.hints.browse": "Tab 控件 · Esc 返回",
+  "navigation.hints.control": "Enter %s · Tab 控件 · Esc 返回",
+  "navigation.hints.clear": "清空输入",
+  "navigation.hints.continue": "继续",
+  "navigation.hints.menuClose": "Esc / Tab 关闭",
+  "navigation.hints.busy": "Esc 返回 · Ctrl+N 任务操作 · Ctrl+C 退出",
+  "notification.hints.details": "Enter 详情",
+  "notification.hints.dismiss": "Enter 关闭通知",
+  "notification.hints.cancel": "Enter 取消任务",
+  "notification.hints.list": "Enter 通知列表",
+  "notification.hints.controls": "Tab 控件 · Esc 关闭通知",
+  "notification.hints.listControls": "↑↓ 控件 · x 关闭通知 · Esc 关闭面板",
+  "notification.hints.detail": "↑↓ / PgUp/PgDn 滚动 · x 关闭通知 · Esc 返回",
+  "notification.hints.empty": "Esc 关闭面板",
+  "help.hints.connectionsCore": "连接列表中 s 排序，x 审阅关闭连接；r 重启内核，连接数据自动更新。"
+}

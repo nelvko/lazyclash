@@ -1,0 +1,18 @@
+{
+  "dashboard.footer.helpAfterClose": "After closing: ? Help",
+  "navigation.hints.browse": "Tab Controls · Esc Back",
+  "navigation.hints.control": "Enter %s · Tab Controls · Esc Back",
+  "navigation.hints.clear": "Clear input",
+  "navigation.hints.continue": "Continue",
+  "navigation.hints.menuClose": "Esc / Tab Close",
+  "navigation.hints.busy": "Esc Back · Ctrl+N Task controls · Ctrl+C Quit",
+  "notification.hints.details": "Enter Details",
+  "notification.hints.dismiss": "Enter Dismiss notice",
+  "notification.hints.cancel": "Enter Cancel task",
+  "notification.hints.list": "Enter Notifications",
+  "notification.hints.controls": "Tab Controls · Esc Dismiss notice",
+  "notification.hints.listControls": "↑↓ Controls · x Dismiss · Esc Close",
+  "notification.hints.detail": "↑↓ / PgUp/PgDn Scroll · x Dismiss · Esc Back",
+  "notification.hints.empty": "Esc Close",
+  "help.hints.connectionsCore": "In the connection list, s sorts and x reviews closing a connection. r restarts the core; data updates automatically."
+}

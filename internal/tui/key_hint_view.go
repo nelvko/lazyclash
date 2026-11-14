@@ -14,13 +14,19 @@ import (
 func dashboardKeyHints(o dashboardOptions) string {
 	width := max(0, o.Width-4)
 	tail := o.Locale.T("dashboard.footer.help")
-	if o.EditingInput {
+	if o.HelpAfterClose {
+		tail = o.Locale.T("dashboard.footer.helpAfterClose")
+	} else if o.EditingInput {
 		tail = "Esc → " + tail
 	} else if width >= 36 {
 		tail += " · " + o.Locale.T("dashboard.footer.quit")
 	}
 	if ansi.StringWidth(tail) > width {
-		return helpText(cellCrop("?", width), bg, o.Dim)
+		fallback := "?"
+		if o.EditingInput || o.HelpAfterClose {
+			fallback = "Esc"
+		}
+		return helpText(cellCrop(fallback, width), bg, o.Dim)
 	}
 	context := o.Help
 	if context == "" {

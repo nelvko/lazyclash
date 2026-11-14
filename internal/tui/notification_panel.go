@@ -249,10 +249,9 @@ func (p *notificationPanel) render(items []notificationItem, width, height int, 
 		putRows(box, 3, index+3, themed(cellPad(line, inner), text, raised, false), w)
 	}
 	backID, backLabel := "notification.panel.close", locale.T("notification.collapse")
-	help := locale.T("notification.panelHelp")
+	help := p.contextHelp(locale)
 	if p.detailID != 0 {
 		backID, backLabel = "notification.panel.back", locale.T("notification.back")
-		help = locale.T("notification.detailHelp")
 	}
 	back := notificationButton(backID, backLabel, inner, options)
 	backWidth := ansi.StringWidth(back)

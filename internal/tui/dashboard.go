@@ -46,6 +46,7 @@ type dashboardOptions struct {
 	Spinner                         string
 	Help                            string
 	EditingInput                    bool
+	HelpAfterClose                  bool
 	HideKeyHints                    bool
 	SidebarOpen                     bool
 	Sidebar                         *sidebarState

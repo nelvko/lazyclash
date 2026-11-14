@@ -377,12 +377,13 @@ def exercise(preview, binary, output, language, profile, args):
             terminal.wait(words["connections.closed_count"] % (48, 48))
             header_totals(terminal, words)
             if width >= 160:
-                terminal.wait(words["navigation.connections_closed"].split(" · ")[0])
+                terminal.wait(words["navigation.connections.action.details"])
                 terminal.settle()
             footer = terminal.screen.text().splitlines()[-1]
             if width >= 160:
-                assert all(hint in footer for hint in words["navigation.connections_closed"].split(" · ")), "closed list lost its read-only or action hints"
-            assert not re.search(r"x\s+(?:Close|关闭)", footer), "closed list still advertises closing connections"
+                for hint_key in ("navigation.connections.action.details", "navigation.connections.search", "navigation.connections.active", "navigation.connections.browse", "navigation.connections.sort", "dashboard.footer.help"):
+                    assert words[hint_key] in footer, "closed list lost its available action hint: " + hint_key
+            assert not re.search(r"(?:^| · )x\s", footer), "closed list still advertises closing connections"
             preview.capture(terminal, output, "closed-%dx%d" % (width, height), args)
         terminal.key(b"v")
         terminal.wait(words["connections.empty"])

@@ -123,6 +123,7 @@ func TestProxiesHintsDescribeFocusedAction(t *testing.T) {
 			}
 		}
 		m.focus, m.proxies.testing = "proxies.test.0", true
+		m.proxies.testGroup = "PROXY"
 		if !strings.HasPrefix(m.contextHelp(), m.tr("navigation.proxies.action.cancelTest")) {
 			t.Fatal("running group test did not advertise cancellation")
 		}

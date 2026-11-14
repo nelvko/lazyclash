@@ -151,88 +151,88 @@ func (m *Model) revealBodyTarget(hit hitRegion) {
 }
 
 func (m Model) contextHelp() string {
-	tr := m.tr
 	if m.providers.open {
-		return tr("providers.keys")
+		return m.providersContextHelp()
 	}
 	if m.menu.open {
-		return tr("navigation.actionMenu")
+		if m.menu.selected < 0 {
+			return m.tr("navigation.hints.menuClose")
+		}
+		return m.tr("navigation.actionMenu")
 	}
-	if m.sidebarOpen {
-		return tr("navigation.drawer")
+	if m.ports.open {
+		return m.portsContextHelp()
+	}
+	if m.page == "connections" && m.connections.confirming {
+		return m.connectionsContextHelp()
 	}
 	if m.page == "overview" && m.inlineInstallVisible() && strings.HasPrefix(m.focus, "setup.") {
 		return m.inlineInstallHint()
 	}
-	if m.busy {
-		return tr("navigation.busy")
+	// Editors own Enter, Escape and printable shortcut keys before page actions.
+	switch {
+	case m.page == "profiles" && m.focus == "profiles.url" && !m.busy && !m.quitting && !m.sidebarOpen:
+		return m.profilesContextHelp()
+	case m.page == "connections" && m.connections.editing:
+		return m.connectionsContextHelp()
+	case m.page == "proxies" && m.proxies.editing:
+		return m.proxiesContextHelp()
+	case m.page == "rules" && m.rules.editing:
+		return m.rulesContextHelp()
+	case m.page == "logs" && m.logs.editing:
+		return m.logsContextHelp()
 	}
-	if m.page == "overview" && m.focus == "install" && overviewSetupVisible(m.navigationOptions()) {
-		return tr("dashboard.guide.hint")
+	if m.sidebarOpen {
+		return m.tr("navigation.drawer")
 	}
-	if strings.HasPrefix(m.focus, "overview.card.") {
-		return tr("overview.cardHint")
-	}
-	if m.focus == "content" {
-		switch m.page {
-		case "proxies", "connections", "rules", "logs":
-			// Page searches remain discoverable before entering a list.
-		default:
-			return tr("navigation.content")
-		}
+	if strings.HasPrefix(m.focus, "notification.") {
+		return m.notificationContextHelp()
 	}
 	if strings.HasPrefix(m.focus, "nav.") {
-		return tr("navigation.sidebar")
+		return m.tr("navigation.sidebar")
 	}
 	if m.focus == "menu" {
-		return tr("navigation.menu")
+		return m.tr("navigation.menu")
+	}
+	if m.busy {
+		return m.tr("navigation.hints.busy")
+	}
+	if m.page == "overview" && m.focus == "install" && overviewSetupVisible(m.navigationOptions()) {
+		return m.tr("dashboard.guide.hint")
 	}
 	if m.focus == "core.start" || m.focus == "card.install" {
-		return tr("navigation.default")
+		return m.tr("navigation.default")
 	}
-	if m.pageHeader().owns(m.focus) {
-		switch m.focus {
-		case "mode.rule", "mode.global", "mode.direct":
-			return tr("providers.mode_hint")
-		case "rules.providers", "proxies.providers":
-			return tr("providers.open_hint")
-		case "proxies.search-open":
-			return m.proxiesContextHelp()
-		case "profiles.update-all":
-			return tr("navigation.updateProfiles")
-		case "conn.close-all":
-			return tr("connections.close_all_hint")
-		case "logs.follow":
-			return tr("navigation.logsFollow")
-		case "logs.retry":
-			return tr("navigation.logsReconnect")
-		case "logs.clear":
-			return tr("logs.clear_hint")
-		case "network":
-			return tr("navigation.network")
-		default:
-			return tr("navigation.refresh")
+	if m.page == "proxies" || m.page == "rules" {
+		if header := m.pageHeader(); header.owns(m.focus) {
+			if !header.enabled(m.focus) {
+				return m.tr("navigation.hints.browse")
+			}
+			switch m.focus {
+			case "mode.rule", "mode.global", "mode.direct":
+				return m.tr("providers.mode_hint")
+			case "rules.providers", "proxies.providers":
+				return m.tr("providers.open_hint")
+			}
 		}
 	}
 	switch m.page {
 	case "connections":
-		if m.connections.closedView {
-			return tr("navigation.connections_closed")
-		}
-		return tr("navigation.connections")
+		return m.connectionsContextHelp()
 	case "rules":
-		if m.providers.open {
-			return tr("providers.keys")
-		}
 		return m.rulesContextHelp()
 	case "logs":
-		return tr("navigation.logs")
+		return m.logsContextHelp()
 	case "profiles":
-		return tr("navigation.profiles")
+		return m.profilesContextHelp()
 	case "proxies":
 		return m.proxiesContextHelp()
+	case "overview":
+		return m.overviewContextHelp()
+	case "settings":
+		return m.settingsContextHelp()
 	default:
-		return tr("navigation.default")
+		return m.tr("navigation.default")
 	}
 }
 
@@ -254,61 +254,4 @@ func (m Model) rulesContextHelp() string {
 		break
 	}
 	return base
-}
-
-func (m Model) proxiesContextHelp() string {
-	tr := m.tr
-	if m.proxiesDirect() {
-		return tr("proxies.direct.keys")
-	}
-	if m.proxies.editing {
-		return tr("navigation.proxies.searching")
-	}
-	control := ""
-	switch m.focus {
-	case "proxies.back":
-		control = "back"
-	case "proxies.directory":
-		control = "directory"
-	case "proxies.enter":
-		control = "open"
-	case "proxies.collapse_all":
-		control = "collapseAll"
-	case "proxies.search", "proxies.search-open":
-		control = "search"
-	case "proxies.clear":
-		control = "clear"
-	}
-	for prefix, action := range map[string]string{
-		"proxies.reference.": "open", "proxies.delay.": "testNode", "proxies.sort.": "sort", "proxies.test.": "testGroup",
-	} {
-		if strings.HasPrefix(m.focus, prefix) {
-			control = action
-		}
-	}
-	if control == "testGroup" && m.proxies.testing {
-		control = "cancelTest"
-	}
-	if control != "" {
-		return tr("navigation.proxies.control", tr("navigation.proxies.action."+control))
-	}
-	_, group, node, ok := m.proxyAtFocus()
-	if ok && strings.HasPrefix(m.focus, "group.") {
-		action := "expand"
-		if m.proxyGroupExpanded(group.Name) {
-			action = "collapse"
-			if m.proxiesNarrow() {
-				action = "directory"
-			}
-		}
-		return tr("navigation.proxies.groups", tr("navigation.proxies.action."+action))
-	}
-	if ok && node != "" && strings.HasPrefix(m.focus, "node.") {
-		action := "inspect"
-		if group.Type == "Selector" {
-			action = "select"
-		}
-		return tr("navigation.proxies.nodes", tr("navigation.proxies.action."+action))
-	}
-	return tr("navigation.proxies.browse")
 }

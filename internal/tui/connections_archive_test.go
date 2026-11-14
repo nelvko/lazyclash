@@ -54,7 +54,7 @@ func TestConnectionsArchiveTabsSearchAndKeyboardPreserveQuery(t *testing.T) {
 	if !m.connections.closedView || len(m.filteredConnections()) != 1 || m.filteredConnections()[0].ID != first.ID || m.connections.search.Value() != "ONE.EXAMPLE.INVALID" {
 		t.Fatal("closed tab did not search archived metadata while retaining the query")
 	}
-	if m.contextHelp() != m.tr("navigation.connections_closed") {
+	if hintHasKey(m.contextHelp(), "x") || !strings.Contains(m.contextHelp(), m.tr("navigation.connections.active")) {
 		t.Fatal("closed view still advertises actions for live connections")
 	}
 	findTarget(t, m, "connection."+m.connectionRowKey(first))

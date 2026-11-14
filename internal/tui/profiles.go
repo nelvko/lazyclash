@@ -622,7 +622,7 @@ func (m *Model) renderProfileDeleteForm(base string) (string, []hitRegion) {
 		hit.X, hit.Y = hit.X+x+2, hit.Y+y+buttonRow
 		targets = append(targets, hit)
 	}
-	message, color := m.tr("profiles.create_footer"), muted
+	message, color := m.profileDeleteContextHelp(), muted
 	if m.failure != "" {
 		message, color = m.failure, errorColor
 	}

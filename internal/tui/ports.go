@@ -572,10 +572,7 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 		hit.X, hit.Y = hit.X+x+3, hit.Y+y+footerY
 		hits = append(hits, hit)
 	}
-	help := m.tr("ports.help")
-	if m.busy {
-		help = m.tr("ports.busy_help")
-	}
+	help := m.portsContextHelp()
 	putRows(rows, 3, h-2, helpText(cellCrop(help, inner), raised, false), w)
 	if len(doc.lines) > bodyH {
 		putRows(rows, w-3, bodyY+bodyH-1, themed("↕", info, raised, false), w)

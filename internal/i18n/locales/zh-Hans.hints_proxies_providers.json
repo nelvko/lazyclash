@@ -1,0 +1,19 @@
+{
+  "navigation.proxies.directBrowse": "Tab 控件 · Esc 返回",
+  "navigation.proxies.emptyBrowse": "/ 搜索 · Tab 控件 · Esc 返回",
+  "navigation.proxies.listBrowse": "/ 搜索 · ↑↓ 移动",
+  "navigation.proxies.columnsKey": "←→ 邻列",
+  "navigation.proxies.inspectKey": "i 详情",
+  "navigation.proxies.sortKey": "s 排序",
+  "navigation.proxies.testKey": "t 代理组测速",
+  "navigation.proxies.cancelTestKey": "t 取消测速",
+  "navigation.proxies.backKey": "Esc 返回",
+  "navigation.providers.searching": "Enter 查看结果 · Esc 结束搜索 · Tab 控件",
+  "navigation.providers.searchAction": "搜索",
+  "navigation.providers.clearAction": "清空搜索",
+  "navigation.providers.activate": "Enter %s",
+  "navigation.providers.updateKey": "u %s",
+  "navigation.providers.browse": "/ 搜索 · Tab 控件 · Esc / q 关闭",
+  "navigation.providers.reloadKey": "Ctrl+R 重读",
+  "navigation.providers.rows": "↑↓ 浏览"
+}

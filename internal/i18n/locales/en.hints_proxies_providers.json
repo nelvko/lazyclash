@@ -1,0 +1,19 @@
+{
+  "navigation.proxies.directBrowse": "Tab Controls · Esc Back",
+  "navigation.proxies.emptyBrowse": "/ Search · Tab Controls · Esc Back",
+  "navigation.proxies.listBrowse": "/ Search · ↑↓ Move",
+  "navigation.proxies.columnsKey": "←→ Columns",
+  "navigation.proxies.inspectKey": "i Details",
+  "navigation.proxies.sortKey": "s Sort",
+  "navigation.proxies.testKey": "t Test group",
+  "navigation.proxies.cancelTestKey": "t Cancel test",
+  "navigation.proxies.backKey": "Esc Back",
+  "navigation.providers.searching": "Enter Results · Esc End search · Tab Controls",
+  "navigation.providers.searchAction": "Search",
+  "navigation.providers.clearAction": "Clear search",
+  "navigation.providers.activate": "Enter %s",
+  "navigation.providers.updateKey": "u %s",
+  "navigation.providers.browse": "/ Search · Tab Controls · Esc / q Close",
+  "navigation.providers.reloadKey": "Ctrl+R Reload",
+  "navigation.providers.rows": "↑↓ Browse"
+}

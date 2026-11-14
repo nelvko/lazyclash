@@ -13,7 +13,7 @@ func (m Model) helpLines(width int) []string {
 	switch m.page {
 	case "proxies":
 		if m.proxiesDirect() {
-			lines = append(lines, tr("proxies.direct.description"), tr("proxies.direct.keys"))
+			lines = append(lines, tr("proxies.direct.description"), tr("navigation.proxies.directBrowse"))
 		} else {
 			lines = append(lines, tr("help.proxies.expand"), tr("help.proxies.options"), tr("help.proxies.tools"))
 		}
@@ -31,7 +31,9 @@ func (m Model) helpLines(width int) []string {
 		lines = append(lines, tr("help.overview.install"), tr("help.overview.import"), tr("help.overview.controls"), tr("help.overview.refresh"), tr("help.overview.unavailable"))
 	}
 	lines = append(lines, "", tr("help.navigation"), tr("help.pages.first"), tr("help.pages.second"), "", tr("help.navigation.tab"), tr("help.navigation.arrows"), tr("help.navigation.scroll"), tr("help.navigation.cancel"), tr("help.keyHints.shortcut"))
-	if m.page != "proxies" {
+	if m.page == "connections" {
+		lines = append(lines, "", tr("help.core.title"), tr("help.hints.connectionsCore"))
+	} else if m.page != "proxies" {
 		lines = append(lines, "", tr("help.core.title"), tr("help.core.actions"), tr("help.core.refresh"))
 	}
 	lines = append(lines, tr("help.core.quit"), "", tr("help.forms.title"), tr("help.forms.keys"), tr("help.forms.input"), tr("help.forms.modal"), "", tr("help.messages.title"), tr("help.messages.toast"), tr("help.messages.dismiss"), tr("help.messages.shared"))
