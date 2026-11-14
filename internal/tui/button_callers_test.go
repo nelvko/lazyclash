@@ -19,6 +19,8 @@ func TestActionButtonGroupsKeepOneCellBeforeFocusAndNoneAfter(t *testing.T) {
 			}{
 				{"header", "logs.follow", "logs.retry", func(m *Model) (string, []hitRegion) {
 					m.page, m.focus = "logs", "logs.retry"
+					m.snapshot.Installed, m.snapshot.Service.Active = true, true
+					m.snapshot.Service.State = "active"
 					m.layout()
 					return m.screen, m.targets
 				}},

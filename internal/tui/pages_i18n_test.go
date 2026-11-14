@@ -69,6 +69,8 @@ func TestDataPagesLocalizeControlsAndKeepObservedValues(t *testing.T) {
 
 func TestLogRecoveryStatusLocalizesWithoutChangingCoreMessages(t *testing.T) {
 	m := logsModel()
+	m.snapshot.Installed, m.snapshot.Service.Active = true, true
+	m.snapshot.Service.State = "active"
 	m.width, m.height = 120, 45
 	raw := "Connection restored; original core message"
 	m.appendLogs([]mihomo.LogEntry{{Level: "info", Message: raw}})
