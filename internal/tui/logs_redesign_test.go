@@ -67,6 +67,7 @@ func TestLogsBrowsingPinsVisibleRowsWhileCaptureContinuesAndEntriesExpire(t *tes
 
 func TestLogsPinnedEntrySurvivesResizeAndCompactReflow(t *testing.T) {
 	m := redesignedLogsModel(80, 24, 0)
+	m.logs.compact = false
 	defer m.stopRuntime()
 	for n := 0; n < 40; n++ {
 		m.appendLogs([]mihomo.LogEntry{{Level: "info", Message: fmt.Sprintf("event-%03d ", n) + strings.Repeat("中文🚀 segment ", 16)}})
@@ -212,7 +213,7 @@ func TestLogsToolbarKeepsKeyboardOrderAndMouseTargetsWhileBrowsing(t *testing.T)
 				t.Fatal("level click changed capture instead of only filtering display")
 			}
 			m, _ = click(m, findTarget(t, m, "logs.view"))
-			if !m.logs.compact || ctx.Err() != nil {
+			if m.logs.compact || ctx.Err() != nil {
 				t.Fatal("view click did not toggle layout independently of capture")
 			}
 			assertCanvas(t, m.screen, size[0], size[1])

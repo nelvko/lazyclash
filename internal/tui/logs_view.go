@@ -61,13 +61,24 @@ func (m Model) logDocument(width int) logDocument {
 		level, color := logLevel(entry.Level)
 		message := entry.Message
 		var rows []string
+		prefix := themed(stamp+"  ", muted, bg, false) + themed(cellPad(level, 5)+"  ", color, bg, false)
 		if m.logs.compact {
-			prefix := themed(stamp+"  ", muted, bg, false) + themed(cellPad(level, 5)+"  ", color, bg, false)
+			message = strings.ReplaceAll(strings.ReplaceAll(message, "\r", " "), "\n", " ")
 			rows = []string{cellCrop(prefix+themed(message, text, bg, false), width)}
 		} else {
-			rows = append(rows, cellCrop(themed(stamp+"  ", muted, bg, false)+themed(level, color, bg, false), width))
-			rows = append(rows, strings.Split(wrapText(themed(message, text, bg, false), width), "\n")...)
-			rows = append(rows, themed(strings.Repeat("─", width), border, bg, false))
+			prefixWidth := ansi.StringWidth(prefix)
+			if width >= prefixWidth+12 {
+				for index, line := range strings.Split(wrapText(themed(message, text, bg, false), width-prefixWidth), "\n") {
+					gutter := prefix
+					if index > 0 {
+						gutter = themed(strings.Repeat(" ", prefixWidth), muted, bg, false)
+					}
+					rows = append(rows, gutter+line)
+				}
+			} else {
+				rows = append(rows, cellCrop(prefix, width))
+				rows = append(rows, strings.Split(wrapText(themed(message, text, bg, false), width), "\n")...)
+			}
 		}
 		for row, value := range rows {
 			doc.lines = append(doc.lines, value)
@@ -128,12 +139,6 @@ func (m Model) logsToolbar(width, rows int) dashboardBlock {
 	width = max(1, width)
 	b := m.searchToolbar("logs.search", m.tr("logs.placeholder"), m.logs.search,
 		m.logControls(), width, false)
-	if m.searchToolbarGap() > 0 {
-		b.lines = append([]string{""}, b.lines...)
-		for i := range b.targets {
-			b.targets[i].Y++
-		}
-	}
 	count := 0
 	entries, _ := m.logsDisplayEntries()
 	for _, entry := range entries {
@@ -157,7 +162,7 @@ func (m Model) logsToolbar(width, rows int) dashboardBlock {
 	if hint != "" && ansi.StringWidth(status+" · "+hint) <= width {
 		status += " · " + hint
 	}
-	b.lines = append(b.lines, themed(cellCrop(status, width), muted, bg, false), "")
+	b.lines = append(b.lines, themed(cellCrop(status, width), muted, bg, false))
 	b.lines = b.lines[:min(rows, len(b.lines))]
 	var targets []hitRegion
 	for _, target := range b.targets {

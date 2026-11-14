@@ -65,12 +65,12 @@ func TestRulesSelectionStaysAsNavigationAnchorAcrossPages(t *testing.T) {
 	if m.page != "rules" || m.focus != "nav.rules" || m.rules.selected != selected || m.rules.expanded != "" {
 		t.Fatal("browsing back lost rule selection or navigation focus")
 	}
-	assertRuleSelectionGutter(t, m.screen, findTarget(t, m, "rule.3"), []string{"  ", "  "}, bg)
+	assertRuleSelectionGutter(t, m.screen, findTarget(t, m, "rule.3"), []string{"  "}, bg)
 	m, _ = update(m, special(tea.KeyEnter))
 	if m.focus != "rule.3" || m.rules.selected != selected || m.rules.expanded != "" {
 		t.Fatal("entering content did not restore the selected rule focus")
 	}
-	assertRuleSelectionGutter(t, m.screen, findTarget(t, m, "rule.3"), []string{"› ", "  "}, panel)
+	assertRuleSelectionGutter(t, m.screen, findTarget(t, m, "rule.3"), []string{"› "}, panel)
 	m, _ = update(m, special(tea.KeyEnter))
 	if m.rules.expanded != ruleIdentity(m.rules.snapshot.Rules[3]) {
 		t.Fatal("Enter on the focused rule did not expand in place")
@@ -93,7 +93,7 @@ func TestRulesSelectionAndHoverKeepIndependentFeedback(t *testing.T) {
 	selected := m.rules.selected
 	for _, id := range []string{"rule.3", "rule.5", "rule.3"} {
 		target := findTarget(t, m, id)
-		m, _ = update(m, tea.MouseMotionMsg{X: target.X + 8, Y: target.Y + 1})
+		m, _ = update(m, tea.MouseMotionMsg{X: target.X + 8, Y: target.Y + target.H - 1})
 		if m.rules.selected != selected || m.focus != "nav.rules" || m.rules.expanded != "" {
 			t.Fatal("hover changed selection or keyboard ownership")
 		}
@@ -101,9 +101,9 @@ func TestRulesSelectionAndHoverKeepIndependentFeedback(t *testing.T) {
 		if id == "rule.3" {
 			surface = hoverBackground
 		}
-		assertRuleSelectionGutter(t, m.screen, findTarget(t, m, "rule.3"), []string{"  ", "  "}, surface)
+		assertRuleSelectionGutter(t, m.screen, findTarget(t, m, "rule.3"), []string{"  "}, surface)
 		if id == "rule.5" {
-			assertRuleSelectionGutter(t, m.screen, target, []string{"  ", "  "}, hoverBackground)
+			assertRuleSelectionGutter(t, m.screen, target, []string{"  "}, hoverBackground)
 		}
 	}
 	m.enterContent()
@@ -111,36 +111,42 @@ func TestRulesSelectionAndHoverKeepIndependentFeedback(t *testing.T) {
 	if m.focus != "rule.3" || m.hover != "rule.3" {
 		t.Fatal("content focus did not return to the selected hovered rule")
 	}
-	assertRuleSelectionGutter(t, m.screen, findTarget(t, m, "rule.3"), []string{"› ", "  "}, hoverBackground)
+	assertRuleSelectionGutter(t, m.screen, findTarget(t, m, "rule.3"), []string{"› "}, hoverBackground)
 }
 
 func TestRulesSelectionDoesNotDecorateClippedRows(t *testing.T) {
 	for _, size := range [][2]int{{160, 45}, {80, 24}, {60, 20}, {40, 9}} {
 		t.Run(fmt.Sprint(size), func(t *testing.T) {
-			m := rulesMouseModel(t, 60, size[0], size[1])
-			m.selectRule("rule.30")
+			m := rulesMouseModel(t, 100, size[0], size[1])
+			m.selectRule("rule.60")
 			m.focus = "rules.case"
 			g := dashboardGeometry(m.dashboardOptions())
-			row := m.rulesListPrefix(g.width) + 30*3
-			// Only the second content line remains at the top of the viewport.
-			m.scroll = row + 1
+			var logical hitRegion
+			for _, target := range m.rulesTargets(g.width) {
+				if target.ID == "rule.60" {
+					logical = target
+				}
+			}
+			row := logical.Y
+			// The final content line remains at the top of the viewport.
+			m.scroll = row + logical.H - 1
 			m.renderLayout()
-			target := findTarget(t, m, "rule.30")
+			target := findTarget(t, m, "rule.60")
 			if target.Y != g.y || target.H != 1 {
 				t.Fatalf("second-line target did not clip to top: %+v", target)
 			}
 			assertRuleSelectionGutter(t, m.screen, target, []string{"  "}, bg)
-			// Neither the remembered row nor its separator has selection decoration.
-			m.scroll = row + 2
+			// Scrolling past the remembered row must not decorate the next rule.
+			m.scroll = row + logical.H
 			m.renderLayout()
 			line := strings.Split(m.screen, "\n")[g.y]
-			if hasAction(m.targets, "rule.30") || strings.Contains(ansi.Strip(ansi.Cut(line, g.x, g.x+2)), "▌") {
-				t.Fatal("selection marker leaked onto the separator")
+			if hasAction(m.targets, "rule.60") || strings.Contains(ansi.Strip(ansi.Cut(line, g.x, g.x+2)), "▌") {
+				t.Fatal("selection marker leaked onto the next rule")
 			}
 			// The first content line can also be the last visible viewport row.
 			m.scroll = row - g.height + 1
 			m.renderLayout()
-			target = findTarget(t, m, "rule.30")
+			target = findTarget(t, m, "rule.60")
 			if target.Y != g.y+g.height-1 || target.H != 1 {
 				t.Fatalf("first-line target did not clip to bottom: %+v", target)
 			}
@@ -166,10 +172,10 @@ func TestRulesSelectionOnlyShowsCurrentFocusWithoutColor(t *testing.T) {
 			if strings.Contains(content, "\x1b") {
 				t.Fatal("monochrome view retained terminal styling")
 			}
-			assertRuleSelectionGutter(t, content, findTarget(t, m, "rule.3"), []string{"  ", "  "}, "")
+			assertRuleSelectionGutter(t, content, findTarget(t, m, "rule.3"), []string{"  "}, "")
 			m.focus = "rule.3"
 			m.layout()
-			assertRuleSelectionGutter(t, m.View().Content, findTarget(t, m, "rule.3"), []string{"› ", "  "}, "")
+			assertRuleSelectionGutter(t, m.View().Content, findTarget(t, m, "rule.3"), []string{"› "}, "")
 		})
 	}
 }
@@ -182,9 +188,13 @@ func TestRulesExpansionKeepsMetadataColumns(t *testing.T) {
 			m := rulesModel(t, &fakeBackend{})
 			r := sampleRules()[2]
 			r.Payload, r.Proxy = "all", "组名"
-			collapsed := ansi.Strip(m.ruleRows(r, width, 1)[1])
+			metadataRow := 1
+			if width >= 80 {
+				metadataRow = 0
+			}
+			collapsed := ansi.Strip(m.ruleRows(r, width, 1)[metadataRow])
 			m.rules.expanded = ruleIdentity(r)
-			expanded := ansi.Strip(m.ruleRows(r, width, 1)[1])
+			expanded := ansi.Strip(m.ruleRows(r, width, 1)[metadataRow])
 			for _, value := range []string{"→", r.Proxy} {
 				before, _, found := strings.Cut(collapsed, value)
 				if !found {
@@ -201,7 +211,7 @@ func TestRulesExpansionKeepsMetadataColumns(t *testing.T) {
 
 func TestRulesExpandedMetadataHeightMatchesWrappedRows(t *testing.T) {
 	m := rulesModel(t, &fakeBackend{})
-	for _, width := range []int{12, 20, 34, 60, 160} {
+	for _, width := range []int{12, 20, 34, 60} {
 		for _, ruleType := range []string{"Match", "DomainSuffix", "UnusuallyLongRuleTypeName"} {
 			t.Run(fmt.Sprintf("width=%d/type=%s", width, ruleType), func(t *testing.T) {
 				r := sampleRules()[0]

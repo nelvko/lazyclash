@@ -42,7 +42,7 @@ func newLogsState(locales ...i18n.Localizer) logsState {
 	search.CharLimit = 256
 	search.Placeholder = locale.T("logs.placeholder")
 	styleInput(&search, bg, false)
-	return logsState{search: search}
+	return logsState{search: search, compact: true}
 }
 
 func (m *Model) appendLogs(entries []mihomo.LogEntry) {

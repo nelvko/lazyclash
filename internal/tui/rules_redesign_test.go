@@ -124,10 +124,10 @@ func TestRulesFixedToolbarRetainsScrollDuringTabNavigation(t *testing.T) {
 		t.Run(fmt.Sprint(size), func(t *testing.T) {
 			m := longRedesignedRules(t, size[0], size[1])
 			before := findTarget(t, m, "rules.search")
-			for i := 0; i < 25; i++ {
+			for i := 0; i < 50; i++ {
 				m, _ = update(m, special(tea.KeyDown))
 			}
-			if m.scroll == 0 || m.focus != "rule.25" {
+			if m.scroll == 0 || m.focus != "rule.50" {
 				t.Fatal("long list did not scroll to its selected rule")
 			}
 			scroll := m.scroll
@@ -155,6 +155,7 @@ func TestRulesBothRowLinesSelectWithoutExpanding(t *testing.T) {
 	for _, row := range []int{0, 1} {
 		t.Run(fmt.Sprint(row), func(t *testing.T) {
 			m := rulesModel(t, &fakeBackend{})
+			m, _ = update(m, tea.WindowSizeMsg{Width: 80, Height: 24})
 			target := findTarget(t, m, "rule.1")
 			if target.H != 2 {
 				t.Fatalf("rule should occupy two interactive lines: %+v", target)
@@ -199,11 +200,11 @@ func TestRulesClickPreservesFilterAndScrolledPosition(t *testing.T) {
 	m.rules.regex = true
 	m.rules.editing = true
 	m.rules.search.Focus()
-	m.scroll = 30
+	m.scroll = 10
 	m.renderLayout()
 	scroll, generation := m.scroll, m.rules.generation
 	target := findTarget(t, m, "rule.15")
-	m, _ = update(m, tea.MouseClickMsg{X: target.X + target.W - 1, Y: target.Y + 1, Button: tea.MouseLeft})
+	m, _ = update(m, tea.MouseClickMsg{X: target.X + target.W - 1, Y: target.Y + target.H - 1, Button: tea.MouseLeft})
 	if m.rules.expanded != "" || m.focus != "rule.15" || m.rules.selectedIndex != 15 || m.scroll != scroll || m.rules.editing || m.rules.search.Focused() {
 		t.Fatal("click did not select in place and finish editing")
 	}

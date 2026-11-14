@@ -146,7 +146,7 @@ func TestRulesWheelPreservesSelectionAndMapsNewHover(t *testing.T) {
 						if button == tea.MouseWheelUp {
 							offset = 60 - offset
 						}
-						if m.scroll != offset || m.hover != fmt.Sprintf("rule.%d", offset/3) {
+						if m.scroll != offset || m.hover != fmt.Sprintf("rule.%d", offset+1) {
 							t.Fatalf("wheel lost viewport or hovered old rule: scroll=%d hover=%q want=%d", m.scroll, m.hover, offset)
 						}
 						if cmd != nil || m.focus != focus || m.rules.selected != selected || m.rules.generation != generation || m.rules.expanded != "" {

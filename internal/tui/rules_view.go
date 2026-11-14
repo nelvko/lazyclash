@@ -66,12 +66,6 @@ func (m Model) rulesToolbar(width, rows int) dashboardBlock {
 	_, matchErr := m.ruleMatcher()
 	b := m.searchToolbar("rules.search", m.tr("rules.search_placeholder"), m.rules.search,
 		m.ruleFilterButtons(), width, matchErr != nil)
-	if m.searchToolbarGap() > 0 {
-		b.lines = append([]string{""}, b.lines...)
-		for i := range b.targets {
-			b.targets[i].Y++
-		}
-	}
 	status := m.rulesStatus()
 	if m.rules.received && m.rules.snapshot.State == "ready" {
 		status = m.tr("rules.filtered_count", len(m.filteredRules()), len(m.rules.snapshot.Rules))
@@ -86,11 +80,10 @@ func (m Model) rulesToolbar(width, rows int) dashboardBlock {
 			break
 		}
 	}
-	diagnostic := ""
+	b.lines = append(b.lines, line)
 	if matchErr != nil {
-		diagnostic = themed(cellCrop(m.tr("rules.invalid_regex"), width), errorColor, bg, false)
+		b.lines = append(b.lines, themed(cellCrop(m.tr("rules.invalid_regex"), width), errorColor, bg, false))
 	}
-	b.lines = append(b.lines, line, diagnostic)
 	b.lines = b.lines[:min(rows, len(b.lines))]
 	visible := b.targets[:0]
 	for _, target := range b.targets {
@@ -165,7 +158,6 @@ func (m Model) rulesBodyWindow(width, start, height int) ruleBodyWindow {
 	}
 	list := m.filteredRules()
 	if _, err := m.ruleMatcher(); err != nil {
-		addText(m.tr("rules.invalid_regex"), errorColor)
 		return static()
 	}
 	if m.rules.received && m.rules.snapshot.State == "ready" && len(list) == 0 {
@@ -188,9 +180,8 @@ func (m Model) rulesBodyWindow(width, start, height int) ruleBodyWindow {
 	for _, r := range list {
 		h := m.ruleHeight(r, width, numberWidth)
 		hits = append(hits, hitRegion{ID: "rule." + strconv.Itoa(r.Index), Y: total, W: width, H: h})
-		total += h + 1
+		total += h
 	}
-	total--
 	if height < 0 {
 		start, height = 0, total
 	} else {
@@ -205,7 +196,7 @@ func (m Model) rulesBodyWindow(width, start, height int) ruleBodyWindow {
 	for index, r := range list {
 		target := hits[firstTarget+index]
 		row, h := target.Y, target.H
-		if row >= end || row+h+1 <= start {
+		if row >= end || row+h <= start {
 			continue
 		}
 		if row+h > start {
@@ -214,9 +205,6 @@ func (m Model) rulesBodyWindow(width, start, height int) ruleBodyWindow {
 					lines = append(lines, line)
 				}
 			}
-		}
-		if index < len(list)-1 && row+h >= start && row+h < end {
-			lines = append(lines, themed(strings.Repeat("─", max(0, width)), divider, bg, false))
 		}
 	}
 	return ruleBodyWindow{dashboardBlock: dashboardBlock{lines: lines, targets: hits}, start: start, total: total, prefix: prefix}
@@ -235,6 +223,9 @@ func (m Model) ruleRows(r mihomo.Rule, width, numberWidth int) []string {
 	}
 	if m.hover == id {
 		surface = hoverBackground
+	}
+	if columns, ok := ruleTableColumns(width, numberWidth); ok {
+		return m.ruleTableRows(r, width, numberWidth, columns, surface, marker)
 	}
 	indent := 2 + numberWidth + 2
 	available := max(1, width-indent-1)
@@ -304,6 +295,12 @@ func (m Model) ruleRows(r mihomo.Rule, width, numberWidth int) []string {
 }
 
 func (m Model) ruleHeight(r mihomo.Rule, width, numberWidth int) int {
+	if _, table := ruleTableColumns(width, numberWidth); table {
+		if m.rules.expanded != "" && m.rules.expanded == ruleIdentity(r) {
+			return len(m.ruleRows(r, width, numberWidth))
+		}
+		return 1
+	}
 	if m.rules.expanded == "" || m.rules.expanded != ruleIdentity(r) {
 		return 2
 	}
@@ -325,6 +322,89 @@ func (m Model) ruleHeight(r mihomo.Rule, width, numberWidth int) int {
 	}
 	return len(strings.Split(wrapText(clean(payload), available), "\n")) + len(strings.Split(wrapText(meta, available), "\n")) + len(m.ruleEntryCountLines(r, available))
 }
+
+// Keep the payload flexible while aligning rule types and targets across rows.
+// Narrow screens retain the two-line reading order instead of tiny columns.
+func ruleTableColumns(width, numberWidth int) ([3]int, bool) {
+	available := width - (2 + numberWidth + 2) - 1
+	proxy := min(24, max(16, available/4))
+	columns := [3]int{available - 20 - proxy - 5, 20, proxy}
+	return columns, width >= 80 && columns[0] >= 20
+}
+
+func (m Model) ruleTableRows(r mihomo.Rule, width, numberWidth int, columns [3]int, surface, marker string) []string {
+	payload := clean(r.Payload)
+	if payload == "" {
+		payload = m.tr("rules.empty_payload")
+		if strings.EqualFold(r.Type, "Match") {
+			payload = m.tr("rules.match_all")
+		}
+	}
+	proxy := clean(r.Proxy)
+	if proxy == "" {
+		proxy = "--"
+	}
+	proxyColor := accent
+	switch strings.ToUpper(r.Proxy) {
+	case "DIRECT":
+		proxyColor = success
+	case "REJECT", "REJECT-DROP":
+		proxyColor = errorColor
+	}
+	payloadColor := text
+	disabledSuffix := ""
+	if r.Extra != nil && r.Extra.Disabled {
+		payloadColor = muted
+		disabledSuffix = m.tr("rules.disabled_suffix")
+	}
+	expanded := m.rules.expanded == ruleIdentity(r)
+	if !expanded {
+		proxy = cellCrop(proxy, max(1, columns[2]-ansi.StringWidth(disabledSuffix)))
+	}
+	values := []string{themed(payload, payloadColor, surface, false), themed(clean(r.Type), muted, surface, false), themed(proxy, proxyColor, surface, false) + themed(disabledSuffix, warning, surface, false)}
+	var cells [3][]string
+	height := 1
+	for i, value := range values {
+		cells[i] = []string{cellCrop(value, columns[i])}
+		if expanded {
+			cells[i] = strings.Split(wrapText(value, columns[i]), "\n")
+		}
+		height = max(height, len(cells[i]))
+	}
+	indent := 2 + numberWidth + 2
+	rows := make([]string, 0, height+1)
+	for row := range height {
+		gutter := themed(strings.Repeat(" ", indent), muted, surface, false)
+		if row == 0 {
+			gutter = themed(marker, focus, surface, false) + themed(fmt.Sprintf("%*d  ", numberWidth, r.Index+1), muted, surface, false)
+		}
+		line := gutter
+		for i, column := range cells {
+			value := ""
+			if row < len(column) {
+				value = column[row]
+			}
+			line += cellPad(value, columns[i])
+			if i == 0 {
+				line += "  "
+			} else if i == 1 {
+				separator := "   "
+				if row == 0 {
+					separator = " → "
+				}
+				line += themed(separator, muted, surface, false)
+			}
+		}
+		rows = append(rows, themed(cellPad(line, width), text, surface, false))
+	}
+	if expanded {
+		for _, line := range m.ruleEntryCountLines(r, width-indent-1) {
+			rows = append(rows, themed(cellPad(strings.Repeat(" ", indent)+line, width), muted, surface, false))
+		}
+	}
+	return rows
+}
+
 func ruleTypeColumnWidth(proxy string, available int) int {
 	proxyWidth := min(ansi.StringWidth(proxy), max(1, available/2))
 	return min(20, max(1, available-proxyWidth-3))
