@@ -1,5 +1,17 @@
 # 验证入口
 
+## TUI 密度、响应式布局与交互修正（2026-11-15）
+
+按确认的方向实现侧栏按高度切换单行、Rules 宽屏表格与窄屏双行、Logs 默认单行、代理与订阅紧凑卡片、基于可用宽度的双列和 Connections 表格。搜索框保留三行边框，Settings 保持铺满并缩短标签到控件的距离，内核保留 Toggle。新增代理搜索、当前节点定位和固定组名；修正底栏提示优先级、当前页帮助顺序、停止态入口、页头常驻内核状态、弹窗裁切、全角字符补位、流量值换行和翻页焦点。Overview、Settings 显示已保存的 mixed 代理端口；Toast 保持右上，普通成功与信息反馈静默，错误、警告和重要通知保留，短任务不立即弹进度。
+
+最终源码为 `273f5f6`，从独立导出目录验证，排除共享工作区原有六个页头/侧栏草稿。`make check build` 通过（含本地 Ultraviolet 测试及 vet，TUI 140.882 秒），八项 Python 终端解析测试通过；`./scripts/verify-linux.sh lazyclash-e2e` 在既有 Debian/arm64 VM 实际执行全部可运行包测试通过并清理临时文件。共享树定向布局回归及最终构建也通过。前两轮 Linux 检查触及原整包五分钟上限：先修复固定组名引入的代理正文重复渲染，再复用状态测试夹具，并将脚本上限与 Go 默认十分钟对齐；保留全部 700 种状态组合和断言。72 场渲染/命中区域等价检查通过，代理滚轮基准的两种规模中位耗时分别降低约 39% 和 49%；失败日志与基准原始记录均保留。
+
+192 场渲染覆盖中英文、七页及展开代理/停止态/端口错误，尺寸为 60×18、80×24、99×24、100×24、114×24、115×24、120×18、120×40、160×50、220×60。80×24 首屏完整显示 Rules 7 条、Logs 14 条、代理节点 14 个、Profiles 3 张卡，代理目录显示全部 12 组。114→115 列仍保持双列，120×18 显示全部七个导航入口；120×40 的流量图进入首屏，图下指标仍需滚动。最终矩阵基于 `5a153ce`，后续仅修改空态操作提示和测试；空态提示另有最终版本的本地及 Linux 定向验证。PNG 根据字符格与样式绘制，夹具流量图没有历史采样，因此仅显示网格。
+
+真实 controlling PTY 完成代理搜索、Rules、Logs、Connections、Overview、Settings 的中英文 True Color 交互及缩放；端口弹窗另覆盖 NO_COLOR、长输入和重复端口校验。覆盖搜索输入隔离、定位与滚动、展开、暂停/恢复、断线重连、列布局、完整输入边框及可见错误/按钮。后端使用隔离内存夹具，本轮没有把它宣称为实际 Mihomo、systemd 或 TUN 端到端验证。
+
+源码清单、最终测试日志和截图索引位于 `.test-artifacts/layout-optimization/`：`final-source-manifest.json`、`final-check-build.log`、`final-linux.log`、`final-python.log`、`final/_summary.md`、`final/_manifest.tsv`、`proxy-render-audit/`。终端证据为该目录的 `proxy-search-final/`、`pty-connections-final/`、`mixed-overview/`、`mixed-settings/`，以及 `.test-artifacts/layout-fixes-density/` 和 `.test-artifacts/layout-fixes-modal/`。原有六个未提交草稿保持独立，未纳入本次提交。
+
 ## 概览内核状态 Toggle（2026-11-15）
 
 内核卡复用通用 Toggle，将实际运行状态与启停入口合并。标题、右上版本、Mihomo 名称和原主题保留，有效运行时长在左、Toggle 在右，窄屏分行；移除独立启停、重启和重复状态文字。操作先读取实际 Snapshot，保留明确的启动或停止意图，再调用既有 Control；成功与失败均由既有 begin 流程回读状态，沿用任务 ID、状态代次和运行观测时间水位拒绝旧消息。过渡、未知、不可用及忙碌状态拒绝重复输入。概览 r 不再重启；设置页、CLI 和底层重启能力保留。
