@@ -37,6 +37,7 @@ type dashboardOptions struct {
 	Notifications                   []notificationItem
 	Spinner                         string
 	Help                            string
+	EditingInput                    bool
 	HideKeyHints                    bool
 	SidebarOpen                     bool
 	Sidebar                         *sidebarState

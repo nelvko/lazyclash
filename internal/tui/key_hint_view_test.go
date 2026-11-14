@@ -66,6 +66,32 @@ func TestKeyHintsPreferActivationAndDropWholeSecondaryHints(t *testing.T) {
 	}
 }
 
+func TestEditingHintExplainsHowToReachHelp(t *testing.T) {
+	for _, language := range []string{i18n.English, i18n.Chinese} {
+		for _, page := range []string{"proxies", "profiles", "connections", "rules", "logs"} {
+			m, _ := proxiesModel(t, 80, 24)
+			m.locale, m.page, m.width, m.height = i18n.New(language), page, 80, 24
+			switch page {
+			case "proxies":
+				m.focus, m.proxies.editing = "proxies.search", true
+			case "profiles":
+				m.focus, m.profilesUI.editing = "profiles.url", true
+			case "connections":
+				m.focus, m.connections.editing = "conn.search", true
+			case "rules":
+				m.focus, m.rules.editing = "rules.search", true
+			case "logs":
+				m.focus, m.logs.editing = "logs.search", true
+			}
+			m.layout()
+			footer := strings.TrimSpace(ansi.Strip(strings.Split(m.screen, "\n")[23]))
+			if !strings.HasSuffix(footer, "Esc → "+m.tr("dashboard.footer.help")) || strings.Contains(footer, m.tr("dashboard.footer.quit")) {
+				t.Fatalf("%s/%s: editing advertises a shortcut owned by input: %q", language, page, footer)
+			}
+		}
+	}
+}
+
 func TestProxiesHintsDescribeFocusedAction(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		m, _ := proxiesModel(t, 160, 40)

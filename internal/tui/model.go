@@ -1530,6 +1530,7 @@ func (m *Model) renderLayout() {
 	o.Sidebar = &m.sidebar
 	o.SelectedGroup, o.Snapshot, o.Focus, o.Hover = m.proxies.activeGroup, m.snapshot, m.focus, m.hover
 	o.Help, o.GuideDismissed, o.Scroll, o.SidebarOpen = m.contextHelp(), m.snapshot.GuideDismissed, m.scroll, m.sidebarOpen
+	_, _, o.EditingInput = m.activeInputField()
 	o.Runtime, o.RuntimeReceived, o.RuntimePending = m.runtime.snapshot, m.runtime.received, m.runtime.pending
 	o.StateUnavailable = !m.snapshotReady
 	g := dashboardGeometry(o)

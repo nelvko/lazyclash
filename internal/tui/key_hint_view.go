@@ -14,7 +14,9 @@ import (
 func dashboardKeyHints(o dashboardOptions) string {
 	width := max(0, o.Width-4)
 	tail := o.Locale.T("dashboard.footer.help")
-	if width >= 36 {
+	if o.EditingInput {
+		tail = "Esc → " + tail
+	} else if width >= 36 {
 		tail += " · " + o.Locale.T("dashboard.footer.quit")
 	}
 	if ansi.StringWidth(tail) > width {
