@@ -298,8 +298,10 @@ func (m *Model) ruleActivate(id string) tea.Cmd {
 			identity := ruleIdentity(r)
 			if m.rules.expanded == identity {
 				m.rules.expanded = ""
-			} else {
+			} else if m.ruleCanExpand(r) {
 				m.rules.expanded = identity
+			} else {
+				return nil
 			}
 			m.revealRule()
 		}

@@ -113,7 +113,7 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.settle()
         footer = terminal.screen.text().splitlines()[-1]
         assert "Ctrl+R" not in footer, "rules footer retained the manual reload hint"
-        assert "Enter" in footer, "rules footer lost the existing expand hint"
+        assert "Enter" not in footer, "complete short rule still advertised an expansion"
         preview.capture(terminal, output, "row-clicks-focus", args)
 
         # Stay on the rules list beyond its former polling interval. The final
@@ -144,28 +144,30 @@ def exercise(preview, binary, output, language, profile, args):
         assert terminal.screen.cells[marker_y + 1][marker_x] == " ", "focus arrow leaked onto the second row"
         preview.capture(terminal, output, "remembered-rule-focused", args)
         target_position = position(terminal, "Jump Desktop")
+        before_enter = terminal.screen.text()
         terminal.key(b"\r")
         terminal.settle()
         terminal.wait("jumpdesktop.com")
         terminal.wait("Jump Desktop")
-        assert position(terminal, "Jump Desktop") == target_position, "expanding a rule moved its target group"
-        assert "private_ip" in terminal.screen.text(), "inline expansion replaced its list"
-        preview.capture(terminal, output, "selected-enter-inline", args)
-        terminal.key(b"\x1b")
-        terminal.wait("private_ip")
+        assert position(terminal, "Jump Desktop") == target_position, "Enter on a complete rule moved its target group"
+        assert terminal.screen.text() == before_enter, "Enter changed a rule with no hidden content"
+        preview.capture(terminal, output, "complete-rule-enter-unchanged", args)
 
         search(terminal, "GITHUB")
         terminal.wait("github_domain")
         assert "private_ip" not in terminal.screen.text(), "case-insensitive search kept an unrelated rule"
+        assert words["navigation.rules.expand"] in terminal.screen.text().splitlines()[-1], "rule-set count did not advertise full content"
         terminal.key(b"\r")
         terminal.settle()
         terminal.wait("github_domain")
         assert "Aa" in terminal.screen.text(), "inline inspection removed the fixed search controls"
+        assert words["navigation.rules.collapse"] in terminal.screen.text().splitlines()[-1], "expanded rule-set count did not advertise collapse"
         terminal.key(b"\x1b")
         terminal.settle()
         terminal.wait("github_domain")
         terminal.settle()
         assert "GITHUB" in terminal.screen.text(), "return discarded the search query"
+        assert words["navigation.rules.expand"] in terminal.screen.text().splitlines()[-1], "collapsed rule-set did not restore its full-content hint"
         preview.capture(terminal, output, "filtered-return", args)
 
         # Case and word options are independent and clear only removes text.
@@ -231,11 +233,13 @@ def exercise(preview, binary, output, language, profile, args):
 
         # A long rule expands its full payload without enabled/hit diagnostics.
         search(terminal, "long-")
+        assert words["navigation.rules.expand"] in terminal.screen.text().splitlines()[-1], "truncated long rule did not advertise full content"
         terminal.key(b"\r")
         terminal.wait("example.invalid")
         terminal.wait(words["rules.disabled_suffix"])
         assert "4 / 9" not in terminal.screen.text(), "expanded rule retained hit diagnostics"
         assert "Aa" in terminal.screen.text(), "expanded rule replaced the list toolbar"
+        assert words["navigation.rules.collapse"] in terminal.screen.text().splitlines()[-1], "expanded long rule did not advertise collapse"
         preview.capture(terminal, output, "long-disabled-inline", args)
         terminal.key(b"\x1b")
         search(terminal, "")

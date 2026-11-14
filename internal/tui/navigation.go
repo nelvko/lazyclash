@@ -224,7 +224,7 @@ func (m Model) contextHelp() string {
 		if m.providers.open {
 			return tr("providers.keys")
 		}
-		return tr("navigation.rules")
+		return m.rulesContextHelp()
 	case "logs":
 		return tr("navigation.logs")
 	case "profiles":
@@ -234,6 +234,26 @@ func (m Model) contextHelp() string {
 	default:
 		return tr("navigation.default")
 	}
+}
+
+func (m Model) rulesContextHelp() string {
+	if m.rules.editing {
+		return m.tr("navigation.rules.searching")
+	}
+	base := m.tr("navigation.rules")
+	for _, r := range m.filteredRules() {
+		if m.focus != "rule."+strconv.Itoa(r.Index) {
+			continue
+		}
+		if m.rules.expanded == ruleIdentity(r) {
+			return m.tr("navigation.rules.collapse") + " · " + base
+		}
+		if m.ruleCanExpand(r) {
+			return m.tr("navigation.rules.expand") + " · " + base
+		}
+		break
+	}
+	return base
 }
 
 func (m Model) proxiesContextHelp() string {

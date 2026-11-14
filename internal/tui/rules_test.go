@@ -35,8 +35,10 @@ func rulesModel(t *testing.T, b *fakeBackend) Model {
 
 func TestRulesPreserveOrderAndSearchInputExpandsInPlace(t *testing.T) {
 	m := rulesModel(t, &fakeBackend{})
+	rule := sampleRules()[1]
+	rule.Proxy = "REJECT-" + strings.Repeat("long-target-", 10)
 	// API sequence is authoritative, even if a response uses sparse indexes.
-	m.rules.snapshot.Rules = []mihomo.Rule{sampleRules()[2], sampleRules()[0], sampleRules()[1]}
+	m.rules.snapshot.Rules = []mihomo.Rule{sampleRules()[2], sampleRules()[0], rule}
 	list := m.filteredRules()
 	if len(list) != 3 || list[0].Index != 2 || list[1].Index != 0 || list[2].Index != 1 {
 		t.Fatal("rules were reordered")
@@ -60,7 +62,7 @@ func TestRulesPreserveOrderAndSearchInputExpandsInPlace(t *testing.T) {
 	}
 	m, _ = update(m, special(tea.KeyEnter))
 	plain := ansi.Strip(m.screen)
-	if m.rules.expanded != ruleIdentity(sampleRules()[1]) || !hasAction(m.targets, "rules.search") || !hasAction(m.targets, "rule.1") || !strings.Contains(plain, "needle.example.invalid") || !strings.Contains(plain, "REJECT") {
+	if m.rules.expanded != ruleIdentity(rule) || !hasAction(m.targets, "rules.search") || !hasAction(m.targets, "rule.1") || !strings.Contains(plain, "needle.example.invalid") || !strings.Contains(plain, "REJECT") {
 		t.Fatal("matched rule did not expand within its list")
 	}
 	if strings.Contains(plain, "Entries:") || strings.Contains(plain, "Rule details") || hasAction(m.targets, "rules.back") {
@@ -74,10 +76,13 @@ func TestRulesPreserveOrderAndSearchInputExpandsInPlace(t *testing.T) {
 
 func TestRulesRefreshCollapsesExpansionWhenIndexIsReused(t *testing.T) {
 	m := rulesModel(t, &fakeBackend{})
+	m.rules.snapshot.Rules[0].Proxy = strings.Repeat("long-target-", 10)
+	m.reconcileRules()
 	m, _ = update(m, special(tea.KeyEnter))
 	before := m.rules.expanded
 	fresh := sampleRules()
 	fresh[0].Payload = "replacement.example.invalid"
+	fresh[0].Proxy = strings.Repeat("long-target-", 10)
 	m.rules.pending = true
 	m, _ = update(m, rulesResultMsg{generation: m.rules.generation, snapshot: app.RuleSnapshot{State: "ready", Rules: fresh}})
 	if before == "" || m.rules.expanded != "" || m.rules.selected != ruleIdentity(fresh[0]) || strings.Contains(ansi.Strip(m.screen), "one.example.invalid") {
@@ -253,12 +258,14 @@ func TestRulesKeyboardMouseAndResponsiveFocus(t *testing.T) {
 		})
 	}
 	m := rulesModel(t, &fakeBackend{})
+	m.rules.snapshot.Rules[1].Proxy = strings.Repeat("long-target-", 10)
+	m.reconcileRules()
 	m, _ = click(m, findTarget(t, m, "rule.1"))
-	if m.rules.expanded != "" || m.focus != "rule.1" || m.rules.selected != ruleIdentity(sampleRules()[1]) {
+	if m.rules.expanded != "" || m.focus != "rule.1" || m.rules.selected != ruleIdentity(m.rules.snapshot.Rules[1]) {
 		t.Fatal("mouse click did not select its rule in the list")
 	}
 	m, _ = update(m, special(tea.KeyEnter))
-	if m.rules.expanded != ruleIdentity(sampleRules()[1]) {
+	if m.rules.expanded != ruleIdentity(m.rules.snapshot.Rules[1]) {
 		t.Fatal("Enter did not open the clicked rule")
 	}
 	m, _ = update(m, special(tea.KeyEnter))

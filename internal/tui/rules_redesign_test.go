@@ -155,17 +155,19 @@ func TestRulesBothRowLinesSelectWithoutExpanding(t *testing.T) {
 	for _, row := range []int{0, 1} {
 		t.Run(fmt.Sprint(row), func(t *testing.T) {
 			m := rulesModel(t, &fakeBackend{})
+			m.rules.snapshot.Rules[1].Proxy = strings.Repeat("long-target-", 10)
+			m.reconcileRules()
 			m, _ = update(m, tea.WindowSizeMsg{Width: 80, Height: 24})
 			target := findTarget(t, m, "rule.1")
 			if target.H != 2 {
 				t.Fatalf("rule should occupy two interactive lines: %+v", target)
 			}
 			m, _ = update(m, tea.MouseClickMsg{X: target.X + target.W/2, Y: target.Y + row, Button: tea.MouseLeft})
-			if m.rules.expanded != "" || m.focus != "rule.1" || m.rules.selected != ruleIdentity(sampleRules()[1]) || !hasAction(m.targets, "rules.search") {
+			if m.rules.expanded != "" || m.focus != "rule.1" || m.rules.selected != ruleIdentity(m.rules.snapshot.Rules[1]) || !hasAction(m.targets, "rules.search") {
 				t.Fatal("rule click did not keep the selected rule in the list")
 			}
 			m, _ = update(m, special(tea.KeyEnter))
-			if m.rules.expanded != ruleIdentity(sampleRules()[1]) || !hasAction(m.targets, "rules.search") || m.focus != "rule.1" || hasAction(m.targets, "rules.back") {
+			if m.rules.expanded != ruleIdentity(m.rules.snapshot.Rules[1]) || !hasAction(m.targets, "rules.search") || m.focus != "rule.1" || hasAction(m.targets, "rules.back") {
 				t.Fatal("Enter did not expand the selected rule in place")
 			}
 			m, _ = update(m, special(tea.KeyEscape))
@@ -223,6 +225,7 @@ func TestRulesClickPreservesFilterAndScrolledPosition(t *testing.T) {
 
 func TestRulesResizeAndExpansionPreserveFilteredSelection(t *testing.T) {
 	m := longRedesignedRules(t, 160, 45)
+	m.rules.snapshot.Rules[20].Proxy = strings.Repeat("long-target-", 10)
 	m.rules.search.SetValue("example")
 	m.rules.wholeWord, m.rules.regex = true, true
 	m.reconcileRules()

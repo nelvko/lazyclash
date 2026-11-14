@@ -1,5 +1,8 @@
 {
   "dashboard.footer.help": "? 帮助",
+  "navigation.rules.expand": "Enter 查看完整内容",
+  "navigation.rules.collapse": "Enter 收起",
+  "navigation.rules.searching": "Enter 查看结果 · Esc 结束搜索",
   "navigation.proxies.groups": "%s · / 搜索 · ↑↓ 代理组 · s 排序 · t 测速 · Esc 返回",
   "navigation.proxies.nodes": "%s · / 搜索 · ↑↓ 移动 · ←→ 邻列 · i 详情 · s 排序 · t 测速 · Esc 返回",
   "navigation.proxies.control": "%s · Tab 控件 · Esc 返回",

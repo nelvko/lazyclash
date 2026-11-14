@@ -1,5 +1,8 @@
 {
   "dashboard.footer.help": "? Help",
+  "navigation.rules.expand": "Enter Full content",
+  "navigation.rules.collapse": "Enter Collapse",
+  "navigation.rules.searching": "Enter Results · Esc End search",
   "navigation.proxies.groups": "%s · / Search · ↑↓ Groups · s Sort · t Test · Esc Back",
   "navigation.proxies.nodes": "%s · / Search · ↑↓ Move · ←→ Columns · i Details · s Sort · t Test · Esc Back",
   "navigation.proxies.control": "%s · Tab Controls · Esc Back",

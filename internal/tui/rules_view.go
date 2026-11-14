@@ -171,10 +171,7 @@ func (m Model) rulesBodyWindow(width, start, height int) ruleBodyWindow {
 		return static()
 	}
 	prefix := len(lines)
-	numberWidth := 1
-	for _, r := range m.rules.snapshot.Rules {
-		numberWidth = max(numberWidth, len(strconv.Itoa(r.Index+1)))
-	}
+	numberWidth := m.ruleNumberWidth()
 	firstTarget := len(hits)
 	total := prefix
 	for _, r := range list {
@@ -208,6 +205,25 @@ func (m Model) rulesBodyWindow(width, start, height int) ruleBodyWindow {
 		}
 	}
 	return ruleBodyWindow{dashboardBlock: dashboardBlock{lines: lines, targets: hits}, start: start, total: total, prefix: prefix}
+}
+
+func (m Model) ruleNumberWidth() int {
+	width := 1
+	for _, r := range m.rules.snapshot.Rules {
+		width = max(width, len(strconv.Itoa(r.Index+1)))
+	}
+	return width
+}
+
+// Compare the focused row's rendered text so expansion follows actual clipping,
+// including narrow metadata, full-width characters, and optional entry counts.
+func (m Model) ruleCanExpand(r mihomo.Rule) bool {
+	width, numberWidth := dashboardBodyWidth(m.dashboardOptions()), m.ruleNumberWidth()
+	m.rules.expanded = ""
+	collapsed := ansi.Strip(strings.Join(m.ruleRows(r, width, numberWidth), "\n"))
+	m.rules.expanded = ruleIdentity(r)
+	expanded := ansi.Strip(strings.Join(m.ruleRows(r, width, numberWidth), "\n"))
+	return collapsed != expanded
 }
 
 // Bubbles textinput owns editing and horizontal scrolling. The dashboard owns
