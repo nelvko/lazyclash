@@ -63,7 +63,6 @@ func overviewProfileCard(o dashboardOptions, width int) dashboardBlock {
 		}
 	}
 	if len(details) > 0 {
-		lines = append(lines, "")
 		lines = append(lines, overviewProfileDetailRows(o, details, max(1, width-4))...)
 	}
 	saved := 0

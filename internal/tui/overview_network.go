@@ -23,11 +23,9 @@ func overviewNetworkCard(o dashboardOptions, width int) dashboardBlock {
 	content.append(overviewTextBlock([]string{
 		themed(tr("dashboard.network.systemProxyState"), muted, panel, o.Dim),
 	}, inner))
-	content.blank()
 	content.append(overviewTextBlock([]string{
 		themed(strings.Repeat("─", inner), divider, panel, o.Dim),
 	}, inner))
-	content.blank()
 	terminal := s.TerminalProxy
 	state := terminal.State
 	if state == "" {
@@ -42,9 +40,7 @@ func overviewNetworkCard(o dashboardOptions, width int) dashboardBlock {
 	if terminal.Pending && terminal.ActivationCommand != "" {
 		content.append(overviewButtons(o, inner, []overviewControlButton{{id: "terminal.activation", label: tr("terminal.activationAction"), enabled: !o.Busy}}))
 	}
-	content.blank()
 	content.append(overviewTextBlock([]string{themed(strings.Repeat("─", inner), divider, panel, o.Dim)}, inner))
-	content.blank()
 	button := overviewControlButton{id: "tun.enable", label: tr("dashboard.network.enable")}
 	tun := tr("dashboard.control.tunHint")
 	var actualLine string
