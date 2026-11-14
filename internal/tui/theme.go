@@ -167,12 +167,33 @@ func putRows(rows []string, x, y int, s string, width int) {
 		if end <= start {
 			continue
 		}
-		fragment := ansi.Cut(line, start-x, end-x)
-		// Cut may omit a grapheme bisected at a boundary. Padding retains cell
-		// alignment so an overlay cannot pull the old right-hand content left.
-		fragment = cellPad(fragment, end-start)
-		left := cellPad(ansi.Cut(rows[row], 0, start), start)
-		right := cellPad(ansi.Cut(rows[row], end, width), width-end)
+		fragment := cellSlice(line, start-x, end-x)
+		left := cellSlice(rows[row], 0, start)
+		right := cellSlice(rows[row], end, width)
 		rows[row] = left + fragment + right
 	}
+}
+
+// cellSlice preserves the exact cell coordinates of a styled line. A wide
+// grapheme cut by either edge becomes spaces in the cells that remain visible.
+func cellSlice(s string, start, end int) string {
+	if end <= start {
+		return ""
+	}
+	fragment := ansi.Cut(s, start, end)
+	// ansi.Cut retains a whole grapheme intersected by its left edge. Find that
+	// first printable cluster, remove it, and pad its visible cells in place.
+	if overhang := start - ansi.StringWidth(ansi.Cut(s, 0, start)); overhang > 0 {
+		remaining := fragment
+		var state byte
+		for len(remaining) > 0 {
+			_, width, consumed, next := ansi.DecodeSequence(remaining, state, nil)
+			state, remaining = next, remaining[consumed:]
+			if width > 0 {
+				fragment = strings.Repeat(" ", max(0, min(end-start, width-overhang))) + ansi.Cut(fragment, width, ansi.StringWidth(fragment))
+				break
+			}
+		}
+	}
+	return cellPad(fragment, end-start)
 }
