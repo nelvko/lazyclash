@@ -266,7 +266,7 @@ func (m *Model) restoreNotificationFocus() {
 	if m.focus == "" || strings.HasPrefix(m.focus, "notification.") {
 		m.focus = "nav." + m.page
 	}
-	if (m.width < 100 || m.height < 20) && strings.HasPrefix(m.focus, "nav.") {
+	if !sidebarVisible(m.width, m.height) && strings.HasPrefix(m.focus, "nav.") {
 		m.focus = "menu"
 	}
 }

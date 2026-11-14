@@ -29,8 +29,8 @@ func sidebarGeometry(o dashboardOptions, popup bool) sidebarLayout {
 		s.menuY += 2
 	}
 	available := max(0, s.end-s.menuY)
-	// Extremely small popups still need room for an item and an overflow hint.
-	if available < 4 {
+	// Keep all seven destinations visible before spending rows on padding.
+	if available < len(navPages())*s.itemHeight {
 		s.itemHeight = 1
 	}
 	total := len(navPages()) * s.itemHeight

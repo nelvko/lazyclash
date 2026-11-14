@@ -279,7 +279,7 @@ func TestPageNavigationMouseFocusFollowsSidebarAndDrawer(t *testing.T) {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			m := pageNavigationModel()
 			m.width, m.height = width, 32
-			if width < 100 {
+			if width < sidebarMinWidth {
 				m.returnToNavigation()
 				m.activate("menu")
 			}
@@ -288,7 +288,7 @@ func TestPageNavigationMouseFocusFollowsSidebarAndDrawer(t *testing.T) {
 			if m.page != "proxies" {
 				t.Fatal("menu click did not switch pages")
 			}
-			if width >= 100 {
+			if width >= sidebarMinWidth {
 				if m.focus != "nav.proxies" {
 					t.Fatal("permanent sidebar click unexpectedly transferred focus into content")
 				}

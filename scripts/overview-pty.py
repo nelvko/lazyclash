@@ -14,6 +14,8 @@ import sys
 import time
 import uuid
 
+from tui_layout import sidebar_visible
+
 
 SIZES = ((160, 45), (120, 32), (80, 24), (60, 20), (40, 16), (160, 45))
 
@@ -40,15 +42,17 @@ def fixture_terminal(preview, binary, report, language, profile, scenario):
 
 def focused(terminal, label, toggle=False):
     if toggle:
-        point = text_point(terminal, label)
-        return point is not None and terminal.screen.styles[point[1]][point[0]][3]
+        # The title also shows the observed core state; only the control face
+        # acquires the Toggle's focus underline.
+        return any(terminal.screen.styles[y][x][3] for x, y in text_points(terminal, label))
     # Existing buttons retain their arrow gutter; the shared Toggle uses underline.
     pattern = r"›\s*(?:[<\[]\s*)?" + re.escape(label) + r"(?:\s|[>\]]|$)"
     return any(re.search(pattern, row) for row in terminal.screen.text().splitlines())
 
 
 def assert_core_focus(terminal, label, profile):
-    assert text_point(terminal, label) is not None, "core toggle face is not visible"
+    header_row = 1 if terminal.screen.rows >= 24 else 0
+    assert any(y > header_row for _, y in text_points(terminal, label)), "core toggle face is not visible"
     if profile != "no-color":
         assert focused(terminal, label, toggle=True), "core toggle lost its focus underline"
     else:
@@ -96,7 +100,7 @@ def assert_borderless(terminal):
 
 def return_navigation(terminal, words):
     terminal.settle()
-    wide = terminal.screen.columns >= 100 and terminal.screen.rows >= 20
+    wide = sidebar_visible(terminal.screen.columns, terminal.screen.rows)
     prefix = words["navigation.sidebar" if wide else "navigation.menu"].split(" · ")[0]
     if terminal.screen.text().splitlines()[-1].lstrip().startswith(prefix):
         return
@@ -111,11 +115,14 @@ def return_navigation(terminal, words):
 
 
 def text_point(terminal, label):
+    return next(text_points(terminal, label), None)
+
+
+def text_points(terminal, label):
     for y, row in enumerate(terminal.screen.cells):
         for x, value in enumerate(row):
             if value and "".join(row[x:]).startswith(label):
-                return x, y
-    return None
+                yield x, y
 
 
 def assert_card_outline(terminal, profile, complete=True):

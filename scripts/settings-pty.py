@@ -14,6 +14,8 @@ import sys
 import time
 import uuid
 
+from tui_layout import sidebar_visible
+
 
 SIZES = ((240, 45), (200, 40), (160, 45), (120, 32), (105, 32), (104, 32),
          (100, 28), (99, 28), (84, 24), (83, 24), (80, 24), (60, 20), (40, 16), (240, 45))
@@ -120,9 +122,9 @@ def exercise(preview, binary, output, language, profile, args):
             terminal.key(b"\x1b[H")
             terminal.settle()
             terminal.wait(words["settings.interface"])
-            sidebar = width >= 100 and height >= 20
+            sidebar = sidebar_visible(width, height)
             left, right = (22, width - 4) if sidebar else (2, width - 3)
-            columns = 2 if right - left + 1 >= 80 and height >= 20 else 1
+            columns = 2 if right - left + 1 >= 80 else 1
             borders = [row for row in terminal.screen.cells if row[left] == "┌"]
             assert borders, "Settings cards have no visible top border"
             assert borders[0][right] == "┐", "Settings cards did not stretch to the available right edge"
@@ -135,7 +137,7 @@ def exercise(preview, binary, output, language, profile, args):
             for _ in range(8):
                 terminal.key(("\x1b[<65;%d;%dM" % (width - 3, height // 2)).encode())
             terminal.settle()
-            if width < 100:
+            if columns == 1:
                 assert before != terminal.screen.text(), "wheel did not scroll the narrow Settings body"
             preview.capture(terminal, output, "scrolled-%dx%d" % (width, height), args)
             focus(terminal, words["settings.import"])

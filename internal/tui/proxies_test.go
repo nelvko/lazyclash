@@ -163,7 +163,7 @@ func TestProxiesModeChangeResetsNarrowAndReferencedLocations(t *testing.T) {
 			m.browseProxyReference("PROXY")
 			groups = m.visibleProxyGroups()
 			want := []string{"PROXY", "GLOBAL"}
-			if width < 100 {
+			if width < sidebarMinWidth {
 				want = []string{"PROXY"}
 			}
 			var names []string
@@ -507,7 +507,7 @@ func TestProxiesReferenceTraversalKeepsWideDirectoryAndRestoresLocation(t *testi
 			m.browseProxyReference("AUTO")
 			m.layout()
 			groups := m.visibleProxyGroups()
-			if width < 100 {
+			if width < sidebarMinWidth {
 				if len(groups) != 1 || m.snapshot.Groups[groups[0]].Name != "AUTO" {
 					t.Fatalf("narrow reference view mixed in the directory: %v", groups)
 				}
@@ -633,7 +633,7 @@ func TestProxiesModesAndCollapseActionRemainReachableAcrossWidths(t *testing.T) 
 				for _, mode := range []string{"rule", "global", "direct"} {
 					findTarget(t, m, "mode."+mode)
 				}
-				if width >= 100 {
+				if width >= sidebarMinWidth {
 					findTarget(t, m, "proxies.collapse_all")
 				}
 				assertCanvas(t, m.screen, width, 40)
@@ -1191,7 +1191,7 @@ func TestProxiesGeometryAtDesktopAndNarrowSizes(t *testing.T) {
 			if len(columns) != min(len(m.snapshot.Groups[0].All), m.proxyGrid(width).columns) {
 				t.Fatalf("rendered columns diverged from navigation: got %d, want %d", len(columns), m.proxyGrid(width).columns)
 			}
-			if size[0] < 100 {
+			if size[0] < sidebarMinWidth {
 				if groups := m.visibleProxyGroups(); len(groups) != 1 || m.snapshot.Groups[groups[0]].Name != "PROXY" {
 					t.Fatal("narrow member view mixed in the directory")
 				}

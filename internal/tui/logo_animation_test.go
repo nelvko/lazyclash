@@ -72,7 +72,7 @@ func TestSidebarLogoFramesKeepTheWordmarkAndNavigationFixed(t *testing.T) {
 	centers := []string{"💤", "!!", "..", "z ", " Z", "💤", "💤", "💤", "💤", "💤", "💤", "💤", "💤"}
 	bubbles := []string{"", "", "", "", "", "", "z", "Z", "Z", "", "z", "Z", ""}
 	offsets := []int{0, 0, 0, 0, 0, 0, 0, 1, 2, 0, 0, 1, 0}
-	for _, size := range [][2]int{{100, 20}, {120, 24}, {160, 45}} {
+	for _, size := range [][2]int{{115, 9}, {115, 20}, {120, 24}, {160, 45}} {
 		t.Run(fmt.Sprintf("%dx%d", size[0], size[1]), func(t *testing.T) {
 			o := dashboardOptions{Width: size[0], Height: size[1], Page: "overview", Focus: "nav.overview"}
 			baseline, _, _ := renderDashboard(o)
@@ -165,7 +165,7 @@ func TestSidebarLogoPulseStopsWhenHiddenOrBlocked(t *testing.T) {
 			case "compact":
 				m.width = 80
 			case "short":
-				m.height = 18
+				m.height = sidebarMinHeight - 1
 			case "busy":
 				m.busy = true
 			case "quitting":

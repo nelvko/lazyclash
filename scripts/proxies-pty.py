@@ -14,6 +14,8 @@ import re
 import sys
 import time
 
+from tui_layout import SIDEBAR_MIN_WIDTH, sidebar_visible
+
 
 MEMBERS = ("AUTO", "HK 01", "HK 02", "JP 01", "SG 01", "US 01", "DIRECT", "REJECT")
 CARD_META = re.compile(r"Shadowsocks|Trojan|VLESS|Hysteria2|VMess|Proxy group|策略组|\bDirect\b|\bReject\b")
@@ -102,12 +104,12 @@ def assert_direct_empty(terminal, words):
     description = words["proxies.direct.description"]
     title, _, _, header_bottom = proxy_header_positions(terminal, words)
     columns, rows = terminal.screen.columns, terminal.screen.rows
-    sidebar = columns >= 100 and rows >= 20
+    sidebar = sidebar_visible(columns, rows)
     left = title[0] - 2 if sidebar else 2
     right = columns - (3 if sidebar else 2)
     # The content uses the full height below the fixed header and above the
     # one-line key hints. A header divider, when present, is outside that area.
-    top = max(3 if rows >= 24 or columns < 100 else 2, header_bottom + 1)
+    top = max(3 if rows >= 24 or columns < SIDEBAR_MIN_WIDTH else 2, header_bottom + 1)
     bottom = rows - 1
     for y in range(header_bottom + 1, min(5, bottom)):
         value = "".join(terminal.screen.cells[y][left:right]).strip()
@@ -552,7 +554,7 @@ def exercise(preview, binary, output, language, profile, args):
                 assert_four_columns(terminal)
             if width == 160:
                 assert len({candidate_position(terminal, name)[0] for name in MEMBERS}) == 3, "160-column grid lost its three-column layout"
-            if width < 100:
+            if width < SIDEBAR_MIN_WIDTH:
                 slots = {candidate_position(terminal, name)[0] for name in ("HK 01", "HK 02")}
                 assert len(slots) == (2 if width >= 77 else 1), "compact grid ignored its available width: " + repr(slots)
             if width == 200:

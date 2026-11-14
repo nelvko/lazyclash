@@ -415,7 +415,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 	case tea.WindowSizeMsg:
-		if m.page == "proxies" && !m.proxiesNarrow() && max(1, v.Width) < 100 {
+		if m.page == "proxies" && !m.proxiesNarrow() && max(1, v.Width) < sidebarMinWidth {
 			if _, group, _, ok := m.proxyAtFocus(); ok && m.proxyGroupExpanded(group.Name) {
 				m.proxies.activeGroup = group.Name
 			}

@@ -10,7 +10,15 @@ import (
 	"github.com/nelvko/lazyclash/internal/i18n"
 )
 
-const sidebarWidth = 20
+const (
+	sidebarWidth     = 20
+	sidebarMinWidth  = 115
+	sidebarMinHeight = 9
+)
+
+func sidebarVisible(width, height int) bool {
+	return width >= sidebarMinWidth && height >= sidebarMinHeight
+}
 
 type hitRegion struct {
 	ID         string
@@ -76,7 +84,7 @@ type dashboardLayout struct {
 }
 
 func dashboardGeometry(o dashboardOptions) dashboardLayout {
-	sidebar := o.Width >= 100 && o.Height >= 20
+	sidebar := sidebarVisible(o.Width, o.Height)
 	available := max(1, o.Width-4)
 	left := 2
 	if sidebar {
@@ -106,7 +114,7 @@ func dashboardGeometry(o dashboardOptions) dashboardLayout {
 	if o.Height >= 24 {
 		headerY, headerHeight = 1, 3
 	}
-	if (o.Width < 70 || o.Page == "proxies" && o.Width < 100) && o.Height < 24 && o.Page != "" && o.Page != "overview" {
+	if (o.Width < 70 || o.Page == "proxies" && o.Width < sidebarMinWidth) && o.Height < 24 && o.Page != "" && o.Page != "overview" {
 		headerHeight++
 	}
 	bodyY := headerHeight + 1 + o.BodyTopRows
@@ -147,6 +155,7 @@ func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
 	}
 	titleText := themed("▎ ", accent, bg, o.Dim) +
 		themed(lipgloss.NewStyle().Bold(true).Render(pageTitle(o.Page, o.Locale)), pageTitleForeground, bg, o.Dim)
+	pageText := titleText
 	if o.Height < 7 || o.Width < 20 {
 		put(0, 0, themed(cellCrop(logoText(bg, o.Dim)+" / "+titleText, o.Width), text, bg, o.Dim))
 		if o.Height > 1 {
@@ -169,8 +178,12 @@ func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
 			titleText = logoText(bg, o.Dim) + " / " + titleText
 		}
 	}
-	put(titleX, g.headerY, themed(cellCrop(titleText, max(1, g.headerX+g.headerWidth-titleX)), text, bg, o.Dim))
 	header, headerX, headerY, headerTargets := renderPageHeader(o, g, titleX, ansi.StringWidth(titleText))
+	titleRight := g.headerX + g.headerWidth
+	if headerY == g.headerY && header != "" {
+		titleRight = min(titleRight, headerX-1)
+	}
+	put(titleX, g.headerY, dashboardTitle(o, titleText, pageText, max(0, titleRight-titleX)))
 	put(headerX, headerY, header)
 	for _, hit := range headerTargets {
 		add(hit)
@@ -248,11 +261,10 @@ func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
 	}
 	if !g.sidebar && o.SidebarOpen {
 		menuWidth := min(sidebarWidth, o.Width)
-		menuTop := g.y - o.BodyTopRows
 		// Underlying buttons must not receive a click through the navigation menu.
 		kept := targets[:0]
 		for _, r := range targets {
-			if !regionsOverlap(r, hitRegion{X: 0, Y: menuTop, W: menuWidth, H: max(0, dashboardContentBottom(o)-menuTop)}) {
+			if !regionsOverlap(r, hitRegion{X: 0, Y: g.headerHeight + 1, W: menuWidth, H: max(0, dashboardContentBottom(o)-g.headerHeight-1)}) {
 				kept = append(kept, r)
 			}
 		}

@@ -15,6 +15,8 @@ import tempfile
 import time
 import uuid
 
+from tui_layout import SIDEBAR_MIN_HEIGHT, SIDEBAR_MIN_WIDTH, sidebar_visible
+
 
 HERE = Path(__file__).resolve().parent
 SPEC = importlib.util.spec_from_file_location("lazyclash_pty_smoke", HERE / "pty-smoke.py")
@@ -157,8 +159,8 @@ def size_arg(value):
         columns, rows = (int(part) for part in value.lower().split("x"))
     except ValueError as exc:
         raise argparse.ArgumentTypeError("use columnsxrows, such as 160x45") from exc
-    if columns < 100 or rows < 20:
-        raise argparse.ArgumentTypeError("the persistent sidebar requires at least 100x20")
+    if not sidebar_visible(columns, rows):
+        raise argparse.ArgumentTypeError(f"the persistent sidebar requires at least {SIDEBAR_MIN_WIDTH}x{SIDEBAR_MIN_HEIGHT}")
     return columns, rows
 
 

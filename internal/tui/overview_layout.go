@@ -23,7 +23,7 @@ func overviewLayout(o dashboardOptions, width int) dashboardBlock {
 		{"dashboard.traffic.title", overviewTrafficCard},
 		{"dashboard.system.title", overviewSystemCard},
 	}
-	paired := width >= 90 && o.Height >= 20
+	paired := width >= 90
 	var body dashboardBlock
 	for index := 0; index < len(cards); {
 		if index > 0 {

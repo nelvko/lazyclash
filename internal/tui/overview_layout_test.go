@@ -68,7 +68,7 @@ func TestOverviewPairedLayoutAlignsBothEdgesAndKeepsActionOwnership(t *testing.T
 					if len(cards) != 6 {
 						t.Fatalf("got %d cards, want six", len(cards))
 					}
-					if width >= 90 && height >= 20 {
+					if width >= 90 {
 						y := 0
 						for first := 0; first < 4; first += 2 {
 							left, right := body.cards[first], body.cards[first+1]

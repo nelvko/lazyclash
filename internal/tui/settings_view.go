@@ -22,7 +22,7 @@ func settingsContent(o dashboardOptions, width int) (string, []hitRegion) {
 	}
 	var body dashboardBlock
 	columns := 1
-	if width >= 80 && o.Height >= 20 {
+	if width >= 80 {
 		columns = 2
 	}
 	for i := 0; i < len(sections); i += columns {
@@ -188,6 +188,11 @@ func settingsSection(o dashboardOptions, width int, title string, rows []setting
 	}
 	addText(lipgloss.NewStyle().Bold(true).Render(title), text)
 	b.blank()
+	labelColumn := 0
+	for _, row := range rows {
+		labelColumn = max(labelColumn, ansi.StringWidth(row.label))
+	}
+	labelColumn = min(28, labelColumn)
 	for index, row := range rows {
 		if index > 0 {
 			b.lines = append(b.lines, style(strings.Repeat("─", inner), divider))
@@ -198,11 +203,11 @@ func settingsSection(o dashboardOptions, width int, title string, rows []setting
 		}
 		label := style(row.label, text)
 		value := style(row.value, color)
-		// Short values share the label row. Long values and action groups flow
-		// beneath it instead of truncating their names or hit regions.
+		// A shared label column keeps values close to their names on wide cards.
+		// Long labels, values and action groups flow below instead of truncating.
 		if row.label != "" || row.value != "" {
-			if row.label != "" && row.value != "" && ansi.StringWidth(label)+ansi.StringWidth(value)+2 <= inner {
-				b.lines = append(b.lines, label+style(strings.Repeat(" ", inner-ansi.StringWidth(label)-ansi.StringWidth(value)), text)+value)
+			if row.label != "" && row.value != "" && ansi.StringWidth(label) <= labelColumn && labelColumn+2+ansi.StringWidth(value) <= inner {
+				b.lines = append(b.lines, label+style(strings.Repeat(" ", labelColumn+2-ansi.StringWidth(label)), text)+value)
 			} else {
 				if row.label != "" {
 					addText(row.label, text)
@@ -228,19 +233,15 @@ func settingsSection(o dashboardOptions, width int, title string, rows []setting
 				total += ansi.StringWidth(value)
 			}
 			x := 0
-			if row.value != "" && row.label != "" && ansi.StringWidth(label)+ansi.StringWidth(value)+3+total <= inner {
-				x = inner - total
-				gap := x - ansi.StringWidth(label) - ansi.StringWidth(value) - 1
+			if row.value != "" && row.label != "" && ansi.StringWidth(label) <= labelColumn && labelColumn+ansi.StringWidth(value)+3+total <= inner {
+				x = labelColumn + ansi.StringWidth(value) + 3
+				gap := labelColumn + 2 - ansi.StringWidth(label)
 				b.lines[len(b.lines)-1] = label + style(strings.Repeat(" ", gap), text) + value + style(" ", text)
-			} else if row.value == "" && row.label != "" && ansi.StringWidth(label)+2+total <= inner {
-				x = inner - total
+			} else if row.value == "" && row.label != "" && ansi.StringWidth(label) <= labelColumn && labelColumn+2+total <= inner {
+				x = labelColumn + 2
 				b.lines[len(b.lines)-1] = label + style(strings.Repeat(" ", x-ansi.StringWidth(label)), text)
 			} else {
 				b.blank()
-				if total <= inner {
-					x = inner - total
-					b.lines[len(b.lines)-1] = style(strings.Repeat(" ", x), text)
-				}
 			}
 			for i, action := range row.actions {
 				w := ansi.StringWidth(values[i])

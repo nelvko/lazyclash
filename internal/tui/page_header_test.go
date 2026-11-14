@@ -103,8 +103,8 @@ func TestPageHeadersUsePageActionsAcrossSizesAndFocus(t *testing.T) {
 	if hasAction(m.targets, "help.open") || hasAction(m.focusTargets(), "help.open") {
 		t.Fatal("Overview retained a help button or Tab stop")
 	}
-	if strings.Contains(headerText(m), "Mihomo ·") || !strings.Contains(ansi.Strip(m.screen), "Running") {
-		t.Fatal("Overview must keep the core state in its control card without repeating it in the header")
+	if strings.Contains(headerText(m), "Mihomo ·") || !strings.Contains(headerText(m), "Running") {
+		t.Fatal("Overview header lost the compact core state or restored the verbose summary")
 	}
 }
 
@@ -116,7 +116,7 @@ func TestPageHeaderDividerBoundsAndBodyGapStayConsistentAcrossPages(t *testing.T
 				g := dashboardGeometry(m.dashboardOptions())
 				lines := strings.Split(m.screen, "\n")
 				left, right := 0, size[0]
-				if size[0] >= 100 && size[1] >= 20 {
+				if sidebarVisible(size[0], size[1]) {
 					left = sidebarWidth
 				}
 				line := ansi.Strip(lines[g.headerHeight])

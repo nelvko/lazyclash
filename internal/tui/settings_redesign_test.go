@@ -37,9 +37,9 @@ func TestSettingsFillWindowWidthAcrossSidebarAndColumnBreakpoints(t *testing.T) 
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		for _, size := range []struct{ width, height, bodyWidth, columns int }{
 			{240, 45, 215, 2}, {200, 40, 175, 2}, {160, 45, 135, 2}, {120, 32, 95, 2},
-			{105, 32, 80, 2}, {104, 32, 79, 1}, {100, 28, 75, 1}, {99, 28, 95, 2},
+			{115, 32, 90, 2}, {114, 32, 110, 2}, {105, 32, 101, 2}, {104, 32, 100, 2}, {100, 28, 96, 2}, {99, 28, 95, 2},
 			{84, 24, 80, 2}, {83, 24, 79, 1}, {80, 24, 76, 1}, {40, 16, 36, 1},
-			{240, 19, 236, 1},
+			{240, 19, 215, 2}, {120, 18, 95, 2}, {115, 9, 90, 2},
 		} {
 			t.Run(fmt.Sprintf("%s/%dx%d", language, size.width, size.height), func(t *testing.T) {
 				o := dashboardOptions{Locale: i18n.New(language), Page: "settings", Width: size.width, Height: size.height, Snapshot: settingsTestSnapshot()}
@@ -85,7 +85,7 @@ func TestSettingsGroupsAdaptToBodyWidthAndShortTerminals(t *testing.T) {
 				ix, iy := position(o.Locale.T("settings.interface"))
 				sx, sy := position(o.Locale.T("settings.serviceGroup"))
 				nx, ny := position(o.Locale.T("settings.network"))
-				if size[0] >= 80 && size[1] >= 20 {
+				if size[0] >= 80 {
 					if sx <= ix || sy != iy || nx != ix || ny <= iy {
 						t.Fatalf("wide settings are not grouped in two columns: interface=%d,%d service=%d,%d network=%d,%d", ix, iy, sx, sy, nx, ny)
 					}

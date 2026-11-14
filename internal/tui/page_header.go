@@ -99,10 +99,6 @@ func renderPageHeader(o dashboardOptions, g dashboardLayout, titleX, titleWidth 
 	if len(h.leading) > 0 {
 		return renderLeadingPageHeader(o, g, titleX+titleWidth+2)
 	}
-	if o.Page == "overview" && (o.InlineInstall || overviewSetupVisible(o)) {
-		status, _ := coreSummary(o.Snapshot, o.Locale)
-		h = pageHeader{summary: "Mihomo · " + status}
-	}
 	y, left := g.headerY, titleX+titleWidth+2
 	if o.Width < 70 && o.Page != "overview" {
 		y, left = g.headerY+1, g.headerX

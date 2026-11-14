@@ -36,8 +36,8 @@ func assertSidebarFocusVisible(t *testing.T, m Model, id string, height int) {
 	assertRegions(t, m.targets, m.width, m.height)
 }
 
-func TestSidebarKeepsThreeLineItemsWhenHeightShrinks(t *testing.T) {
-	for _, size := range [][2]int{{120, 26}, {120, 25}, {120, 24}, {100, 20}, {80, 24}, {80, 12}, {60, 10}} {
+func TestSidebarCompactsPaddingBeforeScrollingNavigation(t *testing.T) {
+	for _, size := range [][2]int{{120, 26}, {120, 25}, {120, 24}, {100, 20}, {80, 24}, {80, 12}, {60, 10}, {80, 7}} {
 		t.Run(fmt.Sprintf("%dx%d", size[0], size[1]), func(t *testing.T) {
 			o := dashboardOptions{Width: size[0], Height: size[1], Page: "overview", SidebarOpen: true}
 			screen, targets, _ := renderDashboard(o)
@@ -45,21 +45,28 @@ func TestSidebarKeepsThreeLineItemsWhenHeightShrinks(t *testing.T) {
 			if len(visible) == 0 {
 				t.Fatal("short menu is empty")
 			}
+			geometry := sidebarGeometry(o, !sidebarVisible(o.Width, o.Height))
+			itemHeight := 1
+			if size[1] >= 25 {
+				itemHeight = 3
+			}
 			for i, target := range visible {
-				if target.H != 3 {
-					t.Fatalf("menu item shrank: %+v", target)
+				if target.H != itemHeight {
+					t.Fatalf("menu item has the wrong density: %+v", target)
 				}
 				if i > 0 && target.Y != visible[i-1].Y+visible[i-1].H {
 					t.Fatal("menu spacing changed between visible items")
 				}
 			}
-			if size[1] <= 24 {
+			if geometry.height < len(navPages())*itemHeight {
 				if len(visible) >= len(navPages()) || hasAction(targets, "nav.settings") {
 					t.Fatal("overflowing navigation retained offscreen targets")
 				}
 				if !strings.Contains(sidebarText(screen), "↓") {
 					t.Fatal("overflowing navigation lost its downward hint")
 				}
+			} else if len(visible) != len(navPages()) {
+				t.Fatal("navigation scrolled before using compact items")
 			}
 			assertCanvas(t, screen, size[0], size[1])
 			assertRegions(t, targets, size[0], size[1])
@@ -72,27 +79,27 @@ func TestSidebarKeyboardRevealsFirstAndLastWithoutScrollingBody(t *testing.T) {
 		t.Run(fmt.Sprintf("%dx%d", size[0], size[1]), func(t *testing.T) {
 			m := ready(&fakeBackend{})
 			m.width, m.height = size[0], size[1]
-			m.sidebarOpen, m.focus = size[0] < 100, "nav.overview"
+			m.sidebarOpen, m.focus = !sidebarVisible(size[0], size[1]), "nav.overview"
 			m.layout()
 			bodyScroll := m.scroll
 			m, _ = update(m, special(tea.KeyEnd))
-			if m.page != "settings" || m.scroll != bodyScroll || m.focus != "nav.settings" || m.sidebar.viewport.YOffset() == 0 {
+			if m.page != "settings" || m.scroll != bodyScroll || m.focus != "nav.settings" {
 				t.Fatal("End did not reveal the last menu independently")
 			}
-			assertSidebarFocusVisible(t, m, "nav.settings", 3)
-			if hasAction(m.targets, "nav.overview") || !strings.Contains(sidebarText(m.screen), "↑") {
+			assertSidebarFocusVisible(t, m, "nav.settings", 1)
+			if m.sidebar.viewport.YOffset() > 0 && (hasAction(m.targets, "nav.overview") || !strings.Contains(sidebarText(m.screen), "↑")) {
 				t.Fatal("last menu view retained the first menu or lost its upward hint")
 			}
 			m, _ = update(m, special(tea.KeyHome))
 			if m.focus != "nav.overview" || m.sidebar.viewport.YOffset() != 0 || m.page != "overview" || m.scroll != bodyScroll {
 				t.Fatal("Home did not restore the first menu independently")
 			}
-			assertSidebarFocusVisible(t, m, "nav.overview", 3)
+			assertSidebarFocusVisible(t, m, "nav.overview", 1)
 		})
 	}
 }
 
-func TestSidebarWheelIsIndependentAndDoesNotSnapBackOnRender(t *testing.T) {
+func TestSidebarWheelKeepsFittingMenuAndBodyIndependent(t *testing.T) {
 	m := ready(&fakeBackend{})
 	m.guideSkipped = true
 	m.width, m.height, m.focus = 120, 20, "nav.overview"
@@ -101,11 +108,11 @@ func TestSidebarWheelIsIndependentAndDoesNotSnapBackOnRender(t *testing.T) {
 	page, focus, bodyScroll := m.page, m.focus, m.scroll
 	m, _ = update(m, tea.MouseWheelMsg{X: hit.X + 2, Y: hit.Y + 1, Button: tea.MouseWheelDown})
 	offset := m.sidebar.viewport.YOffset()
-	if offset == 0 || m.page != page || m.focus != focus || m.scroll != bodyScroll {
-		t.Fatal("sidebar wheel changed the page, focus or body instead of the menu viewport")
+	if offset != 0 || m.page != page || m.focus != focus || m.scroll != bodyScroll {
+		t.Fatal("wheel scrolled a fitting menu or changed the page, focus or body")
 	}
-	if hasAction(m.targets, "nav.overview") {
-		t.Fatal("scrolled-away menu retained its mouse target")
+	if !hasAction(m.targets, "nav.overview") {
+		t.Fatal("fitting menu lost its mouse target")
 	}
 	m.layout()
 	if m.sidebar.viewport.YOffset() != offset {
@@ -130,7 +137,7 @@ func TestSidebarScrolledMouseTargetOpensVisiblePage(t *testing.T) {
 	for _, width := range []int{120, 80} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			m := ready(&fakeBackend{})
-			m.width, m.height, m.focus, m.sidebarOpen = width, 20, "nav.overview", width < 100
+			m.width, m.height, m.focus, m.sidebarOpen = width, 7, "nav.overview", true
 			m.layout()
 			hit := findTarget(t, m, "nav.overview")
 			for range len(navPages()) {
@@ -156,7 +163,7 @@ func TestSidebarWheelDoesNotPauseOrScrollLogs(t *testing.T) {
 	offset := m.sidebar.viewport.YOffset()
 	hit := visibleSidebarTargets(m.targets)[0]
 	m, _ = update(m, tea.MouseWheelMsg{X: 2, Y: hit.Y + 1, Button: tea.MouseWheelUp})
-	if m.sidebar.viewport.YOffset() >= offset || m.logs.paused || m.logs.holding {
+	if m.sidebar.viewport.YOffset() != offset || m.logs.paused || m.logs.holding {
 		t.Fatal("sidebar wheel paused or scrolled the log stream")
 	}
 }
@@ -167,8 +174,8 @@ func TestSidebarTabReturnsToLogicalNavigationAfterMouseScrolling(t *testing.T) {
 	m.layout()
 	hit := findTarget(t, m, "nav.overview")
 	m, _ = update(m, tea.MouseWheelMsg{X: 2, Y: hit.Y + 1, Button: tea.MouseWheelDown})
-	if hasAction(m.targets, "nav.overview") {
-		t.Fatal("test did not scroll the focused item out of view")
+	if !hasAction(m.targets, "nav.overview") {
+		t.Fatal("fitting menu lost the focused item after a wheel event")
 	}
 	m, _ = update(m, special(tea.KeyTab))
 	if strings.HasPrefix(m.focus, "nav.") {
@@ -178,21 +185,21 @@ func TestSidebarTabReturnsToLogicalNavigationAfterMouseScrolling(t *testing.T) {
 	if m.focus != "nav.overview" || m.sidebar.viewport.YOffset() != 0 {
 		t.Fatal("reverse Tab forgot the logical navigation target")
 	}
-	assertSidebarFocusVisible(t, m, "nav.overview", 3)
+	assertSidebarFocusVisible(t, m, "nav.overview", 1)
 	m, _ = update(m, key("7"))
 	if m.page != "settings" || strings.HasPrefix(m.focus, "nav.") {
 		t.Fatal("page shortcut did not enter the last page content")
 	}
 	m.returnToNavigation()
 	m.layout()
-	assertSidebarFocusVisible(t, m, "nav.settings", 3)
+	assertSidebarFocusVisible(t, m, "nav.settings", 1)
 	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 25})
 	assertSidebarFocusVisible(t, m, "nav.settings", 3)
 }
 
 func TestSidebarPopupWheelAndOutsideClickRemainModal(t *testing.T) {
 	m := ready(&fakeBackend{})
-	m.width, m.height = 80, 12
+	m.width, m.height = 80, 7
 	m.sidebarOpen, m.focus = true, "nav.overview"
 	m.layout()
 	hit := findTarget(t, m, "nav.overview")
@@ -216,7 +223,7 @@ func TestSidebarPopupWheelAndOutsideClickRemainModal(t *testing.T) {
 	}
 	m.activate("menu")
 	m.layout()
-	assertSidebarFocusVisible(t, m, "nav.overview", 3)
+	assertSidebarFocusVisible(t, m, "nav.overview", 1)
 }
 
 func TestSidebarTinyPopupFallsBackWithoutEscapingCanvas(t *testing.T) {

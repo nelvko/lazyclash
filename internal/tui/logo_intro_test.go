@@ -185,7 +185,7 @@ func TestSidebarLogoIntroSkipsIneligibleStartupWithoutCatchingUp(t *testing.T) {
 			case "compact":
 				size.Width = 80
 			case "short":
-				size.Height = 18
+				size.Height = sidebarMinHeight - 1
 			case "overlay":
 				m.helpOpen = true
 			}
@@ -253,7 +253,7 @@ func TestSidebarLogoIntroKeepsWordmarkFixedWhileGrowingSleepyCenter(t *testing.T
 			t.Fatalf("intro faded out differently from its rise at frame %d", frame)
 		}
 	}
-	for _, size := range [][2]int{{100, 20}, {120, 24}, {160, 45}} {
+	for _, size := range [][2]int{{115, 9}, {115, 20}, {120, 24}, {160, 45}} {
 		o := dashboardOptions{Width: size[0], Height: size[1], Page: "overview", Focus: "nav.overview"}
 		baseline, _, _ := renderDashboard(o)
 		baseRows := strings.Split(baseline, "\n")

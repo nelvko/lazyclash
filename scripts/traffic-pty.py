@@ -13,6 +13,8 @@ import sys
 import time
 import uuid
 
+from tui_layout import sidebar_visible
+
 
 SIZES = ((160, 45), (120, 32), (80, 24), (60, 20), (40, 16), (160, 45))
 
@@ -57,7 +59,7 @@ def fixture_terminal(preview, binary, report, language, profile, scenario):
 
 def return_navigation(terminal, words):
     terminal.settle()
-    wide = terminal.screen.columns >= 100 and terminal.screen.rows >= 20
+    wide = sidebar_visible(terminal.screen.columns, terminal.screen.rows)
     prefix = words["navigation.sidebar" if wide else "navigation.menu"].split(" · ")[0]
     if terminal.screen.text().splitlines()[-1].lstrip().startswith(prefix):
         return
@@ -126,7 +128,7 @@ def assert_plot(terminal, words, profile, colors=True, zero=False):
 
 def assert_fullwidth(terminal):
     width, height = terminal.screen.columns, terminal.screen.rows
-    wide = width >= 100 and height >= 20
+    wide = sidebar_visible(width, height)
     left, card_width = (22, width - 25) if wide else (2, width - 4)
     right = left + card_width - 1
     edges = {"┌": "┐", "│": "│", "└": "┘"}

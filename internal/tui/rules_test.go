@@ -238,7 +238,7 @@ func TestRulesKeyboardMouseAndResponsiveFocus(t *testing.T) {
 			if size[0] >= 20 && size[1] >= 8 && !hasAction(m.targets, "rule.30") {
 				t.Fatal("selected rule scrolled outside the viewport")
 			}
-			if size == [2]int{100, 20} {
+			if sidebarVisible(size[0], size[1]) {
 				if !hasAction(m.targets, "nav.rules") || !strings.Contains(ansi.Strip(m.screen), "Rules") {
 					t.Fatal("sidebar core summary covered Rules navigation")
 				}

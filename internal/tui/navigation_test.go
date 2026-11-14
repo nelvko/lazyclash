@@ -103,7 +103,7 @@ func TestNavigationArrowsAndTabHaveIndependentRegions(t *testing.T) {
 }
 
 func TestSidebarFoldsWithoutOpeningDrawerAcrossResize(t *testing.T) {
-	for _, size := range [][2]int{{99, 32}, {80, 24}, {120, 19}, {20, 7}} {
+	for _, size := range [][2]int{{114, 32}, {80, 24}, {120, 8}, {20, 7}} {
 		t.Run(fmt.Sprint(size), func(t *testing.T) {
 			m := pageNavigationModel()
 			directionCleanup(t, &m)

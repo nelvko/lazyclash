@@ -178,7 +178,7 @@ func TestProxiesDirectRoundTripRestoresBrowsingAcrossGenerationChanges(t *testin
 						m.focus = fmt.Sprintf("node.%d.0", gi)
 						m.proxies.sorts[group] = "name"
 					}
-					if view == "members" && width >= 100 {
+					if view == "members" && width >= sidebarMinWidth {
 						m.expandProxyGroup("AUTO")
 					}
 					if view == "reference" {

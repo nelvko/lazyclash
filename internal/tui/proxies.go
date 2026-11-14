@@ -86,7 +86,7 @@ func (m Model) proxiesReady() bool {
 	return state == "" && m.snapshotReady && m.snapshot.Installed && m.snapshot.Service.Active && m.snapshot.ServiceError == "" && m.snapshot.APIError == ""
 }
 func (m Model) proxiesDirect() bool { return m.snapshot.Mode.Actual == "direct" }
-func (m Model) proxiesNarrow() bool { return m.width < 100 }
+func (m Model) proxiesNarrow() bool { return m.width < sidebarMinWidth }
 func (m Model) proxyGroupExpanded(name string) bool {
 	if name == "" {
 		return false

@@ -65,7 +65,7 @@ func TestOverviewUninitializedIsBrowsable(t *testing.T) {
 	body, bodyTargets := overviewContent(options, dashboardBodyWidth(options))
 	plain := ansi.Strip(value + "\n" + body)
 	allTargets := append(append([]hitRegion(nil), targets...), bodyTargets...)
-	for _, part := range []string{"Get started", "Install the Mihomo core", "Install Mihomo", "Set up later", "Mihomo · Not installed"} {
+	for _, part := range []string{"Get started", "Install the Mihomo core", "Install Mihomo", "Set up later", "− Not installed"} {
 		if !strings.Contains(plain, part) {
 			t.Errorf("missing %q", part)
 		}
@@ -98,7 +98,7 @@ func TestOverviewUninitializedIsBrowsable(t *testing.T) {
 }
 
 func TestOverviewContentFillsAreaBesideNavigationAndReservesUsableRows(t *testing.T) {
-	for _, width := range []int{100, 120, 140, 160, 197, 240, 320} {
+	for _, width := range []int{115, 120, 140, 160, 197, 240, 320} {
 		g := dashboardGeometry(dashboardOptions{Width: width, Height: 45})
 		left, right := g.x-sidebarWidth, width-g.x-g.width
 		if left-right > 1 || right-left > 1 || g.width != width-sidebarWidth-5 || g.y != 4 || g.height != 40 {
@@ -315,8 +315,8 @@ func TestSidebarTrafficPreservesNavigationAndStaysOutOfPopup(t *testing.T) {
 					continue
 				}
 				visibleItems++
-				if hit.H != 3 {
-					t.Fatalf("sidebar traffic compressed navigation: %+v", hit)
+				if hit.H != sidebarGeometry(o, !sidebarVisible(tc.width, tc.height)).itemHeight {
+					t.Fatalf("sidebar traffic changed navigation density: %+v", hit)
 				}
 				if tc.visible && hit.Y+hit.H > footerY {
 					t.Fatalf("sidebar traffic overlaps navigation: %+v", hit)
@@ -326,7 +326,7 @@ func TestSidebarTrafficPreservesNavigationAndStaysOutOfPopup(t *testing.T) {
 					t.Fatalf("sidebar traffic covered navigation: %+v", hit)
 				}
 			}
-			if visibleItems == 0 || (tc.height >= 28 && visibleItems != len(navPages())) || (tc.height == 20 && visibleItems >= len(navPages())) {
+			if visibleItems != len(navPages()) {
 				t.Fatalf("wrong number of visible menu items: %d", visibleItems)
 			}
 		})
@@ -524,12 +524,12 @@ func TestDashboardMouseCoordinatesFollowScrolling(t *testing.T) {
 			t.Errorf("menu action missing: %s", id)
 		}
 	}
-	if hasAction(regions, "nav.settings") {
-		t.Fatal("offscreen menu retained a mouse target")
+	if !hasAction(regions, "nav.settings") {
+		t.Fatal("compact menu failed to show all destinations")
 	}
 	o.Focus = "nav.settings"
 	value, regions, _ = renderDashboard(o)
-	if !hasAction(regions, "nav.settings") || hasAction(regions, "nav.overview") {
+	if !hasAction(regions, "nav.settings") || !hasAction(regions, "nav.overview") {
 		t.Fatal("compact menu did not reveal the focused item")
 	}
 	assertCanvas(t, value, o.Width, o.Height)
@@ -627,7 +627,7 @@ func TestShortCompactNavigationKeepsFocusedLastItemVisible(t *testing.T) {
 				assertRegions(t, m.targets, size[0], size[1])
 			}
 			check("nav.settings", "Settings")
-			if hasAction(m.targets, "nav.overview") {
+			if m.sidebar.viewport.YOffset() > 0 && hasAction(m.targets, "nav.overview") {
 				t.Fatal("short compact menu retained an offscreen item")
 			}
 			before := m.scroll
