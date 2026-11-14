@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
+	"github.com/nelvko/lazyclash/internal/i18n"
 	"github.com/nelvko/lazyclash/internal/service"
 )
 
@@ -310,6 +311,84 @@ func TestRuntimePortsConflictPreservesDraftAndAllowsCorrectionBeforeReview(t *te
 	m, _ = update(m, actionCmd(t, cmd)())
 	if checks != 2 || applies != 0 || m.ports.step != "review" || m.ports.err != "" || m.ports.plan.Proposed != (app.RuntimeSettings{MixedPort: 18081, ControllerPort: 19090}) {
 		t.Fatal("corrected ports were not reviewed independently before applying")
+	}
+}
+
+func TestRuntimePortsShortWindowKeepsValidationAndFocusedFieldsVisible(t *testing.T) {
+	for _, language := range []string{i18n.English, i18n.Chinese} {
+		for _, size := range [][2]int{{80, 24}, {60, 18}} {
+			t.Run(fmt.Sprintf("%s/%dx%d", language, size[0], size[1]), func(t *testing.T) {
+				m := portsModel(t, &fakeBackend{snapshot: app.Snapshot{Installed: true}})
+				m.locale = i18n.New(language)
+				m, _ = update(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+				m.ports.mixed.SetValue("18080")
+				m.ports.controller.SetValue("18080")
+				m, _ = update(m, special(tea.KeyEnter))
+				if m.ports.focus != "ports.controller" || m.ports.err == "" || m.busy {
+					t.Fatal("duplicate ports did not focus the invalid controller field")
+				}
+				for _, focused := range []string{"ports.controller", "ports.mixed", "ports.review", "ports.cancel"} {
+					for attempts := 0; m.ports.focus != focused && attempts <= len(m.ports.controls); attempts++ {
+						m, _ = update(m, special(tea.KeyTab))
+					}
+					hit := findTarget(t, m, focused)
+					if strings.HasPrefix(focused, "ports.mixed") || focused == "ports.controller" {
+						if hit.H != 3 {
+							t.Fatalf("focused input frame was clipped: %+v", hit)
+						}
+					}
+					for _, line := range strings.Split(wrapText(m.ports.err, size[0]-6), "\n") {
+						if !strings.Contains(ansi.Strip(m.screen), line) {
+							t.Fatalf("validation is hidden with focus %s: %q", focused, line)
+						}
+					}
+					findTarget(t, m, "ports.cancel")
+					findTarget(t, m, "ports.review")
+					assertCanvas(t, m.screen, size[0], size[1])
+					assertRegions(t, m.targets, size[0], size[1])
+				}
+			})
+		}
+	}
+}
+
+func TestRuntimePortsHeightFitsContentAndShowsBothEditorsAt80Columns(t *testing.T) {
+	m := portsModel(t, &fakeBackend{snapshot: app.Snapshot{Installed: true}})
+	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 60})
+	if m.ports.viewport.TotalLineCount() > m.ports.viewport.Height() {
+		t.Fatal("the dialog kept an unnecessary fixed height in a tall terminal")
+	}
+	for _, language := range []string{i18n.English, i18n.Chinese} {
+		m.locale = i18n.New(language)
+		m, _ = update(m, tea.WindowSizeMsg{Width: 80, Height: 24})
+		for _, id := range []string{"ports.mixed", "ports.controller"} {
+			if hit := findTarget(t, m, id); hit.H != 3 {
+				t.Fatalf("%s %s field was clipped on the initial 80x24 form: %+v", language, id, hit)
+			}
+		}
+	}
+}
+
+func TestRuntimePortsLongFailureCanBeScrolledWithoutHidingActions(t *testing.T) {
+	m := portsModel(t, &fakeBackend{snapshot: app.Snapshot{Installed: true}})
+	m, _ = update(m, tea.WindowSizeMsg{Width: 60, Height: 18})
+	m.acceptPorts(portsMsg{id: m.id, kind: "prepare", err: errors.New(strings.Repeat("port conflict detail ", 50) + "END-OF-DIAGNOSTIC")})
+	m.layout()
+	if !strings.Contains(ansi.Strip(m.screen), "port conflict detail") {
+		t.Fatal("prepare failure did not immediately expose its explanation")
+	}
+	for i := 0; i < 30 && !m.ports.viewport.AtBottom(); i++ {
+		m, _ = update(m, special(tea.KeyPgDown))
+	}
+	if !strings.Contains(ansi.Strip(m.screen), "END-OF-DIAGNOSTIC") {
+		t.Fatal("long diagnostic was truncated instead of remaining scrollable")
+	}
+	findTarget(t, m, "ports.cancel")
+	findTarget(t, m, "ports.review")
+	m.ports.focus, m.ports.reveal = "ports.controller", true
+	m.layout()
+	if hit := findTarget(t, m, "ports.controller"); hit.H != 3 {
+		t.Fatal("returning from the diagnostic failed to reveal the full input")
 	}
 }
 

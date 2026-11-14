@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"charm.land/bubbles/v2/textinput"
+	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
@@ -24,7 +25,7 @@ type portsState struct {
 	plan                      app.RuntimeSettingsPlan
 	result                    app.RuntimeSettingsResult
 	err, refreshError         string
-	scroll                    int
+	viewport                  viewport.Model
 	reveal                    bool
 }
 
@@ -48,7 +49,9 @@ func newPortsState() portsState {
 		styleInput(&v, inputBackground, false)
 		return v
 	}
-	return portsState{mixed: input(), controller: input(), focus: "ports.mixed"}
+	view := viewport.New()
+	view.SoftWrap = false
+	return portsState{mixed: input(), controller: input(), focus: "ports.mixed", viewport: view}
 }
 
 func (m *Model) openPorts() tea.Cmd {
@@ -107,7 +110,8 @@ func (m *Model) preparePorts() tea.Cmd {
 	id, backend := m.id, m.backend
 	settings := app.RuntimeSettings{MixedPort: mixed, ControllerPort: controller}
 	p.err, p.cancelling = "", false
-	p.step, p.focus, p.scroll = "preparing", "ports.cancel", 0
+	p.step, p.focus = "preparing", "ports.cancel"
+	p.viewport.GotoTop()
 	m.message = m.tr("ports.checking_message")
 	return tea.Batch(func() tea.Msg {
 		plan, err := backend.PrepareRuntimeSettings(ctx, settings)
@@ -166,7 +170,7 @@ func (m *Model) acceptPorts(msg portsMsg) {
 		p.step, p.focus = "edit", "ports.mixed"
 		if msg.err == nil {
 			p.plan, p.step, p.focus = msg.plan, "review", "ports.apply"
-			p.scroll = 0
+			p.viewport.GotoTop()
 		}
 	case "apply":
 		m.notification.operation.Context = m.tr("notification.ports")
@@ -232,7 +236,8 @@ func (m *Model) portsActivate(id string) tea.Cmd {
 	case "ports.apply":
 		return m.applyPorts()
 	case "ports.back":
-		m.ports.step, m.ports.focus, m.ports.scroll, m.ports.reveal = "edit", "ports.mixed", 0, true
+		m.ports.step, m.ports.focus, m.ports.reveal = "edit", "ports.mixed", true
+		m.ports.viewport.GotoTop()
 	case "ports.retry":
 		if m.ports.step == "load-error" {
 			return m.loadPorts()
@@ -303,10 +308,8 @@ func (m *Model) portsKey(k tea.KeyPressMsg) tea.Cmd {
 			return m.preparePorts()
 		}
 		return m.portsActivate(p.focus)
-	case "pgup":
-		p.scroll = max(0, p.scroll-5)
-	case "pgdown":
-		p.scroll += 5
+	case "pgup", "pgdown":
+		p.viewport, _ = p.viewport.Update(k)
 	default:
 		return m.updatePortsInput(k)
 	}
@@ -316,12 +319,7 @@ func (m *Model) portsKey(k tea.KeyPressMsg) tea.Cmd {
 func (m *Model) portsMouse(event tea.MouseMsg) tea.Cmd {
 	k := event.Mouse()
 	if _, wheel := event.(tea.MouseWheelMsg); wheel {
-		switch k.Button {
-		case tea.MouseWheelUp:
-			m.ports.scroll = max(0, m.ports.scroll-3)
-		case tea.MouseWheelDown:
-			m.ports.scroll += 3
-		}
+		m.ports.viewport, _ = m.ports.viewport.Update(event)
 		return nil
 	}
 	m.hover = ""
@@ -436,10 +434,6 @@ func (m *Model) portsDocument(width int) (wizardDocument, []wizardButton, string
 		d.line(m.tr("ports.settings_unavailable"))
 		buttons = append(buttons, wizardButton{"ports.retry", m.tr("ports.retry")})
 	}
-	if p.err != "" {
-		d.space()
-		d.line(themed(p.err, errorColor, raised, false))
-	}
 	if p.cancelling && p.step != "applying" {
 		d.line(themed(m.tr("ports.cancelling"), warning, raised, false))
 	}
@@ -451,8 +445,8 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 	w, h, x, y := m.width, m.height, 0, 0
 	modal := w >= 110 && h >= 30
 	if modal {
-		w, h = min(78, w-12), min(28, h-4)
-		x, y = (m.width-w)/2, (m.height-h)/2
+		w, h = min(78, w-12), h-4
+		x = (m.width - w) / 2
 	}
 	if w < 34 || h < 10 {
 		label := m.tr("ports.compact_help")
@@ -494,26 +488,50 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 		line += cellCrop(value, inner)
 	}
 	footer = append(footer, line)
-	footerY := h - len(footer) - 3
 	bodyY := 5
-	if h < 16 {
+	if h < 30 {
 		bodyY = 2
 	}
-	bodyH := max(1, footerY-bodyY-1)
+	var errors []string
+	if p.err != "" {
+		errors = strings.Split(wrapText(p.err, inner), "\n")
+	}
+	if modal {
+		h = min(h, bodyY+len(doc.lines)+len(errors)+len(footer)+4)
+		y = (m.height - h) / 2
+	}
+	footerY := h - len(footer) - 3
+	// Validation stays next to the fixed actions instead of disappearing below
+	// the editor. Keep at least a complete field in the scrolling body; unusually
+	// long diagnostics also remain available in full at the end of that body.
+	errorHeight := min(len(errors), max(1, (footerY-bodyY-1)/2))
+	if len(errors) > errorHeight {
+		doc.space()
+		doc.line(themed(p.err, errorColor, raised, false))
+		errors = append([]string(nil), errors[:errorHeight]...)
+		errors[len(errors)-1] = cellCrop(errors[len(errors)-1], max(1, inner-2)) + " …"
+	}
+	errorY := footerY - 1 - errorHeight
+	bodyH := max(1, errorY-bodyY)
+	p.viewport.SetWidth(inner)
+	p.viewport.SetHeight(bodyH)
+	p.viewport.SetContentLines(doc.lines)
 	if p.reveal {
 		for _, hit := range doc.targets {
-			if hit.ID == p.focus {
-				if hit.Y < p.scroll {
-					p.scroll = hit.Y
+			if hit.ID == strings.TrimSuffix(p.focus, ".clear") {
+				// Include the field label as well as its entire three-row frame.
+				top, bottom := max(0, hit.Y-1), hit.Y+hit.H
+				if top < p.viewport.YOffset() {
+					p.viewport.SetYOffset(top)
 				}
-				if hit.Y+hit.H > p.scroll+bodyH {
-					p.scroll = hit.Y + hit.H - bodyH
+				if bottom > p.viewport.YOffset()+bodyH {
+					p.viewport.SetYOffset(bottom - bodyH)
 				}
 			}
 		}
 		p.reveal = false
 	}
-	p.scroll = max(0, min(p.scroll, max(0, len(doc.lines)-bodyH)))
+	p.viewport.SetYOffset(p.viewport.YOffset())
 	rows := make([]string, h)
 	for i := range rows {
 		rows[i] = themed(strings.Repeat(" ", w), text, raised, false)
@@ -530,15 +548,21 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 		putRows(rows, 2, 3, themed(strings.Repeat("─", w-4), divider, raised, false), w)
 	}
 	var hits []hitRegion
-	for i := 0; i < bodyH && i+p.scroll < len(doc.lines); i++ {
-		putRows(rows, 3, i+bodyY, themed(cellPad(doc.lines[i+p.scroll], inner), text, raised, false), w)
+	for i, line := range strings.Split(p.viewport.View(), "\n") {
+		if i >= bodyH {
+			break
+		}
+		putRows(rows, 3, i+bodyY, themed(cellPad(line, inner), text, raised, false), w)
 	}
 	for _, hit := range doc.targets {
-		hit.X, hit.Y = hit.X+3, bodyY+hit.Y-p.scroll
+		hit.X, hit.Y = hit.X+3, bodyY+hit.Y-p.viewport.YOffset()
 		if clipped, ok := clipRegion(hit, 3, bodyY, inner, bodyH); ok {
 			clipped.X, clipped.Y = clipped.X+x, clipped.Y+y
 			hits = append(hits, clipped)
 		}
+	}
+	for i, line := range errors {
+		putRows(rows, 3, errorY+i, themed(cellPad(line, inner), errorColor, raised, false), w)
 	}
 	putRows(rows, 2, footerY-1, themed(strings.Repeat("─", w-4), divider, raised, false), w)
 	for i, value := range footer {
