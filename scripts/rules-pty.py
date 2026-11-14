@@ -90,18 +90,27 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait("private_ip")
         terminal.settle()
         preview.capture(terminal, output, "rules-wide", args)
-        rows = terminal.screen.text().splitlines()
-        first_y = position(terminal, "private_ip")[1]
-        assert "RuleSet" in rows[first_y + 1] and "全球直连" in rows[first_y + 1], "rule metadata is not on its second row"
-
-        # Both rows select their exact rule and keep the list open. Use
-        # different rules so the metadata click must actually change focus.
-        for payload, offset in (("qichiyu.com", 0), ("jumpdesktop.com", 1)):
-            x, y = position(terminal, payload)
-            click_cell(terminal, x, y + offset)
-            screen = terminal.screen.text()
-            assert "private_ip" in screen and "Rule details" not in screen and "规则详情" not in screen, "rule click left the list"
-            assert any(payload in row and "›" in row for row in screen.splitlines()), "rule click did not focus its exact row"
+        # Wide rules align payload and metadata on one row; narrow rules keep
+        # their two-row reading order. Click both fields on different rules so
+        # the metadata click must actually change focus in either layout.
+        for width, height, metadata_offset in ((160, 45, 0), (80, 24, 1)):
+            terminal.resize(width, height)
+            terminal.settle()
+            terminal.wait("private_ip")
+            rows = terminal.screen.text().splitlines()
+            first_y = position(terminal, "private_ip")[1]
+            metadata = rows[first_y + metadata_offset]
+            assert "RuleSet" in metadata and "全球直连" in metadata, "rule metadata does not follow the responsive row layout"
+            for payload, label in (("qichiyu.com", "qichiyu.com"), ("jumpdesktop.com", "Jump Desktop")):
+                x, y = position(terminal, label)
+                assert y == position(terminal, payload)[1] + (metadata_offset if label != payload else 0), "metadata is detached from its rule"
+                click_cell(terminal, x, y)
+                screen = terminal.screen.text()
+                assert "private_ip" in screen and "Rule details" not in screen and "规则详情" not in screen, "rule click left the list"
+                assert any(payload in row and "›" in row for row in screen.splitlines()), "rule click did not focus its exact row"
+            preview.capture(terminal, output, "row-clicks-%dx%d" % (width, height), args)
+        terminal.resize(160, 45)
+        terminal.settle()
         footer = terminal.screen.text().splitlines()[-1]
         assert "Ctrl+R" not in footer, "rules footer retained the manual reload hint"
         assert "Enter" in footer, "rules footer lost the existing expand hint"

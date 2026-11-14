@@ -118,7 +118,7 @@ def exercise(preview, binary, output, language, profile, args):
         preview.capture(terminal, output, "logs-wide", args)
         rows = terminal.screen.text().splitlines()
         _, message_y = position(terminal, "event-059")
-        assert re.search(r"\d\d:\d\d:\d\d.*ERROR", rows[message_y - 1]), "detailed metadata is not above its message"
+        assert re.search(r"\d\d:\d\d:\d\d.*ERROR.*event-059", rows[message_y]), "compact metadata and message are not on the same row"
 
         # Reading history freezes the viewport while the same stream continues.
         terminal.key(b"\x1b[H")
@@ -172,9 +172,14 @@ def exercise(preview, binary, output, language, profile, args):
         assert calls(report)["streams"] == 1 and calls(report)["canceled"] == 0, calls(report)
         preview.capture(terminal, output, "no-matches-input-isolation", args)
         search(terminal, "case-needle")
+        terminal.wait("event-054")
+        # Compact rows can crop the matching suffix. Filtering still uses the
+        # complete message, and detailed mode must reveal its original case.
+        terminal.key(b"v")
         terminal.wait("Case-Needle")
         assert "ERROR-MARKER" not in terminal.screen.text(), "search retained unrelated messages"
         preview.capture(terminal, output, "case-insensitive-search", args)
+        terminal.key(b"v")
         search(terminal, "")
         terminal.key(b"\x1b[F")
         terminal.settle()
@@ -191,7 +196,14 @@ def exercise(preview, binary, output, language, profile, args):
 
         # Detailed mode exposes the full wrapped payload; compact mode crops it.
         search(terminal, "long-message-end")
+        terminal.wait("event-057")
+        terminal.wait_absent("LONG-MESSAGE-")
+        preview.capture(terminal, output, "default-compact-long-message", args)
+        terminal.key(b"v")
         wait_long_payload(terminal)
+        rows = terminal.screen.text().splitlines()
+        _, message_y = position(terminal, "event-057")
+        assert re.search(r"\d\d:\d\d:\d\d.*INFO.*event-057", rows[message_y]), "detailed metadata is not inline with its message"
         preview.capture(terminal, output, "detailed-long-message", args)
         terminal.key(b"v")
         terminal.wait_absent("LONG-MESSAGE-")
