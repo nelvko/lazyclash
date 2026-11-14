@@ -41,7 +41,8 @@ while IFS= read -r package <&3; do
   if [[ -f "$testbin" ]]; then
     orb -m "$vm" sh -c 'umask 077; cat > "$1"; chmod 700 "$1"' sh "$linux_stage/$index.test" < "$testbin"
     printf 'Run in Linux VM: %s\n' "$package"
-    orb -m "$vm" "$linux_stage/$index.test" -test.v -test.timeout=5m </dev/null
+    # Match go test's default per-package budget for the full layout matrices.
+    orb -m "$vm" "$linux_stage/$index.test" -test.v -test.timeout=10m </dev/null
   fi
 done 3< "$host_stage/packages"
 printf 'Actual Linux test execution passed (%s, %s).\n' "$vm" "$goarch"

@@ -81,6 +81,9 @@ func TestCoreStateRemainsInPageTitleWhenHintsAreHidden(t *testing.T) {
 		for _, plain := range []bool{false, true} {
 			for _, width := range []int{30, 40, 80, 120, 160} {
 				for _, page := range navPages() {
+					m := headerModel(page, width, 24)
+					m.locale, m.noColor = i18n.New(language), plain
+					m.keyHints.hidden = true
 					for _, state := range []struct {
 						service string
 						active  bool
@@ -88,10 +91,7 @@ func TestCoreStateRemainsInPageTitleWhenHintsAreHidden(t *testing.T) {
 					}{
 						{"active", true, "ON"}, {"inactive", false, "OFF"}, {"activating", false, "WAIT"}, {"failed", false, "ERR"}, {"unknown", false, "?"},
 					} {
-						m := headerModel(page, width, 24)
-						m.locale, m.noColor = i18n.New(language), plain
 						m.snapshot.Service = service.Status{State: state.service, Active: state.active}
-						m.keyHints.hidden = true
 						m.layout()
 						o := m.navigationOptions()
 						_, compact, _ := headerCoreState(o)
