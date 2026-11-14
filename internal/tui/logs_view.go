@@ -174,12 +174,19 @@ func (m Model) logsPrefix(width int) dashboardBlock {
 	if m.dashboardOptions().BodyTopRows == 0 {
 		b = m.logsToolbar(width, m.filterToolbarRows(width))
 	}
-	if m.logs.err != nil {
+	state, status := m.corePageState()
+	if state != "" {
+		b.lines = append(b.lines, themed(cellCrop(status, width), muted, bg, false))
+		if entries, _ := m.logsDisplayEntries(); len(entries) > 0 {
+			b.lines = append(b.lines, themed(cellCrop(m.tr("logs.ended"), width), muted, bg, false))
+		}
+	}
+	if m.logs.err != nil && state == "" {
 		value := m.tr("logs.unavailable", m.localizeError(m.logs.err))
 		lines := strings.Split(wrapText(themed(value, errorColor, bg, false), max(1, width)), "\n")
 		b.lines = append(b.lines, lines[:min(2, len(lines))]...)
 	}
-	if m.logs.recovered && !m.logs.reconnecting {
+	if m.logs.recovered && !m.logs.reconnecting && state == "" {
 		b.lines = append(b.lines, themed(cellCrop(m.tr("logs.recovered"), width), muted, bg, false))
 	}
 	return b
@@ -190,6 +197,9 @@ func (m Model) logsCapacity(width int) int {
 }
 
 func (m Model) logsStatus() (string, string) {
+	if state, status := m.corePageState(); state != "" {
+		return status, muted
+	}
 	if m.logs.reconnecting {
 		return m.tr("logs.reconnecting"), warning
 	}
@@ -232,6 +242,9 @@ func (m Model) logsBody(width int) (string, []hitRegion) {
 		entries, _ := m.logsDisplayEntries()
 		if len(entries) > 0 || m.logs.search.Value() != "" || m.logs.level != 0 {
 			message = m.tr("logs.no_matches")
+		}
+		if state, status := m.corePageState(); state != "" && len(entries) == 0 {
+			message = status
 		}
 		doc.lines = strings.Split(wrapText(themed(message, muted, bg, false), width), "\n")
 	}

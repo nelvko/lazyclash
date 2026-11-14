@@ -80,6 +80,9 @@ func (m Model) connectionStatus() (string, string) {
 		return m.tr("connections.closed_count", len(m.filteredConnections()), len(m.connectionClosedEntries())) + " · " + m.tr("connections.history_scope"), muted
 	}
 	status, color := runtimeStatus(m.runtime.snapshot, m.runtime.received, m.runtime.pending, m.snapshot.Installed, m.locale), muted
+	if state, coreStatus := m.corePageState(); state != "" {
+		return coreStatus, color
+	}
 	if m.connections.paused && m.connectionSnapshot() != nil {
 		status, color = m.tr("connections.paused"), warning
 	}

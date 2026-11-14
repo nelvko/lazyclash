@@ -157,7 +157,11 @@ func (m Model) rulesBodyWindow(width, start, height int) ruleBodyWindow {
 		addText(m.tr("rules.description"), muted)
 	}
 	if m.rules.received && m.rules.snapshot.State != "ready" {
-		addButton("rules.retry", m.tr("rules.retry_label"))
+		if id, label := m.corePageAction(); id != "" {
+			addButton(id, label)
+		} else if state, _ := m.corePageState(); state != "transition" {
+			addButton("rules.retry", m.tr("rules.retry_label"))
+		}
 	}
 	list := m.filteredRules()
 	if _, err := m.ruleMatcher(); err != nil {

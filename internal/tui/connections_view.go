@@ -322,8 +322,16 @@ func (m Model) connectionsBody(width int) (string, []hitRegion) {
 		}
 		if !m.connections.closedView && m.connectionSnapshot() == nil {
 			empty = m.tr("connections.unavailable_hint")
+			if state, status := m.corePageState(); state != "" {
+				empty = status
+			}
 		}
 		addText(empty, muted)
+		if !m.connections.closedView && m.connectionSnapshot() == nil {
+			if id, label := m.corePageAction(); id != "" {
+				addButton(id, label)
+			}
+		}
 	}
 	// Keep logical rows and hit regions for the dashboard's shared navigation,
 	// but let Bubbles size and render only the visible part of a busy list.

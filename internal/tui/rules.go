@@ -321,6 +321,9 @@ func (m *Model) selectRule(id string) (mihomo.Rule, bool) {
 	return mihomo.Rule{}, false
 }
 func (m Model) rulesStatus() string {
+	if state, status := m.corePageState(); state != "" {
+		return status
+	}
 	if !m.rules.received {
 		return m.tr("rules.loading")
 	}
@@ -328,9 +331,9 @@ func (m Model) rulesStatus() string {
 	case "ready":
 		return m.tr("rules.loaded")
 	case "uninstalled":
-		return m.tr("rules.uninstalled")
+		return m.tr("runtime.status.not_installed")
 	case "stopped":
-		return m.tr("rules.stopped")
+		return m.tr("runtime.status.stopped")
 	case "unsupported":
 		return m.tr("rules.unsupported")
 	default:
