@@ -171,13 +171,18 @@ func (m *actionMenu) mouse(msg tea.MouseMsg) menuResult {
 	return menuResult{}
 }
 
-func (m *actionMenu) render(base string, width, height int) string {
+func (m *actionMenu) render(base string, width, height, contentBottom int) string {
 	if !m.open {
 		return base
 	}
 	if width <= 0 || height <= 0 {
 		m.bounds = hitRegion{}
 		return ""
+	}
+	available := max(0, min(height, contentBottom))
+	if available == 0 {
+		m.bounds = hitRegion{}
+		return base
 	}
 	labels := make([]string, len(m.items))
 	contentWidth := 0
@@ -189,19 +194,19 @@ func (m *actionMenu) render(base string, width, height int) string {
 		contentWidth = max(contentWidth, ansi.StringWidth(labels[i]))
 	}
 	menuWidth := min(width, max(18, min(48, contentWidth+4)))
-	m.framed = menuWidth >= 4 && height >= 3
+	m.framed = menuWidth >= 4 && available >= 3
 	padding := 0
 	if m.framed {
 		padding = 1
 	}
-	visible := min(len(m.items), height-2*padding)
+	visible := min(len(m.items), available-2*padding)
 	menuHeight := visible + 2*padding
 	m.offset = min(m.offset, max(0, len(m.items)-visible))
 	if m.selected >= 0 {
 		m.offset = min(m.offset, m.selected)
 		m.offset = max(m.offset, m.selected-visible+1)
 	}
-	m.bounds = hitRegion{X: max(0, min(m.x, width-menuWidth)), Y: max(0, min(m.y, height-menuHeight)), W: menuWidth, H: menuHeight}
+	m.bounds = hitRegion{X: max(0, min(m.x, width-menuWidth)), Y: max(0, min(m.y, available-menuHeight)), W: menuWidth, H: menuHeight}
 	lines := make([]string, 0, menuHeight)
 	if m.framed {
 		lines = append(lines, m.edge(menuWidth, true, m.offset > 0))

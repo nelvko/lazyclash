@@ -74,7 +74,7 @@ func TestActionMenuOwnsKeyboardAndDismissesWithoutActivation(t *testing.T) {
 func TestActionMenuDisabledItemsCannotBeSelected(t *testing.T) {
 	var m actionMenu
 	m.show([]menuItem{{ID: "delete", Label: "Delete", DisabledReason: "Current profile"}}, 0, 0)
-	view := m.render("", 80, 10)
+	view := m.render("", 80, 10, 10)
 	if !strings.Contains(ansi.Strip(view), "Delete · Current profile") || m.selected != -1 {
 		t.Fatal("disabled action lost its explanation or became selected")
 	}
@@ -91,7 +91,7 @@ func TestActionMenuDisabledItemsCannotBeSelected(t *testing.T) {
 func TestActionMenuMouseHoverReleaseAndClick(t *testing.T) {
 	var m actionMenu
 	m.show(testMenuItems(), 5, 4)
-	m.render("", 80, 20)
+	m.render("", 80, 20, 20)
 	disabled := menuMouse(m, 1, tea.MouseLeft)
 	if result := m.mouse(disabled); result.Action != "" || !m.open || m.selected != 0 {
 		t.Fatal("disabled mouse target changed selection or ran an action")
@@ -112,7 +112,7 @@ func TestActionMenuOutsideClickOnlyDismisses(t *testing.T) {
 	for _, button := range []tea.MouseButton{tea.MouseLeft, tea.MouseRight} {
 		var m actionMenu
 		m.show(testMenuItems(), 5, 4)
-		m.render("", 80, 20)
+		m.render("", 80, 20, 20)
 		if result := m.mouse(tea.MouseClickMsg{X: 79, Y: 19, Button: button}); result.Action != "" || !result.Closed || m.open {
 			t.Fatalf("outside %s click did not dismiss without action: %+v", button, result)
 		}
@@ -122,7 +122,7 @@ func TestActionMenuOutsideClickOnlyDismisses(t *testing.T) {
 func TestActionMenuWheelOnlyMovesInsideMenu(t *testing.T) {
 	var m actionMenu
 	m.show(testMenuItems(), 5, 4)
-	m.render("", 80, 20)
+	m.render("", 80, 20, 20)
 	m.mouse(tea.MouseWheelMsg{X: 79, Y: 19, Button: tea.MouseWheelDown})
 	if m.selected != 0 {
 		t.Fatal("wheel outside the popup scrolled menu selection")
@@ -138,19 +138,19 @@ func TestActionMenuClampsToWindowAndKeepsSelectionVisible(t *testing.T) {
 		for _, anchor := range [][2]int{{0, 0}, {size[0] - 1, size[1] - 1}, {-100, -100}, {1000, 1000}} {
 			var m actionMenu
 			m.show(testMenuItems(), anchor[0], anchor[1])
-			view := m.render("", size[0], size[1])
+			view := m.render("", size[0], size[1], size[1])
 			assertCanvas(t, view, size[0], size[1])
 			if m.bounds.X < 0 || m.bounds.Y < 0 || m.bounds.X+m.bounds.W > size[0] || m.bounds.Y+m.bounds.H > size[1] {
 				t.Fatalf("menu escaped %v at %v: %+v", size, anchor, m.bounds)
 			}
 			m.key(special(tea.KeyEnd))
-			view = m.render("", size[0], size[1])
+			view = m.render("", size[0], size[1], size[1])
 			assertCanvas(t, view, size[0], size[1])
 			if size[0] >= 8 && !strings.Contains(ansi.Strip(view), "Del") {
 				t.Fatalf("selected last item is not visible in %v", size)
 			}
 			m.key(special(tea.KeyHome))
-			view = m.render("", size[0], size[1])
+			view = m.render("", size[0], size[1], size[1])
 			if size[0] >= 24 && !strings.Contains(ansi.Strip(view), "Use profile") {
 				t.Fatalf("selected first item is not visible in %v", size)
 			}
@@ -161,13 +161,36 @@ func TestActionMenuClampsToWindowAndKeepsSelectionVisible(t *testing.T) {
 func TestActionMenuEmptyAndZeroSizedWindows(t *testing.T) {
 	var m actionMenu
 	m.show(nil, 0, 0)
-	if m.open || m.render("unchanged", 20, 10) != "unchanged" {
+	if m.open || m.render("unchanged", 20, 10, 10) != "unchanged" {
 		t.Fatal("empty menu obscured the page")
 	}
 	m.show(testMenuItems(), 0, 0)
 	for _, size := range [][2]int{{0, 10}, {10, 0}, {-1, -1}} {
-		if actual := m.render("", size[0], size[1]); actual != "" {
+		if actual := m.render("", size[0], size[1], size[1]); actual != "" {
 			t.Fatal("zero-size canvas produced content")
+		}
+	}
+}
+
+func TestActionMenuPreservesFooterWhenAnchoredAtBottom(t *testing.T) {
+	for _, height := range []int{18, 24, 40} {
+		const width = 80
+		footer := cellPad("? Help · q Quit", width)
+		base := strings.Repeat(strings.Repeat(" ", width)+"\n", height-1) + footer
+		var menu actionMenu
+		menu.show(testMenuItems(), width-1, height-1)
+		view := menu.render(base, width, height, height-1)
+		assertCanvas(t, view, width, height)
+		if menu.bounds.Y+menu.bounds.H > height-1 {
+			t.Fatalf("menu overlaps the footer: %+v", menu.bounds)
+		}
+		if got := strings.Split(view, "\n")[height-1]; got != footer {
+			t.Fatalf("menu changed the footer: %q", ansi.Strip(got))
+		}
+		menu.key(special(tea.KeyEnd))
+		menu.render(base, width, height, height-1)
+		if result := menu.mouse(menuMouse(menu, menu.selected-menu.offset, tea.MouseLeft)); result.Action != "delete" {
+			t.Fatalf("clamped last action is not clickable: %+v", result)
 		}
 	}
 }
@@ -197,10 +220,10 @@ func TestActionMenuItemUpdatesPreserveSelectionAndSkipNewlyDisabledActions(t *te
 func TestActionMenuDestructiveSelectionKeepsAnIndependentFocusMarker(t *testing.T) {
 	var menu actionMenu
 	menu.show(testMenuItems(), 5, 4)
-	menu.render("", 80, 24)
+	menu.render("", 80, 24, 24)
 	before := menu.bounds
 	menu.key(special(tea.KeyEnd))
-	view := menu.render("", 80, 24)
+	view := menu.render("", 80, 24, 24)
 	if menu.bounds != before || menu.items[menu.selected].ID != "delete" {
 		t.Fatal("moving focus to Delete changed the menu geometry or selection")
 	}

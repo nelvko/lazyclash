@@ -64,7 +64,7 @@ func TestProfileMenuLanguageUpdatesPreserveIdentityAndCanvas(t *testing.T) {
 			if m.menu.items[m.menu.selected].ID != "rename" {
 				t.Fatal("language changed the selected action identity")
 			}
-			view := m.menu.render("", size[0], size[1])
+			view := m.menu.render("", size[0], size[1], size[1])
 			assertCanvas(t, view, size[0], size[1])
 			if size[0] >= 30 && !strings.Contains(ansi.Strip(view), "重命名") {
 				t.Fatalf("Chinese menu action missing: %s", view)

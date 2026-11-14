@@ -1567,7 +1567,7 @@ func (m *Model) renderLayout() {
 	} else if m.providers.open {
 		m.screen, m.targets = m.renderProviders(base)
 	} else if m.menu.open {
-		m.screen = m.menu.render(base, m.width, m.height)
+		m.screen = m.menu.render(base, m.width, m.height, dashboardContentBottom(o))
 	}
 }
 func (m Model) View() tea.View {
