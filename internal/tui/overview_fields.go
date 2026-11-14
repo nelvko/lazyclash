@@ -4,9 +4,10 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
-type overviewField struct{ label, value, detail, color string }
+type overviewField struct{ label, value, detail, detailValue, color string }
 
 // Keep each current value and its secondary detail in the same column.
 func overviewFieldGrid(o dashboardOptions, fields []overviewField, width, columns int) []string {
@@ -14,6 +15,15 @@ func overviewFieldGrid(o dashboardOptions, fields []overviewField, width, column
 		return nil
 	}
 	columns = max(1, min(columns, len(fields)))
+	minimum := 1
+	for _, field := range fields {
+		if field.detailValue != "" {
+			minimum = max(minimum, ansi.StringWidth(field.value), ansi.StringWidth(field.detailValue))
+		}
+	}
+	for columns > 1 && (width-2*(columns-1))/columns < minimum {
+		columns--
+	}
 	cellWidth := max(1, (width-2*(columns-1))/max(1, columns))
 	var lines []string
 	for i := 0; i < len(fields); i += columns {
@@ -27,10 +37,21 @@ func overviewFieldGrid(o dashboardOptions, fields []overviewField, width, column
 			}
 			label := themed(field.label, labelColor, panel, o.Dim)
 			value := themed(lipgloss.NewStyle().Bold(true).Render(clean(field.value)), text, panel, o.Dim)
-			cells[j] = append(strings.Split(wrapText(label, cellWidth), "\n"), strings.Split(wrapText(value, cellWidth), "\n")...)
+			valueRows := strings.Split(wrapText(value, cellWidth), "\n")
+			if field.detailValue != "" {
+				valueRows = []string{cellCrop(value, cellWidth)}
+			}
+			cells[j] = append(strings.Split(wrapText(label, cellWidth), "\n"), valueRows...)
 			if field.detail != "" {
 				cells[j] = append(cells[j], "")
-				cells[j] = append(cells[j], strings.Split(wrapText(themed(field.detail, muted, panel, o.Dim), cellWidth), "\n")...)
+				detail := field.detail
+				if field.detailValue != "" && ansi.StringWidth(detail+"  "+field.detailValue) <= cellWidth {
+					detail += "  " + field.detailValue
+				}
+				cells[j] = append(cells[j], strings.Split(wrapText(themed(detail, muted, panel, o.Dim), cellWidth), "\n")...)
+				if field.detailValue != "" && detail == field.detail {
+					cells[j] = append(cells[j], themed(cellCrop(field.detailValue, cellWidth), muted, panel, o.Dim))
+				}
 			}
 			height = max(height, len(cells[j]))
 		}

@@ -39,9 +39,9 @@ func overviewTrafficCard(o dashboardOptions, width int) dashboardBlock {
 			columns = 2
 		}
 		fields := []overviewField{
-			{label: tr("dashboard.overview.upload"), value: up, detail: tr("dashboard.overview.totalUpload") + "  " + totalUp, color: colors.upload},
-			{label: tr("dashboard.overview.download"), value: down, detail: tr("dashboard.overview.totalDownload") + "  " + totalDown, color: colors.download},
-			{label: tr("dashboard.field.connections"), value: connections, detail: tr("dashboard.field.coreMemory") + "  " + memory},
+			{label: tr("dashboard.overview.upload"), value: up, detail: tr("dashboard.overview.totalUpload"), detailValue: totalUp, color: colors.upload},
+			{label: tr("dashboard.overview.download"), value: down, detail: tr("dashboard.overview.totalDownload"), detailValue: totalDown, color: colors.download},
+			{label: tr("dashboard.field.connections"), value: connections, detail: tr("dashboard.field.coreMemory"), detailValue: memory},
 		}
 		lines = append(lines, "")
 		lines = append(lines, overviewFieldGrid(o, fields, inner, columns)...)

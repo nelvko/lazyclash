@@ -67,3 +67,23 @@ func TestOverviewTrafficSummaryKeepsRunningUnavailableMetricsUnknown(t *testing.
 		t.Fatalf("running unavailable summary did not mark all six metrics unknown:\n%s", plain)
 	}
 }
+
+func TestOverviewTrafficKeepsMetricUnitsTogether(t *testing.T) {
+	for _, language := range []string{i18n.English, i18n.Chinese} {
+		for width := 28; width <= 140; width++ {
+			runtime := liveRuntime()
+			runtime.Traffic = &mihomo.Traffic{Up: 1023 << 20, Down: 993 << 10, UpTotal: 44238163149, DownTotal: 95133525606}
+			memory := uint64(194 << 20)
+			runtime.Memory = &memory
+			o := dashboardOptions{Locale: i18n.New(language), Snapshot: app.Snapshot{Installed: true, Service: service.Status{Active: true, State: "active"}}, Runtime: runtime, RuntimeReceived: true, Height: 24}
+			card := overviewTrafficCard(o, width)
+			plain := ansi.Strip(strings.Join(card.lines, "\n"))
+			for _, metric := range []string{formatBytes(runtime.Traffic.Up) + "/s", formatBytes(runtime.Traffic.Down) + "/s", formatBytes(runtime.Traffic.UpTotal), formatBytes(runtime.Traffic.DownTotal), formatBytes(int64(memory))} {
+				if !strings.Contains(plain, metric) {
+					t.Fatalf("%s width %d split metric %q:\n%s", language, width, metric, plain)
+				}
+			}
+			assertCanvas(t, strings.Join(card.lines, "\n"), width, len(card.lines))
+		}
+	}
+}
