@@ -246,7 +246,7 @@ func (m *Model) connectionKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 			delta := 1
 			g := dashboardGeometry(m.dashboardOptions())
 			page := max(1, g.height)
-			if g.width < 100 {
+			if g.width < connectionTableMinWidth {
 				page = max(1, page/2)
 			}
 			switch key {

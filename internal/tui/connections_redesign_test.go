@@ -230,7 +230,7 @@ func TestConnectionsResponsiveRowsFixedToolbarAndResizeSelection(t *testing.T) {
 				g := dashboardGeometry(m.dashboardOptions())
 				_, targets := m.connectionsBody(g.width)
 				expectedHeight := 2
-				if g.width >= 100 {
+				if g.width >= 85 {
 					expectedHeight = 1
 				}
 				for _, target := range targets {
@@ -269,7 +269,7 @@ func TestConnectionsHomeEndAndPagingSelectVisibleIDsAcrossLayouts(t *testing.T) 
 			m, _ = update(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
 			g := dashboardGeometry(m.dashboardOptions())
 			rowHeight := 1
-			if g.width < 100 {
+			if g.width < 85 {
 				rowHeight = 2
 			}
 			page := max(1, g.height/rowHeight)

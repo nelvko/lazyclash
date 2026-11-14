@@ -12,6 +12,8 @@ import (
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
 
+const connectionTableMinWidth = 85
+
 func (m Model) connectionNow() time.Time {
 	if m.connections.paused && m.connections.detail == nil {
 		return m.connections.frozenAt
@@ -66,6 +68,20 @@ func connectionChain(c mihomo.Connection) string {
 	return connectionValue(strings.Join(chain, " → "))
 }
 
+func connectionChainCell(c mihomo.Connection, width int) string {
+	chain := connectionChain(c)
+	if ansi.StringWidth(chain) <= width || len(c.Chains) == 0 {
+		return cellCrop(chain, width)
+	}
+	// The outbound is the meaningful end of a routed chain. Drop intermediate
+	// groups before shortening its name; details retain the complete path.
+	outbound := connectionValue(c.Chains[0])
+	if ansi.StringWidth(outbound)+4 <= width {
+		return "… → " + outbound
+	}
+	return cellCrop(outbound, width)
+}
+
 func connectionValue(s string) string {
 	if strings.TrimSpace(s) == "" {
 		return "--"
@@ -110,7 +126,7 @@ func (m Model) connectionsToolbar(width, rows int) dashboardBlock {
 	b := m.connectionFilterBar(width)
 	status, color := m.connectionStatus()
 	b.lines = append(b.lines, themed(cellCrop(status, width), color, bg, false))
-	if width >= 100 {
+	if width >= connectionTableMinWidth {
 		b.lines = append(b.lines, m.connectionTable(nil, width)[0])
 	} else {
 		b.lines = append(b.lines, themed(strings.Repeat("─", width), divider, bg, false))
@@ -126,20 +142,19 @@ func (m Model) connectionsToolbar(width, rows int) dashboardBlock {
 	return b
 }
 
-// Bubbles table handles cell sizing, ANSI-aware truncation and selection. The
-// dashboard retains the only scrolling viewport and maps rows to opaque IDs.
-func (m Model) connectionTable(list []mihomo.Connection, width int) []string {
-	columns := []table.Column{{Title: "", Width: 1}, {Title: m.tr("connections.destination"), Width: 24}, {Title: m.tr("connections.protocol"), Width: 5}}
+func (m Model) connectionColumns(width int) (columns []table.Column, chainColumn, numericColumn int) {
+	columns = []table.Column{{Title: "", Width: 1}, {Title: m.tr("connections.destination"), Width: 24}, {Title: m.tr("connections.protocol"), Width: 5}}
 	if width >= 125 {
 		columns = append(columns, table.Column{Title: m.tr("connections.process"), Width: 12})
 	}
-	chainColumn := len(columns)
+	chainColumn = len(columns)
 	columns = append(columns, table.Column{Title: m.tr("connections.chain"), Width: 18})
 	ruleColumn := -1
 	if width >= 125 {
 		ruleColumn = len(columns)
 		columns = append(columns, table.Column{Title: m.tr("connections.rule"), Width: 16})
 	}
+	numericColumn = len(columns)
 	columns = append(columns, table.Column{Title: m.tr("connections.download_speed"), Width: 11}, table.Column{Title: m.tr("connections.upload_speed"), Width: 11})
 	if width >= 155 {
 		columns = append(columns, table.Column{Title: m.tr("connections.download_total"), Width: 10}, table.Column{Title: m.tr("connections.upload_total"), Width: 10})
@@ -150,14 +165,30 @@ func (m Model) connectionTable(list []mihomo.Connection, width int) []string {
 		used += c.Width
 	}
 	extra := max(0, width-used)
+	destinationExtra := (2*extra + 2) / 3
+	columns[1].Width += destinationExtra
+	extra -= destinationExtra
 	if ruleColumn >= 0 {
-		columns[1].Width += extra / 3
-		columns[chainColumn].Width += extra / 3
-		columns[ruleColumn].Width += extra - 2*(extra/3)
+		columns[chainColumn].Width += (extra + 1) / 2
+		columns[ruleColumn].Width += extra / 2
 	} else {
-		columns[1].Width += extra / 2
-		columns[chainColumn].Width += extra - extra/2
+		columns[chainColumn].Width += extra
 	}
+	for index := numericColumn; index < len(columns); index++ {
+		columns[index].Title = connectionNumberCell(columns[index].Title, columns[index].Width)
+	}
+	return columns, chainColumn, numericColumn
+}
+
+func connectionNumberCell(value string, width int) string {
+	value = cellCrop(value, width)
+	return strings.Repeat(" ", max(0, width-ansi.StringWidth(value))) + value
+}
+
+// Bubbles table handles cell sizing, ANSI-aware truncation and selection. The
+// dashboard retains the only scrolling viewport and maps rows to opaque IDs.
+func (m Model) connectionTable(list []mihomo.Connection, width int) []string {
+	columns, chainColumn, numericColumn := m.connectionColumns(width)
 	var rows []table.Row
 	for _, c := range list {
 		marker := " "
@@ -171,7 +202,7 @@ func (m Model) connectionTable(list []mihomo.Connection, width int) []string {
 		if width >= 125 {
 			row = append(row, connectionValue(c.Metadata.Process))
 		}
-		row = append(row, connectionChain(c))
+		row = append(row, connectionChainCell(c, columns[chainColumn].Width))
 		if width >= 125 {
 			row = append(row, connectionRule(c))
 		}
@@ -181,6 +212,9 @@ func (m Model) connectionTable(list []mihomo.Connection, width int) []string {
 			row = append(row, formatBytes(c.Download), formatBytes(c.Upload))
 		}
 		row = append(row, connectionDuration(c, m.connectionRowTime(c)))
+		for index := numericColumn; index < len(row); index++ {
+			row[index] = connectionNumberCell(row[index], columns[index].Width)
+		}
 		rows = append(rows, row)
 	}
 	style := func(fg, surface string) lipgloss.Style {
@@ -336,7 +370,7 @@ func (m Model) connectionsBody(width int) (string, []hitRegion) {
 	// Keep logical rows and hit regions for the dashboard's shared navigation,
 	// but let Bubbles size and render only the visible part of a busy list.
 	rowHeight := 1
-	if width < 100 {
+	if width < connectionTableMinWidth {
 		rowHeight = 2
 	}
 	prefix := len(lines)
@@ -345,14 +379,14 @@ func (m Model) connectionsBody(width int) (string, []hitRegion) {
 	first := min(len(list), max(0, (start-prefix)/rowHeight))
 	end := min(len(list), max(first, (start+height-prefix+rowHeight-1)/rowHeight))
 	var tableRows []string
-	if width >= 100 && end > first {
+	if width >= connectionTableMinWidth && end > first {
 		tableRows = m.connectionTable(list[first:end], width)[1:]
 	}
 	for i, c := range list {
 		row := len(lines)
 		if i < first || i >= end {
 			lines = append(lines, make([]string, rowHeight)...)
-		} else if width >= 100 {
+		} else if width >= connectionTableMinWidth {
 			lines = append(lines, tableRows[i-first])
 		} else {
 			lines = append(lines, m.compactConnectionRows(c, width)...)

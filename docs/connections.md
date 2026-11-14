@@ -12,7 +12,7 @@ Mihomo 接口只返回活跃连接数组，没有已关闭数量、历史查询�
 
 字段定义参见 [Mihomo API 文档](https://wiki.metacubex.one/api/#connections)；客户端保留历史的参考见 [Verge Rev 实现](https://github.com/clash-verge-rev/clash-verge-rev/blob/dev/src/hooks/use-connection-data.ts)。
 
-正文至少 100 列时复用 Charm Bubbles table，显示目标、协议、代理链、双向速度和时长；至少 125 列增加进程和匹配规则，至少 155 列增加单条累计下载/上传量。更窄时使用双行列表，优先显示目标、协议、速度和进程；完整字段在详情内查看。Bubbles textinput 负责搜索编辑和水平滚动；页面沿用 dashboard 的滚动、键盘焦点和鼠标命中，仅渲染可见连接。
+正文至少 85 列时复用 Charm Bubbles table，120 列终端即可显示目标、协议、代理链、双向速度和时长；至少 125 列增加进程和匹配规则，至少 155 列增加单条累计下载/上传量。剩余宽度优先分配给目标地址；代理链过长时先省略中间策略组，保留最终出口，出口名称自身超宽时才截断名称。速度、累计量与时长连同表头右对齐。更窄时使用双行列表，优先显示目标、协议、速度和进程；完整字段在详情内查看。Bubbles textinput 负责搜索编辑和水平滚动；页面沿用 dashboard 的滚动、键盘焦点和鼠标命中，仅渲染可见连接。
 
 - `v` 切换活跃/已关闭；也可点击标签或用 Tab 聚焦后 Enter 选择。切换保留搜索条件。
 - `/` 搜索：不区分大小写，匹配域名、IP、端口、协议、进程、路径、规则、代理链和连接 ID。`×` 清空。Enter/Esc 完成输入，Tab/Shift+Tab 移动到相邻控件。
