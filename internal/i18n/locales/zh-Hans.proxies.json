@@ -1,4 +1,8 @@
 {
+  "proxies.search": "搜索",
+  "proxies.search_placeholder": "筛选代理组或节点",
+  "proxies.search_no_match": "没有匹配的代理组或节点。",
+  "proxies.search_group": "代理组：%s",
   "proxies.collapse_all": "全部收起",
   "proxies.direct.description": "所有流量均直接连接。",
   "proxies.direct.keys": "Tab 切换控件 · Enter 操作 · Esc 返回",

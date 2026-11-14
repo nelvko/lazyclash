@@ -71,6 +71,8 @@ func (m Model) activeInputField() (textinput.Model, string, bool) {
 		return m.wizard.version, m.focus, true
 	}
 	switch m.page {
+	case "proxies":
+		return m.proxies.search, "proxies.search", m.proxies.editing && m.focus == "proxies.search"
 	case "profiles":
 		return m.profilesUI.url, "profiles.url", m.profilesUI.editing && m.focus == "profiles.url"
 	case "connections":

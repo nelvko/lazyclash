@@ -57,6 +57,8 @@ func (m *Model) browsePage(page string) {
 		m.profilesUI.url.Blur()
 		m.connections.editing = false
 		m.connections.search.Blur()
+		m.proxies.editing = false
+		m.proxies.search.Blur()
 		m.rules.editing = false
 		m.rules.search.Blur()
 		m.logs.editing = false
@@ -81,6 +83,8 @@ func (m *Model) returnToNavigation() {
 	m.profilesUI.url.Blur()
 	m.connections.editing = false
 	m.connections.search.Blur()
+	m.proxies.editing = false
+	m.proxies.search.Blur()
 	m.rules.editing = false
 	m.rules.search.Blur()
 	m.logs.editing = false
@@ -140,6 +144,9 @@ func (m Model) fixedContentTargets() []hitRegion {
 	}
 	if m.page == "logs" {
 		b = m.logsToolbar(g.width, o.BodyTopRows)
+	}
+	if m.page == "proxies" {
+		b = m.proxiesFixedToolbar(g.width, o.BodyTopRows)
 	}
 	for i := range b.targets {
 		b.targets[i].X += g.x

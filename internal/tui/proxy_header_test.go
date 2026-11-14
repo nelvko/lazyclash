@@ -101,26 +101,37 @@ func TestApplyingProfileAutomaticallyUpdatesProxyGroups(t *testing.T) {
 	}
 }
 
-func TestProxiesPageHasNoSearchInputOrShortcut(t *testing.T) {
+func TestProxiesSearchStartsCollapsedAndOpensOnDemand(t *testing.T) {
 	m, _ := proxiesModel(t, 160, 40)
-	before := m.focus
-	m, _ = update(m, tea.KeyPressMsg{Code: '/', Text: "/"})
-	m, _ = update(m, tea.PasteMsg{Content: "must not filter proxies"})
-	if m.focus != before || m.busy {
-		t.Fatal("removed search shortcut changed focus or started a job")
+	if hasAction(m.targets, "proxies.search") || m.proxies.editing {
+		t.Fatal("default proxy directory should not reserve a search input")
 	}
-	if _, _, active := m.activeInputField(); active {
-		t.Fatal("proxy page retained an active text input")
+	m, _ = click(m, findTarget(t, m, "proxies.search-open"))
+	if _, id, active := m.activeInputField(); !active || id != "proxies.search" || !hasAction(m.targets, id) || m.busy {
+		t.Fatal("header search action did not open an editable input")
 	}
-	for _, target := range m.targets {
-		if target.ID == "proxies.search" || target.ID == "proxies.clear" {
-			t.Fatal("removed search retained a focus or mouse target")
-		}
-	}
-	if got := len(m.proxyMembers(m.snapshot.Groups[0])); got != len(m.snapshot.Groups[0].All) {
-		t.Fatal("proxy members were filtered after pasting text")
+	m, _ = update(m, special(tea.KeyEscape))
+	if hasAction(m.targets, "proxies.search") || m.proxies.editing {
+		t.Fatal("empty search should close after Escape")
 	}
 	m.stopRuntime()
+}
+
+func TestProxiesSearchActionsFitShortSingleRowHeader(t *testing.T) {
+	for _, width := range []int{100, 101, 110, 120} {
+		m := headerModel("proxies", width, 20)
+		g := dashboardGeometry(m.dashboardOptions())
+		for _, id := range []string{"proxies.search-open", "proxies.providers"} {
+			hit := findTarget(t, m, id)
+			if hit.Y >= g.headerHeight || hit.X+hit.W > g.headerX+g.headerWidth {
+				t.Fatalf("%d columns: header action escaped its allocated row: %+v header=%+v", width, hit, g)
+			}
+			row := strings.Split(m.screen, "\n")[hit.Y]
+			if strings.TrimSpace(ansi.Strip(ansi.Cut(row, hit.X, hit.X+hit.W))) == "" {
+				t.Fatalf("%d columns: header action was overwritten by body or divider: %+v", width, hit)
+			}
+		}
+	}
 }
 
 func TestProxyProvidersHeaderKeepsModeOrderAcrossSizes(t *testing.T) {
@@ -161,8 +172,12 @@ func TestProxyProvidersHeaderKeepsModeOrderAcrossSizes(t *testing.T) {
 					if provider.X+provider.W != g.headerX+g.headerWidth {
 						t.Fatal("provider action is not aligned to the header's right edge")
 					}
-					if gap := provider.X - previous.X - previous.W; gap != 4 {
-						t.Fatalf("mode choices should sit beside providers with a four-cell gap, got %d", gap)
+					search := findTarget(t, m, "proxies.search-open")
+					if search.Y != provider.Y || search.X+search.W > provider.X {
+						t.Fatal("search action should precede providers without overlap")
+					}
+					if gap := search.X - previous.X - previous.W; gap != 4 {
+						t.Fatalf("mode choices should sit beside search with a four-cell gap, got %d", gap)
 					}
 				}
 				assertCanvas(t, m.screen, size[0], size[1])

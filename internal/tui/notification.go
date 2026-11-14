@@ -332,6 +332,9 @@ func (m Model) dashboardOptions() dashboardOptions {
 			o.BodyTopRows = rows
 		}
 	}
+	if m.page == "proxies" {
+		o.BodyTopRows = m.proxyFixedRows(o)
+	}
 	if m.page == "connections" && m.connections.detail == nil && !m.connections.confirming {
 		g := dashboardGeometry(o)
 		rows := m.connectionToolbarRows(g.width)

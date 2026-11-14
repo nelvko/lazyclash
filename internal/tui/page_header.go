@@ -55,7 +55,10 @@ func (m Model) pageHeader() pageHeader {
 				h.leading = append(h.leading, headerAction{"mode." + mode, tr("dashboard.mode." + mode), "", m.proxiesReady() && m.snapshot.Mode.Error == ""})
 			}
 		}
-		h.actions = []headerAction{{"proxies.providers", tr("providers.title.proxies"), "≡", m.providersSupported(providerProxies)}}
+		h.actions = []headerAction{
+			{"proxies.search-open", tr("proxies.search"), "/", m.proxiesReady() && !m.proxiesDirect() && m.proxies.detail == ""},
+			{"proxies.providers", tr("providers.title.proxies"), "≡", m.providersSupported(providerProxies)},
+		}
 	case "profiles":
 		h.actions = []headerAction{{"profiles.update-all", tr("header.updateAll"), "↻", m.hasRefreshableProfiles()}}
 	case "connections":
@@ -206,6 +209,12 @@ func renderLeadingPageHeader(o dashboardOptions, g dashboardLayout, left int) (s
 	actionWidth := ansi.StringWidth(strings.Join(actions, ""))
 	y, right := g.headerY, g.headerX+g.headerWidth
 	gap := 4
+	if g.headerHeight == g.headerY+1 && modeWidth+gap+actionWidth > right-left {
+		// A short header has no spare action row. Compact the labels before
+		// wrapping, so the controls cannot land on its separator or body.
+		actions = renderActions(true)
+		actionWidth = ansi.StringWidth(strings.Join(actions, ""))
+	}
 	if modeWidth+gap+actionWidth > right-left {
 		y, left = g.headerY+1, g.headerX
 	}

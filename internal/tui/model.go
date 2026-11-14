@@ -626,6 +626,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.profilesUI.url.Focus()
 			m.profilesUI.url, cmd = m.profilesUI.url.Update(v)
 
+		} else if m.proxies.editing {
+			m.proxies.search, cmd = m.proxies.search.Update(v)
+			m.proxies.searchCollapsed = nil
+			m.scroll = 0
 		} else if m.connections.editing {
 			m.connections.search, cmd = m.connections.search.Update(v)
 			m.reconcileConnections()
@@ -687,6 +691,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.page == "connections" && m.connections.editing {
 			cmd = m.connectionSearchKey(v)
+			break
+		}
+		if m.page == "proxies" && m.proxies.editing {
+			cmd = m.proxySearchKey(v)
 			break
 		}
 		if m.page == "rules" && m.rules.editing {
@@ -960,6 +968,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else if m.page == "profiles" && m.focus == "profiles.url" {
 			m.profilesUI.url, cmd = m.profilesUI.url.Update(msg)
 
+		} else if m.proxies.editing {
+			m.proxies.search, cmd = m.proxies.search.Update(msg)
 		} else if m.connections.editing {
 			m.connections.search, cmd = m.connections.search.Update(msg)
 		} else if m.rules.editing {
@@ -1477,6 +1487,9 @@ func (m Model) pageBody(width int) (string, []hitRegion) {
 
 func (m Model) populatePageBody(o *dashboardOptions) {
 	g := dashboardGeometry(*o)
+	if m.page == "proxies" && o.BodyTopRows > 0 {
+		o.BodyTop = m.proxiesFixedToolbar(g.width, o.BodyTopRows)
+	}
 	if m.page == "logs" && o.BodyTopRows > 0 {
 		o.BodyTop = m.logsToolbar(g.width, o.BodyTopRows)
 	}
@@ -1522,6 +1535,7 @@ func (m *Model) renderLayout() {
 	g := dashboardGeometry(o)
 	o.Header = m.pageHeader()
 	resizeSearchInput(&m.connections.search, m.connectionSearchWidth(g.width))
+	resizeSearchInput(&m.proxies.search, searchInputWidth(g.width))
 	resizeSearchInput(&m.rules.search, m.ruleSearchWidth(g.width))
 	resizeSearchInput(&m.logs.search, m.logSearchWidth(g.width))
 	m.populatePageBody(&o)

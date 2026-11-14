@@ -74,8 +74,12 @@ def assert_proxy_header(terminal, words):
         assert [x for x, _ in modes] == sorted(x for x, _ in modes), "routing mode order changed"
         direct_x, direct_y = modes[-1]
         direct_width = cell_offset(terminal.screen.cells[direct_y][direct_x:], len(words["dashboard.mode.direct"]))
-        gap = provider[0] - direct_x - direct_width
-        assert 8 <= gap <= 10, "mode/provider spacing is not the compact four-cell gap: %d" % gap
+        row = terminal.screen.cells[direct_y]
+        search_x = next((x for x in range(direct_x + direct_width, provider[0])
+                         if "".join(row[x:]).startswith(words["proxies.search"]) or row[x] == "/"), None)
+        assert search_x is not None, "search action is missing between routing modes and providers"
+        gap = search_x - direct_x - direct_width
+        assert 8 <= gap <= 10, "mode/search spacing is not the compact four-cell gap: %d" % gap
         provider_label = words["providers.title.proxies"]
         if not "".join(terminal.screen.cells[provider[1]][provider[0]:]).startswith(provider_label):
             provider_label = "≡"
@@ -442,7 +446,7 @@ def exercise(preview, binary, output, language, profile, args):
 
         # At 160 columns the adaptive grid has three candidate columns.
         # Horizontal keys move to the nearest card; Up keeps its column.
-        terminal.key(b"\x1b[C")  # group -> AUTO, first left candidate
+        # Opening the group now focuses its observed selection, AUTO.
         terminal.key(b"\x1b[B")  # JP 01, second left candidate
         terminal.key(b"\x1b[C")  # SG 01, second middle candidate
         terminal.key(b"\x1b[A")  # HK 01, first middle candidate

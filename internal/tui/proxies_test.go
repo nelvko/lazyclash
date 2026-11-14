@@ -1014,7 +1014,15 @@ func TestProxiesDefaultSortReturnsToItsGroupAfterHeaderClick(t *testing.T) {
 			setProxyTestGroup(&m, "AUTO")
 			m.focus = "group.1"
 			m.sortProxies("delay")
-			m.scroll = 3
+			// Put the whole group heading at the viewport top. A fixed group
+			// label can change the maximum scroll, so a guessed offset can hide it.
+			_, hits := m.proxiesBody(dashboardBodyWidth(m.dashboardOptions()))
+			for _, hit := range hits {
+				if hit.ID == "group.1" {
+					m.scroll = hit.Y
+					break
+				}
+			}
 			m.rememberPageView()
 			m.layout()
 			before := m.scroll

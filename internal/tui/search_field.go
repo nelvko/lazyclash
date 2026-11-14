@@ -13,6 +13,8 @@ func resizeSearchInput(input *textinput.Model, width int) { resizeInputField(inp
 
 func searchClearID(id string) string {
 	switch id {
+	case "proxies.search":
+		return "proxies.clear"
 	case "conn.search":
 		return "conn.clear"
 	case "rules.search":

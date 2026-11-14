@@ -76,6 +76,11 @@ func (m Model) proxiesToolbar(width int) dashboardBlock {
 func (m Model) proxiesBody(width int) (string, []hitRegion) {
 	width = max(1, width)
 	b := m.proxiesToolbar(width)
+	if m.proxySearchVisible() && !m.proxySearchFixed(m.dashboardOptions().BodyTopRows) {
+		search := m.proxySearchBlock(width)
+		search.append(b)
+		b = search
+	}
 	add := func(value, color string) {
 		b.lines = append(b.lines, strings.Split(wrapText(themed(clean(value), color, bg, false), width), "\n")...)
 	}
@@ -85,17 +90,22 @@ func (m Model) proxiesBody(width int) (string, []hitRegion) {
 		b.lines = append(b.lines, cellCrop(v, width))
 	}
 	if !m.proxiesReady() {
+		state, label := m.corePageState()
 		switch {
 		case !m.snapshotReady:
 			add(m.tr("proxies.loading"), muted)
-		case !m.snapshot.Installed:
-			add(m.tr("proxies.uninstalled"), muted)
-			button("card.install", m.tr("dashboard.action.install"))
+		case state == "uninstalled" || state == "stopped" || state == "transition":
+			add(label, muted)
+			if id, action := m.corePageAction(); id != "" {
+				button(id, action)
+			}
 		case m.snapshot.ServiceError != "":
 			add(m.locale.Diagnostic(m.snapshot.ServiceError, m.snapshot.ServiceDiagnostic), errorColor)
 		case !m.snapshot.Service.Active:
-			add(m.tr("proxies.stopped"), muted)
-			button("core.start", m.tr("dashboard.action.start"))
+			if label == "" {
+				label = m.tr("dashboard.status.unknown")
+			}
+			add(label, muted)
 		default:
 			add(m.tr("proxies.unavailable"), warning)
 			add(m.locale.Diagnostic(m.snapshot.APIError, m.snapshot.APIDiagnostic), errorColor)
@@ -128,7 +138,11 @@ func (m Model) proxiesBody(width int) (string, []hitRegion) {
 	}
 	groups := m.visibleProxyGroups()
 	if len(groups) == 0 {
-		add(m.tr("proxies.no_groups"), muted)
+		if m.proxySearchQuery() != "" {
+			add(m.tr("proxies.search_no_match"), muted)
+		} else {
+			add(m.tr("proxies.no_groups"), muted)
+		}
 	}
 	compactGroups := m.proxiesNarrow() || m.height < 24
 	for i, gi := range groups {
@@ -332,7 +346,11 @@ func (m Model) proxyGroupBody(gi, width int) dashboardBlock {
 		}
 	}
 	if len(indices) == 0 {
-		add(m.tr("proxies.empty_group"), muted)
+		if m.proxySearchQuery() != "" {
+			add(m.tr("proxies.search_no_match"), muted)
+		} else {
+			add(m.tr("proxies.empty_group"), muted)
+		}
 	}
 	return b
 }

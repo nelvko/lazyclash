@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
@@ -16,6 +17,9 @@ import (
 // The adaptive grouped list uses the shell's scrolling and hit regions rather
 // than a second viewport.
 type proxiesState struct {
+	search                           textinput.Model
+	editing                          bool
+	searchCollapsed                  map[string]bool
 	expanded                         map[string]bool
 	activeGroup, detail, detailGroup string
 	sortMenu                         bool
@@ -70,11 +74,16 @@ type proxyDelayBackend interface {
 }
 
 func newProxiesState() proxiesState {
-	return proxiesState{expanded: make(map[string]bool), sorts: make(map[string]string), order: make(map[string][]string), results: make(map[string]proxyMeasurement)}
+	search := textinput.New()
+	search.CharLimit = 512
+	search.SetVirtualCursor(false)
+	styleInput(&search, inputBackground, false)
+	return proxiesState{search: search, expanded: make(map[string]bool), sorts: make(map[string]string), order: make(map[string][]string), results: make(map[string]proxyMeasurement)}
 }
 
 func (m Model) proxiesReady() bool {
-	return m.snapshotReady && m.snapshot.Installed && m.snapshot.Service.Active && m.snapshot.ServiceError == "" && m.snapshot.APIError == ""
+	state, _ := m.corePageState()
+	return state == "" && m.snapshotReady && m.snapshot.Installed && m.snapshot.Service.Active && m.snapshot.ServiceError == "" && m.snapshot.APIError == ""
 }
 func (m Model) proxiesDirect() bool { return m.snapshot.Mode.Actual == "direct" }
 func (m Model) proxiesNarrow() bool { return m.width < 100 }
@@ -85,6 +94,9 @@ func (m Model) proxyGroupExpanded(name string) bool {
 	if m.proxiesNarrow() {
 		return m.proxies.activeGroup == name
 	}
+	if m.proxySearchQuery() != "" {
+		return !m.proxies.searchCollapsed[name]
+	}
 	return m.proxies.expanded[name]
 }
 func (m *Model) expandProxyGroup(name string) {
@@ -94,12 +106,24 @@ func (m *Model) expandProxyGroup(name string) {
 	if m.proxies.expanded == nil {
 		m.proxies.expanded = make(map[string]bool)
 	}
-	m.proxies.expanded[name] = true
+	if !m.proxiesNarrow() && m.proxySearchQuery() != "" {
+		delete(m.proxies.searchCollapsed, name)
+	} else {
+		m.proxies.expanded[name] = true
+	}
 	m.proxies.activeGroup = name
 }
 func (m Model) hasExpandedProxyGroups() bool {
 	if m.proxiesNarrow() {
 		return m.proxies.activeGroup != ""
+	}
+	if m.proxySearchQuery() != "" {
+		for _, index := range m.visibleProxyGroups() {
+			if !m.proxies.searchCollapsed[m.snapshot.Groups[index].Name] {
+				return true
+			}
+		}
+		return false
 	}
 	return len(m.proxies.expanded) > 0
 }
@@ -289,14 +313,18 @@ func (m Model) visibleProxyGroups() []int {
 		} else if !(len(m.proxies.history) > 0 && m.proxies.expanded[g.Name]) && (m.snapshot.Mode.Actual == "global" && g.Name != "GLOBAL" || m.snapshot.Mode.Actual != "global" && g.Name == "GLOBAL") {
 			continue
 		}
-		out = append(out, i)
+		if m.proxySearchQuery() == "" || m.proxiesNarrow() && g.Name == m.proxies.activeGroup || m.proxyGroupMatches(g) {
+			out = append(out, i)
+		}
 	}
 	return out
 }
 func (m Model) proxyMembers(g mihomo.Group) []int {
 	indices := make([]int, 0, len(g.All))
-	for i := range g.All {
-		indices = append(indices, i)
+	for i, node := range g.All {
+		if m.proxyMemberMatches(g, node) {
+			indices = append(indices, i)
+		}
 	}
 	switch m.proxySort(g.Name) {
 	case "name":
@@ -412,16 +440,8 @@ func (m *Model) browseProxyReference(name string) {
 	m.proxies.history = append(m.proxies.history, m.proxyLocation())
 	m.expandProxyGroup(name)
 	m.proxies.detail = ""
-	m.focus, m.scroll = fmt.Sprintf("group.%d", gi), 0
-	if !m.proxiesNarrow() {
-		_, hits := m.proxiesBody(dashboardBodyWidth(m.dashboardOptions()))
-		for _, hit := range hits {
-			if hit.ID == m.focus {
-				m.scroll = hit.Y
-				break
-			}
-		}
-	}
+	m.scroll = 0
+	m.focusProxyGroupMember(gi)
 	m.rememberPageView()
 }
 func (m *Model) proxyBack() bool {
@@ -470,6 +490,8 @@ func (m *Model) proxyKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 		}
 	}
 	switch k.String() {
+	case "/":
+		return true, m.focusProxySearch()
 	case "s":
 		m.openProxySort()
 		return true, nil
@@ -492,10 +514,7 @@ func (m *Model) proxyKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 			}
 		} else if ok {
 			m.expandProxyGroup(g.Name)
-			if list := m.proxyMembers(g); len(list) > 0 {
-				m.focus = fmt.Sprintf("node.%d.%d", gi, list[0])
-			}
-			m.revealContentFocus()
+			m.focusProxyGroupMember(gi)
 		}
 		return true, nil
 	case "left", "h", "esc":
@@ -620,8 +639,26 @@ func (m *Model) proxyActivate(id string) tea.Cmd {
 	if m.proxiesDirect() {
 		return nil
 	}
+	if id != "proxies.search" && id != "proxies.search-open" && id != "proxies.clear" {
+		m.proxies.editing = false
+		m.proxies.search.Blur()
+	}
 	switch id {
+	case "proxies.search", "proxies.search-open":
+		return m.focusProxySearch()
+	case "proxies.clear":
+		m.proxies.search.Reset()
+		m.proxies.searchCollapsed = nil
+		return m.focusProxySearch()
 	case "proxies.collapse_all":
+		if m.proxySearchQuery() != "" {
+			m.proxies.searchCollapsed = make(map[string]bool)
+			for _, index := range m.visibleProxyGroups() {
+				m.proxies.searchCollapsed[m.snapshot.Groups[index].Name] = true
+			}
+			m.focus, m.scroll = "content", 0
+			break
+		}
 		m.proxies.expanded = make(map[string]bool)
 		m.proxies.activeGroup, m.proxies.detail = "", ""
 		m.proxies.history = nil
@@ -659,6 +696,11 @@ func (m *Model) proxyActivate(id string) tea.Cmd {
 			if m.proxyGroupExpanded(g.Name) {
 				if m.proxiesNarrow() {
 					m.proxies.activeGroup = ""
+				} else if m.proxySearchQuery() != "" {
+					if m.proxies.searchCollapsed == nil {
+						m.proxies.searchCollapsed = make(map[string]bool)
+					}
+					m.proxies.searchCollapsed[g.Name] = true
 				} else {
 					delete(m.proxies.expanded, g.Name)
 					if m.proxies.activeGroup == g.Name {
@@ -673,6 +715,7 @@ func (m *Model) proxyActivate(id string) tea.Cmd {
 				}
 			} else {
 				m.expandProxyGroup(g.Name)
+				m.focusProxyGroupMember(gi)
 			}
 			m.proxies.detail = ""
 			m.revealContentFocus()
@@ -722,6 +765,10 @@ func (m *Model) stopProxyGroupTests() {
 	m.proxies.inflightPaths = nil
 }
 func (m *Model) syncProxies() tea.Cmd {
+	if m.proxies.editing && (m.page != "proxies" || m.focus != "proxies.search" || m.proxiesDirect() || !m.proxiesReady()) {
+		m.proxies.editing = false
+		m.proxies.search.Blur()
+	}
 	scope := fmt.Sprintf("%s\x00%d\x00%s", m.snapshot.Applied, m.snapshot.Service.PID, m.snapshot.RunningVersion)
 	source := m.snapshot.Generation + "\x00" + scope
 	modeChanged := m.snapshot.Mode.Actual != m.proxies.mode
