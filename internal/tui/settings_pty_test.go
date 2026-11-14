@@ -22,7 +22,7 @@ func TestSettingsPTYFixture(t *testing.T) {
 	}
 	b := &settingsPTYBackend{fakeBackend: &fakeBackend{snapshot: app.Snapshot{
 		Installed: true, ConfigReady: true, HasRun: true,
-		Version: "v1.19.33", RunningVersion: "v1.19.33", Controller: "127.0.0.1:9097",
+		Version: "v1.19.33", RunningVersion: "v1.19.33", MixedPort: 7897, Controller: "127.0.0.1:9097",
 		Applied: "settings-pty", AppliedName: "Settings preview", Generation: "settings-pty-generation",
 		Service:      service.Status{Active: true, State: "active", Enabled: true, EnableState: "enabled", Linger: true, LingerKnown: true, PID: 4242},
 		Mode:         app.ModeStatus{Desired: "rule", Actual: "rule", Running: true},

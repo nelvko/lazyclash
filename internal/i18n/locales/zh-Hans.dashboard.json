@@ -290,6 +290,7 @@
   "dashboard.network.enable": "启用",
   "dashboard.network.disable": "停用",
   "dashboard.network.systemProxyState": "未接管 · 控制暂不可用",
+  "dashboard.network.mixedPort": "HTTP/SOCKS5 端口（已保存）：%s",
   "dashboard.network.tun": "TUN 模式",
   "terminal.title": "终端代理",
   "terminal.installTitle": "安装 Shell Integration？",

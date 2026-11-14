@@ -290,6 +290,7 @@
   "dashboard.network.enable": "Enable",
   "dashboard.network.disable": "Disable",
   "dashboard.network.systemProxyState": "Unmanaged · control unavailable",
+  "dashboard.network.mixedPort": "HTTP/SOCKS5 port (saved): %s",
   "dashboard.network.tun": "TUN mode",
   "terminal.title": "Terminal proxy",
   "terminal.installTitle": "Install Shell Integration?",

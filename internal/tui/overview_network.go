@@ -17,6 +17,7 @@ func overviewNetworkCard(o dashboardOptions, width int) dashboardBlock {
 		return themed(lipgloss.NewStyle().Bold(true).Render(value), text, panel, o.Dim)
 	}
 	var content dashboardBlock
+	content.append(overviewTextBlock([]string{themed(savedMixedPortLabel(o), muted, panel, o.Dim)}, inner))
 	content.append(overviewLabelControl(o, inner, label(tr("dashboard.field.systemProxy")), overviewControlButton{
 		id: "network.systemProxy", label: tr("dashboard.network.enable"),
 	}, buttonSecondary))
@@ -84,6 +85,14 @@ func overviewNetworkCard(o dashboardOptions, width int) dashboardBlock {
 	return overviewActionPanel(o, width, tr("dashboard.overview.network"), content, overviewControlButton{
 		id: "card.network", label: tr("dashboard.overview.settingsAction"), enabled: s.Installed && !o.Busy,
 	})
+}
+
+func savedMixedPortLabel(o dashboardOptions) string {
+	port := "--"
+	if o.Snapshot.Installed && o.Snapshot.MixedPort > 0 && o.Snapshot.MixedPort <= 65535 {
+		port = strconv.Itoa(o.Snapshot.MixedPort)
+	}
+	return o.Locale.T("dashboard.network.mixedPort", port)
 }
 
 // Controller metadata contains a local address; display only its host and port,

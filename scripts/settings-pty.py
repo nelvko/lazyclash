@@ -72,6 +72,7 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.settle()
         for heading in ("settings.interface", "settings.serviceGroup", "settings.network", "dashboard.settings.title"):
             terminal.wait(words[heading])
+        terminal.wait(words["dashboard.network.mixedPort"] % "7897")
         preview.capture(terminal, output, "settings-wide", args)
 
         # A second language click while the first save is pending must be inert.
@@ -145,7 +146,7 @@ def exercise(preview, binary, output, language, profile, args):
             terminal.wait("7897")
             preview.capture(terminal, output, "ports-%dx%d" % (width, height), args)
             terminal.key(b"\x1b")
-            terminal.wait_absent("7897")
+            terminal.wait_absent(words["ports.title"])
             terminal.settle()
             assert re.search(r"›\s*(?:\[\s*)?" + re.escape(words["settings.edit"]), terminal.screen.text()), "port return lost its trigger focus"
             for _ in range(8):

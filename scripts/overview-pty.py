@@ -213,6 +213,7 @@ def exercise(preview, binary, output, language, profile, scenario, args):
         else:
             assert "12.0 KiB/s" not in screen, "unavailable observation retained live metrics"
         assert "subscription.example" in screen, "profile card omitted its source origin"
+        assert words["dashboard.network.mixedPort"] % "17897" in screen, "network summary omitted the saved mixed port"
         assert "127.0.0.1:" not in screen, "overview retained addresses intended for network details"
         if scenario == "pending":
             assert words["profiles.changes_pending"] in screen, "profile card hid its unapplied changes"
