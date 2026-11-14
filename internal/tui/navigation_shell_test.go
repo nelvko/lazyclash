@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/nelvko/lazyclash/internal/mihomo"
@@ -15,6 +16,7 @@ func TestNavigationShellBusyNoticeCancelsRealOperationWithoutQuitting(t *testing
 	ctx := m.newJob("action")
 	m.message = "Updating subscription"
 	m.syncNotification()
+	m.notification.items[0].showAfter = time.Time{} // The operation has passed the quiet-progress delay.
 	m.layout()
 	if len(m.notification.items) != 1 || m.notification.items[0].Kind != "working" {
 		t.Fatal("real operation did not produce a working notification")

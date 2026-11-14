@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -18,6 +19,7 @@ func TestPageNavigationCardFocusPreservesOverlappingTaskNotice(t *testing.T) {
 	defer m.cancel()
 	m.message = "Updating subscription; existing connections remain available while this task runs. The saved configuration remains available until the update finishes."
 	m.syncNotification()
+	m.notification.items[0].showAfter = time.Time{} // Exercise the visible, long-running progress card.
 	m.layout()
 
 	o := m.navigationOptions()

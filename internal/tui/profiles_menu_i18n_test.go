@@ -17,8 +17,11 @@ func TestProfileFormCancellationUsesInformationalNotificationInBothLanguages(t *
 		m.openProfileEdit("profile-rename", "p-stable-profile-id")
 		m.failure = "old validation failure"
 		m, _ = update(m, special(tea.KeyEscape))
-		if m.form != "" || m.failure != "" || m.messageTransient || !m.messageInformational || !strings.Contains(ansi.Strip(m.screen), sample.message) {
+		if m.form != "" || m.failure != "" || m.messageTransient || !m.messageInformational || m.message != sample.message {
 			t.Fatalf("%s: cancellation lost notification semantics", sample.language)
+		}
+		if len(m.notification.items) != 1 || !m.notification.items[0].Silent || strings.Contains(ansi.Strip(m.screen), sample.message) {
+			t.Fatalf("%s: ordinary cancellation interrupted the page with a toast", sample.language)
 		}
 	}
 }
