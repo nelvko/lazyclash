@@ -159,12 +159,17 @@ func TestDirectionalNavigationDetailsBackOneLayerDuringBackgroundWork(t *testing
 			for _, busy := range []bool{false, true} {
 				t.Run(fmt.Sprintf("%s/%s/busy=%t", page, back, busy), func(t *testing.T) {
 					m := rulesModel(t, &fakeBackend{})
+					m.rules.snapshot.Rules[0].Type, m.rules.snapshot.Rules[0].Size = "RuleSet", 12
+					m.reconcileRules()
 					if page == "connections" {
 						m = connectionsModel(t, &fakeBackend{})
 					}
 					directionCleanup(t, &m)
 					selected := m.focus
 					m, _ = update(m, special(tea.KeyEnter))
+					if page == "rules" && m.rules.expanded == "" || page == "connections" && m.connections.detail == nil {
+						t.Fatal("fixture did not open content before testing layered back navigation")
+					}
 					if busy {
 						m.newJob("action")
 					}

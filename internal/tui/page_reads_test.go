@@ -149,6 +149,7 @@ func TestPageDetailsReturnToRememberedListScroll(t *testing.T) {
 		for index := 3; index < 35; index++ {
 			m.rules.snapshot.Rules = append(m.rules.snapshot.Rules, mihomo.Rule{Index: index, Type: "Domain", Payload: "example.invalid", Proxy: "DIRECT", Size: -1})
 		}
+		m.rules.snapshot.Rules[8].Type, m.rules.snapshot.Rules[8].Size = "RuleSet", 12
 		m.selectRule("rule.8")
 		m.scroll = 8
 		m.ruleActivate("rule.8")
