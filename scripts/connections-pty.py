@@ -335,23 +335,24 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.key(b"\r")
         terminal.wait_absent(words["connections.confirm_all_title"])
         terminal.wait("www.youtube.com")
-        terminal.wait(words["connections.close_all_hint"])
+        action_hint = words["connections.close_all_hint"].split(" · ")[0]
+        terminal.wait(action_hint)
         terminal.settle()
         footer = terminal.screen.text().splitlines()[-1]
-        assert words["connections.close_all_hint"] in footer, "header focus lost the close-all help text"
+        assert action_hint in footer and words["dashboard.footer.help"] in footer, "header focus lost its action hint or pinned help"
         assert words["header.refresh"] not in footer, "close-all header still advertises refresh"
         preview.capture(terminal, output, "focused-close-all", args)
         terminal.click_text(words["connections.close_all"])
         terminal.wait(words["connections.confirm_all_title"])
         preview.capture(terminal, output, "close-all-confirmation", args)
         terminal.key(b"y")
-        terminal.wait(words["connections.close_all_requested"])
         terminal.wait(words["connections.no_matches"])
+        assert words["connections.close_all_requested"] not in terminal.screen.text(), "routine success unexpectedly opened a toast"
         search(terminal, "")
         terminal.wait(words["connections.empty"])
         terminal.wait_absent("www.youtube.com")
         check_tabs(terminal, words, 0, 48)
-        # A successful operation toast can temporarily cover the right header.
+        # Routine success stays quiet; retain cumulative totals after the close.
         wait_until(terminal, lambda: header_totals(terminal, words, required=False) is not None,
             "header totals stayed obscured after closing all connections", timeout=12)
         values = header_totals(terminal, words)[0]
@@ -376,11 +377,11 @@ def exercise(preview, binary, output, language, profile, args):
             terminal.wait(words["connections.closed_count"] % (48, 48))
             header_totals(terminal, words)
             if width >= 160:
-                terminal.wait(words["navigation.connections_closed"])
+                terminal.wait(words["navigation.connections_closed"].split(" · ")[0])
                 terminal.settle()
             footer = terminal.screen.text().splitlines()[-1]
             if width >= 160:
-                assert words["navigation.connections_closed"] in footer, "closed list lost its read-only help text"
+                assert all(hint in footer for hint in words["navigation.connections_closed"].split(" · ")), "closed list lost its read-only or action hints"
             assert not re.search(r"x\s+(?:Close|关闭)", footer), "closed list still advertises closing connections"
             preview.capture(terminal, output, "closed-%dx%d" % (width, height), args)
         terminal.key(b"v")
