@@ -68,6 +68,26 @@ def toggle(terminal, label):
     terminal.settle()
 
 
+def rule_count(terminal, expected):
+    # The count belongs beside the framed editor's text row, outside its hit
+    # region. Use VT cells so Chinese placeholders do not skew coordinates.
+    for y, row in enumerate(terminal.screen.cells):
+        edges = [x for x, cell in enumerate(row) if cell == "│"]
+        if not edges or "".join(row[edges[-1] + 1:]).strip().split(" · ", 1)[0] != expected:
+            continue
+        edge = edges[-1]
+        assert terminal.screen.cells[y - 1][edge] == "╮", "rule count is not aligned with the input text"
+        assert terminal.screen.cells[y + 1][edge] == "╯", "rule count is not aligned with the input text"
+        assert row[edge + 1:edge + 3] == [" ", " "], "rule count touches the search frame"
+        for label in ("Aa", "ab", ".*"):
+            x, _ = position(terminal, label)
+            assert x + len(label) <= edge, "rule count overlaps a search control"
+        screen = terminal.screen.text()
+        assert "Matching order" not in screen and "按匹配顺序" not in screen, "standalone rule summary remains"
+        return edge + 3, y
+    raise AssertionError("Rule count is not beside the search input: " + expected + "\n" + terminal.screen.text())
+
+
 def fixture_terminal(preview, binary, report, language, profile, count=60):
     environment = {"LAZYCLASH_RULES_PTY_REPORT": str(report), "LAZYCLASH_RULES_PTY_LANGUAGE": language}
     environment["LAZYCLASH_RULES_PTY_COUNT"] = str(count)
@@ -89,6 +109,7 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.key(b"5")
         terminal.wait("private_ip")
         terminal.settle()
+        rule_count(terminal, "60")
         preview.capture(terminal, output, "rules-wide", args)
         # Wide rules align payload and metadata on one row; narrow rules keep
         # their two-row reading order. Click both fields on different rules so
@@ -155,6 +176,7 @@ def exercise(preview, binary, output, language, profile, args):
 
         search(terminal, "GITHUB")
         terminal.wait("github_domain")
+        rule_count(terminal, "1 / 60")
         assert "private_ip" not in terminal.screen.text(), "case-insensitive search kept an unrelated rule"
         assert words["navigation.rules.expand"] in terminal.screen.text().splitlines()[-1], "rule-set count did not advertise full content"
         terminal.key(b"\r")
@@ -174,9 +196,11 @@ def exercise(preview, binary, output, language, profile, args):
         search(terminal, "CaseSensitive")
         terminal.wait("CaseSensitive.example.invalid")
         terminal.wait("casesensitive.example.invalid")
+        rule_count(terminal, "2 / 60")
         toggle(terminal, "Aa")
         terminal.wait_absent("casesensitive.example.invalid")
         terminal.wait("CaseSensitive.example.invalid")
+        rule_count(terminal, "1 / 60")
         preview.capture(terminal, output, "case-sensitive", args)
         toggle(terminal, "Aa")
         search(terminal, "ai")
@@ -192,37 +216,48 @@ def exercise(preview, binary, output, language, profile, args):
         search(terminal, "[")
         toggle(terminal, ".*")
         terminal.wait(words["rules.invalid_regex"])
+        rule_count(terminal, "0 / 60")
         preview.capture(terminal, output, "invalid-regex", args)
         search(terminal, "(github|youtube)_domain")
         terminal.wait("github_domain")
         terminal.wait("youtube_domain")
         terminal.wait_absent(words["rules.invalid_regex"])
         assert "private_ip" not in terminal.screen.text(), "regex search kept an unrelated rule"
+        rule_count(terminal, "2 / 60")
         preview.capture(terminal, output, "regex-results", args)
         toggle(terminal, ".*")
 
         search(terminal, "no-such-rule-pty")
         terminal.wait(words["rules.no_matches"])
+        rule_count(terminal, "0 / 60")
         preview.capture(terminal, output, "no-matches", args)
         clear_x, clear_y = position(terminal, " x │")
         click_cell(terminal, clear_x + 1, clear_y)
         terminal.key(b"\r")  # Clear returns focus to the search input.
         terminal.settle()
         terminal.wait("private_ip")
+        rule_count(terminal, "60")
 
         # Scroll the list while its search options stay at their fixed cells.
         for width, height in SIZES:
             terminal.resize(width, height)
             terminal.key(b"\x1b[<35;1;1M")  # Move away from filter help tooltips.
             terminal.settle()
+            search(terminal, "private")
+            terminal.wait("private_ip")
+            rule_count(terminal, "2 / 60")
+            preview.capture(terminal, output, "filtered-count-%dx%d" % (width, height), args)
+            search(terminal, "")
             terminal.key(b"\x1b[H")
             terminal.settle()
             terminal.wait("private_ip")
+            count_position = rule_count(terminal, "60")
             toolbar = {label: position(terminal, label) for label in ("Aa", "ab", ".*")}
             for _ in range(5):
                 terminal.key(("\x1b[<65;%d;%dM" % (width - 3, height // 2)).encode())
             terminal.settle()
             terminal.wait_absent("private_ip")
+            assert count_position == rule_count(terminal, "60"), "rule count moved with the list"
             assert toolbar == {label: position(terminal, label) for label in toolbar}, "search options moved with the list"
             assert "▌" not in terminal.screen.text(), "scrolled rules retained a selection bar"
             preview.capture(terminal, output, "scrolled-%dx%d" % (width, height), args)
@@ -259,7 +294,7 @@ def exercise(preview, binary, output, language, profile, args):
         if profile == "no-color":
             assert not any(value not in (b"", b"0") for value in preview.SGR.findall(raw)), "NO_COLOR emitted styling"
         (output / "pty.raw").write_bytes(raw)
-        print("PASS %s/%s: event-triggered reads without idle polling, focus-only feedback, inline expansion, search options, fixed toolbar and five resize dimensions; %s" %
+        print("PASS %s/%s: inline total and filtered counts, event-triggered reads without idle polling, focus-only feedback, inline expansion, search options, fixed toolbar and five resize dimensions; %s" %
             (language, profile, json.dumps(calls)), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")

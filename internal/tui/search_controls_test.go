@@ -64,19 +64,32 @@ func TestSearchControlsKeepCompactSelectionAndFocusReadableWithoutColor(t *testi
 
 func TestSearchControlsKeepRuleCountsAndInvalidExpressionVisible(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
-		for _, width := range []int{60, 120} {
+		for _, width := range []int{34, 60, 120} {
 			t.Run(fmt.Sprint(language, "/", width), func(t *testing.T) {
 				m := rulesModel(t, &fakeBackend{})
 				m.locale = i18n.New(language)
-				for _, query := range []string{"", "needle"} {
+				fieldWidth := m.ruleSearchFieldWidth(width)
+				for _, query := range []string{"", " ", "needle"} {
 					m.rules.search.SetValue(query)
 					m.rules.editing = true
 					for _, id := range []string{"rules.search", "rules.case", "rules.word", "rules.regex", "rules.clear"} {
 						m.focus, m.hover = id, id
 						bar := m.rulesToolbar(width, m.filterToolbarRows(width))
 						plain := ansi.Strip(strings.Join(bar.lines, "\n"))
-						if want := m.tr("rules.filtered_count", len(m.filteredRules()), len(sampleRules())); !strings.Contains(plain, want) {
+						want := "3"
+						if strings.TrimSpace(query) != "" {
+							want = "1 / 3"
+						}
+						if !strings.HasPrefix(ansi.Strip(ansi.Cut(bar.lines[1], fieldWidth, width)), "  "+want) {
 							t.Fatalf("editing or hint %s hid rule counts at width %d:\n%s", id, width, plain)
+						}
+						if m.ruleSearchFieldWidth(width) != fieldWidth || len(bar.lines) != inputFieldRows(fieldWidth, searchControlWidth(m.ruleFilterButtons()), true) {
+							t.Fatalf("query or focus moved the search frame or added a count row:\n%s", plain)
+						}
+						for _, line := range bar.lines {
+							if ansi.StringWidth(line) > width {
+								t.Fatalf("inline count or option hint exceeded width %d:\n%s", width, plain)
+							}
 						}
 					}
 				}

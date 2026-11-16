@@ -59,28 +59,49 @@ func renderRuleSearchToggle(label string, o buttonOptions) string {
 }
 
 func (m Model) ruleSearchWidth(width int) int {
-	return inputFieldTextWidth(min(inputFieldMaxWidth, max(1, width)), searchControlWidth(m.ruleFilterButtons()), true)
+	return inputFieldTextWidth(m.ruleSearchFieldWidth(width), searchControlWidth(m.ruleFilterButtons()), true)
+}
+
+func (m Model) ruleSearchFieldWidth(width int) int {
+	if m.rules.received && m.rules.snapshot.State == "ready" {
+		// Reserve the widest filtered count so typing does not move the frame.
+		countWidth := 2*len(strconv.Itoa(len(m.rules.snapshot.Rules))) + 3
+		if width-countWidth-2 >= 12 {
+			width -= countWidth + 2
+		}
+	}
+	return min(inputFieldMaxWidth, max(1, width))
+}
+
+func (m Model) ruleCount() string {
+	if !m.rules.received || m.rules.snapshot.State != "ready" {
+		return ""
+	}
+	total := len(m.rules.snapshot.Rules)
+	if strings.TrimSpace(m.rules.search.Value()) == "" {
+		return m.tr("rules.count", total)
+	}
+	return m.tr("rules.filtered_count", len(m.filteredRules()), total)
 }
 
 func (m Model) rulesToolbar(width, rows int) dashboardBlock {
 	_, matchErr := m.ruleMatcher()
+	fieldWidth := m.ruleSearchFieldWidth(width)
 	b := m.searchToolbar("rules.search", m.tr("rules.search_placeholder"), m.rules.search,
-		m.ruleFilterButtons(), width, matchErr != nil)
-	status := m.rulesStatus()
-	if m.rules.received && m.rules.snapshot.State == "ready" {
-		status = m.tr("rules.filtered_count", len(m.filteredRules()), len(m.rules.snapshot.Rules))
+		m.ruleFilterButtons(), fieldWidth, matchErr != nil)
+	count := m.ruleCount()
+	if count != "" && fieldWidth+2+ansi.StringWidth(count) <= width {
+		b.lines[1] += themed("  "+count, muted, bg, false)
 	}
-	line := themed(cellCrop(status, width), muted, bg, false)
 	for _, item := range []struct{ id, key string }{{"rules.case", "rules.filter_case"}, {"rules.word", "rules.filter_word"}, {"rules.regex", "rules.filter_regex"}, {"rules.clear", "rules.filter_clear"}} {
 		if matchErr == nil && (m.focus == item.id || m.hover == item.id) {
 			hint := " · " + m.tr(item.key)
-			if ansi.StringWidth(status+hint) <= width {
-				line += themed(hint, accent, bg, false)
+			if ansi.StringWidth(b.lines[1])+ansi.StringWidth(hint) <= width {
+				b.lines[1] += themed(hint, accent, bg, false)
 			}
 			break
 		}
 	}
-	b.lines = append(b.lines, line)
 	if matchErr != nil {
 		b.lines = append(b.lines, themed(cellCrop(m.tr("rules.invalid_regex"), width), errorColor, bg, false))
 	}

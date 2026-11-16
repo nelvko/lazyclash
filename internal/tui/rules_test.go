@@ -218,7 +218,7 @@ func TestRulesEmptyFailuresAndRecoveryDoNotShowOldRows(t *testing.T) {
 				t.Fatal("manual retry unavailable")
 			}
 			m, _ = update(m, rulesResultMsg{generation: m.rules.generation, snapshot: app.RuleSnapshot{State: "ready", Rules: sampleRules()}})
-			if !strings.Contains(ansi.Strip(m.screen), "3 rules · Matching order") || len(m.filteredRules()) != 3 {
+			if m.ruleCount() != "3" || len(m.filteredRules()) != 3 {
 				t.Fatal("fresh rules did not recover from failure")
 			}
 		})

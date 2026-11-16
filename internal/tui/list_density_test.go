@@ -88,7 +88,11 @@ func TestListToolbarsReserveOnlyVisibleSearchAndStatusRows(t *testing.T) {
 		if page == "logs" {
 			bar = m.logsToolbar(76, rows)
 		}
-		if rows != 4 || len(bar.lines) != 4 || strings.TrimSpace(ansi.Strip(bar.lines[0])) == "" || strings.TrimSpace(ansi.Strip(bar.lines[3])) == "" {
+		wantRows := 3
+		if page == "logs" {
+			wantRows = 4
+		}
+		if rows != wantRows || len(bar.lines) != wantRows || strings.TrimSpace(ansi.Strip(bar.lines[0])) == "" || strings.TrimSpace(ansi.Strip(bar.lines[wantRows-1])) == "" {
 			t.Fatalf("%s reserves blank space around its three-row search frame", page)
 		}
 	}
@@ -96,7 +100,7 @@ func TestListToolbarsReserveOnlyVisibleSearchAndStatusRows(t *testing.T) {
 	m.rules.search.SetValue("[")
 	rows := m.filterToolbarRows(76)
 	bar := m.rulesToolbar(76, rows)
-	if rows != 5 || !strings.Contains(ansi.Strip(bar.lines[4]), m.tr("rules.invalid_regex")) {
+	if rows != 4 || !strings.Contains(ansi.Strip(bar.lines[3]), m.tr("rules.invalid_regex")) {
 		t.Fatal("invalid search did not add its visible diagnostic row")
 	}
 }

@@ -75,7 +75,7 @@ func (m Model) filterToolbarRows(width int) int {
 	if m.page == "logs" {
 		return m.searchToolbarRows(width, m.logControls())
 	}
-	rows := m.searchToolbarRows(width, m.ruleFilterButtons())
+	rows := inputFieldRows(m.ruleSearchFieldWidth(width), searchControlWidth(m.ruleFilterButtons()), true)
 	if _, err := m.ruleMatcher(); err != nil {
 		rows++
 	}

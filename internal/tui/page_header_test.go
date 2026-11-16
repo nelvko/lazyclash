@@ -233,12 +233,16 @@ func TestProfilesHeaderLosingLastSubscriptionRepairsFocusAndBlocksUpdate(t *test
 
 func TestPageCountsRequireAvailableObservations(t *testing.T) {
 	m := headerModel("rules", 120, 32)
-	if strings.Contains(headerText(m), "3 rules") || strings.Count(ansi.Strip(m.screen), "3 rules · Matching order") != 1 {
-		t.Fatal("rules count must appear once in the search toolbar")
+	field := findTarget(t, m, "rules.search")
+	line := strings.Split(m.screen, "\n")[field.Y+1]
+	if count := strings.TrimSpace(ansi.Strip(ansi.Cut(line, field.X+field.W, m.width))); count != "3" {
+		t.Fatalf("rules count must appear next to the search field: %q", count)
 	}
 	m.rules.received = false
 	m.layout()
-	if strings.Contains(ansi.Strip(m.screen), "3 rules") {
+	field = findTarget(t, m, "rules.search")
+	line = strings.Split(m.screen, "\n")[field.Y+1]
+	if count := strings.TrimSpace(ansi.Strip(ansi.Cut(line, field.X+field.W, m.width))); count != "" {
 		t.Fatal("rules presented an unavailable count as current")
 	}
 }
