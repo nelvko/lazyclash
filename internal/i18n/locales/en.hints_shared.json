@@ -14,5 +14,5 @@
   "notification.hints.listControls": "↑↓ Controls · x Dismiss · Esc Close",
   "notification.hints.detail": "↑↓ / PgUp/PgDn Scroll · x Dismiss · Esc Back",
   "notification.hints.empty": "Esc Close",
-  "help.hints.connectionsCore": "In the connection list, s sorts and x reviews closing a connection. r restarts the core; data updates automatically."
+  "help.hints.connectionsCore": "While browsing content: r restarts the core. Connection data updates automatically."
 }

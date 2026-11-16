@@ -136,13 +136,30 @@ func TestPortsHintsDistinguishCancelReviewAndApply(t *testing.T) {
 	}
 }
 
-func TestConnectionsHelpDoesNotAdvertiseGlobalStartOrRefresh(t *testing.T) {
-	m := connectionsModel(t, &fakeBackend{})
+func TestHelpCoreShortcutsMatchTheCurrentPage(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
-		m.locale = i18n.New(language)
-		text := strings.Join(m.helpLines(500), "\n")
-		if strings.Contains(text, m.tr("help.core.actions")) || strings.Contains(text, m.tr("help.core.refresh")) || !strings.Contains(text, m.tr("help.hints.connectionsCore")) {
-			t.Fatal("connection help advertised shadowed global shortcuts")
+		for _, test := range []struct {
+			page, actions string
+			refresh       bool
+		}{
+			{"overview", "help.core.overview", true},
+			{"proxies", "help.core.proxies", false},
+			{"profiles", "help.core.actions", true},
+			{"connections", "help.hints.connectionsCore", false},
+			{"rules", "help.core.actions", false},
+			{"logs", "help.core.actions", false},
+			{"settings", "help.core.actions", true},
+		} {
+			m := Model{locale: i18n.New(language), page: test.page}
+			body := strings.Join(m.helpLines(1000), "\n")
+			for _, actions := range []string{"help.core.actions", "help.core.overview", "help.core.proxies", "help.hints.connectionsCore"} {
+				if strings.Contains(body, m.tr(actions)) != (actions == test.actions) {
+					t.Fatalf("%s %s included the wrong core shortcut set: %s", language, test.page, actions)
+				}
+			}
+			if strings.Contains(body, m.tr("help.core.refresh")) != test.refresh {
+				t.Fatalf("%s %s advertised the wrong refresh behavior", language, test.page)
+			}
 		}
 	}
 }

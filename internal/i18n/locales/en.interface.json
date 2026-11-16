@@ -7,7 +7,7 @@
   "dashboard.interface.keyHintsHint": "Ctrl+T toggles the shortcut bar. This choice is remembered.",
   "help.keyHints.show": "Show shortcut hints · Ctrl+T",
   "help.keyHints.hide": "Hide shortcut hints · Ctrl+T",
-  "help.keyHints.shortcut": "Ctrl+T: show or hide shortcut hints",
+  "help.keyHints.shortcut": "Ctrl+T: show or hide shortcut hints while browsing a page or in Help.",
   "keyHints.saveFailed": "Could not remember shortcut hint visibility: %s",
   "navigation.drawer": "↑↓ Pages · → Content · ← Close · ? Help",
   "navigation.content": "↑↓ Scroll · Tab Controls · ← / Esc Back · ? Help",

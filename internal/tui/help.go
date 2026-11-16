@@ -20,23 +20,31 @@ func (m Model) helpLines(width int) []string {
 	case "profiles":
 		lines = append(lines, tr("help.profiles.add"), tr("help.profiles.import"), tr("help.profiles.rename"), tr("help.profiles.click"), tr("help.profiles.menu"), tr("help.profiles.menuControls"), tr("help.profiles.grid"), tr("help.profiles.actions"), tr("help.profiles.update"), tr("help.profiles.overrides"), tr("help.profiles.delete"))
 	case "connections":
-		lines = append(lines, tr("help.connections.keys"), tr("help.connections.confirm"))
+		lines = append(lines, tr("help.connections.keys"), tr("help.connections.close"), tr("help.connections.confirm"), tr("help.search.input"))
 	case "rules":
-		lines = append(lines, tr("help.rules.keys"), tr("help.rules.readOnly"))
+		lines = append(lines, tr("help.rules.keys"), tr("help.rules.search"), tr("help.search.input"), tr("help.rules.readOnly"))
 	case "settings":
-		lines = append(lines, tr("help.settings.ports"), tr("help.settings.review"), tr("help.settings.persistence"), tr("help.settings.tun"))
+		lines = append(lines, tr("help.settings.keys"), tr("help.settings.ports"), tr("help.settings.review"), tr("help.settings.persistence"), tr("help.settings.tun"))
 	case "logs":
-		lines = append(lines, tr("help.logs.keys"), tr("help.logs.liveOnly"), tr("help.logs.retention"))
+		lines = append(lines, tr("help.logs.keys"), tr("help.search.input"), tr("help.logs.liveOnly"), tr("help.logs.retention"))
 	default:
-		lines = append(lines, tr("help.overview.install"), tr("help.overview.import"), tr("help.overview.controls"), tr("help.overview.refresh"), tr("help.overview.unavailable"))
+		lines = append(lines, tr("help.overview.keys"), tr("help.overview.controls"), tr("help.overview.install"), tr("help.overview.import"), tr("help.overview.refresh"), tr("help.overview.unavailable"))
 	}
-	lines = append(lines, "", tr("help.navigation"), tr("help.pages.first"), tr("help.pages.second"), "", tr("help.navigation.tab"), tr("help.navigation.arrows"), tr("help.navigation.scroll"), tr("help.navigation.cancel"), tr("help.keyHints.shortcut"))
-	if m.page == "connections" {
-		lines = append(lines, "", tr("help.core.title"), tr("help.hints.connectionsCore"))
-	} else if m.page != "proxies" {
-		lines = append(lines, "", tr("help.core.title"), tr("help.core.actions"), tr("help.core.refresh"))
+	lines = append(lines, "", tr("help.core.title"))
+	switch m.page {
+	case "connections":
+		lines = append(lines, tr("help.hints.connectionsCore"))
+	case "proxies":
+		lines = append(lines, tr("help.core.proxies"))
+	case "overview":
+		lines = append(lines, tr("help.core.overview"), tr("help.core.refresh"))
+	default:
+		lines = append(lines, tr("help.core.actions"))
+		if m.page != "rules" && m.page != "logs" {
+			lines = append(lines, tr("help.core.refresh"))
+		}
 	}
-	lines = append(lines, tr("help.core.quit"), "", tr("help.forms.title"), tr("help.forms.keys"), tr("help.forms.input"), tr("help.forms.modal"), "", tr("help.messages.title"), tr("help.messages.toast"), tr("help.messages.dismiss"), tr("help.messages.shared"))
+	lines = append(lines, "", tr("help.navigation"), tr("help.navigation.keys"), tr("help.pages.first"), tr("help.pages.second"), "", tr("help.navigation.tab"), tr("help.navigation.arrows"), tr("help.navigation.scroll"), tr("help.navigation.cancel"), tr("help.keyHints.shortcut"), tr("help.controls"), tr("help.core.quit"), "", tr("help.forms.title"), tr("help.forms.keys"), tr("help.forms.input"), tr("help.forms.modal"), "", tr("help.messages.title"), tr("help.messages.toast"), tr("help.messages.dismiss"), tr("help.messages.controls"))
 	var wrapped []string
 	for _, line := range lines {
 		wrapped = append(wrapped, strings.Split(wrapText(line, max(1, width)), "\n")...)

@@ -152,3 +152,27 @@ func TestHelpShowsCurrentPageBeforeGeneralNavigation(t *testing.T) {
 		}
 	}
 }
+
+func TestHelpIncludesOnlyCurrentPageAndCommonInstructions(t *testing.T) {
+	pageInstructions := map[string]string{
+		"overview": "help.overview.keys", "proxies": "help.proxies.expand",
+		"profiles": "help.profiles.add", "connections": "help.connections.keys",
+		"rules": "help.rules.keys", "logs": "help.logs.keys", "settings": "help.settings.keys",
+	}
+	for _, language := range []string{i18n.English, i18n.Chinese} {
+		for _, page := range navPages() {
+			m := Model{locale: i18n.New(language), page: page}
+			body := strings.Join(m.helpLines(1000), "\n")
+			for other, instruction := range pageInstructions {
+				if strings.Contains(body, m.tr(instruction)) != (page == other) {
+					t.Fatalf("%s %s included the wrong page instructions: %s", language, page, other)
+				}
+			}
+			for _, common := range []string{"help.navigation", "help.controls", "help.forms.input", "help.messages.controls"} {
+				if !strings.Contains(body, m.tr(common)) {
+					t.Fatalf("%s %s omitted common instructions: %s", language, page, common)
+				}
+			}
+		}
+	}
+}

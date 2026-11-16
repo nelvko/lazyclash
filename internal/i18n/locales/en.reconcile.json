@@ -1,8 +1,8 @@
 {
-  "help.profiles.click": "Click a card to apply it. Clicking the current profile applies pending changes; unchanged profiles are not reloaded.",
+  "help.profiles.click": "With the core installed, clicking a card applies it; the current profile applies pending changes and is not reloaded when unchanged. Without the core, clicking opens details.",
   "help.profiles.menu": "Right-click a card, click its ⋯ button, or press m / Shift+F10 on a focused card to open its action menu.",
-  "help.profiles.menuControls": "Menu: arrows / j / k choose; Enter runs an action; Esc / Tab or an outside click closes without activating the page.",
-  "help.messages.toast": "Up to two Toasts appear in the upper-right. Ctrl+N opens the full list and details. Visible success lasts 3 seconds; info lasts 4 seconds.",
-  "help.messages.dismiss": "Errors remain until closed. Cancel on a progress notice stops its task; closing the notice keeps it running. Esc returns one layer at a time.",
+  "help.profiles.menuControls": "Menu: ↑↓ / j/k selects; Home / End jumps to the first/last item; Enter runs it. Esc / Tab / Shift+Tab or an outside click closes.",
+  "help.messages.toast": "Errors, warnings, important messages and ongoing progress appear in the upper-right. Routine success and info stay briefly in the notification list. While browsing a page, Ctrl+N opens the list and details.",
+  "help.messages.dismiss": "Errors remain until closed. Cancel on a progress notice stops its task; closing the notice keeps it running. Browsing remains available during tasks; follow the current dialog hint for dialog tasks.",
   "navigation.actionMenu": "↑↓ Select · Enter Choose · Esc Close"
 }

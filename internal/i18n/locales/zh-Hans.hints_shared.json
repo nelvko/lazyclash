@@ -14,5 +14,5 @@
   "notification.hints.listControls": "↑↓ 控件 · x 关闭通知 · Esc 关闭面板",
   "notification.hints.detail": "↑↓ / PgUp/PgDn 滚动 · x 关闭通知 · Esc 返回",
   "notification.hints.empty": "Esc 关闭面板",
-  "help.hints.connectionsCore": "连接列表中 s 排序，x 审阅关闭连接；r 重启内核，连接数据自动更新。"
+  "help.hints.connectionsCore": "浏览内容时：r 重启内核；连接数据自动更新。"
 }

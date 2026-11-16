@@ -1,0 +1,12 @@
+{
+  "help.connections.close": "x 审阅关闭当前仍活跃的连接；已关闭记录只读。「关闭全部」确认后关闭全部实时连接，包括筛选和暂停视图之外的连接。",
+  "help.rules.search": "Alt+C 区分大小写 · Alt+W 整词匹配 · Alt+R 正则表达式。",
+  "help.search.input": "搜索中 Enter / Esc 结束输入并保留筛选；Tab / Shift+Tab 移动到其他控件。",
+  "help.settings.keys": "Tab / Shift+Tab 选择设置控件，Enter / Space 执行或打开编辑；Esc / ← / h 返回导航。语言和代理模式需聚焦具体选项后确认。",
+  "help.overview.keys": "↑↓ / j/k 浏览卡片；Enter / Space 进入卡片中可用的控件，只读卡片没有进入操作。Tab / Shift+Tab 切换控件，Enter / Space 执行；Esc / ← / h 返回导航。",
+  "help.core.proxies": "浏览内容时：x 停止内核。",
+  "help.core.overview": "浏览内容时：s 启动 · x 停止内核。",
+  "help.navigation.keys": "浏览页面时：? 打开帮助 · q 退出。输入、菜单或弹窗优先处理按键，此时页面快捷键不生效。",
+  "help.controls": "帮助中：Tab / Shift+Tab 切换按钮，Enter 执行；↑↓ / j/k 滚动，PgUp / PgDn 翻页，Space 下一页，Home / End 到首尾；Esc / ? 关闭帮助，q 退出程序。",
+  "help.messages.controls": "通知面板：Tab 选择操作，Enter / Space 执行；x / Delete / Backspace 关闭当前通知，不取消任务。Esc / q 返回或关闭面板。"
+}
