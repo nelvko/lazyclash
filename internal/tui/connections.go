@@ -137,6 +137,10 @@ func (m Model) detailActive() bool {
 func (m Model) canCloseAllConnections() bool {
 	return !m.busy && !m.quitting && m.runtime.received && m.runtime.snapshot.State == "ready" && m.runtime.snapshot.Connections != nil && len(m.runtime.snapshot.Connections.Connections) > 0
 }
+
+func (m Model) canPauseConnections() bool {
+	return !m.busy && !m.quitting && !m.connections.confirming && m.connections.detail == nil && (m.connections.paused || m.connectionSnapshot() != nil)
+}
 func (m *Model) focusConnectionSearch() tea.Cmd {
 	m.connections.detail = nil
 	m.connections.confirming = false
@@ -337,6 +341,9 @@ func (m *Model) connectionActivate(id string) tea.Cmd {
 		m.reconcileConnections()
 		m.revealConnection(0)
 	case id == "conn.pause":
+		if !m.canPauseConnections() {
+			return nil
+		}
 		if m.connections.paused {
 			m.connections.paused, m.connections.frozen = false, nil
 			m.connections.frozenClosed = nil

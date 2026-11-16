@@ -63,7 +63,14 @@ func (m Model) pageHeader() pageHeader {
 		h.actions = []headerAction{{"profiles.update-all", tr("header.updateAll"), "↻", m.hasRefreshableProfiles()}}
 	case "connections":
 		h.summary, h.compactSummary = m.connectionTotals(false), m.connectionTotals(true)
-		h.actions = []headerAction{{"conn.close-all", tr("connections.close_all"), "×", !m.connections.confirming && m.canCloseAllConnections()}}
+		pause, compact := tr("connections.pause"), "Ⅱ"
+		if m.connections.paused {
+			pause, compact = tr("connections.resume"), "▶"
+		}
+		h.actions = []headerAction{
+			{"conn.pause", pause, compact, m.canPauseConnections()},
+			{"conn.close-all", tr("connections.close_all"), "×", !m.connections.confirming && m.canCloseAllConnections()},
+		}
 	case "rules":
 		h.actions = []headerAction{{"rules.providers", tr("providers.title.rules"), "≡", m.providersSupported(providerRules)}}
 	case "logs":

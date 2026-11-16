@@ -13,6 +13,7 @@ import re
 import sys
 import time
 import uuid
+import unicodedata
 
 
 SIZES = ((200, 45), (160, 45), (120, 32), (80, 24), (60, 20), (40, 16), (160, 45))
@@ -117,6 +118,134 @@ def header_totals(terminal, words, required=True):
     return values, points
 
 
+def click_cell(terminal, x, y):
+    terminal.key(("\x1b[<0;%d;%dM\x1b[<0;%d;%dm" % (x + 1, y + 1, x + 1, y + 1)).encode())
+    terminal.settle()
+
+
+def resize_terminal(terminal, words, width, height):
+    terminal.resize(width, height)
+    # The resized emulator initially retains cells from the previous frame.
+    # The pinned Quit text at its new right edge acknowledges new geometry.
+    quit_label = words["dashboard.footer.quit"]
+    quit_width = sum(2 if unicodedata.east_asian_width(char) in "WF" else 1 for char in quit_label)
+    wait_until(terminal, lambda: "".join(terminal.screen.cells[height - 1][width - 2 - quit_width:width - 2]) == quit_label,
+        "Terminal did not paint the new %dx%d footer" % (width, height))
+    terminal.settle()
+
+
+def search_frame(terminal, required=True):
+    cells = terminal.screen.cells
+    for y, row in enumerate(cells[:-2]):
+        for x, value in enumerate(row):
+            if value != "╭":
+                continue
+            right = next((i for i in range(x + 1, len(row)) if row[i] == "╮"), None)
+            if right is not None and cells[y + 1][x] == cells[y + 1][right] == "│" and cells[y + 2][x] == "╰" and cells[y + 2][right] == "╯":
+                return x, y, right, y + 2
+    if required:
+        raise AssertionError("Search frame missing\n" + terminal.screen.text())
+    return None
+
+
+def filter_count(terminal, required=True):
+    frame = search_frame(terminal, required)
+    if frame is None:
+        return None
+    _, top, right, _ = frame
+    tail = "".join(terminal.screen.cells[top + 1][right + 1:])
+    match = re.match(r"\s*(\d+(?: / \d+)?)", tail)
+    if match is None:
+        if required:
+            raise AssertionError("Search count is not outside the input\n" + terminal.screen.text())
+        return None
+    return match.group(1), (right + 1 + match.start(1), top + 1)
+
+
+def wait_count(terminal, total, matched=None):
+    expected = str(total) if matched is None else "%d / %d" % (matched, total)
+    wait_until(terminal, lambda: (filter_count(terminal, required=False) or (None, None))[0] == expected,
+        "Search count did not become " + expected)
+    return filter_count(terminal)[1]
+
+
+def header_pause(terminal, words, paused=False, required=True):
+    tab_prefix = words["connections.tab_active"].split("%", 1)[0]
+    rows = terminal.screen.text().splitlines()
+    header_end = next((i for i, row in enumerate(rows) if tab_prefix in row), len(rows))
+    header = "\n".join(rows[:header_end])
+    label, compact = (words["connections.resume"], "▶") if paused else (words["connections.pause"], "Ⅱ")
+    anchor = label if label in header else compact if compact in header else None
+    if anchor is None:
+        if required:
+            raise AssertionError("Pause action missing from the header\n" + terminal.screen.text())
+        return None
+    return position(terminal, anchor)
+
+
+def wait_header_pause(terminal, words, paused=False):
+    wait_until(terminal, lambda: header_pause(terminal, words, paused, required=False) is not None,
+        "Header pause state did not update")
+    return header_pause(terminal, words, paused)
+
+
+def check_filter_layout(terminal, words, active, closed, closed_view=False, paused=False):
+    left, top, right, bottom = search_frame(terminal)
+    count_point = filter_count(terminal)[1]
+    assert count_point[0] > right and count_point[1] == top + 1, "count moved inside the input frame"
+    sort_label = words["connections.sort"] % words["connections.sort_newest"]
+    sort_x, sort_y = position(terminal, sort_label)
+    tabs = [position(terminal, tab_label(words, view, count)) for view, count in (("active", active), ("closed", closed))]
+    if sort_y == top + 1:
+        assert sort_x > right and all(y == top + 1 and x < left for x, y in tabs), "wide tabs/search/count/sort did not stay on one row"
+    else:
+        assert sort_y < top and all(y < top for _, y in tabs), "narrow tabs and sort are not above search"
+    inside = "".join(terminal.screen.cells[top + 1][left + 1:right])
+    for label in (words["connections.pause"], words["connections.resume"], sort_label):
+        assert label not in inside, "an action is still embedded in the search field"
+    pause_x, pause_y = header_pause(terminal, words, paused)
+    rows = terminal.screen.text().splitlines()
+    header = "\n".join(rows[:min(y for _, y in tabs)])
+    close_label = words["connections.close_all"] if words["connections.close_all"] in header else "×"
+    close_x, close_y = position(terminal, close_label)
+    assert pause_y == close_y and pause_x < close_x and pause_y < top, "Pause is not in the header before Close all"
+    if closed_view:
+        terminal.wait(words["connections.history_scope"])
+    elif paused:
+        terminal.wait(words["connections.paused"])
+    else:
+        live = words["runtime.status.live"]
+        assert not any(live in row for row in rows[bottom + 1:-1]), "normal live status still consumes a separate line"
+    return (left, top, right, bottom), count_point, (sort_x, sort_y)
+
+
+def check_sort_boundary(preview, terminal, words, output, language, args):
+    width, height = (54 if language == "en" else 48), 20
+    resize_terminal(terminal, words, width, height)
+    terminal.key(b"\x1b[H")
+    terminal.settle()
+    wait_count(terminal, 48, 2)
+    frame = search_frame(terminal)
+    count_point = filter_count(terminal)[1]
+    sort_point = position(terminal, words["connections.sort"] % words["connections.sort_newest"])
+    modes = {}
+    for name in ("download_rate", "upload_rate", "download_total", "upload_total", "duration", "newest"):
+        terminal.key(b"s")
+        label = words["connections.sort"] % words["connections.sort_" + name]
+        terminal.wait(label)
+        terminal.settle()
+        actual_frame = search_frame(terminal)
+        actual_count = filter_count(terminal)[1]
+        actual_sort = position(terminal, label)
+        assert actual_frame == frame, "sort label moved or resized search at the wrap breakpoint: " + name
+        assert actual_count == count_point, "sort label moved the external count at the wrap breakpoint: " + name
+        assert actual_sort == sort_point, "sort label moved its reserved control position at the wrap breakpoint: " + name
+        modes[name] = {"frame": actual_frame, "count": actual_count, "sort": actual_sort}
+        preview.capture(terminal, output, "sort-boundary-%dx%d-%s" % (width, height, name), args)
+    (output / "sort-boundary.json").write_text(json.dumps({"terminal_size": [width, height], "modes": modes}, indent=2) + "\n")
+    resize_terminal(terminal, words, 160, 45)
+
+
 def exercise(preview, binary, output, language, profile, args):
     output.mkdir(parents=True)
     words = labels(language)
@@ -126,12 +255,20 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait("v1.19.33")
         terminal.key(b"c")
         terminal.wait("api.github.com")
-        terminal.wait(words["connections.pause"])
+        wait_header_pause(terminal, words)
         wait_until(terminal, lambda: query_count(report) >= 2, "second runtime sample missing")
         terminal.settle()
         check_tabs(terminal, words, 48, 0)
         header_totals(terminal, words)
+        wait_count(terminal, 48)
+        check_filter_layout(terminal, words, 48, 0)
         preview.capture(terminal, output, "connections-wide", args)
+
+        # View buttons and Clear retain independent mouse hit regions.
+        click_cell(terminal, *position(terminal, tab_label(words, "closed", 0)))
+        terminal.wait(words["connections.closed_empty"])
+        click_cell(terminal, *position(terminal, tab_label(words, "active", 48)))
+        terminal.wait("api.github.com")
 
         # The list shortcut must remain ordinary text inside the search input.
         terminal.key(b"/")
@@ -142,12 +279,18 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.key(b"\r")
         terminal.wait(words["connections.no_matches"])
         check_tabs(terminal, words, 48, 0)
-        search(terminal, "")
+        wait_count(terminal, 48, 0)
+        _, input_top, input_right, _ = search_frame(terminal)
+        click_cell(terminal, input_right - 2, input_top + 1)
+        terminal.key(b"\r")
+        terminal.wait("api.github.com")
+        wait_count(terminal, 48)
 
         # Freeze the observation so any difference while searching can only
         # come from filtering, rather than the next live traffic sample.
-        terminal.key(b"p")
-        terminal.wait(words["connections.resume"])
+        click_cell(terminal, *header_pause(terminal, words))
+        wait_header_pause(terminal, words, paused=True)
+        terminal.wait(words["connections.paused"])
         terminal.settle()
         unfiltered_totals = header_totals(terminal, words)[0]
         for query, present, absent, matches in (("github-agent", "api.github.com", "www.youtube.com", 1),
@@ -156,12 +299,12 @@ def exercise(preview, binary, output, language, profile, args):
             search(terminal, query)
             terminal.wait(present)
             terminal.wait_absent(absent)
-            terminal.wait(words["connections.count"] % (matches, 48))
+            wait_count(terminal, 48, matches)
             check_tabs(terminal, words, 48, 0)
             assert header_totals(terminal, words)[0] == unfiltered_totals, "search changed core traffic totals"
         preview.capture(terminal, output, "filtered-header-totals", args)
         terminal.key(b"p")
-        terminal.wait(words["connections.pause"])
+        wait_header_pause(terminal, words)
         search(terminal, "github-agent")
         terminal.key(b"\r")
         terminal.wait(words["connections.details"])
@@ -176,10 +319,10 @@ def exercise(preview, binary, output, language, profile, args):
         # A paused connection list freezes its data while runtime monitoring
         # continues in the background, including sidebar metrics.
         wait_until(terminal, lambda: query_count(report) >= 2, "second runtime sample missing")
-        terminal.resize(80, 24)
+        resize_terminal(terminal, words, 80, 24)
         terminal.settle()
         terminal.key(b"p")
-        terminal.wait(words["connections.resume"])
+        wait_header_pause(terminal, words, paused=True)
         terminal.settle()
         frozen = host_rows(terminal, "api.github.com", 2)
         frozen_totals = header_totals(terminal, words)[0]
@@ -191,7 +334,7 @@ def exercise(preview, binary, output, language, profile, args):
         assert frozen_totals == header_totals(terminal, words)[0], "paused header totals changed while runtime continued"
         preview.capture(terminal, output, "paused-snapshot", args)
         terminal.key(b"p")
-        terminal.wait(words["connections.pause"])
+        wait_header_pause(terminal, words)
         wait_until(terminal, lambda: frozen != host_rows(terminal, "api.github.com", 2),
             "resuming did not show the current connection data")
         wait_until(terminal, lambda: frozen_totals != header_totals(terminal, words)[0],
@@ -199,13 +342,16 @@ def exercise(preview, binary, output, language, profile, args):
 
         # Each sort mode remains reachable from content focus and preserves
         # the filter; six presses complete the cycle back to newest.
-        terminal.resize(160, 45)
+        resize_terminal(terminal, words, 160, 45)
         terminal.settle()
         search(terminal, "agent")
         terminal.wait("[2001:db8::42]:443")
         assert position(terminal, "api.github.com")[1] < position(terminal, "[2001:db8::42]:443")[1], "newest order is incorrect"
         for name in ("download_rate", "upload_rate", "download_total", "upload_total", "duration", "newest"):
-            terminal.key(b"s")
+            if name == "download_rate":
+                click_cell(terminal, *position(terminal, words["connections.sort"] % words["connections.sort_newest"]))
+            else:
+                terminal.key(b"s")
             terminal.wait(words["connections.sort_" + name])
             terminal.settle()
             terminal.wait("api.github.com")
@@ -214,17 +360,21 @@ def exercise(preview, binary, output, language, profile, args):
             ipv6_y = position(terminal, "[2001:db8::42]:443")[1]
             assert (github_y < ipv6_y) == (name == "newest"), "connection sort order is incorrect: " + name
         preview.capture(terminal, output, "sort-cycle", args)
+        if args.sort_boundary:
+            check_sort_boundary(preview, terminal, words, output, language, args)
         search(terminal, "")
 
         # Scroll while toolbar cells remain fixed, then resize repeatedly from
         # a populated list. Narrow layouts retain two independently clickable rows.
         for width, height in SIZES:
-            terminal.resize(width, height)
+            resize_terminal(terminal, words, width, height)
             terminal.key(b"\x1b[H")
             terminal.settle()
             terminal.wait("api.github.com")
             check_tabs(terminal, words, 48, 0)
             positions = header_totals(terminal, words)[1]
+            wait_count(terminal, 48)
+            filter_geometry = check_filter_layout(terminal, words, 48, 0)
             if width >= 120:
                 close_x, close_y = position(terminal, words["connections.close_all"])
                 assert positions["download"][1] == positions["upload"][1] == close_y, "traffic totals left the header row"
@@ -233,12 +383,13 @@ def exercise(preview, binary, output, language, profile, args):
                     assert positions["download"][0] > width // 2, "traffic totals are not on the right side of the header"
             tabs = {view: position(terminal, tab_label(words, view, count))
                 for view, count in (("active", 48), ("closed", 0))}
-            pause_position = position(terminal, words["connections.pause"])
+            pause_position = header_pause(terminal, words)
             for _ in range(5):
                 terminal.key(("\x1b[<65;%d;%dM" % (width - 3, height - 3)).encode())
             terminal.settle()
             terminal.wait_absent("api.github.com")
-            assert pause_position == position(terminal, words["connections.pause"]), "scroll moved the fixed toolbar"
+            assert pause_position == header_pause(terminal, words), "scroll moved the header pause action"
+            assert filter_geometry == check_filter_layout(terminal, words, 48, 0), "scroll moved the fixed filter controls"
             assert positions == header_totals(terminal, words)[1], "scroll moved the header totals"
             assert tabs == {view: position(terminal, tab_label(words, view, count))
                 for view, count in (("active", 48), ("closed", 0))}, "scroll moved the view tabs"
@@ -248,7 +399,7 @@ def exercise(preview, binary, output, language, profile, args):
             terminal.wait("api.github.com")
             preview.capture(terminal, output, "connections-%dx%d" % (width, height), args)
 
-        terminal.resize(80, 24)
+        resize_terminal(terminal, words, 80, 24)
         search(terminal, "github-agent")
         x, y = position(terminal, "api.github.com")
         terminal.key(("\x1b[<0;%d;%dM\x1b[<0;%d;%dm" % (x + 1, y + 2, x + 1, y + 2)).encode())
@@ -274,7 +425,7 @@ def exercise(preview, binary, output, language, profile, args):
         # history must stay frozen until resume, while the backend keeps polling.
         search(terminal, "github-agent")
         terminal.key(b"p")
-        terminal.wait(words["connections.resume"])
+        wait_header_pause(terminal, words, paused=True)
         terminal.key(b"x")
         terminal.wait(words["connections.confirm_title"])
         terminal.wait("api.github.com")
@@ -295,11 +446,11 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait_absent("api.github.com")
         preview.capture(terminal, output, "paused-closed-history", args)
         terminal.key(b"p")
-        terminal.wait(words["connections.pause"])
+        wait_header_pause(terminal, words)
         check_tabs(terminal, words, 47, 1)
         terminal.wait("api.github.com")
         search(terminal, "github-agent")
-        terminal.wait(words["connections.closed_count"] % (1, 1))
+        wait_count(terminal, 1, 1)
         preview.capture(terminal, output, "closed-single-filtered", args)
         terminal.key(b"\r")
         terminal.wait(words["connections.details"])
@@ -324,7 +475,7 @@ def exercise(preview, binary, output, language, profile, args):
         # The header action always closes the live core's entire connection
         # list, including rows hidden by this filter. Enter first exercises
         # the default Cancel action before explicitly confirming a new attempt.
-        terminal.resize(160, 45)
+        resize_terminal(terminal, words, 160, 45)
         terminal.settle()
         search(terminal, "streaming")
         terminal.wait("www.youtube.com")
@@ -361,21 +512,22 @@ def exercise(preview, binary, output, language, profile, args):
 
         # All 48 observed connections remain searchable in this session.
         terminal.key(b"v")
-        terminal.wait(words["connections.closed_count"] % (48, 48))
+        wait_count(terminal, 48)
         search(terminal, "github-agent")
         terminal.wait("api.github.com")
-        terminal.wait(words["connections.closed_count"] % (1, 48))
+        wait_count(terminal, 48, 1)
         preview.capture(terminal, output, "closed-all-filtered", args)
         search(terminal, "flow-")
-        terminal.wait(words["connections.closed_count"] % (44, 48))
+        wait_count(terminal, 48, 44)
         search(terminal, "")
         for width, height in SIZES:
-            terminal.resize(width, height)
+            resize_terminal(terminal, words, width, height)
             terminal.key(b"\x1b[H")
             terminal.settle()
             check_tabs(terminal, words, 0, 48)
-            terminal.wait(words["connections.closed_count"] % (48, 48))
+            wait_count(terminal, 48)
             header_totals(terminal, words)
+            check_filter_layout(terminal, words, 0, 48, closed_view=True)
             if width >= 160:
                 terminal.wait(words["navigation.connections.action.details"])
                 terminal.settle()
@@ -400,7 +552,7 @@ def exercise(preview, binary, output, language, profile, args):
         if profile == "no-color":
             assert not any(value not in (b"", b"0") for value in preview.SGR.findall(raw)), "NO_COLOR emitted styling"
         (output / "pty.raw").write_bytes(raw)
-        print("PASS %s/%s: search, rate samples, live pause, six sorts, details/two-row clicks, fixed toolbar, six sizes, header totals, active/closed tabs and frozen history, exact close, archived filters/details, close-all cancellation/confirmation; %s" %
+        print("PASS %s/%s: search, rate samples, live pause, six sorts, details/two-row clicks, fixed toolbar, six sizes, header pause/totals, framed search with outside count/sort, active/closed tabs and frozen history, exact close, archived filters/details, close-all cancellation/confirmation; %s" %
             (language, profile, json.dumps(calls)), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")
@@ -418,6 +570,7 @@ def main():
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--lang", choices=["en", "zh-Hans"], action="append")
     parser.add_argument("--profile", choices=["truecolor", "256", "no-color"], action="append")
+    parser.add_argument("--sort-boundary", action="store_true", help="Check all sort labels at the English/Chinese wrap breakpoint")
     sys.dont_write_bytecode = True
     spec = importlib.util.spec_from_file_location("connections_pty_preview", Path(__file__).with_name("onboarding-pty.py"))
     preview = importlib.util.module_from_spec(spec)

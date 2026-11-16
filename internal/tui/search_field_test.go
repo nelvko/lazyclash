@@ -139,9 +139,17 @@ func TestSearchFieldFixedControlsAlignWithFrame(t *testing.T) {
 				}
 				m.layout()
 				field := findTarget(t, m, id)
-				controlID := map[string]string{"connections": "conn.pause", "rules": "rules.case", "logs": "logs.level"}[page]
+				controlID := map[string]string{"connections": "conn.sort", "rules": "rules.case", "logs": "logs.level"}[page]
 				control := findTarget(t, m, controlID)
-				if control.Y == field.Y+1 {
+				if page == "connections" {
+					if control.Y == field.Y+1 {
+						if control.X < field.X+field.W {
+							t.Fatalf("connection sort overlaps the search frame: field=%+v control=%+v", field, control)
+						}
+					} else if control.Y >= field.Y {
+						t.Fatalf("narrow connection sort did not move above search: field=%+v control=%+v", field, control)
+					}
+				} else if control.Y == field.Y+1 {
 					if control.X < field.X+2+field.InputWidth || control.X+control.W > field.X+field.W-1 {
 						t.Fatalf("inline controls left the frame or overlapped text: field=%+v control=%+v", field, control)
 					}

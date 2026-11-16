@@ -166,12 +166,8 @@ func TestConnectionsSearchTabReachesToolbarWithoutLosingQuery(t *testing.T) {
 		t.Fatalf("Tab from search must reach its adjacent Clear control, got %q", m.focus)
 	}
 	m, _ = update(m, special(tea.KeyTab))
-	if m.focus != "conn.pause" {
-		t.Fatalf("toolbar pause is not next in reading order, got %q", m.focus)
-	}
-	m, _ = update(m, special(tea.KeyTab))
 	if m.focus != "conn.sort" {
-		t.Fatalf("toolbar sort is unreachable by Tab, got %q", m.focus)
+		t.Fatalf("frame-external sort is not next in reading order, got %q", m.focus)
 	}
 	if m.connections.search.Value() != "one" || len(m.filteredConnections()) != 1 {
 		t.Fatal("cycling toolbar focus discarded the applied search")

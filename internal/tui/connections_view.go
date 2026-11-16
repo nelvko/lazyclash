@@ -90,42 +90,35 @@ func connectionValue(s string) string {
 }
 
 func (m Model) connectionControls() dashboardBlock {
-	var b dashboardBlock
-	line := ""
-	pause := m.tr("connections.pause")
-	if m.connections.paused {
-		pause = m.tr("connections.resume")
+	o := m.searchControlOptions("conn.sort")
+	o.Kind, o.Disabled = buttonText, m.busy || m.quitting
+	value := renderButton(m.tr("connections.sort", m.tr(m.connections.sort.key())), o)
+	b := dashboardBlock{lines: []string{value}}
+	if !o.Disabled {
+		b.targets = []hitRegion{{ID: "conn.sort", W: ansi.StringWidth(value), H: 1}}
 	}
-	for _, item := range []struct{ id, label string }{
-		{"conn.pause", pause},
-		{"conn.sort", m.tr("connections.sort", m.tr(m.connections.sort.key()))},
-	} {
-		o := m.searchControlOptions(item.id)
-		o.Kind = buttonText
-		o.Disabled = m.busy || (item.id == "conn.pause" && m.connectionSnapshot() == nil && !m.connections.paused)
-		value := renderButton(item.label, o)
-		if !o.Disabled {
-			b.targets = append(b.targets, hitRegion{ID: item.id, X: ansi.StringWidth(line), W: ansi.StringWidth(value), H: 1})
-		}
-		line += value
-	}
-	b.lines = []string{line}
 	return b
 }
 
 func (m Model) connectionToolbarRows(width int) int {
-	return len(m.connectionFilterBar(width).lines) + 2
+	rows := len(m.connectionFilterBar(width).lines) + 1
+	if status, _ := m.connectionStatus(); status != "" {
+		rows++
+	}
+	return rows
 }
 
 func (m Model) connectionSearchWidth(width int) int {
 	fieldWidth, _ := m.connectionSearchGeometry(width)
-	return inputFieldTextWidth(fieldWidth, searchControlWidth(m.connectionControls()), true)
+	return inputFieldTextWidth(fieldWidth, 0, true)
 }
 
 func (m Model) connectionsToolbar(width, rows int) dashboardBlock {
 	b := m.connectionFilterBar(width)
 	status, color := m.connectionStatus()
-	b.lines = append(b.lines, themed(cellCrop(status, width), color, bg, false))
+	if status != "" {
+		b.lines = append(b.lines, themed(cellCrop(status, width), color, bg, false))
+	}
 	if width >= connectionTableMinWidth {
 		b.lines = append(b.lines, m.connectionTable(nil, width)[0])
 	} else {
