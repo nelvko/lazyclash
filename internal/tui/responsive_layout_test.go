@@ -37,15 +37,26 @@ func TestWideningWindowDoesNotDropPairedCardsAtSidebarBreakpoint(t *testing.T) {
 	}
 }
 
-func TestWideShortWindowKeepsEveryNavigationDestinationVisible(t *testing.T) {
+func TestWideShortWindowKeepsEveryNavigationDestinationReachable(t *testing.T) {
 	for height := sidebarMinHeight; height <= 30; height++ {
 		o := dashboardOptions{Width: sidebarMinWidth, Height: height, Page: "overview", Snapshot: settingsTestSnapshot()}
 		screen, targets, _ := renderDashboard(o)
-		if !dashboardGeometry(o).sidebar || len(visibleSidebarTargets(targets)) != len(navPages()) {
-			t.Fatalf("%dx%d hid a navigation destination", o.Width, height)
+		if !dashboardGeometry(o).sidebar {
+			t.Fatalf("%dx%d folded the sidebar", o.Width, height)
 		}
-		assertCanvas(t, screen, o.Width, height)
-		assertRegions(t, targets, o.Width, height)
+		if height > sidebarMinHeight && len(visibleSidebarTargets(targets)) != len(navPages()) {
+			t.Fatalf("%dx%d scrolled navigation before using compact items", o.Width, height)
+		}
+		o.Sidebar = &sidebarState{}
+		for _, page := range navPages() {
+			o.Focus = "nav." + page
+			screen, targets, _ = renderDashboard(o)
+			if !hasAction(targets, o.Focus) {
+				t.Fatalf("%dx%d cannot reveal %s", o.Width, height, o.Focus)
+			}
+			assertCanvas(t, screen, o.Width, height)
+			assertRegions(t, targets, o.Width, height)
+		}
 	}
 }
 
@@ -76,7 +87,7 @@ func TestSettingsValuesAndActionsStayBesideAlignedLabels(t *testing.T) {
 	}
 }
 
-func TestCoreStateRemainsInPageTitleWhenHintsAreHidden(t *testing.T) {
+func TestCoreStateRemainsVisibleWhenHintsAreHidden(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		for _, plain := range []bool{false, true} {
 			for _, width := range []int{30, 40, 80, 120, 160} {
@@ -94,13 +105,26 @@ func TestCoreStateRemainsInPageTitleWhenHintsAreHidden(t *testing.T) {
 						m.snapshot.Service = service.Status{State: state.service, Active: state.active}
 						m.layout()
 						o := m.navigationOptions()
-						_, compact, _ := headerCoreState(o)
-						head := ansi.Strip(strings.Split(m.screen, "\n")[dashboardGeometry(o).headerY])
+						full, compact, _ := headerCoreState(o)
+						g := dashboardGeometry(o)
+						head := ansi.Strip(strings.Split(m.screen, "\n")[g.headerY])
+						if g.sidebar {
+							parts := strings.SplitN(full, " ", 2)
+							want := parts[0] + " " + o.Locale.T("dashboard.sidebar.coreStatus", parts[1])
+							if !strings.Contains(sidebarText(m.screen), want) {
+								t.Fatalf("%s %s %d plain=%v hides core %s in the sidebar", language, page, width, plain, state.service)
+							}
+							if strings.Contains(head, full) {
+								t.Fatalf("wide header repeats the sidebar core state: %q", head)
+							}
+							assertCanvas(t, m.screen, width, 24)
+							assertRegions(t, m.targets, width, 24)
+							continue
+						}
 						if plain && width < 40 && compact != state.compact {
 							t.Fatalf("plain state %s is ambiguous: %q", state.service, compact)
 						}
 						if !strings.Contains(head, compact) {
-							full, _, _ := headerCoreState(o)
 							if !strings.Contains(head, full) {
 								t.Fatalf("%s %s %d plain=%v hides core %s in the title: %q", language, page, width, plain, state.service, head)
 							}

@@ -29,6 +29,10 @@ func sidebarGeometry(o dashboardOptions, popup bool) sidebarLayout {
 		s.menuY += 2
 	}
 	available := max(0, s.end-s.menuY)
+	if !popup {
+		// Core state stays visible even when navigation needs to scroll.
+		available = max(0, available-1)
+	}
 	// Keep all seven destinations visible before spending rows on padding.
 	if available < len(navPages())*s.itemHeight {
 		s.itemHeight = 1
@@ -189,15 +193,33 @@ func drawSidebar(rows []string, o dashboardOptions, popup bool) []hitRegion {
 		putRows(rows, g.width-2, g.menuY+g.height, themed("↓", muted, sidebarBackground, o.Dim), o.Width)
 	}
 	if !popup {
-		footer := sidebarTraffic(o, g.width)
-		footerY := g.end - len(footer) - 1
-		if len(lines) <= g.height && footerY >= g.menuY+g.height+1 {
-			for row, line := range footer {
-				putRows(rows, 2, footerY+row, line, o.Width)
-			}
+		footer := sidebarFooter(o, g.width, g.end-g.menuY-g.height)
+		footerY := g.end - len(footer)
+		for row, line := range footer {
+			putRows(rows, 2, footerY+row, line, o.Width)
 		}
 	}
 	return visible
+}
+
+func sidebarFooter(o dashboardOptions, width, available int) []string {
+	full, _, color := headerCoreState(o)
+	symbol, label, _ := strings.Cut(full, " ")
+	status := symbol + " " + o.Locale.T("dashboard.sidebar.coreStatus", label)
+	if ansi.StringWidth(status) > width-4 {
+		status = full
+	}
+	status = themed(cellCrop(status, max(1, width-4)), color, sidebarBackground, o.Dim)
+	footer := []string{status}
+	traffic := sidebarTraffic(o, width)
+	// Leave one row between navigation and the footer's separator. Speeds are
+	// optional; the single state row also fits below a scrolling menu's hint.
+	if available >= 5 {
+		footer = append([]string{traffic[0], status}, traffic[1:]...)
+	} else if available >= 3 {
+		footer = []string{traffic[0], status}
+	}
+	return footer
 }
 
 func (m *Model) sidebarWheel(msg tea.MouseWheelMsg) bool {

@@ -47,7 +47,7 @@ func TestSidebarCompactsPaddingBeforeScrollingNavigation(t *testing.T) {
 			}
 			geometry := sidebarGeometry(o, !sidebarVisible(o.Width, o.Height))
 			itemHeight := 1
-			if size[1] >= 25 {
+			if size[1] >= 26 {
 				itemHeight = 3
 			}
 			for i, target := range visible {
@@ -193,7 +193,7 @@ func TestSidebarTabReturnsToLogicalNavigationAfterMouseScrolling(t *testing.T) {
 	m.returnToNavigation()
 	m.layout()
 	assertSidebarFocusVisible(t, m, "nav.settings", 1)
-	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 25})
+	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 26})
 	assertSidebarFocusVisible(t, m, "nav.settings", 3)
 }
 

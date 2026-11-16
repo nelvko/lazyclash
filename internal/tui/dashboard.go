@@ -158,7 +158,7 @@ func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
 		themed(lipgloss.NewStyle().Bold(true).Render(pageTitle(o.Page, o.Locale)), pageTitleForeground, bg, o.Dim)
 	pageText := titleText
 	if o.Height < 7 || o.Width < 20 {
-		put(0, 0, themed(cellCrop(logoText(bg, o.Dim)+" / "+titleText, o.Width), text, bg, o.Dim))
+		put(0, 0, dashboardTitle(o, logoText(bg, o.Dim)+" / "+titleText, pageText, o.Width))
 		if o.Height > 1 {
 			put(0, o.Height-1, themed(cellCrop(tr("dashboard.menuCompact"), o.Width), muted, bg, o.Dim))
 			add(hitRegion{ID: "menu", X: 0, Y: o.Height - 1, W: min(ansi.StringWidth(tr("dashboard.menu")), o.Width), H: 1})

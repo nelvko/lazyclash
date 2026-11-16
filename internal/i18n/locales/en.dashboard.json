@@ -8,6 +8,7 @@
   "dashboard.status.failed": "Failed",
   "dashboard.status.stopped": "Stopped",
   "dashboard.status.unknown": "Unknown",
+  "dashboard.sidebar.coreStatus": "Core: %s",
   "dashboard.status.enabled": "Enabled",
   "dashboard.status.disabled": "Disabled",
   "dashboard.action.install": "Install core",

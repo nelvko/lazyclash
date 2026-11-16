@@ -2,11 +2,14 @@ package tui
 
 import "github.com/charmbracelet/x/ansi"
 
-// The core badge belongs to the title, so page actions keep their original
-// space and hit bounds. Compact titles shed the repeated logo first.
+// The sidebar owns the global core state. Compact layouts keep it in the title
+// without taking space from page actions, shedding the repeated logo first.
 func dashboardTitle(o dashboardOptions, title, page string, width int) string {
 	if width <= 0 {
 		return ""
+	}
+	if dashboardGeometry(o).sidebar {
+		return cellCrop(title, width)
 	}
 	full, compact, color := headerCoreState(o)
 	badge := full

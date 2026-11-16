@@ -8,6 +8,7 @@
   "dashboard.status.failed": "失败",
   "dashboard.status.stopped": "已停止",
   "dashboard.status.unknown": "未知",
+  "dashboard.sidebar.coreStatus": "内核%s",
   "dashboard.status.enabled": "已启用",
   "dashboard.status.disabled": "已禁用",
   "dashboard.action.install": "安装内核",
