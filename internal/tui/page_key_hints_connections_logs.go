@@ -113,8 +113,6 @@ func (m Model) logsContextHelp() string {
 		parts = append(parts, tr("empty.logs.reset_hint"))
 	case "logs.follow":
 		action = state
-	case "logs.retry":
-		action = "retry"
 	case "logs.clear":
 		action = "clear"
 	case "logs.latest":
@@ -131,7 +129,7 @@ func (m Model) logsContextHelp() string {
 	if action != "" {
 		parts = append(parts, tr("navigation.logs.action."+action))
 	}
-	parts = append(parts, tr("navigation.logs.search"))
+	parts = append(parts, tr("navigation.logs.search"), tr("navigation.logs.reconnect"))
 	entries, _ := m.logsDisplayEntries()
 	for _, entry := range entries {
 		if m.logMatches(entry) {

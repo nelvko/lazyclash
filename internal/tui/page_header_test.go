@@ -52,7 +52,7 @@ func TestPageHeadersUsePageActionsAcrossSizesAndFocus(t *testing.T) {
 		"proxies":     {"proxies.providers"},
 		"profiles":    {"profiles.update-all"},
 		"connections": {"conn.close-all"},
-		"logs":        {"logs.follow", "logs.retry"}, "settings": {"network"},
+		"logs":        {"logs.clear", "logs.follow"}, "settings": {"network"},
 	} {
 		for _, size := range [][2]int{{20, 7}, {30, 12}, {60, 20}, {70, 20}, {80, 24}, {120, 32}, {160, 45}, {216, 55}} {
 			for _, focused := range actions {
@@ -62,6 +62,9 @@ func TestPageHeadersUsePageActionsAcrossSizesAndFocus(t *testing.T) {
 					m.layout()
 					assertCanvas(t, m.screen, size[0], size[1])
 					assertRegions(t, m.targets, size[0], size[1])
+					if page == "logs" && (hasAction(m.targets, "logs.retry") || hasAction(m.focusTargets(), "logs.retry")) {
+						t.Fatal("logs retained a visible or tabbable reconnect button")
+					}
 					if hasAction(m.targets, "help.open") || hasAction(m.focusTargets(), "help.open") {
 						t.Fatal("header retained a help button or Tab stop")
 					}

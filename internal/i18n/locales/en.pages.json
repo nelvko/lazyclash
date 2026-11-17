@@ -146,10 +146,10 @@
   "logs.ended": "Capture ended · retained entries are last observed",
   "logs.capturing": "Capturing live events · Following",
   "logs.waiting": "Waiting for live events",
-  "logs.paused": "Display paused · Capture continues in the background",
-  "logs.display_paused": "Display paused · Capture continues in the background",
-  "logs.pause_display": "Pause display",
-  "logs.resume_display": "Resume display",
+  "logs.paused": "Paused",
+  "logs.display_paused": "Paused",
+  "logs.pause_display": "Pause",
+  "logs.resume_display": "Resume",
   "logs.reconnecting": "Connection interrupted · Retrying…",
   "logs.recovered": "Connection restored · Missed events not replayed",
   "logs.opening": "Opening live log capture…",
@@ -198,6 +198,6 @@
   "logs.view_hint": "View (v) · Compact rows / wrapped details",
   "logs.reset_hint": "Clear search text",
   "logs.clear_hint": "Clear retained logs (Ctrl+L) · Capture unchanged",
-  "logs.empty_inactive": "No retained logs. Check connection status or reconnect.",
+  "logs.empty_inactive": "No retained logs. Check connection status or press Ctrl+R to reconnect.",
   "rules.retry_label": "Retry"
 }

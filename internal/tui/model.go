@@ -936,7 +936,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "esc":
 			m.returnToNavigation()
 		case "g", "ctrl+r":
-			if m.page != "proxies" && m.page != "connections" {
+			if m.page != "proxies" && m.page != "connections" && m.page != "logs" {
 				cmd = m.refresh()
 			}
 		}

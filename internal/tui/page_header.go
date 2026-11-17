@@ -79,13 +79,13 @@ func (m Model) pageHeader() pageHeader {
 		if m.logs.reconnecting {
 			h.summary = tr("header.connecting")
 		} else if m.logs.active {
-			h.summary = tr("header.live")
+			h.summary = ""
 		}
 		if m.logs.paused {
 			h.summary = tr("header.paused")
 			follow, compact = tr("logs.resume_display"), "▶"
 		}
-		h.actions = []headerAction{{"logs.clear", tr("logs.clear"), "×", true}, {"logs.follow", follow, compact, true}, {"logs.retry", tr("header.reconnect"), "↻", true}}
+		h.actions = []headerAction{{"logs.clear", tr("logs.clear"), "×", true}, {"logs.follow", follow, compact, true}}
 		if !m.snapshotReady {
 			h.summary, _ = m.logsStatus()
 			h.actions = nil

@@ -60,6 +60,12 @@ def event_numbers(terminal):
     return [int(value) for value in re.findall(r"event-(\d+)", terminal.screen.text())]
 
 
+def assert_log_controls(terminal, words):
+    header = "\n".join(terminal.screen.text().splitlines()[:3])
+    assert words["header.reconnect"] not in header and "↻" not in header, "Logs exposed a reconnect button"
+    assert words["header.live"] not in header, "Logs repeated its normal live status"
+
+
 def assert_stream(terminal, report, streams, canceled=0, failures=0):
     current = calls(report)
     assert current["streams"] == streams and current["canceled"] == canceled and current["failures"] == failures, current
@@ -92,6 +98,13 @@ def search(terminal, value):
     terminal.settle()
 
 
+def wait_log_action(terminal, label):
+    # Short Pause/暂停 labels must not match Paused/已暂停 in the status text.
+    pattern = re.compile(r"(?<!\w)" + re.escape(label) + r"(?!\w)")
+    wait_until(terminal, lambda: pattern.search(terminal.screen.text()) is not None,
+               "log action missing: " + label)
+
+
 def fixture_terminal(preview, binary, report, language, profile):
     environment = {"LAZYCLASH_LOGS_PTY_REPORT": str(report), "LAZYCLASH_LOGS_PTY_LANGUAGE": language}
     wrapper = preview.WRAPPER.replace("os.execv(sys.argv[5], sys.argv[5:])",
@@ -115,6 +128,7 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.key(b"6")
         terminal.wait("event-059")
         terminal.settle()
+        assert_log_controls(terminal, words)
         preview.capture(terminal, output, "logs-wide", args)
         rows = terminal.screen.text().splitlines()
         _, message_y = position(terminal, "event-059")
@@ -222,6 +236,7 @@ def exercise(preview, binary, output, language, profile, args):
             terminal.key(b"\x1b[H")
             terminal.wait("event-000")
             terminal.settle()
+            assert_log_controls(terminal, words)
             placeholder = words["logs.placeholder"]
             # A narrow input shows only the beginning of the placeholder.
             toolbar = position(terminal, placeholder[:min(5, len(placeholder))])
@@ -240,8 +255,9 @@ def exercise(preview, binary, output, language, profile, args):
         # Pause freezes the visible snapshot, while a large incoming burst
         # still enters the bounded cache. Resume reveals only the newest 200.
         terminal.key(b"f")
-        terminal.wait(words["logs.resume_display"])
+        wait_log_action(terminal, words["logs.resume_display"])
         terminal.settle()
+        assert_log_controls(terminal, words)
         frozen = event_numbers(terminal)
         assert frozen, "pause lost the visible snapshot"
         (output / "burst-events").touch()
@@ -251,7 +267,7 @@ def exercise(preview, binary, output, language, profile, args):
         assert_stream(terminal, report, 1)
         preview.capture(terminal, output, "display-paused-cache-continues", args)
         terminal.key(b" ")
-        terminal.wait(words["logs.pause_display"])
+        wait_log_action(terminal, words["logs.pause_display"])
         wait_until(terminal, lambda: event_numbers(terminal) and max(event_numbers(terminal)) > max(frozen) + 200, "Space did not resume the latest cached entries")
         terminal.wait(words["logs.summary"] % (200, 200))
         terminal.key(b"\x1b[H")
@@ -261,12 +277,12 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.key(b"\x1b[F")
         terminal.settle()
         terminal.click_text(words["logs.pause_display"])
-        terminal.wait(words["logs.resume_display"])
+        wait_log_action(terminal, words["logs.resume_display"])
         frozen = event_numbers(terminal)
         assert_continuing(terminal, report)
         assert event_numbers(terminal) == frozen, "Pause button failed to freeze display"
         terminal.key(b"\x1b[F")
-        terminal.wait(words["logs.pause_display"])
+        wait_log_action(terminal, words["logs.pause_display"])
         assert_stream(terminal, report, 1)
         preview.capture(terminal, output, "end-resumes-without-reconnect", args)
 
@@ -279,14 +295,16 @@ def exercise(preview, binary, output, language, profile, args):
         assert_stream(terminal, report, 1)
         assert "event-000" not in terminal.screen.text(), "clear retained old entries"
         assert all(value >= before["emitted"] for value in event_numbers(terminal)), "clear retained old event IDs"
+        assert_log_controls(terminal, words)
         preview.capture(terminal, output, "clear-continuing-stream", args)
-        terminal.key(b"g")
-        wait_until(terminal, lambda: calls(report).get("streams") == 2, "manual reconnect did not replace the request")
+        terminal.key(b"\x12")
+        wait_until(terminal, lambda: calls(report).get("streams") == 2, "Ctrl+R did not replace the log request")
         assert_continuing(terminal, report)
         assert_stream(terminal, report, 2, 1)
+        assert_log_controls(terminal, words)
         preview.capture(terminal, output, "manual-reconnect-once", args)
 
-        # A single real backend error must recover without pressing g, and the
+        # A single real backend error must recover without pressing Ctrl+R, and the
         # interruption belongs to status rather than an invented log record.
         (output / "break-stream").touch()
         wait_until(terminal, lambda: calls(report).get("failures") == 1, "fixture did not interrupt the active request")
@@ -295,6 +313,7 @@ def exercise(preview, binary, output, language, profile, args):
         wait_until(terminal, lambda: calls(report).get("streams") == 3, "interrupted stream did not reconnect automatically")
         assert_continuing(terminal, report)
         assert_stream(terminal, report, 3, 1, 1)
+        assert_log_controls(terminal, words)
         preview.capture(terminal, output, "automatic-recovery-no-gap-entry", args)
         search(terminal, "GAP")
         terminal.wait(words["logs.no_matches"])

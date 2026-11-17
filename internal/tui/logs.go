@@ -110,8 +110,6 @@ func (m *Model) logsActivate(id string) tea.Cmd {
 			return nil
 		}
 		return m.resumeLogs()
-	case "logs.retry":
-		return m.reconnectLogs()
 	case "logs.search":
 		m.logs.editing, m.focus, m.scroll = true, "logs.search", 0
 		return m.logs.search.Focus()
@@ -174,8 +172,8 @@ func (m *Model) logsKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 	switch k.String() {
 	case "/":
 		return true, m.logsActivate("logs.search")
-	case "g", "ctrl+r":
-		return true, m.logsActivate("logs.retry")
+	case "ctrl+r":
+		return true, m.reconnectLogs()
 	case "f":
 		return true, m.logsActivate("logs.follow")
 	case "l":

@@ -160,12 +160,12 @@ func TestButtonHoverKeepsItsSemanticRole(t *testing.T) {
 func TestHeaderButtonFocusDoesNotMoveOtherActionsOrHits(t *testing.T) {
 	for _, size := range [][2]int{{30, 12}, {60, 20}, {80, 24}, {160, 45}, {216, 55}} {
 		m := headerModel("logs", size[0], size[1])
-		m.focus = "logs.follow"
+		m.focus = "logs.clear"
 		m.layout()
-		first, second := findTarget(t, m, "logs.follow"), findTarget(t, m, "logs.retry")
-		m.focus, m.hover = "logs.retry", "logs.follow"
+		first, second := findTarget(t, m, "logs.clear"), findTarget(t, m, "logs.follow")
+		m.focus, m.hover = "logs.follow", "logs.clear"
 		m.layout()
-		if findTarget(t, m, "logs.follow") != first || findTarget(t, m, "logs.retry") != second {
+		if findTarget(t, m, "logs.clear") != first || findTarget(t, m, "logs.follow") != second {
 			t.Fatalf("focus/hover moved header hit regions at %v", size)
 		}
 	}

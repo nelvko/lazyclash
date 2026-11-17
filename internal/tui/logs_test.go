@@ -173,3 +173,25 @@ func TestLogsResizeHelpAndDepartureKeepTheSharedSessionAndHistory(t *testing.T) 
 		t.Fatal("returning to logs restarted capture or inserted a synthetic entry")
 	}
 }
+
+func TestLogsReconnectOnlyUsesCtrlRAndRespectsSearchInput(t *testing.T) {
+	m := sessionLogsModel(t, &fakeBackend{})
+	m.syncRuntime()
+	ctx, generation, job := m.runtime.ctx, m.runtime.generation, m.id
+	*m, _ = update(*m, key("g"))
+	if m.busy || m.id != job || m.runtime.generation != generation || ctx.Err() != nil {
+		t.Fatal("retired g shortcut refreshed the page or reconnected the session")
+	}
+	var cmd tea.Cmd
+	*m, cmd = update(*m, tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl})
+	if cmd == nil || m.runtime.generation == generation || ctx.Err() == nil || m.busy {
+		t.Fatal("Ctrl+R did not reconnect the background session independently")
+	}
+	m.logsActivate("logs.search")
+	generation = m.runtime.generation
+	*m, _ = update(*m, tea.KeyPressMsg{Code: 'r', Mod: tea.ModCtrl})
+	*m, _ = update(*m, key("g"))
+	if m.runtime.generation != generation || m.logs.search.Value() != "g" || !m.logs.editing {
+		t.Fatal("search input leaked a reconnect shortcut or lost literal g input")
+	}
+}
