@@ -149,6 +149,17 @@ func TestSearchFieldFixedControlsAlignWithFrame(t *testing.T) {
 					} else if control.Y >= field.Y {
 						t.Fatalf("narrow connection sort did not move above search: field=%+v control=%+v", field, control)
 					}
+				} else if page == "logs" {
+					if field.InputWidth != inputFieldTextWidth(field.W, 0, true) {
+						t.Fatalf("logs reserved input space for controls inside the frame: %+v", field)
+					}
+					if control.Y == field.Y+1 {
+						if control.X < field.X+field.W {
+							t.Fatalf("log options overlap the search frame: field=%+v control=%+v", field, control)
+						}
+					} else if control.Y < field.Y+field.H {
+						t.Fatalf("stacked log options overlap the search frame: field=%+v control=%+v", field, control)
+					}
 				} else if control.Y == field.Y+1 {
 					if control.X < field.X+2+field.InputWidth || control.X+control.W > field.X+field.W-1 {
 						t.Fatalf("inline controls left the frame or overlapped text: field=%+v control=%+v", field, control)
@@ -170,6 +181,37 @@ func TestSearchFieldFixedControlsAlignWithFrame(t *testing.T) {
 					t.Fatalf("body scrolling moved the fixed frame: before=%+v after=%+v", field, got)
 				}
 			})
+		}
+	}
+}
+
+func TestSearchFieldLogOptionsKeepGeometryAcrossChoices(t *testing.T) {
+	for _, language := range []string{i18n.English, i18n.Chinese} {
+		m := logsModel()
+		m.locale = i18n.New(language)
+		m.logs.search.SetValue("example")
+		// Include both sides of the inline/stacked boundary in either language.
+		for width := 24; width <= 85; width++ {
+			baseline := m.logFilterBar(width)
+			for level := range 4 {
+				for _, compact := range []bool{false, true} {
+					m.logs.level, m.logs.compact = level, compact
+					bar := m.logFilterBar(width)
+					if len(bar.lines) != len(baseline.lines) || len(bar.targets) != len(baseline.targets) {
+						t.Fatalf("%s width=%d level=%d compact=%t changed toolbar layout", language, width, level, compact)
+					}
+					for i, target := range bar.targets {
+						if target != baseline.targets[i] {
+							t.Fatalf("%s width=%d level=%d compact=%t moved %s: got %+v; want %+v", language, width, level, compact, target.ID, target, baseline.targets[i])
+						}
+					}
+					for _, line := range bar.lines {
+						if ansi.StringWidth(line) > width {
+							t.Fatalf("%s width=%d level=%d compact=%t overflowed the toolbar", language, width, level, compact)
+						}
+					}
+				}
+			}
 		}
 	}
 }

@@ -67,13 +67,13 @@ func (m Model) searchToolbarGap() int {
 	return 0
 }
 
-func (m Model) searchToolbarRows(width int, controls dashboardBlock) int {
-	return inputFieldRows(min(inputFieldMaxWidth, max(1, width)), searchControlWidth(controls), true) + 1
-}
-
 func (m Model) filterToolbarRows(width int) int {
 	if m.page == "logs" {
-		return m.searchToolbarRows(width, m.logControls())
+		_, controlsX := m.logSearchGeometry(width)
+		if controlsX == 0 {
+			return 5 // input, external controls and summary
+		}
+		return 4 // input and summary
 	}
 	rows := inputFieldRows(m.ruleSearchFieldWidth(width), searchControlWidth(m.ruleFilterButtons()), true)
 	if _, err := m.ruleMatcher(); err != nil {

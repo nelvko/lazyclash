@@ -66,6 +66,28 @@ def assert_log_controls(terminal, words):
     assert words["header.live"] not in header, "Logs repeated its normal live status"
 
 
+def assert_external_log_options(terminal, words):
+    x, y = position(terminal, words["logs.placeholder"][:5])
+    row = terminal.screen.cells[y]
+    left = max(i for i, cell in enumerate(row[:x + 1]) if cell == "│")
+    right = next(i for i in range(x, len(row)) if row[i] == "│")
+    options = []
+    for keys in (("logs.level_all", "logs.level_info", "logs.level_warn", "logs.level_error"),
+                 ("logs.compact", "logs.detailed")):
+        found = []
+        for name in keys:
+            try:
+                found.append(position(terminal, words[name]))
+            except AssertionError:
+                pass
+        assert found, "external log option missing"
+        options.extend(found)
+        for option_x, option_y in found:
+            assert option_y > y + 1 or (option_y == y and option_x > right), \
+                "log option remained inside the search frame"
+    return left, right, y, tuple(options)
+
+
 def assert_stream(terminal, report, streams, canceled=0, failures=0):
     current = calls(report)
     assert current["streams"] == streams and current["canceled"] == canceled and current["failures"] == failures, current
@@ -129,6 +151,7 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait("event-059")
         terminal.settle()
         assert_log_controls(terminal, words)
+        assert_external_log_options(terminal, words)
         preview.capture(terminal, output, "logs-wide", args)
         rows = terminal.screen.text().splitlines()
         _, message_y = position(terminal, "event-059")
@@ -240,12 +263,14 @@ def exercise(preview, binary, output, language, profile, args):
             placeholder = words["logs.placeholder"]
             # A narrow input shows only the beginning of the placeholder.
             toolbar = position(terminal, placeholder[:min(5, len(placeholder))])
+            option_geometry = assert_external_log_options(terminal, words)
             old = event_numbers(terminal)
             for _ in range(5):
                 terminal.key(("\x1b[<65;%d;%dM" % (width - 3, height // 2)).encode())
             terminal.settle()
             assert old != event_numbers(terminal), "wheel did not scroll the log viewport"
             assert toolbar == position(terminal, placeholder[:min(5, len(placeholder))]), "search field moved with the list"
+            assert option_geometry == assert_external_log_options(terminal, words), "scrolling moved the external log options"
             preview.capture(terminal, output, "scrolled-%dx%d" % (width, height), args)
             terminal.key(b"\x1b[F")
             terminal.settle()

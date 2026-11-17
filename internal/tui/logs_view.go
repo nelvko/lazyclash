@@ -120,7 +120,14 @@ func (m Model) logControls() dashboardBlock {
 	} {
 		o := m.searchControlOptions(item.id)
 		o.Kind = buttonText
-		o.Disabled = m.busy
+		keys := []string{"logs.level_all", "logs.level_info", "logs.level_warn", "logs.level_error"}
+		if item.id == "logs.view" {
+			keys = []string{"logs.detailed", "logs.compact"}
+		}
+		for _, key := range keys {
+			o.Width = max(o.Width, ansi.StringWidth(m.tr(key)))
+		}
+		o.Disabled = m.busy || m.quitting
 		value := renderButton(item.label, o)
 		if !o.Disabled {
 			b.targets = append(b.targets, hitRegion{ID: item.id, X: ansi.StringWidth(buttons), W: ansi.StringWidth(value), H: 1})
@@ -131,14 +138,43 @@ func (m Model) logControls() dashboardBlock {
 	return b
 }
 
+// A zero controlsX places the options below the complete input frame.
+func (m Model) logSearchGeometry(width int) (fieldWidth, controlsX int) {
+	width = max(1, width)
+	fieldWidth = min(inputFieldMaxWidth, width-searchControlWidth(m.logControls())-2)
+	if fieldWidth >= 24 {
+		return fieldWidth, fieldWidth + 2
+	}
+	return min(inputFieldMaxWidth, width), 0
+}
+
 func (m Model) logSearchWidth(width int) int {
-	return inputFieldTextWidth(min(inputFieldMaxWidth, max(1, width)), searchControlWidth(m.logControls()), true)
+	fieldWidth, _ := m.logSearchGeometry(width)
+	return inputFieldTextWidth(fieldWidth, 0, true)
+}
+
+func (m Model) logFilterBar(width int) dashboardBlock {
+	fieldWidth, controlsX := m.logSearchGeometry(width)
+	b := m.searchField("logs.search", m.tr("logs.placeholder"), m.logs.search, fieldWidth, false)
+	controls := m.logControls()
+	controlsY := 1
+	if controlsX == 0 {
+		controlsY = len(b.lines)
+		b.lines = append(b.lines, cellCrop(controls.lines[0], width))
+	} else {
+		b.lines[1] += themed("  ", text, bg, false) + controls.lines[0]
+	}
+	for _, target := range controls.targets {
+		target.X += controlsX
+		target.Y += controlsY
+		b.targets = append(b.targets, target)
+	}
+	return b
 }
 
 func (m Model) logsToolbar(width, rows int) dashboardBlock {
 	width = max(1, width)
-	b := m.searchToolbar("logs.search", m.tr("logs.placeholder"), m.logs.search,
-		m.logControls(), width, false)
+	b := m.logFilterBar(width)
 	count := 0
 	entries, _ := m.logsDisplayEntries()
 	for _, entry := range entries {
@@ -242,9 +278,17 @@ func (m Model) logsBody(width int) (string, []hitRegion) {
 		}
 	}
 	height := dashboardGeometry(m.dashboardOptions()).height
-	// Even a tiny terminal must leave a row for the log viewport.
-	if len(b.lines) >= height-1 {
-		b.lines = b.lines[:max(0, height-2)]
+	// Keep the input and external controls together before spending a row
+	// on the footer. A tiny terminal still needs one row for log content.
+	prefixLimit := max(0, height-2)
+	if m.dashboardOptions().BodyTopRows == 0 {
+		controlsRows := m.filterToolbarRows(width) - 1
+		if height > controlsRows {
+			prefixLimit = max(prefixLimit, controlsRows)
+		}
+	}
+	if len(b.lines) > prefixLimit {
+		b.lines = b.lines[:prefixLimit]
 		visible := b.targets[:0]
 		for _, target := range b.targets {
 			if clipped, ok := clipRegion(target, 0, 0, width, len(b.lines)); ok {
