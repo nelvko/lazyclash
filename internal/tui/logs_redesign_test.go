@@ -202,7 +202,12 @@ func TestLogsToolbarKeepsKeyboardOrderAndMouseTargetsWhileBrowsing(t *testing.T)
 			if !m.logs.editing || !m.logs.search.Focused() || m.logs.paused || !m.logs.active || m.logs.anchor != anchor {
 				t.Fatal("search focus interrupted capture or the reading position")
 			}
-			for _, id := range []string{"logs.case", "logs.word", "logs.regex", "logs.level", "logs.view", "logs.list", "logs.latest"} {
+			order := []string{"logs.case", "logs.word", "logs.regex"}
+			if view := findTarget(t, m, "logs.view"); view.Y == search.Y+1 {
+				order = append(order, "logs.view")
+			}
+			order = append(order, "logs.list", "logs.latest")
+			for _, id := range order {
 				m, _ = update(m, special(tea.KeyTab))
 				if m.focus != id || m.logs.editing || m.logs.search.Focused() {
 					t.Fatalf("Tab should visit %s; got %s (editing=%t)", id, m.focus, m.logs.editing)

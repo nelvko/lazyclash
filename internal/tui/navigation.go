@@ -69,15 +69,13 @@ func (m Model) focusTargets() []hitRegion {
 	}
 	sort.SliceStable(controls[1:], func(i, j int) bool {
 		a, b := controls[i+1], controls[j+1]
-		if m.page == "connections" {
-			// Read the input at its text row, alongside the tabs, rather than
-			// sorting its top frame above the tabs to its left.
-			if a.ID == "conn.search" {
-				a.Y++
-			}
-			if b.ID == "conn.search" {
-				b.Y++
-			}
+		// Read framed searches at their text row, alongside scope controls,
+		// rather than placing the frame's top before controls to its left.
+		if searchClearID(a.ID) != "" {
+			a.Y++
+		}
+		if searchClearID(b.ID) != "" {
+			b.Y++
 		}
 		if a.Y == b.Y {
 			return a.X < b.X

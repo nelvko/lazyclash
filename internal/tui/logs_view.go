@@ -125,34 +125,28 @@ func (m Model) logViewport(doc logDocument, width, height int) viewport.Model {
 	return v
 }
 
-func (m Model) logControls() dashboardBlock {
-	var b dashboardBlock
-	buttons := ""
-	for _, item := range []struct{ id, label string }{
-		{"logs.level", m.tr(logLevelKeys[m.logs.level]) + " ▾"},
-		{"logs.view", m.tr(map[bool]string{false: "logs.detailed", true: "logs.compact"}[m.logs.compact])},
-	} {
-		o := m.searchControlOptions(item.id)
-		o.Kind = buttonText
-		keys := logLevelKeys[:]
-		if item.id == "logs.view" {
-			keys = []string{"logs.detailed", "logs.compact"}
-		}
-		for _, key := range keys {
-			label := m.tr(key)
-			if item.id == "logs.level" {
-				label += " ▾"
-			}
-			o.Width = max(o.Width, ansi.StringWidth(label))
-		}
-		o.Disabled = m.busy || m.quitting
-		value := renderButton(item.label, o)
-		if !o.Disabled {
-			b.targets = append(b.targets, hitRegion{ID: item.id, X: ansi.StringWidth(buttons), W: ansi.StringWidth(value), H: 1})
-		}
-		buttons += value
+func (m Model) logControl(id string) dashboardBlock {
+	keys := logLevelKeys[:]
+	label := m.tr(logLevelKeys[m.logs.level]) + " ▾"
+	if id == "logs.view" {
+		keys = []string{"logs.detailed", "logs.compact"}
+		label = m.tr(map[bool]string{false: "logs.detailed", true: "logs.compact"}[m.logs.compact])
 	}
-	b.lines = []string{buttons}
+	o := m.searchControlOptions(id)
+	o.Kind = buttonText
+	for _, key := range keys {
+		value := m.tr(key)
+		if id == "logs.level" {
+			value += " ▾"
+		}
+		o.Width = max(o.Width, ansi.StringWidth(value))
+	}
+	o.Disabled = m.busy || m.quitting
+	value := renderButton(label, o)
+	b := dashboardBlock{lines: []string{value}}
+	if !o.Disabled {
+		b.targets = []hitRegion{{ID: id, W: ansi.StringWidth(value), H: 1}}
+	}
 	return b
 }
 
@@ -185,77 +179,28 @@ func (m Model) logCountWidth() int {
 	return ansi.StringWidth(m.tr("logs.filtered_count", retainedLogLimit, retainedLogLimit))
 }
 
-// A zero controlsX places the level and view below the complete input frame.
-func (m Model) logSearchGeometry(width int) (fieldWidth, controlsX int) {
-	width = max(1, width)
-	countWidth := m.logCountWidth()
-	fieldWidth = min(inputFieldMaxWidth, width-countWidth-searchControlWidth(m.logControls())-4)
-	if fieldWidth >= 24 && inputFieldInlineTrailing(fieldWidth, searchControlWidth(m.logSearchButtons()), true) {
-		return fieldWidth, fieldWidth + countWidth + 4
-	}
-	fieldWidth = min(inputFieldMaxWidth, width)
-	if width-countWidth-2 >= 26 {
-		fieldWidth = min(inputFieldMaxWidth, width-countWidth-2)
-	}
-	return fieldWidth, 0
+func (m Model) logSearchToolbar() listSearchToolbar {
+	return listSearchToolbar{scope: m.logControl("logs.level"), functions: m.logControl("logs.view"),
+		countWidth: m.logCountWidth(), matchingWidth: searchControlWidth(m.logSearchButtons())}
 }
 
 func (m Model) logSearchWidth(width int) int {
-	fieldWidth, _ := m.logSearchGeometry(width)
+	fieldWidth, _ := m.logSearchToolbar().searchGeometry(width)
 	return inputFieldTextWidth(fieldWidth, searchControlWidth(m.logSearchButtons()), true)
 }
 
 func (m Model) logFilterRows(width int) int {
-	fieldWidth, controlsX := m.logSearchGeometry(width)
-	rows := inputFieldRows(fieldWidth, searchControlWidth(m.logSearchButtons()), true)
-	if controlsX == 0 {
-		rows++
-		compactWidth := len(fmt.Sprintf("%d / %d", retainedLogLimit, retainedLogLimit))
-		if m.logFilterActive() && fieldWidth+2+m.logCountWidth() > width &&
-			searchControlWidth(m.logControls())+2+compactWidth > width {
-			rows++
-		}
-	}
-	return rows
+	return m.logSearchToolbar().rows(width, m.logFilterActive())
 }
 
 func (m Model) logFilterBar(width int) dashboardBlock {
-	fieldWidth, controlsX := m.logSearchGeometry(width)
+	bar := m.logSearchToolbar()
+	fieldWidth, _ := bar.searchGeometry(width)
 	_, err := m.logMatcher()
-	b := m.searchToolbar("logs.search", m.tr("logs.placeholder"), m.logs.search,
+	search := m.searchToolbar("logs.search", m.tr("logs.placeholder"), m.logs.search,
 		m.logSearchButtons(), fieldWidth, err != nil)
 	count, compactCount := m.logCount()
-	countInline := fieldWidth+2+m.logCountWidth() <= width
-	if count != "" && countInline {
-		b.lines[1] += themed("  "+count, muted, bg, false)
-	}
-	controls := m.logControls()
-	controlsY := 1
-	if controlsX == 0 {
-		controlsY = len(b.lines)
-		line := controls.lines[0]
-		if count != "" && !countInline {
-			countWidth := m.logCountWidth()
-			if searchControlWidth(controls)+2+countWidth > width {
-				count, countWidth = compactCount, len(fmt.Sprintf("%d / %d", retainedLogLimit, retainedLogLimit))
-			}
-			if searchControlWidth(controls)+2+countWidth <= width {
-				line = themed(cellPad(line, width-countWidth), text, bg, false) + themed(count, muted, bg, false)
-			} else {
-				b.lines = append(b.lines, cellCrop(line, width))
-				line = themed(cellCrop(count, width), muted, bg, false)
-			}
-		}
-		b.lines = append(b.lines, cellCrop(line, width))
-	} else {
-		b.lines[1] = themed(cellPad(b.lines[1], controlsX), text, bg, false) + controls.lines[0]
-	}
-	for _, target := range controls.targets {
-		target.X += controlsX
-		target.Y += controlsY
-		b.targets = append(b.targets, target)
-	}
-	return b
+	return bar.render(search, width, count, compactCount)
 }
 
 func (m Model) logsToolbar(width, rows int) dashboardBlock {
@@ -345,9 +290,7 @@ func (m Model) logsBody(width int) (string, []hitRegion) {
 	prefixLimit := max(0, height-2)
 	if m.dashboardOptions().BodyTopRows == 0 {
 		controlsRows := m.logFilterRows(width)
-		if height > controlsRows {
-			prefixLimit = max(prefixLimit, controlsRows)
-		}
+		prefixLimit = max(prefixLimit, min(controlsRows, max(0, height-1)))
 	}
 	if len(b.lines) > prefixLimit {
 		b.lines = b.lines[:prefixLimit]

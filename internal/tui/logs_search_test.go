@@ -141,20 +141,34 @@ func TestLogsMatchingOptionsSupportMouseAndTabAtWideAndNarrowSizes(t *testing.T)
 			ctx, generation := m.runtime.ctx, m.runtime.generation
 			m, _ = update(m, key("/"))
 			m, _ = update(m, tea.PasteMsg{Content: "event"})
-			for _, id := range []string{"logs.reset-search", "logs.case", "logs.word", "logs.regex", "logs.level", "logs.view", "logs.list"} {
+			order := logToolbarTabIDs(m)
+			for len(order) > 0 && order[0] != "logs.search" {
+				order = order[1:]
+			}
+			if len(order) == 0 {
+				t.Fatal("search missing from logical Tab targets")
+			}
+			for _, id := range order[1:] {
 				m, _ = update(m, special(tea.KeyTab))
 				if m.focus != id || m.logs.editing || m.logs.search.Focused() {
 					t.Fatalf("Tab should visit %s; focus=%s editing=%t", id, m.focus, m.logs.editing)
 				}
 			}
-			field := findTarget(t, m, "logs.search")
+			m, _ = update(m, key("/"))
+			field := listSearchTarget(t, m.focusTargets(), "logs.search")
 			for _, id := range []string{"logs.case", "logs.word", "logs.regex"} {
+				for remaining := len(m.focusTargets()); m.focus != id && remaining > 0; remaining-- {
+					m, _ = update(m, special(tea.KeyTab))
+				}
+				if m.focus != id {
+					t.Fatalf("Tab could not reveal %s for mouse interaction", id)
+				}
 				m, _ = click(m, findTarget(t, m, id))
 			}
 			if !m.logs.caseSensitive || !m.logs.wholeWord || !m.logs.regex || m.logs.search.Value() != "event" || m.logs.editing {
 				t.Fatal("matching-option click edited or cleared search instead of toggling its mode")
 			}
-			if findTarget(t, m, "logs.search") != field || m.runtime.generation != generation || ctx.Err() != nil {
+			if got := listSearchTarget(t, m.focusTargets(), "logs.search"); got.X != field.X || got.Y != field.Y || got.W != field.W || m.runtime.generation != generation || ctx.Err() != nil {
 				t.Fatal("toggling matching options moved the search field or reconnected capture")
 			}
 			assertCanvas(t, m.screen, size[0], size[1])

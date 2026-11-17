@@ -159,11 +159,11 @@ func TestSearchFieldFixedControlsAlignWithFrame(t *testing.T) {
 						t.Fatalf("logs input width does not match its search options: %+v", field)
 					}
 					if control.Y == field.Y+1 {
-						if control.X < field.X+field.W {
-							t.Fatalf("log options overlap the search frame: field=%+v control=%+v", field, control)
+						if control.X+control.W > field.X {
+							t.Fatalf("log scope overlaps the search frame: field=%+v control=%+v", field, control)
 						}
-					} else if control.Y < field.Y+field.H {
-						t.Fatalf("stacked log options overlap the search frame: field=%+v control=%+v", field, control)
+					} else if control.Y+control.H > field.Y {
+						t.Fatalf("narrow log scope did not move above search: field=%+v control=%+v", field, control)
 					}
 				} else if control.Y == field.Y+1 {
 					if control.X < field.X+2+field.InputWidth || control.X+control.W > field.X+field.W-1 {

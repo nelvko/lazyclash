@@ -92,6 +92,7 @@ func connectionValue(s string) string {
 func (m Model) connectionControls() dashboardBlock {
 	o := m.searchControlOptions("conn.sort")
 	o.Kind, o.Disabled = buttonText, m.busy || m.quitting
+	o.Width = m.connectionSortWidth() - 4
 	value := renderButton(m.tr("connections.sort", m.tr(m.connections.sort.key())), o)
 	b := dashboardBlock{lines: []string{value}}
 	if !o.Disabled {

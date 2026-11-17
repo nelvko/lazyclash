@@ -81,11 +81,46 @@ def assert_external_log_options(terminal, words):
             except AssertionError:
                 pass
         assert found, "external log option missing"
-        options.extend(found)
-        for option_x, option_y in found:
-            assert option_y > y + 1 or (option_y == y and option_x > right), \
-                "log option remained inside the search frame"
+        options.append(found[0])
+    (level_x, level_y), (view_x, view_y) = options
+    if level_y == y:
+        assert level_x < left and view_y == y and view_x > right, \
+            "wide toolbar must read level, search, count, view"
+    else:
+        assert level_y < y - 1 and view_y < y - 1, \
+            "narrow scope and view must precede the complete search frame"
+        assert (view_y, view_x) > (level_y, level_x), "view must follow the level scope"
     return left, right, y, tuple(options)
+
+
+def assert_log_toolbar_tab_order(terminal, words):
+    _, _, text_y, options = assert_external_log_options(terminal, words)
+    wide = options[0][1] == text_y
+    # The control before the editor follows the actual responsive reading order.
+    terminal.key(b"/")
+    terminal.key(b"\x1b[Z")
+    if wide:
+        terminal.key(b"\r")
+        terminal.wait("✓ " + words["logs.level_all"])
+        terminal.key(b"\x1b")
+        terminal.wait_absent("✓ ")
+    else:
+        view_y = options[1][1]
+        view_row = lambda: "".join(terminal.screen.cells[view_y])
+        before = next(words[key] for key in ("logs.compact", "logs.detailed")
+                      if words[key] in view_row())
+        terminal.key(b"\r")
+        after = words["logs.detailed"] if before == words["logs.compact"] else words["logs.compact"]
+        wait_until(terminal, lambda: after in view_row(), "Tab did not reach the narrow view control")
+        terminal.key(b"\r")
+        wait_until(terminal, lambda: before in view_row(), "view control did not restore its original mode")
+    # Tab returns from that scope/view control to the editor, which owns text.
+    terminal.key(b"\t")
+    terminal.key(b"\r")
+    terminal.key(b"\x1b[200~tabok\x1b[201~")
+    terminal.wait("tabok")
+    terminal.key(b"\r")
+    search(terminal, "")
 
 
 def assert_no_log_summary(terminal):
@@ -342,7 +377,11 @@ def exercise(preview, binary, output, language, profile, args):
             terminal.key(b"\x1b")
             terminal.wait_absent("✓ ")
             assert option_geometry == assert_external_log_options(terminal, words), "menu moved the toolbar"
-            terminal.click_text("event-")
+            assert_log_toolbar_tab_order(terminal, words)
+            # Detailed mode may end on a wrapped continuation without event-.
+            # Click a viewport cell to restore list focus before following.
+            terminal.key(("\x1b[<0;%d;%dM\x1b[<0;%d;%dm" %
+                          (width - 3, height - 3, width - 3, height - 3)).encode())
             terminal.key(b"\x1b[F")
             terminal.settle()
             preview.capture(terminal, output, "following-%dx%d" % (width, height), args)
