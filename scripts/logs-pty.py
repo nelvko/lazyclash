@@ -151,6 +151,8 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait("event-059")
         terminal.settle()
         assert_log_controls(terminal, words)
+        for label in ("Aa", "ab", ".*"):
+            position(terminal, label)
         assert_external_log_options(terminal, words)
         preview.capture(terminal, output, "logs-wide", args)
         rows = terminal.screen.text().splitlines()
@@ -216,6 +218,35 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait("Case-Needle")
         assert "ERROR-MARKER" not in terminal.screen.text(), "search retained unrelated messages"
         preview.capture(terminal, output, "case-insensitive-search", args)
+        # Match controls share Rules' editor and remain local to the live cache.
+        terminal.click_text("Aa")
+        terminal.wait(words["logs.no_matches"])
+        search(terminal, "Case-Needle")
+        terminal.wait("event-054")
+        terminal.key(b"\x1bc")  # Alt+C disables match case.
+        search(terminal, "Need")
+        terminal.wait("event-054")
+        terminal.click_text("ab")
+        terminal.wait(words["logs.no_matches"])
+        search(terminal, "Needle")
+        terminal.wait("event-054")
+        preview.capture(terminal, output, "whole-word-search", args)
+        terminal.key(b"\x1bw")  # Alt+W disables whole word.
+        search(terminal, "Case-[N]eedle")
+        terminal.wait(words["logs.no_matches"])
+        terminal.click_text(".*")
+        terminal.wait("event-054")
+        search(terminal, "[")
+        terminal.wait(words["logs.invalid_regex"])
+        preview.capture(terminal, output, "invalid-regex-search", args)
+        search(terminal, "Case-[N]eedle")
+        terminal.wait("event-054")
+        assert words["logs.invalid_regex"] not in terminal.screen.text(), "valid expression kept its error"
+        preview.capture(terminal, output, "corrected-regex-search", args)
+        terminal.key(b"\x1br")  # Alt+R returns to literal matching.
+        search(terminal, "case-needle")
+        terminal.wait("event-054")
+        assert_continuing(terminal, report)
         terminal.key(b"v")
         search(terminal, "")
         terminal.key(b"\x1b[F")
@@ -355,7 +386,7 @@ def exercise(preview, binary, output, language, profile, args):
         if profile == "no-color":
             assert not any(value not in (b"", b"0") for value in preview.SGR.findall(raw)), "NO_COLOR emitted styling"
         (output / "pty.raw").write_bytes(raw)
-        print("PASS %s/%s: detailed/compact, local search/levels, session capture across navigation/help/form, frozen display with 200-entry live cache, fixed toolbar at five sizes, clear/manual reconnect/automatic recovery without GAP entries; %s" %
+        print("PASS %s/%s: detailed/compact, local case/whole-word/regex search and levels, session capture across navigation/help/form, frozen display with 200-entry live cache, fixed toolbar at five sizes, clear/manual reconnect/automatic recovery without GAP entries; %s" %
               (language, profile, json.dumps(final)), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")

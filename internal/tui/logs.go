@@ -15,21 +15,22 @@ const (
 )
 
 type logsState struct {
-	entries               []mihomo.LogEntry
-	search                textinput.Model
-	editing, paused       bool
-	active                bool
-	err                   error
-	observedAt            time.Time
-	started, reconnecting bool
-	recovered             bool
-	frozen                []mihomo.LogEntry
-	frozenFirst           uint64
-	level                 int // local display filter: all, info, warning, error
-	compact, holding      bool
-	first                 uint64 // identity of the oldest retained entry
-	anchor                logPosition
-	unread                int
+	entries                         []mihomo.LogEntry
+	search                          textinput.Model
+	editing, paused                 bool
+	active                          bool
+	err                             error
+	observedAt                      time.Time
+	started, reconnecting           bool
+	recovered                       bool
+	frozen                          []mihomo.LogEntry
+	frozenFirst                     uint64
+	caseSensitive, wholeWord, regex bool
+	level                           int // local display filter: all, info, warning, error
+	compact, holding                bool
+	first                           uint64 // identity of the oldest retained entry
+	anchor                          logPosition
+	unread                          int
 }
 
 func newLogsState(locales ...i18n.Localizer) logsState {
@@ -116,6 +117,8 @@ func (m *Model) logsActivate(id string) tea.Cmd {
 	case "logs.level":
 		m.logs.level = (m.logs.level + 1) % 4
 		m.resetLogsView()
+	case "logs.case", "logs.word", "logs.regex":
+		m.toggleLogFilter(id)
 	case "logs.view":
 		m.logs.compact = !m.logs.compact
 	case "logs.clear":
@@ -128,6 +131,7 @@ func (m *Model) logsActivate(id string) tea.Cmd {
 	case "logs.reset-filters":
 		m.logs.search.Reset()
 		m.logs.level = 0
+		m.logs.caseSensitive, m.logs.wholeWord, m.logs.regex = false, false, false
 		m.resetLogsView()
 		m.focus = "logs.list"
 	case "logs.reset-search":
@@ -145,6 +149,9 @@ func (m *Model) resetLogsView() {
 }
 
 func (m *Model) logsSearchKey(k tea.KeyPressMsg) tea.Cmd {
+	if m.logFilterKey(k) {
+		return nil
+	}
 	switch k.String() {
 	case "enter", "esc", "tab", "shift+tab":
 		m.logs.editing = false
@@ -169,6 +176,9 @@ func (m *Model) logsSearchKey(k tea.KeyPressMsg) tea.Cmd {
 }
 
 func (m *Model) logsKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
+	if m.logFilterKey(k) {
+		return true, nil
+	}
 	switch k.String() {
 	case "/":
 		return true, m.logsActivate("logs.search")
@@ -219,4 +229,25 @@ func (m *Model) logsScroll(delta int) {
 		m.logs.anchor = doc.positions[min(view.YOffset(), len(doc.positions)-1)]
 	}
 	m.scroll = 0
+}
+
+func (m *Model) toggleLogFilter(id string) {
+	switch id {
+	case "logs.case":
+		m.logs.caseSensitive = !m.logs.caseSensitive
+	case "logs.word":
+		m.logs.wholeWord = !m.logs.wholeWord
+	case "logs.regex":
+		m.logs.regex = !m.logs.regex
+	}
+	m.resetLogsView()
+}
+
+func (m *Model) logFilterKey(k tea.KeyPressMsg) bool {
+	id := map[string]string{"alt+c": "logs.case", "alt+w": "logs.word", "alt+r": "logs.regex"}[k.String()]
+	if id == "" {
+		return false
+	}
+	m.toggleLogFilter(id)
+	return true
 }

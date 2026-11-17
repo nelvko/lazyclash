@@ -2,6 +2,7 @@ package tui
 
 import (
 	"charm.land/bubbles/v2/textinput"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -69,15 +70,63 @@ func (m Model) searchToolbarGap() int {
 
 func (m Model) filterToolbarRows(width int) int {
 	if m.page == "logs" {
-		_, controlsX := m.logSearchGeometry(width)
-		if controlsX == 0 {
-			return 5 // input, external controls and summary
+		rows := m.logFilterRows(width) + 1 // controls and summary
+		if _, err := m.logMatcher(); err != nil {
+			rows++
 		}
-		return 4 // input and summary
+		return rows
 	}
 	rows := inputFieldRows(m.ruleSearchFieldWidth(width), searchControlWidth(m.ruleFilterButtons()), true)
 	if _, err := m.ruleMatcher(); err != nil {
 		rows++
 	}
 	return rows
+}
+
+func (m Model) searchMatchingButtons(prefix string, caseSensitive, wholeWord, regular bool) dashboardBlock {
+	var b dashboardBlock
+	line := ""
+	for _, item := range []struct {
+		id, label string
+		selected  bool
+	}{{prefix + ".case", "Aa", caseSensitive}, {prefix + ".word", "ab", wholeWord}, {prefix + ".regex", ".*", regular}} {
+		o := m.searchControlOptions(item.id)
+		o.Disabled = m.busy || m.quitting
+		o.Selected = item.selected
+		value := renderSearchToggle(item.label, o)
+		if !o.Disabled {
+			b.targets = append(b.targets, hitRegion{ID: item.id, X: ansi.StringWidth(line), W: ansi.StringWidth(value), H: 1})
+		}
+		line += value
+	}
+	b.lines = []string{line}
+	return b
+}
+
+// One status cell per toggle keeps adjacent labels one cell apart. Plain
+// terminals combine selection and focus in that cell; color uses text emphasis.
+// The whole-word icon is always underlined, including when the option is off.
+func renderSearchToggle(label string, o buttonOptions) string {
+	foreground := muted
+	if o.Selected {
+		foreground = accent
+	}
+	if o.Hovered && !o.Disabled && !o.Selected {
+		foreground = text
+	}
+	if o.Disabled {
+		foreground = disabled
+	}
+	marker := " "
+	if o.Plain && o.Selected {
+		marker = "*"
+	}
+	if o.Focused && !o.Disabled {
+		marker = "›"
+		if o.Plain && o.Selected {
+			marker = "+"
+		}
+	}
+	face := lipgloss.NewStyle().Bold(o.Selected).Underline(label == "ab").Render(label)
+	return themed(marker, focus, bg, o.Dim) + themed(face, foreground, bg, o.Dim)
 }

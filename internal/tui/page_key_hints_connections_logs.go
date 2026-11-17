@@ -125,14 +125,17 @@ func (m Model) logsContextHelp() string {
 		if m.logs.compact {
 			action = "detailed"
 		}
+	case "logs.case", "logs.word", "logs.regex":
+		action = strings.TrimPrefix(m.focus, "logs.")
 	}
 	if action != "" {
 		parts = append(parts, tr("navigation.logs.action."+action))
 	}
 	parts = append(parts, tr("navigation.logs.search"), tr("navigation.logs.reconnect"))
 	entries, _ := m.logsDisplayEntries()
+	match, err := m.logMatcher()
 	for _, entry := range entries {
-		if m.logMatches(entry) {
+		if err == nil && match(entry) {
 			parts = append(parts, tr("navigation.logs.browse"))
 			break
 		}

@@ -5,57 +5,12 @@ import (
 	"strconv"
 	"strings"
 
-	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
 
 func (m Model) ruleFilterButtons() dashboardBlock {
-	var b dashboardBlock
-	line := ""
-	for _, item := range []struct {
-		id, label string
-		selected  bool
-	}{{"rules.case", "Aa", m.rules.caseSensitive}, {"rules.word", "ab", m.rules.wholeWord}, {"rules.regex", ".*", m.rules.regex}} {
-		o := m.searchControlOptions(item.id)
-		o.Disabled = m.busy
-		o.Selected = item.selected
-		value := renderRuleSearchToggle(item.label, o)
-		if !o.Disabled {
-			b.targets = append(b.targets, hitRegion{ID: item.id, X: ansi.StringWidth(line), W: ansi.StringWidth(value), H: 1})
-		}
-		line += value
-	}
-	b.lines = []string{line}
-	return b
-}
-
-// One status cell per toggle keeps adjacent labels one cell apart. Plain
-// terminals combine selection and focus in that cell; color uses text emphasis.
-// The whole-word icon is always underlined, including when the option is off.
-func renderRuleSearchToggle(label string, o buttonOptions) string {
-	foreground := muted
-	if o.Selected {
-		foreground = accent
-	}
-	if o.Hovered && !o.Disabled && !o.Selected {
-		foreground = text
-	}
-	if o.Disabled {
-		foreground = disabled
-	}
-	marker := " "
-	if o.Plain && o.Selected {
-		marker = "*"
-	}
-	if o.Focused && !o.Disabled {
-		marker = "›"
-		if o.Plain && o.Selected {
-			marker = "+"
-		}
-	}
-	face := lipgloss.NewStyle().Bold(o.Selected).Underline(label == "ab").Render(label)
-	return themed(marker, focus, bg, o.Dim) + themed(face, foreground, bg, o.Dim)
+	return m.searchMatchingButtons("rules", m.rules.caseSensitive, m.rules.wholeWord, m.rules.regex)
 }
 
 func (m Model) ruleSearchWidth(width int) int {

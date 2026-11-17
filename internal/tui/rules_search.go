@@ -2,8 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"regexp"
-	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/nelvko/lazyclash/internal/mihomo"
@@ -12,29 +10,13 @@ import (
 // Each field is matched independently, so a pattern cannot accidentally span
 // the payload/type/proxy boundaries. Filtering never changes matching order.
 func (m Model) ruleMatcher() (func(mihomo.Rule) bool, error) {
-	query := strings.TrimSpace(m.rules.search.Value())
-	if query == "" {
-		return func(mihomo.Rule) bool { return true }, nil
-	}
-	pattern := query
-	if !m.rules.regex {
-		pattern = regexp.QuoteMeta(pattern)
-	}
-	if m.rules.wholeWord {
-		// Boundaries belong to the expression so alternatives can satisfy them:
-		// a|ab must still match the complete word "ab". Go's \b is ASCII-only.
-		pattern = `(?:^|[^\p{L}\p{N}_])(?:` + pattern + `)(?:$|[^\p{L}\p{N}_])`
-	}
-	if !m.rules.caseSensitive {
-		pattern = "(?i)" + pattern
-	}
-	re, err := regexp.Compile(pattern)
+	match, err := compileSearchMatcher(m.rules.search.Value(), m.rules.caseSensitive, m.rules.wholeWord, m.rules.regex)
 	if err != nil {
 		return nil, err
 	}
 	return func(r mihomo.Rule) bool {
 		for _, value := range []string{fmt.Sprintf("#%d", r.Index+1), fmt.Sprintf("index:%d", r.Index), r.Type, r.Payload, r.Proxy} {
-			if re.MatchString(value) {
+			if match(value) {
 				return true
 			}
 		}

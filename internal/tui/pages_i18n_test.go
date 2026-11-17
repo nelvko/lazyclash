@@ -104,7 +104,7 @@ func TestProfileUpdateFormattingAndInputsUseSelectedLanguage(t *testing.T) {
 	if got := newProfilesState(i18n.New(i18n.Chinese)).url.Placeholder; got != "粘贴订阅 URL 或本地路径" {
 		t.Fatalf("unexpected subscription placeholder: %s", got)
 	}
-	if got := newLogsState(i18n.New(i18n.Chinese)).search.Placeholder; got != "筛选日志级别或内容" {
+	if got := newLogsState(i18n.New(i18n.Chinese)).search.Placeholder; got != "搜索日志" {
 		t.Fatalf("unexpected log placeholder: %s", got)
 	}
 }

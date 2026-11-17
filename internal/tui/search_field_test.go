@@ -150,8 +150,8 @@ func TestSearchFieldFixedControlsAlignWithFrame(t *testing.T) {
 						t.Fatalf("narrow connection sort did not move above search: field=%+v control=%+v", field, control)
 					}
 				} else if page == "logs" {
-					if field.InputWidth != inputFieldTextWidth(field.W, 0, true) {
-						t.Fatalf("logs reserved input space for controls inside the frame: %+v", field)
+					if field.InputWidth != inputFieldTextWidth(field.W, searchControlWidth(m.logSearchButtons()), true) {
+						t.Fatalf("logs input width does not match its search options: %+v", field)
 					}
 					if control.Y == field.Y+1 {
 						if control.X < field.X+field.W {

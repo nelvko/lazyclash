@@ -34,23 +34,37 @@ func logLevel(level string) (string, string) {
 }
 
 func (m Model) logMatches(entry mihomo.LogEntry) bool {
-	level, _ := logLevel(entry.Level)
-	if m.logs.level != 0 && level != []string{"", "INFO", "WARN", "ERROR"}[m.logs.level] {
-		// Fatal events belong to the error filter as well.
-		if m.logs.level != 3 || level != "FATAL" && level != "PANIC" {
-			return false
-		}
+	match, err := m.logMatcher()
+	return err == nil && match(entry)
+}
+
+func (m Model) logMatcher() (func(mihomo.LogEntry) bool, error) {
+	match, err := compileSearchMatcher(m.logs.search.Value(), m.logs.caseSensitive, m.logs.wholeWord, m.logs.regex)
+	if err != nil {
+		return nil, err
 	}
-	query := strings.ToLower(strings.TrimSpace(m.logs.search.Value()))
-	return query == "" || strings.Contains(strings.ToLower(entry.Level+" "+entry.Message), query)
+	return func(entry mihomo.LogEntry) bool {
+		level, _ := logLevel(entry.Level)
+		if m.logs.level != 0 && level != []string{"", "INFO", "WARN", "ERROR"}[m.logs.level] {
+			// Fatal events belong to the error filter as well.
+			if m.logs.level != 3 || level != "FATAL" && level != "PANIC" {
+				return false
+			}
+		}
+		return match(entry.Level + " " + entry.Message)
+	}, nil
 }
 
 func (m Model) logDocument(width int) logDocument {
 	width = max(1, width)
 	var doc logDocument
+	match, err := m.logMatcher()
+	if err != nil {
+		return doc
+	}
 	entries, first := m.logsDisplayEntries()
 	for index, entry := range entries {
-		if !m.logMatches(entry) {
+		if !match(entry) {
 			continue
 		}
 		doc.matched++
@@ -138,11 +152,15 @@ func (m Model) logControls() dashboardBlock {
 	return b
 }
 
+func (m Model) logSearchButtons() dashboardBlock {
+	return m.searchMatchingButtons("logs", m.logs.caseSensitive, m.logs.wholeWord, m.logs.regex)
+}
+
 // A zero controlsX places the options below the complete input frame.
 func (m Model) logSearchGeometry(width int) (fieldWidth, controlsX int) {
 	width = max(1, width)
 	fieldWidth = min(inputFieldMaxWidth, width-searchControlWidth(m.logControls())-2)
-	if fieldWidth >= 24 {
+	if fieldWidth >= 24 && inputFieldInlineTrailing(fieldWidth, searchControlWidth(m.logSearchButtons()), true) {
 		return fieldWidth, fieldWidth + 2
 	}
 	return min(inputFieldMaxWidth, width), 0
@@ -150,12 +168,23 @@ func (m Model) logSearchGeometry(width int) (fieldWidth, controlsX int) {
 
 func (m Model) logSearchWidth(width int) int {
 	fieldWidth, _ := m.logSearchGeometry(width)
-	return inputFieldTextWidth(fieldWidth, 0, true)
+	return inputFieldTextWidth(fieldWidth, searchControlWidth(m.logSearchButtons()), true)
+}
+
+func (m Model) logFilterRows(width int) int {
+	fieldWidth, controlsX := m.logSearchGeometry(width)
+	rows := inputFieldRows(fieldWidth, searchControlWidth(m.logSearchButtons()), true)
+	if controlsX == 0 {
+		rows++
+	}
+	return rows
 }
 
 func (m Model) logFilterBar(width int) dashboardBlock {
 	fieldWidth, controlsX := m.logSearchGeometry(width)
-	b := m.searchField("logs.search", m.tr("logs.placeholder"), m.logs.search, fieldWidth, false)
+	_, err := m.logMatcher()
+	b := m.searchToolbar("logs.search", m.tr("logs.placeholder"), m.logs.search,
+		m.logSearchButtons(), fieldWidth, err != nil)
 	controls := m.logControls()
 	controlsY := 1
 	if controlsX == 0 {
@@ -177,8 +206,9 @@ func (m Model) logsToolbar(width, rows int) dashboardBlock {
 	b := m.logFilterBar(width)
 	count := 0
 	entries, _ := m.logsDisplayEntries()
+	match, matchErr := m.logMatcher()
 	for _, entry := range entries {
-		if m.logMatches(entry) {
+		if matchErr == nil && match(entry) {
 			count++
 		}
 	}
@@ -189,7 +219,8 @@ func (m Model) logsToolbar(width, rows int) dashboardBlock {
 	} else if !m.logs.observedAt.IsZero() {
 		hint = m.tr("logs.observed", m.logs.observedAt.Local().Format("15:04:05"))
 	}
-	for _, item := range []struct{ id, key string }{{"logs.level", "logs.level_hint"}, {"logs.view", "logs.view_hint"}, {"logs.reset-search", "logs.reset_hint"}} {
+	for _, item := range []struct{ id, key string }{{"logs.level", "logs.level_hint"}, {"logs.view", "logs.view_hint"}, {"logs.reset-search", "logs.reset_hint"},
+		{"logs.case", "logs.filter_case"}, {"logs.word", "logs.filter_word"}, {"logs.regex", "logs.filter_regex"}} {
 		if m.hover == item.id || m.focus == item.id {
 			hint = m.tr(item.key)
 			break
@@ -199,6 +230,9 @@ func (m Model) logsToolbar(width, rows int) dashboardBlock {
 		status += " · " + hint
 	}
 	b.lines = append(b.lines, themed(cellCrop(status, width), muted, bg, false))
+	if matchErr != nil {
+		b.lines = append(b.lines, themed(cellCrop(m.tr("logs.invalid_regex"), width), errorColor, bg, false))
+	}
 	b.lines = b.lines[:min(rows, len(b.lines))]
 	var targets []hitRegion
 	for _, target := range b.targets {
@@ -282,7 +316,7 @@ func (m Model) logsBody(width int) (string, []hitRegion) {
 	// on the footer. A tiny terminal still needs one row for log content.
 	prefixLimit := max(0, height-2)
 	if m.dashboardOptions().BodyTopRows == 0 {
-		controlsRows := m.filterToolbarRows(width) - 1
+		controlsRows := m.logFilterRows(width)
 		if height > controlsRows {
 			prefixLimit = max(prefixLimit, controlsRows)
 		}
@@ -357,6 +391,10 @@ func (m Model) logsEmptyState() emptyStateOptions {
 	recovered := ""
 	if state, _ := m.corePageState(); m.logs.recovered && !m.logs.reconnecting && state == "" {
 		recovered = m.tr("logs.recovered")
+	}
+	if _, err := m.logMatcher(); err != nil {
+		return emptyStateOptions{Title: m.tr("logs.invalid_regex"), Detail: recovered, Error: true,
+			ActionID: "logs.reset-filters", ActionLabel: m.tr("empty.clear_filters")}
 	}
 	if strings.TrimSpace(m.logs.search.Value()) != "" || m.logs.level != 0 {
 		state := emptyStateOptions{Title: m.tr("logs.no_matches"), Detail: recovered, ActionID: "logs.reset-filters", ActionLabel: m.tr("empty.clear_filters")}

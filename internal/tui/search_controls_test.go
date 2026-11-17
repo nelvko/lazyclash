@@ -116,7 +116,7 @@ func TestSearchControlsKeepLogCountsWhileEditingOrInspectingOptions(t *testing.T
 				m.logs.search.SetValue("event-001")
 				for _, editing := range []bool{false, true} {
 					m.logs.editing = editing
-					for _, id := range []string{"logs.search", "logs.level", "logs.view", "logs.reset-search"} {
+					for _, id := range []string{"logs.search", "logs.case", "logs.word", "logs.regex", "logs.level", "logs.view", "logs.reset-search"} {
 						m.focus, m.hover = id, id
 						bar := m.logsToolbar(width, m.filterToolbarRows(width))
 						plain := ansi.Strip(strings.Join(bar.lines, "\n"))
@@ -160,7 +160,7 @@ func TestSearchMatchingOptionsUseTextEmphasisAndWholeWordIcon(t *testing.T) {
 		for _, hovered := range []bool{false, true} {
 			for _, label := range []string{"Aa", "ab", ".*"} {
 				o := buttonOptions{Selected: selected, Hovered: hovered}
-				value := renderRuleSearchToggle(label, o)
+				value := renderSearchToggle(label, o)
 				color := muted
 				if hovered {
 					color = text

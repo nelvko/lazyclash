@@ -26,7 +26,7 @@ func (m Model) helpLines(width int) []string {
 	case "settings":
 		lines = append(lines, tr("help.settings.keys"), tr("help.settings.ports"), tr("help.settings.review"), tr("help.settings.persistence"), tr("help.settings.tun"))
 	case "logs":
-		lines = append(lines, tr("help.logs.keys"), tr("help.search.input"), tr("help.logs.liveOnly"), tr("help.logs.retention"))
+		lines = append(lines, tr("help.logs.keys"), tr("help.logs.search"), tr("help.search.input"), tr("help.logs.liveOnly"), tr("help.logs.retention"))
 	default:
 		lines = append(lines, tr("help.overview.keys"), tr("help.overview.controls"), tr("help.overview.install"), tr("help.overview.import"), tr("help.overview.refresh"), tr("help.overview.unavailable"))
 	}
