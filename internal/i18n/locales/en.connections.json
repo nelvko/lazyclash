@@ -32,5 +32,6 @@
   "connections.history_scope": "This session · latest 500",
   "connections.closed_empty": "No closed connections observed yet",
   "connections.closed_count": "%d / %d closed",
-  "connections.closed_observed": "Observed closed"
+  "connections.closed_observed": "Observed closed",
+  "connections.invalid_regex": "Invalid regular expression"
 }

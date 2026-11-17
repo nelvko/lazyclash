@@ -20,7 +20,7 @@ func (m Model) helpLines(width int) []string {
 	case "profiles":
 		lines = append(lines, tr("help.profiles.add"), tr("help.profiles.import"), tr("help.profiles.rename"), tr("help.profiles.click"), tr("help.profiles.menu"), tr("help.profiles.menuControls"), tr("help.profiles.grid"), tr("help.profiles.actions"), tr("help.profiles.update"), tr("help.profiles.overrides"), tr("help.profiles.delete"))
 	case "connections":
-		lines = append(lines, tr("help.connections.keys"), tr("help.connections.close"), tr("help.connections.confirm"), tr("help.search.input"))
+		lines = append(lines, tr("help.connections.keys"), tr("help.connections.search"), tr("help.connections.close"), tr("help.connections.confirm"), tr("help.search.input"))
 	case "rules":
 		lines = append(lines, tr("help.rules.keys"), tr("help.rules.search"), tr("help.search.input"), tr("help.rules.readOnly"))
 	case "settings":

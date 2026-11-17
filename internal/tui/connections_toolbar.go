@@ -36,7 +36,8 @@ func (m Model) connectionTabs(width int) dashboardBlock {
 }
 
 func (m Model) connectionSearchToolbar(width int) listSearchToolbar {
-	return listSearchToolbar{scope: m.connectionTabs(width), functions: m.connectionControls(), countWidth: m.connectionCountWidth()}
+	return listSearchToolbar{scope: m.connectionTabs(width), functions: m.connectionControls(),
+		countWidth: m.connectionCountWidth(), matchingWidth: searchControlWidth(m.connectionFilterButtons())}
 }
 
 func (m Model) connectionSearchGeometry(width int) (fieldWidth, offset int) {
@@ -82,12 +83,14 @@ func (m Model) connectionSortWidth() int {
 	return width
 }
 
-// The input owns only editing and Clear. View and sort controls sit outside
-// its frame; narrow terminals move those controls together above the search.
+// Matching controls belong to the input; scope and sort remain outside its
+// frame and move together above the search on narrow terminals.
 func (m Model) connectionFilterBar(width int) dashboardBlock {
 	bar := m.connectionSearchToolbar(width)
 	fieldWidth, _ := bar.searchGeometry(width)
-	search := m.searchField("conn.search", m.tr("connections.search_placeholder"), m.connections.search, fieldWidth, false)
+	_, err := m.connectionMatcher()
+	search := m.searchToolbar("conn.search", m.tr("connections.search_placeholder"), m.connections.search,
+		m.connectionFilterButtons(), fieldWidth, err != nil)
 	count := m.connectionCount()
 	return bar.render(search, width, count, count)
 }

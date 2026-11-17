@@ -91,8 +91,8 @@ func TestConnectionsToolbarRedesignWideInputCountAndSortShareTextRow(t *testing.
 					if active.Y != search.Y+1 || closed.Y != search.Y+1 || sort.Y != search.Y+1 || closed.X+closed.W > search.X || sort.X < search.X+search.W {
 						t.Fatalf("tabs, editor text, external count and sort must share a reading row: active=%+v closed=%+v search=%+v sort=%+v", active, closed, search, sort)
 					}
-					if search.InputWidth < 45 {
-						t.Fatalf("moving controls out of the editor did not restore useful typing space: %d cells", search.InputWidth)
+					if search.InputWidth != 42 {
+						t.Fatalf("wide search must retain 42 text cells beside its matching options: %d cells", search.InputWidth)
 					}
 					if baseline.W == 0 {
 						baseline = search
@@ -181,7 +181,12 @@ func TestConnectionsToolbarRedesignSearchTabFollowsVisibleOrder(t *testing.T) {
 			}
 			search, sort := findTarget(t, m, "conn.search"), findTarget(t, m, "conn.sort")
 			if sort.Y >= search.Y {
-				m, _ = update(m, special(tea.KeyTab))
+				for _, id := range []string{"conn.case", "conn.word", "conn.regex", "conn.sort"} {
+					m, _ = update(m, special(tea.KeyTab))
+					if m.focus != id {
+						t.Fatalf("Tab should reach %s before the external sort, got %q", id, m.focus)
+					}
+				}
 			} else {
 				m, _ = update(m, key("/"))
 				m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})

@@ -148,6 +148,35 @@ def search_frame(terminal, required=True):
     return None
 
 
+def matching_options(terminal):
+    left, top, right, bottom = search_frame(terminal)
+    found = {}
+    for label in ("Aa", "ab", ".*"):
+        for y in (top + 1, bottom + 1):
+            if y >= len(terminal.screen.cells):
+                continue
+            row = terminal.screen.cells[y]
+            for x in range(left + 1, right):
+                if "".join(row[x:]).startswith(label):
+                    found[label] = (x, y)
+                    break
+            if label in found:
+                break
+        assert label in found, "search matching option missing: " + label
+    assert list(found.values()) == sorted(found.values(), key=lambda point: (point[1], point[0])), \
+        "search matching options do not read Aa, ab, .*"
+    return found
+
+
+def clear_search_position(terminal):
+    left, top, right, _ = search_frame(terminal)
+    row = terminal.screen.cells[top + 1]
+    candidates = [x for x in range(left + 1, right) if row[x] == "x"
+                  and row[x - 1] in (" ", "›") and row[x + 1] in (" ", "│")]
+    assert candidates, "search Clear control missing"
+    return candidates[-1], top + 1
+
+
 def filter_count(terminal, required=True):
     frame = search_frame(terminal, required)
     if frame is None:
@@ -205,6 +234,10 @@ def check_filter_layout(terminal, words, active, closed, closed_view=False, paus
         assert sort_x > right and all(y == top + 1 and x < left for x, y in tabs), "wide tabs/search/count/sort did not stay on one row"
     else:
         assert sort_y < top and all(y < top for _, y in tabs), "narrow tabs and sort are not above search"
+    options = matching_options(terminal)
+    for x, y in options.values():
+        assert (y == top + 1 and left < x < right) or y == bottom + 1, \
+            "matching controls escaped their input component"
     inside = "".join(terminal.screen.cells[top + 1][left + 1:right])
     for label in (words["connections.pause"], words["connections.resume"], sort_label):
         assert label not in inside, "an action is still embedded in the search field"
@@ -251,6 +284,90 @@ def check_sort_boundary(preview, terminal, words, output, language, args):
     resize_terminal(terminal, words, 160, 45)
 
 
+def exercise_search_modes(preview, terminal, words, output, args):
+    search(terminal, "API.GITHUB.COM")
+    wait_count(terminal, 48, 1)
+    click_cell(terminal, *matching_options(terminal)["Aa"])
+    wait_count(terminal, 48, 0)
+    terminal.wait(words["connections.no_matches"])
+    preview.capture(terminal, output, "search-match-case", args)
+    terminal.key(b"\x1bc")
+    wait_count(terminal, 48, 1)
+    # Modified shortcuts work while the Bubbles editor owns ordinary keys.
+    terminal.key(b"/")
+    terminal.key(b"\x1bc")
+    wait_count(terminal, 48, 0)
+    terminal.key(b"\x1bc")
+    wait_count(terminal, 48, 1)
+    terminal.key(b"\r")
+
+    search(terminal, "flo")
+    wait_count(terminal, 48, 44)
+    terminal.key(b"\x1bw")
+    wait_count(terminal, 48, 0)
+    search(terminal, "flow")
+    wait_count(terminal, 48, 44)
+    search(terminal, "中")
+    wait_count(terminal, 48, 0)
+    terminal.key(b"\x1bw")
+    wait_count(terminal, 48, 1)
+    search(terminal, "中文")
+    terminal.key(b"\x1bw")
+    wait_count(terminal, 48, 1)
+    preview.capture(terminal, output, "search-unicode-whole-word", args)
+    terminal.key(b"\x1bw")
+
+    search(terminal, r"^api\.github\.com$")
+    wait_count(terminal, 48, 0)
+    terminal.key(b"\x1br")
+    wait_count(terminal, 48, 1)
+    for query, count in ((r"^(api\.github\.com|www\.youtube\.com)$", 2),
+                         ("^github-agent$", 1), ("^HK 01$", 24), ("01 PROXY$", 0)):
+        search(terminal, query)
+        wait_count(terminal, 48, count)
+    search(terminal, "[")
+    wait_count(terminal, 48, 0)
+    terminal.wait(words["connections.invalid_regex"])
+    preview.capture(terminal, output, "search-invalid-regex", args)
+    search(terminal, r"^api\.github\.com$")
+    terminal.wait_absent(words["connections.invalid_regex"])
+    wait_count(terminal, 48, 1)
+    preview.capture(terminal, output, "search-corrected-regex", args)
+    terminal.key(b"\x1br")
+    wait_count(terminal, 48, 0)
+    search(terminal, "")
+    wait_count(terminal, 48)
+
+
+def assert_search_tab_order(preview, terminal, output, width, height, args):
+    frame = search_frame(terminal)
+    search(terminal, "API.GITHUB.COM")
+    wait_count(terminal, 48, 1)
+    terminal.key(b"/")
+    terminal.key(b"\t")
+    clear_x, clear_y = clear_search_position(terminal)
+    wait_until(terminal, lambda: terminal.screen.cells[clear_y][clear_x - 1] == "›",
+               "Tab did not move from search to Clear")
+    terminal.key(b"\t")
+    case_x, case_y = matching_options(terminal)["Aa"]
+    wait_until(terminal, lambda: terminal.screen.cells[case_y][case_x - 1] == "›",
+               "Tab did not move from Clear to Aa")
+    terminal.key(b"\r")
+    wait_count(terminal, 48, 0)
+    preview.capture(terminal, output, "search-tab-%dx%d" % (width, height), args)
+    terminal.key(b"\x1b[Z")
+    terminal.key(b"\x1b[Z")
+    terminal.key(b"\r")
+    terminal.key(b"\x15")
+    paste(terminal, "api.github.com")
+    wait_count(terminal, 48, 1)
+    terminal.key(b"\r")
+    terminal.key(b"\x1bc")
+    search(terminal, "")
+    wait_count(terminal, 48)
+    assert search_frame(terminal) == frame, "search modes or traversal moved the input frame"
+
+
 def exercise(preview, binary, output, language, profile, args):
     output.mkdir(parents=True)
     words = labels(language)
@@ -274,6 +391,7 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait(words["connections.closed_empty"])
         click_cell(terminal, *position(terminal, tab_label(words, "active", 48)))
         terminal.wait("api.github.com")
+        exercise_search_modes(preview, terminal, words, output, args)
 
         # The list shortcut must remain ordinary text inside the search input.
         terminal.key(b"/")
@@ -285,8 +403,7 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait(words["connections.no_matches"])
         check_tabs(terminal, words, 48, 0)
         wait_count(terminal, 48, 0)
-        _, input_top, input_right, _ = search_frame(terminal)
-        click_cell(terminal, input_right - 2, input_top + 1)
+        click_cell(terminal, *clear_search_position(terminal))
         terminal.key(b"\r")
         terminal.wait("api.github.com")
         wait_count(terminal, 48)
@@ -403,6 +520,7 @@ def exercise(preview, binary, output, language, profile, args):
             terminal.settle()
             terminal.wait("api.github.com")
             preview.capture(terminal, output, "connections-%dx%d" % (width, height), args)
+            assert_search_tab_order(preview, terminal, output, width, height, args)
 
         resize_terminal(terminal, words, 80, 24)
         search(terminal, "github-agent")
@@ -557,7 +675,7 @@ def exercise(preview, binary, output, language, profile, args):
         if profile == "no-color":
             assert not any(value not in (b"", b"0") for value in preview.SGR.findall(raw)), "NO_COLOR emitted styling"
         (output / "pty.raw").write_bytes(raw)
-        print("PASS %s/%s: search, rate samples, live pause, six sorts, details/two-row clicks, fixed toolbar, six sizes, header pause/totals, framed search with outside count/sort, active/closed tabs and frozen history, exact close, archived filters/details, close-all cancellation/confirmation; %s" %
+        print("PASS %s/%s: case/Unicode whole-word/regex search, invalid-expression recovery, search-control mouse and bidirectional Tab at every size, rate samples, live pause, six sorts, details/two-row clicks, fixed toolbar, six sizes, header pause/totals, framed search with outside count/sort, active/closed tabs and frozen history, exact close, archived filters/details, close-all cancellation/confirmation; %s" %
             (language, profile, json.dumps(calls)), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")

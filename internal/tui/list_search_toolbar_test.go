@@ -144,14 +144,14 @@ func TestListSearchConnectionsTabAndShiftTabFollowTheInputTextRow(t *testing.T) 
 				m.locale = i18n.New(language)
 				m.connections.search.SetValue("one")
 				m, _ = update(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
-				want := []string{"conn.active", "conn.closed", "conn.search", "conn.clear", "conn.sort", "connection.first"}
+				want := []string{"conn.active", "conn.closed", "conn.search", "conn.clear", "conn.case", "conn.word", "conn.regex", "conn.sort", "connection.first"}
 				if size[0] != 160 {
-					want = []string{"conn.active", "conn.closed", "conn.sort", "conn.search", "conn.clear", "connection.first"}
+					want = []string{"conn.active", "conn.closed", "conn.sort", "conn.search", "conn.clear", "conn.case", "conn.word", "conn.regex", "connection.first"}
 				}
 				var got []string
 				for _, target := range m.focusTargets() {
 					switch target.ID {
-					case "conn.active", "conn.closed", "conn.search", "conn.clear", "conn.sort", "connection.first":
+					case "conn.active", "conn.closed", "conn.search", "conn.clear", "conn.case", "conn.word", "conn.regex", "conn.sort", "connection.first":
 						got = append(got, target.ID)
 					}
 				}

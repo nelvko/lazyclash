@@ -2,7 +2,6 @@ package tui
 
 import (
 	"sort"
-	"strings"
 	"time"
 
 	"github.com/nelvko/lazyclash/internal/mihomo"
@@ -51,6 +50,10 @@ func (m Model) connectionRowRate(c mihomo.Connection) connectionRate {
 }
 
 func (m Model) filteredConnections() []mihomo.Connection {
+	match, err := m.connectionMatcher()
+	if err != nil {
+		return nil
+	}
 	var source, out []mihomo.Connection
 	closedAt := map[string]time.Time{}
 	if m.connections.closedView {
@@ -61,11 +64,8 @@ func (m Model) filteredConnections() []mihomo.Connection {
 	} else if snapshot := m.connectionSnapshot(); snapshot != nil {
 		source = snapshot.Connections
 	}
-	query := strings.ToLower(strings.TrimSpace(m.connections.search.Value()))
 	for _, c := range source {
-		md := c.Metadata
-		haystack := strings.Join([]string{c.ID, md.Host, md.SourceIP, md.SourcePort, md.DestinationIP, md.DestinationPort, md.Network, md.Type, md.Process, md.ProcessPath, c.Rule, c.RulePayload, strings.Join(c.Chains, " ")}, " ")
-		if query == "" || strings.Contains(strings.ToLower(haystack), query) {
+		if match(c) {
 			out = append(out, c)
 		}
 	}

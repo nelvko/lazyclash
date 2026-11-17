@@ -44,5 +44,9 @@
   "navigation.logs.resume": "f 恢复",
   "navigation.logs.space.pause": "Space 暂停",
   "navigation.logs.space.resume": "Space 恢复",
-  "navigation.logs.controls": "l 选择级别 · v 视图 · Tab 控件 · Esc 导航"
+  "navigation.logs.controls": "l 选择级别 · v 视图 · Tab 控件 · Esc 导航",
+  "navigation.connections.action.reset": "Enter 清除筛选",
+  "navigation.connections.action.case": "Enter 切换区分大小写",
+  "navigation.connections.action.word": "Enter 切换整词匹配",
+  "navigation.connections.action.regex": "Enter 切换正则表达式"
 }

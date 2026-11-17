@@ -14,8 +14,10 @@ import (
 )
 
 type connectionsState struct {
-	search                      textinput.Model
-	editing                     bool
+	search                          textinput.Model
+	editing                         bool
+	caseSensitive, wholeWord, regex bool
+
 	selected                    string
 	selectedIndex, detailScroll int
 	detail                      *mihomo.Connection
@@ -150,6 +152,9 @@ func (m *Model) focusConnectionSearch() tea.Cmd {
 	return m.connections.search.Focus()
 }
 func (m *Model) connectionSearchKey(k tea.KeyPressMsg) tea.Cmd {
+	if m.connectionFilterKey(k) {
+		return nil
+	}
 	switch k.String() {
 	case "enter", "esc", "tab", "shift+tab":
 		m.connections.editing = false
@@ -194,6 +199,9 @@ func (m *Model) connectionKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 		case "enter", "space", " ":
 			return true, m.connectionActivate(m.focus)
 		}
+		return true, nil
+	}
+	if m.connectionFilterKey(k) {
 		return true, nil
 	}
 	switch key {
@@ -338,7 +346,12 @@ func (m *Model) connectionActivate(id string) tea.Cmd {
 	case id == "conn.search":
 		return m.focusConnectionSearch()
 	case id == "conn.reset-filter":
+		m.connections.caseSensitive, m.connections.wholeWord, m.connections.regex = false, false, false
 		return m.connectionActivate("conn.clear")
+	case id == "conn.case" || id == "conn.word" || id == "conn.regex":
+		if !m.busy && !m.quitting && m.connections.detail == nil && !m.connections.confirming {
+			m.toggleConnectionFilter(id)
+		}
 	case id == "conn.retry":
 		if !m.busy && !m.quitting && !m.runtime.pending && !m.connections.closedView && m.connections.detail == nil && !m.connections.confirming && len(m.filteredConnections()) == 0 && m.connectionsEmptyState().ActionID == id {
 			return tea.Batch(m.retryRuntime(), m.refreshCoreStatus())

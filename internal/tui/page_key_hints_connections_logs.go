@@ -40,8 +40,12 @@ func (m Model) connectionsContextHelp() string {
 		parts = append(parts, tr("empty.connections.retry_hint"))
 	case "conn.search":
 		action = "search"
-	case "conn.clear", "conn.reset-filter":
+	case "conn.clear":
 		action = "clear"
+	case "conn.reset-filter":
+		action = "reset"
+	case "conn.case", "conn.word", "conn.regex":
+		action = strings.TrimPrefix(m.focus, "conn.")
 	case "conn.active":
 		action = "active"
 	case "conn.closed":

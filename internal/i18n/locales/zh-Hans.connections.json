@@ -32,5 +32,6 @@
   "connections.history_scope": "本次观察 · 最近 500 条",
   "connections.closed_empty": "尚未观察到已关闭连接",
   "connections.closed_count": "%d / %d 条已关闭连接",
-  "connections.closed_observed": "观测结束时间"
+  "connections.closed_observed": "观测结束时间",
+  "connections.invalid_regex": "正则表达式无效"
 }

@@ -102,7 +102,8 @@ func (m Model) connectionControls() dashboardBlock {
 }
 
 func (m Model) connectionToolbarRows(width int) int {
-	rows := len(m.connectionFilterBar(width).lines) + 1
+	_, available := m.connectionTotalCount()
+	rows := m.connectionSearchToolbar(width).rows(width, available && strings.TrimSpace(m.connections.search.Value()) != "") + 1
 	if status, _ := m.connectionStatus(); status != "" {
 		rows++
 	}
@@ -111,7 +112,7 @@ func (m Model) connectionToolbarRows(width int) int {
 
 func (m Model) connectionSearchWidth(width int) int {
 	fieldWidth, _ := m.connectionSearchGeometry(width)
-	return inputFieldTextWidth(fieldWidth, 0, true)
+	return inputFieldTextWidth(fieldWidth, searchControlWidth(m.connectionFilterButtons()), true)
 }
 
 func (m Model) connectionsToolbar(width, rows int) dashboardBlock {
@@ -381,12 +382,19 @@ func (m Model) connectionsBody(width int) (string, []hitRegion) {
 func (m Model) connectionsEmptyState() emptyStateOptions {
 	state := emptyStateOptions{Title: m.tr("connections.empty")}
 	filtered := strings.TrimSpace(m.connections.search.Value()) != ""
-	if m.connections.closedView {
-		state.Title = m.tr("connections.closed_empty")
-		if filtered {
-			state.Title = m.tr("connections.no_matches")
-			state.ActionID, state.ActionLabel = "conn.reset-filter", m.tr("empty.clear_filters")
+	filterState := func() emptyStateOptions {
+		state := emptyStateOptions{Title: m.tr("connections.no_matches"),
+			ActionID: "conn.reset-filter", ActionLabel: m.tr("empty.clear_filters")}
+		if _, err := m.connectionMatcher(); err != nil {
+			state.Title, state.Error = m.tr("connections.invalid_regex"), true
 		}
+		return state
+	}
+	if m.connections.closedView {
+		if filtered {
+			return filterState()
+		}
+		state.Title = m.tr("connections.closed_empty")
 		return state
 	}
 	if core, ok := m.coreEmptyState(); ok {
@@ -414,8 +422,7 @@ func (m Model) connectionsEmptyState() emptyStateOptions {
 		return state
 	}
 	if filtered {
-		state.Title = m.tr("connections.no_matches")
-		state.ActionID, state.ActionLabel = "conn.reset-filter", m.tr("empty.clear_filters")
+		return filterState()
 	}
 	return state
 }

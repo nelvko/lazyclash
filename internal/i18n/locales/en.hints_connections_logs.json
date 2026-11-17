@@ -44,5 +44,9 @@
   "navigation.logs.resume": "f Resume",
   "navigation.logs.space.pause": "Space Pause",
   "navigation.logs.space.resume": "Space Resume",
-  "navigation.logs.controls": "l Choose level · v View · Tab Controls · Esc Navigation"
+  "navigation.logs.controls": "l Choose level · v View · Tab Controls · Esc Navigation",
+  "navigation.connections.action.reset": "Enter Clear filters",
+  "navigation.connections.action.case": "Enter Toggle match case",
+  "navigation.connections.action.word": "Enter Toggle whole word",
+  "navigation.connections.action.regex": "Enter Toggle regular expression"
 }
