@@ -152,11 +152,11 @@ def main():
             terminal.key(b"\x1b")
             terminal.wait_absent("View details")
             terminal.key(b"\x1b")  # dismiss the Add notification before using its covered card controls
-            mouse_text(terminal, "[↻]", button=2)
+            mouse_text(terminal, "↻", button=2)
             terminal.wait("View details")
             terminal.key(b"\x1b")
             terminal.wait_absent("View details")
-            mouse_text(terminal, "[⋯]", occurrence=1)
+            mouse_text(terminal, "⋯", occurrence=1)
             terminal.wait("View details")
             terminal.key(b"q")
             terminal.key(b"2")
