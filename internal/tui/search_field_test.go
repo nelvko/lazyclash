@@ -84,6 +84,11 @@ func TestSearchFieldLogsShortWindowRetainsVisibleTargets(t *testing.T) {
 			}
 			m, _ = update(m, special(tea.KeyEscape))
 			m, _ = click(m, findTarget(t, m, "logs.level"))
+			if !m.menu.open {
+				t.Fatal("visible short-window level control did not open its menu")
+			}
+			m, _ = update(m, special(tea.KeyDown))
+			m, _ = update(m, special(tea.KeyEnter))
 			if m.logs.level != 1 {
 				t.Fatal("visible short-window filter control did not accept a click")
 			}

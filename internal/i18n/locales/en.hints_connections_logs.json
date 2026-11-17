@@ -33,7 +33,7 @@
   "navigation.logs.action.resume": "Enter Resume",
   "navigation.logs.action.clear": "Enter Clear retained logs",
   "navigation.logs.action.latest": "Enter Latest",
-  "navigation.logs.action.level": "Enter Level: %s",
+  "navigation.logs.action.level": "Enter Choose log level",
   "navigation.logs.action.compact": "Enter Compact view",
   "navigation.logs.action.detailed": "Enter Detailed view",
   "navigation.logs.search": "/ Search",
@@ -44,5 +44,5 @@
   "navigation.logs.resume": "f Resume",
   "navigation.logs.space.pause": "Space Pause",
   "navigation.logs.space.resume": "Space Resume",
-  "navigation.logs.controls": "l Level · v View · Tab Controls · Esc Navigation"
+  "navigation.logs.controls": "l Choose level · v View · Tab Controls · Esc Navigation"
 }

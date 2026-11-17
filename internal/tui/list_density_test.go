@@ -89,9 +89,7 @@ func TestListToolbarsReserveOnlyVisibleSearchAndStatusRows(t *testing.T) {
 			bar = m.logsToolbar(76, rows)
 		}
 		wantRows := 3
-		if page == "logs" {
-			wantRows = 4
-		}
+
 		if rows != wantRows || len(bar.lines) != wantRows || strings.TrimSpace(ansi.Strip(bar.lines[0])) == "" || strings.TrimSpace(ansi.Strip(bar.lines[wantRows-1])) == "" {
 			t.Fatalf("%s reserves blank space around its three-row search frame", page)
 		}

@@ -33,7 +33,7 @@
   "navigation.logs.action.resume": "Enter 恢复",
   "navigation.logs.action.clear": "Enter 清空保留日志",
   "navigation.logs.action.latest": "Enter 最新日志",
-  "navigation.logs.action.level": "Enter 级别：%s",
+  "navigation.logs.action.level": "Enter 选择日志级别",
   "navigation.logs.action.compact": "Enter 简洁视图",
   "navigation.logs.action.detailed": "Enter 详细视图",
   "navigation.logs.search": "/ 搜索",
@@ -44,5 +44,5 @@
   "navigation.logs.resume": "f 恢复",
   "navigation.logs.space.pause": "Space 暂停",
   "navigation.logs.space.resume": "Space 恢复",
-  "navigation.logs.controls": "l 级别 · v 视图 · Tab 控件 · Esc 导航"
+  "navigation.logs.controls": "l 选择级别 · v 视图 · Tab 控件 · Esc 导航"
 }

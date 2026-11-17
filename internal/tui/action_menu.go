@@ -10,7 +10,7 @@ import (
 
 type menuItem struct {
 	ID, Label, DisabledReason string
-	Danger                    bool
+	Danger, Checked           bool
 }
 
 type menuResult struct {
@@ -27,6 +27,8 @@ type actionMenu struct {
 	x, y             int
 	bounds           hitRegion
 	framed           bool
+	anchor           hitRegion
+	anchored         bool
 }
 
 var menuKeys = struct{ up, down, first, last, activate, close bubbleskey.Binding }{
@@ -41,6 +43,25 @@ var menuKeys = struct{ up, down, first, last, activate, close bubbleskey.Binding
 func (m *actionMenu) show(items []menuItem, x, y int) {
 	*m = actionMenu{open: len(items) > 0, items: append([]menuItem(nil), items...), selected: -1, x: x, y: y}
 	m.move(1)
+}
+
+// showSelection uses the same popup interaction as actions, with a fixed check
+// for the current value and an independent cursor for the pending choice.
+func (m *actionMenu) showSelection(items []menuItem, currentID string, anchor hitRegion) {
+	m.show(items, anchor.X, anchor.Y+max(1, anchor.H))
+	for i := range m.items {
+		m.items[i].Checked = m.items[i].ID == currentID
+		if m.items[i].Checked && m.items[i].DisabledReason == "" {
+			m.selected = i
+		}
+	}
+	m.setAnchor(anchor)
+}
+
+// setAnchor keeps a popup attached to its trigger after layout or resize.
+func (m *actionMenu) setAnchor(anchor hitRegion) {
+	m.anchor, m.anchored = anchor, true
+	m.x, m.y = anchor.X, anchor.Y+max(1, anchor.H)
 }
 
 func (m *actionMenu) dismiss() {
@@ -186,27 +207,68 @@ func (m *actionMenu) render(base string, width, height, contentBottom int) strin
 	}
 	labels := make([]string, len(m.items))
 	contentWidth := 0
+	checked := false
+	for _, item := range m.items {
+		checked = checked || item.Checked
+	}
 	for i, item := range m.items {
 		labels[i] = clean(item.Label)
+		if checked {
+			mark := "  "
+			if item.Checked {
+				mark = "✓ "
+			}
+			labels[i] = mark + labels[i]
+		}
 		if item.DisabledReason != "" {
 			labels[i] += " · " + clean(item.DisabledReason)
 		}
 		contentWidth = max(contentWidth, ansi.StringWidth(labels[i]))
 	}
 	menuWidth := min(width, max(18, min(48, contentWidth+4)))
-	m.framed = menuWidth >= 4 && available >= 3
+	space, above := available, false
+	anchorTop, anchorBottom := 0, 0
+	if m.anchored {
+		anchorTop = min(available, max(0, m.anchor.Y))
+		anchorBottom = min(available, max(0, m.anchor.Y+max(1, m.anchor.H)))
+		below := available - anchorBottom
+		desired := len(m.items)
+		if menuWidth >= 4 {
+			desired += 2
+		}
+		if below >= desired {
+			space = below
+		} else if anchorTop >= desired || anchorTop > below {
+			space, above = anchorTop, true
+		} else {
+			space = below
+		}
+		// A trigger can cover the whole canvas in an extremely short terminal.
+		// Keep the selected item usable in the remaining content area.
+		if space == 0 {
+			space = available
+		}
+	}
+	m.framed = menuWidth >= 4 && space >= 3
 	padding := 0
 	if m.framed {
 		padding = 1
 	}
-	visible := min(len(m.items), available-2*padding)
+	visible := min(len(m.items), space-2*padding)
 	menuHeight := visible + 2*padding
 	m.offset = min(m.offset, max(0, len(m.items)-visible))
 	if m.selected >= 0 {
 		m.offset = min(m.offset, m.selected)
 		m.offset = max(m.offset, m.selected-visible+1)
 	}
-	m.bounds = hitRegion{X: max(0, min(m.x, width-menuWidth)), Y: max(0, min(m.y, available-menuHeight)), W: menuWidth, H: menuHeight}
+	y := m.y
+	if m.anchored {
+		y = anchorBottom
+		if above {
+			y = anchorTop - menuHeight
+		}
+	}
+	m.bounds = hitRegion{X: max(0, min(m.x, width-menuWidth)), Y: max(0, min(y, available-menuHeight)), W: menuWidth, H: menuHeight}
 	lines := make([]string, 0, menuHeight)
 	if m.framed {
 		lines = append(lines, m.edge(menuWidth, true, m.offset > 0))

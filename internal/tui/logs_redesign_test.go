@@ -145,7 +145,7 @@ func TestLogsClearOnlyRemovesRetainedEntriesAndPreservesStreamAndFilters(t *test
 	if cmd := m.logsActivate("logs.clear"); cmd != nil {
 		t.Fatal("clear unexpectedly started a backend operation")
 	}
-	if len(m.logs.entries) != 0 || !m.logs.observedAt.IsZero() || m.logs.holding || m.logs.unread != 0 || m.logs.search.Value() != "Needle" || m.logs.level != 3 || !m.logs.compact {
+	if len(m.logs.entries) != 0 || m.logs.holding || m.logs.unread != 0 || m.logs.search.Value() != "Needle" || m.logs.level != 3 || !m.logs.compact {
 		t.Fatal("clear did not reset only retained log data and reading state")
 	}
 	if ctx.Err() != nil || !m.logs.active || m.logs.paused || m.runtime.generation != generation || m.logs.first != 20 {
@@ -209,6 +209,11 @@ func TestLogsToolbarKeepsKeyboardOrderAndMouseTargetsWhileBrowsing(t *testing.T)
 				}
 			}
 			m, _ = click(m, findTarget(t, m, "logs.level"))
+			if !m.menu.open || m.logs.level != 0 {
+				t.Fatal("level click did not open a selector without changing the filter")
+			}
+			m, _ = update(m, special(tea.KeyDown))
+			m, _ = update(m, special(tea.KeyEnter))
 			if m.logs.level != 1 || ctx.Err() != nil || m.runtime.generation != generation {
 				t.Fatal("level click changed capture instead of only filtering display")
 			}

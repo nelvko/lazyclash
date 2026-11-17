@@ -140,12 +140,17 @@ func TestLogsHintsFollowEditingPauseAndFocusedControls(t *testing.T) {
 			t.Fatal("view mode and hint did not toggle together")
 		}
 		m.focus, m.logs.level = "logs.level", 0
-		if !strings.HasPrefix(m.contextHelp(), m.tr("navigation.logs.action.level", m.tr("logs.level_info"))) {
-			t.Fatal("level control did not describe the next filter")
+		if !strings.HasPrefix(m.contextHelp(), m.tr("navigation.logs.action.level")) {
+			t.Fatal("level control did not advertise its selector")
 		}
 		m, _ = update(m, special(tea.KeyEnter))
-		if m.logs.level != 1 {
-			t.Fatal("Enter did not apply the advertised next filter")
+		if !m.menu.open || m.logs.level != 0 {
+			t.Fatal("Enter did not open the advertised level selector")
+		}
+		m, _ = update(m, special(tea.KeyDown))
+		m, _ = update(m, special(tea.KeyEnter))
+		if m.menu.open || m.logs.level != 1 {
+			t.Fatal("Enter did not commit the chosen filter")
 		}
 	}
 }

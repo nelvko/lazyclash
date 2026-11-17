@@ -120,7 +120,7 @@ func TestSearchControlsKeepLogCountsWhileEditingOrInspectingOptions(t *testing.T
 						m.focus, m.hover = id, id
 						bar := m.logsToolbar(width, m.filterToolbarRows(width))
 						plain := ansi.Strip(strings.Join(bar.lines, "\n"))
-						if !strings.Contains(plain, m.tr("logs.summary", 1, 12)) {
+						if !strings.Contains(plain, m.tr("logs.filtered_count", 1, 12)) {
 							t.Fatalf("editing=%t or hint %s hid retained-log counts:\n%s", editing, id, plain)
 						}
 					}

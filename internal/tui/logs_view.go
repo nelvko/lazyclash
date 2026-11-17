@@ -129,17 +129,21 @@ func (m Model) logControls() dashboardBlock {
 	var b dashboardBlock
 	buttons := ""
 	for _, item := range []struct{ id, label string }{
-		{"logs.level", m.tr([]string{"logs.level_all", "logs.level_info", "logs.level_warn", "logs.level_error"}[m.logs.level])},
+		{"logs.level", m.tr(logLevelKeys[m.logs.level]) + " ▾"},
 		{"logs.view", m.tr(map[bool]string{false: "logs.detailed", true: "logs.compact"}[m.logs.compact])},
 	} {
 		o := m.searchControlOptions(item.id)
 		o.Kind = buttonText
-		keys := []string{"logs.level_all", "logs.level_info", "logs.level_warn", "logs.level_error"}
+		keys := logLevelKeys[:]
 		if item.id == "logs.view" {
 			keys = []string{"logs.detailed", "logs.compact"}
 		}
 		for _, key := range keys {
-			o.Width = max(o.Width, ansi.StringWidth(m.tr(key)))
+			label := m.tr(key)
+			if item.id == "logs.level" {
+				label += " ▾"
+			}
+			o.Width = max(o.Width, ansi.StringWidth(label))
 		}
 		o.Disabled = m.busy || m.quitting
 		value := renderButton(item.label, o)
@@ -156,14 +160,44 @@ func (m Model) logSearchButtons() dashboardBlock {
 	return m.searchMatchingButtons("logs", m.logs.caseSensitive, m.logs.wholeWord, m.logs.regex)
 }
 
-// A zero controlsX places the options below the complete input frame.
+func (m Model) logFilterActive() bool {
+	return strings.TrimSpace(m.logs.search.Value()) != "" || m.logs.level != 0
+}
+
+func (m Model) logCount() (full, compact string) {
+	if !m.logFilterActive() {
+		return "", ""
+	}
+	entries, _ := m.logsDisplayEntries()
+	matched := 0
+	match, err := m.logMatcher()
+	for _, entry := range entries {
+		if err == nil && match(entry) {
+			matched++
+		}
+	}
+	return m.tr("logs.filtered_count", matched, len(entries)), fmt.Sprintf("%d / %d", matched, len(entries))
+}
+
+// Reserve the bounded cache's maximum ratio even while hidden. Incoming events
+// and entering or clearing a query must not resize the search frame.
+func (m Model) logCountWidth() int {
+	return ansi.StringWidth(m.tr("logs.filtered_count", retainedLogLimit, retainedLogLimit))
+}
+
+// A zero controlsX places the level and view below the complete input frame.
 func (m Model) logSearchGeometry(width int) (fieldWidth, controlsX int) {
 	width = max(1, width)
-	fieldWidth = min(inputFieldMaxWidth, width-searchControlWidth(m.logControls())-2)
+	countWidth := m.logCountWidth()
+	fieldWidth = min(inputFieldMaxWidth, width-countWidth-searchControlWidth(m.logControls())-4)
 	if fieldWidth >= 24 && inputFieldInlineTrailing(fieldWidth, searchControlWidth(m.logSearchButtons()), true) {
-		return fieldWidth, fieldWidth + 2
+		return fieldWidth, fieldWidth + countWidth + 4
 	}
-	return min(inputFieldMaxWidth, width), 0
+	fieldWidth = min(inputFieldMaxWidth, width)
+	if width-countWidth-2 >= 26 {
+		fieldWidth = min(inputFieldMaxWidth, width-countWidth-2)
+	}
+	return fieldWidth, 0
 }
 
 func (m Model) logSearchWidth(width int) int {
@@ -176,6 +210,11 @@ func (m Model) logFilterRows(width int) int {
 	rows := inputFieldRows(fieldWidth, searchControlWidth(m.logSearchButtons()), true)
 	if controlsX == 0 {
 		rows++
+		compactWidth := len(fmt.Sprintf("%d / %d", retainedLogLimit, retainedLogLimit))
+		if m.logFilterActive() && fieldWidth+2+m.logCountWidth() > width &&
+			searchControlWidth(m.logControls())+2+compactWidth > width {
+			rows++
+		}
 	}
 	return rows
 }
@@ -185,13 +224,31 @@ func (m Model) logFilterBar(width int) dashboardBlock {
 	_, err := m.logMatcher()
 	b := m.searchToolbar("logs.search", m.tr("logs.placeholder"), m.logs.search,
 		m.logSearchButtons(), fieldWidth, err != nil)
+	count, compactCount := m.logCount()
+	countInline := fieldWidth+2+m.logCountWidth() <= width
+	if count != "" && countInline {
+		b.lines[1] += themed("  "+count, muted, bg, false)
+	}
 	controls := m.logControls()
 	controlsY := 1
 	if controlsX == 0 {
 		controlsY = len(b.lines)
-		b.lines = append(b.lines, cellCrop(controls.lines[0], width))
+		line := controls.lines[0]
+		if count != "" && !countInline {
+			countWidth := m.logCountWidth()
+			if searchControlWidth(controls)+2+countWidth > width {
+				count, countWidth = compactCount, len(fmt.Sprintf("%d / %d", retainedLogLimit, retainedLogLimit))
+			}
+			if searchControlWidth(controls)+2+countWidth <= width {
+				line = themed(cellPad(line, width-countWidth), text, bg, false) + themed(count, muted, bg, false)
+			} else {
+				b.lines = append(b.lines, cellCrop(line, width))
+				line = themed(cellCrop(count, width), muted, bg, false)
+			}
+		}
+		b.lines = append(b.lines, cellCrop(line, width))
 	} else {
-		b.lines[1] += themed("  ", text, bg, false) + controls.lines[0]
+		b.lines[1] = themed(cellPad(b.lines[1], controlsX), text, bg, false) + controls.lines[0]
 	}
 	for _, target := range controls.targets {
 		target.X += controlsX
@@ -204,43 +261,14 @@ func (m Model) logFilterBar(width int) dashboardBlock {
 func (m Model) logsToolbar(width, rows int) dashboardBlock {
 	width = max(1, width)
 	b := m.logFilterBar(width)
-	count := 0
-	entries, _ := m.logsDisplayEntries()
-	match, matchErr := m.logMatcher()
-	for _, entry := range entries {
-		if matchErr == nil && match(entry) {
-			count++
-		}
-	}
-	status := m.tr("logs.summary", count, len(entries))
-	hint := ""
-	if m.logs.editing {
-		hint = m.tr("logs.search_edit")
-	} else if !m.logs.observedAt.IsZero() {
-		hint = m.tr("logs.observed", m.logs.observedAt.Local().Format("15:04:05"))
-	}
-	for _, item := range []struct{ id, key string }{{"logs.level", "logs.level_hint"}, {"logs.view", "logs.view_hint"}, {"logs.reset-search", "logs.reset_hint"},
-		{"logs.case", "logs.filter_case"}, {"logs.word", "logs.filter_word"}, {"logs.regex", "logs.filter_regex"}} {
-		if m.hover == item.id || m.focus == item.id {
-			hint = m.tr(item.key)
-			break
-		}
-	}
-	if hint != "" && ansi.StringWidth(status+" · "+hint) <= width {
-		status += " · " + hint
-	}
-	b.lines = append(b.lines, themed(cellCrop(status, width), muted, bg, false))
-	if matchErr != nil {
-		b.lines = append(b.lines, themed(cellCrop(m.tr("logs.invalid_regex"), width), errorColor, bg, false))
-	}
 	b.lines = b.lines[:min(rows, len(b.lines))]
-	var targets []hitRegion
+	visible := b.targets[:0]
 	for _, target := range b.targets {
 		if clipped, ok := clipRegion(target, 0, 0, width, len(b.lines)); ok && !m.busy {
-			targets = append(targets, clipped)
+			visible = append(visible, clipped)
 		}
 	}
-	b.targets = targets
+	b.targets = visible
 	return b
 }
 

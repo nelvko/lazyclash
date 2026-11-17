@@ -13,8 +13,8 @@ import (
 
 func TestDataPagesLocalizeControlsAndKeepObservedValues(t *testing.T) {
 	for _, language := range []struct{ code, profiles, connections, rules, logs string }{
-		{i18n.English, "Configurations", "Connection details", "Entries: 0", "Mihomo logs"},
-		{i18n.Chinese, "配置", "连接详情", "条目：0", "Mihomo 日志"},
+		{i18n.English, "Configurations", "Connection details", "Entries: 0", "Search logs"},
+		{i18n.Chinese, "配置", "连接详情", "条目：0", "搜索日志"},
 	} {
 		t.Run(language.code, func(t *testing.T) {
 			profiles := ready(&fakeBackend{snapshot: app.Snapshot{

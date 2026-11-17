@@ -658,7 +658,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			break
 		}
 		if m.menu.open {
-			cmd = m.profileMenuResult(m.menu.key(v))
+			cmd = m.applyMenuResult(m.menu.key(v))
 			break
 		}
 		if m.ports.open {
@@ -982,7 +982,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	notification := m.syncNotification()
 	m.reconcileProfiles()
 	nextProxies := m.syncProxies()
-	m.reconcileProfileMenu()
+	m.reconcileMenu()
 	var completion tea.Cmd
 	if m.pathForm() {
 		completion = m.paths.request(m.pathInputValue())
@@ -1342,7 +1342,7 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 		return nil
 	}
 	if m.menu.open {
-		return m.profileMenuResult(m.menu.mouse(event))
+		return m.applyMenuResult(m.menu.mouse(event))
 	}
 	if m.ports.open {
 		return m.portsMouse(event)
@@ -1588,6 +1588,7 @@ func (m *Model) renderLayout() {
 	} else if m.providers.open {
 		m.screen, m.targets = m.renderProviders(base)
 	} else if m.menu.open {
+		m.anchorLogsLevelMenu(hits)
 		m.screen = m.menu.render(base, m.width, m.height, dashboardContentBottom(o))
 	}
 }

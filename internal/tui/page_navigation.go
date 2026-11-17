@@ -52,7 +52,7 @@ func (m *Model) browsePage(page string) {
 		m.stopProxyTests()
 		m.rememberPageView()
 		m.blurInlineInput()
-		m.dismissProfileMenu()
+		m.dismissMenu()
 		m.profilesUI.editing = false
 		m.profilesUI.url.Blur()
 		m.connections.editing = false
@@ -491,6 +491,7 @@ func (m *Model) decorateContentFocus(g dashboardLayout, overlays []notificationO
 }
 
 func (m *Model) requestQuit() tea.Cmd {
+	m.dismissMenu()
 	m.stopProviders()
 	m.stopProxyTests()
 	m.stopRuntime()

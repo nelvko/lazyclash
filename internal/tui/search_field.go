@@ -70,11 +70,7 @@ func (m Model) searchToolbarGap() int {
 
 func (m Model) filterToolbarRows(width int) int {
 	if m.page == "logs" {
-		rows := m.logFilterRows(width) + 1 // controls and summary
-		if _, err := m.logMatcher(); err != nil {
-			rows++
-		}
-		return rows
+		return m.logFilterRows(width)
 	}
 	rows := inputFieldRows(m.ruleSearchFieldWidth(width), searchControlWidth(m.ruleFilterButtons()), true)
 	if _, err := m.ruleMatcher(); err != nil {

@@ -118,8 +118,7 @@ func (m Model) logsContextHelp() string {
 	case "logs.latest":
 		action = "latest"
 	case "logs.level":
-		level := []string{"logs.level_all", "logs.level_info", "logs.level_warn", "logs.level_error"}[(m.logs.level+1)%4]
-		parts = append(parts, tr("navigation.logs.action.level", tr(level)))
+		parts = append(parts, tr("navigation.logs.action.level"))
 	case "logs.view":
 		action = "compact"
 		if m.logs.compact {

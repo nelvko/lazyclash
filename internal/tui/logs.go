@@ -1,8 +1,6 @@
 package tui
 
 import (
-	"time"
-
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"github.com/nelvko/lazyclash/internal/i18n"
@@ -20,12 +18,12 @@ type logsState struct {
 	editing, paused                 bool
 	active                          bool
 	err                             error
-	observedAt                      time.Time
 	started, reconnecting           bool
 	recovered                       bool
 	frozen                          []mihomo.LogEntry
 	frozenFirst                     uint64
 	caseSensitive, wholeWord, regex bool
+	levelMenu                       bool
 	level                           int // local display filter: all, info, warning, error
 	compact, holding                bool
 	first                           uint64 // identity of the oldest retained entry
@@ -60,7 +58,6 @@ func (m *Model) appendLogs(entries []mihomo.LogEntry) {
 		}
 		entry.Message = message
 		m.logs.entries = append(m.logs.entries, entry)
-		m.logs.observedAt = entry.Time
 	}
 	if len(m.logs.entries) > retainedLogLimit {
 		m.logs.first += uint64(len(m.logs.entries) - retainedLogLimit)
@@ -115,8 +112,7 @@ func (m *Model) logsActivate(id string) tea.Cmd {
 		m.logs.editing, m.focus, m.scroll = true, "logs.search", 0
 		return m.logs.search.Focus()
 	case "logs.level":
-		m.logs.level = (m.logs.level + 1) % 4
-		m.resetLogsView()
+		m.openLogLevelMenu()
 	case "logs.case", "logs.word", "logs.regex":
 		m.toggleLogFilter(id)
 	case "logs.view":
@@ -126,7 +122,6 @@ func (m *Model) logsActivate(id string) tea.Cmd {
 		m.logs.entries, m.logs.frozen = nil, nil
 		m.logs.frozenFirst = m.logs.first
 		m.logs.recovered = false
-		m.logs.observedAt = time.Time{}
 		m.resetLogsView()
 	case "logs.reset-filters":
 		m.logs.search.Reset()

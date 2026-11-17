@@ -88,6 +88,26 @@ def assert_external_log_options(terminal, words):
     return left, right, y, tuple(options)
 
 
+def assert_no_log_summary(terminal):
+    text = terminal.screen.text()
+    assert "Mihomo logs" not in text and "Mihomo 日志" not in text, "Logs retained its permanent summary row"
+    assert not re.search(r"(?:Local|本地) \d\d:\d\d:\d\d", text), "Logs retained its observed-time hint"
+
+
+def choose_level(terminal, words, index, mouse=False):
+    terminal.key(b"l")
+    terminal.wait("✓ ")
+    if mouse:
+        terminal.click_text(words[("logs.level_all", "logs.level_info", "logs.level_warn", "logs.level_error")[index]])
+    else:
+        terminal.key(b"\x1b[H")
+        for _ in range(index):
+            terminal.key(b"\x1b[B")
+        terminal.key(b"\r")
+    terminal.wait_absent("✓ ")
+    terminal.settle()
+
+
 def assert_stream(terminal, report, streams, canceled=0, failures=0):
     current = calls(report)
     assert current["streams"] == streams and current["canceled"] == canceled and current["failures"] == failures, current
@@ -151,10 +171,20 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait("event-059")
         terminal.settle()
         assert_log_controls(terminal, words)
+        assert_no_log_summary(terminal)
+        assert not re.search(r"\d+ / \d+", terminal.screen.text()), "unfiltered Logs exposed a count"
         for label in ("Aa", "ab", ".*"):
             position(terminal, label)
         assert_external_log_options(terminal, words)
         preview.capture(terminal, output, "logs-wide", args)
+        terminal.click_text(words["logs.level_all"] + " ▾")
+        terminal.wait("✓ " + words["logs.level_all"])
+        assert_continuing(terminal, report)
+        terminal.key(b"q123")
+        terminal.wait("✓ " + words["logs.level_all"])
+        preview.capture(terminal, output, "level-menu-capturing", args)
+        terminal.key(b"\x1b")
+        terminal.wait_absent("✓ ")
         rows = terminal.screen.text().splitlines()
         _, message_y = position(terminal, "event-059")
         assert re.search(r"\d\d:\d\d:\d\d.*ERROR.*event-059", rows[message_y]), "compact metadata and message are not on the same row"
@@ -217,6 +247,7 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.key(b"v")
         terminal.wait("Case-Needle")
         assert "ERROR-MARKER" not in terminal.screen.text(), "search retained unrelated messages"
+        assert re.search(r"1 / \d+", terminal.screen.text()), "search lost its conditional count"
         preview.capture(terminal, output, "case-insensitive-search", args)
         # Match controls share Rules' editor and remain local to the live cache.
         terminal.click_text("Aa")
@@ -251,15 +282,16 @@ def exercise(preview, binary, output, language, profile, args):
         search(terminal, "")
         terminal.key(b"\x1b[F")
         terminal.settle()
-        for expected, absent in (("INFO-MARKER", ("WARNING-MARKER", "ERROR-MARKER")),
+        for index, (expected, absent) in enumerate((("INFO-MARKER", ("WARNING-MARKER", "ERROR-MARKER")),
                                  ("WARNING-MARKER", ("INFO-MARKER", "ERROR-MARKER")),
-                                 ("ERROR-MARKER", ("INFO-MARKER", "WARNING-MARKER"))):
-            terminal.key(b"l")
+                                 ("ERROR-MARKER", ("INFO-MARKER", "WARNING-MARKER"))), 1):
+            choose_level(terminal, words, index, mouse=index == 2)
             terminal.wait(expected)
             terminal.settle()
             assert all(value not in terminal.screen.text() for value in absent), "level filter retained an unrelated level"
             preview.capture(terminal, output, "filter-" + expected.lower(), args)
-        terminal.key(b"l")  # All.
+        choose_level(terminal, words, 0)
+        assert not re.search(r"\d+ / \d+", terminal.screen.text()), "clearing filters retained a count"
         terminal.settle()
 
         # Detailed mode exposes the full wrapped payload; compact mode crops it.
@@ -302,7 +334,15 @@ def exercise(preview, binary, output, language, profile, args):
             assert old != event_numbers(terminal), "wheel did not scroll the log viewport"
             assert toolbar == position(terminal, placeholder[:min(5, len(placeholder))]), "search field moved with the list"
             assert option_geometry == assert_external_log_options(terminal, words), "scrolling moved the external log options"
+            assert_no_log_summary(terminal)
             preview.capture(terminal, output, "scrolled-%dx%d" % (width, height), args)
+            terminal.key(b"l")
+            terminal.wait("✓ " + words["logs.level_all"])
+            preview.capture(terminal, output, "level-menu-%dx%d" % (width, height), args)
+            terminal.key(b"\x1b")
+            terminal.wait_absent("✓ ")
+            assert option_geometry == assert_external_log_options(terminal, words), "menu moved the toolbar"
+            terminal.click_text("event-")
             terminal.key(b"\x1b[F")
             terminal.settle()
             preview.capture(terminal, output, "following-%dx%d" % (width, height), args)
@@ -325,7 +365,8 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.key(b" ")
         wait_log_action(terminal, words["logs.pause_display"])
         wait_until(terminal, lambda: event_numbers(terminal) and max(event_numbers(terminal)) > max(frozen) + 200, "Space did not resume the latest cached entries")
-        terminal.wait(words["logs.summary"] % (200, 200))
+        assert_no_log_summary(terminal)
+        assert not re.search(r"\d+ / \d+", terminal.screen.text()), "unfiltered resumed cache exposed a count"
         terminal.key(b"\x1b[H")
         terminal.settle()
         assert min(event_numbers(terminal)) > max(frozen), "resumed cache retained evicted old entries"
@@ -386,7 +427,7 @@ def exercise(preview, binary, output, language, profile, args):
         if profile == "no-color":
             assert not any(value not in (b"", b"0") for value in preview.SGR.findall(raw)), "NO_COLOR emitted styling"
         (output / "pty.raw").write_bytes(raw)
-        print("PASS %s/%s: detailed/compact, local case/whole-word/regex search and levels, session capture across navigation/help/form, frozen display with 200-entry live cache, fixed toolbar at five sizes, clear/manual reconnect/automatic recovery without GAP entries; %s" %
+        print("PASS %s/%s: detailed/compact, conditional outside count, shared level dropdown, local case/whole-word/regex search, session capture across navigation/help/form, frozen display with 200-entry live cache, fixed toolbar at five sizes, clear/manual reconnect/automatic recovery without GAP entries; %s" %
               (language, profile, json.dumps(final)), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")
