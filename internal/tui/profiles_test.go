@@ -206,7 +206,7 @@ func TestProfileImportExplicitlyRemembersOnlySubscriptionAction(t *testing.T) {
 	}
 }
 
-func TestProfileOverridesSaveDraftAndRecipeDeletionRequiresName(t *testing.T) {
+func TestProfileOverridesSaveDraftAndRecipeDeletionRequiresConfirmation(t *testing.T) {
 	raw := []byte("prepend-rules: ['DOMAIN,local.example,DIRECT']\n")
 	path := filepath.Join(t.TempDir(), "overrides.yaml")
 	if err := os.WriteFile(path, raw, 0600); err != nil {
@@ -234,12 +234,9 @@ func TestProfileOverridesSaveDraftAndRecipeDeletionRequiresName(t *testing.T) {
 		t.Fatal("override import applied or changed its content")
 	}
 	m.activate("profile.delete.1")
-	m.input.SetValue("other")
-	m.profileDeleteSetFocus("profile-delete.confirm")
-	if cmd := m.formKey(special(tea.KeyEnter)); cmd != nil || deletedName != "" {
+	if m.form != "profile-delete" || m.busy || deletedName != "" {
 		t.Fatal("recipe deletion skipped confirmation")
 	}
-	m.input.SetValue("work")
 	m.profileDeleteSetFocus("profile-delete.confirm")
 	cmd = m.formKey(special(tea.KeyEnter))
 	m = finishProfileJob(t, m, cmd)
@@ -353,7 +350,6 @@ func TestProfileDisplayNameEditsKeepActionsOnStableID(t *testing.T) {
 		t.Fatal("Edit URL did not use the stable profile ID")
 	}
 	m.activate("profiles.delete.1")
-	m.input.SetValue("机场 A")
 	m.profileDeleteSetFocus("profile-delete.confirm")
 	m, cmd = update(m, special(tea.KeyEnter))
 	// Keep the backend identity check effective when the operation is wrapped
@@ -361,6 +357,6 @@ func TestProfileDisplayNameEditsKeepActionsOnStableID(t *testing.T) {
 	cmd = tea.Batch(cmd, func() tea.Msg { return nil })
 	m = finishProfileJob(t, m, cmd)
 	if deletedID != id {
-		t.Fatal("display-name delete confirmation changed its backend identity")
+		t.Fatal("delete confirmation changed its stable backend identity")
 	}
 }

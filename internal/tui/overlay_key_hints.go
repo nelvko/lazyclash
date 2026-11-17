@@ -75,7 +75,7 @@ func (m Model) profileDeleteContextHelp() string {
 	case "profile-delete.cancel":
 		label = m.tr("profiles.create_cancel")
 	case "profile-delete.confirm":
-		label = m.tr("profiles.delete")
+		label = m.tr("profiles.delete_confirm")
 	}
 	return m.tr("navigation.hints.control", label)
 }

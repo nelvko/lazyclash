@@ -150,15 +150,13 @@ func TestInputClearInvalidatesErrorsCompletionAndPlans(t *testing.T) {
 	})
 }
 
-func TestDeleteConfirmationClearKeepsDialogAndFocusesInput(t *testing.T) {
+func TestDeleteConfirmationIgnoresStaleInputClear(t *testing.T) {
 	m, _, writes := inputFieldsScenario(t, "generic-form", "en")
-	m.form, m.name = "profile-delete", "input-fixture"
-	m.input.SetValue("input-fixture")
+	m.openProfileEdit("profile-delete", "input-fixture")
 	m.profileDeleteSetFocus("profile-delete.confirm")
-	m.failure = "previous failure"
 	m.clearInputField("import-input.clear")
-	if m.form != "profile-delete" || m.name != "input-fixture" || m.profilesUI.deleteFocus != "import-input" || !m.input.Focused() || m.input.Value() != "" || m.failure != "" || m.busy || writes.Load() != 0 {
-		t.Fatal("clearing a confirmation deleted a profile or closed the dialog")
+	if m.form != "profile-delete" || m.name != "input-fixture" || m.profilesUI.deleteFocus != "profile-delete.confirm" || m.input.Focused() || m.input.Value() != "" || m.failure != "" || m.busy || writes.Load() != 0 {
+		t.Fatal("stale input clear changed or activated the confirmation")
 	}
 }
 

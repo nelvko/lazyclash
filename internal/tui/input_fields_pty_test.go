@@ -93,16 +93,9 @@ func inputFieldsScenario(t *testing.T, scenario, language string) (Model, string
 			// harness checks EchoPassword through the real generic form view.
 			m.input.EchoMode, m.input.EchoCharacter = textinput.EchoPassword, '•'
 		}
-	case "rename-form", "delete-form":
-		form := "profile-rename"
-		if scenario == "delete-form" {
-			form = "profile-delete"
-		}
-		m.openProfileEdit(form, "input-fixture")
+	case "rename-form":
+		m.openProfileEdit("profile-rename", "input-fixture")
 		id, m.focus = "import-input", "import-input"
-		if scenario == "delete-form" {
-			m.profileDeleteSetFocus(id)
-		}
 	case "create-name", "create-description", "create-source":
 		m.openProfileCreate()
 		field := map[string]int{"create-name": profileCreateName, "create-description": profileCreateDescription, "create-source": profileCreateSource}[scenario]
@@ -181,7 +174,7 @@ func (m *inputFieldsPTY) input() *textinput.Model {
 		return &m.model.providers.search
 	case "profile-url":
 		return &m.model.profilesUI.url
-	case "generic-form", "masked-form", "rename-form", "delete-form":
+	case "generic-form", "masked-form", "rename-form":
 		return &m.model.input
 	case "create-name":
 		return &m.model.profileCreate.name

@@ -598,7 +598,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.updateWizardInput(v)
 		} else if m.inlineInputActive() {
 			cmd = m.updateInlineInput(v)
-		} else if m.controlConfirmation() {
+		} else if m.controlConfirmation() || m.form == "profile-delete" {
 			break
 		} else if m.form != "" {
 			if m.form == "profile-create" {
@@ -955,7 +955,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.updateWizardInput(msg)
 		} else if m.inlineInputActive() {
 			cmd = m.updateInlineInput(msg)
-		} else if m.controlConfirmation() {
+		} else if m.controlConfirmation() || m.form == "profile-delete" {
 			break
 		} else if m.form != "" {
 			if m.form == "profile-create" {

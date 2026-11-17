@@ -168,7 +168,7 @@ func TestProfileMenuDispatchesSharedActionsByStableID(t *testing.T) {
 					t.Fatal("Rename did not prefill the existing display name")
 				}
 				if action == "delete" && m.input.Value() != "" {
-					t.Fatal("Delete bypassed explicit name confirmation")
+					t.Fatal("Delete left stale input in its confirmation dialog")
 				}
 			}
 		})

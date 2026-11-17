@@ -287,7 +287,7 @@ func (m *Model) openProfileEdit(form, name string) tea.Cmd {
 	m.input.Reset()
 	m.paths.reset()
 	m.input.EchoMode = textinput.EchoNormal
-	m.input.Placeholder = m.tr("profiles.delete_placeholder")
+	m.input.Placeholder = ""
 	if form == "profile-rename" {
 		m.input.Placeholder = m.tr("profiles.display_name")
 		m.input.SetValue(m.profileInfo(name).Name)
@@ -322,17 +322,13 @@ func (m *Model) profileFormKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 		return false, nil
 	}
 	if m.form == "profile-delete" {
+		if m.busy || m.quitting {
+			return true, nil
+		}
 		switch k.String() {
-		case "tab", "shift+tab":
-			controls := []string{"import-input", "profile-delete.cancel", "profile-delete.confirm"}
-			for i, id := range controls {
-				if id == m.profilesUI.deleteFocus {
-					delta := 1
-					if k.String() == "shift+tab" {
-						delta = -1
-					}
-					return true, m.profileDeleteSetFocus(controls[(i+delta+len(controls))%len(controls)])
-				}
+		case "tab", "shift+tab", "left", "right":
+			if m.profilesUI.deleteFocus == "profile-delete.cancel" {
+				return true, m.profileDeleteSetFocus("profile-delete.confirm")
 			}
 			return true, m.profileDeleteSetFocus("profile-delete.cancel")
 		case "enter":
@@ -340,15 +336,21 @@ func (m *Model) profileFormKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 			case "profile-delete.cancel":
 				m.closeProfileForm()
 				return true, nil
-			case "import-input":
-				return true, m.profileDeleteSetFocus("profile-delete.confirm")
+			case "profile-delete.confirm":
+				if _, targets := m.renderProfileDeleteForm(""); len(targets) == 0 {
+					return true, nil
+				}
+				name := m.name
+				m.closeProfileForm()
+				return true, m.begin(m.tr("profiles.deleting"), m.tr("profiles.deleted"), func(ctx context.Context) error {
+					return m.backend.DeleteProfile(ctx, name)
+				}, m.profileNotification("delete", m.tr("profiles.deleting"), name))
 			}
+			return true, nil
 		case "esc":
 			// Keep the existing cancellation notification below.
 		default:
-			if m.profilesUI.deleteFocus != "import-input" {
-				return true, nil
-			}
+			return true, nil
 		}
 	}
 	switch k.String() {
@@ -364,9 +366,6 @@ func (m *Model) profileFormKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 		value := strings.TrimSpace(m.input.Value())
 		if value == "" && m.form != "profile-description" {
 			m.failure = m.tr("profiles.value_required")
-			if m.form == "profile-delete" {
-				m.profileDeleteSetFocus("import-input")
-			}
 			return true, nil
 		}
 		form, name := m.form, m.name
@@ -383,15 +382,6 @@ func (m *Model) profileFormKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 				m.failure = m.localizeError(err)
 				return true, nil
 			}
-		}
-		expected := name
-		if form == "profile-delete" {
-			expected = m.profileInfo(name).Name
-		}
-		if form == "profile-delete" && value != expected {
-			m.failure = m.tr("profiles.delete_placeholder")
-			m.profileDeleteSetFocus("import-input")
-			return true, nil
 		}
 		m.closeProfileForm()
 		switch form {
@@ -412,10 +402,6 @@ func (m *Model) profileFormKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 				}
 				return m.backend.SetProfileOverrides(ctx, name, raw)
 			}, m.profileNotification("overrides", m.tr("profiles.importing_overrides"), name))
-		case "profile-delete":
-			return true, m.begin(m.tr("profiles.deleting"), m.tr("profiles.deleted"), func(ctx context.Context) error {
-				return m.backend.DeleteProfile(ctx, name)
-			}, m.profileNotification("delete", m.tr("profiles.deleting"), name))
 		}
 	}
 	var cmd tea.Cmd
@@ -429,9 +415,6 @@ func (m *Model) profileFormKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 
 func (m *Model) profileDeleteSetFocus(id string) tea.Cmd {
 	m.profilesUI.deleteFocus = id
-	if id == "import-input" {
-		return m.input.Focus()
-	}
 	m.input.Blur()
 	return nil
 }
@@ -441,8 +424,6 @@ func (m *Model) profileDeleteMouse(id string) tea.Cmd {
 		return nil
 	}
 	switch id {
-	case "import-input":
-		return m.profileDeleteSetFocus(id)
 	case "profile-delete.cancel", "profile-delete.confirm":
 		m.profileDeleteSetFocus(id)
 		_, cmd := m.profileFormKey(tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -559,7 +540,7 @@ func (m *Model) renderProfileForm(base string) (string, []hitRegion) {
 }
 
 func (m *Model) renderProfileDeleteForm(base string) (string, []hitRegion) {
-	width, height := min(inputFieldMaxWidth+4, m.width), min(16, m.height)
+	width, height := min(inputFieldMaxWidth+4, m.width), min(9, m.height)
 	if width < 24 || height < 7 {
 		return overlay("", m.tr("profiles.enlarge"), 0, 0, m.width, m.height), nil
 	}
@@ -575,7 +556,7 @@ func (m *Model) renderProfileDeleteForm(base string) (string, []hitRegion) {
 		kind      buttonKind
 	}{
 		{"profile-delete.cancel", m.tr("profiles.create_cancel"), buttonSecondary},
-		{"profile-delete.confirm", m.tr("profiles.delete"), buttonDangerConfirm},
+		{"profile-delete.confirm", m.tr("profiles.delete_confirm"), buttonDangerConfirm},
 	} {
 		value := renderButton(button.label, buttonOptions{Kind: button.kind, Surface: raised,
 			Focused: m.profilesUI.deleteFocus == button.id, Hovered: m.hover == button.id,
@@ -590,31 +571,14 @@ func (m *Model) renderProfileDeleteForm(base string) (string, []hitRegion) {
 		}
 		buttons.lines[last] += cellCrop(value, inner)
 	}
-	buttonRow := height - 3 - len(buttons.lines)
-	if height < 9 {
-		buttonRow = height - 1 - len(buttons.lines)
-	}
-	inputRow := 2
-	if buttonRow >= 9 {
-		put(2, themed(cellCrop(m.tr("profiles.delete_hint"), inner), muted, raised, false))
-		put(3, themed(cellCrop(m.tr("profiles.delete_label"), inner), muted, raised, false))
-		inputRow = 5
-	} else if buttonRow >= 7 {
-		put(2, themed(cellCrop(m.tr("profiles.delete_label"), inner), muted, raised, false))
-		inputRow = 3
-	}
-	m.input = prepareInputField(m.input, inputFieldTextWidth(inner, 0, true), raised, m.failure != "")
-	field := renderInputField(m.input, inputFieldOptions{ID: "import-input", ClearID: "import-input.clear", ClearHovered: m.hover == "import-input.clear", ClearFocused: m.focus == "import-input.clear", Width: inner, Surface: raised,
-		Focused: m.profilesUI.deleteFocus == "import-input", Hovered: m.hover == "import-input", Invalid: m.failure != "",
-		Disabled: m.busy || m.quitting})
-	for row, line := range field.lines {
-		put(inputRow+row, line)
+	buttonRow := height - 2 - len(buttons.lines)
+	for row, line := range strings.Split(wrapText(m.tr("profiles.delete_hint"), inner), "\n") {
+		if row+2 >= buttonRow {
+			break
+		}
+		put(row+2, themed(line, muted, raised, false))
 	}
 	var targets []hitRegion
-	for _, hit := range field.targets {
-		hit.X, hit.Y = hit.X+x+2, hit.Y+y+inputRow
-		targets = append(targets, hit)
-	}
 	for row, line := range buttons.lines {
 		put(buttonRow+row, line)
 	}
@@ -626,8 +590,6 @@ func (m *Model) renderProfileDeleteForm(base string) (string, []hitRegion) {
 	if m.failure != "" {
 		message, color = m.failure, errorColor
 	}
-	if height >= 9 {
-		put(height-2, themed(cellCrop(message, inner), color, raised, false))
-	}
+	put(height-2, themed(cellCrop(message, inner), color, raised, false))
 	return overlay(base, strings.Join(rows, "\n"), x, y, m.width, m.height), targets
 }

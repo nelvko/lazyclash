@@ -50,6 +50,9 @@ func (m *Model) clearInputField(id string) (bool, tea.Cmd) {
 		return true, nil
 	}
 	if m.form != "" && !m.controlConfirmation() {
+		if m.form == "profile-delete" {
+			return true, nil
+		}
 		if m.form == "profile-create" {
 			var selected int
 			switch field {
@@ -77,9 +80,6 @@ func (m *Model) clearInputField(id string) (bool, tea.Cmd) {
 			return true, nil
 		}
 		m.focus = field
-		if m.form == "profile-delete" {
-			m.profileDeleteSetFocus(field)
-		}
 		m.paths.reset()
 		prepare(&m.input)
 		return true, m.formKey(clearKey)
