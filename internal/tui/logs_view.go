@@ -202,6 +202,12 @@ func (m Model) logsCapacity(width int) int {
 }
 
 func (m Model) logsStatus() (string, string) {
+	if !m.snapshotReady {
+		if m.busy {
+			return m.tr("empty.loading"), muted
+		}
+		return m.tr("empty.read_failed"), errorColor
+	}
 	if state, status := m.corePageState(); state != "" {
 		return status, muted
 	}
@@ -225,7 +231,16 @@ func (m Model) logsStatus() (string, string) {
 
 func (m Model) logsBody(width int) (string, []hitRegion) {
 	width = max(1, width)
+	doc := m.logDocument(width)
 	b := m.logsPrefix(width)
+	if len(doc.lines) == 0 {
+		// Empty-state diagnostics belong with the centered message, rather than
+		// appearing a second time above an otherwise empty viewport.
+		b = dashboardBlock{}
+		if m.dashboardOptions().BodyTopRows == 0 {
+			b = m.logsToolbar(width, m.filterToolbarRows(width))
+		}
+	}
 	height := dashboardGeometry(m.dashboardOptions()).height
 	// Even a tiny terminal must leave a row for the log viewport.
 	if len(b.lines) >= height-1 {
@@ -238,22 +253,15 @@ func (m Model) logsBody(width int) (string, []hitRegion) {
 		}
 		b.targets = visible
 	}
-	doc := m.logDocument(width)
-	if len(doc.lines) == 0 {
-		message := m.tr("logs.empty")
-		if m.logs.reconnecting {
-			message = m.tr("logs.empty_inactive")
-		}
-		entries, _ := m.logsDisplayEntries()
-		if len(entries) > 0 || m.logs.search.Value() != "" || m.logs.level != 0 {
-			message = m.tr("logs.no_matches")
-		}
-		if state, status := m.corePageState(); state != "" && len(entries) == 0 {
-			message = status
-		}
-		doc.lines = strings.Split(wrapText(themed(message, muted, bg, false), width), "\n")
-	}
 	capacity := max(1, height-len(b.lines)-1)
+	if len(doc.lines) == 0 {
+		empty := m.emptyState(width, capacity, m.logsEmptyState())
+		for _, target := range empty.targets {
+			target.Y += len(b.lines)
+			b.targets = append(b.targets, target)
+		}
+		doc.lines = empty.lines
+	}
 	v := m.logViewport(doc, width, capacity)
 	b.targets = append(b.targets, hitRegion{ID: "logs.list", Y: len(b.lines), W: width, H: capacity})
 	b.lines = append(b.lines, strings.Split(v.View(), "\n")...)
@@ -283,4 +291,48 @@ func (m Model) logsBody(width int) (string, []hitRegion) {
 		b.lines = append(b.lines, line+cellCrop(button, buttonWidth))
 	}
 	return strings.Join(b.lines, "\n"), b.targets
+}
+
+func (m Model) logsEmptyState() emptyStateOptions {
+	entries, _ := m.logsDisplayEntries()
+	if len(entries) == 0 {
+		if core, ok := m.coreEmptyState(); ok {
+			if core.ActionID != "snapshot.retry" {
+				// The page header owns the installed core's recovery controls;
+				// the initial snapshot failure has a separate recovery action.
+				core.ActionID, core.ActionLabel = "", ""
+			}
+			return core
+		}
+	}
+	if state, _ := m.corePageState(); m.logs.err != nil && state == "" {
+		// Reconnect remains in the page header instead of adding a duplicate
+		// target to the empty viewport.
+		return emptyStateOptions{Title: m.tr("empty.read_failed"), Detail: m.localizeError(m.logs.err), Error: true}
+	}
+	recovered := ""
+	if state, _ := m.corePageState(); m.logs.recovered && !m.logs.reconnecting && state == "" {
+		recovered = m.tr("logs.recovered")
+	}
+	if strings.TrimSpace(m.logs.search.Value()) != "" || m.logs.level != 0 {
+		state := emptyStateOptions{Title: m.tr("logs.no_matches"), Detail: recovered, ActionID: "logs.reset-filters", ActionLabel: m.tr("empty.clear_filters")}
+		if core, ok := m.coreEmptyState(); ok && len(entries) > 0 {
+			state.Detail = core.Title + " · " + m.tr("logs.ended")
+		}
+		return state
+	}
+	if m.logs.paused {
+		return emptyStateOptions{Title: m.tr("logs.display_paused"), Detail: recovered}
+	}
+	if m.logs.reconnecting {
+		return emptyStateOptions{Title: m.tr("logs.reconnecting"), Detail: m.tr("empty.logs.reconnect")}
+	}
+	if !m.logs.active {
+		return emptyStateOptions{Title: m.tr("logs.opening"), Detail: recovered}
+	}
+	detail := m.tr("empty.logs.waiting")
+	if recovered != "" {
+		detail = recovered + " · " + detail
+	}
+	return emptyStateOptions{Title: m.tr("empty.logs.none"), Detail: detail}
 }

@@ -1,0 +1,8 @@
+{
+  "empty.profiles.none": "暂无自定义配置",
+  "empty.providers.read_failed": "读取集合失败",
+  "empty.providers.stop_hint": "关闭此面板并启动内核后，即可浏览集合。",
+  "empty.providers.install_hint": "关闭此面板并安装内核后，即可浏览集合。",
+  "empty.providers.clear": "清除上方搜索，即可显示全部集合。",
+  "empty.providers.none": "暂无集合"
+}

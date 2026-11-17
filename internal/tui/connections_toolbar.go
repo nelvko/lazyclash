@@ -152,6 +152,12 @@ func (m Model) connectionStatus() (string, string) {
 		}
 		return status, muted
 	}
+	if !m.snapshotReady {
+		if m.busy {
+			return m.tr("empty.loading"), muted
+		}
+		return m.tr("empty.read_failed"), errorColor
+	}
 	if state, coreStatus := m.corePageState(); state != "" {
 		return coreStatus, muted
 	}

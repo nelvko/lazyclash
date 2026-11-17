@@ -1,0 +1,8 @@
+{
+  "empty.profiles.none": "No custom configurations",
+  "empty.providers.read_failed": "Could not read providers",
+  "empty.providers.stop_hint": "Close this panel and start the core to browse providers.",
+  "empty.providers.install_hint": "Close this panel and install the core to browse providers.",
+  "empty.providers.clear": "Clear the search above to show all providers.",
+  "empty.providers.none": "No providers loaded"
+}

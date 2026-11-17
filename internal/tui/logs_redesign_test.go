@@ -170,7 +170,7 @@ func TestLogsClearOnlyRemovesRetainedEntriesAndPreservesStreamAndFilters(t *test
 func TestLogsIdleFilteringAndFailureHaveDistinctStates(t *testing.T) {
 	m := redesignedLogsModel(120, 32, 0)
 	defer m.stopRuntime()
-	if got := ansi.Strip(m.screen); !strings.Contains(got, m.tr("logs.empty")) || !strings.Contains(got, m.tr("logs.waiting")) || strings.Contains(got, "Start Mihomo") {
+	if got := ansi.Strip(m.screen); !strings.Contains(got, m.tr("empty.logs.none")) || !strings.Contains(got, m.tr("empty.logs.waiting")) || !strings.Contains(got, m.tr("logs.waiting")) || strings.Contains(got, "Start Mihomo") {
 		t.Fatalf("healthy idle capture gave misleading guidance:\n%s", got)
 	}
 	m.logs.search.SetValue("no-such-event")

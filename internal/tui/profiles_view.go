@@ -72,7 +72,10 @@ func (m Model) profilesBody(width int) (string, []hitRegion) {
 		}
 	}
 	if count == 0 {
-		body.lines = append(body.lines, themed(cellCrop(m.tr("profiles.empty_hint"), width), muted, bg, false), "")
+		height := max(1, dashboardGeometry(m.dashboardOptions()).height-len(body.lines))
+		body.append(m.emptyState(width, height, emptyStateOptions{
+			Title: m.tr("empty.profiles.none"), Detail: m.tr("profiles.empty_hint"),
+		}))
 	}
 	return strings.Join(body.lines, "\n"), body.targets
 }

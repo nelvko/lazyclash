@@ -144,6 +144,48 @@ func (m Model) providerRows(provider providerRow, width int) []string {
 
 func (m Model) providersBodyWindow(width, start, height int) ruleBodyWindow {
 	p := m.providers
+	list := m.filteredProviders()
+	if len(list) == 0 {
+		o := emptyStateOptions{Title: m.tr("empty.providers.none"), Surface: raised}
+		switch {
+		case !m.providersSupported(p.kind):
+			o.Title = m.tr("providers.unsupported")
+		case !p.received:
+			o.Title = m.tr("providers.loading")
+		case p.snapshot.State == "stopped":
+			o.Title, o.Detail = m.tr("runtime.status.stopped"), m.tr("empty.providers.stop_hint")
+		case p.snapshot.State == "uninstalled":
+			o.Title, o.Detail = m.tr("runtime.status.not_installed"), m.tr("empty.providers.install_hint")
+		case p.snapshot.State == "unsupported":
+			o.Title = m.tr("providers.unsupported")
+		case p.err != nil || p.snapshot.Error != "" || p.snapshot.State != "ready":
+			o.Title, o.Error = m.tr("empty.providers.read_failed"), true
+			o.Detail = m.locale.Diagnostic(p.snapshot.Error, p.snapshot.Diagnostic)
+			if p.err != nil {
+				o.Detail = m.localizeError(p.err)
+			}
+			if o.Detail == "" {
+				o.Detail = m.tr("providers.unavailable")
+			}
+			o.ActionID, o.ActionLabel = "providers.reload", m.tr("providers.retry")
+			o.Disabled = p.pending || !p.active
+		case strings.TrimSpace(p.search.Value()) != "":
+			o.Title = m.tr("providers.no_matches")
+			o.Detail = m.tr("empty.providers.clear")
+		}
+		if height < 0 {
+			height = p.bodyBounds.H
+			if height <= 0 {
+				h := m.height
+				if m.width >= 110 && h >= 30 {
+					h = min(34, h-4)
+				}
+				height = max(1, h-12)
+			}
+		}
+		b := m.emptyState(width, height, o)
+		return ruleBodyWindow{dashboardBlock: b, total: len(b.lines), prefix: len(b.lines)}
+	}
 	var b dashboardBlock
 	add := func(value, color string) {
 		b.lines = append(b.lines, strings.Split(wrapText(themed(clean(value), color, raised, false), max(1, width)), "\n")...)
@@ -164,17 +206,6 @@ func (m Model) providersBodyWindow(width, start, height int) ruleBodyWindow {
 			}
 			b.lines = append(b.lines, cellCrop(label, width))
 		}
-	}
-	list := m.filteredProviders()
-	if p.received && p.snapshot.State == "ready" && len(list) == 0 {
-		message := m.tr("providers.empty")
-		if strings.TrimSpace(p.search.Value()) != "" {
-			message = m.tr("providers.no_matches")
-		}
-		add(message, muted)
-	}
-	if len(list) == 0 {
-		return ruleBodyWindow{dashboardBlock: b, total: len(b.lines), prefix: len(b.lines)}
 	}
 	prefix := len(b.lines)
 	total := prefix + len(list)*4 - 1
@@ -313,6 +344,9 @@ func (m *Model) renderProviders(base string) (string, []hitRegion) {
 	doc := m.providersBodyWindow(inner, 0, -1)
 	p.rowTargets = doc.targets
 	p.viewport.SetContent(strings.Join(doc.lines, "\n"))
+	if len(m.filteredProviders()) == 0 {
+		p.viewport.GotoTop()
+	}
 	if resized && (strings.HasPrefix(m.focus, "provider.row.") || strings.HasPrefix(m.focus, "provider.update.")) {
 		m.revealProvider()
 	}

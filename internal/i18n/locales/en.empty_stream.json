@@ -1,0 +1,7 @@
+{
+  "empty.connections.retry_hint": "Enter Retry",
+  "empty.logs.reset_hint": "Enter Clear filters",
+  "empty.logs.none": "No logs yet",
+  "empty.logs.waiting": "New events received during this session will appear here.",
+  "empty.logs.reconnect": "Waiting for the live log stream to reconnect."
+}

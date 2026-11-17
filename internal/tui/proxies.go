@@ -639,14 +639,14 @@ func (m *Model) proxyActivate(id string) tea.Cmd {
 	if m.proxiesDirect() {
 		return nil
 	}
-	if id != "proxies.search" && id != "proxies.search-open" && id != "proxies.clear" {
+	if id != "proxies.search" && id != "proxies.search-open" && id != "proxies.clear" && id != "proxies.empty.clear" {
 		m.proxies.editing = false
 		m.proxies.search.Blur()
 	}
 	switch id {
 	case "proxies.search", "proxies.search-open":
 		return m.focusProxySearch()
-	case "proxies.clear":
+	case "proxies.clear", "proxies.empty.clear":
 		m.proxies.search.Reset()
 		m.proxies.searchCollapsed = nil
 		return m.focusProxySearch()

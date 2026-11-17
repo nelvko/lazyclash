@@ -1177,6 +1177,11 @@ func (m *Model) activate(id string) tea.Cmd {
 			return m.refresh()
 		}
 		return nil
+	case "snapshot.retry":
+		if !m.snapshotReady && !m.busy && !m.quitting {
+			return m.refresh()
+		}
+		return nil
 	case "card.install", "core.install":
 		return m.openWizard(false)
 	case "card.start":

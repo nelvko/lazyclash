@@ -238,6 +238,12 @@ func (m *Model) connectionKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 		if m.connections.detail == nil {
 			list := m.filteredConnections()
 			if len(list) == 0 {
+				switch key {
+				case "home", "end", "pgup", "pgdown":
+					// A short terminal may put the toolbar and empty state in
+					// one scrollable document. Let the shell page through it.
+					return false, nil
+				}
 				return true, nil
 			}
 			index := 0
@@ -331,6 +337,13 @@ func (m *Model) connectionActivate(id string) tea.Cmd {
 		m.openSelectedConnection()
 	case id == "conn.search":
 		return m.focusConnectionSearch()
+	case id == "conn.reset-filter":
+		return m.connectionActivate("conn.clear")
+	case id == "conn.retry":
+		if !m.busy && !m.quitting && !m.runtime.pending && !m.connections.closedView && m.connections.detail == nil && !m.connections.confirming && len(m.filteredConnections()) == 0 && m.connectionsEmptyState().ActionID == id {
+			return tea.Batch(m.retryRuntime(), m.refreshCoreStatus())
+		}
+		return nil
 	case id == "conn.clear":
 		m.connections.search.Reset()
 		m.scroll = 0

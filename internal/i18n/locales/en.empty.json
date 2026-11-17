@@ -1,0 +1,6 @@
+{
+  "empty.loading": "Loading…",
+  "empty.read_failed": "Could not read data",
+  "empty.retry": "Retry",
+  "empty.clear_filters": "Clear filters"
+}

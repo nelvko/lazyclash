@@ -200,7 +200,7 @@ func (m Model) contextHelp() string {
 	if m.page == "overview" && m.focus == "install" && overviewSetupVisible(m.navigationOptions()) {
 		return m.tr("dashboard.guide.hint")
 	}
-	if m.focus == "core.start" || m.focus == "card.install" {
+	if m.focus == "core.start" || m.focus == "card.install" || m.focus == "snapshot.retry" {
 		return m.tr("navigation.default")
 	}
 	if m.page == "proxies" || m.page == "rules" {
@@ -239,6 +239,9 @@ func (m Model) contextHelp() string {
 func (m Model) rulesContextHelp() string {
 	if m.rules.editing {
 		return m.tr("navigation.rules.searching")
+	}
+	if m.focus == "rules.empty.clear" {
+		return m.tr("empty.rules.clear_hint")
 	}
 	base := m.tr("navigation.rules")
 	for _, r := range m.filteredRules() {

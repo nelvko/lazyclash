@@ -89,28 +89,20 @@ func (m Model) proxiesBody(width int) (string, []hitRegion) {
 		b.targets = append(b.targets, hitRegion{ID: id, Y: len(b.lines), W: min(width, ansi.StringWidth(v)), H: 1})
 		b.lines = append(b.lines, cellCrop(v, width))
 	}
-	if !m.proxiesReady() {
-		state, label := m.corePageState()
-		switch {
-		case !m.snapshotReady:
-			add(m.tr("proxies.loading"), muted)
-		case state == "uninstalled" || state == "stopped" || state == "transition":
-			add(label, muted)
-			if id, action := m.corePageAction(); id != "" {
-				button(id, action)
-			}
-		case m.snapshot.ServiceError != "":
-			add(m.locale.Diagnostic(m.snapshot.ServiceError, m.snapshot.ServiceDiagnostic), errorColor)
-		case !m.snapshot.Service.Active:
-			if label == "" {
-				label = m.tr("dashboard.status.unknown")
-			}
-			add(label, muted)
-		default:
-			add(m.tr("proxies.unavailable"), warning)
-			add(m.locale.Diagnostic(m.snapshot.APIError, m.snapshot.APIDiagnostic), errorColor)
-		}
+	finishEmpty := func(state emptyStateOptions) (string, []hitRegion) {
+		height := max(1, dashboardGeometry(m.dashboardOptions()).height-len(b.lines))
+		b.append(m.emptyState(width, height, state))
 		return strings.Join(b.lines, "\n"), b.targets
+	}
+	if !m.proxiesReady() {
+		if state, ok := m.coreEmptyState(); ok {
+			return finishEmpty(state)
+		}
+		detail := m.locale.Diagnostic(m.snapshot.APIError, m.snapshot.APIDiagnostic)
+		if !m.snapshot.Service.Active {
+			detail = m.tr("dashboard.status.unknown")
+		}
+		return finishEmpty(emptyStateOptions{Title: m.tr("empty.proxies.failed"), Detail: detail, Error: true})
 	}
 	if m.snapshot.Mode.Error != "" {
 		add(m.locale.Diagnostic(m.snapshot.Mode.Error, m.snapshot.Mode.ErrorDiagnostic), warning)
@@ -121,11 +113,7 @@ func (m Model) proxiesBody(width int) (string, []hitRegion) {
 		add(m.tr("dashboard.settings.actualMode", dashboardModeLabel(m.snapshot.Mode.Actual, m.locale)), muted)
 	}
 	if m.proxiesDirect() {
-		height := max(1, dashboardGeometry(m.dashboardOptions()).height-len(b.lines))
-		message := wrapText(clean(m.tr("proxies.direct.description")), width)
-		centered := lipgloss.Place(width, height, lipgloss.Center, lipgloss.Center, message)
-		b.lines = append(b.lines, strings.Split(themed(centered, muted, bg, false), "\n")...)
-		return strings.Join(b.lines, "\n"), b.targets
+		return finishEmpty(emptyStateOptions{Title: m.tr("proxies.direct.description")})
 	}
 	if m.proxies.detail != "" {
 		b.append(m.proxyDetail(width))
@@ -138,11 +126,12 @@ func (m Model) proxiesBody(width int) (string, []hitRegion) {
 	}
 	groups := m.visibleProxyGroups()
 	if len(groups) == 0 {
-		if m.proxySearchQuery() != "" {
-			add(m.tr("proxies.search_no_match"), muted)
-		} else {
-			add(m.tr("proxies.no_groups"), muted)
+		state := emptyStateOptions{Title: m.tr("proxies.no_groups")}
+		if m.proxySearchQuery() != "" && m.proxyGroupsForMode() > 0 {
+			state.Title = m.tr("proxies.search_no_match")
+			state.ActionID, state.ActionLabel = "proxies.empty.clear", m.tr("empty.proxies.clear_search")
 		}
+		return finishEmpty(state)
 	}
 	compactGroups := m.compactProxyCards()
 	for i, gi := range groups {
@@ -152,6 +141,9 @@ func (m Model) proxiesBody(width int) (string, []hitRegion) {
 		g := m.snapshot.Groups[gi]
 		b.append(m.proxyGroupHeader(gi, width))
 		if m.proxyGroupExpanded(g.Name) {
+			if len(groups) == 1 && len(m.proxyMembers(g)) == 0 {
+				return finishEmpty(m.proxyEmptyMembers(gi))
+			}
 			b.append(m.proxyGroupBody(gi, width))
 		}
 		if g.Name == m.proxies.testGroup && m.proxies.total > 0 && (m.proxies.testing || m.proxies.testStatusVisible) {
@@ -308,12 +300,6 @@ func (m Model) proxyGroupBody(gi, width int) dashboardBlock {
 	g := m.snapshot.Groups[gi]
 	b := dashboardBlock{}
 	grid := m.proxyGrid(width)
-	inner := max(1, width-grid.indent)
-	add := func(v string, color string) {
-		for _, line := range strings.Split(wrapText(themed(clean(v), color, bg, false), inner), "\n") {
-			b.lines = append(b.lines, themed(strings.Repeat(" ", grid.indent), text, bg, false)+line)
-		}
-	}
 	indices := m.proxyMembers(g)
 	for first := 0; first < len(indices); first += grid.columns {
 		if first > 0 && !m.compactProxyCards() {
@@ -343,14 +329,27 @@ func (m Model) proxyGroupBody(gi, width int) dashboardBlock {
 		}
 	}
 	if len(indices) == 0 {
-		if m.proxySearchQuery() != "" {
-			add(m.tr("proxies.search_no_match"), muted)
-		} else {
-			add(m.tr("proxies.empty_group"), muted)
-		}
+		b.append(m.emptyState(width, 3, m.proxyEmptyMembers(gi)))
 	}
 	return b
 }
+func (m Model) proxyEmptyMembers(gi int) emptyStateOptions {
+	state := emptyStateOptions{Title: m.tr("proxies.empty_group")}
+	if len(m.snapshot.Groups[gi].All) > 0 && m.proxySearchQuery() != "" {
+		state.Title = m.tr("proxies.search_no_match")
+		state.ActionID, state.ActionLabel = "proxies.empty.clear", m.tr("empty.proxies.clear_search")
+	}
+	return state
+}
+
+// Count the unfiltered directory for the current routing mode. A search cannot
+// cause a no-match state when the directory was already empty.
+func (m Model) proxyGroupsForMode() int {
+	unfiltered := m
+	unfiltered.proxies.search = newProxiesState().search
+	return len(unfiltered.visibleProxyGroups())
+}
+
 func (m Model) proxyDelayLabel(group, node string) (string, string) {
 	if !m.proxyTestable(node) {
 		return m.tr("proxies.not_applicable"), muted

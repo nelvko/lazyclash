@@ -86,7 +86,10 @@ func (m Model) pageHeader() pageHeader {
 			follow, compact = tr("logs.resume_display"), "▶"
 		}
 		h.actions = []headerAction{{"logs.clear", tr("logs.clear"), "×", true}, {"logs.follow", follow, compact, true}, {"logs.retry", tr("header.reconnect"), "↻", true}}
-		if state, status := m.corePageState(); state != "" {
+		if !m.snapshotReady {
+			h.summary, _ = m.logsStatus()
+			h.actions = nil
+		} else if state, status := m.corePageState(); state != "" {
 			h.summary = status
 			h.actions = []headerAction{{"logs.clear", tr("logs.clear"), "×", true}}
 			if id, label := m.corePageAction(); id != "" {

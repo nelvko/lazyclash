@@ -22,7 +22,7 @@ func (m Model) proxiesContextHelp() string {
 		control = "collapseAll"
 	case "proxies.search", "proxies.search-open":
 		control = "search"
-	case "proxies.clear":
+	case "proxies.clear", "proxies.empty.clear":
 		control = "clear"
 	}
 	_, group, node, ok := m.proxyAtFocus()

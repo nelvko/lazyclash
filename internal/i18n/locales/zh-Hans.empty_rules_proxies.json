@@ -1,0 +1,8 @@
+{
+  "empty.rules.failed": "规则读取失败",
+  "empty.rules.invalid_search": "请修正正则表达式或清除搜索。",
+  "empty.rules.clear_search": "清除搜索",
+  "empty.proxies.failed": "代理组读取失败",
+  "empty.proxies.clear_search": "清除搜索",
+  "empty.rules.clear_hint": "Enter 清除搜索 · Esc 返回"
+}

@@ -284,7 +284,7 @@ func (m *Model) ruleActivate(id string) tea.Cmd {
 	switch {
 	case id == "rules.search":
 		return m.focusRulesSearch()
-	case id == "rules.clear":
+	case id == "rules.clear" || id == "rules.empty.clear":
 		m.rules.search.Reset()
 		m.rules.selectedIndex = 0
 		m.reconcileRules()

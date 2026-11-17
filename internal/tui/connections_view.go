@@ -330,34 +330,22 @@ func (m Model) connectionsBody(width int) (string, []hitRegion) {
 		bar := m.connectionsToolbar(width, m.connectionToolbarRows(width))
 		lines, hits = bar.lines, bar.targets
 	}
+	list := m.filteredConnections()
+	if len(list) == 0 {
+		body := m.emptyState(width, max(2, dashboardGeometry(m.dashboardOptions()).height-len(lines)), m.connectionsEmptyState())
+		for _, target := range body.targets {
+			target.Y += len(lines)
+			hits = append(hits, target)
+		}
+		lines = append(lines, body.lines...)
+		return strings.Join(lines, "\n"), hits
+	}
 	for _, diagnostic := range []struct {
 		message string
 		err     error
 	}{{m.runtime.snapshot.Error, m.runtime.snapshot.Diagnostic}, {m.runtime.snapshot.ConnectionsError, m.runtime.snapshot.ConnectionsDiagnostic}} {
 		if !m.connections.closedView && diagnostic.message != "" {
 			addText(m.locale.Diagnostic(diagnostic.message, diagnostic.err), errorColor)
-		}
-	}
-	list := m.filteredConnections()
-	if len(list) == 0 {
-		empty := m.tr("connections.empty")
-		if m.connections.closedView {
-			empty = m.tr("connections.closed_empty")
-		}
-		if m.connections.search.Value() != "" {
-			empty = m.tr("connections.no_matches")
-		}
-		if !m.connections.closedView && m.connectionSnapshot() == nil {
-			empty = m.tr("connections.unavailable_hint")
-			if state, status := m.corePageState(); state != "" {
-				empty = status
-			}
-		}
-		addText(empty, muted)
-		if !m.connections.closedView && m.connectionSnapshot() == nil {
-			if id, label := m.corePageAction(); id != "" {
-				addButton(id, label)
-			}
 		}
 	}
 	// Keep logical rows and hit regions for the dashboard's shared navigation,
@@ -387,4 +375,46 @@ func (m Model) connectionsBody(width int) (string, []hitRegion) {
 		hits = append(hits, hitRegion{ID: "connection." + m.connectionRowKey(c), Y: row, W: width, H: len(lines) - row})
 	}
 	return strings.Join(lines, "\n"), hits
+}
+
+func (m Model) connectionsEmptyState() emptyStateOptions {
+	state := emptyStateOptions{Title: m.tr("connections.empty")}
+	filtered := strings.TrimSpace(m.connections.search.Value()) != ""
+	if m.connections.closedView {
+		state.Title = m.tr("connections.closed_empty")
+		if filtered {
+			state.Title = m.tr("connections.no_matches")
+			state.ActionID, state.ActionLabel = "conn.reset-filter", m.tr("empty.clear_filters")
+		}
+		return state
+	}
+	if core, ok := m.coreEmptyState(); ok {
+		if core.Error && core.ActionID == "" {
+			core.ActionID, core.ActionLabel, core.Disabled = "conn.retry", m.tr("empty.retry"), m.runtime.pending
+		}
+		return core
+	}
+	for _, diagnostic := range []struct {
+		message string
+		err     error
+	}{{m.runtime.snapshot.Error, m.runtime.snapshot.Diagnostic}, {m.runtime.snapshot.ConnectionsError, m.runtime.snapshot.ConnectionsDiagnostic}} {
+		if diagnostic.message != "" {
+			return emptyStateOptions{Title: m.tr("empty.read_failed"), Detail: m.locale.Diagnostic(diagnostic.message, diagnostic.err),
+				ActionID: "conn.retry", ActionLabel: m.tr("empty.retry"), Error: true, Disabled: m.runtime.pending}
+		}
+	}
+	if m.connectionSnapshot() == nil {
+		state.Title = m.tr("empty.loading")
+		if m.runtime.received && (m.runtime.snapshot.State == "unavailable" || m.runtime.snapshot.State == "unsupported") {
+			state.Title, state.Error = m.tr("empty.read_failed"), true
+			state.Detail = m.tr("connections.unavailable_hint")
+			state.ActionID, state.ActionLabel, state.Disabled = "conn.retry", m.tr("empty.retry"), m.runtime.pending
+		}
+		return state
+	}
+	if filtered {
+		state.Title = m.tr("connections.no_matches")
+		state.ActionID, state.ActionLabel = "conn.reset-filter", m.tr("empty.clear_filters")
+	}
+	return state
 }

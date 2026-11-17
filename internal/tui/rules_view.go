@@ -145,51 +145,29 @@ func (m Model) rulesBodyWindow(width, start, height int) ruleBodyWindow {
 	addText := func(value, color string) {
 		lines = append(lines, strings.Split(wrapText(themed(clean(value), color, bg, false), max(1, width)), "\n")...)
 	}
-	addButton := func(id, label string) {
-		options := dashboardButtonOptions(id, m.navigationOptions(), false, bg)
-		options.Disabled = m.busy
-		value := renderButton(label, options)
-		if !options.Disabled {
-			hits = append(hits, hitRegion{ID: id, Y: len(lines), W: min(width, ansi.StringWidth(value)), H: 1})
-		}
-		lines = append(lines, cellCrop(value, width))
-	}
 	// Very short terminals fold the fixed toolbar into the scrollable body.
 	if m.dashboardOptions().BodyTopRows == 0 {
 		bar := m.rulesToolbar(width, m.filterToolbarRows(width))
 		lines, hits = bar.lines, bar.targets
 	}
-	if m.rules.received {
-		if m.rules.err != nil {
-			addText(m.localizeError(m.rules.err), errorColor)
-		} else if m.rules.snapshot.Error != "" {
-			addText(m.locale.Diagnostic(m.rules.snapshot.Error, m.rules.snapshot.Diagnostic), errorColor)
-		}
-	}
-	if !m.rules.received || m.rules.snapshot.State != "ready" {
-		addText(m.rulesStatus(), muted)
-		addText(m.tr("rules.description"), muted)
-	}
-	if m.rules.received && m.rules.snapshot.State != "ready" {
-		if id, label := m.corePageAction(); id != "" {
-			addButton(id, label)
-		} else if state, _ := m.corePageState(); state != "transition" {
-			addButton("rules.retry", m.tr("rules.retry_label"))
-		}
-	}
 	list := m.filteredRules()
-	if _, err := m.ruleMatcher(); err != nil {
-		return static()
-	}
-	if m.rules.received && m.rules.snapshot.State == "ready" && len(list) == 0 {
-		message := m.tr("rules.empty")
-		if m.rules.search.Value() != "" {
-			message = m.tr("rules.no_matches")
-		}
-		addText(message, muted)
-	}
 	if len(list) == 0 {
+		state := m.rulesEmptyState()
+		available := max(1, dashboardGeometry(m.dashboardOptions()).height-len(lines))
+		body := m.emptyState(width, available, state)
+		for _, hit := range body.targets {
+			hit.Y += len(lines)
+			hits = append(hits, hit)
+		}
+		lines = append(lines, body.lines...)
 		return static()
+	}
+	// Keep usable rules and their read diagnostic together after a refresh
+	// failure; a failed observation must not turn existing rows into an empty list.
+	if m.rules.err != nil {
+		addText(m.localizeError(m.rules.err), errorColor)
+	} else if m.rules.snapshot.Error != "" {
+		addText(m.locale.Diagnostic(m.rules.snapshot.Error, m.rules.snapshot.Diagnostic), errorColor)
 	}
 	prefix := len(lines)
 	numberWidth := m.ruleNumberWidth()
@@ -226,6 +204,56 @@ func (m Model) rulesBodyWindow(width, start, height int) ruleBodyWindow {
 		}
 	}
 	return ruleBodyWindow{dashboardBlock: dashboardBlock{lines: lines, targets: hits}, start: start, total: total, prefix: prefix}
+}
+
+func (m Model) rulesEmptyState() emptyStateOptions {
+	coreState := func() (emptyStateOptions, bool) {
+		state, ok := m.coreEmptyState()
+		if ok && state.Error && state.ActionID == "" {
+			state.ActionID, state.ActionLabel = "rules.retry", m.tr("rules.retry_label")
+		}
+		return state, ok
+	}
+	// Snapshot errors take priority over search, including a ready snapshot
+	// whose refresh failed before it returned any rows.
+	detail := ""
+	if m.rules.err != nil {
+		detail = m.localizeError(m.rules.err)
+	} else if m.rules.snapshot.Error != "" {
+		detail = m.locale.Diagnostic(m.rules.snapshot.Error, m.rules.snapshot.Diagnostic)
+	}
+	if detail != "" {
+		if state, ok := coreState(); ok {
+			return state
+		}
+		return emptyStateOptions{Title: m.tr("empty.rules.failed"), Detail: detail, Error: true,
+			ActionID: "rules.retry", ActionLabel: m.tr("rules.retry_label")}
+	}
+	if !m.rules.received || m.rules.snapshot.State != "ready" || len(m.rules.snapshot.Rules) == 0 {
+		if state, ok := coreState(); ok {
+			return state
+		}
+	}
+	if !m.rules.received {
+		return emptyStateOptions{Title: m.tr("rules.loading"), Detail: m.tr("rules.description")}
+	}
+	if m.rules.snapshot.State != "ready" {
+		title := m.rulesStatus()
+		if m.rules.snapshot.State == "unavailable" {
+			title = m.tr("empty.rules.failed")
+		}
+		return emptyStateOptions{Title: title, Error: true,
+			ActionID: "rules.retry", ActionLabel: m.tr("rules.retry_label")}
+	}
+	if _, err := m.ruleMatcher(); err != nil {
+		return emptyStateOptions{Title: m.tr("rules.invalid_regex"), Detail: m.tr("empty.rules.invalid_search"), Error: true,
+			ActionID: "rules.empty.clear", ActionLabel: m.tr("empty.rules.clear_search")}
+	}
+	if len(m.rules.snapshot.Rules) > 0 && strings.TrimSpace(m.rules.search.Value()) != "" {
+		return emptyStateOptions{Title: m.tr("rules.no_matches"),
+			ActionID: "rules.empty.clear", ActionLabel: m.tr("empty.rules.clear_search")}
+	}
+	return emptyStateOptions{Title: m.tr("rules.empty")}
 }
 
 func (m Model) ruleNumberWidth() int {

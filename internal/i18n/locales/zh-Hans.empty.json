@@ -1,0 +1,6 @@
+{
+  "empty.loading": "正在读取…",
+  "empty.read_failed": "读取失败",
+  "empty.retry": "重试",
+  "empty.clear_filters": "清除筛选"
+}

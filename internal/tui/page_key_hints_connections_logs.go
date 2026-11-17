@@ -36,9 +36,11 @@ func (m Model) connectionsContextHelp() string {
 	parts := []string{}
 	action := ""
 	switch m.focus {
+	case "conn.retry":
+		parts = append(parts, tr("empty.connections.retry_hint"))
 	case "conn.search":
 		action = "search"
-	case "conn.clear":
+	case "conn.clear", "conn.reset-filter":
 		action = "clear"
 	case "conn.active":
 		action = "active"
@@ -107,6 +109,8 @@ func (m Model) logsContextHelp() string {
 		action = "search"
 	case "logs.reset-search":
 		action = "reset"
+	case "logs.reset-filters":
+		parts = append(parts, tr("empty.logs.reset_hint"))
 	case "logs.follow":
 		action = state
 	case "logs.retry":

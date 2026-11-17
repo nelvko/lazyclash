@@ -224,7 +224,9 @@ func (p *notificationPanel) render(items []notificationItem, width, height int, 
 		}
 	}
 	if len(lines) == 0 {
-		lines = append(lines, locale.T("notification.empty"))
+		block := centerEmptyState(dashboardBlock{lines: []string{locale.T("notification.empty")}}, inner, p.viewport.Height())
+		lines = block.lines
+		p.viewport.GotoTop()
 	}
 	p.focus = max(0, min(p.focus, len(p.actions)-1))
 	if p.detailID == 0 && len(p.actions) > 0 {

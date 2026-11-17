@@ -1,0 +1,8 @@
+{
+  "empty.rules.failed": "Could not load rules",
+  "empty.rules.invalid_search": "Correct the regular expression or clear the search.",
+  "empty.rules.clear_search": "Clear search",
+  "empty.proxies.failed": "Could not load proxy groups",
+  "empty.proxies.clear_search": "Clear search",
+  "empty.rules.clear_hint": "Enter Clear search · Esc Back"
+}

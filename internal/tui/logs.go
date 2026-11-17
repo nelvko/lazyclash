@@ -127,6 +127,11 @@ func (m *Model) logsActivate(id string) tea.Cmd {
 		m.logs.recovered = false
 		m.logs.observedAt = time.Time{}
 		m.resetLogsView()
+	case "logs.reset-filters":
+		m.logs.search.Reset()
+		m.logs.level = 0
+		m.resetLogsView()
+		m.focus = "logs.list"
 	case "logs.reset-search":
 		m.logs.search.Reset()
 		m.resetLogsView()
