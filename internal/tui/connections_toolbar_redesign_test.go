@@ -81,7 +81,7 @@ func TestConnectionsToolbarRedesignWideInputCountAndSortShareTextRow(t *testing.
 			var baseline hitRegion
 			for order := connectionSortNewest; order < connectionSortCount; order++ {
 				m.connections.sort = order
-				for _, query := range []struct{ value, count string }{{"", "2"}, {"one", "1 / 2"}, {"no-match", "0 / 2"}, {"  ", "2"}} {
+				for _, query := range []struct{ value, count string }{{"", ""}, {"one", "1 / 2"}, {"example", "2 / 2"}, {"no-match", "0 / 2"}, {"  ", ""}} {
 					m.connections.search.SetValue(query.value)
 					bar := m.connectionFilterBar(160)
 					search := connectionToolbarRedesignTarget(t, bar, "conn.search")

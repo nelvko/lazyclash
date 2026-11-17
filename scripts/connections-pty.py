@@ -163,7 +163,12 @@ def filter_count(terminal, required=True):
 
 
 def wait_count(terminal, total, matched=None):
-    expected = str(total) if matched is None else "%d / %d" % (matched, total)
+    if matched is None:
+        wait_until(terminal, lambda: search_frame(terminal, required=False) is not None
+            and filter_count(terminal, required=False) is None,
+            "Unfiltered search still shows an external count")
+        return None
+    expected = "%d / %d" % (matched, total)
     wait_until(terminal, lambda: (filter_count(terminal, required=False) or (None, None))[0] == expected,
         "Search count did not become " + expected)
     return filter_count(terminal)[1]
@@ -191,8 +196,8 @@ def wait_header_pause(terminal, words, paused=False):
 
 def check_filter_layout(terminal, words, active, closed, closed_view=False, paused=False):
     left, top, right, bottom = search_frame(terminal)
-    count_point = filter_count(terminal)[1]
-    assert count_point[0] > right and count_point[1] == top + 1, "count moved inside the input frame"
+    assert filter_count(terminal, required=False) is None, "unfiltered search still shows an external count"
+    count_point = None
     sort_label = words["connections.sort"] % words["connections.sort_newest"]
     sort_x, sort_y = position(terminal, sort_label)
     tabs = [position(terminal, tab_label(words, view, count)) for view, count in (("active", active), ("closed", closed))]

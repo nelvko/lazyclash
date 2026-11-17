@@ -62,18 +62,18 @@ func (m Model) connectionTotalCount() (int, bool) {
 }
 
 func (m Model) connectionCount() string {
+	if strings.TrimSpace(m.connections.search.Value()) == "" {
+		return ""
+	}
 	total, available := m.connectionTotalCount()
 	if !available {
 		return ""
 	}
-	if strings.TrimSpace(m.connections.search.Value()) == "" {
-		return strconv.Itoa(total)
-	}
 	return fmt.Sprintf("%d / %d", len(m.filteredConnections()), total)
 }
 
-// Reserve the filtered ratio, including its gap, so typing cannot resize the
-// frame. Sorting reserves its longest label for the same reason.
+// Keep space for the filtered ratio even while it is hidden, so typing cannot
+// resize the frame. Sorting reserves its longest label for the same reason.
 func (m Model) connectionCountWidth() int {
 	total, available := m.connectionTotalCount()
 	if !available {
