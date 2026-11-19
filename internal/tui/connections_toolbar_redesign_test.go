@@ -73,12 +73,12 @@ func TestConnectionsToolbarRedesignHeaderPauseRemainsReachableInBothViews(t *tes
 	}
 }
 
-func TestConnectionsToolbarRedesignWideInputCountAndSortShareTextRow(t *testing.T) {
+func TestConnectionsToolbarRedesignWideInputSortAndQueryCountShareTextRow(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		t.Run(language, func(t *testing.T) {
 			m := connectionsModel(t, &fakeBackend{})
 			m.locale = i18n.New(language)
-			var baseline hitRegion
+			var baseline, baselineSort hitRegion
 			for order := connectionSortNewest; order < connectionSortCount; order++ {
 				m.connections.sort = order
 				for _, query := range []struct{ value, count string }{{"", ""}, {"one", "1 / 2"}, {"example", "2 / 2"}, {"no-match", "0 / 2"}, {"  ", ""}} {
@@ -88,20 +88,30 @@ func TestConnectionsToolbarRedesignWideInputCountAndSortShareTextRow(t *testing.
 					sort := connectionToolbarRedesignTarget(t, bar, "conn.sort")
 					active := connectionToolbarRedesignTarget(t, bar, "conn.active")
 					closed := connectionToolbarRedesignTarget(t, bar, "conn.closed")
-					if active.Y != search.Y+1 || closed.Y != search.Y+1 || sort.Y != search.Y+1 || closed.X+closed.W > search.X || sort.X < search.X+search.W {
-						t.Fatalf("tabs, editor text, external count and sort must share a reading row: active=%+v closed=%+v search=%+v sort=%+v", active, closed, search, sort)
+					if active.Y != search.Y+1 || closed.Y != search.Y+1 || sort.Y != search.Y+1 || closed.X+closed.W > search.X || sort.X != search.X+search.W+2 {
+						t.Fatalf("tabs, editor, sort and query count must share a reading row with sort next to the frame: active=%+v closed=%+v search=%+v sort=%+v", active, closed, search, sort)
 					}
 					if search.InputWidth != 42 {
 						t.Fatalf("wide search must retain 42 text cells beside its matching options: %d cells", search.InputWidth)
 					}
 					if baseline.W == 0 {
-						baseline = search
+						baseline, baselineSort = search, sort
 					} else if search.X != baseline.X || search.W != baseline.W || search.InputWidth != baseline.InputWidth {
 						t.Fatalf("typing or sorting moved/resized the editor: %+v -> %+v", baseline, search)
 					}
-					count := strings.TrimSpace(ansi.Cut(ansi.Strip(bar.lines[search.Y+1]), search.X+search.W, sort.X))
+					if sort != baselineSort {
+						t.Fatalf("sorting or typing moved/resized the sort control: %+v -> %+v", baselineSort, sort)
+					}
+					plain := ansi.Strip(bar.lines[sort.Y])
+					label := m.tr("connections.sort", m.tr(order.key()))
+					face := ansi.Cut(plain, sort.X, sort.X+sort.W)
+					labelIndex := strings.Index(face, label)
+					if labelIndex < 0 || ansi.StringWidth(face[:labelIndex]) < 1 || ansi.StringWidth(face[:labelIndex]) > 2 {
+						t.Fatalf("sort label must start at the left inset of its fixed hit region: %q", face)
+					}
+					count := strings.TrimSpace(ansi.Cut(plain, sort.X+sort.W, ansi.StringWidth(plain)))
 					if count != query.count {
-						t.Fatalf("query %q count outside the editor = %q, want %q", query.value, count, query.count)
+						t.Fatalf("query %q count after sort = %q, want %q", query.value, count, query.count)
 					}
 					for _, target := range bar.targets {
 						if target.ID == "conn.pause" {
@@ -111,6 +121,60 @@ func TestConnectionsToolbarRedesignWideInputCountAndSortShareTextRow(t *testing.
 				}
 			}
 		})
+	}
+}
+
+func TestConnectionsToolbarRedesignCompactTabFacesHaveOneCellGap(t *testing.T) {
+	for _, language := range []string{i18n.English, i18n.Chinese} {
+		t.Run(language, func(t *testing.T) {
+			m := connectionsModel(t, &fakeBackend{})
+			m.locale, m.noColor = i18n.New(language), true
+			bar := m.connectionFilterBar(160)
+			active := connectionToolbarRedesignTarget(t, bar, "conn.active")
+			closed := connectionToolbarRedesignTarget(t, bar, "conn.closed")
+			if active.Y != closed.Y || active.W != closed.W {
+				t.Fatalf("compact tab peers must retain equal hit widths: active=%+v closed=%+v", active, closed)
+			}
+			plain := ansi.Strip(bar.lines[active.Y])
+			activeFace := strings.TrimSpace(ansi.Cut(plain, active.X, active.X+active.W))
+			closedFace := strings.TrimSpace(ansi.Cut(plain, closed.X, closed.X+closed.W))
+			activeStart, closedStart := strings.Index(plain, activeFace), strings.Index(plain, closedFace)
+			if activeFace == "" || closedFace == "" || activeStart < 0 || closedStart < 0 {
+				t.Fatalf("compact tab faces are missing: %q", plain)
+			}
+			gap := ansi.StringWidth(plain[:closedStart]) - ansi.StringWidth(plain[:activeStart]) - ansi.StringWidth(activeFace)
+			if gap != 1 {
+				t.Fatalf("compact tab faces must be separated by one cell, got %d: %q", gap, plain)
+			}
+		})
+	}
+}
+
+func TestConnectionsToolbarRedesignClearKeepsInputAndControlsFixed(t *testing.T) {
+	for _, language := range []string{i18n.English, i18n.Chinese} {
+		for _, size := range [][2]int{{160, 45}, {60, 20}, {40, 16}} {
+			t.Run(fmt.Sprint(language, "/", size), func(t *testing.T) {
+				m := connectionsModel(t, &fakeBackend{})
+				m.locale = i18n.New(language)
+				m.notification.items = nil
+				m.connections.search.SetValue("one")
+				m, _ = update(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+				var before []hitRegion
+				ids := []string{"conn.search", "conn.case", "conn.word", "conn.regex", "conn.sort"}
+				for _, id := range ids {
+					before = append(before, findTarget(t, m, id))
+				}
+				m, _ = click(m, findTarget(t, m, "conn.clear"))
+				if !m.connections.editing || m.connections.search.Value() != "" || m.connectionCount() != "" {
+					t.Fatal("Clear must return to an empty editor with no query count")
+				}
+				for i, id := range ids {
+					if after := findTarget(t, m, id); after != before[i] {
+						t.Fatalf("clearing search moved/resized %s: %+v -> %+v", id, before[i], after)
+					}
+				}
+			})
+		}
 	}
 }
 

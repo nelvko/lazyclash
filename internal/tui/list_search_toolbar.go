@@ -2,11 +2,12 @@ package tui
 
 import "github.com/charmbracelet/x/ansi"
 
-// Pages supply their existing controls and Bubbles input. This layout keeps
-// scope before search, and list functions after its reserved count space.
+// Pages supply their existing controls and Bubbles input. Count space stays
+// reserved on wide rows even while the count is hidden.
 type listSearchToolbar struct {
 	scope, functions          dashboardBlock
 	countWidth, matchingWidth int
+	countAfterFunctions       bool // only when scope, search and functions fit on one row
 }
 
 func (bar listSearchToolbar) searchGeometry(width int) (fieldWidth, offset int) {
@@ -61,13 +62,16 @@ func (bar listSearchToolbar) rows(width int, countVisible bool) int {
 func (bar listSearchToolbar) render(search dashboardBlock, width int, count, compactCount string) dashboardBlock {
 	width = max(1, width)
 	fieldWidth, offset := bar.searchGeometry(width)
-	if count != "" && offset+fieldWidth+2+bar.countWidth <= width {
-		search.lines[1] += themed("  "+count, muted, bg, false)
-	} else if count != "" {
-		if ansi.StringWidth(count) > width {
-			count = compactCount
+	countAtEnd := offset > 0 && bar.countAfterFunctions
+	if count != "" && !countAtEnd {
+		if offset+fieldWidth+2+bar.countWidth <= width {
+			search.lines[1] += themed("  "+count, muted, bg, false)
+		} else {
+			if ansi.StringWidth(count) > width {
+				count = compactCount
+			}
+			search.lines = append(search.lines, themed(cellCrop(count, width), muted, bg, false))
 		}
-		search.lines = append(search.lines, themed(cellCrop(count, width), muted, bg, false))
 	}
 	var b dashboardBlock
 	place := func(block dashboardBlock, x, y int) {
@@ -87,10 +91,13 @@ func (bar listSearchToolbar) render(search dashboardBlock, width int, count, com
 		place(bar.scope, 0, 1)
 		place(search, offset, 0)
 		x := offset + fieldWidth + 2
-		if bar.countWidth > 0 {
+		if bar.countWidth > 0 && !countAtEnd {
 			x += bar.countWidth + 2
 		}
 		place(bar.functions, x, 1)
+		if countAtEnd && count != "" {
+			place(dashboardBlock{lines: []string{themed(count, muted, bg, false)}}, x+searchControlWidth(bar.functions)+2, 1)
+		}
 	} else {
 		place(bar.scope, 0, 0)
 		x, y := bar.stackedFunctionPosition(width)

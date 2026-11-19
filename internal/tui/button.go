@@ -25,6 +25,7 @@ type buttonOptions struct {
 	Disabled, Busy       bool
 	Selected, Selectable bool
 	Plain, Dim           bool
+	Compact, AlignLeft   bool
 	// Width is the minimum label width in terminal cells, excluding padding
 	// and the focus gutter. Selectable peers pass their longest label width.
 	Width int
@@ -85,7 +86,11 @@ func renderButton(label string, o buttonOptions) string {
 	}
 	width := max(ansi.StringWidth(label), o.Width)
 	padding := width - ansi.StringWidth(label)
-	label = strings.Repeat(" ", padding/2) + label + strings.Repeat(" ", padding-padding/2)
+	leftPadding := padding / 2
+	if o.AlignLeft {
+		leftPadding = 0
+	}
+	label = strings.Repeat(" ", leftPadding) + label + strings.Repeat(" ", padding-leftPadding)
 	face := " " + label + " "
 	if o.Plain && (o.Kind != buttonText || o.Selectable) {
 		face = "[" + label + "]"
@@ -98,6 +103,9 @@ func renderButton(label string, o buttonOptions) string {
 	markerColor := focus
 	if o.Focused && !o.Disabled {
 		marker = " ›"
+	}
+	if o.Compact {
+		marker = marker[1:]
 	}
 	if o.Busy {
 		markerColor = muted

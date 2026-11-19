@@ -181,14 +181,22 @@ def filter_count(terminal, required=True):
     frame = search_frame(terminal, required)
     if frame is None:
         return None
-    _, top, right, _ = frame
-    tail = "".join(terminal.screen.cells[top + 1][right + 1:])
-    match = re.match(r"\s*(\d+(?: / \d+)?)", tail)
-    if match is None:
-        if required:
-            raise AssertionError("Search count is not outside the input\n" + terminal.screen.text())
-        return None
-    return match.group(1), (right + 1 + match.start(1), top + 1)
+    _, top, right, bottom = frame
+    # Wide rows place Sort before the ratio. Narrow rows keep it beside the
+    # frame or on a dedicated line after the input's matching controls.
+    candidates = [(top + 1, right + 1, False)]
+    candidates += [(y, 0, True) for y in range(bottom + 1, min(bottom + 4, len(terminal.screen.cells)))]
+    for y, start, separate in candidates:
+        text = "".join(terminal.screen.cells[y][start:])
+        pattern = r"^\s*(\d+(?: / \d+)?)\s*$" if separate else r"(?<!\w)(\d+(?: / \d+)?)(?!\w)"
+        match = re.search(pattern, text)
+        if match is not None:
+            prefix = text[:match.start(1)]
+            x = start + sum(2 if unicodedata.east_asian_width(char) in "WF" else 1 for char in prefix)
+            return match.group(1), (x, y)
+    if required:
+        raise AssertionError("Search count is not outside the input\n" + terminal.screen.text())
+    return None
 
 
 def wait_count(terminal, total, matched=None):
@@ -231,7 +239,7 @@ def check_filter_layout(terminal, words, active, closed, closed_view=False, paus
     sort_x, sort_y = position(terminal, sort_label)
     tabs = [position(terminal, tab_label(words, view, count)) for view, count in (("active", active), ("closed", closed))]
     if sort_y == top + 1:
-        assert sort_x > right and all(y == top + 1 and x < left for x, y in tabs), "wide tabs/search/count/sort did not stay on one row"
+        assert sort_x == right + 5 and all(y == top + 1 and x < left for x, y in tabs), "wide tabs/search/left-aligned sort are not adjacent"
     else:
         assert sort_y < top and all(y < top for _, y in tabs), "narrow tabs and sort are not above search"
     options = matching_options(terminal)
@@ -339,16 +347,26 @@ def exercise_search_modes(preview, terminal, words, output, args):
     wait_count(terminal, 48)
 
 
-def assert_search_tab_order(preview, terminal, output, width, height, args):
+def assert_search_tab_order(preview, terminal, words, output, width, height, args):
     frame = search_frame(terminal)
+    sort_label = words["connections.sort"] % words["connections.sort_newest"]
+    sort_point = position(terminal, sort_label)
     search(terminal, "API.GITHUB.COM")
-    wait_count(terminal, 48, 1)
+    count_point = wait_count(terminal, 48, 1)
+    assert (search_frame(terminal), position(terminal, sort_label)) == (frame, sort_point), "typing moved the frame or sort control"
+    if sort_point[1] == frame[1] + 1:
+        sort_width = sum(2 if unicodedata.east_asian_width(char) in "WF" else 1 for char in sort_label)
+        assert count_point[1] == sort_point[1] and count_point[0] > sort_point[0] + sort_width, "wide ratio does not follow Sort"
+    else:
+        assert (count_point[1] == frame[1] + 1 and count_point[0] > frame[2]) or count_point[1] > frame[3], "narrow ratio is not beside or after the search component"
     terminal.key(b"/")
     terminal.key(b"\t")
+    terminal.settle()
     clear_x, clear_y = clear_search_position(terminal)
     wait_until(terminal, lambda: terminal.screen.cells[clear_y][clear_x - 1] == "›",
                "Tab did not move from search to Clear")
     terminal.key(b"\t")
+    terminal.settle()
     case_x, case_y = matching_options(terminal)["Aa"]
     wait_until(terminal, lambda: terminal.screen.cells[case_y][case_x - 1] == "›",
                "Tab did not move from Clear to Aa")
@@ -365,7 +383,7 @@ def assert_search_tab_order(preview, terminal, output, width, height, args):
     terminal.key(b"\x1bc")
     search(terminal, "")
     wait_count(terminal, 48)
-    assert search_frame(terminal) == frame, "search modes or traversal moved the input frame"
+    assert (search_frame(terminal), position(terminal, sort_label)) == (frame, sort_point), "clearing or matching modes moved the frame or sort control"
 
 
 def exercise(preview, binary, output, language, profile, args):
@@ -394,6 +412,8 @@ def exercise(preview, binary, output, language, profile, args):
         exercise_search_modes(preview, terminal, words, output, args)
 
         # The list shortcut must remain ordinary text inside the search input.
+        sort_label = words["connections.sort"] % words["connections.sort_newest"]
+        empty_geometry = search_frame(terminal), position(terminal, sort_label)
         terminal.key(b"/")
         terminal.key(b"\x15")
         paste(terminal, "no-such-")
@@ -403,10 +423,12 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait(words["connections.no_matches"])
         check_tabs(terminal, words, 48, 0)
         wait_count(terminal, 48, 0)
+        assert (search_frame(terminal), position(terminal, sort_label)) == empty_geometry, "typing changed toolbar geometry"
         click_cell(terminal, *clear_search_position(terminal))
         terminal.key(b"\r")
         terminal.wait("api.github.com")
         wait_count(terminal, 48)
+        assert (search_frame(terminal), position(terminal, sort_label)) == empty_geometry, "Clear changed toolbar geometry"
 
         # Freeze the observation so any difference while searching can only
         # come from filtering, rather than the next live traffic sample.
@@ -520,7 +542,7 @@ def exercise(preview, binary, output, language, profile, args):
             terminal.settle()
             terminal.wait("api.github.com")
             preview.capture(terminal, output, "connections-%dx%d" % (width, height), args)
-            assert_search_tab_order(preview, terminal, output, width, height, args)
+            assert_search_tab_order(preview, terminal, words, output, width, height, args)
 
         resize_terminal(terminal, words, 80, 24)
         search(terminal, "github-agent")

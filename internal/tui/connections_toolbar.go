@@ -14,12 +14,14 @@ func (m Model) connectionTabs(width int) dashboardBlock {
 		active = fmt.Sprint(len(snapshot.Connections))
 	}
 	labels := []string{m.tr("connections.tab_active", active), m.tr("connections.tab_closed", fmt.Sprint(len(m.connectionClosedEntries())))}
-	minimum := max(ansi.StringWidth(m.tr("connections.tab_active", "9999")), ansi.StringWidth(m.tr("connections.tab_closed", "500")))
+	minimum := max(ansi.StringWidth(labels[0]), ansi.StringWidth(labels[1]),
+		ansi.StringWidth(m.tr("connections.tab_active", "9999")), ansi.StringWidth(m.tr("connections.tab_closed", "500")))
 	var b dashboardBlock
 	line := ""
 	for i, id := range []string{"conn.active", "conn.closed"} {
 		o := m.searchControlOptions(id)
 		o.Selectable, o.Selected, o.Width = true, m.connections.closedView == (i == 1), minimum
+		o.Compact = true
 		o.Disabled = m.busy || m.quitting
 		value := renderButton(labels[i], o)
 		if line != "" && ansi.StringWidth(line)+ansi.StringWidth(value) > width {
@@ -37,7 +39,8 @@ func (m Model) connectionTabs(width int) dashboardBlock {
 
 func (m Model) connectionSearchToolbar(width int) listSearchToolbar {
 	return listSearchToolbar{scope: m.connectionTabs(width), functions: m.connectionControls(),
-		countWidth: m.connectionCountWidth(), matchingWidth: searchControlWidth(m.connectionFilterButtons())}
+		countWidth: m.connectionCountWidth(), matchingWidth: searchControlWidth(m.connectionFilterButtons()),
+		countAfterFunctions: true}
 }
 
 func (m Model) connectionSearchGeometry(width int) (fieldWidth, offset int) {
@@ -75,10 +78,10 @@ func (m Model) connectionCountWidth() int {
 	return 2*len(strconv.Itoa(total)) + 3
 }
 
-func (m Model) connectionSortWidth() int {
+func (m Model) connectionSortLabelWidth() int {
 	width := 0
 	for order := connectionSortNewest; order < connectionSortCount; order++ {
-		width = max(width, ansi.StringWidth(m.tr("connections.sort", m.tr(order.key())))+4)
+		width = max(width, ansi.StringWidth(m.tr("connections.sort", m.tr(order.key()))))
 	}
 	return width
 }
