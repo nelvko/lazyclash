@@ -45,6 +45,7 @@ func (m Model) searchToolbar(id, placeholder string, input textinput.Model, cont
 		ID: id, ClearID: clearID, Surface: surface, Width: min(inputFieldMaxWidth, max(1, width)),
 		Focused: m.focus == id, Hovered: m.hover == id, Invalid: invalid,
 		Disabled:     m.busy || m.quitting,
+		Compact:      id == "proxies.search",
 		ClearFocused: m.focus == clearID, ClearHovered: m.hover == clearID, Trailing: controls,
 	})
 }

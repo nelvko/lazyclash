@@ -71,10 +71,10 @@ func (m Model) focusTargets() []hitRegion {
 		a, b := controls[i+1], controls[j+1]
 		// Read framed searches at their text row, alongside scope controls,
 		// rather than placing the frame's top before controls to its left.
-		if searchClearID(a.ID) != "" {
+		if a.H == 3 && searchClearID(a.ID) != "" {
 			a.Y++
 		}
-		if searchClearID(b.ID) != "" {
+		if b.H == 3 && searchClearID(b.ID) != "" {
 			b.Y++
 		}
 		if a.Y == b.Y {

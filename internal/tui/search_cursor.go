@@ -91,7 +91,7 @@ func (m Model) inputCursor() *tea.Cursor {
 		return nil
 	}
 	for _, field := range m.targets {
-		if field.ID != id || field.H != 3 || field.InputWidth <= 0 {
+		if field.ID != id || field.H != 1 && field.H != 3 || field.InputWidth <= 0 {
 			continue
 		}
 		input = prepareInputField(input, field.InputWidth, bg, false)
@@ -101,7 +101,11 @@ func (m Model) inputCursor() *tea.Cursor {
 		if cursor == nil || !ok || column > field.InputWidth {
 			return nil
 		}
-		cursor.Position.X, cursor.Position.Y = field.X+2+column, field.Y+1
+		textRow := 0
+		if field.H == 3 {
+			textRow = 1
+		}
+		cursor.Position.X, cursor.Position.Y = field.X+2+column, field.Y+textRow
 		if cursor.Position.X < 0 || cursor.Position.X >= m.width || cursor.Position.Y < 0 || cursor.Position.Y >= m.height {
 			return nil
 		}

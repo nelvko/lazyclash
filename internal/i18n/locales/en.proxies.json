@@ -1,6 +1,6 @@
 {
   "proxies.search": "Search",
-  "proxies.search_placeholder": "Filter groups or nodes",
+  "proxies.search_placeholder": "Search groups or nodes…",
   "proxies.search_no_match": "No matching groups or nodes.",
   "proxies.search_group": "Group: %s",
   "proxies.collapse_all": "Collapse all",

@@ -21,6 +21,7 @@ type inputFieldOptions struct {
 	Width                      int
 	Focused, Hovered, Invalid  bool
 	Disabled                   bool
+	Compact                    bool
 	ClearFocused, ClearHovered bool
 	Trailing                   dashboardBlock
 }
@@ -146,8 +147,16 @@ func renderInputField(input textinput.Model, o inputFieldOptions) dashboardBlock
 	if width < 5 {
 		b.lines = []string{"", cellCrop(value, width), ""}
 	}
+	rows := 3
+	if o.Compact {
+		rows = 1
+		b.lines = b.lines[1:2]
+		for i := range b.targets {
+			b.targets[i].Y--
+		}
+	}
 	if o.ID != "" {
-		hit := hitRegion{ID: o.ID, W: width, H: 3}
+		hit := hitRegion{ID: o.ID, W: width, H: rows}
 		if width >= 5 {
 			hit.InputWidth = textWidth
 		}
@@ -161,8 +170,8 @@ func renderInputField(input textinput.Model, o inputFieldOptions) dashboardBlock
 		if !o.Disabled {
 			for _, target := range o.Trailing.targets {
 				target.X += x
-				target.Y += 3
-				if clipped, ok := clipRegion(target, 0, 3, width, 1); ok {
+				target.Y += rows
+				if clipped, ok := clipRegion(target, 0, rows, width, 1); ok {
 					b.targets = append(b.targets, clipped)
 				}
 			}

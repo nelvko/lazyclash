@@ -8,21 +8,39 @@ import (
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
 
+type proxySearchReturn struct {
+	location proxyLocation
+	history  []proxyLocation
+}
+
 func (m Model) proxySearchQuery() string {
 	return strings.ToLower(strings.TrimSpace(m.proxies.search.Value()))
 }
 
+func proxySearchMatchesGroup(query string, group mihomo.Group) bool {
+	return strings.Contains(strings.ToLower(group.Name), query) || strings.Contains(strings.ToLower(group.Type), query)
+}
+
 func (m Model) proxyMemberMatches(group mihomo.Group, node string) bool {
 	query := m.proxySearchQuery()
-	return query == "" || strings.Contains(strings.ToLower(group.Name), query) ||
-		strings.Contains(strings.ToLower(group.Type), query) ||
-		strings.Contains(strings.ToLower(node), query) ||
-		strings.Contains(strings.ToLower(m.proxyMeta(node)), query)
+	if query == "" || proxySearchMatchesGroup(query, group) || strings.Contains(strings.ToLower(node), query) {
+		return true
+	}
+	if _, reference, ok := m.proxyGroup(node); ok {
+		// A group's current route is an observation, not the reference's name.
+		return strings.Contains(strings.ToLower(reference.Type), query)
+	}
+	proxy := m.snapshot.Proxies[node]
+	protocol := proxy.Type
+	if proxy.UDP {
+		protocol += " · UDP"
+	}
+	return strings.Contains(strings.ToLower(protocol), query)
 }
 
 func (m Model) proxyGroupMatches(group mihomo.Group) bool {
 	query := m.proxySearchQuery()
-	if query == "" || strings.Contains(strings.ToLower(group.Name), query) || strings.Contains(strings.ToLower(group.Type), query) {
+	if proxySearchMatchesGroup(query, group) {
 		return true
 	}
 	for _, node := range group.All {
@@ -34,7 +52,8 @@ func (m Model) proxyGroupMatches(group mihomo.Group) bool {
 }
 
 func (m Model) proxySearchVisible() bool {
-	return m.proxiesReady() && !m.proxiesDirect() && m.proxies.detail == "" && (m.proxies.editing || m.proxySearchQuery() != "")
+	return m.proxiesReady() && !m.proxiesDirect() && m.proxies.detail == "" &&
+		(m.proxies.searchReturn != nil || m.proxies.editing || m.proxySearchQuery() != "")
 }
 
 func (m Model) proxyGroupLabelVisible() bool {
@@ -54,9 +73,31 @@ func (m *Model) focusProxySearch() tea.Cmd {
 	if m.busy || m.quitting || !m.proxiesReady() || m.proxiesDirect() || m.proxies.detail != "" {
 		return nil
 	}
+	if m.proxies.searchReturn == nil {
+		location := m.proxyLocation()
+		location.group = m.proxies.activeGroup
+		m.proxies.searchReturn = &proxySearchReturn{location: location, history: append([]proxyLocation(nil), m.proxies.history...)}
+	}
 	m.proxies.editing = true
 	m.focus, m.scroll = "proxies.search", 0
 	return m.proxies.search.Focus()
+}
+
+func (m *Model) closeProxySearch() bool {
+	saved := m.proxies.searchReturn
+	if saved == nil {
+		return false
+	}
+	m.proxies.searchReturn = nil
+	m.proxies.editing = false
+	m.proxies.search.Blur()
+	m.proxies.search.Reset()
+	m.proxies.searchCollapsed = nil
+	m.proxies.detail, m.proxies.detailGroup = "", ""
+	m.proxies.history = saved.history
+	m.hover = ""
+	m.restoreProxyLocation(saved.location)
+	return true
 }
 
 func (m *Model) proxySearchKey(key tea.KeyPressMsg) tea.Cmd {
@@ -70,16 +111,42 @@ func (m *Model) proxySearchKey(key tea.KeyPressMsg) tea.Cmd {
 			m.cycleFocus(-1)
 		}
 		return nil
-	case "enter", "esc":
+	case "esc":
+		m.closeProxySearch()
+		return nil
+	case "enter":
+		query := m.proxySearchQuery()
+		if query == "" {
+			m.closeProxySearch()
+			return nil
+		}
 		m.proxies.editing = false
 		m.proxies.search.Blur()
 		m.focus = "content"
+		var first hitRegion
 		for _, hit := range m.contentTargets() {
-			if listTarget(hit.ID) {
-				m.focus = hit.ID
-				m.revealBodyTarget(hit)
+			if !listTarget(hit.ID) || hit.ID == first.ID {
+				continue
+			}
+			if first.ID != "" && strings.HasPrefix(hit.ID, "group.") {
 				break
 			}
+			if first.ID == "" {
+				first = hit
+			}
+			if strings.HasPrefix(hit.ID, "node.") {
+				first = hit
+				break
+			}
+			var index int
+			if _, err := fmt.Sscanf(hit.ID, "group.%d", &index); err == nil &&
+				(proxySearchMatchesGroup(query, m.snapshot.Groups[index]) || !m.proxyGroupExpanded(m.snapshot.Groups[index].Name)) {
+				break
+			}
+		}
+		if first.ID != "" {
+			m.focus = first.ID
+			m.revealBodyTarget(first)
 		}
 		return nil
 	}
@@ -87,10 +154,20 @@ func (m *Model) proxySearchKey(key tea.KeyPressMsg) tea.Cmd {
 	before := m.proxies.search.Value()
 	m.proxies.search, cmd = m.proxies.search.Update(key)
 	if before != m.proxies.search.Value() {
-		m.proxies.searchCollapsed = nil
+		m.proxySearchChanged()
 	}
-	m.scroll = 0
 	return cmd
+}
+
+func (m *Model) proxySearchChanged() {
+	m.proxies.searchCollapsed = nil
+	m.scroll = 0
+	if m.proxies.searchReturn != nil && m.proxySearchQuery() != "" {
+		// Start a new query in the directory so it can match collapsed groups,
+		// even when search was opened from a narrow member view.
+		m.proxies.activeGroup = ""
+		m.proxies.history = nil
+	}
 }
 
 // Opening a group reveals its observed selection without selecting a node.
@@ -118,7 +195,7 @@ func (m Model) proxySearchBlock(width int) dashboardBlock {
 func (m Model) proxyFixedRows(o dashboardOptions) int {
 	rows, groupRows := 0, 0
 	if m.proxySearchVisible() {
-		rows = inputFieldRows(min(inputFieldMaxWidth, dashboardBodyWidth(o)), 0, true)
+		rows = 1
 	}
 	if m.proxyGroupLabelVisible() {
 		groupRows = 1

@@ -55,10 +55,10 @@ func (m Model) pageHeader() pageHeader {
 				h.leading = append(h.leading, headerAction{"mode." + mode, tr("dashboard.mode." + mode), "", m.proxiesReady() && m.snapshot.Mode.Error == ""})
 			}
 		}
-		h.actions = []headerAction{
-			{"proxies.search-open", tr("proxies.search"), "/", m.proxiesReady() && !m.proxiesDirect() && m.proxies.detail == ""},
-			{"proxies.providers", tr("providers.title.proxies"), "≡", m.providersSupported(providerProxies)},
+		if !m.proxiesDirect() {
+			h.actions = append(h.actions, headerAction{"proxies.search-open", tr("proxies.search"), "/", m.proxiesReady() && m.proxies.detail == ""})
 		}
+		h.actions = append(h.actions, headerAction{"proxies.providers", tr("providers.title.proxies"), "≡", m.providersSupported(providerProxies)})
 	case "profiles":
 		h.actions = []headerAction{{"profiles.update-all", tr("header.updateAll"), "↻", m.hasRefreshableProfiles()}}
 	case "connections":

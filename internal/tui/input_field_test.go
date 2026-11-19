@@ -188,6 +188,39 @@ func TestInputFieldClippingRemovesHardwareCursorGeometry(t *testing.T) {
 	}
 }
 
+func TestInputFieldCompactKeepsEditorAndClearOnOneRow(t *testing.T) {
+	for _, width := range []int{60, 40, 24, 12, 5, 1} {
+		for _, value := range []string{"", "中文 github"} {
+			t.Run(fmt.Sprint(width, "/", value), func(t *testing.T) {
+				input := textinput.New()
+				input.SetValue(value)
+				options := inputFieldOptions{ID: "input", ClearID: "clear", Width: width}
+				framed := renderInputField(input, options)
+				options.Compact = true
+				compact := renderInputField(input, options)
+				if len(compact.lines) != 1 || compact.lines[0] != framed.lines[1] {
+					t.Fatalf("compact field changed its text row: compact=%+v framed=%+v", compact.lines, framed.lines)
+				}
+				if ansi.StringWidth(compact.lines[0]) > width || len(compact.targets) != len(framed.targets) {
+					t.Fatalf("compact field lost controls or exceeded its width: %+v", compact)
+				}
+				for i, target := range compact.targets {
+					want := framed.targets[i]
+					if target.ID == "input" {
+						want.H = 1
+					} else {
+						want.Y--
+					}
+					if target != want {
+						t.Fatalf("compact field moved horizontal geometry: got %+v want %+v", target, want)
+					}
+				}
+				assertRegions(t, compact.targets, width, 1)
+			})
+		}
+	}
+}
+
 func TestInputFieldCursorAcrossAllEditorsAndResize(t *testing.T) {
 	for _, scenario := range []string{"profile-url", "generic-form", "masked-form", "create-name", "create-description", "create-source", "ports-mixed", "ports-controller", "wizard-local", "wizard-version", "wizard-prefix", "inline-local", "inline-version"} {
 		t.Run(scenario, func(t *testing.T) {

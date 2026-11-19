@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nelvko/lazyclash/internal/i18n"
 )
 
 func TestSearchCursorColumnUsesBubblesVisibleCells(t *testing.T) {
@@ -174,5 +175,50 @@ func TestSearchCursorRespectsColorCapability(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestProxySearchCompactCursorAndClearAcrossResize(t *testing.T) {
+	for _, language := range []string{"en", "zh-Hans"} {
+		t.Run(language, func(t *testing.T) {
+			m, _ := proxiesModel(t, 160, 45)
+			m.locale = i18n.New(language)
+			m, _ = update(m, key("/"))
+			m, _ = update(m, tea.PasteMsg{Content: strings.Repeat("中文abcdefgh", 20) + "VISIBLE-TAIL"})
+			for range 3 {
+				m, _ = update(m, special(tea.KeyLeft))
+			}
+			for _, size := range [][2]int{{160, 45}, {120, 32}, {80, 24}, {60, 20}, {40, 16}, {160, 45}} {
+				m, _ = update(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+				field := findTarget(t, m, "proxies.search")
+				clear := findTarget(t, m, "proxies.clear")
+				cursor := m.View().Cursor
+				if field.H != 1 || field.W > inputFieldMaxWidth || field.InputWidth != searchInputWidth(field.W) || clear.Y != field.Y || cursor == nil || cursor.Y != field.Y || cursor.X < field.X+2 || cursor.X > field.X+2+field.InputWidth {
+					t.Fatalf("compact input or cursor moved out of its single row at %v: field=%+v clear=%+v cursor=%+v", size, field, clear, cursor)
+				}
+				assertSearchCursorCell(t, m, "A")
+				assertCanvas(t, m.View().Content, size[0], size[1])
+				assertRegions(t, m.targets, size[0], size[1])
+			}
+			field := findTarget(t, m, "proxies.search")
+			m, _ = click(m, findTarget(t, m, "proxies.clear"))
+			if m.proxies.search.Value() != "" || !m.proxies.search.Focused() || !m.proxies.editing || m.focus != "proxies.search" || hasAction(m.targets, "proxies.clear") || m.View().Cursor == nil {
+				t.Fatal("compact clear action lost the editable input or retained its query")
+			}
+			if got := findTarget(t, m, "proxies.search"); got != field {
+				t.Fatalf("clearing compact search changed its geometry: before=%+v after=%+v", field, got)
+			}
+			for _, overlay := range []string{"help", "notifications"} {
+				covered := m
+				if overlay == "help" {
+					covered.helpOpen = true
+				} else {
+					covered.notification.panel.open = true
+				}
+				if cursor := covered.View().Cursor; cursor != nil {
+					t.Fatalf("%s overlay retained compact search cursor: %+v", overlay, cursor)
+				}
+			}
+		})
 	}
 }

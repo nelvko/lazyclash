@@ -20,7 +20,8 @@ func TestProxiesSearchFiltersNamesAndTypesWithoutChangingExpansion(t *testing.T)
 		t.Fatal("search shortcut did not reveal the shared input")
 	}
 	m, _ = update(m, tea.PasteMsg{Content: "hk 02"})
-	if m.proxies.search.Value() != "hk 02" || !hasAction(m.contentTargets(), "node.0.2") || hasAction(m.contentTargets(), "node.0.1") {
+	if m.proxies.search.Value() != "hk 02" || !hasAction(m.contentTargets(), "node.0.2") ||
+		hasAction(m.contentTargets(), "node.0.1") || hasAction(m.contentTargets(), "node.0.0") {
 		t.Fatalf("case-insensitive search did not filter members: query=%q targets=%+v", m.proxies.search.Value(), m.contentTargets())
 	}
 	if !reflect.DeepEqual(before, m.proxies.expanded) || backend.selections != 0 {

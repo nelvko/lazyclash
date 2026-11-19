@@ -16,6 +16,11 @@ type pageViewState struct {
 }
 
 func (m *Model) rememberPageView() {
+	// Search results are temporary. Keep the underlying navigation position
+	// available when search is closed while the sidebar owns focus.
+	if m.page == "proxies" && m.proxies.searchReturn != nil {
+		return
+	}
 	if m.pageViews == nil {
 		m.pageViews = make(map[string]pageViewState)
 	}
@@ -50,6 +55,9 @@ func (m *Model) browsePage(page string) {
 	m.sidebar.reveal = true
 	if page != m.page {
 		m.stopProxyTests()
+		if m.page == "proxies" {
+			m.closeProxySearch()
+		}
 		m.rememberPageView()
 		m.blurInlineInput()
 		m.dismissMenu()

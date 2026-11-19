@@ -1,6 +1,6 @@
 {
   "proxies.search": "搜索",
-  "proxies.search_placeholder": "筛选代理组或节点",
+  "proxies.search_placeholder": "搜索策略组或节点…",
   "proxies.search_no_match": "没有匹配的代理组或节点。",
   "proxies.search_group": "代理组：%s",
   "proxies.collapse_all": "全部收起",

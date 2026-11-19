@@ -19,6 +19,7 @@ import (
 type proxiesState struct {
 	search                           textinput.Model
 	editing                          bool
+	searchReturn                     *proxySearchReturn
 	searchCollapsed                  map[string]bool
 	expanded                         map[string]bool
 	activeGroup, detail, detailGroup string
@@ -490,8 +491,6 @@ func (m *Model) proxyKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 		}
 	}
 	switch k.String() {
-	case "/":
-		return true, m.focusProxySearch()
 	case "s":
 		m.openProxySort()
 		return true, nil
@@ -775,6 +774,11 @@ func (m *Model) syncProxies() tea.Cmd {
 	sourceChanged := source != m.proxies.source
 	_, previousScope, _ := strings.Cut(m.proxies.source, "\x00")
 	sameScope := m.proxies.source != "" && scope == previousScope
+	var searchReturn *proxySearchReturn
+	if modeChanged || sourceChanged && m.proxies.source != "" {
+		searchReturn = m.proxies.searchReturn
+		m.closeProxySearch()
+	}
 	var menuReturn *proxyLocation
 	if m.proxies.sortMenu && (modeChanged || sourceChanged) {
 		location := m.proxies.sortReturn
@@ -792,7 +796,9 @@ func (m *Model) syncProxies() tea.Cmd {
 		switch {
 		case m.proxiesDirect() && m.proxies.mode != "" && sameScope:
 			location := m.proxyLocation()
-			if menuReturn != nil {
+			if searchReturn != nil && !strings.HasPrefix(m.focus, "nav.") && m.focus != "menu" {
+				location = searchReturn.location
+			} else if menuReturn != nil && searchReturn == nil {
 				location = *menuReturn
 			} else if m.page != "proxies" || strings.HasPrefix(m.focus, "nav.") || m.focus == "menu" {
 				state := m.pageViews["proxies"]

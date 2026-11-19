@@ -628,8 +628,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		} else if m.proxies.editing {
 			m.proxies.search, cmd = m.proxies.search.Update(v)
-			m.proxies.searchCollapsed = nil
-			m.scroll = 0
+			m.proxySearchChanged()
 		} else if m.connections.editing {
 			m.connections.search, cmd = m.connections.search.Update(v)
 			m.reconcileConnections()
@@ -743,6 +742,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				handled = false
 			}
 			if handled {
+				break
+			}
+		}
+		if m.page == "proxies" && !m.sidebarOpen {
+			if key == "/" {
+				cmd = m.focusProxySearch()
+				break
+			}
+			if v.Code == tea.KeyEscape && m.closeProxySearch() {
 				break
 			}
 		}
@@ -1440,6 +1448,9 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 				if !m.busy {
 					if r.ID == "logo" {
 						return m.startLogoPulse()
+					}
+					if m.page == "proxies" && r.ID == "proxies.search-open" {
+						return m.focusProxySearch()
 					}
 					m.focus = r.ID
 					if handled, cmd := m.profileCardClick(r.ID); handled {
