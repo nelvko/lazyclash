@@ -134,18 +134,36 @@ def resize_terminal(terminal, words, width, height):
     terminal.settle()
 
 
-def search_frame(terminal, required=True):
+def rounded_frames(terminal):
     cells = terminal.screen.cells
+    frames = []
     for y, row in enumerate(cells[:-2]):
         for x, value in enumerate(row):
             if value != "╭":
                 continue
             right = next((i for i in range(x + 1, len(row)) if row[i] == "╮"), None)
             if right is not None and cells[y + 1][x] == cells[y + 1][right] == "│" and cells[y + 2][x] == "╰" and cells[y + 2][right] == "╯":
-                return x, y, right, y + 2
+                frames.append((x, y, right, y + 2))
+    return frames
+
+
+def search_frame(terminal, required=True):
+    # Scope tabs may have an equally tall rounded frame. The search component
+    # owns Aa/ab/.* either inside its field or on the following control row.
+    for left, top, right, bottom in rounded_frames(terminal):
+        content = "\n".join("".join(terminal.screen.cells[y][left + 1:right])
+            for y in (top + 1, bottom + 1) if y < len(terminal.screen.cells))
+        if all(label in content for label in ("Aa", "ab", ".*")):
+            return left, top, right, bottom
     if required:
         raise AssertionError("Search frame missing\n" + terminal.screen.text())
     return None
+
+
+def scope_frame(terminal, words, active, closed):
+    points = [position(terminal, tab_label(words, view, count)) for view, count in (("active", active), ("closed", closed))]
+    return next((frame for frame in rounded_frames(terminal)
+        if all(frame[0] < x < frame[2] and frame[1] < y < frame[3] for x, y in points)), None)
 
 
 def matching_options(terminal):
@@ -240,6 +258,8 @@ def check_filter_layout(terminal, words, active, closed, closed_view=False, paus
     tabs = [position(terminal, tab_label(words, view, count)) for view, count in (("active", active), ("closed", closed))]
     if sort_y == top + 1:
         assert sort_x == right + 5 and all(y == top + 1 and x < left for x, y in tabs), "wide tabs/search/left-aligned sort are not adjacent"
+        scope = scope_frame(terminal, words, active, closed)
+        assert scope is not None and scope[1] == top and scope[3] == bottom and scope[2] < left, "wide scope and search frames do not share top and bottom edges"
     else:
         assert sort_y < top and all(y < top for _, y in tabs), "narrow tabs and sort are not above search"
     options = matching_options(terminal)
@@ -404,11 +424,16 @@ def exercise(preview, binary, output, language, profile, args):
         check_filter_layout(terminal, words, 48, 0)
         preview.capture(terminal, output, "connections-wide", args)
 
-        # View buttons and Clear retain independent mouse hit regions.
-        click_cell(terminal, *position(terminal, tab_label(words, "closed", 0)))
+        # Scope padding belongs to each tab's full-height mouse hit region.
+        scope = scope_frame(terminal, words, 48, 0)
+        closed_point = position(terminal, tab_label(words, "closed", 0))
+        click_cell(terminal, closed_point[0], scope[1] if scope is not None else closed_point[1])
         terminal.wait(words["connections.closed_empty"])
-        click_cell(terminal, *position(terminal, tab_label(words, "active", 48)))
+        scope = scope_frame(terminal, words, 48, 0)
+        active_point = position(terminal, tab_label(words, "active", 48))
+        click_cell(terminal, active_point[0], scope[3] if scope is not None else active_point[1])
         terminal.wait("api.github.com")
+        preview.capture(terminal, output, "scope-padding-tab-clicks", args)
         exercise_search_modes(preview, terminal, words, output, args)
 
         # The list shortcut must remain ordinary text inside the search input.

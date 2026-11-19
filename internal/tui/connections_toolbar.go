@@ -38,9 +38,28 @@ func (m Model) connectionTabs(width int) dashboardBlock {
 }
 
 func (m Model) connectionSearchToolbar(width int) listSearchToolbar {
-	return listSearchToolbar{scope: m.connectionTabs(width), functions: m.connectionControls(),
+	tabs := m.connectionTabs(width)
+	bar := listSearchToolbar{scope: tabs, functions: m.connectionControls(),
 		countWidth: m.connectionCountWidth(), matchingWidth: searchControlWidth(m.connectionFilterButtons()),
 		countAfterFunctions: true}
+	if len(tabs.lines) == 1 {
+		bar.inlineScope = frameConnectionTabs(tabs)
+	}
+	return bar
+}
+
+func frameConnectionTabs(tabs dashboardBlock) dashboardBlock {
+	frame := dashboardBlock{lines: inputFrame(tabs.lines, searchControlWidth(tabs)+4, border, bg)}
+	for _, hit := range tabs.targets {
+		// Each half includes the outer border and padding on its side.
+		if hit.X > 0 {
+			hit.X += 2
+		}
+		hit.W += 2
+		hit.H = len(frame.lines)
+		frame.targets = append(frame.targets, hit)
+	}
+	return frame
 }
 
 func (m Model) connectionSearchGeometry(width int) (fieldWidth, offset int) {

@@ -63,13 +63,16 @@ func TestListSearchToolbarsKeepScopeSearchCountAndFunctionOrder(t *testing.T) {
 					}
 					if width == 160 {
 						if page == "connections" {
-							if scope.Y != search.Y+1 || scope.X+scope.W > search.X || function.Y != search.Y+1 || function.X != search.X+search.W+2 || countY != search.Y+1 || countX < function.X+function.W+1 {
+							if scope.Y != search.Y || scope.H != 3 || scope.H != search.H || scope.X+scope.W > search.X || function.Y != search.Y+1 || function.X != search.X+search.W+2 || countY != search.Y+1 || countX < function.X+function.W+1 {
 								t.Fatalf("wide connections reading order must be scope, search, sort, query count: scope=%+v search=%+v function=%+v count=%d,%d", scope, search, function, countX, countY)
 							}
 						} else if scope.Y != search.Y+1 || scope.X+scope.W > search.X || function.Y != search.Y+1 || countY != search.Y+1 || countX < search.X+search.W+2 || countX+ansi.StringWidth(count) > function.X {
 							t.Fatalf("wide logs reading order must remain scope, search, count, function: scope=%+v search=%+v count=%d,%d function=%+v", scope, search, countX, countY, function)
 						}
 					} else {
+						if page == "connections" && scope.H != 1 {
+							t.Fatalf("narrow connection tabs must stay one row high: %+v", scope)
+						}
 						if scope.Y+scope.H > search.Y || function.Y+function.H > search.Y {
 							t.Fatalf("narrow scope and function must precede the complete search frame: scope=%+v search=%+v function=%+v", scope, search, function)
 						}
