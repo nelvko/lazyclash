@@ -170,6 +170,13 @@ def inspect_row_cards(preview, terminal, output, width, height, words, profile, 
                 assert words["dashboard.network.disable"] in terminal.screen.text(), "saved TUN state lost its explicit disable control"
                 assert words["tun.saved_state"] % words["dashboard.control.on"] in terminal.screen.text(), "saved TUN state was not retained"
                 assert words["dashboard.overview.tunActual"] % words["dashboard.control.off"] in terminal.screen.text(), "observed TUN state was confused with the saved state"
+        if name == "environment":
+            x, y = outline["x"], outline["y"]
+            right, bottom = x + outline["width"], y + outline["height"]
+            card_text = "\n".join("".join(row[x:right]) for row in terminal.screen.cells[y:bottom])
+            for key in ("dashboard.field.platform", "dashboard.overview.serviceLabel", "settings.autostart"):
+                assert words[key] in card_text, "environment card omitted " + words[key]
+            assert (words["dashboard.overview.linger"] in card_text) == (scenario != "pending"), "environment card showed the wrong linger fields for its scope"
         preview.capture(terminal, output, "%s-card-%dx%d" % (name, width, height), args)
         if index + 1 < len(names):
             terminal.key(b"\x1b[B")
@@ -185,8 +192,10 @@ def inspect_row_cards(preview, terminal, output, width, height, words, profile, 
         if before is not None and current is not None:
             expected = before[1] + max(geometry[first - 2]["height"], geometry[first - 1]["height"]) + 1
             assert current[1] == expected, "next card row does not follow the taller card and one blank row"
-    for index in (4, 5):
-        assert geometry[index]["width"] == width - 25, "traffic/environment card does not span the complete body"
+    left, right, traffic, environment = geometry[0], geometry[1], geometry[4], geometry[5]
+    paired_width = right["x"] + right["width"] - left["x"]
+    assert traffic["x"] == left["x"] and traffic["width"] in (paired_width, paired_width + 1), "traffic card does not span the paired columns"
+    assert environment["x"] == left["x"] and environment["width"] == left["width"], "environment card does not align with the left column"
     if initial_positions[4] is not None and initial_positions[5] is not None:
         assert initial_positions[5][1] == initial_positions[4][1] + geometry[4]["height"] + 1, "environment does not follow the fullwidth traffic card"
     (output / ("card-geometry-%dx%d.json" % (width, height))).write_text(json.dumps(dict(zip(names, geometry)), indent=2) + "\n")
@@ -315,7 +324,7 @@ def exercise(preview, binary, output, language, profile, scenario, args):
         assert calls["runtime_queries"] > 0, calls
         check_profile(preview, terminal, profile)
         (output / "pty.raw").write_bytes(terminal.raw)
-        print("PASS %s/%s/%s: paired equal-size cards, network/mode order, fullwidth traffic/environment, five dimensions, single observed core toggle, borderless/focus states, heading actions, Tab reveal and read-only network details; %s" %
+        print("PASS %s/%s/%s: paired equal-size cards, network/mode order, full-width traffic, single-column environment, five dimensions, single observed core toggle, borderless/focus states, heading actions, Tab reveal and read-only network details; %s" %
               (language, profile, scenario, json.dumps(calls)), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")

@@ -24,6 +24,7 @@ func overviewLayout(o dashboardOptions, width int) dashboardBlock {
 		{"dashboard.system.title", overviewSystemCard},
 	}
 	paired := width >= 90
+	columnWidth := (width - 2) / 2
 	var body dashboardBlock
 	for index := 0; index < len(cards); {
 		if index > 0 {
@@ -34,10 +35,9 @@ func overviewLayout(o dashboardOptions, width int) dashboardBlock {
 			return overviewNamedCard(card.id, card.render(o, w), w)
 		}
 		if paired && index < 4 {
-			cardWidth := (width - 2) / 2
-			row := overviewColumns(o, render(index, cardWidth), render(index+1, cardWidth), cardWidth)
+			row := overviewColumns(o, render(index, columnWidth), render(index+1, columnWidth), columnWidth)
 			// An odd spare cell stays outside the cards, preserving equal widths.
-			if 2*cardWidth+2 < width {
+			if 2*columnWidth+2 < width {
 				for y := range row.lines {
 					row.lines[y] += themed(" ", text, bg, o.Dim)
 				}
@@ -45,7 +45,18 @@ func overviewLayout(o dashboardOptions, width int) dashboardBlock {
 			body.append(row)
 			index += 2
 		} else {
-			body.append(render(index, width))
+			cardWidth := width
+			if paired && cards[index].id == "dashboard.system.title" {
+				cardWidth = columnWidth
+			}
+			card := render(index, cardWidth)
+			if cardWidth < width {
+				margin := themed(strings.Repeat(" ", width-cardWidth), text, bg, o.Dim)
+				for y := range card.lines {
+					card.lines[y] += margin
+				}
+			}
+			body.append(card)
 			index++
 		}
 	}

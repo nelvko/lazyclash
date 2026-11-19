@@ -289,6 +289,7 @@
   "dashboard.overview.updatedHours": "%d 小时前",
   "dashboard.overview.updatedDays": "%d 天前",
   "dashboard.overview.serviceLabel": "服务",
+  "dashboard.overview.linger": "注销后运行",
   "dashboard.network.enable": "启用",
   "dashboard.network.disable": "停用",
   "dashboard.network.systemProxyState": "未接管 · 控制暂不可用",

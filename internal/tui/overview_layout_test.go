@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -79,11 +80,12 @@ func TestOverviewPairedLayoutAlignsBothEdgesAndKeepsActionOwnership(t *testing.T
 							}
 							y += max(left.H, right.H) + 1
 						}
-						for _, card := range body.cards[4:] {
-							if card.X != 0 || card.W != width || card.Y != y {
-								t.Fatalf("full-width traffic/environment card lost its row: %+v at y=%d", card, y)
-							}
-							y += card.H + 1
+						traffic, environment := body.cards[4], body.cards[5]
+						if traffic.X != 0 || traffic.W != width || traffic.Y != y {
+							t.Fatalf("full-width traffic card lost its row: %+v at y=%d", traffic, y)
+						}
+						if environment.X != body.cards[0].X || environment.W != body.cards[0].W || environment.Y != y+traffic.H+1 {
+							t.Fatalf("environment card must occupy one left column after traffic: %+v", environment)
 						}
 					} else {
 						y := 0
@@ -115,6 +117,61 @@ func TestOverviewPairedLayoutAlignsBothEdgesAndKeepsActionOwnership(t *testing.T
 					}
 				})
 			}
+		}
+	}
+}
+
+func TestOverviewEnvironmentReportsObservedServiceSettings(t *testing.T) {
+	for _, tc := range []struct {
+		name, scope, serviceError, autostart, linger string
+		supported, lingerKnown, lingerEnabled        bool
+	}{
+		{name: "user enabled", scope: "user", autostart: "disabled", linger: "enabled", supported: true, lingerKnown: true, lingerEnabled: true},
+		{name: "user disabled", scope: "user", autostart: "disabled", linger: "disabled", supported: true, lingerKnown: true},
+		{name: "user unknown", scope: "user", autostart: "disabled", linger: "unknown", supported: true},
+		{name: "service error", scope: "user", serviceError: "service observation failed", autostart: "unknown", linger: "unknown", supported: true, lingerKnown: true, lingerEnabled: true},
+		{name: "system", scope: "system", autostart: "disabled", supported: true},
+		{name: "unsupported", scope: "user", autostart: "unknown"},
+	} {
+		for _, language := range []string{i18n.English, i18n.Chinese} {
+			t.Run(tc.name+"/"+language, func(t *testing.T) {
+				o := dashboardOptions{Locale: i18n.New(language), Snapshot: app.Snapshot{
+					Capabilities: app.Capabilities{Scope: tc.scope, Runtime: app.Capability{Supported: tc.supported}},
+					Service:      service.Status{EnableState: "disabled", LingerKnown: tc.lingerKnown, Linger: tc.lingerEnabled},
+					ServiceError: tc.serviceError,
+				}}
+				card := overviewSystemCard(o, 38)
+				if len(card.targets) != 0 {
+					t.Fatal("environment card must be informational")
+				}
+				tr := o.Locale.T
+				rows := make([]string, len(card.lines))
+				for i, line := range card.lines {
+					rows[i] = strings.TrimSpace(ansi.Strip(line))
+				}
+				check := func(label, value string) {
+					t.Helper()
+					i := slices.Index(rows, label)
+					if i < 0 || i+1 >= len(rows) || rows[i+1] != value {
+						t.Fatalf("expected %q followed by %q, got %q", label, value, rows)
+					}
+				}
+				check(tr("dashboard.field.platform"), runtime.GOOS+" / "+runtime.GOARCH)
+				manager := tr("dashboard.system.manager")
+				if tc.scope == "system" {
+					manager = tr("dashboard.system.systemManager")
+				} else if !tc.supported {
+					manager = tr("dashboard.system.user") + " · " + tr("dashboard.status.unavailable")
+				}
+				check(tr("dashboard.overview.serviceLabel"), manager)
+				check(tr("settings.autostart"), tr("dashboard.status."+tc.autostart))
+				label := tr("dashboard.overview.linger")
+				if tc.linger != "" {
+					check(label, tr("dashboard.status."+tc.linger))
+				} else if slices.Contains(rows, label) {
+					t.Fatal("showed user linger where it does not apply")
+				}
+			})
 		}
 	}
 }

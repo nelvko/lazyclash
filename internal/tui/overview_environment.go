@@ -35,15 +35,23 @@ func overviewSystemCard(o dashboardOptions, width int) dashboardBlock {
 		}
 	}
 	columns := 1
-	if width >= 72 {
-		columns = 3
-	} else if width >= 46 {
+	if width >= 44 {
 		columns = 2
 	}
 	fields := []overviewField{
 		{label: tr("dashboard.field.platform"), value: runtime.GOOS + " / " + runtime.GOARCH},
 		{label: tr("dashboard.overview.serviceLabel"), value: manager},
 		{label: tr("settings.autostart"), value: autostart},
+	}
+	if s.Capabilities.Scope == "user" && s.Capabilities.Runtime.Supported {
+		linger := tr("dashboard.status.unknown")
+		if s.ServiceError == "" && s.Service.LingerKnown {
+			linger = tr("dashboard.status.disabled")
+			if s.Service.Linger {
+				linger = tr("dashboard.status.enabled")
+			}
+		}
+		fields = append(fields, overviewField{label: tr("dashboard.overview.linger"), value: linger})
 	}
 	return overviewControlPanel(o, width, tr("dashboard.overview.environment"), overviewFieldGrid(o, fields, max(1, width-4), columns), nil)
 }
