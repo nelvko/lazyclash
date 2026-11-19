@@ -1,6 +1,10 @@
 package tui
 
-import "runtime"
+import (
+	"runtime"
+
+	"github.com/nelvko/lazyclash/internal/buildinfo"
+)
 
 func overviewSystemCard(o dashboardOptions, width int) dashboardBlock {
 	tr := o.Locale.T
@@ -53,5 +57,5 @@ func overviewSystemCard(o dashboardOptions, width int) dashboardBlock {
 		}
 		fields = append(fields, overviewField{label: tr("dashboard.overview.linger"), value: linger})
 	}
-	return overviewControlPanel(o, width, tr("dashboard.overview.environment"), overviewFieldGrid(o, fields, max(1, width-4), columns), nil)
+	return overviewControlPanel(o, width, tr("dashboard.overview.environment"), overviewFieldGrid(o, fields, max(1, width-4), columns), nil, buildinfo.Version)
 }

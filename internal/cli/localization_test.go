@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/nelvko/lazyclash/internal/buildinfo"
 	"github.com/nelvko/lazyclash/internal/i18n"
 )
 
@@ -139,7 +140,7 @@ func TestCLIBootstrapHonorsTerminatorAndValues(t *testing.T) {
 func TestCLIVersionCompletionAndManEntryRemainAvailable(t *testing.T) {
 	t.Setenv("LAZYCLASH_LANG", "en")
 	out, _, err := localizedCLI(t, "--version")
-	if err != nil || strings.TrimSpace(out) != cliVersion {
+	if err != nil || strings.TrimSpace(out) != buildinfo.Version {
 		t.Fatalf("version=%q err=%v", out, err)
 	}
 	out, _, err = localizedCLI(t, "completion", "bash")

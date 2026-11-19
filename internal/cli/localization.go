@@ -14,14 +14,13 @@ import (
 	mango "github.com/muesli/mango-cobra"
 	"github.com/muesli/roff"
 	"github.com/nelvko/lazyclash/internal/app"
+	"github.com/nelvko/lazyclash/internal/buildinfo"
 	"github.com/nelvko/lazyclash/internal/diagnostic"
 	"github.com/nelvko/lazyclash/internal/i18n"
 	"github.com/nelvko/lazyclash/internal/store"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
-
-const cliVersion = "0.1.0-dev"
 
 // Execute owns presentation so language also applies to help and parse failures.
 // JSON, shell code and completion scripts continue to use their original writers.
@@ -166,7 +165,7 @@ func invocationError(locale i18n.Localizer, err error) string {
 }
 
 func configurePresentation(root *cobra.Command, args []string) {
-	root.Version = cliVersion
+	root.Version = buildinfo.Version
 	root.SilenceErrors = true
 	root.SetVersionTemplate("{{.Version}}\n")
 	root.Flags().BoolP("version", "v", false, "Print version information")

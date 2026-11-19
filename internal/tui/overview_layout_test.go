@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
+	"github.com/nelvko/lazyclash/internal/buildinfo"
 	"github.com/nelvko/lazyclash/internal/i18n"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 	"github.com/nelvko/lazyclash/internal/service"
@@ -173,6 +174,26 @@ func TestOverviewEnvironmentReportsObservedServiceSettings(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestOverviewEnvironmentPositionsClientVersion(t *testing.T) {
+	for _, language := range []string{i18n.English, i18n.Chinese} {
+		t.Run(language, func(t *testing.T) {
+			o := dashboardOptions{Locale: i18n.New(language)}
+			const width = 36
+			card := overviewSystemCard(o, width)
+			heading := ansi.Strip(card.lines[1])
+			if !strings.HasPrefix(heading, "  "+o.Locale.T("dashboard.overview.environment")) || !strings.HasSuffix(heading, buildinfo.Version+"  ") {
+				t.Fatalf("client version is not at the heading's right edge: %q", heading)
+			}
+			narrow := overviewSystemCard(o, 21)
+			body := strings.Join(narrow.lines, "\n")
+			assertCanvas(t, body, 21, len(narrow.lines))
+			if !strings.Contains(ansi.Strip(body), buildinfo.Version) {
+				t.Fatalf("narrow card lost the client version: %q", ansi.Strip(body))
+			}
+		})
 	}
 }
 
