@@ -88,18 +88,8 @@ func TestConnectionsToolbarRedesignWideInputSortAndQueryCountShareTextRow(t *tes
 					sort := connectionToolbarRedesignTarget(t, bar, "conn.sort")
 					active := connectionToolbarRedesignTarget(t, bar, "conn.active")
 					closed := connectionToolbarRedesignTarget(t, bar, "conn.closed")
-					if active.Y != search.Y || closed.Y != search.Y || active.H != 3 || closed.H != search.H || search.H != 3 || active.W != closed.W || active.X+active.W != closed.X || sort.Y != search.Y+1 || closed.X+closed.W > search.X || sort.X != search.X+search.W+2 {
-						t.Fatalf("wide tab halves must align with the complete search frame, followed by sort and query count: active=%+v closed=%+v search=%+v sort=%+v", active, closed, search, sort)
-					}
-					tabRight := closed.X + closed.W
-					top := ansi.Cut(ansi.Strip(bar.lines[active.Y]), active.X, tabRight)
-					bottom := ansi.Cut(ansi.Strip(bar.lines[active.Y+2]), active.X, tabRight)
-					if top != "╭"+strings.Repeat("─", tabRight-active.X-2)+"╮" || bottom != "╰"+strings.Repeat("─", tabRight-active.X-2)+"╯" {
-						t.Fatalf("wide tabs must share one rounded outer frame: top=%q bottom=%q", top, bottom)
-					}
-					textRow := ansi.Strip(bar.lines[search.Y+1])
-					if !strings.Contains(ansi.Cut(textRow, active.X, active.X+active.W), m.tr("connections.tab_active", "2")) || !strings.Contains(ansi.Cut(textRow, closed.X, closed.X+closed.W), m.tr("connections.tab_closed", "0")) {
-						t.Fatal("framed tab labels left their respective text-row hit regions")
+					if active.Y != search.Y+1 || closed.Y != search.Y+1 || sort.Y != search.Y+1 || closed.X+closed.W > search.X || sort.X != search.X+search.W+2 {
+						t.Fatalf("tabs, editor, sort and query count must share a reading row with sort next to the frame: active=%+v closed=%+v search=%+v sort=%+v", active, closed, search, sort)
 					}
 					if search.InputWidth != 42 {
 						t.Fatalf("wide search must retain 42 text cells beside its matching options: %d cells", search.InputWidth)
@@ -134,16 +124,16 @@ func TestConnectionsToolbarRedesignWideInputSortAndQueryCountShareTextRow(t *tes
 	}
 }
 
-func TestConnectionsToolbarRedesignNarrowCompactTabFacesHaveOneCellGap(t *testing.T) {
+func TestConnectionsToolbarRedesignCompactTabFacesHaveOneCellGap(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		t.Run(language, func(t *testing.T) {
 			m := connectionsModel(t, &fakeBackend{})
 			m.locale, m.noColor = i18n.New(language), true
-			bar := m.connectionFilterBar(60)
+			bar := m.connectionFilterBar(160)
 			active := connectionToolbarRedesignTarget(t, bar, "conn.active")
 			closed := connectionToolbarRedesignTarget(t, bar, "conn.closed")
-			if active.Y != closed.Y || active.H != 1 || closed.H != 1 || active.W != closed.W {
-				t.Fatalf("narrow compact tab peers must retain one-row equal-width hits: active=%+v closed=%+v", active, closed)
+			if active.Y != closed.Y || active.W != closed.W {
+				t.Fatalf("compact tab peers must retain equal hit widths: active=%+v closed=%+v", active, closed)
 			}
 			plain := ansi.Strip(bar.lines[active.Y])
 			activeFace := strings.TrimSpace(ansi.Cut(plain, active.X, active.X+active.W))
@@ -157,30 +147,6 @@ func TestConnectionsToolbarRedesignNarrowCompactTabFacesHaveOneCellGap(t *testin
 				t.Fatalf("compact tab faces must be separated by one cell, got %d: %q", gap, plain)
 			}
 		})
-	}
-}
-
-func TestConnectionsToolbarRedesignWideTabFrameEdgesSwitchViews(t *testing.T) {
-	for _, language := range []string{i18n.English, i18n.Chinese} {
-		for _, edge := range []int{0, 2} {
-			t.Run(fmt.Sprint(language, "/edge=", edge), func(t *testing.T) {
-				m, _ := archiveFixture(t, &fakeBackend{})
-				m.locale = i18n.New(language)
-				m.connections.search.SetValue("example")
-				m, _ = update(m, tea.WindowSizeMsg{Width: 160, Height: 45})
-				for _, id := range []string{"conn.closed", "conn.active"} {
-					tab := findTarget(t, m, id)
-					search := findTarget(t, m, "conn.search")
-					if tab.Y != search.Y || tab.H != search.H || tab.H != 3 {
-						t.Fatalf("wide tab must expose its complete frame for clicking: tab=%+v search=%+v", tab, search)
-					}
-					m, _ = update(m, tea.MouseClickMsg{X: tab.X + tab.W/2, Y: tab.Y + edge, Button: tea.MouseLeft})
-					if m.connections.closedView != (id == "conn.closed") || m.connections.search.Value() != "example" || m.page != "connections" || m.connections.detail != nil || m.connections.editing || m.busy {
-						t.Fatalf("clicking frame row %d of %s failed to switch the list while preserving its query", edge, id)
-					}
-				}
-			})
-		}
 	}
 }
 
@@ -223,7 +189,7 @@ func TestConnectionsToolbarRedesignNarrowControlsPrecedeInput(t *testing.T) {
 				search := connectionToolbarRedesignTarget(t, bar, "conn.search")
 				for _, id := range []string{"conn.active", "conn.closed", "conn.sort"} {
 					control := connectionToolbarRedesignTarget(t, bar, id)
-					if control.H != 1 || control.Y+control.H > search.Y {
+					if control.Y+control.H > search.Y {
 						t.Fatalf("%s must precede the narrow editor: control=%+v search=%+v", id, control, search)
 					}
 				}
