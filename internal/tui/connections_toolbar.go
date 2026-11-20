@@ -5,10 +5,11 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 )
 
-func (m Model) connectionTabs(width int) dashboardBlock {
+func (m Model) connectionTabs(width, height int) dashboardBlock {
 	active := "--"
 	if snapshot := m.connectionSnapshot(); snapshot != nil {
 		active = fmt.Sprint(len(snapshot.Connections))
@@ -17,28 +18,35 @@ func (m Model) connectionTabs(width int) dashboardBlock {
 	minimum := max(ansi.StringWidth(labels[0]), ansi.StringWidth(labels[1]),
 		ansi.StringWidth(m.tr("connections.tab_active", "9999")), ansi.StringWidth(m.tr("connections.tab_closed", "500")))
 	var b dashboardBlock
-	line := ""
+	lines := make([]string, height)
 	for i, id := range []string{"conn.active", "conn.closed"} {
 		o := m.searchControlOptions(id)
 		o.Selectable, o.Selected, o.Width = true, m.connections.closedView == (i == 1), minimum
-		o.Compact = true
+		o.Compact, o.Height = true, height
 		o.Disabled = m.busy || m.quitting
-		value := renderButton(labels[i], o)
-		if line != "" && ansi.StringWidth(line)+ansi.StringWidth(value) > width {
-			b.lines = append(b.lines, cellCrop(line, width))
-			line = ""
+		buttonRows := strings.Split(renderButton(labels[i], o), "\n")
+		x, buttonWidth := ansi.StringWidth(lines[0]), ansi.StringWidth(buttonRows[0])
+		if x > 0 && x+buttonWidth > width {
+			b.lines = append(b.lines, lines...)
+			clear(lines)
+			x = 0
 		}
 		if !o.Disabled {
-			b.targets = append(b.targets, hitRegion{ID: id, X: ansi.StringWidth(line), Y: len(b.lines), W: ansi.StringWidth(value), H: 1})
+			b.targets = append(b.targets, hitRegion{ID: id, X: x, Y: len(b.lines), W: buttonWidth, H: height})
 		}
-		line += value
+		for row, text := range buttonRows {
+			lines[row] += text
+		}
 	}
-	b.lines = append(b.lines, cellCrop(line, width))
+	b.lines = append(b.lines, lines...)
+	for row, line := range b.lines {
+		b.lines[row] = cellCrop(line, width)
+	}
 	return b
 }
 
 func (m Model) connectionSearchToolbar(width int) listSearchToolbar {
-	return listSearchToolbar{scope: m.connectionTabs(width), functions: m.connectionControls(),
+	return listSearchToolbar{scope: m.connectionTabs(width, 1), functions: m.connectionControls(),
 		countWidth: m.connectionCountWidth(), matchingWidth: searchControlWidth(m.connectionFilterButtons()),
 		countAfterFunctions: true}
 }
@@ -90,10 +98,13 @@ func (m Model) connectionSortLabelWidth() int {
 // frame and move together above the search on narrow terminals.
 func (m Model) connectionFilterBar(width int) dashboardBlock {
 	bar := m.connectionSearchToolbar(width)
-	fieldWidth, _ := bar.searchGeometry(width)
+	fieldWidth, offset := bar.searchGeometry(width)
 	_, err := m.connectionMatcher()
 	search := m.searchToolbar("conn.search", m.tr("connections.search_placeholder"), m.connections.search,
 		m.connectionFilterButtons(), fieldWidth, err != nil)
+	if offset > 0 && !m.noColor && (m.colorProfile == colorprofile.Unknown || m.colorProfile >= colorprofile.ANSI) {
+		bar.inlineScope = m.connectionTabs(width, len(search.lines))
+	}
 	count := m.connectionCount()
 	return bar.render(search, width, count, count)
 }

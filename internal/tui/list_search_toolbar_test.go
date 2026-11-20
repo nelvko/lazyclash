@@ -63,7 +63,7 @@ func TestListSearchToolbarsKeepScopeSearchCountAndFunctionOrder(t *testing.T) {
 					}
 					if width == 160 {
 						if page == "connections" {
-							if scope.Y != search.Y+1 || scope.X+scope.W > search.X || function.Y != search.Y+1 || function.X != search.X+search.W+2 || countY != search.Y+1 || countX < function.X+function.W+1 {
+							if scope.Y+scope.H/2 != search.Y+1 || scope.X+scope.W > search.X || function.Y != search.Y+1 || function.X != search.X+search.W+2 || countY != search.Y+1 || countX < function.X+function.W+1 {
 								t.Fatalf("wide connections reading order must be scope, search, sort, query count: scope=%+v search=%+v function=%+v count=%d,%d", scope, search, function, countX, countY)
 							}
 						} else if scope.Y != search.Y+1 || scope.X+scope.W > search.X || function.Y != search.Y+1 || countY != search.Y+1 || countX < search.X+search.W+2 || countX+ansi.StringWidth(count) > function.X {

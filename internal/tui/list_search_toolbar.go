@@ -5,9 +5,9 @@ import "github.com/charmbracelet/x/ansi"
 // Pages supply their existing controls and Bubbles input. Count space stays
 // reserved on wide rows even while the count is hidden.
 type listSearchToolbar struct {
-	scope, functions          dashboardBlock
-	countWidth, matchingWidth int
-	countAfterFunctions       bool // only when scope, search and functions fit on one row
+	scope, inlineScope, functions dashboardBlock
+	countWidth, matchingWidth     int
+	countAfterFunctions           bool // only when scope, search and functions fit on one row
 }
 
 func (bar listSearchToolbar) searchGeometry(width int) (fieldWidth, offset int) {
@@ -88,7 +88,11 @@ func (bar listSearchToolbar) render(search dashboardBlock, width int, count, com
 		}
 	}
 	if offset > 0 {
-		place(bar.scope, 0, 1)
+		if len(bar.inlineScope.lines) > 0 {
+			place(bar.inlineScope, 0, 0)
+		} else {
+			place(bar.scope, 0, 1)
+		}
 		place(search, offset, 0)
 		x := offset + fieldWidth + 2
 		if bar.countWidth > 0 && !countAtEnd {
