@@ -7,11 +7,11 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-func (m Model) pathForm() bool {
+func (m *Model) pathForm() bool {
 	return m.form == "source" || m.form == "profile-url" || m.form == "profile-overrides" || (m.form == "profile-create" && m.profileCreate.field == profileCreateSource)
 }
 
-func (m Model) pathInputValue() string {
+func (m *Model) pathInputValue() string {
 	if m.form == "profile-create" {
 		return m.profileCreate.source.Value()
 	}

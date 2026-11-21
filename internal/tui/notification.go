@@ -62,11 +62,11 @@ type notificationState struct {
 	restoreFocus          string
 }
 
-func (m Model) notificationSource() notificationSource {
+func (m *Model) notificationSource() notificationSource {
 	return notificationSource{m.id, m.notification.operation.ID, m.message, m.failure, m.busy, m.messageTransient, m.messageInformational, m.page == "overview" && m.inlineInstallVisible()}
 }
 
-func (m Model) feedbackDialogOpen() bool {
+func (m *Model) feedbackDialogOpen() bool {
 	return m.ports.open || m.wizard.open || m.wizard.networkOpen || m.form != ""
 }
 
@@ -322,7 +322,7 @@ func (m *Model) notificationAction(action string) bool {
 	return true
 }
 
-func (m Model) dashboardOptions() dashboardOptions {
+func (m *Model) dashboardOptions() dashboardOptions {
 	items := m.notification.items
 	if m.page == "overview" && m.inlineInstallVisible() {
 		items = nil

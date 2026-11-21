@@ -13,7 +13,7 @@ type proxySearchReturn struct {
 	history  []proxyLocation
 }
 
-func (m Model) proxySearchQuery() string {
+func (m *Model) proxySearchQuery() string {
 	return strings.ToLower(strings.TrimSpace(m.proxies.search.Value()))
 }
 
@@ -21,7 +21,7 @@ func proxySearchMatchesGroup(query string, group mihomo.Group) bool {
 	return strings.Contains(strings.ToLower(group.Name), query) || strings.Contains(strings.ToLower(group.Type), query)
 }
 
-func (m Model) proxyMemberMatches(group mihomo.Group, node string) bool {
+func (m *Model) proxyMemberMatches(group mihomo.Group, node string) bool {
 	query := m.proxySearchQuery()
 	if query == "" || proxySearchMatchesGroup(query, group) || strings.Contains(strings.ToLower(node), query) {
 		return true
@@ -38,7 +38,7 @@ func (m Model) proxyMemberMatches(group mihomo.Group, node string) bool {
 	return strings.Contains(strings.ToLower(protocol), query)
 }
 
-func (m Model) proxyGroupMatches(group mihomo.Group) bool {
+func (m *Model) proxyGroupMatches(group mihomo.Group) bool {
 	query := m.proxySearchQuery()
 	if proxySearchMatchesGroup(query, group) {
 		return true
@@ -51,12 +51,12 @@ func (m Model) proxyGroupMatches(group mihomo.Group) bool {
 	return false
 }
 
-func (m Model) proxySearchVisible() bool {
+func (m *Model) proxySearchVisible() bool {
 	return m.proxiesReady() && !m.proxiesDirect() && m.proxies.detail == "" &&
 		(m.proxies.searchReturn != nil || m.proxies.editing || m.proxySearchQuery() != "")
 }
 
-func (m Model) proxyNarrowGroupLabelVisible() bool {
+func (m *Model) proxyNarrowGroupLabelVisible() bool {
 	if !m.proxiesNarrow() || !m.proxiesReady() || m.proxiesDirect() || m.proxies.detail != "" || m.proxies.activeGroup == "" {
 		return false
 	}
@@ -184,11 +184,11 @@ func (m *Model) focusProxyGroupMember(index int) {
 	m.revealContentFocus()
 }
 
-func (m Model) proxySearchBlock(width int) dashboardBlock {
+func (m *Model) proxySearchBlock(width int) dashboardBlock {
 	return m.searchField("proxies.search", m.tr("proxies.search_placeholder"), m.proxies.search, width, false)
 }
 
-func (m Model) proxyFixedRows(o dashboardOptions) int {
+func (m *Model) proxyFixedRows(o dashboardOptions) int {
 	rows, groupRows := 0, 0
 	if m.proxySearchVisible() {
 		rows = 1
@@ -206,7 +206,7 @@ func (m Model) proxyFixedRows(o dashboardOptions) int {
 	return 0
 }
 
-func (m Model) proxySearchFixed(rows int) bool {
+func (m *Model) proxySearchFixed(rows int) bool {
 	groupRows := 0
 	if m.proxyNarrowGroupLabelVisible() {
 		groupRows = 1
@@ -214,7 +214,7 @@ func (m Model) proxySearchFixed(rows int) bool {
 	return m.proxySearchVisible() && rows > groupRows
 }
 
-func (m Model) proxiesFixedToolbar(o dashboardOptions) dashboardBlock {
+func (m *Model) proxiesFixedToolbar(o dashboardOptions) dashboardBlock {
 	g := dashboardGeometry(o)
 	var bar dashboardBlock
 	if m.proxySearchFixed(o.BodyTopRows) {

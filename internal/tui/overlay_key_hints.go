@@ -6,7 +6,7 @@ import (
 	"github.com/nelvko/lazyclash/internal/i18n"
 )
 
-func (m Model) notificationContextHelp() string {
+func (m *Model) notificationContextHelp() string {
 	action := "details"
 	switch {
 	case m.focus == "notification.expand":
@@ -36,7 +36,7 @@ func (p notificationPanel) contextHelp(locale i18n.Localizer) string {
 	return locale.T("notification.hints."+action) + " · " + locale.T("notification.hints.listControls")
 }
 
-func (m Model) portsContextHelp() string {
+func (m *Model) portsContextHelp() string {
 	if m.busy {
 		return m.tr("ports.busy_help")
 	}
@@ -69,7 +69,7 @@ func (m Model) portsContextHelp() string {
 	return m.tr("navigation.hints.control", label)
 }
 
-func (m Model) profileDeleteContextHelp() string {
+func (m *Model) profileDeleteContextHelp() string {
 	label := m.tr("navigation.hints.continue")
 	switch m.profilesUI.deleteFocus {
 	case "profile-delete.cancel":

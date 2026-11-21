@@ -44,7 +44,7 @@ func TestSettingsFillWindowWidthAcrossSidebarAndColumnBreakpoints(t *testing.T) 
 		} {
 			t.Run(fmt.Sprintf("%s/%dx%d", language, size.width, size.height), func(t *testing.T) {
 				o := dashboardOptions{Locale: i18n.New(language), Page: "settings", Width: size.width, Height: size.height, Snapshot: settingsTestSnapshot()}
-				o.Header = (Model{page: "settings", locale: o.Locale}).pageHeader()
+				o.Header = (&Model{page: "settings", locale: o.Locale}).pageHeader()
 				g := dashboardGeometry(o)
 				if g.width != size.bodyWidth {
 					t.Fatalf("settings body width=%d, want available width %d", g.width, size.bodyWidth)
@@ -162,7 +162,7 @@ func TestSettingsUninstalledActionsAndHeaderOwnership(t *testing.T) {
 		t.Fatal("download settings gained a fallback action in the body")
 	}
 	o.Page = "settings"
-	o.Header = (Model{page: "settings", locale: o.Locale}).pageHeader()
+	o.Header = (&Model{page: "settings", locale: o.Locale}).pageHeader()
 	_, hits = settingsContent(o, 120)
 	if hasAction(hits, "network") || len(hits) != 5 {
 		t.Fatal("download settings are duplicated in the header and body")

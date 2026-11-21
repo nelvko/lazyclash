@@ -33,21 +33,22 @@ func logLevel(level string) (string, string) {
 	}
 }
 
-func (m Model) logMatches(entry mihomo.LogEntry) bool {
+func (m *Model) logMatches(entry mihomo.LogEntry) bool {
 	match, err := m.logMatcher()
 	return err == nil && match(entry)
 }
 
-func (m Model) logMatcher() (func(mihomo.LogEntry) bool, error) {
+func (m *Model) logMatcher() (func(mihomo.LogEntry) bool, error) {
 	match, err := compileSearchMatcher(m.logs.search.Value(), m.logs.caseSensitive, m.logs.wholeWord, m.logs.regex)
 	if err != nil {
 		return nil, err
 	}
+	filterLevel := m.logs.level
 	return func(entry mihomo.LogEntry) bool {
 		level, _ := logLevel(entry.Level)
-		if m.logs.level != 0 && level != []string{"", "INFO", "WARN", "ERROR"}[m.logs.level] {
+		if filterLevel != 0 && level != []string{"", "INFO", "WARN", "ERROR"}[filterLevel] {
 			// Fatal events belong to the error filter as well.
-			if m.logs.level != 3 || level != "FATAL" && level != "PANIC" {
+			if filterLevel != 3 || level != "FATAL" && level != "PANIC" {
 				return false
 			}
 		}
@@ -55,7 +56,7 @@ func (m Model) logMatcher() (func(mihomo.LogEntry) bool, error) {
 	}, nil
 }
 
-func (m Model) logDocument(width int) logDocument {
+func (m *Model) logDocument(width int) logDocument {
 	width = max(1, width)
 	var doc logDocument
 	match, err := m.logMatcher()
@@ -102,7 +103,7 @@ func (m Model) logDocument(width int) logDocument {
 	return doc
 }
 
-func (m Model) logViewport(doc logDocument, width, height int) viewport.Model {
+func (m *Model) logViewport(doc logDocument, width, height int) viewport.Model {
 	v := viewport.New(viewport.WithWidth(max(1, width)), viewport.WithHeight(max(1, height)))
 	v.SetContentLines(append([]string(nil), doc.lines...))
 	if !m.logs.holding {
@@ -125,7 +126,7 @@ func (m Model) logViewport(doc logDocument, width, height int) viewport.Model {
 	return v
 }
 
-func (m Model) logControl(id string) dashboardBlock {
+func (m *Model) logControl(id string) dashboardBlock {
 	keys := logLevelKeys[:]
 	label := m.tr(logLevelKeys[m.logs.level]) + " ▾"
 	if id == "logs.view" {
@@ -150,15 +151,15 @@ func (m Model) logControl(id string) dashboardBlock {
 	return b
 }
 
-func (m Model) logSearchButtons() dashboardBlock {
+func (m *Model) logSearchButtons() dashboardBlock {
 	return m.searchMatchingButtons("logs", m.logs.caseSensitive, m.logs.wholeWord, m.logs.regex)
 }
 
-func (m Model) logFilterActive() bool {
+func (m *Model) logFilterActive() bool {
 	return strings.TrimSpace(m.logs.search.Value()) != "" || m.logs.level != 0
 }
 
-func (m Model) logCount() (full, compact string) {
+func (m *Model) logCount() (full, compact string) {
 	if !m.logFilterActive() {
 		return "", ""
 	}
@@ -175,25 +176,25 @@ func (m Model) logCount() (full, compact string) {
 
 // Reserve the bounded cache's maximum ratio even while hidden. Incoming events
 // and entering or clearing a query must not resize the search frame.
-func (m Model) logCountWidth() int {
+func (m *Model) logCountWidth() int {
 	return ansi.StringWidth(m.tr("logs.filtered_count", retainedLogLimit, retainedLogLimit))
 }
 
-func (m Model) logSearchToolbar() listSearchToolbar {
+func (m *Model) logSearchToolbar() listSearchToolbar {
 	return listSearchToolbar{scope: m.logControl("logs.level"), functions: m.logControl("logs.view"),
 		countWidth: m.logCountWidth(), matchingWidth: searchControlWidth(m.logSearchButtons())}
 }
 
-func (m Model) logSearchWidth(width int) int {
+func (m *Model) logSearchWidth(width int) int {
 	fieldWidth, _ := m.logSearchToolbar().searchGeometry(width)
 	return inputFieldTextWidth(fieldWidth, searchControlWidth(m.logSearchButtons()), true)
 }
 
-func (m Model) logFilterRows(width int) int {
+func (m *Model) logFilterRows(width int) int {
 	return m.logSearchToolbar().rows(width, m.logFilterActive())
 }
 
-func (m Model) logFilterBar(width int) dashboardBlock {
+func (m *Model) logFilterBar(width int) dashboardBlock {
 	bar := m.logSearchToolbar()
 	fieldWidth, _ := bar.searchGeometry(width)
 	_, err := m.logMatcher()
@@ -203,7 +204,7 @@ func (m Model) logFilterBar(width int) dashboardBlock {
 	return bar.render(search, width, count, compactCount)
 }
 
-func (m Model) logsToolbar(width, rows int) dashboardBlock {
+func (m *Model) logsToolbar(width, rows int) dashboardBlock {
 	width = max(1, width)
 	b := m.logFilterBar(width)
 	b.lines = b.lines[:min(rows, len(b.lines))]
@@ -217,7 +218,7 @@ func (m Model) logsToolbar(width, rows int) dashboardBlock {
 	return b
 }
 
-func (m Model) logsPrefix(width int) dashboardBlock {
+func (m *Model) logsPrefix(width int) dashboardBlock {
 	var b dashboardBlock
 	if m.dashboardOptions().BodyTopRows == 0 {
 		b = m.logsToolbar(width, m.filterToolbarRows(width))
@@ -240,11 +241,11 @@ func (m Model) logsPrefix(width int) dashboardBlock {
 	return b
 }
 
-func (m Model) logsCapacity(width int) int {
+func (m *Model) logsCapacity(width int) int {
 	return max(1, dashboardGeometry(m.dashboardOptions()).height-len(m.logsPrefix(width).lines)-1)
 }
 
-func (m Model) logsStatus() (string, string) {
+func (m *Model) logsStatus() (string, string) {
 	if !m.snapshotReady {
 		if m.busy {
 			return m.tr("empty.loading"), muted
@@ -272,7 +273,7 @@ func (m Model) logsStatus() (string, string) {
 	return m.tr("logs.capturing"), info
 }
 
-func (m Model) logsBody(width int) (string, []hitRegion) {
+func (m *Model) logsBody(width int) (string, []hitRegion) {
 	width = max(1, width)
 	doc := m.logDocument(width)
 	b := m.logsPrefix(width)
@@ -342,7 +343,7 @@ func (m Model) logsBody(width int) (string, []hitRegion) {
 	return strings.Join(b.lines, "\n"), b.targets
 }
 
-func (m Model) logsEmptyState() emptyStateOptions {
+func (m *Model) logsEmptyState() emptyStateOptions {
 	entries, _ := m.logsDisplayEntries()
 	if len(entries) == 0 {
 		if core, ok := m.coreEmptyState(); ok {

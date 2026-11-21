@@ -109,7 +109,7 @@ func (m *Model) profileGridKey(k tea.KeyPressMsg) bool {
 	return true
 }
 
-func (m Model) profileGridCards() []hitRegion {
+func (m *Model) profileGridCards() []hitRegion {
 	_, hits := m.pageBody(dashboardBodyWidth(dashboardOptions{Width: m.width, Height: m.height, Page: m.page}))
 	var cards []hitRegion
 	for _, hit := range hits {

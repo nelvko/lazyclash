@@ -6,12 +6,12 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
-func (m Model) profileMenuAvailable() bool {
+func (m *Model) profileMenuAvailable() bool {
 	return m.page == "profiles" && m.snapshotReady && !m.busy && !m.quitting &&
 		!m.sidebarOpen && !m.helpOpen && !m.ports.open && !m.wizard.open && !m.wizard.networkOpen && m.form == ""
 }
 
-func (m Model) profileMenuItems(id string) []menuItem {
+func (m *Model) profileMenuItems(id string) []menuItem {
 	info := m.profileInfo(id)
 	apply := menuItem{ID: "apply", Label: m.tr("profile_menu.use")}
 	if id == m.snapshot.Applied {
@@ -84,7 +84,7 @@ func (m *Model) openProfileMenuAt(x, y int) {
 
 // Use visible card geometry so a toast covering one corner does not disable
 // the rest of the card. The toast's own cells remain excluded above.
-func (m Model) profileMenuCardRegions() []hitRegion {
+func (m *Model) profileMenuCardRegions() []hitRegion {
 	g := dashboardGeometry(m.dashboardOptions())
 	var regions []hitRegion
 	for _, hit := range m.profileGridCards() {

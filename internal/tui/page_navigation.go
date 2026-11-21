@@ -106,7 +106,7 @@ func (m *Model) returnToNavigation() {
 	}
 }
 
-func (m Model) navigationOptions() dashboardOptions {
+func (m *Model) navigationOptions() dashboardOptions {
 	o := m.dashboardOptions()
 	o.Snapshot, o.Focus, o.Hover = m.snapshot, m.focus, m.hover
 	o.GuideDismissed = m.snapshot.GuideDismissed
@@ -118,7 +118,7 @@ func (m Model) navigationOptions() dashboardOptions {
 
 // Keyboard targets include controls outside the visible viewport. Mouse targets
 // remain clipped by renderDashboard and never include the logical containers.
-func (m Model) contentTargets() []hitRegion {
+func (m *Model) contentTargets() []hitRegion {
 	o := m.navigationOptions()
 	width := dashboardBodyWidth(o)
 	switch m.page {
@@ -140,7 +140,7 @@ func (m Model) contentTargets() []hitRegion {
 	}
 }
 
-func (m Model) fixedContentTargets() []hitRegion {
+func (m *Model) fixedContentTargets() []hitRegion {
 	o := m.dashboardOptions()
 	if o.BodyTopRows == 0 {
 		return nil
@@ -170,7 +170,7 @@ func (m Model) fixedContentTargets() []hitRegion {
 	return b.targets
 }
 
-func (m Model) restoredContentFocus(state pageViewState) string {
+func (m *Model) restoredContentFocus(state pageViewState) string {
 	if state.profile != "" {
 		for index, name := range m.profiles() {
 			if name == state.profile {

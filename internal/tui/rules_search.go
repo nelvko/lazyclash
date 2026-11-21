@@ -9,7 +9,7 @@ import (
 
 // Each field is matched independently, so a pattern cannot accidentally span
 // the payload/type/proxy boundaries. Filtering never changes matching order.
-func (m Model) ruleMatcher() (func(mihomo.Rule) bool, error) {
+func (m *Model) ruleMatcher() (func(mihomo.Rule) bool, error) {
 	match, err := compileSearchMatcher(m.rules.search.Value(), m.rules.caseSensitive, m.rules.wholeWord, m.rules.regex)
 	if err != nil {
 		return nil, err

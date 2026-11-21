@@ -43,7 +43,7 @@ func (h pageHeader) enabled(id string) bool {
 	return false
 }
 
-func (m Model) hasRefreshableProfiles() bool {
+func (m *Model) hasRefreshableProfiles() bool {
 	for _, profile := range m.snapshot.ProfileDetails {
 		if profile.Refreshable {
 			return true
@@ -52,7 +52,7 @@ func (m Model) hasRefreshableProfiles() bool {
 	return false
 }
 
-func (m Model) pageHeader() pageHeader {
+func (m *Model) pageHeader() pageHeader {
 	tr := m.tr
 	h := pageHeader{}
 	switch m.page {

@@ -2,7 +2,7 @@ package tui
 
 import "strings"
 
-func (m Model) connectionsContextHelp() string {
+func (m *Model) connectionsContextHelp() string {
 	tr := m.tr
 	if m.connections.editing {
 		return tr("navigation.connections.searching")
@@ -60,10 +60,15 @@ func (m Model) connectionsContextHelp() string {
 		}
 	}
 	list := m.filteredConnections()
+	canClose := false
 	for _, c := range list {
-		if m.focus == "connection."+m.connectionRowKey(c) {
+		id := m.connectionRowKey(c)
+		if m.focus == "connection."+id {
 			action = "details"
-			break
+		}
+		// A paused list can still include a connection that has ended.
+		if !m.connections.closedView && m.connections.selected == id {
+			canClose = m.connectionActive(c)
 		}
 	}
 	if action != "" {
@@ -84,20 +89,14 @@ func (m Model) connectionsContextHelp() string {
 	} else if m.connectionSnapshot() != nil {
 		parts = append(parts, tr("navigation.connections.pause"))
 	}
-	if !m.connections.closedView {
-		// The paused list may retain a connection that has already ended. Use the
-		// same exact-ID and lifetime check as the detail close action.
-		inspection := m
-		inspection.openSelectedConnection()
-		if inspection.detailActive() {
-			parts = append(parts, tr("navigation.connections.close"))
-		}
+	if canClose {
+		parts = append(parts, tr("navigation.connections.close"))
 	}
 	parts = append(parts, tr("navigation.connections.controls"))
 	return strings.Join(parts, " · ")
 }
 
-func (m Model) logsContextHelp() string {
+func (m *Model) logsContextHelp() string {
 	tr := m.tr
 	if m.logs.editing {
 		return tr("navigation.logs.searching")

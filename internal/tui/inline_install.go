@@ -16,7 +16,7 @@ import (
 // First installation uses the shared installation state machine, while the
 // overview owns its layout, scrolling and navigation. Installed-core management
 // keeps the modal because replacement and upgrades need an impact review.
-func (m Model) inlineInstallVisible() bool {
+func (m *Model) inlineInstallVisible() bool {
 	return m.wizard.inline && !m.guideSkipped && m.snapshotReady &&
 		(m.wizard.step == stepInstalling || m.wizard.step == stepResult || !m.snapshot.Installed && !m.snapshot.GuideDismissed)
 }
@@ -118,14 +118,14 @@ func (m *Model) handleInlineWizardResult(v wizardMsg) tea.Cmd {
 	return cmd
 }
 
-func (m Model) inlineInputActive() bool {
+func (m *Model) inlineInputActive() bool {
 	return m.page == "overview" && m.inlineInstallVisible() && !m.sidebarOpen &&
 		!m.wizard.open && !m.wizard.networkOpen &&
 		!m.inlineInstallCompact(dashboardBodyWidth(m.dashboardOptions())) &&
 		(m.focus == "setup.local" || m.focus == "setup.version-input")
 }
 
-func (m Model) inlineInstallCompact(width int) bool {
+func (m *Model) inlineInstallCompact(width int) bool {
 	return width < 34 || m.width < 38 || dashboardGeometry(m.dashboardOptions()).height < 6
 }
 
@@ -142,7 +142,7 @@ func (m *Model) blurInlineInput() {
 	m.wizard.version.Blur()
 }
 
-func (m Model) inlineCanInstall() bool {
+func (m *Model) inlineCanInstall() bool {
 	if m.busy || m.quitting || m.wizard.err != "" || m.inlineInstallCompact(dashboardBodyWidth(m.dashboardOptions())) {
 		return false
 	}
@@ -162,7 +162,7 @@ func (m Model) inlineCanInstall() bool {
 	return w.updateCheck.LatestVersion != ""
 }
 
-func (m Model) inlineInstallHint() string {
+func (m *Model) inlineInstallHint() string {
 	if m.inlineInputActive() {
 		return m.tr("dashboard.setup.inputHint")
 	}
@@ -311,7 +311,7 @@ func (m *Model) inlineInstallActivate(id string) tea.Cmd {
 }
 
 type inlineInstallDocument struct {
-	model   Model
+	model   *Model
 	width   int
 	lines   []string
 	targets []hitRegion
@@ -388,7 +388,7 @@ func (d *inlineInstallDocument) buttons(buttons ...wizardButton) {
 	}
 }
 
-func (m Model) inlineInstallBody(width int) (string, []hitRegion) {
+func (m *Model) inlineInstallBody(width int) (string, []hitRegion) {
 	w := m.wizard
 	if m.inlineInstallCompact(width) {
 		lines := []string{

@@ -89,7 +89,7 @@ func (m *Model) reconnectLogs() tea.Cmd {
 	return tea.Batch(m.retryRuntime(), m.refreshCoreStatus())
 }
 
-func (m Model) logsDisplayEntries() ([]mihomo.LogEntry, uint64) {
+func (m *Model) logsDisplayEntries() ([]mihomo.LogEntry, uint64) {
 	if m.logs.paused {
 		return m.logs.frozen, m.logs.frozenFirst
 	}

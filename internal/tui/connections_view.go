@@ -14,7 +14,7 @@ import (
 
 const connectionTableMinWidth = 85
 
-func (m Model) connectionNow() time.Time {
+func (m *Model) connectionNow() time.Time {
 	if m.connections.paused && m.connections.detail == nil {
 		return m.connections.frozenAt
 	}
@@ -89,7 +89,7 @@ func connectionValue(s string) string {
 	return clean(s)
 }
 
-func (m Model) connectionControls() dashboardBlock {
+func (m *Model) connectionControls() dashboardBlock {
 	o := m.searchControlOptions("conn.sort")
 	o.Kind, o.Disabled = buttonText, m.busy || m.quitting
 	o.Compact, o.AlignLeft = true, true
@@ -102,7 +102,7 @@ func (m Model) connectionControls() dashboardBlock {
 	return b
 }
 
-func (m Model) connectionToolbarRows(width int) int {
+func (m *Model) connectionToolbarRows(width int) int {
 	_, available := m.connectionTotalCount()
 	rows := m.connectionSearchToolbar(width).rows(width, available && strings.TrimSpace(m.connections.search.Value()) != "") + 1
 	if status, _ := m.connectionStatus(); status != "" {
@@ -111,12 +111,12 @@ func (m Model) connectionToolbarRows(width int) int {
 	return rows
 }
 
-func (m Model) connectionSearchWidth(width int) int {
+func (m *Model) connectionSearchWidth(width int) int {
 	fieldWidth, _ := m.connectionSearchGeometry(width)
 	return inputFieldTextWidth(fieldWidth, searchControlWidth(m.connectionFilterButtons()), true)
 }
 
-func (m Model) connectionsToolbar(width, rows int) dashboardBlock {
+func (m *Model) connectionsToolbar(width, rows int) dashboardBlock {
 	b := m.connectionFilterBar(width)
 	status, color := m.connectionStatus()
 	if status != "" {
@@ -138,7 +138,7 @@ func (m Model) connectionsToolbar(width, rows int) dashboardBlock {
 	return b
 }
 
-func (m Model) connectionColumns(width int) (columns []table.Column, chainColumn, numericColumn int) {
+func (m *Model) connectionColumns(width int) (columns []table.Column, chainColumn, numericColumn int) {
 	columns = []table.Column{{Title: "", Width: 1}, {Title: m.tr("connections.destination"), Width: 24}, {Title: m.tr("connections.protocol"), Width: 5}}
 	if width >= 125 {
 		columns = append(columns, table.Column{Title: m.tr("connections.process"), Width: 12})
@@ -183,7 +183,7 @@ func connectionNumberCell(value string, width int) string {
 
 // Bubbles table handles cell sizing, ANSI-aware truncation and selection. The
 // dashboard retains the only scrolling viewport and maps rows to opaque IDs.
-func (m Model) connectionTable(list []mihomo.Connection, width int) []string {
+func (m *Model) connectionTable(list []mihomo.Connection, width int) []string {
 	columns, chainColumn, numericColumn := m.connectionColumns(width)
 	var rows []table.Row
 	for _, c := range list {
@@ -236,7 +236,7 @@ func (m Model) connectionTable(list []mihomo.Connection, width int) []string {
 	return lines
 }
 
-func (m Model) compactConnectionRows(c mihomo.Connection, width int) []string {
+func (m *Model) compactConnectionRows(c mihomo.Connection, width int) []string {
 	id, surface, marker := "connection."+m.connectionRowKey(c), bg, "  "
 	if m.connectionRowKey(c) == m.connections.selected {
 		surface, marker = panel, "▌ "
@@ -254,7 +254,7 @@ func (m Model) compactConnectionRows(c mihomo.Connection, width int) []string {
 	return []string{themed(cellPad(first, width), foreground, surface, false), themed(cellPad(second, width), muted, surface, false)}
 }
 
-func (m Model) connectionsBody(width int) (string, []hitRegion) {
+func (m *Model) connectionsBody(width int) (string, []hitRegion) {
 	var lines []string
 	var hits []hitRegion
 	addText := func(s, color string) {
@@ -380,7 +380,7 @@ func (m Model) connectionsBody(width int) (string, []hitRegion) {
 	return strings.Join(lines, "\n"), hits
 }
 
-func (m Model) connectionsEmptyState() emptyStateOptions {
+func (m *Model) connectionsEmptyState() emptyStateOptions {
 	state := emptyStateOptions{Title: m.tr("connections.empty")}
 	filtered := strings.TrimSpace(m.connections.search.Value()) != ""
 	filterState := func() emptyStateOptions {

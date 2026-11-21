@@ -108,6 +108,8 @@ type networkMsg struct {
 	err     error
 }
 
+// Bubble Tea receives a Model value at each update boundary. Internal helpers
+// use pointer receivers to avoid copying all the page and input states again.
 type Model struct {
 	locale                i18n.Localizer
 	languageOverride      string
@@ -204,21 +206,23 @@ func Run(ctx context.Context, backend Backend, languages ...string) error {
 	return err
 }
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(m.snapshotCmd(m.id, m.opCtx, true), m.spinner.Tick, func() tea.Msg { <-m.ctx.Done(); return parentCanceledMsg{} })
+	ctx := m.ctx
+	return tea.Batch(m.snapshotCmd(m.id, m.opCtx, true), m.spinner.Tick, func() tea.Msg { <-ctx.Done(); return parentCanceledMsg{} })
 }
 
-func (m Model) snapshotCmd(id uint64, ctx context.Context, initial bool) tea.Cmd {
+func (m *Model) snapshotCmd(id uint64, ctx context.Context, initial bool) tea.Cmd {
+	backend := m.backend
 	return func() tea.Msg {
 		var p *app.Preferences
 		var pe error
 		if initial {
-			value, err := m.backend.LoadPreferences(ctx)
+			value, err := backend.LoadPreferences(ctx)
 			pe = err
 			if err == nil {
 				p = &value
 			}
 		}
-		s, err := m.backend.Snapshot(ctx)
+		s, err := backend.Snapshot(ctx)
 		return resultMsg{id: id, snapshot: s, hasSnapshot: err == nil, prefs: p, err: errors.Join(pe, err), success: "State refreshed", transient: true}
 	}
 }
@@ -1473,7 +1477,7 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 	}
 	return nil
 }
-func (m Model) profiles() []string {
+func (m *Model) profiles() []string {
 	p := []string{"default"}
 	seen := map[string]bool{"default": true}
 	for _, n := range m.snapshot.Profiles {
@@ -1484,7 +1488,7 @@ func (m Model) profiles() []string {
 	}
 	return p
 }
-func (m Model) pageBody(width int) (string, []hitRegion) {
+func (m *Model) pageBody(width int) (string, []hitRegion) {
 	if m.page == "overview" && m.inlineInstallVisible() {
 		return m.inlineInstallBody(width)
 	}
@@ -1506,7 +1510,7 @@ func (m Model) pageBody(width int) (string, []hitRegion) {
 	return "", nil
 }
 
-func (m Model) populatePageBody(o *dashboardOptions) {
+func (m *Model) populatePageBody(o *dashboardOptions) {
 	g := dashboardGeometry(*o)
 	if m.page == "logs" && o.BodyTopRows > 0 {
 		o.BodyTop = m.logsToolbar(g.width, o.BodyTopRows)

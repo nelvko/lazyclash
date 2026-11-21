@@ -2,7 +2,7 @@ package tui
 
 // Live pages share the confirmed service state. A stopped core is not a failed
 // connection, even while the monitor stays subscribed to observe its next start.
-func (m Model) corePageState() (state, label string) {
+func (m *Model) corePageState() (state, label string) {
 	if !m.snapshotReady {
 		return "", ""
 	}
@@ -35,7 +35,7 @@ func (m Model) corePageState() (state, label string) {
 	return "", ""
 }
 
-func (m Model) corePageAction() (id, label string) {
+func (m *Model) corePageAction() (id, label string) {
 	state, _ := m.corePageState()
 	switch state {
 	case "uninstalled":

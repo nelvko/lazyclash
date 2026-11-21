@@ -28,13 +28,13 @@ func searchClearID(id string) string {
 	return ""
 }
 
-func (m Model) searchField(id, placeholder string, input textinput.Model, width int, invalid bool) dashboardBlock {
+func (m *Model) searchField(id, placeholder string, input textinput.Model, width int, invalid bool) dashboardBlock {
 	return m.searchToolbar(id, placeholder, input, dashboardBlock{}, width, invalid)
 }
 
 // Search fields use the same surface as their containing page or dialog. Their
 // outline and trailing controls own a single bounded region, capped at 60 cells.
-func (m Model) searchToolbar(id, placeholder string, input textinput.Model, controls dashboardBlock, width int, invalid bool) dashboardBlock {
+func (m *Model) searchToolbar(id, placeholder string, input textinput.Model, controls dashboardBlock, width int, invalid bool) dashboardBlock {
 	surface := bg
 	if id == "providers.search" {
 		surface = raised
@@ -50,7 +50,7 @@ func (m Model) searchToolbar(id, placeholder string, input textinput.Model, cont
 	})
 }
 
-func (m Model) searchControlOptions(id string) buttonOptions {
+func (m *Model) searchControlOptions(id string) buttonOptions {
 	return buttonOptions{Surface: bg, Focused: m.focus == id, Hovered: m.hover == id,
 		Plain: m.buttonPlain(), Dim: m.feedbackDialogOpen() || m.helpOpen || m.notification.panel.open || m.providers.open}
 }
@@ -62,14 +62,14 @@ func searchControlWidth(controls dashboardBlock) int {
 	return ansi.StringWidth(controls.lines[0])
 }
 
-func (m Model) searchToolbarGap() int {
+func (m *Model) searchToolbarGap() int {
 	if m.height >= 24 {
 		return 1
 	}
 	return 0
 }
 
-func (m Model) filterToolbarRows(width int) int {
+func (m *Model) filterToolbarRows(width int) int {
 	if m.page == "logs" {
 		return m.logFilterRows(width)
 	}
@@ -80,7 +80,7 @@ func (m Model) filterToolbarRows(width int) int {
 	return rows
 }
 
-func (m Model) searchMatchingButtons(prefix string, caseSensitive, wholeWord, regular bool) dashboardBlock {
+func (m *Model) searchMatchingButtons(prefix string, caseSensitive, wholeWord, regular bool) dashboardBlock {
 	var b dashboardBlock
 	line := ""
 	for _, item := range []struct {

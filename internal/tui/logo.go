@@ -121,12 +121,12 @@ func logoGradientColor(column, intro int) string {
 	return fmt.Sprintf("#%02x%02x%02x", mix(r, pr), mix(g, pg), mix(b, pb))
 }
 
-func (m Model) logoVisible() bool {
+func (m *Model) logoVisible() bool {
 	o := m.dashboardOptions()
 	return dashboardGeometry(o).sidebar && !o.Dim && !m.menu.open && !m.busy && !m.quitting && m.ctx.Err() == nil
 }
 
-func (m Model) logoIntroVisible() bool {
+func (m *Model) logoIntroVisible() bool {
 	return m.logoVisible() && !m.noColor && m.colorProfile >= colorprofile.ANSI256
 }
 
@@ -167,7 +167,7 @@ func (m *Model) advanceLogoIntro(v logoIntroMsg) tea.Cmd {
 	return m.logoIntroTick(logoIntroInterval)
 }
 
-func (m Model) logoIntroTick(delay time.Duration) tea.Cmd {
+func (m *Model) logoIntroTick(delay time.Duration) tea.Cmd {
 	generation := m.logoGeneration
 	return tea.Tick(delay, func(time.Time) tea.Msg {
 		return logoIntroMsg{generation: generation}
@@ -205,7 +205,7 @@ func (m *Model) advanceLogoPulse(v logoPulseMsg) tea.Cmd {
 	return m.logoTick()
 }
 
-func (m Model) logoTick() tea.Cmd {
+func (m *Model) logoTick() tea.Cmd {
 	generation := m.logoGeneration
 	return tea.Tick(logoFrameAt(m.logoFrame).duration, func(time.Time) tea.Msg {
 		return logoPulseMsg{generation: generation}

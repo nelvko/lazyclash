@@ -2,7 +2,7 @@ package tui
 
 import "strings"
 
-func (m Model) proxiesContextHelp() string {
+func (m *Model) proxiesContextHelp() string {
 	tr := m.tr
 	if m.proxiesDirect() || !m.proxiesReady() {
 		return tr("navigation.proxies.directBrowse")
@@ -103,7 +103,7 @@ func (m Model) proxiesContextHelp() string {
 	return strings.Join(hints, " · ")
 }
 
-func (m Model) proxyGroupHasTestAction(name string) bool {
+func (m *Model) proxyGroupHasTestAction(name string) bool {
 	if _, supported := m.backend.(proxyDelayBackend); !supported {
 		return false
 	}
@@ -119,7 +119,7 @@ func (m Model) proxyGroupHasTestAction(name string) bool {
 	return false
 }
 
-func (m Model) proxyNodeHasTestAction(group, node string) bool {
+func (m *Model) proxyNodeHasTestAction(group, node string) bool {
 	if _, supported := m.backend.(proxyDelayBackend); !supported || !m.proxyTestable(node) {
 		return false
 	}

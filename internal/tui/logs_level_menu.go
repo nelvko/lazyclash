@@ -8,13 +8,13 @@ import (
 
 var logLevelKeys = [...]string{"logs.level_all", "logs.level_info", "logs.level_warn", "logs.level_error"}
 
-func (m Model) logLevelMenuAvailable() bool {
+func (m *Model) logLevelMenuAvailable() bool {
 	return m.page == "logs" && !m.busy && !m.quitting && !m.sidebarOpen &&
 		!m.providers.open && !m.helpOpen && !m.ports.open && !m.wizard.open &&
 		!m.wizard.networkOpen && m.form == "" && !m.notification.panel.open
 }
 
-func (m Model) logLevelMenuItems() []menuItem {
+func (m *Model) logLevelMenuItems() []menuItem {
 	items := make([]menuItem, len(logLevelKeys))
 	for level, key := range logLevelKeys {
 		items[level] = menuItem{ID: strconv.Itoa(level), Label: m.tr(key), Checked: level == m.logs.level}

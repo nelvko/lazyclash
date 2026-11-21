@@ -82,13 +82,13 @@ func newProxiesState() proxiesState {
 	return proxiesState{search: search, expanded: make(map[string]bool), sorts: make(map[string]string), order: make(map[string][]string), results: make(map[string]proxyMeasurement)}
 }
 
-func (m Model) proxiesReady() bool {
+func (m *Model) proxiesReady() bool {
 	state, _ := m.corePageState()
 	return state == "" && m.snapshotReady && m.snapshot.Installed && m.snapshot.Service.Active && m.snapshot.ServiceError == "" && m.snapshot.APIError == ""
 }
-func (m Model) proxiesDirect() bool { return m.snapshot.Mode.Actual == "direct" }
-func (m Model) proxiesNarrow() bool { return m.width < sidebarMinWidth }
-func (m Model) proxyGroupExpanded(name string) bool {
+func (m *Model) proxiesDirect() bool { return m.snapshot.Mode.Actual == "direct" }
+func (m *Model) proxiesNarrow() bool { return m.width < sidebarMinWidth }
+func (m *Model) proxyGroupExpanded(name string) bool {
 	if name == "" {
 		return false
 	}
@@ -114,7 +114,7 @@ func (m *Model) expandProxyGroup(name string) {
 	}
 	m.proxies.activeGroup = name
 }
-func (m Model) hasExpandedProxyGroups() bool {
+func (m *Model) hasExpandedProxyGroups() bool {
 	if m.proxiesNarrow() {
 		return m.proxies.activeGroup != ""
 	}
@@ -128,7 +128,7 @@ func (m Model) hasExpandedProxyGroups() bool {
 	}
 	return len(m.proxies.expanded) > 0
 }
-func (m Model) proxySort(group string) string {
+func (m *Model) proxySort(group string) string {
 	if order := m.proxies.sorts[group]; order != "" {
 		return order
 	}
@@ -143,7 +143,7 @@ func cloneProxyExpansion(expanded map[string]bool) map[string]bool {
 	}
 	return copy
 }
-func (m Model) proxyGroup(name string) (int, mihomo.Group, bool) {
+func (m *Model) proxyGroup(name string) (int, mihomo.Group, bool) {
 	for i, g := range m.snapshot.Groups {
 		if g.Name == name {
 			return i, g, true
@@ -151,7 +151,7 @@ func (m Model) proxyGroup(name string) (int, mihomo.Group, bool) {
 	}
 	return 0, mihomo.Group{}, false
 }
-func (m Model) proxyLocation() proxyLocation {
+func (m *Model) proxyLocation() proxyLocation {
 	loc := proxyLocation{group: m.proxies.activeGroup, expanded: cloneProxyExpansion(m.proxies.expanded), focus: m.focus, scroll: m.scroll}
 	if _, g, n, ok := m.proxyFocusedGroup(); ok && (strings.HasPrefix(m.focus, "node.") || strings.HasPrefix(m.focus, "group.") || strings.HasPrefix(m.focus, "proxies.reference.") || strings.HasPrefix(m.focus, "proxies.delay.") || strings.HasPrefix(m.focus, "proxies.sort.") || strings.HasPrefix(m.focus, "proxies.test.")) {
 		loc.identity = pageViewState{group: g.Name, node: n, focus: m.focus}
@@ -175,7 +175,7 @@ func (m *Model) restoreProxyLocation(loc proxyLocation) {
 	}
 	m.rememberPageView()
 }
-func (m Model) proxyAtFocus() (int, mihomo.Group, string, bool) {
+func (m *Model) proxyAtFocus() (int, mihomo.Group, string, bool) {
 	if m.proxiesDirect() {
 		return 0, mihomo.Group{}, "", false
 	}
@@ -183,7 +183,7 @@ func (m Model) proxyAtFocus() (int, mihomo.Group, string, bool) {
 }
 
 // Locations retain their identity while Direct temporarily hides the groups.
-func (m Model) proxyFocusedGroup() (int, mihomo.Group, string, bool) {
+func (m *Model) proxyFocusedGroup() (int, mihomo.Group, string, bool) {
 	var gi, ni int
 	nodeFocus := strings.Replace(strings.Replace(m.focus, "proxies.reference.", "node.", 1), "proxies.delay.", "node.", 1)
 	if _, err := fmt.Sscanf(nodeFocus, "node.%d.%d", &gi, &ni); err == nil && gi >= 0 && gi < len(m.snapshot.Groups) {
@@ -204,7 +204,7 @@ func (m Model) proxyFocusedGroup() (int, mihomo.Group, string, bool) {
 	gi, g, ok := m.proxyGroup(m.proxies.activeGroup)
 	return gi, g, "", ok
 }
-func (m Model) proxyPath(name string) []string {
+func (m *Model) proxyPath(name string) []string {
 	var path []string
 	seen := make(map[string]bool)
 	for name != "" {
@@ -221,15 +221,15 @@ func (m Model) proxyPath(name string) []string {
 	}
 	return path
 }
-func (m Model) proxyPathKey(name string) string { return strings.Join(m.proxyPath(name), "\x00") }
-func (m Model) proxySummary(name string) string {
+func (m *Model) proxyPathKey(name string) string { return strings.Join(m.proxyPath(name), "\x00") }
+func (m *Model) proxySummary(name string) string {
 	path := m.proxyPath(name)
 	if len(path) == 0 {
 		return m.tr("proxies.no_selection")
 	}
 	return path[len(path)-1]
 }
-func (m Model) proxyNodeMeta(name string) string {
+func (m *Model) proxyNodeMeta(name string) string {
 	if _, g, ok := m.proxyGroup(name); ok {
 		summary := m.proxySummary(g.Now)
 		if g.Type == "LoadBalance" || g.Type == "Relay" {
@@ -239,7 +239,7 @@ func (m Model) proxyNodeMeta(name string) string {
 	}
 	return m.proxyMeta(name)
 }
-func (m Model) proxyMeta(name string) string {
+func (m *Model) proxyMeta(name string) string {
 	if _, g, ok := m.proxyGroup(name); ok {
 		if g.Type == "LoadBalance" || g.Type == "Relay" {
 			return g.Type + " · " + m.tr("proxies.distributed")
@@ -262,7 +262,7 @@ func (m Model) proxyMeta(name string) string {
 	}
 	return meta
 }
-func (m Model) proxyTestable(name string) bool {
+func (m *Model) proxyTestable(name string) bool {
 	seen := make(map[string]bool)
 	for _, n := range m.proxyPath(name) {
 		p, exists := m.snapshot.Proxies[n]
@@ -281,7 +281,7 @@ func (m Model) proxyTestable(name string) bool {
 	return true
 }
 func proxyResultKey(group, node string) string { return group + "\x00" + node }
-func (m Model) proxyDelay(group, node string) proxyMeasurement {
+func (m *Model) proxyDelay(group, node string) proxyMeasurement {
 	if r, ok := m.proxies.results[proxyResultKey(group, node)]; ok && r.path == m.proxyPathKey(node) {
 		return r
 	}
@@ -301,11 +301,15 @@ func (m Model) proxyDelay(group, node string) proxyMeasurement {
 	}
 	return proxyMeasurement{}
 }
-func (m Model) proxyGroupInMode(name string) bool {
+func (m *Model) proxyGroupInMode(name string) bool {
 	return (m.snapshot.Mode.Actual == "global") == (name == "GLOBAL")
 }
 
-func (m Model) visibleProxyGroups() []int {
+func (m *Model) visibleProxyGroups() []int {
+	return m.proxyGroups(m.proxySearchQuery())
+}
+
+func (m *Model) proxyGroups(query string) []int {
 	if m.proxiesDirect() {
 		return nil
 	}
@@ -318,13 +322,13 @@ func (m Model) visibleProxyGroups() []int {
 		} else if !m.proxyGroupInMode(g.Name) && !(len(m.proxies.history) > 0 && m.proxies.expanded[g.Name]) {
 			continue
 		}
-		if m.proxySearchQuery() == "" || m.proxiesNarrow() && g.Name == m.proxies.activeGroup || m.proxyGroupMatches(g) {
+		if query == "" || m.proxiesNarrow() && g.Name == m.proxies.activeGroup || m.proxyGroupMatches(g) {
 			out = append(out, i)
 		}
 	}
 	return out
 }
-func (m Model) proxyMembers(g mihomo.Group) []int {
+func (m *Model) proxyMembers(g mihomo.Group) []int {
 	indices := make([]int, 0, len(g.All))
 	for i, node := range g.All {
 		if m.proxyMemberMatches(g, node) {

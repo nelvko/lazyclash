@@ -7,9 +7,9 @@ import (
 	"github.com/nelvko/lazyclash/internal/i18n"
 )
 
-func (m Model) tr(id string, args ...any) string    { return m.locale.T(id, args...) }
-func (m Model) localizeError(err error) string      { return clean(m.locale.Error(err)) }
-func (m Model) localizeDetail(detail string) string { return m.locale.Detail(detail) }
+func (m *Model) tr(id string, args ...any) string    { return m.locale.T(id, args...) }
+func (m *Model) localizeError(err error) string      { return clean(m.locale.Error(err)) }
+func (m *Model) localizeDetail(detail string) string { return m.locale.Detail(detail) }
 
 func (m *Model) changeLanguage(language string) tea.Cmd {
 	if m.busy || m.quitting || m.page != "settings" {

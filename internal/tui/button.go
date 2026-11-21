@@ -113,7 +113,7 @@ func renderButton(label string, o buttonOptions) string {
 	return themed(marker, markerColor, o.Surface, o.Dim) + themed(face, foreground, background, o.Dim)
 }
 
-func (m Model) buttonPlain() bool {
+func (m *Model) buttonPlain() bool {
 	return m.noColor || m.colorProfile != colorprofile.Unknown && m.colorProfile <= colorprofile.ANSI
 }
 

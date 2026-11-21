@@ -7,7 +7,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-func (m Model) helpLines(width int) []string {
+func (m *Model) helpLines(width int) []string {
 	tr := m.tr
 	lines := []string{tr("help.currentPage", pageTitle(m.page, m.locale))}
 	switch m.page {
@@ -172,7 +172,7 @@ func (m *Model) renderHelp(base string) (string, []hitRegion) {
 	}
 }
 
-func (m Model) keyHintsLabel() string {
+func (m *Model) keyHintsLabel() string {
 	if m.keyHints.hidden {
 		return m.tr("help.keyHints.show")
 	}

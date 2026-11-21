@@ -30,7 +30,7 @@ type proxyNodeDelayMsg struct {
 	err        error
 }
 
-func (m Model) proxyNodeTestState(group, node string) string {
+func (m *Model) proxyNodeTestState(group, node string) string {
 	key, path := proxyResultKey(group, node), m.proxyPathKey(node)
 	if request, ok := m.proxies.nodeTests.running[key]; ok && request.target.path == path {
 		return "testing"
@@ -43,7 +43,7 @@ func (m Model) proxyNodeTestState(group, node string) string {
 	return ""
 }
 
-func (m Model) proxyNodeTargetValid(target proxyTestTarget) bool {
+func (m *Model) proxyNodeTargetValid(target proxyTestTarget) bool {
 	if m.proxiesDirect() {
 		return false
 	}

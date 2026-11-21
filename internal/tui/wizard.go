@@ -379,9 +379,10 @@ func (m *Model) testNetwork() tea.Cmd {
 	}
 	return tea.Batch(cmds...)
 }
-func (m Model) fileTestCmd(ctx context.Context, id uint64, r mihomo.Release, cfg downloadnet.Config) tea.Cmd {
+func (m *Model) fileTestCmd(ctx context.Context, id uint64, r mihomo.Release, cfg downloadnet.Config) tea.Cmd {
+	backend := m.backend
 	return func() tea.Msg {
-		err := m.backend.TestReleaseFile(ctx, r, cfg)
+		err := backend.TestReleaseFile(ctx, r, cfg)
 		return networkMsg{id: id, kind: "file", release: r, err: err}
 	}
 }

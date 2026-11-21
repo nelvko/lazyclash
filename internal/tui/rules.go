@@ -24,7 +24,7 @@ type rulesSource struct {
 	started                         uint64
 }
 
-func (m Model) currentRulesSource() rulesSource {
+func (m *Model) currentRulesSource() rulesSource {
 	return rulesSource{
 		generation: m.snapshot.Generation, profile: m.snapshot.Applied, controller: m.snapshot.Controller,
 		installed: m.snapshot.Installed, configured: m.snapshot.ConfigReady, running: m.snapshot.Service.Active,
@@ -64,7 +64,7 @@ func (m *Model) stopRules() {
 	}
 	m.rules.active, m.rules.pending = false, false
 }
-func (m Model) rulesVisible() bool {
+func (m *Model) rulesVisible() bool {
 	return m.page == "rules" && !m.providers.open && !m.busy && !m.quitting && !m.helpOpen && !m.ports.open && !m.wizard.open && !m.wizard.networkOpen && m.form == "" && m.ctx.Err() == nil
 }
 func (m *Model) syncRules() tea.Cmd {
@@ -128,7 +128,7 @@ func (m *Model) retryRules() tea.Cmd {
 func ruleIdentity(r mihomo.Rule) string {
 	return fmt.Sprintf("%d\x00%s\x00%s\x00%s", r.Index, r.Type, r.Payload, r.Proxy)
 }
-func (m Model) filteredRules() []mihomo.Rule {
+func (m *Model) filteredRules() []mihomo.Rule {
 	if !m.rules.received || m.rules.snapshot.State != "ready" {
 		return nil
 	}
@@ -281,7 +281,7 @@ func (m *Model) ruleKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 
 const ruleProxyActionPrefix = "rules.proxy."
 
-func (m Model) ruleProxyGroup(name string) (int, bool) {
+func (m *Model) ruleProxyGroup(name string) (int, bool) {
 	if name == "" || m.busy || m.quitting || m.proxiesDirect() || !m.proxiesReady() {
 		return 0, false
 	}
@@ -360,7 +360,7 @@ func (m *Model) selectRule(id string) (mihomo.Rule, bool) {
 	}
 	return mihomo.Rule{}, false
 }
-func (m Model) rulesStatus() string {
+func (m *Model) rulesStatus() string {
 	if state, status := m.corePageState(); state != "" {
 		return status
 	}

@@ -7,14 +7,14 @@ import (
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
 
-func (m Model) connectionClosedEntries() []closedConnection {
+func (m *Model) connectionClosedEntries() []closedConnection {
 	if m.connections.paused {
 		return m.connections.frozenClosed
 	}
 	return m.connections.history.closed
 }
 
-func (m Model) closedEntry(c mihomo.Connection) (closedConnection, bool) {
+func (m *Model) closedEntry(c mihomo.Connection) (closedConnection, bool) {
 	for _, entry := range m.connectionClosedEntries() {
 		if entry.Connection.ID == c.ID && entry.Connection.Start.Equal(c.Start) {
 			return entry, true
@@ -23,14 +23,14 @@ func (m Model) closedEntry(c mihomo.Connection) (closedConnection, bool) {
 	return closedConnection{}, false
 }
 
-func (m Model) connectionRowKey(c mihomo.Connection) string {
+func (m *Model) connectionRowKey(c mihomo.Connection) string {
 	if m.connections.closedView {
 		return "closed." + c.ID + "." + c.Start.UTC().Format(time.RFC3339Nano)
 	}
 	return c.ID
 }
 
-func (m Model) connectionRowTime(c mihomo.Connection) time.Time {
+func (m *Model) connectionRowTime(c mihomo.Connection) time.Time {
 	if m.connections.detail != nil && c.ID == m.connections.detail.ID && c.Start.Equal(m.connections.detail.Start) && !m.connections.detailClosedAt.IsZero() {
 		return m.connections.detailClosedAt
 	}
@@ -42,14 +42,14 @@ func (m Model) connectionRowTime(c mihomo.Connection) time.Time {
 	return m.connectionNow()
 }
 
-func (m Model) connectionRowRate(c mihomo.Connection) connectionRate {
+func (m *Model) connectionRowRate(c mihomo.Connection) connectionRate {
 	if m.connections.closedView {
 		return connectionRate{Upload: -1, Download: -1}
 	}
 	return m.displayedConnectionRates().get(c.ID)
 }
 
-func (m Model) filteredConnections() []mihomo.Connection {
+func (m *Model) filteredConnections() []mihomo.Connection {
 	match, err := m.connectionMatcher()
 	if err != nil {
 		return nil

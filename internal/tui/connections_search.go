@@ -7,7 +7,7 @@ import (
 
 // Match fields independently, just like rules, so anchors describe a field
 // and an expression cannot accidentally span unrelated connection metadata.
-func (m Model) connectionMatcher() (func(mihomo.Connection) bool, error) {
+func (m *Model) connectionMatcher() (func(mihomo.Connection) bool, error) {
 	match, err := compileSearchMatcher(m.connections.search.Value(), m.connections.caseSensitive, m.connections.wholeWord, m.connections.regex)
 	if err != nil {
 		return nil, err
@@ -29,7 +29,7 @@ func (m Model) connectionMatcher() (func(mihomo.Connection) bool, error) {
 	}, nil
 }
 
-func (m Model) connectionFilterButtons() dashboardBlock {
+func (m *Model) connectionFilterButtons() dashboardBlock {
 	return m.searchMatchingButtons("conn", m.connections.caseSensitive, m.connections.wholeWord, m.connections.regex)
 }
 

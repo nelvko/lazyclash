@@ -63,7 +63,7 @@ func TestActionButtonGroupsKeepOneCellBeforeFocusAndNoneAfter(t *testing.T) {
 				}},
 				{"inline-install", "setup.done", "setup.later", func(m *Model) (string, []hitRegion) {
 					m.focus = "setup.later"
-					d := inlineInstallDocument{model: *m, width: 120}
+					d := inlineInstallDocument{model: m, width: 120}
 					d.buttons(wizardButton{"done", m.tr("wizard.done")}, wizardButton{"later", m.tr("dashboard.guide.later")})
 					return strings.Join(d.lines, "\n"), d.targets
 				}},

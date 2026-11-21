@@ -39,7 +39,7 @@ func (m *Model) updateRulesMouse(event tea.MouseMsg) bool {
 
 // A wheel event also contains the current pointer position. Resolve its target
 // against the new logical offset, including rules newly entering the viewport.
-func (m Model) rulesPointerTarget(x, y int) string {
+func (m *Model) rulesPointerTarget(x, y int) string {
 	g := dashboardGeometry(m.dashboardOptions())
 	if x >= g.x && x < g.x+g.width && y >= g.y && y < g.y+g.height {
 		x, y = x-g.x, y-g.y+m.scroll

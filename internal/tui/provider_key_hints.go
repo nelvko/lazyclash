@@ -6,7 +6,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-func (m Model) providersContextHelp() string {
+func (m *Model) providersContextHelp() string {
 	if m.providers.editing {
 		return m.tr("navigation.providers.searching")
 	}
@@ -54,7 +54,7 @@ func (m Model) providersContextHelp() string {
 	return strings.Join(hints, " · ")
 }
 
-func (m Model) providersFooterHelp(width int) string {
+func (m *Model) providersFooterHelp(width int) string {
 	var hints []string
 	for _, hint := range strings.Split(m.providersContextHelp(), " · ") {
 		candidate := strings.Join(append(hints, hint), " · ")

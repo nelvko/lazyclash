@@ -30,7 +30,7 @@ func searchCursorColumn(input textinput.Model) (int, bool) {
 
 // activeInputField follows the same modal priority as renderLayout. An input
 // behind another surface cannot claim the terminal cursor.
-func (m Model) activeInputField() (textinput.Model, string, bool) {
+func (m *Model) activeInputField() (textinput.Model, string, bool) {
 	if m.busy || m.quitting || m.helpOpen || m.notification.panel.open || m.menu.open || m.sidebarOpen {
 		return textinput.Model{}, "", false
 	}
@@ -85,7 +85,7 @@ func (m Model) activeInputField() (textinput.Model, string, bool) {
 	return textinput.Model{}, "", false
 }
 
-func (m Model) inputCursor() *tea.Cursor {
+func (m *Model) inputCursor() *tea.Cursor {
 	input, id, editing := m.activeInputField()
 	if !editing {
 		return nil

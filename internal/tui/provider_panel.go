@@ -67,7 +67,7 @@ func proxyProviderSnapshot(raw app.ProxyProviderSnapshot) providerSnapshot {
 	return s
 }
 
-func (m Model) providersSupported(kind providerKind) bool {
+func (m *Model) providersSupported(kind providerKind) bool {
 	if kind == providerProxies {
 		_, ok := m.backend.(proxyProviderBackend)
 		return ok
@@ -76,7 +76,7 @@ func (m Model) providersSupported(kind providerKind) bool {
 	return ok
 }
 
-func (m Model) readProviders(ctx context.Context, kind providerKind) (providerSnapshot, error) {
+func (m *Model) readProviders(ctx context.Context, kind providerKind) (providerSnapshot, error) {
 	if kind == providerProxies {
 		b := m.backend.(proxyProviderBackend)
 		s, err := b.ProxyProviders(ctx)
@@ -87,19 +87,19 @@ func (m Model) readProviders(ctx context.Context, kind providerKind) (providerSn
 	return ruleProviderSnapshot(s), err
 }
 
-func (m Model) updateProvider(ctx context.Context, kind providerKind, name string) error {
+func (m *Model) updateProvider(ctx context.Context, kind providerKind, name string) error {
 	if kind == providerProxies {
 		return m.backend.(proxyProviderBackend).UpdateProxyProvider(ctx, name)
 	}
 	return m.backend.(ruleProviderBackend).UpdateRuleProvider(ctx, name)
 }
 
-func (m Model) providerSource() string {
+func (m *Model) providerSource() string {
 	return fmt.Sprintf("%s\x00%s\x00%d\x00%s", m.snapshot.Generation, m.snapshot.Applied, m.snapshot.Service.PID, m.snapshot.RunningVersion)
 }
 
-func (m Model) providerTitle() string { return m.tr("providers.title." + string(m.providers.kind)) }
-func (m Model) providerSearchPlaceholder() string {
+func (m *Model) providerTitle() string { return m.tr("providers.title." + string(m.providers.kind)) }
+func (m *Model) providerSearchPlaceholder() string {
 	return m.tr("providers.search." + string(m.providers.kind))
 }
 
@@ -161,7 +161,7 @@ func newProviderPanelState(locale i18n.Localizer) providerPanelState {
 	return providerPanelState{kind: providerRules, search: search, viewport: viewport.New(), updates: make(map[string]providerUpdate)}
 }
 
-func (m Model) providersVisible() bool {
+func (m *Model) providersVisible() bool {
 	return m.page == string(m.providers.kind) && m.providers.open && !m.busy && !m.quitting && !m.sidebarOpen && !m.helpOpen && !m.ports.open && !m.wizard.open && !m.wizard.networkOpen && m.form == "" && !m.notification.panel.open && m.ctx.Err() == nil
 }
 
@@ -304,7 +304,7 @@ func (m *Model) retryProviders() tea.Cmd {
 	return m.providersCmd()
 }
 
-func (m Model) filteredProviders() []providerRow {
+func (m *Model) filteredProviders() []providerRow {
 	p := m.providers
 	if !p.received || p.snapshot.State != "ready" {
 		return nil
@@ -323,7 +323,7 @@ func (m Model) filteredProviders() []providerRow {
 	return filtered
 }
 
-func (m Model) providerByName(name string) (providerRow, bool) {
+func (m *Model) providerByName(name string) (providerRow, bool) {
 	if m.providers.received && m.providers.snapshot.State == "ready" {
 		for _, provider := range m.providers.snapshot.Providers {
 			if provider.Name == name {

@@ -6,7 +6,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-func (m Model) providersStatus() string {
+func (m *Model) providersStatus() string {
 	p := m.providers
 	if !m.providersSupported(p.kind) {
 		return m.tr("providers.unsupported")
@@ -32,7 +32,7 @@ func (m Model) providersStatus() string {
 	}
 }
 
-func (m Model) providersToolbar(width, rows int) dashboardBlock {
+func (m *Model) providersToolbar(width, rows int) dashboardBlock {
 	b := m.searchField("providers.search", m.providerSearchPlaceholder(), m.providers.search, width, false)
 	b.lines = append(b.lines, themed(cellCrop(m.providersStatus(), width), muted, raised, false), "")
 	b.lines = b.lines[:min(rows, len(b.lines))]
@@ -46,7 +46,7 @@ func (m Model) providersToolbar(width, rows int) dashboardBlock {
 	return b
 }
 
-func (m Model) providerUpdateLabel(provider providerRow) (string, bool) {
+func (m *Model) providerUpdateLabel(provider providerRow) (string, bool) {
 	if !provider.updateable {
 		return "", false
 	}
@@ -67,7 +67,7 @@ func (m Model) providerUpdateLabel(provider providerRow) (string, bool) {
 	return label, !busy && !m.busy && m.providers.active && m.providersVisible()
 }
 
-func (m Model) providerUpdateButton(provider providerRow, width int) string {
+func (m *Model) providerUpdateButton(provider providerRow, width int) string {
 	label, enabled := m.providerUpdateLabel(provider)
 	// Keep a name cell, the row gutter and the gap beside a complete button.
 	// Smaller rows retain keyboard updates instead of an invisible hit target.
@@ -81,7 +81,7 @@ func (m Model) providerUpdateButton(provider providerRow, width int) string {
 	return renderButton(label, options)
 }
 
-func (m Model) providerRows(provider providerRow, width int) []string {
+func (m *Model) providerRows(provider providerRow, width int) []string {
 	id := "provider.row." + provider.Name
 	surface := raised
 	if m.focus == id {
@@ -142,7 +142,7 @@ func (m Model) providerRows(provider providerRow, width int) []string {
 	}
 }
 
-func (m Model) providersBodyWindow(width, start, height int) ruleBodyWindow {
+func (m *Model) providersBodyWindow(width, start, height int) ruleBodyWindow {
 	p := m.providers
 	list := m.filteredProviders()
 	if len(list) == 0 {
@@ -248,7 +248,7 @@ func (m Model) providersBodyWindow(width, start, height int) ruleBodyWindow {
 }
 
 // Shared by the page header and update-all action guards.
-func (m Model) providersCanUpdateAll() bool {
+func (m *Model) providersCanUpdateAll() bool {
 	if !m.providersVisible() || !m.providers.active || !m.providers.received || m.providers.snapshot.State != "ready" || m.providers.running() > 0 || len(m.providers.queue) > 0 {
 		return false
 	}

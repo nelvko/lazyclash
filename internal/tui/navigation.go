@@ -23,7 +23,7 @@ func listTarget(id string) bool {
 
 // Navigation and the active list each form one Tab stop; arrows move inside
 // those groups. All other controls retain their visual reading order.
-func (m Model) focusTargets() []hitRegion {
+func (m *Model) focusTargets() []hitRegion {
 	if m.providers.open {
 		return m.providers.controls
 	}
@@ -148,7 +148,7 @@ func (m *Model) revealBodyTarget(hit hitRegion) {
 	}
 }
 
-func (m Model) contextHelp() string {
+func (m *Model) contextHelp() string {
 	if m.providers.open {
 		return m.providersContextHelp()
 	}
@@ -234,7 +234,7 @@ func (m Model) contextHelp() string {
 	}
 }
 
-func (m Model) rulesContextHelp() string {
+func (m *Model) rulesContextHelp() string {
 	if m.rules.editing {
 		return m.tr("navigation.rules.searching")
 	}

@@ -15,7 +15,7 @@ type emptyStateOptions struct {
 	Error, Disabled                               bool
 }
 
-func (m Model) emptyState(width, height int, o emptyStateOptions) dashboardBlock {
+func (m *Model) emptyState(width, height int, o emptyStateOptions) dashboardBlock {
 	if width <= 0 || height <= 0 {
 		return dashboardBlock{}
 	}
@@ -102,7 +102,7 @@ func centerEmptyState(block dashboardBlock, width, height int) dashboardBlock {
 	return dashboardBlock{lines: rows, targets: targets}
 }
 
-func (m Model) coreEmptyState() (emptyStateOptions, bool) {
+func (m *Model) coreEmptyState() (emptyStateOptions, bool) {
 	if !m.snapshotReady {
 		if !m.busy {
 			return emptyStateOptions{Title: m.tr("empty.read_failed"), Detail: m.failure, Error: true,

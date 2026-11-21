@@ -10,7 +10,7 @@ type proxyGridLayout struct {
 	indent, columns, cardWidth int
 }
 
-func (m Model) compactProxyCards() bool {
+func (m *Model) compactProxyCards() bool {
 	return m.proxiesNarrow() || m.height <= 24
 }
 
@@ -26,7 +26,7 @@ func layoutProxyGrid(bodyWidth, indent int) proxyGridLayout {
 	}
 }
 
-func (m Model) proxyGrid(bodyWidth int) proxyGridLayout {
+func (m *Model) proxyGrid(bodyWidth int) proxyGridLayout {
 	indent := 2
 	if m.proxiesNarrow() {
 		indent = 0

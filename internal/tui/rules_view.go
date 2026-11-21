@@ -9,15 +9,15 @@ import (
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
 
-func (m Model) ruleFilterButtons() dashboardBlock {
+func (m *Model) ruleFilterButtons() dashboardBlock {
 	return m.searchMatchingButtons("rules", m.rules.caseSensitive, m.rules.wholeWord, m.rules.regex)
 }
 
-func (m Model) ruleSearchWidth(width int) int {
+func (m *Model) ruleSearchWidth(width int) int {
 	return inputFieldTextWidth(m.ruleSearchFieldWidth(width), searchControlWidth(m.ruleFilterButtons()), true)
 }
 
-func (m Model) ruleSearchFieldWidth(width int) int {
+func (m *Model) ruleSearchFieldWidth(width int) int {
 	if m.rules.received && m.rules.snapshot.State == "ready" {
 		// Reserve the widest filtered count so typing does not move the frame.
 		countWidth := 2*len(strconv.Itoa(len(m.rules.snapshot.Rules))) + 3
@@ -28,7 +28,7 @@ func (m Model) ruleSearchFieldWidth(width int) int {
 	return min(inputFieldMaxWidth, max(1, width))
 }
 
-func (m Model) ruleCount() string {
+func (m *Model) ruleCount() string {
 	if !m.rules.received || m.rules.snapshot.State != "ready" {
 		return ""
 	}
@@ -39,7 +39,7 @@ func (m Model) ruleCount() string {
 	return m.tr("rules.filtered_count", len(m.filteredRules()), total)
 }
 
-func (m Model) rulesToolbar(width, rows int) dashboardBlock {
+func (m *Model) rulesToolbar(width, rows int) dashboardBlock {
 	_, matchErr := m.ruleMatcher()
 	fieldWidth := m.ruleSearchFieldWidth(width)
 	b := m.searchToolbar("rules.search", m.tr("rules.search_placeholder"), m.rules.search,
@@ -76,22 +76,22 @@ type ruleBodyWindow struct {
 	start, total, prefix int
 }
 
-func (m Model) rulesBody(width int) (string, []hitRegion) {
+func (m *Model) rulesBody(width int) (string, []hitRegion) {
 	body := m.rulesBodyWindow(width, 0, -1)
 	return strings.Join(body.lines, "\n"), body.targets
 }
 
-func (m Model) rulesTargets(width int) []hitRegion {
+func (m *Model) rulesTargets(width int) []hitRegion {
 	return m.rulesBodyWindow(width, 0, 0).targets
 }
 
-func (m Model) rulesListPrefix(width int) int {
+func (m *Model) rulesListPrefix(width int) int {
 	return m.rulesBodyWindow(width, 0, 0).prefix
 }
 
 // Geometry covers the complete list; only rows intersecting the requested
 // window are styled. A negative height requests the complete body for export.
-func (m Model) rulesBodyWindow(width, start, height int) ruleBodyWindow {
+func (m *Model) rulesBodyWindow(width, start, height int) ruleBodyWindow {
 	var lines []string
 	var hits []hitRegion
 	static := func() ruleBodyWindow {
@@ -151,7 +151,7 @@ func (m Model) rulesBodyWindow(width, start, height int) ruleBodyWindow {
 		if row >= end || row+h <= start {
 			continue
 		}
-		block := m.ruleRowBlock(r, width, numberWidth)
+		block := m.ruleRowBlock(r, width, numberWidth, m.rules.expanded == ruleIdentity(r))
 		lines = append(lines, block.lines[max(0, start-row):min(h, end-row)]...)
 		for _, link := range block.targets {
 			link.Y += row
@@ -165,7 +165,7 @@ func (m Model) rulesBodyWindow(width, start, height int) ruleBodyWindow {
 	return ruleBodyWindow{dashboardBlock: dashboardBlock{lines: lines, targets: append(links, hits...)}, start: start, total: total, prefix: prefix}
 }
 
-func (m Model) rulesEmptyState() emptyStateOptions {
+func (m *Model) rulesEmptyState() emptyStateOptions {
 	coreState := func() (emptyStateOptions, bool) {
 		state, ok := m.coreEmptyState()
 		if ok && state.Error && state.ActionID == "" {
@@ -215,7 +215,7 @@ func (m Model) rulesEmptyState() emptyStateOptions {
 	return emptyStateOptions{Title: m.tr("rules.empty")}
 }
 
-func (m Model) ruleNumberWidth() int {
+func (m *Model) ruleNumberWidth() int {
 	width := 1
 	for _, r := range m.rules.snapshot.Rules {
 		width = max(width, len(strconv.Itoa(r.Index+1)))
@@ -225,23 +225,21 @@ func (m Model) ruleNumberWidth() int {
 
 // Compare the focused row's rendered text so expansion follows actual clipping,
 // including narrow metadata, full-width characters, and optional entry counts.
-func (m Model) ruleCanExpand(r mihomo.Rule) bool {
+func (m *Model) ruleCanExpand(r mihomo.Rule) bool {
 	width, numberWidth := dashboardBodyWidth(m.dashboardOptions()), m.ruleNumberWidth()
-	m.rules.expanded = ""
-	collapsed := ansi.Strip(strings.Join(m.ruleRows(r, width, numberWidth), "\n"))
-	m.rules.expanded = ruleIdentity(r)
-	expanded := ansi.Strip(strings.Join(m.ruleRows(r, width, numberWidth), "\n"))
+	collapsed := ansi.Strip(strings.Join(m.ruleRowBlock(r, width, numberWidth, false).lines, "\n"))
+	expanded := ansi.Strip(strings.Join(m.ruleRowBlock(r, width, numberWidth, true).lines, "\n"))
 	return collapsed != expanded
 }
 
-func (m Model) ruleRows(r mihomo.Rule, width, numberWidth int) []string {
-	return m.ruleRowBlock(r, width, numberWidth).lines
+func (m *Model) ruleRows(r mihomo.Rule, width, numberWidth int) []string {
+	return m.ruleRowBlock(r, width, numberWidth, m.rules.expanded == ruleIdentity(r)).lines
 }
 
 // Bubbles textinput owns editing and horizontal scrolling. The dashboard owns
 // list scrolling; a small row renderer preserves its shared keyboard/mouse model
 // and the core's order without introducing a second list viewport.
-func (m Model) ruleRowBlock(r mihomo.Rule, width, numberWidth int) dashboardBlock {
+func (m *Model) ruleRowBlock(r mihomo.Rule, width, numberWidth int, expanded bool) dashboardBlock {
 	index := strconv.Itoa(r.Index)
 	id := "rule." + index
 	surface, marker := bg, "  "
@@ -253,7 +251,7 @@ func (m Model) ruleRowBlock(r mihomo.Rule, width, numberWidth int) dashboardBloc
 		surface = hoverBackground
 	}
 	if columns, ok := ruleTableColumns(width, numberWidth); ok {
-		return m.ruleTableRows(r, width, numberWidth, columns, surface, marker)
+		return m.ruleTableRows(r, width, numberWidth, columns, surface, marker, expanded)
 	}
 	indent := 2 + numberWidth + 2
 	available := max(1, width-indent-1)
@@ -270,7 +268,6 @@ func (m Model) ruleRowBlock(r mihomo.Rule, width, numberWidth int) dashboardBloc
 	}
 	number := fmt.Sprintf("%*d  ", numberWidth, r.Index+1)
 	payloadLines := []string{cellCrop(clean(payload), available)}
-	expanded := m.rules.expanded == ruleIdentity(r)
 	if expanded {
 		payloadLines = strings.Split(wrapText(clean(payload), available), "\n")
 	}
@@ -308,7 +305,7 @@ func (m Model) ruleRowBlock(r mihomo.Rule, width, numberWidth int) dashboardBloc
 	return block
 }
 
-func (m Model) ruleHeight(r mihomo.Rule, width, numberWidth int) int {
+func (m *Model) ruleHeight(r mihomo.Rule, width, numberWidth int) int {
 	if m.rules.expanded != "" && m.rules.expanded == ruleIdentity(r) {
 		return len(m.ruleRows(r, width, numberWidth))
 	}
@@ -327,7 +324,7 @@ func ruleTableColumns(width, numberWidth int) ([3]int, bool) {
 	return columns, width >= 80 && columns[0] >= 20
 }
 
-func (m Model) ruleTableRows(r mihomo.Rule, width, numberWidth int, columns [3]int, surface, marker string) dashboardBlock {
+func (m *Model) ruleTableRows(r mihomo.Rule, width, numberWidth int, columns [3]int, surface, marker string, expanded bool) dashboardBlock {
 	payload := clean(r.Payload)
 	if payload == "" {
 		payload = m.tr("rules.empty_payload")
@@ -343,7 +340,6 @@ func (m Model) ruleTableRows(r mihomo.Rule, width, numberWidth int, columns [3]i
 	if r.Extra != nil && r.Extra.Disabled {
 		payloadColor = muted
 	}
-	expanded := m.rules.expanded == ruleIdentity(r)
 	target := m.ruleProxyBlock(r, proxy, "", columns[2], expanded, surface)
 	values := []string{themed(payload, payloadColor, surface, false), themed(clean(r.Type), muted, surface, false)}
 	cells := [3][]string{nil, nil, target.lines}
@@ -394,7 +390,7 @@ func (m Model) ruleTableRows(r mihomo.Rule, width, numberWidth int, columns [3]i
 
 // The target name owns its painted cells. Keeping it separate from the type,
 // arrow and badge also gives each wrapped fragment its own mouse region.
-func (m Model) ruleProxyBlock(r mihomo.Rule, label, prefix string, width int, expanded bool, surface string) dashboardBlock {
+func (m *Model) ruleProxyBlock(r mihomo.Rule, label, prefix string, width int, expanded bool, surface string) dashboardBlock {
 	color := accent
 	switch strings.ToUpper(r.Proxy) {
 	case "DIRECT":
@@ -454,7 +450,7 @@ func ruleTypeColumnWidth(proxy string, available int) int {
 	return min(20, max(1, available-proxyWidth-3))
 }
 
-func (m Model) ruleEntryCountLines(r mihomo.Rule, width int) []string {
+func (m *Model) ruleEntryCountLines(r mihomo.Rule, width int) []string {
 	if r.Size < 0 {
 		return nil
 	}

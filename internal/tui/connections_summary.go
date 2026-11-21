@@ -4,7 +4,7 @@ import "strings"
 
 // Totals belong to the observed core, independent of the active/closed tab and
 // its search. Pause keeps the same observation on screen.
-func (m Model) connectionTotals(compact bool) string {
+func (m *Model) connectionTotals(compact bool) string {
 	down, up := "--", "--"
 	if snapshot := m.connectionSnapshot(); snapshot != nil {
 		down, up = formatBytes(snapshot.DownloadTotal), formatBytes(snapshot.UploadTotal)

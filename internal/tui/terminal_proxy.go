@@ -10,7 +10,7 @@ type terminalProxyBackend interface {
 	SetTerminalProxy(context.Context, bool, bool) error
 }
 
-func (m Model) controlConfirmation() bool {
+func (m *Model) controlConfirmation() bool {
 	return m.form == "tun-confirm" || m.form == "terminal-confirm"
 }
 

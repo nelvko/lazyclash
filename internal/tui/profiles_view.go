@@ -13,7 +13,7 @@ import (
 
 // Bubbles supplies the URL editor; the responsive card grid is a small custom
 // view because a vertical list/table would not preserve its spatial navigation.
-func (m Model) profilesBody(width int) (string, []hitRegion) {
+func (m *Model) profilesBody(width int) (string, []hitRegion) {
 	width = max(1, width)
 	if !m.snapshotReady {
 		return m.unavailableProfiles(width)
@@ -80,7 +80,7 @@ func (m Model) profilesBody(width int) (string, []hitRegion) {
 	return strings.Join(body.lines, "\n"), body.targets
 }
 
-func (m Model) profilesToolbar(width int) dashboardBlock {
+func (m *Model) profilesToolbar(width int) dashboardBlock {
 	var body dashboardBlock
 	input := m.profilesUI.url
 	input.Placeholder = m.tr("profiles.url_placeholder")
@@ -139,7 +139,7 @@ type profileButton struct {
 	primary   bool
 }
 
-func (m Model) profileButtonView(b profileButton, surface string) string {
+func (m *Model) profileButtonView(b profileButton, surface string) string {
 	kind := buttonSecondary
 	if b.primary {
 		kind = buttonPrimary
@@ -153,7 +153,7 @@ func (m Model) profileButtonView(b profileButton, surface string) string {
 		Disabled: b.id == "" || m.busy || m.quitting, Plain: m.buttonPlain()})
 }
 
-func (m Model) profileButtons(buttons []profileButton, width int) dashboardBlock {
+func (m *Model) profileButtons(buttons []profileButton, width int) dashboardBlock {
 	body := dashboardBlock{lines: []string{""}}
 	x, y := 0, 0
 	for _, b := range buttons {
@@ -172,7 +172,7 @@ func (m Model) profileButtons(buttons []profileButton, width int) dashboardBlock
 	return body
 }
 
-func (m Model) profileInfo(name string) app.ProfileInfo {
+func (m *Model) profileInfo(name string) app.ProfileInfo {
 	for _, info := range m.snapshot.ProfileDetails {
 		if info.ID == name {
 			if name == "default" {
@@ -202,7 +202,7 @@ func snapshotProfileName(snapshot app.Snapshot, id string, locales ...i18n.Local
 	return id
 }
 
-func (m Model) profileCard(index, width int) dashboardBlock {
+func (m *Model) profileCard(index, width int) dashboardBlock {
 	name := m.profiles()[index]
 	info := m.profileInfo(name)
 	id := fmt.Sprintf("profile.%d", index)
@@ -298,7 +298,7 @@ func (m Model) profileCard(index, width int) dashboardBlock {
 	return block
 }
 
-func (m Model) compactProfileCards() bool {
+func (m *Model) compactProfileCards() bool {
 	return dashboardBodyWidth(m.dashboardOptions()) < 86 || m.height <= 24
 }
 
@@ -346,7 +346,7 @@ func profileUpdated(updated, now time.Time, locales ...i18n.Localizer) string {
 	}
 }
 
-func (m Model) profileOrigin(info app.ProfileInfo) string {
+func (m *Model) profileOrigin(info app.ProfileInfo) string {
 	switch info.Kind {
 	case "local":
 		return m.tr("profiles.create_local")
@@ -357,7 +357,7 @@ func (m Model) profileOrigin(info app.ProfileInfo) string {
 	}
 }
 
-func (m Model) profileDetailsPane(name string, width int) dashboardBlock {
+func (m *Model) profileDetailsPane(name string, width int) dashboardBlock {
 	info := m.profileInfo(name)
 	index := 0
 	for i, profile := range m.profiles() {

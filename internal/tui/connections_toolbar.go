@@ -8,7 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-func (m Model) connectionTabs(width int) dashboardBlock {
+func (m *Model) connectionTabs(width int) dashboardBlock {
 	active := "--"
 	if snapshot := m.connectionSnapshot(); snapshot != nil {
 		active = fmt.Sprint(len(snapshot.Connections))
@@ -37,17 +37,17 @@ func (m Model) connectionTabs(width int) dashboardBlock {
 	return b
 }
 
-func (m Model) connectionSearchToolbar(width int) listSearchToolbar {
+func (m *Model) connectionSearchToolbar(width int) listSearchToolbar {
 	return listSearchToolbar{scope: m.connectionTabs(width), functions: m.connectionControls(),
 		countWidth: m.connectionCountWidth(), matchingWidth: searchControlWidth(m.connectionFilterButtons()),
 		countAfterFunctions: true}
 }
 
-func (m Model) connectionSearchGeometry(width int) (fieldWidth, offset int) {
+func (m *Model) connectionSearchGeometry(width int) (fieldWidth, offset int) {
 	return m.connectionSearchToolbar(width).searchGeometry(width)
 }
 
-func (m Model) connectionTotalCount() (int, bool) {
+func (m *Model) connectionTotalCount() (int, bool) {
 	if m.connections.closedView {
 		return len(m.connectionClosedEntries()), true
 	}
@@ -57,7 +57,7 @@ func (m Model) connectionTotalCount() (int, bool) {
 	return 0, false
 }
 
-func (m Model) connectionCount() string {
+func (m *Model) connectionCount() string {
 	if strings.TrimSpace(m.connections.search.Value()) == "" {
 		return ""
 	}
@@ -70,7 +70,7 @@ func (m Model) connectionCount() string {
 
 // Keep space for the filtered ratio even while it is hidden, so typing cannot
 // resize the frame. Sorting reserves its longest label for the same reason.
-func (m Model) connectionCountWidth() int {
+func (m *Model) connectionCountWidth() int {
 	total, available := m.connectionTotalCount()
 	if !available {
 		return 0
@@ -78,7 +78,7 @@ func (m Model) connectionCountWidth() int {
 	return 2*len(strconv.Itoa(total)) + 3
 }
 
-func (m Model) connectionSortLabelWidth() int {
+func (m *Model) connectionSortLabelWidth() int {
 	width := 0
 	for order := connectionSortNewest; order < connectionSortCount; order++ {
 		width = max(width, ansi.StringWidth(m.tr("connections.sort", m.tr(order.key()))))
@@ -88,7 +88,7 @@ func (m Model) connectionSortLabelWidth() int {
 
 // Matching controls belong to the input; scope and sort remain outside its
 // frame and move together above the search on narrow terminals.
-func (m Model) connectionFilterBar(width int) dashboardBlock {
+func (m *Model) connectionFilterBar(width int) dashboardBlock {
 	bar := m.connectionSearchToolbar(width)
 	fieldWidth, _ := bar.searchGeometry(width)
 	_, err := m.connectionMatcher()
@@ -98,7 +98,7 @@ func (m Model) connectionFilterBar(width int) dashboardBlock {
 	return bar.render(search, width, count, count)
 }
 
-func (m Model) connectionStatus() (string, string) {
+func (m *Model) connectionStatus() (string, string) {
 	if m.connections.closedView {
 		status := m.tr("connections.history_scope")
 		if m.connections.paused {

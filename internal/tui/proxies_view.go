@@ -12,12 +12,12 @@ import (
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
 
-func (m Model) proxyButton(id, label string, surface string, enabled bool) string {
+func (m *Model) proxyButton(id, label string, surface string, enabled bool) string {
 	o := dashboardButtonOptions(id, m.navigationOptions(), false, surface)
 	o.Kind, o.Disabled = buttonText, !enabled || m.busy || m.quitting
 	return renderButton(clean(label), o)
 }
-func (m Model) proxyModes(width int) dashboardBlock {
+func (m *Model) proxyModes(width int) dashboardBlock {
 	b := dashboardBlock{lines: []string{""}}
 	x := 0
 	selectionWidth := 6
@@ -44,13 +44,13 @@ func (m Model) proxyModes(width int) dashboardBlock {
 	return b
 }
 
-func (m Model) proxiesToolbar(width int) dashboardBlock {
+func (m *Model) proxiesToolbar(width int) dashboardBlock {
 	if m.width < 50 {
 		return m.proxyModes(width)
 	}
 	return dashboardBlock{}
 }
-func (m Model) proxiesBody(width int) (string, []hitRegion) {
+func (m *Model) proxiesBody(width int) (string, []hitRegion) {
 	width = max(1, width)
 	b := m.proxiesToolbar(width)
 	if m.proxySearchVisible() && !m.proxySearchFixed(m.dashboardOptions().BodyTopRows) {
@@ -133,7 +133,7 @@ func (m Model) proxiesBody(width int) (string, []hitRegion) {
 	}
 	return strings.Join(b.lines, "\n"), b.targets
 }
-func (m Model) proxyGroupHeader(gi, width int) dashboardBlock {
+func (m *Model) proxyGroupHeader(gi, width int) dashboardBlock {
 	g := m.snapshot.Groups[gi]
 	id := fmt.Sprintf("group.%d", gi)
 	testID, sortID := fmt.Sprintf("proxies.test.%d", gi), fmt.Sprintf("proxies.sort.%d", gi)
@@ -273,7 +273,7 @@ func (m Model) proxyGroupHeader(gi, width int) dashboardBlock {
 	return b
 }
 
-func (m Model) proxyGroupBody(gi, width int) dashboardBlock {
+func (m *Model) proxyGroupBody(gi, width int) dashboardBlock {
 	g := m.snapshot.Groups[gi]
 	b := dashboardBlock{}
 	grid := m.proxyGrid(width)
@@ -310,7 +310,7 @@ func (m Model) proxyGroupBody(gi, width int) dashboardBlock {
 	}
 	return b
 }
-func (m Model) proxyEmptyMembers(gi int) emptyStateOptions {
+func (m *Model) proxyEmptyMembers(gi int) emptyStateOptions {
 	state := emptyStateOptions{Title: m.tr("proxies.empty_group")}
 	if len(m.snapshot.Groups[gi].All) > 0 && m.proxySearchQuery() != "" {
 		state.Title = m.tr("proxies.search_no_match")
@@ -321,13 +321,11 @@ func (m Model) proxyEmptyMembers(gi int) emptyStateOptions {
 
 // Count the unfiltered directory for the current routing mode. A search cannot
 // cause a no-match state when the directory was already empty.
-func (m Model) proxyGroupsForMode() int {
-	unfiltered := m
-	unfiltered.proxies.search = newProxiesState().search
-	return len(unfiltered.visibleProxyGroups())
+func (m *Model) proxyGroupsForMode() int {
+	return len(m.proxyGroups(""))
 }
 
-func (m Model) proxyDelayLabel(group, node string) (string, string) {
+func (m *Model) proxyDelayLabel(group, node string) (string, string) {
 	if !m.proxyTestable(node) {
 		return m.tr("proxies.not_applicable"), muted
 	}
@@ -361,7 +359,7 @@ func (m Model) proxyDelayLabel(group, node string) (string, string) {
 		return m.tr("proxies.not_tested"), muted
 	}
 }
-func (m Model) proxyNode(gi, ni, width int) dashboardBlock {
+func (m *Model) proxyNode(gi, ni, width int) dashboardBlock {
 	g := m.snapshot.Groups[gi]
 	node := g.All[ni]
 	id := fmt.Sprintf("node.%d.%d", gi, ni)
@@ -512,7 +510,7 @@ func proxyVisibleRange(locale i18n.Localizer, hits []hitRegion, scroll, height i
 	}
 	return locale.T("proxies.visible_range", first, last, total)
 }
-func (m Model) proxyDetail(width int) dashboardBlock {
+func (m *Model) proxyDetail(width int) dashboardBlock {
 	b := dashboardBlock{}
 	add := func(v string, color string) {
 		b.lines = append(b.lines, strings.Split(wrapText(themed(clean(v), color, bg, false), width), "\n")...)

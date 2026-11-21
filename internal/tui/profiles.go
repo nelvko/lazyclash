@@ -331,14 +331,14 @@ func (m *Model) profileAction(id string) (bool, tea.Cmd) {
 	return true, nil
 }
 
-func (m Model) profileNotification(operation, label, name string) notificationOperation {
+func (m *Model) profileNotification(operation, label, name string) notificationOperation {
 	return notificationOperation{
 		Key:     notificationKey("profile."+operation, name),
 		Context: label + " · " + clean(snapshotProfileName(m.snapshot, name, m.locale)),
 	}
 }
 
-func (m Model) profileEditForm() bool {
+func (m *Model) profileEditForm() bool {
 	return m.form == "profile-rename" || m.form == "profile-description" || m.form == "profile-url" || m.form == "profile-overrides" || m.form == "profile-delete"
 }
 

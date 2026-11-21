@@ -2,11 +2,11 @@ package tui
 
 import "strings"
 
-func (m Model) controlActionHelp(label string) string {
+func (m *Model) controlActionHelp(label string) string {
 	return m.tr("navigation.controls.activate", label)
 }
 
-func (m Model) profilesContextHelp() string {
+func (m *Model) profilesContextHelp() string {
 	if m.focus == "profiles.url" {
 		if !m.profilesUI.pasteDeadline.IsZero() {
 			return m.tr("profiles.clipboard_waiting")
@@ -66,7 +66,7 @@ func (m Model) profilesContextHelp() string {
 	return "Enter " + action + " · " + base
 }
 
-func (m Model) overviewContextHelp() string {
+func (m *Model) overviewContextHelp() string {
 	if strings.HasPrefix(m.focus, "overview.card.") {
 		if m.overviewCardHasControls() {
 			return m.tr("overview.cardHint")
@@ -89,7 +89,7 @@ func (m Model) overviewContextHelp() string {
 
 // Render only the focused card to reuse its actual enabled controls, without
 // rebuilding the complete Overview layout merely to produce a key hint.
-func (m Model) overviewCardHasControls() bool {
+func (m *Model) overviewCardHasControls() bool {
 	var render func(dashboardOptions, int) dashboardBlock
 	paired := true
 	switch m.focus {
@@ -114,7 +114,7 @@ func (m Model) overviewCardHasControls() bool {
 	return len(render(o, width).targets) > 0
 }
 
-func (m Model) settingsContextHelp() string {
+func (m *Model) settingsContextHelp() string {
 	var label string
 	switch m.focus {
 	case "key-hints.toggle":

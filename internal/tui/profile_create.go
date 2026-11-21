@@ -261,7 +261,7 @@ func (m *Model) profileCreateMouse(id string) tea.Cmd {
 	return textinput.Blink
 }
 
-func (m Model) profileCreateType() string {
+func (m *Model) profileCreateType() string {
 	value := strings.TrimSpace(m.profileCreate.source.Value())
 	if value == "" {
 		return m.tr("profiles.create_unknown")
@@ -272,7 +272,7 @@ func (m Model) profileCreateType() string {
 	return m.tr("profiles.create_local")
 }
 
-func (m Model) renderProfileCreateForm(base string) (string, []hitRegion) {
+func (m *Model) renderProfileCreateForm(base string) (string, []hitRegion) {
 	boxW, boxH := min(inputImportMaxWidth+4, m.width), min(27, max(1, m.height-2))
 	if boxW < 38 || boxH < 12 {
 		return overlay(base, m.tr("profiles.enlarge"), 0, 0, m.width, m.height), nil

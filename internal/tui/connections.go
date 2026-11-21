@@ -64,7 +64,7 @@ func (m *Model) observeConnections(at time.Time) {
 
 // Pause freezes this page's observation; runtime monitoring and exact-ID close
 // checks continue to use the live core snapshot.
-func (m Model) connectionSnapshot() *mihomo.ConnectionSnapshot {
+func (m *Model) connectionSnapshot() *mihomo.ConnectionSnapshot {
 	if !m.runtime.received || m.runtime.snapshot.State != "ready" || m.runtime.snapshot.Connections == nil {
 		return nil
 	}
@@ -74,7 +74,7 @@ func (m Model) connectionSnapshot() *mihomo.ConnectionSnapshot {
 	return m.runtime.snapshot.Connections
 }
 
-func (m Model) displayedConnectionRates() connectionRatesState {
+func (m *Model) displayedConnectionRates() connectionRatesState {
 	if m.connections.paused {
 		return m.connections.frozenRates
 	}
@@ -125,22 +125,26 @@ func (m *Model) reconcileConnections() {
 		}
 	}
 }
-func (m Model) detailActive() bool {
-	if m.connections.detail == nil || m.connections.detailHistorical || m.connections.detailGeneration != m.connections.history.generation || m.runtime.snapshot.State != "ready" || m.runtime.snapshot.Connections == nil || !m.runtime.received {
+func (m *Model) detailActive() bool {
+	return m.connections.detail != nil && !m.connections.detailHistorical && m.connections.detailGeneration == m.connections.history.generation && m.connectionActive(*m.connections.detail)
+}
+
+func (m *Model) connectionActive(connection mihomo.Connection) bool {
+	if m.runtime.snapshot.State != "ready" || m.runtime.snapshot.Connections == nil || !m.runtime.received {
 		return false
 	}
 	for _, c := range m.runtime.snapshot.Connections.Connections {
-		if c.ID == m.connections.detail.ID && c.Start.Equal(m.connections.detail.Start) {
+		if c.ID == connection.ID && c.Start.Equal(connection.Start) {
 			return true
 		}
 	}
 	return false
 }
-func (m Model) canCloseAllConnections() bool {
+func (m *Model) canCloseAllConnections() bool {
 	return !m.busy && !m.quitting && m.runtime.received && m.runtime.snapshot.State == "ready" && m.runtime.snapshot.Connections != nil && len(m.runtime.snapshot.Connections.Connections) > 0
 }
 
-func (m Model) canPauseConnections() bool {
+func (m *Model) canPauseConnections() bool {
 	return !m.busy && !m.quitting && !m.connections.confirming && m.connections.detail == nil && (m.connections.paused || m.connectionSnapshot() != nil)
 }
 func (m *Model) focusConnectionSearch() tea.Cmd {
