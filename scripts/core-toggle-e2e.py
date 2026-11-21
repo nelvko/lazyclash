@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise the Overview core Toggle against real isolated Linux Mihomo/systemd.
+"""Exercise the Overview core action against real isolated Linux Mihomo/systemd.
 
 The random service uses temporary data, cache and HOME. Only its own unit is
 written into the actual systemd user-unit search path; no existing unit or
@@ -48,14 +48,14 @@ def capture(terminal, output, label):
     (output/(label+'.ansi')).write_bytes(terminal.raw)
 
 
-def click_packet(terminal, label, following=b''):
-    terminal.wait(label)
+def heading_action(terminal, label):
     for y, row in enumerate(terminal.screen.cells):
+        if 'Core status' not in ''.join(row):
+            continue
         for x, cell in enumerate(row):
             if cell and ''.join(row[x:]).startswith(label):
-                terminal.send(f'\x1b[<0;{x+1};{y+1}M\x1b[<0;{x+1};{y+1}m'.encode()+following)
-                return
-    raise AssertionError('missing click target '+label)
+                return x, y
+    return None
 
 
 def main():
@@ -94,17 +94,19 @@ def main():
             terminal=SMOKE.Terminal([sys.executable,'-c',wrapper,json.dumps(env),*argv])
             terminal.wait('○ Stopped');terminal.settle()
             assert not status()['Active']
+            assert heading_action(terminal, 'Start') is not None
             assert 'Uptime ' not in terminal.screen.text()
             capture(terminal,output,'stopped')
             results['stopped_observation']=True
 
             # All queued repeats arrive while the first lifecycle operation is
             # pending. Their state changes must not create a second operation.
-            click_packet(terminal,'○ Stopped',b'\r \r')
+            x, y = heading_action(terminal, 'Start')
+            terminal.send(f'\x1b[<0;{x+1};{y+1}M\x1b[<0;{x+1};{y+1}m'.encode()+b'\r \r')
             terminal.wait('● Running');terminal.wait('Uptime ');terminal.settle()
             active=status();assert active['Active'] and active['PID']>0,active
             first_pid=active['PID']
-            assert terminal.screen.text().count('● Running')==1
+            assert heading_action(terminal, 'Stop') is not None
             capture(terminal,output,'toggle-started')
             results['toggle_start_and_pending_dedup']=True
             wait_condition(terminal,lambda: uptime_seconds(terminal) is not None and uptime_seconds(terminal)>=2,'real process uptime did not advance')
@@ -119,19 +121,18 @@ def main():
             results['toggle_stop_and_pending_dedup']=True
 
             # A real occupied port causes the existing application start path
-            # to fail before systemd starts. The Toggle must stay actually off.
+            # to fail before systemd starts. The core must stay stopped.
             with socket.socket() as blocker:
                 blocker.bind(('127.0.0.1',mixed));blocker.listen()
                 terminal.send(b' ')
                 terminal.wait('other service was stopped');terminal.settle()
                 capture(terminal,output,'failed-start-error')
-                # Dismiss the existing Toast overlay before checking the core
-                # row beneath it; a visible error may cover the right-aligned face.
+                # Dismiss the Toast before checking the heading action below it.
                 for _ in range(4):
                     if '×' not in terminal.screen.text(): break
                     terminal.click_text('×');terminal.settle()
                 terminal.wait('○ Stopped')
-                assert '○ Stopped' in terminal.screen.text()
+                assert heading_action(terminal, 'Start') is not None
                 assert not status()['Active']
                 capture(terminal,output,'failed-start-actual-off')
             results['start_failure_rereads_off']=True
@@ -160,10 +161,11 @@ def main():
             for columns,rows in ((80,24),(60,20),(40,16),(120,40)):
                 terminal.resize(columns,rows);terminal.settle()
                 terminal.wait('○ Stopped')
+                assert heading_action(terminal, 'Start') is not None
                 capture(terminal,output,f'stopped-{columns}x{rows}')
             results['narrow_layout_and_recovery']=True
-            results['saw_starting_frame']='◌ Starting…' in terminal.text()
-            results['saw_stopping_frame']='◌ Stopping…' in terminal.text()
+            results['saw_starting_frame']='◌ Starting' in terminal.text()
+            results['saw_stopping_frame']='◌ Stopping' in terminal.text()
             results['first_pid']=first_pid
             terminal.exit()
             assert b'\x1b[?1049l' in terminal.raw,'TUI did not restore the terminal'

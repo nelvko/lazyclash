@@ -74,8 +74,8 @@ func (m *Model) overviewContextHelp() string {
 		return m.tr("navigation.overview.readOnlyCard")
 	}
 	if m.focus == "core.toggle" {
-		control, _ := overviewCoreToggle(m.navigationOptions())
-		if !control.canToggle() {
+		control := overviewCoreToggle(m.navigationOptions())
+		if m.busy || !control.canToggle() {
 			return m.tr("navigation.controls.browse")
 		}
 		action := "dashboard.settings.start"

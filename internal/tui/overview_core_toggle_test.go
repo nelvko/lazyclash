@@ -46,8 +46,7 @@ func coreToggleTestModel(t *testing.T, active bool) (Model, *coreToggleTestBacke
 	return m, b
 }
 func coreToggleStateOf(m Model) toggleState {
-	widget, _ := overviewCoreToggle(m.navigationOptions())
-	return widget.state
+	return overviewCoreToggle(m.navigationOptions()).state
 }
 
 func TestOverviewCoreToggleStartsAndStopsOnlyAfterObservedCompletion(t *testing.T) {
@@ -328,8 +327,7 @@ func TestOverviewCoreToggleUnknownUnavailableAndTransitionsStayInert(t *testing.
 func TestOverviewCoreToggleLongUptimeKeepsLifecycleGeometry(t *testing.T) {
 	now := time.Date(2026, time.November, 15, 12, 0, 0, 0, time.UTC)
 	for _, language := range []string{i18n.English, i18n.Chinese} {
-		// 30/34 columns straddle the localized single-line layout thresholds.
-		// Smaller cards also exercise multi-line uptime and version wrapping.
+		// Include narrow cards where translated headings and uptimes wrap.
 		for _, width := range []int{5, 8, 10, 20, 30, 33, 34, 40} {
 			t.Run(fmt.Sprintf("%s/%d", language, width), func(t *testing.T) {
 				o := dashboardOptions{Locale: i18n.New(language), Now: now, Snapshot: app.Snapshot{

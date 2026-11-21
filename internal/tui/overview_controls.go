@@ -48,8 +48,16 @@ func overviewButton(o dashboardOptions, button overviewControlButton, kind butto
 // Labels and actions share a line when they fit. Narrow cards keep the whole
 // label and put the action on the following line, with its own hit region.
 func overviewLabelControl(o dashboardOptions, width int, label string, button overviewControlButton, kind buttonKind) dashboardBlock {
+	id := ""
+	if button.enabled {
+		id = button.id
+	}
+	return overviewLabelSlot(o, width, label, overviewButton(o, button, kind), id)
+}
+
+func overviewLabelSlot(o dashboardOptions, width int, label, face, id string) dashboardBlock {
 	width = max(1, width)
-	value := cellCrop(overviewButton(o, button, kind), width)
+	value := cellCrop(face, width)
 	buttonWidth := ansi.StringWidth(value)
 	b := overviewTextBlock([]string{label}, width)
 	x, y := 0, len(b.lines)
@@ -59,8 +67,8 @@ func overviewLabelControl(o dashboardOptions, width int, label string, button ov
 	} else {
 		b.lines = append(b.lines, value)
 	}
-	if button.enabled && strings.TrimSpace(ansi.Strip(value)) != "" {
-		b.targets = append(b.targets, hitRegion{ID: button.id, X: x, Y: y, W: buttonWidth, H: 1})
+	if id != "" && buttonWidth > 0 {
+		b.targets = append(b.targets, hitRegion{ID: id, X: x, Y: y, W: buttonWidth, H: 1})
 	}
 	return b
 }
@@ -95,33 +103,28 @@ func overviewButtons(o dashboardOptions, width int, buttons []overviewControlBut
 	return b
 }
 
+func overviewInnerWidth(width int) int {
+	if width < 4 {
+		return max(1, width)
+	}
+	return max(1, width-4)
+}
+
+func overviewHeading(o dashboardOptions, title string) string {
+	return themed(lipgloss.NewStyle().Bold(true).Render(title), text, panel, o.Dim)
+}
+
 func overviewActionPanel(o dashboardOptions, width int, title string, content dashboardBlock, action overviewControlButton) dashboardBlock {
-	return overviewPanel(o, width, title, content, nil, "", &action)
+	heading := overviewLabelControl(o, overviewInnerWidth(width), overviewHeading(o, title), action, buttonText)
+	return overviewPanel(o, width, heading, content, nil)
 }
 
-func overviewControlPanel(o dashboardOptions, width int, title string, content []string, buttons []overviewControlButton, metadata ...string) dashboardBlock {
-	detail := ""
+func overviewControlPanel(o dashboardOptions, width int, title string, lines []string, buttons []overviewControlButton, metadata ...string) dashboardBlock {
+	inner := overviewInnerWidth(width)
+	heading := overviewHeading(o, title)
+	content := overviewTextBlock(lines, inner)
 	if len(metadata) > 0 {
-		detail = metadata[0]
-	}
-	inner := max(1, width-4)
-	if width < 4 {
-		inner = max(1, width)
-	}
-	return overviewPanel(o, width, title, overviewTextBlock(content, inner), buttons, detail, nil)
-}
-
-func overviewPanel(o dashboardOptions, width int, title string, content dashboardBlock, buttons []overviewControlButton, metadata string, action *overviewControlButton) dashboardBlock {
-	inner, left, top := max(1, width-4), 2, 1
-	if width < 4 {
-		inner, left, top = max(1, width), 0, 0
-	}
-	heading := themed(lipgloss.NewStyle().Bold(true).Render(title), text, panel, o.Dim)
-	var b dashboardBlock
-	if action != nil {
-		b = overviewLabelControl(o, inner, heading, *action, buttonText)
-	} else {
-		if detail := clean(metadata); detail != "" {
+		if detail := clean(metadata[0]); detail != "" {
 			if gap := inner - ansi.StringWidth(title) - ansi.StringWidth(detail); gap >= 2 {
 				heading += themed(strings.Repeat(" ", gap)+detail, muted, panel, o.Dim)
 			} else {
@@ -130,14 +133,21 @@ func overviewPanel(o dashboardOptions, width int, title string, content dashboar
 				content = before
 			}
 		}
-		b = overviewTextBlock([]string{heading}, inner)
+	}
+	return overviewPanel(o, width, overviewTextBlock([]string{heading}, inner), content, buttons)
+}
+
+func overviewPanel(o dashboardOptions, width int, b, content dashboardBlock, buttons []overviewControlButton) dashboardBlock {
+	left, top := 2, 1
+	if width < 4 {
+		left, top = 0, 0
 	}
 	b.blank()
 	b.append(content)
 	if len(buttons) > 0 {
 		b.blank()
 		b.footerY = top + len(b.lines)
-		b.append(overviewButtons(o, inner, buttons))
+		b.append(overviewButtons(o, overviewInnerWidth(width), buttons))
 	}
 	b.lines = overviewSurface(b.lines, width, len(b.lines)+2, o)
 	visible := b.targets[:0]

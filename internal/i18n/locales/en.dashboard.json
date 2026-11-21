@@ -5,6 +5,7 @@
   "dashboard.status.starting": "Starting",
   "dashboard.status.stopping": "Stopping",
   "dashboard.status.reloading": "Reloading",
+  "dashboard.status.restarting": "Restarting",
   "dashboard.status.failed": "Failed",
   "dashboard.status.stopped": "Stopped",
   "dashboard.status.unknown": "Unknown",
@@ -185,7 +186,7 @@
   "help.logs.retention": "The view retains at most 200 redacted entries in memory. No raw log history is written.",
   "help.overview.install": "i: install/manage core · b: install a local executable",
   "help.overview.import": "n: download method · a: add/import profile",
-  "help.overview.controls": "Focus the core toggle and press Enter / Space to start or stop when its state is confirmed on or off. Pending, unknown, and unavailable states cannot be toggled.",
+  "help.overview.controls": "Focus Start or Stop and press Enter or Space to control the core. An em dash means the action is unavailable.",
   "help.overview.refresh": "Controls refresh the observed state after the operation.",
   "help.overview.unavailable": "System proxy controls are unavailable. Host TUN requires the root system instance and explicit confirmation.",
   "help.core.title": "Core and configuration",
@@ -311,14 +312,5 @@
   "terminal.state.pending": "Pending activation · load Shell Integration",
   "terminal.state.enabling": "Turning on · applies after leaving the TUI",
   "terminal.state.disabling": "Turning off · restores after leaving the TUI",
-  "terminal.state.error": "Shell synchronization failed · inspect shell status",
-  "dashboard.core.toggle.on": "Running",
-  "dashboard.core.toggle.off": "Stopped",
-  "dashboard.core.toggle.starting": "Starting…",
-  "dashboard.core.toggle.stopping": "Stopping…",
-  "dashboard.core.toggle.restarting": "Restarting…",
-  "dashboard.core.toggle.unknown": "Unknown",
-  "dashboard.core.toggle.unavailable": "Unavailable",
-  "dashboard.core.toggle.startHint": "Click to start",
-  "dashboard.core.toggle.stopHint": "Click to stop"
+  "terminal.state.error": "Shell synchronization failed · inspect shell status"
 }

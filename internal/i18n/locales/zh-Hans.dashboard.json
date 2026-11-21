@@ -5,6 +5,7 @@
   "dashboard.status.starting": "正在启动",
   "dashboard.status.stopping": "正在停止",
   "dashboard.status.reloading": "正在重载",
+  "dashboard.status.restarting": "正在重启",
   "dashboard.status.failed": "失败",
   "dashboard.status.stopped": "已停止",
   "dashboard.status.unknown": "未知",
@@ -185,7 +186,7 @@
   "help.logs.retention": "视图最多在内存中保留 200 条脱敏记录，不写入原始日志历史。",
   "help.overview.install": "i：安装/管理内核 · b：安装本地可执行文件",
   "help.overview.import": "n：下载方式 · a：添加/导入配置",
-  "help.overview.controls": "内核状态明确为开启或关闭时，聚焦开关后按 Enter / Space 启停；处理中、未知或不可用时不能切换。",
+  "help.overview.controls": "聚焦「启动」或「停止」后按 Enter 或空格执行。按钮位置显示「—」时，当前无法启停。",
   "help.overview.refresh": "操作完成后会重新读取实际状态。",
   "help.overview.unavailable": "尚不支持系统代理控制。主机 TUN 需要 root 系统实例并明确确认。",
   "help.core.title": "内核与配置",
@@ -311,14 +312,5 @@
   "terminal.state.pending": "待激活 · 请加载 Shell Integration",
   "terminal.state.enabling": "正在开启 · 退出 TUI 后生效",
   "terminal.state.disabling": "正在关闭 · 退出 TUI 后恢复",
-  "terminal.state.error": "Shell 同步失败 · 请查看 shell status",
-  "dashboard.core.toggle.on": "运行中",
-  "dashboard.core.toggle.off": "已停止",
-  "dashboard.core.toggle.starting": "启动中…",
-  "dashboard.core.toggle.stopping": "停止中…",
-  "dashboard.core.toggle.restarting": "重启中…",
-  "dashboard.core.toggle.unknown": "状态未知",
-  "dashboard.core.toggle.unavailable": "不可用",
-  "dashboard.core.toggle.startHint": "点击启动",
-  "dashboard.core.toggle.stopHint": "点击停止"
+  "terminal.state.error": "Shell 同步失败 · 请查看 shell status"
 }

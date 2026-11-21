@@ -14,18 +14,15 @@ func overviewCoreCard(o dashboardOptions, width int) dashboardBlock {
 	s := o.Snapshot
 	style := func(value, color string) string { return themed(clean(value), color, panel, o.Dim) }
 	name := lipgloss.NewStyle().Bold(true).Render(style("Mihomo", text))
-	if !s.Installed {
+	if !s.Installed && !o.StateUnavailable {
 		return overviewControlPanel(o, width, tr("dashboard.overview.service"), []string{name}, []overviewControlButton{
 			{id: "core.install", label: tr("dashboard.action.install"), enabled: !o.Busy},
 		})
 	}
-	inner := max(1, width-4)
-	if width < 4 {
-		inner = max(1, width)
-	}
-	control, _ := overviewCoreToggle(o)
+	inner := overviewInnerWidth(width)
+	control := overviewCoreToggle(o)
 	transition := control.state == togglePending
-	running := s.Service.Active && s.ServiceError == ""
+	running := !o.StateUnavailable && s.Service.Active && s.ServiceError == ""
 	version := s.Version
 	if running && s.RunningVersion != "" {
 		version = s.RunningVersion
@@ -35,10 +32,22 @@ func overviewCoreCard(o dashboardOptions, width int) dashboardBlock {
 		now = time.Now()
 	}
 	uptime := ""
-	if control.state == toggleOn && s.Service.PID > 0 && !s.Service.StartedAt.IsZero() && !s.Service.StartedAt.After(now) {
+	if running && s.Service.State == "active" && !transition && s.Service.PID > 0 && !s.Service.StartedAt.IsZero() && !s.Service.StartedAt.After(now) {
 		uptime = tr("dashboard.core.uptime", formatCoreUptime(now.Sub(s.Service.StartedAt)))
 	}
-	content := overviewCoreSummary(o, inner, version, uptime)
+	state, _, color := headerCoreState(o)
+	if version = clean(version); version != "" {
+		name += themed("  "+version, muted, panel, o.Dim)
+	}
+	content := overviewTextBlock([]string{themed(cellCrop(state, inner), color, panel, o.Dim), name}, inner)
+	// A long-running process can add hour digits. Reserve its time row across
+	// lifecycle changes, including any extra lines needed on narrow screens.
+	timeRows := overviewTextBlock([]string{themed(uptime, muted, panel, o.Dim)}, inner)
+	budget := tr("dashboard.core.uptime", formatCoreUptime(time.Duration(1<<63-1)))
+	for n := len(strings.Split(wrapText(budget, inner), "\n")); len(timeRows.lines) < n; {
+		timeRows.blank()
+	}
+	content.append(timeRows)
 	var details []string
 	if running && s.RunningVersion != "" && s.Version != "" && s.RunningVersion != s.Version {
 		details = append(details, style(tr("dashboard.kernel.installed", clean(s.Version)), warning), style(tr("dashboard.core.restartVersion"), warning))
@@ -71,62 +80,28 @@ func overviewCoreCard(o dashboardOptions, width int) dashboardBlock {
 	} else if control.state == toggleUnknown {
 		details = append(details, style(tr("dashboard.core.unknownHint"), muted))
 	}
-	if issue := runtimeStopIssue(s, o.Locale); issue != "" {
+	if issue := runtimeStopIssue(s, o.Locale); !o.StateUnavailable && issue != "" {
 		details = append(details, style(issue, muted))
 	}
 	content.append(overviewTextBlock(details, inner))
-	return overviewPanel(o, width, tr("dashboard.overview.service"), content, nil, "", nil)
+	heading := overviewLabelSlot(o, inner, overviewHeading(o, tr("dashboard.overview.service")), coreActionFace(o, control), "core.toggle")
+	return overviewPanel(o, width, heading, content, nil)
 }
 
-func overviewCoreSummary(o dashboardOptions, width int, version, uptime string) dashboardBlock {
-	control, labels := overviewCoreToggle(o)
-	startHint, stopHint := o.Locale.T("dashboard.core.toggle.startHint"), o.Locale.T("dashboard.core.toggle.stopHint")
-	slot := min(width, max(overviewCoreToggleWidth(o, labels)+4, ansi.StringWidth(startHint), ansi.StringWidth(stopHint)))
-	// The brackets keep the control recognizable even without terminal colors.
-	face := renderToggle(control, toggleOptions{Labels: labels, Width: max(1, slot-4),
-		Surface: panel, Focused: o.Focus == "core.toggle" || o.Hover == "core.toggle" && control.canToggle() && !o.Busy, Dim: o.Dim})
-	toggle := cellCrop(themed("[ ", muted, panel, o.Dim)+face+themed(" ]", muted, panel, o.Dim), slot)
-	hint := ""
-	if control.canToggle() && !o.Busy {
-		hint = startHint
-		if control.state == toggleOn {
-			hint = stopHint
-		}
+func coreActionFace(o dashboardOptions, control toggleModel) string {
+	start, stop := o.Locale.T("dashboard.settings.start"), o.Locale.T("dashboard.settings.stop")
+	options := dashboardButtonOptions("core.toggle", o, false, panel)
+	options.Width = max(ansi.StringWidth(start), ansi.StringWidth(stop))
+	if o.Busy || !control.canToggle() {
+		// Keep keyboard focus visible during a transition. A plain dash occupies
+		// the same slot as the button, without advertising a service action.
+		options.Kind, options.Busy = buttonText, true
+		return renderButton("—", options)
 	}
-	hint = cellCrop(hint, slot)
-	hint = themed(strings.Repeat(" ", max(0, slot-ansi.StringWidth(hint)))+hint, muted, panel, o.Dim)
-	identity := themed(lipgloss.NewStyle().Bold(true).Render("Mihomo"), text, panel, o.Dim)
-	if version = clean(version); version != "" {
-		identity += themed("  "+version, muted, panel, o.Dim)
+	if control.state == toggleOn {
+		return renderButton(stop, options)
 	}
-	// Budget the full time.Sub range and reserve both supporting rows, so long
-	// uptimes and lifecycle changes never move the control or nearby cards.
-	uptimeBudget := o.Locale.T("dashboard.core.uptime", formatCoreUptime(time.Duration(1<<63-1)))
-	leftWidth := max(ansi.StringWidth(identity), ansi.StringWidth(uptimeBudget))
-	var row dashboardBlock
-	x, y := width-slot, 0
-	if width >= leftWidth+2+slot {
-		row.lines = []string{
-			themed(cellPad(identity, x), text, panel, o.Dim) + toggle,
-			themed(cellPad(uptime, x), muted, panel, o.Dim) + hint,
-		}
-	} else {
-		row = overviewTextBlock([]string{identity}, width)
-		rows := len(strings.Split(wrapText(uptimeBudget, width), "\n"))
-		lines := make([]string, rows)
-		if uptime != "" {
-			copy(lines, strings.Split(wrapText(uptime, width), "\n"))
-		}
-		for i := range lines {
-			lines[i] = themed(lines[i], muted, panel, o.Dim)
-		}
-		row.append(overviewTextBlock(lines, width))
-		y = len(row.lines)
-		padding := themed(strings.Repeat(" ", x), text, panel, o.Dim)
-		row.lines = append(row.lines, padding+toggle, padding+hint)
-	}
-	row.targets = []hitRegion{{ID: "core.toggle", X: x, Y: y, W: slot, H: 2}}
-	return row
+	return renderButton(start, options)
 }
 
 func formatCoreUptime(elapsed time.Duration) string {

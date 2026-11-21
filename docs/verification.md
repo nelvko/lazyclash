@@ -1,5 +1,11 @@
 # 验证入口
 
+## 侧栏状态与概览启停按钮（2026-11-21）
+
+在中英文、真彩及无色 PTY 中验证七页切换、逐级缩放到 120×9、抽屉和底栏快捷键开关。概览只在流量卡显示速率，其他页面的上下行速率位于固定的状态行上方。内核卡在 160×45、120×32、80×24、60×20、40×16 和恢复尺寸后均能通过键盘访问标题旁的单行动作。运行、停止与观察不可用分别验证了动作文字、焦点和只读信息。PTY 字符格重绘示例位于 `.test-artifacts/core-status-redesign/screenshots/`，包含 168×42 与 80×24 的中文界面。
+
+`make check build`、八项 Python 测试及 `./scripts/verify-linux.sh lazyclash-e2e` 通过。另在 Linux/arm64 使用真实 Mihomo 和隔离的 systemd 用户服务执行 `scripts/core-toggle-e2e.py`，验证鼠标启动、空格停止、端口冲突后的状态回读，以及外部启停和重启后的计时。临时服务已清理。记录位于 `.test-artifacts/core-status-redesign/linux-service/result.json`。
+
 ## 列表滚动延迟（2026-11-21）
 
 在 Apple M4 Pro、Go 1.27.1、200×45 英文 True Color 的本地 PTY 上，对比 `a9896f3` 和 `92b6192`。两次构建使用相同的页头和概览布局。每轮连续发送 12 次下滚和 12 次上滚，各跑八轮。下表记录从输入到首个发生变化的完整屏幕帧，以及到达目标位置的中位耗时。规则和节点来自内存夹具。

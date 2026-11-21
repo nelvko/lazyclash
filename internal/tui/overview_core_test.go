@@ -25,7 +25,7 @@ func TestCoreStatusShowsOnlyCurrentStateVersionAndRealProcessUptime(t *testing.T
 				return ansi.Strip(strings.Join(block.lines, "\n")), block
 			}
 			plain, block := render()
-			status := "● " + o.Locale.T("dashboard.core.toggle.on")
+			status := "● " + o.Locale.T("dashboard.status.running")
 			for _, want := range []string{o.Locale.T("dashboard.overview.service"), "Mihomo", status, "v1.19.33", o.Locale.T("dashboard.core.uptime", "02:18:34")} {
 				if !strings.Contains(plain, want) {
 					t.Fatalf("core status omitted %q:\n%s", want, plain)
@@ -39,14 +39,6 @@ func TestCoreStatusShowsOnlyCurrentStateVersionAndRealProcessUptime(t *testing.T
 			}
 			if len(block.targets) != 1 || block.targets[0].ID != "core.toggle" {
 				t.Fatalf("core must expose exactly one toggle, got %+v", block.targets)
-			}
-			row := ansi.Strip(block.lines[block.targets[0].Y])
-			if !strings.Contains(row, "Mihomo  v1.19.33") || !strings.Contains(row, status) {
-				t.Fatalf("core identity and status did not share row: %q", row)
-			}
-			detail := ansi.Strip(block.lines[block.targets[0].Y+1])
-			if !strings.Contains(detail, "02:18:34") || !strings.Contains(detail, o.Locale.T("dashboard.core.toggle.stopHint")) {
-				t.Fatalf("uptime and action hint did not share row: %q", detail)
 			}
 			o.Now = now.Add(time.Second)
 			if plain, _ := render(); !strings.Contains(plain, "02:18:35") {
@@ -67,31 +59,37 @@ func TestCoreStatusKeepsFailuresTransitionsAndMissingTimingExplicit(t *testing.T
 	now := time.Now()
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		for _, tc := range []struct {
-			name, state, serviceError, apiError, action, want                string
+			name, state, serviceError, apiError, action                      string
 			requestedRunning, active, missingTime, futureTime, noPID, uptime bool
+			unsupported, stateUnavailable                                    bool
 			toggle                                                           toggleState
 		}{
-			{name: "stopped", state: "inactive", want: "off", toggle: toggleOff},
-			{name: "failed", state: "failed", want: "off", toggle: toggleOff},
-			{name: "unexpected exit", state: "inactive", want: "off", requestedRunning: true, toggle: toggleOff},
-			{name: "starting", state: "activating", want: "starting", toggle: togglePending},
-			{name: "stopping", state: "deactivating", want: "stopping", toggle: togglePending},
-			{name: "reloading", state: "reloading", want: "restarting", toggle: togglePending},
-			{name: "unknown", state: "unknown", want: "unknown", toggle: toggleUnknown},
-			{name: "empty state", want: "unknown", toggle: toggleUnknown},
-			{name: "unrecognized state", state: "new-state", want: "unknown", toggle: toggleUnknown},
-			{name: "service unavailable", state: "unknown", serviceError: "fixture manager unavailable", want: "unavailable", toggle: toggleUnavailable},
-			{name: "monitor unavailable", state: "active", active: true, apiError: "fixture controller unavailable", want: "on", toggle: toggleOn, uptime: true},
-			{name: "missing time", state: "active", active: true, missingTime: true, want: "on", toggle: toggleOn},
-			{name: "future time", state: "active", active: true, futureTime: true, want: "on", toggle: toggleOn},
-			{name: "missing process", state: "active", active: true, noPID: true, want: "on", toggle: toggleOn},
-			{name: "local start", state: "inactive", action: "start", want: "starting", toggle: togglePending},
-			{name: "local stop", state: "active", active: true, action: "stop", want: "stopping", toggle: togglePending},
-			{name: "local restart", state: "active", active: true, action: "restart", want: "restarting", toggle: togglePending},
+			{name: "stopped", state: "inactive", toggle: toggleOff},
+			{name: "failed", state: "failed", toggle: toggleOff},
+			{name: "unexpected exit", state: "inactive", requestedRunning: true, toggle: toggleOff},
+			{name: "starting", state: "activating", toggle: togglePending},
+			{name: "stopping", state: "deactivating", toggle: togglePending},
+			{name: "reloading", state: "reloading", toggle: togglePending},
+			{name: "unknown", state: "unknown", toggle: toggleUnknown},
+			{name: "empty state", toggle: toggleUnknown},
+			{name: "unrecognized state", state: "new-state", toggle: toggleUnknown},
+			{name: "service unavailable", state: "unknown", serviceError: "fixture manager unavailable", toggle: toggleUnavailable},
+			{name: "monitor unavailable", state: "active", active: true, apiError: "fixture controller unavailable", toggle: toggleOn, uptime: true},
+			{name: "read-only running process", state: "active", active: true, unsupported: true, toggle: toggleUnavailable, uptime: true},
+			{name: "stale running snapshot", state: "active", active: true, stateUnavailable: true, toggle: toggleUnavailable},
+			{name: "missing time", state: "active", active: true, missingTime: true, toggle: toggleOn},
+			{name: "future time", state: "active", active: true, futureTime: true, toggle: toggleOn},
+			{name: "missing process", state: "active", active: true, noPID: true, toggle: toggleOn},
+			{name: "local start", state: "inactive", action: "start", toggle: togglePending},
+			{name: "local stop", state: "active", active: true, action: "stop", toggle: togglePending},
+			{name: "local restart", state: "active", active: true, action: "restart", toggle: togglePending},
 		} {
 			t.Run(language+"/"+tc.name, func(t *testing.T) {
-				o := dashboardOptions{Locale: i18n.New(language), Now: now, Busy: tc.action != "", CoreAction: tc.action,
+				o := dashboardOptions{Locale: i18n.New(language), Now: now, Busy: tc.action != "", CoreAction: tc.action, StateUnavailable: tc.stateUnavailable,
 					Snapshot: app.Snapshot{Installed: true, Version: "v1.19.33", RunningVersion: "v1.19.33", Service: service.Status{Active: tc.active, State: tc.state, PID: 4242, StartedAt: now.Add(-time.Hour)}, ServiceError: tc.serviceError, APIError: tc.apiError}}
+				if tc.unsupported {
+					o.Snapshot.Capabilities = app.Capabilities{Scope: "user", Runtime: app.Capability{Reason: "fixture read only"}}
+				}
 				if tc.missingTime {
 					o.Snapshot.Service.StartedAt = time.Time{}
 				}
@@ -107,27 +105,27 @@ func TestCoreStatusKeepsFailuresTransitionsAndMissingTimingExplicit(t *testing.T
 				if tc.requestedRunning {
 					o.Snapshot.Desired = app.DesiredState{Known: true, Running: true}
 				}
-				widget, _ := overviewCoreToggle(o)
+				widget := overviewCoreToggle(o)
 				if widget.state != tc.toggle {
 					t.Fatalf("toggle state=%v want %v", widget.state, tc.toggle)
 				}
 				block := overviewCoreCard(o, 72)
 				plain := ansi.Strip(strings.Join(block.lines, "\n"))
-				prefix := ""
-				switch tc.toggle {
-				case toggleOn:
-					prefix = "● "
-				case toggleOff:
-					prefix = "○ "
-				case togglePending:
-					prefix = "◌ "
-				}
-				face := prefix + o.Locale.T("dashboard.core.toggle."+tc.want)
+				face, _, _ := headerCoreState(o)
 				if !strings.Contains(plain, face) || strings.Contains(plain, "01:00:00") != tc.uptime {
 					t.Fatalf("core invented state/time (want %q):\n%s", face, plain)
 				}
 				if strings.Count(plain, face) != 1 {
 					t.Fatalf("state repeated:\n%s", plain)
+				}
+				if tc.state == "reloading" && face != "◌ "+o.Locale.T("dashboard.status.reloading") {
+					t.Fatalf("reload labeled as another operation: %q", face)
+				}
+				if tc.state == "failed" && !strings.Contains(plain, o.Locale.T("dashboard.core.failureReason", "start-limit-hit", 1)) {
+					t.Fatal("failed service lost its exit reason")
+				}
+				if tc.requestedRunning && !strings.Contains(plain, o.Locale.T("dashboard.core.exitHint")) {
+					t.Fatal("unexpected exit lost its recovery hint")
 				}
 				if tc.apiError != "" && !strings.Contains(plain, o.Locale.T("dashboard.core.monitorUnavailable")) {
 					t.Fatal("controller failure replaced process state")
@@ -157,9 +155,8 @@ func TestOverviewTitlesKeepSpacingAndNavigationActionsStayInHeading(t *testing.T
 	}
 	for _, hit := range body.targets {
 		if hit.ID == "core.toggle" {
-			row := ansi.Strip(ansi.Cut(body.lines[hit.Y], core.X, core.X+core.W))
-			if !strings.HasSuffix(strings.TrimSpace(row), "]") || !strings.Contains(row, "● Running") {
-				t.Fatalf("core toggle not right-aligned: %q", row)
+			if hit.Y != core.Y+1 || hit.X+hit.W != core.X+core.W-2 {
+				t.Fatalf("core action not at heading's right edge: %+v / %+v", hit, core)
 			}
 		}
 		if hit.ID == "card.profiles" && hit.Y != profile.Y+1 {

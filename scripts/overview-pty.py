@@ -40,53 +40,43 @@ def fixture_terminal(preview, binary, report, language, profile, scenario):
     return terminal
 
 
-def focused(terminal, label, toggle=False):
-    if toggle:
-        # The title also shows the observed core state; only the control face
-        # acquires the Toggle's focus underline.
-        return any(terminal.screen.styles[y][x][3] for x, y in text_points(terminal, label))
-    # Existing buttons retain their arrow gutter; the shared Toggle uses underline.
+def focused(terminal, label):
     pattern = r"›\s*(?:[<\[]\s*)?" + re.escape(label) + r"(?:\s|[>\]]|$)"
     return any(re.search(pattern, row) for row in terminal.screen.text().splitlines())
 
 
-def assert_core_focus(terminal, label, profile):
-    header_row = 1 if terminal.screen.rows >= 24 else 0
-    assert any(y > header_row for _, y in text_points(terminal, label)), "core toggle face is not visible"
-    if profile != "no-color":
-        assert focused(terminal, label, toggle=True), "core toggle lost its focus underline"
+def assert_core_affordance(terminal, words, scenario, profile, expect_focus=False):
+    title = words["dashboard.overview.service"]
+    x, y = text_point(terminal, title)
+    neighbor = text_point(terminal, words["dashboard.profile.title"])
+    right = neighbor[0] if neighbor and neighbor[1] == y else terminal.screen.columns
+    heading = "".join(terminal.screen.cells[y][x:right]).removeprefix(title)
+    if scenario == "unavailable":
+        action = "—"
+        status = "! " + words["dashboard.status.unknown"]
+    elif scenario == "stopped":
+        action = words["dashboard.settings.start"]
+        status = "○ " + words["dashboard.status.stopped"]
     else:
-        # NO_COLOR removes the shared component's underline. The preceding
-        # safe core-card Enter plus removed outline establishes entry into its
-        # sole focus target; model tests assert the exact focus ID.
-        assert_borderless(terminal)
+        action = words["dashboard.settings.stop"]
+        status = "● " + words["dashboard.status.running"]
+    face = re.escape(action)
+    if profile == "no-color" and scenario != "unavailable":
+        face = r"\[\s*" + face + r"\s*\]"
+    marker = "›" if expect_focus else ""
+    assert re.fullmatch(r"\s*" + marker + r"\s*" + face + r"[\s│]*", heading), \
+        "incorrect heading action or focus: " + repr(heading)
+    body = ["".join(row[x:right]) for row in terminal.screen.cells[y + 1:y + 7]]
+    assert any(line.lstrip().startswith(status) for line in body), "missing core observation: " + status
+    assert any(re.search(r"Mihomo\s+v1\.19\.33", line) for line in body), "missing core identity/version"
+    return action
 
 
-def assert_core_affordance(terminal, words, scenario):
-    key = "off" if scenario == "stopped" else "unavailable" if scenario == "unavailable" else "on"
-    label = words["dashboard.core.toggle." + key]
-    face = re.compile(r"\[\s*(?:[●○]\s+)?" + re.escape(label) + r"\s*\]")
-    point = next(((x, y) for x, y in text_points(terminal, label)
-                  if face.search("".join(terminal.screen.cells[y]))), None)
-    assert point is not None, "core state lost its visible control brackets"
-    x, y = point
-    assert "]" in "".join(terminal.screen.cells[y][x:]), "core control lost its closing bracket"
-    if scenario != "unavailable":
-        hint = words["dashboard.core.toggle." + ("startHint" if scenario == "stopped" else "stopHint")]
-        assert hint in "".join(terminal.screen.cells[y + 1]), "core action hint is not below the control"
-    else:
-        assert not any(words["dashboard.core.toggle." + key] in terminal.screen.text()
-                       for key in ("startHint", "stopHint")), "unavailable core offered a toggle action"
-
-
-def tab_controls(terminal, expected, core_face, profile):
-    # Each caller has just entered the core card's sole control. In NO_COLOR
-    # that known first stop has no style marker; all later buttons remain
-    # observable through their existing arrow gutters.
-    seen = {core_face} if profile == "no-color" else set()
+def tab_controls(terminal, expected):
+    seen = set()
     for _ in range(30):
         terminal.settle()
-        seen.update(label for label in expected if focused(terminal, label, toggle=label == core_face))
+        seen.update(label for label in expected if focused(terminal, label))
         if seen == set(expected):
             return
         terminal.key(b"\t")
@@ -231,7 +221,7 @@ def exercise(preview, binary, output, language, profile, scenario, args):
         terminal.settle()
         preview.capture(terminal, output, "overview-initial", args)
         screen = terminal.screen.text()
-        assert_core_affordance(terminal, words, scenario)
+        lifecycle = assert_core_affordance(terminal, words, scenario, profile)
         if scenario in ("running", "pending"):
             for value in ("02:18:", "香港 01", "日常订阅"):
                 assert value in screen, "missing initial observation: " + value
@@ -239,8 +229,6 @@ def exercise(preview, binary, output, language, profile, scenario, args):
         elif scenario == "drift":
             for value in ("v1.20.0", "v1.19.33", words["dashboard.core.restartVersion"]):
                 assert value in screen, "missing state discrepancy: " + value
-        elif scenario == "stopped":
-            assert "○ " + words["dashboard.core.toggle.off"] in screen, "stopped service lost its observed off toggle"
         elif scenario == "direct":
             assert words["dashboard.overview.modeDirect"] in screen, "actual Direct omitted its explanation"
             assert "香港 01" not in screen, "Direct retained a stale selected node"
@@ -264,10 +252,7 @@ def exercise(preview, binary, output, language, profile, scenario, args):
         preview.capture(terminal, output, "card-focus", args)
         terminal.key(b"\r")
         terminal.settle()
-        lifecycle = ("○ " + words["dashboard.core.toggle.off"] if scenario == "stopped" else
-                     words["dashboard.core.toggle.unavailable"] if scenario == "unavailable" else
-                     "● " + words["dashboard.core.toggle.on"])
-        assert_core_focus(terminal, lifecycle, profile)
+        assert_core_affordance(terminal, words, scenario, profile, expect_focus=True)
         assert_borderless(terminal)
         preview.capture(terminal, output, "control-focus", args)
 
@@ -296,10 +281,9 @@ def exercise(preview, binary, output, language, profile, scenario, args):
             terminal.key(b"\r")
             terminal.settle()
             assert_borderless(terminal)
-            assert_core_focus(terminal, lifecycle, profile)
-            assert_core_affordance(terminal, words, scenario)
+            assert_core_affordance(terminal, words, scenario, profile, expect_focus=True)
             preview.capture(terminal, output, "control-focus-%dx%d" % (width, height), args)
-            tab_controls(terminal, expected, lifecycle, profile)
+            tab_controls(terminal, expected)
             preview.capture(terminal, output, "tab-revealed-%dx%d" % (width, height), args)
             assert words["dashboard.footer.quit"] in terminal.screen.text().splitlines()[-1], "Quit hint left the footer"
 
@@ -343,7 +327,7 @@ def exercise(preview, binary, output, language, profile, scenario, args):
         assert calls["runtime_queries"] > 0, calls
         check_profile(preview, terminal, profile)
         (output / "pty.raw").write_bytes(terminal.raw)
-        print("PASS %s/%s/%s: paired equal-size cards, network/mode order, full-width traffic, single-column environment, five dimensions, single observed core toggle, borderless/focus states, heading actions, Tab reveal and read-only network details; %s" %
+        print("PASS %s/%s/%s: paired equal-size cards, network/mode order, full-width traffic, single-column environment, five dimensions, core observation and heading action, borderless/focus states, Tab reveal and read-only network details; %s" %
               (language, profile, scenario, json.dumps(calls)), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")

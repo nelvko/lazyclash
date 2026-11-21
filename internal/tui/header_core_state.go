@@ -47,7 +47,7 @@ func headerCoreState(o dashboardOptions) (full, compact, color string) {
 		case "stop":
 			label = tr("dashboard.status.stopping")
 		case "restart":
-			label = tr("dashboard.core.toggle.restarting")
+			label = tr("dashboard.status.restarting")
 		}
 	case s.ServiceError != "":
 		symbol, plain = "!", "ERR"
@@ -64,9 +64,9 @@ func headerCoreState(o dashboardOptions) (full, compact, color string) {
 	case s.Service.State == "failed":
 		symbol, plain, color = "!", "ERR", errorColor
 		label = tr("dashboard.status.failed")
-	case s.Service.Active:
+	case s.Service.State == "active" && s.Service.Active:
 		symbol, plain = "●", "ON"
-	case s.Service.State == "inactive":
+	case s.Service.State == "inactive" && !s.Service.Active:
 		symbol, plain = "○", "OFF"
 	case s.Service.State == "unsupported":
 		symbol, plain = "!", "N/A"

@@ -8,17 +8,25 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/i18n"
 	"github.com/nelvko/lazyclash/internal/service"
 )
 
-func TestCoreCardGroupsIdentityAndExposesStatusAction(t *testing.T) {
+func coreCardAction(t *testing.T, block dashboardBlock) (hitRegion, string) {
+	t.Helper()
+	if len(block.targets) != 1 || block.targets[0].ID != "core.toggle" || block.targets[0].H != 1 {
+		t.Fatalf("expected one single-row core action, got %+v", block.targets)
+	}
+	hit := block.targets[0]
+	return hit, ansi.Strip(ansi.Cut(block.lines[hit.Y], hit.X, hit.X+hit.W))
+}
+
+func TestCoreCardPlacesActionInHeadingAndGroupsReadOnlyDetails(t *testing.T) {
 	now := time.Now()
 	for _, language := range []string{i18n.English, i18n.Chinese} {
-		for _, width := range []int{30, 72} {
+		for _, width := range []int{16, 30, 72} {
 			for _, plain := range []bool{false, true} {
 				t.Run(fmt.Sprintf("%s/%d/plain=%t", language, width, plain), func(t *testing.T) {
 					o := dashboardOptions{Locale: i18n.New(language), PlainButtons: plain, Now: now, Snapshot: app.Snapshot{
@@ -28,33 +36,36 @@ func TestCoreCardGroupsIdentityAndExposesStatusAction(t *testing.T) {
 					block := overviewCoreCard(o, width)
 					assertCanvas(t, strings.Join(block.lines, "\n"), width, len(block.lines))
 					assertRegions(t, block.targets, width, len(block.lines))
-					if len(block.targets) != 1 || block.targets[0].ID != "core.toggle" || block.targets[0].H != 2 {
-						t.Fatalf("status and hint must share one two-row control: %+v", block.targets)
+					hit, face := coreCardAction(t, block)
+					if strings.Trim(face, " []") != o.Locale.T("dashboard.settings.stop") {
+						t.Fatalf("click target misses Stop: %q", face)
 					}
-					hit := block.targets[0]
-					face := strings.TrimSpace(ansi.Strip(ansi.Cut(block.lines[hit.Y], hit.X, hit.X+hit.W)))
-					if !strings.HasPrefix(face, "[ ") || !strings.HasSuffix(face, " ]") || !strings.Contains(face, "● "+o.Locale.T("dashboard.core.toggle.on")) {
-						t.Fatalf("status lacks visible button delimiters: %q", face)
-					}
-					hint := strings.TrimSpace(ansi.Strip(ansi.Cut(block.lines[hit.Y+1], hit.X, hit.X+hit.W)))
-					if hint != o.Locale.T("dashboard.core.toggle.stopHint") {
-						t.Fatalf("hint lies outside the clickable status control: %q", hint)
-					}
-					identityY, uptimeY := -1, -1
-					for y, line := range block.lines {
-						line = ansi.Strip(line)
-						if strings.Contains(line, "Mihomo  v1.19.33") {
-							identityY = y
+					title := o.Locale.T("dashboard.overview.service")
+					if width == 16 {
+						if hit.Y != 2 || strings.TrimSpace(ansi.Strip(block.lines[hit.Y-1])) != title {
+							t.Fatalf("narrow heading failed to move the complete action below %q: %+v", title, hit)
 						}
-						if strings.Contains(line, o.Locale.T("dashboard.core.uptime", "01:00:00")) {
-							uptimeY = y
+						return
+					}
+					if !strings.Contains(ansi.Strip(ansi.Cut(block.lines[hit.Y], 0, hit.X)), title) || hit.X+hit.W != width-2 {
+						t.Fatalf("heading action not at the right edge: %+v / %q", hit, ansi.Strip(block.lines[hit.Y]))
+					}
+					full, _, _ := headerCoreState(o)
+					want := []string{full, "Mihomo  v1.19.33", o.Locale.T("dashboard.core.uptime", "01:00:00")}
+					var body []string
+					for _, line := range block.lines[hit.Y+1:] {
+						line = strings.TrimRight(ansi.Strip(line), " ")
+						if line != "" {
+							body = append(body, line)
 						}
 					}
-					if width == 72 && (identityY != hit.Y || uptimeY != hit.Y+1) {
-						t.Fatalf("wide card separated identity/status or uptime/hint: identity=%d uptime=%d control=%+v", identityY, uptimeY, hit)
+					if len(body) != len(want) {
+						t.Fatalf("unexpected card body: %q", body)
 					}
-					if width == 30 && (identityY < 0 || uptimeY <= identityY || hit.Y <= uptimeY) {
-						t.Fatalf("narrow card did not stack identity, uptime and control: identity=%d uptime=%d control=%+v", identityY, uptimeY, hit)
+					for i, value := range want {
+						if body[i] != "  "+value {
+							t.Fatalf("body row %d = %q, want left-aligned %q", i, body[i], value)
+						}
 					}
 				})
 			}
@@ -62,71 +73,55 @@ func TestCoreCardGroupsIdentityAndExposesStatusAction(t *testing.T) {
 	}
 }
 
-func TestCoreCardActionHintOnlyAppearsForAvailableActions(t *testing.T) {
+func TestCoreCardActionsKeepTheirSizeAndFocusAcrossLifecycle(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
-		for _, tc := range []struct {
-			name, state, problem, action, hint string
-			active, busy                       bool
-		}{
-			{name: "running", state: "active", active: true, hint: "stopHint"},
-			{name: "stopped", state: "inactive", hint: "startHint"},
-			{name: "busy", state: "active", active: true, busy: true},
-			{name: "starting", state: "activating"},
-			{name: "stopping", state: "deactivating", active: true},
-			{name: "restarting", state: "active", active: true, busy: true, action: "restart"},
-			{name: "unavailable", state: "active", active: true, problem: "fixture service unavailable"},
-			{name: "unknown", state: "unknown"},
-		} {
-			t.Run(language+"/"+tc.name, func(t *testing.T) {
-				o := dashboardOptions{Locale: i18n.New(language), Busy: tc.busy, CoreAction: tc.action,
-					Snapshot: app.Snapshot{Installed: true, Service: service.Status{Active: tc.active, State: tc.state}, ServiceError: tc.problem}}
-				block := overviewCoreCard(o, 72)
-				plain := ansi.Strip(strings.Join(block.lines, "\n"))
-				for _, hint := range []string{"startHint", "stopHint"} {
-					if strings.Contains(plain, o.Locale.T("dashboard.core.toggle."+hint)) != (hint == tc.hint) {
-						t.Fatalf("action hint does not match availability: %s\n%s", hint, plain)
+		for _, plain := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/plain=%t", language, plain), func(t *testing.T) {
+				var slot hitRegion
+				for _, tc := range []struct {
+					state, problem, action, want string
+					active, busy                 bool
+				}{
+					{state: "active", active: true, want: "stop"},
+					{state: "inactive", want: "start"},
+					{state: "failed", want: "start"},
+					{state: "active", active: true, busy: true},
+					{state: "activating"},
+					{state: "deactivating", active: true},
+					{state: "active", active: true, busy: true, action: "restart"},
+					{state: "active", active: true, problem: "fixture service unavailable"},
+					{state: "unknown"},
+				} {
+					o := dashboardOptions{Locale: i18n.New(language), Busy: tc.busy, CoreAction: tc.action, PlainButtons: plain,
+						Snapshot: app.Snapshot{Installed: true, Service: service.Status{Active: tc.active, State: tc.state}, ServiceError: tc.problem}}
+					value := "—"
+					if tc.want != "" {
+						value = o.Locale.T("dashboard.settings." + tc.want)
 					}
-				}
-				if len(block.targets) != 1 || block.targets[0].ID != "core.toggle" || block.targets[0].H != 2 {
-					t.Fatalf("availability changed the status focus region: %+v", block.targets)
-				}
-			})
-		}
-	}
-}
+					idle := overviewCoreCard(o, 72)
+					hit, face := coreCardAction(t, idle)
+					if strings.Trim(face, " []") != value {
+						t.Fatalf("%s action = %q, want %q", tc.state, face, value)
+					}
+					if slot.ID == "" {
+						slot = hit
+					} else if hit != slot {
+						t.Fatalf("%s moved the action: %+v, want %+v", tc.state, hit, slot)
+					}
+					o.Focus = "core.toggle"
+					focusedHit, focused := coreCardAction(t, overviewCoreCard(o, 72))
+					if focusedHit != hit || !strings.Contains(focused, "›") || strings.Trim(focused, " []›") != value {
+						t.Fatalf("%s lost its visible focus or action: %q / %+v", tc.state, focused, focusedHit)
+					}
 
-func TestCoreCardHoverOnlyHighlightsAvailableActions(t *testing.T) {
-	underline := ansi.NewStyle().Underline(true).UnderlineColor(lipgloss.Color(focus)).String()
-	for _, language := range []string{i18n.English, i18n.Chinese} {
-		for _, tc := range []struct {
-			name, state, problem, action string
-			active, busy, actionable     bool
-		}{
-			{name: "running", state: "active", active: true, actionable: true},
-			{name: "stopped", state: "inactive", actionable: true},
-			{name: "busy", state: "active", active: true, busy: true},
-			{name: "starting", state: "activating"},
-			{name: "stopping", state: "deactivating", active: true},
-			{name: "restarting", state: "active", active: true, busy: true, action: "restart"},
-			{name: "unavailable", state: "active", active: true, problem: "fixture service unavailable"},
-			{name: "unknown", state: "unknown"},
-		} {
-			t.Run(language+"/"+tc.name, func(t *testing.T) {
-				o := dashboardOptions{Locale: i18n.New(language), Busy: tc.busy, CoreAction: tc.action,
-					Snapshot: app.Snapshot{Installed: true, Service: service.Status{Active: tc.active, State: tc.state}, ServiceError: tc.problem}}
-				idle := overviewCoreCard(o, 72)
-				for _, focused := range []bool{false, true} {
-					o.Hover, o.Focus = "core.toggle", ""
-					if focused {
-						o.Hover, o.Focus = "", "core.toggle"
+					o.Focus, o.Hover = "", "core.toggle"
+					hover := overviewCoreCard(o, 72)
+					hoverHit, hoverFace := coreCardAction(t, hover)
+					if hoverHit != hit || hoverFace != face {
+						t.Fatalf("%s hover changed action text or target", tc.state)
 					}
-					card := overviewCoreCard(o, 72)
-					if len(card.targets) != 1 || card.targets[0] != idle.targets[0] || ansi.Strip(strings.Join(card.lines, "\n")) != ansi.Strip(strings.Join(idle.lines, "\n")) {
-						t.Fatal("hover or focus changed status text or its hit region")
-					}
-					highlighted := strings.Contains(card.lines[card.targets[0].Y], underline)
-					if highlighted != (focused || tc.actionable) {
-						t.Fatalf("highlighted=%t with keyboard focus=%t and actionable=%t", highlighted, focused, tc.actionable)
+					if styled := idle.lines[hit.Y] != hover.lines[hit.Y]; styled != (tc.want != "") {
+						t.Fatalf("%s hover feedback=%t for action %q", tc.state, styled, tc.want)
 					}
 				}
 			})
@@ -134,37 +129,64 @@ func TestCoreCardHoverOnlyHighlightsAvailableActions(t *testing.T) {
 	}
 }
 
-func TestClickingCoreActionHintStartsOrStops(t *testing.T) {
+func TestCoreCardMouseOnlyActivatesTheStartStopButton(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		for _, active := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/active=%t", language, active), func(t *testing.T) {
 				m, b := coreToggleTestModel(t, active)
 				defer m.stopRuntime()
 				m.locale = i18n.New(language)
+				m.snapshot.Service.StartedAt = time.Now().Add(-time.Hour)
 				m.layout()
 				hit := findTarget(t, m, "core.toggle")
-				if hit.H != 2 {
-					t.Fatalf("hint is not part of the status target: %+v", hit)
-				}
+				calls := 0
 				action := "start"
 				if active {
 					action = "stop"
 				}
-				calls := 0
 				b.control = func(_ context.Context, got string) error {
 					calls++
 					if got != action {
-						t.Fatalf("hint requested %q, want %q", got, action)
+						t.Fatalf("clicked button requested %q, want %q", got, action)
 					}
 					return nil
 				}
-				m, cmd := update(m, tea.MouseClickMsg{X: hit.X + hit.W - 1, Y: hit.Y + 1, Button: tea.MouseLeft})
+
+				state, _, _ := headerCoreState(m.navigationOptions())
+				fields := []string{state, "Mihomo"}
+				if active {
+					fields = append(fields, strings.TrimSpace(m.tr("dashboard.core.uptime", "")))
+				}
+				g := dashboardGeometry(m.navigationOptions())
+				for _, field := range fields {
+					found := false
+					for y, row := range strings.Split(m.screen, "\n") {
+						if y <= hit.Y {
+							continue
+						}
+						body := ansi.Strip(ansi.Cut(row, g.x, hit.X))
+						prefix, _, ok := strings.Cut(body, field)
+						if !ok {
+							continue
+						}
+						found = true
+						m, _ = update(m, tea.MouseClickMsg{X: g.x + ansi.StringWidth(prefix), Y: y, Button: tea.MouseLeft})
+						if m.busy || calls != 0 || b.reads != 0 {
+							t.Fatalf("clicking read-only %q issued a service operation", field)
+						}
+						break
+					}
+					if !found {
+						t.Fatalf("missing read-only field %q", field)
+					}
+				}
+				m, cmd := update(m, tea.MouseClickMsg{X: hit.X + hit.W - 1, Y: hit.Y, Button: tea.MouseLeft})
 				if cmd == nil || !m.busy || m.focus != "core.toggle" || calls != 0 {
-					t.Fatal("clicking the action hint did not queue the status action")
+					t.Fatal("clicking the button did not queue the action")
 				}
 				actionCmd(t, cmd)()
 				if calls != 1 {
-					t.Fatalf("hint queued %d service requests, want one", calls)
+					t.Fatalf("button issued %d service requests, want one", calls)
 				}
 			})
 		}
