@@ -184,7 +184,24 @@ func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
 	if headerY == g.headerY && header != "" {
 		titleRight = min(titleRight, headerX-1)
 	}
-	put(titleX, g.headerY, dashboardTitle(o, titleText, pageText, max(0, titleRight-titleX)))
+	titleAction := renderPageTitleAction(o)
+	actionWidth := ansi.StringWidth(titleAction)
+	titleWidth := max(0, titleRight-titleX)
+	if actionWidth+2 >= titleWidth {
+		titleAction = ""
+	}
+	if titleAction != "" {
+		titleWidth -= actionWidth + 2
+	}
+	title := dashboardTitle(o, titleText, pageText, titleWidth)
+	put(titleX, g.headerY, title)
+	if titleAction != "" {
+		x := titleX + ansi.StringWidth(title) + 2
+		put(x, g.headerY, titleAction)
+		if o.Header.titleAction.enabled && !o.Busy {
+			add(hitRegion{ID: o.Header.titleAction.id, X: x, Y: g.headerY, W: actionWidth, H: 1})
+		}
+	}
 	put(headerX, headerY, header)
 	for _, hit := range headerTargets {
 		add(hit)
@@ -228,6 +245,18 @@ func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
 	}
 	scroll := max(0, min(o.Scroll, max(0, total-g.height)))
 	o.Scroll = scroll
+	if o.Page == "proxies" && o.Width >= sidebarMinWidth {
+		if group := proxyStickyGroup(o.Snapshot.Groups, bodyTargets, scroll, g.height); group != "" {
+			// Reuse the space below the title so the list and fixed search
+			// stay on the same rows as the label appears and disappears.
+			x := 0
+			if g.sidebar {
+				x = sidebarWidth
+			}
+			label := strings.Repeat(" ", g.x-x) + tr("proxies.search_group", clean(group))
+			put(x, g.y-o.BodyTopRows-1, themed(cellPad(label, o.Width-x), accent, bg, o.Dim))
+		}
+	}
 	for i := 0; i < g.height && scroll+i < total; i++ {
 		index := scroll + i - o.BodyStart
 		if index >= 0 && index < len(bodyLines) {

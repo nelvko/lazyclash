@@ -14,11 +14,15 @@ type headerAction struct {
 type pageHeader struct {
 	summary        string
 	compactSummary string
+	titleAction    headerAction
 	leading        []headerAction
 	actions        []headerAction
 }
 
 func (h pageHeader) owns(id string) bool {
+	if id != "" && h.titleAction.id == id {
+		return true
+	}
 	for _, action := range append(h.leading, h.actions...) {
 		if action.id == id {
 			return true
@@ -28,6 +32,9 @@ func (h pageHeader) owns(id string) bool {
 }
 
 func (h pageHeader) enabled(id string) bool {
+	if id != "" && h.titleAction.id == id {
+		return h.titleAction.enabled
+	}
 	for _, action := range append(h.leading, h.actions...) {
 		if action.id == id {
 			return action.enabled
@@ -56,7 +63,11 @@ func (m Model) pageHeader() pageHeader {
 			}
 		}
 		if !m.proxiesDirect() {
-			h.actions = append(h.actions, headerAction{"proxies.search-open", tr("proxies.search"), "/", m.proxiesReady() && m.proxies.detail == ""})
+			browsing := m.proxiesReady() && m.proxies.detail == ""
+			h.actions = append(h.actions, headerAction{"proxies.search-open", tr("proxies.search"), "/", browsing})
+			if browsing && !m.proxiesNarrow() && m.hasExpandedProxyGroups() {
+				h.titleAction = headerAction{id: "proxies.collapse_all", label: tr("proxies.collapse_all"), enabled: !m.quitting}
+			}
 		}
 		h.actions = append(h.actions, headerAction{"proxies.providers", tr("providers.title.proxies"), "≡", m.providersSupported(providerProxies)})
 	case "profiles":
@@ -100,6 +111,16 @@ func (m Model) pageHeader() pageHeader {
 		h.actions = []headerAction{{"network", tr("header.network"), tr("header.networkCompact"), true}}
 	}
 	return h
+}
+
+func renderPageTitleAction(o dashboardOptions) string {
+	action := o.Header.titleAction
+	if action.id == "" {
+		return ""
+	}
+	options := dashboardButtonOptions(action.id, o, false, bg)
+	options.Kind, options.Compact, options.Disabled = buttonText, true, !action.enabled || o.Busy
+	return renderButton(action.label, options)
 }
 
 // On small terminals actions get their own header row. They remain outside the

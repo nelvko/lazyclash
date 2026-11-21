@@ -56,16 +56,12 @@ func (m Model) proxySearchVisible() bool {
 		(m.proxies.searchReturn != nil || m.proxies.editing || m.proxySearchQuery() != "")
 }
 
-func (m Model) proxyGroupLabelVisible() bool {
-	if !m.proxiesReady() || m.proxiesDirect() || m.proxies.detail != "" {
+func (m Model) proxyNarrowGroupLabelVisible() bool {
+	if !m.proxiesNarrow() || !m.proxiesReady() || m.proxiesDirect() || m.proxies.detail != "" || m.proxies.activeGroup == "" {
 		return false
 	}
-	for _, index := range m.visibleProxyGroups() {
-		if m.proxyGroupExpanded(m.snapshot.Groups[index].Name) {
-			return true
-		}
-	}
-	return false
+	_, _, exists := m.proxyGroup(m.proxies.activeGroup)
+	return exists
 }
 
 // Search is opened explicitly, keeping the unfiltered directory compact.
@@ -197,7 +193,7 @@ func (m Model) proxyFixedRows(o dashboardOptions) int {
 	if m.proxySearchVisible() {
 		rows = 1
 	}
-	if m.proxyGroupLabelVisible() {
+	if m.proxyNarrowGroupLabelVisible() {
 		groupRows = 1
 	}
 	height := dashboardGeometry(o).height
@@ -212,7 +208,7 @@ func (m Model) proxyFixedRows(o dashboardOptions) int {
 
 func (m Model) proxySearchFixed(rows int) bool {
 	groupRows := 0
-	if m.proxyGroupLabelVisible() {
+	if m.proxyNarrowGroupLabelVisible() {
 		groupRows = 1
 	}
 	return m.proxySearchVisible() && rows > groupRows
@@ -224,29 +220,8 @@ func (m Model) proxiesFixedToolbar(o dashboardOptions) dashboardBlock {
 	if m.proxySearchFixed(o.BodyTopRows) {
 		bar = m.proxySearchBlock(g.width)
 	}
-	if o.BodyTopRows > len(bar.lines) && m.proxyGroupLabelVisible() {
-		scroll := min(m.scroll, max(0, len(strings.Split(o.Body, "\n"))-g.height))
-		if group := m.proxyVisibleGroup(o.BodyTargets, scroll); group != "" {
-			bar.lines = append(bar.lines, themed(cellPad(m.tr("proxies.search_group", clean(group)), g.width), accent, bg, false))
-		} else {
-			bar.blank()
-		}
+	if o.BodyTopRows > len(bar.lines) && m.proxyNarrowGroupLabelVisible() {
+		bar.lines = append(bar.lines, themed(cellPad(m.tr("proxies.search_group", clean(m.proxies.activeGroup)), g.width), accent, bg, false))
 	}
 	return bar
-}
-
-// Follow the section at the viewport's top, not keyboard focus: wheel scrolling
-// intentionally keeps focus unchanged, and several wide-screen groups may be open.
-func (m Model) proxyVisibleGroup(hits []hitRegion, scroll int) string {
-	group, lastY := "", -1
-	for _, hit := range hits {
-		var index int
-		if _, err := fmt.Sscanf(hit.ID, "group.%d", &index); err != nil || index < 0 || index >= len(m.snapshot.Groups) {
-			continue
-		}
-		if group == "" || hit.Y <= scroll && hit.Y > lastY {
-			group, lastY = m.snapshot.Groups[index].Name, hit.Y
-		}
-	}
-	return group
 }

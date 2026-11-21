@@ -103,15 +103,24 @@ func TestProxiesEnteringGroupRevealsCurrentNodeWithoutSelecting(t *testing.T) {
 				group.Now = group.All[38]
 				setProxyTestGroup(&m, "")
 				m.focus = "group.0"
+				m.layout()
+				heading := findTarget(t, m, "group.0")
 				switch entry {
 				case "activate":
-					m.proxyActivate("group.0")
+					m, _ = update(m, special(tea.KeyEnter))
 				case "right":
-					m.proxyKey(special(tea.KeyRight))
+					m, _ = update(m, special(tea.KeyRight))
 				case "reference":
 					m.browseProxyReference(group.Name)
 				}
 				m.layout()
+				if width == 160 && entry == "activate" {
+					if m.focus != heading.ID || m.scroll != 0 || findTarget(t, m, heading.ID).Y != heading.Y ||
+						!hasAction(m.targets, "node.0.0") || backend.selections != 0 {
+						t.Fatalf("Enter moved the inline group to its selected node: focus=%s scroll=%d selections=%d", m.focus, m.scroll, backend.selections)
+					}
+					return
+				}
 				if m.focus != "node.0.38" || m.scroll == 0 || !hasAction(m.targets, m.focus) || backend.selections != 0 || m.busy {
 					t.Fatalf("group entry did not reveal current node without selecting: focus=%s scroll=%d selections=%d", m.focus, m.scroll, backend.selections)
 				}
@@ -120,31 +129,61 @@ func TestProxiesEnteringGroupRevealsCurrentNodeWithoutSelecting(t *testing.T) {
 	}
 }
 
-func TestProxiesStickyGroupFollowsScrollWithoutMovingFocus(t *testing.T) {
-	m, _ := proxiesModel(t, 160, 24)
+func TestProxiesStickyGroupFollowsVisibleMembersWithoutMovingFocus(t *testing.T) {
+	m, _ := proxiesModel(t, 160, 36)
 	m.snapshot.Groups = []mihomo.Group{
 		{Name: "first", Type: "Selector", All: []string{"one", "two", "three", "four", "five", "six"}, Now: "one"},
-		{Name: "second", Type: "Selector", All: []string{"seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen"}, Now: "seven"},
+		{Name: "second", Type: "Selector", Now: "tail-00"},
 	}
-	for i := range 30 {
+	for i := range 42 {
 		m.snapshot.Groups[1].All = append(m.snapshot.Groups[1].All, fmt.Sprintf("tail-%02d", i))
 	}
 	setProxyTestGroup(&m, "first")
 	m.expandProxyGroup("second")
 	m.focus = "node.0.0"
-	width := dashboardBodyWidth(m.dashboardOptions())
-	body, hits := m.proxiesBody(width)
-	for _, hit := range hits {
-		if hit.ID == "node.1.0" {
-			m.scroll = hit.Y
-			break
-		}
-	}
-	o := m.dashboardOptions()
-	o.Body, o.BodyTargets = body, hits
-	bar := m.proxiesFixedToolbar(o)
-	if !strings.Contains(ansi.Strip(strings.Join(bar.lines, "\n")), "second") || m.focus != "node.0.0" {
-		t.Fatalf("group label followed focus instead of scroll: %q focus=%s", ansi.Strip(strings.Join(bar.lines, "\n")), m.focus)
+	m.proxies.testGroup, m.proxies.testStatus, m.proxies.testStatusVisible = "first", "done", true
+	m.proxies.completed, m.proxies.total = 6, 6
+	hits := m.contentTargets()
+	first := listSearchTarget(t, hits, "group.0")
+	second := listSearchTarget(t, hits, "group.1")
+	g := dashboardGeometry(m.dashboardOptions())
+	for _, state := range []struct {
+		name  string
+		row   int
+		group string
+	}{
+		{"at top", 0, ""},
+		{"heading partly visible", first.Y + first.H - 1, ""},
+		{"first heading offscreen", first.Y + first.H, "first"},
+		{"first status without members", second.Y - 1, ""},
+		{"second heading visible", second.Y, ""},
+		{"second heading offscreen", second.Y + second.H, "second"},
+		{"back to first heading", first.Y, ""},
+	} {
+		t.Run(state.name, func(t *testing.T) {
+			m.scroll = state.row
+			m.layout()
+			if m.scroll != state.row || m.focus != "node.0.0" {
+				t.Fatalf("scroll fixture lost offset or focus: scroll=%d want=%d focus=%s", m.scroll, state.row, m.focus)
+			}
+			if got := dashboardGeometry(m.dashboardOptions()); got.y != g.y || got.height != g.height {
+				t.Fatalf("sticky context changed the viewport: got y=%d h=%d, want y=%d h=%d", got.y, got.height, g.y, g.height)
+			}
+			plain := ansi.Strip(m.screen)
+			for _, group := range []string{"first", "second"} {
+				label := m.tr("proxies.search_group", group)
+				if strings.Contains(plain, label) != (group == state.group) {
+					t.Fatalf("at offset %d, want sticky group %q, checked label %q", m.scroll, state.group, label)
+				}
+			}
+			if state.group != "" {
+				node := "node.0.0"
+				if state.group == "second" {
+					node = "node.1.0"
+				}
+				findTarget(t, m, node)
+			}
+		})
 	}
 }
 
@@ -162,9 +201,42 @@ func TestProxiesStickyGroupClampsAfterContentShrinks(t *testing.T) {
 	if len(strings.Split(o.Body, "\n")) > dashboardGeometry(o).height {
 		t.Fatal("fixture should fit after the group contents shrink")
 	}
-	plain := ansi.Strip(strings.Join(o.BodyTop.lines, "\n"))
-	if !strings.Contains(plain, "first") || strings.Contains(plain, "second") {
-		t.Fatalf("fixed group used stale scroll instead of the current body geometry: %s", plain)
+	m.layout()
+	plain := ansi.Strip(m.screen)
+	if m.scroll != 0 || strings.Contains(plain, m.tr("proxies.search_group", "first")) ||
+		strings.Contains(plain, m.tr("proxies.search_group", "second")) {
+		t.Fatal("a stale offset showed a sticky label even though the shortened body fits")
+	}
+}
+
+func TestProxiesNarrowMemberViewKeepsItsGroupTitle(t *testing.T) {
+	m := proxyHoverModel(t, 48)
+	m.width, m.height = 80, 24
+	setProxyTestGroup(&m, "")
+	m.layout()
+	label := m.tr("proxies.search_group", "PROXY")
+	if strings.Contains(ansi.Strip(m.screen), label) {
+		t.Fatal("narrow directory duplicated the group name")
+	}
+	m, _ = click(m, findTarget(t, m, "group.0"))
+	before := strings.Split(ansi.Strip(m.screen), "\n")
+	groupTitleRow := -1
+	for index, row := range before {
+		if strings.Contains(row, label) {
+			groupTitleRow = index
+			break
+		}
+	}
+	if groupTitleRow < 0 || m.proxies.activeGroup != "PROXY" || hasAction(m.targets, "group.1") {
+		t.Fatal("narrow group page did not show its own title")
+	}
+	g := dashboardGeometry(m.dashboardOptions())
+	for range 3 {
+		m, _ = update(m, tea.MouseWheelMsg{X: g.x + 5, Y: g.y + 4, Button: tea.MouseWheelDown})
+	}
+	after := strings.Split(ansi.Strip(m.screen), "\n")
+	if m.scroll == 0 || hasAction(m.targets, "group.0") || !strings.Contains(after[groupTitleRow], label) {
+		t.Fatal("narrow group title did not stay visible above scrolled nodes")
 	}
 }
 

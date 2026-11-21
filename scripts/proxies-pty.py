@@ -64,7 +64,7 @@ def proxy_header_positions(terminal, words):
     return title, modes, provider, bottom
 
 
-def assert_proxy_header(terminal, words):
+def assert_proxy_header(terminal, words, direct=False):
     rows = terminal.screen.text().splitlines()
     _, modes, provider, bottom = proxy_header_positions(terminal, words)
     header = "\n".join(rows[:bottom + 1])
@@ -79,9 +79,13 @@ def assert_proxy_header(terminal, words):
         row = terminal.screen.cells[direct_y]
         search_x = next((x for x in range(direct_x + direct_width, provider[0])
                          if "".join(row[x:]).startswith(words["proxies.search"]) or row[x] == "/"), None)
-        assert search_x is not None, "search action is missing between routing modes and providers"
-        gap = search_x - direct_x - direct_width
-        assert 8 <= gap <= 10, "mode/search spacing is not the compact four-cell gap: %d" % gap
+        if direct:
+            assert search_x is None, "Direct mode retained a search action"
+        else:
+            assert search_x is not None, "search action is missing between routing modes and providers"
+        action_x = provider[0] if direct else search_x
+        gap = action_x - direct_x - direct_width
+        assert 8 <= gap <= 10, "mode/action spacing is not the compact four-cell gap: %d" % gap
         provider_label = words["providers.title.proxies"]
         if not "".join(terminal.screen.cells[provider[1]][provider[0]:]).startswith(provider_label):
             provider_label = "≡"
@@ -100,7 +104,7 @@ def assert_compact_proxy_body(terminal, words, first_group):
 
 
 def assert_direct_empty(terminal, words):
-    assert_proxy_header(terminal, words)
+    assert_proxy_header(terminal, words, direct=True)
     description = words["proxies.direct.description"]
     title, _, _, header_bottom = proxy_header_positions(terminal, words)
     columns, rows = terminal.screen.columns, terminal.screen.rows
@@ -193,6 +197,12 @@ def click_cell(terminal, x, y):
     terminal.key(("\x1b[<0;%d;%dM\x1b[<0;%d;%dm" % (x + 1, y + 1, x + 1, y + 1)).encode())
 
 
+def wheel_body(terminal, down=True):
+    button = 65 if down else 64
+    terminal.key(("\x1b[<%d;%d;%dM" % (button, terminal.screen.columns - 5, terminal.screen.rows // 2)).encode())
+    terminal.settle()
+
+
 def cell_offset(row, text_offset):
     consumed = 0
     for column, cell in enumerate(row):
@@ -270,6 +280,27 @@ def group_has_action(terminal, name, label):
         return label in group_header(terminal, name)[3]
     except AssertionError:
         return False  # A resize/update can temporarily clear a header mid-frame.
+
+
+def sort_menu_item(terminal, label):
+    # A short localized label can also occur in a hint or in the body behind
+    # the popup. Only use its framed menu row as the click target.
+    item = re.compile(r"│[ ›✓]*(" + re.escape(label) + r") +│")
+    for y, row in enumerate(terminal.screen.cells):
+        match = item.search("".join(row))
+        if match:
+            return cell_offset(row, match.start(1)), y
+    return None
+
+
+def click_group_sort(terminal, words, name, order):
+    label = words["proxies.sort." + order]
+    terminal.key(b"s")
+    wait_until(terminal, lambda: sort_menu_item(terminal, label), "sort menu did not show " + label)
+    click_cell(terminal, *sort_menu_item(terminal, label))
+    wait_until(terminal, lambda: group_has_action(terminal, name, label + " ↑"),
+               "sort menu did not apply %s to %s" % (label, name))
+    terminal.settle()
 
 
 def assert_header_hover(terminal, name, words, profile):
@@ -437,18 +468,24 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.key(b"rg\x12")
         terminal.settle()
         assert terminal.screen.text() == before, "removed refresh shortcuts changed the proxy page"
-        # The summary remains visible; a group click expands its candidates.
+        # Clicking expands candidates without moving the heading.
         open_group(terminal, "PROXY")
         terminal.wait("Shadowsocks")
         terminal.wait("Hysteria2")
         terminal.wait("UDP")
+        _, group_y, _, heading = group_header(terminal, "PROXY")
+        assert group_y == first_group_y and re.search(r"›\s*PROXY\b", heading), "expanding PROXY moved its heading or focus"
+        assert candidate_position(terminal, "HK 01")[1] > group_y, "members are not below their heading"
+        assert words["proxies.search_group"] % "PROXY" not in terminal.screen.text(), "visible heading has a duplicate group label"
+        title, _, _, _ = proxy_header_positions(terminal, words)
+        assert words["proxies.collapse_all"] in "".join(terminal.screen.cells[title[1]]), "collapse all is not on the title row"
         assert words["proxies.sort.default"] not in terminal.screen.text(), "default order added an unnecessary row"
         assert "0/0" not in terminal.screen.text(), "idle measurement progress is visible"
         preview.capture(terminal, output, "groups-wide", args)
 
         # At 160 columns the adaptive grid has three candidate columns.
         # Horizontal keys move to the nearest card; Up keeps its column.
-        # Opening the group now focuses its observed selection, AUTO.
+        terminal.key(b"\x1b[C")  # Enter the observed selection, AUTO.
         terminal.key(b"\x1b[B")  # JP 01, second left candidate
         terminal.key(b"\x1b[C")  # SG 01, second middle candidate
         terminal.key(b"\x1b[A")  # HK 01, first middle candidate
@@ -506,9 +543,12 @@ def exercise(preview, binary, output, language, profile, args):
 
         # Sort is explicit, and measurements never reorder its frozen sequence.
         terminal.key(b"s")
-        terminal.wait(words["proxies.sort.delay"])
+        sort_label = words["proxies.sort.delay"]
+        wait_until(terminal, lambda: sort_menu_item(terminal, sort_label), "sort menu did not show delay order")
         terminal.key(b"\x1b[B")
         terminal.key(b"\r")
+        wait_until(terminal, lambda: group_has_action(terminal, "PROXY", sort_label + " ↑"),
+                   "keyboard sorting did not apply delay order to PROXY")
         terminal.settle()
         before = candidate_order(terminal, words["proxies.enter"])
         assert len(before) == 8, "incomplete candidate order before measurement: " + repr(before)
@@ -529,7 +569,8 @@ def exercise(preview, binary, output, language, profile, args):
         completed_label = words["proxies.test.done"].split("%", 1)[0]
         terminal.wait(completed_label)
         terminal.settle()
-        assert candidate_order(terminal, words["proxies.enter"]) == before, "measurement silently reordered candidates"
+        after = candidate_order(terminal, words["proxies.enter"])
+        assert after == before, "measurement silently reordered candidates: %r -> %r" % (before, after)
         assert "777 ms" not in terminal.screen.text(), "late canceled value leaked into completed result"
         preview.capture(terminal, output, "measurement-complete", args)
         wait_until(terminal, lambda: completed_label not in terminal.screen.text(), "completed measurement status stayed visible", timeout=5)
@@ -687,20 +728,59 @@ def exercise_groups(preview, binary, output, args):
         terminal.wait("v1.19.33")
         terminal.key(b"2")
         terminal.wait("PROXY")
+        terminal.resize(120, 25)
+        terminal.settle()
+        first_y = group_header(terminal, "PROXY")[1]
+        terminal.key(b"\r")
+        terminal.settle()
+        _, open_y, _, heading = group_header(terminal, "PROXY")
+        assert open_y == first_y and heading.rstrip().endswith("▾"), "Enter moved the heading or did not expand it"
+        group_label = words["proxies.search_group"] % "PROXY"
+        assert group_label not in terminal.screen.text(), "keyboard expansion displayed a duplicate group label"
+        preview.capture(terminal, output, "expanded-in-place-120x25", args)
+
+        wheel_body(terminal)
+        terminal.wait(group_label)
+        assert not group_has_action(terminal, "PROXY", words["proxies.test_group"]), "sticky label appeared with the heading still visible"
+        assert candidate_position(terminal, "US 01")[1] > 0, "sticky label appeared without the group's nodes"
+        preview.capture(terminal, output, "sticky-scrolled-120x25", args)
+        wheel_body(terminal, down=False)
+        assert group_header(terminal, "PROXY")[1] == first_y, "scrolling back did not restore the heading"
+        assert group_label not in terminal.screen.text(), "sticky group label remained when the heading returned"
+
+        # The directory still scrolls after this expanded group has passed.
+        terminal.key(b"\x1b[F")
+        terminal.settle()
+        assert group_header(terminal, "EMPTY")[3].rstrip().endswith("▸"), "fixture did not scroll to later groups"
+        assert not candidate_order(terminal, words["proxies.enter"]), "fixture still contains nodes from the first group"
+        assert group_label not in terminal.screen.text(), "sticky group label remained after the last node"
+        collapse_all(terminal, words)
+        assert group_header(terminal, "PROXY")[1] == first_y, "collapse all did not restore the original directory row"
+
+        terminal.resize(80, 24)
+        terminal.settle()
         open_group(terminal, "PROXY")
+        terminal.wait(group_label)
+        assert proxy_header_positions(terminal, words)[3] < group_header(terminal, "PROXY")[1], "narrow group heading is missing from the member view"
+        assert words["proxies.collapse_all"] not in terminal.screen.text(), "narrow member view has a collapse-all action"
+        preview.capture(terminal, output, "narrow-members-80x24", args)
+        terminal.key(b"\x1b")
+        terminal.settle()
+        assert group_label not in terminal.screen.text() and group_header(terminal, "PROXY")[3].rstrip().endswith("▸"), "leaving the member view kept its group label or expansion"
+
+        terminal.resize(200, 50)
+        terminal.settle()
+        open_group(terminal, "PROXY")
+        _, auto_y, _, _ = group_header(terminal, "AUTO")
         open_group(terminal, "AUTO")
+        assert group_header(terminal, "AUTO")[1] == auto_y, "opening a second group moved its heading"
         assert all(group_header(terminal, name)[3].rstrip().endswith("▾") for name in ("PROXY", "AUTO")), "opening a second group collapsed the first"
-        terminal.key(b"s")
-        terminal.wait(words["proxies.sort.name"])
-        terminal.click_text(words["proxies.sort.name"])
-        terminal.settle()
+        assert not any(words["proxies.search_group"] % name in terminal.screen.text() for name in ("PROXY", "AUTO")), "visible groups retained a sticky label"
+        click_group_sort(terminal, words, "AUTO", "name")
         terminal.key(b"\x1b[H")
-        terminal.key(b"s")
-        terminal.wait(words["proxies.sort.delay"])
-        terminal.click_text(words["proxies.sort.delay"])
         terminal.settle()
-        assert words["proxies.sort.delay"] in group_header(terminal, "PROXY")[3], "PROXY lost its independent delay sort"
-        assert words["proxies.sort.name"] in group_header(terminal, "AUTO")[3], "sorting PROXY replaced AUTO's name sort"
+        click_group_sort(terminal, words, "PROXY", "delay")
+        assert group_has_action(terminal, "AUTO", words["proxies.sort.name"] + " ↑"), "sorting PROXY replaced AUTO's name sort"
         preview.capture(terminal, output, "multiple-expanded-independent-sort", args)
 
         group_action(terminal, "PROXY", words["proxies.test_group"])
@@ -730,7 +810,7 @@ def exercise_groups(preview, binary, output, args):
         assert calls["tests"] >= 14 and calls["canceled"] > 0 and calls["max_tests"] <= 8, calls
         assert calls["selected"]["PROXY"] == "AUTO", calls
         (output / "pty.raw").write_bytes(terminal.raw)
-        print("PASS independent multi-group fixture: expansion, sort, cross-group cancellation/stale isolation, collapse-all preserves testing; " + json.dumps(calls, ensure_ascii=False), flush=True)
+        print("PASS independent multi-group fixture: anchored expansion, sticky and narrow labels, sort, cross-group cancellation/stale isolation, collapse-all preserves testing; " + json.dumps(calls, ensure_ascii=False), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")
         (output / "failed.ansi").write_bytes(terminal.raw)

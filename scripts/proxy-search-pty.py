@@ -81,6 +81,12 @@ def expanded_restoration(terminal, proxy, preview, output, words, args):
     preview.capture(terminal, output, "before-search-scrolled", args)
 
     open_search(terminal, proxy, words, "slash")
+    placeholder = words["proxies.search_placeholder"]
+    search_y = next(y for y, row in enumerate(terminal.screen.cells) if placeholder in "".join(row))
+    proxy.wheel_body(terminal)
+    assert words["proxies.search_group"] % "PROXY" in terminal.screen.text(), "scrolling matching nodes did not expose the sticky group name"
+    assert placeholder in "".join(terminal.screen.cells[search_y]), "sticky group name moved the pinned search field"
+    preview.capture(terminal, output, "search-pinned-with-sticky-group", args)
     paste_query(terminal, "YouTube")
     assert visible_groups(terminal, proxy) == ["YouTube"], "group-name search retained unrelated groups"
     terminal.key(b"\r")
@@ -102,14 +108,7 @@ def expanded_restoration(terminal, proxy, preview, output, words, args):
     for name in ("PROXY", "AUTO"):
         assert proxy.group_header(terminal, name)[3].rstrip().endswith("▾"), "Esc lost the saved expansion of " + name
     preview.capture(terminal, output, "expansions-restored", args)
-    # Home reveals the first group, which can leave the scrolling collapse-all
-    # toolbar just above the viewport. Close the two known fixture groups by
-    # their visible headers rather than assuming that toolbar is on screen.
-    for name in ("PROXY", "AUTO"):
-        x, y, _, _ = proxy.group_header(terminal, name)
-        proxy.click_cell(terminal, x, y)
-        terminal.settle()
-        assert proxy.group_header(terminal, name)[3].rstrip().endswith("▸"), "fixture group did not close: " + name
+    proxy.collapse_all(terminal, words)
 
 
 def main():
@@ -136,11 +135,13 @@ def main():
             terminal.settle()
             expanded_restoration(terminal, proxy, preview, output, words, args)
             proxy.open_group(terminal, "AUTO")
+            terminal.key(b"\x1b[C")
             terminal.settle()
-            assert re.search(r"›\s*HK 02", terminal.screen.text()), "group entry did not focus its current node"
+            assert re.search(r"›\s*HK 02", terminal.screen.text()), "Right from the heading did not focus the group's current node"
             for index, (width, height) in enumerate(((160, 40), (80, 24), (60, 18), (120, 18), (160, 40))):
                 terminal.resize(width, height)
                 terminal.settle()
+                narrow = width < proxy.SIDEBAR_MIN_WIDTH
                 if width == 80:
                     terminal.key(b"\x1b")
                     terminal.settle()
@@ -148,17 +149,19 @@ def main():
                     proxy.enter_reference(terminal, "AUTO", words["proxies.enter"])
                     terminal.wait("HK 02")
                     assert words["proxies.back"] in terminal.screen.text(), "reference fixture did not retain its return path"
-                assert any(words["proxies.search_group"] % name in terminal.screen.text() for name in ("AUTO", "PROXY")), "fixed group label disappeared"
+                if narrow:
+                    assert words["proxies.search_group"] % "AUTO" in terminal.screen.text(), "narrow group label disappeared"
                 terminal.key(b"\x1b[H")
                 terminal.settle()
                 before = view_context(terminal, proxy, words)
                 first = visible_groups(terminal, proxy)[0]
+                if not narrow:
+                    assert words["proxies.search_group"] % first not in terminal.screen.text(), "visible wide heading has a duplicate group label"
                 first_y = proxy.group_header(terminal, first)[1]
                 open_search(terminal, proxy, words, "slash" if index % 2 == 0 else "click")
                 assert proxy.group_header(terminal, first)[1] == first_y + 1, "proxy search occupies more than one compact row"
                 preview.capture(terminal, output, "search-empty-%dx%d" % (width, height), args)
                 paste_query(terminal, "hk 02")
-                narrow = width < proxy.SIDEBAR_MIN_WIDTH
                 if narrow:
                     assert visible_groups(terminal, proxy) == ["PROXY", "AUTO", "Hong Kong"], "narrow search did not find matching groups outside the original member view"
                     assert not proxy.candidate_order(terminal, words["proxies.enter"]), "narrow directory unexpectedly displayed node cards"
@@ -196,7 +199,7 @@ def main():
             terminal.exit()
             calls = json.loads(report.read_text())
             assert calls["selections"] == calls["modes"] == calls["tests"] == 0, calls
-            print("PASS %s: click/slash entry, group/node filters, Enter keeps results, nonempty Esc from editing/results restores scroll/focus/expansion, current-node focus, no-match shortcut isolation, one-row compact resize; no backend mutations" % language, flush=True)
+            print("PASS %s: click/slash entry, group/node filters, Enter keeps results, nonempty Esc from editing/results restores scroll/focus/expansion, current-node focus, no-match shortcut isolation, pinned search with a sticky group, one-row compact resize; no backend mutations" % language, flush=True)
         except BaseException:
             preview.capture(terminal, output, "failed", args)
             raise

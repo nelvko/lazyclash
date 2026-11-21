@@ -44,34 +44,11 @@ func (m Model) proxyModes(width int) dashboardBlock {
 	return b
 }
 
-func (m Model) proxyCollapseButton() string {
-	if m.proxiesDirect() || m.proxiesNarrow() || !m.hasExpandedProxyGroups() {
-		return ""
-	}
-	return m.proxyButton("proxies.collapse_all", m.tr("proxies.collapse_all"), bg, true)
-}
-
 func (m Model) proxiesToolbar(width int) dashboardBlock {
-	b := dashboardBlock{}
 	if m.width < 50 {
-		b = m.proxyModes(width)
+		return m.proxyModes(width)
 	}
-	if action := m.proxyCollapseButton(); action != "" {
-		if len(b.lines) == 0 {
-			b.blank()
-		}
-		x := max(0, width-ansi.StringWidth(action))
-		row := len(b.lines) - 1
-		if b.lines[row] != "" && x < ansi.StringWidth(b.lines[row])+2 {
-			b.blank()
-			row = len(b.lines) - 1
-		}
-		b.lines[row] = cellPad(b.lines[row], x) + cellCrop(action, width-x)
-		if !m.busy && !m.quitting {
-			b.targets = append(b.targets, hitRegion{ID: "proxies.collapse_all", X: x, Y: row, W: min(width-x, ansi.StringWidth(action)), H: 1})
-		}
-	}
-	return b
+	return dashboardBlock{}
 }
 func (m Model) proxiesBody(width int) (string, []hitRegion) {
 	width = max(1, width)
@@ -135,7 +112,7 @@ func (m Model) proxiesBody(width int) (string, []hitRegion) {
 	}
 	compactGroups := m.compactProxyCards()
 	for i, gi := range groups {
-		if i > 0 && compactGroups && (m.proxyGroupExpanded(m.snapshot.Groups[gi].Name) || m.proxyGroupExpanded(m.snapshot.Groups[groups[i-1]].Name)) {
+		if i > 0 && compactGroups && m.proxyGroupExpanded(m.snapshot.Groups[groups[i-1]].Name) {
 			b.blank()
 		}
 		g := m.snapshot.Groups[gi]
@@ -483,6 +460,29 @@ func (m Model) proxyNode(gi, ni, width int) dashboardBlock {
 		}
 	}
 	return b
+}
+
+// Body targets are in section order, with each full-height heading before its
+// member cards. Once a heading is visible, there is no need for a second label.
+func proxyStickyGroup(groups []mihomo.Group, hits []hitRegion, scroll, height int) string {
+	if scroll <= 0 || height <= 0 {
+		return ""
+	}
+	group, memberPrefix := "", ""
+	for _, hit := range hits {
+		if indexText, ok := strings.CutPrefix(hit.ID, "group."); ok {
+			if hit.Y+hit.H > scroll {
+				break
+			}
+			index, err := strconv.Atoi(indexText)
+			if err == nil && index >= 0 && index < len(groups) {
+				group, memberPrefix = groups[index].Name, "node."+indexText+"."
+			}
+		} else if memberPrefix != "" && hit.Y < scroll+height && hit.Y+hit.H > scroll && strings.HasPrefix(hit.ID, memberPrefix) {
+			return group
+		}
+	}
+	return ""
 }
 
 // Count unique members in visual order; a partially clipped card is visible.

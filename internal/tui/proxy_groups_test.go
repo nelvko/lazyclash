@@ -9,6 +9,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nelvko/lazyclash/internal/mihomo"
 )
 
 func TestProxiesWideGroupsExpandAndCollapseIndependently(t *testing.T) {
@@ -32,6 +33,75 @@ func TestProxiesWideGroupsExpandAndCollapseIndependently(t *testing.T) {
 		if strings.HasPrefix(hit.ID, "node.") || strings.HasPrefix(hit.ID, "proxies.reference.") {
 			t.Fatalf("collapse all retained a member action: %+v", hit)
 		}
+	}
+}
+
+func TestProxiesWideGroupClickKeepsItsHeadingInPlace(t *testing.T) {
+	for _, height := range []int{20, 40} {
+		t.Run(fmt.Sprint(height), func(t *testing.T) {
+			m, backend := proxiesModel(t, 160, height)
+			setProxyTestGroup(&m, "")
+			m.layout()
+			group := findTarget(t, m, "group.1")
+			preceding := findTarget(t, m, "group.0")
+			following := findTarget(t, m, "group.2")
+
+			m, _ = click(m, group)
+			opened := findTarget(t, m, group.ID)
+			firstNode := findTarget(t, m, "node.1.0")
+			if opened.Y != group.Y || firstNode.Y != opened.Y+opened.H ||
+				findTarget(t, m, preceding.ID).Y != preceding.Y || findTarget(t, m, following.ID).Y <= following.Y {
+				t.Fatalf("expanded nodes did not push down only later groups: heading=%+v want row=%d node=%+v", opened, group.Y, firstNode)
+			}
+			if m.focus != group.ID || backend.selections != 0 {
+				t.Fatalf("expansion lost heading focus or selected a node: focus=%s selections=%d", m.focus, backend.selections)
+			}
+
+			m, _ = click(m, group)
+			if m.proxyGroupExpanded("AUTO") || findTarget(t, m, group.ID).Y != group.Y ||
+				findTarget(t, m, following.ID).Y != following.Y || hasAction(m.targets, firstNode.ID) {
+				t.Fatal("clicking the same heading position did not restore the collapsed list")
+			}
+		})
+	}
+}
+
+func TestProxiesWideGroupClickAtViewportBottomKeepsHeadingVisible(t *testing.T) {
+	for _, height := range []int{20, 40} {
+		t.Run(fmt.Sprint(height), func(t *testing.T) {
+			m, backend := proxiesModel(t, 160, height)
+			setProxyTestGroup(&m, "")
+			for i := range height {
+				m.snapshot.Groups = append(m.snapshot.Groups, mihomo.Group{
+					Name: fmt.Sprintf("Extra strategy %02d", i),
+					Type: "Selector",
+					All:  []string{"DIRECT"},
+					Now:  "DIRECT",
+				})
+			}
+			index := len(m.snapshot.Groups) - height/2
+			id, name := fmt.Sprintf("group.%d", index), m.snapshot.Groups[index].Name
+			g := dashboardGeometry(m.dashboardOptions())
+			logical := listSearchTarget(t, m.contentTargets(), id)
+			nameRow := logical.Y
+			if height == 40 {
+				nameRow++ // wide, padded group cards paint their name on the middle row
+			}
+			m.scroll = nameRow - g.height + 1
+			m.layout()
+			lastRow := g.y + g.height - 1
+			if !strings.Contains(ansi.Strip(strings.Split(m.screen, "\n")[lastRow]), name) {
+				t.Fatal("fixture did not put the group name on the final body row")
+			}
+			before := m.scroll
+			heading := findTarget(t, m, id)
+			m, _ = update(m, tea.MouseClickMsg{X: heading.X + 2, Y: lastRow, Button: tea.MouseLeft})
+			nameStillVisible := strings.Contains(ansi.Strip(strings.Split(m.screen, "\n")[lastRow-1]), name)
+			if m.focus != id || m.scroll != before+1 || backend.selections != 0 || !nameStillVisible {
+				t.Fatalf("range footer hid the clicked group name or scrolled further than needed: focus=%s scroll=%d before=%d name visible=%t",
+					m.focus, m.scroll, before, nameStillVisible)
+			}
+		})
 	}
 }
 

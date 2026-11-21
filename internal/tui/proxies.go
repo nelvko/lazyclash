@@ -700,9 +700,11 @@ func (m *Model) proxyActivate(id string) tea.Cmd {
 		} else if strings.HasPrefix(id, "proxies.reference.") && node != "" {
 			m.browseProxyReference(node)
 		} else if strings.HasPrefix(id, "group.") {
+			m.proxies.detail = ""
 			if m.proxyGroupExpanded(g.Name) {
 				if m.proxiesNarrow() {
 					m.proxies.activeGroup = ""
+					m.revealContentFocus()
 				} else if m.proxySearchQuery() != "" {
 					if m.proxies.searchCollapsed == nil {
 						m.proxies.searchCollapsed = make(map[string]bool)
@@ -722,10 +724,25 @@ func (m *Model) proxyActivate(id string) tea.Cmd {
 				}
 			} else {
 				m.expandProxyGroup(g.Name)
-				m.focusProxyGroupMember(gi)
+				if m.proxiesNarrow() {
+					m.focusProxyGroupMember(gi)
+				} else {
+					// Keep the heading in place unless the member-range footer
+					// clips its name row. The first hit includes header padding.
+					view := dashboardGeometry(m.dashboardOptions())
+					nameOffset := 0
+					if !m.compactProxyCards() {
+						nameOffset = 1
+					}
+					for _, hit := range m.targets {
+						if hit.ID == id {
+							m.scroll += max(0, hit.Y+nameOffset+1-view.y-view.height)
+							return nil
+						}
+					}
+					m.revealContentFocus()
+				}
 			}
-			m.proxies.detail = ""
-			m.revealContentFocus()
 		} else if strings.HasPrefix(id, "node.") && node != "" && !m.busy && m.proxiesReady() {
 			if g.Type != "Selector" {
 				m.openProxyDetail(g.Name, node)
