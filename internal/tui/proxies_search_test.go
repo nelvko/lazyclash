@@ -155,7 +155,7 @@ func TestProxiesStickyGroupFollowsVisibleMembersWithoutMovingFocus(t *testing.T)
 		{"at top", 0, ""},
 		{"heading partly visible", first.Y + first.H - 1, ""},
 		{"first heading offscreen", first.Y + first.H, "first"},
-		{"first status without members", second.Y - 1, ""},
+		{"last visible first-group member", second.Y - 1, "first"},
 		{"second heading visible", second.Y, ""},
 		{"second heading offscreen", second.Y + second.H, "second"},
 		{"back to first heading", first.Y, ""},
@@ -180,8 +180,13 @@ func TestProxiesStickyGroupFollowsVisibleMembersWithoutMovingFocus(t *testing.T)
 				node := "node.0.0"
 				if state.group == "second" {
 					node = "node.1.0"
+				} else if state.row == second.Y-1 {
+					node = "node.0.5"
 				}
-				findTarget(t, m, node)
+				hit := findTarget(t, m, node)
+				if hit.Y < g.y || hit.Y+hit.H > g.y+g.height {
+					t.Fatalf("sticky member outside body: target=%+v top=%d height=%d", hit, g.y, g.height)
+				}
 			}
 		})
 	}

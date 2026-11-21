@@ -2,6 +2,7 @@ package tui
 
 const (
 	proxyNodeMinWidth = 36
+	proxyNodeHeight   = 2
 	proxyColumnGap    = 1
 	proxyMaxColumns   = 4
 )

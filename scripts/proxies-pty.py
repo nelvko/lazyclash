@@ -282,6 +282,14 @@ def group_has_action(terminal, name, label):
         return False  # A resize/update can temporarily clear a header mid-frame.
 
 
+def group_progress(terminal, words, name, total):
+    try:
+        line = group_header(terminal, name)[3]
+    except AssertionError:
+        return False
+    return re.search(r"(?<!\S)" + re.escape(words["proxies.cancel_test"]) + r"\s+\d+/" + str(total) + r"\b", line)
+
+
 def sort_menu_item(terminal, label):
     # A short localized label can also occur in a hint or in the body behind
     # the popup. Only use its framed menu row as the click target.
@@ -295,7 +303,7 @@ def sort_menu_item(terminal, label):
 
 def click_group_sort(terminal, words, name, order):
     label = words["proxies.sort." + order]
-    terminal.key(b"s")
+    group_action(terminal, name, words["proxies.sort"])
     wait_until(terminal, lambda: sort_menu_item(terminal, label), "sort menu did not show " + label)
     click_cell(terminal, *sort_menu_item(terminal, label))
     wait_until(terminal, lambda: group_has_action(terminal, name, label + " ↑"),
@@ -335,10 +343,10 @@ def assert_header_hover(terminal, name, words, profile):
                 assert terminal.screen.styles[row][column][1] == hover, "header hover surface has an uncolored gap at %d,%d" % (column, row)
 
 
-def click_candidate(terminal, name, padding=0):
+def click_candidate(terminal, name):
     terminal.settle()
     x, y = candidate_position(terminal, name)
-    click_cell(terminal, x, y + padding)
+    click_cell(terminal, x, y)
 
 
 def card_bounds(terminal, name):
@@ -351,30 +359,16 @@ def card_bounds(terminal, name):
         except AssertionError:
             pass
     slots = sorted(columns)
-    if len(slots) > 1:
-        width = min(b - a for a, b in zip(slots, slots[1:])) - 1
-        return left, y, left + width
-    # The blank top row has the same background across the complete card,
-    # including its delay/action areas. It also works for filtered short groups.
-    background = terminal.screen.styles[y - 1][left][1]
-    right = left
-    while right < terminal.screen.columns and terminal.screen.styles[y - 1][right][1] == background:
-        right += 1
-    if right < terminal.screen.columns:
-        return left, y, right
-    # NO_COLOR has no background boundary. At this wide filtered fixture the
-    # known 12-cell lane still determines the observed right edge of the card.
-    row = terminal.screen.cells[y]
-    value = re.search(r"\d+ ms", "".join(row[x:]))
-    assert value, "cannot locate the uncolored card's latency lane: " + name
-    value_x = x + cell_offset(row[x:], value.start())
-    right = value_x - (12 - len(value.group())) // 2 + 12 + 2
-    return left, y, right
+    # All calling scenarios show at least two neighbouring slots. Infer their
+    # width from the observed grid even in NO_COLOR.
+    assert len(slots) >= 2, "cannot measure neighbouring node slots: " + name
+    width = min(b - a for a, b in zip(slots, slots[1:])) - 1
+    return left, y, left + width
 
 
 def delay_slot(terminal, name):
     left, y, right = card_bounds(terminal, name)
-    width = min(12, (right - left - 6) // 2)
+    width = min(10, (right - left - 6) // 2)
     return right - 2 - width, y, width
 
 
@@ -411,9 +405,9 @@ def assert_four_columns(terminal):
     xs = sorted({x for x, _ in positions})
     assert len(xs) == 4, "wide grid did not keep four columns: " + repr(positions)
     ys = sorted({y for _, y in positions})
-    assert all(b - a == 4 for a, b in zip(ys, ys[1:])), "card rows did not retain a four-line pitch: " + repr(positions)
+    assert all(b - a == 3 for a, b in zip(ys, ys[1:])), "two-line cards lack their one-row gap: " + repr(positions)
     first_y = min(y for _, y in positions)
-    gap = terminal.screen.cells[first_y - 2][xs[0] - 4:]
+    gap = terminal.screen.cells[first_y - 1][xs[0] - 4:]
     assert not "".join(gap).strip(), "group header touches the first card row"
     return xs
 
@@ -479,7 +473,8 @@ def exercise(preview, binary, output, language, profile, args):
         assert words["proxies.search_group"] % "PROXY" not in terminal.screen.text(), "visible heading has a duplicate group label"
         title, _, _, _ = proxy_header_positions(terminal, words)
         assert words["proxies.collapse_all"] in "".join(terminal.screen.cells[title[1]]), "collapse all is not on the title row"
-        assert words["proxies.sort.default"] not in terminal.screen.text(), "default order added an unnecessary row"
+        assert words["proxies.sort"] in heading, "expanded group does not expose default sorting"
+        assert not re.search(r"\d+–\d+ / 8", terminal.screen.text()), "all members fit, but the page shows a visible range"
         assert "0/0" not in terminal.screen.text(), "idle measurement progress is visible"
         preview.capture(terminal, output, "groups-wide", args)
 
@@ -494,16 +489,19 @@ def exercise(preview, binary, output, language, profile, args):
         # Selection goes through the asynchronous backend and snapshot readback.
         terminal.key(b"\r")
         wait_until(terminal, lambda: chosen(terminal, "HK 01"), "manual choice was not confirmed")
-        # Top padding and the metadata row's right padding select the card.
-        click_candidate(terminal, "HK 02", padding=-1)
-        wait_until(terminal, lambda: chosen(terminal, "HK 02"), "top padding did not select its card")
+        # Both the first row's left padding and the metadata's right padding
+        # belong to the node selection action.
+        x, y = candidate_position(terminal, "HK 02")
+        click_cell(terminal, x - 1, y)
+        wait_until(terminal, lambda: chosen(terminal, "HK 02"), "first-row padding did not select its card")
         terminal.settle()
         _, y, right = card_bounds(terminal, "HK 01")
         click_cell(terminal, right - 1, y + 1)
         wait_until(terminal, lambda: chosen(terminal, "HK 01"), "metadata right padding did not select its card")
         terminal.settle()
         x, y = candidate_position(terminal, "HK 01")
-        assert all(terminal.screen.cells[row][x - 4] == "▌" for row in range(y - 1, y + 2)), "selection rail did not span the three-line card"
+        assert all(terminal.screen.cells[row][x - 4] == "▌" for row in (y, y + 1)), "selection rail did not span both content rows"
+        assert terminal.screen.cells[y - 1][x - 4] != "▌" and terminal.screen.cells[y + 2][x - 4] != "▌", "selection rail extends outside the card"
         preview.capture(terminal, output, "selected", args)
         terminal.key(b"i")
         terminal.wait("Shadowsocks")
@@ -517,10 +515,10 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.key(b"\x1b[C")
         enter_reference(terminal, "AUTO", words["proxies.enter"])
         terminal.wait(words["proxies.auto"])
-        terminal.key(b"\x1b[C")
+        terminal.key(b"\x1b[C")  # Current member HK 02 -> JP 01 in the next column.
         terminal.key(b"\r")
-        terminal.wait("Shadowsocks")
         terminal.wait(words["proxies.core_target"])
+        assert "JP 01" in terminal.screen.text() and "VLESS" in terminal.screen.text(), "automatic member details lost the focused node"
         preview.capture(terminal, output, "automatic-member-details", args)
         terminal.key(b"\x1b")
         terminal.key(b"\x1b[D")
@@ -552,26 +550,37 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.settle()
         before = candidate_order(terminal, words["proxies.enter"])
         assert len(before) == 8, "incomplete candidate order before measurement: " + repr(before)
+        header_row = group_header(terminal, "PROXY")[1]
+        first_card = candidate_position(terminal, before[0])
         terminal.key(b"t")
-        terminal.wait(words["proxies.cancel_test"])
+        wait_until(terminal, lambda: group_progress(terminal, words, "PROXY", 6), "missing inline group progress")
+        assert group_header(terminal, "PROXY")[1] == header_row and candidate_position(terminal, before[0]) == first_card, "starting a measurement shifted its heading or cards"
         terminal.key(b"t")
-        wait_until(terminal, lambda: words["proxies.cancel_test"] not in terminal.screen.text(), "measurement did not cancel")
+        wait_until(terminal, lambda: not group_progress(terminal, words, "PROXY", 6), "measurement did not cancel")
         end = time.monotonic() + 0.25
         while time.monotonic() < end:
             terminal.read(0.05)
         assert "777 ms" not in terminal.screen.text(), "canceled result reached current view"
         preview.capture(terminal, output, "measurement-canceled", args)
         terminal.key(b"t")
-        terminal.wait(words["proxies.cancel_test"])
-        wait_until(terminal, lambda: words["proxies.cancel_test"] not in terminal.screen.text(), "measurement did not finish")
+        wait_until(terminal, lambda: group_progress(terminal, words, "PROXY", 6), "missing inline progress after retry")
+        wait_until(terminal, lambda: not group_progress(terminal, words, "PROXY", 6), "measurement did not finish")
         terminal.wait("211 ms")
         terminal.wait(words["proxies.timeout"])
-        completed_label = words["proxies.test.done"].split("%", 1)[0]
-        terminal.wait(completed_label)
+        completed_label = words["proxies.test.done"] % (6, 6)
+        wait_until(terminal, lambda: group_has_action(terminal, "PROXY", completed_label), "completed measurement count left the group header")
         terminal.settle()
         after = candidate_order(terminal, words["proxies.enter"])
         assert after == before, "measurement silently reordered candidates: %r -> %r" % (before, after)
         assert "777 ms" not in terminal.screen.text(), "late canceled value leaked into completed result"
+        if profile != "no-color":
+            for name, muted in (("US 01", False), ("SG 01", True), ("AUTO", True)):
+                name_x, y = candidate_position(terminal, name)
+                delay_x, _, width = delay_slot(terminal, name)
+                value_color = terminal.screen.styles[y][delay_x + width // 2][0]
+                reference_row = y + 1 if muted else y
+                expected_color = terminal.screen.styles[reference_row][name_x][0]
+                assert value_color == expected_color, "delay uses an unexpected foreground: " + name
         preview.capture(terminal, output, "measurement-complete", args)
         wait_until(terminal, lambda: completed_label not in terminal.screen.text(), "completed measurement status stayed visible", timeout=5)
         terminal.wait("211 ms")
@@ -621,17 +630,19 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait("Trojan")
         terminal.settle()
         assert sorted(candidate_position(terminal, name)[0] for name in ("HK 01", "HK 02")) == slots[:2], "two-member group stretched its cards"
+        assert not re.search(r"1–2 / 2", terminal.screen.text()), "fully visible short group retained a range"
         left, _, right = card_bounds(terminal, "HK 01")
         assert right - left == card_width, "short-group card width changed"
         preview.capture(terminal, output, "two-members-240x40", args)
         collapse_all(terminal, words)
         terminal.key(b"\x1b[H")
         terminal.key(b"\x1b[C")
-        terminal.resize(80, 24)
+        terminal.resize(40, 16)
         terminal.settle()
         terminal.key(b"\x1b[6~")  # Continue scrolling within one group, no page switch.
         terminal.settle()
-        assert re.search(r"\d+–\d+ / 8", terminal.screen.text()), "scrolled group lost its visible range"
+        range_pattern = re.escape(words["proxies.range.group"]).replace("%s", r"\d+–\d+ / 8")
+        assert re.search(range_pattern, terminal.screen.text()), "scrolled group lost its member range"
         preview.capture(terminal, output, "continuous-scroll-range", args)
         terminal.resize(160, 45)
         terminal.settle()
@@ -784,20 +795,20 @@ def exercise_groups(preview, binary, output, args):
         preview.capture(terminal, output, "multiple-expanded-independent-sort", args)
 
         group_action(terminal, "PROXY", words["proxies.test_group"])
-        wait_until(terminal, lambda: group_has_action(terminal, "PROXY", words["proxies.cancel_test"]), "PROXY test did not start")
+        wait_until(terminal, lambda: group_progress(terminal, words, "PROXY", 6), "PROXY test did not start")
         group_action(terminal, "AUTO", words["proxies.test_group"])
-        wait_until(terminal, lambda: group_has_action(terminal, "AUTO", words["proxies.cancel_test"]) and group_has_action(terminal, "PROXY", words["proxies.test_group"]) and not group_has_action(terminal, "PROXY", words["proxies.cancel_test"]), "cross-group testing did not transfer the active round")
+        wait_until(terminal, lambda: group_progress(terminal, words, "AUTO", 4) and not group_progress(terminal, words, "PROXY", 6), "cross-group testing did not transfer the active round")
         preview.capture(terminal, output, "cross-group-testing", args)
-        wait_until(terminal, lambda: group_has_action(terminal, "AUTO", words["proxies.test_group"]) and not group_has_action(terminal, "AUTO", words["proxies.cancel_test"]), "AUTO testing did not finish")
+        wait_until(terminal, lambda: group_has_action(terminal, "AUTO", words["proxies.test.done"] % (4, 4)), "AUTO testing did not finish")
         terminal.settle()
         assert "777 ms" not in terminal.screen.text(), "old group test generation published a late result"
 
         group_action(terminal, "PROXY", words["proxies.test_group"])
-        wait_until(terminal, lambda: group_has_action(terminal, "PROXY", words["proxies.cancel_test"]), "second PROXY test did not start")
+        wait_until(terminal, lambda: group_progress(terminal, words, "PROXY", 6), "second PROXY test did not start")
         collapse_all(terminal, words)
         assert all(group_header(terminal, name)[3].rstrip().endswith("▸") for name in ("PROXY", "AUTO")), "collapse all left a group open"
         completed = words["proxies.test.done"] % (6, 6)
-        terminal.wait(completed)
+        wait_until(terminal, lambda: group_has_action(terminal, "PROXY", completed), "collapsed group lost its measurement result")
         terminal.settle()
         assert "777 ms" not in terminal.screen.text(), "collapse all admitted an old generation's result"
         preview.capture(terminal, output, "all-collapsed-testing-complete", args)

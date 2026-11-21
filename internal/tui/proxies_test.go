@@ -52,7 +52,7 @@ func TestProxiesFocusAndObservedSelectionRemainIndependent(t *testing.T) {
 	current := ansi.Strip(strings.Join(m.proxyNode(0, 0, 50).lines, "\n"))
 	focused := ansi.Strip(strings.Join(m.proxyNode(0, 1, 50).lines, "\n"))
 	currentLines, focusedLines := strings.Split(current, "\n"), strings.Split(focused, "\n")
-	if len(currentLines) != 3 || len(focusedLines) != 3 || !strings.HasPrefix(currentLines[1], "▌   AUTO") || !strings.HasPrefix(focusedLines[1], "  › HK 01") || strings.Contains(current+focused, "✓") {
+	if len(currentLines) != 2 || len(focusedLines) != 2 || !strings.HasPrefix(currentLines[0], "▌   AUTO") || !strings.HasPrefix(focusedLines[0], "  › HK 01") || strings.Contains(current+focused, "✓") {
 		t.Fatalf("focus/selection markers confused: current=%q focused=%q", current, focused)
 	}
 	for _, line := range currentLines {
@@ -69,7 +69,7 @@ func TestProxiesFocusAndObservedSelectionRemainIndependent(t *testing.T) {
 		t.Fatalf("selection confirmation failed: group=%+v count=%d", m.snapshot.Groups[0], b.selections)
 	}
 	selected := ansi.Strip(strings.Join(m.proxyNode(0, 1, 50).lines, "\n"))
-	if !strings.HasPrefix(strings.Split(selected, "\n")[1], "▌ › HK 01") {
+	if !strings.HasPrefix(selected, "▌ › HK 01") {
 		t.Fatalf("focus erased current selection: %q", selected)
 	}
 }
@@ -398,22 +398,22 @@ func TestProxiesCardPaddingKeepsItsReferenceActionIndependent(t *testing.T) {
 	m.focus = "node.0.0"
 	const width = 50
 	card := m.proxyNode(0, 0, width)
-	if len(card.lines) != 3 {
-		t.Fatalf("card has %d rows, want three including top padding", len(card.lines))
+	if len(card.lines) != 2 {
+		t.Fatalf("card has %d rows, want one name row and one metadata row", len(card.lines))
 	}
 	for y, line := range card.lines {
 		line = ansi.Strip(line)
 		if ansi.StringWidth(line) != width || !strings.HasPrefix(line, "▌ ") || !strings.HasSuffix(line, "  ") {
 			t.Fatalf("card row %d lost its rail or padding: %q", y, line)
 		}
-		if y == 0 && strings.TrimSpace(strings.TrimPrefix(line, "▌")) != "" {
-			t.Fatalf("vertical padding row contains content: %q", line)
-		}
 	}
-	if !strings.HasPrefix(ansi.Strip(card.lines[1]), "▌ › AUTO") || !strings.HasPrefix(ansi.Strip(card.lines[2]), "▌   Proxy group") {
+	if !strings.HasPrefix(ansi.Strip(card.lines[0]), "▌ › AUTO") || !strings.HasPrefix(ansi.Strip(card.lines[1]), "▌   Proxy group") {
 		t.Fatalf("name and metadata lost their shared left padding: %+v", card.lines)
 	}
-	assertRegions(t, card.targets, width, 3)
+	assertRegions(t, card.targets, width, 2)
+	if got := ansi.Cut(ansi.Strip(card.lines[1]), width-12, width-2); got != "  Enter → " {
+		t.Fatalf("reference button is not centered below the delay: %q", got)
+	}
 	for i, hit := range card.targets {
 		for _, other := range card.targets[i+1:] {
 			if regionsOverlap(hit, other) {
@@ -421,7 +421,7 @@ func TestProxiesCardPaddingKeepsItsReferenceActionIndependent(t *testing.T) {
 			}
 		}
 	}
-	for y := 0; y < 3; y++ {
+	for y := range card.lines {
 		for x := 0; x < width; x++ {
 			var hitID string
 			for _, hit := range card.targets {
@@ -435,11 +435,11 @@ func TestProxiesCardPaddingKeepsItsReferenceActionIndependent(t *testing.T) {
 				case "node.0.0":
 					continue
 				case "proxies.reference.0.0":
-					if hit.Y != 2 || hit.X+hit.W != width-2 {
+					if hit.Y != 1 || hit.W != 10 || hit.X+hit.W != width-2 {
 						t.Fatalf("reference action lost its metadata row or right padding: %+v", hit)
 					}
 				case "proxies.delay.0.0":
-					if hit.Y != 1 || hit.H != 1 || hit.W != 12 || hit.X+hit.W != width-2 {
+					if hit.Y != 0 || hit.H != 1 || hit.W != 10 || hit.X+hit.W != width-2 {
 						t.Fatalf("delay action lost its fixed name-row slot or right padding: %+v", hit)
 					}
 				default:
@@ -457,9 +457,9 @@ func TestProxiesCardPaddingKeepsItsReferenceActionIndependent(t *testing.T) {
 	if !hasAction(card.targets, "proxies.reference.0.0") || !hasAction(card.targets, "proxies.delay.0.0") {
 		t.Fatal("reference card lost its independent entrance or delay action")
 	}
-	for _, scroll := range []int{0, 2} {
-		if got := proxyVisibleRange(m.locale, card.targets, scroll, 1); got != "1–1 / 1" {
-			t.Fatalf("visible card padding disappeared from the range: row=%d got=%q", scroll, got)
+	for scroll := range card.lines {
+		if got := proxyVisibleRange(m.locale, card.targets, scroll, 1, width); got != "" {
+			t.Fatalf("a single visible member showed a redundant range: row=%d got=%q", scroll, got)
 		}
 	}
 }
@@ -482,7 +482,7 @@ func TestProxiesCardPaddingMouseClicksSelectItsNode(t *testing.T) {
 				x = right - 1
 			}
 			if strings.Contains(position, "metadata") {
-				y = top + 2
+				y = top + 1
 			}
 			m, cmd := update(m, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
 			if cmd == nil || !m.busy || m.proxies.pendingNode != "AUTO" || m.proxies.activeGroup != "PROXY" {
@@ -768,8 +768,8 @@ func TestProxiesExpandedGroupKeepsSortingInHeader(t *testing.T) {
 					}
 				}
 			}
-			if hasAction(m.proxyGroupHeader(0, bodyWidth).targets, "proxies.sort.0") {
-				t.Fatal("default sorting retained a header control")
+			if !hasAction(m.proxyGroupHeader(0, bodyWidth).targets, "proxies.sort.0") {
+				t.Fatal("expanded group did not offer sorting in default order")
 			}
 			m.sortProxies("delay")
 			header := m.proxyGroupHeader(0, bodyWidth)
@@ -887,14 +887,25 @@ func TestProxiesVisibleRangeCountsSplitAndPartiallyVisibleCards(t *testing.T) {
 			{"after last card", 10, 2, ""},
 		} {
 			t.Run(language+"/"+test.name, func(t *testing.T) {
-				if got := proxyVisibleRange(locale, hits, test.scroll, test.height); got != test.want {
-					t.Fatalf("visible card range: got %q, want %q", got, test.want)
+				want := test.want
+				if want != "" {
+					want = locale.T("proxies.range.group", want)
+				}
+				if got := proxyVisibleRange(locale, hits, test.scroll, test.height, 80); got != want {
+					t.Fatalf("visible card range: got %q, want %q", got, want)
 				}
 			})
 		}
 		filtered := []hitRegion{hits[0], hits[4], hits[7]}
-		if got := proxyVisibleRange(locale, filtered, 0, 10); got != "1–2 / 2" {
-			t.Fatalf("filtered range used source indexes or hidden members: %q", got)
+		if got := proxyVisibleRange(locale, filtered, 0, 10, 80); got != "" {
+			t.Fatalf("all filtered members fit but range is visible: %q", got)
+		}
+		multi := append(filtered, hitRegion{ID: "node.1.0", Y: 12, W: 36, H: 2})
+		if got := proxyVisibleRange(locale, multi, 8, 5, 80); got != locale.T("proxies.range.expanded", "2–3 / 3") {
+			t.Fatalf("missing scope for multiple expanded groups: %q", got)
+		}
+		if got := proxyVisibleRange(locale, multi, 8, 5, 10); got != "2–3 / 3" {
+			t.Fatalf("short range lost the numbers: %q", got)
 		}
 	}
 }
@@ -917,7 +928,7 @@ func TestProxiesVisibleRangeFooterStaysAboveKeyHints(t *testing.T) {
 			geometry := dashboardGeometry(o)
 			footerY := geometry.y + geometry.height
 			if footerY < dashboardContentBottom(o) {
-				label := proxyVisibleRange(o.Locale, o.BodyTargets, 0, geometry.height)
+				label := proxyVisibleRange(o.Locale, o.BodyTargets, 0, geometry.height, geometry.width)
 				if label != "" && !strings.Contains(ansi.Strip(strings.Split(view, "\n")[footerY]), label) {
 					t.Fatalf("footer row %d did not show its visible range %q", footerY, label)
 				}
@@ -1009,7 +1020,7 @@ func TestProxiesSortingMenuReturnsToFocusedMember(t *testing.T) {
 	}
 }
 
-func TestProxiesDefaultSortReturnsToItsGroupAfterHeaderClick(t *testing.T) {
+func TestProxiesDefaultSortReturnsToItsButtonAfterHeaderClick(t *testing.T) {
 	for _, width := range []int{160, 80} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			m, _ := proxiesModel(t, width, 24)
@@ -1040,11 +1051,11 @@ func TestProxiesDefaultSortReturnsToItsGroupAfterHeaderClick(t *testing.T) {
 				t.Fatal("header click did not open the sorting menu")
 			}
 			m, _ = update(m, menuMouse(m.menu, 0, tea.MouseLeft))
-			if m.menu.open || m.proxySort("AUTO") != "default" || m.proxies.activeGroup != "AUTO" || m.focus != "group.1" || m.scroll != before {
-				t.Fatalf("hiding the sorting control lost its group location: sort=%s expanded=%s focus=%s scroll=%d want=%d", m.proxySort("AUTO"), m.proxies.activeGroup, m.focus, m.scroll, before)
+			if m.menu.open || m.proxySort("AUTO") != "default" || m.proxies.activeGroup != "AUTO" || m.focus != "proxies.sort.1" || m.scroll != before {
+				t.Fatalf("default sorting lost its group control: sort=%s expanded=%s focus=%s scroll=%d want=%d", m.proxySort("AUTO"), m.proxies.activeGroup, m.focus, m.scroll, before)
 			}
-			if hasAction(m.targets, "proxies.sort.1") || !hasAction(m.targets, "group.1") {
-				t.Fatal("default sorting retained its control or lost the restored group heading")
+			if !hasAction(m.targets, m.focus) || !hasAction(m.targets, "group.1") {
+				t.Fatal("default sorting lost its control or group heading")
 			}
 		})
 	}

@@ -289,7 +289,7 @@ func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
 	if o.BodyRange && g.y+g.height < dashboardContentBottom(o) {
 		label := o.ProxyRangeLabel
 		if o.BodyTotal == 0 {
-			label = proxyVisibleRange(o.Locale, bodyTargets, scroll, g.height)
+			label = proxyVisibleRange(o.Locale, bodyTargets, scroll, g.height, g.width)
 		}
 		put(g.x+max(0, g.width-ansi.StringWidth(label)), g.y+g.height, themed(cellCrop(label, g.width), muted, bg, o.Dim))
 	}

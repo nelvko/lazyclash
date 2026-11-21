@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-
-	"github.com/charmbracelet/x/ansi"
 )
 
 type proxyBodyPart struct {
@@ -33,21 +31,14 @@ func (l *proxyBodyLayout) appendBlock(block dashboardBlock) {
 func (l *proxyBodyLayout) appendGrid(group int, members []int) {
 	l.parts = append(l.parts, proxyBodyPart{y: l.total, group: group, members: members})
 	rows := (len(members) + l.grid.columns - 1) / l.grid.columns
-	l.total += (rows-1)*l.stride() + l.cardHeight()
-}
-
-func (l proxyBodyLayout) cardHeight() int {
-	if l.compact {
-		return 2
-	}
-	return 3
+	l.total += (rows-1)*l.stride() + proxyNodeHeight
 }
 
 func (l proxyBodyLayout) stride() int {
 	if l.compact {
-		return 2
+		return proxyNodeHeight
 	}
-	return 4
+	return proxyNodeHeight + 1
 }
 
 func (l proxyBodyLayout) visibleRows(part proxyBodyPart, start, end int) (int, int) {
@@ -56,7 +47,7 @@ func (l proxyBodyLayout) visibleRows(part proxyBodyPart, start, end int) (int, i
 	}
 	rows := (len(part.members) + l.grid.columns - 1) / l.grid.columns
 	first := max(0, (start-part.y)/l.stride())
-	if part.y+first*l.stride()+l.cardHeight() <= start {
+	if part.y+first*l.stride()+proxyNodeHeight <= start {
 		first++
 	}
 	last := min(rows, (end-1-part.y)/l.stride()+1)
@@ -101,11 +92,11 @@ func (m *Model) proxyTargets(width int, listOnly bool) []hitRegion {
 			if listOnly {
 				targets = append(targets, hitRegion{
 					ID: fmt.Sprintf("node.%d.%d", part.group, member), X: x, Y: y,
-					W: grid.cardWidth, H: layout.cardHeight(),
+					W: grid.cardWidth, H: proxyNodeHeight,
 				})
 				continue
 			}
-			for _, target := range m.proxyNodeKeyboardTargets(part.group, member, grid.cardWidth, layout.cardHeight()) {
+			for _, target := range m.proxyNodeKeyboardTargets(part.group, member, grid.cardWidth) {
 				target.X += x
 				target.Y += y
 				targets = append(targets, target)
@@ -116,11 +107,12 @@ func (m *Model) proxyTargets(width int, listOnly bool) []hitRegion {
 }
 
 func (m *Model) proxyBodyRange(layout proxyBodyLayout, start, end int) (stickyGroup, label string) {
-	first, last, total := 0, 0, 0
+	first, last, total, groups := 0, 0, 0, 0
 	for _, part := range layout.parts {
 		if len(part.members) == 0 {
 			continue
 		}
+		groups++
 		from, to := layout.visibleRows(part, start, end)
 		if from < to {
 			if first == 0 {
@@ -133,23 +125,20 @@ func (m *Model) proxyBodyRange(layout proxyBodyLayout, start, end int) (stickyGr
 		}
 		total += len(part.members)
 	}
-	if first > 0 {
-		label = m.tr("proxies.visible_range", first, last, total)
-	}
-	return stickyGroup, label
+	return stickyGroup, proxyMemberRange(m.locale, first, last, total, groups, layout.width)
 }
 
 func proxyNodeWidths(width int) (rightPadding, contentWidth, valueWidth int) {
 	rightPadding = min(2, max(0, width-4))
 	contentWidth = max(0, width-4-rightPadding)
-	valueWidth = min(12, contentWidth/2)
+	valueWidth = min(10, contentWidth/2)
 	return rightPadding, contentWidth, valueWidth
 }
 
 // The primary card region and inline actions are the only distinct keyboard
 // targets. Mouse rendering adds the other rectangles around those actions.
-func (m *Model) proxyNodeKeyboardTargets(gi, ni, width, height int) []hitRegion {
-	rightPadding, contentWidth, valueWidth := proxyNodeWidths(width)
+func (m *Model) proxyNodeKeyboardTargets(gi, ni, width int) []hitRegion {
+	rightPadding, _, valueWidth := proxyNodeWidths(width)
 	leftWidth := width
 	var actions []hitRegion
 	node := m.snapshot.Groups[gi].All[ni]
@@ -158,22 +147,17 @@ func (m *Model) proxyNodeKeyboardTargets(gi, ni, width, height int) []hitRegion 
 		if _, delaySupported := m.backend.(proxyDelayBackend); delaySupported && !m.busy && !m.quitting && m.proxiesReady() && m.proxyTestable(node) {
 			actions = append(actions, hitRegion{
 				ID: fmt.Sprintf("proxies.delay.%d.%d", gi, ni), X: leftWidth,
-				Y: height - 2, W: valueWidth, H: 1,
+				Y: 0, W: valueWidth, H: 1,
+			})
+		}
+		if _, _, reference := m.proxyGroup(node); reference && !m.busy && !m.quitting {
+			actions = append(actions, hitRegion{
+				ID: fmt.Sprintf("proxies.reference.%d.%d", gi, ni), X: leftWidth,
+				Y: 1, W: valueWidth, H: 1,
 			})
 		}
 	}
-	if _, _, reference := m.proxyGroup(node); reference {
-		id := fmt.Sprintf("proxies.reference.%d.%d", gi, ni)
-		buttonWidth := min(contentWidth, ansi.StringWidth(m.proxyButton(id, m.tr("proxies.enter"), panel, true)))
-		if buttonWidth > 0 {
-			x := width - rightPadding - buttonWidth
-			leftWidth = min(leftWidth, x)
-			if !m.busy && !m.quitting {
-				actions = append(actions, hitRegion{ID: id, X: x, Y: height - 1, W: buttonWidth, H: 1})
-			}
-		}
-	}
-	return append([]hitRegion{{ID: fmt.Sprintf("node.%d.%d", gi, ni), W: leftWidth, H: height}}, actions...)
+	return append([]hitRegion{{ID: fmt.Sprintf("node.%d.%d", gi, ni), W: leftWidth, H: proxyNodeHeight}}, actions...)
 }
 
 func (m *Model) proxyListFocusValid() bool {

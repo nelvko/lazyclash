@@ -92,7 +92,9 @@ func (m *Model) proxiesContextHelp() string {
 		hints = append(hints, tr("navigation.proxies.inspectKey"))
 	}
 	if ok {
-		hints = append(hints, tr("navigation.proxies.sortKey"))
+		if m.proxySortable(group) {
+			hints = append(hints, tr("navigation.proxies.sortKey"))
+		}
 		if m.proxies.testing && m.proxies.testGroup == group.Name {
 			hints = append(hints, tr("navigation.proxies.cancelTestKey"))
 		} else if m.proxyGroupHasTestAction(group.Name) {

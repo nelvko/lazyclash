@@ -91,6 +91,22 @@ func TestProxyGridKeepsUnicodeCardsInsideTheirSlots(t *testing.T) {
 	}
 }
 
+func TestProxyWideGridSeparatesTwoLineRows(t *testing.T) {
+	m, _ := proxiesModel(t, 160, 40)
+	width := dashboardBodyWidth(m.dashboardOptions())
+	grid := m.proxyGrid(width)
+	body := m.proxyGroupBody(0, width)
+	rows := (len(m.snapshot.Groups[0].All) + grid.columns - 1) / grid.columns
+	if len(body.lines) != rows*3-1 {
+		t.Fatalf("%d rows of cards occupy %d terminal lines", rows, len(body.lines))
+	}
+	for y, line := range body.lines {
+		if blank := strings.TrimSpace(ansi.Strip(line)) == ""; blank != (y%3 == 2) {
+			t.Fatalf("unexpected grid spacing at line %d: %q", y, ansi.Strip(line))
+		}
+	}
+}
+
 func TestProxyGridResizeKeepsNodeIdentityAndRevealsItsNewRow(t *testing.T) {
 	m := proxyHoverModel(t, 48)
 	m.focus = "node.0.37"

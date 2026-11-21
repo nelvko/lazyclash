@@ -134,6 +134,21 @@ func (m *Model) proxySort(group string) string {
 	}
 	return "default"
 }
+func (m *Model) proxySortable(g mihomo.Group) bool {
+	if m.proxySearchQuery() == "" {
+		return len(g.All) > 1
+	}
+	found := false
+	for _, node := range g.All {
+		if m.proxyMemberMatches(g, node) {
+			if found {
+				return true
+			}
+			found = true
+		}
+	}
+	return false
+}
 func cloneProxyExpansion(expanded map[string]bool) map[string]bool {
 	copy := make(map[string]bool, len(expanded))
 	for group, open := range expanded {
@@ -381,7 +396,7 @@ func (m *Model) openProxySort() {
 		return
 	}
 	gi, g, _, ok := m.proxyAtFocus()
-	if !ok {
+	if !ok || !m.proxySortable(g) {
 		return
 	}
 	m.proxies.sortReturn = m.proxyLocation()
@@ -396,7 +411,7 @@ func (m *Model) openProxySort() {
 	m.proxies.sortMenu = true
 	sortID := fmt.Sprintf("proxies.sort.%d", gi)
 	m.focus = fmt.Sprintf("group.%d", gi)
-	if m.proxyGroupExpanded(g.Name) && m.proxySort(g.Name) != "default" {
+	if m.proxyGroupExpanded(g.Name) {
 		m.focus = sortID
 	}
 	m.layout()
@@ -425,11 +440,7 @@ func (m *Model) proxyMenuResult(result menuResult) tea.Cmd {
 	if result.Action != "" && m.page == "proxies" {
 		m.sortProxies(result.Action)
 	}
-	location := m.proxies.sortReturn
-	if strings.HasPrefix(location.focus, "proxies.sort.") && m.proxySort(location.identity.group) == "default" {
-		location.identity = pageViewState{group: location.identity.group}
-	}
-	m.restoreProxyLocation(location)
+	m.restoreProxyLocation(m.proxies.sortReturn)
 	m.revealContentFocus()
 	return nil
 }
@@ -916,42 +927,39 @@ func (m *Model) testProxyGroup() tea.Cmd {
 	if !ok {
 		return nil
 	}
-	if m.proxies.testing {
+	if m.proxies.testing && m.proxies.testGroup == g.Name {
 		m.stopProxyGroupTests()
-		if m.proxies.testGroup == g.Name {
-			return m.showProxyTestStatus()
-		}
+		return m.showProxyTestStatus()
 	}
 	backend, ok := m.backend.(proxyDelayBackend)
 	if !ok || !m.proxiesReady() || m.busy || m.quitting {
 		return nil
 	}
-	m.stopProxyNodeTests(g.Name)
-	m.proxies.generation++
-	m.proxies.testStatusVisible = false
-	m.proxies.testCtx, m.proxies.cancel = context.WithCancel(m.ctx)
-	m.proxies.queue = nil
-	m.proxies.inflight = make(map[string]bool)
-	m.proxies.inflightPaths = make(map[string]string)
+	var targets []proxyTestTarget
 	for _, node := range g.All {
 		if m.proxyTestable(node) {
-			m.proxies.queue = append(m.proxies.queue, proxyTestTarget{g.Name, node, m.proxyPathKey(node)})
+			targets = append(targets, proxyTestTarget{g.Name, node, m.proxyPathKey(node)})
 		}
 	}
-	m.proxies.total, m.proxies.completed = len(m.proxies.queue), 0
-	m.proxies.testGroup, m.proxies.testStatus = g.Name, "done"
-	if len(m.proxies.queue) == 0 {
-		m.proxies.cancel()
-		m.proxies.cancel = nil
+	if len(targets) == 0 {
 		return nil
 	}
+	m.stopProxyGroupTests()
+	m.stopProxyNodeTests(g.Name)
+	m.proxies.generation++
+	m.proxies.testCtx, m.proxies.cancel = context.WithCancel(m.ctx)
+	m.proxies.queue = targets
+	m.proxies.inflight = make(map[string]bool)
+	m.proxies.inflightPaths = make(map[string]string)
+	m.proxies.total, m.proxies.completed = len(m.proxies.queue), 0
+	m.proxies.testGroup = g.Name
 	m.proxies.testing = true
 	m.proxies.testStatus = "testing"
 	var commands []tea.Cmd
 	for range min(4, len(m.proxies.queue)) {
 		commands = append(commands, m.nextProxyTest(backend))
 	}
-	return tea.Batch(append(commands, m.spinner.Tick, m.nextProxyNodeTests())...)
+	return tea.Batch(append(commands, m.nextProxyNodeTests())...)
 }
 func (m *Model) nextProxyTest(backend proxyDelayBackend) tea.Cmd {
 	if m.proxiesDirect() {

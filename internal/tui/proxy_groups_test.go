@@ -9,6 +9,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nelvko/lazyclash/internal/i18n"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
 
@@ -153,6 +154,83 @@ func TestProxiesTestButtonsBindTheOwnerAndCancelPreviousGroup(t *testing.T) {
 	m.acceptProxyDelay(late)
 	if _, exists := m.proxies.results[proxyResultKey("AUTO", "HK 01")]; exists {
 		t.Fatal("a canceled group's late measurement reached the new run")
+	}
+}
+
+func TestProxiesTestProgressUsesOnlyTheGroupHeader(t *testing.T) {
+	for _, width := range []int{160, 80, 52, 40, 32} {
+		for _, lang := range []string{i18n.Chinese, i18n.English} {
+			t.Run(fmt.Sprint(width, "/", lang), func(t *testing.T) {
+				m, _ := proxiesModel(t, width, 40)
+				m.locale = i18n.New(lang)
+				m.sortProxies("delay")
+				bodyWidth := dashboardBodyWidth(m.dashboardOptions())
+				initial, hits := m.proxiesBody(bodyWidth)
+				rows := strings.Count(initial, "\n")
+				first := listSearchTarget(t, hits, "node.0.0")
+				for _, state := range []struct {
+					status string
+					done   int
+				}{{"testing", 9}, {"testing", 10}, {"canceled", 10}, {"done", 47}} {
+					m.proxies.testGroup, m.proxies.testStatus = "PROXY", state.status
+					m.proxies.completed, m.proxies.total = state.done, 47
+					m.proxies.testing = state.status == "testing"
+					m.proxies.testStatusVisible = !m.proxies.testing
+					body, hits := m.proxiesBody(bodyWidth)
+					assertRegions(t, hits, bodyWidth, rows+1)
+					firstNow := listSearchTarget(t, hits, first.ID)
+					test := listSearchTarget(t, hits, "proxies.test.0")
+					if firstNow != first || strings.Count(body, "\n") != rows || test.Y >= first.Y {
+						t.Fatalf("%s %d/47 moved grid or progress outside header", state.status, state.done)
+					}
+					count := fmt.Sprintf("%d/47", state.done)
+					line := strings.Split(body, "\n")[test.Y]
+					if !strings.Contains(ansi.Strip(ansi.Cut(line, test.X, test.X+test.W)), count) || strings.Count(ansi.Strip(body), count) != 1 {
+						t.Fatalf("%s did not place %s once in its action: %s", state.status, count, ansi.Strip(line))
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestProxiesGroupHidesInapplicableTools(t *testing.T) {
+	m, _ := proxiesModel(t, 160, 40)
+	g := &m.snapshot.Groups[0]
+	for _, members := range [][]string{nil, {"DIRECT"}, {"DIRECT", "REJECT"}} {
+		g.All = members
+		header := m.proxyGroupHeader(0, 130)
+		if hasAction(header.targets, "proxies.test.0") || hasAction(header.targets, "proxies.sort.0") != (len(members) > 1) {
+			t.Fatalf("wrong group actions for %v: %+v", members, header.targets)
+		}
+	}
+	m.proxies.search.SetValue("DIRECT")
+	if hasAction(m.proxyGroupHeader(0, 130).targets, "proxies.sort.0") {
+		t.Fatal("a single search match offered sorting")
+	}
+	m.openProxySort()
+	if m.menu.open {
+		t.Fatal("keyboard shortcut opened sorting for a single match")
+	}
+}
+
+func TestProxiesUntestableGroupShortcutPreservesRunningTest(t *testing.T) {
+	m, _ := proxiesModel(t, 160, 40)
+	if m.testProxyGroup() == nil {
+		t.Fatal("test for PROXY did not start")
+	}
+	t.Cleanup(m.stopProxyTests)
+	ctx, generation := m.proxies.testCtx, m.proxies.generation
+	m.snapshot.Groups[1].All = []string{"DIRECT", "REJECT"}
+	m.focus = "group.1"
+	m, _ = update(m, key("t"))
+	if ctx.Err() != nil || !m.proxies.testing || m.proxies.testGroup != "PROXY" || m.proxies.generation != generation {
+		t.Fatal("attempting to test an ineligible group canceled the active group")
+	}
+	m.focus = "group.0"
+	m, _ = update(m, key("t"))
+	if ctx.Err() != context.Canceled || m.proxies.testing {
+		t.Fatal("the running group could not cancel its own test")
 	}
 }
 

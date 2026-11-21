@@ -560,7 +560,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = waitProgress(v.ctx, v.updates)
 		}
 	case spinner.TickMsg:
-		if m.busy || m.proxies.testing {
+		if m.busy {
 			m.spinner, cmd = m.spinner.Update(v)
 		}
 	case logoPulseMsg:
