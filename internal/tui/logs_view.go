@@ -2,6 +2,8 @@ package tui
 
 import (
 	"fmt"
+	"slices"
+	"sort"
 	"strings"
 
 	"charm.land/bubbles/v2/viewport"
@@ -14,10 +16,21 @@ type logPosition struct {
 	row   int
 }
 
+type logDocumentKey struct {
+	first                           uint64
+	firstEntry                      *mihomo.LogEntry
+	count, width, level             int
+	query                           string
+	compact                         bool
+	caseSensitive, wholeWord, regex bool
+}
+
 type logDocument struct {
+	key       logDocumentKey
 	lines     []string
 	positions []logPosition
 	matched   int
+	content   viewport.Model
 }
 
 func logLevel(level string) (string, string) {
@@ -56,14 +69,33 @@ func (m *Model) logMatcher() (func(mihomo.LogEntry) bool, error) {
 	}, nil
 }
 
-func (m *Model) logDocument(width int) logDocument {
+func (m *Model) logDocument(width int) *logDocument {
 	width = max(1, width)
-	var doc logDocument
-	match, err := m.logMatcher()
-	if err != nil {
+	entries, first := m.logsDisplayEntries()
+	key := logDocumentKey{
+		first: first, count: len(entries), width: width, level: m.logs.level, compact: m.logs.compact,
+		query: strings.TrimSpace(m.logs.search.Value()), caseSensitive: m.logs.caseSensitive,
+		wholeWord: m.logs.wholeWord, regex: m.logs.regex,
+	}
+	if len(entries) > 0 {
+		key.firstEntry = &entries[0]
+	}
+	// The sequence and count cover appends even when the ring reuses its storage.
+	if doc := m.logs.document; doc != nil && doc.key == key {
 		return doc
 	}
-	entries, first := m.logsDisplayEntries()
+
+	doc := &logDocument{key: key}
+	match, err := m.logMatcher()
+	if err == nil {
+		m.renderLogDocument(doc, entries, first, width, match)
+	}
+	doc.content = logViewportContent(doc.lines, width)
+	m.logs.document = doc
+	return doc
+}
+
+func (m *Model) renderLogDocument(doc *logDocument, entries []mihomo.LogEntry, first uint64, width int, match func(mihomo.LogEntry) bool) {
 	for index, entry := range entries {
 		if !match(entry) {
 			continue
@@ -100,29 +132,36 @@ func (m *Model) logDocument(width int) logDocument {
 			doc.positions = append(doc.positions, logPosition{entry: first + uint64(index), row: row})
 		}
 	}
-	return doc
 }
 
-func (m *Model) logViewport(doc logDocument, width, height int) viewport.Model {
-	v := viewport.New(viewport.WithWidth(max(1, width)), viewport.WithHeight(max(1, height)))
-	v.SetContentLines(append([]string(nil), doc.lines...))
-	if !m.logs.holding {
-		v.GotoBottom()
-		return v
-	}
-	for index, position := range doc.positions {
-		if position.entry < m.logs.anchor.entry {
-			continue
+func logViewportContent(lines []string, width int) viewport.Model {
+	v := viewport.New(viewport.WithWidth(max(1, width)))
+	// SetContentLines may normalize line endings in its input slice.
+	v.SetContentLines(slices.Clone(lines))
+	return v
+}
+
+func (m *Model) logViewport(doc *logDocument, width, height int) viewport.Model {
+	// The viewport copies its visible lines before painting them. Share the
+	// loaded content and keep offset/size updates local to this view.
+	v := doc.content
+	v.SetWidth(max(1, width))
+	v.SetHeight(max(1, height))
+	if m.logs.holding {
+		index := sort.Search(len(doc.positions), func(i int) bool {
+			return doc.positions[i].entry >= m.logs.anchor.entry
+		})
+		if index < len(doc.positions) {
+			// Reflow or Compact mode may shorten the anchored entry. Keep the
+			// same entry and clamp its row instead of skipping to the next one.
+			for index+1 < len(doc.positions) && doc.positions[index+1].entry == m.logs.anchor.entry && doc.positions[index+1].row <= m.logs.anchor.row {
+				index++
+			}
+			v.SetYOffset(index)
+			return v
 		}
-		// Reflow or Compact mode may shorten the anchored entry. Keep the
-		// same entry and clamp its row instead of skipping to the next one.
-		for index+1 < len(doc.positions) && doc.positions[index+1].entry == m.logs.anchor.entry && doc.positions[index+1].row <= m.logs.anchor.row {
-			index++
-		}
-		v.SetYOffset(index)
-		return v
 	}
-	v.GotoBottom()
+	v.SetYOffset(v.TotalLineCount())
 	return v
 }
 
@@ -304,15 +343,19 @@ func (m *Model) logsBody(width int) (string, []hitRegion) {
 		b.targets = visible
 	}
 	capacity := max(1, height-len(b.lines)-1)
+	var v viewport.Model
 	if len(doc.lines) == 0 {
 		empty := m.emptyState(width, capacity, m.logsEmptyState())
 		for _, target := range empty.targets {
 			target.Y += len(b.lines)
 			b.targets = append(b.targets, target)
 		}
-		doc.lines = empty.lines
+		v = logViewportContent(empty.lines, width)
+		v.SetHeight(capacity)
+		v.SetYOffset(v.TotalLineCount())
+	} else {
+		v = m.logViewport(doc, width, capacity)
 	}
-	v := m.logViewport(doc, width, capacity)
 	b.targets = append(b.targets, hitRegion{ID: "logs.list", Y: len(b.lines), W: width, H: capacity})
 	b.lines = append(b.lines, strings.Split(v.View(), "\n")...)
 	if len(b.lines) < height {

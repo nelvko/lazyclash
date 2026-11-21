@@ -31,6 +31,28 @@ func logReadingView(m Model) string {
 	return ansi.Strip(v.View())
 }
 
+func TestLogsReuseDocumentWhileReadingFrozenEntries(t *testing.T) {
+	m := redesignedLogsModel(120, 32, retainedLogLimit)
+	defer m.stopRuntime()
+	width := dashboardBodyWidth(m.dashboardOptions())
+	m.pauseLogs()
+	frozen := m.logDocument(width)
+	m.logsScroll(-5)
+	m.appendLogs([]mihomo.LogEntry{{Level: "warning", Message: "newest event"}})
+	if m.logDocument(width) != frozen {
+		t.Fatal("browsing or live ring eviction rebuilt the paused log document")
+	}
+	m.resumeLogs()
+	live := m.logDocument(width)
+	if live == frozen || !strings.Contains(live.lines[len(live.lines)-1], "newest event") {
+		t.Fatal("resuming did not render the new live tail")
+	}
+	m.logs.search.SetValue("missing")
+	if filtered := m.logDocument(width); filtered == live || filtered.matched != 0 {
+		t.Fatal("search retained stale cached rows")
+	}
+}
+
 func TestLogsBrowsingPinsVisibleRowsWhileCaptureContinuesAndEntriesExpire(t *testing.T) {
 	m := redesignedLogsModel(120, 32, retainedLogLimit)
 	defer m.stopRuntime()

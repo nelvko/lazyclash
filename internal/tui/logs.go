@@ -14,6 +14,7 @@ const (
 
 type logsState struct {
 	entries                         []mihomo.LogEntry
+	document                        *logDocument
 	search                          textinput.Model
 	editing, paused                 bool
 	active                          bool
