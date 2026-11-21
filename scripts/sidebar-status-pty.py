@@ -33,7 +33,7 @@ def status_positions(terminal, label):
             for x, cell in enumerate(row) if cell and "".join(row[x:]).startswith(label)]
 
 
-def assert_status(terminal, words):
+def assert_status(terminal, words, overview_page=False):
     width, height = terminal.screen.columns, terminal.screen.rows
     header_y = 1 if height >= 24 else 0
     label = words["dashboard.status.running"]
@@ -45,17 +45,22 @@ def assert_status(terminal, words):
         assert x < 20 and y >= height - 7, "core status is outside the fixed sidebar footer"
         header = "".join(terminal.screen.cells[header_y][20:])
         assert "● " + label not in header, "page title retained global core status"
-        rates = [(x, y) for value in ("12.0 KiB/s", "2.2 MiB/s")
-                 for x, y in status_positions(terminal, value) if x < 20]
-        assert all(rate_y > y for _, rate_y in rates), "sidebar rates appeared above core status"
-        if height <= 10:
-            assert not rates, "tiny sidebar retained rates ahead of navigation and status"
+        rates = []
+        for rate_y, row in enumerate(terminal.screen.cells):
+            fields = "".join(row[:20]).split()
+            if len(fields) >= 2 and fields[0] in ("↑", "↓"):
+                rates.append((fields[0], rate_y))
+        if overview_page or height <= 10:
+            assert not rates, "sidebar retained rates on Overview or at minimal height"
+        elif rates or height >= 32:
+            assert rates == [("↑", y - 2), ("↓", y - 1)], "sidebar rates are missing or out of place"
     else:
         assert not points, "navigation drawer repeated global core status"
         header = "".join(terminal.screen.cells[header_y])
         assert "● " + label in header, "compact top bar lost core status"
     assert len(terminal.screen.cells) == height
     assert all(len(row) == width for row in terminal.screen.cells)
+    return points[0][1] if points else None
 
 
 def assert_title(terminal, words, page):
@@ -71,13 +76,16 @@ def exercise_overview(preview, overview, binary, output, language, profile, args
     terminal = overview.fixture_terminal(preview, binary, report, language, profile, "running")
     try:
         terminal.wait("v1.19.33")
-        terminal.wait("12.0 KiB/s")
+        baseline = None
         for number, page in enumerate(PAGES, 1):
             overview.return_navigation(terminal, words)
             terminal.key(str(number).encode())
             terminal.settle()
             assert_title(terminal, words, page)
-            assert_status(terminal, words)
+            status_y = assert_status(terminal, words, overview_page=page == "overview")
+            if baseline is None:
+                baseline = status_y
+            assert status_y == baseline, "changing pages moved the sidebar core status"
             preview.capture(terminal, output, "page-" + page, args)
 
         overview.return_navigation(terminal, words)
@@ -146,12 +154,12 @@ def exercise_logs(preview, overview, logs, binary, output, language, profile, ar
     try:
         terminal.wait("v1.19.33")
         terminal.key(b"6")
-        terminal.wait(words["header.live"])
+        terminal.wait(words["logs.capturing"])
         for width, height in ((160, 45), (80, 24)):
             terminal.resize(width, height)
             terminal.settle()
             assert_status(terminal, words)
-            terminal.wait(words["header.live"])
+            terminal.wait(words["logs.capturing"])
             preview.capture(terminal, output, "live-%dx%d" % (width, height), args)
             terminal.click_text(words["logs.pause_display"])
             terminal.wait(words["logs.resume_display"])
@@ -161,7 +169,7 @@ def exercise_logs(preview, overview, logs, binary, output, language, profile, ar
             assert_status(terminal, words)
             preview.capture(terminal, output, "paused-%dx%d" % (width, height), args)
             terminal.click_text(words["logs.resume_display"])
-            terminal.wait(words["header.live"])
+            terminal.wait(words["logs.capturing"])
         terminal.exit()
         calls = json.loads(report.read_text())
         assert all(calls[key] == 0 for key in ("service_changes", "modes", "selections")), calls

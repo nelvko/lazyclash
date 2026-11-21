@@ -24,7 +24,7 @@ func sidebarRowContaining(t *testing.T, screen, value string) int {
 	return -1
 }
 
-func TestSidebarCoreStatusSitsAboveTrafficAndKeepsLogStatus(t *testing.T) {
+func TestSidebarCoreStatusAnchorsTrafficAndKeepsLogStatus(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		t.Run(language, func(t *testing.T) {
 			m := headerModel("logs", 160, 45)
@@ -33,7 +33,7 @@ func TestSidebarCoreStatusSitsAboveTrafficAndKeepsLogStatus(t *testing.T) {
 			m.layout()
 			status := "● " + m.tr("dashboard.sidebar.coreStatus", m.tr("dashboard.status.running"))
 			y := sidebarRowContaining(t, m.screen, status)
-			if up, down := sidebarRowContaining(t, m.screen, "2.0 KiB/s"), sidebarRowContaining(t, m.screen, "4.0 KiB/s"); up != y+1 || down != y+2 {
+			if up, down := sidebarRowContaining(t, m.screen, "2.0 KiB/s"), sidebarRowContaining(t, m.screen, "4.0 KiB/s"); up != y-2 || down != y-1 {
 				t.Fatalf("core status and traffic do not share one footer: status=%d up=%d down=%d", y, up, down)
 			}
 			if head := headerText(m); strings.Contains(head, "●") || !strings.Contains(head, m.tr("header.paused")) {
@@ -43,6 +43,20 @@ func TestSidebarCoreStatusSitsAboveTrafficAndKeepsLogStatus(t *testing.T) {
 				for _, hit := range targets {
 					if regionsOverlap(hit, hitRegion{X: 0, Y: y, W: sidebarWidth, H: 1}) {
 						t.Fatalf("read-only core status acquired an interaction target: %+v", hit)
+					}
+				}
+			}
+			o := m.navigationOptions()
+			for _, page := range append(navPages(), "") {
+				o.Page = page
+				screen, _, _ := renderDashboard(o)
+				if pos := sidebarRowContaining(t, screen, status); pos != y {
+					t.Fatalf("page %q moved sidebar status from row %d to %d", page, y, pos)
+				}
+				showRates := page != "" && page != "overview"
+				for _, rate := range []string{"2.0 KiB/s", "4.0 KiB/s"} {
+					if strings.Contains(sidebarText(screen), rate) != showRates {
+						t.Fatalf("page %q has incorrect visibility for sidebar rate %q", page, rate)
 					}
 				}
 			}
@@ -74,7 +88,7 @@ func TestSidebarCoreStatusKeepsCompleteStateLabelsAtAFixedRow(t *testing.T) {
 			screen, targets, _ := renderDashboard(o)
 			y := sidebarRowContaining(t, screen, tc.label)
 			row := strings.TrimSpace(ansi.Strip(ansi.Cut(strings.Split(screen, "\n")[y], 0, sidebarWidth)))
-			if !strings.HasPrefix(row, tc.symbol+" ") || y != dashboardContentBottom(o)-3 {
+			if !strings.HasPrefix(row, tc.symbol+" ") || y != dashboardContentBottom(o)-2 {
 				t.Fatalf("state is ambiguous or moved the footer: row=%d %q", y, row)
 			}
 			assertCanvas(t, screen, o.Width, o.Height)

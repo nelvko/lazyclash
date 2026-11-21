@@ -205,19 +205,24 @@ func drawSidebar(rows []string, o dashboardOptions, popup bool) []hitRegion {
 func sidebarFooter(o dashboardOptions, width, available int) []string {
 	full, _, color := headerCoreState(o)
 	symbol, label, _ := strings.Cut(full, " ")
-	status := symbol + " " + o.Locale.T("dashboard.sidebar.coreStatus", label)
-	if ansi.StringWidth(status) > width-4 {
-		status = full
+	inner := max(1, width-4)
+	description := o.Locale.T("dashboard.sidebar.coreStatus", label)
+	if ansi.StringWidth(symbol+" "+description) > inner {
+		description = label
 	}
-	status = themed(cellCrop(status, max(1, width-4)), color, sidebarBackground, o.Dim)
-	footer := []string{status}
-	traffic := sidebarTraffic(o, width)
-	// Leave one row between navigation and the footer's separator. Speeds are
-	// optional; the single state row also fits below a scrolling menu's hint.
-	if available >= 5 {
-		footer = append([]string{traffic[0], status}, traffic[1:]...)
-	} else if available >= 3 {
-		footer = []string{traffic[0], status}
+	status := themed(symbol, color, sidebarBackground, o.Dim) + themed(" "+description, text, sidebarBackground, o.Dim)
+	var footer []string
+	if available >= 3 {
+		footer = append(footer, themed(strings.Repeat("─", inner), divider, sidebarBackground, o.Dim))
+	}
+	if available >= 5 && o.Page != "" && o.Page != "overview" {
+		footer = append(footer, sidebarTraffic(o, inner)...)
+	}
+	footer = append(footer, cellCrop(status, inner))
+	// Keep the state on the same baseline across pages. In tall windows,
+	// leave a quiet row between the state and the global key hints.
+	if available >= 6 {
+		footer = append(footer, "")
 	}
 	return footer
 }

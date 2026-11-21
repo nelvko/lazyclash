@@ -399,22 +399,25 @@ func regionsOverlap(a, b hitRegion) bool {
 	return a.X < b.X+b.W && b.X < a.X+a.W && a.Y < b.Y+b.H && b.Y < a.Y+a.H
 }
 
-func sidebarTraffic(o dashboardOptions, width int) []string {
-	inner := max(1, width-4)
+func sidebarTraffic(o dashboardOptions, inner int) []string {
 	style := func(value, color string) string {
 		return themed(value, color, sidebarBackground, o.Dim)
 	}
 	up, down := "--", "--"
-	if !o.StateUnavailable && o.Snapshot.Installed && o.RuntimeReceived && o.Runtime.State == "ready" && o.Runtime.Traffic != nil {
-		up = formatBytes(o.Runtime.Traffic.Up) + "/s"
-		down = formatBytes(o.Runtime.Traffic.Down) + "/s"
+	s := o.Runtime
+	traffic := s.Traffic
+	if !o.StateUnavailable && o.Snapshot.Installed && o.RuntimeReceived && s.State == "ready" && s.Error == "" &&
+		s.TrafficError == "" && traffic != nil && traffic.Up >= 0 && traffic.Down >= 0 {
+		up = formatBytes(traffic.Up) + "/s"
+		down = formatBytes(traffic.Down) + "/s"
 	}
-	rate := func(arrow, value string) string {
+	rate := func(arrow, color, value string) string {
 		value = cellCrop(value, max(1, inner-2))
 		gap := max(1, inner-1-ansi.StringWidth(value))
-		return style(arrow, muted) + style(strings.Repeat(" ", gap)+value, text)
+		return style(arrow, color) + style(strings.Repeat(" ", gap)+value, text)
 	}
-	return []string{style(strings.Repeat("─", inner), divider), rate("↑", up), rate("↓", down)}
+	colors := trafficCurveColors()
+	return []string{rate("↑", colors.upload, up), rate("↓", colors.download, down)}
 }
 
 type dashboardBlock struct {

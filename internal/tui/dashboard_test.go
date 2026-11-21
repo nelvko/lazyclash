@@ -256,6 +256,10 @@ func TestSidebarTrafficDistinguishesLiveMissingAndZeroRates(t *testing.T) {
 		{name: "first pending", change: func(o *dashboardOptions) { o.RuntimeReceived, o.RuntimePending = false, true }, up: "--", down: "--"},
 		{name: "next pending", change: func(o *dashboardOptions) { o.RuntimePending = true }, up: "2.0 KiB/s", down: "4.0 KiB/s"},
 		{name: "missing traffic", change: func(o *dashboardOptions) { o.Runtime.Traffic = nil }, up: "--", down: "--"},
+		{name: "traffic source failed", change: func(o *dashboardOptions) { o.Runtime.TrafficError = "stream failed" }, up: "--", down: "--"},
+		{name: "runtime failed", change: func(o *dashboardOptions) { o.Runtime.Error = "observation failed" }, up: "--", down: "--"},
+		{name: "malformed traffic", change: func(o *dashboardOptions) { o.Runtime.Traffic.Up = -1 }, up: "--", down: "--"},
+		{name: "unrelated source failed", change: func(o *dashboardOptions) { o.Runtime.MemoryError = "stream failed" }, up: "2.0 KiB/s", down: "4.0 KiB/s"},
 		{name: "stopped", change: func(o *dashboardOptions) { o.Runtime.State = "stopped" }, up: "--", down: "--"},
 		{name: "unavailable", change: func(o *dashboardOptions) { o.Runtime.State = "unavailable" }, up: "--", down: "--"},
 		{name: "uninstalled", change: func(o *dashboardOptions) { o.Snapshot.Installed = false }, up: "--", down: "--"},
@@ -274,6 +278,13 @@ func TestSidebarTrafficDistinguishesLiveMissingAndZeroRates(t *testing.T) {
 			for _, value := range []string{"↑ " + tc.up, "↓ " + tc.down} {
 				if !strings.Contains(footer, value) {
 					t.Fatalf("missing sidebar rate %q: %s", value, footer)
+				}
+			}
+			for _, metric := range []struct{ arrow, value string }{{"↑", tc.up}, {"↓", tc.down}} {
+				y := sidebarRowContaining(t, screen, metric.arrow)
+				row := ansi.Strip(ansi.Cut(strings.Split(screen, "\n")[y], 0, sidebarWidth))
+				if !strings.HasPrefix(row, "  "+metric.arrow) || !strings.HasSuffix(row, metric.value+"  ") {
+					t.Fatalf("rate is not aligned to the sidebar gutters: %q", row)
 				}
 			}
 			for _, value := range []string{"work-profile", "Saved mode", "Installed", "v1.20.0", "Mihomo"} {
