@@ -22,7 +22,7 @@ func TestNetworkSummariesShowSavedMixedPortWithoutDraftsOrCredentials(t *testing
 			o := m.dashboardOptions()
 			o.Snapshot = m.snapshot
 			for name, render := range map[string]func(dashboardOptions, int) dashboardBlock{
-				"overview": overviewNetworkCard, "settings": settingsNetwork,
+				"overview": overviewNetworkCard, "settings": settingsService,
 			} {
 				t.Run(fmt.Sprintf("%s/%s/%d", language, name, width), func(t *testing.T) {
 					card := render(o, width)

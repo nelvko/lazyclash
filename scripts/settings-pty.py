@@ -72,9 +72,10 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.key(b"7")
         terminal.wait(words["settings.interface"])
         terminal.settle()
-        for heading in ("settings.interface", "settings.serviceGroup", "settings.network", "dashboard.settings.title"):
+        for heading in ("settings.interface", "settings.serviceGroup", "settings.core", "settings.diagnostics"):
             terminal.wait(words[heading])
         terminal.wait(words["dashboard.network.mixedPort"] % "7897")
+        terminal.wait("lazyclash doctor")
         preview.capture(terminal, output, "settings-wide", args)
 
         # A second language click while the first save is pending must be inert.
@@ -140,8 +141,8 @@ def exercise(preview, binary, output, language, profile, args):
             if columns == 1:
                 assert before != terminal.screen.text(), "wheel did not scroll the narrow Settings body"
             preview.capture(terminal, output, "scrolled-%dx%d" % (width, height), args)
-            focus(terminal, words["settings.import"])
-            preview.capture(terminal, output, "tab-import-%dx%d" % (width, height), args)
+            focus(terminal, words["settings.openLogs"])
+            preview.capture(terminal, output, "tab-logs-%dx%d" % (width, height), args)
             focus(terminal, words["settings.edit"])
             terminal.key(b"\r")
             terminal.wait(words["ports.title"])
@@ -156,11 +157,23 @@ def exercise(preview, binary, output, language, profile, args):
             terminal.key(b"\x1b[H")
             terminal.settle()
 
+        # The diagnostics action only opens the read-only Logs page. The
+        # Settings shortcut restores the existing page after its stream stops.
+        focus(terminal, words["settings.openLogs"])
+        terminal.key(b"\r")
+        terminal.wait("settings-pty readonly log")
+        preview.capture(terminal, output, "diagnostics-open-logs", args)
+        terminal.key(b"7")
+        terminal.wait(words["settings.interface"])
+        terminal.settle()
+        preview.capture(terminal, output, "logs-return-settings", args)
+
         terminal.exit()
         calls = json.loads(report.read_text())
         assert calls["language_saves"] == 2 and calls["language"] == language, calls
         assert calls["hint_saves"] == 2 and not calls["hints_hidden"], calls
         assert calls["port_reads"] == len(SIZES), calls
+        assert calls["log_streams"] == 1, calls
         assert calls["service_changes"] == calls["mode_changes"] == calls["port_applies"] == 0, calls
         raw = bytes(terminal.raw)
         assert not preview.OSC_SET.search(raw), "application changed the terminal palette"
@@ -169,7 +182,7 @@ def exercise(preview, binary, output, language, profile, args):
         if profile == "no-color":
             assert not any(value not in (b"", b"0") for value in preview.SGR.findall(raw)), "NO_COLOR emitted styling"
         (output / "pty.raw").write_bytes(raw)
-        print("PASS %s/%s: language/busy, hints, adaptive width/columns, wheel, Tab and ports return; %s" % (language, profile, json.dumps(calls)), flush=True)
+        print("PASS %s/%s: language/busy, hints, adaptive width/columns, wheel, Tab, ports return and diagnostics Logs; %s" % (language, profile, json.dumps(calls)), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")
         (output / "failed.ansi").write_bytes(terminal.raw)

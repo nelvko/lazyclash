@@ -540,25 +540,22 @@ func TestSettingsOnlyOffersAvailableActions(t *testing.T) {
 	o := dashboardOptions{Width: 120, Height: 40, Page: "settings"}
 	o.Header = (Model{page: "settings"}).pageHeader()
 	_, regions, _ := renderDashboard(o)
-	for _, id := range []string{"install", "network", "import"} {
+	for _, id := range []string{"install", "network", "card.logs"} {
 		if !hasAction(regions, id) {
 			t.Errorf("missing %s", id)
 		}
 	}
-	for _, id := range []string{"start", "stop", "restart"} {
+	for _, id := range []string{"runtime-settings", "autostart-enable", "restart"} {
 		if hasAction(regions, id) {
 			t.Errorf("uninstalled core offers %s", id)
 		}
 	}
 	o.Snapshot.Installed = true
 	_, regions, _ = renderDashboard(o)
-	if !hasAction(regions, "install") || hasAction(regions, "stop") || !hasAction(regions, "start") || !hasAction(regions, "restart") {
-		t.Fatal("stopped actions incorrect")
-	}
-	o.Snapshot.Service.Active = true
-	_, regions, _ = renderDashboard(o)
-	if hasAction(regions, "start") || !hasAction(regions, "stop") || !hasAction(regions, "restart") {
-		t.Fatal("running actions incorrect")
+	for _, id := range []string{"install", "runtime-settings", "autostart-enable", "restart"} {
+		if !hasAction(regions, id) {
+			t.Errorf("installed settings missing %s", id)
+		}
 	}
 }
 

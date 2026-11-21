@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/nelvko/lazyclash/internal/app"
+	"github.com/nelvko/lazyclash/internal/mihomo"
 	"github.com/nelvko/lazyclash/internal/service"
 )
 
@@ -41,7 +42,8 @@ func TestSettingsPTYFixture(t *testing.T) {
 	raw, err := json.Marshal(map[string]any{
 		"language_saves": b.languages.Load(), "hint_saves": b.hints.Load(), "port_reads": b.portReads.Load(),
 		"service_changes": b.controls.Load(), "mode_changes": b.modes.Load(), "port_applies": b.portApplies.Load(),
-		"language": prefs.Language, "hints_hidden": prefs.HideKeyHints,
+		"log_streams": b.logStreams.Load(),
+		"language":    prefs.Language, "hints_hidden": prefs.HideKeyHints,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -57,6 +59,7 @@ type settingsPTYBackend struct {
 	preferences                              app.Preferences
 	languages, hints, portReads, portApplies atomic.Int64
 	controls, modes                          atomic.Int64
+	logStreams                               atomic.Int64
 }
 
 func (b *settingsPTYBackend) LoadPreferences(ctx context.Context) (app.Preferences, error) {
@@ -119,6 +122,13 @@ func (b *settingsPTYBackend) SetTUN(ctx context.Context, _ bool) error {
 
 func (b *settingsPTYBackend) SetMode(ctx context.Context, _ string) error {
 	b.modes.Add(1)
+	return ctx.Err()
+}
+
+func (b *settingsPTYBackend) StreamLogs(ctx context.Context, emit func(mihomo.LogEntry)) error {
+	b.logStreams.Add(1)
+	emit(mihomo.LogEntry{Level: "info", Message: "settings-pty readonly log"})
+	<-ctx.Done()
 	return ctx.Err()
 }
 

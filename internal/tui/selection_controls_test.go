@@ -49,7 +49,6 @@ func TestSelectionGroupsKeepEqualWidthsAndAdjacentFocusGutters(t *testing.T) {
 						assertCanvas(t, body, width, len(block.lines))
 					}
 					check(overviewModeCard(o, width), modeIDs)
-					check(settingsNetwork(o, width), modeIDs)
 					check(settingsInterface(o, width), []string{"language.en", "language.zh-Hans"})
 					m, _ := proxiesModel(t, 160, 40)
 					m.locale, m.noColor = o.Locale, plain
@@ -87,10 +86,9 @@ func TestProxyModeSelectionShowsSavedPreferenceAndObservedMismatch(t *testing.T)
 
 func TestBusyModeControlsKeepSelectionWithoutHitRegions(t *testing.T) {
 	o := dashboardOptions{Locale: i18n.New(i18n.English), Snapshot: settingsTestSnapshot(), Busy: true, PlainButtons: true}
-	for _, block := range []dashboardBlock{overviewModeCard(o, 80), settingsNetwork(o, 80)} {
-		if len(block.targets) != 0 || strings.Count(ansi.Strip(strings.Join(block.lines, "\n")), "<") != 1 {
-			t.Fatal("busy mode controls lost their saved selection or retained actionable targets")
-		}
+	overview := overviewModeCard(o, 80)
+	if len(overview.targets) != 0 || strings.Count(ansi.Strip(strings.Join(overview.lines, "\n")), "<") != 1 {
+		t.Fatal("busy overview mode controls lost their saved selection or retained actionable targets")
 	}
 	m, _ := proxiesModel(t, 160, 40)
 	m.noColor, m.busy = true, true

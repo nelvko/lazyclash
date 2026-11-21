@@ -5,6 +5,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nelvko/lazyclash/internal/buildinfo"
 )
 
 // Settings reuses the dashboard's scrolling, focus and button components.
@@ -18,7 +19,7 @@ type settingsRow struct {
 
 func settingsContent(o dashboardOptions, width int) (string, []hitRegion) {
 	sections := []func(dashboardOptions, int) dashboardBlock{
-		settingsInterface, settingsService, settingsNetwork, settingsCore,
+		settingsInterface, settingsService, settingsCore, settingsDiagnostics,
 	}
 	var body dashboardBlock
 	columns := 1
@@ -56,20 +57,6 @@ func settingsInterface(o dashboardOptions, width int) dashboardBlock {
 
 func settingsService(o dashboardOptions, width int) dashboardBlock {
 	tr, s := o.Locale.T, o.Snapshot
-	status, color := coreSummary(s, o.Locale)
-	service := settingsRow{label: tr("settings.service"), value: status, color: color}
-	if s.Installed {
-		if !s.Service.Active {
-			service.actions = append(service.actions, overviewControlButton{id: "start", label: tr("dashboard.settings.start"), enabled: !o.Busy})
-		}
-		if s.Service.Active || s.Desired.Running {
-			service.actions = append(service.actions, overviewControlButton{id: "stop", label: tr("dashboard.settings.stop"), enabled: !o.Busy})
-		}
-		service.actions = append(service.actions, overviewControlButton{id: "restart", label: tr("dashboard.action.restart"), enabled: !o.Busy})
-	} else {
-		service.note = tr("settings.afterInstall")
-	}
-	rows := []settingsRow{service}
 	autostart := settingsRow{label: tr("settings.autostart"), value: tr("settings.afterInstall")}
 	if s.Installed {
 		id, state := "autostart-enable", tr("dashboard.control.off")
@@ -92,62 +79,13 @@ func settingsService(o dashboardOptions, width int) dashboardBlock {
 			}
 		}
 	}
-	rows = append(rows, autostart)
-	if s.Service.Result != "" && s.Service.Result != "success" {
-		rows = append(rows, settingsRow{note: tr("dashboard.settings.serviceResult", clean(s.Service.Result), s.Service.ExitCode), color: warning})
-	}
-	if s.ServiceError != "" {
-		rows = append(rows, settingsRow{note: clean(o.Locale.Diagnostic(s.ServiceError, s.ServiceDiagnostic)), color: errorColor})
-	}
-	return settingsSection(o, width, tr("settings.serviceGroup"), rows)
-}
-
-func settingsNetwork(o dashboardOptions, width int) dashboardBlock {
-	tr, s := o.Locale.T, o.Snapshot
-	mode := settingsRow{label: tr("dashboard.control.routingMode")}
-	if s.Installed {
-		for _, name := range []string{"rule", "global", "direct"} {
-			mode.actions = append(mode.actions, overviewControlButton{id: "mode." + name, label: dashboardModeLabel(name, o.Locale), enabled: !o.Busy, selected: s.Mode.Desired == name})
-		}
-		if s.Mode.Actual != "" && s.Mode.Actual != s.Mode.Desired {
-			mode.note = tr("dashboard.settings.actualMode", dashboardModeLabel(s.Mode.Actual, o.Locale))
-		}
-		if s.Service.Active && (s.Mode.Actual == "" || s.Mode.Error != "" || s.APIError != "" || s.ServiceError != "") {
-			mode.note = tr("dashboard.settings.actualMode", tr("dashboard.status.unknown"))
-		}
-	} else {
-		mode.value = tr("settings.afterInstall")
-	}
 	ports := settingsRow{label: tr("settings.ports"), value: tr("settings.afterInstall")}
 	if s.Installed {
 		ports.value = ""
 		ports.note = savedMixedPortLabel(o) + "\n" + overviewControllerAddress(s.Controller)
 		ports.actions = []overviewControlButton{{id: "runtime-settings", label: tr("settings.edit"), enabled: !o.Busy}}
 	}
-	tun := settingsRow{label: tr("dashboard.field.tun"), value: tr("settings.unsupported"), note: tr("dashboard.control.tunHint")}
-	if s.Capabilities.TUN.Supported {
-		tun.value, tun.note = tr("settings.afterInstall"), tr("tun.host_scope")
-		if s.Installed {
-			id, state := "tun.enable", tr("dashboard.control.off")
-			if s.TUN {
-				id, state = "tun.disable", tr("dashboard.control.on")
-			}
-			tun.value = ""
-			tun.actions = []overviewControlButton{{id: id, label: state, enabled: !o.Busy && runtimeControlIssue(s, o.Locale) == "", selected: s.TUN}}
-		}
-	}
-	rows := []settingsRow{mode, ports, tun}
-	for _, issue := range []string{o.Locale.Diagnostic(s.Mode.Error, s.Mode.ErrorDiagnostic), o.Locale.Detail(s.TUNError)} {
-		if issue != "" {
-			rows = append(rows, settingsRow{note: clean(issue), color: warning})
-		}
-	}
-	// Logical keyboard targets are built before the rendered header is attached.
-	// The Settings header always owns this action, so both paths must omit it.
-	if o.Page != "settings" && !o.Header.owns("network") {
-		rows = append(rows, settingsRow{label: tr("header.network"), actions: []overviewControlButton{{id: "network", label: tr("settings.edit"), enabled: !o.Busy}}})
-	}
-	return settingsSection(o, width, tr("settings.network"), rows)
+	return settingsSection(o, width, tr("settings.serviceGroup"), []settingsRow{autostart, ports})
 }
 
 func settingsCore(o dashboardOptions, width int) dashboardBlock {
@@ -160,20 +98,31 @@ func settingsCore(o dashboardOptions, width int) dashboardBlock {
 		}
 	}
 	core := settingsRow{label: "Mihomo", value: version, actions: []overviewControlButton{{id: "install", label: action, enabled: !o.Busy, primary: !s.Installed}}}
-	if s.RunningVersion != "" && s.RunningVersion != s.Version {
-		core.note = tr("dashboard.settings.running", clean(s.RunningVersion))
-	}
-	rows := []settingsRow{
-		core,
-		{label: tr("settings.profiles"), note: tr("settings.importHint"), actions: []overviewControlButton{{id: "import", label: tr("settings.import"), enabled: !o.Busy}}},
-	}
+	rows := []settingsRow{core}
 	if s.Installed {
-		rows = append(rows, settingsRow{label: tr("settings.remove"), note: tr("dashboard.settings.removeHint")})
+		rows[0].actions = append(rows[0].actions, overviewControlButton{id: "restart", label: tr("dashboard.action.restart"), enabled: !o.Busy && runtimeControlIssue(s, o.Locale) == ""})
+		rows = append(rows, settingsRow{label: tr("settings.remove"), note: tr("settings.removeHint")})
+	}
+	return settingsSection(o, width, tr("settings.core"), rows)
+}
+
+func settingsDiagnostics(o dashboardOptions, width int) dashboardBlock {
+	tr, s := o.Locale.T, o.Snapshot
+	rows := []settingsRow{
+		{label: tr("settings.clientVersion"), value: buildinfo.Version},
+		{label: tr("settings.logs"), actions: []overviewControlButton{{id: "card.logs", label: tr("settings.openLogs"), enabled: !o.Busy}}},
+		{label: tr("settings.doctor"), value: "lazyclash doctor"},
+	}
+	if s.Service.Result != "" && s.Service.Result != "success" {
+		rows = append(rows, settingsRow{note: tr("dashboard.settings.serviceResult", clean(s.Service.Result), s.Service.ExitCode), color: warning})
+	}
+	if s.ServiceError != "" {
+		rows = append(rows, settingsRow{note: clean(o.Locale.Diagnostic(s.ServiceError, s.ServiceDiagnostic)), color: errorColor})
 	}
 	if s.Drift != "" {
 		rows = append(rows, settingsRow{note: clean(o.Locale.Detail(s.Drift)), color: warning})
 	}
-	return settingsSection(o, width, tr("dashboard.settings.title"), rows)
+	return settingsSection(o, width, tr("settings.diagnostics"), rows)
 }
 
 func settingsSection(o dashboardOptions, width int, title string, rows []settingsRow) dashboardBlock {
@@ -224,7 +173,7 @@ func settingsSection(o dashboardOptions, width int, title string, rows []setting
 			for _, action := range row.actions {
 				options := dashboardButtonOptions(action.id, o, action.primary, panel)
 				options.Disabled, options.Selected = !action.enabled, action.selected
-				options.Selectable = action.selectable() || strings.HasPrefix(action.id, "autostart-") || strings.HasPrefix(action.id, "tun.")
+				options.Selectable = action.selectable() || strings.HasPrefix(action.id, "autostart-")
 				if options.Selectable {
 					options.Width = max(6, selectionWidth)
 				}

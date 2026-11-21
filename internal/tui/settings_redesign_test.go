@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
+	"github.com/nelvko/lazyclash/internal/buildinfo"
 	"github.com/nelvko/lazyclash/internal/i18n"
 	"github.com/nelvko/lazyclash/internal/service"
 )
@@ -84,13 +85,14 @@ func TestSettingsGroupsAdaptToBodyWidthAndShortTerminals(t *testing.T) {
 				}
 				ix, iy := position(o.Locale.T("settings.interface"))
 				sx, sy := position(o.Locale.T("settings.serviceGroup"))
-				nx, ny := position(o.Locale.T("settings.network"))
+				cx, cy := position(o.Locale.T("settings.core"))
+				dx, dy := position(o.Locale.T("settings.diagnostics"))
 				if size[0] >= 80 {
-					if sx <= ix || sy != iy || nx != ix || ny <= iy {
-						t.Fatalf("wide settings are not grouped in two columns: interface=%d,%d service=%d,%d network=%d,%d", ix, iy, sx, sy, nx, ny)
+					if sx <= ix || sy != iy || cx != ix || cy <= iy || dx != sx || dy != cy {
+						t.Fatalf("wide settings are not grouped in two columns: interface=%d,%d service=%d,%d core=%d,%d diagnostics=%d,%d", ix, iy, sx, sy, cx, cy, dx, dy)
 					}
-				} else if sx != ix || sy <= iy || nx != ix || ny <= sy {
-					t.Fatalf("compact settings did not stack in reading order: interface=%d,%d service=%d,%d network=%d,%d", ix, iy, sx, sy, nx, ny)
+				} else if sx != ix || sy <= iy || cx != ix || cy <= sy || dx != ix || dy <= cy {
+					t.Fatalf("compact settings did not stack in reading order: interface=%d,%d service=%d,%d core=%d,%d diagnostics=%d,%d", ix, iy, sx, sy, cx, cy, dx, dy)
 				}
 			})
 		}
@@ -108,14 +110,13 @@ func TestSettingsActionsKeepCompleteLabelsAndUniqueTargets(t *testing.T) {
 				tr := o.Locale.T
 				labels := map[string]string{
 					"language.en": "English", "language.zh-Hans": "简体中文", "key-hints.toggle": tr("dashboard.control.on"),
-					"install": tr("settings.manage"), "import": tr("settings.import"), "network": tr("settings.edit"), "runtime-settings": tr("settings.edit"),
-					"restart":   tr("dashboard.action.restart"),
-					"mode.rule": tr("dashboard.mode.rule"), "mode.global": tr("dashboard.mode.global"), "mode.direct": tr("dashboard.mode.direct"),
+					"install": tr("settings.manage"), "runtime-settings": tr("settings.edit"),
+					"restart": tr("dashboard.action.restart"), "card.logs": tr("settings.openLogs"),
 				}
 				if active {
-					labels["stop"], labels["autostart-disable"], labels["tun.disable"] = tr("dashboard.settings.stop"), tr("dashboard.control.on"), tr("dashboard.control.on")
+					labels["autostart-disable"] = tr("dashboard.control.on")
 				} else {
-					labels["start"], labels["autostart-enable"], labels["tun.enable"] = tr("dashboard.settings.start"), tr("dashboard.control.off"), tr("dashboard.control.off")
+					labels["autostart-enable"] = tr("dashboard.control.off")
 				}
 				body, hits := settingsContent(o, width)
 				seen := map[string]bool{}
@@ -147,85 +148,148 @@ func TestSettingsActionsKeepCompleteLabelsAndUniqueTargets(t *testing.T) {
 }
 
 func TestSettingsUninstalledActionsAndHeaderOwnership(t *testing.T) {
-	o := dashboardOptions{Locale: i18n.New(i18n.English), Height: 32}
+	o := dashboardOptions{Locale: i18n.New(i18n.English), Width: 160, Height: 45}
 	body, hits := settingsContent(o, 120)
-	for _, id := range []string{"install", "import", "network", "language.en", "language.zh-Hans", "key-hints.toggle"} {
+	for _, id := range []string{"install", "card.logs", "language.en", "language.zh-Hans", "key-hints.toggle"} {
 		if !hasAction(hits, id) {
 			t.Fatalf("uninstalled settings lost %s", id)
 		}
 	}
-	if len(hits) != 6 || !strings.Contains(ansi.Strip(body), o.Locale.T("settings.afterInstall")) {
+	if len(hits) != 5 || !strings.Contains(ansi.Strip(body), o.Locale.T("settings.afterInstall")) {
 		t.Fatal("uninstalled settings expose installed-core actions or omit their availability")
 	}
-	o.Header = pageHeader{actions: []headerAction{{id: "network", enabled: true}}}
+	if hasAction(hits, "network") {
+		t.Fatal("download settings gained a fallback action in the body")
+	}
+	o.Page = "settings"
+	o.Header = (Model{page: "settings", locale: o.Locale}).pageHeader()
 	_, hits = settingsContent(o, 120)
 	if hasAction(hits, "network") || len(hits) != 5 {
 		t.Fatal("download settings are duplicated in the header and body")
 	}
+	_, hits, _ = renderDashboard(o)
+	networks := 0
+	for _, hit := range hits {
+		if hit.ID == "network" {
+			networks++
+		}
+	}
+	if networks != 1 {
+		t.Fatalf("expected one download-network header entry, got %d", networks)
+	}
 }
 
-func TestSettingsPreservesSavedStateScopeAndDiagnostics(t *testing.T) {
+func TestSettingsDiagnosticsContainOnlyRelevantObservedIssues(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		o := dashboardOptions{Locale: i18n.New(language), Height: 32, Snapshot: settingsTestSnapshot(), PlainButtons: true}
+		healthy := ansi.Strip(strings.Join(settingsDiagnostics(o, 200).lines, "\n"))
+		for _, want := range []string{buildinfo.Version, "lazyclash doctor", o.Locale.T("settings.openLogs")} {
+			if !strings.Contains(healthy, want) {
+				t.Fatalf("%s: diagnostics omitted its independent entry or client version %q", language, want)
+			}
+		}
 		o.Snapshot.Service.Result, o.Snapshot.Service.ExitCode = "exit-code", 17
 		o.Snapshot.ServiceError, o.Snapshot.Drift = "service fixture diagnostic", "saved state differs from service"
-		body, hits := settingsContent(o, 120)
-		plain := ansi.Strip(body)
+		block := settingsDiagnostics(o, 200)
+		plain := ansi.Strip(strings.Join(block.lines, "\n"))
 		for _, want := range []string{
-			o.Snapshot.ServiceError, o.Snapshot.Drift, "exit-code", "17", o.Snapshot.Controller,
-			o.Locale.T("dashboard.settings.actualMode", dashboardModeLabel("global", o.Locale)),
-			o.Locale.T("dashboard.settings.running", o.Snapshot.RunningVersion), o.Locale.T("tun.host_scope"),
+			o.Snapshot.ServiceError, o.Snapshot.Drift,
+			o.Locale.T("dashboard.settings.serviceResult", o.Snapshot.Service.Result, o.Snapshot.Service.ExitCode),
 		} {
 			if !strings.Contains(plain, want) {
 				t.Fatalf("%s: missing setting diagnostic %q", language, want)
 			}
-		}
-		for _, mode := range []string{"rule", "global", "direct"} {
-			painted := settingsPaintedTarget(t, body, hits, "mode."+mode)
-			if strings.Contains(painted, "<") != (mode == "rule") {
-				t.Fatalf("saved mode selection used the running mode: %q", painted)
+			if strings.Contains(healthy, want) {
+				t.Fatalf("%s: healthy diagnostics displayed an unrelated issue %q", language, want)
 			}
 		}
-		if hasAction(hits, "tun.enable") {
-			t.Fatal("TUN remains editable while service diagnosis is unresolved")
+		if !hasAction(block.targets, "card.logs") {
+			t.Fatal("service diagnosis disabled the independent Logs entry")
 		}
-		o.Snapshot.ServiceError = ""
-		o.Snapshot.Service.State = "activating"
-		_, hits = settingsContent(o, 120)
-		if hasAction(hits, "tun.enable") {
-			t.Fatal("TUN remains editable during a service transition")
+		for name, render := range map[string]func(dashboardOptions, int) dashboardBlock{"interface": settingsInterface, "service": settingsService, "core": settingsCore} {
+			plain := ansi.Strip(strings.Join(render(o, 200).lines, "\n"))
+			for _, issue := range []string{o.Snapshot.ServiceError, o.Snapshot.Drift, "exit-code"} {
+				if strings.Contains(plain, issue) {
+					t.Fatalf("%s: %s repeated the diagnostic %q", language, name, issue)
+				}
+			}
 		}
-		o.Snapshot.Service.State = "inactive"
-		o.Snapshot.Capabilities.TUN.Supported = false
-		o.Snapshot.Capabilities.Scope = "user"
-		o.Snapshot.Service.Linger = false
-		o.Snapshot.Service.LingerKnown = false
-		body, hits = settingsContent(o, 120)
-		serviceBody := ansi.Strip(strings.Join(settingsService(o, 200).lines, "\n"))
-		if hasAction(hits, "tun.enable") || !strings.Contains(ansi.Strip(body), o.Locale.T("settings.unsupported")) || !strings.Contains(serviceBody, o.Locale.T("dashboard.settings.lingerUnknown")) {
-			t.Fatal("user scope lost TUN unavailability or unknown linger status")
+		o.Snapshot.ServiceError, o.Snapshot.Drift = "", ""
+		o.Snapshot.Service.Result, o.Snapshot.Service.ExitCode = "success", 0
+		plain = ansi.Strip(strings.Join(settingsDiagnostics(o, 200).lines, "\n"))
+		if strings.Contains(plain, o.Locale.T("dashboard.settings.serviceResult", "success", 0)) {
+			t.Fatal("successful service result was displayed as a diagnostic")
 		}
 	}
 }
 
-func TestSettingsNetworkReportsUnknownRunningStateAndErrors(t *testing.T) {
+func TestSettingsAutostartAndCoreRestartGuards(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
-		o := dashboardOptions{Locale: i18n.New(language), Height: 32, Snapshot: settingsTestSnapshot()}
-		o.Snapshot.Service.Active = true
-		o.Snapshot.Mode.Error = "mode fixture diagnostic"
-		o.Snapshot.TUNError = "TUN fixture diagnostic"
-		body := ansi.Strip(strings.Join(settingsNetwork(o, 160).lines, "\n"))
-		for _, want := range []string{o.Snapshot.Mode.Error, o.Snapshot.TUNError, o.Locale.T("dashboard.settings.actualMode", o.Locale.T("dashboard.status.unknown"))} {
-			if !strings.Contains(body, want) {
-				t.Fatalf("%s: network settings omitted %q", language, want)
-			}
+		o := dashboardOptions{Locale: i18n.New(language), Snapshot: settingsTestSnapshot()}
+		block := settingsService(o, 200)
+		core := settingsCore(o, 200)
+		if !hasAction(core.targets, "restart") || hasAction(block.targets, "restart") || !hasAction(block.targets, "runtime-settings") || hasAction(core.targets, "runtime-settings") {
+			t.Fatal("core restart or service port editor lost its owning group")
 		}
 		o.Snapshot.Service.EnableState = "unknown"
-		block := settingsService(o, 160)
-		body = ansi.Strip(strings.Join(block.lines, "\n"))
+		block = settingsService(o, 200)
+		body := ansi.Strip(strings.Join(block.lines, "\n"))
 		if !strings.Contains(body, o.Locale.T("dashboard.status.unknown")) || !strings.Contains(settingsPaintedTarget(t, body, block.targets, "autostart-enable"), o.Locale.T("dashboard.settings.enableAutostart")) {
 			t.Fatalf("%s: unknown autostart was presented as an observed off state", language)
 		}
+		for _, state := range []string{"activating", "deactivating", "reloading"} {
+			o.Snapshot.Service.State = state
+			if hasAction(settingsCore(o, 200).targets, "restart") {
+				t.Fatalf("restart remains available during %s", state)
+			}
+		}
+		o.Snapshot.Service.State, o.Snapshot.ServiceError = "inactive", "service fixture diagnostic"
+		if hasAction(settingsCore(o, 200).targets, "restart") {
+			t.Fatal("restart remains available with an unresolved service diagnostic")
+		}
+		o.Snapshot.ServiceError = ""
+		o.Snapshot.Capabilities.Scope = "user"
+		o.Snapshot.Service.Linger, o.Snapshot.Service.LingerKnown = false, false
+		body = ansi.Strip(strings.Join(settingsService(o, 200).lines, "\n"))
+		if !strings.Contains(body, o.Locale.T("dashboard.settings.lingerUnknown")) {
+			t.Fatal("user service lost its unknown linger explanation")
+		}
+	}
+}
+
+func TestSettingsDoesNotRepeatRuntimeAndProfileActions(t *testing.T) {
+	for _, language := range []string{i18n.English, i18n.Chinese} {
+		o := dashboardOptions{Locale: i18n.New(language), Snapshot: settingsTestSnapshot()}
+		o.Snapshot.Mode.Error, o.Snapshot.TUNError = "mode fixture diagnostic", "TUN fixture diagnostic"
+		body, hits := settingsContent(o, 160)
+		for _, hit := range hits {
+			if strings.HasPrefix(hit.ID, "mode.") || strings.HasPrefix(hit.ID, "tun.") || hit.ID == "start" || hit.ID == "stop" || hit.ID == "import" || hit.ID == "network" {
+				t.Fatalf("settings repeated the page-owned action %s", hit.ID)
+			}
+		}
+		plain := ansi.Strip(body)
+		for _, removed := range []string{o.Snapshot.Mode.Error, o.Snapshot.TUNError, o.Locale.T("dashboard.control.routingMode"), o.Locale.T("tun.host_scope"), o.Snapshot.RunningVersion} {
+			if strings.Contains(plain, removed) {
+				t.Fatalf("settings retained the duplicated runtime display %q", removed)
+			}
+		}
+		core := ansi.Strip(strings.Join(settingsCore(o, 200).lines, "\n"))
+		if !strings.Contains(core, o.Snapshot.Version) || strings.Contains(core, o.Snapshot.RunningVersion) {
+			t.Fatal("core management does not show the installed version independently of the running version")
+		}
+	}
+}
+
+func TestSettingsLogsEntryNavigatesWithoutChangingRuntime(t *testing.T) {
+	m := ready(&fakeBackend{snapshot: settingsTestSnapshot()})
+	directionCleanup(t, &m)
+	m.width, m.height, m.page, m.focus = 80, 24, "settings", "card.logs"
+	m.revealContentFocus()
+	m.layout()
+	id := m.id
+	m, _ = click(m, findTarget(t, m, "card.logs"))
+	if m.page != "logs" || m.busy || m.id != id || m.ports.open || m.wizard.open {
+		t.Fatal("Logs entry failed to navigate independently or changed runtime settings")
 	}
 }
 
