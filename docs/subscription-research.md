@@ -17,6 +17,16 @@
 
 最值得借鉴的是：来源与启用选择分开，用户定制独立保存；应用接管字段有明确所有权；规则和引用按内核语义检查；生成、校验、文件提交、内核应用、实际观测分别记账。最不应照搬的是为早期项目引入通用脚本平台，或者在失败后静默删除用户规则、替换成无节点默认配置。
 
+## 首次打开 Profiles 时显示什么
+
+| 客户端 | 空库与默认配置 |
+| --- | --- |
+| Clash Verge Rev | 分别初始化内核模板和 Profiles 索引。普通卡片仅列 `local`、`remote`。分隔线下的全局 Merge 和 Script 用于编辑扩展。第一个本地或远程配置才会成为当前 Profile。[初始化](https://github.com/clash-verge-rev/clash-verge-rev/blob/9c34864777259e143a9c90160f6cad6ea47fbfc1/src-tauri/src/utils/init.rs#L449-L478) · [卡片筛选](https://github.com/clash-verge-rev/clash-verge-rev/blob/9c34864777259e143a9c90160f6cad6ea47fbfc1/src/pages/profiles.tsx#L194-L200) · [扩展区域](https://github.com/clash-verge-rev/clash-verge-rev/blob/9c34864777259e143a9c90160f6cad6ea47fbfc1/src/pages/profiles.tsx#L929-L952) · [首次选择](https://github.com/clash-verge-rev/clash-verge-rev/blob/9c34864777259e143a9c90160f6cad6ea47fbfc1/src-tauri/src/config/profiles.rs#L198-L208) |
+| FlClash | Profiles 为空时页面提供添加入口，有记录才显示更新和排序。构建器单独处理缺少 Profile ID 的情况，仍能根据应用入站设置生成配置。[页面空态](https://github.com/chen08209/FlClash/blob/afe7136002271fd64f098b154e7fff40be721eb8/lib/views/profiles/profiles.dart#L70-L138) · [无 Profile 构建分支](https://github.com/chen08209/FlClash/blob/afe7136002271fd64f098b154e7fff40be721eb8/lib/providers/actions/setup.dart#L505-L525) |
+| Clash for Windows 0.20.39 | 核对 macOS 发布包 `app.asar` 的 `dist/electron/renderer.js`。初始索引为空，进入空列表时 `beforeRouteEnter` 调用 `localCopy("config.yaml")`、`switchProfile(0)`。前者将启动配置复制进 `profiles/<时间戳>.yml`，作为名为 `config.yaml` 的普通本地条目保存。此结论来自该版本发布包。 |
+
+lazyclash 安装时已准备内置直连配置，无需复制文件。订阅页只列用户保存的条目。概览负责呈现当前运行配置，已应用配置的详情提供切回内置配置的入口。
+
 ## Clash Verge Rev
 
 固定提交：`df70146b025e06661c8364351cf8b250267ed985`（dev）。
