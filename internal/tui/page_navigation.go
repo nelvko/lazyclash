@@ -276,7 +276,12 @@ func (m *Model) enterContent() {
 		case "logs":
 			chosen = "logs.list"
 		case "profiles":
-			for i, name := range m.profiles() {
+			profiles := m.profiles()
+			if len(profiles) == 0 && m.snapshotReady {
+				chosen = "profiles.create"
+				break
+			}
+			for i, name := range profiles {
 				if name == m.snapshot.Applied {
 					chosen = "profile." + strconv.Itoa(i)
 					break

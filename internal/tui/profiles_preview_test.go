@@ -31,10 +31,10 @@ func profilesPreview(detail bool) Model {
 		},
 	}
 	m := ready(&fakeBackend{snapshot: snapshot})
-	m.page, m.focus = "profiles", "profile.1"
+	m.page, m.focus = "profiles", "profile.0"
 	m.noColor, m.colorProfile = false, colorprofile.TrueColor
 	if detail {
-		m.profilesUI.detail, m.focus = "Everyday", "profiles.apply.1"
+		m.profilesUI.detail, m.focus = "Everyday", "profiles.apply.0"
 	}
 	return m
 }
@@ -83,7 +83,7 @@ func TestExportProfilesViews(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		for _, index := range []int{0, 1, 3} {
+		for _, index := range []int{0, 1, 2} {
 			m := profilesPreview(false)
 			m, _ = update(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
 			m.openProfileMenuForCard(index)

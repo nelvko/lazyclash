@@ -56,7 +56,7 @@ func TestProfileClickAppliesStableIDWithoutOpeningDetails(t *testing.T) {
 			m, b := profileClickModel(t, true, active, false, false)
 			controls := 0
 			b.control = func(context.Context, string) error { controls++; return nil }
-			m, cmd := click(m, findTarget(t, m, "profile.1"))
+			m, cmd := click(m, findTarget(t, m, "profile.0"))
 			if !m.busy || m.profilesUI.detail != "" || m.snapshot.Applied != "default" {
 				t.Fatal("single click did not queue application while preserving the last committed selection")
 			}
@@ -75,7 +75,7 @@ func TestProfileClickCurrentSelectionAppliesOnlyPendingChanges(t *testing.T) {
 	for _, pending := range []bool{false, true} {
 		t.Run(map[bool]string{false: "unchanged", true: "pending"}[pending], func(t *testing.T) {
 			m, b := profileClickModel(t, true, true, true, pending)
-			m, cmd := click(m, findTarget(t, m, "profile.1"))
+			m, cmd := click(m, findTarget(t, m, "profile.0"))
 			if pending {
 				m = finishProfileJob(t, m, cmd)
 				if len(b.calls) != 1 || b.calls[0] != "p-stable-profile-id" {
@@ -90,7 +90,7 @@ func TestProfileClickCurrentSelectionAppliesOnlyPendingChanges(t *testing.T) {
 
 func TestProfileClickRequiresInstalledCore(t *testing.T) {
 	m, b := profileClickModel(t, false, false, false, false)
-	m, _ = click(m, findTarget(t, m, "profile.1"))
+	m, _ = click(m, findTarget(t, m, "profile.0"))
 	if m.busy || len(b.calls) != 0 || m.snapshot.Applied != "default" {
 		t.Fatal("clicking a profile without an installed core tried to apply it")
 	}
@@ -100,7 +100,7 @@ func TestProfileClickRefreshButtonDoesNotApplyItsCard(t *testing.T) {
 	m, b := profileClickModel(t, true, true, false, false)
 	var refreshed string
 	b.refresh = func(_ context.Context, id string) error { refreshed = id; return nil }
-	m, cmd := click(m, findTarget(t, m, "profiles.refresh.1"))
+	m, cmd := click(m, findTarget(t, m, "profiles.refresh.0"))
 	m = finishProfileJob(t, m, cmd)
 	if refreshed != "p-stable-profile-id" || len(b.calls) != 0 || m.snapshot.Applied != "default" {
 		t.Fatal("refresh button clicked through to its containing profile")
@@ -110,10 +110,68 @@ func TestProfileClickRefreshButtonDoesNotApplyItsCard(t *testing.T) {
 func TestProfileClickFailureRetainsCommittedSelection(t *testing.T) {
 	m, b := profileClickModel(t, true, true, false, false)
 	b.err = errors.New("core rejected the candidate configuration")
-	m, cmd := click(m, findTarget(t, m, "profile.1"))
+	m, cmd := click(m, findTarget(t, m, "profile.0"))
 	m = finishProfileJob(t, m, cmd)
 	if len(b.calls) != 1 || m.snapshot.Applied != "default" || m.busy || !strings.Contains(m.failure, b.err.Error()) {
 		t.Fatal("failed application changed selection or hid its failure", m.failure)
+	}
+}
+
+func TestProfileDetailsSwitchBackToDefault(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		err  error
+		want string
+	}{
+		{name: "applied", want: "default"},
+		{name: "rejected", err: errors.New("could not apply default"), want: "p-stable-profile-id"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			m, b := profileClickModel(t, true, true, true, false)
+			m, _ = update(m, special(tea.KeyEnter))
+			b.err = test.err
+			m, cmd := click(m, findTarget(t, m, "profiles.use-default"))
+			if !m.busy || m.snapshot.Applied != "p-stable-profile-id" {
+				t.Fatal("switching back must keep the selected profile until the operation finishes")
+			}
+			m = finishProfileJob(t, m, cmd)
+			if len(b.calls) != 1 || b.calls[0] != "default" || m.snapshot.Applied != test.want {
+				t.Fatalf("apply calls=%v, selection=%q", b.calls, m.snapshot.Applied)
+			}
+			if test.err != nil && !strings.Contains(m.failure, test.err.Error()) {
+				t.Fatalf("failed to report rejection: %q", m.failure)
+			}
+			if test.err == nil && m.focus != "profile.0" {
+				t.Fatalf("focus remained on a removed action after switching back: %q", m.focus)
+			}
+		})
+	}
+}
+
+func TestProfileDetailsOfferDefaultOnlyForInstalledCurrentProfile(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		installed bool
+		current   bool
+	}{
+		{name: "not installed", current: true},
+		{name: "inactive profile", installed: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			m, b := profileClickModel(t, test.installed, false, test.current, false)
+			m, _ = update(m, special(tea.KeyEnter))
+			if m.profilesUI.detail != "p-stable-profile-id" {
+				t.Fatal("expected open profile details")
+			}
+			for _, hit := range m.profilesTargets(120) {
+				if hit.ID == "profiles.use-default" {
+					t.Fatal("unavailable default action is visible")
+				}
+			}
+			if _, cmd := m.profileAction("profiles.use-default"); cmd != nil || m.busy || len(b.calls) != 0 {
+				t.Fatal("stale default action started a switch")
+			}
+		})
 	}
 }
 
@@ -121,7 +179,7 @@ func TestProfileClickIgnoresRightButtonAndMotion(t *testing.T) {
 	for _, kind := range []string{"right", "motion", "release"} {
 		t.Run(kind, func(t *testing.T) {
 			m, b := profileClickModel(t, true, true, false, false)
-			card := findTarget(t, m, "profile.1")
+			card := findTarget(t, m, "profile.0")
 			mouse := tea.Mouse{X: card.X + card.W/2, Y: card.Y + card.H/2, Button: tea.MouseRight}
 			var msg tea.Msg = tea.MouseClickMsg(mouse)
 			if kind == "motion" {
@@ -142,7 +200,7 @@ func TestProfileClickCannotEscapeBusyOrOverlayState(t *testing.T) {
 	for _, state := range []string{"busy", "quitting", "form", "help", "ports", "wizard", "sidebar"} {
 		t.Run(state, func(t *testing.T) {
 			m, b := profileClickModel(t, true, true, false, false)
-			card := findTarget(t, m, "profile.1")
+			card := findTarget(t, m, "profile.0")
 			switch state {
 			case "busy":
 				m.busy = true

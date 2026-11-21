@@ -30,10 +30,8 @@ func TestProfileCardsKeepBoundedMetadataAndAlignedStatus(t *testing.T) {
 						}
 					}
 					plain := ansi.Strip(strings.Join(card.lines, "\n"))
-					for _, removed := range []string{m.tr("profiles.kind"), m.tr("profiles.builtin_stamp")} {
-						if strings.Contains(plain, removed) {
-							t.Fatalf("card retains detail-only metadata %q: %s", removed, plain)
-						}
+					if strings.Contains(plain, m.tr("profiles.kind")) {
+						t.Fatalf("card retains detail-only metadata: %s", plain)
 					}
 					for _, target := range card.targets {
 						if target.X+target.W > width || target.Y+target.H > len(card.lines) {
@@ -53,7 +51,7 @@ func TestProfileMetadataWrapsWithoutEmptySeparatorAndUsesReadableColors(t *testi
 	info := &m.snapshot.ProfileDetails[2]
 	info.Kind, info.Origin = "remote", "subscription.example"
 	info.UpdatedAt = time.Now()
-	card := m.profileCard(2, 32)
+	card := m.profileCard(1, 32)
 	metadata := ansi.Strip(card.lines[2] + card.lines[3])
 	if !strings.Contains(metadata, info.Origin) || !strings.Contains(metadata, "Updated just now") {
 		t.Fatalf("source and timestamp did not wrap within two rows: %q", metadata)
@@ -65,7 +63,7 @@ func TestProfileMetadataWrapsWithoutEmptySeparatorAndUsesReadableColors(t *testi
 		t.Fatal("a ready, unselected profile did not use readable body text")
 	}
 	info.Origin = "  "
-	card = m.profileCard(2, 55)
+	card = m.profileCard(1, 55)
 	metadata = ansi.Strip(card.lines[2] + card.lines[3])
 	if strings.Contains(metadata, "·") || !strings.Contains(metadata, "Updated just now") {
 		t.Fatalf("missing origin left an empty separator: %q", metadata)
@@ -83,13 +81,9 @@ func TestProfileDetailsRetainTypeOverridesAndFullSafeOrigin(t *testing.T) {
 		if !strings.Contains(plain, m.tr("profiles.kind_overrides", m.tr("profiles.kind"))) || !strings.Contains(strings.ReplaceAll(plain, "\n", ""), origin) {
 			t.Fatalf("details lost type, overrides or full safe origin: %s", plain)
 		}
-		builtin := ansi.Strip(strings.Join(m.profileDetailsPane("default", 64).lines, "\n"))
-		if !strings.Contains(builtin, m.tr("profiles.kind")) || !strings.Contains(builtin, m.tr("profiles.builtin_stamp")) {
-			t.Fatalf("built-in details lost its moved metadata: %s", builtin)
-		}
 		for _, source := range []struct{ kind, key string }{{"local", "profiles.create_local"}, {"imported", "profiles.imported_origin"}} {
 			m.snapshot.ProfileDetails[2].Kind = source.kind
-			card := ansi.Strip(strings.Join(m.profileCard(2, 55).lines, "\n"))
+			card := ansi.Strip(strings.Join(m.profileCard(1, 55).lines, "\n"))
 			if !strings.Contains(card, m.tr(source.key)) {
 				t.Fatalf("%s source label did not follow %s: %s", source.kind, language, card)
 			}
@@ -97,24 +91,23 @@ func TestProfileDetailsRetainTypeOverridesAndFullSafeOrigin(t *testing.T) {
 	}
 }
 
-func TestProfileSummaryCountsCustomAndBuiltInSeparately(t *testing.T) {
+func TestProfilesGridListsOnlySavedProfiles(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
-		for _, custom := range []bool{false, true} {
-			m := ready(&fakeBackend{snapshot: app.Snapshot{Profiles: []string{"default"}}})
-			m.locale, m.page = i18n.New(language), "profiles"
-			count := 0
-			if custom {
-				m.snapshot.Profiles = []string{"default", "work", "work"}
-				count = 1
-			}
-			body, _ := m.profilesBody(112)
-			want := fmt.Sprintf("Configurations · %d custom · 1 built-in", count)
-			if language == i18n.Chinese {
-				want = fmt.Sprintf("配置 · 自定义 %d 个 · 内置 1 个", count)
-			}
-			if !strings.Contains(ansi.Strip(body), want) {
-				t.Fatalf("summary did not distinguish built-in profiles: %s", ansi.Strip(body))
-			}
+		m := ready(&fakeBackend{snapshot: app.Snapshot{
+			Installed: true, Applied: "default",
+			Profiles: []string{"default", "work"},
+			ProfileDetails: []app.ProfileInfo{
+				{ID: "default", Name: "default", Kind: "builtin"},
+				{ID: "work", Name: "Work subscription", Validated: true},
+			},
+		}})
+		m.locale, m.page = i18n.New(language), "profiles"
+		body, targets := m.profilesBody(112)
+		view := ansi.Strip(body)
+		if !hasAction(targets, "profile.0") || hasAction(targets, "profile.1") ||
+			strings.Count(view, "Work subscription") != 1 || strings.Contains(view, m.tr("profiles.builtin_name")) ||
+			strings.Contains(view, m.tr("profiles.in_use")) || strings.Contains(view, m.tr("empty.profiles.none")) {
+			t.Fatalf("unexpected grid while default is applied: %s", view)
 		}
 	}
 }

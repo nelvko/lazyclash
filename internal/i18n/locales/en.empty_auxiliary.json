@@ -1,5 +1,5 @@
 {
-  "empty.profiles.none": "No custom configurations",
+  "empty.profiles.none": "No saved profiles",
   "empty.providers.read_failed": "Could not read providers",
   "empty.providers.stop_hint": "Close this panel and start the core to browse providers.",
   "empty.providers.install_hint": "Close this panel and install the core to browse providers.",

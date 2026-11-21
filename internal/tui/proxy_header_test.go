@@ -83,7 +83,7 @@ func TestApplyingProfileAutomaticallyUpdatesProxyGroups(t *testing.T) {
 	m, original := profileClickModel(t, true, true, false, false)
 	b := &proxyPageBackend{fakeBackend: original.fakeBackend}
 	m.backend = b
-	cmd := m.activate("profiles.apply.1")
+	cmd := m.activate("profiles.apply.0")
 	if !m.busy || cmd == nil {
 		t.Fatal("profile apply did not start")
 	}

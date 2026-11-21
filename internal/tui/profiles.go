@@ -193,6 +193,9 @@ func (m *Model) reconcileProfiles() {
 		if profile != name {
 			continue
 		}
+		if m.focus == "profiles.use-default" && !m.canUseDefaultFrom(name) {
+			m.focusProfileControl(fmt.Sprintf("profile.%d", i))
+		}
 		for _, prefix := range []string{"profiles.apply.", "profiles.update.", "profiles.rename.", "profiles.description.", "profiles.url-edit.", "profiles.overrides.", "profiles.delete."} {
 			if strings.HasPrefix(m.focus, prefix) {
 				m.focus = fmt.Sprintf("%s%d", prefix, i)
@@ -202,7 +205,7 @@ func (m *Model) reconcileProfiles() {
 	}
 	m.profilesUI.detail = ""
 	if m.page == "profiles" && strings.HasPrefix(m.focus, "profiles.") {
-		m.focusProfileControl("profile.0")
+		m.enterContent()
 	}
 }
 
@@ -286,6 +289,11 @@ func (m *Model) profileAction(id string) (bool, tea.Cmd) {
 		}
 		return true, m.begin(m.tr("profiles.updating_all"), m.tr("profiles.updated_all"), m.backend.RefreshAllProfiles,
 			notificationOperation{Key: "profile.refresh-all", Context: m.tr("profiles.updating_all")})
+	case "profiles.use-default":
+		if m.page == "profiles" && m.canUseDefaultFrom(m.profilesUI.detail) {
+			return true, m.applyProfile("default")
+		}
+		return true, nil
 	case "profiles.close":
 		name := m.profilesUI.detail
 		m.profilesUI.detail = ""
@@ -311,8 +319,7 @@ func (m *Model) profileAction(id string) (bool, tea.Cmd) {
 		name := profiles[i]
 		switch action.operation {
 		case "apply":
-			return true, m.begin(m.tr("profiles.applying"), m.tr("profiles.applied"), func(ctx context.Context) error { return m.backend.Apply(ctx, name) },
-				m.profileNotification("apply", m.tr("profiles.applying"), name))
+			return true, m.applyProfile(name)
 		case "refresh":
 			return true, m.begin(m.tr("profiles.updating"), m.tr("profiles.updated"), func(ctx context.Context) error { return m.backend.Refresh(ctx, name) },
 				m.profileNotification("refresh", m.tr("profiles.updating"), name))
@@ -329,6 +336,16 @@ func (m *Model) profileAction(id string) (bool, tea.Cmd) {
 		}
 	}
 	return true, nil
+}
+
+func (m *Model) canUseDefaultFrom(name string) bool {
+	return m.snapshotReady && m.snapshot.Installed && name != "" && name != "default" && name == m.snapshot.Applied
+}
+
+func (m *Model) applyProfile(name string) tea.Cmd {
+	label := m.tr("profiles.applying")
+	return m.begin(label, m.tr("profiles.applied"), func(ctx context.Context) error { return m.backend.Apply(ctx, name) },
+		m.profileNotification("apply", label, name))
 }
 
 func (m *Model) profileNotification(operation, label, name string) notificationOperation {

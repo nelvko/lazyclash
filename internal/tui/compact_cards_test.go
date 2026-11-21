@@ -68,7 +68,7 @@ func TestCompactProfilesKeepMetadataStatusAndTitleActions(t *testing.T) {
 	for _, size := range [][2]int{{80, 24}, {60, 18}, {160, 24}} {
 		m := profilesPreview(false)
 		m.width, m.height = size[0], size[1]
-		card := m.profileCard(1, 60)
+		card := m.profileCard(0, 60)
 		if len(card.lines) != 4 {
 			t.Fatalf("%v: compact profile has %d rows", size, len(card.lines))
 		}
@@ -79,7 +79,7 @@ func TestCompactProfilesKeepMetadataStatusAndTitleActions(t *testing.T) {
 			}
 		}
 		for _, hit := range card.targets {
-			if hit.ID != "profile.1" && hit.Y != 0 {
+			if hit.ID != "profile.0" && hit.Y != 0 {
 				t.Fatalf("title action did not follow the compact title: %+v", hit)
 			}
 		}

@@ -15,7 +15,7 @@ func TestExclusiveKeyHintsExplainHelpRequiresEscape(t *testing.T) {
 		for _, kind := range []string{"menu", "confirmation"} {
 			m, _ := profileClickModel(t, true, true, false, false)
 			if kind == "menu" {
-				m = profileMenuRightClick(t, m, "profile.1")
+				m = profileMenuRightClick(t, m, "profile.0")
 			} else {
 				m = connectionsModel(t, &fakeBackend{})
 				m.connectionActivate("conn.close-all")

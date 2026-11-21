@@ -29,6 +29,8 @@ func (m *Model) profilesContextHelp() string {
 		action = m.tr("profiles.create")
 	case "profiles.close":
 		action = m.tr("profiles.close")
+	case "profiles.use-default":
+		action = m.tr("profiles.use_default")
 	case "profiles.update-all":
 		if m.hasRefreshableProfiles() {
 			return m.tr("navigation.updateProfiles")

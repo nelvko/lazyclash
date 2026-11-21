@@ -13,8 +13,8 @@ import (
 
 func TestDataPagesLocalizeControlsAndKeepObservedValues(t *testing.T) {
 	for _, language := range []struct{ code, profiles, connections, rules, logs string }{
-		{i18n.English, "Configurations", "Connection details", "Entries: 0", "Search logs"},
-		{i18n.Chinese, "配置", "连接详情", "条目：0", "搜索日志"},
+		{i18n.English, "New profile", "Connection details", "Entries: 0", "Search logs"},
+		{i18n.Chinese, "新建配置", "连接详情", "条目：0", "搜索日志"},
 	} {
 		t.Run(language.code, func(t *testing.T) {
 			profiles := ready(&fakeBackend{snapshot: app.Snapshot{
@@ -24,7 +24,7 @@ func TestDataPagesLocalizeControlsAndKeepObservedValues(t *testing.T) {
 					{ID: "work", Name: "Ready", Origin: "https://Active.example", Validated: true},
 				},
 			}})
-			profiles.page, profiles.focus = "profiles", "profile.1"
+			profiles.page, profiles.focus = "profiles", "profile.0"
 			connections := connectionsModel(t, &fakeBackend{})
 			connection := fixtureConnection("Active", "Rule", 0)
 			connection.Metadata.Process = "Ready"

@@ -48,6 +48,14 @@ def mouse_text(terminal, label, button=0, occurrence=0):
     terminal.key(("\x1b[<%d;%d;%dM\x1b[<%d;%d;%dm" % (button, x + 1, y + 1, button, x + 1, y + 1)).encode())
 
 
+def assert_saved_cards(terminal, count):
+    terminal.settle()
+    screen = terminal.screen.text()
+    assert screen.count("⋯") == count, "unexpected number of profile cards\n" + screen
+    for label in ("Built-in default configuration", "1 built-in", "Configurations ·"):
+        assert label not in screen, "unexpected default card or summary\n" + screen
+
+
 def header_row(terminal, label):
     needle = "[" + label.strip("[] ") + "]"
     terminal.wait(needle)
@@ -121,11 +129,14 @@ def main():
             terminal.wait_absent("Loading state")
             terminal.resize(160, 40)
             terminal.key(b"3")
-            terminal.wait("Configurations")
-            terminal.wait("↑↓←→ Select")  # Initial version checks may still own the global busy state.
+            terminal.wait("No saved profiles")
+            terminal.wait("Enter New profile")  # The startup version check can still own input.
+            assert_saved_cards(terminal, 0)
             header_row(terminal, "Update all")
+            (output / "profiles-empty.txt").write_text(terminal.screen.text())
             assert "Sources (" not in terminal.screen.text(), "source management remained in the Profiles header"
-            terminal.key(b"a")
+            terminal.click_text("Paste subscription URL or local path")
+            terminal.wait("Enter Import")
             secret = "pty-private-token-q1234567"
             address = "http://127.0.0.1:%d/%s?token=%s" % (server.server_port, secret, secret)
             paste(terminal, address)
@@ -139,6 +150,7 @@ def main():
             assert primary_id[0] and library()["profiles"][primary_id[0]]["name_source"] == "provider"
             terminal.wait_absent(secret)
             update_row = header_row(terminal, "Update all")
+            assert_saved_cards(terminal, 1)
             assert primary_profile()["address"] == address
             assert not (home / "installation").exists(), "Add created runtime installation state"
             (output / "profiles-added.txt").write_text(terminal.screen.text())
@@ -148,6 +160,7 @@ def main():
             mouse_text(terminal, "pty-airport", button=2)
             terminal.wait("View details")
             terminal.wait("Install core first")
+            assert "Use built-in configuration" not in terminal.screen.text()
             (output / "profiles-menu-160x40.txt").write_text(terminal.screen.text())
             terminal.key(b"\x1b")
             terminal.wait_absent("View details")
@@ -156,17 +169,17 @@ def main():
             terminal.wait("View details")
             terminal.key(b"\x1b")
             terminal.wait_absent("View details")
-            mouse_text(terminal, "⋯", occurrence=1)
+            mouse_text(terminal, "⋯")
             terminal.wait("View details")
             terminal.key(b"q")
             terminal.key(b"2")
             paste(terminal, "menu-owned-paste")
             terminal.wait("View details")
             assert "menu-owned-paste" not in terminal.screen.text(), "menu paste escaped to a page input"
-            # A click on another card dismisses without opening or applying it.
-            mouse_text(terminal, "default")
+            # Clicking outside dismisses the menu without opening the creation form.
+            mouse_text(terminal, "[New profile]")
             terminal.wait_absent("View details")
-            assert "default · Configuration" not in terminal.screen.text(), "outside menu click reached its underlying card"
+            assert "Display name (optional)" not in terminal.screen.text(), "outside menu click reached its underlying control"
             terminal.key(b"m")
             terminal.wait("View details")
             terminal.key(b"\x1b")
@@ -176,9 +189,8 @@ def main():
             terminal.key(b"a")
             terminal.key(b"\x1b")
 
-            # Toolbar Down enters the first card; Right follows the wide grid.
+            # Toolbar Down goes directly to the first saved profile.
             terminal.key(b"\x1b[B")
-            terminal.key(b"\x1b[C")
             terminal.key(b"\r")
             terminal.wait("pty-airport · Configuration")
             terminal.wait("Install core to apply")
@@ -284,6 +296,20 @@ def main():
             assert not local_record.get("description"), "empty optional description was not left empty"
             assert not (home / "installation").exists(), "new local profile applied runtime state"
 
+            # Use the two saved cards to check horizontal navigation. Their
+            # order comes from the rendered grid, independent of generated IDs.
+            terminal.wait("pty-local")
+            card_row = next(line for line in terminal.screen.text().splitlines() if "pty-local" in line and "My Airport" in line)
+            right_name = max(("My Airport", "pty-local"), key=card_row.index)
+            terminal.key(b"a")
+            terminal.key(b"\x1b")
+            terminal.key(b"\x1b[B")
+            terminal.key(b"\x1b[C")
+            terminal.key(b"\r")
+            terminal.wait(right_name + " · Configuration")
+            terminal.key(b"\x1b")
+            terminal.wait_absent(right_name + " · Configuration")
+
             before = len(requests)
             local.write_text("rules: ['DOMAIN,local.invalid,REJECT', 'MATCH,DIRECT']\n")
             mouse_text(terminal, "pty-local", button=2)
@@ -356,7 +382,8 @@ def main():
             terminal.resize(20, 12)
             header_row(terminal, "Update all")
             terminal.resize(160, 40)
-            terminal.wait("3 custom · 1 built-in")
+            terminal.wait(remote_name)
+            assert_saved_cards(terminal, 3)
             (output / "profiles-header.txt").write_text(terminal.screen.text())
 
             terminal.key(b"2")
@@ -407,8 +434,8 @@ def main():
             terminal.wait("pty-local")
             terminal.wait(remote_name)
             terminal.wait("pty-snapshot")
-            terminal.wait("5 custom · 1 built-in")
-            terminal.wait("↑↓←→ Select")
+            terminal.wait("↑↓←→ Select")  # Wait for the initial version check to release menu input.
+            assert_saved_cards(terminal, 5)
             assert profile_id(remote_name) == remote_id and profile_id("pty-local") == local_id
             reopened_remote = library()["profiles"][remote_id]
             assert reopened_remote["name_source"] == "custom" and reopened_remote["name_base"] == remote_name
@@ -460,8 +487,8 @@ def main():
             terminal.exit()
             result = {
                 "passed": True,
-                "scenarios": ["visible URL bracketed paste", "automatic Add without naming modal or Apply", "two-column arrows", "Enter opens details only", "provider name update retains ID", "custom Rename survives provider updates", "Edit URL retains custom name and ID", "detail configuration Update", "Update all", "New profile local file with optional metadata omitted", "live directory and file matches", "arrow selection and Tab completion without creating", "Unicode and spaced directories with an extensionless configuration", "New profile remote URL with custom name and description", "Tab and Shift+Tab reach Create and Cancel", "busy form ignores editing and duplicate submission", "one download per new remote profile", "retained local source refresh", "CLI one-time copy import", "60x20 resize and Escape", "fixed header while scrolled", "header mouse update without Apply", "20x12 compact header", "page-specific controls", "duplicate imports retain distinct IDs", "repeated updates preserve duplicate suffix", "exit and reopen metadata and source persistence"],
-                "menu_scenarios": ["right-click card without Apply", "right-click update icon opens containing card menu", "left-click menu button", "menu owns q, page digits and pasted text", "outside click closes without reaching the underlying card", "keyboard m and Escape focus restoration", "menu Rename uses the existing custom-name flow", "menu edge avoidance through resize", "retained local file Update rereads the source without HTTP", "copy-import Update is disabled without a download request"],
+                "scenarios": ["empty library has no built-in card or count summary", "first card is the first saved profile", "visible URL bracketed paste", "automatic Add without naming modal or Apply", "two-column arrows", "Enter opens details only", "provider name update retains ID", "custom Rename survives provider updates", "Edit URL retains custom name and ID", "detail configuration Update", "Update all", "New profile local file with optional metadata omitted", "live directory and file matches", "arrow selection and Tab completion without creating", "Unicode and spaced directories with an extensionless configuration", "New profile remote URL with custom name and description", "Tab and Shift+Tab reach Create and Cancel", "busy form ignores editing and duplicate submission", "one download per new remote profile", "retained local source refresh", "CLI one-time copy import", "60x20 resize and Escape", "fixed header while scrolled", "header mouse update without Apply", "20x12 compact header", "page-specific controls", "duplicate imports retain distinct IDs", "repeated updates preserve duplicate suffix", "exit and reopen metadata and source persistence"],
+                "menu_scenarios": ["right-click card without Apply", "right-click update icon opens containing card menu", "left-click menu button", "menu owns q, page digits and pasted text", "outside click closes without opening the underlying creation form", "keyboard m and Escape focus restoration", "menu Rename uses the existing custom-name flow", "menu edge avoidance through resize", "retained local file Update rereads the source without HTTP", "copy-import Update is disabled without a download request"],
                 "menu_dimensions": [[160, 40], [60, 20], [40, 16], [20, 12]],
                 "delete_scenarios": ["default Enter cancels", "no name input or validation", "confirmation owns typed and pasted text", "confirmation stays visible from 120x32 to 24x7", "explicit mouse confirmation deletes once"],
                 "http_requests": len(requests),

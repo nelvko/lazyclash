@@ -19,21 +19,12 @@ func (m *Model) profilesBody(width int) (string, []hitRegion) {
 	return strings.Join(body.lines, "\n"), body.targets
 }
 
-func (m *Model) profilesIntro(width, count int) dashboardBlock {
+func (m *Model) profilesIntro(width int) dashboardBlock {
 	var body dashboardBlock
-	compact := m.compactProfileCards()
-	if !compact && m.searchToolbarGap() > 0 {
+	if !m.compactProfileCards() && m.searchToolbarGap() > 0 {
 		body.blank()
 	}
 	body.append(m.profilesToolbar(width))
-	if !compact {
-		body.blank()
-	}
-	summary := fmt.Sprintf(m.tr("profiles.summary"), count)
-	if m.snapshot.Applied != "" {
-		summary += m.tr("profiles.selected_name", clean(snapshotProfileName(m.snapshot, m.snapshot.Applied, m.locale)))
-	}
-	body.lines = append(body.lines, themed(cellCrop(summary, width), muted, bg, false))
 	body.blank()
 	return body
 }
@@ -158,16 +149,10 @@ func (m *Model) profileButtons(buttons []profileButton, width int) dashboardBloc
 func (m *Model) profileInfo(name string) app.ProfileInfo {
 	for _, info := range m.snapshot.ProfileDetails {
 		if info.ID == name {
-			if name == "default" {
-				info.Name = m.tr("profiles.builtin_name")
-			}
 			return info
 		}
 	}
-	if name == "default" {
-		return app.ProfileInfo{ID: name, Name: m.tr("profiles.builtin_name")}
-	}
-	return app.ProfileInfo{}
+	return app.ProfileInfo{ID: name, Name: name}
 }
 
 func snapshotProfileName(snapshot app.Snapshot, id string, locales ...i18n.Localizer) string {
@@ -223,16 +208,13 @@ func (m *Model) paintProfileCard(name string, index, width int, compact bool) da
 	for _, control := range controlViews {
 		title += control
 	}
-	metadata := m.tr("profiles.builtin_origin")
-	if name != "default" {
-		metadata = m.profileOrigin(info)
-		if metadata != "" {
-			metadata += " · "
-		}
-		metadata += profileUpdated(info.UpdatedAt, time.Now(), m.locale)
+	metadata := m.profileOrigin(info)
+	if metadata != "" {
+		metadata += " · "
 	}
+	metadata += profileUpdated(info.UpdatedAt, time.Now(), m.locale)
 	status, statusColor := m.tr("profiles.ready"), text
-	if !info.Validated && name != "default" {
+	if !info.Validated {
 		status, statusColor = m.tr("profiles.validation_pending"), warning
 	}
 	if selected {
@@ -359,14 +341,12 @@ func (m *Model) profileOrigin(info app.ProfileInfo) string {
 }
 
 func (m *Model) profileDetailsPane(name string, width int) dashboardBlock {
-	index := 0
 	for i, profile := range m.profiles() {
 		if profile == name {
-			index = i
-			break
+			return m.profileDetailsPaneAt(name, i, width)
 		}
 	}
-	return m.profileDetailsPaneAt(name, index, width)
+	return dashboardBlock{}
 }
 
 func (m *Model) profileDetailsPaneAt(name string, index, width int) dashboardBlock {
@@ -376,22 +356,15 @@ func (m *Model) profileDetailsPaneAt(name string, index, width int) dashboardBlo
 	if info.HasOverrides {
 		kind = m.tr("profiles.kind_overrides", kind)
 	}
-	if name == "default" {
-		kind += " · " + m.tr("profiles.builtin_stamp")
-	}
 	body.lines = append(body.lines, themed(cellCrop(kind, width), muted, bg, false))
-	if name == "default" {
-		body.lines = append(body.lines, themed(cellCrop(m.tr("profiles.builtin_description"), width), muted, bg, false))
-	} else {
-		if origin := m.profileOrigin(info); origin != "" {
-			for _, line := range strings.Split(wrapText(origin, width), "\n") {
-				body.lines = append(body.lines, themed(line, muted, bg, false))
-			}
+	if origin := m.profileOrigin(info); origin != "" {
+		for _, line := range strings.Split(wrapText(origin, width), "\n") {
+			body.lines = append(body.lines, themed(line, muted, bg, false))
 		}
-		body.lines = append(body.lines, themed(cellCrop(profileUpdated(info.UpdatedAt, time.Now(), m.locale), width), muted, bg, false))
-		if info.Description != "" {
-			body.lines = append(body.lines, themed(cellCrop(clean(info.Description), width), muted, bg, false))
-		}
+	}
+	body.lines = append(body.lines, themed(cellCrop(profileUpdated(info.UpdatedAt, time.Now(), m.locale), width), muted, bg, false))
+	if info.Description != "" {
+		body.lines = append(body.lines, themed(cellCrop(clean(info.Description), width), muted, bg, false))
 	}
 	applyID, label := fmt.Sprintf("profiles.apply.%d", index), m.tr("profiles.use")
 	if name == m.snapshot.Applied {
@@ -407,11 +380,14 @@ func (m *Model) profileDetailsPaneAt(name string, index, width int) dashboardBlo
 	if info.Refreshable {
 		buttons = append(buttons, profileButton{fmt.Sprintf("profiles.update.%d", index), m.tr("profiles.update"), false})
 	}
-	if name != "default" {
-		buttons = append(buttons, profileButton{fmt.Sprintf("profiles.rename.%d", index), m.tr("profiles.rename"), false})
-		buttons = append(buttons, profileButton{fmt.Sprintf("profiles.description.%d", index), m.tr("profiles.edit_description"), false})
-		buttons = append(buttons, profileButton{fmt.Sprintf("profiles.url-edit.%d", index), m.tr("profiles.edit_url"), false})
-		buttons = append(buttons, profileButton{fmt.Sprintf("profiles.overrides.%d", index), m.tr("profiles.overrides"), false}, profileButton{fmt.Sprintf("profiles.delete.%d", index), m.tr("profiles.delete"), false})
+	buttons = append(buttons,
+		profileButton{fmt.Sprintf("profiles.rename.%d", index), m.tr("profiles.rename"), false},
+		profileButton{fmt.Sprintf("profiles.description.%d", index), m.tr("profiles.edit_description"), false},
+		profileButton{fmt.Sprintf("profiles.url-edit.%d", index), m.tr("profiles.edit_url"), false},
+		profileButton{fmt.Sprintf("profiles.overrides.%d", index), m.tr("profiles.overrides"), false},
+		profileButton{fmt.Sprintf("profiles.delete.%d", index), m.tr("profiles.delete"), false})
+	if m.canUseDefaultFrom(name) {
+		buttons = append(buttons, profileButton{"profiles.use-default", m.tr("profiles.use_default"), false})
 	}
 	buttons = append(buttons, profileButton{"profiles.close", m.tr("profiles.close"), false})
 	body.append(m.profileButtons(buttons, width))

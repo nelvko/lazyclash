@@ -13,6 +13,7 @@ import (
 
 func TestNotificationNavigationAndLocalControlsDoNotReplayPreviousFailure(t *testing.T) {
 	m := noticeModel()
+	m.snapshot.Profiles = []string{"work"}
 	id := publishNotice(&m, "service.start", "error", "service failed")
 	for _, action := range []string{"nav.profiles", "profile.0", "profiles.close", "profiles.url"} {
 		m.activate(action)

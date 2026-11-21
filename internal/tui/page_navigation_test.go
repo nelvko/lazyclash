@@ -221,11 +221,11 @@ func TestPageNavigationRestoresProfilesAndNodesByIdentity(t *testing.T) {
 		m := pageNavigationModel()
 		m.snapshot.Profiles = []string{"alpha", "beta", "gamma"}
 		m.navigate("profiles")
-		m.focus = "profile.2" // beta, following the default profile.
+		m.focus = "profile.1" // beta
 		m.browsePage("settings")
 		m.snapshot.Profiles = []string{"gamma", "alpha", "beta"}
 		m.navigate("profiles")
-		if m.focus != "profile.3" {
+		if m.focus != "profile.2" {
 			t.Fatalf("restored a different profile after reordering: %s", m.focus)
 		}
 	})
@@ -322,11 +322,11 @@ func TestPageNavigationActiveFocusSurvivesSnapshotReordering(t *testing.T) {
 		m := pageNavigationModel()
 		m.snapshot.Profiles = []string{"alpha", "beta", "gamma"}
 		m.navigate("profiles")
-		m.focus = "profile.2"
+		m.focus = "profile.1"
 		m.layout()
 		m.snapshot.Profiles = []string{"gamma", "alpha", "beta"}
 		m.layout()
-		if m.focus != "profile.3" || m.pageViews["profiles"].profile != "beta" {
+		if m.focus != "profile.2" || m.pageViews["profiles"].profile != "beta" {
 			t.Fatalf("refresh reassigned active profile focus: focus=%s identity=%s", m.focus, m.pageViews["profiles"].profile)
 		}
 	})

@@ -32,7 +32,7 @@ func (m *Model) layoutProfiles(width int) profileGridLayout {
 	}
 	l.cardWidth = (width - 2*(l.columns-1)) / l.columns
 	l.names = m.profiles()
-	l.intro = m.profilesIntro(width, len(l.names)-1)
+	l.intro = m.profilesIntro(width)
 	l.total = len(l.intro.lines) + l.rowCount()*l.stride()
 	for i, name := range l.names {
 		if name == m.profilesUI.detail {
@@ -43,7 +43,7 @@ func (m *Model) layoutProfiles(width int) profileGridLayout {
 			break
 		}
 	}
-	if len(l.names) == 1 {
+	if len(l.names) == 0 {
 		l.emptyY = l.total
 		height := max(1, dashboardGeometry(m.dashboardOptions()).height-l.total)
 		l.empty = m.emptyState(width, height, emptyStateOptions{

@@ -26,8 +26,8 @@ func TestProfilesHintsFollowInputAndDetailActions(t *testing.T) {
 		if m.focus != "profiles.add" || !strings.Contains(m.contextHelp(), "Enter "+m.tr("profiles.add")) || strings.Contains(m.contextHelp(), "↑↓") {
 			t.Fatal("leaving input did not show the add action")
 		}
-		m.activate("profile.1")
-		if m.profilesUI.detail != "work" || m.focus != "profiles.apply.1" ||
+		m.activate("profile.0")
+		if m.profilesUI.detail != "work" || m.focus != "profiles.apply.0" ||
 			!strings.HasPrefix(m.contextHelp(), "Enter "+m.tr("profiles.use")+" · ") || strings.Contains(m.contextHelp(), "m ") {
 			t.Fatal("profile detail button still advertised opening details or a card menu")
 		}
@@ -40,7 +40,7 @@ func TestProfilesHintsFollowInputAndDetailActions(t *testing.T) {
 			t.Fatal("close button advertised the wrong action")
 		}
 		m, _ = update(m, special(tea.KeyEnter))
-		if m.profilesUI.detail != "" || m.focus != "profile.1" || m.contextHelp() != m.tr("navigation.profiles") {
+		if m.profilesUI.detail != "" || m.focus != "profile.0" || m.contextHelp() != m.tr("navigation.profiles") {
 			t.Fatal("closing details did not restore the card hint")
 		}
 	}

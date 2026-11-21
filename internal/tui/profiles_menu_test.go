@@ -41,16 +41,16 @@ func TestProfileMenuMouseAndKeyboardEntrypointsDoNotApply(t *testing.T) {
 			m, b := profileClickModel(t, true, true, false, false)
 			switch entry {
 			case "card":
-				m = profileMenuRightClick(t, m, "profile.1")
+				m = profileMenuRightClick(t, m, "profile.0")
 			case "refresh":
-				m = profileMenuRightClick(t, m, "profiles.refresh.1")
+				m = profileMenuRightClick(t, m, "profiles.refresh.0")
 			case "button":
-				m, _ = click(m, findTarget(t, m, "profiles.menu.1"))
+				m, _ = click(m, findTarget(t, m, "profiles.menu.0"))
 			case "m":
-				m.focus = "profile.1"
+				m.focus = "profile.0"
 				m, _ = update(m, key("m"))
 			case "shift+f10":
-				m.focus = "profile.1"
+				m.focus = "profile.0"
 				m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyF10, Mod: tea.ModShift})
 			}
 			if !m.menu.open || m.profilesUI.menuProfile != "p-stable-profile-id" || m.busy || len(b.calls) != 0 || m.snapshot.Applied != "default" {
@@ -67,14 +67,14 @@ func TestProfileMenuOutsideClickAndEscapeDoNotReachCards(t *testing.T) {
 			m.snapshot.Profiles = append(m.snapshot.Profiles, "outside")
 			m.snapshot.ProfileDetails = append(m.snapshot.ProfileDetails, app.ProfileInfo{ID: "outside", Name: "Outside card", Validated: true})
 			m.layout()
-			outside := findTarget(t, m, "profile.2")
-			m = profileMenuRightClick(t, m, "profile.1")
+			outside := findTarget(t, m, "profile.1")
+			m = profileMenuRightClick(t, m, "profile.0")
 			if closing == "escape" {
 				m, _ = update(m, special(tea.KeyEscape))
 			} else {
 				m, _ = click(m, outside)
 			}
-			if m.menu.open || m.busy || len(b.calls) != 0 || m.snapshot.Applied != "default" || m.focus != "profile.1" {
+			if m.menu.open || m.busy || len(b.calls) != 0 || m.snapshot.Applied != "default" || m.focus != "profile.0" {
 				t.Fatal("closing the menu applied the underlying card or lost its originating focus")
 			}
 		})
@@ -84,7 +84,7 @@ func TestProfileMenuOutsideClickAndEscapeDoNotReachCards(t *testing.T) {
 func TestProfileMenuOwnsPasteAndPageShortcuts(t *testing.T) {
 	for _, msg := range []tea.Msg{tea.PasteMsg{Content: "https://example.invalid/private"}, key("q"), key("2")} {
 		m, b := profileClickModel(t, true, true, false, false)
-		m = profileMenuRightClick(t, m, "profile.1")
+		m = profileMenuRightClick(t, m, "profile.0")
 		m, _ = update(m, msg)
 		if m.quitting || m.page != "profiles" || m.profilesUI.url.Value() != "" || m.form != "" || m.busy || len(b.calls) != 0 {
 			t.Fatalf("menu input %T escaped to the page or its URL field", msg)
@@ -94,14 +94,13 @@ func TestProfileMenuOwnsPasteAndPageShortcuts(t *testing.T) {
 
 func TestProfileMenuOnlyOffersSupportedActions(t *testing.T) {
 	tests := []struct {
-		name, target, disabled string
-		installed, current     bool
-		forgetAddress          bool
+		name, disabled     string
+		installed, current bool
+		forgetAddress      bool
 	}{
-		{name: "uninstalled", target: "profile.1", disabled: "apply"},
-		{name: "selected", target: "profile.1", disabled: "delete", installed: true, current: true},
-		{name: "one-time import", target: "profile.1", disabled: "refresh", installed: true, forgetAddress: true},
-		{name: "built-in", target: "profile.0", installed: true},
+		{name: "uninstalled", disabled: "apply"},
+		{name: "selected", disabled: "delete", installed: true, current: true},
+		{name: "one-time import", disabled: "refresh", installed: true, forgetAddress: true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -110,24 +109,15 @@ func TestProfileMenuOnlyOffersSupportedActions(t *testing.T) {
 				m.snapshot.ProfileDetails[1].Refreshable = false
 				m.layout()
 			}
-			m = profileMenuRightClick(t, m, tt.target)
-			if tt.disabled != "" {
-				index := profileMenuItemIndex(t, m, tt.disabled)
-				if m.menu.items[index].DisabledReason == "" {
-					t.Fatalf("unsupported action %q has no disabled reason", tt.disabled)
-				}
-				m.menu.selected = index
-				m, _ = update(m, special(tea.KeyEnter))
-				if m.busy || len(b.calls) != 0 || m.form != "" {
-					t.Fatalf("disabled action %q still executed", tt.disabled)
-				}
-			} else {
-				for _, item := range m.menu.items {
-					switch item.ID {
-					case "rename", "address", "overrides", "delete":
-						t.Fatalf("built-in profile exposes %q", item.ID)
-					}
-				}
+			m = profileMenuRightClick(t, m, "profile.0")
+			index := profileMenuItemIndex(t, m, tt.disabled)
+			if m.menu.items[index].DisabledReason == "" {
+				t.Fatalf("unsupported action %q has no disabled reason", tt.disabled)
+			}
+			m.menu.selected = index
+			m, _ = update(m, special(tea.KeyEnter))
+			if m.busy || len(b.calls) != 0 || m.form != "" {
+				t.Fatalf("disabled action %q still executed", tt.disabled)
 			}
 		})
 	}
@@ -139,7 +129,7 @@ func TestProfileMenuDispatchesSharedActionsByStableID(t *testing.T) {
 			m, b := profileClickModel(t, true, true, false, false)
 			var refreshed string
 			b.refresh = func(_ context.Context, id string) error { refreshed = id; return nil }
-			m = profileMenuRightClick(t, m, "profile.1")
+			m = profileMenuRightClick(t, m, "profile.0")
 			m, cmd := chooseProfileMenuItem(t, m, action)
 			if m.menu.open {
 				t.Fatal("selected action left its context menu open")
@@ -181,7 +171,7 @@ func TestProfileMenuSurvivesReorderAndClosesWhenTargetDisappears(t *testing.T) {
 			m, b := profileClickModel(t, true, true, false, false)
 			var refreshed string
 			b.refresh = func(_ context.Context, id string) error { refreshed = id; return nil }
-			m = profileMenuRightClick(t, m, "profile.1")
+			m = profileMenuRightClick(t, m, "profile.0")
 			next := m.snapshot
 			next.Profiles = []string{"new-profile", "p-stable-profile-id"}
 			next.ProfileDetails = append([]app.ProfileInfo{{ID: "new-profile", Name: "New profile", Refreshable: true}}, next.ProfileDetails...)
@@ -213,7 +203,7 @@ func TestProfileMenuCannotOpenBehindDialogsOrWhileBusy(t *testing.T) {
 	for _, state := range []string{"busy", "quitting", "form", "help", "ports", "wizard", "sidebar"} {
 		t.Run(state, func(t *testing.T) {
 			m, b := profileClickModel(t, true, true, false, false)
-			r := findTarget(t, m, "profile.1")
+			r := findTarget(t, m, "profile.0")
 			switch state {
 			case "busy":
 				m.busy = true
@@ -250,7 +240,7 @@ func TestProfileMenuUsesUncoveredCardCellsWithoutClickingThroughToast(t *testing
 	_, toast, _ := notificationToast(options)
 	var card hitRegion
 	for _, region := range m.profileMenuCardRegions() {
-		if region.ID == "profile.1" {
+		if region.ID == "profile.0" {
 			card = region
 		}
 	}

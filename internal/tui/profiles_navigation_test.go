@@ -68,7 +68,7 @@ func profileNavigationVisible(t *testing.T, m Model) {
 func TestProfileGridArrowsFollowRowsAndColumns(t *testing.T) {
 	m := profileNavigationModel(160, 32)
 	cards := m.profileGridCards()
-	if len(cards) != 6 || cards[0].Y != cards[1].Y || cards[0].X == cards[1].X || cards[2].Y <= cards[0].Y {
+	if len(cards) != 5 || cards[0].Y != cards[1].Y || cards[0].X == cards[1].X || cards[2].Y <= cards[0].Y {
 		t.Fatalf("wide Profiles did not render a two-column grid: %+v", cards)
 	}
 	profileNavigationPress(t, &m, "right", 1)
@@ -99,11 +99,11 @@ func TestProfileGridSingleColumnAndReflowPreserveFocus(t *testing.T) {
 	profileNavigationPress(t, &m, "right", 4)
 	profileNavigationPress(t, &m, "l", 4)
 	profileNavigationPress(t, &m, "up", 3)
-	profileNavigationPress(t, &m, "end", 5)
+	profileNavigationPress(t, &m, "end", 4)
 	profileNavigationVisible(t, m)
 	m.width, m.height = 160, 32
 	m.layout()
-	if m.focus != "profile.5" {
+	if m.focus != "profile.4" {
 		t.Fatal("resizing changed the selected card")
 	}
 	profileNavigationPress(t, &m, "home", 0)
@@ -113,17 +113,17 @@ func TestProfileGridSingleColumnAndReflowPreserveFocus(t *testing.T) {
 func TestProfileGridNavigationReachesCardsOutsideClippedTargets(t *testing.T) {
 	m := profileNavigationModel(80, 20)
 	for _, hit := range m.targets {
-		if hit.ID == "profile.5" {
+		if hit.ID == "profile.4" {
 			t.Fatal("fixture did not put the last card below the fold")
 		}
 	}
-	profileNavigationPress(t, &m, "end", 5)
+	profileNavigationPress(t, &m, "end", 4)
 	if m.scroll == 0 {
 		t.Fatal("moving to an offscreen card did not scroll the body")
 	}
 	profileNavigationVisible(t, m)
 	m.layout()
-	findTarget(t, m, "profile.5")
+	findTarget(t, m, "profile.4")
 	profileNavigationPress(t, &m, "home", 0)
 	profileNavigationVisible(t, m)
 }
@@ -180,13 +180,13 @@ func TestProfileGridIgnoresGlobalKeysInputsAndModals(t *testing.T) {
 
 func TestProfileGridDetailsCloseOnEscapeOrBrowsingAnotherCard(t *testing.T) {
 	m := profileNavigationModel(80, 20)
-	m.focus, m.profilesUI.detail, m.scroll = "profiles.delete.3", "gamma", 999
-	if !m.profileGridKey(special(tea.KeyEscape)) || m.profilesUI.detail != "" || m.focus != "profile.3" {
+	m.focus, m.profilesUI.detail, m.scroll = "profiles.delete.2", "gamma", 999
+	if !m.profileGridKey(special(tea.KeyEscape)) || m.profilesUI.detail != "" || m.focus != "profile.2" {
 		t.Fatal("Escape did not close the named profile's details and restore its card")
 	}
 	profileNavigationVisible(t, m)
 	m.width, m.height = 160, 32
-	m.focus, m.profilesUI.detail = "profile.0", "default"
+	m.focus, m.profilesUI.detail = "profile.0", "alpha"
 	profileNavigationPress(t, &m, "right", 1)
 	if m.profilesUI.detail != "" {
 		t.Fatal("moving to another card left actions for the old profile open")
@@ -312,9 +312,9 @@ func TestProfileCardEnterOpensDetailsAndApplyIsExplicit(t *testing.T) {
 	b := &fakeBackend{snapshot: app.Snapshot{Installed: true, Applied: "default", Profiles: []string{"work"}, ProfileDetails: profileFixtures("default", "work")}}
 	m := profileInteractionsModel(b, 120, 32)
 	backend := &profileBackend{fakeBackend: b}
-	m.backend, m.focus = backend, "profile.1"
+	m.backend, m.focus = backend, "profile.0"
 	m, cmd := update(m, special(tea.KeyEnter))
-	if cmd != nil || m.busy || backend.applied != 0 || m.snapshot.Applied != "default" || m.profilesUI.detail != "work" || m.focus != "profiles.apply.1" {
+	if cmd != nil || m.busy || backend.applied != 0 || m.snapshot.Applied != "default" || m.profilesUI.detail != "work" || m.focus != "profiles.apply.0" {
 		t.Fatal("opening a profile card changed the runtime instead of showing its actions")
 	}
 	m, cmd = update(m, special(tea.KeyEnter))
@@ -336,7 +336,7 @@ func TestProfileRefreshButtonAndUpdateAllDoNotOpenOrApplyCards(t *testing.T) {
 	m := profileInteractionsModel(b, 160, 40)
 	backend := &profileBackend{fakeBackend: b}
 	m.backend = backend
-	m, cmd := click(m, findTarget(t, m, "profiles.refresh.1"))
+	m, cmd := click(m, findTarget(t, m, "profiles.refresh.0"))
 	m = finishProfileJob(t, m, cmd)
 	if refreshed != "work" || refreshes != 1 || backend.applied != 0 || m.profilesUI.detail != "" || m.snapshot.Applied != "default" {
 		t.Fatal("card refresh opened, selected, or applied its containing card")
@@ -349,9 +349,9 @@ func TestProfileRefreshButtonAndUpdateAllDoNotOpenOrApplyCards(t *testing.T) {
 	if all != 1 || backend.applied != 0 || m.snapshot.Applied != "default" || !strings.Contains(m.message, "apply a profile") {
 		t.Fatal("Update all bypassed the shared refresh use case or changed the runtime")
 	}
-	m.focus = "profile.1"
+	m.focus = "profile.0"
 	m, _ = update(m, special(tea.KeyEnter))
-	m, cmd = click(m, findTarget(t, m, "profiles.update.1"))
+	m, cmd = click(m, findTarget(t, m, "profiles.update.0"))
 	m = finishProfileJob(t, m, cmd)
 	if refreshed != "work" || refreshes != 2 || backend.applied != 0 || m.profilesUI.detail != "work" {
 		t.Fatal("details Update did not refresh the same profile while retaining its details")
@@ -362,7 +362,7 @@ func TestProfileDetailTabControlsRemainReachableAcrossResize(t *testing.T) {
 	b := &fakeBackend{snapshot: app.Snapshot{Installed: true, Profiles: []string{"alpha", "beta", "gamma"},
 		ProfileDetails: []app.ProfileInfo{{ID: "default", Name: "default", Validated: true}, {ID: "alpha", Name: "alpha", Validated: true}, {ID: "beta", Name: "beta", Validated: true}, {ID: "gamma", Name: "gamma", Refreshable: true, Validated: true}}}}
 	m := profileInteractionsModel(b, 160, 40)
-	m.focus = "profile.3"
+	m.focus = "profile.2"
 	m, _ = update(m, special(tea.KeyEnter))
 	_, hits := m.pageBody(120)
 	seen := map[string]bool{}
@@ -374,11 +374,11 @@ func TestProfileDetailTabControlsRemainReachableAcrossResize(t *testing.T) {
 	}
 	for _, size := range [][2]int{{80, 24}, {60, 20}, {120, 32}, {160, 40}} {
 		m, _ = update(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
-		if m.profilesUI.detail != "gamma" || m.focus != "profiles.apply.3" {
+		if m.profilesUI.detail != "gamma" || m.focus != "profiles.apply.2" {
 			t.Fatalf("resize retargeted the open profile at %v: detail=%s focus=%s", size, m.profilesUI.detail, m.focus)
 		}
-		findTarget(t, m, "profiles.apply.3")
-		for _, id := range []string{"profiles.update.3", "profiles.rename.3", "profiles.description.3", "profiles.url-edit.3", "profiles.overrides.3", "profiles.delete.3", "profiles.close"} {
+		findTarget(t, m, "profiles.apply.2")
+		for _, id := range []string{"profiles.update.2", "profiles.rename.2", "profiles.description.2", "profiles.url-edit.2", "profiles.overrides.2", "profiles.delete.2", "profiles.close"} {
 			m, _ = update(m, special(tea.KeyTab))
 			if m.focus != id {
 				t.Fatalf("Tab did not reach %s at %v; focused %s", id, size, m.focus)
@@ -388,7 +388,7 @@ func TestProfileDetailTabControlsRemainReachableAcrossResize(t *testing.T) {
 		for range 7 {
 			m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
 		}
-		if m.focus != "profiles.apply.3" {
+		if m.focus != "profiles.apply.2" {
 			t.Fatalf("Shift+Tab did not return to Apply at %v: %s", size, m.focus)
 		}
 	}
@@ -419,14 +419,14 @@ func TestProfileDetailFocusFollowsNameWhenSnapshotOrderChanges(t *testing.T) {
 			initial := app.Snapshot{Installed: true, Profiles: []string{"alpha", "gamma"},
 				ProfileDetails: []app.ProfileInfo{{ID: "default", Name: "default", Validated: true}, {ID: "alpha", Name: "alpha", Validated: true}, {ID: "gamma", Name: "gamma", Refreshable: true, Validated: true}}}
 			m := profileInteractionsModel(&fakeBackend{snapshot: initial}, 160, 40)
-			m.focus = "profile.2"
+			m.focus = "profile.1"
 			m, _ = update(m, special(tea.KeyEnter))
-			m.focus = "profiles." + action + ".2"
+			m.focus = "profiles." + action + ".1"
 			next := initial
 			next.Profiles = []string{"aardvark", "alpha", "gamma"}
 			next.ProfileDetails = append(append([]app.ProfileInfo{}, initial.ProfileDetails...), profileFixtures("aardvark")...)
 			m, _ = update(m, resultMsg{id: m.id, snapshot: next, hasSnapshot: true})
-			if m.profilesUI.detail != "gamma" || m.focus != "profiles."+action+".3" {
+			if m.profilesUI.detail != "gamma" || m.focus != "profiles."+action+".2" {
 				t.Fatalf("snapshot reorder retargeted %s to another profile: detail=%s focus=%s", action, m.profilesUI.detail, m.focus)
 			}
 			findTarget(t, m, m.focus)
@@ -436,7 +436,7 @@ func TestProfileDetailFocusFollowsNameWhenSnapshotOrderChanges(t *testing.T) {
 
 func TestProfileDetailClosesIfExternallyDeleted(t *testing.T) {
 	m := profileInteractionsModel(&fakeBackend{snapshot: app.Snapshot{Installed: true, Profiles: []string{"alpha", "gamma"}, ProfileDetails: profileFixtures("default", "alpha", "gamma")}}, 160, 40)
-	m.focus = "profile.2"
+	m.focus = "profile.1"
 	m, _ = update(m, special(tea.KeyEnter))
 	m, _ = update(m, resultMsg{id: m.id, snapshot: app.Snapshot{Installed: true, Profiles: []string{"alpha"}, ProfileDetails: profileFixtures("default", "alpha")}, hasSnapshot: true})
 	if m.profilesUI.detail != "" || strings.HasPrefix(m.focus, "profiles.apply.") {
@@ -462,7 +462,7 @@ func TestProfileSelectedStatusDistinguishesStoppedFromUnavailableRuntime(t *test
 			m := profileInteractionsModel(&fakeBackend{snapshot: app.Snapshot{Installed: true, Applied: "work", Profiles: []string{"work"},
 				ProfileDetails: profileFixtures("default", "work"),
 				Service:        service.Status{Active: tc.active}, APIError: tc.apiError, ServiceError: tc.serviceError}}, 160, 40)
-			card := ansi.Strip(strings.Join(m.profileCard(1, 64).lines, "\n"))
+			card := ansi.Strip(strings.Join(m.profileCard(0, 64).lines, "\n"))
 			if !strings.Contains(card, tc.status) {
 				t.Fatalf("wrong selected state for %s; expected %s in %s", tc.name, tc.status, card)
 			}

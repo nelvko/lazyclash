@@ -67,7 +67,7 @@ func TestAuxiliaryProviderEmptyStatesUseTheirContentViewport(t *testing.T) {
 	}
 }
 
-func TestAuxiliaryProfilesKeepBuiltinCardAboveEmptyCustomSpace(t *testing.T) {
+func TestEmptyProfilesKeepImportControlsAboveCenteredHint(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		m := ready(&fakeBackend{})
 		m.page, m.width, m.height, m.locale = "profiles", 80, 24, i18n.New(language)
@@ -75,8 +75,8 @@ func TestAuxiliaryProfilesKeepBuiltinCardAboveEmptyCustomSpace(t *testing.T) {
 		body, targets := m.profilesBody(width)
 		lines := strings.Split(body, "\n")
 		row := assertAuxiliaryCentered(t, lines, m.tr("empty.profiles.none"), width)
-		if !hasAction(targets, "profile.0") || row <= findAuxiliaryLine(lines, m.tr("profiles.builtin_origin")) {
-			t.Fatal("empty custom library replaced or covered the built-in card")
+		if hasAction(targets, "profile.0") || !hasAction(targets, "profiles.url") || !hasAction(targets, "profiles.create") || row <= findAuxiliaryLine(lines, m.tr("profiles.create")) {
+			t.Fatal("empty library should show import controls and a centered hint")
 		}
 		m.snapshotReady = false
 		body, targets = m.unavailableProfiles(width)

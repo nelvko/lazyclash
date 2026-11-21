@@ -226,14 +226,14 @@ func TestProfileOverridesSaveDraftAndRecipeDeletionRequiresConfirmation(t *testi
 	m := ready(b)
 	m.backend = backend
 	m.page = "profiles"
-	m.activate("profile.overrides.1")
+	m.activate("profile.overrides.0")
 	m.input.SetValue(path)
 	cmd := m.formKey(special(tea.KeyEnter))
 	m = finishProfileJob(t, m, cmd)
 	if savedName != "work" || string(saved) != string(raw) || backend.applied != 0 || !strings.Contains(m.message, "apply the profile") {
 		t.Fatal("override import applied or changed its content")
 	}
-	m.activate("profile.delete.1")
+	m.activate("profile.delete.0")
 	if m.form != "profile-delete" || m.busy || deletedName != "" {
 		t.Fatal("recipe deletion skipped confirmation")
 	}
@@ -272,7 +272,7 @@ func TestProfileOverridesRejectSymlinkAndOversizedFiles(t *testing.T) {
 		setOverrides: func(context.Context, string, []byte) error { calls++; return nil },
 	}
 	m := ready(b)
-	m.activate("profile.overrides.1")
+	m.activate("profile.overrides.0")
 	m.input.SetValue(link)
 	cmd := m.formKey(special(tea.KeyEnter))
 	m = finishProfileJob(t, m, cmd)
@@ -295,10 +295,8 @@ func TestProfilePageShowsPendingChangesAndAccurateActionRows(t *testing.T) {
 			t.Fatalf("missing %q in profiles page", text)
 		}
 	}
-	for _, hit := range hits {
-		if hit.ID == "profiles.overrides.0" || hit.ID == "profiles.delete.0" {
-			t.Fatal("built-in edit/delete action was offered", hit.ID)
-		}
+	if !hasAction(hits, "profiles.overrides.0") || !hasAction(hits, "profiles.use-default") {
+		t.Fatal("applied profile should offer editing and switching back to default")
 	}
 	for _, width := range []int{18, 25, 40} {
 		body, hits := m.pageBody(width)
@@ -328,11 +326,11 @@ func TestProfileDisplayNameEditsKeepActionsOnStableID(t *testing.T) {
 		deleteProfile: func(_ context.Context, profileID string) error { deletedID = profileID; return nil },
 	}
 	m := profileInteractionsModel(b, 120, 32)
-	if card := ansi.Strip(strings.Join(m.profileCard(1, 60).lines, "\n")); !strings.Contains(card, "机场 A") || strings.Contains(card, id) {
+	if card := ansi.Strip(strings.Join(m.profileCard(0, 60).lines, "\n")); !strings.Contains(card, "机场 A") || strings.Contains(card, id) {
 		t.Fatal("profile card displayed its storage ID instead of its display name")
 	}
-	m.activate("profile.1")
-	m.activate("profiles.rename.1")
+	m.activate("profile.0")
+	m.activate("profiles.rename.0")
 	if m.input.Value() != "机场 A" || m.name != id {
 		t.Fatal("Rename did not prefill the display name and retain the stable ID")
 	}
@@ -342,14 +340,14 @@ func TestProfileDisplayNameEditsKeepActionsOnStableID(t *testing.T) {
 	if renamedID != id || renamed != "我的订阅" || m.profilesUI.detail != id {
 		t.Fatal("Rename targeted a display name or lost the open profile identity")
 	}
-	m.activate("profiles.url-edit.1")
+	m.activate("profiles.url-edit.0")
 	m.input.SetValue("https://example.invalid/new-source")
 	m, cmd = update(m, special(tea.KeyEnter))
 	m = finishProfileJob(t, m, cmd)
 	if updatedID != id || address != "https://example.invalid/new-source" {
 		t.Fatal("Edit URL did not use the stable profile ID")
 	}
-	m.activate("profiles.delete.1")
+	m.activate("profiles.delete.0")
 	m.profileDeleteSetFocus("profile-delete.confirm")
 	m, cmd = update(m, special(tea.KeyEnter))
 	// Keep the backend identity check effective when the operation is wrapped
@@ -358,5 +356,25 @@ func TestProfileDisplayNameEditsKeepActionsOnStableID(t *testing.T) {
 	m = finishProfileJob(t, m, cmd)
 	if deletedID != id {
 		t.Fatal("delete confirmation changed its stable backend identity")
+	}
+}
+
+func TestDeletingLastSavedProfileShowsEmptyLibrary(t *testing.T) {
+	m, b := profileClickModel(t, true, true, false, false)
+	b.deleteProfile = func(_ context.Context, id string) error {
+		if id != "p-stable-profile-id" {
+			t.Fatalf("deleted unexpected profile %q", id)
+		}
+		b.snapshot.Profiles = []string{"default"}
+		b.snapshot.ProfileDetails = b.snapshot.ProfileDetails[:1]
+		return nil
+	}
+	m = profileMenuRightClick(t, m, "profile.0")
+	m, _ = chooseProfileMenuItem(t, m, "delete")
+	m, cmd := click(m, findTarget(t, m, "profile-delete.confirm"))
+	m = finishProfileJob(t, m, cmd)
+	if !strings.Contains(ansi.Strip(m.View().Content), m.tr("empty.profiles.none")) || hasAction(m.targets, "profile.0") ||
+		m.snapshot.Applied != "default" || !m.snapshot.Service.Active || len(b.calls) != 0 {
+		t.Fatal("deleting the last saved profile should leave an empty library and preserve the running default")
 	}
 }

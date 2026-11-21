@@ -1475,7 +1475,7 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 	return nil
 }
 func (m *Model) profiles() []string {
-	p := []string{"default"}
+	var p []string
 	seen := map[string]bool{"default": true}
 	for _, n := range m.snapshot.Profiles {
 		if !seen[n] {

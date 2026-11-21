@@ -52,7 +52,10 @@ func (m *Model) focusTargets() []hitRegion {
 			controls = append(controls, target)
 		}
 	}
-	if len(list) == 0 && !(m.page == "overview" && m.inlineInstallVisible()) || m.focus == "content" {
+	// The install form and the empty profile library already have actionable
+	// controls. A synthetic list stop would interrupt their field tab order.
+	controlsOnly := m.page == "overview" && m.inlineInstallVisible() || m.page == "profiles" && m.snapshotReady
+	if len(list) == 0 && !controlsOnly || m.focus == "content" {
 		list = append([]hitRegion{{ID: "content", X: g.x, Y: g.y, W: g.width, H: 1}}, list...)
 	}
 	if len(list) > 0 {

@@ -1002,7 +1002,7 @@ func TestFailedRefreshPreservesLastSnapshotAndProfilesDeduplicate(t *testing.T) 
 	if !m.snapshot.Installed || m.snapshot.Version != "known" || !strings.Contains(m.failure, "refresh current state") {
 		t.Fatal("failed refresh erased valid dashboard state")
 	}
-	if got := strings.Join(m.profiles(), ","); got != "default,work" {
+	if got := strings.Join(m.profiles(), ","); got != "work" {
 		t.Fatal(got)
 	}
 }

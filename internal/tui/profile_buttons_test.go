@@ -20,13 +20,13 @@ func TestProfileCardControlsKeepGeometryAcrossFocusAndColor(t *testing.T) {
 				m := profilesPreview(false)
 				m.colorProfile = profile
 				m.focus, m.hover = "", ""
-				before := m.profileCard(1, width)
+				before := m.profileCard(0, width)
 				for _, target := range before.targets {
 					if !strings.HasPrefix(target.ID, "profiles.") {
 						continue
 					}
 					m.focus = target.ID
-					after := m.profileCard(1, width)
+					after := m.profileCard(0, width)
 					for i, hit := range before.targets {
 						if hit != after.targets[i] {
 							t.Fatalf("focus moved a control: before=%+v after=%+v", hit, after.targets[i])
