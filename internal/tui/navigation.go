@@ -242,20 +242,20 @@ func (m *Model) rulesContextHelp() string {
 		return m.tr("empty.rules.clear_hint")
 	}
 	base := m.tr("navigation.rules")
-	for _, r := range m.filteredRules() {
-		if m.focus != "rule."+strconv.Itoa(r.Index) {
-			continue
-		}
-		if _, linked := m.ruleProxyGroup(r.Proxy); linked {
-			base = m.tr("navigation.rules.open_proxy") + " · " + base
-		}
-		if m.rules.expanded == ruleIdentity(r) {
-			return m.tr("navigation.rules.collapse") + " · " + base
-		}
-		if m.ruleCanExpand(r) {
-			return m.tr("navigation.rules.expand") + " · " + base
-		}
-		break
+	list := m.rulesList()
+	index, found := list.positions[m.focus]
+	if !found {
+		return base
+	}
+	rule := list.rows[index]
+	if _, linked := m.ruleProxyGroup(rule.Proxy); linked {
+		base = m.tr("navigation.rules.open_proxy") + " · " + base
+	}
+	if m.rules.expanded == ruleIdentity(rule) {
+		return m.tr("navigation.rules.collapse") + " · " + base
+	}
+	if m.ruleCanExpand(rule) {
+		return m.tr("navigation.rules.expand") + " · " + base
 	}
 	return base
 }

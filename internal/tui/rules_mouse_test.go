@@ -97,6 +97,46 @@ func TestRulesWindowMatchesCompleteBody(t *testing.T) {
 	}
 }
 
+func TestRulesWindowBuildsTargetsOnlyForVisibleRows(t *testing.T) {
+	for _, size := range [][2]int{{160, 45}, {60, 20}, {40, 9}} {
+		t.Run(fmt.Sprint(size), func(t *testing.T) {
+			m := rulesMouseModel(t, 2000, size[0], size[1])
+			expanded := &m.rules.snapshot.Rules[1000]
+			expanded.Payload = strings.Repeat("中文规则🚀.example.invalid/", 12)
+			m.rules.expanded = ruleIdentity(*expanded)
+			g := dashboardGeometry(m.dashboardOptions())
+			full := m.rulesTargets(g.width)
+			var middle hitRegion
+			for _, target := range full {
+				if target.ID == "rule.1000" {
+					middle = target
+					break
+				}
+			}
+			if middle.H <= 2 {
+				t.Fatalf("fixture must contain one tall row: %+v", middle)
+			}
+			for _, offset := range []int{0, middle.Y - 1, middle.Y + 1, middle.Y + middle.H - 1, middle.Y + middle.H, 10000} {
+				body := m.rulesBodyWindow(g.width, offset, g.height)
+				var want, got []hitRegion
+				for _, hit := range full {
+					if strings.HasPrefix(hit.ID, "rule.") && hit.Y < body.start+g.height && hit.Y+hit.H > body.start {
+						want = append(want, hit)
+					}
+				}
+				for _, hit := range body.targets {
+					if strings.HasPrefix(hit.ID, "rule.") {
+						got = append(got, hit)
+					}
+				}
+				if !reflect.DeepEqual(got, want) {
+					t.Fatalf("offset %d: row targets = %v, want %v", offset, got, want)
+				}
+			}
+		})
+	}
+}
+
 func TestRulesMouseHoverMatchesFreshLayout(t *testing.T) {
 	for _, count := range []int{670, 2000} {
 		for _, size := range [][2]int{{160, 45}, {200, 60}} {

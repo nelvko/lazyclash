@@ -3,7 +3,6 @@ package tui
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -39,6 +38,7 @@ type rulesState struct {
 	search                    textinput.Model
 	selected                  string
 	selectedIndex             int
+	list                      *rulesList
 	expanded                  string
 	generation                uint64
 	active, pending, received bool
@@ -77,6 +77,7 @@ func (m *Model) syncRules() tea.Cmd {
 		m.stopRules()
 		m.rules.source = source
 		m.rules.snapshot, m.rules.err, m.rules.received = app.RuleSnapshot{}, nil, false
+		m.rules.list = nil
 	}
 	if m.rules.active {
 		return nil
@@ -107,6 +108,7 @@ func (m *Model) acceptRules(v rulesResultMsg) tea.Cmd {
 	}
 	m.rules.pending, m.rules.received = false, true
 	m.rules.err = v.err
+	m.rules.list = nil
 	if v.err != nil {
 		m.rules.snapshot = app.RuleSnapshot{State: "unavailable", Error: v.err.Error(), Diagnostic: v.err}
 	} else {
@@ -129,77 +131,65 @@ func ruleIdentity(r mihomo.Rule) string {
 	return fmt.Sprintf("%d\x00%s\x00%s\x00%s", r.Index, r.Type, r.Payload, r.Proxy)
 }
 func (m *Model) filteredRules() []mihomo.Rule {
-	if !m.rules.received || m.rules.snapshot.State != "ready" {
-		return nil
-	}
-	if strings.TrimSpace(m.rules.search.Value()) == "" {
-		return m.rules.snapshot.Rules
-	}
-	match, err := m.ruleMatcher()
-	if err != nil {
-		return nil
-	}
-	var result []mihomo.Rule
-	for _, r := range m.rules.snapshot.Rules {
-		if match(r) {
-			result = append(result, r)
-		}
-	}
-	return result
+	return m.rulesList().rows
 }
+
 func (m *Model) reconcileRules() {
 	previousIndex := m.rules.selectedIndex
-	list := m.filteredRules()
-	found := false
-	for index, r := range list {
-		if ruleIdentity(r) == m.rules.selected {
-			m.rules.selectedIndex, found = index, true
-			break
-		}
-	}
-	if !found {
+	list := m.rulesList()
+	if index, found := list.identityPosition(m.rules.selected); found {
+		m.rules.selectedIndex = index
+	} else {
 		m.rules.selected = ""
-		if len(list) > 0 {
-			m.rules.selectedIndex = min(m.rules.selectedIndex, len(list)-1)
-			m.rules.selected = ruleIdentity(list[m.rules.selectedIndex])
+		if len(list.rows) > 0 {
+			m.rules.selectedIndex = min(m.rules.selectedIndex, len(list.rows)-1)
+			m.rules.selected = ruleIdentity(list.rows[m.rules.selectedIndex])
 		}
 	}
-	if m.rules.expanded != "" {
-		current := false
-		for _, r := range list {
-			if ruleIdentity(r) == m.rules.expanded {
-				current = true
-				break
-			}
-		}
-		if !current {
-			m.rules.expanded = ""
-		}
+	if _, found := list.identityPosition(m.rules.expanded); !found {
+		m.rules.expanded = ""
 	}
 	if m.page == "rules" && strings.HasPrefix(m.focus, "rule.") {
 		previous := m.focus
 		m.focus = "content"
-		for _, r := range list {
-			if ruleIdentity(r) == m.rules.selected {
-				m.focus = "rule." + strconv.Itoa(r.Index)
-				if previous != m.focus || previousIndex != m.rules.selectedIndex {
-					m.revealRule()
-				}
-				break
+		if m.rules.selected != "" {
+			m.focus = ruleID(list.rows[m.rules.selectedIndex])
+			if previous != m.focus || previousIndex != m.rules.selectedIndex {
+				m.revealRule()
 			}
 		}
 	}
 }
-func (m *Model) revealRule() {
+
+// Logical focus remains valid when wheel scrolling hides the selected rule.
+func (m *Model) rulesFocusValid() bool {
+	list := m.rulesList()
+	if strings.HasPrefix(m.focus, "rule.") {
+		_, found := list.positions[m.focus]
+		return found
+	}
 	width := dashboardBodyWidth(m.dashboardOptions())
-	index, _, _ := strings.Cut(m.rules.selected, "\x00")
-	for _, target := range m.rulesTargets(width) {
-		if target.ID == "rule."+index {
-			target.H = min(target.H, max(1, dashboardGeometry(m.dashboardOptions()).height))
-			m.revealBodyTarget(target)
-			return
+	targets := m.rulesBodyLeading(width, list).targets
+	for _, target := range append(targets, m.fixedContentTargets()...) {
+		if target.ID == m.focus {
+			return true
 		}
 	}
+	return false
+}
+
+func (m *Model) revealRule() {
+	list := m.rulesList()
+	index, found := list.identityPosition(m.rules.selected)
+	if !found {
+		return
+	}
+	g := dashboardGeometry(m.dashboardOptions())
+	leading := m.rulesBodyLeading(g.width, list)
+	layout := m.rulesRowLayout(g.width, len(leading.lines), list)
+	target := layout.target(list.rows[index], index)
+	target.H = min(target.H, max(1, g.height))
+	m.revealBodyTarget(target)
 }
 func (m *Model) focusRulesSearch() tea.Cmd {
 	m.rules.editing = true
@@ -253,28 +243,18 @@ func (m *Model) ruleKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 	case "g", "ctrl+r":
 		return true, m.retryRules()
 	case "up", "k", "down", "j":
-		{
-			list := m.filteredRules()
-			if len(list) == 0 {
-				return true, nil
-			}
-			index := 0
-			for i, r := range list {
-				if ruleIdentity(r) == m.rules.selected {
-					index = i
-					break
-				}
-			}
-			delta := 1
-			if k.String() == "up" || k.String() == "k" {
-				delta = -1
-			}
-			m.rules.selectedIndex = max(0, min(len(list)-1, index+delta))
-			r := list[m.rules.selectedIndex]
-			m.rules.selected, m.focus = ruleIdentity(r), "rule."+strconv.Itoa(r.Index)
-			m.revealRule()
+		list := m.rulesList()
+		if len(list.rows) == 0 {
 			return true, nil
 		}
+		index, _ := list.identityPosition(m.rules.selected)
+		delta := 1
+		if k.String() == "up" || k.String() == "k" {
+			delta = -1
+		}
+		m.focusRule(list, max(0, min(len(list.rows)-1, index+delta)))
+		m.revealRule()
+		return true, nil
 	}
 	return false, nil
 }
@@ -350,16 +330,21 @@ func (m *Model) ruleActivate(id string) tea.Cmd {
 // A click positions keyboard focus without interrupting list browsing. Enter
 // expands full values and optional observations in place.
 func (m *Model) selectRule(id string) (mihomo.Rule, bool) {
-	for index, r := range m.filteredRules() {
-		if id == "rule."+strconv.Itoa(r.Index) {
-			m.rules.editing = false
-			m.rules.search.Blur()
-			m.rules.selectedIndex, m.rules.selected, m.focus = index, ruleIdentity(r), id
-			return r, true
-		}
+	list := m.rulesList()
+	if index, found := list.positions[id]; found {
+		m.rules.editing = false
+		m.rules.search.Blur()
+		m.focusRule(list, index)
+		return list.rows[index], true
 	}
 	return mihomo.Rule{}, false
 }
+
+func (m *Model) focusRule(list *rulesList, index int) {
+	rule := list.rows[index]
+	m.rules.selectedIndex, m.rules.selected, m.focus = index, ruleIdentity(rule), ruleID(rule)
+}
+
 func (m *Model) rulesStatus() string {
 	if state, status := m.corePageState(); state != "" {
 		return status

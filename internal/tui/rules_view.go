@@ -40,7 +40,7 @@ func (m *Model) ruleCount() string {
 }
 
 func (m *Model) rulesToolbar(width, rows int) dashboardBlock {
-	_, matchErr := m.ruleMatcher()
+	matchErr := m.rulesList().matchErr
 	fieldWidth := m.ruleSearchFieldWidth(width)
 	b := m.searchToolbar("rules.search", m.tr("rules.search_placeholder"), m.rules.search,
 		m.ruleFilterButtons(), fieldWidth, matchErr != nil)
@@ -85,84 +85,122 @@ func (m *Model) rulesTargets(width int) []hitRegion {
 	return m.rulesBodyWindow(width, 0, 0).targets
 }
 
-func (m *Model) rulesListPrefix(width int) int {
-	return m.rulesBodyWindow(width, 0, 0).prefix
+// Only the expanded rule can have a different height for a given width.
+type rulesRowLayout struct {
+	width, prefix, rowHeight int
+	expanded, extraHeight    int
 }
 
-// Geometry covers the complete list; only rows intersecting the requested
-// window are styled. A negative height requests the complete body for export.
-func (m *Model) rulesBodyWindow(width, start, height int) ruleBodyWindow {
-	var lines []string
-	var hits []hitRegion
-	static := func() ruleBodyWindow {
-		return ruleBodyWindow{dashboardBlock: dashboardBlock{lines: lines, targets: hits}, total: len(lines), prefix: len(lines)}
+func (m *Model) rulesRowLayout(width, prefix int, list *rulesList) rulesRowLayout {
+	layout := rulesRowLayout{width: width, prefix: prefix, rowHeight: 2, expanded: -1}
+	if _, table := ruleTableColumns(width, list.numberWidth); table {
+		layout.rowHeight = 1
 	}
-	addText := func(value, color string) {
-		lines = append(lines, strings.Split(wrapText(themed(clean(value), color, bg, false), max(1, width)), "\n")...)
+	if index, ok := list.identityPosition(m.rules.expanded); ok {
+		layout.expanded = index
+		layout.extraHeight = m.ruleHeight(list.rows[index], width, list.numberWidth) - layout.rowHeight
 	}
+	return layout
+}
+
+func (l rulesRowLayout) target(rule mihomo.Rule, index int) hitRegion {
+	row, height := l.prefix+index*l.rowHeight, l.rowHeight
+	if l.expanded >= 0 {
+		if index > l.expanded {
+			row += l.extraHeight
+		} else if index == l.expanded {
+			height += l.extraHeight
+		}
+	}
+	return hitRegion{ID: ruleID(rule), Y: row, W: l.width, H: height}
+}
+
+func (l rulesRowLayout) positionAt(y int) int {
+	row := max(0, y-l.prefix)
+	if l.expanded >= 0 {
+		expandedEnd := (l.expanded+1)*l.rowHeight + l.extraHeight
+		if row >= expandedEnd {
+			row -= l.extraHeight
+		} else if row >= l.expanded*l.rowHeight {
+			return l.expanded
+		}
+	}
+	return row / l.rowHeight
+}
+
+func (m *Model) rulesBodyLeading(width int, list *rulesList) dashboardBlock {
+	var body dashboardBlock
 	// Very short terminals fold the fixed toolbar into the scrollable body.
 	if m.dashboardOptions().BodyTopRows == 0 {
-		bar := m.rulesToolbar(width, m.filterToolbarRows(width))
-		lines, hits = bar.lines, bar.targets
+		body = m.rulesToolbar(width, m.filterToolbarRows(width))
 	}
-	list := m.filteredRules()
-	if len(list) == 0 {
-		state := m.rulesEmptyState()
-		available := max(1, dashboardGeometry(m.dashboardOptions()).height-len(lines))
-		body := m.emptyState(width, available, state)
-		for _, hit := range body.targets {
-			hit.Y += len(lines)
-			hits = append(hits, hit)
-		}
-		lines = append(lines, body.lines...)
-		return static()
+	if len(list.rows) == 0 {
+		available := max(1, dashboardGeometry(m.dashboardOptions()).height-len(body.lines))
+		body.append(m.emptyState(width, available, m.rulesEmptyState()))
+		return body
 	}
-	// Keep usable rules and their read diagnostic together after a refresh
-	// failure; a failed observation must not turn existing rows into an empty list.
+	// Keep usable rules and their diagnostic together after a refresh failure.
+	detail := ""
 	if m.rules.err != nil {
-		addText(m.localizeError(m.rules.err), errorColor)
+		detail = m.localizeError(m.rules.err)
 	} else if m.rules.snapshot.Error != "" {
-		addText(m.locale.Diagnostic(m.rules.snapshot.Error, m.rules.snapshot.Diagnostic), errorColor)
+		detail = m.locale.Diagnostic(m.rules.snapshot.Error, m.rules.snapshot.Diagnostic)
 	}
-	prefix := len(lines)
-	numberWidth := m.ruleNumberWidth()
-	firstTarget := len(hits)
-	total := prefix
-	for _, r := range list {
-		h := m.ruleHeight(r, width, numberWidth)
-		hits = append(hits, hitRegion{ID: "rule." + strconv.Itoa(r.Index), Y: total, W: width, H: h})
-		total += h
+	if detail != "" {
+		diagnostic := themed(clean(detail), errorColor, bg, false)
+		body.lines = append(body.lines, strings.Split(wrapText(diagnostic, max(1, width)), "\n")...)
 	}
+	return body
+}
+
+// A window includes only the rows it paints. Zero requests the complete
+// logical geometry for keyboard focus, and a negative height exports all rows.
+func (m *Model) rulesBodyWindow(width, start, height int) ruleBodyWindow {
+	list := m.rulesList()
+	leading := m.rulesBodyLeading(width, list)
+	prefix := len(leading.lines)
+	body := ruleBodyWindow{dashboardBlock: leading, total: prefix, prefix: prefix}
+	if len(list.rows) == 0 {
+		return body
+	}
+	layout := m.rulesRowLayout(width, prefix, list)
+	body.total += len(list.rows)*layout.rowHeight + layout.extraHeight
 	if height < 0 {
-		start, height = 0, total
+		start, height = 0, body.total
 	} else {
-		start = max(0, min(start, max(0, total-height)))
+		start = max(0, min(start, max(0, body.total-height)))
 	}
-	end := min(total, start+height)
-	leading := lines
-	lines = nil
-	for i := max(0, start); i < min(prefix, end); i++ {
-		lines = append(lines, leading[i])
-	}
-	var links []hitRegion
-	for index, r := range list {
-		target := hits[firstTarget+index]
-		row, h := target.Y, target.H
-		if row >= end || row+h <= start {
-			continue
+	end := min(body.total, start+height)
+	body.start = start
+	first, last := min(prefix, start), min(prefix, end)
+	body.lines = leading.lines[first:last:last]
+	if height == 0 {
+		for index, rule := range list.rows {
+			body.targets = append(body.targets, layout.target(rule, index))
 		}
-		block := m.ruleRowBlock(r, width, numberWidth, m.rules.expanded == ruleIdentity(r))
-		lines = append(lines, block.lines[max(0, start-row):min(h, end-row)]...)
+		return body
+	}
+
+	var links []hitRegion
+	for index := layout.positionAt(start); index < len(list.rows); index++ {
+		rule := list.rows[index]
+		target := layout.target(rule, index)
+		if target.Y >= end {
+			break
+		}
+		body.targets = append(body.targets, target)
+		block := m.ruleRowBlock(rule, width, list.numberWidth, layout.expanded == index)
+		body.lines = append(body.lines, block.lines[max(0, start-target.Y):min(target.H, end-target.Y)]...)
 		for _, link := range block.targets {
-			link.Y += row
+			link.Y += target.Y
 			if clipped, ok := clipRegion(link, 0, start, width, end-start); ok {
 				links = append(links, clipped)
 			}
 		}
 	}
-	// Links take precedence over the containing row for mouse hits. A
-	// geometry-only pass (height zero) still has one keyboard target per row.
-	return ruleBodyWindow{dashboardBlock: dashboardBlock{lines: lines, targets: append(links, hits...)}, start: start, total: total, prefix: prefix}
+	// Links take precedence over the containing row for mouse hits.
+	body.targets = append(links, body.targets...)
+	return body
 }
 
 func (m *Model) rulesEmptyState() emptyStateOptions {
@@ -204,7 +242,7 @@ func (m *Model) rulesEmptyState() emptyStateOptions {
 		return emptyStateOptions{Title: title, Error: true,
 			ActionID: "rules.retry", ActionLabel: m.tr("rules.retry_label")}
 	}
-	if _, err := m.ruleMatcher(); err != nil {
+	if m.rulesList().matchErr != nil {
 		return emptyStateOptions{Title: m.tr("rules.invalid_regex"), Detail: m.tr("empty.rules.invalid_search"), Error: true,
 			ActionID: "rules.empty.clear", ActionLabel: m.tr("empty.rules.clear_search")}
 	}
@@ -215,25 +253,18 @@ func (m *Model) rulesEmptyState() emptyStateOptions {
 	return emptyStateOptions{Title: m.tr("rules.empty")}
 }
 
-func (m *Model) ruleNumberWidth() int {
-	width := 1
-	for _, r := range m.rules.snapshot.Rules {
-		width = max(width, len(strconv.Itoa(r.Index+1)))
-	}
-	return width
-}
-
 // Compare the focused row's rendered text so expansion follows actual clipping,
 // including narrow metadata, full-width characters, and optional entry counts.
 func (m *Model) ruleCanExpand(r mihomo.Rule) bool {
-	width, numberWidth := dashboardBodyWidth(m.dashboardOptions()), m.ruleNumberWidth()
+	width, numberWidth := dashboardBodyWidth(m.dashboardOptions()), m.rulesList().numberWidth
 	collapsed := ansi.Strip(strings.Join(m.ruleRowBlock(r, width, numberWidth, false).lines, "\n"))
 	expanded := ansi.Strip(strings.Join(m.ruleRowBlock(r, width, numberWidth, true).lines, "\n"))
 	return collapsed != expanded
 }
 
 func (m *Model) ruleRows(r mihomo.Rule, width, numberWidth int) []string {
-	return m.ruleRowBlock(r, width, numberWidth, m.rules.expanded == ruleIdentity(r)).lines
+	expanded := m.rules.expanded != "" && m.rules.expanded == ruleIdentity(r)
+	return m.ruleRowBlock(r, width, numberWidth, expanded).lines
 }
 
 // Bubbles textinput owns editing and horizontal scrolling. The dashboard owns

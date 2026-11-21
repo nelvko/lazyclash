@@ -293,11 +293,9 @@ func (m *Model) enterContent() {
 				chosen = "connection." + m.connections.selected
 			}
 		case "rules":
-			for _, rule := range m.filteredRules() {
-				if ruleIdentity(rule) == m.rules.selected {
-					chosen = "rule." + strconv.Itoa(rule.Index)
-					break
-				}
+			list := m.rulesList()
+			if index, ok := list.identityPosition(m.rules.selected); ok {
+				chosen = ruleID(list.rows[index])
 			}
 		case "proxies":
 			for _, target := range targets {
@@ -398,11 +396,9 @@ func (m *Model) contentNavigationKey(k tea.KeyPressMsg) bool {
 						m.connections.selected = strings.TrimPrefix(target.ID, "connection.")
 					}
 					if strings.HasPrefix(target.ID, "rule.") {
-						for _, rule := range m.filteredRules() {
-							if target.ID == "rule."+strconv.Itoa(rule.Index) {
-								m.rules.selected = ruleIdentity(rule)
-								break
-							}
+						list := m.rulesList()
+						if index, found := list.positions[target.ID]; found {
+							m.focusRule(list, index)
 						}
 					}
 					m.revealBodyTarget(target)
@@ -532,9 +528,12 @@ func (m *Model) repairPageFocus() {
 	state := m.pageViews[m.page]
 	if !m.busy && m.focus != "content" && m.focus != "menu" && !strings.HasPrefix(m.focus, "nav.") && !strings.HasPrefix(m.focus, "notification.") {
 		valid := m.pageHeader().enabled(m.focus)
-		if m.page == "proxies" && listTarget(m.focus) {
+		switch {
+		case m.page == "proxies" && listTarget(m.focus):
 			valid = m.proxyListFocusValid()
-		} else {
+		case m.page == "rules":
+			valid = valid || m.rulesFocusValid()
+		default:
 			for _, target := range append(m.contentTargets(), m.fixedContentTargets()...) {
 				if target.ID == m.focus {
 					valid = true

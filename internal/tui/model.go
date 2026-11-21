@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -1341,11 +1340,9 @@ func (m *Model) cycleFocus(delta int) {
 		}
 	}
 	if strings.HasPrefix(m.focus, "rule.") {
-		for _, r := range m.filteredRules() {
-			if m.focus == "rule."+strconv.Itoa(r.Index) {
-				m.rules.selected = ruleIdentity(r)
-				break
-			}
+		list := m.rulesList()
+		if index, found := list.positions[m.focus]; found {
+			m.focusRule(list, index)
 		}
 	}
 }
