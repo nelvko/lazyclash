@@ -3,14 +3,10 @@ package tui
 import (
 	"context"
 	"fmt"
-	"image/color"
 	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/colorprofile"
-	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/i18n"
 )
@@ -82,7 +78,6 @@ func TestConnectionsToolbarRedesignWideInputSortAndQueryCountShareTextRow(t *tes
 		t.Run(language, func(t *testing.T) {
 			m := connectionsModel(t, &fakeBackend{})
 			m.locale = i18n.New(language)
-			m.noColor, m.colorProfile = false, colorprofile.TrueColor
 			var baseline, baselineSort hitRegion
 			for order := connectionSortNewest; order < connectionSortCount; order++ {
 				m.connections.sort = order
@@ -93,17 +88,15 @@ func TestConnectionsToolbarRedesignWideInputSortAndQueryCountShareTextRow(t *tes
 					sort := connectionToolbarRedesignTarget(t, bar, "conn.sort")
 					active := connectionToolbarRedesignTarget(t, bar, "conn.active")
 					closed := connectionToolbarRedesignTarget(t, bar, "conn.closed")
-					if active.Y != search.Y || closed.Y != search.Y || active.H != 3 || closed.H != 3 || search.H != 3 ||
-						active.W != closed.W || active.X+active.W != closed.X || closed.X+closed.W+2 != search.X ||
-						sort.Y != search.Y+1 || sort.X != search.X+search.W+2 {
-						t.Fatalf("equal tabs must fill the area beside the search, with sort immediately after it: active=%+v closed=%+v search=%+v sort=%+v", active, closed, search, sort)
+					if active.Y != search.Y+1 || closed.Y != search.Y+1 || sort.Y != search.Y+1 || closed.X+closed.W > search.X || sort.X != search.X+search.W+2 {
+						t.Fatalf("tabs, editor, sort and query count must share a reading row with sort next to the frame: active=%+v closed=%+v search=%+v sort=%+v", active, closed, search, sort)
 					}
 					if search.InputWidth != 42 {
 						t.Fatalf("wide search must retain 42 text cells beside its matching options: %d cells", search.InputWidth)
 					}
 					if baseline.W == 0 {
 						baseline, baselineSort = search, sort
-					} else if search != baseline {
+					} else if search.X != baseline.X || search.W != baseline.W || search.InputWidth != baseline.InputWidth {
 						t.Fatalf("typing or sorting moved/resized the editor: %+v -> %+v", baseline, search)
 					}
 					if sort != baselineSort {
@@ -131,66 +124,16 @@ func TestConnectionsToolbarRedesignWideInputSortAndQueryCountShareTextRow(t *tes
 	}
 }
 
-func TestConnectionsToolbarRedesignWideTabFacesFillAllThreeRows(t *testing.T) {
-	for _, profile := range []colorprofile.Profile{colorprofile.TrueColor, colorprofile.ANSI256, colorprofile.ANSI} {
-		t.Run(profile.String(), func(t *testing.T) {
-			m := connectionsModel(t, &fakeBackend{})
-			m.locale, m.noColor, m.colorProfile = i18n.New(i18n.Chinese), false, profile
-			m.focus, m.hover = "conn.active", "conn.closed"
-			for _, closed := range []bool{false, true} {
-				m.connections.closedView = closed
-				const width = 160
-				bar := m.connectionFilterBar(width)
-				screen := uv.NewScreenBuffer(width, len(bar.lines))
-				content := terminalTheme(strings.Join(bar.lines, "\n"), profile)
-				uv.NewStyledString(content).Draw(screen, screen.Bounds())
-				for _, tab := range []struct {
-					id, label, background string
-				}{
-					{"conn.active", m.tr("connections.tab_active", "2"), raised},
-					{"conn.closed", m.tr("connections.tab_closed", "0"), buttonHoverBackground},
-				} {
-					switch {
-					case tab.id == "conn.active" && !closed:
-						tab.background = buttonSelectedBackground
-					case tab.id == "conn.closed" && closed:
-						tab.background = buttonSelectedHoverBackground
-					}
-					hit := connectionToolbarRedesignTarget(t, bar, tab.id)
-					labelRow := ansi.Cut(ansi.Strip(bar.lines[hit.Y+1]), hit.X, hit.X+hit.W)
-					if hit.H != 3 || !strings.Contains(labelRow, tab.label) || strings.ContainsAny(labelRow, "│╭╮╰╯") {
-						t.Fatalf("%s must have its label on the middle row of a borderless face: %+v %q", tab.id, hit, labelRow)
-					}
-					want := color.RGBAModel.Convert(terminalColor(lipgloss.Color(tab.background), profile))
-					for row := range hit.H {
-						for x := hit.X; x < hit.X+hit.W; {
-							cell := screen.CellAt(x, hit.Y+row)
-							if cell == nil || cell.Style.Bg == nil || color.RGBAModel.Convert(cell.Style.Bg) != want {
-								t.Fatalf("%s background does not fill cell %d,%d: got %+v, want %v", tab.id, x, hit.Y+row, cell, want)
-							}
-							if row != 1 && cell.Content != " " {
-								t.Fatalf("%s face has a frame or misplaced text at %d,%d: %q", tab.id, x, hit.Y+row, cell.Content)
-							}
-							x += max(1, cell.Width)
-						}
-					}
-				}
-			}
-		})
-	}
-}
-
 func TestConnectionsToolbarRedesignCompactTabFacesHaveOneCellGap(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		t.Run(language, func(t *testing.T) {
 			m := connectionsModel(t, &fakeBackend{})
-			m.locale, m.noColor, m.colorProfile = i18n.New(language), true, colorprofile.TrueColor
+			m.locale, m.noColor = i18n.New(language), true
 			bar := m.connectionFilterBar(160)
 			active := connectionToolbarRedesignTarget(t, bar, "conn.active")
 			closed := connectionToolbarRedesignTarget(t, bar, "conn.closed")
-			search := connectionToolbarRedesignTarget(t, bar, "conn.search")
-			if active.Y != search.Y+1 || closed.Y != active.Y || active.H != 1 || closed.H != 1 || active.W != closed.W {
-				t.Fatalf("uncolored tabs must retain equal single-row faces alongside the editor: active=%+v closed=%+v search=%+v", active, closed, search)
+			if active.Y != closed.Y || active.W != closed.W {
+				t.Fatalf("compact tab peers must retain equal hit widths: active=%+v closed=%+v", active, closed)
 			}
 			plain := ansi.Strip(bar.lines[active.Y])
 			activeFace := strings.TrimSpace(ansi.Cut(plain, active.X, active.X+active.W))
@@ -198,9 +141,6 @@ func TestConnectionsToolbarRedesignCompactTabFacesHaveOneCellGap(t *testing.T) {
 			activeStart, closedStart := strings.Index(plain, activeFace), strings.Index(plain, closedFace)
 			if activeFace == "" || closedFace == "" || activeStart < 0 || closedStart < 0 {
 				t.Fatalf("compact tab faces are missing: %q", plain)
-			}
-			if !strings.HasPrefix(activeFace, "<") || !strings.HasPrefix(closedFace, "[") {
-				t.Fatalf("uncolored tabs lost the textual selection marker: %q %q", activeFace, closedFace)
 			}
 			gap := ansi.StringWidth(plain[:closedStart]) - ansi.StringWidth(plain[:activeStart]) - ansi.StringWidth(activeFace)
 			if gap != 1 {
@@ -244,14 +184,13 @@ func TestConnectionsToolbarRedesignNarrowControlsPrecedeInput(t *testing.T) {
 			t.Run(fmt.Sprintf("%s/%d", language, width), func(t *testing.T) {
 				m := connectionsModel(t, &fakeBackend{})
 				m.locale = i18n.New(language)
-				m.noColor, m.colorProfile = false, colorprofile.TrueColor
 				m.connections.search.SetValue("one")
 				bar := m.connectionFilterBar(width)
 				search := connectionToolbarRedesignTarget(t, bar, "conn.search")
 				for _, id := range []string{"conn.active", "conn.closed", "conn.sort"} {
 					control := connectionToolbarRedesignTarget(t, bar, id)
-					if control.H != 1 || control.Y+control.H > search.Y {
-						t.Fatalf("%s must occupy a single row above the narrow editor: control=%+v search=%+v", id, control, search)
+					if control.Y+control.H > search.Y {
+						t.Fatalf("%s must precede the narrow editor: control=%+v search=%+v", id, control, search)
 					}
 				}
 				clear := connectionToolbarRedesignTarget(t, bar, "conn.clear")

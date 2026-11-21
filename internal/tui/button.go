@@ -28,8 +28,7 @@ type buttonOptions struct {
 	Compact, AlignLeft   bool
 	// Width is the minimum label width in terminal cells, excluding padding
 	// and the focus gutter. Selectable peers pass their longest label width.
-	Width  int
-	Height int
+	Width int
 }
 
 // renderButton owns appearance only; callers own activation guards and hit
@@ -111,16 +110,7 @@ func renderButton(label string, o buttonOptions) string {
 	if o.Busy {
 		markerColor = muted
 	}
-	markerBackground := o.Surface
-	if o.Height > 1 {
-		markerBackground = background
-	}
-	labelRow := themed(marker, markerColor, markerBackground, o.Dim) + themed(face, foreground, background, o.Dim)
-	if o.Height <= 1 {
-		return labelRow
-	}
-	fill := themed(strings.Repeat(" ", ansi.StringWidth(labelRow)), foreground, background, o.Dim)
-	return strings.Repeat(fill+"\n", (o.Height-1)/2) + labelRow + strings.Repeat("\n"+fill, o.Height/2)
+	return themed(marker, markerColor, o.Surface, o.Dim) + themed(face, foreground, background, o.Dim)
 }
 
 func (m Model) buttonPlain() bool {

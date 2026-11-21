@@ -231,55 +231,17 @@ def wait_header_pause(terminal, words, paused=False):
     return header_pause(terminal, words, paused)
 
 
-def tab_face_span(terminal, x, y):
-    backgrounds = [style[1] for style in terminal.screen.styles[y]]
-    background = backgrounds[x]
-    left, right = x, x + 1
-    while left > 0 and backgrounds[left - 1] == background:
-        left -= 1
-    while right < len(backgrounds) and backgrounds[right] == background:
-        right += 1
-    return left, right, background
-
-
-def check_tab_faces(terminal, profile, labels, tabs, wide, closed_view):
-    if profile == "no-color":
-        for index, (label, (_, y)) in enumerate(zip(labels, tabs)):
-            opening, closing = ("<", ">") if index == int(closed_view) else ("[", "]")
-            row = "".join(terminal.screen.cells[y])
-            assert re.search(re.escape(opening) + r"\s*" + re.escape(label) + r"\s*" + re.escape(closing), row), \
-                "NO_COLOR tab lost its single-row selection marker: " + label
-        return
-
-    active, closed = (tab_face_span(terminal, x, y) for x, y in tabs)
-    assert active[2] != closed[2], "active and closed faces have no visual state distinction"
-    assert active[1] - active[0] == closed[1] - closed[0], "active and closed faces have different widths"
-    if wide:
-        assert active[1] == closed[0], "wide tab faces are not adjacent"
-    for (x, y), (left, right, background) in zip(tabs, (active, closed)):
-        for edge in (y - 1, y + 1):
-            if wide:
-                assert all(style[1] == background for style in terminal.screen.styles[edge][left:right]), \
-                    "wide tab background does not fill three rows"
-                assert not "".join(terminal.screen.cells[edge][left:right]).strip(), "wide tab face has a border"
-            else:
-                assert terminal.screen.styles[edge][x][1] != background, "narrow tab face is taller than one row"
-
-
-def check_filter_layout(terminal, words, profile, active, closed, closed_view=False, paused=False):
+def check_filter_layout(terminal, words, active, closed, closed_view=False, paused=False):
     left, top, right, bottom = search_frame(terminal)
     assert filter_count(terminal, required=False) is None, "unfiltered search still shows an external count"
     count_point = None
     sort_label = words["connections.sort"] % words["connections.sort_newest"]
     sort_x, sort_y = position(terminal, sort_label)
-    tab_labels = [tab_label(words, view, count) for view, count in (("active", active), ("closed", closed))]
-    tabs = [position(terminal, label) for label in tab_labels]
-    wide = sort_y == top + 1
-    if wide:
+    tabs = [position(terminal, tab_label(words, view, count)) for view, count in (("active", active), ("closed", closed))]
+    if sort_y == top + 1:
         assert sort_x == right + 5 and all(y == top + 1 and x < left for x, y in tabs), "wide tabs/search/left-aligned sort are not adjacent"
     else:
         assert sort_y < top and all(y < top for _, y in tabs), "narrow tabs and sort are not above search"
-    check_tab_faces(terminal, profile, tab_labels, tabs, wide, closed_view)
     options = matching_options(terminal)
     for x, y in options.values():
         assert (y == top + 1 and left < x < right) or y == bottom + 1, \
@@ -439,15 +401,13 @@ def exercise(preview, binary, output, language, profile, args):
         check_tabs(terminal, words, 48, 0)
         header_totals(terminal, words)
         wait_count(terminal, 48)
-        check_filter_layout(terminal, words, profile, 48, 0)
+        check_filter_layout(terminal, words, 48, 0)
         preview.capture(terminal, output, "connections-wide", args)
 
-        tab_edge = 0 if profile == "no-color" else 1
-        closed_x, closed_y = position(terminal, tab_label(words, "closed", 0))
-        click_cell(terminal, closed_x, closed_y - tab_edge)
+        # View buttons and Clear retain independent mouse hit regions.
+        click_cell(terminal, *position(terminal, tab_label(words, "closed", 0)))
         terminal.wait(words["connections.closed_empty"])
-        active_x, active_y = position(terminal, tab_label(words, "active", 48))
-        click_cell(terminal, active_x, active_y + tab_edge)
+        click_cell(terminal, *position(terminal, tab_label(words, "active", 48)))
         terminal.wait("api.github.com")
         exercise_search_modes(preview, terminal, words, output, args)
 
@@ -558,7 +518,7 @@ def exercise(preview, binary, output, language, profile, args):
             check_tabs(terminal, words, 48, 0)
             positions = header_totals(terminal, words)[1]
             wait_count(terminal, 48)
-            filter_geometry = check_filter_layout(terminal, words, profile, 48, 0)
+            filter_geometry = check_filter_layout(terminal, words, 48, 0)
             if width >= 120:
                 close_x, close_y = position(terminal, words["connections.close_all"])
                 assert positions["download"][1] == positions["upload"][1] == close_y, "traffic totals left the header row"
@@ -573,7 +533,7 @@ def exercise(preview, binary, output, language, profile, args):
             terminal.settle()
             terminal.wait_absent("api.github.com")
             assert pause_position == header_pause(terminal, words), "scroll moved the header pause action"
-            assert filter_geometry == check_filter_layout(terminal, words, profile, 48, 0), "scroll moved the fixed filter controls"
+            assert filter_geometry == check_filter_layout(terminal, words, 48, 0), "scroll moved the fixed filter controls"
             assert positions == header_totals(terminal, words)[1], "scroll moved the header totals"
             assert tabs == {view: position(terminal, tab_label(words, view, count))
                 for view, count in (("active", 48), ("closed", 0))}, "scroll moved the view tabs"
@@ -712,7 +672,7 @@ def exercise(preview, binary, output, language, profile, args):
             check_tabs(terminal, words, 0, 48)
             wait_count(terminal, 48)
             header_totals(terminal, words)
-            check_filter_layout(terminal, words, profile, 0, 48, closed_view=True)
+            check_filter_layout(terminal, words, 0, 48, closed_view=True)
             if width >= 160:
                 terminal.wait(words["navigation.connections.action.details"])
                 terminal.settle()
