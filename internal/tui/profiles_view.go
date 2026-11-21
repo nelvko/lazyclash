@@ -14,10 +14,12 @@ import (
 // Bubbles supplies the URL editor; the responsive card grid is a small custom
 // view because a vertical list/table would not preserve its spatial navigation.
 func (m *Model) profilesBody(width int) (string, []hitRegion) {
-	width = max(1, width)
-	if !m.snapshotReady {
-		return m.unavailableProfiles(width)
-	}
+	layout := m.layoutProfiles(width)
+	body := m.paintProfiles(layout, 0, layout.total)
+	return strings.Join(body.lines, "\n"), body.targets
+}
+
+func (m *Model) profilesIntro(width, count int) dashboardBlock {
 	var body dashboardBlock
 	compact := m.compactProfileCards()
 	if !compact && m.searchToolbarGap() > 0 {
@@ -27,57 +29,38 @@ func (m *Model) profilesBody(width int) (string, []hitRegion) {
 	if !compact {
 		body.blank()
 	}
-	count := len(m.profiles()) - 1
 	summary := fmt.Sprintf(m.tr("profiles.summary"), count)
 	if m.snapshot.Applied != "" {
 		summary += m.tr("profiles.selected_name", clean(snapshotProfileName(m.snapshot, m.snapshot.Applied, m.locale)))
 	}
 	body.lines = append(body.lines, themed(cellCrop(summary, width), muted, bg, false))
 	body.blank()
-	profiles := m.profiles()
-	columns := 1
-	if width >= 86 {
-		columns = 2
+	return body
+}
+
+func (m *Model) paintProfileRow(layout profileGridLayout, first int) dashboardBlock {
+	var cards []dashboardBlock
+	for index := first; index < min(first+layout.columns, len(layout.names)); index++ {
+		cards = append(cards, m.paintProfileCard(layout.names[index], index, layout.cardWidth, layout.compact))
 	}
-	cardWidth := (width - 2*(columns-1)) / columns
-	for first := 0; first < len(profiles); first += columns {
-		cards := []dashboardBlock{}
-		for column := 0; column < columns && first+column < len(profiles); column++ {
-			cards = append(cards, m.profileCard(first+column, cardWidth))
-		}
-		row := dashboardBlock{}
-		for y := range len(cards[0].lines) {
-			line := ""
-			for column, card := range cards {
-				if column > 0 {
-					line += themed("  ", text, bg, false)
-				}
-				line += card.lines[y]
-			}
-			row.lines = append(row.lines, cellPad(line, width))
-		}
+	var row dashboardBlock
+	for y := range cards[0].lines {
+		line := ""
 		for column, card := range cards {
-			for _, hit := range card.targets {
-				hit.X += column * (cardWidth + 2)
-				row.targets = append(row.targets, hit)
+			if column > 0 {
+				line += themed("  ", text, bg, false)
 			}
+			line += card.lines[y]
 		}
-		body.append(row)
-		body.blank()
-		for _, name := range profiles[first:min(first+columns, len(profiles))] {
-			if m.profilesUI.detail == name {
-				body.append(m.profileDetailsPane(name, width))
-				body.blank()
-			}
+		row.lines = append(row.lines, cellPad(line, layout.width))
+	}
+	for column, card := range cards {
+		for _, hit := range card.targets {
+			hit.X += column * (layout.cardWidth + 2)
+			row.targets = append(row.targets, hit)
 		}
 	}
-	if count == 0 {
-		height := max(1, dashboardGeometry(m.dashboardOptions()).height-len(body.lines))
-		body.append(m.emptyState(width, height, emptyStateOptions{
-			Title: m.tr("empty.profiles.none"), Detail: m.tr("profiles.empty_hint"),
-		}))
-	}
-	return strings.Join(body.lines, "\n"), body.targets
+	return row
 }
 
 func (m *Model) profilesToolbar(width int) dashboardBlock {
@@ -203,7 +186,10 @@ func snapshotProfileName(snapshot app.Snapshot, id string, locales ...i18n.Local
 }
 
 func (m *Model) profileCard(index, width int) dashboardBlock {
-	name := m.profiles()[index]
+	return m.paintProfileCard(m.profiles()[index], index, width, m.compactProfileCards())
+}
+
+func (m *Model) paintProfileCard(name string, index, width int, compact bool) dashboardBlock {
 	info := m.profileInfo(name)
 	id := fmt.Sprintf("profile.%d", index)
 	refreshID := fmt.Sprintf("profiles.refresh.%d", index)
@@ -222,18 +208,14 @@ func (m *Model) profileCard(index, width int) dashboardBlock {
 	if selected {
 		titleColor = accent
 	}
-	var controls []profileButton
-	if info.Refreshable && width >= 16 {
-		controls = append(controls, profileButton{id: refreshID, label: "↻"})
-	}
-	if width >= 12 {
-		controls = append(controls, profileButton{id: menuID, label: "⋯"})
-	}
+	controls := profileCardControls(refreshID, menuID, width, info.Refreshable)
 	controlViews := make([]string, len(controls))
 	controlsWidth := 0
+	widths := make(map[string]int, len(controls))
 	for i, control := range controls {
 		controlViews[i] = m.profileButtonView(control, surface)
-		controlsWidth += ansi.StringWidth(controlViews[i])
+		widths[control.label] = ansi.StringWidth(controlViews[i])
+		controlsWidth += widths[control.label]
 	}
 	titleWidth := max(1, inner-controlsWidth)
 	title := themed(lipgloss.NewStyle().Bold(true).Render(cellCrop(prefix+clean(info.Name), max(1, titleWidth))), titleColor, surface, false)
@@ -279,23 +261,42 @@ func (m *Model) profileCard(index, width int) dashboardBlock {
 		lines = append(lines, themed(value, muted, surface, false))
 	}
 	lines = append(lines, themed(cellCrop(status, inner), statusColor, surface, false))
-	compact := m.compactProfileCards()
-	block := dashboardBlock{lines: profileCardSurface(lines, width, surface, selected, compact)}
-	// Card controls win hit testing over the containing card.
-	x := 2 + titleWidth
-	titleRow := 1
-	if compact {
-		titleRow = 0
+	picture := profileCardSurface(lines, width, surface, selected, compact)
+	parent := hitRegion{ID: id, W: width, H: len(picture)}
+	return dashboardBlock{lines: picture, targets: m.profileCardTargets(parent, controls, widths, compact)}
+}
+
+func profileCardControls(refreshID, menuID string, width int, refreshable bool) []profileButton {
+	var controls []profileButton
+	if refreshable && width >= 16 {
+		controls = append(controls, profileButton{id: refreshID, label: "↻"})
 	}
-	for i, control := range controls {
-		w := ansi.StringWidth(controlViews[i])
-		if !m.busy && !m.quitting {
-			block.targets = append(block.targets, hitRegion{ID: control.id, X: x, Y: titleRow, W: w, H: 1})
+	if width >= 12 {
+		controls = append(controls, profileButton{id: menuID, label: "⋯"})
+	}
+	return controls
+}
+
+func (m *Model) profileCardTargets(card hitRegion, controls []profileButton, widths map[string]int, compact bool) []hitRegion {
+	var hits []hitRegion
+	if len(controls) > 0 && !m.busy && !m.quitting {
+		totalWidth := 0
+		for _, control := range controls {
+			totalWidth += widths[control.label]
 		}
-		x += w
+		x := card.X + 2 + max(1, max(1, card.W-4)-totalWidth)
+		y := card.Y
+		if !compact {
+			y++
+		}
+		for _, control := range controls {
+			w := widths[control.label]
+			hits = append(hits, hitRegion{ID: control.id, X: x, Y: y, W: w, H: 1})
+			x += w
+		}
 	}
-	block.targets = append(block.targets, hitRegion{ID: id, W: width, H: len(block.lines)})
-	return block
+	// Card controls win hit testing over the containing card.
+	return append(hits, card)
 }
 
 func (m *Model) compactProfileCards() bool {
@@ -358,7 +359,6 @@ func (m *Model) profileOrigin(info app.ProfileInfo) string {
 }
 
 func (m *Model) profileDetailsPane(name string, width int) dashboardBlock {
-	info := m.profileInfo(name)
 	index := 0
 	for i, profile := range m.profiles() {
 		if profile == name {
@@ -366,6 +366,11 @@ func (m *Model) profileDetailsPane(name string, width int) dashboardBlock {
 			break
 		}
 	}
+	return m.profileDetailsPaneAt(name, index, width)
+}
+
+func (m *Model) profileDetailsPaneAt(name string, index, width int) dashboardBlock {
+	info := m.profileInfo(name)
 	body := dashboardBlock{lines: []string{themed(cellCrop(m.tr("profiles.details_title", clean(info.Name)), width), focus, bg, false)}}
 	kind := m.tr("profiles.kind")
 	if info.HasOverrides {

@@ -436,6 +436,24 @@ func (b *dashboardBlock) append(block dashboardBlock) {
 		b.cards = append(b.cards, r)
 	}
 }
+
+// copyVisibleBlock places the intersection with the viewport into its line
+// buffer, keeping hit rectangles in logical body coordinates for clipping.
+func (b *dashboardBlock) copyVisibleBlock(block dashboardBlock, y, start int) {
+	end := start + len(b.lines)
+	first, last := max(start, y), min(end, y+len(block.lines))
+	if first >= last {
+		return
+	}
+	copy(b.lines[first-start:last-start], block.lines[first-y:last-y])
+	for _, target := range block.targets {
+		target.Y += y
+		if target.Y < end && target.Y+target.H > start {
+			b.targets = append(b.targets, target)
+		}
+	}
+}
+
 func (b *dashboardBlock) blank() { b.lines = append(b.lines, "") }
 
 func overviewRow(o dashboardOptions, width, columns int, render func(int, int) dashboardBlock) dashboardBlock {

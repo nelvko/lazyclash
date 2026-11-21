@@ -63,7 +63,7 @@ func (m *Model) openProfileMenuAt(x, y int) {
 		return
 	}
 	options := m.dashboardOptions()
-	_, options.BodyTargets = m.pageBody(dashboardGeometry(options).width)
+	m.populatePageBody(&options)
 	options.Scroll = m.scroll
 	for _, notification := range notificationLayout(options) {
 		toast := notification.Bounds

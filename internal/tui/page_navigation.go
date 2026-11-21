@@ -134,6 +134,8 @@ func (m *Model) contentTargets() []hitRegion {
 		return targets
 	case "rules":
 		return m.rulesTargets(width)
+	case "profiles":
+		return m.profilesTargets(width)
 	case "proxies":
 		return m.proxyTargets(width, false)
 	default:

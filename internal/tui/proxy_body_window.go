@@ -65,28 +65,15 @@ func (l proxyBodyLayout) visibleRows(part proxyBodyPart, start, end int) (int, i
 
 func (m *Model) paintProxiesBody(layout proxyBodyLayout, start, end int) dashboardBlock {
 	out := dashboardBlock{lines: make([]string, end-start)}
-	add := func(block dashboardBlock, y int) {
-		first, last := max(start, y), min(end, y+len(block.lines))
-		if first >= last {
-			return
-		}
-		copy(out.lines[first-start:last-start], block.lines[first-y:last-y])
-		for _, target := range block.targets {
-			target.Y += y
-			if target.Y < end && target.Y+target.H > start {
-				out.targets = append(out.targets, target)
-			}
-		}
-	}
 	for _, part := range layout.parts {
 		if len(part.members) == 0 {
-			add(part.block, part.y)
+			out.copyVisibleBlock(part.block, part.y, start)
 			continue
 		}
 		first, last := layout.visibleRows(part, start, end)
 		if first < last {
 			block := m.proxyGroupRows(part.group, layout.width, layout.grid, part.members, first, last, layout.compact)
-			add(block, part.y+first*layout.stride())
+			out.copyVisibleBlock(block, part.y+first*layout.stride(), start)
 		}
 	}
 	return out

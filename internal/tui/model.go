@@ -1521,6 +1521,14 @@ func (m *Model) populatePageBody(o *dashboardOptions) {
 		o.BodyStart, o.BodyTotal = body.start, body.total
 		return
 	}
+	if m.page == "profiles" {
+		layout := m.layoutProfiles(g.width)
+		start := max(0, min(m.scroll, layout.total-g.height))
+		body := m.paintProfiles(layout, start, min(layout.total, start+g.height))
+		o.Body, o.BodyTargets = strings.Join(body.lines, "\n"), body.targets
+		o.BodyStart, o.BodyTotal = start, layout.total
+		return
+	}
 	if m.page == "proxies" {
 		if o.BodyTopRows > 0 {
 			o.BodyTop = m.proxiesFixedToolbar(*o)
