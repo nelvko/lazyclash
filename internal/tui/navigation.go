@@ -246,6 +246,9 @@ func (m Model) rulesContextHelp() string {
 		if m.focus != "rule."+strconv.Itoa(r.Index) {
 			continue
 		}
+		if _, linked := m.ruleProxyGroup(r.Proxy); linked {
+			base = m.tr("navigation.rules.open_proxy") + " · " + base
+		}
 		if m.rules.expanded == ruleIdentity(r) {
 			return m.tr("navigation.rules.collapse") + " · " + base
 		}

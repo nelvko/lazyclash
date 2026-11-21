@@ -42,8 +42,11 @@ func (m *Model) updateRulesMouse(event tea.MouseMsg) bool {
 func (m Model) rulesPointerTarget(x, y int) string {
 	g := dashboardGeometry(m.dashboardOptions())
 	if x >= g.x && x < g.x+g.width && y >= g.y && y < g.y+g.height {
-		for _, target := range m.rulesTargets(g.width) {
-			if x-g.x >= target.X && x-g.x < target.X+target.W && y-g.y+m.scroll >= target.Y && y-g.y+m.scroll < target.Y+target.H {
+		x, y = x-g.x, y-g.y+m.scroll
+		// Resolve link cells on the row under the pointer without styling the
+		// rest of the viewport a second time.
+		for _, target := range m.rulesBodyWindow(g.width, y, 1).targets {
+			if x >= target.X && x < target.X+target.W && y >= target.Y && y < target.Y+target.H {
 				return target.ID
 			}
 		}

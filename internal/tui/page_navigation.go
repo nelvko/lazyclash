@@ -323,6 +323,13 @@ func (m *Model) enterContent() {
 	}
 	for _, target := range targets {
 		if target.ID == chosen {
+			if chosen == remembered && strings.HasPrefix(chosen, "rule.") {
+				height := dashboardGeometry(m.dashboardOptions()).height
+				if target.Y < m.scroll+height && target.Y+target.H > m.scroll {
+					// A partly visible expanded rule still marks the saved position.
+					break
+				}
+			}
 			m.revealBodyTarget(target)
 			break
 		}

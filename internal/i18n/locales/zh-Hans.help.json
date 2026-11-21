@@ -1,6 +1,7 @@
 {
   "help.connections.close": "x 审阅关闭当前仍活跃的连接；已关闭记录只读。「关闭全部」确认后关闭全部实时连接，包括筛选和暂停视图之外的连接。",
   "help.rules.search": "Alt+C 区分大小写 · Alt+W 整词匹配 · Alt+R 正则表达式。",
+  "help.rules.proxy": "点击代理组名，或聚焦该规则后按 →，在代理页定位到对应组。按 5 返回规则列表。",
   "help.search.input": "搜索中 Enter / Esc 结束输入并保留筛选；Tab / Shift+Tab 移动到其他控件。",
   "help.settings.keys": "Tab / Shift+Tab 选择设置控件，Enter / Space 执行或打开编辑；Esc / ← / h 返回导航。语言和代理模式需聚焦具体选项后确认。",
   "help.overview.keys": "↑↓ / j/k 浏览卡片；Enter / Space 进入卡片中可用的控件，只读卡片没有进入操作。Tab / Shift+Tab 切换控件，Enter / Space 执行；Esc / ← / h 返回导航。",

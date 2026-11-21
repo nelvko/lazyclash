@@ -1,6 +1,7 @@
 {
   "help.connections.close": "x reviews closing the selected live connection; closed records are read only. Close all affects every live connection, including those outside the filter or paused view.",
   "help.rules.search": "Alt+C toggles case sensitivity · Alt+W whole-word matching · Alt+R regular expressions.",
+  "help.rules.proxy": "Click a proxy group name or press → on its rule to open the group in Proxies. Press 5 to return to the rules list.",
   "help.search.input": "While searching, Enter / Esc leaves the input and keeps the filter; Tab / Shift+Tab moves to another control.",
   "help.settings.keys": "Tab / Shift+Tab visits setting controls; Enter / Space applies an option or opens its editor. Esc / ← / h returns to navigation. Focus a language or routing-mode option before confirming it.",
   "help.overview.keys": "↑↓ / j/k browses cards; Enter / Space focuses an available control inside the card. Read-only cards have no enter action. Tab / Shift+Tab visits controls; Enter / Space activates them. Esc / ← / h returns to navigation.",

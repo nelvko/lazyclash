@@ -85,12 +85,23 @@ func newRulesPTYBackend(count int) *rulesPTYBackend {
 		add("DomainSuffix", fmt.Sprintf("rule-%02d.example.invalid", i), "默认代理", -1)
 	}
 	add("Match", "", "DIRECT", -1)
+	proxies := map[string]mihomo.Proxy{"DIRECT": {Name: "DIRECT", Type: "Direct"}}
+	for name, node := range map[string]string{
+		"GitHub":       "GH-PTY",
+		"jump desktop": "JD-PTY", // A differently cased rule target must stay plain text.
+		"默认代理":         "Rule-PTY",
+	} {
+		proxies[name] = mihomo.Proxy{Name: name, Type: "Selector", Now: node, All: []string{"DIRECT", node}}
+		proxies[node] = mihomo.Proxy{Name: node, Type: "Shadowsocks"}
+	}
 	return &rulesPTYBackend{
 		fakeBackend: &fakeBackend{snapshot: app.Snapshot{
 			Installed: true, ConfigReady: true, HasRun: true, Version: "v1.19.33", RunningVersion: "v1.19.33",
 			Applied: "rules-pty", AppliedName: "Rules preview", Generation: "rules-pty-generation",
 			Service:      service.Status{Active: true, State: "active", PID: 4242},
 			Mode:         app.ModeStatus{Desired: "rule", Actual: "rule", Running: true},
+			Groups:       mihomo.ProxyGroups(proxies),
+			Proxies:      proxies,
 			Capabilities: app.Capabilities{Scope: "user", Runtime: app.Capability{Supported: true}},
 		}},
 		entries: entries,

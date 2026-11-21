@@ -51,6 +51,11 @@ def click_cell(terminal, x, y):
     terminal.settle()
 
 
+def move_cell(terminal, x, y):
+    terminal.key(("\x1b[<35;%d;%dM" % (x + 1, y + 1)).encode())
+    terminal.settle()
+
+
 def paste(terminal, value):
     terminal.key(b"\x1b[200~" + value.encode() + b"\x1b[201~")
 
@@ -191,6 +196,17 @@ def exercise(preview, binary, output, language, profile, args):
         assert "GITHUB" in terminal.screen.text(), "return discarded the search query"
         assert words["navigation.rules.expand"] in terminal.screen.text().splitlines()[-1], "collapsed rule-set did not restore its full-content hint"
         preview.capture(terminal, output, "filtered-return", args)
+        assert words["navigation.rules.open_proxy"] in terminal.screen.text().splitlines()[-1], "focused group link has no keyboard hint"
+        terminal.key(b"\x1b[C")
+        terminal.wait_selected_proxy("GH-PTY")
+        terminal.wait("GitHub")
+        terminal.wait_absent("github_domain")
+        preview.capture(terminal, output, "group-opened-with-right", args)
+        terminal.key(b"5")
+        terminal.wait("github_domain")
+        terminal.settle()
+        rule_count(terminal, "1 / 60")
+        assert any("›" in row and "github_domain" in row for row in terminal.screen.text().splitlines()), "keyboard return lost the filtered rule focus"
 
         # Case and word options are independent and clear only removes text.
         search(terminal, "CaseSensitive")
@@ -272,6 +288,7 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.key(b"\r")
         terminal.wait("example.invalid")
         terminal.wait(words["rules.disabled_suffix"])
+        terminal.settle()
         assert "4 / 9" not in terminal.screen.text(), "expanded rule retained hit diagnostics"
         assert "Aa" in terminal.screen.text(), "expanded rule replaced the list toolbar"
         assert words["navigation.rules.collapse"] in terminal.screen.text().splitlines()[-1], "expanded long rule did not advertise collapse"
@@ -283,9 +300,58 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.key(b"g")
         terminal.wait("private_ip")
         terminal.settle()
+
+        # Hover and click a group name on a filtered, scrolled rule. The
+        # arrow still focuses the row when the metadata is below the payload.
+        for width, height, metadata_offset in ((160, 45, 0), (80, 24, 1), (60, 20, 1)):
+            terminal.resize(width, height)
+            move_cell(terminal, 0, 0)
+            search(terminal, "rule-")
+            terminal.key(b"\x1b[F")
+            payload = "rule-39.example.invalid"
+            terminal.wait(payload)
+            terminal.settle()
+            terminal.wait_absent("rule-00.example.invalid")
+            source = position(terminal, payload)
+            meta_y = source[1] + metadata_offset
+            metadata = terminal.screen.cells[meta_y]
+            arrow_x = metadata.index("→")
+            group_x = metadata.index("默", arrow_x + 1)
+            assert re.match(r"默认代理(?:\s|$)", "".join(metadata[group_x:])), "wrong target on the scrolled rule"
+            if profile != "no-color":
+                assert not terminal.screen.styles[meta_y][group_x][3], "group name is underlined at rest"
+                move_cell(terminal, group_x + 1, meta_y)
+                styles = terminal.screen.styles[meta_y]
+                assert styles[group_x][3] and not styles[arrow_x][3], "hover did not underline only the group name"
+                preview.capture(terminal, output, "group-link-hover-%dx%d" % (width, height), args)
+                move_cell(terminal, arrow_x, meta_y)
+                styles = terminal.screen.styles[meta_y]
+                assert not (styles[group_x][3] or styles[arrow_x][3]), "underline remained after moving to the routing arrow"
+            click_cell(terminal, arrow_x, meta_y)
+            assert terminal.screen.cells[source[1]].count("›") == 1, "clicking the arrow did not focus its rule"
+            click_cell(terminal, group_x + 1, meta_y)  # Second terminal cell of the first Chinese character.
+            terminal.wait_selected_proxy("Rule-PTY")
+            terminal.wait("默认代理")
+            terminal.wait_absent(payload)
+            preview.capture(terminal, output, "group-opened-with-click-%dx%d" % (width, height), args)
+            terminal.key(b"5")
+            terminal.wait(payload)
+            terminal.settle()
+            assert position(terminal, payload) == source, "return moved the scrolled rule"
+            assert terminal.screen.cells[source[1]].count("›") == 1, "return lost focus on the linked rule"
+            count_x, count_y = rule_count(terminal, "40 / 60")
+            assert "rule-" in "".join(terminal.screen.cells[count_y][:count_x]), "return lost the search query"
+            preview.capture(terminal, output, "rule-return-after-click-%dx%d" % (width, height), args)
+
+        search(terminal, "direct")
+        click_cell(terminal, *position(terminal, "DIRECT"))
+        terminal.key(b"\x1b[C")
+        terminal.settle()
+        rule_count(terminal, "1 / 60")
+        assert words["navigation.rules.open_proxy"] not in terminal.screen.text().splitlines()[-1], "DIRECT advertised a group link"
         terminal.exit()
         calls = json.loads(report.read_text())
-        assert calls["queries"] == 3, ("expected initial entry, page return and manual reload only", calls)
+        assert calls["queries"] == 7, ("expected initial entry, five page returns and manual reload only", calls)
         assert calls["service_changes"] == calls["modes"] == calls["selections"] == 0, calls
         raw = bytes(terminal.raw)
         assert not preview.OSC_SET.search(raw), "application changed the terminal palette"
@@ -294,7 +360,7 @@ def exercise(preview, binary, output, language, profile, args):
         if profile == "no-color":
             assert not any(value not in (b"", b"0") for value in preview.SGR.findall(raw)), "NO_COLOR emitted styling"
         (output / "pty.raw").write_bytes(raw)
-        print("PASS %s/%s: inline total and filtered counts, event-triggered reads without idle polling, focus-only feedback, inline expansion, search options, fixed toolbar and five resize dimensions; %s" %
+        print("PASS %s/%s: rule counts, event-triggered reads, inline expansion, search, resize, group link hover and return position; %s" %
             (language, profile, json.dumps(calls)), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")

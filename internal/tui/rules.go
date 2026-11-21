@@ -240,6 +240,11 @@ func (m *Model) ruleKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 	switch k.String() {
 	case "/":
 		return true, m.focusRulesSearch()
+	case "right":
+		if strings.HasPrefix(m.focus, "rule.") && !m.busy {
+			m.openRuleProxy(m.focus)
+			return true, nil
+		}
 	case "esc":
 		if m.rules.expanded != "" {
 			m.rules.expanded = ""
@@ -273,9 +278,42 @@ func (m *Model) ruleKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 	}
 	return false, nil
 }
+
+const ruleProxyActionPrefix = "rules.proxy."
+
+func (m Model) ruleProxyGroup(name string) (int, bool) {
+	if name == "" || m.busy || m.quitting || m.proxiesDirect() || !m.proxiesReady() {
+		return 0, false
+	}
+	index, _, found := m.proxyGroup(name)
+	return index, found
+}
+
+func (m *Model) openRuleProxy(ruleID string) {
+	rule, found := m.selectRule(ruleID)
+	if !found {
+		return
+	}
+	index, found := m.ruleProxyGroup(rule.Proxy)
+	if !found {
+		return
+	}
+	m.browsePage("proxies")
+	m.closeProxySearch()
+	if !m.proxyGroupInMode(rule.Proxy) && len(m.proxies.history) == 0 {
+		// Use the same directory exception as a reference within Proxies.
+		m.proxies.history = append(m.proxies.history, m.proxyLocation())
+	}
+	m.locateProxyGroup(index)
+}
+
 func (m *Model) ruleActivate(id string) tea.Cmd {
 	if id == "rules.providers" {
 		return m.openProviders(providerRules)
+	}
+	if index, ok := strings.CutPrefix(id, ruleProxyActionPrefix); ok {
+		m.openRuleProxy("rule." + index)
+		return nil
 	}
 	if id != "rules.search" {
 		m.rules.editing = false

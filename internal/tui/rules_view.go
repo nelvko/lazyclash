@@ -144,21 +144,25 @@ func (m Model) rulesBodyWindow(width, start, height int) ruleBodyWindow {
 	for i := max(0, start); i < min(prefix, end); i++ {
 		lines = append(lines, leading[i])
 	}
+	var links []hitRegion
 	for index, r := range list {
 		target := hits[firstTarget+index]
 		row, h := target.Y, target.H
 		if row >= end || row+h <= start {
 			continue
 		}
-		if row+h > start {
-			for offset, line := range m.ruleRows(r, width, numberWidth) {
-				if row+offset >= start && row+offset < end {
-					lines = append(lines, line)
-				}
+		block := m.ruleRowBlock(r, width, numberWidth)
+		lines = append(lines, block.lines[max(0, start-row):min(h, end-row)]...)
+		for _, link := range block.targets {
+			link.Y += row
+			if clipped, ok := clipRegion(link, 0, start, width, end-start); ok {
+				links = append(links, clipped)
 			}
 		}
 	}
-	return ruleBodyWindow{dashboardBlock: dashboardBlock{lines: lines, targets: hits}, start: start, total: total, prefix: prefix}
+	// Links take precedence over the containing row for mouse hits. A
+	// geometry-only pass (height zero) still has one keyboard target per row.
+	return ruleBodyWindow{dashboardBlock: dashboardBlock{lines: lines, targets: append(links, hits...)}, start: start, total: total, prefix: prefix}
 }
 
 func (m Model) rulesEmptyState() emptyStateOptions {
@@ -230,18 +234,22 @@ func (m Model) ruleCanExpand(r mihomo.Rule) bool {
 	return collapsed != expanded
 }
 
+func (m Model) ruleRows(r mihomo.Rule, width, numberWidth int) []string {
+	return m.ruleRowBlock(r, width, numberWidth).lines
+}
+
 // Bubbles textinput owns editing and horizontal scrolling. The dashboard owns
 // list scrolling; a small row renderer preserves its shared keyboard/mouse model
 // and the core's order without introducing a second list viewport.
-func (m Model) ruleRows(r mihomo.Rule, width, numberWidth int) []string {
-	id := "rule." + strconv.Itoa(r.Index)
-	surface, marker, secondMarker := bg, "  ", "  "
-	markerColor := focus
+func (m Model) ruleRowBlock(r mihomo.Rule, width, numberWidth int) dashboardBlock {
+	index := strconv.Itoa(r.Index)
+	id := "rule." + index
+	surface, marker := bg, "  "
 	if m.focus == id {
 		marker = "› "
 		surface = panel
 	}
-	if m.hover == id {
+	if m.hover == id || m.hover == ruleProxyActionPrefix+index {
 		surface = hoverBackground
 	}
 	if columns, ok := ruleTableColumns(width, numberWidth); ok {
@@ -268,79 +276,46 @@ func (m Model) ruleRows(r mihomo.Rule, width, numberWidth int) []string {
 	}
 	var rows []string
 	for i, line := range payloadLines {
-		gutter := themed(marker, markerColor, surface, false) + themed(number, muted, surface, false)
-		if i > 0 {
-			gutter = themed(secondMarker, markerColor, surface, false) + themed(strings.Repeat(" ", indent-2), muted, surface, false)
+		gutter := strings.Repeat(" ", indent)
+		if i == 0 {
+			gutter = themed(marker, focus, surface, false) + themed(number, muted, surface, false)
 		}
-		rows = append(rows, themed(cellPad(gutter+themed(cellPad(line, available), primaryColor, surface, false), width), text, surface, false))
+		rows = append(rows, themed(cellPad(gutter+themed(line, primaryColor, surface, false), width), text, surface, false))
 	}
 	proxy := clean(r.Proxy)
 	if proxy == "" {
 		proxy = "--"
 	}
-	proxyColor := accent
-	switch strings.ToUpper(r.Proxy) {
-	case "DIRECT":
-		proxyColor = success
-	case "REJECT", "REJECT-DROP":
-		proxyColor = errorColor
-	}
-	// Reserve room for the target before clipping an unusually long rule type.
+	ruleType := clean(r.Type)
 	typeWidth := ruleTypeColumnWidth(proxy, available)
-	meta := themed(cellPad(clean(r.Type), typeWidth), muted, surface, false) + themed(" → ", muted, surface, false) + themed(cellCrop(proxy, max(1, available-typeWidth-3)), proxyColor, surface, false)
-	if r.Extra != nil && r.Extra.Disabled {
-		// Keep the disabled state visible even when the target is long.
-		badge := m.tr("rules.disabled_suffix")
-		meta = cellCrop(meta, max(0, available-ansi.StringWidth(badge))) + themed(badge, warning, surface, false)
-	}
-	metaLines := []string{meta}
 	if expanded {
-		meta = themed(cellPad(clean(r.Type), max(typeWidth, ansi.StringWidth(clean(r.Type)))), muted, surface, false) + themed(" → ", muted, surface, false) + themed(proxy, proxyColor, surface, false)
-		if r.Extra != nil && r.Extra.Disabled {
-			meta += themed(m.tr("rules.disabled_suffix"), warning, surface, false)
-		}
-		metaLines = strings.Split(wrapText(meta, available), "\n")
+		typeWidth = max(typeWidth, ansi.StringWidth(ruleType))
 	}
-	for _, line := range metaLines {
-		second := themed(secondMarker, markerColor, surface, false) + themed(strings.Repeat(" ", indent-2), muted, surface, false) + line
-		rows = append(rows, themed(cellPad(second, width), text, surface, false))
+	meta := m.ruleProxyBlock(r, proxy, themed(cellPad(ruleType, typeWidth)+" → ", muted, surface, false), available, expanded, surface)
+	for i, line := range meta.lines {
+		meta.lines[i] = themed(cellPad(strings.Repeat(" ", indent)+line, width), text, surface, false)
 	}
+	for i := range meta.targets {
+		meta.targets[i].X += indent
+	}
+	block := dashboardBlock{lines: rows}
+	block.append(meta)
 	if expanded {
 		for _, line := range m.ruleEntryCountLines(r, available) {
-			value := themed(secondMarker, markerColor, surface, false) + themed(strings.Repeat(" ", indent-2), muted, surface, false) + themed(line, muted, surface, false)
-			rows = append(rows, themed(cellPad(value, width), text, surface, false))
+			block.lines = append(block.lines, themed(cellPad(strings.Repeat(" ", indent)+line, width), muted, surface, false))
 		}
 	}
-	return rows
+	return block
 }
 
 func (m Model) ruleHeight(r mihomo.Rule, width, numberWidth int) int {
+	if m.rules.expanded != "" && m.rules.expanded == ruleIdentity(r) {
+		return len(m.ruleRows(r, width, numberWidth))
+	}
 	if _, table := ruleTableColumns(width, numberWidth); table {
-		if m.rules.expanded != "" && m.rules.expanded == ruleIdentity(r) {
-			return len(m.ruleRows(r, width, numberWidth))
-		}
 		return 1
 	}
-	if m.rules.expanded == "" || m.rules.expanded != ruleIdentity(r) {
-		return 2
-	}
-	available := max(1, width-(2+numberWidth+2)-1)
-	payload := r.Payload
-	if payload == "" {
-		payload = m.tr("rules.empty_payload")
-		if strings.EqualFold(r.Type, "Match") {
-			payload = m.tr("rules.match_all")
-		}
-	}
-	proxy := clean(r.Proxy)
-	if proxy == "" {
-		proxy = "--"
-	}
-	meta := cellPad(clean(r.Type), max(ruleTypeColumnWidth(proxy, available), ansi.StringWidth(clean(r.Type)))) + " → " + proxy
-	if r.Extra != nil && r.Extra.Disabled {
-		meta += m.tr("rules.disabled_suffix")
-	}
-	return len(strings.Split(wrapText(clean(payload), available), "\n")) + len(strings.Split(wrapText(meta, available), "\n")) + len(m.ruleEntryCountLines(r, available))
+	return 2
 }
 
 // Keep the payload flexible while aligning rule types and targets across rows.
@@ -352,7 +327,7 @@ func ruleTableColumns(width, numberWidth int) ([3]int, bool) {
 	return columns, width >= 80 && columns[0] >= 20
 }
 
-func (m Model) ruleTableRows(r mihomo.Rule, width, numberWidth int, columns [3]int, surface, marker string) []string {
+func (m Model) ruleTableRows(r mihomo.Rule, width, numberWidth int, columns [3]int, surface, marker string) dashboardBlock {
 	payload := clean(r.Payload)
 	if payload == "" {
 		payload = m.tr("rules.empty_payload")
@@ -364,26 +339,15 @@ func (m Model) ruleTableRows(r mihomo.Rule, width, numberWidth int, columns [3]i
 	if proxy == "" {
 		proxy = "--"
 	}
-	proxyColor := accent
-	switch strings.ToUpper(r.Proxy) {
-	case "DIRECT":
-		proxyColor = success
-	case "REJECT", "REJECT-DROP":
-		proxyColor = errorColor
-	}
 	payloadColor := text
-	disabledSuffix := ""
 	if r.Extra != nil && r.Extra.Disabled {
 		payloadColor = muted
-		disabledSuffix = m.tr("rules.disabled_suffix")
 	}
 	expanded := m.rules.expanded == ruleIdentity(r)
-	if !expanded {
-		proxy = cellCrop(proxy, max(1, columns[2]-ansi.StringWidth(disabledSuffix)))
-	}
-	values := []string{themed(payload, payloadColor, surface, false), themed(clean(r.Type), muted, surface, false), themed(proxy, proxyColor, surface, false) + themed(disabledSuffix, warning, surface, false)}
-	var cells [3][]string
-	height := 1
+	target := m.ruleProxyBlock(r, proxy, "", columns[2], expanded, surface)
+	values := []string{themed(payload, payloadColor, surface, false), themed(clean(r.Type), muted, surface, false)}
+	cells := [3][]string{nil, nil, target.lines}
+	height := len(target.lines)
 	for i, value := range values {
 		cells[i] = []string{cellCrop(value, columns[i])}
 		if expanded {
@@ -422,7 +386,67 @@ func (m Model) ruleTableRows(r mihomo.Rule, width, numberWidth int, columns [3]i
 			rows = append(rows, themed(cellPad(strings.Repeat(" ", indent)+line, width), muted, surface, false))
 		}
 	}
-	return rows
+	for i := range target.targets {
+		target.targets[i].X += indent + columns[0] + 2 + columns[1] + 3
+	}
+	return dashboardBlock{lines: rows, targets: target.targets}
+}
+
+// The target name owns its painted cells. Keeping it separate from the type,
+// arrow and badge also gives each wrapped fragment its own mouse region.
+func (m Model) ruleProxyBlock(r mihomo.Rule, label, prefix string, width int, expanded bool, surface string) dashboardBlock {
+	color := accent
+	switch strings.ToUpper(r.Proxy) {
+	case "DIRECT":
+		color = success
+	case "REJECT", "REJECT-DROP":
+		color = errorColor
+	}
+	badge := ""
+	if r.Extra != nil && r.Extra.Disabled {
+		badge = m.tr("rules.disabled_suffix")
+	}
+	block := dashboardBlock{}
+	labelWidth := width - ansi.StringWidth(prefix)
+	var labels []string
+	if expanded {
+		if prefix != "" && labelWidth < min(2, ansi.StringWidth(label)) {
+			block.lines = strings.Split(wrapText(prefix, width), "\n")
+			prefix, labelWidth = "", width
+		}
+		labels = strings.Split(ansi.Hardwrap(label, labelWidth, true), "\n")
+		for i := range labels {
+			labels[i] = cellCrop(labels[i], labelWidth)
+		}
+	} else {
+		// Reserve space for the disabled marker before clipping the label.
+		room := max(0, width-ansi.StringWidth(badge))
+		prefix = cellCrop(prefix, room)
+		labels = []string{cellCrop(label, room-ansi.StringWidth(prefix))}
+	}
+	x := ansi.StringWidth(prefix)
+	_, linked := m.ruleProxyGroup(r.Proxy)
+	action := ruleProxyActionPrefix + strconv.Itoa(r.Index)
+	for i, line := range labels {
+		if i > 0 {
+			prefix = strings.Repeat(" ", x)
+		}
+		if cells := ansi.StringWidth(line); linked && cells > 0 {
+			block.targets = append(block.targets, hitRegion{ID: action, X: x, Y: len(block.lines), W: cells, H: 1})
+			if m.hover == action {
+				line = ansi.NewStyle().Underline(true).Styled(line)
+			}
+		}
+		block.lines = append(block.lines, prefix+themed(line, color, surface, false))
+	}
+	last := len(block.lines) - 1
+	remaining := width - ansi.StringWidth(block.lines[last])
+	if expanded && ansi.StringWidth(badge) > remaining {
+		block.lines = append(block.lines, strings.Split(wrapText(themed(strings.TrimSpace(badge), warning, surface, false), width), "\n")...)
+	} else {
+		block.lines[last] += themed(cellCrop(badge, remaining), warning, surface, false)
+	}
+	return block
 }
 
 func ruleTypeColumnWidth(proxy string, available int) int {

@@ -301,6 +301,10 @@ func (m Model) proxyDelay(group, node string) proxyMeasurement {
 	}
 	return proxyMeasurement{}
 }
+func (m Model) proxyGroupInMode(name string) bool {
+	return (m.snapshot.Mode.Actual == "global") == (name == "GLOBAL")
+}
+
 func (m Model) visibleProxyGroups() []int {
 	if m.proxiesDirect() {
 		return nil
@@ -311,7 +315,7 @@ func (m Model) visibleProxyGroups() []int {
 			if g.Name != m.proxies.activeGroup {
 				continue
 			}
-		} else if !(len(m.proxies.history) > 0 && m.proxies.expanded[g.Name]) && (m.snapshot.Mode.Actual == "global" && g.Name != "GLOBAL" || m.snapshot.Mode.Actual != "global" && g.Name == "GLOBAL") {
+		} else if !m.proxyGroupInMode(g.Name) && !(len(m.proxies.history) > 0 && m.proxies.expanded[g.Name]) {
 			continue
 		}
 		if m.proxySearchQuery() == "" || m.proxiesNarrow() && g.Name == m.proxies.activeGroup || m.proxyGroupMatches(g) {
@@ -439,10 +443,14 @@ func (m *Model) browseProxyReference(name string) {
 		}
 	}
 	m.proxies.history = append(m.proxies.history, m.proxyLocation())
-	m.expandProxyGroup(name)
-	m.proxies.detail = ""
+	m.locateProxyGroup(gi)
+}
+
+func (m *Model) locateProxyGroup(index int) {
+	m.expandProxyGroup(m.snapshot.Groups[index].Name)
+	m.proxies.detail, m.proxies.detailGroup = "", ""
 	m.scroll = 0
-	m.focusProxyGroupMember(gi)
+	m.focusProxyGroupMember(index)
 	m.rememberPageView()
 }
 func (m *Model) proxyBack() bool {
