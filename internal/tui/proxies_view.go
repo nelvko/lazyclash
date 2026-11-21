@@ -51,8 +51,19 @@ func (m *Model) proxiesToolbar(width int) dashboardBlock {
 	return dashboardBlock{}
 }
 func (m *Model) proxiesBody(width int) (string, []hitRegion) {
+	layout := m.layoutProxiesBody(width)
+	body := m.paintProxiesBody(layout, 0, layout.total)
+	return strings.Join(body.lines, "\n"), body.targets
+}
+
+func (m *Model) layoutProxiesBody(width int) proxyBodyLayout {
 	width = max(1, width)
+	layout := proxyBodyLayout{width: width, grid: m.proxyGrid(width), compact: m.compactProxyCards()}
 	b := m.proxiesToolbar(width)
+	finish := func() proxyBodyLayout {
+		layout.appendBlock(b)
+		return layout
+	}
 	if m.proxySearchVisible() && !m.proxySearchFixed(m.dashboardOptions().BodyTopRows) {
 		search := m.proxySearchBlock(width)
 		search.append(b)
@@ -66,10 +77,10 @@ func (m *Model) proxiesBody(width int) (string, []hitRegion) {
 		b.targets = append(b.targets, hitRegion{ID: id, Y: len(b.lines), W: min(width, ansi.StringWidth(v)), H: 1})
 		b.lines = append(b.lines, cellCrop(v, width))
 	}
-	finishEmpty := func(state emptyStateOptions) (string, []hitRegion) {
+	finishEmpty := func(state emptyStateOptions) proxyBodyLayout {
 		height := max(1, dashboardGeometry(m.dashboardOptions()).height-len(b.lines))
 		b.append(m.emptyState(width, height, state))
-		return strings.Join(b.lines, "\n"), b.targets
+		return finish()
 	}
 	if !m.proxiesReady() {
 		if state, ok := m.coreEmptyState(); ok {
@@ -94,7 +105,7 @@ func (m *Model) proxiesBody(width int) (string, []hitRegion) {
 	}
 	if m.proxies.detail != "" {
 		b.append(m.proxyDetail(width))
-		return strings.Join(b.lines, "\n"), b.targets
+		return finish()
 	}
 	if len(m.proxies.history) > 0 {
 		button("proxies.back", m.tr("proxies.back"))
@@ -118,10 +129,17 @@ func (m *Model) proxiesBody(width int) (string, []hitRegion) {
 		g := m.snapshot.Groups[gi]
 		b.append(m.proxyGroupHeader(gi, width))
 		if m.proxyGroupExpanded(g.Name) {
-			if len(groups) == 1 && len(m.proxyMembers(g)) == 0 {
-				return finishEmpty(m.proxyEmptyMembers(gi))
+			members := m.proxyMembers(g)
+			if len(members) == 0 {
+				if len(groups) == 1 {
+					return finishEmpty(m.proxyEmptyMembers(gi))
+				}
+				b.append(m.emptyState(width, 3, m.proxyEmptyMembers(gi)))
+			} else {
+				layout.appendBlock(b)
+				layout.appendGrid(gi, members)
+				b = dashboardBlock{}
 			}
-			b.append(m.proxyGroupBody(gi, width))
 		}
 		if g.Name == m.proxies.testGroup && m.proxies.total > 0 && (m.proxies.testing || m.proxies.testStatusVisible) {
 			status := m.tr("proxies.test."+m.proxies.testStatus, m.proxies.completed, m.proxies.total)
@@ -131,7 +149,7 @@ func (m *Model) proxiesBody(width int) (string, []hitRegion) {
 			add(status, muted)
 		}
 	}
-	return strings.Join(b.lines, "\n"), b.targets
+	return finish()
 }
 func (m *Model) proxyGroupHeader(gi, width int) dashboardBlock {
 	g := m.snapshot.Groups[gi]
@@ -274,12 +292,19 @@ func (m *Model) proxyGroupHeader(gi, width int) dashboardBlock {
 }
 
 func (m *Model) proxyGroupBody(gi, width int) dashboardBlock {
-	g := m.snapshot.Groups[gi]
-	b := dashboardBlock{}
+	indices := m.proxyMembers(m.snapshot.Groups[gi])
+	if len(indices) == 0 {
+		return m.emptyState(width, 3, m.proxyEmptyMembers(gi))
+	}
 	grid := m.proxyGrid(width)
-	indices := m.proxyMembers(g)
-	for first := 0; first < len(indices); first += grid.columns {
-		if first > 0 && !m.compactProxyCards() {
+	return m.proxyGroupRows(gi, width, grid, indices, 0, (len(indices)+grid.columns-1)/grid.columns, m.compactProxyCards())
+}
+
+func (m *Model) proxyGroupRows(gi, width int, grid proxyGridLayout, indices []int, firstRow, endRow int, compact bool) dashboardBlock {
+	b := dashboardBlock{}
+	for row := firstRow; row < endRow; row++ {
+		first := row * grid.columns
+		if row > firstRow && !compact {
 			b.blank()
 		}
 		var cells []dashboardBlock
@@ -388,9 +413,7 @@ func (m *Model) proxyNode(gi, ni, width int) dashboardBlock {
 	if m.busy && m.proxies.pendingGroup == g.Name && m.proxies.pendingNode == node {
 		value, color = m.tr("proxies.switching"), accent
 	}
-	rightPadding := min(2, max(0, width-4))
-	contentWidth := max(0, width-4-rightPadding)
-	valueWidth := min(12, contentWidth/2)
+	rightPadding, contentWidth, valueWidth := proxyNodeWidths(width)
 	nameWidth := max(0, contentWidth-valueWidth-1)
 	_, delaySupported := m.backend.(proxyDelayBackend)
 	delayEnabled := delaySupported && m.proxyTestable(node) && m.proxiesReady() && !m.busy && !m.quitting

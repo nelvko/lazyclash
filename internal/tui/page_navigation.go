@@ -134,6 +134,8 @@ func (m *Model) contentTargets() []hitRegion {
 		return targets
 	case "rules":
 		return m.rulesTargets(width)
+	case "proxies":
+		return m.proxyTargets(width, false)
 	default:
 		_, targets := m.pageBody(width)
 		return targets
@@ -530,10 +532,14 @@ func (m *Model) repairPageFocus() {
 	state := m.pageViews[m.page]
 	if !m.busy && m.focus != "content" && m.focus != "menu" && !strings.HasPrefix(m.focus, "nav.") && !strings.HasPrefix(m.focus, "notification.") {
 		valid := m.pageHeader().enabled(m.focus)
-		for _, target := range append(m.contentTargets(), m.fixedContentTargets()...) {
-			if target.ID == m.focus {
-				valid = true
-				break
+		if m.page == "proxies" && listTarget(m.focus) {
+			valid = m.proxyListFocusValid()
+		} else {
+			for _, target := range append(m.contentTargets(), m.fixedContentTargets()...) {
+				if target.ID == m.focus {
+					valid = true
+					break
+				}
 			}
 		}
 		if !valid {

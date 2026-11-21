@@ -1524,10 +1524,20 @@ func (m *Model) populatePageBody(o *dashboardOptions) {
 		o.BodyStart, o.BodyTotal = body.start, body.total
 		return
 	}
-	o.Body, o.BodyTargets = m.pageBody(g.width)
-	if m.page == "proxies" && o.BodyTopRows > 0 {
-		o.BodyTop = m.proxiesFixedToolbar(*o)
+	if m.page == "proxies" {
+		if o.BodyTopRows > 0 {
+			o.BodyTop = m.proxiesFixedToolbar(*o)
+		}
+		layout := m.layoutProxiesBody(g.width)
+		start := min(m.scroll, max(0, layout.total-g.height))
+		end := min(layout.total, start+g.height)
+		body := m.paintProxiesBody(layout, start, end)
+		o.Body, o.BodyTargets = strings.Join(body.lines, "\n"), body.targets
+		o.BodyStart, o.BodyTotal = start, layout.total
+		o.ProxyStickyGroup, o.ProxyRangeLabel = m.proxyBodyRange(layout, start, end)
+		return
 	}
+	o.Body, o.BodyTargets = m.pageBody(g.width)
 }
 func (m *Model) layout() {
 	m.repairPageFocus()

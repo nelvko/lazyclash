@@ -540,7 +540,7 @@ func (m *Model) proxyHorizontal(delta int) bool {
 	if m.page != "proxies" || m.proxiesDirect() || m.proxies.detail != "" {
 		return false
 	}
-	_, hits := m.proxiesBody(dashboardBodyWidth(m.dashboardOptions()))
+	hits := m.proxyTargets(dashboardBodyWidth(m.dashboardOptions()), true)
 	var current hitRegion
 	currentID := strings.Replace(m.focus, "proxies.delay.", "node.", 1)
 	for _, h := range hits {
@@ -583,7 +583,7 @@ func (m *Model) proxyListKey(k tea.KeyPressMsg) bool {
 	if m.proxies.detail != "" || key != "up" && key != "down" && key != "j" && key != "k" && key != "home" && key != "end" {
 		return false
 	}
-	_, hits := m.proxiesBody(dashboardBodyWidth(m.dashboardOptions()))
+	hits := m.proxyTargets(dashboardBodyWidth(m.dashboardOptions()), true)
 	var list []hitRegion
 	index := -1
 	listFocus := strings.Replace(m.focus, "proxies.delay.", "node.", 1)

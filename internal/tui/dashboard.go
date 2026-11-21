@@ -74,7 +74,8 @@ type dashboardOptions struct {
 	BodyTop     dashboardBlock
 	// A windowed body supplies only these logical rows, while targets retain
 	// their positions in the complete body for clipping and keyboard navigation.
-	BodyStart, BodyTotal int
+	BodyStart, BodyTotal              int
+	ProxyStickyGroup, ProxyRangeLabel string
 }
 
 type dashboardLayout struct {
@@ -246,7 +247,11 @@ func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
 	scroll := max(0, min(o.Scroll, max(0, total-g.height)))
 	o.Scroll = scroll
 	if o.Page == "proxies" && o.Width >= sidebarMinWidth {
-		if group := proxyStickyGroup(o.Snapshot.Groups, bodyTargets, scroll, g.height); group != "" {
+		group := o.ProxyStickyGroup
+		if o.BodyTotal == 0 {
+			group = proxyStickyGroup(o.Snapshot.Groups, bodyTargets, scroll, g.height)
+		}
+		if group != "" {
 			// Reuse the space below the title so the list and fixed search
 			// stay on the same rows as the label appears and disappears.
 			x := 0
@@ -282,7 +287,10 @@ func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
 		put(min(o.Width-1, g.x+g.width), g.y+g.height-1, themed(marker, accent, bg, o.Dim))
 	}
 	if o.BodyRange && g.y+g.height < dashboardContentBottom(o) {
-		label := proxyVisibleRange(o.Locale, bodyTargets, scroll, g.height)
+		label := o.ProxyRangeLabel
+		if o.BodyTotal == 0 {
+			label = proxyVisibleRange(o.Locale, bodyTargets, scroll, g.height)
+		}
 		put(g.x+max(0, g.width-ansi.StringWidth(label)), g.y+g.height, themed(cellCrop(label, g.width), muted, bg, o.Dim))
 	}
 
