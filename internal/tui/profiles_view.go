@@ -95,9 +95,17 @@ func (m Model) profilesToolbar(width int) dashboardBlock {
 		fieldWidth = min(inputImportMaxWidth, width-buttonWidth-2)
 	}
 	invalid := m.profilesUI.urlError != "" && m.profilesUI.urlErrorValue == input.Value()
+	const pasteID = "profiles.url.paste"
+	disabled := m.busy || m.quitting
+	paste := renderButton("⎘", buttonOptions{Kind: buttonText, Surface: bg, Compact: true,
+		Hovered: m.hover == pasteID, Focused: m.focus == pasteID, Disabled: disabled})
+	var trailing dashboardBlock
+	if pasteWidth := ansi.StringWidth(paste); inputFieldInlineTrailing(fieldWidth, pasteWidth, true) {
+		trailing = dashboardBlock{lines: []string{paste}, targets: []hitRegion{{ID: pasteID, W: pasteWidth, H: 1}}}
+	}
 	body = renderInputField(input, inputFieldOptions{ID: "profiles.url", ClearID: "profiles.url.clear", ClearHovered: m.hover == "profiles.url.clear", ClearFocused: m.focus == "profiles.url.clear", Width: fieldWidth, Surface: bg,
 		Focused: m.focus == "profiles.url", Hovered: m.hover == "profiles.url", Invalid: invalid,
-		Disabled: m.busy || m.quitting})
+		Disabled: disabled, Trailing: trailing})
 	if inline {
 		x := fieldWidth + 2
 		body.lines[1] += themed("  ", text, bg, false)
@@ -111,7 +119,11 @@ func (m Model) profilesToolbar(width int) dashboardBlock {
 		}
 		body.lines[1] = cellCrop(body.lines[1], width)
 	}
-	if invalid {
+	if m.profilesUI.pasteUnavailable {
+		for _, line := range strings.Split(wrapText(m.tr("profiles.clipboard_unavailable"), fieldWidth), "\n") {
+			body.lines = append(body.lines, themed(line, muted, bg, false))
+		}
+	} else if invalid {
 		for _, line := range strings.Split(wrapText(clean(m.profilesUI.urlError), fieldWidth), "\n") {
 			body.lines = append(body.lines, themed(line, errorColor, bg, false))
 		}

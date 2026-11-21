@@ -1,6 +1,9 @@
 {
   "search.clear": "Clear",
   "profiles.url_placeholder": "Paste subscription URL or local path",
+  "profiles.paste": "Paste",
+  "profiles.clipboard_waiting": "Waiting for the terminal clipboard…",
+  "profiles.clipboard_unavailable": "Couldn't read the clipboard. Use your terminal's paste shortcut.",
   "profiles.fetching": "Fetching and validating configuration…",
   "profiles.saved_select": "Subscription saved; select its card to apply",
   "profiles.updating_all": "Updating profiles…",

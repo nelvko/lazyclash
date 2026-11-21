@@ -318,12 +318,14 @@ func TestDirectionalNavigationShiftTabStillMovesToPreviousControl(t *testing.T) 
 			m := profileNavigationModel(120, 32)
 			directionCleanup(t, &m)
 			m.focus = "profiles.add"
+			previous := "profiles.url.paste"
 			if busy {
 				m.newJob("action")
+				previous = "profiles.url"
 			}
 			m.layout()
 			m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
-			if m.focus != "profiles.url" || m.page != "profiles" || m.busy != busy {
+			if m.focus != previous || m.page != "profiles" || m.busy != busy {
 				t.Fatalf("Shift+Tab did not move to the preceding input control: %s", m.focus)
 			}
 		})

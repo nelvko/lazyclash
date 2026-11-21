@@ -8,6 +8,9 @@ func (m Model) controlActionHelp(label string) string {
 
 func (m Model) profilesContextHelp() string {
 	if m.focus == "profiles.url" {
+		if !m.profilesUI.pasteDeadline.IsZero() {
+			return m.tr("profiles.clipboard_waiting")
+		}
 		return m.tr("navigation.profiles.importing")
 	}
 	base := m.tr("navigation.profiles.controls")
@@ -18,6 +21,8 @@ func (m Model) profilesContextHelp() string {
 	switch m.focus {
 	case "profiles.url.clear":
 		action = m.tr("navigation.controls.clear")
+	case "profiles.url.paste":
+		action = m.tr("profiles.paste")
 	case "profiles.add":
 		action = m.tr("profiles.add")
 	case "profiles.create":

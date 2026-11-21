@@ -218,17 +218,17 @@ func TestProfileURLInputOwnsTextPasteAndFocusKeys(t *testing.T) {
 	if !strings.Contains(ansi.Strip(m.View().Content), want) {
 		t.Fatal("subscription URL is not visible for editing")
 	}
-	m, _ = update(m, special(tea.KeyTab))
-	if m.focus != "profiles.url.clear" || m.profilesUI.editing || m.profilesUI.url.Focused() {
-		t.Fatalf("Tab did not reach the nonempty field's clear control: %s", m.focus)
+	for _, target := range []string{"profiles.url.clear", "profiles.url.paste", "profiles.add"} {
+		m, _ = update(m, special(tea.KeyTab))
+		if m.focus != target || m.profilesUI.editing || m.profilesUI.url.Focused() {
+			t.Fatalf("Tab focused %s instead of %s", m.focus, target)
+		}
 	}
-	m, _ = update(m, special(tea.KeyTab))
-	if m.focus != "profiles.add" || m.profilesUI.editing || m.profilesUI.url.Focused() {
-		t.Fatalf("Tab did not leave the URL editor for Add: %s", m.focus)
-	}
-	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
-	if m.focus != "profiles.url.clear" {
-		t.Fatalf("Shift+Tab did not return to the clear control: %s", m.focus)
+	for _, target := range []string{"profiles.url.paste", "profiles.url.clear"} {
+		m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
+		if m.focus != target {
+			t.Fatalf("Shift+Tab focused %s instead of %s", m.focus, target)
+		}
 	}
 	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
 	if m.focus != "profiles.url" || !m.profilesUI.editing || !m.profilesUI.url.Focused() {

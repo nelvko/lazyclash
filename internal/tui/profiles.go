@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
@@ -17,15 +18,21 @@ import (
 )
 
 type profilesState struct {
-	url           textinput.Model
-	urlError      string
-	urlErrorValue string
-	editing       bool
-	detail        string
-	importing     bool
-	menuProfile   string
-	deleteFocus   string
+	url              textinput.Model
+	urlError         string
+	urlErrorValue    string
+	pasteDeadline    time.Time
+	pasteUnavailable bool
+	editing          bool
+	detail           string
+	importing        bool
+	menuProfile      string
+	deleteFocus      string
 }
+
+const profilePasteTimeout = 15 * time.Second
+
+type profilePasteTimeoutMsg struct{ deadline time.Time }
 
 func newProfilesState(locales ...i18n.Localizer) profilesState {
 	var locale i18n.Localizer
@@ -59,13 +66,56 @@ func (m *Model) profileURLKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 	case "enter":
 		return true, m.beginProfileURLImport()
 	}
+	m.profilesUI.pasteDeadline = time.Time{}
+	m.profilesUI.pasteUnavailable = false
 	var cmd tea.Cmd
 	m.profilesUI.url, cmd = m.profilesUI.url.Update(k)
 	m.reconcileProfileValidation()
 	return true, cmd
 }
 
+func (m *Model) requestProfilePaste() tea.Cmd {
+	m.focus, m.profilesUI.editing = "profiles.url", true
+	focus := m.profilesUI.url.Focus()
+	if !m.profilesUI.pasteDeadline.IsZero() {
+		return focus
+	}
+	m.profilesUI.pasteUnavailable = false
+	deadline := time.Now().Add(profilePasteTimeout)
+	m.profilesUI.pasteDeadline = deadline
+	return tea.Batch(focus, tea.ReadClipboard, tea.Tick(profilePasteTimeout, func(time.Time) tea.Msg {
+		return profilePasteTimeoutMsg{deadline: deadline}
+	}))
+}
+
+func (m *Model) finishProfilePaste(content string) tea.Cmd {
+	if m.profilesUI.pasteDeadline.IsZero() {
+		return nil
+	}
+	m.profilesUI.pasteDeadline = time.Time{}
+	if _, id, active := m.activeInputField(); !active || id != "profiles.url" {
+		return nil
+	}
+	if strings.TrimSpace(content) == "" {
+		m.profilesUI.pasteUnavailable = true
+		return nil
+	}
+	return m.pasteProfileURL(tea.PasteMsg{Content: content})
+}
+
+func (m *Model) pasteProfileURL(paste tea.PasteMsg) tea.Cmd {
+	m.profilesUI.pasteDeadline = time.Time{}
+	m.profilesUI.pasteUnavailable = false
+	m.profilesUI.editing = true
+	m.profilesUI.url.Focus()
+	var cmd tea.Cmd
+	m.profilesUI.url, cmd = m.profilesUI.url.Update(paste)
+	return cmd
+}
+
 func (m *Model) beginProfileURLImport() tea.Cmd {
+	m.profilesUI.pasteDeadline = time.Time{}
+	m.profilesUI.pasteUnavailable = false
 	source := strings.TrimSpace(m.profilesUI.url.Value())
 	issue := ""
 	if source == "" {
@@ -127,6 +177,14 @@ func (m *Model) focusProfileControl(id string) {
 // library order. A stale numeric focus must never apply a different profile.
 func (m *Model) reconcileProfiles() {
 	m.reconcileProfileValidation()
+	if !m.profilesUI.pasteDeadline.IsZero() {
+		if _, id, active := m.activeInputField(); !active || id != "profiles.url" {
+			m.profilesUI.pasteDeadline = time.Time{}
+		}
+	}
+	if m.page != "profiles" {
+		m.profilesUI.pasteUnavailable = false
+	}
 	name := m.profilesUI.detail
 	if name == "" {
 		return
@@ -196,6 +254,9 @@ func (m *Model) profileAction(id string) (bool, tea.Cmd) {
 	if id == "profiles.url" {
 		m.focus, m.profilesUI.editing = id, true
 		return true, m.profilesUI.url.Focus()
+	}
+	if id == "profiles.url.paste" && m.page == "profiles" {
+		return true, m.requestProfilePaste()
 	}
 	m.profilesUI.editing = false
 	m.profilesUI.url.Blur()

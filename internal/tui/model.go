@@ -568,6 +568,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.pathForm() {
 			m.paths.update(v)
 		}
+	case tea.ClipboardMsg:
+		if v.Clipboard() == ansi.SystemClipboard {
+			cmd = m.finishProfilePaste(v.Content)
+		}
+	case profilePasteTimeoutMsg:
+		if v.deadline == m.profilesUI.pasteDeadline {
+			cmd = m.finishProfilePaste("")
+		}
 	case tea.MouseMsg:
 		previousScroll := m.scroll
 		cmd = m.mouse(v)
@@ -622,10 +630,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 			}
 		} else if m.page == "profiles" && m.focus == "profiles.url" && !m.busy && !m.quitting && !m.sidebarOpen {
-			m.profilesUI.editing = true
-			m.profilesUI.url.Focus()
-			m.profilesUI.url, cmd = m.profilesUI.url.Update(v)
-
+			cmd = m.pasteProfileURL(v)
 		} else if m.proxies.editing {
 			m.proxies.search, cmd = m.proxies.search.Update(v)
 			m.proxySearchChanged()
