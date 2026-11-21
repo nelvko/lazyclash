@@ -318,5 +318,7 @@
   "dashboard.core.toggle.stopping": "Stopping…",
   "dashboard.core.toggle.restarting": "Restarting…",
   "dashboard.core.toggle.unknown": "Unknown",
-  "dashboard.core.toggle.unavailable": "Unavailable"
+  "dashboard.core.toggle.unavailable": "Unavailable",
+  "dashboard.core.toggle.startHint": "Click to start",
+  "dashboard.core.toggle.stopHint": "Click to stop"
 }

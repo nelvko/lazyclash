@@ -34,20 +34,19 @@ func TestCoreStatusShowsOnlyCurrentStateVersionAndRealProcessUptime(t *testing.T
 			if strings.Count(plain, status) != 1 || strings.Count(plain, "v1.19.33") != 1 || strings.Contains(plain, "4242") {
 				t.Fatalf("core retained repeated state or process diagnostics:\n%s", plain)
 			}
-			if heading := ansi.Strip(block.lines[1]); !strings.Contains(heading, o.Locale.T("dashboard.overview.service")) || !strings.HasSuffix(strings.TrimSpace(heading), "v1.19.33") {
-				t.Fatalf("version not at heading right: %q", heading)
-			}
-			for _, line := range block.lines[2:] {
-				if strings.Contains(ansi.Strip(line), "v1.19.33") {
-					t.Fatal("version repeated in body")
-				}
+			if heading := ansi.Strip(block.lines[1]); !strings.Contains(heading, o.Locale.T("dashboard.overview.service")) || strings.Contains(heading, "v1.19.33") {
+				t.Fatalf("heading retained detached version metadata: %q", heading)
 			}
 			if len(block.targets) != 1 || block.targets[0].ID != "core.toggle" {
 				t.Fatalf("core must expose exactly one toggle, got %+v", block.targets)
 			}
 			row := ansi.Strip(block.lines[block.targets[0].Y])
-			if !strings.Contains(row, "02:18:34") || !strings.HasSuffix(strings.TrimSpace(row), status) {
-				t.Fatalf("uptime and right-aligned toggle did not share row: %q", row)
+			if !strings.Contains(row, "Mihomo  v1.19.33") || !strings.Contains(row, status) {
+				t.Fatalf("core identity and status did not share row: %q", row)
+			}
+			detail := ansi.Strip(block.lines[block.targets[0].Y+1])
+			if !strings.Contains(detail, "02:18:34") || !strings.Contains(detail, o.Locale.T("dashboard.core.toggle.stopHint")) {
+				t.Fatalf("uptime and action hint did not share row: %q", detail)
 			}
 			o.Now = now.Add(time.Second)
 			if plain, _ := render(); !strings.Contains(plain, "02:18:35") {
@@ -159,7 +158,7 @@ func TestOverviewTitlesKeepSpacingAndNavigationActionsStayInHeading(t *testing.T
 	for _, hit := range body.targets {
 		if hit.ID == "core.toggle" {
 			row := ansi.Strip(ansi.Cut(body.lines[hit.Y], core.X, core.X+core.W))
-			if !strings.HasSuffix(strings.TrimSpace(row), "● Running") {
+			if !strings.HasSuffix(strings.TrimSpace(row), "]") || !strings.Contains(row, "● Running") {
 				t.Fatalf("core toggle not right-aligned: %q", row)
 			}
 		}

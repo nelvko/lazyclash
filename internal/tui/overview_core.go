@@ -38,8 +38,7 @@ func overviewCoreCard(o dashboardOptions, width int) dashboardBlock {
 	if control.state == toggleOn && s.Service.PID > 0 && !s.Service.StartedAt.IsZero() && !s.Service.StartedAt.After(now) {
 		uptime = tr("dashboard.core.uptime", formatCoreUptime(now.Sub(s.Service.StartedAt)))
 	}
-	content := overviewTextBlock([]string{name}, inner)
-	content.append(overviewCoreStatusRow(o, inner, uptime))
+	content := overviewCoreSummary(o, inner, version, uptime)
 	var details []string
 	if running && s.RunningVersion != "" && s.Version != "" && s.RunningVersion != s.Version {
 		details = append(details, style(tr("dashboard.kernel.installed", clean(s.Version)), warning), style(tr("dashboard.core.restartVersion"), warning))
@@ -76,44 +75,57 @@ func overviewCoreCard(o dashboardOptions, width int) dashboardBlock {
 		details = append(details, style(issue, muted))
 	}
 	content.append(overviewTextBlock(details, inner))
-	// Keep a narrow card's version right-aligned when the heading cannot hold
-	// both fields. Other overview panels retain their existing metadata layout.
-	version = clean(version)
-	if version != "" && inner-ansi.StringWidth(tr("dashboard.overview.service"))-ansi.StringWidth(version) < 2 {
-		var before dashboardBlock
-		for _, line := range strings.Split(wrapText(version, inner), "\n") {
-			before.lines = append(before.lines, themed(strings.Repeat(" ", max(0, inner-ansi.StringWidth(line)))+line, muted, panel, o.Dim))
-		}
-		before.append(content)
-		content, version = before, ""
-	}
-	return overviewPanel(o, width, tr("dashboard.overview.service"), content, nil, version, nil)
+	return overviewPanel(o, width, tr("dashboard.overview.service"), content, nil, "", nil)
 }
 
-func overviewCoreStatusRow(o dashboardOptions, width int, uptime string) dashboardBlock {
+func overviewCoreSummary(o dashboardOptions, width int, version, uptime string) dashboardBlock {
 	control, labels := overviewCoreToggle(o)
-	slot := min(width, overviewCoreToggleWidth(o, labels))
-	toggle := renderToggle(control, toggleOptions{Labels: labels, Width: slot, RightAligned: true,
-		Surface: panel, Focused: o.Focus == "core.toggle", Dim: o.Dim})
-	var row dashboardBlock
-	// Reserve the uptime's row even when absent, so lifecycle changes do not
-	// move the control. Narrow cards give the two fields separate rows.
-	// time.Sub saturates at this duration. Budget its full hour width so the
-	// same layout works after 99 hours and when a stopped snapshot has no time.
+	startHint, stopHint := o.Locale.T("dashboard.core.toggle.startHint"), o.Locale.T("dashboard.core.toggle.stopHint")
+	slot := min(width, max(overviewCoreToggleWidth(o, labels)+4, ansi.StringWidth(startHint), ansi.StringWidth(stopHint)))
+	// The brackets keep the control recognizable even without terminal colors.
+	face := renderToggle(control, toggleOptions{Labels: labels, Width: max(1, slot-4),
+		Surface: panel, Focused: o.Focus == "core.toggle" || o.Hover == "core.toggle" && control.canToggle() && !o.Busy, Dim: o.Dim})
+	toggle := cellCrop(themed("[ ", muted, panel, o.Dim)+face+themed(" ]", muted, panel, o.Dim), slot)
+	hint := ""
+	if control.canToggle() && !o.Busy {
+		hint = startHint
+		if control.state == toggleOn {
+			hint = stopHint
+		}
+	}
+	hint = cellCrop(hint, slot)
+	hint = themed(strings.Repeat(" ", max(0, slot-ansi.StringWidth(hint)))+hint, muted, panel, o.Dim)
+	identity := themed(lipgloss.NewStyle().Bold(true).Render("Mihomo"), text, panel, o.Dim)
+	if version = clean(version); version != "" {
+		identity += themed("  "+version, muted, panel, o.Dim)
+	}
+	// Budget the full time.Sub range and reserve both supporting rows, so long
+	// uptimes and lifecycle changes never move the control or nearby cards.
 	uptimeBudget := o.Locale.T("dashboard.core.uptime", formatCoreUptime(time.Duration(1<<63-1)))
-	leftWidth := ansi.StringWidth(uptimeBudget)
+	leftWidth := max(ansi.StringWidth(identity), ansi.StringWidth(uptimeBudget))
+	var row dashboardBlock
+	x, y := width-slot, 0
 	if width >= leftWidth+2+slot {
-		row.lines = []string{themed(cellPad(uptime, width-slot), muted, panel, o.Dim) + toggle}
+		row.lines = []string{
+			themed(cellPad(identity, x), text, panel, o.Dim) + toggle,
+			themed(cellPad(uptime, x), muted, panel, o.Dim) + hint,
+		}
 	} else {
+		row = overviewTextBlock([]string{identity}, width)
 		rows := len(strings.Split(wrapText(uptimeBudget, width), "\n"))
 		lines := make([]string, rows)
 		if uptime != "" {
 			copy(lines, strings.Split(wrapText(uptime, width), "\n"))
 		}
-		row = overviewTextBlock(lines, width)
-		row.lines = append(row.lines, themed(strings.Repeat(" ", width-slot), text, panel, o.Dim)+toggle)
+		for i := range lines {
+			lines[i] = themed(lines[i], muted, panel, o.Dim)
+		}
+		row.append(overviewTextBlock(lines, width))
+		y = len(row.lines)
+		padding := themed(strings.Repeat(" ", x), text, panel, o.Dim)
+		row.lines = append(row.lines, padding+toggle, padding+hint)
 	}
-	row.targets = []hitRegion{{ID: "core.toggle", X: width - slot, Y: len(row.lines) - 1, W: slot, H: 1}}
+	row.targets = []hitRegion{{ID: "core.toggle", X: x, Y: y, W: slot, H: 2}}
 	return row
 }
 

@@ -62,6 +62,23 @@ def assert_core_focus(terminal, label, profile):
         assert_borderless(terminal)
 
 
+def assert_core_affordance(terminal, words, scenario):
+    key = "off" if scenario == "stopped" else "unavailable" if scenario == "unavailable" else "on"
+    label = words["dashboard.core.toggle." + key]
+    face = re.compile(r"\[\s*(?:[●○]\s+)?" + re.escape(label) + r"\s*\]")
+    point = next(((x, y) for x, y in text_points(terminal, label)
+                  if face.search("".join(terminal.screen.cells[y]))), None)
+    assert point is not None, "core state lost its visible control brackets"
+    x, y = point
+    assert "]" in "".join(terminal.screen.cells[y][x:]), "core control lost its closing bracket"
+    if scenario != "unavailable":
+        hint = words["dashboard.core.toggle." + ("startHint" if scenario == "stopped" else "stopHint")]
+        assert hint in "".join(terminal.screen.cells[y + 1]), "core action hint is not below the control"
+    else:
+        assert not any(words["dashboard.core.toggle." + key] in terminal.screen.text()
+                       for key in ("startHint", "stopHint")), "unavailable core offered a toggle action"
+
+
 def tab_controls(terminal, expected, core_face, profile):
     # Each caller has just entered the core card's sole control. In NO_COLOR
     # that known first stop has no style marker; all later buttons remain
@@ -214,6 +231,7 @@ def exercise(preview, binary, output, language, profile, scenario, args):
         terminal.settle()
         preview.capture(terminal, output, "overview-initial", args)
         screen = terminal.screen.text()
+        assert_core_affordance(terminal, words, scenario)
         if scenario in ("running", "pending"):
             for value in ("02:18:", "香港 01", "日常订阅"):
                 assert value in screen, "missing initial observation: " + value
@@ -279,6 +297,7 @@ def exercise(preview, binary, output, language, profile, scenario, args):
             terminal.settle()
             assert_borderless(terminal)
             assert_core_focus(terminal, lifecycle, profile)
+            assert_core_affordance(terminal, words, scenario)
             preview.capture(terminal, output, "control-focus-%dx%d" % (width, height), args)
             tab_controls(terminal, expected, lifecycle, profile)
             preview.capture(terminal, output, "tab-revealed-%dx%d" % (width, height), args)

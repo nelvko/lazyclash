@@ -318,5 +318,7 @@
   "dashboard.core.toggle.stopping": "停止中…",
   "dashboard.core.toggle.restarting": "重启中…",
   "dashboard.core.toggle.unknown": "状态未知",
-  "dashboard.core.toggle.unavailable": "不可用"
+  "dashboard.core.toggle.unavailable": "不可用",
+  "dashboard.core.toggle.startHint": "点击启动",
+  "dashboard.core.toggle.stopHint": "点击停止"
 }

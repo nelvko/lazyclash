@@ -108,6 +108,8 @@ func (b *overviewPTYBackend) Runtime(ctx context.Context) (app.RuntimeSnapshot, 
 	result := app.RuntimeSnapshot{State: "stopped", Service: b.snapshot.Service, ObservedAt: time.Now()}
 	if b.scenario == "unavailable" {
 		result.State, result.Error = "unavailable", "Fixture service observation unavailable"
+		// An unavailable observation cannot also confirm the service state.
+		result.Service = service.Status{}
 	} else if b.snapshot.Service.Active {
 		result = liveRuntime()
 		result.Service, result.RunningVersion = b.snapshot.Service, b.snapshot.RunningVersion
