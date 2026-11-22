@@ -66,55 +66,31 @@ def assert_log_controls(terminal, words):
     assert words["header.live"] not in header, "Logs repeated its normal live status"
 
 
-def assert_external_log_options(terminal, words):
+def assert_log_toolbar(terminal, words):
     x, y = position(terminal, words["logs.placeholder"][:5])
     row = terminal.screen.cells[y]
     left = max(i for i, cell in enumerate(row[:x + 1]) if cell == "│")
     right = next(i for i in range(x, len(row)) if row[i] == "│")
-    options = []
-    for keys in (("logs.level_all", "logs.level_info", "logs.level_warn", "logs.level_error"),
-                 ("logs.compact", "logs.detailed")):
-        found = []
-        for name in keys:
-            try:
-                found.append(position(terminal, words[name]))
-            except AssertionError:
-                pass
-        assert found, "external log option missing"
-        options.append(found[0])
-    (level_x, level_y), (view_x, view_y) = options
+    level_x, level_y = position(terminal, words["logs.level_all"] + " ▾")
+    assert not "".join(row[right + 1:]).strip(), "unexpected control after the unfiltered search field"
     if level_y == y:
-        assert level_x < left and view_y == y and view_x > right, \
-            "wide toolbar must read level, search, count, view"
+        assert level_x < left, "level must precede search"
     else:
-        assert level_y < y - 1 and view_y < y - 1, \
-            "narrow scope and view must precede the complete search frame"
-        assert (view_y, view_x) > (level_y, level_x), "view must follow the level scope"
-    return left, right, y, tuple(options)
+        assert level_y < y - 1, "narrow scope must precede the complete search frame"
+        scope_row = "".join(terminal.screen.cells[level_y][level_x:]).strip()
+        assert scope_row == words["logs.level_all"] + " ▾", "unexpected control after the level dropdown"
+    return left, right, y, level_x, level_y
 
 
 def assert_log_toolbar_tab_order(terminal, words):
-    _, _, text_y, options = assert_external_log_options(terminal, words)
-    wide = options[0][1] == text_y
-    # The control before the editor follows the actual responsive reading order.
+    # Level precedes the editor at every terminal width.
     terminal.key(b"/")
     terminal.key(b"\x1b[Z")
-    if wide:
-        terminal.key(b"\r")
-        terminal.wait("✓ " + words["logs.level_all"])
-        terminal.key(b"\x1b")
-        terminal.wait_absent("✓ ")
-    else:
-        view_y = options[1][1]
-        view_row = lambda: "".join(terminal.screen.cells[view_y])
-        before = next(words[key] for key in ("logs.compact", "logs.detailed")
-                      if words[key] in view_row())
-        terminal.key(b"\r")
-        after = words["logs.detailed"] if before == words["logs.compact"] else words["logs.compact"]
-        wait_until(terminal, lambda: after in view_row(), "Tab did not reach the narrow view control")
-        terminal.key(b"\r")
-        wait_until(terminal, lambda: before in view_row(), "view control did not restore its original mode")
-    # Tab returns from that scope/view control to the editor, which owns text.
+    terminal.key(b"\r")
+    terminal.wait("✓ " + words["logs.level_all"])
+    terminal.key(b"\x1b")
+    terminal.wait_absent("✓ ")
+    # Tab returns from the level control to the editor, which owns text.
     terminal.key(b"\t")
     terminal.key(b"\r")
     terminal.key(b"\x1b[200~tabok\x1b[201~")
@@ -160,10 +136,9 @@ def assert_continuing(terminal, report, seconds=0.8):
 def wait_long_payload(terminal):
     terminal.settle()
     terminal.wait("event-057")
-    terminal.wait("LONG-MESSAGE-")
     left, _ = position(terminal, "event-057")
     wait_until(terminal, lambda: "LONG-MESSAGE-END" in "".join(
-        "".join(row[left:]).strip() for row in terminal.screen.cells), "detailed view lost the end of the wrapped payload")
+        "".join(row[left:]).strip() for row in terminal.screen.cells), "word wrap lost the end of the payload")
 
 
 def search(terminal, value):
@@ -210,7 +185,7 @@ def exercise(preview, binary, output, language, profile, args):
         assert not re.search(r"\d+ / \d+", terminal.screen.text()), "unfiltered Logs exposed a count"
         for label in ("Aa", "ab", ".*"):
             position(terminal, label)
-        assert_external_log_options(terminal, words)
+        assert_log_toolbar(terminal, words)
         preview.capture(terminal, output, "logs-wide", args)
         terminal.click_text(words["logs.level_all"] + " ▾")
         terminal.wait("✓ " + words["logs.level_all"])
@@ -222,7 +197,7 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait_absent("✓ ")
         rows = terminal.screen.text().splitlines()
         _, message_y = position(terminal, "event-059")
-        assert re.search(r"\d\d:\d\d:\d\d.*ERROR.*event-059", rows[message_y]), "compact metadata and message are not on the same row"
+        assert re.search(r"\d\d:\d\d:\d\d.*ERROR.*event-059", rows[message_y]), "metadata and message are not on the same row"
 
         # Reading history freezes the viewport while the same stream continues.
         terminal.key(b"\x1b[H")
@@ -277,9 +252,6 @@ def exercise(preview, binary, output, language, profile, args):
         preview.capture(terminal, output, "no-matches-input-isolation", args)
         search(terminal, "case-needle")
         terminal.wait("event-054")
-        # Compact rows can crop the matching suffix. Filtering still uses the
-        # complete message, and detailed mode must reveal its original case.
-        terminal.key(b"v")
         terminal.wait("Case-Needle")
         assert "ERROR-MARKER" not in terminal.screen.text(), "search retained unrelated messages"
         assert re.search(r"1 / \d+", terminal.screen.text()), "search lost its conditional count"
@@ -313,7 +285,6 @@ def exercise(preview, binary, output, language, profile, args):
         search(terminal, "case-needle")
         terminal.wait("event-054")
         assert_continuing(terminal, report)
-        terminal.key(b"v")
         search(terminal, "")
         terminal.key(b"\x1b[F")
         terminal.settle()
@@ -329,23 +300,22 @@ def exercise(preview, binary, output, language, profile, args):
         assert not re.search(r"\d+ / \d+", terminal.screen.text()), "clearing filters retained a count"
         terminal.settle()
 
-        # Detailed mode exposes the full wrapped payload; compact mode crops it.
+        # Long payloads wrap by default. The shortcut clips them to one row
+        # and restores the full text while keeping the same filtered entry.
         search(terminal, "long-message-end")
-        terminal.wait("event-057")
-        terminal.wait_absent("LONG-MESSAGE-")
-        preview.capture(terminal, output, "default-compact-long-message", args)
-        terminal.key(b"v")
+        terminal.resize(80, 24)
         wait_long_payload(terminal)
         rows = terminal.screen.text().splitlines()
         _, message_y = position(terminal, "event-057")
-        assert re.search(r"\d\d:\d\d:\d\d.*INFO.*event-057", rows[message_y]), "detailed metadata is not inline with its message"
-        preview.capture(terminal, output, "detailed-long-message", args)
+        assert re.search(r"\d\d:\d\d:\d\d.*INFO.*event-057", rows[message_y]), "wrapped metadata is not inline with its message"
+        preview.capture(terminal, output, "default-wrapped-long-message", args)
         terminal.key(b"v")
-        terminal.wait_absent("LONG-MESSAGE-")
-        terminal.wait("event-057")
-        preview.capture(terminal, output, "compact-long-message", args)
+        wait_until(terminal, lambda: re.search(r"event-057[^\n]*…", terminal.screen.text()), "v did not clip the long log to one line")
+        terminal.wait_absent("中文长日志")
+        preview.capture(terminal, output, "single-line-long-message", args)
         terminal.key(b"v")
         wait_long_payload(terminal)
+        terminal.resize(160, 45)
         search(terminal, "")
 
         # Both the fixed search and level controls stay in place during wheel
@@ -361,14 +331,14 @@ def exercise(preview, binary, output, language, profile, args):
             placeholder = words["logs.placeholder"]
             # A narrow input shows only the beginning of the placeholder.
             toolbar = position(terminal, placeholder[:min(5, len(placeholder))])
-            option_geometry = assert_external_log_options(terminal, words)
+            option_geometry = assert_log_toolbar(terminal, words)
             old = event_numbers(terminal)
             for _ in range(5):
                 terminal.key(("\x1b[<65;%d;%dM" % (width - 3, height // 2)).encode())
             terminal.settle()
             assert old != event_numbers(terminal), "wheel did not scroll the log viewport"
             assert toolbar == position(terminal, placeholder[:min(5, len(placeholder))]), "search field moved with the list"
-            assert option_geometry == assert_external_log_options(terminal, words), "scrolling moved the external log options"
+            assert option_geometry == assert_log_toolbar(terminal, words), "scrolling moved the log toolbar"
             assert_no_log_summary(terminal)
             preview.capture(terminal, output, "scrolled-%dx%d" % (width, height), args)
             terminal.key(b"l")
@@ -376,9 +346,9 @@ def exercise(preview, binary, output, language, profile, args):
             preview.capture(terminal, output, "level-menu-%dx%d" % (width, height), args)
             terminal.key(b"\x1b")
             terminal.wait_absent("✓ ")
-            assert option_geometry == assert_external_log_options(terminal, words), "menu moved the toolbar"
+            assert option_geometry == assert_log_toolbar(terminal, words), "menu moved the toolbar"
             assert_log_toolbar_tab_order(terminal, words)
-            # Detailed mode may end on a wrapped continuation without event-.
+            # A wrapped entry may end on a continuation without event-.
             # Click a viewport cell to restore list focus before following.
             terminal.key(("\x1b[<0;%d;%dM\x1b[<0;%d;%dm" %
                           (width - 3, height - 3, width - 3, height - 3)).encode())
@@ -466,7 +436,7 @@ def exercise(preview, binary, output, language, profile, args):
         if profile == "no-color":
             assert not any(value not in (b"", b"0") for value in preview.SGR.findall(raw)), "NO_COLOR emitted styling"
         (output / "pty.raw").write_bytes(raw)
-        print("PASS %s/%s: detailed/compact, conditional outside count, shared level dropdown, local case/whole-word/regex search, session capture across navigation/help/form, frozen display with 200-entry live cache, fixed toolbar at five sizes, clear/manual reconnect/automatic recovery without GAP entries; %s" %
+        print("PASS %s/%s: default word wrap and v toggle, conditional outside count, shared level dropdown, local case/whole-word/regex search, session capture across navigation/help/form, frozen display with 200-entry live cache, fixed toolbar at five sizes, clear/manual reconnect/automatic recovery without GAP entries; %s" %
               (language, profile, json.dumps(final)), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")

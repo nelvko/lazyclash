@@ -105,7 +105,7 @@ func TestLogsToolbarCountAndCacheGrowthKeepControlGeometry(t *testing.T) {
 				defer m.stopRuntime()
 				ctx, generation := m.runtime.ctx, m.runtime.generation
 				baseline := map[string]hitRegion{}
-				for _, id := range []string{"logs.search", "logs.level", "logs.view"} {
+				for _, id := range []string{"logs.search", "logs.level"} {
 					baseline[id] = findTarget(t, m, id)
 				}
 				assertStable := func() {

@@ -189,8 +189,6 @@
   "logs.level_info": "Info",
   "logs.level_warn": "Warn",
   "logs.level_error": "Error",
-  "logs.detailed": "Detailed",
-  "logs.compact": "Compact",
   "logs.latest": "Latest ↓",
   "logs.clear": "Clear",
   "logs.clear_hint": "Clear retained logs (Ctrl+L) · Capture unchanged",

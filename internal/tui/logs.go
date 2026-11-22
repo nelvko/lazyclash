@@ -26,7 +26,7 @@ type logsState struct {
 	caseSensitive, wholeWord, regex bool
 	levelMenu                       bool
 	level                           int // local display filter: all, info, warning, error
-	compact, holding                bool
+	singleLine, holding             bool
 	first                           uint64 // identity of the oldest retained entry
 	anchor                          logPosition
 	unread                          int
@@ -42,7 +42,7 @@ func newLogsState(locales ...i18n.Localizer) logsState {
 	search.CharLimit = 256
 	search.Placeholder = locale.T("logs.placeholder")
 	styleInput(&search, bg, false)
-	return logsState{search: search, compact: true}
+	return logsState{search: search}
 }
 
 func (m *Model) appendLogs(entries []mihomo.LogEntry) {
@@ -116,8 +116,6 @@ func (m *Model) logsActivate(id string) tea.Cmd {
 		m.openLogLevelMenu()
 	case "logs.case", "logs.word", "logs.regex":
 		m.toggleLogFilter(id)
-	case "logs.view":
-		m.logs.compact = !m.logs.compact
 	case "logs.clear":
 		m.logs.first += uint64(len(m.logs.entries))
 		m.logs.entries, m.logs.frozen = nil, nil
@@ -185,7 +183,8 @@ func (m *Model) logsKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 	case "l":
 		return true, m.logsActivate("logs.level")
 	case "v":
-		return true, m.logsActivate("logs.view")
+		m.logs.singleLine = !m.logs.singleLine
+		return true, nil
 	case "ctrl+l":
 		return true, m.logsActivate("logs.clear")
 	case "space", " ":

@@ -7,13 +7,15 @@ import "github.com/charmbracelet/x/ansi"
 type listSearchToolbar struct {
 	scope, functions          dashboardBlock
 	countWidth, matchingWidth int
-	countAfterFunctions       bool // only when scope, search and functions fit on one row
 }
 
 func (bar listSearchToolbar) searchGeometry(width int) (fieldWidth, offset int) {
 	width = max(1, width)
 	offset = searchControlWidth(bar.scope) + 2
-	suffix := searchControlWidth(bar.functions) + 2
+	suffix := 0
+	if len(bar.functions.lines) > 0 {
+		suffix = searchControlWidth(bar.functions) + 2
+	}
 	if bar.countWidth > 0 {
 		suffix += bar.countWidth + 2
 	}
@@ -62,8 +64,7 @@ func (bar listSearchToolbar) rows(width int, countVisible bool) int {
 func (bar listSearchToolbar) render(search dashboardBlock, width int, count, compactCount string) dashboardBlock {
 	width = max(1, width)
 	fieldWidth, offset := bar.searchGeometry(width)
-	countAtEnd := offset > 0 && bar.countAfterFunctions
-	if count != "" && !countAtEnd {
+	if count != "" && offset == 0 {
 		if offset+fieldWidth+2+bar.countWidth <= width {
 			search.lines[1] += themed("  "+count, muted, bg, false)
 		} else {
@@ -91,12 +92,12 @@ func (bar listSearchToolbar) render(search dashboardBlock, width int, count, com
 		place(bar.scope, 0, 1)
 		place(search, offset, 0)
 		x := offset + fieldWidth + 2
-		if bar.countWidth > 0 && !countAtEnd {
-			x += bar.countWidth + 2
+		if len(bar.functions.lines) > 0 {
+			place(bar.functions, x, 1)
+			x += searchControlWidth(bar.functions) + 2
 		}
-		place(bar.functions, x, 1)
-		if countAtEnd && count != "" {
-			place(dashboardBlock{lines: []string{themed(count, muted, bg, false)}}, x+searchControlWidth(bar.functions)+2, 1)
+		if count != "" {
+			place(dashboardBlock{lines: []string{themed(count, muted, bg, false)}}, x, 1)
 		}
 	} else {
 		place(bar.scope, 0, 0)

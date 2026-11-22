@@ -111,6 +111,10 @@ func TestLogsHintsFollowEditingPauseAndFocusedControls(t *testing.T) {
 		if m.contextHelp() != m.tr("navigation.logs.searching") {
 			t.Fatal("logs search advertises list shortcuts")
 		}
+		m, _ = update(m, key("v"))
+		if m.logs.search.Value() != "v" || m.logs.singleLine {
+			t.Fatal("typing v in search toggled wrapping or lost the character")
+		}
 		m, _ = update(m, special(tea.KeyEnter))
 		if m.logs.editing || m.focus != "logs.list" || hintHasKey(m.contextHelp(), "Enter") {
 			t.Fatal("log list advertises a nonexistent Enter action")
@@ -129,15 +133,6 @@ func TestLogsHintsFollowEditingPauseAndFocusedControls(t *testing.T) {
 		m, _ = update(m, special(tea.KeyEnter))
 		if m.logs.paused {
 			t.Fatal("Enter Resume did not resume the logs")
-		}
-		m.focus = "logs.view"
-		m.logs.compact = true
-		if !strings.HasPrefix(m.contextHelp(), m.tr("navigation.logs.action.detailed")) {
-			t.Fatal("view button did not describe its next mode")
-		}
-		m, _ = update(m, special(tea.KeyEnter))
-		if m.logs.compact || !strings.HasPrefix(m.contextHelp(), m.tr("navigation.logs.action.compact")) {
-			t.Fatal("view mode and hint did not toggle together")
 		}
 		m.focus, m.logs.level = "logs.level", 0
 		if !strings.HasPrefix(m.contextHelp(), m.tr("navigation.logs.action.level")) {

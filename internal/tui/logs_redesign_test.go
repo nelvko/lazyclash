@@ -87,9 +87,8 @@ func TestLogsBrowsingPinsVisibleRowsWhileCaptureContinuesAndEntriesExpire(t *tes
 	}
 }
 
-func TestLogsPinnedEntrySurvivesResizeAndCompactReflow(t *testing.T) {
+func TestLogsPinnedEntrySurvivesResizeAndWrapToggle(t *testing.T) {
 	m := redesignedLogsModel(80, 24, 0)
-	m.logs.compact = false
 	defer m.stopRuntime()
 	for n := 0; n < 40; n++ {
 		m.appendLogs([]mihomo.LogEntry{{Level: "info", Message: fmt.Sprintf("event-%03d ", n) + strings.Repeat("中文🚀 segment ", 16)}})
@@ -110,15 +109,15 @@ func TestLogsPinnedEntrySurvivesResizeAndCompactReflow(t *testing.T) {
 			t.Fatalf("%v reflow skipped the anchored event: got entry %d", size, got)
 		}
 	}
-	m.logsActivate("logs.view")
+	m, _ = update(m, key("v"))
 	doc := m.logDocument(76)
 	view := m.logViewport(doc, 76, 15)
-	if !m.logs.compact || !strings.HasPrefix(ansi.Strip(view.View()), "--:--:--  INFO   event-008") {
-		t.Fatalf("compact reflow skipped or hid the pinned event:\n%s", ansi.Strip(view.View()))
+	if !m.logs.singleLine || !strings.HasPrefix(ansi.Strip(view.View()), "--:--:--  INFO   event-008") {
+		t.Fatalf("single-line layout skipped or hid the pinned event:\n%s", ansi.Strip(view.View()))
 	}
-	m.logsActivate("logs.view")
-	if m.logs.compact || m.logs.anchor.entry != 8 || m.runtime.generation != generation {
-		t.Fatal("returning to details discarded the pinned event or restarted capture")
+	m, _ = update(m, key("v"))
+	if m.logs.singleLine || m.logs.anchor.entry != 8 || m.runtime.generation != generation {
+		t.Fatal("restoring wrapping discarded the pinned event or restarted capture")
 	}
 }
 
@@ -161,13 +160,13 @@ func TestLogsClearOnlyRemovesRetainedEntriesAndPreservesStreamAndFilters(t *test
 	m := redesignedLogsModel(120, 32, 20)
 	defer m.stopRuntime()
 	m.logs.search.SetValue("Needle")
-	m.logs.level, m.logs.compact = 3, true
+	m.logs.level, m.logs.singleLine = 3, true
 	m.logs.holding, m.logs.unread = true, 7
 	ctx, generation := m.runtime.ctx, m.runtime.generation
 	if cmd := m.logsActivate("logs.clear"); cmd != nil {
 		t.Fatal("clear unexpectedly started a backend operation")
 	}
-	if len(m.logs.entries) != 0 || m.logs.holding || m.logs.unread != 0 || m.logs.search.Value() != "Needle" || m.logs.level != 3 || !m.logs.compact {
+	if len(m.logs.entries) != 0 || m.logs.holding || m.logs.unread != 0 || m.logs.search.Value() != "Needle" || m.logs.level != 3 || !m.logs.singleLine {
 		t.Fatal("clear did not reset only retained log data and reading state")
 	}
 	if ctx.Err() != nil || !m.logs.active || m.logs.paused || m.runtime.generation != generation || m.logs.first != 20 {
@@ -179,7 +178,7 @@ func TestLogsClearOnlyRemovesRetainedEntriesAndPreservesStreamAndFilters(t *test
 		t.Fatal("clear accepted an old stream result or failed to continue the existing stream")
 	}
 	m.logsActivate("logs.reset-search")
-	if m.logs.search.Value() != "" || m.logs.level != 3 || !m.logs.compact || len(m.logs.entries) != 1 {
+	if m.logs.search.Value() != "" || m.logs.level != 3 || !m.logs.singleLine || len(m.logs.entries) != 1 {
 		t.Fatal("search reset cleared filters, layout or retained events")
 	}
 	m.pauseLogs()
@@ -224,11 +223,7 @@ func TestLogsToolbarKeepsKeyboardOrderAndMouseTargetsWhileBrowsing(t *testing.T)
 			if !m.logs.editing || !m.logs.search.Focused() || m.logs.paused || !m.logs.active || m.logs.anchor != anchor {
 				t.Fatal("search focus interrupted capture or the reading position")
 			}
-			order := []string{"logs.case", "logs.word", "logs.regex"}
-			if view := findTarget(t, m, "logs.view"); view.Y == search.Y+1 {
-				order = append(order, "logs.view")
-			}
-			order = append(order, "logs.list", "logs.latest")
+			order := []string{"logs.case", "logs.word", "logs.regex", "logs.list", "logs.latest"}
 			for _, id := range order {
 				m, _ = update(m, special(tea.KeyTab))
 				if m.focus != id || m.logs.editing || m.logs.search.Focused() {
@@ -243,10 +238,6 @@ func TestLogsToolbarKeepsKeyboardOrderAndMouseTargetsWhileBrowsing(t *testing.T)
 			m, _ = update(m, special(tea.KeyEnter))
 			if m.logs.level != 1 || ctx.Err() != nil || m.runtime.generation != generation {
 				t.Fatal("level click changed capture instead of only filtering display")
-			}
-			m, _ = click(m, findTarget(t, m, "logs.view"))
-			if m.logs.compact || ctx.Err() != nil {
-				t.Fatal("view click did not toggle layout independently of capture")
 			}
 			assertCanvas(t, m.screen, size[0], size[1])
 			assertRegions(t, m.targets, size[0], size[1])

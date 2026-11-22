@@ -116,7 +116,7 @@ func TestSearchControlsKeepLogCountsWhileEditingOrInspectingOptions(t *testing.T
 				m.logs.search.SetValue("event-001")
 				for _, editing := range []bool{false, true} {
 					m.logs.editing = editing
-					for _, id := range []string{"logs.search", "logs.case", "logs.word", "logs.regex", "logs.level", "logs.view", "logs.reset-search"} {
+					for _, id := range []string{"logs.search", "logs.case", "logs.word", "logs.regex", "logs.level", "logs.reset-search"} {
 						m.focus, m.hover = id, id
 						bar := m.logsToolbar(width, m.filterToolbarRows(width))
 						plain := ansi.Strip(strings.Join(bar.lines, "\n"))
@@ -139,7 +139,7 @@ func TestSearchControlsLogClearReturnsToInputWithoutChangingCollection(t *testin
 				m.pauseLogs()
 			}
 			m.logs.search.SetValue("no matching event")
-			m.logs.level, m.logs.compact = 2, true
+			m.logs.level, m.logs.singleLine = 2, true
 			m.logs.search.Blur()
 			m.logs.editing, m.focus = false, "logs.reset-search"
 			ctx, generation := m.runtime.ctx, m.runtime.generation
@@ -148,7 +148,7 @@ func TestSearchControlsLogClearReturnsToInputWithoutChangingCollection(t *testin
 			if m.logs.search.Value() != "" || !m.logs.editing || !m.logs.search.Focused() || m.focus != "logs.search" {
 				t.Fatal("clearing search did not return to an editable empty input")
 			}
-			if !m.logs.active || ctx.Err() != nil || m.runtime.generation != generation || m.logs.paused != paused || len(m.logs.entries) != retained || len(m.logs.frozen) != frozen || m.logs.level != 2 || !m.logs.compact {
+			if !m.logs.active || ctx.Err() != nil || m.runtime.generation != generation || m.logs.paused != paused || len(m.logs.entries) != retained || len(m.logs.frozen) != frozen || m.logs.level != 2 || !m.logs.singleLine {
 				t.Fatal("clearing search changed collection, pause, entries or other display settings")
 			}
 		})

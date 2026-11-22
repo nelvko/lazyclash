@@ -189,8 +189,6 @@
   "logs.level_info": "信息",
   "logs.level_warn": "警告",
   "logs.level_error": "错误",
-  "logs.detailed": "详细",
-  "logs.compact": "简洁",
   "logs.latest": "最新 ↓",
   "logs.clear": "清空",
   "logs.clear_hint": "清空保留的记录 (Ctrl+L) · 不改变采集状态",

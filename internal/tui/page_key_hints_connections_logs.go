@@ -122,11 +122,6 @@ func (m *Model) logsContextHelp() string {
 		action = "latest"
 	case "logs.level":
 		parts = append(parts, tr("navigation.logs.action.level"))
-	case "logs.view":
-		action = "compact"
-		if m.logs.compact {
-			action = "detailed"
-		}
 	case "logs.case", "logs.word", "logs.regex":
 		action = strings.TrimPrefix(m.focus, "logs.")
 	}

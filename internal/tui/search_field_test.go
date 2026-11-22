@@ -199,21 +199,19 @@ func TestSearchFieldLogOptionsKeepGeometryAcrossChoices(t *testing.T) {
 		for width := 24; width <= 85; width++ {
 			baseline := m.logFilterBar(width)
 			for level := range 4 {
-				for _, compact := range []bool{false, true} {
-					m.logs.level, m.logs.compact = level, compact
-					bar := m.logFilterBar(width)
-					if len(bar.lines) != len(baseline.lines) || len(bar.targets) != len(baseline.targets) {
-						t.Fatalf("%s width=%d level=%d compact=%t changed toolbar layout", language, width, level, compact)
+				m.logs.level = level
+				bar := m.logFilterBar(width)
+				if len(bar.lines) != len(baseline.lines) || len(bar.targets) != len(baseline.targets) {
+					t.Fatalf("%s width=%d level=%d changed toolbar layout", language, width, level)
+				}
+				for i, target := range bar.targets {
+					if target != baseline.targets[i] {
+						t.Fatalf("%s width=%d level=%d moved %s: got %+v; want %+v", language, width, level, target.ID, target, baseline.targets[i])
 					}
-					for i, target := range bar.targets {
-						if target != baseline.targets[i] {
-							t.Fatalf("%s width=%d level=%d compact=%t moved %s: got %+v; want %+v", language, width, level, compact, target.ID, target, baseline.targets[i])
-						}
-					}
-					for _, line := range bar.lines {
-						if ansi.StringWidth(line) > width {
-							t.Fatalf("%s width=%d level=%d compact=%t overflowed the toolbar", language, width, level, compact)
-						}
+				}
+				for _, line := range bar.lines {
+					if ansi.StringWidth(line) > width {
+						t.Fatalf("%s width=%d level=%d overflowed the toolbar", language, width, level)
 					}
 				}
 			}

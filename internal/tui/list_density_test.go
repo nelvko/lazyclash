@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
@@ -103,26 +102,28 @@ func TestListToolbarsReserveOnlyVisibleSearchAndStatusRows(t *testing.T) {
 	}
 }
 
-func TestLogsDefaultCompactAndDetailedViewPreserveFullMessages(t *testing.T) {
-	m := logsModel()
-	message := "first line\n" + strings.Repeat("中文 segment ", 12) + "END-OF-MESSAGE"
-	m.appendLogs([]mihomo.LogEntry{{Level: "info", Message: "short event"}, {Level: "warn", Message: message}})
-	doc := m.logDocument(76)
-	if !m.logs.compact || len(doc.lines) != 2 || strings.Contains(doc.lines[1], "\n") {
-		t.Fatal("default log layout is not one row per event")
-	}
-	m.logsKey(key("v"))
-	doc = m.logDocument(76)
-	if m.logs.compact || !strings.Contains(ansi.Strip(doc.lines[0]), "INFO   short event") {
-		t.Fatal("detailed logs did not keep short events on their timestamp row")
-	}
-	plain := ansi.Strip(strings.Join(doc.lines, "\n"))
-	compactText := strings.Join(strings.Fields(plain), "")
-	if !strings.Contains(compactText, "END-OF-MESSAGE") || strings.Contains(plain, "────") {
-		t.Fatal("detailed logs clipped the message or retained separator rows")
-	}
-	m.logsKey(tea.KeyPressMsg{Code: 'v', Text: "v"})
-	if !m.logs.compact || len(m.logs.entries) != 2 {
-		t.Fatal("switching back changed retained events")
+func TestLogsWrapLongMessagesByDefaultAndToggleWithV(t *testing.T) {
+	for _, width := range []int{24, 76} {
+		t.Run(fmt.Sprint(width), func(t *testing.T) {
+			m := logsModel()
+			message := "first line\n" + strings.Repeat("中文 segment ", 12) + "context deadline exceeded"
+			m.appendLogs([]mihomo.LogEntry{{Level: "info", Message: "short event"}, {Level: "warn", Message: message}})
+			wrapped := ansi.Strip(strings.Join(m.logDocument(width).lines, "\n"))
+			if !strings.Contains(strings.Join(strings.Fields(wrapped), ""), "contextdeadlineexceeded") || strings.Contains(wrapped, "────") {
+				t.Fatalf("default wrapping clipped the error or added separator rows:\n%s", wrapped)
+			}
+			if width == 76 && !strings.Contains(wrapped, "INFO   short event") {
+				t.Fatal("short event did not share its timestamp row")
+			}
+			m, _ = update(m, key("v"))
+			lines := m.logDocument(width).lines
+			if len(lines) != 2 || strings.Contains(strings.Join(lines, ""), "exceeded") || strings.Contains(lines[1], "\n") {
+				t.Fatalf("v did not display one cropped row per event: %q", lines)
+			}
+			m, _ = update(m, key("v"))
+			if got := ansi.Strip(strings.Join(m.logDocument(width).lines, "\n")); got != wrapped {
+				t.Fatalf("restoring wrapping changed the events:\n%s", got)
+			}
+		})
 	}
 }

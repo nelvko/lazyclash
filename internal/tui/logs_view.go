@@ -21,7 +21,7 @@ type logDocumentKey struct {
 	firstEntry                      *mihomo.LogEntry
 	count, width, level             int
 	query                           string
-	compact                         bool
+	singleLine                      bool
 	caseSensitive, wholeWord, regex bool
 }
 
@@ -73,7 +73,7 @@ func (m *Model) logDocument(width int) *logDocument {
 	width = max(1, width)
 	entries, first := m.logsDisplayEntries()
 	key := logDocumentKey{
-		first: first, count: len(entries), width: width, level: m.logs.level, compact: m.logs.compact,
+		first: first, count: len(entries), width: width, level: m.logs.level, singleLine: m.logs.singleLine,
 		query: strings.TrimSpace(m.logs.search.Value()), caseSensitive: m.logs.caseSensitive,
 		wholeWord: m.logs.wholeWord, regex: m.logs.regex,
 	}
@@ -109,7 +109,7 @@ func (m *Model) renderLogDocument(doc *logDocument, entries []mihomo.LogEntry, f
 		message := entry.Message
 		var rows []string
 		prefix := themed(stamp+"  ", muted, bg, false) + themed(cellPad(level, 5)+"  ", color, bg, false)
-		if m.logs.compact {
+		if m.logs.singleLine {
 			message = strings.ReplaceAll(strings.ReplaceAll(message, "\r", " "), "\n", " ")
 			rows = []string{cellCrop(prefix+themed(message, text, bg, false), width)}
 		} else {
@@ -152,7 +152,7 @@ func (m *Model) logViewport(doc *logDocument, width, height int) viewport.Model 
 			return doc.positions[i].entry >= m.logs.anchor.entry
 		})
 		if index < len(doc.positions) {
-			// Reflow or Compact mode may shorten the anchored entry. Keep the
+			// Reflow or switching to one line may shorten the anchored entry. Keep the
 			// same entry and clamp its row instead of skipping to the next one.
 			for index+1 < len(doc.positions) && doc.positions[index+1].entry == m.logs.anchor.entry && doc.positions[index+1].row <= m.logs.anchor.row {
 				index++
@@ -165,21 +165,13 @@ func (m *Model) logViewport(doc *logDocument, width, height int) viewport.Model 
 	return v
 }
 
-func (m *Model) logControl(id string) dashboardBlock {
-	keys := logLevelKeys[:]
+func (m *Model) logLevelControl() dashboardBlock {
+	const id = "logs.level"
 	label := m.tr(logLevelKeys[m.logs.level]) + " ▾"
-	if id == "logs.view" {
-		keys = []string{"logs.detailed", "logs.compact"}
-		label = m.tr(map[bool]string{false: "logs.detailed", true: "logs.compact"}[m.logs.compact])
-	}
 	o := m.searchControlOptions(id)
 	o.Kind = buttonText
-	for _, key := range keys {
-		value := m.tr(key)
-		if id == "logs.level" {
-			value += " ▾"
-		}
-		o.Width = max(o.Width, ansi.StringWidth(value))
+	for _, key := range logLevelKeys {
+		o.Width = max(o.Width, ansi.StringWidth(m.tr(key)+" ▾"))
 	}
 	o.Disabled = m.busy || m.quitting
 	value := renderButton(label, o)
@@ -220,7 +212,7 @@ func (m *Model) logCountWidth() int {
 }
 
 func (m *Model) logSearchToolbar() listSearchToolbar {
-	return listSearchToolbar{scope: m.logControl("logs.level"), functions: m.logControl("logs.view"),
+	return listSearchToolbar{scope: m.logLevelControl(),
 		countWidth: m.logCountWidth(), matchingWidth: searchControlWidth(m.logSearchButtons())}
 }
 

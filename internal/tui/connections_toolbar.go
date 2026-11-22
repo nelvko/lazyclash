@@ -39,8 +39,7 @@ func (m *Model) connectionTabs(width int) dashboardBlock {
 
 func (m *Model) connectionSearchToolbar(width int) listSearchToolbar {
 	return listSearchToolbar{scope: m.connectionTabs(width), functions: m.connectionControls(),
-		countWidth: m.connectionCountWidth(), matchingWidth: searchControlWidth(m.connectionFilterButtons()),
-		countAfterFunctions: true}
+		countWidth: m.connectionCountWidth(), matchingWidth: searchControlWidth(m.connectionFilterButtons())}
 }
 
 func (m *Model) connectionSearchGeometry(width int) (fieldWidth, offset int) {
