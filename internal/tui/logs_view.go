@@ -419,9 +419,5 @@ func (m *Model) logsEmptyState() emptyStateOptions {
 	if !m.logs.active {
 		return emptyStateOptions{Title: m.tr("logs.opening"), Detail: recovered}
 	}
-	detail := m.tr("empty.logs.waiting")
-	if recovered != "" {
-		detail = recovered + " · " + detail
-	}
-	return emptyStateOptions{Title: m.tr("empty.logs.none"), Detail: detail}
+	return emptyStateOptions{Title: m.tr("empty.logs.none"), Detail: recovered}
 }

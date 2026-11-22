@@ -2,6 +2,5 @@
   "empty.connections.retry_hint": "Enter 重试",
   "empty.logs.reset_hint": "Enter 清除筛选",
   "empty.logs.none": "暂无日志",
-  "empty.logs.waiting": "本次会话收到的新日志将显示在这里。",
   "empty.logs.reconnect": "正在等待日志流重新连接。"
 }
