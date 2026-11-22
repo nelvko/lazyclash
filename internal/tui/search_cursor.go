@@ -52,7 +52,7 @@ func (m *Model) activeInputField() (textinput.Model, string, bool) {
 		return textinput.Model{}, "", false
 	}
 	if m.form != "" {
-		if m.form == "profile-create" {
+		if m.profileFieldsForm() {
 			if input := m.profileCreateActive(); input != nil && input.Focused() {
 				return *input, profileCreateFieldID(m.profileCreate.field), true
 			}

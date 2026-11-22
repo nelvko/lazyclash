@@ -18,42 +18,41 @@ import (
 )
 
 type fakeBackend struct {
-	deleteAndSwitch      func(context.Context, string, string) error
-	checkUpdate          func(context.Context, mihomo.Channel, downloadnet.Config) (app.CoreUpdateCheck, error)
-	upgradeCore          func(context.Context, app.CoreUpdateCheck, downloadnet.Config, func(mihomo.Progress)) (app.CoreUpgradeResult, error)
-	snapshot             app.Snapshot
-	snapshotErr          error
-	prefs                app.Preferences
-	prefsErr             error
-	saveLanguage         func(context.Context, string) error
-	resolve              func(context.Context, string, downloadnet.Config) (mihomo.Release, error)
-	testFile             func(context.Context, mihomo.Release, downloadnet.Config) error
-	prepare              func(context.Context, mihomo.Release, string, bool) (app.InstallPlan, error)
-	install              func(context.Context, app.InstallPlan, downloadnet.Config, func(mihomo.Progress)) (app.InstallResult, error)
-	save                 func(context.Context, downloadnet.Config) error
-	add                  func(context.Context, string, string) error
-	addSubscription      func(context.Context, string, string) error
-	createProfile        func(context.Context, app.ProfileDraft) error
-	renameProfile        func(context.Context, string, string) error
-	updateDescription    func(context.Context, string, string) error
-	updateProfileAddress func(context.Context, string, string) error
-	refresh              func(context.Context, string) error
-	refreshAllProfiles   func(context.Context) error
-	deleteProfile        func(context.Context, string) error
-	setOverrides         func(context.Context, string, []byte) error
-	control              func(context.Context, string) error
-	autostart            func(context.Context, bool) error
-	mode                 func(context.Context, string) error
-	tun                  func(context.Context, bool) error
-	runtime              func(context.Context) (app.RuntimeSnapshot, error)
-	streamRuntime        func(context.Context, func(app.RuntimeEvent)) error
-	rules                func(context.Context) (app.RuleSnapshot, error)
-	streamLogs           func(context.Context, func(mihomo.LogEntry)) error
-	closeConnection      func(context.Context, string, time.Time) error
-	closeAllConnections  func(context.Context) error
-	getSettings          func(context.Context) (app.RuntimeSettings, error)
-	prepareSettings      func(context.Context, app.RuntimeSettings) (app.RuntimeSettingsPlan, error)
-	applySettings        func(context.Context, app.RuntimeSettingsPlan) (app.RuntimeSettingsResult, error)
+	deleteAndSwitch     func(context.Context, string, string) error
+	checkUpdate         func(context.Context, mihomo.Channel, downloadnet.Config) (app.CoreUpdateCheck, error)
+	upgradeCore         func(context.Context, app.CoreUpdateCheck, downloadnet.Config, func(mihomo.Progress)) (app.CoreUpgradeResult, error)
+	snapshot            app.Snapshot
+	snapshotErr         error
+	prefs               app.Preferences
+	prefsErr            error
+	saveLanguage        func(context.Context, string) error
+	resolve             func(context.Context, string, downloadnet.Config) (mihomo.Release, error)
+	testFile            func(context.Context, mihomo.Release, downloadnet.Config) error
+	prepare             func(context.Context, mihomo.Release, string, bool) (app.InstallPlan, error)
+	install             func(context.Context, app.InstallPlan, downloadnet.Config, func(mihomo.Progress)) (app.InstallResult, error)
+	save                func(context.Context, downloadnet.Config) error
+	add                 func(context.Context, string, string) error
+	addSubscription     func(context.Context, string, string) error
+	createProfile       func(context.Context, app.ProfileDraft) error
+	getProfileSettings  func(context.Context, string) (app.ProfileSettings, error)
+	saveProfileSettings func(context.Context, app.ProfileSettings) error
+	refresh             func(context.Context, string) error
+	refreshAllProfiles  func(context.Context) error
+	deleteProfile       func(context.Context, string) error
+	setOverrides        func(context.Context, string, []byte) error
+	control             func(context.Context, string) error
+	autostart           func(context.Context, bool) error
+	mode                func(context.Context, string) error
+	tun                 func(context.Context, bool) error
+	runtime             func(context.Context) (app.RuntimeSnapshot, error)
+	streamRuntime       func(context.Context, func(app.RuntimeEvent)) error
+	rules               func(context.Context) (app.RuleSnapshot, error)
+	streamLogs          func(context.Context, func(mihomo.LogEntry)) error
+	closeConnection     func(context.Context, string, time.Time) error
+	closeAllConnections func(context.Context) error
+	getSettings         func(context.Context) (app.RuntimeSettings, error)
+	prepareSettings     func(context.Context, app.RuntimeSettings) (app.RuntimeSettingsPlan, error)
+	applySettings       func(context.Context, app.RuntimeSettingsPlan) (app.RuntimeSettingsResult, error)
 }
 
 func (f *fakeBackend) GetRuntimeSettings(ctx context.Context) (app.RuntimeSettings, error) {
@@ -170,27 +169,23 @@ func (f *fakeBackend) CreateProfile(ctx context.Context, draft app.ProfileDraft)
 	return ctx.Err()
 }
 
-func (f *fakeBackend) RenameProfile(ctx context.Context, id, name string) error {
-	if f.renameProfile != nil {
-		return f.renameProfile(ctx, id, name)
+func (f *fakeBackend) GetProfileSettings(ctx context.Context, id string) (app.ProfileSettings, error) {
+	if f.getProfileSettings != nil {
+		return f.getProfileSettings(ctx, id)
+	}
+	for _, entry := range f.snapshot.ProfileDetails {
+		if entry.ID == id {
+			return app.ProfileSettings{ID: id, Name: entry.Name, Description: entry.Description}, nil
+		}
+	}
+	return app.ProfileSettings{}, errors.New("profile does not exist")
+}
+func (f *fakeBackend) SaveProfileSettings(ctx context.Context, s app.ProfileSettings) error {
+	if f.saveProfileSettings != nil {
+		return f.saveProfileSettings(ctx, s)
 	}
 	return ctx.Err()
 }
-
-func (f *fakeBackend) UpdateProfileDescription(ctx context.Context, id, description string) error {
-	if f.updateDescription != nil {
-		return f.updateDescription(ctx, id, description)
-	}
-	return ctx.Err()
-}
-
-func (f *fakeBackend) UpdateProfileAddress(ctx context.Context, id, source string) error {
-	if f.updateProfileAddress != nil {
-		return f.updateProfileAddress(ctx, id, source)
-	}
-	return ctx.Err()
-}
-
 func (f *fakeBackend) Refresh(ctx context.Context, name string) error {
 	if f.refresh != nil {
 		return f.refresh(ctx, name)

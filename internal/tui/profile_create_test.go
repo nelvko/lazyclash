@@ -168,19 +168,3 @@ func TestProfileCreateResizeKeepsActionsAndErrorsVisible(t *testing.T) {
 		}
 	}
 }
-
-func TestProfileDescriptionCanBeCleared(t *testing.T) {
-	called := false
-	b := &fakeBackend{snapshot: app.Snapshot{Profiles: []string{"work"}, ProfileDetails: profileFixtures("default", "work")}, updateDescription: func(_ context.Context, id, description string) error {
-		called = id == "work" && description == ""
-		return nil
-	}}
-	m := ready(b)
-	m.openProfileEdit("profile-description", "work")
-	m.input.SetValue(" ")
-	m, cmd := update(m, special(tea.KeyEnter))
-	m = finishProfileJob(t, m, cmd)
-	if !called || m.form != "" {
-		t.Fatal("empty description was rejected instead of cleared")
-	}
-}

@@ -8,16 +8,16 @@ import (
 )
 
 type profileGridLayout struct {
-	names                             []string
-	intro, detail, empty              dashboardBlock
-	width, columns, cardWidth, cardH  int
-	detailRow, detailY, emptyY, total int
-	compact                           bool
+	names                            []string
+	intro, empty                     dashboardBlock
+	width, columns, cardWidth, cardH int
+	emptyY, total                    int
+	compact                          bool
 }
 
 func (m *Model) layoutProfiles(width int) profileGridLayout {
 	width = max(1, width)
-	l := profileGridLayout{width: width, columns: 1, cardH: 6, detailRow: -1, compact: m.compactProfileCards()}
+	l := profileGridLayout{width: width, columns: 1, cardH: 6, compact: m.compactProfileCards()}
 	if !m.snapshotReady {
 		body, targets := m.unavailableProfiles(width)
 		l.intro = dashboardBlock{lines: strings.Split(body, "\n"), targets: targets}
@@ -34,15 +34,6 @@ func (m *Model) layoutProfiles(width int) profileGridLayout {
 	l.names = m.profiles()
 	l.intro = m.profilesIntro(width)
 	l.total = len(l.intro.lines) + l.rowCount()*l.stride()
-	for i, name := range l.names {
-		if name == m.profilesUI.detail {
-			l.detailRow = i / l.columns
-			l.detailY = l.rowY(l.detailRow) + l.stride()
-			l.detail = m.profileDetailsPaneAt(name, i, width)
-			l.total += len(l.detail.lines) + 1
-			break
-		}
-	}
 	if len(l.names) == 0 {
 		l.emptyY = l.total
 		height := max(1, dashboardGeometry(m.dashboardOptions()).height-l.total)
@@ -61,11 +52,7 @@ func (l profileGridLayout) rowCount() int {
 }
 
 func (l profileGridLayout) rowY(row int) int {
-	y := len(l.intro.lines) + row*l.stride()
-	if l.detailRow >= 0 && row > l.detailRow {
-		y += len(l.detail.lines) + 1
-	}
-	return y
+	return len(l.intro.lines) + row*l.stride()
 }
 
 func (l profileGridLayout) card(index int) hitRegion {
@@ -84,9 +71,7 @@ func (m *Model) paintProfiles(l profileGridLayout, start, end int) dashboardBloc
 		if y+l.cardH > start {
 			out.copyVisibleBlock(m.paintProfileRow(l, row*l.columns), y, start)
 		}
-		if row == l.detailRow {
-			out.copyVisibleBlock(l.detail, l.detailY, start)
-		}
+
 	}
 	out.copyVisibleBlock(l.empty, l.emptyY, start)
 	return out
@@ -112,12 +97,7 @@ func (m *Model) profilesTargets(width int) []hitRegion {
 		index := strconv.Itoa(i)
 		controls := profileCardControls("profiles.refresh."+index, "profiles.menu."+index, card.W, refreshable[name])
 		targets = append(targets, m.profileCardTargets(card, controls, widths, l.compact)...)
-		if l.detailRow >= 0 && i == min(len(l.names), (l.detailRow+1)*l.columns)-1 {
-			for _, target := range l.detail.targets {
-				target.Y += l.detailY
-				targets = append(targets, target)
-			}
-		}
+
 	}
 	for _, target := range l.empty.targets {
 		target.Y += l.emptyY

@@ -13,28 +13,29 @@ func (m *Model) profileMenuAvailable() bool {
 
 func (m *Model) profileMenuItems(id string) []menuItem {
 	info := m.profileInfo(id)
-	apply := menuItem{ID: "apply", Label: m.tr("profile_menu.use")}
-	if id == m.snapshot.Applied {
-		apply.DisabledReason = m.tr("profile_menu.already_selected")
-		if info.Pending || m.snapshot.ProfilePending {
-			apply.Label, apply.DisabledReason = m.tr("profile_menu.apply_changes"), ""
+	var items []menuItem
+	current := id == m.snapshot.Applied
+	if !current || info.Pending || m.snapshot.ProfilePending && current {
+		apply := menuItem{ID: "apply", Label: m.tr("profile_menu.use")}
+		if current {
+			apply.Label = m.tr("profile_menu.apply_changes")
 		}
+		if !m.snapshot.Installed {
+			apply.DisabledReason = m.tr("profile_menu.install_first")
+		}
+		items = append(items, apply)
 	}
-	if !m.snapshot.Installed {
-		apply.DisabledReason = m.tr("profile_menu.install_first")
+	if info.Refreshable {
+		label := m.tr("profile_menu.update")
+		if info.Kind == "local" {
+			label = m.tr("profile_menu.reload_file")
+		}
+		items = append(items, menuItem{ID: "refresh", Label: label})
 	}
-	update := menuItem{ID: "refresh", Label: m.tr("profile_menu.update")}
-	if !info.Refreshable {
-		update.DisabledReason = m.tr("profile_menu.no_address")
-	}
-	return []menuItem{apply, update,
-		{ID: "rename", Label: m.tr("profile_menu.rename")},
-		{ID: "description", Label: m.tr("profile_menu.description")},
-		{ID: "address", Label: m.tr("profile_menu.address")},
-		{ID: "overrides", Label: m.tr("profile_menu.overrides")},
-		{ID: "details", Label: m.tr("profile_menu.details")},
-		{ID: "delete", Label: m.tr("profile_menu.delete"), Danger: true},
-	}
+	return append(items,
+		menuItem{ID: "settings", Label: m.tr("profile_menu.settings")},
+		menuItem{ID: "delete", Label: m.tr("profile_menu.delete"), Danger: true},
+	)
 }
 
 func (m *Model) openProfileMenu(index, x, y int) {
@@ -174,8 +175,7 @@ func (m *Model) profileMenuResult(result menuResult) tea.Cmd {
 			}
 			prefix := map[string]string{
 				"apply": "profiles.apply.", "refresh": "profiles.update.",
-				"rename": "profiles.rename.", "description": "profiles.description.", "address": "profiles.url-edit.",
-				"overrides": "profiles.overrides.", "details": "profile.", "delete": "profiles.delete.",
+				"settings": "profile.", "delete": "profiles.delete.",
 			}[result.Action]
 			_, cmd := m.profileAction(fmt.Sprintf("%s%d", prefix, index))
 			return cmd

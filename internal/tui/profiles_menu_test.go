@@ -93,38 +93,42 @@ func TestProfileMenuOwnsPasteAndPageShortcuts(t *testing.T) {
 }
 
 func TestProfileMenuOnlyOffersSupportedActions(t *testing.T) {
-	tests := []struct {
-		name, disabled     string
-		installed, current bool
-		forgetAddress      bool
+	for _, tc := range []struct {
+		name                            string
+		installed, current, refreshable bool
 	}{
-		{name: "uninstalled", disabled: "apply"},
-		{name: "selected", disabled: "apply", installed: true, current: true},
-		{name: "one-time import", disabled: "refresh", installed: true, forgetAddress: true},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			m, b := profileClickModel(t, tt.installed, false, tt.current, false)
-			if tt.forgetAddress {
-				m.snapshot.ProfileDetails[1].Refreshable = false
-				m.layout()
-			}
+		{"uninstalled", false, false, true},
+		{"current", true, true, true},
+		{"one-time import", true, false, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m, b := profileClickModel(t, tc.installed, false, tc.current, false)
+			m.snapshot.ProfileDetails[1].Refreshable = tc.refreshable
+			m.layout()
 			m = profileMenuRightClick(t, m, "profile.0")
-			index := profileMenuItemIndex(t, m, tt.disabled)
-			if m.menu.items[index].DisabledReason == "" {
-				t.Fatalf("unsupported action %q has no disabled reason", tt.disabled)
+			present := map[string]bool{}
+			for index, item := range m.menu.items {
+				present[item.ID] = true
+				if item.ID == "apply" && !tc.installed {
+					if item.DisabledReason == "" {
+						t.Fatal("Use must explain that installation is required")
+					}
+					m.menu.selected = index
+					m, _ = update(m, special(tea.KeyEnter))
+					if m.busy || len(b.calls) != 0 {
+						t.Fatal("Use ran without an installed core")
+					}
+				}
 			}
-			m.menu.selected = index
-			m, _ = update(m, special(tea.KeyEnter))
-			if m.busy || len(b.calls) != 0 || m.form != "" {
-				t.Fatalf("disabled action %q still executed", tt.disabled)
+			if present["apply"] == tc.current || present["refresh"] != tc.refreshable {
+				t.Fatalf("unexpected available actions: %v", present)
 			}
 		})
 	}
 }
 
 func TestProfileMenuDispatchesSharedActionsByStableID(t *testing.T) {
-	for _, action := range []string{"refresh", "rename", "address", "overrides", "details", "delete", "apply"} {
+	for _, action := range []string{"refresh", "settings", "delete", "apply"} {
 		t.Run(action, func(t *testing.T) {
 			m, b := profileClickModel(t, true, true, false, false)
 			var refreshed string
@@ -145,20 +149,14 @@ func TestProfileMenuDispatchesSharedActionsByStableID(t *testing.T) {
 				if len(b.calls) != 1 || b.calls[0] != "p-stable-profile-id" {
 					t.Fatal("Use profile did not call the shared Apply use case")
 				}
-			case "details":
-				if m.profilesUI.detail != "p-stable-profile-id" || len(b.calls) != 0 || m.busy {
-					t.Fatal("View details applied a profile or lost its stable identity")
+			case "settings":
+				m = finishProfileSettingsLoad(t, m, cmd)
+				if m.form != "profile-settings" || m.name != "p-stable-profile-id" || m.profileCreate.name.Value() != "Office display name" || len(b.calls) != 0 {
+					t.Fatal("Settings did not open the selected profile's metadata")
 				}
-			default:
-				want := map[string]string{"rename": "profile-rename", "address": "profile-url", "overrides": "profile-overrides", "delete": "profile-delete"}[action]
-				if m.form != want || m.name != "p-stable-profile-id" || m.busy || len(b.calls) != 0 {
-					t.Fatalf("%s did not open its shared form for the correct ID", action)
-				}
-				if action == "rename" && m.input.Value() != "Office display name" {
-					t.Fatal("Rename did not prefill the existing display name")
-				}
-				if action == "delete" && m.input.Value() != "" {
-					t.Fatal("Delete left stale input in its confirmation dialog")
+			case "delete":
+				if m.form != "profile-delete" || m.name != "p-stable-profile-id" || m.busy || len(b.calls) != 0 {
+					t.Fatal("Delete did not open a confirmation for the selected ID")
 				}
 			}
 		})

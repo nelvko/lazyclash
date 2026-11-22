@@ -1,5 +1,5 @@
 {
-  "help.profiles.click": "已安装内核时，点击卡片应用配置；当前配置仅应用待生效更改，没有更改时不重新加载。未安装内核时点击打开详情。",
+  "help.profiles.click": "单击卡片使用配置，单击当前卡片可应用待生效更改。",
   "help.profiles.menu": "右键点击卡片、点击 ⋯ 按钮，或聚焦卡片后按 m / Shift+F10 打开操作菜单。",
   "help.profiles.menuControls": "菜单：↑↓ / j/k 选择，Home / End 首末项，Enter 执行；Esc / Tab / Shift+Tab 或点击外部关闭。",
   "help.messages.toast": "右上角显示错误、警告、重要消息和持续任务进度；普通成功与信息仅短暂保留在通知列表。浏览页面时，Ctrl+N 查看列表和详情。",

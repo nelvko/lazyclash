@@ -8,18 +8,18 @@ import (
 )
 
 func (m *Model) pathForm() bool {
-	return m.form == "source" || m.form == "profile-url" || m.form == "profile-overrides" || (m.form == "profile-create" && m.profileCreate.field == profileCreateSource)
+	return m.form == "source" || m.form == "profile-overrides" || (m.profileFieldsForm() && m.profileCreate.field == profileCreateSource)
 }
 
 func (m *Model) pathInputValue() string {
-	if m.form == "profile-create" {
+	if m.profileFieldsForm() {
 		return m.profileCreate.source.Value()
 	}
 	return m.input.Value()
 }
 
 func (m *Model) setPathInputValue(value string) {
-	if m.form == "profile-create" {
+	if m.profileFieldsForm() {
 		m.profileCreate.source.SetValue(value)
 		m.profileCreate.source.CursorEnd()
 		return

@@ -53,7 +53,7 @@ func (m *Model) clearInputField(id string) (bool, tea.Cmd) {
 		if m.form == "profile-delete" {
 			return true, nil
 		}
-		if m.form == "profile-create" {
+		if m.profileFieldsForm() {
 			var selected int
 			switch field {
 			case "profile-create.name":

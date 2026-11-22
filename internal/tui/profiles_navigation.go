@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"slices"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -17,19 +16,6 @@ func (m *Model) profileGridKey(k tea.KeyPressMsg) bool {
 	}
 	key := k.String()
 	switch key {
-	case "esc":
-		if m.profilesUI.detail == "" {
-			return false
-		}
-		name := m.profilesUI.detail
-		m.profilesUI.detail = ""
-		layout := m.layoutProfiles(dashboardBodyWidth(m.dashboardOptions()))
-		if index := slices.Index(layout.names, name); index >= 0 {
-			card := layout.card(index)
-			m.focus = card.ID
-			m.revealBodyTarget(card)
-		}
-		return true
 	case "home", "end", "up", "k", "down", "j", "left", "h", "right", "l":
 	default:
 		return false
@@ -75,10 +61,6 @@ func (m *Model) profileGridKey(k tea.KeyPressMsg) bool {
 		if index%layout.columns+1 < layout.columns && index+1 < count {
 			next++
 		}
-	}
-	if next != index {
-		m.profilesUI.detail = ""
-		layout.detailRow = -1
 	}
 	card := layout.card(next)
 	m.focus = card.ID

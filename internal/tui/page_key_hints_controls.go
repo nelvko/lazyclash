@@ -14,9 +14,7 @@ func (m *Model) profilesContextHelp() string {
 		return m.tr("navigation.profiles.importing")
 	}
 	base := m.tr("navigation.profiles.controls")
-	if m.profilesUI.detail != "" {
-		base = m.tr("navigation.profiles.detailsBack")
-	}
+
 	action := ""
 	switch m.focus {
 	case "profiles.url.clear":
@@ -27,10 +25,6 @@ func (m *Model) profilesContextHelp() string {
 		action = m.tr("profiles.add")
 	case "profiles.create":
 		action = m.tr("profiles.create")
-	case "profiles.close":
-		action = m.tr("profiles.close")
-	case "profiles.use-default":
-		action = m.tr("profiles.use_default")
 	case "profiles.update-all":
 		if m.hasRefreshableProfiles() {
 			return m.tr("navigation.updateProfiles")
@@ -44,21 +38,9 @@ func (m *Model) profilesContextHelp() string {
 	}
 	for _, item := range []struct{ prefix, label string }{
 		{"profiles.menu.", "navigation.controls.menu"}, {"profiles.refresh.", "profiles.update"},
-		{"profiles.apply.", "profiles.use"}, {"profiles.update.", "profiles.update"},
-		{"profiles.rename.", "profiles.rename"}, {"profiles.description.", "navigation.controls.editDescription"},
-		{"profiles.url-edit.", "navigation.controls.editAddress"}, {"profiles.overrides.", "navigation.controls.importOverrides"},
-		{"profiles.delete.", "navigation.controls.reviewDelete"},
 	} {
-		if index, ok := profileActionIndex(m.focus, item.prefix, len(profiles)); ok {
+		if _, ok := profileActionIndex(m.focus, item.prefix, len(profiles)); ok {
 			action = m.tr(item.label)
-			if item.prefix == "profiles.apply." {
-				if profiles[index] == m.snapshot.Applied {
-					action = m.tr("profiles.reapply")
-				}
-				if m.profileInfo(profiles[index]).Pending {
-					action = m.tr("profiles.apply_changes")
-				}
-			}
 			break
 		}
 	}

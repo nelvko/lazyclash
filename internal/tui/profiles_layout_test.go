@@ -57,6 +57,16 @@ func TestProfileCardOriginAndAgeAlignBelowTitleAndActions(t *testing.T) {
 			t.Fatalf("width %d misplaced origin or age: %q", width, row)
 		}
 	}
+	info.Description = strings.Repeat("出差备用", 12)
+	for _, width := range []int{32, 55} {
+		card := m.profileCard(1, width)
+		row := ansi.Strip(card.lines[2])
+		if len(card.lines) != 6 || ansi.StringWidth(row) != width || !strings.HasPrefix(row, "  出差备用") ||
+			!strings.Contains(row, "…") || !strings.HasSuffix(row, "32d ago  ") || strings.Contains(row, info.Origin) {
+			t.Fatalf("description displaced the age or changed the card layout at %d: %q", width, row)
+		}
+	}
+	info.Description = " "
 	info.UpdatedAt = time.Time{}
 	if row := ansi.Strip(m.profileCard(1, 55).lines[2]); strings.TrimSpace(row) != info.Origin {
 		t.Fatalf("missing timestamp produced metadata %q", row)
@@ -115,7 +125,7 @@ func TestProfileCardShowsRemainingFractionAndOptionalExpiry(t *testing.T) {
 				t.Errorf("%s at width %d: missing pending status", lang.id, width)
 			}
 		}
-		if p := ansi.Strip(strings.Join(m.profileDetailsPane(info.ID, 50).lines, "\n")); !strings.Contains(p, lang.expiry) || !strings.Contains(p, dateText) || !strings.Contains(p, lang.balance) {
+		if p := ansi.Strip(strings.Join(m.settingsInfoLines(*info), "\n")); !strings.Contains(p, lang.expiry) || !strings.Contains(p, dateText) || !strings.Contains(p, lang.balance) {
 			t.Fatal("detail lost quota metadata", p)
 		}
 	}
@@ -188,7 +198,7 @@ func TestExpiredProfileCardKeepsActualDateInDetails(t *testing.T) {
 		if !strings.Contains(card, language.expired) || strings.Contains(card, "2001-03-04") {
 			t.Errorf("%s card lost expired status: %s", language.name, card)
 		}
-		detail := ansi.Strip(strings.Join(m.profileDetailsPane(info.ID, 56).lines, "\n"))
+		detail := ansi.Strip(strings.Join(m.settingsInfoLines(*info), "\n"))
 		if !strings.Contains(detail, language.label) || !strings.Contains(detail, "2001-03-04") {
 			t.Errorf("%s details lost actual expiry date: %s", language.name, detail)
 		}
@@ -212,17 +222,10 @@ func TestAppliedProfileHasOnlyLeftEdgeMarker(t *testing.T) {
 		}
 	}
 }
-func TestProfileDetailsRetainTypeOverridesAndFullSafeOrigin(t *testing.T) {
+func TestProfileCardsLocalizeSourceType(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		m := profilesPreview(false)
 		m.locale = i18n.New(language)
-		origin := strings.Repeat("safe-host.", 8) + "example"
-		m.snapshot.ProfileDetails[1].Origin = origin
-		detail := m.profileDetailsPane("Everyday", 32)
-		plain := ansi.Strip(strings.Join(detail.lines, "\n"))
-		if !strings.Contains(plain, m.tr("profiles.kind_overrides", m.tr("profiles.kind"))) || !strings.Contains(strings.ReplaceAll(plain, "\n", ""), origin) {
-			t.Fatalf("details lost type, overrides or full safe origin: %s", plain)
-		}
 		for _, source := range []struct{ kind, key string }{{"local", "profiles.create_local"}, {"imported", "profiles.imported_origin"}} {
 			m.snapshot.ProfileDetails[2].Kind = source.kind
 			card := ansi.Strip(strings.Join(m.profileCard(1, 55).lines, "\n"))

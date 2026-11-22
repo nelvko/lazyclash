@@ -100,10 +100,10 @@ func TestLogRecoveryStatusLocalizesWithoutChangingCoreMessages(t *testing.T) {
 
 func TestProfileUpdateFormattingAndInputsUseSelectedLanguage(t *testing.T) {
 	now := time.Date(2026, 10, 31, 8, 0, 0, 0, time.UTC)
-	if got := profileUpdated(now.Add(-2*time.Hour), now, i18n.New(i18n.Chinese)); got != "2 小时前更新" {
+	if got := profileAge(now.Add(-2*time.Hour), now, i18n.New(i18n.Chinese)); got != "2 小时前" {
 		t.Fatalf("unexpected Chinese relative time: %s", got)
 	}
-	if got := profileUpdated(now.Add(-2*time.Hour), now); got != "Updated 2h ago" {
+	if got := profileAge(now.Add(-2*time.Hour), now, i18n.New(i18n.English)); got != "2h ago" {
 		t.Fatalf("English formatter changed: %s", got)
 	}
 	if got := newProfilesState(i18n.New(i18n.Chinese)).url.Placeholder; got != "粘贴订阅 URL 或本地路径" {

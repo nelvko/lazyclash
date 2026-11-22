@@ -21,12 +21,20 @@ const (
 	profileCreateControls
 )
 
+const (
+	profileSettingsImport = profileCreateControls + iota
+	profileSettingsDeactivate
+)
+
 type profileCreateState struct {
-	name        textinput.Model
-	description textinput.Model
-	source      textinput.Model
-	field       int
-	submitting  bool
+	name         textinput.Model
+	description  textinput.Model
+	source       textinput.Model
+	field        int
+	submitting   bool
+	settings     *app.ProfileSettings
+	scroll       int
+	manualScroll bool
 }
 
 func newProfileCreateState() profileCreateState {
@@ -61,11 +69,17 @@ func (m *Model) openProfileCreate() tea.Cmd {
 }
 
 func (m *Model) closeProfileCreate() {
+	id := m.name
+	settings := m.form == "profile-settings"
+	m.name = ""
 	m.form = ""
 	m.failure = ""
 	m.profileCreate = profileCreateState{}
 	m.paths.reset()
 	m.focus = "profiles.create"
+	if settings {
+		m.focusProfileByID(id)
+	}
 }
 
 func (m *Model) profileCreateActive() *textinput.Model {
@@ -81,7 +95,15 @@ func (m *Model) profileCreateActive() *textinput.Model {
 }
 
 func (m *Model) profileCreateSetField(field int) {
-	field = (field + profileCreateControls) % profileCreateControls
+	count := profileCreateControls
+	if m.form == "profile-settings" {
+		count = profileSettingsDeactivate
+		if m.canUseDefaultFrom(m.name) {
+			count++
+		}
+	}
+	field = (field + count) % count
+	m.profileCreate.manualScroll = false
 	m.profileCreate.name.Blur()
 	m.profileCreate.description.Blur()
 	m.profileCreate.source.Blur()
@@ -106,13 +128,17 @@ func profileCreateFieldID(field int) string {
 		return "profile-create.save"
 	case profileCreateCancel:
 		return "profile-create.cancel"
+	case profileSettingsImport:
+		return "profile-settings.overrides"
+	case profileSettingsDeactivate:
+		return "profile-settings.deactivate"
 	default:
 		return "profile-create.name"
 	}
 }
 
 func (m *Model) profileCreateKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
-	if m.form != "profile-create" {
+	if !m.profileFieldsForm() {
 		return false, nil
 	}
 	if m.busy || m.quitting {
@@ -122,6 +148,15 @@ func (m *Model) profileCreateKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 		return true, nil
 	}
 	switch k.String() {
+	case "pgup", "pgdown":
+		if m.form == "profile-settings" {
+			step := max(1, min(32, m.height)-8)
+			if k.String() == "pgup" {
+				step = -step
+			}
+			m.scrollProfileSettings(step)
+			return true, nil
+		}
 	case "esc":
 		m.closeProfileCreate()
 		m.prepareNotification("input.cancel", m.tr("profiles.input_canceled"))
@@ -160,6 +195,8 @@ func (m *Model) profileCreateKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 		return true, textinput.Blink
 	case "enter":
 		switch m.profileCreate.field {
+		case profileSettingsImport, profileSettingsDeactivate:
+			return true, m.profileSettingsAction(m.profileCreate.field)
 		case profileCreateCancel:
 			m.closeProfileCreate()
 			return true, nil
@@ -215,6 +252,9 @@ func (m *Model) submitProfileCreate() tea.Cmd {
 	if m.busy || m.quitting || m.profileCreate.submitting {
 		return nil
 	}
+	if m.form == "profile-settings" {
+		return m.saveProfileSettings()
+	}
 	draft := app.ProfileDraft{
 		Name:           strings.TrimSpace(m.profileCreate.name.Value()),
 		Description:    strings.TrimSpace(m.profileCreate.description.Value()),
@@ -243,7 +283,7 @@ func (m *Model) submitProfileCreate() tea.Cmd {
 }
 
 func (m *Model) profileCreateMouse(id string) tea.Cmd {
-	if m.form != "profile-create" || m.busy || m.quitting {
+	if !m.profileFieldsForm() || m.busy || m.quitting {
 		return nil
 	}
 	switch id {
@@ -253,6 +293,10 @@ func (m *Model) profileCreateMouse(id string) tea.Cmd {
 		m.profileCreateSetField(profileCreateDescription)
 	case "profile-create.source":
 		m.profileCreateSetField(profileCreateSource)
+	case "profile-settings.overrides":
+		return m.profileSettingsAction(profileSettingsImport)
+	case "profile-settings.deactivate":
+		return m.profileSettingsAction(profileSettingsDeactivate)
 	case "profile-create.cancel":
 		m.closeProfileCreate()
 	case "profile-create.save":
@@ -273,7 +317,12 @@ func (m *Model) profileCreateType() string {
 }
 
 func (m *Model) renderProfileCreateForm(base string) (string, []hitRegion) {
-	boxW, boxH := min(inputImportMaxWidth+4, m.width), min(27, max(1, m.height-2))
+	maxHeight := 27
+	settings := m.form == "profile-settings"
+	if settings {
+		maxHeight = 32
+	}
+	boxW, boxH := min(inputImportMaxWidth+4, m.width), min(maxHeight, max(1, m.height-2))
 	if boxW < 38 || boxH < 12 {
 		return overlay(base, m.tr("profiles.enlarge"), 0, 0, m.width, m.height), nil
 	}
@@ -281,14 +330,19 @@ func (m *Model) renderProfileCreateForm(base string) (string, []hitRegion) {
 	x, y := (m.width-boxW)/2, (m.height-boxH)/2
 	rows := profileDialogCanvas(boxW, boxH)
 	put := func(row int, value string) { putRows(rows, 2, row, cellPad(value, inner), boxW) }
-	put(1, themed(cellCrop(m.tr("profiles.create_title"), inner), text, raised, false))
+	title, save := m.tr("profiles.create_title"), m.tr("profiles.create_save")
+	if settings {
+		title = m.tr("profile_settings.title", clean(m.profileInfo(m.name).Name))
+		save = m.tr("profile_settings.save")
+	}
+	put(1, themed(cellCrop(title, inner), text, raised, false))
 	bodyY := 2
-	if boxH >= 24 {
+	if !settings && boxH >= 24 {
 		put(2, themed(cellCrop(m.tr("profiles.create_hint"), inner), muted, raised, false))
 		put(3, themed(cellCrop(m.tr("profiles.create_type", m.profileCreateType()), inner), muted, raised, false))
 		bodyY = 5
 	}
-	createButton := renderButton(m.tr("profiles.create_save"), buttonOptions{Kind: buttonPrimary, Surface: raised,
+	createButton := renderButton(save, buttonOptions{Kind: buttonPrimary, Surface: raised,
 		Focused: m.focus == "profile-create.save", Hovered: m.hover == "profile-create.save", Busy: m.busy,
 		Disabled: m.quitting, Plain: m.buttonPlain()})
 	cancelButton := renderButton(m.tr("profiles.create_cancel"), buttonOptions{Surface: raised,
@@ -296,18 +350,26 @@ func (m *Model) renderProfileCreateForm(base string) (string, []hitRegion) {
 		Disabled: m.busy || m.quitting, Plain: m.buttonPlain()})
 	buttonRow := boxH - 4
 	put(buttonRow, cancelButton+createButton)
-	put(boxH-3, themed(cellCrop(m.tr("profiles.create_footer"), inner), muted, raised, false))
+	footer := m.tr("profiles.create_footer")
+	if settings {
+		footer = m.tr("profile_settings.footer")
+	}
+	put(boxH-3, themed(cellCrop(footer, inner), muted, raised, false))
 	if m.failure != "" {
 		put(boxH-2, themed(cellCrop(m.failure, inner), errorColor, raised, false))
 	} else if m.busy {
 		put(boxH-2, themed(cellCrop(m.spinner.View()+" "+m.message, inner), accent, raised, false))
 	}
 	var doc dashboardBlock
+	nameLabel := m.tr("profiles.create_name")
+	if settings {
+		nameLabel = m.tr("profiles.display_name")
+	}
 	for _, field := range []struct {
 		id, label string
 		input     *textinput.Model
 	}{
-		{"profile-create.name", m.tr("profiles.create_name"), &m.profileCreate.name},
+		{"profile-create.name", nameLabel, &m.profileCreate.name},
 		{"profile-create.description", m.tr("profiles.create_description"), &m.profileCreate.description},
 		{"profile-create.source", m.tr("profiles.create_source"), &m.profileCreate.source},
 	} {
@@ -328,14 +390,35 @@ func (m *Model) renderProfileCreateForm(base string) (string, []hitRegion) {
 	if m.profileCreate.field == profileCreateSource && bodyH > len(doc.lines) {
 		doc.lines = append(doc.lines, m.paths.view(inner, bodyH-len(doc.lines), m.locale)...)
 	}
+	if settings {
+		info := m.profileInfo(m.name)
+		for _, line := range m.settingsInfoLines(info) {
+			doc.lines = append(doc.lines, themed(cellCrop(line, inner), muted, raised, false))
+		}
+		buttons := []profileButton{{"profile-settings.overrides", m.tr("profile_settings.import"), false}}
+		if m.canUseDefaultFrom(m.name) {
+			buttons = append(buttons, profileButton{"profile-settings.deactivate", m.tr("profile_settings.deactivate"), false})
+		}
+		doc.append(m.profileButtons(buttons, inner))
+	}
 	// Keep the active editor's complete frame in the viewport. Actions and
 	// validation remain outside that viewport at every supported height.
 	scroll := 0
-	active := profileCreateFieldID(min(m.profileCreate.field, profileCreateSource))
+	active := profileCreateFieldID(m.profileCreate.field)
+	if m.profileCreate.field == profileCreateCancel || m.profileCreate.field == profileCreateSave {
+		active = profileCreateFieldID(profileCreateSource)
+	}
 	for _, hit := range doc.targets {
 		if hit.ID == active {
 			scroll = max(0, hit.Y+hit.H-bodyH)
 		}
+	}
+	if settings {
+		if m.profileCreate.manualScroll {
+			scroll = m.profileCreate.scroll
+		}
+		scroll = min(scroll, max(0, len(doc.lines)-bodyH))
+		m.profileCreate.scroll = scroll
 	}
 	for row := 0; row < bodyH && row+scroll < len(doc.lines); row++ {
 		put(bodyY+row, doc.lines[row+scroll])

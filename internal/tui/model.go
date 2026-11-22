@@ -40,9 +40,8 @@ type Backend interface {
 	Add(context.Context, string, string) error
 	AddSubscription(context.Context, string, string) error
 	CreateProfile(context.Context, app.ProfileDraft) error
-	RenameProfile(context.Context, string, string) error
-	UpdateProfileDescription(context.Context, string, string) error
-	UpdateProfileAddress(context.Context, string, string) error
+	GetProfileSettings(context.Context, string) (app.ProfileSettings, error)
+	SaveProfileSettings(context.Context, app.ProfileSettings) error
 	Refresh(context.Context, string) error
 	RefreshAllProfiles(context.Context) error
 	DeleteProfileWithReplacement(context.Context, string, string) error
@@ -328,6 +327,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	previousPage := m.page
 	switch v := msg.(type) {
+	case profileSettingsLoadedMsg:
+		cmd = m.acceptProfileSettings(v)
 	case proxyDelayMsg:
 		cmd = m.acceptProxyDelay(v)
 	case proxyNodeDelayMsg:
@@ -475,8 +476,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.profilesUI.importing = false
 		}
-		profileCreated := m.form == "profile-create" && m.profileCreate.submitting && v.actionSucceeded
-		if m.form == "profile-create" && m.profileCreate.submitting {
+		profileCreated := m.profileFieldsForm() && m.profileCreate.submitting && v.actionSucceeded
+		if m.profileFieldsForm() && m.profileCreate.submitting {
 			m.profileCreate.submitting = false
 			if v.actionSucceeded {
 				m.closeProfileCreate()
@@ -621,7 +622,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else if m.controlConfirmation() || m.form == "profile-delete" {
 			break
 		} else if m.form != "" {
-			if m.form == "profile-create" {
+			if m.profileFieldsForm() {
 				input := m.profileCreateActive()
 				if m.busy || m.quitting || input == nil {
 					break
@@ -985,7 +986,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else if m.controlConfirmation() || m.form == "profile-delete" {
 			break
 		} else if m.form != "" {
-			if m.form == "profile-create" {
+			if m.profileFieldsForm() {
 				if input := m.profileCreateActive(); input != nil && !m.busy && !m.quitting {
 					*input, cmd = input.Update(msg)
 				}
@@ -1416,6 +1417,8 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 			m.wizard.scroll = max(0, m.wizard.scroll+d)
 		} else if m.page == "logs" && m.form == "" {
 			m.logsScroll(d)
+		} else if m.form == "profile-settings" {
+			m.scrollProfileSettings(d)
 		} else if m.form == "" {
 			m.scroll = max(0, m.scroll+d)
 		}
@@ -1438,7 +1441,7 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 					if m.controlConfirmation() {
 						return m.tunConfirmationAction(r.ID)
 					}
-					if m.form == "profile-create" {
+					if m.profileFieldsForm() {
 						return m.profileCreateMouse(r.ID)
 					}
 					if m.form == "profile-delete" {

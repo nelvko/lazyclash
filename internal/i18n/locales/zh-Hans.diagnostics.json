@@ -447,5 +447,6 @@
   "diagnostic.profile.deleteAfterSwitch": "已切换配置，删除未完成：%w",
   "diagnostic.cli.replacementRequired": "--use 需要指定一份已保存的接替配置",
   "diagnostic.profile.deleteTargetChanged": "已切换配置，原配置已发生变化，请重新确认删除",
-  "diagnostic.profile.deactivateSelectionChanged": "当前订阅已更改，请重新确认要停用的订阅"
+  "diagnostic.profile.deactivateSelectionChanged": "当前订阅已更改，请重新确认要停用的订阅",
+  "diagnostic.profile.settingsChanged": "配置设置已变更，请重新打开设置后编辑。"
 }

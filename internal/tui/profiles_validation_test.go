@@ -85,17 +85,3 @@ func TestProfileAddressValidationAcceptsSourcesWithoutStartingNetwork(t *testing
 		}
 	}
 }
-
-func TestProfileAddressEditKeepsMalformedURLInsideDialog(t *testing.T) {
-	calls := 0
-	m := profileInteractionsModel(&fakeBackend{updateProfileAddress: func(context.Context, string, string) error {
-		calls++
-		return nil
-	}}, 120, 32)
-	m.openProfileEdit("profile-url", "work")
-	m.input.SetValue("https://")
-	m.formKey(special(tea.KeyEnter))
-	if calls != 0 || m.busy || m.form != "profile-url" || m.failure == "" || m.input.Value() != "https://" {
-		t.Fatal("malformed address closed its dialog or escaped validation")
-	}
-}

@@ -207,7 +207,11 @@ func (m *Model) paintProfileCard(name string, index, width int, compact bool) da
 	}
 	now := time.Now()
 	age := profileAge(info.UpdatedAt, now, m.locale)
-	origin := profileCardPair(m.profileOrigin(info), age, inner)
+	subtitle := strings.TrimSpace(clean(info.Description))
+	if subtitle == "" {
+		subtitle = m.profileOrigin(info)
+	}
+	metadata := profileCardPair(subtitle, age, inner)
 	quota, expiresAt := profileAllowance(info)
 	expiry := m.profileCardExpiry(expiresAt, now)
 	// Keep the numeric balance intact when the date would displace it.
@@ -235,7 +239,7 @@ func (m *Model) paintProfileCard(name string, index, width int, compact bool) da
 			footer = graph
 		}
 	}
-	lines := []string{title, themed(origin, muted, surface, false), themed(allowance, text, surface, false), footer}
+	lines := []string{title, themed(metadata, muted, surface, false), themed(allowance, text, surface, false), footer}
 	picture := profileCardSurface(lines, width, surface, selected, compact)
 	parent := hitRegion{ID: id, W: width, H: len(picture)}
 	return dashboardBlock{lines: picture, targets: m.profileCardTargets(parent, controls, widths, compact)}
@@ -343,20 +347,6 @@ func profileCardSurface(lines []string, width int, surface string, selected, com
 	return rows
 }
 
-func profileUpdated(updated, now time.Time, locales ...i18n.Localizer) string {
-	var locale i18n.Localizer
-	if len(locales) > 0 {
-		locale = locales[0]
-	}
-	if updated.IsZero() {
-		return locale.T("profiles.no_history")
-	}
-	if now.Sub(updated) >= 30*24*time.Hour {
-		return locale.T("profiles.updated_date", updated.Format("2006-01-02"))
-	}
-	return locale.T("profiles.updated_time", profileAge(updated, now, locale))
-}
-
 func profileAge(updated, now time.Time, locale i18n.Localizer) string {
 	if updated.IsZero() {
 		return ""
@@ -383,73 +373,4 @@ func (m *Model) profileOrigin(info app.ProfileInfo) string {
 	default:
 		return strings.TrimSpace(clean(info.Origin))
 	}
-}
-
-func (m *Model) profileDetailsPane(name string, width int) dashboardBlock {
-	for i, profile := range m.profiles() {
-		if profile == name {
-			return m.profileDetailsPaneAt(name, i, width)
-		}
-	}
-	return dashboardBlock{}
-}
-
-func (m *Model) profileDetailsPaneAt(name string, index, width int) dashboardBlock {
-	info := m.profileInfo(name)
-	body := dashboardBlock{lines: []string{themed(cellCrop(m.tr("profiles.details_title", clean(info.Name)), width), focus, bg, false)}}
-	kind := m.tr("profiles.kind")
-	if info.HasOverrides {
-		kind = m.tr("profiles.kind_overrides", kind)
-	}
-	body.lines = append(body.lines, themed(cellCrop(kind, width), muted, bg, false))
-	if origin := m.profileOrigin(info); origin != "" {
-		for _, line := range strings.Split(wrapText(origin, width), "\n") {
-			body.lines = append(body.lines, themed(line, muted, bg, false))
-		}
-	}
-	body.lines = append(body.lines, themed(cellCrop(profileUpdated(info.UpdatedAt, time.Now(), m.locale), width), muted, bg, false))
-	quota, expiresAt := profileAllowance(info)
-	if quota != "" {
-		quota = m.tr("profiles.remaining", quota)
-	}
-	expiry := ""
-	if expiresAt > 0 {
-		expiry = m.tr("profiles.expires", time.Unix(expiresAt, 0).Format(time.DateOnly))
-	}
-	for _, value := range []string{quota, expiry} {
-		if value != "" {
-			for _, line := range strings.Split(wrapText(value, width), "\n") {
-				body.lines = append(body.lines, themed(line, muted, bg, false))
-			}
-		}
-	}
-	if info.Description != "" {
-		body.lines = append(body.lines, themed(cellCrop(clean(info.Description), width), muted, bg, false))
-	}
-	applyID, label := fmt.Sprintf("profiles.apply.%d", index), m.tr("profiles.use")
-	if name == m.snapshot.Applied {
-		label = m.tr("profiles.reapply")
-	}
-	if info.Pending {
-		label = m.tr("profiles.apply_changes")
-	}
-	if !m.snapshot.Installed {
-		applyID, label = "", m.tr("profiles.install_to_apply")
-	}
-	buttons := []profileButton{{applyID, label, true}}
-	if info.Refreshable {
-		buttons = append(buttons, profileButton{fmt.Sprintf("profiles.update.%d", index), m.tr("profiles.update"), false})
-	}
-	buttons = append(buttons,
-		profileButton{fmt.Sprintf("profiles.rename.%d", index), m.tr("profiles.rename"), false},
-		profileButton{fmt.Sprintf("profiles.description.%d", index), m.tr("profiles.edit_description"), false},
-		profileButton{fmt.Sprintf("profiles.url-edit.%d", index), m.tr("profiles.edit_url"), false},
-		profileButton{fmt.Sprintf("profiles.overrides.%d", index), m.tr("profiles.overrides"), false},
-		profileButton{fmt.Sprintf("profiles.delete.%d", index), m.tr("profiles.delete"), false})
-	if m.canUseDefaultFrom(name) {
-		buttons = append(buttons, profileButton{"profiles.use-default", m.tr("profiles.use_default"), false})
-	}
-	buttons = append(buttons, profileButton{"profiles.close", m.tr("profiles.close"), false})
-	body.append(m.profileButtons(buttons, width))
-	return body
 }

@@ -1,14 +1,18 @@
 {
-  "profile_menu.use": "Use profile",
-  "profile_menu.already_selected": "Already selected",
+  "profile_menu.use": "Use",
   "profile_menu.apply_changes": "Apply changes",
   "profile_menu.install_first": "Install core first",
   "profile_menu.update": "Update",
-  "profile_menu.no_address": "No saved address",
-  "profile_menu.rename": "Rename…",
-  "profile_menu.description": "Edit description…",
-  "profile_menu.address": "Edit address…",
-  "profile_menu.overrides": "Import overrides…",
-  "profile_menu.details": "View details",
-  "profile_menu.delete": "Delete…"
+  "profile_menu.delete": "Delete…",
+  "profile_menu.settings": "Settings…",
+  "profile_menu.reload_file": "Reload from file",
+  "profile_settings.title": "Settings for %s",
+  "profile_settings.save": "Save",
+  "profile_settings.loading": "Loading profile settings…",
+  "profile_settings.saving": "Saving profile settings…",
+  "profile_settings.saved": "Profile settings saved",
+  "profile_settings.import": "Import overrides from file…",
+  "profile_settings.deactivate": "Deactivate",
+  "profile_settings.footer": "Tab Next · PgUp/PgDn Scroll · Esc Cancel",
+  "profile_settings.save_first": "Save your changes first"
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -25,7 +26,6 @@ type profilesState struct {
 	cancelExpiry      context.CancelFunc
 	pasteUnavailable  bool
 	editing           bool
-	detail            string
 	importing         bool
 	menuProfile       string
 	deleteFocus       string
@@ -231,27 +231,8 @@ func (m *Model) reconcileProfiles() {
 	if m.page != "profiles" {
 		m.profilesUI.pasteUnavailable = false
 	}
-	name := m.profilesUI.detail
-	if name == "" {
-		return
-	}
-	for i, profile := range m.profiles() {
-		if profile != name {
-			continue
-		}
-		if m.focus == "profiles.use-default" && !m.canUseDefaultFrom(name) {
-			m.focusProfileControl(fmt.Sprintf("profile.%d", i))
-		}
-		for _, prefix := range []string{"profiles.apply.", "profiles.update.", "profiles.rename.", "profiles.description.", "profiles.url-edit.", "profiles.overrides.", "profiles.delete."} {
-			if strings.HasPrefix(m.focus, prefix) {
-				m.focus = fmt.Sprintf("%s%d", prefix, i)
-			}
-		}
-		return
-	}
-	m.profilesUI.detail = ""
-	if m.page == "profiles" && strings.HasPrefix(m.focus, "profiles.") {
-		m.enterContent()
+	if m.form == "profile-settings" && !slices.Contains(m.profiles(), m.name) {
+		m.closeProfileCreate()
 	}
 }
 
@@ -263,7 +244,7 @@ func profileActionIndex(id, prefix string, size int) (int, bool) {
 	return n, err == nil && n >= 0 && n < size
 }
 
-// Mouse clicks apply cards directly; keyboard activation keeps details reachable.
+// Mouse clicks switch installed configurations. Enter opens settings.
 func (m *Model) profileCardClick(id string) (bool, tea.Cmd) {
 	index, card := profileActionIndex(id, "profile.", len(m.profiles()))
 	if m.page != "profiles" || !card {
@@ -281,7 +262,6 @@ func (m *Model) profileCardClick(id string) (bool, tea.Cmd) {
 	if name == m.snapshot.Applied && !m.profileInfo(name).Pending && !m.snapshot.ProfilePending {
 		return true, nil
 	}
-	m.profilesUI.detail = ""
 	return m.profileAction(fmt.Sprintf("profiles.apply.%d", index))
 }
 
@@ -310,14 +290,7 @@ func (m *Model) profileAction(id string) (bool, tea.Cmd) {
 	m.profilesUI.editing = false
 	m.profilesUI.url.Blur()
 	if card {
-		name := m.profiles()[index]
-		m.profilesUI.detail = name
-		target := fmt.Sprintf("profiles.apply.%d", index)
-		if !m.snapshot.Installed {
-			target = "profiles.close"
-		}
-		m.focusProfileControl(target)
-		return true, nil
+		return true, m.openProfileSettings(m.profiles()[index])
 	}
 	switch id {
 	case "profiles.add":
@@ -335,31 +308,12 @@ func (m *Model) profileAction(id string) (bool, tea.Cmd) {
 		}
 		return true, m.begin(m.tr("profiles.updating_all"), m.tr("profiles.updated_all"), m.backend.RefreshAllProfiles,
 			notificationOperation{Key: "profile.refresh-all", Context: m.tr("profiles.updating_all")})
-	case "profiles.use-default":
-		if m.page == "profiles" && m.canUseDefaultFrom(m.profilesUI.detail) {
-			label := m.tr("profiles.deactivating")
-			id := m.profilesUI.detail
-			return true, m.begin(label, m.tr("profiles.deactivated"), func(ctx context.Context) error {
-				return m.backend.DeactivateProfile(ctx, id)
-			}, m.profileNotification("deactivate", label, id))
-		}
-		return true, nil
-	case "profiles.close":
-		name := m.profilesUI.detail
-		m.profilesUI.detail = ""
-		for i, profile := range m.profiles() {
-			if profile == name {
-				m.focusProfileControl(fmt.Sprintf("profile.%d", i))
-				break
-			}
-		}
-		return true, nil
+
 	}
 	profiles := m.profiles()
 	for _, action := range []struct{ prefix, operation string }{
 		{"profiles.apply.", "apply"}, {"profiles.refresh.", "refresh"}, {"profiles.update.", "refresh"},
 		{"profiles.overrides.", "overrides"}, {"profile.overrides.", "overrides"},
-		{"profiles.rename.", "rename"}, {"profiles.description.", "description"}, {"profiles.url-edit.", "url-edit"},
 		{"profiles.delete.", "delete"}, {"profile.delete.", "delete"},
 	} {
 		i, ok := profileActionIndex(id, action.prefix, len(profiles))
@@ -375,12 +329,6 @@ func (m *Model) profileAction(id string) (bool, tea.Cmd) {
 				m.profileNotification("refresh", m.tr("profiles.updating"), name))
 		case "overrides":
 			return true, m.openProfileEdit("profile-overrides", name)
-		case "rename":
-			return true, m.openProfileEdit("profile-rename", name)
-		case "description":
-			return true, m.openProfileEdit("profile-description", name)
-		case "url-edit":
-			return true, m.openProfileEdit("profile-url", name)
 		case "delete":
 			return true, m.openProfileEdit("profile-delete", name)
 		}
@@ -406,7 +354,7 @@ func (m *Model) profileNotification(operation, label, name string) notificationO
 }
 
 func (m *Model) profileEditForm() bool {
-	return m.form == "profile-rename" || m.form == "profile-description" || m.form == "profile-url" || m.form == "profile-overrides" || m.form == "profile-delete"
+	return m.form == "profile-overrides" || m.form == "profile-delete"
 }
 
 func (m *Model) openProfileEdit(form, name string) tea.Cmd {
@@ -416,17 +364,6 @@ func (m *Model) openProfileEdit(form, name string) tea.Cmd {
 	m.paths.reset()
 	m.input.EchoMode = textinput.EchoNormal
 	m.input.Placeholder = ""
-	if form == "profile-rename" {
-		m.input.Placeholder = m.tr("profiles.display_name")
-		m.input.SetValue(m.profileInfo(name).Name)
-	}
-	if form == "profile-description" {
-		m.input.Placeholder = m.tr("profiles.description")
-		m.input.SetValue(m.profileInfo(name).Description)
-	}
-	if form == "profile-url" {
-		m.input.Placeholder = m.tr("profiles.address_placeholder")
-	}
 	if form == "profile-overrides" {
 		m.input.Placeholder = m.tr("profiles.overrides_path")
 	}
@@ -468,7 +405,7 @@ func (m *Model) profileFormKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 		return true, nil
 	case "enter":
 		value := strings.TrimSpace(m.input.Value())
-		if value == "" && m.form != "profile-description" {
+		if value == "" {
 			m.failure = m.tr("profiles.value_required")
 			return true, nil
 		}
@@ -481,23 +418,8 @@ func (m *Model) profileFormKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 				return true, nil
 			}
 		}
-		if form == "profile-url" {
-			if err := validateProfileSource(value); err != nil {
-				m.failure = m.localizeError(err)
-				return true, nil
-			}
-		}
 		m.closeProfileForm()
 		switch form {
-		case "profile-rename":
-			return true, m.begin(m.tr("profiles.renaming"), m.tr("profiles.name_saved"), func(ctx context.Context) error { return m.backend.RenameProfile(ctx, name, value) },
-				m.profileNotification("rename", m.tr("profiles.renaming"), name))
-		case "profile-description":
-			return true, m.begin(m.tr("profiles.updating_description"), m.tr("profiles.description_saved"), func(ctx context.Context) error { return m.backend.UpdateProfileDescription(ctx, name, value) },
-				m.profileNotification("description", m.tr("profiles.updating_description"), name))
-		case "profile-url":
-			return true, m.begin(m.tr("profiles.updating_address"), m.tr("profiles.address_saved"), func(ctx context.Context) error { return m.backend.UpdateProfileAddress(ctx, name, value) },
-				m.profileNotification("address", m.tr("profiles.updating_address"), name))
 		case "profile-overrides":
 			return true, m.begin(m.tr("profiles.importing_overrides"), m.tr("profiles.overrides_saved"), func(ctx context.Context) error {
 				raw, err := readProfileOverrides(value)
@@ -548,7 +470,7 @@ func profileDialogCanvas(width, height int) []string {
 }
 
 func (m *Model) renderProfileForm(base string) (string, []hitRegion) {
-	if m.form == "profile-create" {
+	if m.profileFieldsForm() {
 		return m.renderProfileCreateForm(base)
 	}
 	if m.form == "profile-delete" {
@@ -571,15 +493,6 @@ func (m *Model) renderProfileForm(base string) (string, []hitRegion) {
 		title, hint = m.tr("profiles.import_title"), m.tr("profiles.import_hint")
 	}
 	switch m.form {
-	case "profile-rename":
-		title, label = m.tr("profiles.rename_title", clean(m.profileInfo(m.name).Name)), m.tr("profiles.display_name")
-		hint = m.tr("profiles.name_hint")
-	case "profile-description":
-		title, label = m.tr("profiles.description_title", clean(m.profileInfo(m.name).Name)), m.tr("profiles.description")
-		hint = m.tr("profiles.description_hint")
-	case "profile-url":
-		title, label = m.tr("profiles.address_title", clean(m.profileInfo(m.name).Name)), m.tr("profiles.new_address")
-		hint = m.tr("profiles.address_hint")
 	case "profile-overrides":
 		title, label = m.tr("profiles.overrides_title", clean(m.profileInfo(m.name).Name)), m.tr("profiles.overrides_path")
 		hint = m.tr("profiles.overrides_hint")

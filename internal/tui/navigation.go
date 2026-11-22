@@ -152,6 +152,9 @@ func (m *Model) revealBodyTarget(hit hitRegion) {
 }
 
 func (m *Model) contextHelp() string {
+	if m.form == "profile-settings" {
+		return m.tr("profile_settings.footer")
+	}
 	if m.providers.open {
 		return m.providersContextHelp()
 	}

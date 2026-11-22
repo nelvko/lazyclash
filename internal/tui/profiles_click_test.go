@@ -64,7 +64,7 @@ func TestProfileClickAppliesStableIDWithoutOpeningDetails(t *testing.T) {
 			controls := 0
 			b.control = func(context.Context, string) error { controls++; return nil }
 			m, cmd := click(m, findTarget(t, m, "profile.0"))
-			if !m.busy || m.profilesUI.detail != "" || m.snapshot.Applied != "default" {
+			if !m.busy || m.form != "" || m.snapshot.Applied != "default" {
 				t.Fatal("single click did not queue application while preserving the last committed selection")
 			}
 			m = finishProfileJob(t, m, cmd)
@@ -97,8 +97,9 @@ func TestProfileClickCurrentSelectionAppliesOnlyPendingChanges(t *testing.T) {
 
 func TestProfileClickRequiresInstalledCore(t *testing.T) {
 	m, b := profileClickModel(t, false, false, false, false)
-	m, _ = click(m, findTarget(t, m, "profile.0"))
-	if m.busy || len(b.calls) != 0 || m.snapshot.Applied != "default" {
+	m, load := click(m, findTarget(t, m, "profile.0"))
+	m = finishProfileSettingsLoad(t, m, load)
+	if m.form != "profile-settings" || m.busy || len(b.calls) != 0 || m.snapshot.Applied != "default" {
 		t.Fatal("clicking a profile without an installed core tried to apply it")
 	}
 }
@@ -135,9 +136,10 @@ func TestProfileDetailsSwitchBackToDefault(t *testing.T) {
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			m, b := profileClickModel(t, true, true, true, false)
-			m, _ = update(m, special(tea.KeyEnter))
+			m, load := update(m, special(tea.KeyEnter))
+			m = finishProfileSettingsLoad(t, m, load)
 			b.err = test.err
-			m, cmd := click(m, findTarget(t, m, "profiles.use-default"))
+			m, cmd := click(m, findTarget(t, m, "profile-settings.deactivate"))
 			if !m.busy || m.snapshot.Applied != "p-stable-profile-id" {
 				t.Fatal("switching back must keep the selected profile until the operation finishes")
 			}
@@ -157,8 +159,9 @@ func TestProfileDetailsSwitchBackToDefault(t *testing.T) {
 
 func TestDeactivationRejectsAChangedSelection(t *testing.T) {
 	m, b := profileClickModel(t, true, true, true, false)
-	m, _ = update(m, special(tea.KeyEnter))
-	m, cmd := click(m, findTarget(t, m, "profiles.use-default"))
+	m, load := update(m, special(tea.KeyEnter))
+	m = finishProfileSettingsLoad(t, m, load)
+	m, cmd := click(m, findTarget(t, m, "profile-settings.deactivate"))
 	b.snapshot.Applied = "another-profile"
 	m = finishProfileJob(t, m, cmd)
 	if b.snapshot.Applied != "another-profile" || len(b.calls) != 0 || !strings.Contains(m.failure, "selection changed") {
@@ -177,17 +180,18 @@ func TestProfileDetailsOfferDefaultOnlyForInstalledCurrentProfile(t *testing.T) 
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			m, b := profileClickModel(t, test.installed, false, test.current, false)
-			m, _ = update(m, special(tea.KeyEnter))
-			if m.profilesUI.detail != "p-stable-profile-id" {
+			m, load := update(m, special(tea.KeyEnter))
+			m = finishProfileSettingsLoad(t, m, load)
+			if m.form != "profile-settings" || m.name != "p-stable-profile-id" {
 				t.Fatal("expected open profile details")
 			}
-			for _, hit := range m.profilesTargets(120) {
-				if hit.ID == "profiles.use-default" {
+			for _, hit := range m.targets {
+				if hit.ID == "profile-settings.deactivate" {
 					t.Fatal("unavailable default action is visible")
 				}
 			}
-			if _, cmd := m.profileAction("profiles.use-default"); cmd != nil || m.busy || len(b.calls) != 0 {
-				t.Fatal("stale default action started a switch")
+			if m.busy || len(b.calls) != 0 {
+				t.Fatal("opening Settings started a switch")
 			}
 		})
 	}

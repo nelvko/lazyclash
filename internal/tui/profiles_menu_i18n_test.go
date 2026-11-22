@@ -14,7 +14,7 @@ func TestProfileFormCancellationUsesInformationalNotificationInBothLanguages(t *
 	for _, sample := range []struct{ language, message string }{{i18n.English, "Input canceled"}, {i18n.Chinese, "已取消输入"}} {
 		m, _ := profileClickModel(t, true, true, false, false)
 		m.locale = i18n.New(sample.language)
-		m.openProfileEdit("profile-rename", "p-stable-profile-id")
+		m.openProfileEdit("profile-overrides", "p-stable-profile-id")
 		m.failure = "old validation failure"
 		m, _ = update(m, special(tea.KeyEscape))
 		if m.form != "" || m.failure != "" || m.messageTransient || !m.messageInformational || m.message != sample.message {
@@ -31,21 +31,21 @@ func TestProfileMenuLanguagesKeepActionsAndDisabledState(t *testing.T) {
 		m, _ := profileClickModel(t, true, true, false, false)
 		m.locale = i18n.New(language)
 		items := m.profileMenuItems("p-stable-profile-id")
-		want := []string{"apply", "refresh", "rename", "description", "address", "overrides", "details", "delete"}
+		want := []string{"apply", "refresh", "settings", "delete"}
 		if len(items) != len(want) {
 			t.Fatalf("%s: actions=%+v", language, items)
 		}
 		for index, id := range want {
-			if items[index].ID != id || items[index].DisabledReason != "" {
+			if items[index].ID != id || items[index].DisabledReason != "" || items[index].Danger != (id == "delete") {
 				t.Fatalf("%s: action changed: %+v", language, items[index])
 			}
 		}
-		if items[0].Label != m.tr("profile_menu.use") || items[6].Label != m.tr("profile_menu.details") {
+		if items[0].Label != m.tr("profile_menu.use") || items[len(items)-2].Label != m.tr("profile_menu.settings") {
 			t.Fatal("menu labels did not follow current language")
 		}
 		m.snapshot.Applied = "p-stable-profile-id"
 		items = m.profileMenuItems("p-stable-profile-id")
-		if items[0].DisabledReason != m.tr("profile_menu.already_selected") || items[len(items)-1].DisabledReason != "" {
+		if items[0].ID == "apply" || items[len(items)-1].DisabledReason != "" {
 			t.Fatalf("%s: disabled explanations not localized", language)
 		}
 		m.snapshot.ProfileDetails[1].Pending = true
@@ -61,18 +61,18 @@ func TestProfileMenuLanguageUpdatesPreserveIdentityAndCanvas(t *testing.T) {
 		t.Run(fmt.Sprintf("%dx%d", size[0], size[1]), func(t *testing.T) {
 			m, _ := profileClickModel(t, true, true, false, false)
 			m.menu.show(m.profileMenuItems("p-stable-profile-id"), size[0]-1, size[1]-1)
-			m.menu.selected = profileMenuItemIndex(t, m, "rename")
+			m.menu.selected = profileMenuItemIndex(t, m, "settings")
 			m.locale = i18n.New(i18n.Chinese)
 			m.menu.setItems(m.profileMenuItems("p-stable-profile-id"))
-			if m.menu.items[m.menu.selected].ID != "rename" {
+			if m.menu.items[m.menu.selected].ID != "settings" {
 				t.Fatal("language changed the selected action identity")
 			}
 			view := m.menu.render("", size[0], size[1], size[1])
 			assertCanvas(t, view, size[0], size[1])
-			if size[0] >= 30 && !strings.Contains(ansi.Strip(view), "重命名") {
+			if size[0] >= 30 && !strings.Contains(ansi.Strip(view), "设置") {
 				t.Fatalf("Chinese menu action missing: %s", view)
 			}
-			if m.menu.items[m.menu.selected].Label != "重命名…" {
+			if m.menu.items[m.menu.selected].Label != "设置…" {
 				t.Fatal("menu still holds an English label")
 			}
 		})

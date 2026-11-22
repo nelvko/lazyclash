@@ -93,6 +93,11 @@ def main():
             if self.path == "/new-profile":
                 remote_started.set()
                 remote_release.wait(timeout=10)
+            if self.path == "/invalid-configuration":
+                self.send_response(200)
+                self.end_headers()
+                self.wfile.write(b"rules: [invalid\n")
+                return
             self.send_response(200)
             self.send_header("Content-Type", "text/yaml")
             self.send_header("profile-title", provider_name[0])
@@ -166,6 +171,8 @@ def main():
                 terminal.wait("━")
                 terminal.settle()
                 screen = terminal.screen.text()
+                origin_row = next(line for line in screen.splitlines() if "127.0.0.1" in line)
+                assert origin_row.rstrip().endswith("just now"), "missing source fallback or misplaced fetch age"
                 allowance = next(line for line in screen.splitlines() if "7.0 GiB / 10.0 GiB" in line)
                 assert allowance.split("7.0 GiB / 10.0 GiB", 1)[1].strip() == future_date, "card should show bare balance and expiry"
                 (output / f"profiles-quota-{columns}x{rows}.txt").write_text(screen)
@@ -174,102 +181,130 @@ def main():
             # Menu entrypoints use the same private Profile without applying it.
             before = len(requests)
             mouse_text(terminal, "pty-airport", button=2)
-            terminal.wait("View details")
+            terminal.wait("Settings…")
             terminal.wait("Install core first")
             (output / "profiles-menu-160x40.txt").write_text(terminal.screen.text())
             terminal.key(b"\x1b")
-            terminal.wait_absent("View details")
+            terminal.wait_absent("Settings…")
             terminal.key(b"\x1b")  # dismiss the Add notification before using its covered card controls
             mouse_text(terminal, "↻", button=2)
-            terminal.wait("View details")
+            terminal.wait("Settings…")
             terminal.key(b"\x1b")
-            terminal.wait_absent("View details")
+            terminal.wait_absent("Settings…")
             mouse_text(terminal, "⋯")
-            terminal.wait("View details")
+            terminal.wait("Settings…")
             terminal.key(b"q")
             terminal.key(b"2")
             paste(terminal, "menu-owned-paste")
-            terminal.wait("View details")
+            terminal.wait("Settings…")
             assert "menu-owned-paste" not in terminal.screen.text(), "menu paste escaped to a page input"
             # Clicking outside dismisses the menu without opening the creation form.
             mouse_text(terminal, "[New profile]")
-            terminal.wait_absent("View details")
+            terminal.wait_absent("Settings…")
             assert "Display name (optional)" not in terminal.screen.text(), "outside menu click reached its underlying control"
             terminal.key(b"m")
-            terminal.wait("View details")
+            terminal.wait("Settings…")
             terminal.key(b"\x1b")
-            terminal.wait_absent("View details")
+            terminal.wait_absent("Settings…")
             assert len(requests) == before, "opening or dismissing a menu downloaded a subscription"
             assert not (home / "installation").exists(), "opening a menu applied runtime state"
             terminal.key(b"a")
             terminal.key(b"\x1b")
 
-            # Toolbar Down goes directly to the first saved profile.
+            # Enter on the card opens the same Settings panel as its menu.
             terminal.key(b"\x1b[B")
             terminal.key(b"\r")
-            terminal.wait("pty-airport · Configuration")
-            terminal.wait("Install core to apply")
-            assert "Deactivate profile" not in terminal.screen.text()
-            assert header_row(terminal, "Update all") == update_row
-            assert not (home / "installation").exists(), "card Enter implicitly applied a profile"
+            terminal.wait("Settings for pty-airport")
+            terminal.wait("7.0 GiB / 10.0 GiB left")
+            terminal.wait("Expiry date " + future_date)
+            terminal.wait(secret)  # address is populated only after the private settings read
+            assert "Deactivate" not in terminal.screen.text()
+            assert not (home / "installation").exists(), "opening Settings applied a profile"
+            memo = "Description only"
+            terminal.key(b"\t")  # display name -> description
+            paste(terminal, memo)
+            terminal.click_text("[Save]")
+            wait_until(terminal, lambda: primary_profile().get("description") == memo, "settings did not save description")
+            terminal.wait_absent("Settings for pty-airport")
+            assert primary_profile()["name_source"] == "provider" and len(requests) == before
+            terminal.wait(memo)
+            memo_row = next(line for line in terminal.screen.text().splitlines() if memo in line)
+            assert memo_row.rstrip().endswith("just now") and "127.0.0.1" not in memo_row, "description did not replace source, or age moved"
 
             payload[0] = b"rules: ['MATCH,REJECT']\n"
             provider_name[0] = "pty-updated"
-            terminal.wait("Expiry date " + future_date)
             cutoff = int(time.time()) + 10
             cutoff_date = time.strftime("%Y-%m-%d", time.localtime(cutoff))
             quota[0] = f"upload={gib}; download={5*gib}; total={10*gib}; expire={cutoff}"
-            terminal.click_text("[Update]")
-            wait_until(terminal, lambda: revision() == hashlib.sha256(payload[0]).hexdigest(), "detail Update did not persist a profile revision")
+            mouse_text(terminal, "pty-airport", button=2)
+            mouse_text(terminal, "Update", occurrence=1)  # skip the fixed Update all header
+            wait_until(terminal, lambda: revision() == hashlib.sha256(payload[0]).hexdigest(), "menu Update did not persist a profile revision")
             terminal.wait_absent("Updating profile")
             assert not (home / "installation").exists(), "Update applied a runtime configuration"
-            terminal.wait("pty-updated · Configuration")
-            terminal.wait("4.0 GiB / 10.0 GiB left")  # The open detail still labels the balance.
+            terminal.wait("pty-updated")
+            terminal.wait("4.0 GiB / 10.0 GiB")
             terminal.wait_absent("7.0 GiB / 10.0 GiB")
-            terminal.wait("Expiry date " + cutoff_date)
-            terminal.wait("Expired")  # No input or refresh across the provider's cutoff.
-            assert time.time() >= cutoff, "card expired before the reported second"
-            card, details = terminal.screen.text().split("pty-updated · Configuration", 1)
+            terminal.wait(cutoff_date)
+            terminal.wait("Expired")  # no input or refresh across the provider's cutoff
+            assert time.time() >= cutoff
+            card = terminal.screen.text()
             allowance = next(line for line in card.splitlines() if "4.0 GiB / 10.0 GiB" in line)
             assert allowance.split("4.0 GiB / 10.0 GiB", 1)[1].strip() == "Expired" and cutoff_date not in card
-            assert "4.0 GiB / 10.0 GiB left" in details and "Expiry date " + cutoff_date in details
-            (output / "profiles-expired-detail.txt").write_text(terminal.screen.text())
             assert profile_id("pty-updated") == primary_id[0], "provider rename changed its stable ID"
+            assert primary_profile()["description"] == memo
 
             mouse_text(terminal, "pty-updated", button=2)
-            terminal.wait("Rename…")
-            mouse_text(terminal, "Rename…")
-            terminal.wait("Display name")
+            mouse_text(terminal, "Settings…")
+            terminal.wait("Settings for pty-updated")
+            terminal.wait("4.0 GiB / 10.0 GiB left")
+            terminal.wait("Expiry date " + cutoff_date)
+            terminal.wait(memo)
+            # A malformed replacement must preserve both the record and all three fields.
+            prior = primary_profile()
+            new_memo = "Changed together"
+            invalid_address = f"http://127.0.0.1:{server.server_port}/invalid-configuration"
             terminal.key(b"\x15")
             paste(terminal, "My Airport")
+            terminal.key(b"\t\x15")
+            paste(terminal, new_memo)
+            terminal.key(b"\t\x15")
+            paste(terminal, invalid_address)
             terminal.key(b"\r")
-            terminal.wait("My Airport · Configuration")
-            assert profile_id("My Airport") == primary_id[0]
-            assert library()["profiles"][primary_id[0]]["name_source"] == "custom"
+            wait_until(terminal, lambda: "/invalid-configuration" in requests, "invalid source was not checked")
+            terminal.wait("invalid Mihomo YAML")
+            terminal.wait("Settings for pty-updated")
+            terminal.wait(new_memo)
+            terminal.wait("My Airport")
+            terminal.wait("/invalid-configuration")
+            assert primary_profile() == prior, "failed validation changed existing profile metadata"
+            replacement_address = f"http://127.0.0.1:{server.server_port}/replacement"
             provider_name[0] = "provider-renamed-again"
-            terminal.click_text("[Edit URL]")
-            terminal.wait("New subscription URL or local YAML path")
-            replacement_address = "http://127.0.0.1:%d/replacement" % server.server_port
+            terminal.key(b"\x15")
             paste(terminal, replacement_address)
             terminal.key(b"\r")
-            terminal.wait_absent("Updating subscription address")
-            wait_until(terminal, lambda: primary_profile()["address"] == replacement_address, "Edit URL was not committed")
-            assert profile_id("My Airport") == primary_id[0], "URL change overwrote a custom name or ID"
+            wait_until(terminal, lambda: primary_profile()["address"] == replacement_address, "fixed source was not committed")
+            terminal.wait_absent("Settings for pty-updated")
+            assert profile_id("My Airport") == primary_id[0] and primary_profile()["name_source"] == "custom"
+            assert primary_profile()["description"] == new_memo
+            terminal.wait_absent(secret)
 
             terminal.resize(60, 20)
-            terminal.wait("My Airport · Configuration")
-            header_row(terminal, "Update all")
+            mouse_text(terminal, "My Airport", button=2)
+            mouse_text(terminal, "Settings…")
+            terminal.wait("Settings for My Airport")
+            terminal.settle()
+            (output / "profiles-settings-60x20.txt").write_text(terminal.screen.text())
             terminal.key(b"\x1b")
-            terminal.wait_absent("My Airport · Configuration")
+            terminal.wait_absent("Settings for My Airport")
             terminal.key(b"m")
-            terminal.wait("View details")
+            terminal.wait("Settings…")
             for columns, rows in [(60, 20), (40, 16), (20, 12)]:
                 terminal.resize(columns, rows)
-                terminal.wait("View details")
+                terminal.wait("Settings…")
                 assert not (home / "installation").exists(), "resizing a menu applied a profile"
                 (output / ("profiles-menu-%dx%d.txt" % (columns, rows))).write_text(terminal.screen.text())
             terminal.key(b"\x1b")
-            terminal.wait_absent("View details")
+            terminal.wait_absent("Settings…")
             terminal.resize(160, 40)
             terminal.key(b"a")
             terminal.key(b"\x1b")
@@ -345,19 +380,18 @@ def main():
             terminal.key(b"\x1b[B")
             terminal.key(b"\x1b[C")
             terminal.key(b"\r")
-            terminal.wait(right_name + " · Configuration")
+            terminal.wait("Settings for " + right_name)
             terminal.key(b"\x1b")
-            terminal.wait_absent(right_name + " · Configuration")
+            terminal.wait_absent("Settings for " + right_name)
 
             before = len(requests)
             local.write_text("rules: ['DOMAIN,local.invalid,REJECT', 'MATCH,DIRECT']\n")
             mouse_text(terminal, "pty-local", button=2)
-            terminal.wait("View details")
-            assert "No saved address" not in terminal.screen.text(), "new local profile Update was disabled"
-            terminal.key(b"\r")  # Update is the first enabled action without an installed core.
+            terminal.wait("Settings…")
+            mouse_text(terminal, "Reload from file")
             wait_until(terminal, lambda: library()["profiles"][local_id]["spec"]["revision"] == hashlib.sha256(local.read_bytes()).hexdigest(), "local menu Update did not reread the retained path")
             terminal.wait_absent("Updating profile")
-            terminal.wait_absent("View details")
+            terminal.wait_absent("Settings…")
             assert len(requests) == before, "local Update sent an HTTP request"
             assert profile_id("pty-local") == local_id, "local refresh changed its stable profile ID"
             assert not (home / "installation").exists(), "local menu Update applied runtime state"
@@ -463,7 +497,7 @@ def main():
             terminal.exit()
 
             # CLI copy import remains supported independently of the new form.
-            # Retain disabled-Update coverage for profiles without a source.
+            # Copies without a retained source have no Update action.
             subprocess.run(command + ["profile", "add", str(local), "--name", "pty-snapshot"], check=True, capture_output=True, timeout=15)
             snapshot_id = profile_id("pty-snapshot")
             assert snapshot_id and "address" not in library()["profiles"][snapshot_id], "copy import unexpectedly retained its source"
@@ -491,13 +525,13 @@ def main():
             (output / "profiles-reopened.txt").write_text(terminal.screen.text())
             before = len(requests)
             mouse_text(terminal, "pty-snapshot", button=2)
-            terminal.wait("No saved address")
-            mouse_text(terminal, "Update · No saved address")
-            terminal.wait("View details")
-            assert len(requests) == before, "disabled copy-import Update sent a download request"
-            assert not (home / "installation").exists(), "disabled menu Update applied runtime state"
+            terminal.wait("Settings…")
+            menu = terminal.screen.text().split("[Update all]", 1)[-1]
+            assert "Update" not in menu and "Reload from file" not in menu, "copy import offered a source update"
+            assert len(requests) == before, "opening the copy-import menu sent a download request"
+            assert not (home / "installation").exists(), "menu applied runtime state"
             terminal.key(b"\x1b")
-            terminal.wait_absent("View details")
+            terminal.wait_absent("Settings…")
             mouse_text(terminal, "pty-snapshot", button=2)
             mouse_text(terminal, "Delete…")
             terminal.wait("Delete profile")
@@ -532,9 +566,9 @@ def main():
             terminal.exit()
             result = {
                 "passed": True,
-                "usage_scenarios": ["bare remaining and total bytes with bare future date", "card becomes Expired at cutoff without input", "detail labels the balance and expiry date", "missing header clears old usage and expiry"],
-                "scenarios": ["empty library has no built-in card or count summary", "first card is the first saved profile", "visible URL bracketed paste", "automatic Add without naming modal or Apply", "two-column arrows", "Enter opens details only", "provider name update retains ID", "custom Rename survives provider updates", "Edit URL retains custom name and ID", "detail configuration Update", "Update all", "New profile local file with optional metadata omitted", "live directory and file matches", "arrow selection and Tab completion without creating", "Unicode and spaced directories with an extensionless configuration", "New profile remote URL with custom name and description", "Tab and Shift+Tab reach Create and Cancel", "busy form ignores editing and duplicate submission", "one download per new remote profile", "retained local source refresh", "CLI one-time copy import", "60x20 resize and Escape", "fixed header while scrolled", "header mouse update without Apply", "20x12 compact header", "page-specific controls", "duplicate imports retain distinct IDs", "repeated updates preserve duplicate suffix", "exit and reopen metadata and source persistence"],
-                "menu_scenarios": ["right-click card without Apply", "right-click update icon opens containing card menu", "left-click menu button", "menu owns q, page digits and pasted text", "outside click closes without opening the underlying creation form", "keyboard m and Escape focus restoration", "menu Rename uses the existing custom-name flow", "menu edge avoidance through resize", "retained local file Update rereads the source without HTTP", "copy-import Update is disabled without a download request"],
+                "usage_scenarios": ["bare remaining and total bytes with bare future date", "card becomes Expired at cutoff without input", "Settings labels the balance and expiry date", "missing header clears old usage and expiry"],
+                "scenarios": ["empty library has no built-in card or count summary", "first card is the first saved profile", "visible URL bracketed paste", "automatic Add without naming modal or Apply", "two-column arrows", "Enter opens Settings", "provider name update retains ID", "Settings protects provider names on description-only edits", "failed source validation retains all settings and form input", "changing the source and manual name together retains the stable ID", "menu Update", "Update all", "New profile local file with optional metadata omitted", "live directory and file matches", "arrow selection and Tab completion without creating", "Unicode and spaced directories with an extensionless configuration", "New profile remote URL with custom name and description", "Tab and Shift+Tab reach Create and Cancel", "busy form ignores editing and duplicate submission", "one download per new remote profile", "retained local source refresh", "CLI one-time copy import", "60x20 resize and Escape", "fixed header while scrolled", "header mouse update without Apply", "20x12 compact header", "page-specific controls", "duplicate imports retain distinct IDs", "repeated updates preserve duplicate suffix", "exit and reopen metadata and source persistence"],
+                "menu_scenarios": ["right-click card without Apply", "right-click update icon opens containing card menu", "left-click menu button", "menu owns q, page digits and pasted text", "outside click closes without opening the underlying creation form", "keyboard m and Escape focus restoration", "menu Settings edits metadata atomically", "menu edge avoidance through resize", "retained local file Update rereads the source without HTTP", "copy-import Update is hidden"],
                 "menu_dimensions": [[160, 40], [60, 20], [40, 16], [20, 12]],
                 "delete_scenarios": ["default Enter cancels", "no name input or validation", "confirmation owns typed and pasted text", "confirmation stays visible from 120x32 to 24x7", "explicit mouse confirmation deletes once"],
                 "http_requests": len(requests),

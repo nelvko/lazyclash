@@ -26,22 +26,17 @@ func TestProfilesHintsFollowInputAndDetailActions(t *testing.T) {
 		if m.focus != "profiles.add" || !strings.Contains(m.contextHelp(), "Enter "+m.tr("profiles.add")) || strings.Contains(m.contextHelp(), "↑↓") {
 			t.Fatal("leaving input did not show the add action")
 		}
-		m.activate("profile.0")
-		if m.profilesUI.detail != "work" || m.focus != "profiles.apply.0" ||
-			!strings.HasPrefix(m.contextHelp(), "Enter "+m.tr("profiles.use")+" · ") || strings.Contains(m.contextHelp(), "m ") {
-			t.Fatal("profile detail button still advertised opening details or a card menu")
+		m.focus = "profile.0"
+		if m.contextHelp() != m.tr("navigation.profiles") {
+			t.Fatal("profile card did not advertise settings and menu")
 		}
-		m.snapshot.Applied = "work"
-		if !strings.HasPrefix(m.contextHelp(), "Enter "+m.tr("profiles.reapply")+" · ") {
-			t.Fatal("applied profile did not advertise reapplying")
+		m = openSettingsForTest(t, m, "work")
+		if m.contextHelp() != m.tr("profile_settings.footer") {
+			t.Fatal("settings advertised card shortcuts")
 		}
-		m.focus = "profiles.close"
-		if !strings.HasPrefix(m.contextHelp(), "Enter "+m.tr("profiles.close")+" · ") {
-			t.Fatal("close button advertised the wrong action")
-		}
-		m, _ = update(m, special(tea.KeyEnter))
-		if m.profilesUI.detail != "" || m.focus != "profile.0" || m.contextHelp() != m.tr("navigation.profiles") {
-			t.Fatal("closing details did not restore the card hint")
+		m, _ = update(m, special(tea.KeyEscape))
+		if m.form != "" || m.focus != "profile.0" || m.contextHelp() != m.tr("navigation.profiles") {
+			t.Fatal("closing settings did not restore the card hint")
 		}
 	}
 }

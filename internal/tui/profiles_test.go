@@ -146,23 +146,6 @@ func TestProfileCreateFormButtonsUseModalHitTargets(t *testing.T) {
 	}
 }
 
-func TestProfileDescriptionEditUsesMetadataUseCase(t *testing.T) {
-	var gotID, gotDescription string
-	b := &fakeBackend{snapshot: app.Snapshot{Profiles: []string{"work"}, ProfileDetails: profileFixtures("default", "work")}, updateDescription: func(_ context.Context, id, description string) error {
-		gotID, gotDescription = id, description
-		return nil
-	}}
-	m := ready(b)
-	m.page = "profiles"
-	m.openProfileEdit("profile-description", "work")
-	m.input.SetValue("office route")
-	m, cmd := update(m, special(tea.KeyEnter))
-	m = finishProfileJob(t, m, cmd)
-	if gotID != "work" || gotDescription != "office route" || m.form != "" {
-		t.Fatalf("description edit was not submitted: %q %q form=%q", gotID, gotDescription, m.form)
-	}
-}
-
 func TestProfileImportExplicitlyRemembersOnlySubscriptionAction(t *testing.T) {
 	imports, remembered := 0, 0
 	b := &fakeBackend{
@@ -287,16 +270,12 @@ func TestProfilePageShowsPendingChangesAndAccurateActionRows(t *testing.T) {
 		ProfileDetails: []app.ProfileInfo{{ID: "default", Name: "default", Validated: true}, {ID: "work", Name: "work", Validated: true, Pending: true}},
 	}})
 	m.page = "profiles"
-	m.profilesUI.detail = "work"
-	body, hits := m.pageBody(150)
+	body, _ := m.pageBody(150)
 	plain := ansi.Strip(body)
-	for _, text := range []string{"Paste subscription URL or local path", "Add", "New profile", "Pending changes", "Apply changes", "Overrides"} {
+	for _, text := range []string{"Paste subscription URL or local path", "Add", "New profile", "Pending changes"} {
 		if !strings.Contains(plain, text) {
 			t.Fatalf("missing %q in profiles page", text)
 		}
-	}
-	if !hasAction(hits, "profiles.overrides.0") || !hasAction(hits, "profiles.use-default") {
-		t.Fatal("applied profile should offer editing and switching back to default")
 	}
 	for _, width := range []int{18, 25, 40} {
 		body, hits := m.pageBody(width)
@@ -306,56 +285,6 @@ func TestProfilePageShowsPendingChangesAndAccurateActionRows(t *testing.T) {
 				t.Fatalf("invalid action row at width %d: %+v", width, hit)
 			}
 		}
-	}
-}
-
-func TestProfileDisplayNameEditsKeepActionsOnStableID(t *testing.T) {
-	const id = "p-stable-id"
-	var renamedID, renamed, updatedID, address, deletedID string
-	snapshot := app.Snapshot{Installed: true, Applied: "default", Profiles: []string{id},
-		ProfileDetails: []app.ProfileInfo{{ID: "default", Name: "default", Validated: true}, {ID: id, Name: "机场 A", Validated: true}}}
-	b := &fakeBackend{snapshot: snapshot,
-		renameProfile: func(_ context.Context, profileID, name string) error {
-			renamedID, renamed = profileID, name
-			return nil
-		},
-		updateProfileAddress: func(_ context.Context, profileID, source string) error {
-			updatedID, address = profileID, source
-			return nil
-		},
-		deleteProfile: func(_ context.Context, profileID string) error { deletedID = profileID; return nil },
-	}
-	m := profileInteractionsModel(b, 120, 32)
-	if card := ansi.Strip(strings.Join(m.profileCard(0, 60).lines, "\n")); !strings.Contains(card, "机场 A") || strings.Contains(card, id) {
-		t.Fatal("profile card displayed its storage ID instead of its display name")
-	}
-	m.activate("profile.0")
-	m.activate("profiles.rename.0")
-	if m.input.Value() != "机场 A" || m.name != id {
-		t.Fatal("Rename did not prefill the display name and retain the stable ID")
-	}
-	m.input.SetValue("我的订阅")
-	m, cmd := update(m, special(tea.KeyEnter))
-	m = finishProfileJob(t, m, cmd)
-	if renamedID != id || renamed != "我的订阅" || m.profilesUI.detail != id {
-		t.Fatal("Rename targeted a display name or lost the open profile identity")
-	}
-	m.activate("profiles.url-edit.0")
-	m.input.SetValue("https://example.invalid/new-source")
-	m, cmd = update(m, special(tea.KeyEnter))
-	m = finishProfileJob(t, m, cmd)
-	if updatedID != id || address != "https://example.invalid/new-source" {
-		t.Fatal("Edit URL did not use the stable profile ID")
-	}
-	m.activate("profiles.delete.0")
-	m.profileDeleteSetFocus("profile-delete.confirm")
-	m, cmd = update(m, special(tea.KeyEnter))
-	// Keep the backend identity check effective when the operation is wrapped
-	// alongside an independently scheduled subscription.
-	cmd = tea.Batch(cmd, func() tea.Msg { return nil })
-	m = finishProfileJob(t, m, cmd)
-	if deletedID != id {
-		t.Fatal("delete confirmation changed its stable backend identity")
 	}
 }
 

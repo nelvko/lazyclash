@@ -115,36 +115,9 @@ func (a *App) updateProfile(ctx context.Context, reference, address string, chan
 		if !changeAddress {
 			address = entry.Address
 		}
-		if address == "" {
-			return diagnostic.New("diagnostic.profile.noAddress", "this profile has no remembered address; set a URL or import a new configuration")
-		}
-		if _, err := a.library().Read(entry.Spec.Revision); err != nil {
-			return err
-		}
-		download, err := a.downloadSource(ctx, address)
+		sourceChanged, err := a.readProfileSource(ctx, &lib, id, address, changeAddress)
 		if err != nil {
 			return err
-		}
-		if err := mihomo.ValidateSource(download.Raw); err != nil {
-			return err
-		}
-		revision, err := a.library().Put(download.Raw)
-		if err != nil {
-			return err
-		}
-		sourceChanged := revision != entry.Spec.Revision
-		entry.Spec.Revision, entry.UpdatedAt = revision, time.Now().UTC()
-		entry.Quota = configuration.ParseSubscriptionQuota(download.Headers)
-		if changeAddress {
-			entry.Address = address
-		}
-		lib.Profiles[id] = entry
-		if entry.NameSource != configuration.NameCustom {
-			if changeAddress {
-				nameProfile(&lib, id, configuration.ResolveName("", download.Headers, address))
-			} else if name := configuration.ProviderName(download.Headers); name != "" {
-				nameProfile(&lib, id, configuration.NameCandidate{Name: name, Source: configuration.NameProvider})
-			}
 		}
 		m, target, err := a.buildTarget()
 		if err != nil {
@@ -172,6 +145,44 @@ func (a *App) updateProfile(ctx context.Context, reference, address string, chan
 		}
 		return nil
 	})
+}
+
+// readProfileSource updates the in-memory candidate using one fetch. Callers
+// validate the resulting recipe before committing any metadata to the index.
+func (a *App) readProfileSource(ctx context.Context, lib *configuration.Library, id, address string, changeAddress bool) (bool, error) {
+	entry := lib.Profiles[id]
+	if address == "" {
+		return false, diagnostic.New("diagnostic.profile.noAddress", "this profile has no remembered address; set a URL or import a new configuration")
+	}
+	if _, err := a.library().Read(entry.Spec.Revision); err != nil {
+		return false, err
+	}
+	download, err := a.downloadSource(ctx, address)
+	if err != nil {
+		return false, err
+	}
+	if err := mihomo.ValidateSource(download.Raw); err != nil {
+		return false, err
+	}
+	revision, err := a.library().Put(download.Raw)
+	if err != nil {
+		return false, err
+	}
+	sourceChanged := revision != entry.Spec.Revision
+	entry.Spec.Revision, entry.UpdatedAt = revision, time.Now().UTC()
+	entry.Quota = configuration.ParseSubscriptionQuota(download.Headers)
+	if changeAddress {
+		entry.Address = address
+	}
+	lib.Profiles[id] = entry
+	if entry.NameSource != configuration.NameCustom {
+		if changeAddress {
+			nameProfile(lib, id, configuration.ResolveName("", download.Headers, address))
+		} else if name := configuration.ProviderName(download.Headers); name != "" {
+			nameProfile(lib, id, configuration.NameCandidate{Name: name, Source: configuration.NameProvider})
+		}
+	}
+	return sourceChanged, nil
 }
 
 // Advance only the source revision. The library may contain user overrides

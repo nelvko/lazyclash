@@ -34,7 +34,8 @@ func profilesPreview(detail bool) Model {
 	m.page, m.focus = "profiles", "profile.0"
 	m.noColor, m.colorProfile = false, colorprofile.TrueColor
 	if detail {
-		m.profilesUI.detail, m.focus = "Everyday", "profiles.apply.0"
+		read := m.openProfileSettings("Everyday")
+		m.acceptProfileSettings(read().(profileSettingsLoadedMsg))
 	}
 	return m
 }
