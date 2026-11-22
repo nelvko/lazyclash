@@ -94,7 +94,7 @@ func (m *Model) connectionControls() dashboardBlock {
 	o.Kind, o.Disabled = buttonText, m.busy || m.quitting
 	o.Compact, o.AlignLeft = true, true
 	o.Width = m.connectionSortLabelWidth()
-	value := renderButton(m.tr("connections.sort", m.tr(m.connections.sort.key())), o)
+	value := renderButton(m.connectionSortLabel(), o)
 	b := dashboardBlock{lines: []string{value}}
 	if !o.Disabled {
 		b.targets = []hitRegion{{ID: "conn.sort", W: ansi.StringWidth(value), H: 1}}
@@ -123,7 +123,7 @@ func (m *Model) connectionsToolbar(width, rows int) dashboardBlock {
 		b.lines = append(b.lines, themed(cellCrop(status, width), color, bg, false))
 	}
 	if width >= connectionTableMinWidth {
-		b.lines = append(b.lines, m.connectionTable(nil, width)[0])
+		b.append(m.connectionTable(nil, width))
 	} else {
 		b.lines = append(b.lines, themed(strings.Repeat("─", width), divider, bg, false))
 	}
@@ -138,44 +138,6 @@ func (m *Model) connectionsToolbar(width, rows int) dashboardBlock {
 	return b
 }
 
-func (m *Model) connectionColumns(width int) (columns []table.Column, chainColumn, numericColumn int) {
-	columns = []table.Column{{Title: "", Width: 1}, {Title: m.tr("connections.destination"), Width: 24}, {Title: m.tr("connections.protocol"), Width: 5}}
-	if width >= 125 {
-		columns = append(columns, table.Column{Title: m.tr("connections.process"), Width: 12})
-	}
-	chainColumn = len(columns)
-	columns = append(columns, table.Column{Title: m.tr("connections.chain"), Width: 18})
-	ruleColumn := -1
-	if width >= 125 {
-		ruleColumn = len(columns)
-		columns = append(columns, table.Column{Title: m.tr("connections.rule"), Width: 16})
-	}
-	numericColumn = len(columns)
-	columns = append(columns, table.Column{Title: m.tr("connections.download_speed"), Width: 11}, table.Column{Title: m.tr("connections.upload_speed"), Width: 11})
-	if width >= 155 {
-		columns = append(columns, table.Column{Title: m.tr("connections.download_total"), Width: 10}, table.Column{Title: m.tr("connections.upload_total"), Width: 10})
-	}
-	columns = append(columns, table.Column{Title: m.tr("connections.duration"), Width: 8})
-	used := len(columns)
-	for _, c := range columns {
-		used += c.Width
-	}
-	extra := max(0, width-used)
-	destinationExtra := (2*extra + 2) / 3
-	columns[1].Width += destinationExtra
-	extra -= destinationExtra
-	if ruleColumn >= 0 {
-		columns[chainColumn].Width += (extra + 1) / 2
-		columns[ruleColumn].Width += extra / 2
-	} else {
-		columns[chainColumn].Width += extra
-	}
-	for index := numericColumn; index < len(columns); index++ {
-		columns[index].Title = connectionNumberCell(columns[index].Title, columns[index].Width)
-	}
-	return columns, chainColumn, numericColumn
-}
-
 func connectionNumberCell(value string, width int) string {
 	value = cellCrop(value, width)
 	return strings.Repeat(" ", max(0, width-ansi.StringWidth(value))) + value
@@ -183,7 +145,7 @@ func connectionNumberCell(value string, width int) string {
 
 // Bubbles table handles cell sizing, ANSI-aware truncation and selection. The
 // dashboard retains the only scrolling viewport and maps rows to opaque IDs.
-func (m *Model) connectionTable(list []mihomo.Connection, width int) []string {
+func (m *Model) connectionTable(list []mihomo.Connection, width int) dashboardBlock {
 	columns, chainColumn, numericColumn := m.connectionColumns(width)
 	var rows []table.Row
 	for _, c := range list {
@@ -213,13 +175,12 @@ func (m *Model) connectionTable(list []mihomo.Connection, width int) []string {
 		}
 		rows = append(rows, row)
 	}
-	style := func(fg, surface string) lipgloss.Style {
-		return lipgloss.NewStyle().Foreground(lipgloss.Color(fg)).Background(lipgloss.Color(surface))
-	}
-	t := table.New(table.WithColumns(columns), table.WithRows(rows), table.WithWidth(width), table.WithHeight(max(2, len(rows)+1)), table.WithStyles(table.Styles{
-		Header: style(muted, panel).PaddingRight(1), Cell: lipgloss.NewStyle().PaddingRight(1), Selected: lipgloss.NewStyle(),
+	headers, hits := m.connectionHeaders(columns, numericColumn)
+	t := table.New(table.WithColumns(headers), table.WithRows(rows), table.WithWidth(width), table.WithHeight(max(2, len(rows)+1)), table.WithStyles(table.Styles{
+		Header: lipgloss.NewStyle().PaddingRight(1), Cell: lipgloss.NewStyle().PaddingRight(1), Selected: lipgloss.NewStyle(),
 	}))
 	lines := strings.Split(t.View(), "\n")[:len(rows)+1]
+	lines[0] = themed(lines[0], muted, panel, false)
 	for i, c := range list {
 		foreground, surface := text, bg
 		if m.connectionRowKey(c) == m.connections.selected {
@@ -233,7 +194,7 @@ func (m *Model) connectionTable(list []mihomo.Connection, width int) []string {
 		}
 		lines[i+1] = themed(cellPad(lines[i+1], width), foreground, surface, false)
 	}
-	return lines
+	return dashboardBlock{lines: lines, targets: hits}
 }
 
 func (m *Model) compactConnectionRows(c mihomo.Connection, width int) []string {
@@ -364,7 +325,7 @@ func (m *Model) connectionsBody(width int) (string, []hitRegion) {
 	end := min(len(list), max(first, (start+height-prefix+rowHeight-1)/rowHeight))
 	var tableRows []string
 	if width >= connectionTableMinWidth && end > first {
-		tableRows = m.connectionTable(list[first:end], width)[1:]
+		tableRows = m.connectionTable(list[first:end], width).lines[1:]
 	}
 	for i, c := range list {
 		row := len(lines)

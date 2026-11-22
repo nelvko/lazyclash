@@ -1,8 +1,10 @@
 package tui
 
 import (
+	"cmp"
 	"math"
-	"sort"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/nelvko/lazyclash/internal/app"
@@ -79,6 +81,11 @@ const (
 	connectionSortDownloadTotal
 	connectionSortUploadTotal
 	connectionSortDuration
+	connectionSortDestination
+	connectionSortProtocol
+	connectionSortProcess
+	connectionSortChain
+	connectionSortRule
 	connectionSortCount
 )
 
@@ -94,38 +101,119 @@ func (s connectionSort) key() string {
 		return "connections.sort_upload_total"
 	case connectionSortDuration:
 		return "connections.sort_duration"
+	case connectionSortDestination:
+		return "connections.destination"
+	case connectionSortProtocol:
+		return "connections.protocol"
+	case connectionSortProcess:
+		return "connections.process"
+	case connectionSortChain:
+		return "connections.chain"
+	case connectionSortRule:
+		return "connections.rule"
 	default:
 		return "connections.sort_newest"
 	}
 }
 
-func sortConnections(list []mihomo.Connection, order connectionSort, rates connectionRatesState) {
-	sort.Slice(list, func(i, j int) bool {
-		a, b := list[i], list[j]
-		var av, bv int64
-		switch order {
-		case connectionSortDownloadRate:
-			av, bv = rates.get(a.ID).Download, rates.get(b.ID).Download
-		case connectionSortUploadRate:
-			av, bv = rates.get(a.ID).Upload, rates.get(b.ID).Upload
-		case connectionSortDownloadTotal:
-			av, bv = a.Download, b.Download
-		case connectionSortUploadTotal:
-			av, bv = a.Upload, b.Upload
-		default:
-			if a.Start.IsZero() != b.Start.IsZero() {
-				return !a.Start.IsZero()
+func (s connectionSort) textField() bool {
+	switch s {
+	case connectionSortDestination, connectionSortProtocol, connectionSortProcess, connectionSortChain, connectionSortRule:
+		return true
+	default:
+		return false
+	}
+}
+
+func (s connectionSort) descending(reversed bool) bool {
+	if s.textField() {
+		return reversed
+	}
+	return !reversed
+}
+
+// Compute the displayed column's key once per match. In particular, sorting
+// chains should not rebuild the route or shorten it to the current cell width
+// during each comparison.
+type connectionSortRow struct {
+	connection *mihomo.Connection
+	text       string
+	number     int64
+	recent     time.Time
+	missing    bool
+}
+
+func (s connectionSort) row(c *mihomo.Connection, now, closedAt time.Time, rates connectionRatesState) connectionSortRow {
+	row := connectionSortRow{connection: c, recent: closedAt}
+	switch s {
+	case connectionSortDestination:
+		row.text = connectionDestination(*c)
+	case connectionSortProtocol:
+		row.text = clean(c.Metadata.Network)
+	case connectionSortProcess:
+		row.text = clean(c.Metadata.Process)
+	case connectionSortChain:
+		row.text = connectionChain(*c)
+	case connectionSortRule:
+		row.text = connectionRule(*c)
+	case connectionSortDownloadRate:
+		row.number = rates.get(c.ID).Download
+	case connectionSortUploadRate:
+		row.number = rates.get(c.ID).Upload
+	case connectionSortDownloadTotal:
+		row.number = c.Download
+	case connectionSortUploadTotal:
+		row.number = c.Upload
+	case connectionSortDuration:
+		if !closedAt.IsZero() {
+			now = closedAt
+		}
+		row.number = int64(now.Sub(c.Start))
+		row.missing = c.Start.IsZero()
+	case connectionSortNewest:
+		if row.recent.IsZero() {
+			row.recent = c.Start
+		}
+		row.missing = row.recent.IsZero()
+	}
+	if s.textField() {
+		row.text = strings.ToLower(strings.TrimSpace(row.text))
+		row.missing = row.text == "" || row.text == "--"
+	} else {
+		row.missing = row.missing || row.number < 0
+	}
+	return row
+}
+
+func (s connectionSort) sorted(rows []connectionSortRow, reversed bool) []mihomo.Connection {
+	descending := s.descending(reversed)
+	slices.SortFunc(rows, func(a, b connectionSortRow) int {
+		if a.missing != b.missing {
+			if a.missing {
+				return 1
 			}
-			if !a.Start.Equal(b.Start) {
-				if order == connectionSortDuration {
-					return a.Start.Before(b.Start)
+			return -1
+		}
+		if !a.missing {
+			primary := cmp.Or(cmp.Compare(a.number, b.number), strings.Compare(a.text, b.text))
+			if s == connectionSortNewest {
+				primary = a.recent.Compare(b.recent)
+			}
+			if primary != 0 {
+				if descending {
+					return -primary
 				}
-				return a.Start.After(b.Start)
+				return primary
 			}
 		}
-		if av != bv {
-			return av > bv
-		}
-		return a.ID < b.ID
+		// Preserve the archive's newest-closure tie break, then identity,
+		// independently of the selected field's direction.
+		return cmp.Or(b.recent.Compare(a.recent), strings.Compare(a.connection.ID, b.connection.ID),
+			a.connection.Start.Compare(b.connection.Start))
 	})
+	list := make([]mihomo.Connection, len(rows))
+	for i := range rows {
+		list[i] = *rows[i].connection
+	}
+	return list
 }

@@ -73,51 +73,27 @@ func TestConnectionsToolbarRedesignHeaderPauseRemainsReachableInBothViews(t *tes
 	}
 }
 
-func TestConnectionsToolbarRedesignWideInputSortAndQueryCountShareTextRow(t *testing.T) {
+func TestConnectionsToolbarWideQueryCountFollowsStableSearch(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		t.Run(language, func(t *testing.T) {
 			m := connectionsModel(t, &fakeBackend{})
 			m.locale = i18n.New(language)
-			var baseline, baselineSort hitRegion
-			for order := connectionSortNewest; order < connectionSortCount; order++ {
-				m.connections.sort = order
-				for _, query := range []struct{ value, count string }{{"", ""}, {"one", "1 / 2"}, {"example", "2 / 2"}, {"no-match", "0 / 2"}, {"  ", ""}} {
-					m.connections.search.SetValue(query.value)
-					bar := m.connectionFilterBar(160)
-					search := connectionToolbarRedesignTarget(t, bar, "conn.search")
-					sort := connectionToolbarRedesignTarget(t, bar, "conn.sort")
-					active := connectionToolbarRedesignTarget(t, bar, "conn.active")
-					closed := connectionToolbarRedesignTarget(t, bar, "conn.closed")
-					if active.Y != search.Y+1 || closed.Y != search.Y+1 || sort.Y != search.Y+1 || closed.X+closed.W > search.X || sort.X != search.X+search.W+2 {
-						t.Fatalf("tabs, editor, sort and query count must share a reading row with sort next to the frame: active=%+v closed=%+v search=%+v sort=%+v", active, closed, search, sort)
-					}
-					if search.InputWidth != 42 {
-						t.Fatalf("wide search must retain 42 text cells beside its matching options: %d cells", search.InputWidth)
-					}
-					if baseline.W == 0 {
-						baseline, baselineSort = search, sort
-					} else if search.X != baseline.X || search.W != baseline.W || search.InputWidth != baseline.InputWidth {
-						t.Fatalf("typing or sorting moved/resized the editor: %+v -> %+v", baseline, search)
-					}
-					if sort != baselineSort {
-						t.Fatalf("sorting or typing moved/resized the sort control: %+v -> %+v", baselineSort, sort)
-					}
-					plain := ansi.Strip(bar.lines[sort.Y])
-					label := m.tr("connections.sort", m.tr(order.key()))
-					face := ansi.Cut(plain, sort.X, sort.X+sort.W)
-					labelIndex := strings.Index(face, label)
-					if labelIndex < 0 || ansi.StringWidth(face[:labelIndex]) < 1 || ansi.StringWidth(face[:labelIndex]) > 2 {
-						t.Fatalf("sort label must start at the left inset of its fixed hit region: %q", face)
-					}
-					count := strings.TrimSpace(ansi.Cut(plain, sort.X+sort.W, ansi.StringWidth(plain)))
-					if count != query.count {
-						t.Fatalf("query %q count after sort = %q, want %q", query.value, count, query.count)
-					}
-					for _, target := range bar.targets {
-						if target.ID == "conn.pause" {
-							t.Fatal("page-header Pause was duplicated inside the filter bar")
-						}
-					}
+			baseline := connectionToolbarRedesignTarget(t, m.connectionFilterBar(160), "conn.search")
+			for _, query := range []struct{ value, count string }{{"", ""}, {"one", "1 / 2"}, {"example", "2 / 2"}, {"no-match", "0 / 2"}, {"  ", ""}} {
+				m.connections.search.SetValue(query.value)
+				bar := m.connectionFilterBar(160)
+				search := connectionToolbarRedesignTarget(t, bar, "conn.search")
+				closed := connectionToolbarRedesignTarget(t, bar, "conn.closed")
+				if search != baseline || search.InputWidth != 42 || closed.Y != search.Y+1 || closed.X+closed.W > search.X {
+					t.Fatalf("query %q displaced tabs or search: closed=%+v search=%+v baseline=%+v", query.value, closed, search, baseline)
+				}
+				plain := ansi.Strip(bar.lines[search.Y+1])
+				count := strings.TrimSpace(ansi.Cut(plain, search.X+search.W, ansi.StringWidth(plain)))
+				if count != query.count {
+					t.Fatalf("query %q count beside search = %q, want %q", query.value, count, query.count)
+				}
+				if hasAction(bar.targets, "conn.pause") || hasAction(bar.targets, "conn.sort") {
+					t.Fatal("wide filter bar duplicated a page or table header action")
 				}
 			}
 		})
@@ -160,7 +136,12 @@ func TestConnectionsToolbarRedesignClearKeepsInputAndControlsFixed(t *testing.T)
 				m.connections.search.SetValue("one")
 				m, _ = update(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
 				var before []hitRegion
-				ids := []string{"conn.search", "conn.case", "conn.word", "conn.regex", "conn.sort"}
+				ids := []string{"conn.search", "conn.case", "conn.word", "conn.regex"}
+				if size[0] == 160 {
+					ids = append(ids, "conn.sort.destination")
+				} else {
+					ids = append(ids, "conn.sort")
+				}
 				for _, id := range ids {
 					before = append(before, findTarget(t, m, id))
 				}
@@ -180,7 +161,7 @@ func TestConnectionsToolbarRedesignClearKeepsInputAndControlsFixed(t *testing.T)
 
 func TestConnectionsToolbarRedesignNarrowControlsPrecedeInput(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
-		for _, width := range []int{60, 40} {
+		for _, width := range []int{connectionTableMinWidth - 1, 60, 40} {
 			t.Run(fmt.Sprintf("%s/%d", language, width), func(t *testing.T) {
 				m := connectionsModel(t, &fakeBackend{})
 				m.locale = i18n.New(language)
@@ -243,19 +224,20 @@ func TestConnectionsToolbarRedesignSearchTabFollowsVisibleOrder(t *testing.T) {
 			if m.connections.editing || m.focus != "conn.clear" {
 				t.Fatalf("Tab must leave editing at its adjacent Clear control, got %q", m.focus)
 			}
-			search, sort := findTarget(t, m, "conn.search"), findTarget(t, m, "conn.sort")
-			if sort.Y >= search.Y {
-				for _, id := range []string{"conn.case", "conn.word", "conn.regex", "conn.sort"} {
+			sortID := "conn.sort"
+			if size[0] == 160 {
+				sortID = "conn.sort.destination"
+				for _, id := range []string{"conn.case", "conn.word", "conn.regex", sortID} {
 					m, _ = update(m, special(tea.KeyTab))
 					if m.focus != id {
-						t.Fatalf("Tab should reach %s before the external sort, got %q", id, m.focus)
+						t.Fatalf("Tab should reach %s in visual order, got %q", id, m.focus)
 					}
 				}
 			} else {
 				m, _ = update(m, key("/"))
 				m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
 			}
-			if m.focus != "conn.sort" || m.connections.search.Value() != "one" || len(m.filteredConnections()) != 1 {
+			if m.focus != sortID || m.connections.search.Value() != "one" || len(m.filteredConnections()) != 1 {
 				t.Fatalf("sort did not follow visual reading order without discarding search: focus=%q query=%q", m.focus, m.connections.search.Value())
 			}
 		})

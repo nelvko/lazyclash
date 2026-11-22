@@ -7,6 +7,7 @@ import "github.com/charmbracelet/x/ansi"
 type listSearchToolbar struct {
 	scope, functions          dashboardBlock
 	countWidth, matchingWidth int
+	stacked                   bool
 }
 
 func (bar listSearchToolbar) searchGeometry(width int) (fieldWidth, offset int) {
@@ -20,7 +21,7 @@ func (bar listSearchToolbar) searchGeometry(width int) (fieldWidth, offset int) 
 		suffix += bar.countWidth + 2
 	}
 	fieldWidth = min(inputFieldMaxWidth, width-offset-suffix)
-	if len(bar.scope.lines) == 1 && fieldWidth >= 24 &&
+	if !bar.stacked && len(bar.scope.lines) == 1 && fieldWidth >= 24 &&
 		(bar.matchingWidth == 0 || inputFieldInlineTrailing(fieldWidth, bar.matchingWidth, true)) {
 		return fieldWidth, offset
 	}

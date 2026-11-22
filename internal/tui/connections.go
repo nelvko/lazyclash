@@ -31,6 +31,7 @@ type connectionsState struct {
 	detailClosedAt              time.Time
 	detailGeneration            uint64
 	sort                        connectionSort
+	sortReversed                bool
 	rates                       connectionRatesState
 	paused                      bool
 	frozen                      *mihomo.ConnectionSnapshot
@@ -218,13 +219,15 @@ func (m *Model) connectionKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 			return true, m.connectionActivate(id)
 		}
 		return true, nil
-	case "p", "s":
+	case "p", "s", "S":
 		if m.connections.detail == nil {
-			id := "conn.pause"
-			if key == "s" {
-				id = "conn.sort"
+			switch key {
+			case "s":
+				return true, m.connectionActivate("conn.sort")
+			case "S":
+				return true, m.connectionActivate("conn.reverse-sort")
 			}
-			return true, m.connectionActivate(id)
+			return true, m.connectionActivate("conn.pause")
 		}
 		return true, nil
 	case "/":
@@ -340,6 +343,9 @@ func (m *Model) connectionActivate(id string) tea.Cmd {
 			return nil
 		}
 		m.connections.closedView = id == "conn.closed"
+		if !m.connectionSortAllowed(m.connections.sort) {
+			m.connections.sort, m.connections.sortReversed = connectionSortNewest, false
+		}
 		m.connections.detail, m.connections.confirming = nil, false
 		m.connections.selected, m.connections.selectedIndex = "", 0
 		m.scroll, m.focus = 0, id
@@ -366,10 +372,8 @@ func (m *Model) connectionActivate(id string) tea.Cmd {
 		m.scroll = 0
 		m.reconcileConnections()
 		return m.focusConnectionSearch()
-	case id == "conn.sort":
-		m.connections.sort = (m.connections.sort + 1) % connectionSortCount
-		m.reconcileConnections()
-		m.revealConnection(0)
+	case id == "conn.sort" || id == "conn.reverse-sort" || strings.HasPrefix(id, "conn.sort."):
+		m.changeConnectionSort(id)
 	case id == "conn.pause":
 		if !m.canPauseConnections() {
 			return nil

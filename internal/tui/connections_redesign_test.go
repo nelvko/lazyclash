@@ -165,10 +165,10 @@ func TestConnectionsSearchTabReachesToolbarWithoutLosingQuery(t *testing.T) {
 	if m.connections.editing || m.connections.search.Value() != "one" || m.focus != "conn.clear" {
 		t.Fatalf("Tab from search must reach its adjacent Clear control, got %q", m.focus)
 	}
-	for _, id := range []string{"conn.case", "conn.word", "conn.regex", "conn.sort"} {
+	for _, id := range []string{"conn.case", "conn.word", "conn.regex", "conn.sort.destination"} {
 		m, _ = update(m, special(tea.KeyTab))
 		if m.focus != id {
-			t.Fatalf("matching options and external sort must follow search in reading order: want %s, got %q", id, m.focus)
+			t.Fatalf("matching options and first sortable column must follow search in reading order: want %s, got %q", id, m.focus)
 		}
 	}
 	if m.connections.search.Value() != "one" || len(m.filteredConnections()) != 1 {

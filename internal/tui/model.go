@@ -429,6 +429,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.logoIntro.sized = true
 		m.sidebar.reveal = true
 		m.width, m.height = max(1, v.Width), max(1, v.Height)
+		if m.page == "connections" {
+			m.resizeConnectionSortFocus()
+		}
 		m.wizard.reveal = true
 		m.ports.reveal = true
 		if m.page == "connections" && m.connections.detail == nil && strings.HasPrefix(m.focus, "connection.") {

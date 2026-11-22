@@ -4,6 +4,7 @@
   "connections.paused": "已暂停 · 查看定格快照",
   "connections.sort": "排序：%s",
   "connections.sort_newest": "最新",
+  "connections.sort_oldest": "最早",
   "connections.sort_download_rate": "下载速度",
   "connections.sort_upload_rate": "上传速度",
   "connections.sort_download_total": "下载总量",

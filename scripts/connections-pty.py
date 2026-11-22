@@ -182,8 +182,7 @@ def filter_count(terminal, required=True):
     if frame is None:
         return None
     _, top, right, bottom = frame
-    # Wide rows place Sort before the ratio. Narrow rows keep it beside the
-    # frame or on a dedicated line after the input's matching controls.
+    # The ratio follows the input, or moves below the matching controls.
     candidates = [(top + 1, right + 1, False)]
     candidates += [(y, 0, True) for y in range(bottom + 1, min(bottom + 4, len(terminal.screen.cells)))]
     for y, start, separate in candidates:
@@ -231,15 +230,38 @@ def wait_header_pause(terminal, words, paused=False):
     return header_pause(terminal, words, paused)
 
 
+def table_header_y(terminal, words):
+    for y, row in enumerate(terminal.screen.cells):
+        text = "".join(row)
+        if words["connections.destination"] in text and words["connections.chain"] in text:
+            return y
+    return None
+
+
+def sort_position(terminal, words):
+    y = table_header_y(terminal, words)
+    if y is None:
+        return position(terminal, words["connections.sort"].split("%s")[0])
+    return position(terminal, words["connections.destination"])
+
+
+def click_header(terminal, words, field):
+    y = table_header_y(terminal, words)
+    row = terminal.screen.cells[y]
+    label = words["connections." + field]
+    x = next(i for i, cell in enumerate(row) if cell and "".join(row[i:]).startswith(label))
+    click_cell(terminal, x, y)
+
+
 def check_filter_layout(terminal, words, active, closed, closed_view=False, paused=False):
     left, top, right, bottom = search_frame(terminal)
     assert filter_count(terminal, required=False) is None, "unfiltered search still shows an external count"
-    count_point = None
-    sort_label = words["connections.sort"] % words["connections.sort_newest"]
-    sort_x, sort_y = position(terminal, sort_label)
+    sort_label = words["connections.sort"].split("%s")[0]
+    sort_x, sort_y = sort_position(terminal, words)
     tabs = [position(terminal, tab_label(words, view, count)) for view, count in (("active", active), ("closed", closed))]
-    if sort_y == top + 1:
-        assert sort_x == right + 5 and all(y == top + 1 and x < left for x, y in tabs), "wide tabs/search/left-aligned sort are not adjacent"
+    if table_header_y(terminal, words) is not None:
+        assert sort_y > bottom and sort_label not in terminal.screen.text(), "wide table still has a separate sort control"
+        assert all(y == top + 1 and x < left for x, y in tabs), "tabs are not next to the search field"
     else:
         assert sort_y < top and all(y < top for _, y in tabs), "narrow tabs and sort are not above search"
     options = matching_options(terminal)
@@ -262,7 +284,7 @@ def check_filter_layout(terminal, words, active, closed, closed_view=False, paus
     else:
         live = words["runtime.status.live"]
         assert not any(live in row for row in rows[bottom + 1:-1]), "normal live status still consumes a separate line"
-    return (left, top, right, bottom), count_point, (sort_x, sort_y)
+    return (left, top, right, bottom), (sort_x, sort_y)
 
 
 def check_sort_boundary(preview, terminal, words, output, language, args):
@@ -275,19 +297,20 @@ def check_sort_boundary(preview, terminal, words, output, language, args):
     count_point = filter_count(terminal)[1]
     sort_point = position(terminal, words["connections.sort"] % words["connections.sort_newest"])
     modes = {}
-    for name in ("download_rate", "upload_rate", "download_total", "upload_total", "duration", "newest"):
+    for key in ("sort_download_rate", "sort_upload_rate", "sort_download_total", "sort_upload_total", "sort_duration",
+                "destination", "protocol", "process", "chain", "rule", "sort_newest"):
         terminal.key(b"s")
-        label = words["connections.sort"] % words["connections.sort_" + name]
+        label = words["connections.sort"] % words["connections." + key]
         terminal.wait(label)
         terminal.settle()
         actual_frame = search_frame(terminal)
         actual_count = filter_count(terminal)[1]
         actual_sort = position(terminal, label)
-        assert actual_frame == frame, "sort label moved or resized search at the wrap breakpoint: " + name
-        assert actual_count == count_point, "sort label moved the external count at the wrap breakpoint: " + name
-        assert actual_sort == sort_point, "sort label moved its reserved control position at the wrap breakpoint: " + name
-        modes[name] = {"frame": actual_frame, "count": actual_count, "sort": actual_sort}
-        preview.capture(terminal, output, "sort-boundary-%dx%d-%s" % (width, height, name), args)
+        assert actual_frame == frame, "sort label moved or resized search at the wrap breakpoint: " + key
+        assert actual_count == count_point, "sort label moved the external count at the wrap breakpoint: " + key
+        assert actual_sort == sort_point, "sort label moved its reserved control position at the wrap breakpoint: " + key
+        modes[key] = {"frame": actual_frame, "count": actual_count, "sort": actual_sort}
+        preview.capture(terminal, output, "sort-boundary-%dx%d-%s" % (width, height, key), args)
     (output / "sort-boundary.json").write_text(json.dumps({"terminal_size": [width, height], "modes": modes}, indent=2) + "\n")
     resize_terminal(terminal, words, 160, 45)
 
@@ -349,16 +372,11 @@ def exercise_search_modes(preview, terminal, words, output, args):
 
 def assert_search_tab_order(preview, terminal, words, output, width, height, args):
     frame = search_frame(terminal)
-    sort_label = words["connections.sort"] % words["connections.sort_newest"]
-    sort_point = position(terminal, sort_label)
+    sort_point = sort_position(terminal, words)
     search(terminal, "API.GITHUB.COM")
     count_point = wait_count(terminal, 48, 1)
-    assert (search_frame(terminal), position(terminal, sort_label)) == (frame, sort_point), "typing moved the frame or sort control"
-    if sort_point[1] == frame[1] + 1:
-        sort_width = sum(2 if unicodedata.east_asian_width(char) in "WF" else 1 for char in sort_label)
-        assert count_point[1] == sort_point[1] and count_point[0] > sort_point[0] + sort_width, "wide ratio does not follow Sort"
-    else:
-        assert (count_point[1] == frame[1] + 1 and count_point[0] > frame[2]) or count_point[1] > frame[3], "narrow ratio is not beside or after the search component"
+    assert (search_frame(terminal), sort_position(terminal, words)) == (frame, sort_point), "typing moved the frame or sorting"
+    assert (count_point[1] == frame[1] + 1 and count_point[0] > frame[2]) or count_point[1] > frame[3], "ratio is not beside or after the search component"
     terminal.key(b"/")
     terminal.key(b"\t")
     terminal.settle()
@@ -383,7 +401,73 @@ def assert_search_tab_order(preview, terminal, words, output, width, height, arg
     terminal.key(b"\x1bc")
     search(terminal, "")
     wait_count(terminal, 48)
-    assert (search_frame(terminal), position(terminal, sort_label)) == (frame, sort_point), "clearing or matching modes moved the frame or sort control"
+    assert (search_frame(terminal), sort_position(terminal, words)) == (frame, sort_point), "clearing or matching modes moved the frame or sorting"
+
+
+def exercise_table_sort(preview, terminal, words, output, args):
+    resize_terminal(terminal, words, 200, 45)
+    search(terminal, "agent")
+    wait_count(terminal, 48, 2)
+    y = table_header_y(terminal, words)
+    assert y is not None and words["connections.sort"].split("%s")[0] not in terminal.screen.text()
+
+    def check_order(label, direction, github_first):
+        terminal.settle()
+        heading = "".join(terminal.screen.cells[y])
+        assert re.search(re.escape(label) + r"\s*" + direction, heading), "missing sort indicator: " + heading
+        assert heading.count("▲") + heading.count("▼") == 1, "multiple sorted headers: " + heading
+        assert (position(terminal, "api.github.com")[1] < position(terminal, "[2001:db8::42]:443")[1]) == github_first, "wrong row order: " + heading
+
+    chain = words["connections.chain"]
+    click_header(terminal, words, "chain")
+    check_order(chain, "▲", False)  # DIRECT before PROXY → HK 01
+    click_header(terminal, words, "chain")
+    check_order(chain, "▼", True)
+    preview.capture(terminal, output, "header-chain-descending", args)
+    terminal.key(b"\r")
+    check_order(chain, "▲", False)
+    search(terminal, "")
+    terminal.key(b"\x1b[H")
+    terminal.settle()
+    preview.capture(terminal, output, "header-chain-ascending", args)
+    search(terminal, "agent")
+
+    for field in ("download_speed", "upload_speed", "download_total", "upload_total", "duration"):
+        label = words["connections." + field]
+        click_header(terminal, words, field)
+        check_order(label, "▼", False)
+        click_header(terminal, words, field)
+        check_order(label, "▲", True)
+
+    # Tab from Chain to its right-hand neighbor Rule, then sort using Enter.
+    click_header(terminal, words, "chain")
+    terminal.key(b"\t")
+    terminal.key(b"\r")
+    check_order(words["connections.rule"], "▲", False)
+
+    # Switching back to the initial newest order leaves no field marked.
+    for _ in range(12):
+        terminal.key(b"s")
+        terminal.settle()
+        if not any(mark in "".join(terminal.screen.cells[y]) for mark in "▲▼"):
+            break
+    else:
+        raise AssertionError("Keyboard sorting did not return to newest")
+    assert position(terminal, "api.github.com")[1] < position(terminal, "[2001:db8::42]:443")[1]
+
+    resize_terminal(terminal, words, 80, 24)
+    newest = words["connections.sort"] % words["connections.sort_newest"]
+    terminal.wait(newest)
+    compact_point = position(terminal, newest)
+    terminal.key(b"S")
+    oldest = words["connections.sort"] % words["connections.sort_oldest"]
+    terminal.wait(oldest)
+    terminal.settle()
+    assert position(terminal, oldest) == compact_point
+    assert position(terminal, "[2001:db8::42]:443")[1] < position(terminal, "api.github.com")[1], "compact reverse did not sort oldest first"
+    preview.capture(terminal, output, "compact-sort-reversed", args)
+    terminal.key(b"S")
+    terminal.settle()
 
 
 def exercise(preview, binary, output, language, profile, args):
@@ -412,8 +496,7 @@ def exercise(preview, binary, output, language, profile, args):
         exercise_search_modes(preview, terminal, words, output, args)
 
         # The list shortcut must remain ordinary text inside the search input.
-        sort_label = words["connections.sort"] % words["connections.sort_newest"]
-        empty_geometry = search_frame(terminal), position(terminal, sort_label)
+        empty_geometry = search_frame(terminal), sort_position(terminal, words)
         terminal.key(b"/")
         terminal.key(b"\x15")
         paste(terminal, "no-such-")
@@ -423,12 +506,12 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait(words["connections.no_matches"])
         check_tabs(terminal, words, 48, 0)
         wait_count(terminal, 48, 0)
-        assert (search_frame(terminal), position(terminal, sort_label)) == empty_geometry, "typing changed toolbar geometry"
+        assert (search_frame(terminal), sort_position(terminal, words)) == empty_geometry, "typing changed toolbar geometry"
         click_cell(terminal, *clear_search_position(terminal))
         terminal.key(b"\r")
         terminal.wait("api.github.com")
         wait_count(terminal, 48)
-        assert (search_frame(terminal), position(terminal, sort_label)) == empty_geometry, "Clear changed toolbar geometry"
+        assert (search_frame(terminal), sort_position(terminal, words)) == empty_geometry, "Clear changed toolbar geometry"
 
         # Freeze the observation so any difference while searching can only
         # come from filtering, rather than the next live traffic sample.
@@ -484,26 +567,7 @@ def exercise(preview, binary, output, language, profile, args):
         wait_until(terminal, lambda: frozen_totals != header_totals(terminal, words)[0],
             "resuming did not show the current header totals")
 
-        # Each sort mode remains reachable from content focus and preserves
-        # the filter; six presses complete the cycle back to newest.
-        resize_terminal(terminal, words, 160, 45)
-        terminal.settle()
-        search(terminal, "agent")
-        terminal.wait("[2001:db8::42]:443")
-        assert position(terminal, "api.github.com")[1] < position(terminal, "[2001:db8::42]:443")[1], "newest order is incorrect"
-        for name in ("download_rate", "upload_rate", "download_total", "upload_total", "duration", "newest"):
-            if name == "download_rate":
-                click_cell(terminal, *position(terminal, words["connections.sort"] % words["connections.sort_newest"]))
-            else:
-                terminal.key(b"s")
-            terminal.wait(words["connections.sort_" + name])
-            terminal.settle()
-            terminal.wait("api.github.com")
-            terminal.wait("[2001:db8::42]:443")
-            github_y = position(terminal, "api.github.com")[1]
-            ipv6_y = position(terminal, "[2001:db8::42]:443")[1]
-            assert (github_y < ipv6_y) == (name == "newest"), "connection sort order is incorrect: " + name
-        preview.capture(terminal, output, "sort-cycle", args)
+        exercise_table_sort(preview, terminal, words, output, args)
         if args.sort_boundary:
             check_sort_boundary(preview, terminal, words, output, language, args)
         search(terminal, "")
@@ -665,6 +729,12 @@ def exercise(preview, binary, output, language, profile, args):
         search(terminal, "flow-")
         wait_count(terminal, 48, 44)
         search(terminal, "")
+        click_header(terminal, words, "chain")
+        y = table_header_y(terminal, words)
+        chain_ascending = re.compile(re.escape(words["connections.chain"]) + r"\s*▲")
+        assert chain_ascending.search("".join(terminal.screen.cells[y])), "archived chains did not sort"
+        click_header(terminal, words, "download_speed")
+        assert chain_ascending.search("".join(terminal.screen.cells[y])), "history sorted on an unavailable live speed"
         for width, height in SIZES:
             resize_terminal(terminal, words, width, height)
             terminal.key(b"\x1b[H")
@@ -697,7 +767,7 @@ def exercise(preview, binary, output, language, profile, args):
         if profile == "no-color":
             assert not any(value not in (b"", b"0") for value in preview.SGR.findall(raw)), "NO_COLOR emitted styling"
         (output / "pty.raw").write_bytes(raw)
-        print("PASS %s/%s: case/Unicode whole-word/regex search, invalid-expression recovery, search-control mouse and bidirectional Tab at every size, rate samples, live pause, six sorts, details/two-row clicks, fixed toolbar, six sizes, header pause/totals, framed search with outside count/sort, active/closed tabs and frozen history, exact close, archived filters/details, close-all cancellation/confirmation; %s" %
+        print("PASS %s/%s: case/Unicode whole-word/regex search, invalid-expression recovery, search-control mouse and bidirectional Tab at every size, rate samples, live pause, clickable table headers and keyboard sort, details/two-row clicks, fixed toolbar, six sizes, header pause/totals, framed search with outside count, active/closed tabs and frozen history, exact close, archived filters/details, close-all cancellation/confirmation; %s" %
             (language, profile, json.dumps(calls)), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")

@@ -4,6 +4,7 @@
   "connections.paused": "Paused · viewing a snapshot",
   "connections.sort": "Sort: %s",
   "connections.sort_newest": "Newest",
+  "connections.sort_oldest": "Oldest",
   "connections.sort_download_rate": "Download speed",
   "connections.sort_upload_rate": "Upload speed",
   "connections.sort_download_total": "Download total",

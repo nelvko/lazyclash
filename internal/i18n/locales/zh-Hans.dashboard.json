@@ -170,7 +170,7 @@
   "help.profiles.update": "更新 / 全部更新仅保存配置更改，不将其加载到内核。",
   "help.profiles.overrides": "覆写会导入独立的覆写 YAML 草稿。",
   "help.profiles.delete": "删除时需输入完整显示名称。正在使用的配置受保护。",
-  "help.connections.keys": "列表：/ 搜索 · v 活跃/已关闭 · s 排序 · p 暂停/继续显示。聚焦连接时 Enter 查看详情；详情中 Esc 返回列表。",
+  "help.connections.keys": "列表：/ 搜索 · v 活跃/已关闭 · s 切换排序 · S 反转顺序 · p 暂停/继续显示。点击表头按该列排序，再点一次反转。聚焦连接时 Enter 查看详情；详情中 Esc 返回列表。",
   "help.connections.confirm": "关闭确认默认选中取消；Tab 切换按钮，Enter / Space 执行当前按钮，y 确认，n / Esc 取消。",
   "help.rules.keys": "/ 搜索 · g / Ctrl+R 重新读取规则。聚焦规则时，仅有隐藏内容才可按 Enter 查看完整内容；展开后 Enter 或 Esc 收起。",
   "help.rules.readOnly": "生效规则列表只读。展开仅补全当前规则，不展开规则集合文件；页头「规则集合」可查看和更新集合。",

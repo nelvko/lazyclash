@@ -10,6 +10,8 @@
   "navigation.connections.action.active": "Enter Active connections",
   "navigation.connections.action.closed": "Enter Closed connections",
   "navigation.connections.action.sort": "Enter Next sort",
+  "navigation.connections.action.column": "Enter Sort by column",
+  "navigation.connections.action.reverse": "Enter Reverse order",
   "navigation.connections.action.pause": "Enter Pause",
   "navigation.connections.action.resume": "Enter Resume",
   "navigation.connections.action.details": "Enter Details",

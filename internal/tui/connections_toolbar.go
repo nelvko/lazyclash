@@ -38,8 +38,12 @@ func (m *Model) connectionTabs(width int) dashboardBlock {
 }
 
 func (m *Model) connectionSearchToolbar(width int) listSearchToolbar {
-	return listSearchToolbar{scope: m.connectionTabs(width), functions: m.connectionControls(),
+	bar := listSearchToolbar{scope: m.connectionTabs(width),
 		countWidth: m.connectionCountWidth(), matchingWidth: searchControlWidth(m.connectionFilterButtons())}
+	if width < connectionTableMinWidth {
+		bar.functions, bar.stacked = m.connectionControls(), true
+	}
+	return bar
 }
 
 func (m *Model) connectionSearchGeometry(width int) (fieldWidth, offset int) {
@@ -78,11 +82,11 @@ func (m *Model) connectionCountWidth() int {
 }
 
 func (m *Model) connectionSortLabelWidth() int {
-	width := 0
+	width := ansi.StringWidth(m.tr("connections.sort", m.tr("connections.sort_oldest")))
 	for order := connectionSortNewest; order < connectionSortCount; order++ {
 		width = max(width, ansi.StringWidth(m.tr("connections.sort", m.tr(order.key()))))
 	}
-	return width
+	return width + 2 // Space and direction marker.
 }
 
 // Matching controls belong to the input; scope and sort remain outside its

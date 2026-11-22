@@ -145,14 +145,13 @@ func TestSearchFieldFixedControlsAlignWithFrame(t *testing.T) {
 				m.layout()
 				field := findTarget(t, m, id)
 				controlID := map[string]string{"connections": "conn.sort", "rules": "rules.case", "logs": "logs.level"}[page]
+				if page == "connections" && width == 160 {
+					controlID = "conn.sort.destination"
+				}
 				control := findTarget(t, m, controlID)
 				if page == "connections" {
-					if control.Y == field.Y+1 {
-						if control.X < field.X+field.W {
-							t.Fatalf("connection sort overlaps the search frame: field=%+v control=%+v", field, control)
-						}
-					} else if control.Y >= field.Y {
-						t.Fatalf("narrow connection sort did not move above search: field=%+v control=%+v", field, control)
+					if width == 160 && control.Y < field.Y+field.H || width == 60 && control.Y >= field.Y {
+						t.Fatalf("table sort should be below search and compact sort above: field=%+v control=%+v", field, control)
 					}
 				} else if page == "logs" {
 					if field.InputWidth != inputFieldTextWidth(field.W, searchControlWidth(m.logSearchButtons()), true) {
@@ -181,6 +180,9 @@ func TestSearchFieldFixedControlsAlignWithFrame(t *testing.T) {
 				m.layout()
 				if page == "logs" && !m.logs.holding || page != "logs" && m.scroll == 0 {
 					t.Fatal("fixture did not scroll its list")
+				}
+				if got := findTarget(t, m, controlID); got != control {
+					t.Fatalf("body scrolling moved %s: before=%+v after=%+v", controlID, control, got)
 				}
 				if got := findTarget(t, m, id); got != field {
 					t.Fatalf("body scrolling moved the fixed frame: before=%+v after=%+v", field, got)

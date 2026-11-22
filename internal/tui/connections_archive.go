@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"sort"
 	"time"
 
 	"github.com/nelvko/lazyclash/internal/mihomo"
@@ -54,44 +53,26 @@ func (m *Model) filteredConnections() []mihomo.Connection {
 	if err != nil {
 		return nil
 	}
-	var source, out []mihomo.Connection
-	closedAt := map[string]time.Time{}
+	now := m.connectionNow()
+	rates := m.displayedConnectionRates()
+	order := m.connections.sort
+	var rows []connectionSortRow
+	add := func(c *mihomo.Connection, closedAt time.Time) {
+		if match(*c) {
+			rows = append(rows, order.row(c, now, closedAt, rates))
+		}
+	}
 	if m.connections.closedView {
-		for _, entry := range m.connectionClosedEntries() {
-			source = append(source, entry.Connection)
-			closedAt[m.connectionRowKey(entry.Connection)] = entry.ClosedAt
+		// A live rate for a reused ID does not belong to a historical row.
+		rates = connectionRatesState{}
+		entries := m.connectionClosedEntries()
+		for i := range entries {
+			add(&entries[i].Connection, entries[i].ClosedAt)
 		}
 	} else if snapshot := m.connectionSnapshot(); snapshot != nil {
-		source = snapshot.Connections
-	}
-	for _, c := range source {
-		if match(c) {
-			out = append(out, c)
+		for i := range snapshot.Connections {
+			add(&snapshot.Connections[i], time.Time{})
 		}
 	}
-	if !m.connections.closedView {
-		sortConnections(out, m.connections.sort, m.displayedConnectionRates())
-		return out
-	}
-	sort.SliceStable(out, func(i, j int) bool {
-		a, b := out[i], out[j]
-		aa, ba := closedAt[m.connectionRowKey(a)], closedAt[m.connectionRowKey(b)]
-		var av, bv int64
-		switch m.connections.sort {
-		case connectionSortDownloadTotal:
-			av, bv = a.Download, b.Download
-		case connectionSortUploadTotal:
-			av, bv = a.Upload, b.Upload
-		case connectionSortDuration:
-			av, bv = int64(aa.Sub(a.Start)), int64(ba.Sub(b.Start))
-		}
-		if av != bv {
-			return av > bv
-		}
-		if !aa.Equal(ba) {
-			return aa.After(ba)
-		}
-		return m.connectionRowKey(a) < m.connectionRowKey(b)
-	})
-	return out
+	return order.sorted(rows, m.connections.sortReversed)
 }

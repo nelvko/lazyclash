@@ -59,6 +59,14 @@ func (m *Model) connectionsContextHelp() string {
 			action = "pause"
 		}
 	}
+	width := dashboardBodyWidth(m.dashboardOptions())
+	sortTarget := m.connectionSortTarget(width)
+	if strings.HasPrefix(m.focus, "conn.sort.") {
+		action = "column"
+		if m.focus == sortTarget {
+			action = "reverse"
+		}
+	}
 	list := m.filteredConnections()
 	canClose := false
 	for _, c := range list {
@@ -83,7 +91,12 @@ func (m *Model) connectionsContextHelp() string {
 	if len(list) > 0 {
 		parts = append(parts, tr("navigation.connections.browse"))
 	}
-	parts = append(parts, tr("navigation.connections.sort"))
+	sortHint := tr("navigation.connections.sort")
+	if width >= connectionTableMinWidth && sortTarget == "" && (m.connections.sort != connectionSortNewest || m.connections.sortReversed) {
+		// The selected column can disappear when the terminal is resized.
+		sortHint += " (" + m.connectionSortLabel() + ")"
+	}
+	parts = append(parts, sortHint)
 	if m.connections.paused {
 		parts = append(parts, tr("navigation.connections.resume"))
 	} else if m.connectionSnapshot() != nil {

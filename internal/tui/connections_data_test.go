@@ -2,7 +2,8 @@ package tui
 
 import (
 	"math"
-	"reflect"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -118,40 +119,94 @@ func TestConnectionRatesRecoverAfterGapAndPruneRemovedRows(t *testing.T) {
 }
 
 func TestConnectionSortModesHaveStableIdentityTies(t *testing.T) {
+	m := connectionsModel(t, &fakeBackend{})
 	rows := []mihomo.Connection{
-		{ID: "c", Start: time.Unix(30, 0), Upload: 30, Download: 10},
-		{ID: "b", Start: time.Unix(20, 0), Upload: 40, Download: 30},
-		{ID: "a", Start: time.Unix(20, 0), Upload: 40, Download: 20},
-		{ID: "d"},
+		{
+			ID: "c", Start: time.Unix(30, 0), Upload: 30, Download: 10,
+			Metadata: mihomo.ConnectionMetadata{Host: "Zulu", Network: "TCP", Process: " zeta "},
+			Chains:   []string{"alpha", "Zulu"}, Rule: "RuleSet", RulePayload: "beta",
+		},
+		{
+			ID: "b", Start: time.Unix(20, 0), Upload: 40, Download: 30,
+			Metadata: mihomo.ConnectionMetadata{Host: "alpha", Network: "udp", Process: "Zeta"},
+			Chains:   []string{"zulu", "alpha"}, Rule: "RuleSet", RulePayload: "zulu",
+		},
+		{
+			ID: "a", Start: time.Unix(20, 0), Upload: 40, Download: 20,
+			Metadata: mihomo.ConnectionMetadata{DestinationIP: "Alpha", Network: "tcp", Process: "alpha"},
+			Chains:   []string{"DIRECT", "BETA"}, Rule: "RuleSet", RulePayload: "alpha",
+		},
+		{ID: "d", Download: -1, Upload: -1},
 	}
-	rates := connectionRatesState{values: map[string]connectionRate{
+	m.runtime.snapshot = connectionRateSnapshot(time.Unix(100, 0), rows...)
+	m.connections.rates = connectionRatesState{values: map[string]connectionRate{
 		"a": {Upload: 20, Download: 20, Valid: true},
 		"b": {Upload: 10, Download: 20, Valid: true},
 		"c": {Upload: 30, Download: 0, Valid: true},
 	}}
 	tests := []struct {
-		order connectionSort
-		want  []string
+		order           connectionSort
+		first, reversed string
 	}{
-		{connectionSortNewest, []string{"c", "a", "b", "d"}},
-		{connectionSortDownloadRate, []string{"a", "b", "c", "d"}},
-		{connectionSortUploadRate, []string{"c", "a", "b", "d"}},
-		{connectionSortDownloadTotal, []string{"b", "a", "c", "d"}},
-		{connectionSortUploadTotal, []string{"a", "b", "c", "d"}},
-		{connectionSortDuration, []string{"a", "b", "c", "d"}},
+		{connectionSortNewest, "cabd", "abcd"},
+		{connectionSortDownloadRate, "abcd", "cabd"},
+		{connectionSortUploadRate, "cabd", "bacd"},
+		{connectionSortDownloadTotal, "bacd", "cabd"},
+		{connectionSortUploadTotal, "abcd", "cabd"},
+		{connectionSortDuration, "abcd", "cabd"},
+		{connectionSortDestination, "abcd", "cabd"},
+		{connectionSortProtocol, "acbd", "bacd"},
+		{connectionSortProcess, "abcd", "bcad"},
+		{connectionSortChain, "bacd", "cabd"},
+		{connectionSortRule, "acbd", "bcad"},
 	}
 	for _, test := range tests {
 		t.Run(test.order.key(), func(t *testing.T) {
-			list := append([]mihomo.Connection(nil), rows...)
-			sortConnections(list, test.order, rates)
-			var got []string
-			for _, c := range list {
-				got = append(got, c.ID)
-			}
-			if !reflect.DeepEqual(got, test.want) {
-				t.Fatalf("sort order %v, want %v", got, test.want)
+			m.connections.sort = test.order
+			for i, want := range []string{test.first, test.reversed} {
+				m.connections.sortReversed = i == 1
+				var ids strings.Builder
+				for _, c := range m.filteredConnections() {
+					ids.WriteString(c.ID)
+				}
+				if ids.String() != want {
+					t.Fatalf("reversed=%t: got %q, want %q", m.connections.sortReversed, ids.String(), want)
+				}
 			}
 		})
+	}
+	if rows[0].ID != "c" || rows[1].ID != "b" {
+		t.Fatal("sorting reordered the runtime snapshot")
+	}
+}
+
+func TestConnectionSortArchiveUsesObservedEndForDurationAndNewest(t *testing.T) {
+	m := connectionsModel(t, &fakeBackend{})
+	m.connections.closedView = true
+	m.connections.history.closed = []closedConnection{
+		{Connection: mihomo.Connection{ID: "reused", Start: time.Unix(60, 0)}, ClosedAt: time.Unix(62, 0)},
+		{Connection: mihomo.Connection{ID: "reused", Start: time.Unix(20, 0)}, ClosedAt: time.Unix(28, 0)},
+		{Connection: mihomo.Connection{ID: "long", Start: time.Unix(1, 0)}, ClosedAt: time.Unix(70, 0)},
+		{Connection: mihomo.Connection{ID: "invalid", Start: time.Unix(90, 0)}, ClosedAt: time.Unix(80, 0)},
+	}
+	for _, test := range []struct {
+		order    connectionSort
+		reversed bool
+		starts   []int64
+	}{
+		{connectionSortDuration, false, []int64{1, 20, 60, 90}},
+		{connectionSortDuration, true, []int64{60, 20, 1, 90}},
+		{connectionSortNewest, false, []int64{90, 1, 60, 20}},
+		{connectionSortNewest, true, []int64{20, 60, 1, 90}},
+	} {
+		m.connections.sort, m.connections.sortReversed = test.order, test.reversed
+		var starts []int64
+		for _, c := range m.filteredConnections() {
+			starts = append(starts, c.Start.Unix())
+		}
+		if !slices.Equal(starts, test.starts) {
+			t.Fatalf("%s reversed=%t: starts %v, want %v", test.order.key(), test.reversed, starts, test.starts)
+		}
 	}
 }
 

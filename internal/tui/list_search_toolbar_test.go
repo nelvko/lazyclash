@@ -71,16 +71,12 @@ func TestListSearchToolbarsKeepScopeSearchCountAndFunctionOrder(t *testing.T) {
 					} else if scope.Y+scope.H > search.Y || countY != search.Y+1 && countY < search.Y+search.H {
 						t.Fatalf("stacked scope or count overlaps search frame: scope=%+v search=%+v count=%d,%d", scope, search, countX, countY)
 					}
-					if page == "connections" {
+					if page == "connections" && width < connectionTableMinWidth {
 						sort := listSearchTarget(t, bar.targets, "conn.sort")
-						if width == 160 {
-							if sort.Y != search.Y+1 || sort.X != search.X+search.W+2 || countX < sort.X+sort.W+1 {
-								t.Fatalf("sort must follow search and precede count: sort=%+v search=%+v count=%d", sort, search, countX)
-							}
-						} else if sort.Y+sort.H > search.Y || sort.Y == scope.Y && sort.X != scope.X+scope.W+2 {
+						if sort.Y+sort.H > search.Y || sort.Y == scope.Y && sort.X != scope.X+scope.W+2 {
 							t.Fatalf("stacked sort must sit with scope above search: sort=%+v scope=%+v search=%+v", sort, scope, search)
 						}
-					} else if hasAction(bar.targets, "logs.view") {
+					} else if page == "logs" && hasAction(bar.targets, "logs.view") {
 						t.Fatal("log toolbar still exposes a view toggle")
 					}
 					assertRegions(t, bar.targets, width, len(bar.lines))
@@ -141,7 +137,11 @@ func TestListSearchConnectionsTabAndShiftTabFollowTheInputTextRow(t *testing.T) 
 				m.locale = i18n.New(language)
 				m.connections.search.SetValue("one")
 				m, _ = update(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
-				want := []string{"conn.active", "conn.closed", "conn.search", "conn.clear", "conn.case", "conn.word", "conn.regex", "conn.sort", "connection.first"}
+				want := []string{
+					"conn.active", "conn.closed", "conn.search", "conn.clear", "conn.case", "conn.word", "conn.regex",
+					"conn.sort.destination", "conn.sort.protocol", "conn.sort.process", "conn.sort.chain", "conn.sort.rule",
+					"conn.sort.download_rate", "conn.sort.upload_rate", "conn.sort.duration", "connection.first",
+				}
 				if size[0] != 160 {
 					want = []string{"conn.active", "conn.closed", "conn.sort", "conn.search", "conn.clear", "conn.case", "conn.word", "conn.regex", "connection.first"}
 				}
@@ -150,6 +150,10 @@ func TestListSearchConnectionsTabAndShiftTabFollowTheInputTextRow(t *testing.T) 
 					switch target.ID {
 					case "conn.active", "conn.closed", "conn.search", "conn.clear", "conn.case", "conn.word", "conn.regex", "conn.sort", "connection.first":
 						got = append(got, target.ID)
+					default:
+						if strings.HasPrefix(target.ID, "conn.sort.") {
+							got = append(got, target.ID)
+						}
 					}
 				}
 				if !reflect.DeepEqual(got, want) {
