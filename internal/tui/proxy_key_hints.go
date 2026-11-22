@@ -16,8 +16,6 @@ func (m *Model) proxiesContextHelp() string {
 		control = "back"
 	case "proxies.directory":
 		control = "directory"
-	case "proxies.enter":
-		control = "open"
 	case "proxies.collapse_all":
 		control = "collapseAll"
 	case "proxies.search", "proxies.search-open":
@@ -44,15 +42,11 @@ func (m *Model) proxiesContextHelp() string {
 		control = ""
 	}
 	if control == "open" {
-		name := node
-		if m.focus == "proxies.enter" {
-			name = m.proxies.detail
-		}
-		if _, _, exists := m.proxyGroup(name); !exists {
+		if _, _, exists := m.proxyGroup(node); !exists {
 			control = ""
 		}
 		for _, location := range m.proxies.history {
-			if location.group == name {
+			if location.group == node {
 				control = ""
 				break
 			}
@@ -60,9 +54,6 @@ func (m *Model) proxiesContextHelp() string {
 	}
 	if control != "" {
 		return tr("navigation.proxies.control", tr("navigation.proxies.action."+control))
-	}
-	if m.proxies.detail != "" {
-		return tr("navigation.proxies.directBrowse")
 	}
 	var hints []string
 	if ok && strings.HasPrefix(m.focus, "group.") {
@@ -74,22 +65,15 @@ func (m *Model) proxiesContextHelp() string {
 			}
 		}
 		hints = append(hints, tr("navigation.proxies.action."+action))
-	} else if ok && node != "" && strings.HasPrefix(m.focus, "node.") {
-		if group.Type != "Selector" {
-			hints = append(hints, tr("navigation.proxies.action.inspect"))
-		} else if group.Now != node {
-			hints = append(hints, tr("navigation.proxies.action.select"))
-		}
+	} else if ok && node != "" && strings.HasPrefix(m.focus, "node.") && group.Type == "Selector" && group.Now != node {
+		hints = append(hints, tr("navigation.proxies.action.select"))
 	}
 	if len(m.visibleProxyGroups()) == 0 {
 		return tr("navigation.proxies.emptyBrowse")
 	}
 	hints = append(hints, tr("navigation.proxies.listBrowse"))
-	if ok && node != "" {
-		if m.proxyGrid(dashboardBodyWidth(m.dashboardOptions())).columns > 1 && len(m.proxyMembers(group)) > 1 {
-			hints = append(hints, tr("navigation.proxies.columnsKey"))
-		}
-		hints = append(hints, tr("navigation.proxies.inspectKey"))
+	if ok && node != "" && m.proxyGrid(dashboardBodyWidth(m.dashboardOptions())).columns > 1 && len(m.proxyMembers(group)) > 1 {
+		hints = append(hints, tr("navigation.proxies.columnsKey"))
 	}
 	if ok {
 		if m.proxySortable(group) {

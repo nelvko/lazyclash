@@ -49,8 +49,9 @@ func TestProxyHintsTrackSelectedNodesAndRunningGroup(t *testing.T) {
 			t.Fatal("different group's test did not replace the running group")
 		}
 		m.focus = "node.1.0"
-		if hint := m.proxiesContextHelp(); !strings.Contains(hint, m.tr("navigation.proxies.cancelTestKey")) || !strings.Contains(hint, m.tr("navigation.proxies.action.inspect")) {
-			t.Fatalf("automatic node hints lost details or cancellation: %s", hint)
+		if hint := m.proxiesContextHelp(); !strings.Contains(hint, m.tr("navigation.proxies.cancelTestKey")) ||
+			proxyProviderHintHasKey(hint, "Enter") || proxyProviderHintHasKey(hint, "i") {
+			t.Fatalf("automatic node advertised an unavailable action or lost cancellation: %s", hint)
 		}
 		m.focus = "proxies.delay.1.0"
 		if strings.Contains(m.proxiesContextHelp(), "Enter") || m.proxyActivate(m.focus) != nil {
@@ -61,11 +62,6 @@ func TestProxyHintsTrackSelectedNodesAndRunningGroup(t *testing.T) {
 
 func TestProxyHintsOmitUnavailableListActions(t *testing.T) {
 	m, _ := proxiesModel(t, 160, 40)
-	m.openProxyDetail("PROXY", "AUTO")
-	if hint := m.proxiesContextHelp(); !strings.Contains(hint, m.tr("navigation.proxies.action.back")) || strings.Contains(hint, "/ ") {
-		t.Fatalf("details advertised search or lost return: %s", hint)
-	}
-	m.proxyBack()
 	m.proxies.history = []proxyLocation{{group: "AUTO"}}
 	m.focus = "proxies.reference.0.0"
 	if strings.Contains(m.proxiesContextHelp(), "Enter") {

@@ -17,34 +17,33 @@ import (
 // The adaptive grouped list uses the shell's scrolling and hit regions rather
 // than a second viewport.
 type proxiesState struct {
-	search                           textinput.Model
-	editing                          bool
-	searchReturn                     *proxySearchReturn
-	searchCollapsed                  map[string]bool
-	expanded                         map[string]bool
-	activeGroup, detail, detailGroup string
-	sortMenu                         bool
-	sorts                            map[string]string
-	order                            map[string][]string
-	history                          []proxyLocation
-	detailReturn                     proxyLocation
-	sortReturn                       proxyLocation
-	directReturn                     *proxyDirectReturn
-	source                           string
-	mode                             string
-	results                          map[string]proxyMeasurement
-	generation                       uint64
-	testing                          bool
-	cancel                           context.CancelFunc
-	testCtx                          context.Context
-	queue                            []proxyTestTarget
-	inflight                         map[string]bool
-	inflightPaths                    map[string]string
-	nodeTests                        proxyNodeTests
-	completed, total                 int
-	testGroup, testStatus            string
-	testStatusVisible                bool
-	pendingGroup, pendingNode        string
+	search                    textinput.Model
+	editing                   bool
+	searchReturn              *proxySearchReturn
+	searchCollapsed           map[string]bool
+	expanded                  map[string]bool
+	activeGroup               string
+	sortMenu                  bool
+	sorts                     map[string]string
+	order                     map[string][]string
+	history                   []proxyLocation
+	sortReturn                proxyLocation
+	directReturn              *proxyDirectReturn
+	source                    string
+	mode                      string
+	results                   map[string]proxyMeasurement
+	generation                uint64
+	testing                   bool
+	cancel                    context.CancelFunc
+	testCtx                   context.Context
+	queue                     []proxyTestTarget
+	inflight                  map[string]bool
+	inflightPaths             map[string]string
+	nodeTests                 proxyNodeTests
+	completed, total          int
+	testGroup, testStatus     string
+	testStatusVisible         bool
+	pendingGroup, pendingNode string
 }
 
 type proxyLocation struct {
@@ -61,7 +60,6 @@ type proxyTestTarget struct{ group, node, path string }
 type proxyMeasurement struct {
 	result mihomo.ProxyDelay
 	path   string
-	err    error
 }
 type proxyDelayMsg struct {
 	generation uint64
@@ -312,7 +310,7 @@ func (m *Model) proxyDelay(group, node string) proxyMeasurement {
 		if last.Delay == 0 {
 			state = "failed"
 		}
-		return proxyMeasurement{result: mihomo.ProxyDelay{State: state, Delay: last.Delay, Time: last.Time}}
+		return proxyMeasurement{result: mihomo.ProxyDelay{State: state, Delay: last.Delay}}
 	}
 	return proxyMeasurement{}
 }
@@ -463,7 +461,6 @@ func (m *Model) browseProxyReference(name string) {
 
 func (m *Model) locateProxyGroup(index int) {
 	m.expandProxyGroup(m.snapshot.Groups[index].Name)
-	m.proxies.detail, m.proxies.detailGroup = "", ""
 	m.scroll = 0
 	m.focusProxyGroupMember(index)
 	m.rememberPageView()
@@ -471,12 +468,6 @@ func (m *Model) locateProxyGroup(index int) {
 func (m *Model) proxyBack() bool {
 	if m.proxiesDirect() {
 		return false
-	}
-	if m.proxies.detail != "" {
-		loc := m.proxies.detailReturn
-		m.proxies.detail = ""
-		m.restoreProxyLocation(loc)
-		return true
 	}
 	if n := len(m.proxies.history); n > 0 {
 		loc := m.proxies.history[n-1]
@@ -493,21 +484,13 @@ func (m *Model) proxyBack() bool {
 	}
 	return false
 }
-func (m *Model) openProxyDetail(group, node string) {
-	if m.proxiesDirect() {
-		return
-	}
-	m.proxies.detailReturn = m.proxyLocation()
-	m.proxies.detail, m.proxies.detailGroup = node, group
-	m.focus, m.scroll = "proxies.back", 0
-}
 func (m *Model) proxyKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 	if m.page != "proxies" || strings.HasPrefix(m.focus, "nav.") || m.sidebarOpen {
 		return false, nil
 	}
 	if m.proxiesDirect() {
 		switch k.String() {
-		case "s", "t", "i", "right", "l", "left", "h":
+		case "s", "t", "right", "l", "left", "h":
 			return true, nil
 		default:
 			return false, nil
@@ -519,12 +502,6 @@ func (m *Model) proxyKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 		return true, nil
 	case "t":
 		return true, m.testProxyGroup()
-	case "i":
-		_, g, n, ok := m.proxyAtFocus()
-		if ok && n != "" {
-			m.openProxyDetail(g.Name, n)
-		}
-		return true, nil
 	case "right", "l":
 		gi, g, n, ok := m.proxyAtFocus()
 		if ok && n != "" {
@@ -548,7 +525,7 @@ func (m *Model) proxyKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 	return m.proxyListKey(k), nil
 }
 func (m *Model) proxyHorizontal(delta int) bool {
-	if m.page != "proxies" || m.proxiesDirect() || m.proxies.detail != "" {
+	if m.page != "proxies" || m.proxiesDirect() {
 		return false
 	}
 	hits := m.proxyTargets(dashboardBodyWidth(m.dashboardOptions()), true)
@@ -591,7 +568,7 @@ func (m *Model) proxyListKey(k tea.KeyPressMsg) bool {
 	if m.proxiesDirect() {
 		return false
 	}
-	if m.proxies.detail != "" || key != "up" && key != "down" && key != "j" && key != "k" && key != "home" && key != "end" {
+	if key != "up" && key != "down" && key != "j" && key != "k" && key != "home" && key != "end" {
 		return false
 	}
 	hits := m.proxyTargets(dashboardBodyWidth(m.dashboardOptions()), true)
@@ -682,17 +659,14 @@ func (m *Model) proxyActivate(id string) tea.Cmd {
 			break
 		}
 		m.proxies.expanded = make(map[string]bool)
-		m.proxies.activeGroup, m.proxies.detail = "", ""
+		m.proxies.activeGroup = ""
 		m.proxies.history = nil
 		m.focus, m.scroll = "content", 0
 	case "proxies.back":
 		m.proxyBack()
-	case "proxies.enter":
-		m.browseProxyReference(m.proxies.detail)
 	case "proxies.directory":
 		m.proxies.activeGroup = ""
 		m.proxies.history = nil
-		m.proxies.detail = ""
 		m.focus = "content"
 		m.scroll = 0
 	default:
@@ -715,7 +689,6 @@ func (m *Model) proxyActivate(id string) tea.Cmd {
 		} else if strings.HasPrefix(id, "proxies.reference.") && node != "" {
 			m.browseProxyReference(node)
 		} else if strings.HasPrefix(id, "group.") {
-			m.proxies.detail = ""
 			if m.proxyGroupExpanded(g.Name) {
 				if m.proxiesNarrow() {
 					m.proxies.activeGroup = ""
@@ -758,14 +731,7 @@ func (m *Model) proxyActivate(id string) tea.Cmd {
 					m.revealContentFocus()
 				}
 			}
-		} else if strings.HasPrefix(id, "node.") && node != "" && !m.busy && m.proxiesReady() {
-			if g.Type != "Selector" {
-				m.openProxyDetail(g.Name, node)
-				return nil
-			}
-			if g.Now == node {
-				return nil
-			}
+		} else if strings.HasPrefix(id, "node.") && node != "" && g.Type == "Selector" && g.Now != node && !m.busy && m.proxiesReady() {
 			m.focus = fmt.Sprintf("node.%d.%d", gi, indexOf(g.All, node))
 			cmd := m.begin(m.tr("model.switching_node"), m.tr("model.node_selected"), func(ctx context.Context) error { return m.backend.Select(ctx, g.Name, node) }, notificationOperation{Key: notificationKey("node.select", g.Name+"\x00"+node), Context: m.tr("model.switching_node") + " · " + clean(g.Name) + " / " + clean(node)})
 			m.proxies.pendingGroup, m.proxies.pendingNode = g.Name, node
@@ -859,8 +825,7 @@ func (m *Model) syncProxies() tea.Cmd {
 	if !preserve && (modeChanged || sourceChanged && m.proxies.source != "") {
 		m.proxies.directReturn = nil
 		m.proxies.history = nil
-		m.proxies.detail, m.proxies.detailGroup, m.proxies.activeGroup = "", "", ""
-		m.proxies.detailReturn = proxyLocation{}
+		m.proxies.activeGroup = ""
 		m.proxies.expanded = make(map[string]bool)
 		m.proxies.sorts = make(map[string]string)
 		m.proxies.order = make(map[string][]string)
@@ -996,9 +961,9 @@ func (m *Model) acceptProxyDelay(msg proxyDelayMsg) tea.Cmd {
 	delete(m.proxies.inflightPaths, key)
 	if !errors.Is(msg.err, context.Canceled) && msg.target.path == m.proxyPathKey(msg.target.node) {
 		if msg.err != nil {
-			msg.result = mihomo.ProxyDelay{State: "failed", Time: time.Now(), URL: mihomo.DefaultProxyDelayURL}
+			msg.result = mihomo.ProxyDelay{State: "failed"}
 		}
-		m.proxies.results[key] = proxyMeasurement{msg.result, msg.target.path, msg.err}
+		m.proxies.results[key] = proxyMeasurement{result: msg.result, path: msg.target.path}
 	}
 	m.proxies.completed++
 	if len(m.proxies.queue) > 0 {

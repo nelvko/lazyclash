@@ -3,7 +3,6 @@ package tui
 import (
 	"context"
 	"errors"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/nelvko/lazyclash/internal/mihomo"
@@ -140,9 +139,9 @@ func (m *Model) acceptProxyNodeDelay(msg proxyNodeDelayMsg) tea.Cmd {
 	}
 	if !errors.Is(msg.err, context.Canceled) && m.proxyNodeTargetValid(msg.target) {
 		if msg.err != nil {
-			msg.result = mihomo.ProxyDelay{State: "failed", Time: time.Now(), URL: mihomo.DefaultProxyDelayURL}
+			msg.result = mihomo.ProxyDelay{State: "failed"}
 		}
-		m.proxies.results[key] = proxyMeasurement{msg.result, msg.target.path, msg.err}
+		m.proxies.results[key] = proxyMeasurement{result: msg.result, path: msg.target.path}
 	}
 	return m.nextProxyNodeTests()
 }

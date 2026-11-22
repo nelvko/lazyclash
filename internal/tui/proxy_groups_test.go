@@ -234,34 +234,22 @@ func TestProxiesUntestableGroupShortcutPreservesRunningTest(t *testing.T) {
 	}
 }
 
-func TestProxiesReferenceAndDetailReturnsRestoreAllOpenGroups(t *testing.T) {
-	for _, origin := range []string{"reference", "detail"} {
-		t.Run(origin, func(t *testing.T) {
-			m, _ := proxiesModel(t, 160, 80)
-			m.expandProxyGroup("ChatGPT")
-			m.focus = "node.0.0"
-			m.layout()
-			before := cloneProxyExpansion(m.proxies.expanded)
-			if origin == "reference" {
-				m.proxyActivate("proxies.reference.0.0")
-				if !m.proxyGroupExpanded("AUTO") || !m.proxyGroupExpanded("PROXY") || !m.proxyGroupExpanded("ChatGPT") {
-					t.Fatalf("following a reference collapsed another group: %+v", m.proxies.expanded)
-				}
-			} else {
-				m.openProxyDetail("PROXY", "AUTO")
-			}
-			m.expandProxyGroup("YouTube")
-			if !m.proxyBack() || !reflect.DeepEqual(m.proxies.expanded, before) || m.proxies.activeGroup != "PROXY" {
-				t.Fatalf("return lost the original expansion set: expanded=%+v want=%+v active=%s", m.proxies.expanded, before, m.proxies.activeGroup)
-			}
-			wantFocus := "node.0.0"
-			if origin == "reference" {
-				wantFocus = "proxies.reference.0.0"
-			}
-			if m.focus != wantFocus {
-				t.Fatalf("return lost its original control: focus=%s want=%s", m.focus, wantFocus)
-			}
-		})
+func TestProxiesReferenceReturnRestoresAllOpenGroups(t *testing.T) {
+	m, _ := proxiesModel(t, 160, 80)
+	m.expandProxyGroup("ChatGPT")
+	m.focus = "node.0.0"
+	m.layout()
+	before := cloneProxyExpansion(m.proxies.expanded)
+	m.proxyActivate("proxies.reference.0.0")
+	if !m.proxyGroupExpanded("AUTO") || !m.proxyGroupExpanded("PROXY") || !m.proxyGroupExpanded("ChatGPT") {
+		t.Fatalf("following a reference collapsed another group: %+v", m.proxies.expanded)
+	}
+	m.expandProxyGroup("YouTube")
+	if !m.proxyBack() || !reflect.DeepEqual(m.proxies.expanded, before) || m.proxies.activeGroup != "PROXY" {
+		t.Fatalf("return lost the original expansion set: expanded=%+v want=%+v active=%s", m.proxies.expanded, before, m.proxies.activeGroup)
+	}
+	if m.focus != "proxies.reference.0.0" {
+		t.Fatalf("return lost its original control: focus=%s", m.focus)
 	}
 }
 

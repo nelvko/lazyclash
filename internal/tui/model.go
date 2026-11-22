@@ -909,7 +909,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "c":
 			m.navigate("connections")
 		case "i":
-			cmd = m.openWizard(false)
+			if m.page != "proxies" {
+				cmd = m.openWizard(false)
+			}
 		case "b":
 			cmd = m.openWizard(true)
 		case "n":

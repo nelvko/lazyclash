@@ -67,7 +67,11 @@ func TestProxyGridKeepsUnicodeCardsInsideTheirSlots(t *testing.T) {
 				if len(card.lines) != len(m.proxyNode(0, 0, grid.cardWidth).lines) {
 					t.Fatal("node type or name changed the card height")
 				}
-				nameRow, metaRow := len(card.lines)-2, len(card.lines)-1
+				nameRow := 0
+				if len(card.lines) == 4 {
+					nameRow = 1
+				}
+				metaRow := nameRow + 1
 				for _, line := range card.lines {
 					if ansi.StringWidth(line) != grid.cardWidth {
 						t.Fatalf("Unicode card changed its slot width: %q", ansi.Strip(line))
@@ -91,18 +95,26 @@ func TestProxyGridKeepsUnicodeCardsInsideTheirSlots(t *testing.T) {
 	}
 }
 
-func TestProxyWideGridSeparatesTwoLineRows(t *testing.T) {
+func TestProxyWideGridPadsCardsAndSeparatesRows(t *testing.T) {
 	m, _ := proxiesModel(t, 160, 40)
 	width := dashboardBodyWidth(m.dashboardOptions())
 	grid := m.proxyGrid(width)
 	body := m.proxyGroupBody(0, width)
 	rows := (len(m.snapshot.Groups[0].All) + grid.columns - 1) / grid.columns
-	if len(body.lines) != rows*3-1 {
+	if len(body.lines) != rows*5-1 {
 		t.Fatalf("%d rows of cards occupy %d terminal lines", rows, len(body.lines))
 	}
 	for y, line := range body.lines {
-		if blank := strings.TrimSpace(ansi.Strip(line)) == ""; blank != (y%3 == 2) {
+		if blank := strings.Trim(ansi.Strip(line), " ▌") == ""; blank != (y%5 != 1 && y%5 != 2) {
 			t.Fatalf("unexpected grid spacing at line %d: %q", y, ansi.Strip(line))
+		}
+		if y%5 != 4 {
+			continue
+		}
+		for _, hit := range body.targets {
+			if hit.Y <= y && y < hit.Y+hit.H {
+				t.Fatalf("gap at row %d activates a card: %+v", y, hit)
+			}
 		}
 	}
 }

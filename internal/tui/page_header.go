@@ -63,7 +63,7 @@ func (m *Model) pageHeader() pageHeader {
 			}
 		}
 		if !m.proxiesDirect() {
-			browsing := m.proxiesReady() && m.proxies.detail == ""
+			browsing := m.proxiesReady()
 			h.actions = append(h.actions, headerAction{"proxies.search-open", tr("proxies.search"), "/", browsing})
 			if browsing && !m.proxiesNarrow() && m.hasExpandedProxyGroups() {
 				h.titleAction = headerAction{id: "proxies.collapse_all", label: tr("proxies.collapse_all"), enabled: !m.quitting}

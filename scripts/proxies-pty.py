@@ -181,9 +181,10 @@ def candidate_order(terminal, reference_label):
     return result
 
 
-def candidate_position(terminal, name):
+def candidate_position(terminal, name, start_row=0):
     rows = terminal.screen.cells
-    for y, row in enumerate(rows[:-1]):
+    for y in range(start_row, len(rows) - 1):
+        row = rows[y]
         following = "".join(rows[y + 1])
         if not CARD_META.search(following):
             continue
@@ -404,12 +405,38 @@ def assert_four_columns(terminal):
     positions = [candidate_position(terminal, name) for name in MEMBERS]
     xs = sorted({x for x, _ in positions})
     assert len(xs) == 4, "wide grid did not keep four columns: " + repr(positions)
-    ys = sorted({y for _, y in positions})
-    assert all(b - a == 3 for a, b in zip(ys, ys[1:])), "two-line cards lack their one-row gap: " + repr(positions)
-    first_y = min(y for _, y in positions)
-    gap = terminal.screen.cells[first_y - 1][xs[0] - 4:]
-    assert not "".join(gap).strip(), "group header touches the first card row"
     return xs
+
+
+def card_vertical_padding(terminal):
+    return int(terminal.screen.columns >= SIDEBAR_MIN_WIDTH and terminal.screen.rows > 24)
+
+
+def assert_card_spacing(terminal, profile):
+    positions = []
+    for name in MEMBERS:
+        try:
+            positions.append(candidate_position(terminal, name))
+        except AssertionError:
+            continue  # A short view may clip cards that are not focused.
+    ys = sorted({y for _, y in positions})
+    padding = card_vertical_padding(terminal)
+    stride = 2 + 3 * padding
+    assert len(ys) >= 2 and all(b - a == stride for a, b in zip(ys, ys[1:])), (
+        "unexpected spacing between card rows: " + repr(positions))
+    if padding == 0:
+        return
+    first = min(x for x, _ in positions) - 4
+    gap_row = terminal.screen.cells[ys[0] - 2]
+    assert not "".join(gap_row[first:]).strip(), "group header touches the first card row"
+    cells, styles = terminal.screen.cells, terminal.screen.styles
+    for x, y in positions:
+        assert not cells[y - 1][x].strip() and not cells[y + 2][x].strip(), "card padding contains text"
+        if profile != "no-color":
+            card = styles[y][x][1]
+            assert styles[y - 1][x][1] == styles[y + 2][x][1] == card, "padding is outside the card surface"
+            if y != ys[-1]:
+                assert styles[y + 3][x][1] != card, "adjacent card surfaces lack their one-row gap"
 
 
 def enter_reference(terminal, name, label):
@@ -489,38 +516,49 @@ def exercise(preview, binary, output, language, profile, args):
         # Selection goes through the asynchronous backend and snapshot readback.
         terminal.key(b"\r")
         wait_until(terminal, lambda: chosen(terminal, "HK 01"), "manual choice was not confirmed")
-        # Both the first row's left padding and the metadata's right padding
-        # belong to the node selection action.
+        # Both added padding rows belong to the same node selection surface.
+        padding = card_vertical_padding(terminal)
         x, y = candidate_position(terminal, "HK 02")
-        click_cell(terminal, x - 1, y)
-        wait_until(terminal, lambda: chosen(terminal, "HK 02"), "first-row padding did not select its card")
+        click_cell(terminal, x - 1, y - padding)
+        wait_until(terminal, lambda: chosen(terminal, "HK 02"), "top padding did not select its card")
         terminal.settle()
         _, y, right = card_bounds(terminal, "HK 01")
-        click_cell(terminal, right - 1, y + 1)
-        wait_until(terminal, lambda: chosen(terminal, "HK 01"), "metadata right padding did not select its card")
+        click_cell(terminal, right - 1, y + 1 + padding)
+        wait_until(terminal, lambda: chosen(terminal, "HK 01"), "bottom padding did not select its card")
         terminal.settle()
         x, y = candidate_position(terminal, "HK 01")
-        assert all(terminal.screen.cells[row][x - 4] == "▌" for row in (y, y + 1)), "selection rail did not span both content rows"
-        assert terminal.screen.cells[y - 1][x - 4] != "▌" and terminal.screen.cells[y + 2][x - 4] != "▌", "selection rail extends outside the card"
+        top, bottom = y - padding, y + 1 + padding
+        assert all(terminal.screen.cells[row][x - 4] == "▌" for row in range(top, bottom + 1)), "selection rail did not span the padded card"
+        assert terminal.screen.cells[top - 1][x - 4] != "▌" and terminal.screen.cells[bottom + 1][x - 4] != "▌", "selection rail extends outside the card"
         preview.capture(terminal, output, "selected", args)
+        before = terminal.screen.text()
         terminal.key(b"i")
-        terminal.wait("Shadowsocks")
-        terminal.wait(words["proxies.core_target"])
-        preview.capture(terminal, output, "node-details", args)
-        terminal.key(b"\x1b")
-        terminal.wait("Hysteria2")
+        terminal.settle()
+        assert terminal.screen.text() == before, "retired detail shortcut changed the manually selected node's view"
 
         # The reference's independent action browses without selecting it.
         terminal.key(b"\x1b[H")
         terminal.key(b"\x1b[C")
         enter_reference(terminal, "AUTO", words["proxies.enter"])
         terminal.wait(words["proxies.auto"])
-        terminal.key(b"\x1b[C")  # Current member HK 02 -> JP 01 in the next column.
+        terminal.settle()
+        auto_row = group_header(terminal, "AUTO")[1]
+        jp_x, jp_y = candidate_position(terminal, "JP 01", auto_row + 1)
+        click_cell(terminal, jp_x, jp_y)
+        terminal.settle()
+        assert candidate_position(terminal, "JP 01", auto_row + 1) == (jp_x, jp_y), "automatic member click left its group"
+        assert re.search(r"›\s*JP 01", "".join(terminal.screen.cells[jp_y])), "automatic member click did not focus the node"
+        assert chosen(terminal, "HK 02"), "automatic member click changed the core's current node"
+        footer = "".join(terminal.screen.cells[-1])
+        assert not any(hint in footer for hint in ("Enter Details", "i Details", "Enter 详情", "i 详情")), "footer retained a node detail shortcut"
+        before = terminal.screen.text()
         terminal.key(b"\r")
-        terminal.wait(words["proxies.core_target"])
-        assert "JP 01" in terminal.screen.text() and "VLESS" in terminal.screen.text(), "automatic member details lost the focused node"
-        preview.capture(terminal, output, "automatic-member-details", args)
-        terminal.key(b"\x1b")
+        terminal.settle()
+        assert terminal.screen.text() == before, "Enter left the automatic group's member list"
+        terminal.key(b"i")
+        terminal.settle()
+        assert terminal.screen.text() == before, "retired detail shortcut changed the automatic group's view"
+        preview.capture(terminal, output, "automatic-member-list", args)
         terminal.key(b"\x1b[D")
         terminal.wait("Hysteria2")
         wait_until(terminal, lambda: chosen(terminal, "HK 01"), "reference return lost parent choice")
@@ -600,6 +638,7 @@ def exercise(preview, binary, output, language, profile, args):
             terminal.wait("HK 01")
             terminal.wait("ms")
             assert_proxy_header(terminal, words)
+            assert_card_spacing(terminal, profile)
             if width in (200, 240):
                 assert_four_columns(terminal)
             if width == 160:
@@ -718,7 +757,7 @@ def exercise(preview, binary, output, language, profile, args):
         if profile == "256":
             assert not preview.RGB.search(raw), "ANSI256 emitted RGB text"
         (output / "pty.raw").write_bytes(raw)
-        print("PASS %s/%s: plain page header, removed refresh shortcuts, selection/padding, references, group navigation, sort, cancel/late results, strategies, centered Direct empty state/restoration, resize/four-column cap" % (language, profile), flush=True)
+        print("PASS %s/%s: plain page header, selection/padding, automatic node click/Enter stay in list, retired shortcuts, references, group navigation, sort, cancel/late results, strategies, centered Direct empty state/restoration, resize/four-column cap" % (language, profile), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")
         (output / "failed.ansi").write_bytes(terminal.raw)

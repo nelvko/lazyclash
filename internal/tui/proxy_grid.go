@@ -1,18 +1,26 @@
 package tui
 
 const (
-	proxyNodeMinWidth = 36
-	proxyNodeHeight   = 2
-	proxyColumnGap    = 1
-	proxyMaxColumns   = 4
+	proxyNodeMinWidth    = 36
+	proxyNodeContentRows = 2
+	proxyColumnGap       = 1
+	proxyMaxColumns      = 4
 )
 
 type proxyGridLayout struct {
 	indent, columns, cardWidth int
+	cardPadding, rowGap        int
 }
 
 func (m *Model) compactProxyCards() bool {
 	return m.proxiesNarrow() || m.height <= 24
+}
+
+func (m *Model) proxyCardPadding() int {
+	if m.compactProxyCards() {
+		return 0
+	}
+	return 1
 }
 
 // bodyWidth already excludes the sidebar and the dashboard's outer margins.
@@ -32,5 +40,16 @@ func (m *Model) proxyGrid(bodyWidth int) proxyGridLayout {
 	if m.proxiesNarrow() {
 		indent = 0
 	}
-	return layoutProxyGrid(bodyWidth, indent)
+	grid := layoutProxyGrid(bodyWidth, indent)
+	grid.cardPadding = m.proxyCardPadding()
+	grid.rowGap = grid.cardPadding
+	return grid
+}
+
+func proxyCardHeight(padding int) int {
+	return proxyNodeContentRows + 2*padding
+}
+
+func (g proxyGridLayout) stride() int {
+	return proxyCardHeight(g.cardPadding) + g.rowGap
 }

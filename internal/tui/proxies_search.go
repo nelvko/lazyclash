@@ -52,12 +52,12 @@ func (m *Model) proxyGroupMatches(group mihomo.Group) bool {
 }
 
 func (m *Model) proxySearchVisible() bool {
-	return m.proxiesReady() && !m.proxiesDirect() && m.proxies.detail == "" &&
+	return m.proxiesReady() && !m.proxiesDirect() &&
 		(m.proxies.searchReturn != nil || m.proxies.editing || m.proxySearchQuery() != "")
 }
 
 func (m *Model) proxyNarrowGroupLabelVisible() bool {
-	if !m.proxiesNarrow() || !m.proxiesReady() || m.proxiesDirect() || m.proxies.detail != "" || m.proxies.activeGroup == "" {
+	if !m.proxiesNarrow() || !m.proxiesReady() || m.proxiesDirect() || m.proxies.activeGroup == "" {
 		return false
 	}
 	_, _, exists := m.proxyGroup(m.proxies.activeGroup)
@@ -66,7 +66,7 @@ func (m *Model) proxyNarrowGroupLabelVisible() bool {
 
 // Search is opened explicitly, keeping the unfiltered directory compact.
 func (m *Model) focusProxySearch() tea.Cmd {
-	if m.busy || m.quitting || !m.proxiesReady() || m.proxiesDirect() || m.proxies.detail != "" {
+	if m.busy || m.quitting || !m.proxiesReady() || m.proxiesDirect() {
 		return nil
 	}
 	if m.proxies.searchReturn == nil {
@@ -89,7 +89,6 @@ func (m *Model) closeProxySearch() bool {
 	m.proxies.search.Blur()
 	m.proxies.search.Reset()
 	m.proxies.searchCollapsed = nil
-	m.proxies.detail, m.proxies.detailGroup = "", ""
 	m.proxies.history = saved.history
 	m.hover = ""
 	m.restoreProxyLocation(saved.location)

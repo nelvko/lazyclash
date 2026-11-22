@@ -104,7 +104,7 @@ func TestProxiesHintsDescribeFocusedAction(t *testing.T) {
 			{"group.0", "PROXY", "collapse", 160},
 			{"group.0", "PROXY", "directory", 80},
 			{"node.0.1", "PROXY", "select", 160},
-			{"node.1.0", "AUTO", "inspect", 160},
+			{"node.1.0", "AUTO", "", 160},
 			{"proxies.reference.0.0", "PROXY", "open", 160},
 			{"proxies.delay.0.1", "PROXY", "testNode", 160},
 			{"proxies.sort.0", "PROXY", "sort", 160},
@@ -118,7 +118,11 @@ func TestProxiesHintsDescribeFocusedAction(t *testing.T) {
 			setProxyTestGroup(&m, tc.group)
 			m.focus, m.width = tc.focus, tc.width
 			got := m.contextHelp()
-			if !strings.HasPrefix(got, m.tr("navigation.proxies.action."+tc.action)+" · ") {
+			want := m.tr("navigation.proxies.listBrowse")
+			if tc.action != "" {
+				want = m.tr("navigation.proxies.action." + tc.action)
+			}
+			if !strings.HasPrefix(got, want+" · ") {
 				t.Fatalf("%s %s width %d advertises the wrong action: %q", language, tc.focus, tc.width, got)
 			}
 		}

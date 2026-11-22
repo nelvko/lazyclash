@@ -72,10 +72,10 @@ func TestProxiesDelayInteractionStylePreservesStateAndGeometry(t *testing.T) {
 									slot = target
 								}
 							}
-							if slot.X != 38 || slot.Y != 0 || slot.W != 10 || slot.H != 1 {
+							if slot.X != 38 || slot.Y != 1 || slot.W != 10 || slot.H != 1 {
 								t.Fatalf("delay styling moved its action: %+v", slot)
 							}
-							line := card.lines[0]
+							line := card.lines[1]
 							if strings.Contains(line, "\x1b[4m") {
 								t.Fatalf("delay state gained an underline: %q", line)
 							}

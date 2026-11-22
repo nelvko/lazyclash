@@ -39,6 +39,43 @@ func TestProxyWindowMatchesFullBody(t *testing.T) {
 	}
 }
 
+func TestProxyMemberRangeCountsVisibleTextRatherThanPadding(t *testing.T) {
+	m, _ := proxiesModel(t, 160, 40)
+	width := dashboardBodyWidth(m.dashboardOptions())
+	layout := m.layoutProxiesBody(width)
+	_, hits := m.proxiesBody(width)
+	first := listSearchTarget(t, hits, "node.0.0").Y
+	for _, tc := range []struct {
+		name               string
+		start, end         int
+		wantGroup, members string
+	}{
+		{"top padding", first, first + 1, "", ""},
+		{"name only", first + 1, first + 2, "PROXY", "1–3 / 8"},
+		{"protocol only", first + 2, first + 3, "PROXY", "1–3 / 8"},
+		{"bottom padding", first + 3, first + 4, "", ""},
+		{"next row's padding at viewport bottom", 0, first + 6, "", "1–3 / 8"},
+		{"previous row's padding at viewport top", first + 3, first + 7, "PROXY", "4–6 / 8"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			wantLabel := ""
+			if tc.members != "" {
+				wantLabel = m.tr("proxies.range.group", tc.members)
+			}
+			if group, label := m.proxyBodyRange(layout, tc.start, tc.end); group != tc.wantGroup || label != wantLabel {
+				t.Fatalf("viewport shows sticky group %q and range %q, want %q and %q", group, label, tc.wantGroup, wantLabel)
+			}
+			height := tc.end - tc.start
+			if group := proxyStickyGroup(m.snapshot.Groups, hits, tc.start, height); group != tc.wantGroup {
+				t.Fatalf("full body shows sticky group %q, want %q", group, tc.wantGroup)
+			}
+			if label := proxyVisibleRange(m.locale, hits, tc.start, height, width); label != wantLabel {
+				t.Fatalf("full body shows range %q, want %q", label, wantLabel)
+			}
+		})
+	}
+}
+
 func TestProxyKeyboardTargetsMatchMouseGeometry(t *testing.T) {
 	for _, width := range []int{40, 80, 120, 200} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {

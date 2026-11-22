@@ -76,8 +76,8 @@ func TestProxiesNodeDelayClickTestsOnlyItsNodeWithoutSelecting(t *testing.T) {
 			beforeExpansion := cloneProxyExpansion(m.proxies.expanded)
 			id := fmt.Sprintf("proxies.delay.%d.%d", gi, ni)
 			m, cmd := click(m, findTarget(t, m, id))
-			if cmd == nil || m.busy || m.proxies.detail != "" || m.proxies.testing || m.proxies.pendingNode != "" || backend.selections != 0 || m.focus != id || !reflect.DeepEqual(m.proxies.expanded, beforeExpansion) {
-				t.Fatalf("delay click selected a node or changed the group: focus=%s pending=%s detail=%s expanded=%+v", m.focus, m.proxies.pendingNode, m.proxies.detail, m.proxies.expanded)
+			if cmd == nil || m.busy || m.proxies.testing || m.proxies.pendingNode != "" || backend.selections != 0 || m.focus != id || !reflect.DeepEqual(m.proxies.expanded, beforeExpansion) {
+				t.Fatalf("delay click selected a node or changed the group: focus=%s pending=%s expanded=%+v", m.focus, m.proxies.pendingNode, m.proxies.expanded)
 			}
 			defer m.stopProxyTests()
 			if len(m.proxies.nodeTests.running) != 1 || m.proxyNodeTestState(group, "HK 01") != "testing" {
@@ -136,10 +136,10 @@ func TestProxiesNodeDelaySlotHasFixedWidthAndCenteredValues(t *testing.T) {
 							slot = hit
 						}
 					}
-					if slot.Y != 0 || slot.H != 1 || slot.W != 10 || slot.X+slot.W != width-2 {
+					if slot.Y != 1 || slot.H != 1 || slot.W != 10 || slot.X+slot.W != width-2 {
 						t.Fatalf("delay slot moved with its value: width=%d slot=%+v", width, slot)
 					}
-					line := ansi.Strip(card.lines[0])
+					line := ansi.Strip(card.lines[1])
 					value := ansi.Cut(line, slot.X, slot.X+slot.W)
 					left := ansi.StringWidth(value) - ansi.StringWidth(strings.TrimLeft(value, " "))
 					right := ansi.StringWidth(value) - ansi.StringWidth(strings.TrimRight(value, " "))
@@ -169,8 +169,8 @@ func TestProxiesNodeDelayTimeoutDoesNotUnderlineOnHoverOrFocus(t *testing.T) {
 					for _, width := range []int{18, 36, 50} {
 						card := m.proxyNode(0, 1, width)
 						wantUnderline := false
-						if got := underline.MatchString(card.lines[0]); got != wantUnderline {
-							t.Fatalf("delay underline changed incorrectly: width=%d state=%s interaction=%s underline=%t line=%q", width, state, interaction, got, card.lines[0])
+						if got := underline.MatchString(card.lines[1]); got != wantUnderline {
+							t.Fatalf("delay underline changed incorrectly: width=%d state=%s interaction=%s underline=%t line=%q", width, state, interaction, got, card.lines[1])
 						}
 					}
 					label, color := m.proxyDelayLabel("PROXY", "HK 01")
@@ -207,7 +207,7 @@ func TestProxiesNodeDelayDisabledSlotsAreInertAndKeepOuterPadding(t *testing.T) 
 			for x := width - 12; x < width; x++ {
 				hitID := ""
 				for _, hit := range card.targets {
-					if hit.Y == 0 && hit.X <= x && hit.X+hit.W > x {
+					if hit.Y == 1 && hit.X <= x && hit.X+hit.W > x {
 						hitID = hit.ID
 					}
 				}
@@ -398,7 +398,7 @@ func TestProxiesNodeDelayFocusFollowsNodeIdentityAndOwnsItsCard(t *testing.T) {
 	m.focus = "proxies.delay.0.1"
 	m.layout()
 	card := m.proxyNode(0, 1, 50)
-	if !strings.HasPrefix(ansi.Strip(card.lines[0]), "  › HK 01") || m.snapshot.Groups[0].Now != "AUTO" {
+	if !strings.HasPrefix(ansi.Strip(card.lines[1]), "  › HK 01") || m.snapshot.Groups[0].Now != "AUTO" {
 		t.Fatal("focusing the delay lost its card focus or changed selection")
 	}
 	m.snapshot.Groups[0], m.snapshot.Groups[2] = m.snapshot.Groups[2], m.snapshot.Groups[0]

@@ -146,6 +146,9 @@ func TestProxiesStickyGroupFollowsVisibleMembersWithoutMovingFocus(t *testing.T)
 	hits := m.contentTargets()
 	first := listSearchTarget(t, hits, "group.0")
 	second := listSearchTarget(t, hits, "group.1")
+	lastMember := listSearchTarget(t, hits, "node.0.5")
+	lastPaddingRow := lastMember.Y + lastMember.H - 1
+	lastTextRow := lastPaddingRow - 1
 	g := dashboardGeometry(m.dashboardOptions())
 	for _, state := range []struct {
 		name  string
@@ -155,7 +158,8 @@ func TestProxiesStickyGroupFollowsVisibleMembersWithoutMovingFocus(t *testing.T)
 		{"at top", 0, ""},
 		{"heading partly visible", first.Y + first.H - 1, ""},
 		{"first heading offscreen", first.Y + first.H, "first"},
-		{"last visible first-group member", second.Y - 1, "first"},
+		{"last visible first-group member", lastTextRow, "first"},
+		{"only bottom padding of first-group members visible", lastPaddingRow, ""},
 		{"second heading visible", second.Y, ""},
 		{"second heading offscreen", second.Y + second.H, "second"},
 		{"back to first heading", first.Y, ""},
@@ -180,8 +184,8 @@ func TestProxiesStickyGroupFollowsVisibleMembersWithoutMovingFocus(t *testing.T)
 				node := "node.0.0"
 				if state.group == "second" {
 					node = "node.1.0"
-				} else if state.row == second.Y-1 {
-					node = "node.0.5"
+				} else if state.row == lastTextRow {
+					node = lastMember.ID
 				}
 				hit := findTarget(t, m, node)
 				if hit.Y < g.y || hit.Y+hit.H > g.y+g.height {

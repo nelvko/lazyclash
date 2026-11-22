@@ -67,7 +67,6 @@ func TestProxiesDirectModeHidesBrowsingAndKeepsModeAndProviderControls(t *testin
 				m.locale = i18n.New(language)
 				m.focus = "node.0.0"
 				m.browseProxyReference("AUTO")
-				m.openProxyDetail("AUTO", "HK 02")
 				m.proxies.sorts["AUTO"] = "delay"
 				m = proxyDirectSetMode(t, m, "direct")
 				body, _ := m.proxiesBody(dashboardBodyWidth(m.dashboardOptions()))
@@ -231,7 +230,7 @@ func TestProxiesDirectReturnDoesNotRestoreAnotherSource(t *testing.T) {
 			b.mu.Unlock()
 			m = proxyDirectSetMode(t, m, "rule")
 			if m.hasExpandedProxyGroups() || m.proxies.activeGroup != "" || len(m.proxies.history) != 0 ||
-				m.proxies.detail != "" || m.proxySort("AUTO") != "default" {
+				m.proxySort("AUTO") != "default" {
 				t.Fatalf("%s change restored an obsolete browsing context: %+v", source, m.proxies)
 			}
 		})
@@ -242,19 +241,18 @@ func TestProxiesDirectModeRejectsStaleBrowsingActionsAndTests(t *testing.T) {
 	m, b := proxyDirectModel(t, 160)
 	m.focus = "node.0.0"
 	m.browseProxyReference("AUTO")
-	m.openProxyDetail("AUTO", "HK 02")
 	m = proxyDirectSetMode(t, m, "direct")
-	location, detail := m.proxyLocation(), m.proxies.detail
+	location := m.proxyLocation()
 	history := append([]proxyLocation(nil), m.proxies.history...)
 	for _, id := range []string{
 		"group.0", "node.0.1", "proxies.reference.0.0", "proxies.delay.0.1",
 		"proxies.sort.0", "proxies.test.0", "proxies.collapse_all",
-		"proxies.back", "proxies.enter", "proxies.directory",
+		"proxies.back", "proxies.directory",
 	} {
 		if cmd := m.activate(id); cmd != nil || m.busy || m.menu.open {
 			t.Fatalf("stale %s started a browsing action in Direct mode", id)
 		}
-		if !reflect.DeepEqual(m.proxyLocation(), location) || m.proxies.detail != detail || !reflect.DeepEqual(m.proxies.history, history) {
+		if !reflect.DeepEqual(m.proxyLocation(), location) || !reflect.DeepEqual(m.proxies.history, history) {
 			t.Fatalf("stale %s changed the suspended browsing context", id)
 		}
 	}

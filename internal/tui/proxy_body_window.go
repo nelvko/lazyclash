@@ -16,7 +16,6 @@ type proxyBodyPart struct {
 type proxyBodyLayout struct {
 	width, total int
 	grid         proxyGridLayout
-	compact      bool
 	parts        []proxyBodyPart
 }
 
@@ -31,26 +30,22 @@ func (l *proxyBodyLayout) appendBlock(block dashboardBlock) {
 func (l *proxyBodyLayout) appendGrid(group int, members []int) {
 	l.parts = append(l.parts, proxyBodyPart{y: l.total, group: group, members: members})
 	rows := (len(members) + l.grid.columns - 1) / l.grid.columns
-	l.total += (rows-1)*l.stride() + proxyNodeHeight
+	l.total += rows*l.grid.stride() - l.grid.rowGap
 }
 
-func (l proxyBodyLayout) stride() int {
-	if l.compact {
-		return proxyNodeHeight
-	}
-	return proxyNodeHeight + 1
-}
-
-func (l proxyBodyLayout) visibleRows(part proxyBodyPart, start, end int) (int, int) {
-	if start >= end || end <= part.y {
+func (l proxyBodyLayout) visibleRows(part proxyBodyPart, start, end, inset int) (int, int) {
+	y := part.y + inset
+	if start >= end || end <= y {
 		return 0, 0
 	}
+	stride := l.grid.stride()
+	height := proxyCardHeight(l.grid.cardPadding) - 2*inset
 	rows := (len(part.members) + l.grid.columns - 1) / l.grid.columns
-	first := max(0, (start-part.y)/l.stride())
-	if part.y+first*l.stride()+proxyNodeHeight <= start {
+	first := max(0, (start-y)/stride)
+	if y+first*stride+height <= start {
 		first++
 	}
-	last := min(rows, (end-1-part.y)/l.stride()+1)
+	last := min(rows, (end-1-y)/stride+1)
 	return first, last
 }
 
@@ -61,10 +56,10 @@ func (m *Model) paintProxiesBody(layout proxyBodyLayout, start, end int) dashboa
 			out.copyVisibleBlock(part.block, part.y, start)
 			continue
 		}
-		first, last := layout.visibleRows(part, start, end)
+		first, last := layout.visibleRows(part, start, end, 0)
 		if first < last {
-			block := m.proxyGroupRows(part.group, layout.width, layout.grid, part.members, first, last, layout.compact)
-			out.copyVisibleBlock(block, part.y+first*layout.stride(), start)
+			block := m.proxyGroupRows(part.group, layout.width, layout.grid, part.members, first, last)
+			out.copyVisibleBlock(block, part.y+first*layout.grid.stride(), start)
 		}
 	}
 	return out
@@ -88,15 +83,15 @@ func (m *Model) proxyTargets(width int, listOnly bool) []hitRegion {
 		grid := layout.grid
 		for i, member := range part.members {
 			x := grid.indent + (i%grid.columns)*(grid.cardWidth+proxyColumnGap)
-			y := part.y + (i/grid.columns)*layout.stride()
+			y := part.y + (i/grid.columns)*grid.stride()
 			if listOnly {
 				targets = append(targets, hitRegion{
 					ID: fmt.Sprintf("node.%d.%d", part.group, member), X: x, Y: y,
-					W: grid.cardWidth, H: proxyNodeHeight,
+					W: grid.cardWidth, H: proxyCardHeight(grid.cardPadding),
 				})
 				continue
 			}
-			for _, target := range m.proxyNodeKeyboardTargets(part.group, member, grid.cardWidth) {
+			for _, target := range m.proxyNodeKeyboardTargets(part.group, member, grid) {
 				target.X += x
 				target.Y += y
 				targets = append(targets, target)
@@ -113,7 +108,7 @@ func (m *Model) proxyBodyRange(layout proxyBodyLayout, start, end int) (stickyGr
 			continue
 		}
 		groups++
-		from, to := layout.visibleRows(part, start, end)
+		from, to := layout.visibleRows(part, start, end, layout.grid.cardPadding)
 		if from < to {
 			if first == 0 {
 				first = total + from*layout.grid.columns + 1
@@ -137,31 +132,31 @@ func proxyNodeWidths(width int) (rightPadding, contentWidth, valueWidth int) {
 
 // The primary card region and inline actions are the only distinct keyboard
 // targets. Mouse rendering adds the other rectangles around those actions.
-func (m *Model) proxyNodeKeyboardTargets(gi, ni, width int) []hitRegion {
-	rightPadding, _, valueWidth := proxyNodeWidths(width)
-	leftWidth := width
+func (m *Model) proxyNodeKeyboardTargets(gi, ni int, grid proxyGridLayout) []hitRegion {
+	rightPadding, _, valueWidth := proxyNodeWidths(grid.cardWidth)
+	leftWidth := grid.cardWidth
 	var actions []hitRegion
 	node := m.snapshot.Groups[gi].All[ni]
 	if valueWidth > 0 {
-		leftWidth = width - rightPadding - valueWidth
+		leftWidth = grid.cardWidth - rightPadding - valueWidth
 		if _, delaySupported := m.backend.(proxyDelayBackend); delaySupported && !m.busy && !m.quitting && m.proxiesReady() && m.proxyTestable(node) {
 			actions = append(actions, hitRegion{
 				ID: fmt.Sprintf("proxies.delay.%d.%d", gi, ni), X: leftWidth,
-				Y: 0, W: valueWidth, H: 1,
+				Y: grid.cardPadding, W: valueWidth, H: 1,
 			})
 		}
 		if _, _, reference := m.proxyGroup(node); reference && !m.busy && !m.quitting {
 			actions = append(actions, hitRegion{
 				ID: fmt.Sprintf("proxies.reference.%d.%d", gi, ni), X: leftWidth,
-				Y: 1, W: valueWidth, H: 1,
+				Y: grid.cardPadding + 1, W: valueWidth, H: 1,
 			})
 		}
 	}
-	return append([]hitRegion{{ID: fmt.Sprintf("node.%d.%d", gi, ni), W: leftWidth, H: proxyNodeHeight}}, actions...)
+	return append([]hitRegion{{ID: fmt.Sprintf("node.%d.%d", gi, ni), W: leftWidth, H: proxyCardHeight(grid.cardPadding)}}, actions...)
 }
 
 func (m *Model) proxyListFocusValid() bool {
-	if !m.proxiesReady() || m.proxiesDirect() || m.proxies.detail != "" {
+	if !m.proxiesReady() || m.proxiesDirect() {
 		return false
 	}
 	gi, group, node, ok := m.proxyAtFocus()

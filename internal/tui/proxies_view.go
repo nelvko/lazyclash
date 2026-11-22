@@ -2,9 +2,9 @@ package tui
 
 import (
 	"fmt"
+	"iter"
 	"strconv"
 	"strings"
-	"time"
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -58,7 +58,7 @@ func (m *Model) proxiesBody(width int) (string, []hitRegion) {
 
 func (m *Model) layoutProxiesBody(width int) proxyBodyLayout {
 	width = max(1, width)
-	layout := proxyBodyLayout{width: width, grid: m.proxyGrid(width), compact: m.compactProxyCards()}
+	layout := proxyBodyLayout{width: width, grid: m.proxyGrid(width)}
 	b := m.proxiesToolbar(width)
 	finish := func() proxyBodyLayout {
 		layout.appendBlock(b)
@@ -102,10 +102,6 @@ func (m *Model) layoutProxiesBody(width int) proxyBodyLayout {
 	}
 	if m.proxiesDirect() {
 		return finishEmpty(emptyStateOptions{Title: m.tr("proxies.direct.description")})
-	}
-	if m.proxies.detail != "" {
-		b.append(m.proxyDetail(width))
-		return finish()
 	}
 	if len(m.proxies.history) > 0 {
 		button("proxies.back", m.tr("proxies.back"))
@@ -304,14 +300,14 @@ func (m *Model) proxyGroupBody(gi, width int) dashboardBlock {
 		return m.emptyState(width, 3, m.proxyEmptyMembers(gi))
 	}
 	grid := m.proxyGrid(width)
-	return m.proxyGroupRows(gi, width, grid, indices, 0, (len(indices)+grid.columns-1)/grid.columns, m.compactProxyCards())
+	return m.proxyGroupRows(gi, width, grid, indices, 0, (len(indices)+grid.columns-1)/grid.columns)
 }
 
-func (m *Model) proxyGroupRows(gi, width int, grid proxyGridLayout, indices []int, firstRow, endRow int, compact bool) dashboardBlock {
+func (m *Model) proxyGroupRows(gi, width int, grid proxyGridLayout, indices []int, firstRow, endRow int) dashboardBlock {
 	b := dashboardBlock{}
 	for row := firstRow; row < endRow; row++ {
 		first := row * grid.columns
-		if row > firstRow && !compact {
+		if row > firstRow && grid.rowGap > 0 {
 			b.blank()
 		}
 		var cells []dashboardBlock
@@ -440,11 +436,13 @@ func (m *Model) proxyNode(gi, ni, width int) dashboardBlock {
 		metaWidth = nameWidth
 	}
 	meta := edge + themed("  "+cellPad(clean(m.proxyNodeMeta(node)), metaWidth), muted, surface, false)
-	b := dashboardBlock{lines: []string{themed(cellPad(line, width), text, surface, false)}}
+	padding := m.proxyCardPadding()
+	b := dashboardBlock{lines: make([]string, proxyCardHeight(padding))}
+	b.lines[padding] = themed(cellPad(line, width), text, surface, false)
 	var actions []hitRegion
 	actionX := width - rightPadding - valueWidth
 	if valueWidth > 0 {
-		actions = append(actions, hitRegion{ID: delayID, X: actionX, W: valueWidth, H: 1})
+		actions = append(actions, hitRegion{ID: delayID, X: actionX, Y: padding, W: valueWidth, H: 1})
 	}
 	if reference && valueWidth > 0 {
 		options := dashboardButtonOptions(referenceID, m.navigationOptions(), false, surface)
@@ -452,10 +450,14 @@ func (m *Model) proxyNode(gi, ni, width int) dashboardBlock {
 		options.Width = max(0, valueWidth-3) // one focus cell and two face padding cells
 		button := renderButton(m.tr("proxies.enter"), options)
 		meta = cellPad(meta, actionX) + cellCrop(button, valueWidth)
-		actions = append(actions, hitRegion{ID: referenceID, X: actionX, Y: 1, W: valueWidth, H: 1})
+		actions = append(actions, hitRegion{ID: referenceID, X: actionX, Y: padding + 1, W: valueWidth, H: 1})
 	}
 	meta += trailing
-	b.lines = append(b.lines, themed(cellPad(meta, width), text, surface, false))
+	b.lines[padding+1] = themed(cellPad(meta, width), text, surface, false)
+	if padding > 0 {
+		pad := themed(cellPad(edge, width), text, surface, false)
+		b.lines[0], b.lines[len(b.lines)-1] = pad, pad
+	}
 	// Keep one full-height left region for navigation, then fill each row around
 	// its independent actions. Disabled delay slots remain inert.
 	leftWidth := width
@@ -484,6 +486,27 @@ func (m *Model) proxyNode(gi, ni, width int) dashboardBlock {
 	return b
 }
 
+// For a padded card, the full-height primary region includes both text rows.
+// The other regions for that card only matter for mouse input.
+func proxyBodyTextTargets(hits []hitRegion) iter.Seq[hitRegion] {
+	return func(yield func(hitRegion) bool) {
+		var paddedID string
+		for _, hit := range hits {
+			if paddedID != "" && hit.ID == paddedID {
+				continue
+			}
+			if strings.HasPrefix(hit.ID, "node.") && hit.H > proxyNodeContentRows {
+				paddedID = hit.ID
+				hit.Y += (hit.H - proxyNodeContentRows) / 2
+				hit.H = proxyNodeContentRows
+			}
+			if !yield(hit) {
+				return
+			}
+		}
+	}
+}
+
 // Body targets are in section order, with each full-height heading before its
 // member cards. Once a heading is visible, there is no need for a second label.
 func proxyStickyGroup(groups []mihomo.Group, hits []hitRegion, scroll, height int) string {
@@ -491,7 +514,7 @@ func proxyStickyGroup(groups []mihomo.Group, hits []hitRegion, scroll, height in
 		return ""
 	}
 	group, memberPrefix := "", ""
-	for _, hit := range hits {
+	for hit := range proxyBodyTextTargets(hits) {
 		if indexText, ok := strings.CutPrefix(hit.ID, "group."); ok {
 			if hit.Y+hit.H > scroll {
 				break
@@ -507,13 +530,16 @@ func proxyStickyGroup(groups []mihomo.Group, hits []hitRegion, scroll, height in
 	return ""
 }
 
-// Count unique members in visual order; a partially clipped card is visible.
+// Count unique members in visual order if at least one text row is visible.
 // Split hit regions keep each card's inline action independent from selection.
 func proxyVisibleRange(locale i18n.Localizer, hits []hitRegion, scroll, height, width int) string {
+	if height <= 0 {
+		return ""
+	}
 	seen := make(map[string]int)
 	first, last, total, groups := 0, 0, 0, 0
 	lastGroup := ""
-	for _, hit := range hits {
+	for hit := range proxyBodyTextTargets(hits) {
 		if !strings.HasPrefix(hit.ID, "node.") {
 			continue
 		}
@@ -551,53 +577,4 @@ func proxyMemberRange(locale i18n.Localizer, first, last, total, groups, width i
 		return label
 	}
 	return value
-}
-func (m *Model) proxyDetail(width int) dashboardBlock {
-	b := dashboardBlock{}
-	add := func(v string, color string) {
-		b.lines = append(b.lines, strings.Split(wrapText(themed(clean(v), color, bg, false), width), "\n")...)
-	}
-	button := func(id, label string) {
-		v := m.proxyButton(id, label, bg, true)
-		b.targets = append(b.targets, hitRegion{ID: id, Y: len(b.lines), W: min(width, ansi.StringWidth(v)), H: 1})
-		b.lines = append(b.lines, cellCrop(v, width))
-	}
-	button("proxies.back", m.tr("proxies.back"))
-	name := m.proxies.detail
-	add(name, accent)
-	_, g, exists := m.proxyGroup(m.proxies.detailGroup)
-	if !exists || indexOf(g.All, name) < 0 {
-		add(m.tr("proxies.removed"), warning)
-		return b
-	}
-	add(m.tr("proxies.type", m.proxyMeta(name)), text)
-	add(m.tr("proxies.current", strings.Join(m.proxyPath(name), " → ")), muted)
-	if g.Type == "LoadBalance" || g.Type == "Relay" {
-		add(m.tr("proxies.distributed_hint"), muted)
-	} else if g.Type != "Selector" {
-		add(m.tr("proxies.automatic"), muted)
-	}
-	if _, _, ok := m.proxyGroup(name); ok {
-		button("proxies.enter", m.tr("proxies.enter_group"))
-	}
-	if m.proxyTestable(name) {
-		r := m.proxyDelay(g.Name, name)
-		label, color := m.proxyDelayLabel(g.Name, name)
-		add(m.tr("proxies.delay", label), color)
-		if !r.result.Time.IsZero() {
-			add(m.tr("proxies.test_time", r.result.Time.Local().Format(time.RFC3339)), muted)
-		}
-		target := r.result.URL
-		if target == "" && r.result.State != "" {
-			target = m.tr("proxies.core_target")
-		} else if target == "" {
-			target = mihomo.DefaultProxyDelayURL
-		}
-		add(m.tr("proxies.test_url", target), muted)
-		if r.err != nil {
-			add(m.localizeError(r.err), errorColor)
-		}
-		add(m.tr("proxies.test_hint"), muted)
-	}
-	return b
 }

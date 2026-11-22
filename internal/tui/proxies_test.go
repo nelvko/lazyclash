@@ -52,7 +52,7 @@ func TestProxiesFocusAndObservedSelectionRemainIndependent(t *testing.T) {
 	current := ansi.Strip(strings.Join(m.proxyNode(0, 0, 50).lines, "\n"))
 	focused := ansi.Strip(strings.Join(m.proxyNode(0, 1, 50).lines, "\n"))
 	currentLines, focusedLines := strings.Split(current, "\n"), strings.Split(focused, "\n")
-	if len(currentLines) != 2 || len(focusedLines) != 2 || !strings.HasPrefix(currentLines[0], "▌   AUTO") || !strings.HasPrefix(focusedLines[0], "  › HK 01") || strings.Contains(current+focused, "✓") {
+	if len(currentLines) != 4 || len(focusedLines) != 4 || !strings.HasPrefix(currentLines[1], "▌   AUTO") || !strings.HasPrefix(focusedLines[1], "  › HK 01") || strings.Contains(current+focused, "✓") {
 		t.Fatalf("focus/selection markers confused: current=%q focused=%q", current, focused)
 	}
 	for _, line := range currentLines {
@@ -68,24 +68,42 @@ func TestProxiesFocusAndObservedSelectionRemainIndependent(t *testing.T) {
 	if m.busy || m.snapshot.Groups[0].Now != "HK 01" || m.proxies.pendingNode != "" || b.selections != 1 {
 		t.Fatalf("selection confirmation failed: group=%+v count=%d", m.snapshot.Groups[0], b.selections)
 	}
-	selected := ansi.Strip(strings.Join(m.proxyNode(0, 1, 50).lines, "\n"))
+	selected := ansi.Strip(m.proxyNode(0, 1, 50).lines[1])
 	if !strings.HasPrefix(selected, "▌ › HK 01") {
 		t.Fatalf("focus erased current selection: %q", selected)
 	}
 }
 
-func TestProxiesAutomaticGroupsOpenDetailsAndReferencesBrowse(t *testing.T) {
-	m, b := proxiesModel(t, 160, 40)
-	setProxyTestGroup(&m, "AUTO")
-	m.focus = "node.1.0"
-	m.rememberPageView()
-	m.layout()
-	m, cmd := update(m, special(tea.KeyEnter))
-	if cmd != nil || m.busy || m.proxies.detail != "HK 01" || b.selections != 0 || m.snapshot.Groups[1].Now != "HK 02" {
-		t.Fatal("automatic group submitted a manual selection instead of opening details")
+func TestProxiesAutomaticMemberActivationStaysInList(t *testing.T) {
+	for _, width := range []int{80, 160} {
+		t.Run(fmt.Sprint(width), func(t *testing.T) {
+			m, backend := proxiesModel(t, width, 40)
+			setProxyTestGroup(&m, "AUTO")
+			m.focus = "group.1"
+			m.rememberPageView()
+			m.layout()
+			node := findTarget(t, m, "node.1.0")
+			scrollBeforeClick := m.scroll
+			var cmd tea.Cmd
+			m, cmd = click(m, node)
+			if cmd != nil || m.focus != node.ID {
+				t.Fatalf("clicking an automatic member did not only focus its card: focus=%s", m.focus)
+			}
+			for _, press := range []tea.KeyPressMsg{special(tea.KeyEnter), key("i")} {
+				m, cmd = update(m, press)
+				if cmd != nil || m.busy || m.wizard.open || m.page != "proxies" || m.focus != node.ID ||
+					m.scroll != scrollBeforeClick || backend.selections != 0 || m.snapshot.Groups[1].Now != "HK 02" {
+					t.Fatalf("automatic member activation changed the list or selected a node: focus=%s scroll=%d", m.focus, m.scroll)
+				}
+			}
+			findTarget(t, m, "node.1.1")
+			findTarget(t, m, "proxies.delay.1.0")
+		})
 	}
-	m.proxyBack()
-	setProxyTestGroup(&m, "PROXY")
+}
+
+func TestProxiesReferenceActionBrowsesItsGroup(t *testing.T) {
+	m, _ := proxiesModel(t, 160, 40)
 	m.focus = "node.0.0"
 	m.rememberPageView()
 	m.layout()
@@ -101,14 +119,12 @@ func TestProxiesAutomaticGroupsOpenDetailsAndReferencesBrowse(t *testing.T) {
 }
 
 func TestProxiesReturnRestoresNamesAfterGroupAndMemberReordering(t *testing.T) {
-	for _, origin := range []string{"node", "detail", "reference"} {
+	for _, origin := range []string{"node", "reference"} {
 		t.Run(origin, func(t *testing.T) {
 			m, _ := proxiesModel(t, 160, 40)
 			m.focus = "node.0.0"
 			m.rememberPageView()
-			if origin == "detail" {
-				m.openProxyDetail("PROXY", "AUTO")
-			} else if origin == "reference" {
+			if origin == "reference" {
 				m.proxyActivate("proxies.reference.0.0")
 			} else {
 				m.browseProxyReference("AUTO")
@@ -155,7 +171,7 @@ func TestProxiesModeChangeResetsNarrowAndReferencedLocations(t *testing.T) {
 			m.syncProxies()
 			m.layout()
 			groups := m.visibleProxyGroups()
-			if len(groups) != 1 || m.snapshot.Groups[groups[0]].Name != "GLOBAL" || len(m.proxies.history) != 0 || m.proxies.detail != "" {
+			if len(groups) != 1 || m.snapshot.Groups[groups[0]].Name != "GLOBAL" || len(m.proxies.history) != 0 {
 				t.Fatalf("global mode retained an earlier directory: %+v history=%+v", groups, m.proxies.history)
 			}
 			setProxyTestGroup(&m, "GLOBAL")
@@ -398,8 +414,8 @@ func TestProxiesCardPaddingKeepsItsReferenceActionIndependent(t *testing.T) {
 	m.focus = "node.0.0"
 	const width = 50
 	card := m.proxyNode(0, 0, width)
-	if len(card.lines) != 2 {
-		t.Fatalf("card has %d rows, want one name row and one metadata row", len(card.lines))
+	if len(card.lines) != 4 {
+		t.Fatalf("card has %d rows, want two content rows between padding rows", len(card.lines))
 	}
 	for y, line := range card.lines {
 		line = ansi.Strip(line)
@@ -407,11 +423,16 @@ func TestProxiesCardPaddingKeepsItsReferenceActionIndependent(t *testing.T) {
 			t.Fatalf("card row %d lost its rail or padding: %q", y, line)
 		}
 	}
-	if !strings.HasPrefix(ansi.Strip(card.lines[0]), "▌ › AUTO") || !strings.HasPrefix(ansi.Strip(card.lines[1]), "▌   Proxy group") {
+	for _, y := range []int{0, 3} {
+		if strings.Trim(ansi.Strip(card.lines[y]), " ▌") != "" {
+			t.Fatalf("card padding at row %d contains text: %q", y, card.lines[y])
+		}
+	}
+	if !strings.HasPrefix(ansi.Strip(card.lines[1]), "▌ › AUTO") || !strings.HasPrefix(ansi.Strip(card.lines[2]), "▌   Proxy group") {
 		t.Fatalf("name and metadata lost their shared left padding: %+v", card.lines)
 	}
-	assertRegions(t, card.targets, width, 2)
-	if got := ansi.Cut(ansi.Strip(card.lines[1]), width-12, width-2); got != "  Enter → " {
+	assertRegions(t, card.targets, width, 4)
+	if got := ansi.Cut(ansi.Strip(card.lines[2]), width-12, width-2); got != "  Enter → " {
 		t.Fatalf("reference button is not centered below the delay: %q", got)
 	}
 	for i, hit := range card.targets {
@@ -435,11 +456,11 @@ func TestProxiesCardPaddingKeepsItsReferenceActionIndependent(t *testing.T) {
 				case "node.0.0":
 					continue
 				case "proxies.reference.0.0":
-					if hit.Y != 1 || hit.W != 10 || hit.X+hit.W != width-2 {
+					if hit.Y != 2 || hit.W != 10 || hit.X+hit.W != width-2 {
 						t.Fatalf("reference action lost its metadata row or right padding: %+v", hit)
 					}
 				case "proxies.delay.0.0":
-					if hit.Y != 0 || hit.H != 1 || hit.W != 10 || hit.X+hit.W != width-2 {
+					if hit.Y != 1 || hit.H != 1 || hit.W != 10 || hit.X+hit.W != width-2 {
 						t.Fatalf("delay action lost its fixed name-row slot or right padding: %+v", hit)
 					}
 				default:
@@ -465,8 +486,15 @@ func TestProxiesCardPaddingKeepsItsReferenceActionIndependent(t *testing.T) {
 }
 
 func TestProxiesCardPaddingMouseClicksSelectItsNode(t *testing.T) {
-	for _, position := range []string{"top left", "top right", "metadata left", "metadata right"} {
-		t.Run(position, func(t *testing.T) {
+	for _, position := range []struct {
+		label string
+		row   int
+		right bool
+	}{
+		{"top left", 0, false}, {"top right", 0, true}, {"name right", 1, true},
+		{"metadata right", 2, true}, {"bottom left", 3, false}, {"bottom right", 3, true},
+	} {
+		t.Run(position.label, func(t *testing.T) {
 			m, backend := proxiesModel(t, 160, 40)
 			m.snapshot.Groups[0].Now = "HK 01"
 			m.layout()
@@ -477,16 +505,13 @@ func TestProxiesCardPaddingMouseClicksSelectItsNode(t *testing.T) {
 					top = min(top, hit.Y)
 				}
 			}
-			x, y := left, top
-			if strings.Contains(position, "right") {
+			x, y := left, top+position.row
+			if position.right {
 				x = right - 1
-			}
-			if strings.Contains(position, "metadata") {
-				y = top + 1
 			}
 			m, cmd := update(m, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
 			if cmd == nil || !m.busy || m.proxies.pendingNode != "AUTO" || m.proxies.activeGroup != "PROXY" {
-				t.Fatalf("padding click did not select its reference card: position=%s focus=%s pending=%s expanded=%s", position, m.focus, m.proxies.pendingNode, m.proxies.activeGroup)
+				t.Fatalf("padding click did not select its reference card: position=%s focus=%s pending=%s expanded=%s", position.label, m.focus, m.proxies.pendingNode, m.proxies.activeGroup)
 			}
 			m, _ = update(m, actionCmd(t, cmd)())
 			if backend.selections != 1 || m.snapshot.Groups[0].Now != "AUTO" {
@@ -793,7 +818,7 @@ func TestProxiesExpandedGroupKeepsSortingInHeader(t *testing.T) {
 	}
 }
 
-func TestProxiesSummaryKeepsFullReferenceRouteInDetails(t *testing.T) {
+func TestProxiesReferenceSummaryShowsFinalNode(t *testing.T) {
 	m, _ := proxiesModel(t, 160, 40)
 	setProxyTestGroup(&m, "YouTube")
 	header := ansi.Strip(strings.Join(m.proxyGroupHeader(3, 120).lines, "\n"))
@@ -802,11 +827,6 @@ func TestProxiesSummaryKeepsFullReferenceRouteInDetails(t *testing.T) {
 		if !strings.Contains(value, "HK 02") || strings.Contains(value, "PROXY →") || strings.Contains(value, "AUTO →") || strings.Contains(value, "Selector") {
 			t.Fatalf("reference summary did not reduce to its leaf: %q", value)
 		}
-	}
-	m.openProxyDetail("YouTube", "PROXY")
-	detail := ansi.Strip(strings.Join(m.proxyDetail(120).lines, "\n"))
-	if !strings.Contains(detail, "PROXY → AUTO → HK 02") || !strings.Contains(detail, "Selector") {
-		t.Fatalf("short summaries removed the full route or strategy type from details: %q", detail)
 	}
 }
 
@@ -938,11 +958,6 @@ func TestProxiesVisibleRangeFooterStaysAboveKeyHints(t *testing.T) {
 					}
 				}
 			}
-			m.proxies.detail = "HK 01"
-			if m.dashboardOptions().BodyRange {
-				t.Fatal("node details retained the group range footer")
-			}
-			m.proxies.detail = ""
 			setProxyTestGroup(&m, "")
 			if m.dashboardOptions().BodyRange {
 				t.Fatal("collapsed directory retained the group range footer")
