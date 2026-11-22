@@ -55,6 +55,7 @@ func (a *App) CreateProfile(ctx context.Context, draft ProfileDraft) error {
 			Spec:        configuration.Profile{Core: "mihomo", Revision: revision},
 			Description: draft.Description,
 			UpdatedAt:   time.Now().UTC(),
+			Quota:       configuration.ParseSubscriptionQuota(download.Headers),
 		}
 		if draft.RememberSource {
 			entry.Address = draft.Address
@@ -128,6 +129,7 @@ func (a *App) updateProfile(ctx context.Context, reference, address string, chan
 			return err
 		}
 		entry.Spec.Revision, entry.UpdatedAt = revision, time.Now().UTC()
+		entry.Quota = configuration.ParseSubscriptionQuota(download.Headers)
 		if changeAddress {
 			entry.Address = address
 		}

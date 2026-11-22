@@ -43,6 +43,8 @@ type ProfileRecord struct {
 	Description string    `json:"description,omitempty"`
 	Address     string    `json:"address,omitempty"`
 	UpdatedAt   time.Time `json:"updated_at"`
+
+	Quota SubscriptionQuota `json:"quota,omitzero"`
 }
 
 // One atomic index commits each profile's metadata, source and revision together.

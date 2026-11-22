@@ -102,6 +102,8 @@ type ProfileInfo struct {
 	Pending      bool      `json:"pending"`
 	Validated    bool      `json:"validated"`
 	HasOverrides bool      `json:"has_overrides"`
+
+	Quota *configuration.SubscriptionQuota `json:"quota,omitempty"`
 }
 
 func (a *App) profileInfo(lib configuration.Library, name string, m manifest, installed bool) (ProfileInfo, error) {
@@ -119,6 +121,9 @@ func (a *App) profileInfo(lib configuration.Library, name string, m manifest, in
 		Core: entry.Spec.Core, Refreshable: entry.Address != "", UpdatedAt: entry.UpdatedAt,
 		Kind: "imported", Origin: "Imported file", Validated: entry.Validated,
 		HasOverrides: entry.Spec.Overrides != "",
+	}
+	if entry.Quota != (configuration.SubscriptionQuota{}) {
+		info.Quota = &entry.Quota
 	}
 	if info.Refreshable {
 		info.Kind, info.Origin = "local", "Local file"
