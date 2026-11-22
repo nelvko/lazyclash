@@ -173,11 +173,17 @@ def wait_log_footer(terminal, words, status_key, min_unread=0):
         visible_status = row[:button.start()] if button else row
         if not status.startswith(visible_status.rstrip().rstrip("…")):
             return False
-        if status_key == "logs.capturing":
+        if status_key not in ("logs.browsing", "logs.display_paused"):
             return button is None
         return button is not None and int(button.group(1) or 0) >= min_unread
 
     wait_until(terminal, matches, "unexpected log status or Latest button: " + status_key)
+
+
+def assert_no_connection_notice_in_list(terminal, words):
+    body = "\n".join("".join(row) for row in terminal.screen.cells[3:-2])
+    for text in (words["logs.reconnecting"], words["logs.recovered"]):
+        assert text not in body, "connection notice appeared in the log list: " + text
 
 
 def fixture_terminal(preview, binary, report, language, profile):
@@ -444,6 +450,8 @@ def exercise(preview, binary, output, language, profile, args):
         preview.capture(terminal, output, "clear-continuing-stream", args)
         terminal.key(b"\x12")
         wait_until(terminal, lambda: calls(report).get("streams") == 2, "Ctrl+R did not replace the log request")
+        wait_log_footer(terminal, words, "logs.recovered")
+        assert_no_connection_notice_in_list(terminal, words)
         assert_continuing(terminal, report)
         assert_stream(terminal, report, 2, 1)
         assert_log_controls(terminal, words)
@@ -453,12 +461,20 @@ def exercise(preview, binary, output, language, profile, args):
         # interruption belongs to status rather than an invented log record.
         (output / "break-stream").touch()
         wait_until(terminal, lambda: calls(report).get("failures") == 1, "fixture did not interrupt the active request")
-        terminal.wait(words["logs.reconnecting"])
+        wait_log_footer(terminal, words, "logs.reconnecting")
+        assert_no_connection_notice_in_list(terminal, words)
         preview.capture(terminal, output, "interrupted-retrying-status", args)
         wait_until(terminal, lambda: calls(report).get("streams") == 3, "interrupted stream did not reconnect automatically")
+        wait_log_footer(terminal, words, "logs.recovered")
+        assert_no_connection_notice_in_list(terminal, words)
+        preview.capture(terminal, output, "automatic-recovery-status", args)
         assert_continuing(terminal, report)
         assert_stream(terminal, report, 3, 1, 1)
         assert_log_controls(terminal, words)
+        wait_log_footer(terminal, words, "logs.capturing")
+        assert_no_connection_notice_in_list(terminal, words)
+        assert words["logs.recovered"] not in terminal.screen.text(), "restored notice did not expire"
+        assert "synthetic log stream interrupted" not in terminal.screen.text(), "stale transport error survived recovery"
         preview.capture(terminal, output, "automatic-recovery-no-gap-entry", args)
         search(terminal, "GAP")
         terminal.wait(words["logs.no_matches"])

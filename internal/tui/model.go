@@ -401,6 +401,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case runtimeResultMsg:
 		cmd = m.acceptRuntime(v)
+	case logRecoveryExpiredMsg:
+		if m.logs.recoveryUntil == v.until {
+			m.logs.recoveryUntil = time.Time{}
+		}
 	case runtimeEndedMsg:
 		cmd = m.acceptRuntimeEnded(v)
 	case runtimeRetryMsg:

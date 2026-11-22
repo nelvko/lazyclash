@@ -266,9 +266,6 @@ func (m *Model) logsPrefix(width int) dashboardBlock {
 		lines := strings.Split(wrapText(themed(value, errorColor, bg, false), max(1, width)), "\n")
 		b.lines = append(b.lines, lines[:min(2, len(lines))]...)
 	}
-	if m.logs.recovered && !m.logs.reconnecting && state == "" {
-		b.lines = append(b.lines, themed(cellCrop(m.tr("logs.recovered"), width), muted, bg, false))
-	}
 	return b
 }
 
@@ -296,6 +293,9 @@ func (m *Model) logsStatus() (string, string) {
 	}
 	if m.logs.reconnecting {
 		return m.tr("logs.reconnecting"), warning
+	}
+	if !m.logs.recoveryUntil.IsZero() {
+		return m.tr("logs.recovered"), info
 	}
 	if m.logs.paused {
 		return m.tr("logs.display_paused"), warning
@@ -409,29 +409,22 @@ func (m *Model) logsEmptyState() emptyStateOptions {
 		// target to the empty viewport.
 		return emptyStateOptions{Title: m.tr("empty.read_failed"), Detail: m.localizeError(m.logs.err), Error: true}
 	}
-	recovered := ""
-	if state, _ := m.corePageState(); m.logs.recovered && !m.logs.reconnecting && state == "" {
-		recovered = m.tr("logs.recovered")
-	}
 	if _, err := m.logMatcher(); err != nil {
-		return emptyStateOptions{Title: m.tr("logs.invalid_regex"), Detail: recovered, Error: true,
+		return emptyStateOptions{Title: m.tr("logs.invalid_regex"), Error: true,
 			ActionID: "logs.reset-filters", ActionLabel: m.tr("empty.clear_filters")}
 	}
 	if strings.TrimSpace(m.logs.search.Value()) != "" || m.logs.level != 0 {
-		state := emptyStateOptions{Title: m.tr("logs.no_matches"), Detail: recovered, ActionID: "logs.reset-filters", ActionLabel: m.tr("empty.clear_filters")}
+		state := emptyStateOptions{Title: m.tr("logs.no_matches"), ActionID: "logs.reset-filters", ActionLabel: m.tr("empty.clear_filters")}
 		if core, ok := m.coreEmptyState(); ok && len(entries) > 0 {
 			state.Detail = core.Title + " · " + m.tr("logs.ended")
 		}
 		return state
 	}
 	if m.logs.paused {
-		return emptyStateOptions{Title: m.tr("logs.display_paused"), Detail: recovered}
+		return emptyStateOptions{Title: m.tr("logs.display_paused")}
 	}
-	if m.logs.reconnecting {
-		return emptyStateOptions{Title: m.tr("logs.reconnecting"), Detail: m.tr("empty.logs.reconnect")}
+	if !m.logs.active && !m.logs.reconnecting {
+		return emptyStateOptions{Title: m.tr("logs.opening")}
 	}
-	if !m.logs.active {
-		return emptyStateOptions{Title: m.tr("logs.opening"), Detail: recovered}
-	}
-	return emptyStateOptions{Title: m.tr("empty.logs.none"), Detail: recovered}
+	return emptyStateOptions{Title: m.tr("empty.logs.none")}
 }

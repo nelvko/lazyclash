@@ -179,7 +179,7 @@
   "help.logs.keys": "f 暂停/恢复显示 · End 恢复显示并回到最新 · / 搜索 · l 打开级别菜单 · v 切换自动换行 · Ctrl+L 清空 · Ctrl+R 重连。日志列表聚焦时，Space 也可暂停/恢复显示。",
   "help.logs.levelMenu": "级别菜单提供全部、信息、警告和错误，勾选标出当前值。↑↓ / j k 或 Home / End 移动，Enter 确认，Esc、Tab 或点击菜单外取消；选择只影响本地显示，不改变采集。",
   "help.logs.search": "搜索选项：Aa 区分大小写，下划线 ab 整词匹配，.* 启用正则表达式。搜索或浏览时可按 Alt+C / Alt+W / Alt+R 切换；只筛选保留的日志，不改变采集。",
-  "help.logs.liveOnly": "切页、查看帮助和暂停显示时持续采集。连接中断会自动重试；中断期间的事件无历史补采。",
+  "help.logs.liveOnly": "切页、查看帮助和暂停显示时持续采集。连接中断后会自动重连。断线期间的日志无法补回。",
   "help.logs.retention": "视图最多在内存中保留 200 条脱敏记录，不写入原始日志历史。",
   "help.overview.install": "i：安装/管理内核 · b：安装本地可执行文件",
   "help.overview.import": "n：下载方式 · a：添加/导入配置",

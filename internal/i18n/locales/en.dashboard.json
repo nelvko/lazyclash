@@ -179,7 +179,7 @@
   "help.logs.keys": "f pauses/resumes display · End resumes at the latest entries · / searches · l opens the level menu · v toggles line wrapping · Ctrl+L clears · Ctrl+R reconnects. Space also pauses/resumes when the log list is focused.",
   "help.logs.levelMenu": "The level menu offers All, Info, Warn and Error, with the current value checked. Use ↑↓ / j k or Home / End to move, Enter to choose, or Esc, Tab or an outside click to cancel. Selection only filters the local view; capture stays unchanged.",
   "help.logs.search": "Search options: Aa matches case, underlined ab matches whole words, and .* enables regular expressions. Alt+C / Alt+W / Alt+R toggle these options while searching or browsing; they only filter retained logs and do not change capture.",
-  "help.logs.liveOnly": "Capture continues across pages, help and display pauses. Interrupted connections retry automatically; missed events cannot be replayed.",
+  "help.logs.liveOnly": "Capture continues across pages, help and display pauses. The log stream reconnects automatically. Logs missed during a disconnection cannot be recovered.",
   "help.logs.retention": "The view retains at most 200 redacted entries in memory. No raw log history is written.",
   "help.overview.install": "i: install/manage core · b: install a local executable",
   "help.overview.import": "n: download method · a: add/import profile",

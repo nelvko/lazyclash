@@ -78,7 +78,8 @@ func TestLogRecoveryStatusLocalizesWithoutChangingCoreMessages(t *testing.T) {
 	m.width, m.height = 120, 45
 	raw := "Connection restored; original core message"
 	m.appendLogs([]mihomo.LogEntry{{Level: "info", Message: raw}})
-	m.logs.recovered = true
+	m.logs.active = true
+	m.logs.recoveryUntil = time.Now().Add(logRecoveryDuration)
 	for _, language := range []string{i18n.Chinese, i18n.English} {
 		m.locale = i18n.New(language)
 		body, _ := m.logsBody(112)

@@ -140,7 +140,7 @@ func TestLogsFailureKeepsSharedSessionAndOtherSourcesAvailable(t *testing.T) {
 		}
 	}
 	m.acceptRuntimeEvent(logSessionEvent("restored"))
-	if !m.logs.recovered || m.logs.reconnecting || m.logs.err != nil || len(m.logs.entries) != 2 {
+	if m.logs.reconnecting || m.logs.err != nil || len(m.logs.entries) != 2 {
 		t.Fatal("recovery did not clear only the log error or injected a synthetic record")
 	}
 }

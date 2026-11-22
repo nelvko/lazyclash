@@ -77,6 +77,7 @@ func (m *Model) stopRuntime() {
 		task.finish()
 	}
 	m.runtime.active, m.runtime.pending, m.logs.active = false, false, false
+	m.logs.recoveryUntil = time.Time{}
 }
 
 func (m *Model) syncRuntime() tea.Cmd {
@@ -176,7 +177,7 @@ func (m *Model) acceptRuntimeEnded(msg runtimeEndedMsg) tea.Cmd {
 	m.runtime.chartScale.lowSince = time.Time{}
 	m.observeConnections(now)
 	m.snapshot.APIError, m.snapshot.APIDiagnostic = err.Error(), err
-	m.logs.reconnecting, m.logs.recovered, m.logs.err = true, false, err
+	m.logs.startReconnect(err)
 	m.runtime.retryAt = now.Add(time.Second)
 	id := m.runtime.generation
 	return tea.Tick(time.Until(m.runtime.retryAt), func(time.Time) tea.Msg { return runtimeRetryMsg{generation: id} })
@@ -216,6 +217,7 @@ func (m *Model) acceptRuntime(msg runtimeResultMsg) tea.Cmd {
 		return nil
 	}
 	var refresh tea.Cmd
+	previousRecovery := m.logs.recoveryUntil
 	for _, event := range msg.events {
 		if m.acceptRuntimeEvent(event) {
 			m.runtime.refreshNeeded = true
@@ -225,7 +227,11 @@ func (m *Model) acceptRuntime(msg runtimeResultMsg) tea.Cmd {
 			refresh = m.refreshCoreStatus()
 		}
 	}
-	return tea.Batch(waitRuntime(m.runtime.ctx, m.runtime.generation, m.runtime.updates), refresh)
+	var expiry tea.Cmd
+	if until := m.logs.recoveryUntil; !until.IsZero() && until != previousRecovery {
+		expiry = tea.Tick(time.Until(until), func(time.Time) tea.Msg { return logRecoveryExpiredMsg{until: until} })
+	}
+	return tea.Batch(waitRuntime(m.runtime.ctx, m.runtime.generation, m.runtime.updates), refresh, expiry)
 }
 
 // Returns true only for a service transition that needs a full settings/profile
@@ -250,8 +256,7 @@ func (m *Model) acceptRuntimeEvent(event app.RuntimeEvent) bool {
 	// reconnection must not advance the connections clock for an old snapshot.
 	if event.Connected {
 		if event.Source == app.RuntimeLogs {
-			m.logs.recovered = m.logs.recovered || m.logs.reconnecting
-			m.logs.reconnecting, m.logs.err = false, nil
+			m.logs.connected(now)
 		}
 		return false
 	}
@@ -285,6 +290,9 @@ func (m *Model) acceptRuntimeEvent(event app.RuntimeEvent) bool {
 			current = app.RuntimeSnapshot{State: "unavailable", Error: event.Err.Error(), Diagnostic: event.Err}
 		}
 		changed := event.Instance != m.runtime.instance
+		if changed {
+			m.logs.recoveryUntil = time.Time{}
+		}
 		if changed || current.State != "ready" {
 			*s = current
 			m.runtime.instance = event.Instance
@@ -322,7 +330,7 @@ func (m *Model) acceptRuntimeEvent(event app.RuntimeEvent) bool {
 			m.runtime.history.clear()
 		}
 		if current.State != "ready" {
-			m.logs.reconnecting, m.logs.recovered = true, false
+			m.logs.startReconnect(nil)
 			m.runtime.chartScale.lowSince = time.Time{}
 		}
 		m.runtime.history.observeSnapshot(m.snapshot)
@@ -375,11 +383,10 @@ func (m *Model) acceptRuntimeEvent(event app.RuntimeEvent) bool {
 		m.observeConnections(at)
 	case app.RuntimeLogs:
 		if event.Err != nil {
-			m.logs.reconnecting, m.logs.recovered, m.logs.err = true, false, event.Err
+			m.logs.startReconnect(event.Err)
 		} else if event.Log != nil {
 			m.appendLogs([]mihomo.LogEntry{*event.Log})
-			m.logs.recovered = m.logs.recovered || m.logs.reconnecting
-			m.logs.reconnecting, m.logs.err = false, nil
+			m.logs.connected(now)
 		}
 	}
 	return false

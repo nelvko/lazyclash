@@ -86,12 +86,9 @@ func (m *Model) pageHeader() pageHeader {
 	case "rules":
 		h.actions = []headerAction{{"rules.providers", tr("providers.title.rules"), "≡", m.providersSupported(providerRules)}}
 	case "logs":
-		h.summary = tr("header.connecting")
 		follow, compact := tr("logs.pause_display"), "Ⅱ"
-		if m.logs.reconnecting {
+		if !m.logs.active && !m.logs.reconnecting {
 			h.summary = tr("header.connecting")
-		} else if m.logs.active {
-			h.summary = ""
 		}
 		if m.logs.paused {
 			h.summary = tr("header.paused")

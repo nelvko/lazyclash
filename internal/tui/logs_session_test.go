@@ -9,6 +9,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 	"github.com/nelvko/lazyclash/internal/service"
@@ -216,8 +217,13 @@ func TestLogsSessionSourceFailureAndRecoveryLeaveTheSharedGenerationIntact(t *te
 		t.Fatal("a disconnected log source lost the shared session or started a duplicate session")
 	}
 	m.acceptRuntimeEvent(logSessionEvent("restored event"))
-	if !m.logs.active || m.logs.reconnecting || !m.logs.recovered || m.logs.err != nil || m.runtime.generation != generation || m.runtime.ctx != ctx {
+	if !m.logs.active || m.logs.reconnecting || m.logs.err != nil || m.runtime.generation != generation || m.runtime.ctx != ctx {
 		t.Fatal("source recovery replaced the shared session")
+	}
+	body, _ := m.logsBody(80)
+	lines := strings.Split(ansi.Strip(body), "\n")
+	if strings.TrimSpace(lines[len(lines)-1]) != m.tr("logs.recovered") || strings.Count(ansi.Strip(body), m.tr("logs.recovered")) != 1 {
+		t.Fatalf("expected one recovery notice in the footer:\n%s", body)
 	}
 	if len(m.logs.entries) != 1 || m.logs.entries[0].Message != "restored event" {
 		t.Fatal("source recovery inserted synthetic records or lost the resumed real event")
@@ -229,10 +235,59 @@ func TestLogsQuietHandshakeRecoversWithoutInventingAnEvent(t *testing.T) {
 	m.syncRuntime()
 	primeLogRuntime(m)
 	generation := m.runtime.generation
+	m.acceptRuntimeEvent(app.RuntimeEvent{Source: app.RuntimeLogs, Instance: 1, Connected: true})
+	if status, _ := m.logsStatus(); status != "" {
+		t.Fatalf("initial handshake reported a recovery: %q", status)
+	}
 	m.acceptRuntimeEvent(app.RuntimeEvent{Source: app.RuntimeLogs, Instance: 1, ObservedAt: time.Now(), Err: errors.New("fixture stream disconnected")})
 	m.acceptRuntimeEvent(app.RuntimeEvent{Source: app.RuntimeLogs, Instance: 1, ObservedAt: time.Now(), Connected: true})
-	if m.logs.err != nil || m.logs.reconnecting || !m.logs.recovered || !m.logs.active || len(m.logs.entries) != 0 || m.runtime.generation != generation {
+	if m.logs.err != nil || m.logs.reconnecting || !m.logs.active || len(m.logs.entries) != 0 || m.runtime.generation != generation {
 		t.Fatal("quiet successful handshake waited for a log event, invented one, or replaced the session")
+	}
+	if state := m.logsEmptyState(); state.Title != m.tr("empty.logs.none") || state.Detail != "" {
+		t.Fatalf("quiet recovery changed the idle message: %+v", state)
+	}
+	if status, _ := m.logsStatus(); status != m.tr("logs.recovered") {
+		t.Fatalf("quiet recovery was not reported in the status area: %q", status)
+	}
+	*m, _ = update(*m, logRecoveryExpiredMsg{until: m.logs.recoveryUntil})
+	body, _ := m.logsBody(dashboardBodyWidth(m.dashboardOptions()))
+	if got := strings.TrimSpace(ansi.Strip(body)); got != m.tr("empty.logs.none") {
+		t.Fatalf("quiet recovery did not return to the idle message: %q", got)
+	}
+}
+
+func TestLogsOnlyCurrentRecoveryNoticeExpires(t *testing.T) {
+	m := sessionLogsModel(t, &fakeBackend{})
+	m.syncRuntime()
+	primeLogRuntime(m)
+	fail := func() {
+		m.acceptRuntimeEvent(app.RuntimeEvent{Source: app.RuntimeLogs, Instance: 1, Err: errors.New("fixture disconnect")})
+	}
+	fail()
+	m.acceptRuntimeEvent(logSessionEvent("first recovery"))
+	first := m.logs.recoveryUntil
+	fail()
+	*m, _ = update(*m, logRecoveryExpiredMsg{until: first})
+	if status, _ := m.logsStatus(); status != m.tr("logs.reconnecting") {
+		t.Fatalf("expired notice concealed a new disconnect: %q", status)
+	}
+
+	handshake := app.RuntimeEvent{Source: app.RuntimeLogs, Instance: 1, Connected: true}
+	m.acceptRuntimeEvent(handshake)
+	second := m.logs.recoveryUntil
+	m.acceptRuntimeEvent(handshake)
+	m.acceptRuntimeEvent(logSessionEvent("next event"))
+	if second.IsZero() || second.Equal(first) || !m.logs.recoveryUntil.Equal(second) {
+		t.Fatal("recovery deadline must change once per interruption")
+	}
+	*m, _ = update(*m, logRecoveryExpiredMsg{until: first})
+	if status, _ := m.logsStatus(); status != m.tr("logs.recovered") {
+		t.Fatalf("older timer cleared the current recovery notice: %q", status)
+	}
+	*m, _ = update(*m, logRecoveryExpiredMsg{until: second})
+	if status, _ := m.logsStatus(); status != m.tr("logs.capturing") || len(m.logs.entries) != 2 {
+		t.Fatalf("expiry must restore live status and preserve real events: %q", status)
 	}
 }
 

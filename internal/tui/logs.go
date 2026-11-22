@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"time"
+
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"github.com/nelvko/lazyclash/internal/i18n"
@@ -8,9 +10,12 @@ import (
 )
 
 const (
-	retainedLogLimit = 200
-	maxLogScrollRows = 1 << 20
+	retainedLogLimit    = 200
+	maxLogScrollRows    = 1 << 20
+	logRecoveryDuration = 3 * time.Second
 )
+
+type logRecoveryExpiredMsg struct{ until time.Time }
 
 type logsState struct {
 	entries                         []mihomo.LogEntry
@@ -20,7 +25,7 @@ type logsState struct {
 	active                          bool
 	err                             error
 	started, reconnecting           bool
-	recovered                       bool
+	recoveryUntil                   time.Time
 	frozen                          []mihomo.LogEntry
 	frozenFirst                     uint64
 	caseSensitive, wholeWord, regex bool
@@ -90,8 +95,20 @@ func (m *Model) resumeLogs() tea.Cmd {
 }
 
 func (m *Model) reconnectLogs() tea.Cmd {
-	m.logs.reconnecting, m.logs.recovered, m.logs.err = true, false, nil
+	m.logs.startReconnect(nil)
 	return tea.Batch(m.retryRuntime(), m.refreshCoreStatus())
+}
+
+func (s *logsState) startReconnect(err error) {
+	s.reconnecting, s.err = true, err
+	s.recoveryUntil = time.Time{}
+}
+
+func (s *logsState) connected(now time.Time) {
+	if s.reconnecting {
+		s.recoveryUntil = now.Add(logRecoveryDuration)
+	}
+	s.reconnecting, s.err = false, nil
 }
 
 func (m *Model) logsDisplayEntries() ([]mihomo.LogEntry, uint64) {
@@ -124,7 +141,7 @@ func (m *Model) logsActivate(id string) tea.Cmd {
 		m.logs.first += uint64(len(m.logs.entries))
 		m.logs.entries, m.logs.frozen = nil, nil
 		m.logs.frozenFirst = m.logs.first
-		m.logs.recovered = false
+		m.logs.recoveryUntil = time.Time{}
 		m.resetLogsView()
 	case "logs.reset-filters":
 		m.logs.search.Reset()
