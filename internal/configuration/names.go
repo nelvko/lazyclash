@@ -255,7 +255,7 @@ func UniqueName(candidate string, profiles map[string]ProfileRecord, excludeID s
 	if base == "" {
 		base = FallbackName
 	}
-	used := map[string]bool{NameKey("default"): true}
+	used := make(map[string]bool)
 	for id, record := range profiles {
 		if id == excludeID {
 			continue

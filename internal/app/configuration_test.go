@@ -218,18 +218,19 @@ func TestProfileDeletionProtectsSelectionAndHistoricalInputs(t *testing.T) {
 	if err := a.DeleteProfile(t.Context(), "primary"); err == nil {
 		t.Fatal("deleted selected profile")
 	}
-	if err := a.Apply(t.Context(), "default"); err != nil {
-		t.Fatal(err)
-	}
-	if err := a.DeleteProfile(t.Context(), "primary"); err != nil {
+	if err := a.DeleteProfileWithReplacement(t.Context(), "primary", "secondary"); err != nil {
 		t.Fatal(err)
 	}
 	lib, _, err := a.library().Load()
 	if err != nil || len(lib.Profiles) != 1 || lib.Profiles["secondary"].Name != "secondary" {
 		t.Fatal("deleting one profile changed another profile", err)
 	}
-	if err := a.DeleteProfile(t.Context(), "secondary"); err != nil {
+	if err := a.DeleteProfileWithReplacement(t.Context(), "secondary", "default"); err != nil {
 		t.Fatal(err)
+	}
+	m, _, err := a.load()
+	if err != nil || m.selectedProfile() != "" {
+		t.Fatal("deleting the last selected profile left a dangling selection", err)
 	}
 	lib, raw, err := a.library().Load()
 	if err != nil || len(lib.Profiles) != 0 || bytes.Contains(raw, []byte("\"subscriptions\"")) || !bytes.Equal(snapshot, read(t, snapshotPath)) || len(svc.actions) != 0 {
@@ -237,5 +238,132 @@ func TestProfileDeletionProtectsSelectionAndHistoricalInputs(t *testing.T) {
 	}
 	if err := a.DeleteProfile(t.Context(), "default"); err == nil {
 		t.Fatal("deleted the reserved default profile")
+	}
+}
+
+func TestDeleteSelectedProfileUsesReviewedTargetAndReplacement(t *testing.T) {
+	a, svc := installedApp(t)
+	for _, id := range []string{"current", "next", "other"} {
+		addFixtureProfile(t, a, id)
+	}
+	if err := a.Apply(t.Context(), "current"); err != nil {
+		t.Fatal(err)
+	}
+	// A stale card ID must not resolve to another profile's display name.
+	if err := a.RenameProfile(t.Context(), "other", "vanished"); err != nil {
+		t.Fatal(err)
+	}
+	for _, pair := range [][2]string{{"current", "current"}, {"current", "vanished"}, {"vanished", ""}, {"next", "default"}, {"current", ""}} {
+		if err := a.DeleteProfileWithReplacement(t.Context(), pair[0], pair[1]); err == nil {
+			t.Fatalf("accepted stale or incomplete delete %q", pair)
+		}
+	}
+	if err := a.SetProfileOverrides(t.Context(), "next", []byte("prepend-rules: ['DOMAIN,next.example,DIRECT']\n")); err != nil {
+		t.Fatal(err)
+	}
+	svc.active = true
+	svc.actionHook = func(_ context.Context, action string) error {
+		if action != "restart" {
+			t.Fatalf("unexpected service action %s", action)
+		}
+		lib, _, err := a.library().Load()
+		if _, ok := lib.Profiles["current"]; err != nil || !ok {
+			t.Fatal("deleted current profile before the replacement was ready", err)
+		}
+		return nil
+	}
+	if err := a.DeleteProfileWithReplacement(t.Context(), "current", "next"); err != nil {
+		t.Fatal(err)
+	}
+	status, err := a.Snapshot(t.Context())
+	if err != nil || status.Applied != "next" || !status.Service.Active || len(status.Profiles) != 2 || len(svc.actions) != 1 {
+		t.Fatalf("unexpected state after replacement: %+v, %v", status, err)
+	}
+	_, cfg, _ := a.paths()
+	if !strings.Contains(string(read(t, cfg)), "next.example") {
+		t.Fatal("replacement did not use the saved rules")
+	}
+}
+
+func TestDeleteSelectedProfileFailurePreservesRecord(t *testing.T) {
+	for _, failure := range []string{"validation", "restart", "external-edit"} {
+		t.Run(failure, func(t *testing.T) {
+			a, svc := installedApp(t)
+			addFixtureProfile(t, a, "current")
+			if err := a.Apply(t.Context(), "current"); err != nil {
+				t.Fatal(err)
+			}
+			svc.active = true
+			switch failure {
+			case "validation":
+				a.Validate = func(context.Context, string, string, string) error { return errors.New("validation failed") }
+			case "restart":
+				svc.actionHook = func(context.Context, string) error {
+					if len(svc.actions) == 1 {
+						return errors.New("restart failed")
+					}
+					return nil
+				}
+			case "external-edit":
+				a.Validate = func(context.Context, string, string, string) error {
+					lib, previous, err := a.library().Load()
+					if err != nil {
+						return err
+					}
+					profile := lib.Profiles["current"]
+					profile.Description = "external change"
+					lib.Profiles["current"] = profile
+					return a.library().Save(lib, previous)
+				}
+			}
+			err := a.DeleteProfileWithReplacement(t.Context(), "current", "default")
+			if err == nil {
+				t.Fatal("unexpected deletion")
+			}
+			status, readErr := a.Snapshot(t.Context())
+			if readErr != nil || !status.Service.Active || len(status.Profiles) != 1 || status.Profiles[0] != "current" {
+				t.Fatalf("failed delete lost the profile or stopped the service: %+v, %v", status, readErr)
+			}
+			if failure == "external-edit" {
+				if status.Applied != "" || status.ProfileDetails[0].Description != "external change" || !strings.Contains(err.Error(), "selection changed") {
+					t.Fatal("partial success hid the new selection or discarded the updated record", status, err)
+				}
+			} else if status.Applied != "current" {
+				t.Fatal("failed replacement changed the selected profile")
+			}
+		})
+	}
+}
+
+func TestDeactivateProfileOnlyChangesTheExpectedSelection(t *testing.T) {
+	a, svc := installedApp(t)
+	addFixtureProfile(t, a, "selected")
+	if err := a.Apply(t.Context(), "selected"); err != nil {
+		t.Fatal(err)
+	}
+	_, selectedGeneration, err := a.load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.DeactivateProfile(t.Context(), "old-selection"); err == nil {
+		t.Fatal("a stale card deactivated another profile")
+	}
+	m, target, err := a.load()
+	if err != nil || m.Applied != "selected" || target != selectedGeneration {
+		t.Fatal("stale deactivation changed the generation", err)
+	}
+	if err := a.DeactivateProfile(t.Context(), "selected"); err != nil {
+		t.Fatal(err)
+	}
+	m, target, err = a.load()
+	if err != nil || m.selectedProfile() != "" || selectedGeneration == target || len(svc.actions) != 0 {
+		t.Fatal("deactivation did not preserve the stopped instance", err)
+	}
+	if err := a.DeactivateProfile(t.Context(), "selected"); err != nil {
+		t.Fatal(err)
+	}
+	_, retriedTarget, err := a.load()
+	if err != nil || retriedTarget != target {
+		t.Fatal("retry regenerated the already deactivated profile", err)
 	}
 }

@@ -36,9 +36,9 @@ func (a *App) GetCustomRules(ctx context.Context, profile string) (CustomRulesDr
 			return err
 		}
 		if profile == "" {
-			profile = m.Applied
+			profile = m.selectedProfile()
 			if profile == "" {
-				profile = "default"
+				return customRulesReadOnly()
 			}
 		}
 		id, err := resolveProfileID(lib, profile)
@@ -122,7 +122,11 @@ func (a *App) ApplyCustomRules(ctx context.Context, draft CustomRulesDraft) erro
 		if draft.ProfileID == "default" {
 			return customRulesReadOnly()
 		}
-		return a.applyProfileLocked(ctx, draft.ProfileID, &draft)
+		lib, _, err := a.library().Load()
+		if err != nil {
+			return err
+		}
+		return a.applyProfileLocked(ctx, lib, draft.ProfileID, &draft)
 	})
 }
 
@@ -173,5 +177,5 @@ func (a *App) customRulesDraft(lib configuration.Library, id string, m manifest,
 }
 
 func customRulesReadOnly() error {
-	return diagnostic.New("diagnostic.customRules.readOnly", "the built-in default profile is read only; choose a saved profile to customize rules")
+	return diagnostic.New("diagnostic.customRules.readOnly", "select a saved profile to customize its rules")
 }

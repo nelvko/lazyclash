@@ -1,5 +1,5 @@
 {
-  "diagnostic.customRules.readOnly": "内置默认配置为只读；请先选择已保存的配置再编辑自定义规则",
+  "diagnostic.customRules.readOnly": "请先选择已保存的配置，再编辑其自定义规则",
   "diagnostic.customRules.takeover": "当前配置使用 set.rules 替换整个规则列表；请先移除整表接管再编辑自定义规则",
   "diagnostic.customRules.conflict": "编辑期间配置已发生变化；请重新读取后重试",
   "diagnostic.customRules.invalidRules": "自定义规则必须是非空单行文字，且不能包含控制字符",

@@ -192,7 +192,8 @@ func TestLegacySelectionPersistenceMustBeEnabledBeforeSelection(t *testing.T) {
 		t.Fatal("nonpersistent legacy node selection was reported as successful", err)
 	}
 	svc.active = false
-	if err := a.Apply(t.Context(), "default"); err != nil {
+	addFixtureProfile(t, a, "test")
+	if err := a.Apply(t.Context(), "test"); err != nil {
 		t.Fatal(err)
 	}
 	persistent, err := mihomo.ConfigSelectionPersistence(read(t, config))

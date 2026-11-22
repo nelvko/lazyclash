@@ -261,7 +261,7 @@ lp status > "$work/status.json"
 python3 - "$work/status.json" <<'PY'
 import json, sys
 s = json.load(open(sys.argv[1]))
-assert s["Installed"] and s["Applied"] == "default", s
+assert s["Installed"] and s["Applied"] == "", s
 assert s["Version"] == "v1.19.32", s["Version"]
 preimport = next(p for p in s["ProfileDetails"] if p["name"] == "preimport")
 assert preimport["id"] in s["UnvalidatedProfiles"], preimport
@@ -633,7 +633,7 @@ python3 "$work/ports-e2e.py" --binary "$app" --home "$e2e_home" --service-name "
 lp service restart
 lp service stop
 lp service status
-lp profile apply default
+lp profile deactivate
 lp service start
 lp rules > "$work/default-rules.json"
 python3 - "$work/default-rules.json" <<'PY'

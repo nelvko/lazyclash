@@ -52,8 +52,8 @@ func TestProfileSnapshotProvidesSafeCardMetadata(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(snapshot.ProfileDetails, profiles) {
 		t.Fatal("snapshot and profile listing disagree", err)
 	}
-	if len(profiles) != len(snapshot.Profiles) || profiles[0].Name != "default" || profiles[0].HasOverrides || !profiles[0].Validated {
-		t.Fatal("built-in profile metadata is missing or inaccurate")
+	if len(profiles) != 3 || len(profiles) != len(snapshot.Profiles) {
+		t.Fatal("expected exactly the three saved profiles")
 	}
 	for i, profile := range profiles {
 		if profile.ID != snapshot.Profiles[i] {

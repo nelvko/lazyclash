@@ -44,9 +44,9 @@
   "cli.command.profile.url.short": "Replace and validate a profile's remembered address",
   "cli.command.profile.refresh.short": "Refresh a profile's remembered subscription; apply separately",
   "cli.command.profile.override.short": "Save a YAML set/prepend-rules/append-rules override; apply separately",
-  "cli.command.profile.delete.short": "Delete an unused profile",
+  "cli.command.profile.delete.short": "Delete a saved profile",
   "cli.command.profile.show.short": "Show profile origin and validation state without subscription credentials",
-  "cli.command.profile.apply.short": "Apply a saved profile or default, with rollback on failure",
+  "cli.command.profile.apply.short": "Apply a saved profile, with rollback on failure",
   "cli.command.profile.list.short": "List profiles and validation state",
   "cli.command.nodes.short": "Print current proxy groups and nodes as JSON",
   "cli.command.select.short": "Select a node in a manual selector group",
@@ -126,5 +126,8 @@
   "cli.shell.status": "Shell: %s\nInstalled: %t\nLoaded: %t\nHook acknowledged: %t\nProxy state: %s\nPending activation: %t",
   "cli.shell.uninstallPending": "Uninstall pending. After this command returns, the shell restores its original environment; owned integration references are then removed.",
   "cli.shell.activationNotice": "Terminal proxy request saved. Shell Integration is installed.\nThe current shell has not loaded its initialization script.\nRun once in this terminal:\n\n%s\n\nThis immediately applies the latest request; no need to reopen the TUI.",
-  "cli.flag.shell.status.json": "Print integration status as JSON"
+  "cli.flag.shell.status.json": "Print integration status as JSON",
+  "cli.command.profile.deactivate.short": "Deactivate the selected profile and use the local instance settings",
+  "cli.flag.profile.delete.use": "Apply this profile before deleting the selected profile",
+  "cli.flag.profile.delete.no-profile": "Deactivate the selected profile before deleting it"
 }

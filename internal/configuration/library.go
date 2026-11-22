@@ -93,7 +93,7 @@ func (l Library) validate() error {
 	if l.Version != LibraryVersion || l.Profiles == nil {
 		return invalid
 	}
-	used := map[string]bool{NameKey("default"): true}
+	used := make(map[string]bool)
 	for name, record := range l.Profiles {
 		p := record.Spec
 		if !ValidName(name) || p.Core == "" || !revisionPattern.MatchString(p.Revision) || len(p.Overrides) > MaxDocumentSize {

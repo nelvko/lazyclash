@@ -68,7 +68,7 @@ lp('mode', 'direct')
 changed = ready(selected='REJECT')
 assert changed['Service']['PID'] == initial['Service']['PID'], 'dynamic mode restarted Mihomo'
 assert changed['Mode']['actual'] == changed['Mode']['desired'] == 'direct'
-lp('profile', 'apply', 'default')
+lp('profile', 'deactivate')
 lp('service', 'restart')
 changed = ready(selected='REJECT')
 assert changed['Mode']['actual'] == changed['Mode']['desired'] == 'direct'

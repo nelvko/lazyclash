@@ -203,7 +203,7 @@ func (a *App) stageFreshInstallation(ctx context.Context, m manifest, local stri
 		return stagedInstallation{}, err
 	}
 	if progress != nil {
-		progress("Validating default configuration…")
+		progress("Validating runtime configuration…")
 	}
 	if err := a.validateBinaryConfig(ctx, bin, filepath.Join(stage, target, "config.yaml"), filepath.Join(stage, "runtime")); err != nil {
 		return stagedInstallation{}, err

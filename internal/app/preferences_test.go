@@ -98,7 +98,7 @@ func TestImportBeforeInstallationIsPrivateAndNotAutomaticallyApplied(t *testing.
 		t.Fatal(err)
 	}
 	snapshot, err = a.Snapshot(t.Context())
-	if err != nil || snapshot.Applied != "default" || !snapshot.ConfigReady || len(snapshot.UnvalidatedProfiles) != 1 {
+	if err != nil || snapshot.Applied != "" || !snapshot.ConfigReady || len(snapshot.UnvalidatedProfiles) != 1 {
 		t.Fatalf("after install=%+v err=%v", snapshot, err)
 	}
 	if err := a.Apply(t.Context(), "imported"); err != nil {

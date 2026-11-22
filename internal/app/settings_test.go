@@ -98,7 +98,7 @@ func TestRuntimeSettingsPreserveAppliedConfigurationAndSources(t *testing.T) {
 	if err != nil || snapshot.MixedPort != proposed.MixedPort || snapshot.Controller != after.Controller {
 		t.Fatalf("overview snapshot confused configured proxy and controller endpoints: %+v %v", snapshot, err)
 	}
-	if err := a.Apply(t.Context(), "default"); err != nil {
+	if err := a.DeactivateProfile(t.Context(), ""); err != nil {
 		t.Fatal(err)
 	}
 	settings, err = a.GetRuntimeSettings(t.Context())
@@ -200,7 +200,8 @@ func TestRuntimeSettingsPlanRejectsMutationOtherHomeAndChangedProcess(t *testing
 			case "active-state":
 				svc.active = true
 			case "generation":
-				if err := a.Apply(t.Context(), "default"); err != nil {
+				addFixtureProfile(t, a, "test")
+				if err := a.Apply(t.Context(), "test"); err != nil {
 					t.Fatal(err)
 				}
 			}

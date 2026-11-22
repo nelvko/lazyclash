@@ -7,17 +7,41 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/nelvko/lazyclash/internal/configuration"
 	"github.com/nelvko/lazyclash/internal/diagnostic"
 	"github.com/nelvko/lazyclash/internal/store"
 )
 
 func (a *App) Apply(ctx context.Context, name string) error {
 	return a.locked(ctx, func() error {
-		return a.applyProfileLocked(ctx, name, nil)
+		lib, _, err := a.library().Load()
+		if err != nil {
+			return err
+		}
+		id, err := resolveProfileID(lib, name)
+		if err != nil {
+			return err
+		}
+		return a.applyProfileLocked(ctx, lib, id, nil)
 	})
 }
 
-func (a *App) applyProfileLocked(ctx context.Context, name string, reviewed *CustomRulesDraft) error {
+// DeactivateProfile keeps an explicit card action bound to its original ID.
+// An empty expectedID deliberately addresses whichever profile is selected.
+func (a *App) DeactivateProfile(ctx context.Context, expectedID string) error {
+	return a.locked(ctx, func() error {
+		m, installed, err := a.buildContext()
+		if err != nil || !installed || m.selectedProfile() == "" {
+			return err
+		}
+		if expectedID != "" && expectedID != m.Applied {
+			return diagnostic.New("diagnostic.profile.deactivateSelectionChanged", "the selected profile changed; review the selection before deactivating it")
+		}
+		return a.applyProfileLocked(ctx, configuration.Library{}, "default", nil)
+	})
+}
+
+func (a *App) applyProfileLocked(ctx context.Context, lib configuration.Library, name string, reviewed *CustomRulesDraft) error {
 	if err := a.requireService(); err != nil {
 		return err
 	}
@@ -35,14 +59,6 @@ func (a *App) applyProfileLocked(ctx context.Context, name string, reviewed *Cus
 	}
 	if status.State == "activating" || status.State == "deactivating" || status.State == "reloading" {
 		return diagnostic.New("diagnostic.profile.serviceChanging", "service is changing state; wait before applying a profile")
-	}
-	lib, _, err := a.library().Load()
-	if err != nil {
-		return err
-	}
-	name, err = resolveProfileID(lib, name)
-	if err != nil {
-		return err
 	}
 	if reviewed != nil {
 		if err := validateCustomRulesApply(lib, m, name, *reviewed); err != nil {

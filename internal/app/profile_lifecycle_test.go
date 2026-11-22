@@ -25,6 +25,7 @@ func TestProfileApplyRejectsServiceTransitionsBeforeValidation(t *testing.T) {
 	for _, state := range []string{"activating", "deactivating", "reloading"} {
 		t.Run(state, func(t *testing.T) {
 			a, s := installedApp(t)
+			addFixtureProfile(t, a, "test")
 			a.Service = &profileLifecycleService{Services: s, status: service.Status{State: state}}
 			a.Validate = func(context.Context, string, string, string) error {
 				t.Fatal("profile validation began during a service transition")
@@ -34,7 +35,7 @@ func TestProfileApplyRejectsServiceTransitionsBeforeValidation(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := a.Apply(t.Context(), "default"); err == nil || !strings.Contains(err.Error(), "changing state") {
+			if err := a.Apply(t.Context(), "test"); err == nil || !strings.Contains(err.Error(), "changing state") {
 				t.Fatalf("transition accepted: %v", err)
 			}
 			assertProfileApplyUntouched(t, a, s, before)
@@ -54,6 +55,7 @@ func TestProfileApplyRejectsLifecycleChangesDuringValidation(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			a, s := installedApp(t)
+			addFixtureProfile(t, a, "test")
 			svc := &profileLifecycleService{Services: s, status: tc.before}
 			a.Service = svc
 			a.Validate = func(context.Context, string, string, string) error {
@@ -64,7 +66,7 @@ func TestProfileApplyRejectsLifecycleChangesDuringValidation(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if err := a.Apply(t.Context(), "default"); err == nil || !strings.Contains(err.Error(), "service changed") {
+			if err := a.Apply(t.Context(), "test"); err == nil || !strings.Contains(err.Error(), "service changed") {
 				t.Fatalf("stale service observation accepted: %v", err)
 			}
 			assertProfileApplyUntouched(t, a, s, before)
@@ -90,6 +92,7 @@ func assertProfileApplyUntouched(t *testing.T, a *App, s *fakeService, before st
 
 func TestProfileApplyJournalGuardsBothGenerations(t *testing.T) {
 	a, s := installedApp(t)
+	addFixtureProfile(t, a, "test")
 	s.active = true
 	_, old, err := a.load()
 	if err != nil {
@@ -115,7 +118,7 @@ func TestProfileApplyJournalGuardsBothGenerations(t *testing.T) {
 		}
 		return errors.New("restart failed after inspecting guarded journal")
 	}
-	if err := a.Apply(t.Context(), "default"); err == nil || !checked {
+	if err := a.Apply(t.Context(), "test"); err == nil || !checked {
 		t.Fatalf("failed apply did not expose guarded recovery: %v", err)
 	}
 	_, restored, err := a.load()

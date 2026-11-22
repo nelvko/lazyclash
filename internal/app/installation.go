@@ -33,6 +33,13 @@ type manifest struct {
 	BinarySHA    string       `json:"binary_sha256"`
 }
 
+func (m manifest) selectedProfile() string {
+	if m.Applied == "default" {
+		return ""
+	}
+	return m.Applied
+}
+
 var generationName = regexp.MustCompile(`^generations/g-[a-f0-9]{24}$`)
 
 func (a *App) paths() (string, string, string) {

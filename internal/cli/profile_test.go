@@ -121,7 +121,7 @@ func TestProfileOverridesAndDeletionWithoutInstallation(t *testing.T) {
 		t.Fatal(err)
 	}
 	profiles, err := a.ListProfiles(t.Context())
-	if err != nil || len(profiles) != 1 {
+	if err != nil || len(profiles) != 0 {
 		t.Fatal("profile deletion left a saved entry", profiles, err)
 	}
 	if service.installs != 0 || service.actions != 0 {
@@ -159,10 +159,10 @@ func TestProfileCLIAutomaticNamesRenameAndURLKeepStableID(t *testing.T) {
 		t.Fatal(err)
 	}
 	profiles, err := a.ListProfiles(t.Context())
-	if err != nil || len(profiles) != 2 || profiles[1].Name != providerName || profiles[1].NameSource != "provider" || profiles[1].ID == "" {
+	if err != nil || len(profiles) != 1 || profiles[0].Name != providerName || profiles[0].NameSource != "provider" || profiles[0].ID == "" {
 		t.Fatalf("automatic CLI name: %+v %v", profiles, err)
 	}
-	id := profiles[1].ID
+	id := profiles[0].ID
 	if _, err := runProfileCLI(t, a, "rename", id, "我的机场"); err != nil {
 		t.Fatal(err)
 	}
@@ -197,5 +197,68 @@ func TestProfileCLIAutomaticNamesRenameAndURLKeepStableID(t *testing.T) {
 	}
 	if service.actions != 0 || service.installs != 0 {
 		t.Fatal("metadata commands changed the core lifecycle")
+	}
+}
+
+func TestProfileCLIEmptyLibraryAndExplicitDeleteIntent(t *testing.T) {
+	a, _ := installBackend(t)
+	list, err := runProfileCLI(t, a, "list")
+	if err != nil || strings.TrimSpace(list) != "[]" {
+		t.Fatalf("expected an empty saved library, got %s, %v", list, err)
+	}
+	if _, err := runProfileCLI(t, a, "deactivate"); err != nil {
+		t.Fatal("deactivate should be idempotent with no selection", err)
+	}
+	source := writeCLIConfig(t, "rules: ['MATCH,DIRECT']\n")
+	if _, err := runProfileCLI(t, a, "add", source, "--name", "work"); err != nil {
+		t.Fatal(err)
+	}
+	for _, args := range [][]string{
+		{"show", "default"}, {"apply", "default"},
+		{"delete", "work", "--use", ""}, {"delete", "work", "--use", "default"},
+		{"delete", "work", "--use", "work", "--no-profile"}, {"delete", "work", "--no-profile"},
+	} {
+		if _, err := runProfileCLI(t, a, args...); err == nil {
+			t.Fatalf("accepted invalid operation %q", args)
+		}
+	}
+	if _, err := a.ProfileDetails(t.Context(), "work"); err != nil {
+		t.Fatal("invalid delete removed the profile", err)
+	}
+}
+
+func TestProfileCLIUserNamedDefaultRemainsAnOrdinarySubscription(t *testing.T) {
+	a, _ := installBackend(t)
+	binary := filepath.Join(t.TempDir(), "mihomo")
+	if err := os.WriteFile(binary, []byte("fixture core"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Install(t.Context(), binary, nil); err != nil {
+		t.Fatal(err)
+	}
+	source := writeCLIConfig(t, "rules: ['MATCH,REJECT']\n")
+	for _, args := range [][]string{
+		{"add", source, "--name", "default"}, {"add", source, "--name", "other"},
+		{"apply", "default"}, {"apply", "other"}, {"delete", "other", "--use", "default"},
+	} {
+		if _, err := runProfileCLI(t, a, args...); err != nil {
+			t.Fatalf("%v: %v", args, err)
+		}
+	}
+	raw, err := runProfileCLI(t, a, "show", "default")
+	var profile app.ProfileInfo
+	if err != nil || json.Unmarshal([]byte(raw), &profile) != nil || profile.Name != "default" || profile.ID == "default" || profile.ID == "" {
+		t.Fatal("default label did not resolve to the saved user profile", raw, err)
+	}
+	s, err := a.Snapshot(t.Context())
+	if err != nil || s.Applied != profile.ID || s.AppliedName != profile.Name || len(s.Profiles) != 1 {
+		t.Fatal("replacement did not apply the user-provided profile", s, err)
+	}
+	if _, err := runProfileCLI(t, a, "delete", "default", "--no-profile"); err != nil {
+		t.Fatal(err)
+	}
+	s, err = a.Snapshot(t.Context())
+	if err != nil || s.Applied != "" || s.AppliedName != "" || len(s.Profiles) != 0 || len(s.ProfileDetails) != 0 || s.Service.Active {
+		t.Fatal("last-profile deletion did not leave the installed instance stopped with no subscription", s, err)
 	}
 }

@@ -386,11 +386,11 @@ func TestCustomRulesDefaultRemainsReadOnly(t *testing.T) {
 			if installed {
 				a, _ = installedApp(t)
 			}
-			for _, profile := range []string{"", "default"} {
-				_, err := a.GetCustomRules(t.Context(), profile)
-				customRulesDiagnostic(t, err, "diagnostic.customRules.readOnly")
-			}
-			_, err := a.SaveCustomRules(t.Context(), CustomRulesDraft{ProfileID: "default", Token: "forged", Rules: []string{"MATCH,REJECT"}})
+			_, err := a.GetCustomRules(t.Context(), "")
+			customRulesDiagnostic(t, err, "diagnostic.customRules.readOnly")
+			_, err = a.GetCustomRules(t.Context(), "default")
+			customRulesDiagnostic(t, err, "diagnostic.profile.missing")
+			_, err = a.SaveCustomRules(t.Context(), CustomRulesDraft{ProfileID: "default", Token: "forged", Rules: []string{"MATCH,REJECT"}})
 			customRulesDiagnostic(t, err, "diagnostic.customRules.readOnly")
 			err = a.ApplyCustomRules(t.Context(), CustomRulesDraft{ProfileID: "default", Token: "forged", Rules: []string{"MATCH,REJECT"}})
 			customRulesDiagnostic(t, err, "diagnostic.customRules.readOnly")

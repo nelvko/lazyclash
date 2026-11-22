@@ -44,9 +44,9 @@
   "cli.command.profile.url.short": "替换并验证配置保存的来源地址",
   "cli.command.profile.refresh.short": "从保存的订阅地址刷新配置，需另行应用",
   "cli.command.profile.override.short": "保存 YAML set/prepend-rules/append-rules 覆写，需另行应用",
-  "cli.command.profile.delete.short": "删除未使用的配置",
+  "cli.command.profile.delete.short": "删除已保存的配置",
   "cli.command.profile.show.short": "显示配置来源和验证状态，隐藏订阅凭据",
-  "cli.command.profile.apply.short": "应用已保存或默认配置，失败时回滚",
+  "cli.command.profile.apply.short": "应用已保存的配置，失败时回滚",
   "cli.command.profile.list.short": "列出配置及验证状态",
   "cli.command.nodes.short": "以 JSON 输出当前代理组和节点",
   "cli.command.select.short": "在手动选择组中选择节点",
@@ -126,5 +126,8 @@
   "cli.shell.status": "Shell：%s\n已安装：%t\n已加载：%t\nHook 已确认：%t\n代理状态：%s\n存在待激活请求：%t",
   "cli.shell.uninstallPending": "卸载待完成。命令返回后，Shell 会恢复原始环境变量，随后移除集成引用。",
   "cli.shell.activationNotice": "终端代理请求已保存，Shell Integration 已安装。\n当前 Shell 尚未加载初始化脚本。\n请在当前终端执行以下命令完成首次激活：\n\n%s\n\n执行后立即应用最新请求，无须重新进入 TUI。",
-  "cli.flag.shell.status.json": "以 JSON 输出集成状态"
+  "cli.flag.shell.status.json": "以 JSON 输出集成状态",
+  "cli.command.profile.deactivate.short": "停用当前订阅，继续使用本机实例设置",
+  "cli.flag.profile.delete.use": "删除当前配置前，先应用指定的接替配置",
+  "cli.flag.profile.delete.no-profile": "删除当前配置前停用订阅，流量可能直连"
 }

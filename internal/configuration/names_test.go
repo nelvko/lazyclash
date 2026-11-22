@@ -126,8 +126,8 @@ func TestUniqueNameKeepsIdentityAndAvoidsAccumulatingSuffixes(t *testing.T) {
 			t.Fatal("update accumulated duplicate suffixes", entry.Name)
 		}
 	}
-	if got := UniqueName("DEFAULT", profiles, ""); got != "DEFAULT (1)" {
-		t.Fatal("built-in profile was not included in uniqueness", got)
+	if got := UniqueName("DEFAULT", profiles, ""); got != "DEFAULT" {
+		t.Fatal("the first saved profile may use the display name DEFAULT", got)
 	}
 	profiles["stable-first"] = ProfileRecord{Name: "Café Name", NameSource: NameCustom, NameBase: "Café Name"}
 	if got := UniqueName("CAFE\u0301\tNAME", profiles, ""); got != "CAFÉ NAME (1)" {

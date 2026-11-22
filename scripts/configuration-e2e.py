@@ -71,6 +71,7 @@ def main():
         value = status()
         manifest = json.loads((current / 'manifest.json').read_bytes())
         build = manifest['build']
+        assert value['MixedPort'] == initial['MixedPort'], 'profile replaced the instance port'
         assert value['Applied'] == profile_id and manifest['applied'] == profile_id, 'saved and observed profile identities differ'
         assert build['profile'] == profile_id and build['recipe']['revision'] == revision, 'generation does not pin the expected profile input'
         assert hashlib.sha256((current / 'config.yaml').read_bytes()).hexdigest() == manifest['config_sha256'], 'runtime file differs from its committed digest'
@@ -93,7 +94,8 @@ def main():
         second_path = work / 'second.yaml'
 
         def full(version):
-            return ('proxy-groups: [{name: FULL-E2E, type: select, proxies: [DIRECT, REJECT]}]\n'
+            return ('mixed-port: 7899\ntun: {enable: true, device: foreign}\n'
+                    'proxy-groups: [{name: FULL-E2E, type: select, proxies: [DIRECT, REJECT]}]\n'
                     'rules:\n - DOMAIN,download-v%s.invalid,DIRECT\n - MATCH,FULL-E2E\n' % version)
 
         def expected_full(version):
@@ -156,7 +158,7 @@ def main():
         accepted = inactive_blob.read_bytes()
         try:
             inactive_blob.write_bytes(b'corrupted inactive profile\n')
-            cli('profile', 'apply', second_profile, success=False)
+            cli('profile', 'delete', full_profile, '--use', second_profile, success=False)
             assert library.read_bytes() == saved_library and generation() == saved_generation and status()['Service']['PID'] == saved_pid, 'failed apply changed the profile library or running generation'
             runtime(full_profile, second_revision, expected_full(2))
         finally:
@@ -178,10 +180,14 @@ def main():
 
         public = cli('profile', 'list')
         assert str(work).encode() not in public, 'public profile listing exposed private refresh addresses'
+        reset_test_start_count()
+        cli('profile', 'delete', second_profile, '--use', full_profile)
+        runtime(full_profile, second_revision, expected_full(2))
+        cli('profile', 'delete', full_profile, '--no-profile')
+        idle = status()
+        assert idle['Applied'] == '' and idle['MixedPort'] == initial['MixedPort']
         cli('profile', 'apply', 'fixture')
         cli('select', 'PROXY', 'DIRECT')
-        for profile_id in (full_profile, second_profile):
-            cli('profile', 'delete', profile_id)
         profile_ids = {item['id'] for item in json.loads(cli('profile', 'list'))}
         assert not profile_ids.intersection({full_profile, second_profile})
         for revision in (first_revision, second_revision, imported_revision):

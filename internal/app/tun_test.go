@@ -49,7 +49,8 @@ func TestTUNTransactionPreservesStoppedIntentAndProfilePolicy(t *testing.T) {
 	if err != nil || !m.TUN || !s.policy || s.active || len(s.actions) != 0 {
 		t.Fatalf("stopped TUN intent lost: %+v %+v %v", m, s, err)
 	}
-	if err := a.Apply(t.Context(), "default"); err != nil {
+	addFixtureProfile(t, a, "test")
+	if err := a.Apply(t.Context(), "test"); err != nil {
 		t.Fatal(err)
 	}
 	_, cfg, _ := a.paths()

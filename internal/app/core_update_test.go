@@ -564,7 +564,8 @@ func TestUpgradeCoreRejectsUnreviewedEditedAndStaleChecks(t *testing.T) {
 			case "edited-status":
 				check.Status = mihomo.UpdateCurrent
 			case "stale-installation":
-				if err := a.Apply(t.Context(), "default"); err != nil {
+				addFixtureProfile(t, a, "test")
+				if err := a.Apply(t.Context(), "test"); err != nil {
 					t.Fatal(err)
 				}
 			case "other-home":

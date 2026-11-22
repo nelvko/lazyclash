@@ -107,7 +107,7 @@ func (a *App) prepareRuntimeSettingsLocked(ctx context.Context, proposed Runtime
 		return plan, m, target, nil, diagnostic.New("diagnostic.settings.serviceChanging", "service is changing state; wait and review the port settings again")
 	}
 	host, _, _ := net.SplitHostPort(m.Controller)
-	plan = RuntimeSettingsPlan{Current: manifestSettings(m), Proposed: proposed, ControllerHost: host, Active: status.Active, AppliedProfile: m.Applied}
+	plan = RuntimeSettingsPlan{Current: manifestSettings(m), Proposed: proposed, ControllerHost: host, Active: status.Active, AppliedProfile: m.selectedProfile()}
 	plan.Changed = plan.Current != plan.Proposed
 	controller := net.JoinHostPort(host, strconv.Itoa(proposed.ControllerPort))
 	// Read the actual applied generation, not the saved source: a raw profile
@@ -115,14 +115,6 @@ func (a *App) prepareRuntimeSettingsLocked(ctx context.Context, proposed Runtime
 	raw, err := store.Read(config)
 	if err != nil {
 		return plan, m, target, nil, err
-	}
-	// The saved generation may already contain the authorized application TUN
-	// policy. Strip it before validating ordinary profile inbounds, then reapply.
-	if m.TUN {
-		raw, err = mihomo.WithTUN(raw, false, a.Name)
-		if err != nil {
-			return plan, m, target, nil, err
-		}
 	}
 	effective, err := mihomo.Effective(raw, controller, m.Secret, proposed.MixedPort)
 	if err != nil {

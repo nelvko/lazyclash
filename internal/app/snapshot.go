@@ -72,7 +72,7 @@ func (a *App) Snapshot(ctx context.Context) (Snapshot, error) {
 			out.Version = m.Version
 			out.Controller = m.Controller
 			out.MixedPort = m.Port
-			out.Applied = m.Applied
+			out.Applied = m.selectedProfile()
 			out.Generation = generation
 			r, _, err := a.loadRuntimeRecord(m)
 			if err != nil {
@@ -121,14 +121,15 @@ func (a *App) Snapshot(ctx context.Context) (Snapshot, error) {
 		if err != nil {
 			return err
 		}
-		out.Profiles = []string{"default"}
+		out.Profiles = make([]string, 0, len(lib.Profiles))
+		out.ProfileDetails = make([]ProfileInfo, 0, len(lib.Profiles))
 		for name, entry := range lib.Profiles {
 			out.Profiles = append(out.Profiles, name)
 			if !entry.Validated {
 				out.UnvalidatedProfiles = append(out.UnvalidatedProfiles, name)
 			}
 		}
-		sort.Strings(out.Profiles[1:])
+		sort.Strings(out.Profiles)
 		sort.Strings(out.UnvalidatedProfiles)
 		for _, name := range out.Profiles {
 			info, err := a.profileInfo(lib, name, m, out.Installed)

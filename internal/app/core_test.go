@@ -178,7 +178,8 @@ func TestCoreRejectsStaleAndEditedPlansAndChangedLocalBinary(t *testing.T) {
 	if _, err := a.InstallCore(t.Context(), edited, downloadnet.Config{}, nil); err == nil {
 		t.Fatal("edited plan accepted")
 	}
-	if err := a.Apply(t.Context(), "default"); err != nil {
+	addFixtureProfile(t, a, "test")
+	if err := a.Apply(t.Context(), "test"); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := a.InstallCore(t.Context(), plan, downloadnet.Config{}, nil); err == nil || !strings.Contains(err.Error(), "since preflight") {

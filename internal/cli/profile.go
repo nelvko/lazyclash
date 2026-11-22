@@ -42,9 +42,33 @@ func newProfileCommand(backend func() *app.App) *cobra.Command {
 		}
 		return backend().SetProfileOverrides(cmd.Context(), args[0], raw)
 	}})
-	cmd.AddCommand(&cobra.Command{Use: "delete ID", Short: "Delete an unused profile", Args: exactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
-		return backend().DeleteProfile(cmd.Context(), args[0])
-	}})
+	var use string
+	var noProfile bool
+	remove := &cobra.Command{Use: "delete ID", Short: "Delete a saved profile", Args: exactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+		replacement := strings.TrimSpace(use)
+		if cmd.Flags().Changed("use") && replacement == "" {
+			return diagnostic.New("diagnostic.cli.replacementRequired", "--use requires a saved replacement profile")
+		}
+		a := backend()
+		target, err := a.ProfileDetails(cmd.Context(), args[0])
+		if err != nil {
+			return err
+		}
+		if noProfile {
+			replacement = "default"
+		} else if replacement != "" {
+			next, err := a.ProfileDetails(cmd.Context(), replacement)
+			if err != nil {
+				return err
+			}
+			replacement = next.ID
+		}
+		return a.DeleteProfileWithReplacement(cmd.Context(), target.ID, replacement)
+	}}
+	remove.Flags().StringVar(&use, "use", "", "Apply this profile before deleting the selected profile")
+	remove.Flags().BoolVar(&noProfile, "no-profile", false, "Deactivate the selected profile before deleting it")
+	remove.MarkFlagsMutuallyExclusive("use", "no-profile")
+	cmd.AddCommand(remove)
 	cmd.AddCommand(&cobra.Command{Use: "show ID", Short: "Show profile origin and validation state without subscription credentials", Args: exactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		details, err := backend().ProfileDetails(cmd.Context(), args[0])
 		if err != nil {
@@ -52,8 +76,11 @@ func newProfileCommand(backend func() *app.App) *cobra.Command {
 		}
 		return writeJSON(cmd, details)
 	}})
-	cmd.AddCommand(&cobra.Command{Use: "apply ID", Short: "Apply a saved profile or default, with rollback on failure", Args: exactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd.AddCommand(&cobra.Command{Use: "apply ID", Short: "Apply a saved profile, with rollback on failure", Args: exactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		return backend().Apply(cmd.Context(), args[0])
+	}})
+	cmd.AddCommand(&cobra.Command{Use: "deactivate", Short: "Deactivate the selected profile and use the local instance settings", Args: noArgs, RunE: func(cmd *cobra.Command, args []string) error {
+		return backend().DeactivateProfile(cmd.Context(), "")
 	}})
 	cmd.AddCommand(&cobra.Command{Use: "list", Short: "List profiles and validation state", Args: noArgs, RunE: func(cmd *cobra.Command, args []string) error {
 		profiles, err := backend().ListProfiles(cmd.Context())

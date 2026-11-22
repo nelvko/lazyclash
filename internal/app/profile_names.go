@@ -32,9 +32,6 @@ func configurationID(lib configuration.Library, preferred string) (string, error
 }
 
 func resolveProfileID(lib configuration.Library, reference string) (string, error) {
-	if reference == "default" {
-		return reference, nil
-	}
 	if _, ok := lib.Profiles[reference]; ok {
 		return reference, nil
 	}
@@ -70,9 +67,6 @@ func (a *App) RenameProfile(ctx context.Context, reference, name string) error {
 		if err != nil {
 			return err
 		}
-		if id == "default" {
-			return diagnostic.New("diagnostic.profile.builtinRename", "the built-in profile cannot be renamed")
-		}
 		nameProfile(&lib, id, configuration.NameCandidate{Name: name, Source: "custom"})
 		if err := ctx.Err(); err != nil {
 			return err
@@ -94,9 +88,6 @@ func (a *App) UpdateProfileDescription(ctx context.Context, reference, descripti
 		id, err := resolveProfileID(lib, reference)
 		if err != nil {
 			return err
-		}
-		if id == "default" {
-			return diagnostic.New("diagnostic.profile.builtinDescription", "the built-in profile cannot be edited")
 		}
 		entry, ok := lib.Profiles[id]
 		if !ok {

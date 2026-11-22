@@ -109,20 +109,22 @@ func (a *App) profileInfo(lib configuration.Library, name string, m manifest, in
 	if err != nil {
 		return ProfileInfo{}, err
 	}
-	info := ProfileInfo{ID: name, Name: name, NameSource: configuration.NameCustom, NameBase: name, Core: "mihomo", Kind: "builtin", Origin: "Built-in", Validated: installed && name == "default"}
-	if record.Recipe != nil {
-		entry := lib.Profiles[name]
-		info.Name, info.Description, info.NameSource, info.NameBase = entry.Name, entry.Description, entry.NameSource, entry.NameBase
-		info.Core, info.Refreshable, info.UpdatedAt = entry.Spec.Core, entry.Address != "", entry.UpdatedAt
-		info.Kind, info.Origin = "imported", "Imported file"
-		if entry.Address != "" {
-			info.Kind, info.Origin = "local", "Local file"
-			if address, err := url.Parse(entry.Address); err == nil && (address.Scheme == "http" || address.Scheme == "https") {
-				info.Kind, info.Origin = "remote", address.Hostname()
-			}
+	entry, ok := lib.Profiles[name]
+	if !ok {
+		return ProfileInfo{}, diagnostic.New("diagnostic.profile.missing", "profile does not exist")
+	}
+	info := ProfileInfo{
+		ID: name, Name: entry.Name, Description: entry.Description,
+		NameSource: entry.NameSource, NameBase: entry.NameBase,
+		Core: entry.Spec.Core, Refreshable: entry.Address != "", UpdatedAt: entry.UpdatedAt,
+		Kind: "imported", Origin: "Imported file", Validated: entry.Validated,
+		HasOverrides: entry.Spec.Overrides != "",
+	}
+	if info.Refreshable {
+		info.Kind, info.Origin = "local", "Local file"
+		if address, err := url.Parse(entry.Address); err == nil && (address.Scheme == "http" || address.Scheme == "https") {
+			info.Kind, info.Origin = "remote", address.Hostname()
 		}
-		info.Validated = entry.Validated
-		info.HasOverrides = record.Recipe.Overrides != ""
 	}
 	info.Pending = installed && m.Applied == name && (m.Build == nil || m.Build.fingerprint() != record.fingerprint())
 	return info, nil
@@ -144,7 +146,7 @@ func (a *App) ListProfiles(ctx context.Context) ([]ProfileInfo, error) {
 			names = append(names, name)
 		}
 		sort.Strings(names)
-		for _, name := range append([]string{"default"}, names...) {
+		for _, name := range names {
 			info, err := a.profileInfo(lib, name, m, installed)
 			if err != nil {
 				return err
@@ -215,26 +217,60 @@ func (a *App) SetProfileOverrides(ctx context.Context, name string, raw []byte) 
 }
 
 func (a *App) DeleteProfile(ctx context.Context, name string) error {
+	return a.DeleteProfileWithReplacement(ctx, name, "")
+}
+
+// DeleteProfileWithReplacement switches away from the reviewed selection before
+// deleting it. Both arguments identify stable IDs, never display names.
+// An interruption between those two commits leaves the old record
+// available for an ordinary delete, with a valid selection at every point.
+func (a *App) DeleteProfileWithReplacement(ctx context.Context, id, replacementID string) error {
 	return a.locked(ctx, func() error {
 		lib, old, err := a.library().Load()
 		if err != nil {
 			return err
 		}
-		name, err = resolveProfileID(lib, name)
-		if err != nil {
-			return err
-		}
-		if _, ok := lib.Profiles[name]; !ok {
+		entry, ok := lib.Profiles[id]
+		if !ok {
 			return diagnostic.New("diagnostic.profile.missing", "profile does not exist")
 		}
 		m, installed, err := a.buildContext()
 		if err != nil {
 			return err
 		}
-		if installed && m.Applied == name {
-			return diagnostic.New("diagnostic.profile.deleteSelected", "apply another profile before deleting the selected profile")
+		if !installed || m.Applied != id {
+			if replacementID != "" {
+				return diagnostic.New("diagnostic.profile.deleteSelectionChanged", "the profile is no longer selected; review the deletion again")
+			}
+			delete(lib.Profiles, id)
+			return a.library().Save(lib, old)
 		}
-		delete(lib.Profiles, name)
-		return a.library().Save(lib, old)
+		if replacementID == "" {
+			return diagnostic.New("diagnostic.profile.deleteSelected", "choose a replacement profile or confirm using no subscription before deleting the selected profile")
+		}
+		if replacementID != "default" {
+			if _, ok := lib.Profiles[replacementID]; !ok {
+				return diagnostic.New("diagnostic.profile.missing", "profile does not exist")
+			}
+		}
+		if id == replacementID {
+			return diagnostic.New("diagnostic.profile.deleteSame", "choose a different replacement profile")
+		}
+		if err := a.applyProfileLocked(ctx, lib, replacementID, nil); err != nil {
+			return err
+		}
+		// Apply may have marked the replacement's revision validated.
+		lib, old, err = a.library().Load()
+		if err == nil && lib.Profiles[id] != entry {
+			return diagnostic.New("diagnostic.profile.deleteTargetChanged", "selection changed; review the updated profile before deleting it")
+		}
+		if err == nil {
+			delete(lib.Profiles, id)
+			err = a.library().Save(lib, old)
+		}
+		if err != nil {
+			return diagnostic.New("diagnostic.profile.deleteAfterSwitch", "selection changed, but the profile could not be removed: %w", err)
+		}
+		return nil
 	})
 }

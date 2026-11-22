@@ -1,5 +1,5 @@
 {
-  "diagnostic.customRules.readOnly": "the built-in default profile is read only; choose a saved profile to customize rules",
+  "diagnostic.customRules.readOnly": "select a saved profile to customize its rules",
   "diagnostic.customRules.takeover": "this profile replaces the complete rules list; remove set.rules before editing custom rules",
   "diagnostic.customRules.conflict": "profile configuration changed while editing custom rules; reload and retry",
   "diagnostic.customRules.invalidRules": "custom rules must be nonempty single-line strings without control characters",

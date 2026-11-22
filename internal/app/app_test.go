@@ -362,7 +362,7 @@ func TestApplyStoppedOnlyStagesAndActiveFailureRestoresConfigAndSelection(t *tes
 		}
 		return nil
 	}
-	if err := a.Apply(t.Context(), "default"); err == nil || !strings.Contains(err.Error(), "failed restart") {
+	if err := a.DeactivateProfile(t.Context(), ""); err == nil || !strings.Contains(err.Error(), "failed restart") {
 		t.Fatalf("missing restart failure: %v", err)
 	}
 	restored, actual, err := a.load()
@@ -402,7 +402,7 @@ func TestApplyRecoveryRetainsJournalUntilServiceCanBeRecovered(t *testing.T) {
 	}
 	s.actionHook = nil
 	snap, err := a.Snapshot(t.Context())
-	if err != nil || !snap.Installed || snap.Applied != "default" {
+	if err != nil || !snap.Installed || snap.Applied != "" {
 		t.Fatalf("recovery failed: %+v %v", snap, err)
 	}
 	assertMissing(t, filepath.Join(a.Home, "apply-pending.json"))
@@ -479,7 +479,7 @@ func TestPendingApplyFromInterruptedProcessRollsBackOnNextOperation(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	if snap.Applied != "default" || len(s.actions) != 0 {
+	if snap.Applied != "" || len(s.actions) != 0 {
 		t.Fatalf("unexpected recovered state: %+v", snap)
 	}
 	_, current, err := a.load()
@@ -498,7 +498,7 @@ func TestCancelledLockWaitDoesNotMutateState(t *testing.T) {
 	defer unlock()
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if err := a.Apply(ctx, "default"); !errors.Is(err, context.Canceled) {
+	if err := a.DeactivateProfile(ctx, ""); !errors.Is(err, context.Canceled) {
 		t.Fatalf("lock cancellation lost: %v", err)
 	}
 	assertMissing(t, filepath.Join(a.Home, "apply-pending.json"))
