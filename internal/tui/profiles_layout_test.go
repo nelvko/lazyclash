@@ -93,7 +93,7 @@ func TestProfileCardShowsRemainingFractionAndOptionalExpiry(t *testing.T) {
 	info.Pending = true
 	info.Quota = &configuration.SubscriptionQuota{TotalBytes: 100, UsedBytes: 50, ExpiresAt: date.Unix()}
 	narrow := m.profileCard(0, 34)
-	if p := ansi.Strip(strings.Join(narrow.lines, "\n")); !strings.Contains(p, "50 B / 100 B left") || strings.Contains(p, "Expires") || !strings.Contains(p, "CHANGES PENDING") {
+	if p := ansi.Strip(strings.Join(narrow.lines, "\n")); !strings.Contains(p, "50 B / 100 B left") || strings.Contains(p, "Expires") || !strings.Contains(p, "Pending changes") {
 		t.Fatal("narrow card lost balance or action", p)
 	}
 	if p := ansi.Strip(strings.Join(m.profileDetailsPane(info.ID, 50).lines, "\n")); !strings.Contains(p, "Expires 2030-01-02") || !strings.Contains(p, "50 B / 100 B left") {

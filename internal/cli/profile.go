@@ -32,7 +32,7 @@ func newProfileCommand(backend func() *app.App) *cobra.Command {
 	cmd.AddCommand(&cobra.Command{Use: "url ID SOURCE", Short: "Replace and validate a profile's remembered address", Args: exactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {
 		return backend().UpdateProfileAddress(cmd.Context(), args[0], args[1])
 	}})
-	cmd.AddCommand(&cobra.Command{Use: "refresh ID", Short: "Refresh a profile's remembered subscription; apply separately", Args: exactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
+	cmd.AddCommand(&cobra.Command{Use: "refresh ID", Short: "Refresh a saved source and apply changes if this profile is selected", Args: exactArgs(1), RunE: func(cmd *cobra.Command, args []string) error {
 		return backend().Refresh(cmd.Context(), args[0])
 	}})
 	cmd.AddCommand(&cobra.Command{Use: "override ID FILE", Short: "Save a YAML set/prepend-rules/append-rules override; apply separately", Args: exactArgs(2), RunE: func(cmd *cobra.Command, args []string) error {

@@ -165,7 +165,7 @@
   "help.profiles.rename": "重命名后，订阅更新会保留自定义名称；编辑地址可替换配置的下载地址。",
   "help.profiles.grid": "方向键 / hjkl 浏览卡片；← / h 仍在网格内移动。Enter 打开详情。Esc 先关闭详情并返回原卡片，再返回导航。使用配置 / 应用更改将其加载到内核。",
   "help.profiles.actions": "Tab / Shift+Tab：访问各项操作，包括可视区域外的控件。Esc 关闭详情。",
-  "help.profiles.update": "更新 / 全部更新仅保存配置更改，不将其加载到内核。",
+  "help.profiles.update": "更新会重新读取来源。当前订阅的变化自动生效，手动覆写需另行应用。",
   "help.profiles.overrides": "覆写会导入独立的覆写 YAML 草稿。",
   "help.profiles.delete": "删除时需输入完整显示名称。正在使用的配置受保护。",
   "help.connections.keys": "列表：/ 搜索 · v 活跃/已关闭 · s 切换排序 · S 反转顺序 · p 暂停/继续显示。同一表头点一次排序，两次反转，三次恢复最新优先。聚焦连接时 Enter 查看详情；详情中 Esc 返回列表。",

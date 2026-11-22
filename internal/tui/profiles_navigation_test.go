@@ -324,7 +324,7 @@ func TestProfileCardEnterOpensDetailsAndApplyIsExplicit(t *testing.T) {
 	}
 }
 
-func TestProfileRefreshButtonAndUpdateAllDoNotOpenOrApplyCards(t *testing.T) {
+func TestProfileRefreshControlsKeepTheCurrentSelection(t *testing.T) {
 	var refreshed string
 	refreshes, all := 0, 0
 	b := &fakeBackend{
@@ -346,7 +346,7 @@ func TestProfileRefreshButtonAndUpdateAllDoNotOpenOrApplyCards(t *testing.T) {
 	m.layout()
 	m, cmd = click(m, findTarget(t, m, "profiles.update-all"))
 	m = finishProfileJob(t, m, cmd)
-	if all != 1 || backend.applied != 0 || m.snapshot.Applied != "default" || !strings.Contains(m.message, "apply a profile") {
+	if all != 1 || backend.applied != 0 || m.snapshot.Applied != "default" || m.message != m.tr("profiles.updated_all") {
 		t.Fatal("Update all bypassed the shared refresh use case or changed the runtime")
 	}
 	m.focus = "profile.0"

@@ -165,7 +165,7 @@
   "help.profiles.rename": "Rename preserves your custom display name across subscription updates; Edit address replaces a profile's download address.",
   "help.profiles.grid": "Arrows / hjkl browses cards; ← / h stays in the grid. Enter opens details. Esc closes details and restores the card, then returns to navigation. Use profile / Apply changes loads a profile.",
   "help.profiles.actions": "Tab / Shift+Tab: visit actions, including controls below the fold. Esc closes details.",
-  "help.profiles.update": "Update / Update all saves configuration changes without loading them into the core.",
+  "help.profiles.update": "Update refreshes the saved source. Changes to the selected profile take effect automatically. Manual overrides wait for Apply.",
   "help.profiles.overrides": "Overrides imports a separate overrides YAML draft.",
   "help.profiles.delete": "Delete requires the exact display name. The profile currently in use is protected.",
   "help.connections.keys": "List: / search · v active/closed · s next sort · S reverse · p pause/resume display. Click a column to sort, again to reverse, and a third time for newest first. Enter opens the focused connection; Esc returns from details.",

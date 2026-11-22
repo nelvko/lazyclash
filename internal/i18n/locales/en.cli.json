@@ -42,7 +42,7 @@
   "cli.command.profile.add.short": "Import and automatically name a URL or absolute YAML path",
   "cli.command.profile.rename.short": "Change a profile's display name while preserving its ID",
   "cli.command.profile.url.short": "Replace and validate a profile's remembered address",
-  "cli.command.profile.refresh.short": "Refresh a profile's remembered subscription; apply separately",
+  "cli.command.profile.refresh.short": "Refresh a saved source and apply changes if this profile is selected",
   "cli.command.profile.override.short": "Save a YAML set/prepend-rules/append-rules override; apply separately",
   "cli.command.profile.delete.short": "Delete a saved profile",
   "cli.command.profile.show.short": "Show profile origin and validation state without subscription credentials",

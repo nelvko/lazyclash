@@ -42,7 +42,7 @@
   "cli.command.profile.add.short": "从 URL 或 YAML 绝对路径导入配置并自动命名",
   "cli.command.profile.rename.short": "修改配置显示名称，保留配置 ID",
   "cli.command.profile.url.short": "替换并验证配置保存的来源地址",
-  "cli.command.profile.refresh.short": "从保存的订阅地址刷新配置，需另行应用",
+  "cli.command.profile.refresh.short": "刷新保存的来源，自动应用当前订阅的变化",
   "cli.command.profile.override.short": "保存 YAML set/prepend-rules/append-rules 覆写，需另行应用",
   "cli.command.profile.delete.short": "删除已保存的配置",
   "cli.command.profile.show.short": "显示配置来源和验证状态，隐藏订阅凭据",

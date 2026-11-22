@@ -290,7 +290,7 @@ func TestProfilePageShowsPendingChangesAndAccurateActionRows(t *testing.T) {
 	m.profilesUI.detail = "work"
 	body, hits := m.pageBody(150)
 	plain := ansi.Strip(body)
-	for _, text := range []string{"Paste subscription URL or local path", "Add", "New profile", "CHANGES PENDING", "Apply to load", "Apply changes", "Overrides"} {
+	for _, text := range []string{"Paste subscription URL or local path", "Add", "New profile", "Pending changes", "Apply changes", "Overrides"} {
 		if !strings.Contains(plain, text) {
 			t.Fatalf("missing %q in profiles page", text)
 		}
