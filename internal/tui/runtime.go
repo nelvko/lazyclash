@@ -376,6 +376,14 @@ func (m *Model) acceptRuntimeEvent(event app.RuntimeEvent) bool {
 		s.Connections, s.ConnectionsError, s.ConnectionsDiagnostic = event.Connections, "", nil
 		if event.Err != nil {
 			s.Connections, s.ConnectionsError, s.ConnectionsDiagnostic = nil, event.Err.Error(), event.Err
+		} else if s.Connections != nil {
+			// Once a fresh sample follows a successful DELETE, a still-active
+			// lifetime can be retried. Queued older samples cannot rearm it.
+			for id, request := range m.connections.closeRequests {
+				if !request.acknowledged.IsZero() && at.After(request.acknowledged) {
+					delete(m.connections.closeRequests, id)
+				}
+			}
 		}
 		// Per-connection rates use this source's timestamp, never the most recent
 		// traffic/memory/status notification.

@@ -388,6 +388,45 @@ func TestCloseConnectionRechecksExactIDWithoutCloseAll(t *testing.T) {
 	}
 }
 
+func TestCloseObservedConnectionRechecksStartBeforeDeleting(t *testing.T) {
+	current := monitorConnection(monitorConnectionID)
+	for _, test := range []struct {
+		name           string
+		observed, live time.Time
+		wantDelete     bool
+	}{
+		{"same lifetime", current.Start.In(time.FixedZone("UTC+8", 8*3600)), current.Start, true},
+		{"reused ID", current.Start, current.Start.Add(time.Nanosecond), false},
+		{"unknown observed start", time.Time{}, current.Start, false},
+		{"unknown live start", current.Start, time.Time{}, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			a, svc := installedApp(t)
+			svc.active = true
+			var reads, deletes atomic.Int32
+			monitorFixture(t, a, func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case r.Method == http.MethodGet && r.URL.Path == "/connections":
+					reads.Add(1)
+					connection := current
+					connection.Start = test.live
+					monitorResponse(w, r, mihomo.ConnectionSnapshot{Connections: []mihomo.Connection{connection}})
+				case r.Method == http.MethodDelete && r.URL.Path == "/connections/"+current.ID:
+					deletes.Add(1)
+					w.WriteHeader(http.StatusNoContent)
+				default:
+					t.Errorf("unexpected request %s %s", r.Method, r.URL)
+					w.WriteHeader(http.StatusBadRequest)
+				}
+			})
+			err := a.CloseObservedConnection(t.Context(), current.ID, test.observed)
+			if reads.Load() != 1 || (err == nil) != test.wantDelete || deletes.Load() > 1 || (deletes.Load() == 1) != test.wantDelete {
+				t.Fatalf("observed=%v live=%v: reads=%d deletes=%d err=%v", test.observed, test.live, reads.Load(), deletes.Load(), err)
+			}
+		})
+	}
+}
+
 func TestCloseAllConnectionsUsesBulkEndpointWithoutListingRows(t *testing.T) {
 	a, svc := installedApp(t)
 	svc.active = true

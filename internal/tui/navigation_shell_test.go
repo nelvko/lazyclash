@@ -35,7 +35,7 @@ func TestNavigationShellBusyNoticeCancelsRealOperationWithoutQuitting(t *testing
 
 func TestNavigationShellConnectionConfirmationOwnsPageShortcuts(t *testing.T) {
 	m := connectionsModel(t, &fakeBackend{})
-	m, _ = update(m, key("x"))
+	m, _ = click(m, findTarget(t, m, "conn.close-all"))
 	for _, digit := range []string{"1", "2", "3", "4", "5", "6", "7"} {
 		m, _ = update(m, key(digit))
 		if m.page != "connections" || !m.connections.confirming || m.focus != "conn.cancel" {

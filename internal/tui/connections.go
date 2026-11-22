@@ -15,6 +15,12 @@ import (
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
 
+type connectionCloseRequest struct {
+	start        time.Time
+	job          uint64
+	acknowledged time.Time
+}
+
 type connectionsState struct {
 	search                          textinput.Model
 	editing                         bool
@@ -26,7 +32,7 @@ type connectionsState struct {
 	detailBounds     hitRegion
 	detail           *mihomo.Connection
 	confirming       bool
-	closeAll         bool
+	closeRequests    map[string]connectionCloseRequest
 	closedView       bool
 	history          connectionHistoryState
 	frozenClosed     []closedConnection
@@ -51,6 +57,9 @@ func (m *Model) observeConnections(at time.Time) {
 	}
 	generation := m.connections.history.generation
 	m.connections.history.observe(snapshot, at, 0, m.runtime.installation)
+	if generation != m.connections.history.generation {
+		clear(m.connections.closeRequests)
+	}
 	if m.connections.paused {
 		stale := generation != m.connections.history.generation || snapshot.State != "ready" || snapshot.Connections == nil || m.connections.frozenPID != snapshot.Service.PID || m.connections.frozenVersion != snapshot.RunningVersion
 		if !stale && m.connections.frozen != nil {
@@ -64,6 +73,20 @@ func (m *Model) observeConnections(at time.Time) {
 	}
 	m.connections.rates.observe(snapshot, at)
 	m.reconcileConnections()
+}
+
+func (s *connectionsState) finishCloseRequest(result resultMsg) {
+	for id, request := range s.closeRequests {
+		if request.job != result.id {
+			continue
+		}
+		if result.actionSucceeded {
+			request.acknowledged = time.Now()
+			s.closeRequests[id] = request
+		} else {
+			delete(s.closeRequests, id)
+		}
+	}
 }
 
 // Pause freezes this page's observation; runtime monitoring and exact-ID close
@@ -131,6 +154,15 @@ func (m *Model) reconcileConnections() {
 }
 func (m *Model) detailActive() bool {
 	return m.connections.detail != nil && !m.connections.detailHistorical && m.connections.detailGeneration == m.connections.history.generation && m.connectionActive(*m.connections.detail)
+}
+
+func (m *Model) canCloseDetail() bool {
+	if m.busy || m.quitting || !m.detailActive() {
+		return false
+	}
+	c := m.connections.detail
+	r, requested := m.connections.closeRequests[c.ID]
+	return !requested || !r.start.Equal(c.Start)
 }
 
 func (m *Model) connectionActive(connection mihomo.Connection) bool {
@@ -204,7 +236,7 @@ func (m *Model) connectionKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 		case "y":
 			return true, m.connectionActivate("conn.confirm")
 		case "tab", "shift+tab":
-			if m.focus == "conn.cancel" && m.connectionConfirmVisible() {
+			if m.focus == "conn.cancel" && m.connectionActionVisible("conn.confirm") {
 				m.focus = "conn.confirm"
 			} else {
 				m.focus = "conn.cancel"
@@ -236,11 +268,10 @@ func (m *Model) connectionKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 	case "/":
 		return true, m.focusConnectionSearch()
 	case "x":
-		if m.connections.closedView {
-			return true, nil
+		if !m.connections.closedView {
+			m.openSelectedConnection()
 		}
-		m.openSelectedConnection()
-		return true, m.connectionActivate("conn.close")
+		return true, nil
 	case "down", "j", "up", "k", "home", "end", "pgup", "pgdown":
 		list := m.filteredConnections()
 		if len(list) == 0 {
@@ -286,8 +317,8 @@ func (m *Model) connectionKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 	}
 	return false, nil
 }
-func (m *Model) connectionConfirmVisible() bool {
-	return slices.ContainsFunc(m.targets, func(hit hitRegion) bool { return hit.ID == "conn.confirm" })
+func (m *Model) connectionActionVisible(id string) bool {
+	return slices.ContainsFunc(m.targets, func(hit hitRegion) bool { return hit.ID == id })
 }
 func (m *Model) revealConnection(_ int) {
 	g := dashboardGeometry(m.dashboardOptions())
@@ -319,7 +350,6 @@ func (m *Model) openSelectedConnection() {
 			if entry, ok := m.closedEntry(c); m.connections.closedView && ok {
 				m.connections.detailClosedAt = entry.ClosedAt
 			}
-			m.connections.confirming = false
 			m.hover = ""
 			m.focus = "conn.back"
 			return
@@ -340,7 +370,7 @@ func (m *Model) connectionActivate(id string) tea.Cmd {
 		if !m.connectionSortAllowed(m.connections.sort) {
 			m.connections.sort, m.connections.sortReversed = connectionSortNewest, false
 		}
-		m.connections.detail, m.connections.confirming = nil, false
+		m.connections.detail = nil
 		m.connections.selected, m.connections.selectedIndex = "", 0
 		m.scroll, m.focus = 0, id
 		m.reconcileConnections()
@@ -400,13 +430,12 @@ func (m *Model) connectionActivate(id string) tea.Cmd {
 		}
 	case id == "conn.close-all":
 		if !m.connections.confirming && m.canCloseAllConnections() {
-			m.connections.confirming, m.connections.closeAll = true, true
+			m.connections.confirming = true
 			m.hover, m.focus = "", "conn.cancel"
 		}
 	case id == "conn.back":
 		m.connections.detail = nil
 		m.connections.detailViewport = nil
-		m.connections.confirming = false
 		m.hover = ""
 		m.focus = "connection." + m.connections.selected
 		m.reconcileConnections()
@@ -419,58 +448,40 @@ func (m *Model) connectionActivate(id string) tea.Cmd {
 			m.revealConnection(0)
 		}
 	case id == "conn.close":
-		if !m.busy && !m.connections.confirming && m.detailActive() {
-			m.connections.confirming = true
-			if v := m.connections.detailViewport; v != nil {
-				v.GotoTop()
-			}
-			m.connections.closeAll = false
-			m.focus = "conn.cancel"
+		if !m.canCloseDetail() || !m.connectionActionVisible(id) {
+			return nil
 		}
+		c := m.connections.detail
+		id, start := c.ID, c.Start
+		m.hover, m.focus = "", "conn.back"
+		cmd := m.begin(m.tr("connections.closing"), m.tr("connections.close_requested"), func(ctx context.Context) error {
+			return m.backend.CloseObservedConnection(ctx, id, start)
+		}, notificationOperation{Key: notificationKey("connection.close", id), Context: m.tr("connections.closing") + " · " + id})
+		if m.connections.closeRequests == nil {
+			m.connections.closeRequests = make(map[string]connectionCloseRequest)
+		}
+		m.connections.closeRequests[id] = connectionCloseRequest{start: start, job: m.id}
+		return cmd
 	case id == "conn.cancel":
 		m.connections.confirming = false
-		if m.connections.closeAll {
-			m.connections.closeAll = false
-			m.hover, m.focus = "", "conn.close-all"
-		} else if m.detailActive() {
-			m.focus = "conn.close"
-		} else {
-			m.focus = "conn.back"
-		}
+		m.hover, m.focus = "", "conn.close-all"
 	case id == "conn.confirm":
-		if !m.connections.confirming || m.busy || !m.connectionConfirmVisible() {
+		if !m.connections.confirming || m.busy || !m.connectionActionVisible(id) {
 			return nil
 		}
-		if m.connections.closeAll {
-			available := m.canCloseAllConnections()
-			m.connectionActivate("conn.cancel")
-			if !available {
-				m.prepareNotification("connections.close-all", m.tr("connections.closing_all"))
-				m.failure = m.tr("connections.close_all_unavailable")
-				return nil
-			}
-			// The operation affects the live core, including connections hidden by
-			// filtering or pause. Resume the live view to observe its result.
-			m.connections.paused, m.connections.frozen = false, nil
-			m.connections.frozenClosed = nil
-			m.connections.frozenRates = connectionRatesState{}
-			return m.begin(m.tr("connections.closing_all"), m.tr("connections.close_all_requested"), m.backend.CloseAllConnections, notificationOperation{Key: "connections.close-all", Context: m.tr("connections.closing_all")})
-		}
-		if m.connections.detail == nil {
+		available := m.canCloseAllConnections()
+		m.connectionActivate("conn.cancel")
+		if !available {
+			m.prepareNotification("connections.close-all", m.tr("connections.closing_all"))
+			m.failure = m.tr("connections.close_all_unavailable")
 			return nil
 		}
-		if !m.detailActive() {
-			id := m.connections.detail.ID
-			m.prepareNotification(notificationKey("connection.close", id), m.tr("connections.closing")+" · "+id)
-			m.connections.confirming = false
-			m.focus = "conn.back"
-			m.failure = m.tr("connections.no_longer_active")
-			return nil
-		}
-		id := m.connections.detail.ID
-		m.connections.confirming = false
-		m.focus = "conn.back"
-		return m.begin(m.tr("connections.closing"), m.tr("connections.close_requested"), func(ctx context.Context) error { return m.backend.CloseConnection(ctx, id) }, notificationOperation{Key: notificationKey("connection.close", id), Context: m.tr("connections.closing") + " · " + id})
+		// The operation affects the live core, including connections hidden by
+		// filtering or pause. Resume the live view to observe its result.
+		m.connections.paused, m.connections.frozen = false, nil
+		m.connections.frozenClosed = nil
+		m.connections.frozenRates = connectionRatesState{}
+		return m.begin(m.tr("connections.closing_all"), m.tr("connections.close_all_requested"), m.backend.CloseAllConnections, notificationOperation{Key: "connections.close-all", Context: m.tr("connections.closing_all")})
 	}
 	return nil
 }

@@ -49,7 +49,7 @@ type fakeBackend struct {
 	streamRuntime        func(context.Context, func(app.RuntimeEvent)) error
 	rules                func(context.Context) (app.RuleSnapshot, error)
 	streamLogs           func(context.Context, func(mihomo.LogEntry)) error
-	closeConnection      func(context.Context, string) error
+	closeConnection      func(context.Context, string, time.Time) error
 	closeAllConnections  func(context.Context) error
 	getSettings          func(context.Context) (app.RuntimeSettings, error)
 	prepareSettings      func(context.Context, app.RuntimeSettings) (app.RuntimeSettingsPlan, error)
@@ -365,9 +365,9 @@ func (f *fakeBackend) Rules(ctx context.Context) (app.RuleSnapshot, error) {
 	}
 	return app.RuleSnapshot{State: "stopped"}, ctx.Err()
 }
-func (f *fakeBackend) CloseConnection(ctx context.Context, id string) error {
+func (f *fakeBackend) CloseObservedConnection(ctx context.Context, id string, start time.Time) error {
 	if f.closeConnection != nil {
-		return f.closeConnection(ctx, id)
+		return f.closeConnection(ctx, id, start)
 	}
 	return ctx.Err()
 }

@@ -15,12 +15,10 @@ func (m *Model) connectionDetailKey(k tea.KeyPressMsg) tea.Cmd {
 	switch k.String() {
 	case "esc", "left", "h", "q":
 		return m.connectionActivate("conn.back")
-	case "x":
-		return m.connectionActivate("conn.close")
 	case "enter", "space", " ":
 		return m.connectionActivate(m.focus)
 	case "tab", "shift+tab":
-		if m.focus == "conn.back" && m.detailActive() && !m.busy {
+		if m.focus == "conn.back" && m.connectionActionVisible("conn.close") {
 			m.focus = "conn.close"
 		} else {
 			m.focus = "conn.back"
@@ -49,7 +47,7 @@ func (m *Model) connectionDialogMouse(event tea.MouseMsg) tea.Cmd {
 	_, clicked := event.(tea.MouseClickMsg)
 	m.hover = ""
 	if m.connections.detail != nil && !inside(m.connections.detailBounds) {
-		if clicked && point.Button == tea.MouseLeft && !m.connections.confirming {
+		if clicked && point.Button == tea.MouseLeft {
 			return m.connectionActivate("conn.back")
 		}
 		return nil
@@ -85,15 +83,14 @@ func (m *Model) connectionDetailLines(width int, active bool) []string {
 	} else if active {
 		status, statusColor = tr("connections.active"), success
 		rate = m.connections.rates.get(c.ID)
+		if request, ok := m.connections.closeRequests[c.ID]; ok && request.start.Equal(c.Start) {
+			status, statusColor = tr("connections.close_requested"), muted
+		}
 	}
 	lines := strings.Split(wrapText(connectionDestination(c), width), "\n")
 	lines = append(lines, strings.Split(wrapText(themed(status, statusColor, panel, false), width), "\n")...)
 	if m.failure != "" && m.notification.operation.Key == notificationKey("connection.close", c.ID) {
 		lines = append(lines, strings.Split(wrapText(themed(clean(m.failure), errorColor, panel, false), width), "\n")...)
-	}
-	if m.connections.confirming {
-		lines = append(lines, "")
-		lines = append(lines, strings.Split(wrapText(tr("connections.confirm_hint"), width), "\n")...)
 	}
 	lines = append(lines, "")
 	labelWidth := max(ansi.StringWidth(tr("connections.network_inbound")), ansi.StringWidth(tr("connections.closed_observed")))
@@ -148,7 +145,7 @@ func (m *Model) renderConnectionDetail(base string) (string, []hitRegion) {
 	}
 	v := m.connections.detailViewport
 	active := m.detailActive()
-	if m.focus == "conn.close" && (!active || m.busy) {
+	if m.focus == "conn.close" && !m.canCloseDetail() {
 		m.focus = "conn.back"
 	}
 	w := min(66, max(1, m.width-2))
@@ -159,14 +156,11 @@ func (m *Model) renderConnectionDetail(base string) (string, []hitRegion) {
 		x = m.width - w - 2
 	}
 	if w < 18 || m.height < 9 {
-		id, label := "conn.back", "×"
-		if m.connections.confirming {
-			id, label = "conn.cancel", m.tr("connections.cancel")
-		}
-		body := themed(cellPad(label, w), text, panel, false)
+		m.focus = "conn.back"
+		body := themed(cellPad("×", w), text, panel, false)
 		y := m.height / 2
 		m.connections.detailBounds = hitRegion{X: x, Y: y, W: w, H: 1}
-		return overlay(base, body, x, y, m.width, m.height), []hitRegion{{ID: id, X: x, Y: y, W: w, H: 1}}
+		return overlay(base, body, x, y, m.width, m.height), []hitRegion{{ID: "conn.back", X: x, Y: y, W: w, H: 1}}
 	}
 	inner := w - 4
 	document := m.connectionDetailLines(inner, active)
@@ -181,22 +175,17 @@ func (m *Model) renderConnectionDetail(base string) (string, []hitRegion) {
 	v.SetWidth(inner)
 	v.SetHeight(h - 6)
 	v.SetContentLines(document)
-	closeID, closeLabel := "conn.back", "×"
-	title := m.tr("connections.details")
-	if m.connections.confirming {
-		closeID, closeLabel, title = "conn.cancel", m.tr("connections.cancel"), m.tr("connections.confirm_title")
-	}
 	button := func(id, label string, kind buttonKind) string {
 		return renderButton(label, buttonOptions{Kind: kind, Surface: panel, Compact: true,
 			Focused: m.focus == id, Hovered: m.hover == id, Plain: m.buttonPlain()})
 	}
-	closeButton := button(closeID, closeLabel, buttonText)
+	closeButton := button("conn.back", "×", buttonText)
 	closeWidth := ansi.StringWidth(closeButton)
-	heading := cellPad(title, inner-closeWidth) + closeButton
+	heading := cellPad(m.tr("connections.details"), inner-closeWidth) + closeButton
 	rows := []string{heading, themed(strings.Repeat("─", inner), divider, panel, false)}
 	rows = append(rows, strings.Split(v.View(), "\n")...)
 	rows = append(rows, "")
-	hits := []hitRegion{{ID: closeID, X: x + w - 2 - closeWidth, Y: y + 1, W: closeWidth, H: 1}}
+	hits := []hitRegion{{ID: "conn.back", X: x + w - 2 - closeWidth, Y: y + 1, W: closeWidth, H: 1}}
 	arrow := ""
 	if !v.AtTop() || !v.AtBottom() {
 		arrow = "↓"
@@ -207,16 +196,10 @@ func (m *Model) renderConnectionDetail(base string) (string, []hitRegion) {
 		}
 	}
 	footerWidth := inner - ansi.StringWidth(arrow)
-	actionID, footer := "", ""
-	if m.connections.confirming {
-		actionID = "conn.confirm"
-		footer = button(actionID, m.tr("connections.close"), buttonDangerConfirm)
-	} else if active && !m.busy {
-		actionID = "conn.close"
-		footer = button(actionID, m.tr("connections.close_shortcut"), buttonDanger)
-	}
-	if actionID != "" {
-		hits = append(hits, hitRegion{ID: actionID, X: x + 2, Y: y + h - 2, W: min(footerWidth, ansi.StringWidth(footer)), H: 1})
+	footer := ""
+	if m.canCloseDetail() {
+		footer = button("conn.close", m.tr("connections.close"), buttonDanger)
+		hits = append(hits, hitRegion{ID: "conn.close", X: x + 2, Y: y + h - 2, W: min(footerWidth, ansi.StringWidth(footer)), H: 1})
 	}
 	rows = append(rows, cellPad(footer, footerWidth)+themed(arrow, muted, panel, false))
 	box := panelFrame(rows, w, h, dashboardOptions{}, border)

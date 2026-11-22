@@ -1,9 +1,11 @@
 package tui
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/nelvko/lazyclash/internal/app"
@@ -68,11 +70,13 @@ func TestPortsMissingPostOperationSnapshotDoesNotPresentPreviousRuntimeAsKnown(t
 }
 
 func TestConnectionClosePreflightFailureDoesNotOverwriteUnrelatedOperation(t *testing.T) {
-	m := connectionsModel(t, &fakeBackend{})
+	m := connectionsModel(t, &fakeBackend{closeConnection: func(context.Context, string, time.Time) error {
+		return errors.New("connection is no longer active")
+	}})
 	id := publishNotice(&m, "service.start", "error", "service failed")
 	m, _ = update(m, key("x"))
-	m.runtime.snapshot.Connections.Connections = nil
-	m, _ = update(m, key("y"))
+	m, cmd := click(m, findTarget(t, m, "conn.close"))
+	m, _ = update(m, actionCmd(t, cmd)())
 	if len(m.notification.items) != 2 || noticeByID(t, m, id).Message != "service failed" {
 		t.Fatal("close preflight failure overwrote an unrelated operation notification")
 	}

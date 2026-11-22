@@ -70,7 +70,7 @@ func TestConnectionsArchiveTabsSearchAndKeyboardPreserveQuery(t *testing.T) {
 
 func TestConnectionsArchiveDetailAlwaysReadonlyWhenIDReappears(t *testing.T) {
 	closes := 0
-	m, first := archiveFixture(t, &fakeBackend{closeConnection: func(context.Context, string) error { closes++; return nil }})
+	m, first := archiveFixture(t, &fakeBackend{closeConnection: func(context.Context, string, time.Time) error { closes++; return nil }})
 	m.connectionActivate("conn.closed")
 	m.layout()
 	rowKey := m.connectionRowKey(first)
@@ -91,8 +91,7 @@ func TestConnectionsArchiveDetailAlwaysReadonlyWhenIDReappears(t *testing.T) {
 		t.Fatal("a reused live ID replaced the historical detail or re-enabled its close action")
 	}
 	m, _ = update(m, key("x"))
-	m.connectionActivate("conn.close")
-	if m.busy || m.connections.confirming || closes != 0 || hasAction(m.targets, "conn.close") {
+	if cmd := m.connectionActivate("conn.close"); cmd != nil || m.busy || m.connections.confirming || closes != 0 || hasAction(m.targets, "conn.close") {
 		t.Fatal("historical details allowed a close operation")
 	}
 	m, _ = update(m, key("v"))
@@ -120,7 +119,7 @@ func TestConnectionsArchiveEndedActiveDetailStaysReadonly(t *testing.T) {
 
 func TestConnectionsArchiveRowsCannotCloseAndUseDistinctKeys(t *testing.T) {
 	closes := 0
-	m, first := archiveFixture(t, &fakeBackend{closeConnection: func(context.Context, string) error { closes++; return nil }})
+	m, first := archiveFixture(t, &fakeBackend{closeConnection: func(context.Context, string, time.Time) error { closes++; return nil }})
 	m.connectionActivate("conn.closed")
 	m.layout()
 	if got := m.connectionRowKey(first); got != "closed."+first.ID+"."+first.Start.UTC().Format(time.RFC3339Nano) {
@@ -167,18 +166,17 @@ func TestConnectionsArchiveRemainsSearchableWhenCoreUnavailable(t *testing.T) {
 	}
 }
 
-func TestConnectionsArchiveCoreChangeInvalidatesPendingSingleClose(t *testing.T) {
+func TestConnectionsArchiveCoreChangeMakesInspectedConnectionReadonly(t *testing.T) {
 	closes := 0
-	m, _ := archiveFixture(t, &fakeBackend{closeConnection: func(context.Context, string) error { closes++; return nil }})
+	m, _ := archiveFixture(t, &fakeBackend{closeConnection: func(context.Context, string, time.Time) error { closes++; return nil }})
 	m, _ = update(m, key("x"))
-	if !m.connections.confirming {
-		t.Fatal("fixture did not open the active connection close confirmation")
+	if m.connections.detail == nil || !m.detailActive() {
+		t.Fatal("fixture did not open a live connection inspector")
 	}
 	m.runtime.snapshot.Service.PID = 202
 	archiveObserve(&m, m.runtime.snapshot.Connections.Connections, time.Now().Add(-time.Second))
-	m, _ = update(m, key("y"))
-	if m.busy || closes != 0 || m.detailActive() {
-		t.Fatal("confirmation for a previous core closed a connection in the replacement core")
+	if cmd := m.connectionActivate("conn.close"); cmd != nil || m.busy || closes != 0 || m.detailActive() || hasAction(m.targets, "conn.close") {
+		t.Fatal("a previous core’s inspector could close a connection on the replacement core")
 	}
 }
 
@@ -255,7 +253,7 @@ func TestConnectionsArchiveViewShortcutRemainsTextInsideSearch(t *testing.T) {
 
 func TestConnectionsClearHistoryIgnoresFilterAndClearsPausedCopy(t *testing.T) {
 	m, _ := archiveFixture(t, &fakeBackend{
-		closeConnection:     func(context.Context, string) error { t.Fatal("clear called CloseConnection"); return nil },
+		closeConnection:     func(context.Context, string, time.Time) error { t.Fatal("clear called CloseConnection"); return nil },
 		closeAllConnections: func(context.Context) error { t.Fatal("clear called CloseAllConnections"); return nil },
 	})
 	m.connectionActivate("conn.closed")

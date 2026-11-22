@@ -735,31 +735,32 @@ def main():
             terminal.wait("↑ Upload")
             terminal.wait("Since core start")
             terminal.key(b"4")
-            terminal.wait("Active connections")
-            terminal.wait("Live")
+            terminal.wait("Close all")
             terminal.key(b"/")
-            terminal.wait("Search connections")
             terminal.key(args.connection_id.encode("ascii"))
             terminal.key(b"\r")  # finish search and focus its exact match
-            terminal.key(b"\r")
+            terminal.key(b"x")
             terminal.wait("Connection details")
             terminal.wait(args.connection_id)
             terminal.resize(60, 20)
             terminal.wait("Connection details")
             terminal.resize(120, 40)
-            terminal.key(b"x")
-            terminal.wait("Close this connection?")
-            terminal.key(b"y")
-            terminal.wait("Connection close requested")
-            current = json.loads(cli("connections"))
-            if any(item["id"] == args.connection_id for item in (current["connections"] or [])):
-                raise AssertionError("TUI reported close success but the real connection still exists")
+            terminal.settle()
+            terminal.click_text("Close this connection")
+            terminal.wait_absent("Close this connection")
+            deadline = time.monotonic() + 8
+            while any(item["id"] == args.connection_id for item in (json.loads(cli("connections"))["connections"] or [])):
+                if time.monotonic() >= deadline:
+                    raise AssertionError("The reviewed connection is still present after clicking Close")
+                terminal.read(0.1)
             # Closing the final fixture connection must retain already counted
             # bytes; the active list is not a substitute for cumulative totals.
             closed = json.loads(cli("stats"))
             if closed["Connections"]["uploadTotal"] <= 0 or closed["Connections"]["downloadTotal"] <= 0:
                 raise AssertionError("Closing connections lost their cumulative bytes")
 
+            terminal.key(b"\x1b")
+            terminal.wait_absent("Connection details")
             terminal.key(b"1")
             terminal.wait("Live traffic")
             cli("service", "stop")

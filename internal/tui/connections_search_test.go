@@ -113,7 +113,7 @@ func TestConnectionsInvalidRegexRecoversAndKeepsSnapshot(t *testing.T) {
 
 func TestConnectionsSearchShortcutsKeepPausedActiveAndHistoricalSnapshots(t *testing.T) {
 	calls := 0
-	m, first := archiveFixture(t, &fakeBackend{control: func(context.Context, string) error { calls++; return nil }, closeConnection: func(context.Context, string) error { calls++; return nil }, closeAllConnections: func(context.Context) error { calls++; return nil }})
+	m, first := archiveFixture(t, &fakeBackend{control: func(context.Context, string) error { calls++; return nil }, closeConnection: func(context.Context, string, time.Time) error { calls++; return nil }, closeAllConnections: func(context.Context) error { calls++; return nil }})
 	m.connectionActivate("conn.pause")
 	frozen, frozenClosed := *m.connections.frozen, append([]closedConnection(nil), m.connections.frozenClosed...)
 	generation := m.runtime.generation
@@ -215,7 +215,7 @@ func TestConnectionsMatchingShortcutsDoNotLeakThroughDetailsOrConfirmation(t *te
 			case "details":
 				m.connectionActivate("connection.first")
 			case "confirmation":
-				m, _ = update(m, key("x"))
+				m, _ = click(m, findTarget(t, m, "conn.close-all"))
 			case "help":
 				m, _ = update(m, key("?"))
 			case "busy":

@@ -194,6 +194,16 @@ func (a *App) Connections(ctx context.Context) (mihomo.ConnectionSnapshot, error
 // local service/configuration changes. A disappearing connection is reported
 // without closing another one.
 func (a *App) CloseConnection(ctx context.Context, id string) error {
+	return a.closeConnection(ctx, id, nil)
+}
+
+// CloseObservedConnection checks the lifetime shown in the inspector against
+// the live controller, even if it has since reused the same ID.
+func (a *App) CloseObservedConnection(ctx context.Context, id string, start time.Time) error {
+	return a.closeConnection(ctx, id, &start)
+}
+
+func (a *App) closeConnection(ctx context.Context, id string, start *time.Time) error {
 	if !mihomo.ValidConnectionID(id) {
 		return diagnostic.New("diagnostic.runtime.connectionID", "invalid connection ID")
 	}
@@ -212,7 +222,7 @@ func (a *App) CloseConnection(ctx context.Context, id string) error {
 			return err
 		}
 		for _, connection := range connections.Connections {
-			if connection.ID == id {
+			if connection.ID == id && (start == nil || connection.Start.Equal(*start)) {
 				return client.CloseConnection(ctx, id)
 			}
 		}

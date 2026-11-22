@@ -317,8 +317,7 @@ func TestHeaderActionsAreUnavailableDuringBusyOrConnectionConfirmation(t *testin
 		}
 	}
 	m = headerModel("connections", 120, 32)
-	m.connections.detail = &mihomo.Connection{ID: "one"}
-	m.connections.confirming = true
+	m.connectionActivate("conn.close-all")
 	m.layout()
 	for _, hit := range m.targets {
 		if hit.ID == "conn.close-all" {

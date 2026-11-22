@@ -22,8 +22,8 @@ func TestConnectionsHintsFollowInputDetailsAndConfirmation(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		m := connectionsModel(t, &fakeBackend{})
 		m.locale = i18n.New(language)
-		if !strings.Contains(m.contextHelp(), m.tr("navigation.connections.action.details")) {
-			t.Fatal("focused connection did not advertise details")
+		if !strings.Contains(m.contextHelp(), m.tr("navigation.connections.action.details")) || !strings.Contains(m.contextHelp(), m.tr("navigation.connections.review")) {
+			t.Fatal("focused connection did not advertise details and target review")
 		}
 		m, _ = update(m, key("/"))
 		if m.contextHelp() != m.tr("navigation.connections.searching") {
@@ -37,7 +37,7 @@ func TestConnectionsHintsFollowInputDetailsAndConfirmation(t *testing.T) {
 		if m.connections.detail == nil || !strings.Contains(m.contextHelp(), m.tr("navigation.connections.action.back")) {
 			t.Fatal("details did not advertise the focused Back action")
 		}
-		for _, ignored := range []string{"p", "s", "v"} {
+		for _, ignored := range []string{"p", "s", "v", "x", "y"} {
 			if hintHasKey(m.contextHelp(), ignored) {
 				t.Fatalf("detail advertises ignored %s key", ignored)
 			}
@@ -47,7 +47,15 @@ func TestConnectionsHintsFollowInputDetailsAndConfirmation(t *testing.T) {
 				t.Fatalf("detail unexpectedly acted on %s", ignored)
 			}
 		}
-		m, _ = update(m, key("x"))
+		m, _ = update(m, special(tea.KeyTab))
+		if m.focus != "conn.close" || !strings.HasPrefix(m.contextHelp(), m.tr("navigation.connections.action.close")) || hintHasKey(m.contextHelp(), "x") || hintHasKey(m.contextHelp(), "y") {
+			t.Fatal("focused disconnect button advertised another shortcut or another action")
+		}
+		m, _ = update(m, special(tea.KeyEscape))
+		if m.connections.detail != nil {
+			t.Fatal("Esc did not return from details")
+		}
+		m, _ = click(m, findTarget(t, m, "conn.close-all"))
 		if !m.connections.confirming || !strings.HasPrefix(m.contextHelp(), m.tr("navigation.connections.action.cancel")) {
 			t.Fatal("confirmation did not advertise default Enter Cancel")
 		}
@@ -64,10 +72,6 @@ func TestConnectionsHintsFollowInputDetailsAndConfirmation(t *testing.T) {
 		m, _ = update(m, special(tea.KeyEnter))
 		if m.connections.confirming || m.busy {
 			t.Fatal("default Enter did not cancel without closing")
-		}
-		m, _ = update(m, special(tea.KeyEscape))
-		if m.connections.detail != nil {
-			t.Fatal("Esc did not return from details")
 		}
 	}
 }

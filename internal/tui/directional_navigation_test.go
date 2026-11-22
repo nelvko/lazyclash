@@ -272,7 +272,7 @@ func TestDirectionalNavigationOverlaysOwnTheirKeys(t *testing.T) {
 				m.openProfileMenuForCard(1)
 			case "connection confirmation":
 				m = connectionsModel(t, &fakeBackend{})
-				m, _ = update(m, key("x"))
+				m, _ = click(m, findTarget(t, m, "conn.close-all"))
 			case "wizard choice":
 				m.openNetwork(false)
 				m.wizard.focus = "download-method"
@@ -299,7 +299,7 @@ func TestDirectionalNavigationOverlaysOwnTheirKeys(t *testing.T) {
 						t.Fatal("direction key escaped or selected the profile menu")
 					}
 				case "connection confirmation":
-					if !m.connections.confirming || m.connections.detail == nil {
+					if !m.connections.confirming || m.connections.detail != nil {
 						t.Fatal("direction key escaped connection confirmation")
 					}
 				case "wizard choice":

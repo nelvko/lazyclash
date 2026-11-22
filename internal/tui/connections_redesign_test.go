@@ -63,21 +63,17 @@ func TestConnectionsPauseFreezesRowsRatesAndTotalsWhileMonitoringContinues(t *te
 
 func TestConnectionsPausedDisappearingTargetCannotCloseAnotherConnection(t *testing.T) {
 	closes := 0
-	m := connectionsModel(t, &fakeBackend{closeConnection: func(context.Context, string) error { closes++; return nil }})
+	m := connectionsModel(t, &fakeBackend{closeConnection: func(context.Context, string, time.Time) error { closes++; return nil }})
 	m, _ = update(m, key("p"))
 	m, _ = update(m, key("x"))
-	if !m.connections.confirming || m.connections.detail == nil || m.connections.detail.ID != "first" {
-		t.Fatal("paused active connection did not enter exact-ID confirmation")
+	if m.connections.confirming || m.connections.detail == nil || m.connections.detail.ID != "first" || m.focus != "conn.back" {
+		t.Fatal("paused active connection did not open its inspector with dismiss focused")
 	}
 	fresh := liveRuntime()
 	fresh.Connections.Connections = []mihomo.Connection{fixtureConnection("replacement", "replacement.example.invalid", 30)}
 	m = acceptConnectionsSample(m, fresh)
-	m, _ = update(m, key("y"))
-	if m.busy || closes != 0 || m.connections.confirming || m.connections.detail.ID != "first" || m.detailActive() {
+	if cmd := m.connectionActivate("conn.close"); cmd != nil || m.busy || closes != 0 || m.connections.confirming || m.connections.detail.ID != "first" || m.detailActive() || hasAction(m.targets, "conn.close") {
 		t.Fatal("a paused disappearing connection was closed or replaced by another live row")
-	}
-	if !strings.Contains(m.failure, "no longer active") {
-		t.Fatal("missing live target must explain why the close was not started")
 	}
 	m, _ = update(m, special(tea.KeyEscape))
 	if list := m.filteredConnections(); len(list) != 2 || list[0].ID != "first" {

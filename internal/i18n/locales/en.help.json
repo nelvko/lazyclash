@@ -1,5 +1,5 @@
 {
-  "help.connections.close": "In Active, x reviews closing one connection. Close all affects every live connection. In Closed, Clear history clears all locally retained records, including entries outside the filter or paused view.",
+  "help.connections.close": "In Active, x opens details for the selected connection. Choose Close this connection to disconnect it immediately. In Closed, Clear history clears all local records, including those outside the filter or paused view.",
   "help.rules.search": "Alt+C toggles case sensitivity · Alt+W whole-word matching · Alt+R regular expressions.",
   "help.rules.proxy": "Click a proxy group name or press → on its rule to open the group in Proxies. Press 5 to return to the rules list.",
   "help.search.input": "While searching, Enter / Esc leaves the input and keeps the filter; Tab / Shift+Tab moves to another control.",

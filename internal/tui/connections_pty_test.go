@@ -126,14 +126,14 @@ func (b *connectionsPTYBackend) Runtime(ctx context.Context) (app.RuntimeSnapsho
 	}, ctx.Err()
 }
 
-func (b *connectionsPTYBackend) CloseConnection(ctx context.Context, id string) error {
+func (b *connectionsPTYBackend) CloseObservedConnection(ctx context.Context, id string, start time.Time) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	for i, connection := range b.entries {
-		if connection.ID == id {
+		if connection.ID == id && connection.Start.Equal(start) {
 			b.entries = append(b.entries[:i], b.entries[i+1:]...)
 			b.closedIDs = append(b.closedIDs, id)
 			return nil

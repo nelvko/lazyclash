@@ -24,13 +24,10 @@ func (m *Model) connectionsContextHelp() string {
 		parts := []string{}
 		if m.focus == "conn.back" {
 			parts = append(parts, tr("navigation.connections.action.back"))
-		} else if m.focus == "conn.close" && m.detailActive() {
+		} else if m.focus == "conn.close" && m.canCloseDetail() {
 			parts = append(parts, tr("navigation.connections.action.close"))
 		}
 		parts = append(parts, tr("navigation.connections.detail"))
-		if m.detailActive() {
-			parts = append(parts, tr("navigation.connections.close"))
-		}
 		return strings.Join(parts, " · ")
 	}
 	parts := []string{}
@@ -110,7 +107,7 @@ func (m *Model) connectionsContextHelp() string {
 		parts = append(parts, tr("navigation.connections.pause"))
 	}
 	if canClose {
-		parts = append(parts, tr("navigation.connections.close"))
+		parts = append(parts, tr("navigation.connections.review"))
 	}
 	parts = append(parts, tr("navigation.connections.controls"))
 	return strings.Join(parts, " · ")

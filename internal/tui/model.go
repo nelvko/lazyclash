@@ -52,7 +52,7 @@ type Backend interface {
 	Control(context.Context, string) error
 	Select(context.Context, string, string) error
 	StreamRuntime(context.Context, func(app.RuntimeEvent)) error
-	CloseConnection(context.Context, string) error
+	CloseObservedConnection(context.Context, string, time.Time) error
 	CloseAllConnections(context.Context) error
 	Rules(context.Context) (app.RuleSnapshot, error)
 	GetRuntimeSettings(context.Context) (app.RuntimeSettings, error)
@@ -450,6 +450,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.revealContentFocus()
 	case resultMsg:
+		m.connections.finishCloseRequest(v)
 		if v.id != m.id {
 			return m, nil
 		}
@@ -1637,7 +1638,7 @@ func (m *Model) renderLayout() {
 		m.screen, m.targets = m.renderProviders(base)
 	} else if m.page == "connections" && m.connections.detail != nil {
 		m.screen, m.targets = m.renderConnectionDetail(base)
-	} else if m.page == "connections" && m.connections.closeAll {
+	} else if m.page == "connections" && m.connections.confirming {
 		m.screen, m.targets = m.renderConnectionsCloseAll(base)
 	} else if m.menu.open {
 		m.anchorLogsLevelMenu(hits)

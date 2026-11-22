@@ -40,15 +40,6 @@ func TestConnectionDetailOverlayKeepsListInPlaceAndOwnsInput(t *testing.T) {
 	if !strings.Contains(ansi.Cut(line, 0, box.X), "host-12.example") || !strings.Contains(m.screen, m.tr("connections.details")) {
 		t.Fatal("opening details replaced or displaced the connection list")
 	}
-	m, _ = update(m, key("x"))
-	if !m.connections.confirming || !m.dashboardOptions().Dim || m.focus != "conn.cancel" {
-		t.Fatal("reviewing a disconnect should dim the list and focus Cancel")
-	}
-	m, _ = update(m, special(tea.KeyEscape))
-	if m.connections.detail == nil || m.dashboardOptions().Dim {
-		t.Fatal("canceling a disconnect should restore the inspector over a full-brightness list")
-	}
-	m, _ = update(m, special(tea.KeyTab))
 	for _, msg := range []tea.Msg{key("1"), key("v"), key("p"), key("s"), key("/"), key("?"), tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl}, tea.PasteMsg{Content: "other"}} {
 		m, _ = update(m, msg)
 	}

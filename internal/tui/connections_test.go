@@ -10,6 +10,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
 
@@ -53,98 +54,194 @@ func TestConnectionsSearchAcceptsNormalInputAndOpensExactMatch(t *testing.T) {
 	}
 }
 
-func TestConnectionsSelectionAndConfirmationStayBoundToID(t *testing.T) {
-	var closed []string
-	b := &fakeBackend{closeConnection: func(_ context.Context, id string) error { closed = append(closed, id); return nil }}
-	m := connectionsModel(t, b)
-	m, _ = update(m, special(tea.KeyEnter))
-	m, _ = update(m, key("x"))
-	if !m.connections.confirming || m.focus != "conn.cancel" || len(closed) != 0 {
-		t.Fatal("close must require explicit confirmation, defaulting to Cancel")
-	}
-	m, _ = update(m, special(tea.KeyEnter))
-	if m.connections.confirming || len(closed) != 0 {
-		t.Fatal("default Enter closed a connection")
-	}
-	m, _ = update(m, key("x"))
-	// A newly arriving connection sorts ahead of the selected item. Closing must
-	// still target the ID in the details, never its old row index.
-	m.runtime.pending = true
-	fresh := liveRuntime()
-	fresh.Connections.Connections = []mihomo.Connection{fixtureConnection("newest", "new.example.invalid", 10), fixtureConnection("first", "one.example.invalid", 1), fixtureConnection("second", "two.example.invalid", 0)}
-	m = acceptRuntimeFixture(m, fresh)
-	m.layout()
-	if m.connections.detail.ID != "first" || m.connections.selected != "first" || !m.connections.confirming {
-		t.Fatal("refresh retargeted selection or confirmation")
-	}
-	m, cmd := update(m, key("y"))
-	if !m.busy || m.connections.confirming {
-		t.Fatal("explicit confirmation did not start one asynchronous close")
-	}
-	work := actionCmd(t, cmd)
-	m, _ = update(m, key("y"))
-	result := work()
-	if len(closed) != 1 || closed[0] != "first" {
-		t.Fatalf("wrong or duplicate connection closed: %v", closed)
-	}
-	m, _ = update(m, result)
-	if m.busy || m.failure != "" || m.message != "Connection close requested" || !m.runtime.active {
-		t.Fatal("close did not refresh data and report its result")
+func TestConnectionsCloseShortcutOnlyOpensInspector(t *testing.T) {
+	var requests int
+	m := connectionsModel(t, &fakeBackend{
+		closeConnection:     func(context.Context, string, time.Time) error { requests++; return nil },
+		closeAllConnections: func(context.Context) error { requests++; return nil },
+	})
+	for _, dismiss := range []tea.KeyPressMsg{special(tea.KeyEnter), special(tea.KeyEscape)} {
+		for _, input := range []string{"x", "x", "x", "y"} {
+			var cmd tea.Cmd
+			m, cmd = update(m, key(input))
+			if cmd != nil || m.busy || requests != 0 || m.connections.confirming || m.focus != "conn.back" || m.connections.detail == nil || m.connections.detail.ID != "first" {
+				t.Fatalf("%q should only leave the inspector open with dismiss focused; requests=%d focus=%s", input, requests, m.focus)
+			}
+		}
+		var cmd tea.Cmd
+		m, cmd = update(m, dismiss)
+		if cmd != nil || m.busy || requests != 0 || m.connections.detail != nil || m.focus != "connection.first" {
+			t.Fatal("dismissing the inspector should return to the selected row without disconnecting")
+		}
 	}
 }
 
-func TestConnectionsGoneDuringConfirmationNeverCloseAnotherRow(t *testing.T) {
-	closed := 0
-	m := connectionsModel(t, &fakeBackend{closeConnection: func(context.Context, string) error { closed++; return nil }})
+func TestConnectionInspectorExplicitActivationClosesExactTargetOnce(t *testing.T) {
+	for _, method := range []string{"click", "enter", "space"} {
+		t.Run(method, func(t *testing.T) {
+			var closed []string
+			var closedStart time.Time
+			m := connectionsModel(t, &fakeBackend{
+				closeConnection: func(_ context.Context, id string, start time.Time) error {
+					closed = append(closed, id)
+					closedStart = start
+					return nil
+				},
+				closeAllConnections: func(context.Context) error { t.Fatal("action closed all connections"); return nil },
+			})
+			m, _ = update(m, key("x"))
+			fresh := liveRuntime()
+			fresh.Connections.Connections = append([]mihomo.Connection{fixtureConnection("newest", "new.example.invalid", 10)}, m.runtime.snapshot.Connections.Connections...)
+			m = acceptConnectionsSample(m, fresh)
+			if m.connections.detail.ID != "first" || m.connections.selected != "first" || m.focus != "conn.back" {
+				t.Fatal("refresh moved the inspector or its default focus to the newly inserted row")
+			}
+			var cmd tea.Cmd
+			if method == "click" {
+				m, cmd = click(m, findTarget(t, m, "conn.close"))
+			} else {
+				m, _ = update(m, special(tea.KeyTab))
+				if m.focus != "conn.close" {
+					t.Fatal("Tab did not focus the disconnect button")
+				}
+				for _, input := range []string{"x", "y"} {
+					m, cmd = update(m, key(input))
+					if cmd != nil || m.busy || m.focus != "conn.close" || len(closed) != 0 {
+						t.Fatalf("%q activated the focused disconnect button", input)
+					}
+				}
+				input := special(tea.KeyEnter)
+				if method == "space" {
+					input = special(tea.KeySpace)
+				}
+				m, cmd = update(m, input)
+			}
+			if !m.busy || m.connections.confirming || hasAction(m.targets, "conn.close") {
+				t.Fatal("activating the explicit button must start work directly and disable further clicks")
+			}
+			if duplicate := m.connectionActivate("conn.close"); duplicate != nil {
+				t.Fatal("busy inspector scheduled a duplicate disconnect")
+			}
+			result := actionCmd(t, cmd)()
+			if len(closed) != 1 || closed[0] != "first" || !closedStart.Equal(fixtureConnection("first", "", 1).Start) {
+				t.Fatalf("expected a single close for the inspected row; got %v", closed)
+			}
+			m, _ = update(m, result)
+			if m.busy || m.failure != "" || m.message != m.tr("connections.close_requested") || !m.runtime.active {
+				t.Fatal("successful close did not report its result or preserve monitoring")
+			}
+		})
+	}
+}
+
+func TestConnectionCloseRetryRequiresFreshLiveObservationAfterSuccess(t *testing.T) {
+	var closedStarts []time.Time
+	m := connectionsModel(t, &fakeBackend{closeConnection: func(_ context.Context, _ string, start time.Time) error {
+		closedStarts = append(closedStarts, start)
+		return nil
+	}})
+	snapshot := m.runtime.snapshot
+	snapshot.ObservedAt = time.Now().Add(-5 * time.Second)
+	m = acceptRuntimeFixture(m, snapshot)
 	m, _ = update(m, key("x"))
-	fresh := liveRuntime()
-	fresh.Connections.Connections = []mihomo.Connection{fixtureConnection("second", "two.example.invalid", 0)}
-	m.runtime.pending = true
-	m = acceptRuntimeFixture(m, fresh)
+	m, cmd := click(m, findTarget(t, m, "conn.close"))
+	queued := time.Now()
+	m, _ = update(m, actionCmd(t, cmd)())
+	m, _ = update(m, special(tea.KeyEscape))
+	m, _ = update(m, special(tea.KeyEnter))
+	if m.connections.detail == nil || m.connectionActivate("conn.close") != nil || m.busy || len(closedStarts) != 1 {
+		t.Fatal("reopening the same cached row enabled a duplicate close")
+	}
+	for _, event := range []app.RuntimeEvent{
+		{Source: app.RuntimeConnections, ObservedAt: queued, Connections: snapshot.Connections},
+		{Source: app.RuntimeConnections, ObservedAt: snapshot.ObservedAt, Connections: snapshot.Connections},
+		{Source: app.RuntimeConnections, ObservedAt: time.Now(), Connected: true},
+		{Source: app.RuntimeConnections, ObservedAt: time.Now(), Err: errors.New("stream reset")},
+	} {
+		event.Instance = m.runtime.instance
+		m.acceptRuntimeEvent(event)
+		m.layout()
+		if hasAction(m.targets, "conn.close") || m.connectionActivate("conn.close") != nil {
+			t.Fatalf("non-confirming observation re-enabled disconnect: %+v", event)
+		}
+	}
+	m.acceptRuntimeEvent(app.RuntimeEvent{Source: app.RuntimeConnections, Instance: m.runtime.instance, ObservedAt: time.Now(), Connections: snapshot.Connections})
 	m.layout()
-	m, _ = update(m, key("y"))
-	if m.busy || closed != 0 || m.connections.confirming || m.connections.detail.ID != "first" || !strings.Contains(m.failure, "no longer active") {
-		t.Fatal("disappearing target changed confirmation to another connection")
+	m, cmd = click(m, findTarget(t, m, "conn.close"))
+	m, _ = update(m, actionCmd(t, cmd)())
+	if len(closedStarts) != 2 || !closedStarts[0].Equal(closedStarts[1]) {
+		t.Fatal("a deliberate retry failed after a fresh observation confirmed the same connection remained active")
+	}
+	replacement := snapshot.Connections.Connections[0]
+	replacement.Start = replacement.Start.Add(time.Minute)
+	fresh := *snapshot.Connections
+	fresh.Connections = []mihomo.Connection{replacement}
+	m.acceptRuntimeEvent(app.RuntimeEvent{Source: app.RuntimeConnections, Instance: m.runtime.instance, ObservedAt: time.Now(), Connections: &fresh})
+	m.layout()
+	if hasAction(m.targets, "conn.close") {
+		t.Fatal("an old inspector exposed the replacement lifetime’s close button")
+	}
+	m, _ = update(m, special(tea.KeyEscape))
+	m, _ = update(m, special(tea.KeyEnter))
+	m, cmd = click(m, findTarget(t, m, "conn.close"))
+	m, _ = update(m, actionCmd(t, cmd)())
+	if len(closedStarts) != 3 || !closedStarts[2].Equal(replacement.Start) {
+		t.Fatal("a fresh inspector could not explicitly close the replacement lifetime")
+	}
+}
+
+func TestConnectionsGoneOrReusedDuringInspectionCannotCloseAnotherLifetime(t *testing.T) {
+	for _, id := range []string{"other", "first"} {
+		t.Run(id, func(t *testing.T) {
+			m := connectionsModel(t, &fakeBackend{closeConnection: func(context.Context, string, time.Time) error {
+				t.Fatal("closed an uninspected connection lifetime")
+				return nil
+			}})
+			m, _ = update(m, key("x"))
+			m, _ = update(m, special(tea.KeyTab))
+			fresh := liveRuntime()
+			fresh.Connections.Connections = []mihomo.Connection{fixtureConnection(id, "replacement.example.invalid", 2)}
+			m = acceptConnectionsSample(m, fresh)
+			if m.connections.detail == nil || m.connections.detail.Metadata.Host != "one.example.invalid" || m.detailActive() || m.focus != "conn.back" || hasAction(m.targets, "conn.close") {
+				t.Fatal("ended or replaced target was not made read-only")
+			}
+			if cmd := m.connectionActivate("conn.close"); cmd != nil || m.busy {
+				t.Fatal("stale button activation scheduled a close for another connection")
+			}
+		})
 	}
 }
 
 func TestConnectionCloseFailurePreservesDetailsAndCanRetry(t *testing.T) {
 	attempts := 0
-	b := &fakeBackend{closeConnection: func(context.Context, string) error { attempts++; return errors.New("controller unavailable") }}
-	m := connectionsModel(t, b)
+	m := connectionsModel(t, &fakeBackend{closeConnection: func(_ context.Context, id string, _ time.Time) error {
+		if id != "first" {
+			t.Fatalf("attempt used wrong ID %q", id)
+		}
+		attempts++
+		if attempts == 1 {
+			return errors.New("controller unavailable")
+		}
+		return nil
+	}})
 	m, _ = update(m, key("x"))
-	m, cmd := update(m, key("y"))
-	m, _ = update(m, actionCmd(t, cmd)())
-	if attempts != 1 || m.busy || m.connections.detail == nil || m.connections.detail.ID != "first" || !strings.Contains(m.failure, "controller unavailable") {
-		t.Fatal("close error was hidden or lost its target")
-	}
-	fresh := liveRuntime()
-	fresh.Connections.Connections = []mihomo.Connection{fixtureConnection("first", "one.example.invalid", 1)}
-	m = acceptRuntimeFixture(m, fresh)
-	m.layout()
-	m, _ = update(m, key("x"))
-	m, cmd = update(m, key("y"))
-	_ = actionCmd(t, cmd)()
-	if attempts != 2 {
-		t.Fatal("close could not be retried after fresh runtime data")
-	}
-}
-
-func TestConnectionsMouseConfirmationBlocksBackgroundNavigation(t *testing.T) {
-	m := connectionsModel(t, &fakeBackend{})
-	background := findTarget(t, m, "nav.settings")
-	m, _ = click(m, findTarget(t, m, "connection.first"))
-	if m.connections.detail == nil || m.connections.detail.ID != "first" {
-		t.Fatal("mouse did not open the clicked connection")
-	}
-	m, _ = click(m, findTarget(t, m, "conn.close"))
-	m, _ = click(m, background)
-	if m.page != "connections" || !m.connections.confirming {
-		t.Fatal("confirmation allowed background mouse navigation")
-	}
-	m, _ = click(m, findTarget(t, m, "conn.cancel"))
-	if m.connections.confirming || m.busy {
-		t.Fatal("mouse Cancel did not dismiss the confirmation")
+	for attempt := 1; attempt <= 2; attempt++ {
+		var cmd tea.Cmd
+		m, cmd = click(m, findTarget(t, m, "conn.close"))
+		m, _ = update(m, actionCmd(t, cmd)())
+		if m.busy || attempts != attempt {
+			t.Fatalf("explicit activation %d did not finish exactly once", attempt)
+		}
+		if attempt == 1 {
+			if m.connections.detail == nil || m.connections.detail.ID != "first" || !strings.Contains(m.failure, "controller unavailable") {
+				t.Fatal("close error was hidden or lost its target")
+			}
+			fresh := liveRuntime()
+			fresh.Connections.Connections = []mihomo.Connection{fixtureConnection("first", "one.example.invalid", 1)}
+			m = acceptConnectionsSample(m, fresh)
+		} else if m.failure != "" {
+			t.Fatal("successful retry retained an error")
+		}
 	}
 }
 
@@ -176,8 +273,8 @@ func TestConnectionsLayoutAndFocusedRowSurviveResize(t *testing.T) {
 			assertCanvas(t, m.screen, size[0], size[1])
 			assertRegions(t, m.targets, size[0], size[1])
 			m, _ = update(m, special(tea.KeyEscape))
-			if m.connections.confirming {
-				t.Fatal("tiny confirmation could not be canceled with Esc")
+			if m.connections.detail != nil || m.connections.confirming || m.busy {
+				t.Fatal("Esc should dismiss details safely after resize")
 			}
 		})
 	}
