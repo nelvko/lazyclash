@@ -100,24 +100,27 @@ func TestFullProfilePinsAppliedContentAndCustomRules(t *testing.T) {
 	if !reflect.DeepEqual(cfg["rules"], []any{"DOMAIN,custom.invalid,REJECT", "MATCH,PROXY"}) {
 		t.Fatal("full profile and custom rules were not composed")
 	}
-	pinned := m.Build.fingerprint()
 	_, appliedPath, _ := a.paths()
-	before := read(t, appliedPath)
 	write(t, path, []byte("proxies: [{name: node-one, type: socks5, server: updated.invalid, port: 2080}]\nproxy-groups: [{name: PROXY, type: select, proxies: [node-one, DIRECT]}]\nrules: ['MATCH,PROXY']\n"))
 	if err := a.Refresh(t.Context(), "saved"); err != nil {
 		t.Fatal(err)
 	}
 	info, err = a.ProfileDetails(t.Context(), "saved")
-	if err != nil || !info.Pending {
-		t.Fatal("refresh did not expose the unapplied revision", err)
+	if err != nil || info.Pending {
+		t.Fatal("stopped refresh left a pending subscription revision", err)
 	}
 	lib, _, err := a.library().Load()
 	if err != nil || lib.Profiles["saved"].Spec.Overrides != overrides {
 		t.Fatal("refresh replaced the user's rules", err)
 	}
 	nextManifest, current, err := a.load()
-	if err != nil || current != applied || nextManifest.Build.fingerprint() != pinned || !bytes.Equal(read(t, appliedPath), before) || len(svc.actions) != 0 {
-		t.Fatal("refresh changed the committed generation or service", err)
+	if err != nil || current == applied || nextManifest.Build.Recipe.Revision != lib.Profiles["saved"].Spec.Revision || !strings.Contains(string(read(t, appliedPath)), "updated.invalid") || len(svc.actions) != 0 {
+		t.Fatal("stopped refresh failed to commit the next-start configuration", err)
+	}
+	pinned := nextManifest.Build.fingerprint()
+	before := read(t, appliedPath)
+	if err := a.SetProfileOverrides(t.Context(), "saved", []byte("prepend-rules: ['DOMAIN,new-rule.invalid,DIRECT']")); err != nil {
+		t.Fatal(err)
 	}
 	svc.active = true
 	failed := false
@@ -132,7 +135,7 @@ func TestFullProfilePinsAppliedContentAndCustomRules(t *testing.T) {
 		t.Fatal("failed apply was reported as successful")
 	}
 	restored, restoredGeneration, err := a.load()
-	if err != nil || restoredGeneration != applied || restored.Build.fingerprint() != pinned || !bytes.Equal(read(t, appliedPath), before) {
+	if err != nil || restoredGeneration != current || restored.Build.fingerprint() != pinned || !bytes.Equal(read(t, appliedPath), before) {
 		t.Fatal("failed apply did not restore the old pinned configuration", err)
 	}
 	info, err = a.ProfileDetails(t.Context(), "saved")
@@ -145,7 +148,7 @@ func TestFullProfilePinsAppliedContentAndCustomRules(t *testing.T) {
 		t.Fatal(err)
 	}
 	info, err = a.ProfileDetails(t.Context(), "saved")
-	if err != nil || info.Pending || !strings.Contains(string(read(t, appliedPath)), "updated.invalid") {
+	if err != nil || info.Pending || !strings.Contains(string(read(t, appliedPath)), "new-rule.invalid") {
 		t.Fatal("explicit retry did not commit the pending revision", err)
 	}
 }

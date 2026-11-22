@@ -65,6 +65,8 @@
   "diagnostic.profile.reloadRestoredNewProcess": "内核已重新启动并恢复上一份运行配置：%w",
   "diagnostic.profile.reloadAwaitStop": "上一份运行配置已恢复到磁盘，等待服务完成停止后确认恢复结果",
   "diagnostic.profile.reloadProcessUnconfirmed": "无法确认原内核进程已经退出，恢复仍待完成",
+  "diagnostic.profile.pinnedRecipeMissing": "无法确定当前运行配置使用的订阅版本和覆写",
+  "diagnostic.profile.refreshNotApplied": "新版订阅已保存，运行配置更新未完成。可再次刷新重试：%w",
   "diagnostic.profile.serviceChanging": "服务正在切换状态；请等待后再应用配置",
   "diagnostic.profile.serviceChanged": "服务在校验配置时发生变化；请重试",
   "diagnostic.profile.metadataSave": "配置已应用，但无法保存配置校验元数据：%w",

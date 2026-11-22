@@ -62,7 +62,11 @@ func (a *App) CreateProfile(ctx context.Context, draft ProfileDraft) error {
 		}
 		lib.Profiles[id] = entry
 		nameProfile(&lib, id, configuration.ResolveName(draft.Name, download.Headers, draft.Address))
-		if err := a.validateProfile(ctx, &lib, id); err != nil {
+		m, installed, err := a.buildContext()
+		if err != nil {
+			return err
+		}
+		if err := a.validateProfile(ctx, &lib, id, m, installed); err != nil {
 			return err
 		}
 		if err := ctx.Err(); err != nil {
@@ -82,8 +86,8 @@ func (a *App) AddSubscription(ctx context.Context, name, address string) error {
 	return a.CreateProfile(ctx, ProfileDraft{Name: name, Address: address, RememberSource: true})
 }
 
-// Refresh saves a validated download as a draft of this profile. It never
-// changes the already applied generation or any other profile's content.
+// Refresh updates the saved source. A selected profile also picks up the new
+// revision using the overrides already applied to this instance.
 func (a *App) Refresh(ctx context.Context, reference string) error {
 	return a.updateProfile(ctx, reference, "", false)
 }
@@ -128,6 +132,7 @@ func (a *App) updateProfile(ctx context.Context, reference, address string, chan
 		if err != nil {
 			return err
 		}
+		sourceChanged := revision != entry.Spec.Revision
 		entry.Spec.Revision, entry.UpdatedAt = revision, time.Now().UTC()
 		entry.Quota = configuration.ParseSubscriptionQuota(download.Headers)
 		if changeAddress {
@@ -141,14 +146,66 @@ func (a *App) updateProfile(ctx context.Context, reference, address string, chan
 				nameProfile(&lib, id, configuration.NameCandidate{Name: name, Source: configuration.NameProvider})
 			}
 		}
-		if err := a.validateProfile(ctx, &lib, id); err != nil {
+		m, target, err := a.buildTarget()
+		if err != nil {
+			return err
+		}
+		var cfg []byte
+		if !changeAddress && m.Applied == id {
+			cfg, err = a.prepareSelectedRefresh(ctx, &lib, id, &m, sourceChanged)
+		} else {
+			err = a.validateProfile(ctx, &lib, id, m, target != "")
+		}
+		if err != nil {
 			return err
 		}
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		return a.library().Save(lib, old)
+		if err := a.library().Save(lib, old); err != nil {
+			return err
+		}
+		if cfg != nil {
+			if err := a.publishProfileRefresh(ctx, target, m, cfg); err != nil {
+				return diagnostic.New("diagnostic.profile.refreshNotApplied", "subscription saved; refresh again to retry the runtime update: %w", err)
+			}
+		}
+		return nil
 	})
+}
+
+// Advance only the source revision. The library may contain user overrides
+// which should stay editable and separate from the active recipe.
+func (a *App) prepareSelectedRefresh(ctx context.Context, lib *configuration.Library, id string, m *manifest, sourceChanged bool) ([]byte, error) {
+	if m.Build == nil || m.Build.Profile != id || m.Build.Recipe == nil || m.Build.Recipe.Core != "mihomo" {
+		return nil, diagnostic.New("diagnostic.profile.pinnedRecipeMissing", "could not identify the applied profile recipe")
+	}
+	entry := lib.Profiles[id]
+	pinned := *m.Build.Recipe
+	source := pinned
+	source.Revision = entry.Spec.Revision
+	if source == entry.Spec {
+		entry.Validated = true
+	} else if sourceChanged {
+		// Only the active overrides will be validated against the new source.
+		entry.Validated = false
+	}
+	lib.Profiles[id] = entry
+	if source == pinned {
+		return nil, nil
+	}
+	next := buildRecord{Profile: id, Recipe: &source}
+	cfg, err := a.buildRecipe(next, *m)
+	if err != nil {
+		return nil, err
+	}
+	if digest(cfg) != m.SHA {
+		if err := a.validateRecipe(ctx, id, *m, cfg); err != nil {
+			return nil, err
+		}
+	}
+	m.Build = &next
+	return cfg, nil
 }
 
 // RefreshAllProfiles commits each profile independently, preserving successful
@@ -176,11 +233,7 @@ func (a *App) RefreshAllProfiles(ctx context.Context) error {
 	return nil
 }
 
-func (a *App) validateProfile(ctx context.Context, lib *configuration.Library, id string) error {
-	m, installed, err := a.buildContext()
-	if err != nil {
-		return err
-	}
+func (a *App) validateProfile(ctx context.Context, lib *configuration.Library, id string, m manifest, installed bool) error {
 	if _, _, err := a.buildProfile(ctx, *lib, id, m, installed); err != nil {
 		return err
 	}

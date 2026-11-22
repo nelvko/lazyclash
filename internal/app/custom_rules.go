@@ -49,9 +49,9 @@ func (a *App) GetCustomRules(ctx context.Context, profile string) (CustomRulesDr
 		if err != nil {
 			return err
 		}
-		// Check source integrity and the complete override structure without
-		// executing the engine for a read-only editor query.
-		_, _, err = a.buildProfile(ctx, lib, id, m, false)
+		// customRulesDraft validated the override document. Keep its editor
+		// available when a refresh removed a target used only by the draft.
+		_, err = a.library().Read(lib.Profiles[id].Spec.Revision)
 		if err != nil {
 			return err
 		}

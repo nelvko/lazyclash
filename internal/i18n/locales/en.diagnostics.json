@@ -65,6 +65,8 @@
   "diagnostic.profile.reloadRestoredNewProcess": "previous configuration restored in a new service process: %w",
   "diagnostic.profile.reloadAwaitStop": "previous configuration saved; waiting for the requested service stop before confirming recovery",
   "diagnostic.profile.reloadProcessUnconfirmed": "could not confirm the old reload process exited; recovery remains pending",
+  "diagnostic.profile.pinnedRecipeMissing": "could not identify the applied profile recipe",
+  "diagnostic.profile.refreshNotApplied": "subscription saved; refresh again to retry the runtime update: %w",
   "diagnostic.profile.serviceChanging": "service is changing state; wait before applying a profile",
   "diagnostic.profile.serviceChanged": "service changed while validating the profile; retry the operation",
   "diagnostic.profile.metadataSave": "configuration applied, but profile validation metadata could not be saved: %w",

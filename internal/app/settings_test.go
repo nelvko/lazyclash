@@ -49,15 +49,15 @@ func TestRuntimeSettingsPreserveAppliedConfigurationAndSources(t *testing.T) {
 	if err := a.Apply(t.Context(), "custom"); err != nil {
 		t.Fatal(err)
 	}
+	write(t, source, []byte("mode: direct\nrules: ['MATCH,REJECT']\n"))
+	if err := a.Refresh(t.Context(), "custom"); err != nil {
+		t.Fatal(err)
+	}
 	before, old, err := a.load()
 	if err != nil {
 		t.Fatal(err)
 	}
 	oldConfig := read(t, filepath.Join(a.Home, "installation", old, "config.yaml"))
-	write(t, source, []byte("mode: direct\nrules: ['MATCH,REJECT']\n"))
-	if err := a.Refresh(t.Context(), "custom"); err != nil {
-		t.Fatal(err)
-	}
 	snapshotPath := savedSourcePath(t, a, "custom")
 	rawSource := read(t, snapshotPath)
 	libraryPath := filepath.Join(a.Home, "configuration", "library.json")

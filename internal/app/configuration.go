@@ -29,11 +29,16 @@ func (a *App) library() configuration.Repository {
 }
 
 func (a *App) buildContext() (manifest, bool, error) {
-	m, _, err := a.load()
+	m, target, err := a.buildTarget()
+	return m, target != "", err
+}
+
+func (a *App) buildTarget() (manifest, string, error) {
+	m, target, err := a.load()
 	if errors.Is(err, os.ErrNotExist) {
-		return manifest{Controller: "127.0.0.1:9097", Secret: "structure-validation-only", Port: 7897}, false, nil
+		return manifest{Controller: "127.0.0.1:9097", Secret: "structure-validation-only", Port: 7897}, "", nil
 	}
-	return m, err == nil, err
+	return m, target, err
 }
 
 func recipeRecord(lib configuration.Library, name string) (buildRecord, error) {
@@ -53,39 +58,42 @@ func recipeRecord(lib configuration.Library, name string) (buildRecord, error) {
 	return record, nil
 }
 
-func (a *App) recipeInputs(lib configuration.Library, name string) (mihomo.BuildOptions, buildRecord, error) {
-	record, err := recipeRecord(lib, name)
-	if err != nil || record.Recipe == nil {
-		return mihomo.BuildOptions{}, record, err
-	}
-	p := record.Recipe
-	raw, err := a.library().Read(p.Revision)
-	return mihomo.BuildOptions{Base: raw, Overrides: []byte(p.Overrides)}, record, err
-}
-
 func (a *App) buildProfile(ctx context.Context, lib configuration.Library, name string, m manifest, engine bool) ([]byte, buildRecord, error) {
-	opts, record, err := a.recipeInputs(lib, name)
+	record, err := recipeRecord(lib, name)
 	if err != nil {
 		return nil, record, err
 	}
-	if name == "default" {
-		opts.Base, err = mihomo.Default(m.Controller, m.Secret, m.Port)
-		if err != nil {
-			return nil, record, err
-		}
+	cfg, err := a.buildRecipe(record, m)
+	if err == nil && engine {
+		err = a.validateRecipe(ctx, name, m, cfg)
 	}
-	opts.Controller, opts.Secret, opts.MixedPort, opts.Mode = m.Controller, m.Secret, m.Port, m.Mode
-	opts.TUN, opts.ServiceName = m.TUN, a.Name
+	return cfg, record, err
+}
+
+func (a *App) buildRecipe(record buildRecord, m manifest) ([]byte, error) {
+	opts := mihomo.BuildOptions{Controller: m.Controller, Secret: m.Secret, MixedPort: m.Port, Mode: m.Mode, TUN: m.TUN, ServiceName: a.Name}
+	var err error
+	if record.Profile == "default" {
+		opts.Base, err = mihomo.Default(m.Controller, m.Secret, m.Port)
+	} else {
+		opts.Base, err = a.library().Read(record.Recipe.Revision)
+		opts.Overrides = []byte(record.Recipe.Overrides)
+	}
+	if err != nil {
+		return nil, err
+	}
 	cfg, err := mihomo.Build(opts)
 	if err != nil {
-		return nil, record, diagnostic.New("diagnostic.profile.build", "profile %s could not be built: %w", name, err)
+		return nil, diagnostic.New("diagnostic.profile.build", "profile %s could not be built: %w", record.Profile, err)
 	}
-	if engine {
-		if err := a.validateConfig(ctx, m, cfg); err != nil {
-			return nil, record, diagnostic.New("diagnostic.profile.validate", "profile %s failed core validation: %w", name, err)
-		}
+	return cfg, nil
+}
+
+func (a *App) validateRecipe(ctx context.Context, name string, m manifest, cfg []byte) error {
+	if err := a.validateConfig(ctx, m, cfg); err != nil {
+		return diagnostic.New("diagnostic.profile.validate", "profile %s failed core validation: %w", name, err)
 	}
-	return cfg, record, nil
+	return nil
 }
 
 type ProfileInfo struct {

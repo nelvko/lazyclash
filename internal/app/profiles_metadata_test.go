@@ -90,7 +90,7 @@ func TestProfileSnapshotProvidesSafeCardMetadata(t *testing.T) {
 	}
 }
 
-func TestRefreshAllProfilesPreservesIndependentSuccessesAndRunningGeneration(t *testing.T) {
+func TestRefreshAllProfilesPreservesIndependentSuccessesAndReloadsOnlyTheCurrentProfile(t *testing.T) {
 	a, svc := installedApp(t)
 	type response struct {
 		Content   string
@@ -121,12 +121,8 @@ func TestRefreshAllProfilesPreservesIndependentSuccessesAndRunningGeneration(t *
 	if err := a.Apply(t.Context(), "z-updated"); err != nil {
 		t.Fatal(err)
 	}
-	svc.active = true
+	reloads := observeActiveRefresh(t, a, svc, server)
 	before, _, err := a.library().Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	beforeTree, err := installationTree(filepath.Join(a.Home, "installation"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -149,13 +145,12 @@ func TestRefreshAllProfilesPreservesIndependentSuccessesAndRunningGeneration(t *
 	if after.Profiles["z-updated"].Spec.Revision != digest([]byte(good)) {
 		t.Fatal("failure in an earlier source prevented an independent successful update")
 	}
-	afterTree, err := installationTree(filepath.Join(a.Home, "installation"))
-	if err != nil || !maps.Equal(beforeTree, afterTree) || !svc.active || len(svc.actions) != 0 {
-		t.Fatal("batch refresh applied a configuration or changed the running service", err)
+	if *reloads != 1 || !svc.active || len(svc.actions) != 0 {
+		t.Fatal("batch should reload the selected profile once without restarting", *reloads, svc.actions)
 	}
 	info, err := a.ProfileDetails(t.Context(), "z-updated")
-	if err != nil || !info.Pending {
-		t.Fatal("successful source update was not exposed as pending", err)
+	if err != nil || info.Pending {
+		t.Fatal("updated selected profile was not applied", err)
 	}
 }
 
