@@ -46,11 +46,6 @@ func Effective(raw []byte, controller, secret string, mixedPort int) ([]byte, er
 	if err != nil {
 		return nil, err
 	}
-	if tun, ok := cfg["tun"].(map[string]any); ok {
-		if tun["enable"] == true {
-			return nil, diagnostic.New("diagnostic.config.tunEnabled", "this profile enables TUN; disable tun.enable before importing and explicitly authorize TUN in lazyclash settings")
-		}
-	}
 	cfg["external-controller"], cfg["secret"] = controller, secret
 	cfg["mixed-port"], cfg["allow-lan"], cfg["bind-address"] = mixedPort, false, "127.0.0.1"
 	cfg["authentication"] = []string{}

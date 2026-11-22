@@ -139,11 +139,21 @@ func TestUserServiceTUNBoundary(t *testing.T) {
 		t.Fatal("unsupported TUN operation modified the installation or service")
 	}
 	profile := filepath.Join(t.TempDir(), "tun.yaml")
-	write(t, profile, []byte("tun: {enable: true}\nrules: [MATCH,DIRECT]\n"))
-	if err := a.Add(t.Context(), "tun", profile); err == nil || !strings.Contains(err.Error(), "TUN") {
-		t.Fatal("privileged profile was silently imported", err)
+	write(t, profile, []byte("mixed-port: 7899\ntun: {enable: true, device: foreign}\nrules: ['MATCH,DIRECT']\n"))
+	if err := a.Add(t.Context(), "tun", profile); err != nil {
+		t.Fatal(err)
 	}
-	assertLibraryEntryMissing(t, a, "tun")
+	if err := a.Apply(t.Context(), "tun"); err != nil {
+		t.Fatal(err)
+	}
+	_, config, _ := a.paths()
+	raw := read(t, config)
+	if on, err := mihomo.ConfigTUN(raw); err != nil || on || strings.Contains(string(raw), "foreign") {
+		t.Fatal("applying the profile imported its TUN policy", err)
+	}
+	if strings.Contains(string(raw), "mixed-port: 7899") || len(svc.actions) != 0 {
+		t.Fatal("applying a profile changed the instance port or started the service")
+	}
 }
 
 func TestTUNOffConfirmsActualState(t *testing.T) {

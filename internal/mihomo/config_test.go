@@ -105,15 +105,10 @@ func TestEffectiveDNSDefaultsAndDisabledResolver(t *testing.T) {
 	}
 }
 
-func TestEffectiveRejectsPrivilegedTUNRequests(t *testing.T) {
-	for _, raw := range []string{
-		"tun: {enable: true, auto-route: true}\n",
-		"listeners: [{name: network, type: tun}]\n",
-	} {
-		_, err := Effective([]byte(raw), "127.0.0.1:19090", "managed-secret", 17890)
-		if err == nil || !strings.Contains(err.Error(), "TUN") || !strings.Contains(err.Error(), "explicitly authoriz") {
-			t.Fatalf("TUN request did not report the permission boundary: %v", err)
-		}
+func TestEffectiveRejectsIndependentTUNListener(t *testing.T) {
+	_, err := Effective([]byte("listeners: [{name: network, type: tun}]\n"), "127.0.0.1:19090", "managed-secret", 17890)
+	if err == nil || !strings.Contains(err.Error(), "TUN listener") {
+		t.Fatalf("expected unsupported TUN listener diagnostic: %v", err)
 	}
 }
 

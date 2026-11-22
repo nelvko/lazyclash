@@ -255,7 +255,6 @@
   "diagnostic.config.controllerSecret": "控制 API 密钥不能为空，且不能包含控制字符",
   "diagnostic.config.mixedPort": "代理端口必须在 1024–65535 之间",
   "diagnostic.config.portConflict": "控制 API 端口与代理端口必须不同",
-  "diagnostic.config.tunEnabled": "此配置启用了 TUN；请在导入前关闭 tun.enable，再到 lazyclash 设置中明确授权 TUN",
   "diagnostic.config.tunListener": "此配置包含 TUN 监听器；受管理的 TUN 必须在 lazyclash 设置中明确授权",
   "diagnostic.config.dnsMapping": "Mihomo DNS 配置无效：应为映射",
   "diagnostic.config.encode": "无法编码 Mihomo YAML",

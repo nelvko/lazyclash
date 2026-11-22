@@ -29,9 +29,6 @@ func TestTUNRequiresManagedAuthorizationAndUsesPrivateResources(t *testing.T) {
 	if tun["device"] != first.Device || tun["iproute2-table-index"] != first.Table || tun["iproute2-rule-index"] != first.Rule || tun["auto-redirect"] != false || tun["dns-mode"] != "disabled" {
 		t.Fatalf("unexpected TUN policy: %#v", tun)
 	}
-	if _, err := Effective(enabled, "127.0.0.1:9097", "test-secret", 7897); err == nil {
-		t.Fatal("subscription TUN was accepted as authorization")
-	}
 	disabled, err := WithTUN(enabled, false, "lazyclash-first")
 	if err != nil {
 		t.Fatal(err)
@@ -45,7 +42,7 @@ func TestTUNRequiresManagedAuthorizationAndUsesPrivateResources(t *testing.T) {
 }
 
 func TestBuildPreservesExplicitTUNPolicyAcrossProfileBuild(t *testing.T) {
-	raw, err := Build(BuildOptions{Base: []byte("rules: [\"MATCH,DIRECT\"]\n"), Controller: "127.0.0.1:9097", Secret: "test-secret", MixedPort: 7897, Mode: "direct", TUN: true, ServiceName: "lazyclash-test"})
+	raw, err := Build(BuildOptions{Base: []byte("tun: {enable: false, device: foreign}\nrules: [\"MATCH,DIRECT\"]\n"), Controller: "127.0.0.1:9097", Secret: "test-secret", MixedPort: 7897, Mode: "direct", TUN: true, ServiceName: "lazyclash-test"})
 	if err != nil {
 		t.Fatal(err)
 	}

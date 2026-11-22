@@ -53,7 +53,7 @@ system unit 使用 `NoNewPrivileges=true`、`ProtectSystem=strict`、`ProtectHom
 
 ## TUN 策略、冲突与清理
 
-首版 TUN 使用明确的 host 策略：受管接口、IPv4/IPv6 自动路由和 TUN 内的 DNS 劫持，不提供 UID 筛选或任意 namespace 切换。策略显式设置 `dns-mode: disabled`，不修改 `/etc/resolv.conf` 或操作系统 resolver；DNS 劫持不等于系统 resolver 配置变更。订阅不能通过 `tun.enable` 或 TUN listener 隐式授权，必须关闭这些输入并通过 lazyclash 的运行设置启用。
+首版 TUN 使用明确的 host 策略：受管接口、IPv4/IPv6 自动路由和 TUN 内的 DNS 劫持，不提供 UID 筛选或任意 namespace 切换。策略显式设置 `dns-mode: disabled`，不修改 `/etc/resolv.conf` 或操作系统 resolver；DNS 劫持不等于系统 resolver 配置变更。应用配置时按实例已授权的 TUN 状态和参数生成运行配置。即使订阅写有 `tun.enable: true`，实例关闭 TUN 时仍可导入并使用普通代理。独立的 TUN listener 仍会被拒绝。
 
 停止状态下开启只发布配置和 unit 权限，保持停止，不提前修改网络。运行中开启或停用会先停止旧进程，再发布配置与权限并重启，验证就绪；失败按事务记录恢复旧配置、权限和运行意图。Profile 应用、模式和端口更新保留已明确选择的 TUN 策略。
 
