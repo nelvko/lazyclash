@@ -99,7 +99,7 @@ func TestProfileMenuOnlyOffersSupportedActions(t *testing.T) {
 		forgetAddress      bool
 	}{
 		{name: "uninstalled", disabled: "apply"},
-		{name: "selected", disabled: "delete", installed: true, current: true},
+		{name: "selected", disabled: "apply", installed: true, current: true},
 		{name: "one-time import", disabled: "refresh", installed: true, forgetAddress: true},
 	}
 	for _, tt := range tests {

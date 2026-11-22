@@ -40,7 +40,6 @@ func onboardingReady(t *testing.T, backend Backend, language string) Model {
 func onboardingDefaultSnapshot() app.Snapshot {
 	return app.Snapshot{
 		Installed: true, ConfigReady: true, Version: "v1.19.33",
-		Applied: "default", Profiles: []string{"default"},
 		Service:      service.Status{State: "inactive"},
 		Capabilities: app.Capabilities{Scope: "user", Runtime: app.Capability{Supported: true}},
 		Mode:         app.ModeStatus{Desired: "rule"},
@@ -197,11 +196,11 @@ func TestOnboardingDefaultConfigurationNeedsNoSubscriptionOrGuideCompletion(t *t
 			m.layout()
 			body, actions := overviewContent(m.navigationOptions(), dashboardBodyWidth(m.dashboardOptions()))
 			plain := ansi.Strip(body)
-			if label := m.tr("dashboard.profile.builtinReady"); !strings.Contains(plain, label) {
-				t.Fatalf("default configuration is not presented as ready: missing %q\n%s", label, plain)
+			if label := m.tr("profiles.none_selected"); !strings.Contains(plain, label) {
+				t.Fatalf("overview did not show the empty selection: missing %q\n%s", label, plain)
 			}
-			if name := snapshotProfileName(m.snapshot, m.snapshot.Applied, m.locale); name != m.tr("profiles.builtin_name") {
-				t.Fatalf("the default configuration uses an internal identifier instead of its normal display name: %q", name)
+			if strings.Contains(plain, m.tr("dashboard.overview.sourceLabel")) {
+				t.Fatal("overview displayed a profile source while no subscription was selected")
 			}
 			if overviewSetupVisible(m.navigationOptions()) || hasAction(actions, "install") || hasAction(actions, "guide.later") || !hasAction(actions, "core.toggle") || calls != 0 || m.busy {
 				t.Fatal("a subscription or completed guide was required before explicitly starting the built-in configuration")
@@ -223,8 +222,8 @@ func TestOnboardingDefaultConfigurationNeedsNoSubscriptionOrGuideCompletion(t *t
 					t.Fatalf("normal built-in running strategy missing %q", label)
 				}
 			}
-			if name := snapshotProfileName(m.snapshot, m.snapshot.Applied, m.locale); name != m.tr("profiles.builtin_name") {
-				t.Fatal("starting the core replaced the built-in configuration's normal display name")
+			if name := snapshotProfileName(m.snapshot, m.snapshot.Applied, m.locale); name != m.tr("profiles.none_selected") {
+				t.Fatal("starting the core should preserve the empty subscription selection")
 			}
 		})
 	}
@@ -240,7 +239,7 @@ func TestOnboardingInstallationResultKeepsDefaultReadyAndStopped(t *testing.T) {
 	m := confirmModel(t, b)
 	m, cmd := activateWizard(m, "install")
 	m, _ = update(m, actionCmd(t, cmd)())
-	if !m.snapshot.ConfigReady || m.snapshot.Applied != "default" || m.snapshot.Service.Active || calls != 0 {
+	if !m.snapshot.ConfigReady || m.snapshot.Applied != "" || m.snapshot.Service.Active || calls != 0 {
 		t.Fatal("installation did not retain the ready, stopped built-in configuration")
 	}
 	m, _ = activateWizard(m, "done")

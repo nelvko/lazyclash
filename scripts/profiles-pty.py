@@ -160,7 +160,6 @@ def main():
             mouse_text(terminal, "pty-airport", button=2)
             terminal.wait("View details")
             terminal.wait("Install core first")
-            assert "Use built-in configuration" not in terminal.screen.text()
             (output / "profiles-menu-160x40.txt").write_text(terminal.screen.text())
             terminal.key(b"\x1b")
             terminal.wait_absent("View details")
@@ -194,6 +193,7 @@ def main():
             terminal.key(b"\r")
             terminal.wait("pty-airport · Configuration")
             terminal.wait("Install core to apply")
+            assert "Deactivate profile" not in terminal.screen.text()
             assert header_row(terminal, "Update all") == update_row
             assert not (home / "installation").exists(), "card Enter implicitly applied a profile"
 
@@ -406,11 +406,17 @@ def main():
             terminal.wait_absent("Fetching and validating")
             duplicate_id = profile_id("My Airport (1)")
             assert duplicate_id != primary_id[0], "duplicate import reused the existing profile ID"
+            # A saved record precedes the TUI receiving the action result.
+            # Wait for the new card and actionable footer before clicking the header.
+            terminal.wait("My Airport (1)")
+            terminal.wait("Enter Add subscription")
             for _ in range(2):
                 before = len(requests)
+                previous = {pid: record["updated_at"] for pid, record in library()["profiles"].items()}
                 terminal.click_text("[Update all]")
                 wait_until(terminal, lambda: len(requests) >= before + 3, "Update all did not refresh all three remote profiles")
-                terminal.wait_absent("Updating profiles")
+                wait_until(terminal, lambda: all(record["updated_at"] != previous[pid] for pid, record in library()["profiles"].items()), "Update all did not save every refreshed profile")
+                terminal.wait("Enter Update profiles")
                 assert profile_id("My Airport (1)") == duplicate_id, "repeated updates accumulated a duplicate suffix or changed the ID"
                 assert profile_id("My Airport") == primary_id[0], "duplicate refresh changed the custom profile name"
                 assert profile_id(remote_name) == remote_id, "provider refresh changed the New profile custom name or ID"

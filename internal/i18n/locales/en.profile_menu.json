@@ -10,6 +10,5 @@
   "profile_menu.address": "Edit address…",
   "profile_menu.overrides": "Import overrides…",
   "profile_menu.details": "View details",
-  "profile_menu.delete": "Delete…",
-  "profile_menu.switch_first": "Switch profile first"
+  "profile_menu.delete": "Delete…"
 }

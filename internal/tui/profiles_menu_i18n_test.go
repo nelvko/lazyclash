@@ -45,7 +45,7 @@ func TestProfileMenuLanguagesKeepActionsAndDisabledState(t *testing.T) {
 		}
 		m.snapshot.Applied = "p-stable-profile-id"
 		items = m.profileMenuItems("p-stable-profile-id")
-		if items[0].DisabledReason != m.tr("profile_menu.already_selected") || items[len(items)-1].DisabledReason != m.tr("profile_menu.switch_first") {
+		if items[0].DisabledReason != m.tr("profile_menu.already_selected") || items[len(items)-1].DisabledReason != "" {
 			t.Fatalf("%s: disabled explanations not localized", language)
 		}
 		m.snapshot.ProfileDetails[1].Pending = true

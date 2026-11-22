@@ -102,7 +102,7 @@ func TestProfileDeleteButtonsStayVisibleAndMouseConfirmsWithoutName(t *testing.T
 
 func TestProfileDeleteOwnsInputAndCancellation(t *testing.T) {
 	for _, key := range []tea.KeyPressMsg{special(tea.KeyTab), {Code: tea.KeyTab, Mod: tea.ModShift}, special(tea.KeyLeft), special(tea.KeyRight)} {
-		m := ready(&fakeBackend{})
+		m := ready(&fakeBackend{snapshot: app.Snapshot{Profiles: []string{"work"}}})
 		m.page = "profiles"
 		m.openProfileEdit("profile-delete", "work")
 		m, _ = update(m, key)

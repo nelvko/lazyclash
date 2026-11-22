@@ -29,7 +29,7 @@ flowchart LR
   R --> S[systemd 独立管理内核]
 ```
 
-订阅页只展示用户资料库中的 Profile。安装生成的 `default` 提供无订阅时可用的 Mihomo 配置，概览显示其应用状态。空库时订阅页显示导入提示。要切回内置配置，在当前已应用的用户配置详情中选择「使用内置默认配置」，通过已有的 Apply 流程执行切换。
+订阅页展示已保存的 Profile。未选用订阅时，实例继续使用本机端口、模式和经授权的 TUN 配置，具备默认直连能力；概览显示「未使用订阅」。内部启动模板只用于构建运行配置。停用订阅会保留原卡和更新来源。
 
 ## 存储与身份
 
@@ -59,7 +59,7 @@ Profile ID、显示名称、服务端文件名和磁盘路径分离。ID 稳定�
 
 运行代固定当时的 revision 与覆写。下载刷新、改地址和编辑覆写只保存草稿，Start/Restart 使用已提交代；网站不可用也不重新下载。改端口和 mode 继续使用已应用配置，不意外采用新草稿。
 
-删除 Profile 时显示“取消 / 确认删除”对话框，无需输入名称；默认焦点为取消，鼠标点击确认或键盘切换至确认后按 Enter 即调用共享删除用例，仍以稳定 ID 定位并保护当前已应用配置。
+删除时默认聚焦「取消」，确认一次即可。删除当前配置需在同一对话框中确认接替者。仅有一个其他配置时预选该项，有多个时主动选择；用户也可明确选择不使用订阅，流量可能直连。CLI 的 `--use` 和 `--no-profile` 对应这两种操作。先校验并应用新的运行配置，再按稳定 ID 删除原记录；若切换失败则保留原记录。切换成功后删除失败或程序退出，已生效的选择保持有效，原记录可再次删除。
 
 删除 Profile 一次移除其名称、地址和当前内容引用，不留下独立来源记录或后续下载任务。旧 generation 和快照暂不自动回收，以保留恢复依据；GC 需另行考虑当前代、恢复日志和历史代。历史原文仍是敏感数据。
 
@@ -73,7 +73,7 @@ Profile ID、显示名称、服务端文件名和磁盘路径分离。ID 稳定�
 
 本地来源按真实文件名推导显示名称，`#`、`?` 和 `%20` 等字符按字面保留，不按 URL 查询、Fragment 或转义解释；同样移除 YAML 后缀并执行名称清理。
 
-名称来源为 `custom` / `provider` / `url` / `fallback`；`name_base` 保存去重前候选。比较时统一空白、NFC 和 Unicode case fold，与其他 Profile 或内建 `default` 重复时添加 ` (1)`、` (2)`。刷新从新候选重新计算，不累加旧后缀；删除其他 Profile 不主动整理名称。
+名称来源为 `custom` / `provider` / `url` / `fallback`；`name_base` 保存去重前候选。比较时统一空白、NFC 和 Unicode case fold，与其他已保存 Profile 的显示名称重复时添加 ` (1)`、` (2)`。刷新从新候选重新计算，不累加旧后缀；删除其他 Profile 不主动整理名称。
 
 | 操作 | 名称行为 |
 | --- | --- |
@@ -103,7 +103,7 @@ TUI 用 ID 绑定卡片、详情和动作，用名称显示。CLI 优先解析�
 | File Provider | 保留稳定 runtime 相对路径语义，拒绝绝对路径和上级穿越，不自动复制本地资产 |
 | 监听/API | 最后强制回环 API、密钥、mixed-port，关闭其他入站、LAN、UI、DoH listener 等 |
 | DNS | 保留 resolver，强制清空 dns.listen |
-| TUN | 用户服务不支持，请求明确报错 |
+| TUN | 常规 `tun` 字段由实例策略整体接管；独立 TUN listener 仍报错。开启主机 TUN 的权限边界见 [服务范围](service-scopes.md) |
 | 节点选择 | 强制 profile.store-selected=true，稳定 -d 保留缓存 |
 
 用户 set 指定受管字段时拒绝，不让其误以为已生效；mode 通过独立设置用例修改。null 不作为自定义删除语法，清空使用空 list/map；原生空节点/规则容器允许 null。
@@ -122,7 +122,7 @@ TUI 用 ID 绑定卡片、详情和动作，用名称显示。CLI 优先解析�
 | Edit URL | 校验后一起提交地址、内容及自动名称 | 不加载草稿 |
 | 编辑描述 | 仅保存 Profile 元数据 | 不生成配置或 Pending |
 | 编辑覆写 | 候选与原文一起校验后保存 | 显式 Apply 后使用 |
-| 删除 | 拒绝已应用项，其余删除整条 Profile | 不停止服务，不再被批量下载 |
+| 删除 | 删除非当前项只写资料库；删除当前项先确认接替者或停用订阅 | 运行中先切换并确认就绪；停止时保持停止 |
 | Apply | 新 generation、构建记录和 applied ID 一起提交 | 原本运行才重启；停止时保持停止 |
 | Start/Restart | 使用已应用代，验证归属、配置和就绪 | systemd 独立管理 |
 | Stop | 持久停止意图优先于恢复 | 回滚不隐式启动 |
@@ -134,7 +134,7 @@ TUI 用 ID 绑定卡片、详情和动作，用名称显示。CLI 优先解析�
 
 ## 界面与命令
 
-卡片操作菜单可通过右键、右上角 `⋯` 或聚焦后的 `m` / `Shift+F10` 打开。菜单提供应用、更新、重命名、编辑描述、修改地址、覆写导入、详情和删除；按当前状态禁用不适用的操作并说明原因，内建配置不提供修改或删除。更新不加载草稿，删除仍经过名称确认。菜单绑定稳定 Profile ID，异步重排不改变目标，目标删除后自动关闭；选择操作时再次验证可用性，防止使用过期状态。
+卡片操作菜单可通过右键、右上角 `⋯` 或聚焦后的 `m` / `Shift+F10` 打开。菜单提供应用、更新、重命名、编辑描述、修改地址、覆写导入、详情和删除；按当前状态禁用不适用的操作并说明原因。更新不加载草稿，删除使用按钮确认。菜单绑定稳定 Profile ID，异步重排不改变目标，目标删除后自动关闭；选择操作时再次验证可用性，防止使用过期状态。
 
 `action_menu.go` 是与 Profile 无关的展示/输入组件，复用 Bubbles key 与现有主题、画布叠加能力；`profiles_menu.go` 提供菜单项并将动作交给已有共享用例。菜单支持鼠标、方向键和 Enter，Esc / Tab / 外部点击关闭，事件不穿透到底层；尺寸不足时裁切宽度并滚动选项。菜单遮挡通知并优先接收输入，关闭后恢复原卡片焦点；通知自身遮挡的卡片区域不响应右键。
 
@@ -160,6 +160,9 @@ lazyclash profile override PROFILE_ID /absolute/overrides.yaml
 lazyclash profile refresh PROFILE_ID
 lazyclash profile apply PROFILE_ID
 lazyclash profile delete PROFILE_ID
+lazyclash profile delete CURRENT_ID --use OTHER_ID
+lazyclash profile delete CURRENT_ID --no-profile
+lazyclash profile deactivate
 ```
 
 ## 扩展边界

@@ -464,7 +464,7 @@ func TestInstalledCoreDoesNotRequireGuideOrSubscription(t *testing.T) {
 	}
 	o.Snapshot.ConfigReady = true
 	value, targets, _ = renderDashboard(o)
-	if !strings.Contains(ansi.Strip(value), "Built-in default configuration is ready") || !hasAction(targets, "core.toggle") {
+	if !strings.Contains(ansi.Strip(value), "No profile selected") || !hasAction(targets, "core.toggle") {
 		t.Fatal("built-in configuration must be ready for an explicit start")
 	}
 	o.Snapshot.HasRun = true

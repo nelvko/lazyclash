@@ -156,8 +156,8 @@ func (m *Model) profileInfo(name string) app.ProfileInfo {
 }
 
 func snapshotProfileName(snapshot app.Snapshot, id string, locales ...i18n.Localizer) string {
-	if id == "default" {
-		return dashboardLocale(locales).T("profiles.builtin_name")
+	if id == "" {
+		return dashboardLocale(locales).T("profiles.none_selected")
 	}
 	if id == snapshot.Applied && snapshot.AppliedName != "" {
 		return snapshot.AppliedName

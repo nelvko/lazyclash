@@ -543,9 +543,6 @@ func (m *Model) wizardDocument(width int) (wizardDocument, []wizardButton, strin
 			d.line(m.tr("wizard.stopped"))
 		}
 		d.line(m.tr("wizard.validated"))
-		if m.snapshot.ConfigReady && (m.snapshot.Applied == "default" || m.snapshot.Applied == "") {
-			d.line(m.tr("dashboard.profile.builtinReady"))
-		}
 		d.space()
 		d.control("import", m.tr("wizard.import"), w.focus)
 		return d, []wizardButton{{"done", m.tr("wizard.done")}}, title

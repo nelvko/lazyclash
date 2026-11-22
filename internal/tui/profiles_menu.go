@@ -27,17 +27,13 @@ func (m *Model) profileMenuItems(id string) []menuItem {
 	if !info.Refreshable {
 		update.DisabledReason = m.tr("profile_menu.no_address")
 	}
-	remove := menuItem{ID: "delete", Label: m.tr("profile_menu.delete"), Danger: true}
-	if id == m.snapshot.Applied {
-		remove.DisabledReason = m.tr("profile_menu.switch_first")
-	}
 	return []menuItem{apply, update,
 		{ID: "rename", Label: m.tr("profile_menu.rename")},
 		{ID: "description", Label: m.tr("profile_menu.description")},
 		{ID: "address", Label: m.tr("profile_menu.address")},
 		{ID: "overrides", Label: m.tr("profile_menu.overrides")},
 		{ID: "details", Label: m.tr("profile_menu.details")},
-		remove,
+		{ID: "delete", Label: m.tr("profile_menu.delete"), Danger: true},
 	}
 }
 

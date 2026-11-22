@@ -25,7 +25,7 @@
 | FlClash | Profiles 为空时页面提供添加入口，有记录才显示更新和排序。构建器单独处理缺少 Profile ID 的情况，仍能根据应用入站设置生成配置。[页面空态](https://github.com/chen08209/FlClash/blob/afe7136002271fd64f098b154e7fff40be721eb8/lib/views/profiles/profiles.dart#L70-L138) · [无 Profile 构建分支](https://github.com/chen08209/FlClash/blob/afe7136002271fd64f098b154e7fff40be721eb8/lib/providers/actions/setup.dart#L505-L525) |
 | Clash for Windows 0.20.39 | 核对 macOS 发布包 `app.asar` 的 `dist/electron/renderer.js`。初始索引为空，进入空列表时 `beforeRouteEnter` 调用 `localCopy("config.yaml")`、`switchProfile(0)`。前者将启动配置复制进 `profiles/<时间戳>.yml`，作为名为 `config.yaml` 的普通本地条目保存。此结论来自该版本发布包。 |
 
-lazyclash 安装时已准备内置直连配置，无需复制文件。订阅页只列用户保存的条目。概览负责呈现当前运行配置，已应用配置的详情提供切回内置配置的入口。
+lazyclash 安装时已准备内置直连配置，无需复制文件。订阅页只列用户保存的条目。概览呈现当前选用的订阅或「未使用订阅」，当前配置的详情提供停用订阅入口。
 
 ## Clash Verge Rev
 

@@ -8,7 +8,7 @@
   "wizard.download_install": "Download and install",
   "wizard.version.recommended": "Available version",
   "wizard.device_auto": "A compatible build is selected for this device automatically.",
-  "wizard.install_summary": "Installs the core and prepares the default configuration. Start it from Overview when ready.",
+  "wizard.install_summary": "Install the core, then start it from Overview.",
   "wizard.replace_summary": "Keeps your configuration. Restart a running core explicitly to use the new binary.",
   "wizard.version.check_again": "Check version / Retry",
   "wizard.version.pending": "Check the latest stable version before downloading.",

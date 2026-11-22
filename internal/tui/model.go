@@ -45,7 +45,8 @@ type Backend interface {
 	UpdateProfileAddress(context.Context, string, string) error
 	Refresh(context.Context, string) error
 	RefreshAllProfiles(context.Context) error
-	DeleteProfile(context.Context, string) error
+	DeleteProfileWithReplacement(context.Context, string, string) error
+	DeactivateProfile(context.Context, string) error
 	SetProfileOverrides(context.Context, string, []byte) error
 	Apply(context.Context, string) error
 	Control(context.Context, string) error
@@ -1626,6 +1627,9 @@ func (m *Model) renderLayout() {
 		m.screen, m.targets = m.renderTUNConfirmation(base)
 	} else if m.form != "" {
 		m.screen, m.targets = m.renderProfileForm(base)
+		if m.form == "profile-delete" && m.menu.open {
+			m.renderReplacementMenu()
+		}
 	} else if m.notification.panel.open {
 		m.screen, m.targets = m.notification.panel.render(m.notification.items, m.width, m.height, m.locale, m.buttonPlain())
 	} else if m.providers.open {

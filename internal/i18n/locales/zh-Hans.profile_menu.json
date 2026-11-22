@@ -10,6 +10,5 @@
   "profile_menu.address": "编辑地址…",
   "profile_menu.overrides": "导入覆写…",
   "profile_menu.details": "查看详情",
-  "profile_menu.delete": "删除…",
-  "profile_menu.switch_first": "请先切换配置"
+  "profile_menu.delete": "删除…"
 }

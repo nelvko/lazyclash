@@ -449,7 +449,6 @@ func (m *Model) inlineInstallBody(width int) (string, []hitRegion) {
 			d.control("network", m.tr("dashboard.setup.downloadMethod"))
 		} else {
 			d.line(m.tr("dashboard.setup.installed", w.result.InstalledVersion), success)
-			d.line(m.tr("dashboard.profile.builtinReady"), text)
 			d.line(m.tr("dashboard.setup.startHint"), muted)
 			d.space()
 			d.buttons(wizardButton{"start", m.tr("dashboard.action.start")}, wizardButton{"done", m.tr("wizard.overview")})

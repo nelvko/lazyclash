@@ -18,6 +18,7 @@ import (
 )
 
 type fakeBackend struct {
+	deleteAndSwitch      func(context.Context, string, string) error
 	checkUpdate          func(context.Context, mihomo.Channel, downloadnet.Config) (app.CoreUpdateCheck, error)
 	upgradeCore          func(context.Context, app.CoreUpdateCheck, downloadnet.Config, func(mihomo.Progress)) (app.CoreUpgradeResult, error)
 	snapshot             app.Snapshot
@@ -203,7 +204,12 @@ func (f *fakeBackend) RefreshAllProfiles(ctx context.Context) error {
 	return ctx.Err()
 }
 
-func (f *fakeBackend) DeleteProfile(ctx context.Context, name string) error {
+func (f *fakeBackend) DeactivateProfile(ctx context.Context, _ string) error { return ctx.Err() }
+
+func (f *fakeBackend) DeleteProfileWithReplacement(ctx context.Context, name, replacement string) error {
+	if f.deleteAndSwitch != nil {
+		return f.deleteAndSwitch(ctx, name, replacement)
+	}
 	if f.deleteProfile != nil {
 		return f.deleteProfile(ctx, name)
 	}

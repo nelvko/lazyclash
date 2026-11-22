@@ -13,15 +13,12 @@ import (
 func overviewProfileCard(o dashboardOptions, width int) dashboardBlock {
 	tr := o.Locale.T
 	s := o.Snapshot
-	name, status := tr("dashboard.profile.none"), tr("dashboard.profile.notApplied")
-	if s.ConfigReady {
-		name, status = snapshotProfileName(s, s.Applied, o.Locale), tr("dashboard.profile.ready")
-		if name == "" {
-			name = tr("profiles.builtin_name")
-		}
-		if !s.HasRun && (s.Applied == "default" || s.Applied == "") {
-			status = tr("dashboard.profile.builtinReady")
-		}
+	name := snapshotProfileName(s, s.Applied, o.Locale)
+	status := ""
+	if !s.ConfigReady {
+		status = tr("dashboard.profile.notApplied")
+	} else if s.Applied != "" {
+		status = tr("dashboard.profile.ready")
 	}
 	var info app.ProfileInfo
 	for _, candidate := range s.ProfileDetails {
@@ -38,7 +35,9 @@ func overviewProfileCard(o dashboardOptions, width int) dashboardBlock {
 	}
 	lines := []string{
 		themed(lipgloss.NewStyle().Bold(true).Render(clean(name)), text, panel, o.Dim),
-		themed(status, statusColor, panel, o.Dim),
+	}
+	if status != "" {
+		lines = append(lines, themed(status, statusColor, panel, o.Dim))
 	}
 	var details [][2]string
 	if info.ID != "" {
@@ -48,8 +47,6 @@ func overviewProfileCard(o dashboardOptions, width int) dashboardBlock {
 			origin = tr("profiles.create_local")
 		case "imported":
 			origin = tr("profiles.imported_origin")
-		case "builtin":
-			origin = tr("profiles.builtin_origin")
 		}
 		if origin != "" {
 			details = append(details, [2]string{tr("dashboard.overview.sourceLabel"), origin})
@@ -65,13 +62,7 @@ func overviewProfileCard(o dashboardOptions, width int) dashboardBlock {
 	if len(details) > 0 {
 		lines = append(lines, overviewProfileDetailRows(o, details, max(1, width-4))...)
 	}
-	saved := 0
-	for _, id := range s.Profiles {
-		if id != "default" {
-			saved++
-		}
-	}
-	if !s.ConfigReady && saved == 0 {
+	if !s.ConfigReady && len(s.Profiles) == 0 {
 		lines = append(lines, themed(tr("dashboard.profile.importHint"), muted, panel, o.Dim))
 	}
 	return overviewActionPanel(o, width, tr("dashboard.profile.title"), overviewTextBlock(lines, max(1, width-4)), overviewControlButton{

@@ -11,23 +11,24 @@ import (
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/diagnostic"
 	"github.com/nelvko/lazyclash/internal/i18n"
 	"github.com/nelvko/lazyclash/internal/store"
 )
 
 type profilesState struct {
-	url              textinput.Model
-	urlError         string
-	urlErrorValue    string
-	pasteDeadline    time.Time
-	pasteUnavailable bool
-	editing          bool
-	detail           string
-	importing        bool
-	menuProfile      string
-	deleteFocus      string
+	url               textinput.Model
+	urlError          string
+	urlErrorValue     string
+	pasteDeadline     time.Time
+	pasteUnavailable  bool
+	editing           bool
+	detail            string
+	importing         bool
+	menuProfile       string
+	deleteFocus       string
+	deleteCurrent     bool
+	deleteReplacement string
 }
 
 const profilePasteTimeout = 15 * time.Second
@@ -291,7 +292,11 @@ func (m *Model) profileAction(id string) (bool, tea.Cmd) {
 			notificationOperation{Key: "profile.refresh-all", Context: m.tr("profiles.updating_all")})
 	case "profiles.use-default":
 		if m.page == "profiles" && m.canUseDefaultFrom(m.profilesUI.detail) {
-			return true, m.applyProfile("default")
+			label := m.tr("profiles.deactivating")
+			id := m.profilesUI.detail
+			return true, m.begin(label, m.tr("profiles.deactivated"), func(ctx context.Context) error {
+				return m.backend.DeactivateProfile(ctx, id)
+			}, m.profileNotification("deactivate", label, id))
 		}
 		return true, nil
 	case "profiles.close":
@@ -382,7 +387,7 @@ func (m *Model) openProfileEdit(form, name string) tea.Cmd {
 	}
 	m.input.Focus()
 	if form == "profile-delete" {
-		m.profileDeleteSetFocus("profile-delete.cancel")
+		m.prepareProfileDelete()
 		return nil
 	}
 	return textinput.Blink
@@ -390,7 +395,7 @@ func (m *Model) openProfileEdit(form, name string) tea.Cmd {
 
 func (m *Model) closeProfileForm() {
 	m.form, m.name, m.rememberSource = "", "", false
-	m.profilesUI.deleteFocus = ""
+	m.profilesUI.deleteFocus, m.profilesUI.deleteReplacement, m.profilesUI.deleteCurrent = "", "", false
 	m.input.Reset()
 	m.input.Blur()
 }
@@ -403,32 +408,8 @@ func (m *Model) profileFormKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 		if m.busy || m.quitting {
 			return true, nil
 		}
-		switch k.String() {
-		case "tab", "shift+tab", "left", "right":
-			if m.profilesUI.deleteFocus == "profile-delete.cancel" {
-				return true, m.profileDeleteSetFocus("profile-delete.confirm")
-			}
-			return true, m.profileDeleteSetFocus("profile-delete.cancel")
-		case "enter":
-			switch m.profilesUI.deleteFocus {
-			case "profile-delete.cancel":
-				m.closeProfileForm()
-				return true, nil
-			case "profile-delete.confirm":
-				if _, targets := m.renderProfileDeleteForm(""); len(targets) == 0 {
-					return true, nil
-				}
-				name := m.name
-				m.closeProfileForm()
-				return true, m.begin(m.tr("profiles.deleting"), m.tr("profiles.deleted"), func(ctx context.Context) error {
-					return m.backend.DeleteProfile(ctx, name)
-				}, m.profileNotification("delete", m.tr("profiles.deleting"), name))
-			}
-			return true, nil
-		case "esc":
-			// Keep the existing cancellation notification below.
-		default:
-			return true, nil
+		if k.String() != "esc" {
+			return true, m.profileDeleteKey(k)
 		}
 	}
 	switch k.String() {
@@ -494,19 +475,6 @@ func (m *Model) profileFormKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 func (m *Model) profileDeleteSetFocus(id string) tea.Cmd {
 	m.profilesUI.deleteFocus = id
 	m.input.Blur()
-	return nil
-}
-
-func (m *Model) profileDeleteMouse(id string) tea.Cmd {
-	if m.form != "profile-delete" || m.busy || m.quitting {
-		return nil
-	}
-	switch id {
-	case "profile-delete.cancel", "profile-delete.confirm":
-		m.profileDeleteSetFocus(id)
-		_, cmd := m.profileFormKey(tea.KeyPressMsg{Code: tea.KeyEnter})
-		return cmd
-	}
 	return nil
 }
 
@@ -615,59 +583,4 @@ func (m *Model) renderProfileForm(base string) (string, []hitRegion) {
 		field.targets[i].Y += y + inputRow
 	}
 	return overlay(base, strings.Join(rows, "\n"), x, y, m.width, m.height), field.targets
-}
-
-func (m *Model) renderProfileDeleteForm(base string) (string, []hitRegion) {
-	width, height := min(inputFieldMaxWidth+4, m.width), min(9, m.height)
-	if width < 24 || height < 7 {
-		return overlay("", m.tr("profiles.enlarge"), 0, 0, m.width, m.height), nil
-	}
-	x, y := (m.width-width)/2, (m.height-height)/2
-	inner := width - 4
-	rows := profileDialogCanvas(width, height)
-	put := func(row int, value string) { putRows(rows, 2, row, cellPad(value, inner), width) }
-	put(1, themed(cellCrop(m.tr("profiles.delete_title", clean(m.profileInfo(m.name).Name)), inner), text, raised, false))
-	var buttons dashboardBlock
-	buttons.lines = []string{""}
-	for _, button := range []struct {
-		id, label string
-		kind      buttonKind
-	}{
-		{"profile-delete.cancel", m.tr("profiles.create_cancel"), buttonSecondary},
-		{"profile-delete.confirm", m.tr("profiles.delete_confirm"), buttonDangerConfirm},
-	} {
-		value := renderButton(button.label, buttonOptions{Kind: button.kind, Surface: raised,
-			Focused: m.profilesUI.deleteFocus == button.id, Hovered: m.hover == button.id,
-			Disabled: m.busy || m.quitting, Plain: m.buttonPlain()})
-		last := len(buttons.lines) - 1
-		if buttons.lines[last] != "" && ansi.StringWidth(buttons.lines[last])+ansi.StringWidth(value) > inner {
-			buttons.lines = append(buttons.lines, "")
-			last++
-		}
-		if !m.busy && !m.quitting {
-			buttons.targets = append(buttons.targets, hitRegion{ID: button.id, X: ansi.StringWidth(buttons.lines[last]), Y: last, W: min(inner, ansi.StringWidth(value)), H: 1})
-		}
-		buttons.lines[last] += cellCrop(value, inner)
-	}
-	buttonRow := height - 2 - len(buttons.lines)
-	for row, line := range strings.Split(wrapText(m.tr("profiles.delete_hint"), inner), "\n") {
-		if row+2 >= buttonRow {
-			break
-		}
-		put(row+2, themed(line, muted, raised, false))
-	}
-	var targets []hitRegion
-	for row, line := range buttons.lines {
-		put(buttonRow+row, line)
-	}
-	for _, hit := range buttons.targets {
-		hit.X, hit.Y = hit.X+x+2, hit.Y+y+buttonRow
-		targets = append(targets, hit)
-	}
-	message, color := m.profileDeleteContextHelp(), muted
-	if m.failure != "" {
-		message, color = m.failure, errorColor
-	}
-	put(height-2, themed(cellCrop(message, inner), color, raised, false))
-	return overlay(base, strings.Join(rows, "\n"), x, y, m.width, m.height), targets
 }

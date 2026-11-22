@@ -25,6 +25,13 @@ func (b *profileClickBackend) Apply(_ context.Context, id string) error {
 	return b.err
 }
 
+func (b *profileClickBackend) DeactivateProfile(ctx context.Context, expectedID string) error {
+	if b.snapshot.Applied != expectedID {
+		return errors.New("selection changed")
+	}
+	return b.Apply(ctx, "")
+}
+
 func profileClickModel(t *testing.T, installed, active, current, pending bool) (Model, *profileClickBackend) {
 	t.Helper()
 	const id = "p-stable-profile-id"
@@ -123,7 +130,7 @@ func TestProfileDetailsSwitchBackToDefault(t *testing.T) {
 		err  error
 		want string
 	}{
-		{name: "applied", want: "default"},
+		{name: "applied", want: ""},
 		{name: "rejected", err: errors.New("could not apply default"), want: "p-stable-profile-id"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
@@ -135,7 +142,7 @@ func TestProfileDetailsSwitchBackToDefault(t *testing.T) {
 				t.Fatal("switching back must keep the selected profile until the operation finishes")
 			}
 			m = finishProfileJob(t, m, cmd)
-			if len(b.calls) != 1 || b.calls[0] != "default" || m.snapshot.Applied != test.want {
+			if len(b.calls) != 1 || b.calls[0] != "" || m.snapshot.Applied != test.want {
 				t.Fatalf("apply calls=%v, selection=%q", b.calls, m.snapshot.Applied)
 			}
 			if test.err != nil && !strings.Contains(m.failure, test.err.Error()) {
@@ -145,6 +152,17 @@ func TestProfileDetailsSwitchBackToDefault(t *testing.T) {
 				t.Fatalf("focus remained on a removed action after switching back: %q", m.focus)
 			}
 		})
+	}
+}
+
+func TestDeactivationRejectsAChangedSelection(t *testing.T) {
+	m, b := profileClickModel(t, true, true, true, false)
+	m, _ = update(m, special(tea.KeyEnter))
+	m, cmd := click(m, findTarget(t, m, "profiles.use-default"))
+	b.snapshot.Applied = "another-profile"
+	m = finishProfileJob(t, m, cmd)
+	if b.snapshot.Applied != "another-profile" || len(b.calls) != 0 || !strings.Contains(m.failure, "selection changed") {
+		t.Fatal("an action on the former current profile deactivated a newer selection")
 	}
 }
 

@@ -94,10 +94,9 @@ func TestProfileDetailsRetainTypeOverridesAndFullSafeOrigin(t *testing.T) {
 func TestProfilesGridListsOnlySavedProfiles(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		m := ready(&fakeBackend{snapshot: app.Snapshot{
-			Installed: true, Applied: "default",
-			Profiles: []string{"default", "work"},
+			Installed: true,
+			Profiles:  []string{"work"},
 			ProfileDetails: []app.ProfileInfo{
-				{ID: "default", Name: "default", Kind: "builtin"},
 				{ID: "work", Name: "Work subscription", Validated: true},
 			},
 		}})
@@ -105,9 +104,9 @@ func TestProfilesGridListsOnlySavedProfiles(t *testing.T) {
 		body, targets := m.profilesBody(112)
 		view := ansi.Strip(body)
 		if !hasAction(targets, "profile.0") || hasAction(targets, "profile.1") ||
-			strings.Count(view, "Work subscription") != 1 || strings.Contains(view, m.tr("profiles.builtin_name")) ||
+			strings.Count(view, "Work subscription") != 1 || strings.Contains(view, m.tr("profiles.none_selected")) ||
 			strings.Contains(view, m.tr("profiles.in_use")) || strings.Contains(view, m.tr("empty.profiles.none")) {
-			t.Fatalf("unexpected grid while default is applied: %s", view)
+			t.Fatalf("unexpected grid without a selected profile: %s", view)
 		}
 	}
 }

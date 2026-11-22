@@ -19,7 +19,7 @@ import (
 
 func TestOverviewPairedLayoutAlignsBothEdgesAndKeepsActionOwnership(t *testing.T) {
 	snapshot := app.Snapshot{
-		Installed: true, ConfigReady: true, HasRun: true, Applied: "default",
+		Installed: true, ConfigReady: true, HasRun: true,
 		Version: "v1.19.33", RunningVersion: "v1.19.33",
 		Service:      service.Status{Active: true, State: "active", PID: 456},
 		Mode:         app.ModeStatus{Desired: "rule", Actual: "rule", Running: true},
@@ -328,7 +328,7 @@ func TestOverviewProfileKeepsSafeMetadataAndUnappliedChangesExplicit(t *testing.
 		t.Run(language, func(t *testing.T) {
 			locale := i18n.New(language)
 			o := dashboardOptions{Locale: locale, Snapshot: app.Snapshot{
-				Installed: true, ConfigReady: true, Applied: "work", Profiles: []string{"default", "work"},
+				Installed: true, ConfigReady: true, Applied: "work", Profiles: []string{"work"},
 				ProfileDetails: []app.ProfileInfo{{ID: "work", Name: "Work", Kind: "remote", Origin: "subscription.example.invalid", UpdatedAt: updated, Validated: true, HasOverrides: true, Description: "hidden-profile-description"}},
 			}}
 			card := func() string { return ansi.Strip(strings.Join(overviewProfileCard(o, 100).lines, "\n")) }
@@ -352,7 +352,7 @@ func TestOverviewProfileKeepsSafeMetadataAndUnappliedChangesExplicit(t *testing.
 			if value := card(); !strings.Contains(value, locale.T("profiles.validation_pending")) || strings.Contains(value, locale.T("dashboard.profile.ready")) {
 				t.Fatalf("unvalidated profile appeared ready: %s", value)
 			}
-			for kind, origin := range map[string]string{"local": locale.T("profiles.create_local"), "imported": locale.T("profiles.imported_origin"), "builtin": locale.T("profiles.builtin_origin")} {
+			for kind, origin := range map[string]string{"local": locale.T("profiles.create_local"), "imported": locale.T("profiles.imported_origin")} {
 				o.Snapshot.ProfileDetails[0].Kind = kind
 				o.Snapshot.ProfileDetails[0].Origin = "/private/profile-source.yaml"
 				if value := card(); !strings.Contains(value, origin) || strings.Contains(value, "/private/profile-source.yaml") {

@@ -74,6 +74,8 @@ func (m *Model) profileDeleteContextHelp() string {
 	switch m.profilesUI.deleteFocus {
 	case "profile-delete.cancel":
 		label = m.tr("profiles.create_cancel")
+	case deleteChoice:
+		label = m.tr("profiles.choose_replacement")
 	case "profile-delete.confirm":
 		label = m.tr("profiles.delete_confirm")
 	}

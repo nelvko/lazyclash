@@ -8,7 +8,7 @@
   "wizard.download_install": "下载并安装",
   "wizard.version.recommended": "可安装版本",
   "wizard.device_auto": "根据本机架构和 CPU 自动选择兼容构建。",
-  "wizard.install_summary": "安装内核并准备默认配置，完成后可在概览中启动。",
+  "wizard.install_summary": "安装内核后，可在概览中启动。",
   "wizard.replace_summary": "保留当前配置；运行中的内核需手动重启以使用新版本。",
   "wizard.version.check_again": "检查版本 / 重试",
   "wizard.version.pending": "下载前先检查最新稳定版本。",

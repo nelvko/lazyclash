@@ -479,7 +479,7 @@ def main():
             mark = len(terminal.text())
             terminal.key(b"\r")
             terminal.wait("is installed and verified", after=mark)
-            terminal.wait("Built-in default configuration is ready")
+            terminal.wait("start the core without a subscription")
             terminal.wait("Start core")
             terminal.exit()
         elif args.mode == "runtime-settings":
@@ -825,8 +825,7 @@ def main():
             if cli("status")["Service"]["PID"] != pid:
                 raise AssertionError("Proxies refresh restarted the running core")
             terminal.key(b"3")
-            terminal.wait("Built-in default")
-            terminal.wait("configuration")
+            terminal.wait("New profile")
             terminal.resize(20, 5)
             time.sleep(0.1)
             terminal.resize(120, 40)

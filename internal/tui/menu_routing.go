@@ -6,6 +6,11 @@ import tea "charm.land/bubbletea/v2"
 // against current page state before applying an action or selection.
 func (m *Model) applyMenuResult(result menuResult) tea.Cmd {
 	switch {
+	case m.form == "profile-delete":
+		if result.Closed && result.Action != "" && !m.busy && !m.quitting {
+			m.profilesUI.deleteReplacement = result.Action
+		}
+		return nil
 	case m.logs.levelMenu:
 		return m.logsLevelMenuResult(result)
 	case m.proxies.sortMenu:
@@ -17,6 +22,10 @@ func (m *Model) applyMenuResult(result menuResult) tea.Cmd {
 
 func (m *Model) reconcileMenu() {
 	switch {
+	case m.form == "profile-delete":
+		if m.menu.open {
+			m.menu.setItems(m.profileReplacementItems())
+		}
 	case m.logs.levelMenu:
 		m.reconcileLogsLevelMenu()
 	case m.proxies.sortMenu:
@@ -30,6 +39,10 @@ func (m *Model) reconcileMenu() {
 }
 
 func (m *Model) dismissMenu() {
+	if m.form == "profile-delete" {
+		m.menu.dismiss()
+		return
+	}
 	if m.logs.levelMenu || m.proxies.sortMenu {
 		m.applyMenuResult(menuResult{Closed: true})
 		return
