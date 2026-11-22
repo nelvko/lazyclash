@@ -101,7 +101,11 @@ func TestLogsEmptyStatesKeepFailureAndPauseMeaning(t *testing.T) {
 				for _, size := range [][2]int{{80, 24}, {60, 18}} {
 					m.width, m.height = size[0], size[1]
 					body, targets := m.logsBody(dashboardBodyWidth(m.dashboardOptions()))
-					assertStreamEmptyCentered(t, body, dashboardBodyWidth(m.dashboardOptions()), 1)
+					footerRows := 0
+					if hasAction(targets, "logs.latest") {
+						footerRows = 1
+					}
+					assertStreamEmptyCentered(t, body, dashboardBodyWidth(m.dashboardOptions()), footerRows)
 					if test.action != "" && !hasAction(targets, test.action) {
 						t.Fatalf("recovery action %s disappeared at %v", test.action, size)
 					}

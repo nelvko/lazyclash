@@ -191,8 +191,17 @@ func TestLogsClearOnlyRemovesRetainedEntriesAndPreservesStreamAndFilters(t *test
 func TestLogsIdleFilteringAndFailureHaveDistinctStates(t *testing.T) {
 	m := redesignedLogsModel(120, 32, 0)
 	defer m.stopRuntime()
-	if got := ansi.Strip(m.screen); !strings.Contains(got, m.tr("empty.logs.none")) || m.logsEmptyState().Detail != "" || !strings.Contains(got, m.tr("logs.waiting")) || strings.Contains(got, "Start Mihomo") {
+	if got := ansi.Strip(m.screen); !strings.Contains(got, m.tr("empty.logs.none")) || m.logsEmptyState().Detail != "" || hasAction(m.targets, "logs.latest") || strings.Contains(got, "Start Mihomo") {
 		t.Fatalf("healthy idle capture gave misleading guidance:\n%s", got)
+	}
+	body, _ := m.logsBody(dashboardBodyWidth(m.dashboardOptions()))
+	if got := strings.TrimSpace(ansi.Strip(body)); got != m.tr("empty.logs.none") {
+		t.Fatalf("unexpected idle log body: %q", got)
+	}
+	m.appendLogs([]mihomo.LogEntry{{Level: "info", Message: "first event"}})
+	m.layout()
+	if !hasAction(m.targets, "logs.latest") || !strings.Contains(ansi.Strip(m.screen), m.tr("logs.capturing")) {
+		t.Fatal("first event did not restore the follow status and latest action")
 	}
 	m.logs.search.SetValue("no-such-event")
 	m.layout()

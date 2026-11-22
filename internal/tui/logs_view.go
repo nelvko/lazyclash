@@ -273,7 +273,15 @@ func (m *Model) logsPrefix(width int) dashboardBlock {
 }
 
 func (m *Model) logsCapacity(width int) int {
-	return max(1, dashboardGeometry(m.dashboardOptions()).height-len(m.logsPrefix(width).lines)-1)
+	status, _ := m.logsStatus()
+	return logViewportRows(dashboardGeometry(m.dashboardOptions()).height-len(m.logsPrefix(width).lines), status)
+}
+
+func logViewportRows(available int, status string) int {
+	if status != "" {
+		available--
+	}
+	return max(1, available)
 }
 
 func (m *Model) logsStatus() (string, string) {
@@ -296,7 +304,7 @@ func (m *Model) logsStatus() (string, string) {
 		return m.tr("logs.opening"), muted
 	}
 	if len(m.logs.entries) == 0 {
-		return m.tr("logs.waiting"), info
+		return "", ""
 	}
 	if m.logs.holding {
 		return m.tr("logs.browsing"), info
@@ -317,9 +325,10 @@ func (m *Model) logsBody(width int) (string, []hitRegion) {
 		}
 	}
 	height := dashboardGeometry(m.dashboardOptions()).height
+	status, color := m.logsStatus()
 	// Keep the input and external controls together before spending a row
 	// on the footer. A tiny terminal still needs one row for log content.
-	prefixLimit := max(0, height-2)
+	prefixLimit := logViewportRows(height, status) - 1
 	if m.dashboardOptions().BodyTopRows == 0 {
 		controlsRows := m.logFilterRows(width)
 		prefixLimit = max(prefixLimit, min(controlsRows, max(0, height-1)))
@@ -334,7 +343,7 @@ func (m *Model) logsBody(width int) (string, []hitRegion) {
 		}
 		b.targets = visible
 	}
-	capacity := max(1, height-len(b.lines)-1)
+	capacity := logViewportRows(height-len(b.lines), status)
 	var v viewport.Model
 	if len(doc.lines) == 0 {
 		empty := m.emptyState(width, capacity, m.logsEmptyState())
@@ -350,8 +359,7 @@ func (m *Model) logsBody(width int) (string, []hitRegion) {
 	}
 	b.targets = append(b.targets, hitRegion{ID: "logs.list", Y: len(b.lines), W: width, H: capacity})
 	b.lines = append(b.lines, strings.Split(v.View(), "\n")...)
-	if len(b.lines) < height {
-		status, color := m.logsStatus()
+	if status != "" && len(b.lines) < height {
 		label := m.tr("logs.latest")
 		if (m.logs.holding || m.logs.paused) && m.logs.unread > 0 {
 			label += fmt.Sprintf(" +%d", m.logs.unread)

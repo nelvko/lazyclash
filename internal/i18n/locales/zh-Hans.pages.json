@@ -146,7 +146,6 @@
   "logs.title": "Mihomo 日志",
   "logs.ended": "采集已结束 · 保留上次观测到的记录",
   "logs.capturing": "正在采集实时事件 · 跟随最新",
-  "logs.waiting": "正在等待实时事件",
   "logs.paused": "已暂停",
   "logs.display_paused": "已暂停",
   "logs.pause_display": "暂停",

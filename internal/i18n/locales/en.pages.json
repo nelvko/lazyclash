@@ -146,7 +146,6 @@
   "logs.title": "Mihomo logs",
   "logs.ended": "Capture ended · retained entries are last observed",
   "logs.capturing": "Capturing live events · Following",
-  "logs.waiting": "Waiting for live events",
   "logs.paused": "Paused",
   "logs.display_paused": "Paused",
   "logs.pause_display": "Pause",
