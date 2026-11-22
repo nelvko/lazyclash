@@ -142,7 +142,12 @@ func (m *Model) connectionActive(connection mihomo.Connection) bool {
 	return false
 }
 func (m *Model) canCloseAllConnections() bool {
-	return !m.busy && !m.quitting && m.runtime.received && m.runtime.snapshot.State == "ready" && m.runtime.snapshot.Connections != nil && len(m.runtime.snapshot.Connections.Connections) > 0
+	return !m.connections.closedView && !m.busy && !m.quitting && m.runtime.received && m.runtime.snapshot.State == "ready" && m.runtime.snapshot.Connections != nil && len(m.runtime.snapshot.Connections.Connections) > 0
+}
+
+func (m *Model) canClearConnectionHistory() bool {
+	return m.connections.closedView && !m.busy && !m.quitting && !m.connections.confirming && m.connections.detail == nil &&
+		(len(m.connections.history.closed) != 0 || len(m.connections.frozenClosed) != 0)
 }
 
 func (m *Model) canPauseConnections() bool {
@@ -398,6 +403,12 @@ func (m *Model) connectionActivate(id string) tea.Cmd {
 		}
 		m.reconcileConnections()
 		m.revealConnection(0)
+	case id == "conn.clear-history":
+		if m.canClearConnectionHistory() {
+			m.connections.history.closed, m.connections.frozenClosed = nil, nil
+			m.connections.selected, m.connections.selectedIndex = "", 0
+			m.scroll, m.focus = 0, "conn.closed"
+		}
 	case id == "conn.close-all":
 		if !m.connections.confirming && m.canCloseAllConnections() {
 			m.connections.closeAllScroll = m.scroll

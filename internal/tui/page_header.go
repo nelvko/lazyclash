@@ -78,10 +78,11 @@ func (m *Model) pageHeader() pageHeader {
 		if m.connections.paused {
 			pause, compact = tr("connections.resume"), "▶"
 		}
-		h.actions = []headerAction{
-			{"conn.pause", pause, compact, m.canPauseConnections()},
-			{"conn.close-all", tr("connections.close_all"), "×", !m.connections.confirming && m.canCloseAllConnections()},
+		bulk := headerAction{"conn.close-all", tr("connections.close_all"), "×", !m.connections.confirming && m.canCloseAllConnections()}
+		if m.connections.closedView {
+			bulk = headerAction{"conn.clear-history", tr("connections.clear_history"), "⌫", m.canClearConnectionHistory()}
 		}
+		h.actions = []headerAction{{"conn.pause", pause, compact, m.canPauseConnections()}, bulk}
 	case "rules":
 		h.actions = []headerAction{{"rules.providers", tr("providers.title.rules"), "≡", m.providersSupported(providerRules)}}
 	case "logs":

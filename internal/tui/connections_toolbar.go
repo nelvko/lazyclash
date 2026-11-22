@@ -103,11 +103,10 @@ func (m *Model) connectionFilterBar(width int) dashboardBlock {
 
 func (m *Model) connectionStatus() (string, string) {
 	if m.connections.closedView {
-		status := m.tr("connections.history_scope")
 		if m.connections.paused {
-			status = m.tr("connections.paused") + " · " + status
+			return m.tr("connections.paused"), warning
 		}
-		return status, muted
+		return "", muted
 	}
 	if !m.snapshotReady {
 		if m.busy {

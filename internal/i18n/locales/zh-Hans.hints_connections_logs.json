@@ -9,6 +9,7 @@
   "navigation.connections.action.clear": "Enter 清空搜索",
   "navigation.connections.action.active": "Enter 活跃连接",
   "navigation.connections.action.closed": "Enter 已关闭连接",
+  "navigation.connections.action.clear_history": "Enter 清除全部本地历史",
   "navigation.connections.action.sort": "Enter 下一种排序",
   "navigation.connections.action.column": "Enter 按此列排序",
   "navigation.connections.action.reverse": "Enter 反转顺序",

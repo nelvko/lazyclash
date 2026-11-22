@@ -50,6 +50,10 @@ func (m *Model) connectionsContextHelp() string {
 		action = "active"
 	case "conn.closed":
 		action = "closed"
+	case "conn.clear-history":
+		if m.canClearConnectionHistory() {
+			action = "clear_history"
+		}
 	case "conn.sort":
 		action = "sort"
 	case "conn.pause":

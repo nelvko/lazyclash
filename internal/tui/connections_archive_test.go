@@ -205,10 +205,7 @@ func TestConnectionsArchiveTabsLayoutAndSelectionAcrossSizes(t *testing.T) {
 				if size[0] == 160 && (active.X >= closed.X || closed.X+closed.W > search.X) {
 					t.Fatalf("tabs do not precede search horizontally: %v %v %v", active, closed, search)
 				}
-				bar := m.connectionsToolbar(dashboardBodyWidth(m.dashboardOptions()), m.connectionToolbarRows(dashboardBodyWidth(m.dashboardOptions())))
-				if size[0] >= 120 && !strings.Contains(ansi.Strip(strings.Join(bar.lines, "\n")), m.tr("connections.history_scope")) {
-					t.Fatal("archive toolbar omits the session history retention explanation")
-				}
+				findTarget(t, m, "conn.clear-history")
 			}
 		})
 	}
@@ -253,5 +250,67 @@ func TestConnectionsArchiveViewShortcutRemainsTextInsideSearch(t *testing.T) {
 	}
 	if !seen["conn.active"] || !seen["conn.closed"] {
 		t.Fatal("view tabs are missing from keyboard focus navigation")
+	}
+}
+
+func TestConnectionsClearHistoryIgnoresFilterAndClearsPausedCopy(t *testing.T) {
+	m, _ := archiveFixture(t, &fakeBackend{
+		closeConnection:     func(context.Context, string) error { t.Fatal("clear called CloseConnection"); return nil },
+		closeAllConnections: func(context.Context) error { t.Fatal("clear called CloseAllConnections"); return nil },
+	})
+	m.connectionActivate("conn.closed")
+	m.connectionActivate("conn.pause")
+	at := m.runtime.snapshot.ObservedAt.Add(time.Second)
+	next := fixtureConnection("next", "next.invalid", 3)
+	archiveObserve(&m, []mihomo.Connection{next}, at)
+	m.connections.search.SetValue("no-match")
+	m.reconcileConnections()
+	m.layout()
+	if got := m.connectionCount(); got != "0 / 1" || len(m.connections.history.closed) != 2 {
+		t.Fatalf("expected a filtered, frozen view and two recorded closures, got %q", got)
+	}
+	totals := m.connectionTotals(false)
+	m, cmd := click(m, findTarget(t, m, "conn.clear-history"))
+	if cmd != nil || m.busy || m.connections.confirming || m.focus != "conn.closed" {
+		t.Fatal("clearing history should complete locally and return focus to the closed tab")
+	}
+	if !m.connections.paused || m.connectionCount() != "0 / 0" || m.connections.search.Value() != "no-match" || m.connectionTotals(false) != totals {
+		t.Fatal("clearing changed the pause, search or core totals, or retained frozen history")
+	}
+	if len(m.connections.history.closed) != 0 || m.pageHeader().enabled("conn.clear-history") || hasAction(m.targets, "conn.close-all") {
+		t.Fatal("empty history still has records or a bulk action")
+	}
+	m.connectionActivate("conn.pause")
+	if len(m.connectionClosedEntries()) != 0 || len(m.connectionSnapshot().Connections) != 1 {
+		t.Fatal("resuming restored old records or lost the live connection")
+	}
+	archiveObserve(&m, nil, at.Add(time.Second))
+	entries := m.connectionClosedEntries()
+	if len(entries) != 1 || entries[0].Connection.ID != next.ID || !m.pageHeader().enabled("conn.clear-history") {
+		t.Fatal("clearing lost the observation baseline for the next closure")
+	}
+}
+
+func TestConnectionsClearHistoryOnlyAvailableInClosedList(t *testing.T) {
+	m, first := archiveFixture(t, &fakeBackend{})
+	if m.pageHeader().owns("conn.clear-history") {
+		t.Fatal("active header offered to clear local history")
+	}
+	m.connectionActivate("conn.clear-history")
+	m.connectionActivate("conn.closed")
+	if m.pageHeader().owns("conn.close-all") {
+		t.Fatal("closed header offered to close live connections")
+	}
+	m.connectionActivate("conn.close-all")
+	if m.connections.confirming {
+		t.Fatal("archive allowed a stale Close all target")
+	}
+	m.connectionActivate("connection." + m.connectionRowKey(first))
+	if m.connections.detail == nil || m.pageHeader().enabled("conn.clear-history") {
+		t.Fatal("history was lost or the inspector allowed clearing history behind it")
+	}
+	m.connectionActivate("conn.clear-history")
+	if len(m.connectionClosedEntries()) != 1 {
+		t.Fatal("a stale header action cleared the archive behind its inspector")
 	}
 }

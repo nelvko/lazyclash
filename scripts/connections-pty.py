@@ -274,13 +274,13 @@ def check_filter_layout(terminal, words, active, closed, closed_view=False, paus
     pause_x, pause_y = header_pause(terminal, words, paused)
     rows = terminal.screen.text().splitlines()
     header = "\n".join(rows[:min(y for _, y in tabs)])
-    close_label = words["connections.close_all"] if words["connections.close_all"] in header else "×"
-    close_x, close_y = position(terminal, close_label)
-    assert pause_y == close_y and pause_x < close_x and pause_y < top, "Pause is not in the header before Close all"
-    if closed_view:
-        terminal.wait(words["connections.history_scope"])
-    elif paused:
+    bulk_label, compact = (words["connections.clear_history"], "⌫") if closed_view else (words["connections.close_all"], "×")
+    bulk_x, bulk_y = position(terminal, bulk_label if bulk_label in header else compact)
+    assert pause_y == bulk_y and pause_x < bulk_x and pause_y < top, "bulk action should follow Pause"
+    if paused:
         terminal.wait(words["connections.paused"])
+    elif closed_view and table_header_y(terminal, words) is not None:
+        assert sort_y == bottom + 1, "extra history scope row between search and table"
     else:
         live = words["runtime.status.live"]
         assert not any(live in row for row in rows[bottom + 1:-1]), "normal live status still consumes a separate line"
@@ -677,10 +677,14 @@ def exercise(preview, binary, output, language, profile, args):
         preview.capture(terminal, output, "closed-single-details", args)
         terminal.key(b"\x1b")
         terminal.wait_absent(words["connections.details"])
+        # Clearing a single history entry leaves the other 47 connections active.
+        terminal.click_text(words["connections.clear_history"])
+        wait_count(terminal, 0, 0)
+        check_tabs(terminal, words, 47, 0)
         terminal.key(b"v")
         terminal.wait(words["connections.no_matches"])
         search(terminal, "")
-        check_tabs(terminal, words, 47, 1)
+        check_tabs(terminal, words, 47, 0)
         terminal.wait("www.youtube.com")
         terminal.wait_absent("api.github.com")
         preview.capture(terminal, output, "active-after-single-close", args)
@@ -715,7 +719,7 @@ def exercise(preview, binary, output, language, profile, args):
         search(terminal, "")
         terminal.wait(words["connections.empty"])
         terminal.wait_absent("www.youtube.com")
-        check_tabs(terminal, words, 0, 48)
+        check_tabs(terminal, words, 0, 47)
         # Routine success stays quiet; retain cumulative totals after the close.
         wait_until(terminal, lambda: header_totals(terminal, words, required=False) is not None,
             "header totals stayed obscured after closing all connections", timeout=12)
@@ -723,15 +727,17 @@ def exercise(preview, binary, output, language, profile, args):
         assert values["download"].endswith("GiB") and values["upload"].endswith("MiB"), "close-all cleared cumulative traffic"
         preview.capture(terminal, output, "close-all-empty", args)
 
-        # All 48 observed connections remain searchable in this session.
+        # Later closures are recorded; the cleared entry stays gone.
         terminal.key(b"v")
-        wait_count(terminal, 48)
+        wait_count(terminal, 47)
         search(terminal, "github-agent")
-        terminal.wait("api.github.com")
-        wait_count(terminal, 48, 1)
+        wait_count(terminal, 47, 0)
+        search(terminal, "streaming")
+        wait_count(terminal, 47, 1)
+        terminal.wait("www.youtube.com")
         preview.capture(terminal, output, "closed-all-filtered", args)
         search(terminal, "flow-")
-        wait_count(terminal, 48, 44)
+        wait_count(terminal, 47, 44)
         search(terminal, "")
         click_header(terminal, words, "chain")
         y = table_header_y(terminal, words)
@@ -739,14 +745,18 @@ def exercise(preview, binary, output, language, profile, args):
         assert chain_ascending.search("".join(terminal.screen.cells[y])), "archived chains did not sort"
         click_header(terminal, words, "download_speed")
         assert chain_ascending.search("".join(terminal.screen.cells[y])), "history sorted on an unavailable live speed"
+        click_header(terminal, words, "chain")
+        assert "▼" in "".join(terminal.screen.cells[y]), "archived chain sort did not reverse"
+        click_header(terminal, words, "chain")
+        assert not any(arrow in "".join(terminal.screen.cells[y]) for arrow in "▲▼"), "archived chain sort did not reset"
         for width, height in SIZES:
             resize_terminal(terminal, words, width, height)
             terminal.key(b"\x1b[H")
             terminal.settle()
-            check_tabs(terminal, words, 0, 48)
-            wait_count(terminal, 48)
+            check_tabs(terminal, words, 0, 47)
+            wait_count(terminal, 47)
             header_totals(terminal, words)
-            check_filter_layout(terminal, words, 0, 48, closed_view=True)
+            check_filter_layout(terminal, words, 0, 47, closed_view=True)
             if width >= 160:
                 terminal.wait(words["navigation.connections.action.details"])
                 terminal.settle()
@@ -756,6 +766,18 @@ def exercise(preview, binary, output, language, profile, args):
                     assert words[hint_key] in footer, "closed list lost its available action hint: " + hint_key
             assert not re.search(r"(?:^| · )x\s", footer), "closed list still advertises closing connections"
             preview.capture(terminal, output, "closed-%dx%d" % (width, height), args)
+        search(terminal, "streaming")
+        terminal.key(b"p")
+        wait_header_pause(terminal, words, paused=True)
+        terminal.click_text(words["connections.clear_history"])
+        wait_count(terminal, 0, 0)
+        check_tabs(terminal, words, 0, 0)
+        terminal.key(b"p")
+        wait_header_pause(terminal, words)
+        search(terminal, "")
+        terminal.wait(words["connections.closed_empty"])
+        check_filter_layout(terminal, words, 0, 0, closed_view=True)
+        preview.capture(terminal, output, "closed-history-cleared", args)
         terminal.key(b"v")
         terminal.wait(words["connections.empty"])
         terminal.exit()

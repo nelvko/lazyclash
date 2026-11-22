@@ -40,10 +40,14 @@ func TestConnectionsToolbarRedesignHeaderPauseRemainsReachableInBothViews(t *tes
 					if !m.pageHeader().enabled("conn.pause") {
 						t.Fatal("Pause must be an enabled page-header action in either view")
 					}
-					pause, closeAll := findTarget(t, m, "conn.pause"), findTarget(t, m, "conn.close-all")
+					bulkID := "conn.close-all"
+					if closed {
+						bulkID = "conn.clear-history"
+					}
+					pause, bulk := findTarget(t, m, "conn.pause"), findTarget(t, m, bulkID)
 					search := findTarget(t, m, "conn.search")
-					if pause.Y != closeAll.Y || pause.X+pause.W > closeAll.X || pause.Y >= search.Y {
-						t.Fatalf("Pause must precede Close all above the input: pause=%+v close=%+v search=%+v", pause, closeAll, search)
+					if pause.Y != bulk.Y || pause.X+pause.W > bulk.X || pause.Y >= search.Y {
+						t.Fatalf("Pause must precede %s above the input: pause=%+v action=%+v search=%+v", bulkID, pause, bulk, search)
 					}
 					m, _ = click(m, pause)
 					if !m.connections.paused || m.connections.closedView != closed {
@@ -265,8 +269,8 @@ func TestConnectionsToolbarRedesignOnlyMeaningfulStatusHintsRemain(t *testing.T)
 			if strings.Contains(state, "paused") && !strings.Contains(plain, m.tr("connections.paused")) {
 				t.Fatal("paused snapshot lost its explanatory status")
 			}
-			if strings.HasPrefix(state, "closed") && !strings.Contains(plain, m.tr("connections.history_scope")) {
-				t.Fatal("closed view lost the local retention scope")
+			if state == "closed" && len(bar.lines) != len(m.connectionFilterBar(160).lines)+1 {
+				t.Fatal("ordinary history view added a status line between search and column headers")
 			}
 			if state == "unavailable" && !strings.Contains(plain, m.tr("runtime.status.api_unavailable")) {
 				t.Fatal("unavailable observations lost the actionable status hint")

@@ -30,8 +30,8 @@
   "connections.tab_closed": "已关闭 %s",
   "connections.archived": "已关闭 · 本次保留",
   "connections.archived_hint": "仅记录本次运行观察到的最近 500 条。流量为最后一次采样值；短连接及断线期间可能遗漏。只读。",
-  "connections.history_scope": "本次观察 · 最近 500 条",
-  "connections.closed_empty": "尚未观察到已关闭连接",
+  "connections.clear_history": "清除历史",
+  "connections.closed_empty": "暂无已关闭连接",
   "connections.closed_count": "%d / %d 条已关闭连接",
   "connections.closed_observed": "观测结束时间",
   "connections.invalid_regex": "正则表达式无效"
