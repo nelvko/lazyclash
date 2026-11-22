@@ -1,138 +1,99 @@
-
 #!/usr/bin/env bash
+# Generate simultaneous download and upload traffic through a proxy (curl 7.71+).
+# Example: PROXY=http://127.0.0.1:7899 CYCLES=1 ./test.sh
+set -eu
 
-# Real proxy traffic generator
-# macOS / Linux
-# Requires: bash, curl, dd, mktemp
+# Honor the HTTPS/SOCKS settings exported by lazyclash env.
+PROXY=${PROXY:-${https_proxy:-${HTTPS_PROXY:-${all_proxy:-${ALL_PROXY:-http://127.0.0.1:7897}}}}}
+BASE_URL=${BASE_URL:-https://speed.cloudflare.com}
+CYCLES=${CYCLES:-4}
 
-set -u
-
-PROXY="${PROXY:-http://127.0.0.1:7899}"
-BASE_URL="https://speed.cloudflare.com"
-
-CYCLES="${CYCLES:-4}"
-IDLE_SECONDS=3
+if ! [[ $CYCLES =~ ^[1-9][0-9]*$ ]]; then
+  echo 'CYCLES must be a positive integer.' >&2
+  exit 2
+fi
 
 umask 077
-TMP_DIR=$(mktemp -d) || exit 1
-
-DL_PID=""
-UL_PID=""
+TMP_DIR=$(mktemp -d)
+DL_PID=''
+UL_PID=''
 
 cleanup() {
-  [[ -n "$DL_PID" ]] && kill "$DL_PID" 2>/dev/null || true
-  [[ -n "$UL_PID" ]] && kill "$UL_PID" 2>/dev/null || true
-
-  [[ -n "$DL_PID" ]] && wait "$DL_PID" 2>/dev/null || true
-  [[ -n "$UL_PID" ]] && wait "$UL_PID" 2>/dev/null || true
-
+  local pid
+  for pid in "$DL_PID" "$UL_PID"; do
+    if [[ -n $pid ]]; then
+      kill "$pid" 2>/dev/null || true
+      wait "$pid" 2>/dev/null || true
+    fi
+  done
   rm -rf -- "$TMP_DIR"
 }
-
 trap cleanup EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-# Generate temporary zero-filled payloads.
-# 512 KiB, 2 MiB, 4 MiB
-dd if=/dev/zero of="$TMP_DIR/low.bin" \
-  bs=1024 count=512 2>/dev/null
+# Retrying the POST is safe: the speed-test endpoint only consumes dummy bytes.
+curl_args=(
+  --disable --fail --silent --show-error
+  --proxy "$PROXY" --noproxy ''
+  --connect-timeout 15 --max-time 60
+  --retry 1 --retry-all-errors --retry-delay 1
+  --output /dev/null
+)
 
-dd if=/dev/zero of="$TMP_DIR/medium.bin" \
-  bs=1024 count=2048 2>/dev/null
-
-dd if=/dev/zero of="$TMP_DIR/high.bin" \
-  bs=1024 count=4096 2>/dev/null
-
-download() {
-  local bytes="$1"
-  local rate="$2"
-
-  curl -fsS \
-    --proxy "$PROXY" \
-    --noproxy "" \
-    --connect-timeout 5 \
-    --max-time 15 \
-    --limit-rate "$rate" \
-    -o /dev/null \
-    "$BASE_URL/__down?bytes=$bytes"
-}
-
-upload() {
-  local file="$1"
-  local rate="$2"
-
-  curl -fsS \
-    --proxy "$PROXY" \
-    --noproxy "" \
-    --connect-timeout 5 \
-    --max-time 15 \
-    --limit-rate "$rate" \
-    -H "Content-Type: application/octet-stream" \
-    --data-binary "@$file" \
-    -o /dev/null \
-    "$BASE_URL/__up"
+report() {
+  local direction=$1 pid=$2 expected=$3
+  local status=0 http actual seconds
+  wait "$pid" || status=$?
+  read -r http actual seconds < "$TMP_DIR/$direction.stats" || true
+  if [[ $status == 0 && $http == 2[0-9][0-9] && $actual == "$expected" ]]; then
+    printf '  %s OK (HTTP %s, %s bytes, %ss)\n' "$direction" "$http" "$actual" "$seconds"
+  else
+    printf '  %s FAILED (curl %s, HTTP %s, %s/%s bytes)\n' \
+      "$direction" "$status" "${http:-000}" "${actual:-0}" "$expected" >&2
+    cat "$TMP_DIR/$direction.err" >&2
+    return 1
+  fi
 }
 
 stage() {
-  local name="$1"
-  local bytes="$2"
-  local rate="$3"
-  local file="$4"
+  local name=$1 bytes=$2 rate=$3
+  printf '\n[%s] Download + Upload | %s/s each\n' "$name" "$rate"
+  head -c "$bytes" /dev/zero > "$TMP_DIR/upload.bin"
 
-  echo ""
-  echo "[$name] Download + Upload | $rate each"
-
-  download "$bytes" "$rate" &
+  curl "${curl_args[@]}" --limit-rate "$rate" \
+    --write-out '%{http_code} %{size_download} %{time_total}\n' \
+    "${BASE_URL%/}/__down?bytes=$bytes" > "$TMP_DIR/Download.stats" 2> "$TMP_DIR/Download.err" &
   DL_PID=$!
-
-  upload "$file" "$rate" &
+  curl "${curl_args[@]}" --limit-rate "$rate" \
+    --header 'Content-Type: application/octet-stream' --data-binary "@$TMP_DIR/upload.bin" \
+    --write-out '%{http_code} %{size_upload} %{time_total}\n' \
+    "${BASE_URL%/}/__up" > "$TMP_DIR/Upload.stats" 2> "$TMP_DIR/Upload.err" &
   UL_PID=$!
 
-  local failed=0
-
-  wait "$DL_PID" || {
-    echo "Download request failed"
-    failed=1
-  }
-
-  wait "$UL_PID" || {
-    echo "Upload request failed"
-    failed=1
-  }
-
-  DL_PID=""
-  UL_PID=""
-
-  return "$failed"
+  report Download "$DL_PID" "$bytes" || failures=$((failures + 1))
+  DL_PID=''
+  report Upload "$UL_PID" "$bytes" || failures=$((failures + 1))
+  UL_PID=''
 }
 
-echo "================================="
-echo " Proxy Traffic Generator"
-echo "================================="
-echo "Proxy  : $PROXY"
-echo "Cycles : $CYCLES"
-echo "Mode   : Download + Upload"
-echo "Stop   : Ctrl+C"
-echo ""
-
+proxy_host=${PROXY#*://}
+proxy_host=${proxy_host%%/*}
+printf 'Proxy: %s\nCycles: %s (Ctrl+C to stop)\n' "${proxy_host##*@}" "$CYCLES"
+failures=0
 for ((i=1; i<=CYCLES; i++)); do
-  echo "========== Cycle $i/$CYCLES =========="
-
-  stage "LOW" \
-    524288 128K "$TMP_DIR/low.bin" || true
-
-  stage "MEDIUM" \
-    2097152 512K "$TMP_DIR/medium.bin" || true
-
-  stage "HIGH" \
-    4194304 1M "$TMP_DIR/high.bin" || true
-
-  echo ""
-  echo "[IDLE] ${IDLE_SECONDS}s"
-  sleep "$IDLE_SECONDS"
+  printf '\n========== Cycle %s/%s ==========\n' "$i" "$CYCLES"
+  stage LOW     524288 128K
+  stage MEDIUM 2097152 512K
+  stage HIGH   4194304 1M
+  if (( i < CYCLES )); then
+    printf '\n[IDLE] 3s\n'
+    sleep 3
+  fi
 done
 
-echo ""
-echo "Traffic test completed."
-
+if (( failures )); then
+  printf '\nTraffic test failed: %d transfer(s) failed.\n' "$failures" >&2
+  exit 1
+fi
+printf '\nTraffic test completed successfully.\n'
