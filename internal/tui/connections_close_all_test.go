@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
@@ -192,6 +193,80 @@ func TestConnectionsCloseAllConfirmationBlocksBackgroundMouseAndBounds(t *testin
 			m, _ = update(m, special(tea.KeyEscape))
 			if m.connections.confirming || m.busy {
 				t.Fatal("confirmation could not be dismissed after resize")
+			}
+		})
+	}
+}
+
+func TestConnectionsBulkConfirmationFloatsOverTheScrolledList(t *testing.T) {
+	m := connectionsModel(t, &fakeBackend{})
+	m.width, m.height = 120, 32
+	for i := range 40 {
+		c := fixtureConnection(fmt.Sprintf("id-%02d", i), fmt.Sprintf("test-%02d.example", i), i)
+		m.runtime.snapshot.Connections.Connections = append(m.runtime.snapshot.Connections.Connections, c)
+	}
+	m.connections.search.SetValue("test-")
+	m.connections.selected, m.focus = "id-14", "connection.id-14"
+	m.reconcileConnections()
+	m.revealConnection(0)
+	m.layout()
+	scroll := m.scroll
+	row := findTarget(t, m, m.focus)
+	if scroll == 0 {
+		t.Fatal("fixture list must be scrolled")
+	}
+	m, _ = click(m, findTarget(t, m, "conn.close-all"))
+	screen := strings.Split(ansi.Strip(m.screen), "\n")
+	if !strings.Contains(screen[row.Y], "test-14.example") || !strings.Contains(ansi.Strip(m.screen), m.tr("connections.confirm_all_title")) {
+		t.Fatal("confirmation must overlay the current list without moving its rows")
+	}
+	cancel := findTarget(t, m, "conn.cancel")
+	confirm := findTarget(t, m, "conn.confirm")
+	if cancel.Y != confirm.Y || cancel.X+cancel.W >= confirm.X || len(m.targets) != 2 {
+		t.Fatal("confirmation buttons should be adjacent and own all click targets")
+	}
+	for _, msg := range []tea.Msg{key("v"), key("/"), key("1"), tea.MouseWheelMsg{X: 100, Y: 28, Button: tea.MouseWheelDown}, tea.MouseClickMsg{X: 0, Y: 0, Button: tea.MouseRight}} {
+		m, _ = update(m, msg)
+	}
+	if m.page != "connections" || !m.connections.closeAll || m.focus != "conn.cancel" || m.scroll != scroll || m.connections.selected != "id-14" || m.connections.search.Value() != "test-" {
+		t.Fatal("an underlying control changed while bulk confirmation was open")
+	}
+	m, _ = click(m, cancel)
+	if m.connections.closeAll || m.focus != "conn.close-all" || m.scroll != scroll {
+		t.Fatal("cancel must return to the header action at the same list offset")
+	}
+}
+
+func TestConnectionConfirmationCannotSubmitHiddenActionAfterResize(t *testing.T) {
+	for _, bulk := range []bool{false, true} {
+		t.Run(fmt.Sprintf("bulk=%v", bulk), func(t *testing.T) {
+			m := connectionsModel(t, &fakeBackend{})
+			if bulk {
+				m, _ = click(m, findTarget(t, m, "conn.close-all"))
+			} else {
+				m, _ = update(m, key("x"))
+			}
+			m, _ = update(m, special(tea.KeyTab))
+			if m.focus != "conn.confirm" {
+				t.Fatal("fixture must start with visible Confirm focused")
+			}
+			m, _ = update(m, tea.WindowSizeMsg{Width: 16, Height: 5})
+			if hasAction(m.targets, "conn.confirm") {
+				t.Fatal("fixture should hide Confirm")
+			}
+			m, _ = update(m, key("y"))
+			m, _ = update(m, special(tea.KeyEnter))
+			if !m.connections.confirming || m.busy {
+				t.Fatal("a shortcut or stale focus submitted a hidden destructive action")
+			}
+			m, _ = update(m, special(tea.KeyTab))
+			m, _ = update(m, special(tea.KeyTab))
+			if m.focus != "conn.cancel" {
+				t.Fatal("Tab focused a hidden confirmation action")
+			}
+			m, _ = update(m, special(tea.KeyEnter))
+			if m.connections.confirming || m.busy {
+				t.Fatal("keyboard navigation failed to cancel the tiny confirmation")
 			}
 		})
 	}

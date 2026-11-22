@@ -147,6 +147,15 @@ func connectionNumberCell(value string, width int) string {
 	return strings.Repeat(" ", max(0, width-ansi.StringWidth(value))) + value
 }
 
+func (m *Model) connectionRowSelected(c mihomo.Connection) bool {
+	if detail := m.connections.detail; detail != nil {
+		// The list may select a neighbor when the inspected connection ends.
+		return m.connections.detailGeneration == m.connections.history.generation &&
+			detail.ID == c.ID && detail.Start.Equal(c.Start)
+	}
+	return m.connectionRowKey(c) == m.connections.selected
+}
+
 // Bubbles table handles cell sizing, ANSI-aware truncation and selection. The
 // dashboard retains the only scrolling viewport and maps rows to opaque IDs.
 func (m *Model) connectionTable(list []mihomo.Connection, width int) dashboardBlock {
@@ -154,7 +163,7 @@ func (m *Model) connectionTable(list []mihomo.Connection, width int) dashboardBl
 	var rows []table.Row
 	for _, c := range list {
 		marker := " "
-		if m.connectionRowKey(c) == m.connections.selected {
+		if m.connectionRowSelected(c) {
 			marker = "▌"
 		}
 		if m.focus == "connection."+m.connectionRowKey(c) {
@@ -187,7 +196,7 @@ func (m *Model) connectionTable(list []mihomo.Connection, width int) dashboardBl
 	lines[0] = themed(lines[0], muted, panel, false)
 	for i, c := range list {
 		foreground, surface := text, bg
-		if m.connectionRowKey(c) == m.connections.selected {
+		if m.connectionRowSelected(c) {
 			surface = selectionBackground
 		}
 		if m.hover == "connection."+m.connectionRowKey(c) {
@@ -203,7 +212,7 @@ func (m *Model) connectionTable(list []mihomo.Connection, width int) dashboardBl
 
 func (m *Model) compactConnectionRows(c mihomo.Connection, width int) []string {
 	id, surface, marker := "connection."+m.connectionRowKey(c), bg, "  "
-	if m.connectionRowKey(c) == m.connections.selected {
+	if m.connectionRowSelected(c) {
 		surface, marker = panel, "▌ "
 	}
 	if m.hover == id {
@@ -224,25 +233,6 @@ func (m *Model) connectionsBody(width int) (string, []hitRegion) {
 	var hits []hitRegion
 	addText := func(s, color string) {
 		lines = append(lines, strings.Split(wrapText(themed(clean(s), color, bg, false), max(1, width)), "\n")...)
-	}
-	addButton := func(id, label string) {
-		o := dashboardButtonOptions(id, m.navigationOptions(), false, bg)
-		o.Disabled = m.busy
-		if id == "conn.confirm" {
-			o.Kind = buttonDangerConfirm
-		}
-		s := renderButton(label, o)
-		if !o.Disabled {
-			hits = append(hits, hitRegion{ID: id, Y: len(lines), W: min(width, ansi.StringWidth(s)), H: 1})
-		}
-		lines = append(lines, cellCrop(s, width))
-	}
-	if m.connections.confirming && m.connections.closeAll {
-		addText(m.tr("connections.confirm_all_title"), warning)
-		addText(m.tr("connections.confirm_all_hint"), muted)
-		addButton("conn.cancel", m.tr("connections.cancel"))
-		addButton("conn.confirm", m.tr("connections.close_all"))
-		return strings.Join(lines, "\n"), hits
 	}
 	if m.dashboardOptions().BodyTopRows == 0 {
 		bar := m.connectionsToolbar(width, m.connectionToolbarRows(width))

@@ -19,7 +19,7 @@
   "connections.duration": "Duration",
   "connections.close_all": "Close all",
   "connections.confirm_all_title": "Close all connections?",
-  "connections.confirm_all_hint": "Close every active connection in Mihomo, including connections outside the filter or paused view and new arrivals. y Confirm · Esc Cancel",
+  "connections.confirm_all_hint": "Mihomo will close every connection active when you confirm, including connections outside the filtered or paused list.",
   "connections.closing_all": "Closing all connections…",
   "connections.close_all_requested": "All connections close requested",
   "connections.close_all_unavailable": "Connections are unavailable or already closed",

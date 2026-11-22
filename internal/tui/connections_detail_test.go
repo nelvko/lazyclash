@@ -29,14 +29,26 @@ func TestConnectionDetailOverlayKeepsListInPlaceAndOwnsInput(t *testing.T) {
 	}
 	m, _ = click(m, row)
 	box := m.connections.detailBounds
-	if !m.dashboardOptions().Dim || box.X < m.width/2 || box.Y+box.H != m.height-2 {
-		t.Fatalf("wide inspector should float at the lower right: %+v", box)
+	if m.dashboardOptions().Dim || box.X < m.width/2 || box.Y+box.H != m.height-2 {
+		t.Fatalf("wide inspector should float above an undimmed list at the lower right: %+v", box)
+	}
+	if m.hover != "" || m.pageViews["connections"].focus != "connection.id-12" {
+		t.Fatal("inspector retained the hovered row or overwrote the list's remembered focus")
 	}
 	// The same destination is still visible at the same row on the left.
 	line := strings.Split(ansi.Strip(m.screen), "\n")[row.Y]
 	if !strings.Contains(ansi.Cut(line, 0, box.X), "host-12.example") || !strings.Contains(m.screen, m.tr("connections.details")) {
 		t.Fatal("opening details replaced or displaced the connection list")
 	}
+	m, _ = update(m, key("x"))
+	if !m.connections.confirming || !m.dashboardOptions().Dim || m.focus != "conn.cancel" {
+		t.Fatal("reviewing a disconnect should dim the list and focus Cancel")
+	}
+	m, _ = update(m, special(tea.KeyEscape))
+	if m.connections.detail == nil || m.dashboardOptions().Dim {
+		t.Fatal("canceling a disconnect should restore the inspector over a full-brightness list")
+	}
+	m, _ = update(m, special(tea.KeyTab))
 	for _, msg := range []tea.Msg{key("1"), key("v"), key("p"), key("s"), key("/"), key("?"), tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl}, tea.PasteMsg{Content: "other"}} {
 		m, _ = update(m, msg)
 	}
@@ -47,6 +59,22 @@ func TestConnectionDetailOverlayKeepsListInPlaceAndOwnsInput(t *testing.T) {
 	m, _ = update(m, tea.MouseClickMsg{Button: tea.MouseLeft, X: 0, Y: 0})
 	if m.connections.detail != nil || m.page != "connections" || m.focus != "connection.id-12" || m.scroll != scroll || m.connections.search.Value() != "host-" {
 		t.Fatal("clicking outside did not dismiss the window and restore the selected row")
+	}
+}
+
+func TestConnectionDetailDoesNotHighlightAnotherLiveConnection(t *testing.T) {
+	m := connectionsModel(t, &fakeBackend{})
+	m, _ = update(m, special(tea.KeyEnter))
+	first := *m.connections.detail
+	other := fixtureConnection("other", "other.example", 2)
+	reused := fixtureConnection(first.ID, "replacement.example", 3)
+	m.connections.selected = other.ID
+	if !m.connectionRowSelected(first) || m.connectionRowSelected(other) || m.connectionRowSelected(reused) {
+		t.Fatal("only the inspected connection lifetime should be highlighted behind the inspector")
+	}
+	m.connections.history.generation++
+	if m.connectionRowSelected(first) {
+		t.Fatal("a replacement core's row must not be highlighted behind the old inspector")
 	}
 }
 

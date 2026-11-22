@@ -41,22 +41,23 @@ func (m *Model) connectionDetailKey(k tea.KeyPressMsg) tea.Cmd {
 	return nil
 }
 
-func (m *Model) connectionDetailMouse(event tea.MouseMsg) tea.Cmd {
+func (m *Model) connectionDialogMouse(event tea.MouseMsg) tea.Cmd {
 	point := event.Mouse()
 	inside := func(h hitRegion) bool {
 		return point.X >= h.X && point.X < h.X+h.W && point.Y >= h.Y && point.Y < h.Y+h.H
 	}
 	_, clicked := event.(tea.MouseClickMsg)
 	m.hover = ""
-	if !inside(m.connections.detailBounds) {
+	if m.connections.detail != nil && !inside(m.connections.detailBounds) {
 		if clicked && point.Button == tea.MouseLeft && !m.connections.confirming {
 			return m.connectionActivate("conn.back")
 		}
 		return nil
 	}
-	if _, wheel := event.(tea.MouseWheelMsg); wheel && m.connections.detailViewport != nil {
-		v := m.connections.detailViewport
-		*v, _ = v.Update(event)
+	if _, wheel := event.(tea.MouseWheelMsg); wheel {
+		if v := m.connections.detailViewport; m.connections.detail != nil && v != nil {
+			*v, _ = v.Update(event)
+		}
 		return nil
 	}
 	for _, hit := range m.targets {

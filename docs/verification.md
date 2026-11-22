@@ -2,6 +2,8 @@
 
 ## 连接详情浮窗、历史清理和默认排序（2026-11-22）
 
+中文真彩 PTY 对照了同一行连接在浏览、查看详情、确认断开时的字符格颜色。查看详情时列表保持原亮度，选中行保留底色。单条和批量关闭的确认窗口会压暗背景，取消后恢复。英文无色 PTY 核对了行首标记和焦点。批量确认过程中将终端缩小到 20×5 后按 `y`，夹具的 48 条连接仍然活跃。三种状态的截图位于 `.test-artifacts/connection-inspector-contrast/final-colors/`。
+
 用 48 条内存连接在中文真彩、英文无色 PTY 中验证了 40 到 200 列的布局。点击连接后，宽屏保留左侧原选中行，详情浮窗靠右下角。40×16 时可在居中浮窗内滚动到完整连接 ID，关闭后仍能看到原来的筛选结果。另核对了第三次点击同一表头后两种视图的实际行序、清除全部本地历史以及清除后新结束的连接继续入列。
 
 隔离源码通过 `make check build`、连接与浮窗的定向 race 测试、八项 Python 测试以及专用 Linux/arm64 虚拟机全套测试。中文终端截图位于 `.test-artifacts/connection-inspector/final-pty/20261122-181855-7f74d8/zh-Hans/truecolor/`，其中 `connection-details.png`、`connection-details-40x16.png` 和 `closed-history-cleared.png` 分别展示宽屏详情、窄屏滚动与清除后的空列表。

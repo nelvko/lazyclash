@@ -123,6 +123,11 @@ def click_cell(terminal, x, y):
     terminal.settle()
 
 
+def cell_colors(terminal, point):
+    x, y = point
+    return terminal.screen.styles[y][x][:2]
+
+
 def resize_terminal(terminal, words, width, height):
     terminal.resize(width, height)
     # The resized emulator initially retains cells from the previous frame.
@@ -550,6 +555,7 @@ def exercise(preview, binary, output, language, profile, args):
         host = "flow-07.example.invalid"
         row = position(terminal, host)
         neighbor = position(terminal, "flow-08.example.invalid")
+        list_colors = cell_colors(terminal, neighbor)
         click_cell(terminal, *row)
         terminal.wait(words["connections.details"])
         terminal.wait("pty-connection-07")
@@ -559,7 +565,20 @@ def exercise(preview, binary, output, language, profile, args):
         assert re.search(r"›\s*×", "".join(terminal.screen.cells[title_y][title_x:])), "new inspector did not focus its dismiss button"
         assert "".join(terminal.screen.cells[row[1]][row[0]:]).startswith(host), "inspector displaced the selected row"
         assert neighbor == position(terminal, "flow-08.example.invalid"), "inspector displaced the background list"
+        assert "▌" in terminal.screen.cells[row[1]][:row[0]], "inspector lost the selected row marker"
+        if profile != "no-color":
+            assert cell_colors(terminal, neighbor) == list_colors, "inspector dimmed the surrounding list"
+            assert cell_colors(terminal, row)[1] != list_colors[1], "inspector lost the selected row background"
         preview.capture(terminal, output, "connection-details", args)
+        terminal.key(b"x")
+        terminal.wait(words["connections.confirm_title"])
+        if profile != "no-color":
+            backdrop = cell_colors(terminal, neighbor)
+            assert backdrop != list_colors, "single close left the list undimmed"
+            assert cell_colors(terminal, row) == backdrop, "single close left the selected row highlighted"
+        preview.capture(terminal, output, "single-close-backdrop", args)
+        terminal.key(b"\x1b")
+        terminal.wait(words["connections.details"])
         click_cell(terminal, *neighbor)
         terminal.wait_absent(words["connections.details"])
         wait_count(terminal, 48, 44)
@@ -731,8 +750,16 @@ def exercise(preview, binary, output, language, profile, args):
         search(terminal, "streaming")
         terminal.wait("www.youtube.com")
         terminal.wait_absent("flow-04.example.invalid")
+        row = position(terminal, "www.youtube.com")
+        row_colors = cell_colors(terminal, row)
         terminal.click_text(words["connections.close_all"])
         terminal.wait(words["connections.confirm_all_title"])
+        assert position(terminal, "www.youtube.com") == row, "bulk close displaced the filtered list"
+        if profile != "no-color":
+            header = position(terminal, words["connections.summary_download"])
+            backdrop = cell_colors(terminal, row)
+            assert backdrop != row_colors, "bulk close left the selected row undimmed"
+            assert cell_colors(terminal, header) == backdrop, "bulk close backdrop did not cover the page header"
         preview.capture(terminal, output, "close-all-default-cancel", args)
         terminal.key(b"\r")
         terminal.wait_absent(words["connections.confirm_all_title"])

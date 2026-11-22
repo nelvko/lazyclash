@@ -1370,8 +1370,8 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 	if m.helpOpen {
 		return m.helpMouse(event)
 	}
-	if m.page == "connections" && m.connections.detail != nil {
-		return m.connectionDetailMouse(event)
+	if m.page == "connections" && (m.connections.detail != nil || m.connections.confirming) {
+		return m.connectionDialogMouse(event)
 	}
 	if _, wheel := event.(tea.MouseWheelMsg); wheel && len(m.notification.items) > 0 {
 		o := m.dashboardOptions()
@@ -1419,9 +1419,6 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 		if k.X >= r.X && k.X < r.X+r.W && k.Y >= r.Y && k.Y < r.Y+r.H {
 			m.hover = r.ID
 			if pressed && k.Button == tea.MouseLeft {
-				if m.page == "connections" && m.connections.confirming && r.ID != "conn.cancel" && r.ID != "conn.confirm" {
-					return nil
-				}
 				if handled, cmd := m.clearInputField(r.ID); handled {
 					return cmd
 				}
@@ -1636,6 +1633,8 @@ func (m *Model) renderLayout() {
 		m.screen, m.targets = m.renderProviders(base)
 	} else if m.page == "connections" && m.connections.detail != nil {
 		m.screen, m.targets = m.renderConnectionDetail(base)
+	} else if m.page == "connections" && m.connections.closeAll {
+		m.screen, m.targets = m.renderConnectionsCloseAll(base)
 	} else if m.menu.open {
 		m.anchorLogsLevelMenu(hits)
 		m.screen = m.menu.render(base, m.width, m.height, dashboardContentBottom(o))

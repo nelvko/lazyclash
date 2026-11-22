@@ -19,7 +19,7 @@
   "connections.duration": "时长",
   "connections.close_all": "关闭全部",
   "connections.confirm_all_title": "关闭全部连接？",
-  "connections.confirm_all_hint": "关闭 Mihomo 的所有活动连接，包括筛选或暂停画面之外的连接，以及新建立的连接。y 确认 · Esc 取消",
+  "connections.confirm_all_hint": "将关闭所有活跃连接，包括筛选或暂停时未显示的连接。",
   "connections.closing_all": "正在关闭全部连接…",
   "connections.close_all_requested": "已请求关闭全部连接",
   "connections.close_all_unavailable": "连接不可用或已全部结束",

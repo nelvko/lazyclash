@@ -16,6 +16,10 @@ type pageViewState struct {
 }
 
 func (m *Model) rememberPageView() {
+	// Inspector controls have their own focus. Remember the underlying list.
+	if m.page == "connections" && (m.connections.detail != nil || m.connections.confirming) {
+		return
+	}
 	// Search results are temporary. Keep the underlying navigation position
 	// available when search is closed while the sidebar owns focus.
 	if m.page == "proxies" && m.proxies.searchReturn != nil {
@@ -529,7 +533,7 @@ func (m *Model) requestQuit() tea.Cmd {
 }
 
 func (m *Model) repairPageFocus() {
-	if m.page == "connections" && m.connections.detail != nil || m.providers.open || m.helpOpen || m.form != "" || m.wizard.open || m.wizard.networkOpen || m.ports.open || m.notification.panel.open || m.menu.open {
+	if m.page == "connections" && (m.connections.detail != nil || m.connections.confirming) || m.providers.open || m.helpOpen || m.form != "" || m.wizard.open || m.wizard.networkOpen || m.ports.open || m.notification.panel.open || m.menu.open {
 		return
 	}
 	state := m.pageViews[m.page]

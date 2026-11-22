@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"slices"
 	"strings"
 	"time"
 
@@ -26,7 +27,6 @@ type connectionsState struct {
 	detail           *mihomo.Connection
 	confirming       bool
 	closeAll         bool
-	closeAllScroll   int
 	closedView       bool
 	history          connectionHistoryState
 	frozenClosed     []closedConnection
@@ -204,7 +204,7 @@ func (m *Model) connectionKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 		case "y":
 			return true, m.connectionActivate("conn.confirm")
 		case "tab", "shift+tab":
-			if m.focus == "conn.cancel" {
+			if m.focus == "conn.cancel" && m.connectionConfirmVisible() {
 				m.focus = "conn.confirm"
 			} else {
 				m.focus = "conn.cancel"
@@ -286,6 +286,9 @@ func (m *Model) connectionKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 	}
 	return false, nil
 }
+func (m *Model) connectionConfirmVisible() bool {
+	return slices.ContainsFunc(m.targets, func(hit hitRegion) bool { return hit.ID == "conn.confirm" })
+}
 func (m *Model) revealConnection(_ int) {
 	g := dashboardGeometry(m.dashboardOptions())
 	_, hits := m.connectionsBody(g.width)
@@ -317,6 +320,7 @@ func (m *Model) openSelectedConnection() {
 				m.connections.detailClosedAt = entry.ClosedAt
 			}
 			m.connections.confirming = false
+			m.hover = ""
 			m.focus = "conn.back"
 			return
 		}
@@ -396,9 +400,8 @@ func (m *Model) connectionActivate(id string) tea.Cmd {
 		}
 	case id == "conn.close-all":
 		if !m.connections.confirming && m.canCloseAllConnections() {
-			m.connections.closeAllScroll = m.scroll
 			m.connections.confirming, m.connections.closeAll = true, true
-			m.scroll, m.focus = 0, "conn.cancel"
+			m.hover, m.focus = "", "conn.cancel"
 		}
 	case id == "conn.back":
 		m.connections.detail = nil
@@ -428,14 +431,14 @@ func (m *Model) connectionActivate(id string) tea.Cmd {
 		m.connections.confirming = false
 		if m.connections.closeAll {
 			m.connections.closeAll = false
-			m.scroll, m.focus = m.connections.closeAllScroll, "conn.close-all"
+			m.hover, m.focus = "", "conn.close-all"
 		} else if m.detailActive() {
 			m.focus = "conn.close"
 		} else {
 			m.focus = "conn.back"
 		}
 	case id == "conn.confirm":
-		if !m.connections.confirming || m.busy {
+		if !m.connections.confirming || m.busy || !m.connectionConfirmVisible() {
 			return nil
 		}
 		if m.connections.closeAll {
