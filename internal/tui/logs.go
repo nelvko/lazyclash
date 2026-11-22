@@ -46,7 +46,7 @@ func newLogsState(locales ...i18n.Localizer) logsState {
 }
 
 func (m *Model) appendLogs(entries []mihomo.LogEntry) {
-	if m.logs.holding || m.logs.paused {
+	if m.logs.canJumpToLatest() {
 		m.logs.unread = min(retainedLogLimit, m.logs.unread+len(entries))
 	}
 	for _, entry := range entries {
@@ -73,10 +73,14 @@ func (m *Model) pauseLogs() {
 	if m.logs.paused {
 		return
 	}
-	m.logsScroll(0)
 	m.logs.frozen = append([]mihomo.LogEntry(nil), m.logs.entries...)
 	m.logs.frozenFirst = m.logs.first
 	m.logs.paused = true
+	m.logsScroll(0)
+}
+
+func (s *logsState) canJumpToLatest() bool {
+	return s.holding || s.paused
 }
 
 func (m *Model) resumeLogs() tea.Cmd {
@@ -140,6 +144,9 @@ func (m *Model) logsActivate(id string) tea.Cmd {
 
 func (m *Model) resetLogsView() {
 	m.logs.holding, m.logs.unread, m.scroll = false, 0, 0
+	if !m.logs.paused && m.focus == "logs.latest" {
+		m.focus = "logs.list"
+	}
 }
 
 func (m *Model) logsSearchKey(k tea.KeyPressMsg) tea.Cmd {
@@ -219,6 +226,10 @@ func (m *Model) logsScroll(delta int) {
 	view := m.logViewport(doc, width, m.logsCapacity(width))
 	view.ScrollDown(max(0, min(maxLogScrollRows, delta)))
 	view.ScrollUp(max(0, min(maxLogScrollRows, -delta)))
+	if !m.logs.paused && view.AtBottom() {
+		m.resetLogsView()
+		return
+	}
 	m.logs.holding = true
 	if len(doc.positions) > 0 {
 		m.logs.anchor = doc.positions[min(view.YOffset(), len(doc.positions)-1)]

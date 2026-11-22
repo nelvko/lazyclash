@@ -157,6 +157,29 @@ def wait_log_action(terminal, label):
                "log action missing: " + label)
 
 
+def wait_log_footer(terminal, words, status_key, min_unread=0):
+    status = words[status_key]
+    latest = re.compile(r"\s+(?:" + re.escape(words["logs.latest"]) + r"|↓)(?: \+(\d+))?$")
+
+    def matches():
+        # Exclude the sidebar and shortcut legend. Narrow terminals may crop
+        # the left status and reduce the button to its arrow.
+        row = "".join(terminal.screen.cells[-2]).strip()
+        start = row.find(status[:5])
+        if start < 0:
+            return False
+        row = row[start:]
+        button = latest.search(row)
+        visible_status = row[:button.start()] if button else row
+        if not status.startswith(visible_status.rstrip().rstrip("…")):
+            return False
+        if status_key == "logs.capturing":
+            return button is None
+        return button is not None and int(button.group(1) or 0) >= min_unread
+
+    wait_until(terminal, matches, "unexpected log status or Latest button: " + status_key)
+
+
 def fixture_terminal(preview, binary, report, language, profile):
     environment = {"LAZYCLASH_LOGS_PTY_REPORT": str(report), "LAZYCLASH_LOGS_PTY_LANGUAGE": language}
     wrapper = preview.WRAPPER.replace("os.execv(sys.argv[5], sys.argv[5:])",
@@ -181,6 +204,7 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait("event-059")
         terminal.settle()
         assert_log_controls(terminal, words)
+        wait_log_footer(terminal, words, "logs.capturing")
         assert_no_log_summary(terminal)
         assert not re.search(r"\d+ / \d+", terminal.screen.text()), "unfiltered Logs exposed a count"
         for label in ("Aa", "ab", ".*"):
@@ -209,7 +233,11 @@ def exercise(preview, binary, output, language, profile, args):
         after = calls(report)
         assert event_numbers(terminal) == retained, "new events pulled the browsing viewport to the tail"
         assert after["emitted"] > before["emitted"] and after["streams"] == 1 and after["canceled"] == 0, after
+        wait_log_footer(terminal, words, "logs.browsing", min_unread=1)
         preview.capture(terminal, output, "browsing-live-stream", args)
+        terminal.click_text(words["logs.latest"])
+        wait_log_footer(terminal, words, "logs.capturing")
+        assert max(event_numbers(terminal)) > max(retained), "clicking Latest did not leave the historical entries"
 
         # Navigation, a read-only busy refresh, help and a canceled form keep
         # the session's collector alive instead of replacing its HTTP request.
@@ -340,6 +368,7 @@ def exercise(preview, binary, output, language, profile, args):
             assert toolbar == position(terminal, placeholder[:min(5, len(placeholder))]), "search field moved with the list"
             assert option_geometry == assert_log_toolbar(terminal, words), "scrolling moved the log toolbar"
             assert_no_log_summary(terminal)
+            wait_log_footer(terminal, words, "logs.browsing", min_unread=1)
             preview.capture(terminal, output, "scrolled-%dx%d" % (width, height), args)
             terminal.key(b"l")
             terminal.wait("✓ " + words["logs.level_all"])
@@ -354,7 +383,14 @@ def exercise(preview, binary, output, language, profile, args):
                           (width - 3, height - 3, width - 3, height - 3)).encode())
             terminal.key(b"\x1b[F")
             terminal.settle()
+            wait_log_footer(terminal, words, "logs.capturing")
             preview.capture(terminal, output, "following-%dx%d" % (width, height), args)
+            if width == 40:
+                terminal.key(b"f")
+                wait_log_footer(terminal, words, "logs.display_paused", min_unread=1)
+                preview.capture(terminal, output, "paused-40x16", args)
+                terminal.click_text("↓ +")
+                wait_log_footer(terminal, words, "logs.capturing")
         assert calls(report)["streams"] == 1 and calls(report)["canceled"] == 0, calls(report)
 
         # Pause freezes the visible snapshot, while a large incoming burst
@@ -370,10 +406,12 @@ def exercise(preview, binary, output, language, profile, args):
         assert_continuing(terminal, report)
         assert event_numbers(terminal) == frozen, "paused display changed after cache eviction"
         assert_stream(terminal, report, 1)
+        wait_log_footer(terminal, words, "logs.display_paused", min_unread=200)
         preview.capture(terminal, output, "display-paused-cache-continues", args)
         terminal.key(b" ")
         wait_log_action(terminal, words["logs.pause_display"])
         wait_until(terminal, lambda: event_numbers(terminal) and max(event_numbers(terminal)) > max(frozen) + 200, "Space did not resume the latest cached entries")
+        wait_log_footer(terminal, words, "logs.capturing")
         assert_no_log_summary(terminal)
         assert not re.search(r"\d+ / \d+", terminal.screen.text()), "unfiltered resumed cache exposed a count"
         terminal.key(b"\x1b[H")
@@ -389,6 +427,7 @@ def exercise(preview, binary, output, language, profile, args):
         assert event_numbers(terminal) == frozen, "Pause button failed to freeze display"
         terminal.key(b"\x1b[F")
         wait_log_action(terminal, words["logs.pause_display"])
+        wait_log_footer(terminal, words, "logs.capturing")
         assert_stream(terminal, report, 1)
         preview.capture(terminal, output, "end-resumes-without-reconnect", args)
 

@@ -360,30 +360,36 @@ func (m *Model) logsBody(width int) (string, []hitRegion) {
 	b.targets = append(b.targets, hitRegion{ID: "logs.list", Y: len(b.lines), W: width, H: capacity})
 	b.lines = append(b.lines, strings.Split(v.View(), "\n")...)
 	if status != "" && len(b.lines) < height {
-		label := m.tr("logs.latest")
-		if (m.logs.holding || m.logs.paused) && m.logs.unread > 0 {
-			label += fmt.Sprintf(" +%d", m.logs.unread)
-		}
-		if width < 60 {
-			label = "↓"
-			if (m.logs.holding || m.logs.paused) && m.logs.unread > 0 {
-				label += fmt.Sprintf(" +%d", m.logs.unread)
-			}
-		}
-		o := dashboardButtonOptions("logs.latest", m.navigationOptions(), false, bg)
-		o.Disabled = m.busy
-		button := renderButton(label, o)
-		buttonWidth := min(width, ansi.StringWidth(button))
-		line := themed(cellPad(status, max(0, width-buttonWidth-1)), color, bg, false)
-		if buttonWidth < width {
-			line += themed(" ", text, bg, false)
-		}
-		if !m.busy {
-			b.targets = append(b.targets, hitRegion{ID: "logs.latest", X: width - buttonWidth, Y: len(b.lines), W: buttonWidth, H: 1})
-		}
-		b.lines = append(b.lines, line+cellCrop(button, buttonWidth))
+		b.append(m.logsFooter(width, status, color))
 	}
 	return strings.Join(b.lines, "\n"), b.targets
+}
+
+func (m *Model) logsFooter(width int, status, color string) dashboardBlock {
+	if !m.logs.canJumpToLatest() {
+		return dashboardBlock{lines: []string{themed(cellPad(status, width), color, bg, false)}}
+	}
+	label := m.tr("logs.latest")
+	if width < 60 {
+		label = "↓"
+	}
+	if m.logs.unread > 0 {
+		label += fmt.Sprintf(" +%d", m.logs.unread)
+	}
+	o := dashboardButtonOptions("logs.latest", m.navigationOptions(), false, bg)
+	o.Disabled = m.busy
+	button := cellCrop(renderButton(label, o), width)
+	buttonWidth := ansi.StringWidth(button)
+	x := width - buttonWidth
+	line := themed(cellPad(status, max(0, x-1)), color, bg, false)
+	if x > 0 {
+		line += themed(" ", text, bg, false)
+	}
+	b := dashboardBlock{lines: []string{line + button}}
+	if !o.Disabled {
+		b.targets = []hitRegion{{ID: "logs.latest", X: x, W: buttonWidth, H: 1}}
+	}
+	return b
 }
 
 func (m *Model) logsEmptyState() emptyStateOptions {

@@ -200,8 +200,9 @@ func TestLogsIdleFilteringAndFailureHaveDistinctStates(t *testing.T) {
 	}
 	m.appendLogs([]mihomo.LogEntry{{Level: "info", Message: "first event"}})
 	m.layout()
-	if !hasAction(m.targets, "logs.latest") || !strings.Contains(ansi.Strip(m.screen), m.tr("logs.capturing")) {
-		t.Fatal("first event did not restore the follow status and latest action")
+	m, _ = update(m, special(tea.KeyUp))
+	if m.logs.holding || hasAction(m.targets, "logs.latest") || !strings.Contains(ansi.Strip(m.screen), m.tr("logs.capturing")) {
+		t.Fatal("a log that fits on screen should stay at the live tail")
 	}
 	m.logs.search.SetValue("no-such-event")
 	m.layout()
@@ -212,6 +213,55 @@ func TestLogsIdleFilteringAndFailureHaveDistinctStates(t *testing.T) {
 	m.layout()
 	if got := ansi.Strip(m.screen); !strings.Contains(got, "fixture disconnected") || !strings.Contains(got, m.tr("logs.reconnecting")) || m.syncRuntime() != nil {
 		t.Fatal("failed capture concealed the failure or spawned a duplicate session")
+	}
+}
+
+func TestLogsLatestActionWhileBrowsingOrPaused(t *testing.T) {
+	for _, width := range []int{40, 120} {
+		t.Run(fmt.Sprint(width), func(t *testing.T) {
+			m := redesignedLogsModel(width, 24, 60)
+			defer m.stopRuntime()
+			assertFooter := func(status, latest string) {
+				t.Helper()
+				body, _ := m.logsBody(dashboardBodyWidth(m.dashboardOptions()))
+				lines := strings.Split(ansi.Strip(body), "\n")
+				footer := strings.TrimSpace(lines[len(lines)-1])
+				wantButton := latest != ""
+				if latest == "" && footer != status || latest != "" && !strings.Contains(footer, latest) {
+					t.Fatalf("unexpected footer %q for status %q and action %q", footer, status, latest)
+				}
+				if hasAction(m.targets, "logs.latest") != wantButton || hasAction(m.focusTargets(), "logs.latest") != wantButton || hintHasKey(m.logsContextHelp(), "End") != wantButton {
+					t.Fatalf("mouse, Tab or End availability did not match footer %q", footer)
+				}
+			}
+			label := m.tr("logs.latest")
+			if width == 40 {
+				label = "↓"
+			}
+			m, _ = update(m, special(tea.KeyDown))
+			assertFooter(m.tr("logs.capturing"), "")
+			list := findTarget(t, m, "logs.list")
+			m, _ = update(m, tea.MouseWheelMsg{X: list.X, Y: list.Y, Button: tea.MouseWheelUp})
+			assertFooter(m.tr("logs.browsing"), label)
+			m.appendLogs([]mihomo.LogEntry{{Level: "info", Message: "incoming"}})
+			m.layout()
+			assertFooter(m.tr("logs.browsing"), label+" +1")
+			m, _ = update(m, special(tea.KeyPgDown))
+			assertFooter(m.tr("logs.capturing"), "")
+			if m.logs.holding || m.logs.unread != 0 {
+				t.Fatal("scrolling to the live tail did not restore following")
+			}
+
+			m, _ = update(m, key("f"))
+			m, _ = update(m, special(tea.KeyUp))
+			m, _ = update(m, special(tea.KeyPgDown))
+			assertFooter(m.tr("logs.display_paused"), label)
+			m, _ = click(m, findTarget(t, m, "logs.latest"))
+			assertFooter(m.tr("logs.capturing"), "")
+			if m.logs.paused || m.focus != "logs.list" {
+				t.Fatalf("clicking Latest did not resume on the log list: focus=%s", m.focus)
+			}
+		})
 	}
 }
 

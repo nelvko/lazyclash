@@ -102,7 +102,7 @@ func TestLogsEmptyStatesKeepFailureAndPauseMeaning(t *testing.T) {
 					m.width, m.height = size[0], size[1]
 					body, targets := m.logsBody(dashboardBodyWidth(m.dashboardOptions()))
 					footerRows := 0
-					if hasAction(targets, "logs.latest") {
+					if status, _ := m.logsStatus(); status != "" {
 						footerRows = 1
 					}
 					assertStreamEmptyCentered(t, body, dashboardBodyWidth(m.dashboardOptions()), footerRows)

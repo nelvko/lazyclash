@@ -157,7 +157,7 @@ func (m *Model) logsContextHelp() string {
 			break
 		}
 	}
-	if len(entries) > 0 || m.logs.paused || m.logs.holding {
+	if m.logs.canJumpToLatest() {
 		parts = append(parts, tr("navigation.logs.latest"))
 	}
 	parts = append(parts, tr("navigation.logs."+state))
