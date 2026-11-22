@@ -253,6 +253,17 @@ def click_header(terminal, words, field):
     click_cell(terminal, x, y)
 
 
+def header_bulk_action(terminal, words, closed_view, paused=False):
+    _, y = header_pause(terminal, words, paused)
+    label, compact = (words["connections.clear_history"], "⌫") if closed_view else (words["connections.close_all"], "×")
+    row = terminal.screen.cells[y]
+    visible = label if label in "".join(row) else compact
+    for x, cell in enumerate(row):
+        if cell and "".join(row[x:]).startswith(visible):
+            return x, y
+    raise AssertionError("Missing header action: " + label + "\n" + terminal.screen.text())
+
+
 def check_filter_layout(terminal, words, active, closed, closed_view=False, paused=False):
     left, top, right, bottom = search_frame(terminal)
     assert filter_count(terminal, required=False) is None, "unfiltered search still shows an external count"
@@ -273,9 +284,7 @@ def check_filter_layout(terminal, words, active, closed, closed_view=False, paus
         assert label not in inside, "an action is still embedded in the search field"
     pause_x, pause_y = header_pause(terminal, words, paused)
     rows = terminal.screen.text().splitlines()
-    header = "\n".join(rows[:min(y for _, y in tabs)])
-    bulk_label, compact = (words["connections.clear_history"], "⌫") if closed_view else (words["connections.close_all"], "×")
-    bulk_x, bulk_y = position(terminal, bulk_label if bulk_label in header else compact)
+    bulk_x, bulk_y = header_bulk_action(terminal, words, closed_view, paused)
     assert pause_y == bulk_y and pause_x < bulk_x and pause_y < top, "bulk action should follow Pause"
     if paused:
         terminal.wait(words["connections.paused"])
@@ -536,16 +545,30 @@ def exercise(preview, binary, output, language, profile, args):
         preview.capture(terminal, output, "filtered-header-totals", args)
         terminal.key(b"p")
         wait_header_pause(terminal, words)
-        search(terminal, "github-agent")
-        terminal.key(b"\r")
+        search(terminal, "flow-")
+        wait_count(terminal, 48, 44)
+        host = "flow-07.example.invalid"
+        row = position(terminal, host)
+        neighbor = position(terminal, "flow-08.example.invalid")
+        click_cell(terminal, *row)
         terminal.wait(words["connections.details"])
-        terminal.wait("pty-connection-00")
-        terminal.wait("/fixture/github-agent")
+        terminal.wait("pty-connection-07")
+        terminal.wait("/fixture/worker")
+        title_x, title_y = position(terminal, words["connections.details"])
+        assert title_x >= len(terminal.screen.cells[0]) // 2, "wide details should open on the right"
+        assert re.search(r"›\s*×", "".join(terminal.screen.cells[title_y][title_x:])), "new inspector did not focus its dismiss button"
+        assert "".join(terminal.screen.cells[row[1]][row[0]:]).startswith(host), "inspector displaced the selected row"
+        assert neighbor == position(terminal, "flow-08.example.invalid"), "inspector displaced the background list"
         preview.capture(terminal, output, "connection-details", args)
+        click_cell(terminal, *neighbor)
+        terminal.wait_absent(words["connections.details"])
+        wait_count(terminal, 48, 44)
+        terminal.key(b"\r")
+        terminal.wait("pty-connection-07")
         terminal.key(b"\x1b")
         terminal.wait_absent(words["connections.details"])
-        terminal.wait("api.github.com")
-        assert "github-agent" in terminal.screen.text(), "detail return lost the filter"
+        assert position(terminal, host) == row, "dismissing the inspector moved the list"
+        search(terminal, "github-agent")
 
         # A paused connection list freezes its data while runtime monitoring
         # continues in the background, including sidebar metrics.
@@ -619,8 +642,19 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait(words["connections.details"])
         terminal.wait("api.github.com")
         terminal.wait("github-agent")
+        terminal.resize(40, 16)
+        terminal.settle()
+        terminal.wait(words["connections.details"])
+        terminal.key(b"\x1b[F")
+        terminal.settle()
+        # Value columns can wrap at 40 cells. Both bottom fields must be reachable.
+        terminal.wait(words["connections.id"])
+        terminal.wait("/fixture/")
+        preview.capture(terminal, output, "connection-details-40x16", args)
         terminal.key(b"\x1b")
         terminal.wait_absent(words["connections.details"])
+        wait_count(terminal, 48, 1)
+        resize_terminal(terminal, words, 80, 24)
 
         search(terminal, "ipv6-agent")
         terminal.key(b"\r")
@@ -678,7 +712,7 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.key(b"\x1b")
         terminal.wait_absent(words["connections.details"])
         # Clearing a single history entry leaves the other 47 connections active.
-        terminal.click_text(words["connections.clear_history"])
+        click_cell(terminal, *header_bulk_action(terminal, words, closed_view=True))
         wait_count(terminal, 0, 0)
         check_tabs(terminal, words, 47, 0)
         terminal.key(b"v")
@@ -769,7 +803,7 @@ def exercise(preview, binary, output, language, profile, args):
         search(terminal, "streaming")
         terminal.key(b"p")
         wait_header_pause(terminal, words, paused=True)
-        terminal.click_text(words["connections.clear_history"])
+        click_cell(terminal, *header_bulk_action(terminal, words, closed_view=True, paused=True))
         wait_count(terminal, 0, 0)
         check_tabs(terminal, words, 0, 0)
         terminal.key(b"p")

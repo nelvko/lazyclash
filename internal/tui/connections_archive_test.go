@@ -79,7 +79,7 @@ func TestConnectionsArchiveDetailAlwaysReadonlyWhenIDReappears(t *testing.T) {
 		t.Fatal("historical details exposed a live close action")
 	}
 	closedAt := m.connections.detailClosedAt
-	body, _ := m.connectionsBody(200)
+	body := strings.Join(m.connectionDetailLines(60, false), "\n")
 	if closedAt.IsZero() || !strings.Contains(ansi.Strip(body), m.tr("connections.archived_hint")) {
 		t.Fatal("historical details lost their observed close time or last-sample explanation")
 	}

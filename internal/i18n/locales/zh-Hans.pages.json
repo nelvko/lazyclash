@@ -108,7 +108,6 @@
   "connections.confirm_hint": "仅关闭此处显示的连接。y 确认 · Esc 取消",
   "connections.cancel": "取消",
   "connections.close": "关闭连接",
-  "connections.back": "返回连接列表",
   "connections.close_shortcut": "关闭连接 (x)",
   "connections.id": "ID",
   "connections.destination": "目标",

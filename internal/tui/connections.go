@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"charm.land/bubbles/v2/textinput"
+	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/mihomo"
@@ -18,27 +19,29 @@ type connectionsState struct {
 	editing                         bool
 	caseSensitive, wholeWord, regex bool
 
-	selected                    string
-	selectedIndex, detailScroll int
-	detail                      *mihomo.Connection
-	confirming                  bool
-	closeAll                    bool
-	closeAllScroll              int
-	closedView                  bool
-	history                     connectionHistoryState
-	frozenClosed                []closedConnection
-	detailHistorical            bool
-	detailClosedAt              time.Time
-	detailGeneration            uint64
-	sort                        connectionSort
-	sortReversed                bool
-	rates                       connectionRatesState
-	paused                      bool
-	frozen                      *mihomo.ConnectionSnapshot
-	frozenRates                 connectionRatesState
-	frozenAt                    time.Time
-	frozenPID                   int
-	frozenVersion               string
+	selected         string
+	selectedIndex    int
+	detailViewport   *viewport.Model
+	detailBounds     hitRegion
+	detail           *mihomo.Connection
+	confirming       bool
+	closeAll         bool
+	closeAllScroll   int
+	closedView       bool
+	history          connectionHistoryState
+	frozenClosed     []closedConnection
+	detailHistorical bool
+	detailClosedAt   time.Time
+	detailGeneration uint64
+	sort             connectionSort
+	sortReversed     bool
+	rates            connectionRatesState
+	paused           bool
+	frozen           *mihomo.ConnectionSnapshot
+	frozenRates      connectionRatesState
+	frozenAt         time.Time
+	frozenPID        int
+	frozenVersion    string
 }
 
 func (m *Model) observeConnections(at time.Time) {
@@ -142,7 +145,7 @@ func (m *Model) connectionActive(connection mihomo.Connection) bool {
 	return false
 }
 func (m *Model) canCloseAllConnections() bool {
-	return !m.connections.closedView && !m.busy && !m.quitting && m.runtime.received && m.runtime.snapshot.State == "ready" && m.runtime.snapshot.Connections != nil && len(m.runtime.snapshot.Connections.Connections) > 0
+	return !m.connections.closedView && m.connections.detail == nil && !m.busy && !m.quitting && m.runtime.received && m.runtime.snapshot.State == "ready" && m.runtime.snapshot.Connections != nil && len(m.runtime.snapshot.Connections.Connections) > 0
 }
 
 func (m *Model) canClearConnectionHistory() bool {
@@ -211,93 +214,75 @@ func (m *Model) connectionKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 		}
 		return true, nil
 	}
+	if m.connections.detail != nil {
+		return true, m.connectionDetailKey(k)
+	}
 	if m.connectionFilterKey(k) {
 		return true, nil
 	}
 	switch key {
 	case "v":
-		if m.connections.detail == nil {
-			id := "conn.closed"
-			if m.connections.closedView {
-				id = "conn.active"
-			}
-			return true, m.connectionActivate(id)
+		id := "conn.closed"
+		if m.connections.closedView {
+			id = "conn.active"
 		}
-		return true, nil
-	case "p", "s", "S":
-		if m.connections.detail == nil {
-			switch key {
-			case "s":
-				return true, m.connectionActivate("conn.sort")
-			case "S":
-				return true, m.connectionActivate("conn.reverse-sort")
-			}
-			return true, m.connectionActivate("conn.pause")
-		}
-		return true, nil
+		return true, m.connectionActivate(id)
+	case "p":
+		return true, m.connectionActivate("conn.pause")
+	case "s":
+		return true, m.connectionActivate("conn.sort")
+	case "S":
+		return true, m.connectionActivate("conn.reverse-sort")
 	case "/":
 		return true, m.focusConnectionSearch()
 	case "x":
-		if m.connections.closedView || (m.connections.detail != nil && m.connections.detailHistorical) {
+		if m.connections.closedView {
 			return true, nil
 		}
-		if m.connections.detail == nil {
-			m.openSelectedConnection()
-		}
+		m.openSelectedConnection()
 		return true, m.connectionActivate("conn.close")
-	case "esc":
-		if m.connections.detail != nil {
-			m.connections.detail = nil
-			m.scroll = m.connections.detailScroll
-			m.focus = "connection." + m.connections.selected
-			m.reconcileConnections()
-			m.revealConnection(0)
-			return true, nil
-		}
 	case "down", "j", "up", "k", "home", "end", "pgup", "pgdown":
-		if m.connections.detail == nil {
-			list := m.filteredConnections()
-			if len(list) == 0 {
-				switch key {
-				case "home", "end", "pgup", "pgdown":
-					// A short terminal may put the toolbar and empty state in
-					// one scrollable document. Let the shell page through it.
-					return false, nil
-				}
-				return true, nil
-			}
-			index := 0
-			for i, c := range list {
-				if m.connectionRowKey(c) == m.connections.selected {
-					index = i
-					break
-				}
-			}
-			delta := 1
-			g := dashboardGeometry(m.dashboardOptions())
-			page := max(1, g.height)
-			if g.width < connectionTableMinWidth {
-				page = max(1, page/2)
-			}
+		list := m.filteredConnections()
+		if len(list) == 0 {
 			switch key {
-			case "up", "k":
-				delta = -1
-			case "pgup":
-				delta = -page
-			case "pgdown":
-				delta = page
-			case "home":
-				delta = -len(list)
-			case "end":
-				delta = len(list)
+			case "home", "end", "pgup", "pgdown":
+				// A short terminal may put the toolbar and empty state in
+				// one scrollable document. Let the shell page through it.
+				return false, nil
 			}
-			index = max(0, min(len(list)-1, index+delta))
-			m.connections.selectedIndex = index
-			m.connections.selected = m.connectionRowKey(list[index])
-			m.focus = "connection." + m.connectionRowKey(list[index])
-			m.revealConnection(index)
 			return true, nil
 		}
+		index := 0
+		for i, c := range list {
+			if m.connectionRowKey(c) == m.connections.selected {
+				index = i
+				break
+			}
+		}
+		delta := 1
+		g := dashboardGeometry(m.dashboardOptions())
+		page := max(1, g.height)
+		if g.width < connectionTableMinWidth {
+			page = max(1, page/2)
+		}
+		switch key {
+		case "up", "k":
+			delta = -1
+		case "pgup":
+			delta = -page
+		case "pgdown":
+			delta = page
+		case "home":
+			delta = -len(list)
+		case "end":
+			delta = len(list)
+		}
+		index = max(0, min(len(list)-1, index+delta))
+		m.connections.selectedIndex = index
+		m.connections.selected = m.connectionRowKey(list[index])
+		m.focus = "connection." + m.connectionRowKey(list[index])
+		m.revealConnection(index)
+		return true, nil
 	}
 	return false, nil
 }
@@ -321,7 +306,8 @@ func (m *Model) revealConnection(_ int) {
 func (m *Model) openSelectedConnection() {
 	for index, c := range m.filteredConnections() {
 		if m.connectionRowKey(c) == m.connections.selected {
-			m.connections.selectedIndex, m.connections.detailScroll = index, m.scroll
+			m.connections.selectedIndex = index
+			m.connections.detailViewport = nil
 			copy := c
 			m.connections.detail = &copy
 			m.connections.detailHistorical = m.connections.closedView
@@ -331,7 +317,6 @@ func (m *Model) openSelectedConnection() {
 				m.connections.detailClosedAt = entry.ClosedAt
 			}
 			m.connections.confirming = false
-			m.scroll = 0
 			m.focus = "conn.back"
 			return
 		}
@@ -417,16 +402,26 @@ func (m *Model) connectionActivate(id string) tea.Cmd {
 		}
 	case id == "conn.back":
 		m.connections.detail = nil
+		m.connections.detailViewport = nil
 		m.connections.confirming = false
-		m.scroll = m.connections.detailScroll
+		m.hover = ""
 		m.focus = "connection." + m.connections.selected
 		m.reconcileConnections()
-		m.revealConnection(0)
+		if m.connections.selected == "" {
+			m.focus = "conn.active"
+			if m.connections.closedView {
+				m.focus = "conn.closed"
+			}
+		} else {
+			m.revealConnection(0)
+		}
 	case id == "conn.close":
 		if !m.busy && !m.connections.confirming && m.detailActive() {
 			m.connections.confirming = true
+			if v := m.connections.detailViewport; v != nil {
+				v.GotoTop()
+			}
 			m.connections.closeAll = false
-			m.scroll = 0
 			m.focus = "conn.cancel"
 		}
 	case id == "conn.cancel":
@@ -434,8 +429,10 @@ func (m *Model) connectionActivate(id string) tea.Cmd {
 		if m.connections.closeAll {
 			m.connections.closeAll = false
 			m.scroll, m.focus = m.connections.closeAllScroll, "conn.close-all"
-		} else {
+		} else if m.detailActive() {
 			m.focus = "conn.close"
+		} else {
+			m.focus = "conn.back"
 		}
 	case id == "conn.confirm":
 		if !m.connections.confirming || m.busy {

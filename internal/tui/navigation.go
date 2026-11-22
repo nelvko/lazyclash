@@ -164,7 +164,7 @@ func (m *Model) contextHelp() string {
 	if m.ports.open {
 		return m.portsContextHelp()
 	}
-	if m.page == "connections" && m.connections.confirming {
+	if m.page == "connections" && (m.connections.detail != nil || m.connections.confirming) {
 		return m.connectionsContextHelp()
 	}
 	if m.page == "overview" && m.inlineInstallVisible() && strings.HasPrefix(m.focus, "setup.") {

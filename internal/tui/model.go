@@ -715,7 +715,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.logsSearchKey(v)
 			break
 		}
-		if m.page == "connections" && m.connections.confirming {
+		if m.page == "connections" && (m.connections.detail != nil || m.connections.confirming) {
 			_, cmd = m.connectionKey(v)
 			break
 		}
@@ -1369,6 +1369,9 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 	if m.helpOpen {
 		return m.helpMouse(event)
 	}
+	if m.page == "connections" && m.connections.detail != nil {
+		return m.connectionDetailMouse(event)
+	}
 	if _, wheel := event.(tea.MouseWheelMsg); wheel && len(m.notification.items) > 0 {
 		o := m.dashboardOptions()
 		m.populatePageBody(&o)
@@ -1576,7 +1579,7 @@ func (m *Model) renderLayout() {
 	o.SelectedGroup, o.Snapshot, o.Focus, o.Hover = m.proxies.activeGroup, m.snapshot, m.focus, m.hover
 	o.Help, o.GuideDismissed, o.Scroll, o.SidebarOpen = m.contextHelp(), m.snapshot.GuideDismissed, m.scroll, m.sidebarOpen
 	_, _, o.EditingInput = m.activeInputField()
-	o.HelpAfterClose = m.menu.open || m.providers.open || m.ports.open || m.form != "" || m.connections.confirming
+	o.HelpAfterClose = m.menu.open || m.providers.open || m.ports.open || m.form != "" || m.connections.confirming || m.connections.detail != nil
 	o.Runtime, o.RuntimeReceived, o.RuntimePending = m.runtime.snapshot, m.runtime.received, m.runtime.pending
 	o.StateUnavailable = !m.snapshotReady
 	g := dashboardGeometry(o)
@@ -1627,6 +1630,8 @@ func (m *Model) renderLayout() {
 		m.screen, m.targets = m.notification.panel.render(m.notification.items, m.width, m.height, m.locale, m.buttonPlain())
 	} else if m.providers.open {
 		m.screen, m.targets = m.renderProviders(base)
+	} else if m.page == "connections" && m.connections.detail != nil {
+		m.screen, m.targets = m.renderConnectionDetail(base)
 	} else if m.menu.open {
 		m.anchorLogsLevelMenu(hits)
 		m.screen = m.menu.render(base, m.width, m.height, dashboardContentBottom(o))

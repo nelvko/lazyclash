@@ -54,6 +54,10 @@ func TestDataPagesLocalizeControlsAndKeepObservedValues(t *testing.T) {
 						bar := m.logsToolbar(width, m.filterToolbarRows(width))
 						body = strings.Join(bar.lines, "\n") + "\n" + body
 					}
+					if m.page == "connections" {
+						m.layout()
+						body = m.screen
+					}
 					plain := ansi.Strip(body)
 					if !strings.Contains(plain, item.title) || !strings.Contains(plain, item.value) {
 						t.Fatalf("%s/%s at %v lost translated title or original data:\n%s", language.code, m.page, size, plain)

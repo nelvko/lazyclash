@@ -108,7 +108,6 @@
   "connections.confirm_hint": "Only the connection shown here will be closed. y Confirm · Esc Cancel",
   "connections.cancel": "Cancel",
   "connections.close": "Close connection",
-  "connections.back": "Back to connections",
   "connections.close_shortcut": "Close connection (x)",
   "connections.id": "ID",
   "connections.destination": "Destination",

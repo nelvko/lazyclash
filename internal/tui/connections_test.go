@@ -132,12 +132,13 @@ func TestConnectionCloseFailurePreservesDetailsAndCanRetry(t *testing.T) {
 
 func TestConnectionsMouseConfirmationBlocksBackgroundNavigation(t *testing.T) {
 	m := connectionsModel(t, &fakeBackend{})
+	background := findTarget(t, m, "nav.settings")
 	m, _ = click(m, findTarget(t, m, "connection.first"))
 	if m.connections.detail == nil || m.connections.detail.ID != "first" {
 		t.Fatal("mouse did not open the clicked connection")
 	}
 	m, _ = click(m, findTarget(t, m, "conn.close"))
-	m, _ = click(m, findTarget(t, m, "nav.settings"))
+	m, _ = click(m, background)
 	if m.page != "connections" || !m.connections.confirming {
 		t.Fatal("confirmation allowed background mouse navigation")
 	}

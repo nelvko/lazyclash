@@ -529,7 +529,7 @@ func (m *Model) requestQuit() tea.Cmd {
 }
 
 func (m *Model) repairPageFocus() {
-	if m.providers.open || m.helpOpen || m.form != "" || m.wizard.open || m.wizard.networkOpen || m.ports.open || m.notification.panel.open || m.menu.open {
+	if m.page == "connections" && m.connections.detail != nil || m.providers.open || m.helpOpen || m.form != "" || m.wizard.open || m.wizard.networkOpen || m.ports.open || m.notification.panel.open || m.menu.open {
 		return
 	}
 	state := m.pageViews[m.page]

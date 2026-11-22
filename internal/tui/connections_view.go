@@ -15,9 +15,13 @@ import (
 const connectionTableMinWidth = 85
 
 func (m *Model) connectionNow() time.Time {
-	if m.connections.paused && m.connections.detail == nil {
+	if m.connections.paused {
 		return m.connections.frozenAt
 	}
+	return m.connectionObservedAt()
+}
+
+func (m *Model) connectionObservedAt() time.Time {
 	if observed := m.runtime.observed[app.RuntimeConnections]; !observed.IsZero() {
 		return observed
 	}
@@ -224,9 +228,7 @@ func (m *Model) connectionsBody(width int) (string, []hitRegion) {
 	addButton := func(id, label string) {
 		o := dashboardButtonOptions(id, m.navigationOptions(), false, bg)
 		o.Disabled = m.busy
-		if id == "conn.close" {
-			o.Kind = buttonDanger
-		} else if id == "conn.confirm" {
+		if id == "conn.confirm" {
 			o.Kind = buttonDangerConfirm
 		}
 		s := renderButton(label, o)
@@ -240,54 +242,6 @@ func (m *Model) connectionsBody(width int) (string, []hitRegion) {
 		addText(m.tr("connections.confirm_all_hint"), muted)
 		addButton("conn.cancel", m.tr("connections.cancel"))
 		addButton("conn.confirm", m.tr("connections.close_all"))
-		return strings.Join(lines, "\n"), hits
-	}
-	if c := m.connections.detail; c != nil {
-		addText(m.tr("connections.details"), text)
-		if m.connections.detailHistorical || !m.connections.detailClosedAt.IsZero() {
-			addText(m.tr("connections.archived"), muted)
-			addText(m.tr("connections.archived_hint"), muted)
-		} else if m.detailActive() {
-			addText(m.tr("connections.active"), success)
-		} else {
-			addText(m.tr("connections.inactive_detail"), warning)
-		}
-		lines = append(lines, "")
-		if m.connections.confirming {
-			addText(m.tr("connections.confirm_title"), warning)
-			addText(m.tr("connections.confirm_hint"), muted)
-			addButton("conn.cancel", m.tr("connections.cancel"))
-			addButton("conn.confirm", m.tr("connections.close"))
-		} else {
-			addButton("conn.back", m.tr("connections.back"))
-			if m.detailActive() {
-				addButton("conn.close", m.tr("connections.close_shortcut"))
-			}
-		}
-		md := c.Metadata
-		rate := m.connections.rates.get(c.ID)
-		if !m.detailActive() {
-			rate = connectionRate{Upload: -1, Download: -1}
-		}
-		started := "--"
-		if !c.Start.IsZero() {
-			started = c.Start.Local().Format(time.RFC3339)
-		}
-		fields := [][2]string{
-			{m.tr("connections.destination"), connectionDestination(*c)}, {m.tr("connections.process"), md.Process},
-			{m.tr("connections.download_speed"), connectionSpeed(rate.Download)}, {m.tr("connections.upload_speed"), connectionSpeed(rate.Upload)},
-			{m.tr("connections.download_total"), formatBytes(c.Download)}, {m.tr("connections.upload_total"), formatBytes(c.Upload)},
-			{m.tr("connections.chain"), connectionChain(*c)}, {m.tr("connections.rule"), connectionRule(*c)},
-			{m.tr("connections.duration"), connectionDuration(*c, m.connectionRowTime(*c))}, {m.tr("connections.started"), started},
-			{m.tr("connections.source"), joinAddress(md.SourceIP, md.SourcePort)}, {m.tr("connections.resolved_ip"), md.DestinationIP},
-			{m.tr("connections.network_inbound"), md.Network + " / " + md.Type}, {m.tr("connections.process_path"), md.ProcessPath}, {m.tr("connections.id"), c.ID},
-		}
-		for _, f := range fields {
-			addText(f[0]+": "+connectionValue(f[1]), text)
-		}
-		if !m.connections.detailClosedAt.IsZero() {
-			addText(m.tr("connections.closed_observed")+": "+m.connections.detailClosedAt.Local().Format(time.RFC3339), text)
-		}
 		return strings.Join(lines, "\n"), hits
 	}
 	if m.dashboardOptions().BodyTopRows == 0 {

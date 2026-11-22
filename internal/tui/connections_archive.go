@@ -30,9 +30,6 @@ func (m *Model) connectionRowKey(c mihomo.Connection) string {
 }
 
 func (m *Model) connectionRowTime(c mihomo.Connection) time.Time {
-	if m.connections.detail != nil && c.ID == m.connections.detail.ID && c.Start.Equal(m.connections.detail.Start) && !m.connections.detailClosedAt.IsZero() {
-		return m.connections.detailClosedAt
-	}
 	if m.connections.closedView {
 		if entry, ok := m.closedEntry(c); ok {
 			return entry.ClosedAt

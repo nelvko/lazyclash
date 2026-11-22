@@ -80,7 +80,7 @@ func (m *Model) keyHintsShortcut(k tea.KeyPressMsg) (bool, tea.Cmd) {
 	}
 	if !m.helpOpen && (m.inlineInputActive() || (m.page == "profiles" && m.focus == "profiles.url" && !m.sidebarOpen) ||
 		(m.page == "proxies" && m.proxies.editing) ||
-		(m.page == "connections" && (m.connections.editing || m.connections.confirming)) ||
+		(m.page == "connections" && (m.connections.editing || m.connections.confirming || m.connections.detail != nil)) ||
 		(m.page == "rules" && (m.rules.editing || m.providers.editing)) || (m.page == "logs" && m.logs.editing)) {
 		return false, nil
 	}

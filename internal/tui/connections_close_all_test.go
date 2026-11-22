@@ -163,22 +163,16 @@ func TestConnectionsCloseAllFailureCanRetry(t *testing.T) {
 	}
 }
 
-func TestConnectionsCloseAllCancelPreservesDetailAndScroll(t *testing.T) {
+func TestConnectionsDetailBlocksCloseAll(t *testing.T) {
 	m := connectionsModel(t, &fakeBackend{})
 	m, _ = update(m, special(tea.KeyEnter))
-	originalID := m.connections.detail.ID
-	m, _ = update(m, tea.WindowSizeMsg{Width: 80, Height: 18})
-	m.scroll = 3
-	m.layout()
-	originalScroll := m.scroll
 	m.connectionActivate("conn.close-all")
-	m, _ = update(m, special(tea.KeyEscape))
-	if m.connections.detail == nil || m.connections.detail.ID != originalID || m.scroll != originalScroll || m.focus != "conn.close-all" {
-		t.Fatal("cancel did not restore the originating detail and scroll position")
+	if m.connections.confirming || m.connections.detail == nil || hasAction(m.targets, "conn.close-all") {
+		t.Fatal("detail allowed a background close-all action")
 	}
 	m, _ = update(m, key("x"))
 	if !m.connections.confirming || m.connections.closeAll {
-		t.Fatal("canceling Close all broke the single connection close flow")
+		t.Fatal("detail did not open the single-connection confirmation")
 	}
 }
 

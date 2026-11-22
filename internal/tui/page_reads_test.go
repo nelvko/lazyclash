@@ -136,7 +136,7 @@ func TestPageDetailsReturnToRememberedListScroll(t *testing.T) {
 		}
 		m.scroll = 8
 		m.connectionActivate("connection.connection-08")
-		if m.connections.detail == nil || m.scroll != 0 {
+		if m.connections.detail == nil || m.scroll != 8 {
 			t.Fatal("connection details did not open")
 		}
 		m.connectionActivate("conn.back")
