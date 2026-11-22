@@ -79,7 +79,9 @@ def main():
     payload = [b"rules: ['MATCH,DIRECT']\n"]
     provider_name = ["pty-airport"]
     gib = 1024**3
-    expires = int(time.mktime((2030, 6, 15, 12, 0, 0, 0, 0, -1)))
+    year = time.localtime().tm_year
+    expires = int(time.mktime((year + 1, 6, 15, 12, 0, 0, 0, 0, -1)))
+    future_date = time.strftime("%Y-%m-%d", time.localtime(expires))
     quota = [f"upload={gib}; download={2*gib}; total={10*gib}; expire={expires}"]
     requests = []
     remote_started = threading.Event()
@@ -160,12 +162,12 @@ def main():
             assert not (home / "installation").exists(), "Add created runtime installation state"
             for columns, rows in [(60, 20), (160, 40)]:
                 terminal.resize(columns, rows)
-                terminal.wait("7.0 GiB / 10.0 GiB left")
+                terminal.wait("7.0 GiB / 10.0 GiB")
                 terminal.wait("━")
                 terminal.settle()
                 screen = terminal.screen.text()
-                if columns == 160:
-                    assert "2030-06-15" in screen, "wide card lost the expiry date"
+                allowance = next(line for line in screen.splitlines() if "7.0 GiB / 10.0 GiB" in line)
+                assert allowance.split("7.0 GiB / 10.0 GiB", 1)[1].strip() == future_date, "card should show bare balance and expiry"
                 (output / f"profiles-quota-{columns}x{rows}.txt").write_text(screen)
             (output / "profiles-added.txt").write_text(screen)
 
@@ -213,14 +215,25 @@ def main():
 
             payload[0] = b"rules: ['MATCH,REJECT']\n"
             provider_name[0] = "pty-updated"
-            quota[0] = f"upload={gib}; download={5*gib}; total={10*gib}; expire={expires}"
+            terminal.wait("Expiry date " + future_date)
+            cutoff = int(time.time()) + 10
+            cutoff_date = time.strftime("%Y-%m-%d", time.localtime(cutoff))
+            quota[0] = f"upload={gib}; download={5*gib}; total={10*gib}; expire={cutoff}"
             terminal.click_text("[Update]")
             wait_until(terminal, lambda: revision() == hashlib.sha256(payload[0]).hexdigest(), "detail Update did not persist a profile revision")
             terminal.wait_absent("Updating profile")
             assert not (home / "installation").exists(), "Update applied a runtime configuration"
             terminal.wait("pty-updated · Configuration")
-            terminal.wait("4.0 GiB / 10.0 GiB left")
-            terminal.wait_absent("7.0 GiB / 10.0 GiB left")
+            terminal.wait("4.0 GiB / 10.0 GiB left")  # The open detail still labels the balance.
+            terminal.wait_absent("7.0 GiB / 10.0 GiB")
+            terminal.wait("Expiry date " + cutoff_date)
+            terminal.wait("Expired")  # No input or refresh across the provider's cutoff.
+            assert time.time() >= cutoff, "card expired before the reported second"
+            card, details = terminal.screen.text().split("pty-updated · Configuration", 1)
+            allowance = next(line for line in card.splitlines() if "4.0 GiB / 10.0 GiB" in line)
+            assert allowance.split("4.0 GiB / 10.0 GiB", 1)[1].strip() == "Expired" and cutoff_date not in card
+            assert "4.0 GiB / 10.0 GiB left" in details and "Expiry date " + cutoff_date in details
+            (output / "profiles-expired-detail.txt").write_text(terminal.screen.text())
             assert profile_id("pty-updated") == primary_id[0], "provider rename changed its stable ID"
 
             mouse_text(terminal, "pty-updated", button=2)
@@ -266,13 +279,13 @@ def main():
             terminal.click_text("[Update all]")
             wait_until(terminal, lambda: revision() == hashlib.sha256(payload[0]).hexdigest(), "Update all did not persist a profile revision")
             terminal.wait_absent("Updating profiles")
-            terminal.wait_absent("4.0 GiB / 10.0 GiB left")
+            terminal.wait_absent("4.0 GiB / 10.0 GiB")
             for columns, rows in [(60, 20), (160, 40)]:
                 terminal.resize(columns, rows)
                 terminal.wait("My Airport")
                 terminal.settle()
                 screen = terminal.screen.text()
-                assert "2030-06-15" not in screen and "━" not in screen, "stale expiry or quota bar after the provider omitted its header"
+                assert not any(item in screen for item in (future_date, cutoff_date, "Expired", "━")), "stale expiry or quota after the provider omitted its header"
                 (output / f"profiles-no-quota-{columns}x{rows}.txt").write_text(screen)
 
             local_dir = base / "配置 files" / "nested folder"
@@ -519,7 +532,7 @@ def main():
             terminal.exit()
             result = {
                 "passed": True,
-                "usage_scenarios": ["reported remaining bytes and expiry", "refresh changes remaining bytes", "missing header clears old usage and expiry"],
+                "usage_scenarios": ["bare remaining and total bytes with bare future date", "card becomes Expired at cutoff without input", "detail labels the balance and expiry date", "missing header clears old usage and expiry"],
                 "scenarios": ["empty library has no built-in card or count summary", "first card is the first saved profile", "visible URL bracketed paste", "automatic Add without naming modal or Apply", "two-column arrows", "Enter opens details only", "provider name update retains ID", "custom Rename survives provider updates", "Edit URL retains custom name and ID", "detail configuration Update", "Update all", "New profile local file with optional metadata omitted", "live directory and file matches", "arrow selection and Tab completion without creating", "Unicode and spaced directories with an extensionless configuration", "New profile remote URL with custom name and description", "Tab and Shift+Tab reach Create and Cancel", "busy form ignores editing and duplicate submission", "one download per new remote profile", "retained local source refresh", "CLI one-time copy import", "60x20 resize and Escape", "fixed header while scrolled", "header mouse update without Apply", "20x12 compact header", "page-specific controls", "duplicate imports retain distinct IDs", "repeated updates preserve duplicate suffix", "exit and reopen metadata and source persistence"],
                 "menu_scenarios": ["right-click card without Apply", "right-click update icon opens containing card menu", "left-click menu button", "menu owns q, page digits and pasted text", "outside click closes without opening the underlying creation form", "keyboard m and Escape focus restoration", "menu Rename uses the existing custom-name flow", "menu edge avoidance through resize", "retained local file Update rereads the source without HTTP", "copy-import Update is disabled without a download request"],
                 "menu_dimensions": [[160, 40], [60, 20], [40, 16], [20, 12]],

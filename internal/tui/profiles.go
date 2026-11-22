@@ -21,6 +21,8 @@ type profilesState struct {
 	urlError          string
 	urlErrorValue     string
 	pasteDeadline     time.Time
+	expiryAt          int64
+	cancelExpiry      context.CancelFunc
 	pasteUnavailable  bool
 	editing           bool
 	detail            string
@@ -34,6 +36,49 @@ type profilesState struct {
 const profilePasteTimeout = 15 * time.Second
 
 type profilePasteTimeoutMsg struct{ deadline time.Time }
+
+type profileExpiredMsg struct{}
+
+// Wake an idle Profiles page at the earliest future expiry, even without a core.
+func (m *Model) syncProfileExpiry(msg tea.Msg, previousPage string) tea.Cmd {
+	if m.page == previousPage && !m.quitting {
+		switch msg.(type) {
+		case resultMsg, coreStatusMsg, profileExpiredMsg:
+		default:
+			return nil
+		}
+	}
+	var next int64
+	if m.page == "profiles" && !m.quitting {
+		now := time.Now().Unix()
+		for _, info := range m.snapshot.ProfileDetails {
+			q := info.Quota
+			if q != nil && q.ExpiresAt > now && (next == 0 || q.ExpiresAt < next) {
+				next = q.ExpiresAt
+			}
+		}
+	}
+	if next == m.profilesUI.expiryAt {
+		return nil
+	}
+	if m.profilesUI.cancelExpiry != nil {
+		m.profilesUI.cancelExpiry()
+		m.profilesUI.cancelExpiry = nil
+	}
+	m.profilesUI.expiryAt = next
+	if next == 0 {
+		return nil
+	}
+	ctx, cancel := context.WithDeadline(m.ctx, time.Unix(next, 0))
+	m.profilesUI.cancelExpiry = cancel
+	return func() tea.Msg {
+		<-ctx.Done()
+		if ctx.Err() == context.DeadlineExceeded {
+			return profileExpiredMsg{}
+		}
+		return nil
+	}
+}
 
 func newProfilesState(locales ...i18n.Localizer) profilesState {
 	var locale i18n.Localizer

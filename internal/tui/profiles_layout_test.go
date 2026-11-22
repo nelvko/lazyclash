@@ -68,36 +68,130 @@ func TestProfileCardShowsRemainingFractionAndOptionalExpiry(t *testing.T) {
 	m.width, m.height = 160, 40
 	info := &m.snapshot.ProfileDetails[1]
 	info.Pending = false
-	date := time.Date(2030, 1, 2, 12, 0, 0, 0, time.Local)
+	date := time.Now().AddDate(1, 0, 0)
+	dateText := date.Format("2006-01-02")
 	for _, tc := range []struct {
 		used, total   uint64
 		expire        int64
 		want, expiry  string
 		filled, empty int
 	}{
-		{25, 100, date.Unix(), "75 B / 100 B left", "Expires 2030-01-02", 39, 13},
-		{100, 100, 0, "0 B / 100 B left", "", 0, 52},
-		{101, 100, 0, "0 B / 100 B left", "", 0, 52},
-		{0, 100, 0, "100 B / 100 B left", "", 52, 0},
-		{0, 0, date.Unix(), "", "Expires 2030-01-02", 0, 0},
+		{25, 100, date.Unix(), "75 B / 100 B", dateText, 39, 13},
+		{100, 100, 0, "0 B / 100 B", "", 0, 52},
+		{101, 100, 0, "0 B / 100 B", "", 0, 52},
+		{0, 100, 0, "100 B / 100 B", "", 52, 0},
+		{0, 0, date.Unix(), "", dateText, 0, 0},
 		{0, 0, 0, "", "", 0, 0},
 	} {
 		info.Quota = &configuration.SubscriptionQuota{UsedBytes: tc.used, TotalBytes: tc.total, ExpiresAt: tc.expire}
 		card := m.profileCard(0, 56)
 		row, bar := ansi.Strip(card.lines[3]), ansi.Strip(card.lines[4])
-		if !strings.Contains(row, tc.want) || strings.Contains(row, "left") != (tc.want != "") || !strings.Contains(row, tc.expiry) || strings.Contains(row, "Expires") != (tc.expiry != "") ||
+		// Strip only the fixed selection marker and layout whitespace; this
+		// catches stale date labels and unexpected text in the empty state.
+		content := strings.Fields(strings.TrimPrefix(row, "▌"))
+		if strings.Join(content, " ") != strings.TrimSpace(tc.want+" "+tc.expiry) ||
 			strings.Count(bar, "━") != tc.filled || strings.Count(bar, "─") != tc.empty {
 			t.Fatalf("card misrepresents %+v: %q / %q", tc, row, bar)
 		}
 	}
 	info.Pending = true
 	info.Quota = &configuration.SubscriptionQuota{TotalBytes: 100, UsedBytes: 50, ExpiresAt: date.Unix()}
-	narrow := m.profileCard(0, 34)
-	if p := ansi.Strip(strings.Join(narrow.lines, "\n")); !strings.Contains(p, "50 B / 100 B left") || strings.Contains(p, "Expires") || !strings.Contains(p, "Pending changes") {
-		t.Fatal("narrow card lost balance or action", p)
+	for _, lang := range []struct{ id, balance, expiry string }{
+		{i18n.English, "50 B / 100 B left", "Expiry date"},
+		{i18n.Chinese, "剩余 50 B / 100 B", "到期日期"},
+	} {
+		m.locale = i18n.New(lang.id)
+		for _, width := range []int{25, 31} {
+			card := m.profileCard(0, width)
+			content := strings.Fields(strings.TrimPrefix(ansi.Strip(card.lines[3]), "▌"))
+			want := "50 B / 100 B"
+			if width == 31 {
+				want += " " + dateText
+			}
+			if row := strings.Join(content, " "); row != want {
+				t.Errorf("%s at width %d: got quota row %q, want %q", lang.id, width, row, want)
+			}
+			if !strings.Contains(ansi.Strip(card.lines[4]), m.tr("profiles.changes_pending")) {
+				t.Errorf("%s at width %d: missing pending status", lang.id, width)
+			}
+		}
+		if p := ansi.Strip(strings.Join(m.profileDetailsPane(info.ID, 50).lines, "\n")); !strings.Contains(p, lang.expiry) || !strings.Contains(p, dateText) || !strings.Contains(p, lang.balance) {
+			t.Fatal("detail lost quota metadata", p)
+		}
 	}
-	if p := ansi.Strip(strings.Join(m.profileDetailsPane(info.ID, 50).lines, "\n")); !strings.Contains(p, "Expires 2030-01-02") || !strings.Contains(p, "50 B / 100 B left") {
-		t.Fatal("detail lost quota metadata", p)
+}
+
+func TestProfileCardExpiryUsesExactInstantAndLocalizedExpiredLabel(t *testing.T) {
+	expiry := time.Date(2030, 1, 2, 23, 5, 0, 0, time.Local)
+	for _, language := range []struct{ name, expired string }{
+		{i18n.English, "Expired"},
+		{i18n.Chinese, "已过期"},
+	} {
+		m := profilesPreview(false)
+		m.locale = i18n.New(language.name)
+		for _, tc := range []struct {
+			name      string
+			expiresAt int64
+			now       time.Time
+			want      string
+		}{
+			{"unknown", 0, expiry, ""},
+			{"before", expiry.Unix(), expiry.Add(-time.Second), "2030-01-02"},
+			{"at", expiry.Unix(), expiry, language.expired},
+			{"after", expiry.Unix(), expiry.Add(time.Second), language.expired},
+		} {
+			if got := m.profileCardExpiry(tc.expiresAt, tc.now); got != tc.want {
+				t.Errorf("%s/%s: got %q, want %q", language.name, tc.name, got, tc.want)
+			}
+		}
+	}
+}
+
+func TestIdleProfilesRedrawAtExpiryAndCancelOnExit(t *testing.T) {
+	m := profilesPreview(false)
+	m.snapshot.Installed = false
+	now := time.Now().Unix()
+	first := &m.snapshot.ProfileDetails[1]
+	first.Quota = &configuration.SubscriptionQuota{ExpiresAt: now + 2}
+	m.snapshot.ProfileDetails[2].Quota = &configuration.SubscriptionQuota{ExpiresAt: now + 60}
+
+	wake := m.syncProfileExpiry(nil, "overview")
+	if wake == nil || m.profilesUI.expiryAt != first.Quota.ExpiresAt || m.syncProfileExpiry(coreStatusMsg{}, "profiles") != nil {
+		t.Fatal("an idle page must schedule one wakeup for the earliest expiry")
+	}
+	msg := wake()
+	if _, ok := msg.(profileExpiredMsg); !ok {
+		t.Fatal("expiry did not wake the page")
+	}
+	updated, _ := m.Update(msg)
+	m = updated.(Model)
+	if !strings.Contains(ansi.Strip(m.screen), "Expired") || m.profilesUI.expiryAt != now+60 {
+		t.Fatal("idle page missed the expiry or failed to schedule the next one")
+	}
+	m.page = "overview"
+	if m.syncProfileExpiry(nil, "profiles") != nil || m.profilesUI.cancelExpiry != nil {
+		t.Fatal("leaving Profiles retained the expiry timer")
+	}
+}
+
+func TestExpiredProfileCardKeepsActualDateInDetails(t *testing.T) {
+	expiry := time.Date(2001, 3, 4, 12, 0, 0, 0, time.Local)
+	for _, language := range []struct{ name, expired, label string }{
+		{i18n.English, "Expired", "Expiry date"},
+		{i18n.Chinese, "已过期", "到期日期"},
+	} {
+		m := profilesPreview(false)
+		m.locale = i18n.New(language.name)
+		info := &m.snapshot.ProfileDetails[1]
+		info.Quota = &configuration.SubscriptionQuota{ExpiresAt: expiry.Unix()}
+		card := ansi.Strip(strings.Join(m.profileCard(0, 56).lines, "\n"))
+		if !strings.Contains(card, language.expired) || strings.Contains(card, "2001-03-04") {
+			t.Errorf("%s card lost expired status: %s", language.name, card)
+		}
+		detail := ansi.Strip(strings.Join(m.profileDetailsPane(info.ID, 56).lines, "\n"))
+		if !strings.Contains(detail, language.label) || !strings.Contains(detail, "2001-03-04") {
+			t.Errorf("%s details lost actual expiry date: %s", language.name, detail)
+		}
 	}
 }
 

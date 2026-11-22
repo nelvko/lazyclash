@@ -205,9 +205,11 @@ func (m *Model) paintProfileCard(name string, index, width int, compact bool) da
 	for _, control := range controlViews {
 		title += control
 	}
-	age := profileAge(info.UpdatedAt, time.Now(), m.locale)
+	now := time.Now()
+	age := profileAge(info.UpdatedAt, now, m.locale)
 	origin := profileCardPair(m.profileOrigin(info), age, inner)
-	quota, expiry := m.profileAllowance(info)
+	quota, expiresAt := profileAllowance(info)
+	expiry := m.profileCardExpiry(expiresAt, now)
 	// Keep the numeric balance intact when the date would displace it.
 	// The detail pane always has room for both, on separate rows.
 	if quota != "" && ansi.StringWidth(quota)+2+ansi.StringWidth(expiry) > inner {
@@ -249,17 +251,25 @@ func profileCardPair(left, right string, width int) string {
 	return cellPad(cellCrop(left, max(0, available-1)), available) + right
 }
 
-func (m *Model) profileAllowance(info app.ProfileInfo) (amount, expiry string) {
+func profileAllowance(info app.ProfileInfo) (amount string, expiresAt int64) {
 	if q := info.Quota; q != nil {
 		if q.TotalBytes > 0 {
 			remaining := q.TotalBytes - min(q.TotalBytes, q.UsedBytes)
-			amount = m.tr("profiles.remaining", formatBytes(remaining), formatBytes(q.TotalBytes))
+			amount = formatBytes(remaining) + " / " + formatBytes(q.TotalBytes)
 		}
-		if q.ExpiresAt > 0 {
-			expiry = m.tr("profiles.expires", time.Unix(q.ExpiresAt, 0).Format("2006-01-02"))
-		}
+		expiresAt = q.ExpiresAt
 	}
-	return amount, expiry
+	return amount, expiresAt
+}
+
+func (m *Model) profileCardExpiry(expiresAt int64, now time.Time) string {
+	if expiresAt <= 0 {
+		return ""
+	}
+	if now.Unix() >= expiresAt {
+		return m.tr("profiles.expired")
+	}
+	return time.Unix(expiresAt, 0).Format(time.DateOnly)
 }
 
 func (m *Model) profileWarning(info app.ProfileInfo, selected bool) string {
@@ -398,7 +408,14 @@ func (m *Model) profileDetailsPaneAt(name string, index, width int) dashboardBlo
 		}
 	}
 	body.lines = append(body.lines, themed(cellCrop(profileUpdated(info.UpdatedAt, time.Now(), m.locale), width), muted, bg, false))
-	quota, expiry := m.profileAllowance(info)
+	quota, expiresAt := profileAllowance(info)
+	if quota != "" {
+		quota = m.tr("profiles.remaining", quota)
+	}
+	expiry := ""
+	if expiresAt > 0 {
+		expiry = m.tr("profiles.expires", time.Unix(expiresAt, 0).Format(time.DateOnly))
+	}
 	for _, value := range []string{quota, expiry} {
 		if value != "" {
 			for _, line := range strings.Split(wrapText(value, width), "\n") {

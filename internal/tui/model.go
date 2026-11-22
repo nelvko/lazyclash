@@ -1019,6 +1019,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	next := m.syncRuntime()
 	nextRules := m.syncRules()
 	nextRuleProviders := m.syncProviders()
+	if expiry := m.syncProfileExpiry(msg, previousPage); expiry != nil {
+		cmd = tea.Batch(cmd, expiry)
+	}
 	if m.page != previousPage {
 		m.stopLogoIntro()
 	}
