@@ -73,22 +73,17 @@ func (a *App) SaveProfileSettings(ctx context.Context, edited ProfileSettings) e
 		if current == edited {
 			return nil
 		}
+		previous := entry
 		entry.Description = edited.Description
 		lib.Profiles[id] = entry
 		if edited.Name != current.Name {
 			nameProfile(&lib, id, configuration.NameCandidate{Name: edited.Name, Source: configuration.NameCustom})
 		}
 		if edited.Address != current.Address {
-			if _, err := a.readProfileSource(ctx, &lib, id, edited.Address, true); err != nil {
+			if err := a.readProfileSource(ctx, &lib, id, edited.Address, true); err != nil {
 				return err
 			}
-			m, installed, err := a.buildContext()
-			if err != nil {
-				return err
-			}
-			if err := a.validateProfile(ctx, &lib, id, m, installed); err != nil {
-				return err
-			}
+			return a.saveProfileEdit(ctx, lib, old, id, previous)
 		}
 		if err := ctx.Err(); err != nil {
 			return err

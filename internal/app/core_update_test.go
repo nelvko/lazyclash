@@ -208,6 +208,21 @@ func TestCheckUpdateNetworkFailureAndPendingRecoveryRemainReadOnly(t *testing.T)
 	}
 }
 
+func TestCheckUpdateReportsPendingProfileEditWithoutRecovery(t *testing.T) {
+	a, svc := updateFixture(t, "v1.19.33")
+	path := filepath.Join(a.Home, profileEditJournalName)
+	write(t, path, []byte("interrupted profile edit"))
+	before := updateTree(t, a.Home)
+	check, err := a.CheckUpdate(t.Context(), "", downloadnet.Config{})
+	if err != nil || check.Status != mihomo.UpdateUnavailable || check.InstalledVersion != "" {
+		t.Fatalf("pending profile edit omitted from read-only version check: %+v, %v", check, err)
+	}
+	customRulesDiagnostic(t, check.InstalledDiagnostic, "diagnostic.upgrade.recoveryPending")
+	if !reflect.DeepEqual(before, updateTree(t, a.Home)) || len(svc.actions) != 0 {
+		t.Fatal("read-only check modified interrupted state")
+	}
+}
+
 func TestUpgradeCorePinsReviewedVersionAndPreservesStoppedState(t *testing.T) {
 	a, svc := updateFixture(t, "v1.19.33")
 	check := checkedUpgrade(t, a)

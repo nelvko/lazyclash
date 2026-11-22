@@ -43,7 +43,7 @@
   "cli.command.profile.rename.short": "Change a profile's display name while preserving its ID",
   "cli.command.profile.url.short": "Replace and validate a profile's remembered address",
   "cli.command.profile.refresh.short": "Refresh a saved source and apply changes if this profile is selected",
-  "cli.command.profile.override.short": "Save a YAML set/prepend-rules/append-rules override; apply separately",
+  "cli.command.profile.override.short": "Save YAML overrides and reload effective changes for the current profile",
   "cli.command.profile.delete.short": "Delete a saved profile",
   "cli.command.profile.show.short": "Show profile origin and validation state without subscription credentials",
   "cli.command.profile.apply.short": "Apply a saved profile, with rollback on failure",

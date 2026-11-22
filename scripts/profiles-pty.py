@@ -183,6 +183,12 @@ def main():
             mouse_text(terminal, "pty-airport", button=2)
             terminal.wait("Settings…")
             terminal.wait("Install core first")
+            menu_rows = [line.split("│")[1].strip(" ›") for line in terminal.screen.text().splitlines() if line.count("│") == 2]
+            first = menu_rows.index("Use · Install core first")
+            assert menu_rows[first:first + 6] == [
+                "Use · Install core first", "Edit configuration…", "Edit overrides…",
+                "Update", "Settings…", "Delete…",
+            ], "remote profile actions were missing, separated, or out of order"
             (output / "profiles-menu-160x40.txt").write_text(terminal.screen.text())
             terminal.key(b"\x1b")
             terminal.wait_absent("Settings…")

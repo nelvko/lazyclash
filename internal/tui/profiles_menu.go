@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/nelvko/lazyclash/internal/app"
 )
 
 func (m *Model) profileMenuAvailable() bool {
@@ -15,16 +16,17 @@ func (m *Model) profileMenuItems(id string) []menuItem {
 	info := m.profileInfo(id)
 	var items []menuItem
 	current := id == m.snapshot.Applied
-	if !current || info.Pending || m.snapshot.ProfilePending && current {
+	if !current {
 		apply := menuItem{ID: "apply", Label: m.tr("profile_menu.use")}
-		if current {
-			apply.Label = m.tr("profile_menu.apply_changes")
-		}
 		if !m.snapshot.Installed {
 			apply.DisabledReason = m.tr("profile_menu.install_first")
 		}
 		items = append(items, apply)
 	}
+	items = append(items,
+		menuItem{ID: "edit-config", Label: m.tr("profile_menu.edit_config")},
+		menuItem{ID: "edit-overrides", Label: m.tr("profile_menu.edit_overrides")},
+	)
 	if info.Refreshable {
 		label := m.tr("profile_menu.update")
 		if info.Kind == "local" {
@@ -172,6 +174,12 @@ func (m *Model) profileMenuResult(result menuResult) tea.Cmd {
 		for index, profile := range m.profiles() {
 			if profile != id {
 				continue
+			}
+			switch result.Action {
+			case "edit-config":
+				return m.openProfileEditor(id, app.ProfileConfiguration)
+			case "edit-overrides":
+				return m.openProfileEditor(id, app.ProfileOverrides)
 			}
 			prefix := map[string]string{
 				"apply": "profiles.apply.", "refresh": "profiles.update.",

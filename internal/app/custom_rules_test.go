@@ -42,218 +42,27 @@ func customRulesDiagnostic(t *testing.T, err error, code string) {
 	}
 }
 
-func TestCustomRulesSaveRemainsDraftAndRetainsOrderUntilExplicitApply(t *testing.T) {
+func TestCustomRulesSaveLoadsOrderedRulesOnceWithoutRestart(t *testing.T) {
 	a, svc, _ := customRulesApp(t, true)
 	if err := a.Apply(t.Context(), "saved"); err != nil {
 		t.Fatal(err)
 	}
-	svc.active = true
-	m, generation, err := a.load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	before, err := installationTree(filepath.Join(a.Home, "installation"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	reloads := observeActiveRefresh(t, a, svc, nil)
 	draft, err := a.GetCustomRules(t.Context(), "")
-	if err != nil || draft.ProfileID != "saved" || draft.ProfileName != "saved" || !draft.Applied || draft.Pending || !draft.Validated || draft.Rules == nil {
-		t.Fatalf("unexpected initial editor state: %+v %v", draft, err)
-	}
-	initialToken := draft.Token
-	draft.Rules = []string{"DOMAIN,z.invalid,ROUTE", "DOMAIN,a.invalid,DIRECT", "DOMAIN,z.invalid,ROUTE"}
-	draft, err = a.SaveCustomRules(t.Context(), draft)
-	if err != nil || !draft.Pending || !draft.Applied || draft.Token == initialToken {
-		t.Fatalf("save did not publish a pending draft: %+v %v", draft, err)
-	}
-	fresh, err := a.GetCustomRules(t.Context(), "saved")
-	if err != nil || !reflect.DeepEqual(fresh.Rules, draft.Rules) || fresh.Token != draft.Token {
-		t.Fatal("saved rule order or duplicates changed", err)
-	}
-	current, currentGeneration, err := a.load()
-	if err != nil || currentGeneration != generation || current.Build.fingerprint() != m.Build.fingerprint() {
-		t.Fatal("saving custom rules changed the applied generation", err)
-	}
-	after, err := installationTree(filepath.Join(a.Home, "installation"))
-	if err != nil || !reflect.DeepEqual(before, after) || !svc.active || len(svc.actions) != 0 {
-		t.Fatal("saving custom rules changed runtime files or services", err)
-	}
-	// Reordering and deleting use the saved list, never runtime indexes.
-	draft.Rules = []string{draft.Rules[1], draft.Rules[0]}
-	draft, err = a.SaveCustomRules(t.Context(), draft)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := a.ApplyCustomRules(t.Context(), draft); err != nil {
-		t.Fatal(err)
+	draft.Rules = []string{"DOMAIN,z.invalid,ROUTE", "DOMAIN,a.invalid,DIRECT", "DOMAIN,z.invalid,ROUTE"}
+	saved, err := a.SaveCustomRules(t.Context(), draft)
+	if err != nil || saved.Pending || !saved.Validated || !saved.Applied || saved.Token == draft.Token || *reloads != 1 || len(svc.actions) > 0 {
+		t.Fatal("saving selected rules did not hot load", err)
 	}
-	got := generatedDocument(t, a)["rules"]
-	if !reflect.DeepEqual(got, []any{"DOMAIN,a.invalid,DIRECT", "DOMAIN,z.invalid,ROUTE", "MATCH,ROUTE"}) {
-		t.Fatal("explicit Apply did not load the saved custom order")
+	expected := []any{"DOMAIN,z.invalid,ROUTE", "DOMAIN,a.invalid,DIRECT", "DOMAIN,z.invalid,ROUTE", "MATCH,ROUTE"}
+	if got := generatedDocument(t, a)["rules"]; !reflect.DeepEqual(got, expected) {
+		t.Fatal("saved rule order lost", got)
 	}
-	fresh, err = a.GetCustomRules(t.Context(), "saved")
-	if err != nil || fresh.Pending {
-		t.Fatal("applied custom rules still appeared pending", err)
-	}
-}
-
-func TestCustomRulesGuardedApplyRejectsUnreviewedInputs(t *testing.T) {
-	for _, mutation := range []string{"empty-token", "old-token", "unsaved-rules", "subscription-refresh", "profile-changed", "profile-id", "default"} {
-		t.Run(mutation, func(t *testing.T) {
-			a, svc, path := customRulesApp(t, true)
-			if err := a.Apply(t.Context(), "saved"); err != nil {
-				t.Fatal(err)
-			}
-			draft, err := a.GetCustomRules(t.Context(), "")
-			if err != nil {
-				t.Fatal(err)
-			}
-			draft.Rules = []string{"DOMAIN,custom.invalid,ROUTE"}
-			draft, err = a.SaveCustomRules(t.Context(), draft)
-			if err != nil {
-				t.Fatal(err)
-			}
-			code := "diagnostic.customRules.conflict"
-			switch mutation {
-			case "empty-token":
-				draft.Token = ""
-			case "old-token":
-				next := draft
-				next.Rules = []string{"DOMAIN,new-edit.invalid,DIRECT"}
-				if _, err := a.SaveCustomRules(t.Context(), next); err != nil {
-					t.Fatal(err)
-				}
-			case "unsaved-rules":
-				draft.Rules = append(draft.Rules, "DOMAIN,unsaved.invalid,REJECT")
-			case "subscription-refresh":
-				write(t, path, []byte(customRulesSource+"log-level: debug\n"))
-				if err := a.Refresh(t.Context(), "saved"); err != nil {
-					t.Fatal(err)
-				}
-			case "profile-changed":
-				addFixtureProfile(t, a, "other")
-				if err := a.Apply(t.Context(), "other"); err != nil {
-					t.Fatal(err)
-				}
-				code = "diagnostic.customRules.profileChanged"
-			case "profile-id":
-				addFixtureProfile(t, a, "other")
-				draft.ProfileID = "other"
-			case "default":
-				draft.ProfileID = "default"
-				code = "diagnostic.customRules.readOnly"
-			}
-			svc.active = true
-			before, err := installationTree(filepath.Join(a.Home, "installation"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			index := filepath.Join(a.Home, "configuration", "library.json")
-			beforeIndex := read(t, index)
-			validations := 0
-			a.Validate = func(context.Context, string, string, string) error {
-				validations++
-				return nil
-			}
-			err = a.ApplyCustomRules(t.Context(), draft)
-			customRulesDiagnostic(t, err, code)
-			after, treeErr := installationTree(filepath.Join(a.Home, "installation"))
-			if treeErr != nil || !reflect.DeepEqual(before, after) || !bytes.Equal(beforeIndex, read(t, index)) || len(svc.actions) != 0 || validations != 0 {
-				t.Fatalf("unreviewed apply changed saved/runtime state: actions=%v validations=%d err=%v", svc.actions, validations, treeErr)
-			}
-		})
-	}
-}
-
-func TestCustomRulesGuardedApplyPreservesStoppedServiceAndRestartsActiveService(t *testing.T) {
-	for _, active := range []bool{false, true} {
-		t.Run(map[bool]string{false: "stopped", true: "active"}[active], func(t *testing.T) {
-			a, svc, _ := customRulesApp(t, true)
-			if err := a.Apply(t.Context(), "saved"); err != nil {
-				t.Fatal(err)
-			}
-			draft, err := a.GetCustomRules(t.Context(), "")
-			if err != nil {
-				t.Fatal(err)
-			}
-			draft.Rules = []string{"DOMAIN,custom.invalid,ROUTE"}
-			draft, err = a.SaveCustomRules(t.Context(), draft)
-			if err != nil || !draft.Pending {
-				t.Fatal("custom draft was not pending", err)
-			}
-			svc.active = active
-			if err := a.ApplyCustomRules(t.Context(), draft); err != nil {
-				t.Fatal(err)
-			}
-			wantActions := []string(nil)
-			if active {
-				wantActions = []string{"restart"}
-			}
-			if !reflect.DeepEqual(svc.actions, wantActions) || svc.active != active {
-				t.Fatalf("guarded apply changed lifecycle semantics: active=%t actions=%v", svc.active, svc.actions)
-			}
-			if got := generatedDocument(t, a)["rules"]; !reflect.DeepEqual(got, []any{"DOMAIN,custom.invalid,ROUTE", "MATCH,ROUTE"}) {
-				t.Fatal("reviewed custom rules were not applied")
-			}
-			current, err := a.GetCustomRules(t.Context(), "")
-			if err != nil || current.Pending || current.Token != draft.Token || !reflect.DeepEqual(current.Rules, draft.Rules) {
-				t.Fatal("successful apply did not settle the saved draft", err)
-			}
-		})
-	}
-}
-
-func TestCustomRulesGuardedApplyRetainsSavedDraftOnFailure(t *testing.T) {
-	for _, failure := range []string{"validation", "canceled", "restart"} {
-		t.Run(failure, func(t *testing.T) {
-			a, svc, _ := customRulesApp(t, true)
-			if err := a.Apply(t.Context(), "saved"); err != nil {
-				t.Fatal(err)
-			}
-			draft, err := a.GetCustomRules(t.Context(), "")
-			if err != nil {
-				t.Fatal(err)
-			}
-			draft.Rules = []string{"DOMAIN,custom.invalid,ROUTE"}
-			draft, err = a.SaveCustomRules(t.Context(), draft)
-			if err != nil {
-				t.Fatal(err)
-			}
-			before, err := installationTree(filepath.Join(a.Home, "installation"))
-			if err != nil {
-				t.Fatal(err)
-			}
-			svc.active = true
-			ctx, cancel := context.WithCancel(t.Context())
-			defer cancel()
-			switch failure {
-			case "validation":
-				a.Validate = func(context.Context, string, string, string) error { return errors.New("candidate rejected") }
-			case "canceled":
-				a.Validate = func(context.Context, string, string, string) error { cancel(); return nil }
-			case "restart":
-				svc.actionHook = func(context.Context, string) error {
-					if len(svc.actions) == 1 {
-						return errors.New("restart failed")
-					}
-					return nil
-				}
-			}
-			if err := a.ApplyCustomRules(ctx, draft); err == nil || failure == "canceled" && !errors.Is(err, context.Canceled) {
-				t.Fatal("guarded apply lost its failure", err)
-			}
-			after, err := installationTree(filepath.Join(a.Home, "installation"))
-			if err != nil || !reflect.DeepEqual(before, after) || !svc.active {
-				t.Fatal("failed apply did not preserve the previous generation and service", err)
-			}
-			fresh, err := a.GetCustomRules(t.Context(), "")
-			if err != nil || !fresh.Pending || fresh.Token != draft.Token || !reflect.DeepEqual(fresh.Rules, draft.Rules) {
-				t.Fatal("failed apply lost the saved pending custom rules", err)
-			}
-			if failure != "restart" && len(svc.actions) != 0 || failure == "restart" && !reflect.DeepEqual(svc.actions, []string{"restart", "restart"}) {
-				t.Fatalf("unexpected service actions during failed apply: %v", svc.actions)
-			}
-		})
+	if _, err := a.SaveCustomRules(t.Context(), saved); err != nil || *reloads != 1 {
+		t.Fatal("repeated save reloaded", err)
 	}
 }
 
@@ -392,8 +201,7 @@ func TestCustomRulesDefaultRemainsReadOnly(t *testing.T) {
 			customRulesDiagnostic(t, err, "diagnostic.profile.missing")
 			_, err = a.SaveCustomRules(t.Context(), CustomRulesDraft{ProfileID: "default", Token: "forged", Rules: []string{"MATCH,REJECT"}})
 			customRulesDiagnostic(t, err, "diagnostic.customRules.readOnly")
-			err = a.ApplyCustomRules(t.Context(), CustomRulesDraft{ProfileID: "default", Token: "forged", Rules: []string{"MATCH,REJECT"}})
-			customRulesDiagnostic(t, err, "diagnostic.customRules.readOnly")
+
 		})
 	}
 }

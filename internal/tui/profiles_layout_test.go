@@ -121,7 +121,7 @@ func TestProfileCardShowsRemainingFractionAndOptionalExpiry(t *testing.T) {
 			if row := strings.Join(content, " "); row != want {
 				t.Errorf("%s at width %d: got quota row %q, want %q", lang.id, width, row, want)
 			}
-			if !strings.Contains(ansi.Strip(card.lines[4]), m.tr("profiles.changes_pending")) {
+			if !strings.Contains(ansi.Strip(card.lines[4]), m.tr("profiles.refresh_failed")) {
 				t.Errorf("%s at width %d: missing pending status", lang.id, width)
 			}
 		}

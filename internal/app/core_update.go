@@ -90,7 +90,7 @@ func (a *App) observeCoreVersion(ctx context.Context) CoreUpdateCheck {
 		check.Status = mihomo.UpdateNotInstalled
 		return check
 	}
-	for _, name := range []string{"core-pending.json", "apply-pending.json", "install-pending.json"} {
+	for _, name := range []string{"core-pending.json", "apply-pending.json", "install-pending.json", profileEditJournalName} {
 		if _, err := os.Lstat(filepath.Join(a.Home, name)); err == nil {
 			check.InstalledDiagnostic = diagnostic.New("diagnostic.upgrade.recoveryPending", "Installation recovery is pending; inspect status before checking again")
 			check.InstalledError = check.InstalledDiagnostic.Error()

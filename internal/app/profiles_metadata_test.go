@@ -59,8 +59,8 @@ func TestProfileSnapshotProvidesSafeCardMetadata(t *testing.T) {
 		if profile.ID != snapshot.Profiles[i] {
 			t.Fatal("profile metadata does not preserve profile order")
 		}
-		if profile.Name == "remote" && (!profile.HasOverrides || !profile.Pending || !profile.Validated || !snapshot.ProfilePending) {
-			t.Fatal("draft override and applied state were not represented", profile)
+		if profile.Name == "remote" && (!profile.HasOverrides || profile.Pending || !profile.Validated || snapshot.ProfilePending) {
+			t.Fatal("saved overrides should already be applied", profile)
 		}
 	}
 	for _, profile := range profiles {

@@ -18,7 +18,7 @@ func (a *App) Apply(ctx context.Context, name string) error {
 		if err != nil {
 			return err
 		}
-		return a.applyProfileLocked(ctx, lib, id, nil)
+		return a.applyProfileLocked(ctx, lib, id)
 	})
 }
 
@@ -33,11 +33,11 @@ func (a *App) DeactivateProfile(ctx context.Context, expectedID string) error {
 		if expectedID != "" && expectedID != m.Applied {
 			return diagnostic.New("diagnostic.profile.deactivateSelectionChanged", "the selected profile changed; review the selection before deactivating it")
 		}
-		return a.applyProfileLocked(ctx, configuration.Library{}, "default", nil)
+		return a.applyProfileLocked(ctx, configuration.Library{}, "default")
 	})
 }
 
-func (a *App) applyProfileLocked(ctx context.Context, lib configuration.Library, name string, reviewed *CustomRulesDraft) error {
+func (a *App) applyProfileLocked(ctx context.Context, lib configuration.Library, name string) error {
 	if err := a.requireService(); err != nil {
 		return err
 	}
@@ -48,11 +48,6 @@ func (a *App) applyProfileLocked(ctx context.Context, lib configuration.Library,
 	status, err := a.profileServiceStatus(ctx)
 	if err != nil {
 		return err
-	}
-	if reviewed != nil {
-		if err := validateCustomRulesApply(lib, m, name, *reviewed); err != nil {
-			return err
-		}
 	}
 	cfg, inputs, err := a.buildProfile(ctx, lib, name, m, true)
 	if err != nil {

@@ -448,5 +448,9 @@
   "diagnostic.cli.replacementRequired": "--use requires a saved replacement profile",
   "diagnostic.profile.deleteTargetChanged": "selection changed; review the updated profile before deleting it",
   "diagnostic.profile.deactivateSelectionChanged": "the selected profile changed; review the selection before deactivating it",
-  "diagnostic.profile.settingsChanged": "Profile settings changed. Reopen settings to edit the latest values."
+  "diagnostic.profile.settingsChanged": "Profile settings changed. Reopen settings to edit the latest values.",
+  "diagnostic.profile.unsafeEditPath": "choose an independent source file outside managed application files",
+  "diagnostic.profile.documentConflict": "profile or source changed while editing; reopen the document to review its latest content",
+  "diagnostic.profile.documentKind": "unknown editable profile document",
+  "diagnostic.profile.editRecovery": "profile edit recovery found unexpected data; preserving the saved files"
 }

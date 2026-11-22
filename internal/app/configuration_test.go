@@ -117,39 +117,14 @@ func TestFullProfilePinsAppliedContentAndCustomRules(t *testing.T) {
 	if err != nil || current == applied || nextManifest.Build.Recipe.Revision != lib.Profiles["saved"].Spec.Revision || !strings.Contains(string(read(t, appliedPath)), "updated.invalid") || len(svc.actions) != 0 {
 		t.Fatal("stopped refresh failed to commit the next-start configuration", err)
 	}
-	pinned := nextManifest.Build.fingerprint()
-	before := read(t, appliedPath)
-	if err := a.SetProfileOverrides(t.Context(), "saved", []byte("prepend-rules: ['DOMAIN,new-rule.invalid,DIRECT']")); err != nil {
+	changed := []byte("prepend-rules: ['DOMAIN,new-rule.invalid,DIRECT']")
+	if err := a.SetProfileOverrides(t.Context(), "saved", changed); err != nil {
 		t.Fatal(err)
 	}
-	svc.active = true
-	failed := false
-	svc.actionHook = func(context.Context, string) error {
-		if !failed {
-			failed = true
-			return errors.New("new configuration failed to start")
-		}
-		return nil
-	}
-	if err := a.Apply(t.Context(), "saved"); err == nil {
-		t.Fatal("failed apply was reported as successful")
-	}
-	restored, restoredGeneration, err := a.load()
-	if err != nil || restoredGeneration != current || restored.Build.fingerprint() != pinned || !bytes.Equal(read(t, appliedPath), before) {
-		t.Fatal("failed apply did not restore the old pinned configuration", err)
-	}
-	info, err = a.ProfileDetails(t.Context(), "saved")
-	if err != nil || !info.Pending {
-		t.Fatal("rollback discarded the saved update", err)
-	}
-	svc.active = false
-	svc.actionHook = nil
-	if err := a.Apply(t.Context(), "saved"); err != nil {
-		t.Fatal(err)
-	}
-	info, err = a.ProfileDetails(t.Context(), "saved")
-	if err != nil || info.Pending || !strings.Contains(string(read(t, appliedPath)), "new-rule.invalid") {
-		t.Fatal("explicit retry did not commit the pending revision", err)
+	next, updated, err := a.load()
+	if err != nil || updated == current || next.Build.Recipe.Revision != lib.Profiles["saved"].Spec.Revision ||
+		next.Build.Recipe.Overrides != string(changed) || !strings.Contains(string(read(t, appliedPath)), "new-rule.invalid") || svc.active || len(svc.actions) != 0 {
+		t.Fatal("override save did not pin a complete next-start recipe", err)
 	}
 }
 
@@ -166,7 +141,7 @@ func TestProfileImportRejectsDanglingRoutingBeforeSaving(t *testing.T) {
 	}
 }
 
-func TestProfileOverrideEditsStayDraftUntilExplicitApply(t *testing.T) {
+func TestProfileOverrideEditsValidateBeforeChangingTheNextStart(t *testing.T) {
 	a, svc := installedApp(t)
 	addFixtureProfile(t, a, "custom")
 	if err := a.Apply(t.Context(), "custom"); err != nil {
@@ -180,8 +155,8 @@ func TestProfileOverrideEditsStayDraftUntilExplicitApply(t *testing.T) {
 		t.Fatal(err)
 	}
 	info, err := a.ProfileDetails(t.Context(), "custom")
-	if err != nil || !info.Pending || !bytes.Equal(before, read(t, appliedPath)) || len(svc.actions) != 0 {
-		t.Fatal("editing overrides implicitly applied its draft", err)
+	if err != nil || info.Pending || bytes.Equal(before, read(t, appliedPath)) || len(svc.actions) != 0 {
+		t.Fatal("override save failed to update the stopped instance", err)
 	}
 	libraryPath := filepath.Join(a.Home, "configuration", "library.json")
 	beforeLibrary := read(t, libraryPath)
@@ -197,14 +172,10 @@ func TestProfileOverrideEditsStayDraftUntilExplicitApply(t *testing.T) {
 	if err := a.SetProfileOverrides(t.Context(), "custom", []byte("set: {log-level: debug}")); err == nil || !bytes.Equal(beforeLibrary, read(t, libraryPath)) {
 		t.Fatal("engine-rejected override changed the library", err)
 	}
-	a.Validate = func(ctx context.Context, _, _, _ string) error { return ctx.Err() }
-	if err := a.Apply(t.Context(), "custom"); err != nil {
-		t.Fatal(err)
-	}
 	_, current, _ := a.load()
 	info, err = a.ProfileDetails(t.Context(), "custom")
 	if err != nil || info.Pending || current == applied || !strings.Contains(string(read(t, appliedPath)), "DOMAIN,user.invalid,REJECT") {
-		t.Fatal("explicit apply did not commit custom rules", err)
+		t.Fatal("successful save did not retain custom rules", err)
 	}
 }
 

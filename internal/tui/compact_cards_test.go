@@ -73,7 +73,7 @@ func TestCompactProfilesKeepMetadataStatusAndTitleActions(t *testing.T) {
 			t.Fatalf("%v: compact profile has %d rows", size, len(card.lines))
 		}
 		plain := ansi.Strip(strings.Join(card.lines, "\n"))
-		for _, want := range []string{"Everyday", "subscription.example", "2h ago", m.tr("profiles.changes_pending")} {
+		for _, want := range []string{"Everyday", "subscription.example", "2h ago", m.tr("profiles.refresh_failed")} {
 			if !strings.Contains(plain, want) {
 				t.Fatalf("%v: compact profile lost %q: %s", size, want, plain)
 			}

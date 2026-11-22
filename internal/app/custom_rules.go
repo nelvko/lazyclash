@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"slices"
 
 	"github.com/nelvko/lazyclash/internal/configuration"
 	"github.com/nelvko/lazyclash/internal/diagnostic"
@@ -49,8 +48,7 @@ func (a *App) GetCustomRules(ctx context.Context, profile string) (CustomRulesDr
 		if err != nil {
 			return err
 		}
-		// customRulesDraft validated the override document. Keep its editor
-		// available when a refresh removed a target used only by the draft.
+		// Verify the immutable source before returning an editable recipe.
 		_, err = a.library().Read(lib.Profiles[id].Spec.Revision)
 		if err != nil {
 			return err
@@ -63,9 +61,7 @@ func (a *App) GetCustomRules(ctx context.Context, profile string) (CustomRulesDr
 	return out, nil
 }
 
-// SaveCustomRules validates and atomically saves a draft. It neither applies a
-// profile nor changes services; the running generation remains pinned until an
-// explicit Apply. Metadata supplied by a caller is never trusted for routing.
+// SaveCustomRules updates the override document reviewed by the rules editor.
 func (a *App) SaveCustomRules(ctx context.Context, draft CustomRulesDraft) (CustomRulesDraft, error) {
 	var out CustomRulesDraft
 	err := a.locked(ctx, func() error {
@@ -88,70 +84,23 @@ func (a *App) SaveCustomRules(ctx context.Context, draft CustomRulesDraft) (Cust
 		if err != nil {
 			return err
 		}
+		previous := entry
 		entry.Spec.Overrides = string(raw)
 		lib.Profiles[draft.ProfileID] = entry
+		if err := a.saveProfileEdit(ctx, lib, old, draft.ProfileID, previous); err != nil {
+			return err
+		}
 		m, installed, err := a.buildContext()
 		if err != nil {
 			return err
 		}
-		if _, _, err := a.buildProfile(ctx, lib, draft.ProfileID, m, installed); err != nil {
-			return err
-		}
-		entry.Validated = installed
-		lib.Profiles[draft.ProfileID] = entry
 		out, err = a.customRulesDraft(lib, draft.ProfileID, m, installed)
-		if err != nil {
-			return err
-		}
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		return a.library().Save(lib, old)
+		return err
 	})
 	if err != nil {
 		return CustomRulesDraft{}, err
 	}
 	return out, nil
-}
-
-// ApplyCustomRules applies exactly the saved recipe reviewed by the editor.
-// The current profile and its token are checked under the same lock and against
-// the same inputs used by the normal generation/rollback transaction.
-func (a *App) ApplyCustomRules(ctx context.Context, draft CustomRulesDraft) error {
-	return a.locked(ctx, func() error {
-		if draft.ProfileID == "default" {
-			return customRulesReadOnly()
-		}
-		lib, _, err := a.library().Load()
-		if err != nil {
-			return err
-		}
-		return a.applyProfileLocked(ctx, lib, draft.ProfileID, &draft)
-	})
-}
-
-func validateCustomRulesApply(lib configuration.Library, m manifest, id string, draft CustomRulesDraft) error {
-	if id == "default" {
-		return customRulesReadOnly()
-	}
-	record, err := recipeRecord(lib, id)
-	if err != nil {
-		return err
-	}
-	if id != draft.ProfileID || draft.Token == "" || draft.Token != record.fingerprint() {
-		return diagnostic.New("diagnostic.customRules.conflict", "profile configuration changed while editing custom rules; reload and retry")
-	}
-	rules, err := mihomo.CustomRules([]byte(record.Recipe.Overrides))
-	if err != nil {
-		return err
-	}
-	if !slices.Equal(rules, draft.Rules) {
-		return diagnostic.New("diagnostic.customRules.conflict", "profile configuration changed while editing custom rules; reload and retry")
-	}
-	if m.Applied != id {
-		return diagnostic.New("diagnostic.customRules.profileChanged", "the applied profile changed while editing custom rules; reopen the editor")
-	}
-	return nil
 }
 
 func (a *App) customRulesDraft(lib configuration.Library, id string, m manifest, installed bool) (CustomRulesDraft, error) {

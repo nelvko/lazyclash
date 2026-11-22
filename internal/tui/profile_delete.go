@@ -136,9 +136,7 @@ func (m *Model) renderProfileDeleteForm(base string) (string, []hitRegion) {
 		if len(items) > 1 || selected < 0 {
 			choice = label + " ▾"
 		}
-		if m.profileInfo(m.name).Pending || m.snapshot.ProfilePending {
-			hint += " " + m.tr("profiles.delete_pending")
-		}
+
 	}
 	title := m.tr("profiles.delete_title", clean(m.profileInfo(m.name).Name))
 	lines := strings.Split(wrapText(hint, inner), "\n")

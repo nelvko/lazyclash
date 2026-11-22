@@ -37,6 +37,13 @@ func cleanupContext() (context.Context, context.CancelFunc) {
 }
 
 func (a *App) recover(ctx context.Context) error {
+	if err := a.recoverGenerations(ctx); err != nil {
+		return err
+	}
+	return a.recoverProfileEdit()
+}
+
+func (a *App) recoverGenerations(ctx context.Context) error {
 	if err := a.recoverCore(ctx); err != nil {
 		return err
 	}

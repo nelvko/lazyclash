@@ -1,5 +1,5 @@
 {
-  "help.profiles.click": "Click a card to use the profile. Click the selected profile to apply pending changes.",
+  "help.profiles.click": "Click a card to use that profile.",
   "help.profiles.menu": "Right-click a card, click its ⋯ button, or press m / Shift+F10 on a focused card to open its action menu.",
   "help.profiles.menuControls": "Menu: ↑↓ / j/k selects; Home / End jumps to the first/last item; Enter runs it. Esc / Tab / Shift+Tab or an outside click closes.",
   "help.messages.toast": "Errors, warnings, important messages and ongoing progress appear in the upper-right. Routine success and info stay briefly in the notification list. While browsing a page, Ctrl+N opens the list and details.",

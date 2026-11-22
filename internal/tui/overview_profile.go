@@ -28,8 +28,8 @@ func overviewProfileCard(o dashboardOptions, width int) dashboardBlock {
 		}
 	}
 	statusColor := muted
-	if s.ConfigReady && (s.ProfilePending || info.Pending) {
-		status, statusColor = tr("profiles.changes_pending"), warning
+	if s.ConfigReady && info.Refreshable && (s.ProfilePending || info.Pending) {
+		status, statusColor = tr("profiles.refresh_failed"), warning
 	} else if s.ConfigReady && info.ID != "" && !info.Validated {
 		status, statusColor = tr("profiles.validation_pending"), warning
 	}

@@ -4,6 +4,7 @@ package tui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -27,6 +28,7 @@ type Backend interface {
 	SaveNetworkPreferences(context.Context, downloadnet.Config) error
 	SetGuideDismissed(context.Context, bool) error
 	SaveLanguagePreference(context.Context, string) error
+	SaveEditorPreference(context.Context, string) error
 	SaveKeyHintsPreference(context.Context, bool) error
 	SetAutostart(context.Context, bool) error
 	SetMode(context.Context, string) error
@@ -40,6 +42,8 @@ type Backend interface {
 	Add(context.Context, string, string) error
 	AddSubscription(context.Context, string, string) error
 	CreateProfile(context.Context, app.ProfileDraft) error
+	GetProfileDocument(context.Context, string, app.ProfileDocumentKind) (app.ProfileDocument, error)
+	SaveProfileDocument(context.Context, app.ProfileDocument, []byte) error
 	GetProfileSettings(context.Context, string) (app.ProfileSettings, error)
 	SaveProfileSettings(context.Context, app.ProfileSettings) error
 	Refresh(context.Context, string) error
@@ -112,6 +116,7 @@ type networkMsg struct {
 type Model struct {
 	locale                i18n.Localizer
 	languageOverride      string
+	editorPreference      string
 	ctx                   context.Context
 	backend               Backend
 	snapshot              app.Snapshot
@@ -139,6 +144,7 @@ type Model struct {
 	rememberSource        bool
 	profilesUI            profilesState
 	proxies               proxiesState
+	profileEditor         profileEditorState
 	profileCreate         profileCreateState
 	menu                  actionMenu
 	input                 textinput.Model
@@ -201,7 +207,10 @@ func New(ctx context.Context, backend Backend, languages ...string) Model {
 func Run(ctx context.Context, backend Backend, languages ...string) error {
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	_, err := tea.NewProgram(New(runCtx, backend, languages...), tea.WithoutSignalHandler()).Run()
+	last, err := tea.NewProgram(New(runCtx, backend, languages...), tea.WithoutSignalHandler()).Run()
+	if m, ok := last.(Model); ok && m.profileEditor.tempDir != "" {
+		fmt.Fprintln(os.Stderr, m.tr("profile_editor.recovery_file", clean(m.profileEditor.path)))
+	}
 	return err
 }
 func (m Model) Init() tea.Cmd {
@@ -327,6 +336,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	previousPage := m.page
 	switch v := msg.(type) {
+	case profileEditorOpenedMsg:
+		cmd = m.acceptProfileEditor(v)
+	case profileEditorExitedMsg:
+		cmd = m.finishProfileEditor(v)
 	case profileSettingsLoadedMsg:
 		cmd = m.acceptProfileSettings(v)
 	case proxyDelayMsg:
@@ -341,6 +354,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmd = m.acceptKeyHintsSaved(v)
 	case notificationExpiredMsg:
 		m.expireNotification(v)
+	case editorPreferenceSavedMsg:
+		if v.id != m.id {
+			return m, nil
+		}
+		m.cancel()
+		m.busy, m.job = false, ""
+		if v.err != nil {
+			m.failure = m.localizeError(v.err)
+		} else {
+			m.editorPreference = v.value
+			m.closeEditorPreference()
+		}
+		if m.quitting && !m.keyHints.pending {
+			return m, tea.Quit
+		}
 	case languageSavedMsg:
 		if v.id != m.id {
 			return m, nil
@@ -476,6 +504,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.profilesUI.importing = false
 		}
+		if m.form == "profile-document" && v.actionSucceeded {
+			m.closeProfileEditor()
+			m.notification.operation.Dialog = false
+		}
+		if m.form == "profile-overrides" && v.actionSucceeded {
+			m.closeProfileForm()
+			m.notification.operation.Dialog = false
+		}
 		profileCreated := m.profileFieldsForm() && m.profileCreate.submitting && v.actionSucceeded
 		if m.profileFieldsForm() && m.profileCreate.submitting {
 			m.profileCreate.submitting = false
@@ -485,6 +521,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if v.prefs != nil {
 			m.loadKeyHintsPreference(v.prefs.HideKeyHints)
+			m.editorPreference = v.prefs.Editor
 			m.locale = i18n.New(i18n.Resolve(m.languageOverride, v.prefs.Language, os.Getenv))
 			m.refreshLocalizedInputs()
 			m.wizard.cfg = v.prefs.Network.Normalized()
@@ -619,7 +656,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.updateWizardInput(v)
 		} else if m.inlineInputActive() {
 			cmd = m.updateInlineInput(v)
-		} else if m.controlConfirmation() || m.form == "profile-delete" {
+		} else if m.controlConfirmation() || m.form == "profile-delete" || m.form == "profile-document" || m.form == "profile-overrides" && m.busy {
 			break
 		} else if m.form != "" {
 			if m.profileFieldsForm() {
@@ -983,7 +1020,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.updateWizardInput(msg)
 		} else if m.inlineInputActive() {
 			cmd = m.updateInlineInput(msg)
-		} else if m.controlConfirmation() || m.form == "profile-delete" {
+		} else if m.controlConfirmation() || m.form == "profile-delete" || m.form == "profile-document" || m.form == "profile-overrides" && m.busy {
 			break
 		} else if m.form != "" {
 			if m.profileFieldsForm() {
@@ -1088,6 +1125,27 @@ func (m *Model) openForm() tea.Cmd {
 	return textinput.Blink
 }
 func (m *Model) formKey(k tea.KeyPressMsg) tea.Cmd {
+	if m.form == "profile-document" {
+		return m.profileEditorKey(k)
+	}
+	if m.form == "profile-overrides" && (m.busy || m.quitting) {
+		if m.busy && k.String() == "esc" {
+			m.cancelTask(false)
+		}
+		return nil
+	}
+	if m.form == "editor-preference" {
+		if m.busy || m.quitting {
+			return nil
+		}
+		switch k.String() {
+		case "enter":
+			return m.saveEditorPreference()
+		case "esc":
+			m.closeEditorPreference()
+			return nil
+		}
+	}
 	if m.controlConfirmation() {
 		return m.tunConfirmationKey(k)
 	}
@@ -1200,6 +1258,8 @@ func (m *Model) activate(id string) tea.Cmd {
 		return m.openPorts()
 	}
 	switch id {
+	case "editor.configure":
+		return m.openEditorPreference()
 	case "card.profiles":
 		m.navigate("profiles")
 		return nil
@@ -1443,6 +1503,9 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 					}
 					if m.profileFieldsForm() {
 						return m.profileCreateMouse(r.ID)
+					}
+					if m.form == "profile-document" {
+						return m.profileEditorActivate(r.ID)
 					}
 					if m.form == "profile-delete" {
 						return m.profileDeleteMouse(r.ID)

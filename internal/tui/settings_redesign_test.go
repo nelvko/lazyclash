@@ -110,7 +110,8 @@ func TestSettingsActionsKeepCompleteLabelsAndUniqueTargets(t *testing.T) {
 				tr := o.Locale.T
 				labels := map[string]string{
 					"language.en": "English", "language.zh-Hans": "简体中文", "key-hints.toggle": tr("dashboard.control.on"),
-					"install": tr("settings.manage"), "runtime-settings": tr("settings.edit"),
+					"editor.configure": tr("settings.edit"),
+					"install":          tr("settings.manage"), "runtime-settings": tr("settings.edit"),
 					"restart": tr("dashboard.action.restart"), "card.logs": tr("settings.openLogs"),
 				}
 				if active {
@@ -150,12 +151,12 @@ func TestSettingsActionsKeepCompleteLabelsAndUniqueTargets(t *testing.T) {
 func TestSettingsUninstalledActionsAndHeaderOwnership(t *testing.T) {
 	o := dashboardOptions{Locale: i18n.New(i18n.English), Width: 160, Height: 45}
 	body, hits := settingsContent(o, 120)
-	for _, id := range []string{"install", "card.logs", "language.en", "language.zh-Hans", "key-hints.toggle"} {
+	for _, id := range []string{"install", "card.logs", "language.en", "language.zh-Hans", "key-hints.toggle", "editor.configure"} {
 		if !hasAction(hits, id) {
 			t.Fatalf("uninstalled settings lost %s", id)
 		}
 	}
-	if len(hits) != 5 || !strings.Contains(ansi.Strip(body), o.Locale.T("settings.afterInstall")) {
+	if len(hits) != 6 || !strings.Contains(ansi.Strip(body), o.Locale.T("settings.afterInstall")) {
 		t.Fatal("uninstalled settings expose installed-core actions or omit their availability")
 	}
 	if hasAction(hits, "network") {
@@ -164,7 +165,7 @@ func TestSettingsUninstalledActionsAndHeaderOwnership(t *testing.T) {
 	o.Page = "settings"
 	o.Header = (&Model{page: "settings", locale: o.Locale}).pageHeader()
 	_, hits = settingsContent(o, 120)
-	if hasAction(hits, "network") || len(hits) != 5 {
+	if hasAction(hits, "network") || len(hits) != 6 {
 		t.Fatal("download settings are duplicated in the header and body")
 	}
 	_, hits, _ = renderDashboard(o)

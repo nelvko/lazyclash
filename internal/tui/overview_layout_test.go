@@ -322,14 +322,14 @@ func TestOverviewAlignedVersionsAndModesCollapseOnlyConfirmedState(t *testing.T)
 	}
 }
 
-func TestOverviewProfileKeepsSafeMetadataAndUnappliedChangesExplicit(t *testing.T) {
+func TestOverviewProfileDistinguishesFailedSourceUpdateAndSafeMetadata(t *testing.T) {
 	updated := time.Now().AddDate(0, 0, -40)
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		t.Run(language, func(t *testing.T) {
 			locale := i18n.New(language)
 			o := dashboardOptions{Locale: locale, Snapshot: app.Snapshot{
 				Installed: true, ConfigReady: true, Applied: "work", Profiles: []string{"work"},
-				ProfileDetails: []app.ProfileInfo{{ID: "work", Name: "Work", Kind: "remote", Origin: "subscription.example.invalid", UpdatedAt: updated, Validated: true, HasOverrides: true, Description: "hidden-profile-description"}},
+				ProfileDetails: []app.ProfileInfo{{ID: "work", Name: "Work", Kind: "remote", Refreshable: true, Origin: "subscription.example.invalid", UpdatedAt: updated, Validated: true, HasOverrides: true, Description: "hidden-profile-description"}},
 			}}
 			card := func() string { return ansi.Strip(strings.Join(overviewProfileCard(o, 100).lines, "\n")) }
 			if value := card(); !strings.Contains(value, "Work") || !strings.Contains(value, "subscription.example.invalid") || !strings.Contains(value, updated.Format("2006-01-02")) || strings.Contains(value, "hidden-profile-description") {
@@ -343,7 +343,7 @@ func TestOverviewProfileKeepsSafeMetadataAndUnappliedChangesExplicit(t *testing.
 			for _, fromSnapshot := range []bool{true, false} {
 				o.Snapshot.ProfilePending = fromSnapshot
 				o.Snapshot.ProfileDetails[0].Pending = !fromSnapshot
-				if value := card(); !strings.Contains(value, locale.T("profiles.changes_pending")) || strings.Contains(value, locale.T("dashboard.profile.ready")) {
+				if value := card(); !strings.Contains(value, locale.T("profiles.refresh_failed")) || strings.Contains(value, locale.T("dashboard.profile.ready")) {
 					t.Fatalf("unapplied profile changes appeared ready: %s", value)
 				}
 			}

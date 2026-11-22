@@ -100,11 +100,11 @@ func TestProfileSettingsInvalidSourcePreservesAllFieldsAndAllowsRetry(t *testing
 	if err := a.SaveProfileSettings(t.Context(), edited); err != nil {
 		t.Fatal("same form could not retry after validation failure", err)
 	}
-	if next, target, err := a.load(); err != nil || target != generation || next.SHA != m.SHA || len(svc.actions) != 0 {
-		t.Fatal("a metadata operation changed the applied runtime", err)
+	if next, target, err := a.load(); err != nil || target == generation || next.SHA == m.SHA || len(svc.actions) != 0 {
+		t.Fatal("replacing the source failed to update the stopped instance", err)
 	}
 	info := requireProfileName(t, a, id, "Private", configuration.NameCustom, "Private")
-	if !info.Pending || info.Description != "Keep draft" {
+	if info.Pending || info.Description != "Keep draft" {
 		t.Fatal("valid metadata and source were not saved together")
 	}
 }

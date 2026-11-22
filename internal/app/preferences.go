@@ -11,6 +11,7 @@ import (
 
 	"github.com/nelvko/lazyclash/internal/diagnostic"
 	"github.com/nelvko/lazyclash/internal/downloadnet"
+	"github.com/nelvko/lazyclash/internal/editor"
 	"github.com/nelvko/lazyclash/internal/store"
 )
 
@@ -20,6 +21,7 @@ type Preferences struct {
 	GuideDismissed bool
 	HasRun         bool
 	Language       string `json:",omitempty"`
+	Editor         string `json:",omitempty"`
 	HideKeyHints   bool   `json:",omitempty"`
 }
 
@@ -128,6 +130,15 @@ func (a *App) SaveNetworkPreferences(ctx context.Context, cfg downloadnet.Config
 
 func (a *App) SetGuideDismissed(ctx context.Context, dismissed bool) error {
 	return a.editPreferences(ctx, func(p *Preferences) error { p.GuideDismissed = dismissed; return nil })
+}
+
+// SaveEditorPreference stores the user's command, or an empty string for automatic selection.
+func (a *App) SaveEditorPreference(ctx context.Context, command string) error {
+	command = strings.TrimSpace(command)
+	if err := editor.Validate(command); err != nil {
+		return err
+	}
+	return a.editPreferences(ctx, func(p *Preferences) error { p.Editor = command; return nil })
 }
 
 // SaveLanguagePreference changes presentation only and preserves other preferences.

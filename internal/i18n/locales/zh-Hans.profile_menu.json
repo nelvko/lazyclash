@@ -1,6 +1,5 @@
 {
   "profile_menu.use": "使用",
-  "profile_menu.apply_changes": "应用更改",
   "profile_menu.install_first": "请先安装内核",
   "profile_menu.update": "更新",
   "profile_menu.delete": "删除…",
@@ -14,5 +13,19 @@
   "profile_settings.import": "从文件导入覆写…",
   "profile_settings.deactivate": "停用",
   "profile_settings.footer": "Tab 切换 · PgUp/PgDn 滚动 · Esc 取消",
-  "profile_settings.save_first": "请先保存更改"
+  "profile_settings.save_first": "请先保存更改",
+  "profile_menu.edit_config": "编辑配置…",
+  "profile_menu.edit_overrides": "编辑覆写…",
+  "profile_editor.title": "编辑%s",
+  "profile_editor.opening": "正在打开编辑器…",
+  "profile_editor.saving": "正在保存更改…",
+  "profile_editor.saved": "更改已保存",
+  "profile_editor.replaced": "下次更新订阅会替换这里的修改。",
+  "profile_editor.process_failed": "编辑器运行失败，可继续编辑文件或重试保存。",
+  "profile_editor.continue": "继续编辑",
+  "profile_editor.retry": "重试保存",
+  "profile_editor.discard": "放弃草稿",
+  "profile_editor.file": "工作文件：%s",
+  "profile_editor.read_failed": "无法读取编辑后的文件，请使用普通 YAML 文件。",
+  "profile_editor.recovery_file": "已保留编辑器工作文件：%s"
 }

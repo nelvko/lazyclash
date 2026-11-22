@@ -1,6 +1,5 @@
 {
   "profile_menu.use": "Use",
-  "profile_menu.apply_changes": "Apply changes",
   "profile_menu.install_first": "Install core first",
   "profile_menu.update": "Update",
   "profile_menu.delete": "Delete…",
@@ -14,5 +13,19 @@
   "profile_settings.import": "Import overrides from file…",
   "profile_settings.deactivate": "Deactivate",
   "profile_settings.footer": "Tab Next · PgUp/PgDn Scroll · Esc Cancel",
-  "profile_settings.save_first": "Save your changes first"
+  "profile_settings.save_first": "Save your changes first",
+  "profile_menu.edit_config": "Edit configuration…",
+  "profile_menu.edit_overrides": "Edit overrides…",
+  "profile_editor.title": "Edit %s",
+  "profile_editor.opening": "Opening editor…",
+  "profile_editor.saving": "Saving changes…",
+  "profile_editor.saved": "Changes saved",
+  "profile_editor.replaced": "The next subscription update will replace these edits.",
+  "profile_editor.process_failed": "The editor exited with an error. Your file is available for editing or retry.",
+  "profile_editor.continue": "Continue editing",
+  "profile_editor.retry": "Retry save",
+  "profile_editor.discard": "Discard draft",
+  "profile_editor.file": "Working file: %s",
+  "profile_editor.read_failed": "Cannot read the edited file. Use a regular YAML file.",
+  "profile_editor.recovery_file": "Editor working files were preserved: %s"
 }

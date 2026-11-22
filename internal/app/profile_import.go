@@ -115,17 +115,19 @@ func (a *App) updateProfile(ctx context.Context, reference, address string, chan
 		if !changeAddress {
 			address = entry.Address
 		}
-		sourceChanged, err := a.readProfileSource(ctx, &lib, id, address, changeAddress)
-		if err != nil {
+		if err := a.readProfileSource(ctx, &lib, id, address, changeAddress); err != nil {
 			return err
+		}
+		if changeAddress {
+			return a.saveProfileEdit(ctx, lib, old, id, entry)
 		}
 		m, target, err := a.buildTarget()
 		if err != nil {
 			return err
 		}
 		var cfg []byte
-		if !changeAddress && m.Applied == id {
-			cfg, err = a.prepareSelectedRefresh(ctx, &lib, id, &m, sourceChanged)
+		if m.Applied == id {
+			cfg, err = a.prepareSelectedRefresh(ctx, &lib, id, &m)
 		} else {
 			err = a.validateProfile(ctx, &lib, id, m, target != "")
 		}
@@ -149,26 +151,25 @@ func (a *App) updateProfile(ctx context.Context, reference, address string, chan
 
 // readProfileSource updates the in-memory candidate using one fetch. Callers
 // validate the resulting recipe before committing any metadata to the index.
-func (a *App) readProfileSource(ctx context.Context, lib *configuration.Library, id, address string, changeAddress bool) (bool, error) {
+func (a *App) readProfileSource(ctx context.Context, lib *configuration.Library, id, address string, changeAddress bool) error {
 	entry := lib.Profiles[id]
 	if address == "" {
-		return false, diagnostic.New("diagnostic.profile.noAddress", "this profile has no remembered address; set a URL or import a new configuration")
+		return diagnostic.New("diagnostic.profile.noAddress", "this profile has no remembered address; set a URL or import a new configuration")
 	}
 	if _, err := a.library().Read(entry.Spec.Revision); err != nil {
-		return false, err
+		return err
 	}
 	download, err := a.downloadSource(ctx, address)
 	if err != nil {
-		return false, err
+		return err
 	}
 	if err := mihomo.ValidateSource(download.Raw); err != nil {
-		return false, err
+		return err
 	}
 	revision, err := a.library().Put(download.Raw)
 	if err != nil {
-		return false, err
+		return err
 	}
-	sourceChanged := revision != entry.Spec.Revision
 	entry.Spec.Revision, entry.UpdatedAt = revision, time.Now().UTC()
 	entry.Quota = configuration.ParseSubscriptionQuota(download.Headers)
 	if changeAddress {
@@ -182,30 +183,22 @@ func (a *App) readProfileSource(ctx context.Context, lib *configuration.Library,
 			nameProfile(lib, id, configuration.NameCandidate{Name: name, Source: configuration.NameProvider})
 		}
 	}
-	return sourceChanged, nil
+	return nil
 }
 
-// Advance only the source revision. The library may contain user overrides
-// which should stay editable and separate from the active recipe.
-func (a *App) prepareSelectedRefresh(ctx context.Context, lib *configuration.Library, id string, m *manifest, sourceChanged bool) ([]byte, error) {
+// A failed runtime reload can leave a newer source in the library. Compare
+// against the deployed recipe so retrying that same download still reloads.
+func (a *App) prepareSelectedRefresh(ctx context.Context, lib *configuration.Library, id string, m *manifest) ([]byte, error) {
 	if m.Build == nil || m.Build.Profile != id || m.Build.Recipe == nil || m.Build.Recipe.Core != "mihomo" {
 		return nil, diagnostic.New("diagnostic.profile.pinnedRecipeMissing", "could not identify the applied profile recipe")
 	}
 	entry := lib.Profiles[id]
-	pinned := *m.Build.Recipe
-	source := pinned
-	source.Revision = entry.Spec.Revision
-	if source == entry.Spec {
-		entry.Validated = true
-	} else if sourceChanged {
-		// Only the active overrides will be validated against the new source.
-		entry.Validated = false
-	}
+	entry.Validated = true
 	lib.Profiles[id] = entry
-	if source == pinned {
+	if entry.Spec == *m.Build.Recipe {
 		return nil, nil
 	}
-	next := buildRecord{Profile: id, Recipe: &source}
+	next := buildRecord{Profile: id, Recipe: &entry.Spec}
 	cfg, err := a.buildRecipe(next, *m)
 	if err != nil {
 		return nil, err

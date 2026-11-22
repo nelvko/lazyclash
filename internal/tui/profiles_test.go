@@ -189,7 +189,7 @@ func TestProfileImportExplicitlyRemembersOnlySubscriptionAction(t *testing.T) {
 	}
 }
 
-func TestProfileOverridesSaveDraftAndRecipeDeletionRequiresConfirmation(t *testing.T) {
+func TestProfileOverridesSaveAndRecipeDeletionRequiresConfirmation(t *testing.T) {
 	raw := []byte("prepend-rules: ['DOMAIN,local.example,DIRECT']\n")
 	path := filepath.Join(t.TempDir(), "overrides.yaml")
 	if err := os.WriteFile(path, raw, 0600); err != nil {
@@ -213,7 +213,7 @@ func TestProfileOverridesSaveDraftAndRecipeDeletionRequiresConfirmation(t *testi
 	m.input.SetValue(path)
 	cmd := m.formKey(special(tea.KeyEnter))
 	m = finishProfileJob(t, m, cmd)
-	if savedName != "work" || string(saved) != string(raw) || backend.applied != 0 || !strings.Contains(m.message, "apply the profile") {
+	if savedName != "work" || string(saved) != string(raw) || backend.applied != 0 || m.message != m.tr("profiles.overrides_saved") {
 		t.Fatal("override import applied or changed its content")
 	}
 	m.activate("profile.delete.0")
@@ -264,15 +264,15 @@ func TestProfileOverridesRejectSymlinkAndOversizedFiles(t *testing.T) {
 	}
 }
 
-func TestProfilePageShowsPendingChangesAndAccurateActionRows(t *testing.T) {
+func TestProfilePageShowsFailedUpdateAndAccurateActionRows(t *testing.T) {
 	m := ready(&fakeBackend{snapshot: app.Snapshot{
 		Installed: true, Profiles: []string{"work"}, Applied: "work", ProfilePending: true,
-		ProfileDetails: []app.ProfileInfo{{ID: "default", Name: "default", Validated: true}, {ID: "work", Name: "work", Validated: true, Pending: true}},
+		ProfileDetails: []app.ProfileInfo{{ID: "default", Name: "default", Validated: true}, {ID: "work", Name: "work", Refreshable: true, Validated: true, Pending: true}},
 	}})
 	m.page = "profiles"
 	body, _ := m.pageBody(150)
 	plain := ansi.Strip(body)
-	for _, text := range []string{"Paste subscription URL or local path", "Add", "New profile", "Pending changes"} {
+	for _, text := range []string{"Paste subscription URL or local path", "Add", "New profile", m.tr("profiles.refresh_failed")} {
 		if !strings.Contains(plain, text) {
 			t.Fatalf("missing %q in profiles page", text)
 		}

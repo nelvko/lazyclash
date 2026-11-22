@@ -159,6 +159,9 @@ func (m *Model) contextHelp() string {
 		return m.providersContextHelp()
 	}
 	if m.menu.open {
+		if m.profilesUI.menuProfile != "" && m.menu.selected >= 0 && m.menu.items[m.menu.selected].ID == "edit-config" && m.profileInfo(m.profilesUI.menuProfile).Kind == "remote" {
+			return m.tr("profile_editor.replaced")
+		}
 		if m.menu.selected < 0 {
 			return m.tr("navigation.hints.menuClose")
 		}

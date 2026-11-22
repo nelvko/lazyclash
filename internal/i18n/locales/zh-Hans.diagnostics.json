@@ -448,5 +448,9 @@
   "diagnostic.cli.replacementRequired": "--use 需要指定一份已保存的接替配置",
   "diagnostic.profile.deleteTargetChanged": "已切换配置，原配置已发生变化，请重新确认删除",
   "diagnostic.profile.deactivateSelectionChanged": "当前订阅已更改，请重新确认要停用的订阅",
-  "diagnostic.profile.settingsChanged": "配置设置已变更，请重新打开设置后编辑。"
+  "diagnostic.profile.settingsChanged": "配置设置已变更，请重新打开设置后编辑。",
+  "diagnostic.profile.unsafeEditPath": "请选择独立的本地来源文件，避开程序管理的文件。",
+  "diagnostic.profile.documentConflict": "配置或来源已变更，请重新打开文件并核对最新版本。",
+  "diagnostic.profile.documentKind": "未知配置文件类型。",
+  "diagnostic.profile.editRecovery": "恢复配置时发现数据异常，已保留保存的文件。"
 }

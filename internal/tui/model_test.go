@@ -18,6 +18,9 @@ import (
 )
 
 type fakeBackend struct {
+	getDocument  func(context.Context, string, app.ProfileDocumentKind) (app.ProfileDocument, error)
+	saveDocument func(context.Context, app.ProfileDocument, []byte) error
+
 	deleteAndSwitch     func(context.Context, string, string) error
 	checkUpdate         func(context.Context, mihomo.Channel, downloadnet.Config) (app.CoreUpdateCheck, error)
 	upgradeCore         func(context.Context, app.CoreUpdateCheck, downloadnet.Config, func(mihomo.Progress)) (app.CoreUpgradeResult, error)
@@ -93,6 +96,10 @@ func (f *fakeBackend) SaveKeyHintsPreference(_ context.Context, hidden bool) err
 	f.prefs.HideKeyHints = hidden
 	return nil
 }
+func (f *fakeBackend) SaveEditorPreference(_ context.Context, value string) error {
+	f.prefs.Editor = value
+	return nil
+}
 func (f *fakeBackend) SaveLanguagePreference(ctx context.Context, language string) error {
 	if f.saveLanguage != nil {
 		return f.saveLanguage(ctx, language)
@@ -165,6 +172,19 @@ func (f *fakeBackend) AddSubscription(ctx context.Context, name, source string) 
 func (f *fakeBackend) CreateProfile(ctx context.Context, draft app.ProfileDraft) error {
 	if f.createProfile != nil {
 		return f.createProfile(ctx, draft)
+	}
+	return ctx.Err()
+}
+
+func (f *fakeBackend) GetProfileDocument(ctx context.Context, id string, k app.ProfileDocumentKind) (app.ProfileDocument, error) {
+	if f.getDocument != nil {
+		return f.getDocument(ctx, id, k)
+	}
+	return app.ProfileDocument{ID: id, Kind: k}, ctx.Err()
+}
+func (f *fakeBackend) SaveProfileDocument(ctx context.Context, d app.ProfileDocument, b []byte) error {
+	if f.saveDocument != nil {
+		return f.saveDocument(ctx, d, b)
 	}
 	return ctx.Err()
 }

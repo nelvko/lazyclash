@@ -259,7 +259,7 @@ func (m *Model) profileCardClick(id string) (bool, tea.Cmd) {
 	m.profilesUI.editing = false
 	m.profilesUI.url.Blur()
 	name := m.profiles()[index]
-	if name == m.snapshot.Applied && !m.profileInfo(name).Pending && !m.snapshot.ProfilePending {
+	if name == m.snapshot.Applied {
 		return true, nil
 	}
 	return m.profileAction(fmt.Sprintf("profiles.apply.%d", index))
@@ -418,7 +418,6 @@ func (m *Model) profileFormKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 				return true, nil
 			}
 		}
-		m.closeProfileForm()
 		switch form {
 		case "profile-overrides":
 			return true, m.begin(m.tr("profiles.importing_overrides"), m.tr("profiles.overrides_saved"), func(ctx context.Context) error {
@@ -470,6 +469,9 @@ func profileDialogCanvas(width, height int) []string {
 }
 
 func (m *Model) renderProfileForm(base string) (string, []hitRegion) {
+	if m.form == "profile-document" {
+		return m.renderProfileEditor(base)
+	}
 	if m.profileFieldsForm() {
 		return m.renderProfileCreateForm(base)
 	}
@@ -493,6 +495,8 @@ func (m *Model) renderProfileForm(base string) (string, []hitRegion) {
 		title, hint = m.tr("profiles.import_title"), m.tr("profiles.import_hint")
 	}
 	switch m.form {
+	case "editor-preference":
+		title, label, hint = m.tr("settings.editor"), m.tr("settings.editorCommand"), m.tr("settings.editorHint")
 	case "profile-overrides":
 		title, label = m.tr("profiles.overrides_title", clean(m.profileInfo(m.name).Name)), m.tr("profiles.overrides_path")
 		hint = m.tr("profiles.overrides_hint")

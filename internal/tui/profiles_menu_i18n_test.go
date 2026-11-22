@@ -31,7 +31,7 @@ func TestProfileMenuLanguagesKeepActionsAndDisabledState(t *testing.T) {
 		m, _ := profileClickModel(t, true, true, false, false)
 		m.locale = i18n.New(language)
 		items := m.profileMenuItems("p-stable-profile-id")
-		want := []string{"apply", "refresh", "settings", "delete"}
+		want := []string{"apply", "edit-config", "edit-overrides", "refresh", "settings", "delete"}
 		if len(items) != len(want) {
 			t.Fatalf("%s: actions=%+v", language, items)
 		}
@@ -50,8 +50,8 @@ func TestProfileMenuLanguagesKeepActionsAndDisabledState(t *testing.T) {
 		}
 		m.snapshot.ProfileDetails[1].Pending = true
 		items = m.profileMenuItems("p-stable-profile-id")
-		if items[0].Label != m.tr("profile_menu.apply_changes") || items[0].DisabledReason != "" {
-			t.Fatalf("%s: pending application lost availability", language)
+		if items[0].ID != "edit-config" {
+			t.Fatalf("%s: failed source update offered a stale apply action", language)
 		}
 	}
 }

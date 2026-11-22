@@ -280,8 +280,8 @@ func (m *Model) profileWarning(info app.ProfileInfo, selected bool) string {
 	switch {
 	case selected && (m.snapshot.ServiceError != "" || (m.snapshot.Service.Active && m.snapshot.APIError != "")):
 		return m.tr("profiles.selected_unavailable")
-	case info.Pending:
-		return m.tr("profiles.changes_pending")
+	case info.Pending && info.Refreshable:
+		return m.tr("profiles.refresh_failed")
 	case !info.Validated:
 		return m.tr("profiles.validation_pending")
 	default:

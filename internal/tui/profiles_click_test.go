@@ -78,18 +78,13 @@ func TestProfileClickAppliesStableIDWithoutOpeningDetails(t *testing.T) {
 	}
 }
 
-func TestProfileClickCurrentSelectionAppliesOnlyPendingChanges(t *testing.T) {
+func TestProfileClickCurrentSelectionNeverReapplies(t *testing.T) {
 	for _, pending := range []bool{false, true} {
 		t.Run(map[bool]string{false: "unchanged", true: "pending"}[pending], func(t *testing.T) {
 			m, b := profileClickModel(t, true, true, true, pending)
 			m, cmd := click(m, findTarget(t, m, "profile.0"))
-			if pending {
-				m = finishProfileJob(t, m, cmd)
-				if len(b.calls) != 1 || b.calls[0] != "p-stable-profile-id" {
-					t.Fatal("clicking the current profile did not apply its pending changes")
-				}
-			} else if cmd != nil || m.busy || len(b.calls) != 0 {
-				t.Fatal("clicking an unchanged current profile queued an unnecessary reload")
+			if cmd != nil || m.busy || len(b.calls) != 0 {
+				t.Fatal("clicking the current card queued an unnecessary reload")
 			}
 		})
 	}

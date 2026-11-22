@@ -31,7 +31,7 @@ func TestDeleteCurrentProfileShowsDirectRoutingBeforeConfirm(t *testing.T) {
 			m = profileMenuRightClick(t, m, "profile.0")
 			m, _ = chooseProfileMenuItem(t, m, "delete")
 			body := profileDeleteDialogText(m)
-			for _, msg := range []string{m.tr("profiles.delete_direct"), m.tr("profiles.delete_pending"), m.tr("profiles.confirm_direct")} {
+			for _, msg := range []string{m.tr("profiles.delete_direct"), m.tr("profiles.confirm_direct")} {
 				if !strings.Contains(body, msg) {
 					t.Fatalf("%s: missing deletion scope %q in %s", language, msg, body)
 				}

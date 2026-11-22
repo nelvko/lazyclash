@@ -52,6 +52,7 @@ func settingsInterface(o dashboardOptions, width int) dashboardBlock {
 			{id: "key-hints.toggle", label: state, enabled: true, selected: !o.HideKeyHints},
 		}},
 		{label: tr("settings.theme"), value: themeName},
+		{label: tr("settings.editor"), actions: []overviewControlButton{{id: "editor.configure", label: tr("settings.edit"), enabled: !o.Busy}}},
 	})
 }
 

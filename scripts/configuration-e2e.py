@@ -148,7 +148,7 @@ def main():
                     f'proxy-groups: [{{name: FULL-E2E, type: select, proxies: [DIRECT, REJECT, node-v{version}]}}]\n'
                     f'rules:\n - DOMAIN,download-v{version}.invalid,DIRECT\n - MATCH,FULL-E2E\n')
 
-        def expected_full(version, custom='user-pending.invalid'):
+        def expected_full(version, custom='user-saved.invalid'):
             return [('Domain', custom, 'REJECT'),
                     ('Domain', 'download-v%s.invalid' % version, 'DIRECT'),
                     ('Match', '', 'FULL-E2E')]
@@ -172,30 +172,34 @@ def main():
         assert quota['quota'] == {'used_bytes': 32, 'total_bytes': 64} and not quota['pending']
         assert generation() == before_refresh and status()['Service']['PID'] == applied['Service']['PID']
 
-        write(override_path, "prepend-rules: ['DOMAIN,user-pending.invalid,REJECT']\n")
+        write(override_path, "prepend-rules: ['DOMAIN,user-saved.invalid,REJECT']\n")
         cli('profile', 'override', full_profile, str(override_path))
-        assert status()['ProfilePending']
+        edited = runtime(full_profile, first_revision, expected_full(1))
+        assert edited['Service']['PID'] == applied['Service']['PID'] and not edited['ProfilePending']
+        write(override_path, "# New source comments only\nprepend-rules: ['DOMAIN,user-saved.invalid,REJECT']\n")
+        effective = (current / 'config.yaml').read_bytes()
+        with paused(edited['Service']['PID']):
+            cli('profile', 'override', full_profile, str(override_path))
+        assert (current / 'config.yaml').read_bytes() == effective
+        assert runtime(full_profile, first_revision, expected_full(1))['Service']['PID'] == edited['Service']['PID']
         write(full_path, full(2))
         cli('profile', 'refresh', full_profile)
         second_revision = snapshot(full_profile, full(2).encode())
-        refreshed = runtime(full_profile, second_revision, expected_full(2, 'user-custom.invalid'))
+        refreshed = runtime(full_profile, second_revision, expected_full(2))
         assert refreshed['Service']['PID'] == applied['Service']['PID'] and generation() != before_refresh, 'changed rules did not hot reload in the same process'
         assert next(group['all'] for group in refreshed['Groups'] if group['name'] == 'FULL-E2E') == ['DIRECT', 'REJECT', 'node-v2']
-        assert refreshed['ProfilePending'] and json.loads(cli('profile', 'show', full_profile))['pending'], 'refresh published the manual override draft'
-        cli('profile', 'apply', full_profile)
-        reapplied = runtime(full_profile, second_revision, expected_full(2))
-        assert not reapplied['ProfilePending']
+        assert not refreshed['ProfilePending'] and not json.loads(cli('profile', 'show', full_profile))['pending']
 
         equivalent = '# Provider timestamp changed\n' + full(2).replace('mixed-port: 7899', 'mixed-port: 7988')
         write(full_path, equivalent)
         old_config = (current / 'config.yaml').read_bytes()
-        with paused(reapplied['Service']['PID']):
+        with paused(refreshed['Service']['PID']):
             cli('profile', 'refresh', full_profile)
         second_revision = snapshot(full_profile, equivalent.encode())
         same = runtime(full_profile, second_revision, expected_full(2))
-        assert same['Service']['PID'] == reapplied['Service']['PID'] and not same['ProfilePending']
+        assert same['Service']['PID'] == refreshed['Service']['PID'] and not same['ProfilePending']
         assert (current / 'config.yaml').read_bytes() == old_config
-        print('Current subscription hot reloaded in place; quota-only and equivalent content preserved the running core; manual overrides stayed pending until Apply')
+        print('Current subscription hot reloaded in place; quota-only and equivalent content preserved the running core; saved overrides hot loaded immediately and survived source replacement')
 
         def wait_pointer(predicate, process, failure):
             deadline = time.monotonic() + 40
@@ -227,6 +231,28 @@ def main():
         runtime(full_profile, second_revision, expected_full(2))
         print(f"A real controller timeout restored old rules and the original generation (PID {same['Service']['PID']} → {recovered_pid}); the next refresh hot loaded the saved source")
 
+        # The editor/import transaction must roll back the library as well as the
+        # active generation. Retrying the unchanged input then deploys the edit.
+        old_library, old_generation = library.read_bytes(), generation()
+        retry_input = "prepend-rules: ['DOMAIN,retry-edit.invalid,DIRECT']\n"
+        write(override_path, retry_input)
+        with subprocess.Popen(command + ['profile', 'override', full_profile, str(override_path)],
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) as edit:
+            with paused(recovered_pid):
+                wait_pointer(lambda link: link != old_generation, edit, 'timed-out edit did not reach the candidate')
+                wait_pointer(lambda link: link == old_generation, edit, 'timed-out edit did not restore the old generation')
+            assert edit.wait(timeout=30) != 0
+        restored = runtime(full_profile, second_revision, expected_full(2))
+        assert not restored['ProfilePending'] and library.read_bytes() == old_library
+        assert override_path.read_text() == retry_input
+        recovered_pid = restored['Service']['PID']
+        cli('profile', 'override', full_profile, str(override_path))
+        assert rules()[0] == ('Domain', 'retry-edit.invalid', 'DIRECT')
+        assert status()['Service']['PID'] == recovered_pid
+        write(override_path, "prepend-rules: ['DOMAIN,user-saved.invalid,REJECT']\n")
+        cli('profile', 'override', full_profile, str(override_path))
+        runtime(full_profile, second_revision, expected_full(2))
+        print('An edit that timed out restored the accepted source and live rules; retry loaded the preserved file')
         saved_library, saved_generation, saved_pid = library.read_bytes(), generation(), recovered_pid
         for response in ('proxies: [malformed YAML\n',
                          '{"error":"private-response-token","code":403}',
@@ -295,11 +321,13 @@ def main():
         cli('service', 'stop')
         write(full_path, full(4))
         cli('profile', 'refresh', full_profile)
+        write(override_path, "prepend-rules: ['DOMAIN,stopped-edit.invalid,REJECT']\n")
+        cli('profile', 'override', full_profile, str(override_path))
         stopped_revision = snapshot(full_profile, full(4).encode())
         stopped = json.loads(cli('status'))
         assert stopped['Applied'] == full_profile and not stopped['Service']['Active'] and not stopped['ProfilePending']
         cli('service', 'start')
-        runtime(full_profile, stopped_revision, expected_full(4))
+        runtime(full_profile, stopped_revision, expected_full(4, "stopped-edit.invalid"))
         print('Refreshing another subscription kept the selected core unchanged; a stopped core loaded the updated rules only on explicit start')
         cli('profile', 'delete', full_profile, '--no-profile')
         idle = status()

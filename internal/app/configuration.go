@@ -192,8 +192,7 @@ func (a *App) ProfileDetails(ctx context.Context, name string) (ProfileInfo, err
 	return info, err
 }
 
-// SetProfileOverrides edits a draft. The currently applied generation is a
-// pinned input snapshot until the user explicitly applies this profile again.
+// SetProfileOverrides imports an override document and deploys it if selected.
 func (a *App) SetProfileOverrides(ctx context.Context, name string, raw []byte) error {
 	if len(raw) > configuration.MaxDocumentSize {
 		return diagnostic.New("diagnostic.profile.overridesSize", "overrides exceed 8 MiB")
@@ -211,21 +210,10 @@ func (a *App) SetProfileOverrides(ctx context.Context, name string, raw []byte) 
 		if !ok {
 			return diagnostic.New("diagnostic.profile.chooseOverrides", "choose a saved profile to edit overrides")
 		}
+		previous := entry
 		entry.Spec.Overrides = string(raw)
 		lib.Profiles[name] = entry
-		m, installed, err := a.buildContext()
-		if err != nil {
-			return err
-		}
-		if _, _, err = a.buildProfile(ctx, lib, name, m, installed); err != nil {
-			return err
-		}
-		entry.Validated = installed
-		lib.Profiles[name] = entry
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		return a.library().Save(lib, old)
+		return a.saveProfileEdit(ctx, lib, old, name, previous)
 	})
 }
 
@@ -269,7 +257,7 @@ func (a *App) DeleteProfileWithReplacement(ctx context.Context, id, replacementI
 		if id == replacementID {
 			return diagnostic.New("diagnostic.profile.deleteSame", "choose a different replacement profile")
 		}
-		if err := a.applyProfileLocked(ctx, lib, replacementID, nil); err != nil {
+		if err := a.applyProfileLocked(ctx, lib, replacementID); err != nil {
 			return err
 		}
 		// Apply may have marked the replacement's revision validated.

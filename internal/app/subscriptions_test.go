@@ -294,46 +294,39 @@ func TestSelectedRefreshAdvancesEquivalentSourceWithoutRunningValidationOrReload
 	}
 }
 
-func TestSelectedRefreshLeavesUnpublishedOverridesEditableAfterTheirTargetDisappears(t *testing.T) {
+func TestSelectedRefreshRejectsLossOfTargetUsedBySavedOverrides(t *testing.T) {
 	a, svc := installedApp(t)
 	path := filepath.Join(t.TempDir(), "profile.yaml")
-	write(t, path, []byte("proxy-groups: [{name: REMOVED, type: select, proxies: [DIRECT]}]\nrules: ['MATCH,DIRECT']\n"))
+	write(t, path, []byte("proxy-groups: [{name: ROUTE, type: select, proxies: [DIRECT]}]\nrules: ['MATCH,DIRECT']\n"))
 	if err := a.AddSubscription(t.Context(), "active", path); err != nil {
-		t.Fatal(err)
-	}
-	const live = "prepend-rules: ['DOMAIN,applied.invalid,DIRECT']"
-	if err := a.SetProfileOverrides(t.Context(), "active", []byte(live)); err != nil {
 		t.Fatal(err)
 	}
 	if err := a.Apply(t.Context(), "active"); err != nil {
 		t.Fatal(err)
 	}
-	const draft = "prepend-rules: ['DOMAIN,editing.invalid,REMOVED']"
-	if err := a.SetProfileOverrides(t.Context(), "active", []byte(draft)); err != nil {
+	if err := a.SetProfileOverrides(t.Context(), "active", []byte("prepend-rules: ['DOMAIN,office.invalid,ROUTE']")); err != nil {
 		t.Fatal(err)
 	}
 	reloads := observeActiveRefresh(t, a, svc, nil)
 	raw := []byte("rules: ['MATCH,REJECT']\n")
 	write(t, path, raw)
+	if err := a.Refresh(t.Context(), "active"); err == nil {
+		t.Fatal("refresh removed an override target")
+	}
+	draft, err := a.GetCustomRules(t.Context(), "active")
+	if err != nil || draft.Pending || !draft.Validated || *reloads != 0 {
+		t.Fatal("failed refresh disturbed current overrides", err)
+	}
+	draft.Rules = []string{"DOMAIN,office.invalid,DIRECT"}
+	if _, err := a.SaveCustomRules(t.Context(), draft); err != nil {
+		t.Fatal(err)
+	}
 	if err := a.Refresh(t.Context(), "active"); err != nil {
 		t.Fatal(err)
 	}
 	m, _, err := a.load()
-	if err != nil || m.Build.Recipe.Revision != digest(raw) || m.Build.Recipe.Overrides != live || *reloads != 1 || len(svc.actions) != 0 {
-		t.Fatal("refresh did not apply exactly the new source with the live overrides", err)
-	}
-	cfg := generatedDocument(t, a)
-	rules := cfg["rules"].([]any)
-	if len(rules) != 2 || rules[0] != "DOMAIN,applied.invalid,DIRECT" || rules[1] != "MATCH,REJECT" {
-		t.Fatal("wrong effective rules after refresh", rules)
-	}
-	editor, err := a.GetCustomRules(t.Context(), "active")
-	if err != nil || !editor.Pending || editor.Validated || len(editor.Rules) != 1 || editor.Rules[0] != "DOMAIN,editing.invalid,REMOVED" {
-		t.Fatal("unapplied overrides disappeared or could not be opened for repair", err)
-	}
-	editor.Rules = []string{"DOMAIN,editing.invalid,DIRECT"}
-	if repaired, err := a.SaveCustomRules(t.Context(), editor); err != nil || !repaired.Pending || !repaired.Validated || *reloads != 1 {
-		t.Fatal("correcting draft rules disturbed the running configuration", err)
+	if err != nil || m.Build.Recipe.Revision != digest(raw) || *reloads != 2 || len(svc.actions) != 0 {
+		t.Fatal("refresh after fixing target", err)
 	}
 }
 
@@ -376,11 +369,11 @@ func TestRetrySelectedRefreshUsesSavedSourceAndPinnedOverrides(t *testing.T) {
 		t.Fatal(err)
 	}
 	m, target, err = a.load()
-	if err != nil || target == generation || m.Build.Recipe.Revision != digest(raw) || m.Build.Recipe.Overrides != "" || *reloads != 1 || len(svc.actions) != 0 {
+	if err != nil || target == generation || m.Build.Recipe.Revision != digest(raw) || m.Build.Recipe.Overrides != draft || *reloads != 1 || len(svc.actions) != 0 {
 		t.Fatal("retry did not apply only the pending source", err, *reloads)
 	}
 	info, err := a.ProfileDetails(t.Context(), "active")
-	if err != nil || !info.Pending {
-		t.Fatal("retry consumed the separate override draft", err)
+	if err != nil || info.Pending {
+		t.Fatal("retry left a pending override", err)
 	}
 }

@@ -16,5 +16,12 @@
   "settings.clientVersion": "lazyclash version",
   "settings.logs": "Core logs",
   "settings.openLogs": "View ›",
-  "settings.doctor": "Diagnose in shell"
+  "settings.doctor": "Diagnose in shell",
+  "settings.editor": "External editor",
+  "settings.editorCommand": "Editor command",
+  "settings.editorAuto": "Automatic",
+  "settings.editorHint": "Leave blank to try $VISUAL, $EDITOR, nano, then vi.",
+  "editor.unavailable": "Editor executable was not found on this host.",
+  "editor.invalid": "Enter an executable name or path with optional arguments.",
+  "editor.none": "No editor found. Choose an external editor in Settings."
 }
