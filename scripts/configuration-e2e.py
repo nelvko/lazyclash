@@ -1,14 +1,44 @@
 #!/usr/bin/env python3
 """Configuration business flows inside e2e.sh's dedicated Linux installation."""
 import argparse
+from contextlib import contextmanager
 import hashlib
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import os
 from pathlib import Path
 import re
+import signal
 import subprocess
 import tempfile
+from threading import Thread
+import time
 import uuid
+
+
+@contextmanager
+def subscription(path):
+    headers = {}
+
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            for key, value in headers.items():
+                self.send_header(key, value)
+            self.end_headers()
+            self.wfile.write(path.read_bytes())
+
+        def log_message(self, *_):
+            pass
+
+    with ThreadingHTTPServer(('127.0.0.1', 0), Handler) as server:
+        worker = Thread(target=server.serve_forever)
+        worker.start()
+        try:
+            yield f'http://127.0.0.1:{server.server_port}/test.yaml', headers
+        finally:
+            server.shutdown()
+            worker.join()
 
 
 def main():
@@ -86,47 +116,118 @@ def main():
                                 capture_output=True, timeout=10)
         assert result.returncode == 0, 'could not reset the dedicated test unit start count'
 
+    @contextmanager
+    def paused(pid):
+        fd = os.pidfd_open(pid)
+        try:
+            main_pid = subprocess.check_output(['systemctl', '--user', 'show', args.service_name + '.service',
+                                                '--property=MainPID', '--value'], timeout=10)
+            assert int(main_pid) == pid and Path(f'/proc/{pid}/exe').samefile(args.home / 'installation' / 'mihomo')
+            signal.pidfd_send_signal(fd, signal.SIGSTOP)
+            try:
+                yield
+            finally:
+                try:
+                    signal.pidfd_send_signal(fd, signal.SIGCONT)
+                except ProcessLookupError:
+                    pass  # Timeout recovery may already have replaced this exact process.
+        finally:
+            os.close(fd)
+
     reset_test_start_count()
 
-    with tempfile.TemporaryDirectory(prefix='configuration-', dir=args.home.parent) as directory:
+    with tempfile.TemporaryDirectory(prefix='configuration-', dir=args.home.parent) as directory, \
+            subscription(Path(directory) / 'full.yaml') as (source, headers):
         work = Path(directory)
         full_path, override_path = work / 'full.yaml', work / 'override.yaml'
         second_path = work / 'second.yaml'
 
         def full(version):
             return ('mixed-port: 7899\ntun: {enable: true, device: foreign}\n'
-                    'proxy-groups: [{name: FULL-E2E, type: select, proxies: [DIRECT, REJECT]}]\n'
-                    'rules:\n - DOMAIN,download-v%s.invalid,DIRECT\n - MATCH,FULL-E2E\n' % version)
+                    f'proxies: [{{name: node-v{version}, type: http, server: 127.0.0.1, port: 9}}]\n'
+                    f'proxy-groups: [{{name: FULL-E2E, type: select, proxies: [DIRECT, REJECT, node-v{version}]}}]\n'
+                    f'rules:\n - DOMAIN,download-v{version}.invalid,DIRECT\n - MATCH,FULL-E2E\n')
 
-        def expected_full(version):
-            return [('Domain', 'user-custom.invalid', 'REJECT'),
+        def expected_full(version, custom='user-pending.invalid'):
+            return [('Domain', custom, 'REJECT'),
                     ('Domain', 'download-v%s.invalid' % version, 'DIRECT'),
                     ('Match', '', 'FULL-E2E')]
 
         write(full_path, full(1))
         write(override_path, "prepend-rules: ['DOMAIN,user-custom.invalid,REJECT']\n")
-        cli('profile', 'add', str(full_path), '--name', full_profile, '--remember-source')
+        cli('profile', 'add', source, '--name', full_profile, '--remember-source')
         cli('profile', 'override', full_profile, str(override_path))
         first_revision = snapshot(full_profile, full(1).encode())
-        assert record(full_profile)['address'] == str(full_path), 'remembered profile lost its refresh address'
+        assert record(full_profile)['address'] == source, 'remembered profile lost its refresh address'
         assert status()['Service']['PID'] == initial['Service']['PID'] and generation() == initial_generation, 'saving configuration changed the running core'
         cli('profile', 'apply', full_profile)
-        applied = runtime(full_profile, first_revision, expected_full(1))
+        applied = runtime(full_profile, first_revision, expected_full(1, 'user-custom.invalid'))
         assert not applied['ProfilePending']
         before_refresh = generation()
 
+        headers['Subscription-Userinfo'] = 'upload=8; download=24; total=64'
+        with paused(applied['Service']['PID']):
+            cli('profile', 'refresh', full_profile)
+        quota = json.loads(cli('profile', 'show', full_profile))
+        assert quota['quota'] == {'used_bytes': 32, 'total_bytes': 64} and not quota['pending']
+        assert generation() == before_refresh and status()['Service']['PID'] == applied['Service']['PID']
+
+        write(override_path, "prepend-rules: ['DOMAIN,user-pending.invalid,REJECT']\n")
+        cli('profile', 'override', full_profile, str(override_path))
+        assert status()['ProfilePending']
         write(full_path, full(2))
         cli('profile', 'refresh', full_profile)
         second_revision = snapshot(full_profile, full(2).encode())
-        refreshed = runtime(full_profile, first_revision, expected_full(1))
-        assert refreshed['Service']['PID'] == applied['Service']['PID'] and generation() == before_refresh, 'refresh changed the running process or configuration'
-        assert refreshed['ProfilePending'] and json.loads(cli('profile', 'show', full_profile))['pending'], 'pending profile revision was not exposed'
+        refreshed = runtime(full_profile, second_revision, expected_full(2, 'user-custom.invalid'))
+        assert refreshed['Service']['PID'] == applied['Service']['PID'] and generation() != before_refresh, 'changed rules did not hot reload in the same process'
+        assert next(group['all'] for group in refreshed['Groups'] if group['name'] == 'FULL-E2E') == ['DIRECT', 'REJECT', 'node-v2']
+        assert refreshed['ProfilePending'] and json.loads(cli('profile', 'show', full_profile))['pending'], 'refresh published the manual override draft'
         cli('profile', 'apply', full_profile)
         reapplied = runtime(full_profile, second_revision, expected_full(2))
-        assert not reapplied['ProfilePending'] and generation() != before_refresh
-        print('Full profile refresh preserved the running generation and custom rules until explicit apply')
+        assert not reapplied['ProfilePending']
 
-        saved_library, saved_generation, saved_pid = library.read_bytes(), generation(), reapplied['Service']['PID']
+        equivalent = '# Provider timestamp changed\n' + full(2).replace('mixed-port: 7899', 'mixed-port: 7988')
+        write(full_path, equivalent)
+        old_config = (current / 'config.yaml').read_bytes()
+        with paused(reapplied['Service']['PID']):
+            cli('profile', 'refresh', full_profile)
+        second_revision = snapshot(full_profile, equivalent.encode())
+        same = runtime(full_profile, second_revision, expected_full(2))
+        assert same['Service']['PID'] == reapplied['Service']['PID'] and not same['ProfilePending']
+        assert (current / 'config.yaml').read_bytes() == old_config
+        print('Current subscription hot reloaded in place; quota-only and equivalent content preserved the running core; manual overrides stayed pending until Apply')
+
+        def wait_pointer(predicate, process, failure):
+            deadline = time.monotonic() + 40
+            while time.monotonic() < deadline and process.poll() is None:
+                if predicate(generation()):
+                    return
+                time.sleep(0.01)
+            raise AssertionError(failure)
+
+        # Pause only this test unit's process. systemd still reports it active,
+        # while its controller cannot acknowledge the new configuration.
+        old_generation = generation()
+        write(full_path, full(3))
+        with subprocess.Popen(command + ['profile', 'refresh', full_profile],
+                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) as refresh:
+            with paused(same['Service']['PID']):
+                wait_pointer(lambda link: link != old_generation, refresh, 'timed-out refresh did not switch to the candidate')
+                wait_pointer(lambda link: link == old_generation, refresh, 'timed-out refresh did not restore the previous configuration')
+            assert refresh.wait(timeout=30) != 0, 'controller timeout was reported as successful'
+        restored = runtime(full_profile, second_revision, expected_full(2))
+        assert restored['ProfilePending']
+        recovered_pid = restored['Service']['PID']
+        assert recovered_pid != same['Service']['PID'], 'an unacknowledged in-flight reload could still reach the recovered core'
+        recovered_revision = snapshot(full_profile, full(3).encode())
+        cli('profile', 'refresh', full_profile)
+        assert runtime(full_profile, recovered_revision, expected_full(3))['Service']['PID'] == recovered_pid
+        write(full_path, equivalent)
+        cli('profile', 'refresh', full_profile)
+        runtime(full_profile, second_revision, expected_full(2))
+        print(f"A real controller timeout restored old rules and the original generation (PID {same['Service']['PID']} → {recovered_pid}); the next refresh hot loaded the saved source")
+
+        saved_library, saved_generation, saved_pid = library.read_bytes(), generation(), recovered_pid
         for response in ('proxies: [malformed YAML\n',
                          '{"error":"private-response-token","code":403}',
                          '{"outbounds":[{"type":"direct"}],"dns":{}}'):
@@ -138,7 +239,7 @@ def main():
         cli('profile', 'override', full_profile, str(override_path), success=False)
         cli('profile', 'delete', full_profile, success=False)
         assert library.read_bytes() == saved_library, 'invalid override or protected deletion changed saved inputs'
-        write(full_path, full(2))
+        write(full_path, equivalent)
 
         second = ("proxy-groups: [{name: SECOND-E2E, type: select, proxies: [DIRECT, REJECT]}]\n"
                   "rules: ['DOMAIN,second-profile.invalid,REJECT', 'MATCH,SECOND-E2E']\n")
@@ -178,11 +279,28 @@ def main():
         assert library.read_bytes() == saved_library, 'selected-profile deletion changed saved inputs'
         print('Two full profiles switched independently; failed refresh/override/apply preserved live state; selection survived restart')
 
+        active_generation = generation()
+        write(full_path, full(3))
+        with paused(restarted['Service']['PID']):
+            cli('profile', 'refresh', full_profile)
+        other_revision = snapshot(full_profile, full(3).encode())
+        assert generation() == active_generation and status()['Service']['PID'] == restarted['Service']['PID']
+        runtime(second_profile, imported_revision, second_rules)
+
         public = cli('profile', 'list')
         assert str(work).encode() not in public, 'public profile listing exposed private refresh addresses'
         reset_test_start_count()
         cli('profile', 'delete', second_profile, '--use', full_profile)
-        runtime(full_profile, second_revision, expected_full(2))
+        runtime(full_profile, other_revision, expected_full(3))
+        cli('service', 'stop')
+        write(full_path, full(4))
+        cli('profile', 'refresh', full_profile)
+        stopped_revision = snapshot(full_profile, full(4).encode())
+        stopped = json.loads(cli('status'))
+        assert stopped['Applied'] == full_profile and not stopped['Service']['Active'] and not stopped['ProfilePending']
+        cli('service', 'start')
+        runtime(full_profile, stopped_revision, expected_full(4))
+        print('Refreshing another subscription kept the selected core unchanged; a stopped core loaded the updated rules only on explicit start')
         cli('profile', 'delete', full_profile, '--no-profile')
         idle = status()
         assert idle['Applied'] == '' and idle['MixedPort'] == initial['MixedPort']
