@@ -65,6 +65,9 @@ func (m *Model) connectionsContextHelp() string {
 		action = "column"
 		if m.focus == sortTarget {
 			action = "reverse"
+			if m.connections.sortReversed {
+				action = "default_sort"
+			}
 		}
 	}
 	list := m.filteredConnections()

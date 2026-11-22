@@ -170,7 +170,7 @@
   "help.profiles.update": "Update / Update all saves configuration changes without loading them into the core.",
   "help.profiles.overrides": "Overrides imports a separate overrides YAML draft.",
   "help.profiles.delete": "Delete requires the exact display name. The profile currently in use is protected.",
-  "help.connections.keys": "List: / search · v active/closed · s next sort · S reverse · p pause/resume display. Click a column to sort and click again to reverse. Enter opens the focused connection; Esc returns from details.",
+  "help.connections.keys": "List: / search · v active/closed · s next sort · S reverse · p pause/resume display. Click a column to sort, again to reverse, and a third time for newest first. Enter opens the focused connection; Esc returns from details.",
   "help.connections.confirm": "Close confirmations default to Cancel. Tab changes the button; Enter / Space activates it; y confirms; n / Esc cancels.",
   "help.rules.keys": "/ searches · g / Ctrl+R reloads rules. On a focused rule, Enter shows hidden content, if any, or collapses it; Esc also collapses it.",
   "help.rules.readOnly": "Effective rules are read only. Expansion reveals the full rule text, not the contents of a rule collection. Open Rule collections in the header to inspect or update providers.",

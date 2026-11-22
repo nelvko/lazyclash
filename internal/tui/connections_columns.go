@@ -179,8 +179,14 @@ func (m *Model) changeConnectionSort(id string) {
 	default:
 		for _, field := range connectionFields {
 			if field.target == id && width >= field.minWidth && m.connectionSortAllowed(field.order) {
-				m.connections.sortReversed = field.order == order && !m.connections.sortReversed
-				m.connections.sort = field.order
+				switch {
+				case field.order != order:
+					m.connections.sort, m.connections.sortReversed = field.order, false
+				case !m.connections.sortReversed:
+					m.connections.sortReversed = true
+				default:
+					m.connections.sort, m.connections.sortReversed = connectionSortNewest, false
+				}
 				m.reconcileConnections()
 				m.scroll = 0
 				return

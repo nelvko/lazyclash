@@ -12,6 +12,7 @@
   "navigation.connections.action.sort": "Enter 下一种排序",
   "navigation.connections.action.column": "Enter 按此列排序",
   "navigation.connections.action.reverse": "Enter 反转顺序",
+  "navigation.connections.action.default_sort": "Enter 恢复最新优先",
   "navigation.connections.action.pause": "Enter 暂停",
   "navigation.connections.action.resume": "Enter 继续",
   "navigation.connections.action.details": "Enter 详情",

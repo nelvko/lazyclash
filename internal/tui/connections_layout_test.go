@@ -133,12 +133,18 @@ func TestConnectionsClickDisplayedHeaderSortsFilteredRowsInBothDirections(t *tes
 					t.Fatalf("active sort direction is unclear: %q", line)
 				}
 			}
-			m, _ = update(m, special(tea.KeyEnter))
-			if list := m.filteredConnections(); list[0].ID != "second" || m.connections.detail != nil {
-				t.Fatal("Enter on the focused column did not toggle its order")
+			if !strings.Contains(m.contextHelp(), m.tr("navigation.connections.action.default_sort")) {
+				t.Fatal("focused header did not offer to restore the default order")
 			}
+			m, _ = update(m, special(tea.KeyEnter))
+			heading := ansi.Strip(strings.Split(m.View().Content, "\n")[chain.Y])
+			if strings.ContainsAny(heading, "▲▼") || m.connections.sort != connectionSortNewest || m.connections.sortReversed ||
+				m.filteredConnections()[0].ID != "first" || m.focus != chain.ID {
+				t.Fatal("third activation did not restore newest first and clear the indicator")
+			}
+			m, _ = click(m, chain)
 			m, _ = update(m, key("S"))
-			if list := m.filteredConnections(); list[0].ID != "first" {
+			if list := m.filteredConnections(); list[0].ID != "first" || m.connections.sort != connectionSortChain {
 				t.Fatal("S did not reverse the selected column")
 			}
 			m, _ = update(m, key("/"))

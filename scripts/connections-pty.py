@@ -425,6 +425,10 @@ def exercise_table_sort(preview, terminal, words, output, args):
     check_order(chain, "▼", True)
     preview.capture(terminal, output, "header-chain-descending", args)
     terminal.key(b"\r")
+    terminal.settle()
+    assert not any(arrow in "".join(terminal.screen.cells[y]) for arrow in "▲▼"), "third activation did not clear the column sort"
+    assert position(terminal, "api.github.com")[1] < position(terminal, "[2001:db8::42]:443")[1], "third activation did not restore newest first"
+    click_header(terminal, words, "chain")
     check_order(chain, "▲", False)
     search(terminal, "")
     terminal.key(b"\x1b[H")
