@@ -19,7 +19,13 @@ type installJournal struct {
 	Tree map[string]string `json:"tree"`
 }
 
+type reloadProcess struct {
+	PID     int    `json:"pid"`
+	Started uint64 `json:"started"`
+}
 type pending struct {
+	Reloading          *reloadProcess `json:"reloading,omitempty"`
+	HotReload          bool           `json:"hot_reload,omitempty"`
 	TUNChange          *tunTransition `json:"tun_change,omitempty"`
 	Old, New           string
 	Active             bool
@@ -58,6 +64,12 @@ func (a *App) recover(ctx context.Context) error {
 	}
 	if target != p.Old && target != p.New {
 		return diagnostic.New("diagnostic.recovery.targetChanged", "recovery target changed; refusing to modify")
+	}
+	if p.Reloading != nil && (!p.HotReload || p.Reloading.PID < 0) {
+		return diagnostic.New("diagnostic.recovery.invalidJournal", "invalid recovery journal; manual inspection required")
+	}
+	if p.HotReload && (p.TUNChange != nil || p.OldGuard == "" || p.NewGuard == "") {
+		return diagnostic.New("diagnostic.recovery.invalidJournal", "invalid recovery journal; manual inspection required")
 	}
 	if p.TUNChange != nil && (p.OldGuard == "" || p.NewGuard == "") {
 		return errors.New("TUN recovery requires guarded generations")
@@ -114,12 +126,16 @@ func (a *App) recover(ctx context.Context) error {
 	if err != nil && stopped == nil {
 		return err
 	}
-	if stopped == nil && p.Active && (!intent.Desired.Known || intent.Desired.Running) {
+	if p.HotReload {
+		if err := a.restoreHotProfile(ctx, m, &p, &raw, stopped != nil || (intent.Desired.Known && !intent.Desired.Running)); err != nil {
+			return err
+		}
+	} else if stopped == nil && p.Active && (!intent.Desired.Known || intent.Desired.Running) {
 		if err := a.restartReady(ctx, m); err != nil {
 			return diagnostic.New("diagnostic.recovery.serviceFailed", "configuration restored but service recovery failed: %w", err)
 		}
 	}
-	return os.Remove(path)
+	return store.Remove(path, raw)
 }
 func (a *App) recoverInstall(ctx context.Context) error {
 	path := filepath.Join(a.Home, "install-pending.json")

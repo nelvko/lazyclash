@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -223,6 +224,35 @@ func (c Client) Configuration(ctx context.Context) (Configuration, error) {
 		return Configuration{}, diagnostic.New("diagnostic.api.configResponse", "invalid Mihomo runtime configuration response")
 	}
 	return Configuration{Mode: cfg.Mode, TUN: *cfg.TUN.Enable, MixedPort: cfg.MixedPort}, nil
+}
+
+// Reload re-reads the -f path that the managed service was launched with.
+// Updating current before this call keeps live and next-start inputs identical.
+func (c Client) Reload(ctx context.Context) (replied bool, err error) {
+	if err := ctx.Err(); err != nil {
+		return true, err // No request was sent.
+	}
+	// Core-side parsing and provider loading continue after the caller goes
+	// away. Wait for an answer even if the TUI cancels, then let the transaction
+	// observe cancellation. A lost answer needs a process fence on rollback.
+	const limit = 30 * time.Second
+	cl := http.Client{}
+	if c.HTTP != nil {
+		cl = *c.HTTP
+	}
+	if cl.Timeout <= 0 {
+		cl.Timeout = limit
+	}
+	c.HTTP = &cl
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), limit)
+	defer cancel()
+	response, err := c.open(ctx, http.MethodPut, "/configs?force=true", []byte("{}"))
+	if err != nil {
+		var status *apiHTTPError
+		return errors.As(err, &status), err
+	}
+	_ = response.Close()
+	return true, nil
 }
 
 func (c Client) SetMode(ctx context.Context, mode string) error {

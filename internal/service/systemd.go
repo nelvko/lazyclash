@@ -609,7 +609,7 @@ func (s *Systemd) Action(ctx context.Context, action string) error {
 		return err
 	}
 	switch action {
-	case "start", "stop", "restart":
+	case "start", "stop", "restart", "try-restart":
 	default:
 		return diagnostic.New("diagnostic.service.action", "service action must be start, stop, or restart")
 	}
