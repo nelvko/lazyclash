@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/progress"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
@@ -189,10 +190,6 @@ func (m *Model) paintProfileCard(name string, index, width int, compact bool) da
 	if m.focus == id {
 		prefix = "› "
 	}
-	titleColor := text
-	if selected {
-		titleColor = accent
-	}
 	controls := profileCardControls(refreshID, menuID, width, info.Refreshable)
 	controlViews := make([]string, len(controls))
 	controlsWidth := 0
@@ -203,49 +200,79 @@ func (m *Model) paintProfileCard(name string, index, width int, compact bool) da
 		controlsWidth += widths[control.label]
 	}
 	titleWidth := max(1, inner-controlsWidth)
-	title := themed(lipgloss.NewStyle().Bold(true).Render(cellCrop(prefix+clean(info.Name), max(1, titleWidth))), titleColor, surface, false)
+	title := themed(lipgloss.NewStyle().Bold(true).Render(cellCrop(prefix+clean(info.Name), max(1, titleWidth))), text, surface, false)
 	title = cellPad(title, titleWidth)
 	for _, control := range controlViews {
 		title += control
 	}
-	metadata := m.profileOrigin(info)
-	if metadata != "" {
-		metadata += " · "
+	age := profileAge(info.UpdatedAt, time.Now(), m.locale)
+	origin := profileCardPair(m.profileOrigin(info), age, inner)
+	quota, expiry := m.profileAllowance(info)
+	// Keep the numeric balance intact when the date would displace it.
+	// The detail pane always has room for both, on separate rows.
+	if quota != "" && ansi.StringWidth(quota)+2+ansi.StringWidth(expiry) > inner {
+		expiry = ""
 	}
-	metadata += profileUpdated(info.UpdatedAt, time.Now(), m.locale)
-	status, statusColor := m.tr("profiles.ready"), text
-	if !info.Validated {
-		status, statusColor = m.tr("profiles.validation_pending"), warning
-	}
-	if selected {
-		status, statusColor = m.tr("profiles.selected_next_start"), accent
-		if m.snapshot.ServiceError != "" || m.snapshot.APIError != "" {
-			status = m.tr("profiles.selected_unavailable")
-		} else if m.snapshot.Service.Active {
-			status = m.tr("profiles.in_use")
+	allowance := profileCardPair(quota, expiry, inner)
+	status := m.profileWarning(info, selected)
+	footer := themed(cellCrop(status, inner), warning, surface, false)
+	if info.Quota != nil && info.Quota.TotalBytes > 0 {
+		barWidth := inner
+		if status != "" {
+			barWidth -= ansi.StringWidth(status) + 2
+		}
+		if barWidth >= 4 {
+			bar := progress.New(progress.WithWidth(barWidth), progress.WithoutPercentage(), progress.WithFillCharacters('━', '─'))
+			bar.FullColor, bar.EmptyColor = lipgloss.Color(success), lipgloss.Color(border)
+			total := info.Quota.TotalBytes
+			left := total - min(total, info.Quota.UsedBytes)
+			graph := bar.ViewAs(float64(left) / float64(total))
+			if status != "" {
+				graph += "  " + footer
+			}
+			footer = graph
 		}
 	}
-	if info.Pending {
-		status, statusColor = m.tr("profiles.changes_pending"), warning
-	}
-	// Reserve two auxiliary rows for every card, so long origins can wrap
-	// without shifting another card's status or the following grid row.
-	metadataLines := strings.Split(wrapText(metadata, inner), "\n")
-	if len(metadataLines) > 2 {
-		metadataLines[1] = cellCrop(strings.Join(metadataLines[1:], " "), inner)
-	}
-	lines := []string{title}
-	for row := range 2 {
-		value := ""
-		if row < len(metadataLines) {
-			value = metadataLines[row]
-		}
-		lines = append(lines, themed(value, muted, surface, false))
-	}
-	lines = append(lines, themed(cellCrop(status, inner), statusColor, surface, false))
+	lines := []string{title, themed(origin, muted, surface, false), themed(allowance, text, surface, false), footer}
 	picture := profileCardSurface(lines, width, surface, selected, compact)
 	parent := hitRegion{ID: id, W: width, H: len(picture)}
 	return dashboardBlock{lines: picture, targets: m.profileCardTargets(parent, controls, widths, compact)}
+}
+
+// The right-hand value shares the card controls' right margin.
+func profileCardPair(left, right string, width int) string {
+	if right == "" {
+		return cellCrop(left, width)
+	}
+	right = cellCrop(right, width)
+	available := width - ansi.StringWidth(right)
+	return cellPad(cellCrop(left, max(0, available-1)), available) + right
+}
+
+func (m *Model) profileAllowance(info app.ProfileInfo) (amount, expiry string) {
+	if q := info.Quota; q != nil {
+		if q.TotalBytes > 0 {
+			remaining := q.TotalBytes - min(q.TotalBytes, q.UsedBytes)
+			amount = m.tr("profiles.remaining", formatBytes(remaining), formatBytes(q.TotalBytes))
+		}
+		if q.ExpiresAt > 0 {
+			expiry = m.tr("profiles.expires", time.Unix(q.ExpiresAt, 0).Format("2006-01-02"))
+		}
+	}
+	return amount, expiry
+}
+
+func (m *Model) profileWarning(info app.ProfileInfo, selected bool) string {
+	switch {
+	case selected && (m.snapshot.ServiceError != "" || (m.snapshot.Service.Active && m.snapshot.APIError != "")):
+		return m.tr("profiles.selected_unavailable")
+	case info.Pending:
+		return m.tr("profiles.changes_pending")
+	case !info.Validated:
+		return m.tr("profiles.validation_pending")
+	default:
+		return ""
+	}
 }
 
 func profileCardControls(refreshID, menuID string, width int, refreshable bool) []profileButton {
@@ -291,7 +318,7 @@ func profileCardSurface(lines []string, width int, surface string, selected, com
 		marker = themed("▌", accent, surface, false)
 	}
 	row := func(line string) string {
-		return themed(cellPad(marker+" "+cellPad(line, max(0, width-4))+"  ", width), text, surface, false)
+		return themed(marker+cellPad(" "+cellCrop(line, max(0, width-4)), max(0, width-1)), text, surface, false)
 	}
 	var rows []string
 	if !compact {
@@ -314,18 +341,26 @@ func profileUpdated(updated, now time.Time, locales ...i18n.Localizer) string {
 	if updated.IsZero() {
 		return locale.T("profiles.no_history")
 	}
+	if now.Sub(updated) >= 30*24*time.Hour {
+		return locale.T("profiles.updated_date", updated.Format("2006-01-02"))
+	}
+	return locale.T("profiles.updated_time", profileAge(updated, now, locale))
+}
+
+func profileAge(updated, now time.Time, locale i18n.Localizer) string {
+	if updated.IsZero() {
+		return ""
+	}
 	age := now.Sub(updated)
 	switch {
 	case age < time.Minute:
 		return locale.T("profiles.just_updated")
 	case age < time.Hour:
-		return fmt.Sprintf(locale.T("profiles.updated_minutes"), int(age/time.Minute))
+		return locale.T("profiles.updated_minutes", int(age/time.Minute))
 	case age < 24*time.Hour:
-		return fmt.Sprintf(locale.T("profiles.updated_hours"), int(age/time.Hour))
-	case age < 30*24*time.Hour:
-		return fmt.Sprintf(locale.T("profiles.updated_days"), int(age/(24*time.Hour)))
+		return locale.T("profiles.updated_hours", int(age/time.Hour))
 	default:
-		return locale.T("profiles.updated_date", updated.Format("2006-01-02"))
+		return locale.T("profiles.updated_days", int(age/(24*time.Hour)))
 	}
 }
 
@@ -363,6 +398,14 @@ func (m *Model) profileDetailsPaneAt(name string, index, width int) dashboardBlo
 		}
 	}
 	body.lines = append(body.lines, themed(cellCrop(profileUpdated(info.UpdatedAt, time.Now(), m.locale), width), muted, bg, false))
+	quota, expiry := m.profileAllowance(info)
+	for _, value := range []string{quota, expiry} {
+		if value != "" {
+			for _, line := range strings.Split(wrapText(value, width), "\n") {
+				body.lines = append(body.lines, themed(line, muted, bg, false))
+			}
+		}
+	}
 	if info.Description != "" {
 		body.lines = append(body.lines, themed(cellCrop(clean(info.Description), width), muted, bg, false))
 	}

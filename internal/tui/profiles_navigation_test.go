@@ -445,26 +445,23 @@ func TestProfileDetailClosesIfExternallyDeleted(t *testing.T) {
 	findTarget(t, m, m.focus)
 }
 
-func TestProfileSelectedStatusDistinguishesStoppedFromUnavailableRuntime(t *testing.T) {
+func TestSelectedProfileWarnsOnlyOnRuntimeErrors(t *testing.T) {
 	for _, tc := range []struct {
-		name         string
-		active       bool
-		apiError     string
-		serviceError string
-		status       string
+		name                   string
+		active                 bool
+		apiError, serviceError string
+		warn                   bool
 	}{
-		{name: "stopped", status: "SELECTED · Next start"},
-		{name: "running", active: true, status: "IN USE"},
-		{name: "API unavailable", active: true, apiError: "unavailable", status: "SELECTED · Runtime unavailable"},
-		{name: "service unavailable", serviceError: "unavailable", status: "SELECTED · Runtime unavailable"},
+		{name: "stopped", apiError: "Start the service to view proxy groups"},
+		{name: "running", active: true},
+		{name: "API unavailable", active: true, apiError: "unavailable", warn: true},
+		{name: "service unavailable", serviceError: "unavailable", warn: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			m := profileInteractionsModel(&fakeBackend{snapshot: app.Snapshot{Installed: true, Applied: "work", Profiles: []string{"work"},
-				ProfileDetails: profileFixtures("default", "work"),
-				Service:        service.Status{Active: tc.active}, APIError: tc.apiError, ServiceError: tc.serviceError}}, 160, 40)
-			card := ansi.Strip(strings.Join(m.profileCard(0, 64).lines, "\n"))
-			if !strings.Contains(card, tc.status) {
-				t.Fatalf("wrong selected state for %s; expected %s in %s", tc.name, tc.status, card)
+			m := profileInteractionsModel(&fakeBackend{snapshot: app.Snapshot{Installed: true, Applied: "work", Profiles: []string{"work"}, ProfileDetails: profileFixtures("work"), Service: service.Status{Active: tc.active}, APIError: tc.apiError, ServiceError: tc.serviceError}}, 160, 40)
+			text := ansi.Strip(strings.Join(m.profileCard(0, 64).lines, "\n"))
+			if strings.Contains(text, m.tr("profiles.selected_unavailable")) != tc.warn || strings.Contains(text, "IN USE") || strings.Contains(text, "SELECTED") {
+				t.Fatalf("%s: unexpected state on card: %s", tc.name, text)
 			}
 		})
 	}

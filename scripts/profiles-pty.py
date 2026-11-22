@@ -78,6 +78,9 @@ def main():
     spec.loader.exec_module(smoke)
     payload = [b"rules: ['MATCH,DIRECT']\n"]
     provider_name = ["pty-airport"]
+    gib = 1024**3
+    expires = int(time.mktime((2030, 6, 15, 12, 0, 0, 0, 0, -1)))
+    quota = [f"upload={gib}; download={2*gib}; total={10*gib}; expire={expires}"]
     requests = []
     remote_started = threading.Event()
     remote_release = threading.Event()
@@ -91,6 +94,8 @@ def main():
             self.send_response(200)
             self.send_header("Content-Type", "text/yaml")
             self.send_header("profile-title", provider_name[0])
+            if quota[0] is not None:
+                self.send_header("Subscription-Userinfo", quota[0])
             self.end_headers()
             self.wfile.write(payload[0])
 
@@ -153,7 +158,16 @@ def main():
             assert_saved_cards(terminal, 1)
             assert primary_profile()["address"] == address
             assert not (home / "installation").exists(), "Add created runtime installation state"
-            (output / "profiles-added.txt").write_text(terminal.screen.text())
+            for columns, rows in [(60, 20), (160, 40)]:
+                terminal.resize(columns, rows)
+                terminal.wait("7.0 GiB / 10.0 GiB left")
+                terminal.wait("━")
+                terminal.settle()
+                screen = terminal.screen.text()
+                if columns == 160:
+                    assert "2030-06-15" in screen, "wide card lost the expiry date"
+                (output / f"profiles-quota-{columns}x{rows}.txt").write_text(screen)
+            (output / "profiles-added.txt").write_text(screen)
 
             # Menu entrypoints use the same private Profile without applying it.
             before = len(requests)
@@ -199,11 +213,14 @@ def main():
 
             payload[0] = b"rules: ['MATCH,REJECT']\n"
             provider_name[0] = "pty-updated"
+            quota[0] = f"upload={gib}; download={5*gib}; total={10*gib}; expire={expires}"
             terminal.click_text("[Update]")
             wait_until(terminal, lambda: revision() == hashlib.sha256(payload[0]).hexdigest(), "detail Update did not persist a profile revision")
             terminal.wait_absent("Updating profile")
             assert not (home / "installation").exists(), "Update applied a runtime configuration"
             terminal.wait("pty-updated · Configuration")
+            terminal.wait("4.0 GiB / 10.0 GiB left")
+            terminal.wait_absent("7.0 GiB / 10.0 GiB left")
             assert profile_id("pty-updated") == primary_id[0], "provider rename changed its stable ID"
 
             mouse_text(terminal, "pty-updated", button=2)
@@ -245,9 +262,18 @@ def main():
             terminal.key(b"\x1b")
             terminal.wait("Update all")
             payload[0] = b"rules: ['DOMAIN,example.invalid,REJECT', 'MATCH,DIRECT']\n"
+            quota[0] = None
             terminal.click_text("[Update all]")
             wait_until(terminal, lambda: revision() == hashlib.sha256(payload[0]).hexdigest(), "Update all did not persist a profile revision")
             terminal.wait_absent("Updating profiles")
+            terminal.wait_absent("4.0 GiB / 10.0 GiB left")
+            for columns, rows in [(60, 20), (160, 40)]:
+                terminal.resize(columns, rows)
+                terminal.wait("My Airport")
+                terminal.settle()
+                screen = terminal.screen.text()
+                assert "2030-06-15" not in screen and "━" not in screen, "stale expiry or quota bar after the provider omitted its header"
+                (output / f"profiles-no-quota-{columns}x{rows}.txt").write_text(screen)
 
             local_dir = base / "配置 files" / "nested folder"
             local_dir.mkdir(parents=True)
@@ -493,6 +519,7 @@ def main():
             terminal.exit()
             result = {
                 "passed": True,
+                "usage_scenarios": ["reported remaining bytes and expiry", "refresh changes remaining bytes", "missing header clears old usage and expiry"],
                 "scenarios": ["empty library has no built-in card or count summary", "first card is the first saved profile", "visible URL bracketed paste", "automatic Add without naming modal or Apply", "two-column arrows", "Enter opens details only", "provider name update retains ID", "custom Rename survives provider updates", "Edit URL retains custom name and ID", "detail configuration Update", "Update all", "New profile local file with optional metadata omitted", "live directory and file matches", "arrow selection and Tab completion without creating", "Unicode and spaced directories with an extensionless configuration", "New profile remote URL with custom name and description", "Tab and Shift+Tab reach Create and Cancel", "busy form ignores editing and duplicate submission", "one download per new remote profile", "retained local source refresh", "CLI one-time copy import", "60x20 resize and Escape", "fixed header while scrolled", "header mouse update without Apply", "20x12 compact header", "page-specific controls", "duplicate imports retain distinct IDs", "repeated updates preserve duplicate suffix", "exit and reopen metadata and source persistence"],
                 "menu_scenarios": ["right-click card without Apply", "right-click update icon opens containing card menu", "left-click menu button", "menu owns q, page digits and pasted text", "outside click closes without opening the underlying creation form", "keyboard m and Escape focus restoration", "menu Rename uses the existing custom-name flow", "menu edge avoidance through resize", "retained local file Update rereads the source without HTTP", "copy-import Update is disabled without a download request"],
                 "menu_dimensions": [[160, 40], [60, 20], [40, 16], [20, 12]],

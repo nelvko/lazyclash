@@ -487,11 +487,11 @@ func joinAddress(host, port string) string {
 	}
 	return clean(net.JoinHostPort(host, port))
 }
-func formatBytes(n int64) string {
+func formatBytes[T int64 | uint64](n T) string {
 	if n < 0 {
 		return "--"
 	}
-	units := []string{"B", "KiB", "MiB", "GiB", "TiB"}
+	units := []string{"B", "KiB", "MiB", "GiB", "TiB", "PiB", "EiB"}
 	v := float64(n)
 	i := 0
 	for v >= 1024 && i < len(units)-1 {

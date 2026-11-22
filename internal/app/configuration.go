@@ -122,8 +122,8 @@ func (a *App) profileInfo(lib configuration.Library, name string, m manifest, in
 		Kind: "imported", Origin: "Imported file", Validated: entry.Validated,
 		HasOverrides: entry.Spec.Overrides != "",
 	}
-	if entry.Quota != (configuration.SubscriptionQuota{}) {
-		info.Quota = &entry.Quota
+	if quota := entry.Quota; quota != (configuration.SubscriptionQuota{}) {
+		info.Quota = &quota
 	}
 	if info.Refreshable {
 		info.Kind, info.Origin = "local", "Local file"
