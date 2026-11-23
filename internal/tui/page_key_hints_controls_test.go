@@ -15,7 +15,7 @@ func TestProfilesHintsFollowInputAndDetailActions(t *testing.T) {
 		m := ready(&fakeBackend{snapshot: app.Snapshot{Installed: true, Profiles: []string{"work"}, ProfileDetails: profileFixtures("default", "work")}})
 		m.locale, m.page, m.width, m.height = i18n.New(language), "profiles", 160, 45
 		m.focus = "profiles.url"
-		if m.contextHelp() != m.tr("navigation.profiles.importing") {
+		if m.contextHelp() != m.tr("navigation.profiles.inputEmpty") {
 			t.Fatal("profile input retained card shortcuts")
 		}
 		m, _ = update(m, key("m"))

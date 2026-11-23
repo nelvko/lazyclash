@@ -21,6 +21,7 @@
   "navigation.controls.disableTerminal": "Disable terminal proxy",
   "navigation.controls.applyLanguage": "Apply language",
   "navigation.controls.applyMode": "Apply mode",
+  "navigation.profiles.inputEmpty": "Tab Controls · Esc Leave input",
   "navigation.profiles.importing": "Enter Import · Tab Controls · Esc Leave input",
   "navigation.profiles.controls": "Tab Controls · ← / Esc Back",
   "navigation.profiles.detailsBack": "Tab Controls · ↑↓ Scroll · Esc Close details",

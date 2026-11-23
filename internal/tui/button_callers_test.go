@@ -26,6 +26,7 @@ func TestActionButtonGroupsKeepOneCellBeforeFocusAndNoneAfter(t *testing.T) {
 				}},
 				{"profile-toolbar", "profiles.add", "profiles.create", func(m *Model) (string, []hitRegion) {
 					m.focus = "profiles.create"
+					m.profilesUI.url.SetValue("https://example.invalid/sub")
 					b := m.profilesToolbar(120)
 					return strings.Join(b.lines, "\n"), b.targets
 				}},

@@ -21,6 +21,7 @@
   "navigation.controls.disableTerminal": "关闭终端代理",
   "navigation.controls.applyLanguage": "应用语言",
   "navigation.controls.applyMode": "应用模式",
+  "navigation.profiles.inputEmpty": "Tab 控件 · Esc 结束输入",
   "navigation.profiles.importing": "Enter 导入 · Tab 控件 · Esc 结束输入",
   "navigation.profiles.controls": "Tab 控件 · ← / Esc 返回",
   "navigation.profiles.detailsBack": "Tab 控件 · ↑↓ 滚动 · Esc 关闭详情",

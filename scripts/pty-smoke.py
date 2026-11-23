@@ -826,7 +826,7 @@ def main():
             if cli("status")["Service"]["PID"] != pid:
                 raise AssertionError("Proxies refresh restarted the running core")
             terminal.key(b"3")
-            terminal.wait("New profile")
+            terminal.wait("Subscription URL or local file path")
             terminal.resize(20, 5)
             time.sleep(0.1)
             terminal.resize(120, 40)

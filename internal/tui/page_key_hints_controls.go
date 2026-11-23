@@ -11,6 +11,9 @@ func (m *Model) profilesContextHelp() string {
 		if !m.profilesUI.pasteDeadline.IsZero() {
 			return m.tr("profiles.clipboard_waiting")
 		}
+		if m.profilesUI.importSource() == "" {
+			return m.tr("navigation.profiles.inputEmpty")
+		}
 		return m.tr("navigation.profiles.importing")
 	}
 	base := m.tr("navigation.profiles.controls")

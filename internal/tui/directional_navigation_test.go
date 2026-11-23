@@ -318,6 +318,7 @@ func TestDirectionalNavigationShiftTabStillMovesToPreviousControl(t *testing.T) 
 			m := profileNavigationModel(120, 32)
 			directionCleanup(t, &m)
 			m.focus = "profiles.add"
+			m.profilesUI.url.SetValue("https://example.invalid/sub")
 			previous := "profiles.url.paste"
 			if busy {
 				m.newJob("action")

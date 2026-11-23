@@ -62,6 +62,7 @@ func TestNarrowExclusiveKeyHintsDoNotAdvertiseBareHelp(t *testing.T) {
 func TestBusyProfileInputDoesNotAdvertiseImport(t *testing.T) {
 	m, _ := profileClickModel(t, true, true, false, false)
 	m.focus, m.busy = "profiles.url", true
+	m.profilesUI.url.SetValue("https://example.invalid/sub")
 	if strings.Contains(m.contextHelp(), "Enter") {
 		t.Fatal("busy URL field advertised an import it cannot accept")
 	}

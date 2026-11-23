@@ -142,17 +142,19 @@ def main():
             terminal.resize(160, 40)
             terminal.key(b"3")
             terminal.wait("No saved profiles")
-            terminal.wait("Enter New profile")  # The startup version check can still own input.
+            terminal.wait("Enter New")  # The startup version check can still own input.
             assert_saved_cards(terminal, 0)
             header_row(terminal, "Update all")
             (output / "profiles-empty.txt").write_text(terminal.screen.text())
             assert "Sources (" not in terminal.screen.text(), "source management remained in the Profiles header"
             terminal.click_text("Subscription URL or local file path")
-            terminal.wait("Enter Import")
+            terminal.key(b"\r")
+            assert not library_path.exists(), "empty import created a profile"
             secret = "pty-private-token-q1234567"
             address = "http://127.0.0.1:%d/%s?token=%s" % (server.server_port, secret, secret)
             paste(terminal, address)
             terminal.wait(secret)
+            terminal.wait("Enter Import")
             assert not library_path.exists(), "editing a URL unexpectedly saved a profile"
             terminal.key(b"\r")
             wait_until(terminal, lambda: revision() == hashlib.sha256(payload[0]).hexdigest(), "automatic subscription was not persisted")
@@ -205,7 +207,7 @@ def main():
             terminal.wait("Settings…")
             assert "menu-owned-paste" not in terminal.screen.text(), "menu paste escaped to a page input"
             # Clicking outside dismisses the menu without opening the creation form.
-            mouse_text(terminal, "[New profile]")
+            mouse_text(terminal, "[New]")
             terminal.wait_absent("Settings…")
             assert "Display name (optional)" not in terminal.screen.text(), "outside menu click reached its underlying control"
             terminal.key(b"m")
@@ -335,7 +337,7 @@ def main():
             local = local_dir / "pty-local"
             local.write_text("rules: ['MATCH,DIRECT']\n")
             (local_dir / "pty-other.yaml").write_text("rules: ['MATCH,DIRECT']\n")
-            terminal.click_text("[New profile]")
+            terminal.click_text("[New]")
             terminal.wait("Display name (optional)")
             terminal.wait("Description (optional)")
             terminal.wait("URL or absolute local path")
@@ -408,7 +410,7 @@ def main():
             remote_name = "PTY named remote"
             remote_description = "Remote metadata from New profile"
             remote_address = "http://127.0.0.1:%d/new-profile" % server.server_port
-            terminal.click_text("[New profile]")
+            terminal.click_text("[New]")
             terminal.wait("Display name (optional)")
             paste(terminal, remote_name)
             terminal.key(b"\t")
@@ -488,7 +490,7 @@ def main():
             # A saved record precedes the TUI receiving the action result.
             # Wait for the new card and actionable footer before clicking the header.
             terminal.wait("My Airport (1)")
-            terminal.wait("Enter Add subscription")
+            terminal.wait("Enter New")
             for _ in range(2):
                 before = len(requests)
                 previous = {pid: record["updated_at"] for pid, record in library()["profiles"].items()}
@@ -573,7 +575,7 @@ def main():
             result = {
                 "passed": True,
                 "usage_scenarios": ["bare remaining and total bytes with bare future date", "card becomes Expired at cutoff without input", "Settings labels the balance and expiry date", "missing header clears old usage and expiry"],
-                "scenarios": ["empty library has no built-in card or count summary", "first card is the first saved profile", "visible URL bracketed paste", "automatic Add without naming modal or Apply", "two-column arrows", "Enter opens Settings", "provider name update retains ID", "Settings protects provider names on description-only edits", "failed source validation retains all settings and form input", "changing the source and manual name together retains the stable ID", "menu Update", "Update all", "New profile local file with optional metadata omitted", "live directory and file matches", "arrow selection and Tab completion without creating", "Unicode and spaced directories with an extensionless configuration", "New profile remote URL with custom name and description", "Tab and Shift+Tab reach Create and Cancel", "busy form ignores editing and duplicate submission", "one download per new remote profile", "retained local source refresh", "CLI one-time copy import", "60x20 resize and Escape", "fixed header while scrolled", "header mouse update without Apply", "20x12 compact header", "page-specific controls", "duplicate imports retain distinct IDs", "repeated updates preserve duplicate suffix", "exit and reopen metadata and source persistence"],
+                "scenarios": ["empty library has no built-in card or count summary", "first card is the first saved profile", "visible URL bracketed paste", "automatic Import without naming modal or Apply", "two-column arrows", "Enter opens Settings", "provider name update retains ID", "Settings protects provider names on description-only edits", "failed source validation retains all settings and form input", "changing the source and manual name together retains the stable ID", "menu Update", "Update all", "New profile local file with optional metadata omitted", "live directory and file matches", "arrow selection and Tab completion without creating", "Unicode and spaced directories with an extensionless configuration", "New profile remote URL with custom name and description", "Tab and Shift+Tab reach Create and Cancel", "busy form ignores editing and duplicate submission", "one download per new remote profile", "retained local source refresh", "CLI one-time copy import", "60x20 resize and Escape", "fixed header while scrolled", "header mouse update without Apply", "20x12 compact header", "page-specific controls", "duplicate imports retain distinct IDs", "repeated updates preserve duplicate suffix", "exit and reopen metadata and source persistence"],
                 "menu_scenarios": ["right-click card without Apply", "right-click update icon opens containing card menu", "left-click menu button", "menu owns q, page digits and pasted text", "outside click closes without opening the underlying creation form", "keyboard m and Escape focus restoration", "menu Settings edits metadata atomically", "menu edge avoidance through resize", "retained local file Update rereads the source without HTTP", "copy-import Update is hidden"],
                 "menu_dimensions": [[160, 40], [60, 20], [40, 16], [20, 12]],
                 "delete_scenarios": ["default Enter cancels", "no name input or validation", "confirmation owns typed and pasted text", "confirmation stays visible from 120x32 to 24x7", "explicit mouse confirmation deletes once"],

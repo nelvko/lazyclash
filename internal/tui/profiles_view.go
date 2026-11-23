@@ -55,7 +55,11 @@ func (m *Model) profilesToolbar(width int) dashboardBlock {
 	var body dashboardBlock
 	input := m.profilesUI.url
 	input.Placeholder = m.tr("profiles.url_placeholder")
-	buttons := []profileButton{{"profiles.add", m.tr("profiles.add"), true}, {"profiles.create", m.tr("profiles.create"), false}}
+	importID := "profiles.add"
+	if m.profilesUI.importSource() == "" {
+		importID = ""
+	}
+	buttons := []profileButton{{importID, m.tr("profiles.add"), true}, {"profiles.create", m.tr("profiles.create"), false}}
 	buttonWidth := 0
 	for _, b := range buttons {
 		buttonWidth += ansi.StringWidth(m.profileButtonView(b, bg))
@@ -83,7 +87,7 @@ func (m *Model) profilesToolbar(width int) dashboardBlock {
 		for _, b := range buttons {
 			value := m.profileButtonView(b, bg)
 			body.lines[1] += value
-			if !m.busy && !m.quitting {
+			if b.id != "" && !m.busy && !m.quitting {
 				body.targets = append(body.targets, hitRegion{ID: b.id, X: x, Y: 1, W: ansi.StringWidth(value), H: 1})
 			}
 			x += ansi.StringWidth(value)
@@ -121,7 +125,7 @@ func (m *Model) profileButtonView(b profileButton, surface string) string {
 	}
 	return renderButton(b.label, buttonOptions{Kind: kind, Surface: surface,
 		Focused: m.focus == b.id && b.id != "", Hovered: m.hover == b.id && b.id != "",
-		Disabled: b.id == "" || m.busy || m.quitting, Plain: m.buttonPlain()})
+		Disabled: b.id == "" || m.busy || m.quitting, Plain: b.id != "" && m.buttonPlain()})
 }
 
 func (m *Model) profileButtons(buttons []profileButton, width int) dashboardBlock {

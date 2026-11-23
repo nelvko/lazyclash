@@ -272,7 +272,7 @@ func TestProfilePageShowsFailedUpdateAndAccurateActionRows(t *testing.T) {
 	m.page = "profiles"
 	body, _ := m.pageBody(150)
 	plain := ansi.Strip(body)
-	for _, text := range []string{m.tr("profiles.url_placeholder"), "⎘", "Add", "New profile", m.tr("profiles.refresh_failed")} {
+	for _, text := range []string{m.tr("profiles.url_placeholder"), "⎘", m.tr("profiles.add"), m.tr("profiles.create"), m.tr("profiles.refresh_failed")} {
 		if !strings.Contains(plain, text) {
 			t.Fatalf("missing %q in profiles page", text)
 		}

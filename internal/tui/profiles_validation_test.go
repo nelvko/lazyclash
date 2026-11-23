@@ -11,9 +11,38 @@ import (
 	"github.com/nelvko/lazyclash/internal/i18n"
 )
 
+func TestImportRequiresNonblankSource(t *testing.T) {
+	for _, width := range []int{60, 160} {
+		m := profileInteractionsModel(&fakeBackend{}, width, 32)
+		m.noColor = true
+		m.activate("profiles.url")
+		m, _ = update(m, tea.PasteMsg{Content: "　 "})
+		m, _ = update(m, special(tea.KeyEnter))
+		if m.busy || m.profilesUI.urlError != "" || hasAction(m.targets, "profiles.add") ||
+			strings.Contains(ansi.Strip(m.screen), "[Import]") {
+			t.Fatal("whitespace enabled submission or produced a validation error")
+		}
+		m.focus = "profiles.url.paste"
+		m, _ = update(m, special(tea.KeyTab))
+		if m.focus != "profiles.create" {
+			t.Fatalf("Tab did not skip disabled Import at %d columns: %s", width, m.focus)
+		}
+
+		m.activate("profiles.url")
+		m, _ = update(m, tea.PasteMsg{Content: "/tmp/profile.yaml"})
+		if !hasAction(m.targets, "profiles.add") || !strings.Contains(ansi.Strip(m.screen), "[Import]") {
+			t.Fatal("entering a path did not enable Import")
+		}
+		m, _ = click(m, findTarget(t, m, "profiles.url.clear"))
+		if hasAction(m.targets, "profiles.add") || !hasAction(m.targets, "profiles.create") {
+			t.Fatal("clearing the field did not leave only New available")
+		}
+	}
+}
+
 func TestProfileAddressValidationStaysWithEditableInput(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
-		for _, source := range []string{"", "1243", "ftp://example.com/sub", "https://", "https://example.com/%zz"} {
+		for _, source := range []string{"1243", "ftp://example.com/sub", "https://", "https://example.com/%zz"} {
 			t.Run(language+"/"+source, func(t *testing.T) {
 				calls := 0
 				m := profileInteractionsModel(&fakeBackend{addSubscription: func(context.Context, string, string) error {
@@ -59,8 +88,8 @@ func TestProfileAddressValidationLeavesToolbarTargetsAccurate(t *testing.T) {
 				if hit.X < 0 || hit.Y < 0 || hit.X+hit.W > width || hit.Y+hit.H > len(block.lines) {
 					t.Fatalf("validation invalidated toolbar hit region: %+v", hit)
 				}
-				if hit.ID == "profiles.add" && !strings.Contains(ansi.Strip(ansi.Cut(block.lines[hit.Y], hit.X, hit.X+hit.W)), "Add") {
-					t.Fatal("Add hit region no longer matches its rendered row")
+				if hit.ID == "profiles.add" && !strings.Contains(ansi.Strip(ansi.Cut(block.lines[hit.Y], hit.X, hit.X+hit.W)), m.tr("profiles.add")) {
+					t.Fatal("Import hit region no longer matches its rendered row")
 				}
 			}
 		})

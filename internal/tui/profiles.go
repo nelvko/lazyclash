@@ -159,18 +159,19 @@ func (m *Model) pasteProfileURL(paste tea.PasteMsg) tea.Cmd {
 	return cmd
 }
 
+func (p *profilesState) importSource() string {
+	return strings.TrimSpace(p.url.Value())
+}
+
 func (m *Model) beginProfileURLImport() tea.Cmd {
 	m.profilesUI.pasteDeadline = time.Time{}
 	m.profilesUI.pasteUnavailable = false
-	source := strings.TrimSpace(m.profilesUI.url.Value())
-	issue := ""
+	source := m.profilesUI.importSource()
 	if source == "" {
-		issue = m.tr("profiles.value_required")
-	} else if err := validateProfileSource(source); err != nil {
-		issue = m.localizeError(err)
+		return nil
 	}
-	if issue != "" {
-		m.profilesUI.urlError, m.profilesUI.urlErrorValue = issue, m.profilesUI.url.Value()
+	if err := validateProfileSource(source); err != nil {
+		m.profilesUI.urlError, m.profilesUI.urlErrorValue = m.localizeError(err), m.profilesUI.url.Value()
 		m.focus, m.profilesUI.editing = "profiles.url", true
 		return m.profilesUI.url.Focus()
 	}
@@ -223,6 +224,9 @@ func (m *Model) focusProfileControl(id string) {
 // library order. A stale numeric focus must never apply a different profile.
 func (m *Model) reconcileProfiles() {
 	m.reconcileProfileValidation()
+	if m.page == "profiles" && m.focus == "profiles.add" && m.profilesUI.importSource() == "" {
+		m.focus = "profiles.create"
+	}
 	if !m.profilesUI.pasteDeadline.IsZero() {
 		if _, id, active := m.activeInputField(); !active || id != "profiles.url" {
 			m.profilesUI.pasteDeadline = time.Time{}
@@ -287,14 +291,15 @@ func (m *Model) profileAction(id string) (bool, tea.Cmd) {
 	if id == "profiles.url.paste" && m.page == "profiles" {
 		return true, m.requestProfilePaste()
 	}
+	if id == "profiles.add" {
+		return true, m.beginProfileURLImport()
+	}
 	m.profilesUI.editing = false
 	m.profilesUI.url.Blur()
 	if card {
 		return true, m.openProfileSettings(m.profiles()[index])
 	}
 	switch id {
-	case "profiles.add":
-		return true, m.beginProfileURLImport()
 	case "profiles.create":
 		return true, m.openProfileCreate()
 	case "subscription.add":
