@@ -110,6 +110,37 @@ func TestProfileGridSingleColumnAndReflowPreserveFocus(t *testing.T) {
 	profileNavigationVisible(t, m)
 }
 
+func TestWideProfileGridNavigationAfterResize(t *testing.T) {
+	m := profileNavigationModel(240, 32)
+	profileNavigationPress(t, &m, "down", 4)
+	profileNavigationPress(t, &m, "up", 0)
+	for i := 1; i < 4; i++ {
+		profileNavigationPress(t, &m, "right", i)
+	}
+	profileNavigationPress(t, &m, "down", 3) // Only the first slot in the last row is occupied.
+	m = profileMenuRightClick(t, m, "profiles.menu.3")
+	if m.profilesUI.menuProfile != "delta" {
+		t.Fatalf("fourth-column menu opened for %q", m.profilesUI.menuProfile)
+	}
+	m, _ = update(m, special(tea.KeyEscape))
+	m, _ = update(m, tea.WindowSizeMsg{Width: 200, Height: 32})
+	if m.focus != "profile.3" {
+		t.Fatalf("reflow changed the focused card to %s", m.focus)
+	}
+	profileNavigationPress(t, &m, "up", 0)
+	profileNavigationPress(t, &m, "right", 1)
+	profileNavigationPress(t, &m, "down", 4)
+	card, empty := findTarget(t, m, "profile.4"), findTarget(t, m, "profile.2")
+	m, _ = update(m, tea.MouseClickMsg{X: empty.X + 3, Y: card.Y + 2, Button: tea.MouseRight})
+	if m.menu.open {
+		t.Fatal("empty third slot in the last row opened a card menu")
+	}
+	m = profileMenuRightClick(t, m, card.ID)
+	if m.profilesUI.menuProfile != "epsilon" {
+		t.Fatalf("last-row menu opened for %q", m.profilesUI.menuProfile)
+	}
+}
+
 func TestProfileGridNavigationReachesCardsOutsideClippedTargets(t *testing.T) {
 	m := profileNavigationModel(80, 20)
 	for _, hit := range m.targets {

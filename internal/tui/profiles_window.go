@@ -7,6 +7,12 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+const (
+	profileCardMinWidth = 48
+	profileColumnGap    = 2
+	profileMaxColumns   = 4
+)
+
 type profileGridLayout struct {
 	names                            []string
 	intro, empty                     dashboardBlock
@@ -28,10 +34,8 @@ func (m *Model) layoutProfiles(width int) profileGridLayout {
 	if !l.compact {
 		l.cardH++ // Leave one row above the title.
 	}
-	if width >= 86 {
-		l.columns = 2
-	}
-	l.cardWidth = (width - 2*(l.columns-1)) / l.columns
+	l.columns = max(1, min(profileMaxColumns, (width+profileColumnGap)/(profileCardMinWidth+profileColumnGap)))
+	l.cardWidth = (width - profileColumnGap*(l.columns-1)) / l.columns
 	l.names = m.profiles()
 	l.intro = m.profilesIntro(width)
 	if rows := l.rowCount(); rows > 0 {
@@ -58,7 +62,7 @@ func (l profileGridLayout) rowY(row int) int {
 }
 
 func (l profileGridLayout) card(index int) hitRegion {
-	return hitRegion{ID: "profile." + strconv.Itoa(index), X: (index % l.columns) * (l.cardWidth + 2),
+	return hitRegion{ID: "profile." + strconv.Itoa(index), X: (index % l.columns) * (l.cardWidth + profileColumnGap),
 		Y: l.rowY(index / l.columns), W: l.cardWidth, H: l.cardH}
 }
 

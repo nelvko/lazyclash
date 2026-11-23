@@ -87,25 +87,20 @@ type dashboardLayout struct {
 
 func dashboardGeometry(o dashboardOptions) dashboardLayout {
 	sidebar := sidebarVisible(o.Width, o.Height)
-	available := max(1, o.Width-4)
+	width := max(1, o.Width-4)
 	left := 2
 	if sidebar {
 		left = sidebarWidth + 2
-		available = max(1, o.Width-left-3)
+		width = max(1, o.Width-left-3)
 	}
-	headerX, headerWidth := left, available
-	width := min(112, available)
-	if o.Page == "proxies" || o.Page == "rules" || o.Page == "logs" || o.Page == "connections" || o.Page == "settings" {
-		width = available
-	}
+	headerX, headerWidth := left, width
 	if o.Page == "" || o.Page == "overview" {
-		width = available
 		left = (o.Width - width) / 2
 		if sidebar {
 			left = sidebarWidth + (o.Width-sidebarWidth-width)/2
 		}
 		if o.InlineInstall {
-			width, left = min(96, available), headerX
+			width, left = min(96, width), headerX
 		}
 		if !sidebar && o.InlineInstall && o.Width < 38 {
 			// The compact setup notice needs the full row at very small sizes.

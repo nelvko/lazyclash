@@ -7,7 +7,7 @@ import (
 )
 
 // profileGridKey uses the unscrolled card geometry so navigation can reach
-// cards below the viewport and follows the current one- or two-column layout.
+// cards below the viewport and follows the current column count.
 func (m *Model) profileGridKey(k tea.KeyPressMsg) bool {
 	if m.page != "profiles" || m.form != "" || m.profilesUI.editing ||
 		m.sidebarOpen || strings.HasPrefix(m.focus, "nav.") || m.quitting ||

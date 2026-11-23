@@ -32,11 +32,12 @@ func (m *Model) paintProfileRow(layout profileGridLayout, first int) dashboardBl
 		cards = append(cards, m.paintProfileCard(layout.names[index], index, layout.cardWidth, layout.compact))
 	}
 	var row dashboardBlock
+	gap := themed(strings.Repeat(" ", profileColumnGap), text, bg, false)
 	for y := range cards[0].lines {
 		line := ""
 		for column, card := range cards {
 			if column > 0 {
-				line += themed("  ", text, bg, false)
+				line += gap
 			}
 			line += card.lines[y]
 		}
@@ -44,7 +45,7 @@ func (m *Model) paintProfileRow(layout profileGridLayout, first int) dashboardBl
 	}
 	for column, card := range cards {
 		for _, hit := range card.targets {
-			hit.X += column * (layout.cardWidth + 2)
+			hit.X += column * (layout.cardWidth + profileColumnGap)
 			row.targets = append(row.targets, hit)
 		}
 	}
