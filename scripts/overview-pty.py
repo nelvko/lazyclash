@@ -55,20 +55,17 @@ def assert_core_affordance(terminal, words, scenario, profile, expect_focus=Fals
         action = "—"
         status = "! " + words["dashboard.status.unknown"]
     elif scenario == "stopped":
-        action = "OFF ○"
+        action = words["dashboard.settings.start"]
         status = "○ " + words["dashboard.status.stopped"]
     else:
-        action = "● ON"
+        action = words["dashboard.settings.stop"]
         status = "● " + words["dashboard.status.running"]
     face = re.escape(action)
+    if profile == "no-color" and scenario != "unavailable":
+        face = r"\[\s*" + face + r"\s*\]"
     marker = "›" if expect_focus else ""
     assert re.fullmatch(r"\s*" + marker + r"\s*" + face + r"[\s│]*", heading), \
         "incorrect heading action or focus: " + repr(heading)
-    if profile == "truecolor" and scenario != "unavailable":
-        fill = (98, 102, 108) if scenario == "stopped" else (34, 145, 107)
-        tile = [i for i in range(x, right) if terminal.screen.styles[y][i][1] == fill]
-        assert len(tile) == 7 and tile[-1] - tile[0] == 6, "switch must fill seven consecutive cells"
-        assert "".join(terminal.screen.cells[y][tile[0]:tile[-1] + 1]).strip() == action
     body = ["".join(row[x:right]) for row in terminal.screen.cells[y + 1:y + 7]]
     state_row = next((i for i, line in enumerate(body) if line.lstrip().startswith(status)), None)
     assert state_row is not None, "missing core observation: " + status

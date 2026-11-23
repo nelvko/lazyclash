@@ -112,10 +112,6 @@ func renderButton(label string, o buttonOptions) string {
 		}
 	}
 	face = lipgloss.NewStyle().Bold(bold).Underline(underline).Render(face)
-	return buttonFocusGutter(o) + themed(face, foreground, background, o.Dim)
-}
-
-func buttonFocusGutter(o buttonOptions) string {
 	marker := "  "
 	markerColor := focus
 	if o.Focused && !o.Disabled {
@@ -127,7 +123,7 @@ func buttonFocusGutter(o buttonOptions) string {
 	if o.Busy {
 		markerColor = muted
 	}
-	return themed(marker, markerColor, o.Surface, o.Dim)
+	return themed(marker, markerColor, o.Surface, o.Dim) + themed(face, foreground, background, o.Dim)
 }
 
 func (m *Model) buttonPlain() bool {
