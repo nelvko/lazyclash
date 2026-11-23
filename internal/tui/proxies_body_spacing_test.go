@@ -35,8 +35,9 @@ func TestProxiesBodyOmitsEmptyToolbarRows(t *testing.T) {
 				if len(toolbar.targets) == 0 || toolbar.targets[0].Y != 0 {
 					t.Fatalf("narrow mode choices retained a leading blank row: %+v", toolbar.targets)
 				}
-				if !strings.HasPrefix(body, strings.Join(toolbar.lines, "\n")) {
-					t.Fatal("mode choices no longer lead the narrow body")
+				fixed := m.proxiesFixedToolbar(m.dashboardOptions())
+				if !strings.HasPrefix(strings.Join(fixed.lines, "\n"), strings.Join(toolbar.lines, "\n")) || hasAction(hits, "mode.rule") {
+					t.Fatal("narrow modes must lead the fixed toolbar and stay outside the scrolling body")
 				}
 			}
 			assertRegions(t, hits, width, len(strings.Split(body, "\n")))

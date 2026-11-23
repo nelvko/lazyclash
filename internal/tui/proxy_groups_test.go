@@ -50,7 +50,11 @@ func TestProxiesWideGroupClickKeepsItsHeadingInPlace(t *testing.T) {
 			m, _ = click(m, group)
 			opened := findTarget(t, m, group.ID)
 			firstNode := findTarget(t, m, "node.1.0")
-			if opened.Y != group.Y || firstNode.Y != opened.Y+opened.H ||
+			gap := 0
+			if height == 40 {
+				gap = 1
+			}
+			if opened.Y != group.Y || firstNode.Y != opened.Y+opened.H+gap ||
 				findTarget(t, m, preceding.ID).Y != preceding.Y || findTarget(t, m, following.ID).Y <= following.Y {
 				t.Fatalf("expanded nodes did not push down only later groups: heading=%+v want row=%d node=%+v", opened, group.Y, firstNode)
 			}
@@ -142,7 +146,7 @@ func TestProxiesTestButtonsBindTheOwnerAndCancelPreviousGroup(t *testing.T) {
 	oldContext, generation := m.proxies.testCtx, m.proxies.generation
 	late := proxyTestMessage(m, "AUTO", "HK 01", 777)
 	for _, gi := range []int{0, 1} {
-		header := ansi.Strip(strings.Join(m.proxyGroupHeader(gi, dashboardBodyWidth(m.dashboardOptions())).lines, "\n"))
+		header := ansi.Strip(strings.Join(m.proxyGroupHeader(gi, dashboardBodyWidth(m.dashboardOptions()), m.proxyHeaderColumns()).lines, "\n"))
 		if strings.Contains(header, m.tr("proxies.cancel_test")) != (gi == 1) {
 			t.Fatalf("group %d displayed another group's cancellation action: %q", gi, header)
 		}
@@ -199,13 +203,13 @@ func TestProxiesGroupHidesInapplicableTools(t *testing.T) {
 	g := &m.snapshot.Groups[0]
 	for _, members := range [][]string{nil, {"DIRECT"}, {"DIRECT", "REJECT"}} {
 		g.All = members
-		header := m.proxyGroupHeader(0, 130)
+		header := m.proxyGroupHeader(0, 130, m.proxyHeaderColumns())
 		if hasAction(header.targets, "proxies.test.0") || hasAction(header.targets, "proxies.sort.0") != (len(members) > 1) {
 			t.Fatalf("wrong group actions for %v: %+v", members, header.targets)
 		}
 	}
 	m.proxies.search.SetValue("DIRECT")
-	if hasAction(m.proxyGroupHeader(0, 130).targets, "proxies.sort.0") {
+	if hasAction(m.proxyGroupHeader(0, 130, m.proxyHeaderColumns()).targets, "proxies.sort.0") {
 		t.Fatal("a single search match offered sorting")
 	}
 	m.openProxySort()
@@ -304,22 +308,17 @@ func TestProxiesExpansionAndSortFollowGroupNamesUntilSourceChanges(t *testing.T)
 	}
 }
 
-func TestProxiesHeaderUsesRightChevronAndClickableVerticalPadding(t *testing.T) {
-	for _, edge := range []string{"top", "bottom"} {
+func TestProxiesExpandedHeaderEndsBeforeItsGutter(t *testing.T) {
+	for _, edge := range []string{"top", "text", "gutter"} {
 		t.Run(edge, func(t *testing.T) {
 			m, _ := proxiesModel(t, 160, 70)
 			m.expandProxyGroup("AUTO")
 			m.focus = "group.0"
 			m.layout()
 			width := dashboardBodyWidth(m.dashboardOptions())
-			header := m.proxyGroupHeader(0, width)
-			if len(header.lines) != 3 {
-				t.Fatalf("wide header lacks vertical padding: rows=%d", len(header.lines))
-			}
-			for _, row := range []int{0, 2} {
-				if strings.TrimSpace(ansi.Strip(header.lines[row])) != "" {
-					t.Fatalf("header padding contains content: %q", ansi.Strip(header.lines[row]))
-				}
+			header := m.proxyGroupHeader(0, width, m.proxyHeaderColumns())
+			if len(header.lines) != 2 || strings.TrimSpace(ansi.Strip(header.lines[0])) != "" {
+				t.Fatal("expanded header should occupy the top padding and text row")
 			}
 			content := ansi.Strip(header.lines[1])
 			arrow := strings.LastIndex(content, "▾")
@@ -342,17 +341,23 @@ func TestProxiesHeaderUsesRightChevronAndClickableVerticalPadding(t *testing.T) 
 				}
 			}
 			y := top
-			if edge == "bottom" {
+			if edge == "text" {
 				y = bottom - 1
+			} else if edge == "gutter" {
+				y = bottom
+				m, _ = update(m, tea.MouseMotionMsg{X: right - 1, Y: y})
+				if m.hover != "" {
+					t.Fatalf("the gap before the grid was hoverable: %q", m.hover)
+				}
 			}
 			m, _ = update(m, tea.MouseClickMsg{X: right - 1, Y: y, Button: tea.MouseLeft})
-			if m.proxyGroupExpanded("PROXY") || !m.proxyGroupExpanded("AUTO") {
-				t.Fatalf("header %s padding did not fold only its owner: expanded=%+v bounds=%v", edge, m.proxies.expanded, []int{left, right, top, bottom})
+			if m.proxyGroupExpanded("PROXY") != (edge == "gutter") || !m.proxyGroupExpanded("AUTO") {
+				t.Fatalf("clicking %s changed the wrong group: expanded=%+v bounds=%v", edge, m.proxies.expanded, []int{left, right, top, bottom})
 			}
 		})
 	}
 	m, _ := proxiesModel(t, 160, 20)
-	if rows := len(m.proxyGroupHeader(0, dashboardBodyWidth(m.dashboardOptions())).lines); rows != 1 {
+	if rows := len(m.proxyGroupHeader(0, dashboardBodyWidth(m.dashboardOptions()), m.proxyHeaderColumns()).lines); rows != 1 {
 		t.Fatalf("short window retained padded group headings: rows=%d", rows)
 	}
 }

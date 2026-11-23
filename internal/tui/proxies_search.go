@@ -17,18 +17,21 @@ func (m *Model) proxySearchQuery() string {
 	return strings.ToLower(strings.TrimSpace(m.proxies.search.Value()))
 }
 
-func proxySearchMatchesGroup(query string, group mihomo.Group) bool {
-	return strings.Contains(strings.ToLower(group.Name), query) || strings.Contains(strings.ToLower(group.Type), query)
+func (m *Model) proxySearchMatchesGroup(query string, group mihomo.Group) bool {
+	if query == "" || strings.Contains(strings.ToLower(group.Name), query) || strings.Contains(strings.ToLower(group.Type), query) {
+		return true
+	}
+	kind := proxyGroupConfigType(group.Type)
+	return kind != "" && (strings.Contains(kind, query) || strings.Contains(strings.ToLower(m.tr("proxies.type."+kind)), query))
 }
 
-func (m *Model) proxyMemberMatches(group mihomo.Group, node string) bool {
-	query := m.proxySearchQuery()
-	if query == "" || proxySearchMatchesGroup(query, group) || strings.Contains(strings.ToLower(node), query) {
+func (m *Model) proxySearchMatchesNode(query, node string) bool {
+	if strings.Contains(strings.ToLower(node), query) {
 		return true
 	}
 	if _, reference, ok := m.proxyGroup(node); ok {
 		// A group's current route is an observation, not the reference's name.
-		return strings.Contains(strings.ToLower(reference.Type), query)
+		return m.proxySearchMatchesGroup(query, reference)
 	}
 	proxy := m.snapshot.Proxies[node]
 	protocol := proxy.Type
@@ -38,13 +41,12 @@ func (m *Model) proxyMemberMatches(group mihomo.Group, node string) bool {
 	return strings.Contains(strings.ToLower(protocol), query)
 }
 
-func (m *Model) proxyGroupMatches(group mihomo.Group) bool {
-	query := m.proxySearchQuery()
-	if proxySearchMatchesGroup(query, group) {
+func (m *Model) proxyGroupMatches(query string, group mihomo.Group) bool {
+	if m.proxySearchMatchesGroup(query, group) {
 		return true
 	}
 	for _, node := range group.All {
-		if m.proxyMemberMatches(group, node) {
+		if m.proxySearchMatchesNode(query, node) {
 			return true
 		}
 	}
@@ -135,7 +137,7 @@ func (m *Model) proxySearchKey(key tea.KeyPressMsg) tea.Cmd {
 			}
 			var index int
 			if _, err := fmt.Sscanf(hit.ID, "group.%d", &index); err == nil &&
-				(proxySearchMatchesGroup(query, m.snapshot.Groups[index]) || !m.proxyGroupExpanded(m.snapshot.Groups[index].Name)) {
+				(m.proxySearchMatchesGroup(query, m.snapshot.Groups[index]) || !m.proxyGroupExpanded(m.snapshot.Groups[index].Name)) {
 				break
 			}
 		}
@@ -187,7 +189,18 @@ func (m *Model) proxySearchBlock(width int) dashboardBlock {
 	return m.searchField("proxies.search", m.tr("proxies.search_placeholder"), m.proxies.search, width, false)
 }
 
+func (m *Model) proxyModeRows(width int) int {
+	if m.width >= 50 {
+		return 0
+	}
+	actions := m.proxyModeActions()
+	perRow := max(1, width/proxyModeSegmentWidth(actions))
+	return (len(actions) + perRow - 1) / perRow
+}
+
 func (m *Model) proxyFixedRows(o dashboardOptions) int {
+	g := dashboardGeometry(o)
+	modeRows := m.proxyModeRows(g.width)
 	rows, groupRows := 0, 0
 	if m.proxySearchVisible() {
 		rows = 1
@@ -195,32 +208,32 @@ func (m *Model) proxyFixedRows(o dashboardOptions) int {
 	if m.proxyNarrowGroupLabelVisible() {
 		groupRows = 1
 	}
-	height := dashboardGeometry(o).height
+	height := g.height - modeRows
 	if height >= rows+groupRows+2 {
-		return rows + groupRows
+		return modeRows + rows + groupRows
 	}
 	if height >= 3 {
-		return groupRows
+		return modeRows + groupRows
 	}
-	return 0
+	return modeRows
 }
 
-func (m *Model) proxySearchFixed(rows int) bool {
-	groupRows := 0
+func (m *Model) proxySearchFixed(o dashboardOptions) bool {
+	rows := m.proxyModeRows(dashboardBodyWidth(o))
 	if m.proxyNarrowGroupLabelVisible() {
-		groupRows = 1
+		rows++
 	}
-	return m.proxySearchVisible() && rows > groupRows
+	return m.proxySearchVisible() && o.BodyTopRows > rows
 }
 
 func (m *Model) proxiesFixedToolbar(o dashboardOptions) dashboardBlock {
-	g := dashboardGeometry(o)
-	var bar dashboardBlock
-	if m.proxySearchFixed(o.BodyTopRows) {
-		bar = m.proxySearchBlock(g.width)
+	width := dashboardBodyWidth(o)
+	bar := m.proxiesToolbar(width)
+	if m.proxySearchFixed(o) {
+		bar.append(m.proxySearchBlock(width))
 	}
 	if o.BodyTopRows > len(bar.lines) && m.proxyNarrowGroupLabelVisible() {
-		bar.lines = append(bar.lines, themed(cellPad(m.tr("proxies.search_group", clean(m.proxies.activeGroup)), g.width), accent, bg, false))
+		bar.lines = append(bar.lines, themed(cellPad(m.tr("proxies.search_group", clean(m.proxies.activeGroup)), width), accent, bg, false))
 	}
 	return bar
 }

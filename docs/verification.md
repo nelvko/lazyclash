@@ -1,5 +1,13 @@
 # 验证入口
 
+## 代理组类型与路由模式按钮（2026-11-23）
+
+真实 PTY 使用内存后端，在中文真彩、英文真彩和英文无色终端中检查了 160×45、53×20、40×16 和 20×16 四种尺寸。每种组合记录规则、全局和直连三个按钮的坐标，用原坐标连续切换六次。72 次切换的后端记录与点击顺序一致，按钮的行、列和宽度均保持稳定，每次确认后的焦点都落在刚点击的分段。20 列时直连按钮固定在第二行。另在中英文 160×45 和 40×24 的夹具中模拟模式请求延迟 2.2 秒后返回错误，错误通知可见时仍可点击原位置的直连按钮。
+
+32 列的中英文组目录均能显示五种策略组类型。宽屏验证了类型悬停、纯数字计数、首排卡片前留白的点击边界，以及多组的可见成员范围。终端截图保存在 `.test-artifacts/proxy-group-labels/`，其中 `pty-final-focus/zh-Hans/truecolor/group-header-hover.png` 展示组头，`pty-final-focus/zh-Hans/truecolor/mode-switches/direct-20x16.png` 展示换行后的模式控件。
+
+隔离源码通过 `make check build`、八项 Python 测试，以及专用虚拟机 `lazyclash-e2e` 上的 Linux/arm64 全套测试。
+
 ## 连接详情浮窗、历史清理和默认排序（2026-11-22）
 
 中文真彩和英文无色 PTY 用 48 条连接验证了关闭操作。在列表按 `x` 打开详情，随后再按 `x`、`y`，经过两次采样仍有 48 条活跃连接。点击「关闭此连接」后，后端恰好收到一次针对所选 ID 的关闭请求。截图位于 `.test-artifacts/connection-direct-close/pty/20261122-191308-7e7ba7/zh-Hans/truecolor/`，其中 `review-single-connection.png` 展示默认焦点，`direct-close-result.png` 展示关闭结果。

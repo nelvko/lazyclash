@@ -39,7 +39,8 @@ func TestProxiesPTYFixture(t *testing.T) {
 		MaxTests   int               `json:"max_tests"`
 		Selected   map[string]string `json:"selected"`
 		Requests   map[string]int    `json:"requests,omitempty"`
-	}{b.selections, b.modes, b.tests, b.canceled, b.maxTests, b.selectedLocked(), b.delayRequests})
+		ModeWrites []string          `json:"mode_writes,omitempty"`
+	}{b.selections, b.modes, b.tests, b.canceled, b.maxTests, b.selectedLocked(), b.delayRequests, b.modeWrites})
 	b.mu.Unlock()
 	if err != nil {
 		t.Fatal(err)
@@ -56,6 +57,7 @@ type proxiesPTYBackend struct {
 	maxTests                                        int
 	varyDelays                                      bool
 	delayRequests                                   map[string]int
+	modeWrites                                      []string
 }
 
 func newProxiesPTYBackend() *proxiesPTYBackend {
@@ -69,6 +71,7 @@ func newProxiesPTYBackend() *proxiesPTYBackend {
 		{Name: "BALANCE", Type: "LoadBalance", All: []string{"HK 01", "JP 01", "SG 01"}},
 		{Name: "EMPTY", Type: "Selector", All: []string{}},
 		{Name: "GLOBAL", Type: "Selector", Now: "PROXY", All: []string{"PROXY", "AUTO", "Hong Kong", "Japan", "DIRECT", "REJECT"}},
+		{Name: "CHAIN", Type: "Relay", All: []string{"HK 01", "JP 01"}},
 	}
 	proxies := make(map[string]mihomo.Proxy)
 	for _, group := range groups {
@@ -155,6 +158,7 @@ func (b *proxiesPTYBackend) SetMode(ctx context.Context, mode string) error {
 	defer b.mu.Unlock()
 	b.snapshot.Mode.Desired, b.snapshot.Mode.Actual = mode, mode
 	b.modes++
+	b.modeWrites = append(b.modeWrites, mode)
 	return nil
 }
 

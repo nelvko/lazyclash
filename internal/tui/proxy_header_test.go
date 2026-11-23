@@ -147,21 +147,18 @@ func TestProxyProvidersHeaderKeepsModeOrderAcrossSizes(t *testing.T) {
 				if provider.Y >= g.headerHeight {
 					t.Fatal("provider button escaped the fixed header")
 				}
-				if size[1] < 13 {
-					for _, mode := range []string{"rule", "global", "direct"} {
-						if !hasAction(m.contentTargets(), "mode."+mode) {
-							t.Fatal("short terminal lost an offscreen mode control")
-						}
-					}
-					assertCanvas(t, m.screen, size[0], size[1])
-					assertRegions(t, m.targets, size[0], size[1])
-					return
-				}
 				previous := hitRegion{}
+				wantWidth := 8 // six cells for Global and Direct, plus two for selection and focus.
+				if lang == i18n.Chinese {
+					wantWidth = 6
+				}
 				for _, mode := range []string{"rule", "global", "direct"} {
 					target := findTarget(t, m, "mode."+mode)
-					if previous.ID != "" && (target.Y < previous.Y || target.Y == previous.Y && target.X < previous.X+previous.W) {
-						t.Fatalf("mode choices overlap or changed order: %+v %+v", previous, target)
+					if target.W != wantWidth {
+						t.Fatalf("segment should use %d cells: %+v", wantWidth, target)
+					}
+					if previous.ID != "" && (target.Y < previous.Y || target.Y == previous.Y && target.X != previous.X+previous.W) {
+						t.Fatalf("mode segments should be adjacent and in reading order: %+v %+v", previous, target)
 					}
 					if size[0] >= 50 && (target.Y != provider.Y || target.X+target.W > provider.X) {
 						t.Fatalf("mode should precede providers in the same header row: mode=%+v providers=%+v", target, provider)
@@ -182,6 +179,61 @@ func TestProxyProvidersHeaderKeepsModeOrderAcrossSizes(t *testing.T) {
 				}
 				assertCanvas(t, m.screen, size[0], size[1])
 				assertRegions(t, m.targets, size[0], size[1])
+			})
+		}
+	}
+}
+
+func TestProxyModeAndProviderPositionsSurviveViewChanges(t *testing.T) {
+	for _, lang := range []string{i18n.English, i18n.Chinese} {
+		for _, size := range [][2]int{{20, 7}, {22, 12}, {40, 16}, {49, 24}, {50, 18}, {70, 20}, {80, 24}, {100, 20}, {115, 20}, {160, 40}} {
+			t.Run(fmt.Sprintf("%s/%dx%d", lang, size[0], size[1]), func(t *testing.T) {
+				m, _ := proxyDirectModel(t, size[0])
+				m.locale, m.height = i18n.New(lang), size[1]
+				setProxyTestGroup(&m, "")
+				m.layout()
+				var anchors []hitRegion
+				for _, id := range []string{"mode.rule", "mode.global", "mode.direct", "proxies.providers"} {
+					anchors = append(anchors, findTarget(t, m, id))
+				}
+				search := findTarget(t, m, "proxies.search-open")
+				check := func() {
+					t.Helper()
+					for _, want := range anchors {
+						if got := findTarget(t, m, want.ID); got != want {
+							t.Fatalf("%s moved in %s: got %+v want %+v", want.ID, m.snapshot.Mode.Actual, got, want)
+						}
+						if !hasAction(m.focusTargets(), want.ID) {
+							t.Fatalf("%s lost keyboard access", want.ID)
+						}
+					}
+					if m.proxiesDirect() {
+						row := strings.Split(m.screen, "\n")[search.Y]
+						cell := ansi.Strip(ansi.Cut(row, search.X, search.X+search.W))
+						if strings.TrimSpace(cell) != "" || hasAction(m.focusTargets(), search.ID) || hasAction(m.targets, search.ID) {
+							t.Fatalf("hidden search left a visible or actionable face: %q", cell)
+						}
+					} else if got := findTarget(t, m, search.ID); got != search {
+						t.Fatalf("search moved: got %+v want %+v", got, search)
+					}
+				}
+
+				// Opening a group or search adds other controls above or beside the list.
+				setProxyTestGroup(&m, "PROXY")
+				m.focus, m.scroll = "group.0", 999
+				m.layout()
+				check()
+				m.focusProxySearch()
+				m.layout()
+				check()
+				m.closeProxySearch()
+				for _, mode := range []string{"global", "direct", "rule", "direct", "global", "rule"} {
+					m = proxyDirectSetMode(t, m, mode)
+					check()
+					m.snapshot.Mode.Desired = "direct"
+					m.layout()
+					check()
+				}
 			})
 		}
 	}

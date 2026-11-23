@@ -156,12 +156,7 @@ func (m *Model) fixedContentTargets() []hitRegion {
 	g := dashboardGeometry(o)
 	var b dashboardBlock
 	if m.page == "proxies" {
-		// The group label has no actions. Logical search targets do not need
-		// another render of the complete proxy list to determine that label.
-		if !m.proxySearchFixed(o.BodyTopRows) {
-			return nil
-		}
-		b = m.proxySearchBlock(g.width)
+		b = m.proxiesFixedToolbar(o)
 	} else {
 		b = m.rulesToolbar(g.width, o.BodyTopRows)
 	}

@@ -16,6 +16,7 @@ const (
 	buttonText
 	buttonDanger
 	buttonDangerConfirm
+	buttonSegment
 )
 
 type buttonOptions struct {
@@ -91,6 +92,18 @@ func renderButton(label string, o buttonOptions) string {
 		leftPadding = 0
 	}
 	label = strings.Repeat(" ", leftPadding) + label + strings.Repeat(" ", padding-leftPadding)
+	if o.Kind == buttonSegment {
+		// Keep both cues inside the face so adjacent modes share a continuous
+		// surface. The right cell distinguishes selection from keyboard focus.
+		left, right := " ", " "
+		if o.Focused && !o.Disabled {
+			left = themed("›", focus, background, o.Dim)
+		}
+		if o.Plain && selected {
+			right = "●"
+		}
+		return themed(left+lipgloss.NewStyle().Bold(bold).Render(label)+right, foreground, background, o.Dim)
+	}
 	face := " " + label + " "
 	if o.Plain && (o.Kind != buttonText || o.Selectable) {
 		face = "[" + label + "]"

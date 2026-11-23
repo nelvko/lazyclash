@@ -133,12 +133,13 @@ func (m *Model) proxySort(group string) string {
 	return "default"
 }
 func (m *Model) proxySortable(g mihomo.Group) bool {
-	if m.proxySearchQuery() == "" {
+	query := m.proxySearchQuery()
+	if m.proxySearchMatchesGroup(query, g) {
 		return len(g.All) > 1
 	}
 	found := false
 	for _, node := range g.All {
-		if m.proxyMemberMatches(g, node) {
+		if m.proxySearchMatchesNode(query, node) {
 			if found {
 				return true
 			}
@@ -335,7 +336,7 @@ func (m *Model) proxyGroups(query string) []int {
 		} else if !m.proxyGroupInMode(g.Name) && !(len(m.proxies.history) > 0 && m.proxies.expanded[g.Name]) {
 			continue
 		}
-		if query == "" || m.proxiesNarrow() && g.Name == m.proxies.activeGroup || m.proxyGroupMatches(g) {
+		if query == "" || m.proxiesNarrow() && g.Name == m.proxies.activeGroup || m.proxyGroupMatches(query, g) {
 			out = append(out, i)
 		}
 	}
@@ -343,8 +344,10 @@ func (m *Model) proxyGroups(query string) []int {
 }
 func (m *Model) proxyMembers(g mihomo.Group) []int {
 	indices := make([]int, 0, len(g.All))
+	query := m.proxySearchQuery()
+	all := m.proxySearchMatchesGroup(query, g)
 	for i, node := range g.All {
-		if m.proxyMemberMatches(g, node) {
+		if all || m.proxySearchMatchesNode(query, node) {
 			indices = append(indices, i)
 		}
 	}

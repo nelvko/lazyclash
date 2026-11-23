@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/i18n"
@@ -210,6 +211,73 @@ func TestProxiesDirectRoundTripRestoresBrowsingAcrossGenerationChanges(t *testin
 	}
 }
 
+func TestProxiesExplicitModeSwitchKeepsActivatedControlFocused(t *testing.T) {
+	for _, width := range []int{40, 160} {
+		for _, input := range []string{"mouse", "keyboard"} {
+			t.Run(fmt.Sprintf("%s/%d", input, width), func(t *testing.T) {
+				m, _ := proxiesModel(t, width, 12)
+				setProxyTestGroup(&m, "PROXY")
+				m.focus, m.scroll = "mode.global", 100
+				m.layout()
+				scroll := m.scroll
+				if scroll == 0 {
+					t.Fatal("fixture has no scrolled members")
+				}
+				for _, mode := range []string{"direct", "rule", "global"} {
+					id := "mode." + mode
+					var cmd tea.Cmd
+					if input == "mouse" {
+						m, cmd = click(m, findTarget(t, m, id))
+					} else {
+						for range len(m.focusTargets()) {
+							if m.focus == id {
+								break
+							}
+							m, _ = update(m, special(tea.KeyTab))
+						}
+						if m.focus != id {
+							t.Fatalf("Tab did not reach %s", id)
+						}
+						m, cmd = update(m, special(tea.KeyEnter))
+					}
+					m, _ = update(m, actionCmd(t, cmd)())
+					if m.focus != id || m.snapshot.Mode.Actual != mode {
+						t.Fatalf("activated %s, got focus %q and mode %q", id, m.focus, m.snapshot.Mode.Actual)
+					}
+					if mode == "rule" && (m.scroll != scroll || !m.proxyGroupExpanded("PROXY")) {
+						t.Fatalf("return to Rule lost the original list: scroll=%d (want %d), expanded=%v", m.scroll, scroll, m.proxies.expanded)
+					}
+					m, cmd = update(m, special(tea.KeyEnter))
+					m, _ = update(m, actionCmd(t, cmd)())
+					if m.snapshot.Mode.Actual != mode || m.focus != id {
+						t.Fatalf("repeated Enter changed the last choice: mode=%s focus=%s", m.snapshot.Mode.Actual, m.focus)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestProxiesBackgroundModeObservationRestoresBrowsingFocus(t *testing.T) {
+	m, _ := proxiesModel(t, 160, 24)
+	m.focus = "node.0.2"
+	m.layout()
+	changeMode := func(mode string) {
+		snapshot := m.snapshot
+		snapshot.Mode.Desired, snapshot.Mode.Actual = mode, mode
+		m, _ = update(m, coreStatusMsg{generation: m.statusGeneration, snapshot: snapshot})
+	}
+	changeMode("direct")
+	// A focus change alone did not request a switch. A live observation must
+	// still restore the browsing position saved before entering Direct.
+	m.focus = "mode.rule"
+	m.layout()
+	changeMode("rule")
+	if m.focus != "node.0.2" || !m.proxyGroupExpanded("PROXY") {
+		t.Fatalf("focus on an unactivated control displaced browsing: focus=%s expanded=%v", m.focus, m.proxies.expanded)
+	}
+}
+
 func TestProxiesDirectReturnDoesNotRestoreAnotherSource(t *testing.T) {
 	for _, source := range []string{"profile", "process", "version"} {
 		t.Run(source, func(t *testing.T) {
@@ -374,7 +442,7 @@ func TestProxiesDirectMessageCentersInRemainingBody(t *testing.T) {
 							if len(lines) > g.height || m.scroll != 0 {
 								t.Fatalf("Direct empty state overflowed its available height: rows=%d height=%d scroll=%d", len(lines), g.height, m.scroll)
 							}
-							prefixRows := len(m.proxiesToolbar(g.width).lines)
+							prefixRows := 0 // Fixed mode controls precede the scrolling body.
 							for _, notice := range notices {
 								wrapped := strings.Split(wrapText(notice, g.width), "\n")
 								for i, want := range wrapped {

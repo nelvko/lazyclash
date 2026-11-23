@@ -73,9 +73,13 @@ func notificationLayout(o dashboardOptions) []notificationOverlay {
 		now = time.Now()
 	}
 	items := make([]notificationItem, 0, len(o.Notifications))
+	modeFeedback := false
 	for _, item := range o.Notifications {
 		if !item.Silent && (item.showAfter.IsZero() || !now.Before(item.showAfter)) {
 			items = append(items, item)
+			if o.Page == "proxies" && item.Page == "proxies" && strings.HasPrefix(item.Key, "mode.") {
+				modeFeedback = true
+			}
 		}
 	}
 	o.Notifications = items
@@ -103,6 +107,21 @@ func notificationLayout(o dashboardOptions) []notificationOverlay {
 	x := o.Width - right - width
 	bottom := min(dashboardContentBottom(o), max(g.y, min(15, o.Height/2)))
 	inputTargets := notificationInputs(o, g)
+	if modeFeedback {
+		// Route changes can be retried from the fixed controls, including
+		// when they wrap on a small terminal. Keep that whole strip exposed.
+		y = g.y
+		for _, input := range inputTargets {
+			if input.Y == y {
+				y += input.H
+			}
+		}
+		if y >= dashboardContentBottom(o) {
+			// Only the short header's separating row is free. A single
+			// overflow entry keeps the notification list accessible.
+			y, bottom = g.headerHeight, g.headerHeight+1
+		}
+	}
 	for _, input := range inputTargets {
 		if input.X < x+width && input.X+input.W > x && input.Y >= y {
 			bottom = min(bottom, input.Y)

@@ -208,17 +208,20 @@ func TestWrappedPageBodyTargetsMatchTheirPaintedRows(t *testing.T) {
 		m.page = "proxies"
 		body, hits := m.pageBody(width)
 		lines := strings.Split(body, "\n")
-		found := false
+		headerRow := -1
 		for _, r := range hits {
 			if r.ID == "group.0" {
-				found = true
-				if r.Y >= len(lines) || !strings.Contains(ansi.Strip(lines[r.Y]), "alpha") {
+				if headerRow < 0 {
+					headerRow = r.Y
+				}
+				if r.Y < headerRow || r.Y+r.H > headerRow+2 || r.Y+r.H > len(lines) {
 					t.Fatalf("group target row wrong at %d columns: %+v", width, r)
 				}
 			}
 		}
-		if !found {
-			t.Fatal("missing group target")
+		if headerRow < 0 || headerRow+1 >= len(lines) || !strings.Contains(ansi.Strip(lines[headerRow]), "alpha") ||
+			!strings.Contains(ansi.Strip(lines[headerRow+1]), "DIRECT") {
+			t.Fatalf("group targets do not align with the name and route at %d columns: %q", width, body)
 		}
 		m.page = "profiles"
 		m.snapshot.Profiles = []string{"work"}

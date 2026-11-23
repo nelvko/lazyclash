@@ -18,6 +18,7 @@ from tui_layout import SIDEBAR_MIN_WIDTH, sidebar_visible
 
 
 MEMBERS = ("AUTO", "HK 01", "HK 02", "JP 01", "SG 01", "US 01", "DIRECT", "REJECT")
+MODES = ("rule", "global", "direct")
 CARD_META = re.compile(r"Shadowsocks|Trojan|VLESS|Hysteria2|VMess|Proxy group|策略组|\bDirect\b|\bReject\b")
 
 
@@ -40,26 +41,35 @@ def labels(language):
     return result
 
 
-def proxy_header_positions(terminal, words):
-    # Header appearance can include a divider or just background spacing.
-    # Locate its actual controls instead of using a decorative stroke as a
-    # semantic boundary. All fixed-header controls fit in the first five rows.
-    def position(label):
-        for y, row in enumerate(terminal.screen.cells[:5]):
-            for x, cell in enumerate(row):
-                if cell and "".join(row[x:]).startswith(label):
-                    return x, y
-        raise AssertionError("Header control is missing: " + label + "\n" + terminal.screen.text())
+def control_position(terminal, label):
+    # Include wrapped modes in the fixed rows of a narrow terminal.
+    for y, row in enumerate(terminal.screen.cells[:8]):
+        for x, cell in enumerate(row):
+            if cell and "".join(row[x:]).startswith(label):
+                return x, y
+    raise AssertionError("Missing proxy control: " + label + "\n" + terminal.screen.text())
 
-    title = position(words["dashboard.page.proxies"])
+
+def proxy_mode_faces(terminal, words):
+    labels = [words["dashboard.mode." + mode] for mode in MODES]
+    positions = [control_position(terminal, label) for label in labels]
+    widths = [cell_offset(terminal.screen.cells[y][x:], len(label))
+              for (x, y), label in zip(positions, labels)]
+    longest = max(widths)
+    return [(x - 1 - (longest - width) // 2, y, longest + 2)
+            for (x, y), width in zip(positions, widths)]
+
+
+def proxy_header_positions(terminal, words):
+    title = control_position(terminal, words["dashboard.page.proxies"])
     try:
-        provider = position(words["providers.title.proxies"])
+        provider = control_position(terminal, words["providers.title.proxies"])
     except AssertionError:
-        provider = position("≡")
+        provider = control_position(terminal, "≡")
     modes = []
     bottom = max(title[1], provider[1])
     if terminal.screen.columns >= 50:
-        modes = [position(words["dashboard.mode." + mode]) for mode in ("rule", "global", "direct")]
+        modes = [control_position(terminal, words["dashboard.mode." + mode]) for mode in MODES]
         bottom = max(bottom, *(y for _, y in modes))
     return title, modes, provider, bottom
 
@@ -73,19 +83,22 @@ def assert_proxy_header(terminal, words, direct=False):
     assert not re.search(r"\b\d+\s+groups\b|\d+\s*个代理组", header), "proxy header retained the group total"
     if terminal.screen.columns >= 50:
         assert len({y for _, y in modes + [provider]}) == 1, "mode choices and provider action do not share a header row"
-        assert [x for x, _ in modes] == sorted(x for x, _ in modes), "routing mode order changed"
         direct_x, direct_y = modes[-1]
-        direct_width = cell_offset(terminal.screen.cells[direct_y][direct_x:], len(words["dashboard.mode.direct"]))
         row = terminal.screen.cells[direct_y]
+        faces = proxy_mode_faces(terminal, words)
+        assert all(x + width == next_x for (x, _, width), (next_x, _, _) in zip(faces, faces[1:])), (
+            "mode segments are not contiguous and equal-width: %r" % (faces,))
+        direct_width = cell_offset(row[direct_x:], len(words["dashboard.mode.direct"]))
         search_x = next((x for x in range(direct_x + direct_width, provider[0])
-                         if "".join(row[x:]).startswith(words["proxies.search"]) or row[x] == "/"), None)
+                         if row[x] and ("".join(row[x:]).startswith(words["proxies.search"]) or row[x] == "/")), None)
         if direct:
             assert search_x is None, "Direct mode retained a search action"
         else:
             assert search_x is not None, "search action is missing between routing modes and providers"
-        action_x = provider[0] if direct else search_x
-        gap = action_x - direct_x - direct_width
-        assert 8 <= gap <= 10, "mode/action spacing is not the compact four-cell gap: %d" % gap
+            # A utility label starts three cells into its own button. Direct
+            # reserves the Search slot so that the mode faces cannot move.
+            x, _, width = faces[-1]
+            assert search_x - 3 - (x + width) == 4, "mode/search spacing changed"
         provider_label = words["providers.title.proxies"]
         if not "".join(terminal.screen.cells[provider[1]][provider[0]:]).startswith(provider_label):
             provider_label = "≡"
@@ -159,7 +172,7 @@ def chosen(terminal, name):
 
 def wait_mode(terminal, label):
     def selected():
-        if re.search(r"<\s*" + re.escape(label) + r"\s*>", terminal.screen.text()):
+        if re.search(re.escape(label) + r"[ \t]*●", terminal.screen.text()):
             return True
         for y, row in enumerate(terminal.screen.cells):
             for x, cell in enumerate(row):
@@ -196,6 +209,11 @@ def candidate_position(terminal, name, start_row=0):
 
 def click_cell(terminal, x, y):
     terminal.key(("\x1b[<0;%d;%dM\x1b[<0;%d;%dm" % (x + 1, y + 1, x + 1, y + 1)).encode())
+
+
+def hover_cell(terminal, x, y):
+    terminal.key(("\x1b[<35;%d;%dM" % (x + 1, y + 1)).encode())
+    terminal.settle()
 
 
 def wheel_body(terminal, down=True):
@@ -317,31 +335,52 @@ def assert_header_hover(terminal, name, words, profile):
     terminal.settle()
     x, y, arrow, line = group_header(terminal, name)
     left, right = x - 2, arrow + 2
-    badge = re.search(r"(\d+)[ \t]+[▸▾][ \t]*$", line)
-    assert badge and y > 0, "header lacks right-aligned count and disclosure"
-    row = terminal.screen.cells[y]
-    excluded = set(range(cell_offset(row, badge.start(1)) - 1, cell_offset(row, badge.end(1)) + 1))
-    points = [(left, y - 1), (x + len(name) + 2, y), (right - 1, y + 1)]
+    count = re.search(r"(\d+)[ \t]+[▸▾][ \t]*$", line)
+    assert count and y > 0, "header lacks right-aligned count and disclosure"
+    cells = terminal.screen.cells[y]
+    points = [(left, y - 1), (x + len(name) + 2, y), (cell_offset(cells, count.start(1)), y)]
     for key in ("proxies.sort.delay", "proxies.test_group"):
         button_offset = line.find(words[key])
         assert button_offset >= 0, "expanded header lost its action: " + words[key]
-        points.append((cell_offset(row, button_offset), y))
-    terminal.key(b"\x1b[<35;1;1M")
-    terminal.settle()
+        points.append((cell_offset(cells, button_offset), y))
+    hover_cell(terminal, 0, 0)
     normal = terminal.screen.styles[y - 1][left][1]
+    click_cell(terminal, x, y + 1)
+    terminal.settle()
+    assert group_header(terminal, name)[3].rstrip().endswith("▾"), "clicking the gutter folded the group"
     for hx, hy in points:
-        terminal.key(("\x1b[<35;%d;%dM" % (hx + 1, hy + 1)).encode())
-        terminal.settle()
+        hover_cell(terminal, hx, hy)
         assert group_header(terminal, name)[3].rstrip().endswith("▾"), "hover folded its group"
         if profile == "no-color":
             continue
         hover = terminal.screen.styles[y - 1][left][1]
         assert hover != normal, "header padding did not receive hover background"
-        for row in range(y - 1, y + 2):
+        for row in (y - 1, y):
             for column in range(left, right):
-                if row == y and column in excluded:
-                    continue  # The numeric badge deliberately retains its panel.
                 assert terminal.screen.styles[row][column][1] == hover, "header hover surface has an uncolored gap at %d,%d" % (column, row)
+        assert all(terminal.screen.styles[y + 1][c][1] == normal for c in range(left, right)), "gutter shares header hover"
+
+
+def assert_group_types(terminal, words):
+    type_ends, count_ends, disclosure = set(), set(), set()
+    for name, kind in (("PROXY", "select"), ("AUTO", "url-test"), ("Hong Kong", "fallback"),
+                       ("BALANCE", "load-balance"), ("CHAIN", "relay")):
+        _, y, arrow, line = group_header(terminal, name)
+        type_label = words["proxies.type." + kind]
+        match = re.search(re.escape(type_label) + r"\s+(\d+)\s+▸\s*$", line)
+        assert match, "missing type before the count for %s: %s" % (name, line)
+        cells = terminal.screen.cells[y]
+        type_ends.add(cell_offset(cells, match.start() + len(type_label)))
+        count_ends.add(cell_offset(cells, match.end(1)))
+        disclosure.add(arrow)
+        type_x = cell_offset(cells, match.start())
+        count_x = cell_offset(cells, match.start(1))
+        assert terminal.screen.styles[y][count_x][1] == terminal.screen.styles[y][type_x][1], "count has a separate panel: " + name
+        hover_cell(terminal, type_x, y)
+        terminal.wait("type: " + kind)
+        if kind == "relay":
+            terminal.wait("已弃用" if type_label == "链式代理" else "deprecated")
+    assert len(type_ends) == len(count_ends) == len(disclosure) == 1, "group suffix columns do not align"
 
 
 def click_candidate(terminal, name):
@@ -490,6 +529,9 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.settle()
         assert terminal.screen.text() == before, "removed refresh shortcuts changed the proxy page"
         # Clicking expands candidates without moving the heading.
+        assert_group_types(terminal, words)
+        preview.capture(terminal, output, "directory-relay-type", args)
+        hover_cell(terminal, 0, 0)
         open_group(terminal, "PROXY")
         terminal.wait("Shadowsocks")
         terminal.wait("Hysteria2")
@@ -540,7 +582,7 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.key(b"\x1b[H")
         terminal.key(b"\x1b[C")
         enter_reference(terminal, "AUTO", words["proxies.enter"])
-        terminal.wait(words["proxies.auto"])
+        terminal.wait(words["proxies.type.url-test"])
         terminal.settle()
         auto_row = group_header(terminal, "AUTO")[1]
         jp_x, jp_y = candidate_position(terminal, "JP 01", auto_row + 1)
@@ -768,6 +810,58 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.cleanup()
 
 
+def exercise_mode_positions(preview, binary, output, language, profile, args):
+    output.mkdir(parents=True, exist_ok=True)
+    words = labels(language)
+    report = output / "calls.json"
+    terminal = fixture_terminal(preview, binary, report, language, profile)
+    sizes = ((160, 45), (53, 20), (40, 16), (20, 16))
+    sequence = ("global", "direct", "rule", "direct", "global", "rule")
+    geometry = {}
+    try:
+        terminal.wait("v1.19.33")
+        terminal.key(b"2")
+        terminal.wait("PROXY")
+        for width, height in sizes:
+            terminal.resize(max(40, width), height)
+            terminal.settle()
+            open_group(terminal, "PROXY")
+            if width < 50:
+                terminal.wait(words["proxies.search_group"] % "PROXY")
+            terminal.resize(width, height)
+            terminal.settle()
+            faces = proxy_mode_faces(terminal, words)
+            if width == 20:
+                assert len({y for _, y, _ in faces}) > 1, "narrow fixture did not wrap its mode segments"
+            geometry["%dx%d" % (width, height)] = dict(zip(MODES, faces))
+            for i, mode in enumerate(sequence):
+                x, y, w = faces[MODES.index(mode)]
+                # Alternate original left and right edges. Never search for a
+                # relocated control or dismiss a notification between clicks.
+                click_cell(terminal, x if i < 3 else x + w - 1, y)
+                wait_mode(terminal, words["dashboard.mode." + mode])
+                terminal.settle()
+                observed = proxy_mode_faces(terminal, words)
+                assert observed == faces, "mode controls moved at %dx%d after %s: %r -> %r" % (
+                    width, height, mode, faces, observed)
+                assert terminal.screen.cells[y][x] == "›", "clicked mode lost keyboard focus: " + mode
+                if width in (160, 20) and i == 1:
+                    preview.capture(terminal, output, "direct-%dx%d" % (width, height), args)
+        terminal.exit()
+        calls = json.loads(report.read_text())
+        assert calls["mode_writes"] == list(sequence) * len(sizes), calls
+        assert calls["selections"] == calls["tests"] == 0, calls
+        (output / "faces.json").write_text(json.dumps(geometry, indent=2) + "\n")
+        print("PASS %s/%s: %d mode writes from fixed coordinates, with wrapped modes and group context" %
+              (language, profile, len(calls["mode_writes"])), flush=True)
+    except Exception:
+        (output / "failed.txt").write_text(terminal.screen.text() + "\n")
+        (output / "failed.ansi").write_bytes(terminal.raw)
+        raise
+    finally:
+        terminal.cleanup()
+
+
 def exercise_groups(preview, binary, output, args):
     output.mkdir(parents=True, exist_ok=True)
     language, profile = "zh-Hans", "truecolor"
@@ -826,6 +920,13 @@ def exercise_groups(preview, binary, output, args):
         assert group_header(terminal, "AUTO")[1] == auto_y, "opening a second group moved its heading"
         assert all(group_header(terminal, name)[3].rstrip().endswith("▾") for name in ("PROXY", "AUTO")), "opening a second group collapsed the first"
         assert not any(words["proxies.search_group"] % name in terminal.screen.text() for name in ("PROXY", "AUTO")), "visible groups retained a sticky label"
+        terminal.resize(120, 28)
+        terminal.settle()
+        prefix, suffix = (words["proxies.range.expanded"] % (2, "@")).split("@")
+        assert re.search(re.escape(prefix) + r"\d+–\d+ / 12" + re.escape(suffix), terminal.screen.text()), "combined range omits its two groups"
+        preview.capture(terminal, output, "two-group-member-range", args)
+        terminal.resize(200, 50)
+        terminal.settle()
         click_group_sort(terminal, words, "AUTO", "name")
         terminal.key(b"\x1b[H")
         terminal.settle()
@@ -946,7 +1047,9 @@ def main():
     preview.configure_fonts(parser, args)
     for language in args.lang or ("en", "zh-Hans"):
         for profile in args.profile or ("truecolor", "256", "no-color"):
-            exercise(preview, args.binary, args.output.resolve() / language / profile, language, profile, args)
+            output = args.output.resolve() / language / profile
+            exercise(preview, args.binary, output, language, profile, args)
+            exercise_mode_positions(preview, args.binary, output / "mode-switches", language, profile, args)
     exercise_groups(preview, args.binary, args.output.resolve() / "multi-group", args)
     exercise_node_delay(preview, args.binary, args.output.resolve() / "node-delay", args)
 

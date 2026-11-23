@@ -64,12 +64,16 @@ func TestProxyModeSelectionShowsSavedPreferenceAndObservedMismatch(t *testing.T)
 		m, _ := proxiesModel(t, 160, 40)
 		m.locale, m.noColor = i18n.New(language), true
 		m.snapshot.Mode.Desired, m.snapshot.Mode.Actual = "rule", "global"
+		m.focus = "mode.global"
 		block := m.proxyModes(80)
 		body := strings.Join(block.lines, "\n")
 		for _, mode := range []string{"rule", "global", "direct"} {
 			painted := settingsPaintedTarget(t, body, block.targets, "mode."+mode)
-			if strings.Contains(painted, "<") != (mode == "rule") {
+			if strings.HasSuffix(painted, "●") != (mode == "rule") {
 				t.Fatalf("%s: mode selection did not reflect the saved preference: %q", language, painted)
+			}
+			if strings.HasPrefix(painted, "›") != (mode == "global") {
+				t.Fatalf("%s: mode focus was not independent of selection: %q", language, painted)
 			}
 		}
 		body, _ = m.proxiesBody(120)
@@ -93,7 +97,7 @@ func TestBusyModeControlsKeepSelectionWithoutHitRegions(t *testing.T) {
 	m, _ := proxiesModel(t, 160, 40)
 	m.noColor, m.busy = true, true
 	block := m.proxyModes(80)
-	if len(block.targets) != 0 || strings.Count(ansi.Strip(strings.Join(block.lines, "\n")), "<") != 1 {
+	if len(block.targets) != 0 || strings.Count(ansi.Strip(strings.Join(block.lines, "\n")), "●") != 1 {
 		t.Fatal("busy proxy mode controls lost their saved selection or retained actionable targets")
 	}
 }

@@ -452,6 +452,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 	case tea.WindowSizeMsg:
+		if strings.HasPrefix(m.hover, proxyTypeTarget) {
+			m.hover = ""
+		}
 		if m.page == "proxies" && !m.proxiesNarrow() && max(1, v.Width) < sidebarMinWidth {
 			if _, group, _, ok := m.proxyAtFocus(); ok && m.proxyGroupExpanded(group.Name) {
 				m.proxies.activeGroup = group.Name
@@ -695,6 +698,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.resetLogsView()
 		}
 	case tea.KeyPressMsg:
+		if strings.HasPrefix(m.hover, proxyTypeTarget) {
+			m.hover = ""
+		}
 		key := v.String()
 		if key == "ctrl+c" {
 			cmd = m.requestQuit()
@@ -1046,7 +1052,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	inline := m.syncInlineInstall()
 	notification := m.syncNotification()
 	m.reconcileProfiles()
+	previousFocus := m.focus
 	nextProxies := m.syncProxies()
+	if result, ok := msg.(resultMsg); ok && result.actionSucceeded && result.hasSnapshot && m.page == "proxies" &&
+		previousFocus == m.notification.operation.Key && previousFocus == "mode."+m.snapshot.Mode.Actual {
+		// An explicitly activated mode keeps Enter while its list restores its scroll.
+		m.focus = previousFocus
+	}
 	m.reconcileMenu()
 	var completion tea.Cmd
 	if m.pathForm() {
@@ -1466,6 +1478,9 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 		return nil
 	}
 	if _, wheel := event.(tea.MouseWheelMsg); wheel {
+		if strings.HasPrefix(m.hover, proxyTypeTarget) {
+			m.hover = ""
+		}
 		if k.Button != tea.MouseWheelUp && k.Button != tea.MouseWheelDown {
 			return nil
 		}
@@ -1537,6 +1552,10 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 					}
 					if m.page == "proxies" && r.ID == "proxies.search-open" {
 						return m.focusProxySearch()
+					}
+					if index, ok := strings.CutPrefix(r.ID, proxyTypeTarget); ok {
+						r.ID = "group." + index
+						m.hover = r.ID
 					}
 					m.focus = r.ID
 					if handled, cmd := m.profileCardClick(r.ID); handled {
@@ -1672,9 +1691,9 @@ func (m *Model) renderLayout() {
 	m.scroll = min(m.scroll, max(0, total-g.height))
 	m.screen, m.targets = base, hits
 	if !o.Dim && !m.sidebarOpen && !m.menu.open {
-		m.decorateContentFocus(g, notificationLayout(o))
-	}
-	if !o.Dim && !m.sidebarOpen && !m.menu.open {
+		notifications := notificationLayout(o)
+		m.decorateContentFocus(g, notifications)
+		m.showProxyTypeHint(g, notifications)
 		m.rememberPageView()
 	}
 	if strings.HasPrefix(m.focus, "notification.") && !m.notification.panel.open && !o.Dim && !m.sidebarOpen {

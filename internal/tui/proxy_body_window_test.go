@@ -50,6 +50,7 @@ func TestProxyMemberRangeCountsVisibleTextRatherThanPadding(t *testing.T) {
 		start, end         int
 		wantGroup, members string
 	}{
+		{"gutter above visible names", first - 1, first + 2, "PROXY", "1–3 / 8"},
 		{"top padding", first, first + 1, "", ""},
 		{"name only", first + 1, first + 2, "PROXY", "1–3 / 8"},
 		{"protocol only", first + 2, first + 3, "PROXY", "1–3 / 8"},
@@ -85,6 +86,9 @@ func TestProxyKeyboardTargetsMatchMouseGeometry(t *testing.T) {
 			seen := make(map[string]bool)
 			var want []hitRegion
 			for _, target := range all {
+				if strings.HasPrefix(target.ID, proxyTypeTarget) {
+					continue // Type labels only annotate the parent group for the mouse.
+				}
 				if !seen[target.ID] {
 					seen[target.ID] = true
 					want = append(want, target)

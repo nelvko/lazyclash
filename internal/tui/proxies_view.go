@@ -18,30 +18,7 @@ func (m *Model) proxyButton(id, label string, surface string, enabled bool) stri
 	return renderButton(clean(label), o)
 }
 func (m *Model) proxyModes(width int) dashboardBlock {
-	b := dashboardBlock{lines: []string{""}}
-	x := 0
-	selectionWidth := 6
-	for _, mode := range []string{"rule", "global", "direct"} {
-		selectionWidth = max(selectionWidth, ansi.StringWidth(m.tr("dashboard.mode."+mode)))
-	}
-	for _, mode := range []string{"rule", "global", "direct"} {
-		o := dashboardButtonOptions("mode."+mode, m.navigationOptions(), false, bg)
-		o.Selectable, o.Selected = true, m.snapshot.Mode.Desired == mode
-		o.Width = selectionWidth
-		o.Disabled = m.busy || !m.proxiesReady() || m.snapshot.Mode.Error != ""
-		v := renderButton(m.tr("dashboard.mode."+mode), o)
-		w := min(width, ansi.StringWidth(v))
-		if x > 0 && x+w > width {
-			b.lines = append(b.lines, "")
-			x = 0
-		}
-		b.lines[len(b.lines)-1] += cellCrop(v, w)
-		if !o.Disabled {
-			b.targets = append(b.targets, hitRegion{ID: "mode." + mode, X: x, Y: len(b.lines) - 1, W: w, H: 1})
-		}
-		x += w
-	}
-	return b
+	return renderProxyModeSegments(m.navigationOptions(), m.proxyModeActions(), width)
 }
 
 func (m *Model) proxiesToolbar(width int) dashboardBlock {
@@ -59,15 +36,13 @@ func (m *Model) proxiesBody(width int) (string, []hitRegion) {
 func (m *Model) layoutProxiesBody(width int) proxyBodyLayout {
 	width = max(1, width)
 	layout := proxyBodyLayout{width: width, grid: m.proxyGrid(width)}
-	b := m.proxiesToolbar(width)
+	var b dashboardBlock
 	finish := func() proxyBodyLayout {
 		layout.appendBlock(b)
 		return layout
 	}
-	if m.proxySearchVisible() && !m.proxySearchFixed(m.dashboardOptions().BodyTopRows) {
-		search := m.proxySearchBlock(width)
-		search.append(b)
-		b = search
+	if m.proxySearchVisible() && !m.proxySearchFixed(m.dashboardOptions()) {
+		b = m.proxySearchBlock(width)
 	}
 	add := func(value, color string) {
 		b.lines = append(b.lines, strings.Split(wrapText(themed(clean(value), color, bg, false), width), "\n")...)
@@ -118,13 +93,20 @@ func (m *Model) layoutProxiesBody(width int) proxyBodyLayout {
 		return finishEmpty(state)
 	}
 	compactGroups := m.compactProxyCards()
+	columns := m.proxyHeaderColumns()
+	if !compactGroups {
+		layout.memberGutter = 1
+	}
 	for i, gi := range groups {
 		if i > 0 && compactGroups && m.proxyGroupExpanded(m.snapshot.Groups[groups[i-1]].Name) {
 			b.blank()
 		}
 		g := m.snapshot.Groups[gi]
-		b.append(m.proxyGroupHeader(gi, width))
+		b.append(m.proxyGroupHeader(gi, width, columns))
 		if m.proxyGroupExpanded(g.Name) {
+			if layout.memberGutter > 0 {
+				b.blank()
+			}
 			members := m.proxyMembers(g)
 			if len(members) == 0 {
 				if len(groups) == 1 {
@@ -140,10 +122,23 @@ func (m *Model) layoutProxiesBody(width int) proxyBodyLayout {
 	}
 	return finish()
 }
-func (m *Model) proxyGroupHeader(gi, width int) dashboardBlock {
+
+type proxyHeaderColumns struct{ count, kind int }
+
+func (m *Model) proxyHeaderColumns() proxyHeaderColumns {
+	var cols proxyHeaderColumns
+	for _, g := range m.snapshot.Groups {
+		cols.count = max(cols.count, len(strconv.Itoa(len(g.All))))
+		cols.kind = max(cols.kind, ansi.StringWidth(m.proxyGroupTypeLabel(g.Type)))
+	}
+	return cols
+}
+
+func (m *Model) proxyGroupHeader(gi, width int, cols proxyHeaderColumns) dashboardBlock {
 	g := m.snapshot.Groups[gi]
 	id := fmt.Sprintf("group.%d", gi)
 	testID, sortID := fmt.Sprintf("proxies.test.%d", gi), fmt.Sprintf("proxies.sort.%d", gi)
+	typeID := proxyTypeTarget + strconv.Itoa(gi)
 	expanded := m.proxyGroupExpanded(g.Name)
 	marker, arrow := "  ", "▸"
 	if m.focus == id {
@@ -154,20 +149,23 @@ func (m *Model) proxyGroupHeader(gi, width int) dashboardBlock {
 		arrow, color = "▾", accent
 	}
 	surface := bg
-	if m.hover == id || m.hover == testID || m.hover == sortID {
+	if m.hover == id || m.hover == testID || m.hover == sortID || m.hover == typeID {
 		surface = hoverBackground
 	}
 	summary := m.proxySummary(g.Now)
 	if g.Type == "LoadBalance" || g.Type == "Relay" {
 		summary = m.tr("proxies.distributed")
 	}
-	badgeWidth := 3
-	for _, group := range m.snapshot.Groups {
-		badgeWidth = max(badgeWidth, len(strconv.Itoa(len(group.All)))+2)
+	count := fmt.Sprintf("%*d", cols.count, len(g.All))
+	trailing := "  " + count + "  " + arrow + " "
+	if width < 32 {
+		trailing = " " + count + " " + arrow
 	}
-	badgeWidth = min(width, badgeWidth)
-	count := strconv.Itoa(len(g.All))
-	badge := themed(strings.Repeat(" ", max(0, badgeWidth-len(count)-1))+count+" ", muted, panel, false)
+	// Leave room for the focus marker and a short group name before the type.
+	trailingWidth := ansi.StringWidth(trailing)
+	typeWidth := max(0, min(cols.kind, 16, width-8-trailingWidth))
+	kind := cellCrop(m.proxyGroupTypeLabel(g.Type), typeWidth)
+	kindWidth := ansi.StringWidth(kind)
 	type headerAction struct {
 		id, value string
 	}
@@ -202,14 +200,11 @@ func (m *Model) proxyGroupHeader(gi, width int) dashboardBlock {
 	}
 	actionText := strings.Join(actionValues, "")
 	actionWidth := ansi.StringWidth(actionText)
-	right := " " + badge + themed(" "+arrow+" ", muted, surface, false)
-	if g.Type != "Selector" && g.Type != "LoadBalance" && g.Type != "Relay" {
-		right = themed(" "+m.tr("proxies.auto"), muted, surface, false) + right
-	}
+	right := themed(" "+strings.Repeat(" ", typeWidth-kindWidth)+kind+trailing, muted, surface, false)
 	suffixWidth := ansi.StringWidth(right)
 	// Share the summary row with the tools on narrow screens. Progress updates
 	// can change a label's width, but never insert a row before the members.
-	inlineActions := len(actions) > 0 && width >= 52
+	inlineActions := len(actions) > 0 && width >= 52 && width-suffixWidth-actionWidth >= 10
 	if inlineActions {
 		right = " " + actionText + right
 	}
@@ -217,7 +212,7 @@ func (m *Model) proxyGroupHeader(gi, width int) dashboardBlock {
 	name := themed(lipgloss.NewStyle().Bold(true).Render(clean(g.Name)), color, surface, false)
 	prefix := themed(marker, focus, surface, false)
 	b := dashboardBlock{}
-	if (m.proxiesNarrow() || width < 72) && (expanded || width < 60) {
+	if (m.proxiesNarrow() || width < 72) && (expanded || width < 60) || len(actions) > 0 && !inlineActions {
 		b.lines = []string{cellPad(prefix+name, leftWidth) + right, themed(cellPad("  "+clean(summary), width), muted, surface, false)}
 	} else {
 		nameWidth := min(24, max(12, width/4))
@@ -256,8 +251,20 @@ func (m *Model) proxyGroupHeader(gi, width int) dashboardBlock {
 			x += w
 		}
 	}
+	if kindWidth > 0 && proxyGroupConfigType(g.Type) != "" {
+		// The type is a hover target, including when actions are disabled.
+		x := width - trailingWidth - kindWidth
+		if x >= 0 {
+			hit := hitRegion{ID: typeID, X: x, Y: 0, W: kindWidth, H: 1}
+			actionRegions = append(actionRegions, hit)
+			b.targets = append(b.targets, hit)
+		}
+	}
 	if !m.compactProxyCards() {
-		b.lines = append(append([]string{""}, b.lines...), "")
+		b.lines = append([]string{""}, b.lines...)
+		if !expanded {
+			b.blank()
+		}
 		for i := range actionRegions {
 			actionRegions[i].Y++
 		}
@@ -569,11 +576,13 @@ func proxyMemberRange(locale i18n.Localizer, first, last, total, groups, width i
 		return ""
 	}
 	value := locale.T("proxies.visible_range", first, last, total)
-	key := "proxies.range.group"
+	var label string
 	if groups > 1 {
-		key = "proxies.range.expanded"
+		label = locale.T("proxies.range.expanded", groups, value)
+	} else {
+		label = locale.T("proxies.range.group", value)
 	}
-	if label := locale.T(key, value); ansi.StringWidth(label) <= width {
+	if ansi.StringWidth(label) <= width {
 		return label
 	}
 	return value

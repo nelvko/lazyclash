@@ -20,7 +20,10 @@ type pageHeader struct {
 }
 
 func (h pageHeader) owns(id string) bool {
-	if id != "" && h.titleAction.id == id {
+	if id == "" {
+		return false
+	}
+	if h.titleAction.id == id {
 		return true
 	}
 	for _, action := range append(h.leading, h.actions...) {
@@ -32,7 +35,10 @@ func (h pageHeader) owns(id string) bool {
 }
 
 func (h pageHeader) enabled(id string) bool {
-	if id != "" && h.titleAction.id == id {
+	if id == "" {
+		return false
+	}
+	if h.titleAction.id == id {
 		return h.titleAction.enabled
 	}
 	for _, action := range append(h.leading, h.actions...) {
@@ -58,17 +64,16 @@ func (m *Model) pageHeader() pageHeader {
 	switch m.page {
 	case "proxies":
 		if m.width >= 50 {
-			for _, mode := range []string{"rule", "global", "direct"} {
-				h.leading = append(h.leading, headerAction{"mode." + mode, tr("dashboard.mode." + mode), "", m.proxiesReady() && m.snapshot.Mode.Error == ""})
-			}
+			h.leading = m.proxyModeActions()
 		}
-		if !m.proxiesDirect() {
-			browsing := m.proxiesReady()
-			h.actions = append(h.actions, headerAction{"proxies.search-open", tr("proxies.search"), "/", browsing})
-			if browsing && !m.proxiesNarrow() && m.hasExpandedProxyGroups() {
-				h.titleAction = headerAction{id: "proxies.collapse_all", label: tr("proxies.collapse_all"), enabled: !m.quitting}
-			}
+		search := headerAction{"proxies.search-open", tr("proxies.search"), "/", m.proxiesReady()}
+		if m.proxiesDirect() {
+			// Keep the utility column at its measured width as modes change.
+			search.id, search.enabled = "", false
+		} else if search.enabled && !m.proxiesNarrow() && m.hasExpandedProxyGroups() {
+			h.titleAction = headerAction{id: "proxies.collapse_all", label: tr("proxies.collapse_all"), enabled: !m.quitting}
 		}
+		h.actions = append(h.actions, search)
 		h.actions = append(h.actions, headerAction{"proxies.providers", tr("providers.title.proxies"), "≡", m.providersSupported(providerProxies)})
 	case "profiles":
 		h.actions = []headerAction{{"profiles.update-all", tr("header.updateAll"), "↻", m.hasRefreshableProfiles()}}
@@ -121,6 +126,19 @@ func renderPageTitleAction(o dashboardOptions) string {
 	return renderButton(action.label, options)
 }
 
+func renderHeaderButton(o dashboardOptions, action headerAction, label string) string {
+	options := dashboardButtonOptions(action.id, o, false, bg)
+	options.Disabled = !action.enabled || o.Busy
+	if action.id == "conn.close-all" {
+		options.Kind = buttonDanger
+	}
+	value := renderButton(label, options)
+	if action.id == "" {
+		return themed(strings.Repeat(" ", ansi.StringWidth(value)), text, bg, o.Dim)
+	}
+	return value
+}
+
 // On small terminals actions get their own header row. They remain outside the
 // scrolling body, with compact labels when the full labels do not fit.
 func renderPageHeader(o dashboardOptions, g dashboardLayout, titleX, titleWidth int) (string, int, int, []hitRegion) {
@@ -146,12 +164,7 @@ func renderPageHeader(o dashboardOptions, g dashboardLayout, titleX, titleWidth 
 			if squeeze && ansi.StringWidth(label) > 1 {
 				label = string([]rune(label)[0])
 			}
-			options := dashboardButtonOptions(action.id, o, false, bg)
-			if action.id == "conn.close-all" {
-				options.Kind = buttonDanger
-			}
-			options.Disabled = !action.enabled || o.Busy
-			value := renderButton(label, options)
+			value := renderHeaderButton(o, action, label)
 			values = append(values, value)
 			total += ansi.StringWidth(value)
 		}
@@ -201,21 +214,53 @@ func renderPageHeader(o dashboardOptions, g dashboardLayout, titleX, titleWidth 
 	return value, max(left, right-ansi.StringWidth(value)), y, hits
 }
 
+func (m *Model) proxyModeActions() []headerAction {
+	enabled := m.proxiesReady() && m.snapshot.Mode.Error == ""
+	var actions []headerAction
+	for _, mode := range []string{"rule", "global", "direct"} {
+		actions = append(actions, headerAction{id: "mode." + mode, label: m.tr("dashboard.mode." + mode), enabled: enabled})
+	}
+	return actions
+}
+
+func proxyModeSegmentWidth(actions []headerAction) int {
+	labelWidth := 0
+	for _, action := range actions {
+		labelWidth = max(labelWidth, ansi.StringWidth(action.label))
+	}
+	return labelWidth + 2 // One cell for focus and one for the selection mark.
+}
+
+// The same three selectable faces wrap on the smallest screens.
+func renderProxyModeSegments(o dashboardOptions, actions []headerAction, width int) dashboardBlock {
+	block := dashboardBlock{lines: []string{""}}
+	segmentWidth := proxyModeSegmentWidth(actions)
+	w := min(width, segmentWidth)
+	x := 0
+	for _, action := range actions {
+		options := dashboardButtonOptions(action.id, o, false, bg)
+		options.Kind = buttonSegment
+		options.Selectable, options.Selected = true, o.Snapshot.Mode.Desired == strings.TrimPrefix(action.id, "mode.")
+		options.Width, options.Disabled = segmentWidth-2, !action.enabled || o.Busy
+		if x > 0 && x+w > width {
+			block.blank()
+			x = 0
+		}
+		y := len(block.lines) - 1
+		block.lines[y] += cellCrop(renderButton(action.label, options), w)
+		if !options.Disabled {
+			block.targets = append(block.targets, hitRegion{ID: action.id, X: x, Y: y, W: w, H: 1})
+		}
+		x += w
+	}
+	return block
+}
+
 // Align the mode choices and provider action at the right, with a fixed gap
 // between the two groups. Smaller terminals use a dedicated header row.
 func renderLeadingPageHeader(o dashboardOptions, g dashboardLayout, left int) (string, int, int, []hitRegion) {
 	h := o.Header
-	var leading []string
-	labelWidth := 6
-	for _, action := range h.leading {
-		labelWidth = max(labelWidth, ansi.StringWidth(action.label))
-	}
-	for _, action := range h.leading {
-		options := dashboardButtonOptions(action.id, o, false, bg)
-		options.Selectable, options.Selected = true, o.Snapshot.Mode.Desired == strings.TrimPrefix(action.id, "mode.")
-		options.Width, options.Disabled = labelWidth, !action.enabled || o.Busy
-		leading = append(leading, renderButton(action.label, options))
-	}
+	modes := renderProxyModeSegments(o, h.leading, g.headerWidth)
 	renderActions := func(compact bool) []string {
 		var values []string
 		for _, action := range h.actions {
@@ -223,14 +268,12 @@ func renderLeadingPageHeader(o dashboardOptions, g dashboardLayout, left int) (s
 			if compact {
 				label = action.compact
 			}
-			options := dashboardButtonOptions(action.id, o, false, bg)
-			options.Disabled = !action.enabled || o.Busy
-			values = append(values, renderButton(label, options))
+			values = append(values, renderHeaderButton(o, action, label))
 		}
 		return values
 	}
 	actions := renderActions(false)
-	modeWidth := ansi.StringWidth(strings.Join(leading, ""))
+	modeWidth := ansi.StringWidth(modes.lines[0])
 	actionWidth := ansi.StringWidth(strings.Join(actions, ""))
 	y, right := g.headerY, g.headerX+g.headerWidth
 	gap := 4
@@ -248,16 +291,12 @@ func renderLeadingPageHeader(o dashboardOptions, g dashboardLayout, left int) (s
 		actionWidth = ansi.StringWidth(strings.Join(actions, ""))
 	}
 	left = max(left, right-modeWidth-gap-actionWidth)
-	var hits []hitRegion
-	x := left
-	for i, action := range h.leading {
-		w := ansi.StringWidth(leading[i])
-		if action.enabled && !o.Busy {
-			hits = append(hits, hitRegion{ID: action.id, X: x, Y: y, W: w, H: 1})
-		}
-		x += w
+	hits := modes.targets
+	for i := range hits {
+		hits[i].X += left
+		hits[i].Y += y
 	}
-	x += gap
+	x := left + modeWidth + gap
 	for i, action := range h.actions {
 		w := ansi.StringWidth(actions[i])
 		if action.enabled && !o.Busy {
@@ -265,5 +304,5 @@ func renderLeadingPageHeader(o dashboardOptions, g dashboardLayout, left int) (s
 		}
 		x += w
 	}
-	return strings.Join(leading, "") + themed(strings.Repeat(" ", gap), text, bg, o.Dim) + strings.Join(actions, ""), left, y, hits
+	return modes.lines[0] + themed(strings.Repeat(" ", gap), text, bg, o.Dim) + strings.Join(actions, ""), left, y, hits
 }

@@ -668,15 +668,15 @@ func TestProxiesModesAndCollapseActionRemainReachableAcrossWidths(t *testing.T) 
 	}
 }
 
-func TestProxiesGroupHeaderKeepsRightBadgeAndIndependentTestAction(t *testing.T) {
+func TestProxiesGroupHeaderAlignsTypeAndCountBesideActions(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		t.Run(language, func(t *testing.T) {
 			m, _ := proxiesModel(t, 160, 40)
 			m.locale = i18n.New(language)
 			m.snapshot.Groups[1].All = make([]string, 100)
 			width := dashboardBodyWidth(m.dashboardOptions())
-			for _, gi := range []int{0, 1, 2} {
-				header := m.proxyGroupHeader(gi, width)
+			for gi := range m.snapshot.Groups {
+				header := m.proxyGroupHeader(gi, width, m.proxyHeaderColumns())
 				line := ""
 				for _, candidate := range header.lines {
 					if strings.TrimSpace(ansi.Strip(candidate)) != "" {
@@ -687,11 +687,16 @@ func TestProxiesGroupHeaderKeepsRightBadgeAndIndependentTestAction(t *testing.T)
 				count := fmt.Sprint(len(m.snapshot.Groups[gi].All))
 				index := strings.LastIndex(line, count)
 				if ansi.StringWidth(line) != width || index < 0 {
-					t.Fatalf("group %d count badge was not aligned to the fixed right column: %q", gi, line)
+					t.Fatalf("group %d count was not aligned to the fixed right column: %q", gi, line)
 				}
 				end := ansi.StringWidth(line[:index+len(count)])
 				if end != width-4 {
 					t.Fatalf("group %d count ended at %d, want shared right column %d: %q", gi, end, width-4, line)
+				}
+				typeHit := listSearchTarget(t, header.targets, fmt.Sprintf("proxies.type.%d", gi))
+				typeText := ansi.Strip(ansi.Cut(header.lines[typeHit.Y], typeHit.X, typeHit.X+typeHit.W))
+				if typeText != m.proxyGroupTypeLabel(m.snapshot.Groups[gi].Type) || typeHit.X+typeHit.W != width-4-3-2 {
+					t.Fatalf("group %d type target at %+v does not match the right-aligned label %q", gi, typeHit, typeText)
 				}
 				for i, hit := range header.targets {
 					for _, other := range header.targets[i+1:] {
@@ -712,6 +717,31 @@ func TestProxiesGroupHeaderKeepsRightBadgeAndIndependentTestAction(t *testing.T)
 				t.Fatalf("group test action folded or switched the group: expanded=%s testing=%t", m.proxies.activeGroup, m.proxies.testing)
 			}
 		})
+	}
+}
+
+func TestProxiesNarrowGroupHeaderKeepsBuiltInLabelsReadable(t *testing.T) {
+	for _, language := range []string{i18n.English, i18n.Chinese} {
+		m, _ := proxiesModel(t, 32, 24)
+		m.locale = i18n.New(language)
+		m.snapshot.Groups = append(m.snapshot.Groups, mihomo.Group{Name: "New", Type: strings.Repeat("X", 100)})
+		columns := m.proxyHeaderColumns()
+		width := dashboardBodyWidth(m.dashboardOptions())
+		for gi, g := range m.snapshot.Groups {
+			header := m.proxyGroupHeader(gi, width, columns)
+			assertRegions(t, header.targets, width, len(header.lines))
+			if g.Name == "New" {
+				if !strings.Contains(ansi.Strip(header.lines[0]), g.Name) || hasAction(header.targets, fmt.Sprintf("proxies.type.%d", gi)) {
+					t.Fatalf("unknown type obscured the group or offered a configuration hint: %q", header.lines[0])
+				}
+				continue
+			}
+			hit := listSearchTarget(t, header.targets, fmt.Sprintf("proxies.type.%d", gi))
+			kind := ansi.Strip(ansi.Cut(header.lines[hit.Y], hit.X, hit.X+hit.W))
+			if kind != m.proxyGroupTypeLabel(g.Type) {
+				t.Fatalf("%s/%s: type truncated to %q at width %d", language, g.Type, kind, width)
+			}
+		}
 	}
 }
 
@@ -760,7 +790,7 @@ func TestProxiesGroupSpacingPreservesCompactWhitespace(t *testing.T) {
 }
 
 func TestProxiesExpandedGroupKeepsSortingInHeader(t *testing.T) {
-	for _, test := range []struct{ width, height, gap int }{{200, 40, 0}, {160, 24, 0}, {100, 24, 0}, {160, 23, 0}, {120, 18, 0}, {80, 40, 0}, {40, 16, 0}} {
+	for _, test := range []struct{ width, height, gap int }{{200, 40, 1}, {160, 24, 0}, {100, 24, 0}, {160, 23, 0}, {120, 18, 0}, {80, 40, 0}, {40, 16, 0}} {
 		t.Run(fmt.Sprint(test.width, "/", test.height), func(t *testing.T) {
 			m, _ := proxiesModel(t, test.width, test.height)
 			bodyWidth := dashboardBodyWidth(m.dashboardOptions())
@@ -779,7 +809,7 @@ func TestProxiesExpandedGroupKeepsSortingInHeader(t *testing.T) {
 					firstNodeY = min(firstNodeY, hit.Y)
 				}
 			}
-			gapY := groupY + len(m.proxyGroupHeader(0, bodyWidth).lines)
+			gapY := groupY + len(m.proxyGroupHeader(0, bodyWidth, m.proxyHeaderColumns()).lines)
 			if firstNodeY-gapY != test.gap {
 				t.Fatalf("header-to-card gap is %d, want %d", firstNodeY-gapY, test.gap)
 			}
@@ -793,11 +823,11 @@ func TestProxiesExpandedGroupKeepsSortingInHeader(t *testing.T) {
 					}
 				}
 			}
-			if !hasAction(m.proxyGroupHeader(0, bodyWidth).targets, "proxies.sort.0") {
+			if !hasAction(m.proxyGroupHeader(0, bodyWidth, m.proxyHeaderColumns()).targets, "proxies.sort.0") {
 				t.Fatal("expanded group did not offer sorting in default order")
 			}
 			m.sortProxies("delay")
-			header := m.proxyGroupHeader(0, bodyWidth)
+			header := m.proxyGroupHeader(0, bodyWidth, m.proxyHeaderColumns())
 			if !hasAction(header.targets, "proxies.sort.0") || !hasAction(header.targets, "proxies.test.0") {
 				t.Fatalf("nondefault sorting lost its header control: %+v", header.targets)
 			}
@@ -821,7 +851,7 @@ func TestProxiesExpandedGroupKeepsSortingInHeader(t *testing.T) {
 func TestProxiesReferenceSummaryShowsFinalNode(t *testing.T) {
 	m, _ := proxiesModel(t, 160, 40)
 	setProxyTestGroup(&m, "YouTube")
-	header := ansi.Strip(strings.Join(m.proxyGroupHeader(3, 120).lines, "\n"))
+	header := ansi.Strip(strings.Join(m.proxyGroupHeader(3, 120, m.proxyHeaderColumns()).lines, "\n"))
 	card := ansi.Strip(strings.Join(m.proxyNode(3, 0, 60).lines, "\n"))
 	for _, value := range []string{header, card} {
 		if !strings.Contains(value, "HK 02") || strings.Contains(value, "PROXY →") || strings.Contains(value, "AUTO →") || strings.Contains(value, "Selector") {
@@ -921,7 +951,7 @@ func TestProxiesVisibleRangeCountsSplitAndPartiallyVisibleCards(t *testing.T) {
 			t.Fatalf("all filtered members fit but range is visible: %q", got)
 		}
 		multi := append(filtered, hitRegion{ID: "node.1.0", Y: 12, W: 36, H: 2})
-		if got := proxyVisibleRange(locale, multi, 8, 5, 80); got != locale.T("proxies.range.expanded", "2–3 / 3") {
+		if got := proxyVisibleRange(locale, multi, 8, 5, 80); got != locale.T("proxies.range.expanded", 2, "2–3 / 3") {
 			t.Fatalf("missing scope for multiple expanded groups: %q", got)
 		}
 		if got := proxyVisibleRange(locale, multi, 8, 5, 10); got != "2–3 / 3" {

@@ -15,6 +15,7 @@ type proxyBodyPart struct {
 
 type proxyBodyLayout struct {
 	width, total int
+	memberGutter int
 	grid         proxyGridLayout
 	parts        []proxyBodyPart
 }
@@ -73,6 +74,9 @@ func (m *Model) proxyTargets(width int, listOnly bool) []hitRegion {
 	for _, part := range layout.parts {
 		if len(part.members) == 0 {
 			for _, target := range part.block.targets {
+				if strings.HasPrefix(target.ID, proxyTypeTarget) {
+					continue
+				}
 				if !listOnly || strings.HasPrefix(target.ID, "group.") {
 					target.Y += part.y
 					targets = append(targets, target)
@@ -112,7 +116,7 @@ func (m *Model) proxyBodyRange(layout proxyBodyLayout, start, end int) (stickyGr
 		if from < to {
 			if first == 0 {
 				first = total + from*layout.grid.columns + 1
-				if part.y <= start {
+				if part.y-layout.memberGutter <= start {
 					stickyGroup = m.snapshot.Groups[part.group].Name
 				}
 			}
@@ -166,5 +170,6 @@ func (m *Model) proxyListFocusValid() bool {
 	if strings.HasPrefix(m.focus, "group.") {
 		return m.focus == fmt.Sprintf("group.%d", gi)
 	}
-	return node != "" && m.proxyGroupExpanded(group.Name) && m.proxyMemberMatches(group, node)
+	query := m.proxySearchQuery()
+	return node != "" && m.proxyGroupExpanded(group.Name) && (m.proxySearchMatchesGroup(query, group) || m.proxySearchMatchesNode(query, node))
 }
