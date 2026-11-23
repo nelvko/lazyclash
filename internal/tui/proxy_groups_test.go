@@ -54,7 +54,7 @@ func TestProxiesWideGroupClickKeepsItsHeadingInPlace(t *testing.T) {
 			if height == 40 {
 				gap = 1
 			}
-			if opened.Y != group.Y || firstNode.Y != opened.Y+opened.H+gap ||
+			if opened.Y != group.Y || opened.H != group.H || firstNode.Y != opened.Y+opened.H+gap ||
 				findTarget(t, m, preceding.ID).Y != preceding.Y || findTarget(t, m, following.ID).Y <= following.Y {
 				t.Fatalf("expanded nodes did not push down only later groups: heading=%+v want row=%d node=%+v", opened, group.Y, firstNode)
 			}
@@ -309,16 +309,18 @@ func TestProxiesExpansionAndSortFollowGroupNamesUntilSourceChanges(t *testing.T)
 }
 
 func TestProxiesExpandedHeaderEndsBeforeItsGutter(t *testing.T) {
-	for _, edge := range []string{"top", "text", "gutter"} {
+	for _, edge := range []string{"top", "text", "bottom", "bottom without color", "gutter"} {
 		t.Run(edge, func(t *testing.T) {
 			m, _ := proxiesModel(t, 160, 70)
+			m.noColor = edge == "bottom without color"
 			m.expandProxyGroup("AUTO")
 			m.focus = "group.0"
 			m.layout()
 			width := dashboardBodyWidth(m.dashboardOptions())
 			header := m.proxyGroupHeader(0, width, m.proxyHeaderColumns())
-			if len(header.lines) != 2 || strings.TrimSpace(ansi.Strip(header.lines[0])) != "" {
-				t.Fatal("expanded header should occupy the top padding and text row")
+			if len(header.lines) != 3 || strings.TrimSpace(ansi.Strip(header.lines[0])) != "" ||
+				strings.TrimSpace(ansi.Strip(header.lines[2])) != "" {
+				t.Fatal("expanded header should have one padding row above and below its name")
 			}
 			content := ansi.Strip(header.lines[1])
 			arrow := strings.LastIndex(content, "▾")
@@ -341,14 +343,21 @@ func TestProxiesExpandedHeaderEndsBeforeItsGutter(t *testing.T) {
 				}
 			}
 			y := top
-			if edge == "text" {
+			switch edge {
+			case "text":
+				y = top + 1
+			case "bottom", "bottom without color":
 				y = bottom - 1
-			} else if edge == "gutter" {
+			case "gutter":
 				y = bottom
-				m, _ = update(m, tea.MouseMotionMsg{X: right - 1, Y: y})
-				if m.hover != "" {
-					t.Fatalf("the gap before the grid was hoverable: %q", m.hover)
-				}
+			}
+			m, _ = update(m, tea.MouseMotionMsg{X: right - 1, Y: y})
+			wantHover := "group.0"
+			if edge == "gutter" {
+				wantHover = ""
+			}
+			if m.hover != wantHover {
+				t.Fatalf("%s hover = %q, want %q", edge, m.hover, wantHover)
 			}
 			m, _ = update(m, tea.MouseClickMsg{X: right - 1, Y: y, Button: tea.MouseLeft})
 			if m.proxyGroupExpanded("PROXY") != (edge == "gutter") || !m.proxyGroupExpanded("AUTO") {

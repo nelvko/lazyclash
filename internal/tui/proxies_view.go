@@ -262,9 +262,7 @@ func (m *Model) proxyGroupHeader(gi, width int, cols proxyHeaderColumns) dashboa
 	}
 	if !m.compactProxyCards() {
 		b.lines = append([]string{""}, b.lines...)
-		if !expanded {
-			b.blank()
-		}
+		b.blank()
 		for i := range actionRegions {
 			actionRegions[i].Y++
 		}

@@ -338,16 +338,27 @@ def assert_header_hover(terminal, name, words, profile):
     count = re.search(r"(\d+)[ \t]+[▸▾][ \t]*$", line)
     assert count and y > 0, "header lacks right-aligned count and disclosure"
     cells = terminal.screen.cells[y]
-    points = [(left, y - 1), (x + len(name) + 2, y), (cell_offset(cells, count.start(1)), y)]
+    points = [(left, y - 1), (right - 1, y + 1), (x + len(name) + 2, y), (cell_offset(cells, count.start(1)), y)]
     for key in ("proxies.sort.delay", "proxies.test_group"):
         button_offset = line.find(words[key])
         assert button_offset >= 0, "expanded header lost its action: " + words[key]
         points.append((cell_offset(cells, button_offset), y))
     hover_cell(terminal, 0, 0)
     normal = terminal.screen.styles[y - 1][left][1]
-    click_cell(terminal, x, y + 1)
+    first_x, first_y = min((candidate_position(terminal, member) for member in MEMBERS), key=lambda p: (p[1], p[0]))
+    assert first_y - card_vertical_padding(terminal) == y + 3, "first card surface is not one row below the group header"
+    assert not "".join(terminal.screen.cells[y + 2][left:right]).strip(), "header-to-card gap has visible content"
+    if profile != "no-color":
+        card = terminal.screen.styles[first_y][first_x][1]
+        assert normal != card == terminal.screen.styles[y + 3][first_x][1], "first card is missing its top padding"
+    click_cell(terminal, first_x, y + 2)
     terminal.settle()
     assert group_header(terminal, name)[3].rstrip().endswith("▾"), "clicking the gutter folded the group"
+    click_cell(terminal, first_x, y + 1)
+    terminal.settle()
+    assert group_header(terminal, name)[3].rstrip().endswith("▸"), "bottom padding did not fold the group"
+    open_group(terminal, name)
+    assert group_header(terminal, name)[1] == y, "reopening the group moved its heading"
     for hx, hy in points:
         hover_cell(terminal, hx, hy)
         assert group_header(terminal, name)[3].rstrip().endswith("▾"), "hover folded its group"
@@ -355,10 +366,10 @@ def assert_header_hover(terminal, name, words, profile):
             continue
         hover = terminal.screen.styles[y - 1][left][1]
         assert hover != normal, "header padding did not receive hover background"
-        for row in (y - 1, y):
+        for row in (y - 1, y, y + 1):
             for column in range(left, right):
                 assert terminal.screen.styles[row][column][1] == hover, "header hover surface has an uncolored gap at %d,%d" % (column, row)
-        assert all(terminal.screen.styles[y + 1][c][1] == normal for c in range(left, right)), "gutter shares header hover"
+        assert all(terminal.screen.styles[y + 2][c][1] == normal for c in range(left, right)), "gutter shares header hover"
 
 
 def assert_group_types(terminal, words):
@@ -464,6 +475,9 @@ def assert_card_spacing(terminal, profile):
     assert len(ys) >= 2 and all(b - a == stride for a, b in zip(ys, ys[1:])), (
         "unexpected spacing between card rows: " + repr(positions))
     if padding == 0:
+        _, heading_y, _, _ = group_header(terminal, "PROXY")
+        heading_rows = 2 if terminal.screen.columns < SIDEBAR_MIN_WIDTH else 1
+        assert ys[0] == heading_y + heading_rows, "compact group retained a blank row before its first card"
         return
     first = min(x for x, _ in positions) - 4
     gap_row = terminal.screen.cells[ys[0] - 2]
@@ -558,6 +572,7 @@ def exercise(preview, binary, output, language, profile, args):
         # Selection goes through the asynchronous backend and snapshot readback.
         terminal.key(b"\r")
         wait_until(terminal, lambda: chosen(terminal, "HK 01"), "manual choice was not confirmed")
+        terminal.settle()
         # Both added padding rows belong to the same node selection surface.
         padding = card_vertical_padding(terminal)
         x, y = candidate_position(terminal, "HK 02")

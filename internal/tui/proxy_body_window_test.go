@@ -50,6 +50,7 @@ func TestProxyMemberRangeCountsVisibleTextRatherThanPadding(t *testing.T) {
 		start, end         int
 		wantGroup, members string
 	}{
+		{"bottom header padding above visible names", first - 2, first + 2, "", "1–3 / 8"},
 		{"gutter above visible names", first - 1, first + 2, "PROXY", "1–3 / 8"},
 		{"top padding", first, first + 1, "", ""},
 		{"name only", first + 1, first + 2, "PROXY", "1–3 / 8"},
