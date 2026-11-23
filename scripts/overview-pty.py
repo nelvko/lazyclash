@@ -66,14 +66,24 @@ def assert_core_affordance(terminal, words, scenario, profile, expect_focus=Fals
     marker = "›" if expect_focus else ""
     assert re.fullmatch(r"\s*" + marker + r"\s*" + face + r"[\s│]*", heading), \
         "incorrect heading action or focus: " + repr(heading)
-    body = ["".join(row[x:right]) for row in terminal.screen.cells[y + 1:y + 7]]
-    state_row = next((i for i, line in enumerate(body) if line.lstrip().startswith(status)), None)
-    assert state_row is not None, "missing core observation: " + status
-    age = words["dashboard.core.startedHours"] % 2
-    if scenario in ("stopped", "unavailable"):
-        assert all(age not in line for line in body), "inactive or unobserved core retained its start time"
+    cells = terminal.screen.cells
+    body = ["".join(row[x:right]).strip(" │") for row in cells[y + 1:y + 8]]
+    assert body[1:3] == ["Mihomo", status], "incorrect core name or observation: " + repr(body)
+    uptime = words["dashboard.core.uptimeHoursMinutes"]
+    size = (terminal.screen.columns, terminal.screen.rows)
+    clock_visible = sidebar_visible(*size) and any(
+        re.fullmatch(r"[0-9]{2,}:[0-5][0-9]:[0-5][0-9]", "".join(row[:20]).strip()) for row in cells)
+    running = scenario not in ("stopped", "unavailable")
+    if running and size in ((160, 45), (120, 32)):
+        assert clock_visible, "wide sidebar omitted the running process clock"
+    if size == (120, 10):
+        assert not clock_visible, "short sidebar retained the clock ahead of the navigation"
+    if not running or clock_visible:
+        prefix = uptime.split("%d", 1)[0].rstrip()
+        assert all(prefix not in line for line in body), "core card displayed an unavailable or duplicate uptime"
     else:
-        assert body[state_row + 1].lstrip().startswith(age), "missing relative start time below core state"
+        # The fixture starts at 2:18:34 and can cross a minute during resizing.
+        assert body[3] in (uptime % (2, 18), uptime % (2, 19)), "incorrect fallback uptime: " + repr(body)
     if scenario != "drift":
         assert all("v1.19.33" not in line for line in body), "core card exposed a version without a mismatch"
     return action
@@ -264,6 +274,14 @@ def exercise(preview, binary, output, language, profile, scenario, args):
         assert "127.0.0.1:" not in screen, "overview retained addresses intended for network details"
         if scenario == "pending":
             assert words["profiles.refresh_failed"] in screen, "profile card hid its unapplied changes"
+
+        if scenario == "running":
+            terminal.resize(120, 10)
+            terminal.settle()
+            assert_core_affordance(terminal, words, scenario, profile)
+            preview.capture(terminal, output, "short-sidebar-card-uptime", args)
+            terminal.resize(160, 45)
+            terminal.settle()
 
         # The first observation may already focus a card. Start explicitly from
         # navigation before checking both safe Enter transitions.

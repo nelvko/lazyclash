@@ -4,6 +4,20 @@
 
 在 160×45 和 80×24 的真实 PTY 中，点击「当前订阅」的「订阅 ›」打开订阅页，同一条目在两页显示相同的描述或来源、更新时间、剩余量与总量及到期信息。内存夹具覆盖本地文件、未选用订阅、更新未生效、已过期和尚未应用。另在中英文终端验证了缩放到 40×16 后的操作。[宽屏概览](../.test-artifacts/current-subscription/described-overview-160x45.png) · [订阅页对照](../.test-artifacts/current-subscription/described-profiles-160x45.png) · [窄屏状态提示](../.test-artifacts/current-subscription/pending-overview-80x24.png)
 
+## 概览首排卡片（2026-11-23）
+
+150×48 中文终端中，「内核状态」正文的 Mihomo 与右侧配置名称同高。运行时长显示在侧栏，正常配置名称下面依次显示来源和更新时间。缩小到 80×24 后，内核卡在状态下一行显示分钟精度的运行时长。另验证了 114/115 列侧栏断点和 10/11 行高度边界。[宽屏首排](../.test-artifacts/overview-core-status/first-row.png) · [窄屏内核卡](../.test-artifacts/overview-core-status/compact-card.png)
+
+## 侧栏运行状态与计时（2026-11-23）
+
+中英文、真彩和无色 PTY 检查了七个页面、11 次窗口缩放和窄屏菜单。常驻侧栏居中显示秒级时长和「● 运行中」，空间不足时优先保留导航及状态。停止或启动时间未知时隐藏时长。[160×45 中文概览](../.test-artifacts/cfw-sidebar/overview-160x45.png) · [侧栏底部](../.test-artifacts/cfw-sidebar/sidebar-footer.png)
+
+Linux/arm64 上隔离的 Mihomo/systemd 实例验证了静置时秒数递增、概览跨分钟更新、外部重启后两处重新计时，以及停止后清除时长。记录保存在 `.test-artifacts/cfw-sidebar/linux-service/result.json`。
+
+## 概览运行时长（2026-11-23）
+
+中文真彩和英文无色 PTY 检查了 160×45 至 40×16 的窗口与缩放恢复。运行 2 小时 18 分 34 秒的进程在概览显示「已运行 2 小时 18 分钟」。停止或服务状态不可用时隐藏时长。模型测试覆盖整分、整时、满一天和重启后的显示边界。[中文终端卡片](../.test-artifacts/core-uptime-overview/screenshots/core-card.png)
+
 ## 概览启动时间与内核管理详情（2026-11-23）
 
 中英文 PTY 在 160×45、120×32、80×24、60×20、40×16 及恢复尺寸下验证了概览的运行、停止、版本不一致与服务不可用状态，包含真彩和无色模式。中文 150×54 终端中，健康内核卡只显示「运行中」和「2 小时前启动」。从设置打开「管理 / 更新」后，同一帧可见安装版本、运行版本和精确运行时长。另有 28 次 PTY 启动检查覆盖其余页面使用的 16 个夹具入口。[内核卡](../.test-artifacts/core-quiet-overview/screenshots/core-card.png) · [管理详情](../.test-artifacts/core-quiet-overview/screenshots/core-management-150x54.png)

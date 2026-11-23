@@ -109,9 +109,7 @@ func TestCoreStateRemainsVisibleWhenHintsAreHidden(t *testing.T) {
 						g := dashboardGeometry(o)
 						head := ansi.Strip(strings.Split(m.screen, "\n")[g.headerY])
 						if g.sidebar {
-							parts := strings.SplitN(full, " ", 2)
-							want := parts[0] + " " + o.Locale.T("dashboard.sidebar.coreStatus", parts[1])
-							if !strings.Contains(sidebarText(m.screen), want) {
+							if !strings.Contains(sidebarText(m.screen), full) {
 								t.Fatalf("%s %s %d plain=%v hides core %s in the sidebar", language, page, width, plain, state.service)
 							}
 							if strings.Contains(head, full) {

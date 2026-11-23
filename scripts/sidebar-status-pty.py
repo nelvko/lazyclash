@@ -9,6 +9,7 @@ import argparse
 import importlib.util
 import json
 from pathlib import Path
+import re
 import sys
 import time
 import uuid
@@ -33,34 +34,50 @@ def status_positions(terminal, label):
             for x, cell in enumerate(row) if cell and "".join(row[x:]).startswith(label)]
 
 
-def assert_status(terminal, words, overview_page=False):
+CLOCK = re.compile(r"[0-9]{2,}:[0-5][0-9]:[0-5][0-9]")
+
+
+def assert_centered(row):
+    left = len(row) - len(row.lstrip())
+    right = len(row) - len(row.rstrip())
+    assert abs(left - right) <= 1, "sidebar line is not centered: " + repr(row)
+
+
+def assert_status(terminal, words, known_start=True, state="running", drawer=False):
     width, height = terminal.screen.columns, terminal.screen.rows
     header_y = 1 if height >= 24 else 0
-    label = words["dashboard.status.running"]
-    sidebar_label = "● " + words["dashboard.sidebar.coreStatus"] % label
-    points = status_positions(terminal, sidebar_label)
+    symbol = {"running": "●", "stopped": "○", "unknown": "!"}[state]
+    label = symbol + " " + words["dashboard.status." + state]
+    cells = terminal.screen.cells
+    header = "".join(cells[header_y])
+    sidebar_rows = ["".join(row[:20]) for row in cells]
     if sidebar_visible(width, height):
-        assert len(points) == 1, "missing or repeated sidebar core status: " + repr(points)
-        x, y = points[0]
-        assert x < 20 and y >= height - 7, "core status is outside the fixed sidebar footer"
-        header = "".join(terminal.screen.cells[header_y][20:])
-        assert "● " + label not in header, "page title retained global core status"
-        rates = []
-        for rate_y, row in enumerate(terminal.screen.cells):
-            fields = "".join(row[:20]).split()
-            if len(fields) >= 2 and fields[0] in ("↑", "↓"):
-                rates.append((fields[0], rate_y))
-        if overview_page or height <= 10:
-            assert not rates, "sidebar retained rates on Overview or at minimal height"
-        elif rates or height >= 32:
-            assert rates == [("↑", y - 2), ("↓", y - 1)], "sidebar rates are missing or out of place"
+        matches = [y for y, row in enumerate(sidebar_rows) if row.strip() == label]
+        assert len(matches) == 1, "missing or repeated sidebar state: " + repr(matches)
+        y = matches[0]
+        assert y >= height - 7, "core state is outside the fixed sidebar footer"
+        assert_centered(sidebar_rows[y])
+        assert label not in header, "wide page title repeated global state"
+
+        clocks = [index for index, row in enumerate(sidebar_rows) if CLOCK.fullmatch(row.strip())]
+        if not known_start or height <= 10:
+            assert not clocks, "sidebar displayed an unavailable or unallocated clock"
+        elif clocks or height >= 32:
+            assert clocks == [y - 1], "elapsed time is missing or not directly above the state"
+            assert_centered(sidebar_rows[y - 1])
+            assert sidebar_rows[y - 1].strip().startswith("02:"), "elapsed time does not match this process"
+        for row in sidebar_rows:
+            fields = row.split()
+            assert not (len(fields) >= 2 and fields[0] in ("↑", "↓")), "sidebar displayed a traffic rate"
     else:
-        assert not points, "navigation drawer repeated global core status"
-        header = "".join(terminal.screen.cells[header_y])
-        assert "● " + label in header, "compact top bar lost core status"
-    assert len(terminal.screen.cells) == height
-    assert all(len(row) == width for row in terminal.screen.cells)
-    return points[0][1] if points else None
+        y = None
+        assert label in header and not CLOCK.search(header), "compact header must show only core state"
+        if drawer:
+            assert not any(row.strip() == label or CLOCK.fullmatch(row.strip())
+                           for row in sidebar_rows[header_y + 1:]), "navigation drawer repeated core information"
+    assert len(cells) == height
+    assert all(len(row) == width for row in cells)
+    return y
 
 
 def assert_title(terminal, words, page):
@@ -82,10 +99,17 @@ def exercise_overview(preview, overview, binary, output, language, profile, args
             terminal.key(str(number).encode())
             terminal.settle()
             assert_title(terminal, words, page)
-            status_y = assert_status(terminal, words, overview_page=page == "overview")
+            status_y = assert_status(terminal, words)
             if baseline is None:
                 baseline = status_y
             assert status_y == baseline, "changing pages moved the sidebar core status"
+            if page == "rules":
+                before = "".join(terminal.screen.cells[status_y - 1][:20]).strip()
+                terminal.wait_absent(before, timeout=5)
+                terminal.settle()
+                assert_status(terminal, words)
+                after = "".join(terminal.screen.cells[status_y - 1][:20]).strip()
+                assert after > before, "the running clock did not advance while browsing Rules"
             preview.capture(terminal, output, "page-" + page, args)
 
         overview.return_navigation(terminal, words)
@@ -112,7 +136,7 @@ def exercise_overview(preview, overview, binary, output, language, profile, args
             if (width, height) == (80, 24):
                 terminal.click_text(words["dashboard.menu"])
                 terminal.settle()
-                assert_status(terminal, words)
+                assert_status(terminal, words, drawer=True)
                 preview.capture(terminal, output, "compact-drawer", args)
                 terminal.click_text(words["dashboard.page.settings"])
                 terminal.settle()
@@ -158,7 +182,7 @@ def exercise_logs(preview, overview, logs, binary, output, language, profile, ar
         for width, height in ((160, 45), (80, 24)):
             terminal.resize(width, height)
             terminal.settle()
-            assert_status(terminal, words)
+            assert_status(terminal, words, known_start=False)
             terminal.wait(words["logs.capturing"])
             preview.capture(terminal, output, "live-%dx%d" % (width, height), args)
             terminal.click_text(words["logs.pause_display"])
@@ -166,7 +190,7 @@ def exercise_logs(preview, overview, logs, binary, output, language, profile, ar
             terminal.wait(words["logs.display_paused"])
             if sidebar_visible(width, height):
                 terminal.wait(words["header.paused"])
-            assert_status(terminal, words)
+            assert_status(terminal, words, known_start=False)
             preview.capture(terminal, output, "paused-%dx%d" % (width, height), args)
             terminal.click_text(words["logs.resume_display"])
             terminal.wait(words["logs.capturing"])
@@ -182,6 +206,27 @@ def exercise_logs(preview, overview, logs, binary, output, language, profile, ar
         raise
     finally:
         terminal.cleanup()
+
+
+def exercise_inactive(preview, overview, binary, output, language, profile, args):
+    words = overview.labels(language)
+    for scenario, state in (("stopped", "stopped"), ("unavailable", "unknown")):
+        directory = output / scenario
+        directory.mkdir(parents=True)
+        terminal = overview.fixture_terminal(preview, binary, directory / "calls.json", language, profile, scenario)
+        try:
+            terminal.wait("subscription.example")
+            terminal.settle()
+            assert_status(terminal, words, known_start=False, state=state)
+            preview.capture(terminal, directory, "wide", args)
+            terminal.resize(80, 24)
+            terminal.settle()
+            assert_status(terminal, words, known_start=False, state=state)
+            preview.capture(terminal, directory, "compact", args)
+            terminal.exit()
+        finally:
+            terminal.cleanup()
+    print("PASS %s/%s: stopped and unknown states with no clock" % (language, profile), flush=True)
 
 
 def main():
@@ -202,6 +247,7 @@ def main():
         for profile in args.profile or ("truecolor", "no-color"):
             exercise_overview(preview, overview, args.binary, output / language / profile / "navigation", language, profile, args)
             exercise_logs(preview, overview, logs, args.binary, output / language / profile / "logs", language, profile, args)
+            exercise_inactive(preview, overview, args.binary, output / language / profile, language, profile, args)
     print("Evidence:", output)
 
 

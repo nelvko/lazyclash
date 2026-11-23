@@ -324,10 +324,10 @@ func TestOverviewCoreToggleUnknownUnavailableAndTransitionsStayInert(t *testing.
 	}
 }
 
-func TestOverviewCoreProcessAgeKeepsActionInPlace(t *testing.T) {
+func TestOverviewCoreUptimeKeepsActionInPlace(t *testing.T) {
 	now := time.Date(2026, time.November, 15, 12, 0, 0, 0, time.UTC)
 	for _, language := range []string{i18n.English, i18n.Chinese} {
-		// Include narrow cards where translated headings and ages wrap.
+		// Include narrow cards where translated headings and uptimes wrap.
 		for _, width := range []int{5, 8, 10, 20, 30, 33, 34, 40} {
 			t.Run(fmt.Sprintf("%s/%d", language, width), func(t *testing.T) {
 				o := dashboardOptions{Locale: i18n.New(language), Now: now, Snapshot: app.Snapshot{
@@ -337,17 +337,19 @@ func TestOverviewCoreProcessAgeKeepsActionInPlace(t *testing.T) {
 				height := -1
 				var target hitRegion
 				longest := time.Duration(1<<63 - 1)
-				for _, age := range []struct {
+				for _, sample := range []struct {
 					elapsed time.Duration
 					want    string
 				}{
-					{time.Second, o.Locale.T("dashboard.core.startedNow")},
-					{3 * time.Minute, o.Locale.T("dashboard.core.startedMinutes", 3)},
-					{7 * time.Hour, o.Locale.T("dashboard.core.startedHours", 7)},
-					{longest, o.Locale.T("dashboard.core.startedDays", int(longest/(24*time.Hour)))},
+					{time.Second, o.Locale.T("dashboard.core.uptimeUnderMinute")},
+					{3 * time.Minute, o.Locale.T("dashboard.core.uptimeMinutes", 3)},
+					{7 * time.Hour, o.Locale.T("dashboard.core.uptimeHours", 7)},
+					{23*time.Hour + 59*time.Minute, o.Locale.T("dashboard.core.uptimeHoursMinutes", 23, 59)},
+					{365 * 24 * time.Hour, o.Locale.T("dashboard.core.uptimeDays", 365)},
+					{longest, o.Locale.T("dashboard.core.uptimeDaysHours", int(longest/(24*time.Hour)), int(longest/time.Hour%24))},
 				} {
 					for _, phase := range []string{"on", "pending", "off"} {
-						o.Snapshot.Service.StartedAt = now.Add(-age.elapsed)
+						o.Snapshot.Service.StartedAt = now.Add(-sample.elapsed)
 						o.Snapshot.Service.State, o.Snapshot.Service.Active = "active", true
 						o.CoreAction, o.Busy = "", false
 						switch phase {
@@ -366,10 +368,10 @@ func TestOverviewCoreProcessAgeKeepsActionInPlace(t *testing.T) {
 							height, target = len(card.lines), card.targets[0]
 						}
 						if (width >= 30 && len(card.lines) != height) || card.targets[0] != target {
-							t.Fatalf("%s/%s moved core toggle: height=%d target=%+v, want height=%d target=%+v", age.elapsed, phase, len(card.lines), card.targets[0], height, target)
+							t.Fatalf("%s/%s moved core toggle: height=%d target=%+v, want height=%d target=%+v", sample.elapsed, phase, len(card.lines), card.targets[0], height, target)
 						}
-						if phase == "on" && width >= 30 && !strings.Contains(strings.Join(card.lines, "\n"), age.want) {
-							t.Fatalf("process age was dropped or truncated: %s", age.elapsed)
+						if phase == "on" && width >= 30 && !strings.Contains(strings.Join(card.lines, "\n"), sample.want) {
+							t.Fatalf("uptime was dropped or truncated: %s", sample.elapsed)
 						}
 					}
 				}

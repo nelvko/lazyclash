@@ -2,8 +2,10 @@ package tui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -24,41 +26,121 @@ func sidebarRowContaining(t *testing.T, screen, value string) int {
 	return -1
 }
 
-func TestSidebarCoreStatusAnchorsTrafficAndKeepsLogStatus(t *testing.T) {
+func TestSidebarCoreUptimeCentersAboveStatus(t *testing.T) {
+	now := time.Now()
 	for _, language := range []string{i18n.English, i18n.Chinese} {
-		t.Run(language, func(t *testing.T) {
-			m := headerModel("logs", 160, 45)
-			m.locale = i18n.New(language)
-			m.runtime.snapshot.Traffic = &mihomo.Traffic{Up: 2048, Down: 4096}
-			m.layout()
-			status := "● " + m.tr("dashboard.sidebar.coreStatus", m.tr("dashboard.status.running"))
-			y := sidebarRowContaining(t, m.screen, status)
-			if up, down := sidebarRowContaining(t, m.screen, "2.0 KiB/s"), sidebarRowContaining(t, m.screen, "4.0 KiB/s"); up != y-2 || down != y-1 {
-				t.Fatalf("core status and traffic do not share one footer: status=%d up=%d down=%d", y, up, down)
-			}
-			if head := headerText(m); strings.Contains(head, "●") || !strings.Contains(head, m.tr("header.paused")) {
-				t.Fatalf("log header lost its own state or repeated global status: %q", head)
-			}
-			for _, targets := range [][]hitRegion{m.targets, m.focusTargets()} {
-				for _, hit := range targets {
-					if regionsOverlap(hit, hitRegion{X: 0, Y: y, W: sidebarWidth, H: 1}) {
-						t.Fatalf("read-only core status acquired an interaction target: %+v", hit)
+		for _, plain := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/plain=%t", language, plain), func(t *testing.T) {
+				m := headerModel("logs", 160, 45)
+				m.locale, m.noColor = i18n.New(language), plain
+				m.snapshot.Service.PID = 42
+				m.snapshot.Service.StartedAt = now.Add(-101*time.Hour - 2*time.Minute - 3*time.Second)
+				m.runtime.snapshot.Traffic = &mihomo.Traffic{Up: 2048, Down: 4096}
+				m.layout()
+				if head := headerText(m); strings.Contains(head, "●") || !strings.Contains(head, m.tr("header.paused")) {
+					t.Fatalf("log header lost its own state or repeated global status: %q", head)
+				}
+
+				o := m.navigationOptions()
+				o.Now = now
+				status := "● " + m.tr("dashboard.status.running")
+				baseline := -1
+				for _, page := range navPages() {
+					o.Page = page
+					screen, targets, _ := renderDashboard(o)
+					y := sidebarRowContaining(t, screen, status)
+					if baseline == -1 {
+						baseline = y
+					}
+					if y != baseline || y == 0 {
+						t.Fatalf("%s: status moved from row %d to %d", page, baseline, y)
+					}
+					rows := strings.Split(screen, "\n")
+					for index, want := range []string{"101:02:03", status} {
+						line := ansi.Strip(ansi.Cut(rows[y-1+index], 0, sidebarWidth))
+						left := len(line) - len(strings.TrimLeft(line, " "))
+						right := len(line) - len(strings.TrimRight(line, " "))
+						if strings.TrimSpace(line) != want || left-right > 1 || right-left > 1 {
+							t.Fatalf("%s: expected centered %q, got %q", page, want, line)
+						}
+					}
+					g := dashboardGeometry(o)
+					if strings.Contains(ansi.Strip(rows[g.headerY]), "101:02:03") {
+						t.Fatalf("%s: header repeats process uptime", page)
+					}
+					visible := visibleSidebarTargets(targets)
+					if len(visible) != len(navPages()) {
+						t.Fatalf("%s: tall sidebar lost a destination", page)
+					}
+					last := visible[len(visible)-1]
+					for row := last.Y + last.H; row < dashboardContentBottom(o); row++ {
+						if row == y-1 || row == y {
+							continue
+						}
+						content := ansi.Strip(ansi.Cut(rows[row], 0, sidebarWidth))
+						if strings.Trim(content, " ─") != "" {
+							t.Fatalf("%s: footer contains extra data: %q", page, content)
+						}
+					}
+					for _, hit := range targets {
+						if regionsOverlap(hit, hitRegion{X: 0, Y: y - 1, W: sidebarWidth, H: 2}) {
+							t.Fatalf("read-only sidebar footer acquired an interaction target: %+v", hit)
+						}
 					}
 				}
-			}
-			o := m.navigationOptions()
-			for _, page := range append(navPages(), "") {
-				o.Page = page
+				o.Now = now.Add(time.Second)
 				screen, _, _ := renderDashboard(o)
-				if pos := sidebarRowContaining(t, screen, status); pos != y {
-					t.Fatalf("page %q moved sidebar status from row %d to %d", page, y, pos)
+				if sidebarRowContaining(t, screen, "101:02:04") != baseline-1 {
+					t.Fatal("process uptime did not advance on the existing clock row")
 				}
-				showRates := page != "" && page != "overview"
-				for _, rate := range []string{"2.0 KiB/s", "4.0 KiB/s"} {
-					if strings.Contains(sidebarText(screen), rate) != showRates {
-						t.Fatalf("page %q has incorrect visibility for sidebar rate %q", page, rate)
-					}
-				}
+			})
+		}
+	}
+}
+
+func TestSidebarCoreUptimeRequiresConfirmedRunningProcess(t *testing.T) {
+	now := time.Now()
+	clock := "01:02:03"
+	for _, tc := range []struct {
+		name, state, action                                             string
+		inactive, noPID, missingStart, futureStart, stale, serviceError bool
+	}{
+		{name: "stopped", state: "inactive", inactive: true},
+		{name: "unrecognized", state: "unknown"},
+		{name: "failed", state: "failed", inactive: true},
+		{name: "missing process", state: "active", noPID: true},
+		{name: "missing start time", state: "active", missingStart: true},
+		{name: "future start time", state: "active", futureStart: true},
+		{name: "stale snapshot", state: "active", stale: true},
+		{name: "service read failed", state: "active", serviceError: true},
+		{name: "pending restart", state: "active", action: "restart"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			o := dashboardOptions{Width: 120, Height: 35, Page: "profiles", Now: now,
+				Snapshot: app.Snapshot{Installed: true, Service: service.Status{State: "active", Active: true, PID: 42, StartedAt: now.Add(-time.Hour - 2*time.Minute - 3*time.Second)}}}
+			screen, _, _ := renderDashboard(o)
+			y := sidebarRowContaining(t, screen, "● Running")
+			if sidebarRowContaining(t, screen, clock) != y-1 {
+				t.Fatal("running process missing its uptime")
+			}
+			o.Snapshot.Service.State, o.Snapshot.Service.Active = tc.state, !tc.inactive
+			o.StateUnavailable, o.CoreAction = tc.stale, tc.action
+			if tc.noPID {
+				o.Snapshot.Service.PID = 0
+			}
+			if tc.missingStart {
+				o.Snapshot.Service.StartedAt = time.Time{}
+			}
+			if tc.futureStart {
+				o.Snapshot.Service.StartedAt = now.Add(time.Minute)
+			}
+			if tc.serviceError {
+				o.Snapshot.ServiceError = "fixture observation unavailable"
+			}
+			screen, _, _ = renderDashboard(o)
+			status, _, _ := headerCoreState(o)
+			if sidebarRowContaining(t, screen, status) != y || strings.Contains(sidebarText(screen), ":") {
+				t.Fatalf("unconfirmed clock or shifted status in sidebar:\n%s", sidebarText(screen))
 			}
 		})
 	}
@@ -88,7 +170,7 @@ func TestSidebarCoreStatusKeepsCompleteStateLabelsAtAFixedRow(t *testing.T) {
 			screen, targets, _ := renderDashboard(o)
 			y := sidebarRowContaining(t, screen, tc.label)
 			row := strings.TrimSpace(ansi.Strip(ansi.Cut(strings.Split(screen, "\n")[y], 0, sidebarWidth)))
-			if !strings.HasPrefix(row, tc.symbol+" ") || y != dashboardContentBottom(o)-2 {
+			if row != tc.symbol+" "+tc.label || y != dashboardContentBottom(o)-2 {
 				t.Fatalf("state is ambiguous or moved the footer: row=%d %q", y, row)
 			}
 			assertCanvas(t, screen, o.Width, o.Height)
@@ -97,25 +179,52 @@ func TestSidebarCoreStatusKeepsCompleteStateLabelsAtAFixedRow(t *testing.T) {
 	}
 }
 
-func TestSidebarCoreStatusSurvivesWhenTrafficDoesNotFit(t *testing.T) {
-	for _, hideHints := range []bool{false, true} {
-		for _, height := range []int{9, 10, 26, 45} {
-			t.Run(fmt.Sprintf("height=%d/hideHints=%v", height, hideHints), func(t *testing.T) {
-				o := dashboardOptions{Width: 120, Height: height, Page: "profiles", HideKeyHints: hideHints,
-					Snapshot: app.Snapshot{Installed: true, Service: service.Status{State: "active", Active: true}},
-					Runtime:  liveRuntime(), RuntimeReceived: true}
+func TestSidebarCoreUptimePreservesShortNavigation(t *testing.T) {
+	now := time.Now()
+	for _, height := range []int{9, 10, 11, 24, 26, 45} {
+		for _, hideHints := range []bool{false, true} {
+			t.Run(fmt.Sprintf("height=%d/hideHints=%t", height, hideHints), func(t *testing.T) {
+				o := dashboardOptions{Width: 120, Height: height, Page: "profiles", HideKeyHints: hideHints, Now: now,
+					Snapshot: app.Snapshot{Installed: true, Service: service.Status{State: "active", Active: true, PID: 42}}}
+				withoutTime, targets, _ := renderDashboard(o)
+				before := visibleSidebarTargets(targets)
+				baseline := sidebarRowContaining(t, withoutTime, "● Running")
+				o.Snapshot.Service.StartedAt = now.Add(-time.Hour)
 				screen, targets, _ := renderDashboard(o)
-				y := sidebarRowContaining(t, screen, "Core: Running")
-				if height <= 10 && strings.Contains(sidebarText(screen), "KiB/s") {
-					t.Fatal("short sidebar kept rates instead of reserving the core state")
+				y := sidebarRowContaining(t, screen, "● Running")
+				if y != baseline {
+					t.Fatalf("uptime moved the status from %d to %d", baseline, y)
 				}
-				if height == 45 && !strings.Contains(sidebarText(screen), "KiB/s") {
-					t.Fatal("tall sidebar lost the rates")
+				visible := visibleSidebarTargets(targets)
+				if !slices.Equal(before, visible) || len(visible) == 0 {
+					t.Fatalf("uptime displaced navigation: before=%+v after=%+v", before, visible)
 				}
-				for _, hit := range visibleSidebarTargets(targets) {
-					if hit.Y+hit.H > y {
-						t.Fatalf("core state overwrote navigation: %+v, state row=%d", hit, y)
+				rows := strings.Split(screen, "\n")
+				for _, hit := range visible {
+					row := ansi.Strip(ansi.Cut(rows[hit.Y+hit.H/2], hit.X, hit.X+hit.W))
+					if !strings.Contains(row, pageTitle(strings.TrimPrefix(hit.ID, "nav."))) {
+						t.Fatalf("footer overwrote navigation: %q at %+v", row, hit)
 					}
+				}
+				hasClock := strings.Contains(sidebarText(screen), "01:00:00")
+				if !hideHints {
+					switch height {
+					case 9:
+						if hasClock || !strings.Contains(sidebarText(screen), "↓") {
+							t.Fatal("nine rows must preserve the menu scroll hint and core state")
+						}
+					case 10:
+						if hasClock || len(visible) != len(navPages()) {
+							t.Fatal("ten rows should preserve all destinations plus status")
+						}
+					case 11, 26:
+						if !hasClock || len(visible) != len(navPages()) || visible[0].H != 1 {
+							t.Fatal("compact navigation should fit the clock and all destinations")
+						}
+					}
+				}
+				if hasClock && visible[len(visible)-1].Y+visible[len(visible)-1].H > y-1 {
+					t.Fatal("clock overlaps the final visible menu item")
 				}
 				assertCanvas(t, screen, o.Width, o.Height)
 				assertRegions(t, targets, o.Width, o.Height)
@@ -125,15 +234,16 @@ func TestSidebarCoreStatusSurvivesWhenTrafficDoesNotFit(t *testing.T) {
 }
 
 func TestPopupNavigationDoesNotDuplicateCompactHeaderCoreStatus(t *testing.T) {
+	now := time.Now()
 	for _, height := range []int{9, 24, 45} {
-		o := dashboardOptions{Width: 80, Height: height, Page: "profiles", SidebarOpen: true,
-			Snapshot: app.Snapshot{Installed: true, Service: service.Status{State: "active", Active: true}}}
+		o := dashboardOptions{Width: 80, Height: height, Page: "profiles", SidebarOpen: true, Now: now,
+			Snapshot: app.Snapshot{Installed: true, Service: service.Status{State: "active", Active: true, PID: 42, StartedAt: now.Add(-time.Hour)}}}
 		screen, targets, _ := renderDashboard(o)
 		if count := strings.Count(ansi.Strip(screen), "● Running"); count != 1 {
 			t.Fatalf("80x%d rendered %d compact header badges", height, count)
 		}
-		if strings.Contains(ansi.Strip(screen), "Core: Running") {
-			t.Fatal("popup navigation duplicated the fixed core status")
+		if strings.Contains(ansi.Strip(screen), "01:00:00") {
+			t.Fatal("compact header or popup showed fixed-sidebar uptime")
 		}
 		assertCanvas(t, screen, o.Width, o.Height)
 		assertRegions(t, targets, o.Width, o.Height)
@@ -162,7 +272,7 @@ func TestCoreStatusMovesAcrossSidebarBreakpointWithoutResettingBody(t *testing.T
 			t.Fatalf("width %d moved body state: focus=%s scroll=%d open=%v", width, m.focus, m.scroll, m.sidebarOpen)
 		}
 		if sidebarVisible(width, m.height) {
-			sidebarRowContaining(t, m.screen, "Core: Running")
+			sidebarRowContaining(t, m.screen, "● Running")
 			if strings.Contains(headerText(m), "● Running") {
 				t.Fatal("expanding sidebar retained the title badge")
 			}

@@ -15,19 +15,20 @@ func overviewCoreCard(o dashboardOptions, width int) dashboardBlock {
 	s := o.Snapshot
 	style := func(value, color string) string { return themed(clean(value), color, panel, o.Dim) }
 	state, _, color := headerCoreState(o)
+	inner := overviewInnerWidth(width)
+	lines := []string{overviewHeading(o, "Mihomo"), style(cellCrop(state, inner), color)}
 	if !s.Installed && !o.StateUnavailable {
-		return overviewControlPanel(o, width, tr("dashboard.overview.service"), []string{style(state, color)}, []overviewControlButton{
+		return overviewControlPanel(o, width, tr("dashboard.overview.service"), lines, []overviewControlButton{
 			{id: "core.install", label: tr("dashboard.action.install"), enabled: !o.Busy},
 		})
 	}
-	inner := overviewInnerWidth(width)
 	control := overviewCoreToggle(o)
 	transition := control.state == togglePending
 	running := !o.StateUnavailable && s.Service.Active && s.ServiceError == ""
-	lines := []string{style(cellCrop(state, inner), color)}
-	if running && !transition {
-		if elapsed, ok := observedCoreUptime(s.Service, o.Now); ok {
-			lines = append(lines, style(coreStartAge(elapsed, o.Locale), muted))
+	showCardUptime := !sidebarGeometry(o, false).hasClockRow()
+	if showCardUptime {
+		if elapsed, ok := o.coreUptime(); ok {
+			lines = append(lines, style(coreUptimeLabel(elapsed, o.Locale), muted))
 		}
 	}
 	if running && s.RunningVersion != "" && s.Version != "" && s.RunningVersion != s.Version {
@@ -66,12 +67,13 @@ func overviewCoreCard(o dashboardOptions, width int) dashboardBlock {
 		lines = append(lines, style(issue, muted))
 	}
 	content := overviewTextBlock(lines, inner)
-	// Reserve the age line after any diagnostics so the card stays steady
-	// across startup, shutdown and changes of time unit on narrow screens.
-	longestAge := coreStartAge(time.Duration(1<<63-1), o.Locale)
-	minRows := 2 + strings.Count(wrapText(longestAge, inner), "\n")
-	for len(content.lines) < minRows {
-		content.blank()
+	if showCardUptime {
+		// Keep the narrow card steady when the clock starts or changes units.
+		longestUptime := coreUptimeLabel(time.Duration(1<<63-1), o.Locale)
+		minRows := 3 + strings.Count(wrapText(longestUptime, inner), "\n")
+		for len(content.lines) < minRows {
+			content.blank()
+		}
 	}
 	heading := overviewLabelSlot(o, inner, overviewHeading(o, tr("dashboard.overview.service")), coreActionFace(o, control), "core.toggle")
 	return overviewPanel(o, width, heading, content, nil)
@@ -93,6 +95,13 @@ func coreActionFace(o dashboardOptions, control toggleModel) string {
 	return renderButton(start, options)
 }
 
+func (o dashboardOptions) coreUptime() (time.Duration, bool) {
+	if o.StateUnavailable || !o.Snapshot.Installed || o.Snapshot.ServiceError != "" || o.CoreAction != "" {
+		return 0, false
+	}
+	return observedCoreUptime(o.Snapshot.Service, o.Now)
+}
+
 func observedCoreUptime(status service.Status, now time.Time) (time.Duration, bool) {
 	if !status.Active || status.State != "active" || status.PID <= 0 || status.StartedAt.IsZero() {
 		return 0, false
@@ -104,16 +113,23 @@ func observedCoreUptime(status service.Status, now time.Time) (time.Duration, bo
 	return elapsed, elapsed >= 0
 }
 
-func coreStartAge(elapsed time.Duration, locale i18n.Localizer) string {
+func coreUptimeLabel(elapsed time.Duration, locale i18n.Localizer) string {
+	minutes := int(elapsed / time.Minute)
+	hours := minutes / 60
 	switch {
-	case elapsed < time.Minute:
-		return locale.T("dashboard.core.startedNow")
-	case elapsed < time.Hour:
-		return locale.T("dashboard.core.startedMinutes", int(elapsed/time.Minute))
-	case elapsed < 24*time.Hour:
-		return locale.T("dashboard.core.startedHours", int(elapsed/time.Hour))
+	case minutes < 1:
+		return locale.T("dashboard.core.uptimeUnderMinute")
+	case hours == 0:
+		return locale.T("dashboard.core.uptimeMinutes", minutes)
+	case hours < 24:
+		if minutes%60 == 0 {
+			return locale.T("dashboard.core.uptimeHours", hours)
+		}
+		return locale.T("dashboard.core.uptimeHoursMinutes", hours, minutes%60)
+	case hours%24 == 0:
+		return locale.T("dashboard.core.uptimeDays", hours/24)
 	default:
-		return locale.T("dashboard.core.startedDays", int(elapsed/(24*time.Hour)))
+		return locale.T("dashboard.core.uptimeDaysHours", hours/24, hours%24)
 	}
 }
 

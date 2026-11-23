@@ -15,6 +15,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import time
 
 
 SPEC = importlib.util.spec_from_file_location('core_toggle_smoke', Path(__file__).with_name('pty-smoke.py'))
@@ -28,18 +29,35 @@ def free_port():
         return listener.getsockname()[1]
 
 
-def shows_start_time(terminal):
-    return re.search(r'Just started|Started \d+[mhd] ago', terminal.screen.text()) is not None
-
-
 def capture(terminal, output, label):
     (output/(label+'.txt')).write_text(terminal.screen.text())
     (output/(label+'.ansi')).write_bytes(terminal.raw)
 
 
+def sidebar_seconds(terminal):
+    for row in terminal.screen.cells:
+        match = re.fullmatch(r'(\d{2,}):([0-5]\d):([0-5]\d)', ''.join(row[:20]).strip())
+        if match:
+            hours, minutes, seconds = map(int, match.groups())
+            return hours * 3600 + minutes * 60 + seconds
+    return None
+
+
+def wait_sidebar_clock(terminal, lower, upper):
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline:
+        terminal.read()
+        seconds = sidebar_seconds(terminal)
+        if (not terminal.screen.synchronized and terminal.screen.state == 'text'
+                and seconds is not None and lower <= seconds < upper):
+            assert 'Up for ' not in terminal.screen.text(), 'wide core card repeated the sidebar clock'
+            return seconds
+    raise AssertionError('sidebar clock did not reach the expected process age\n' + terminal.screen.text())
+
+
 def heading_action(terminal, label):
     for y, row in enumerate(terminal.screen.cells):
-        if 'Mihomo core' not in ''.join(row):
+        if 'Core status' not in ''.join(row):
             continue
         for x, cell in enumerate(row):
             if cell and ''.join(row[x:]).startswith(label):
@@ -84,7 +102,8 @@ def main():
             terminal.wait('○ Stopped');terminal.settle()
             assert not status()['Active']
             assert heading_action(terminal, 'Start') is not None
-            assert not shows_start_time(terminal)
+            assert 'Up for ' not in terminal.screen.text()
+            assert sidebar_seconds(terminal) is None
             capture(terminal,output,'stopped')
             results['stopped_observation']=True
 
@@ -92,7 +111,7 @@ def main():
             # pending. Their state changes must not create a second operation.
             x, y = heading_action(terminal, 'Start')
             terminal.send(f'\x1b[<0;{x+1};{y+1}M\x1b[<0;{x+1};{y+1}m'.encode()+b'\r \r')
-            terminal.wait('● Running');terminal.wait('Just started');terminal.settle()
+            terminal.wait('● Running');wait_sidebar_clock(terminal, 0, 60);terminal.settle()
             active=status();assert active['Active'] and active['PID']>0,active
             first_pid=active['PID']
             assert heading_action(terminal, 'Stop') is not None
@@ -102,7 +121,8 @@ def main():
             terminal.send(b' \r \r')
             terminal.wait('○ Stopped');terminal.settle()
             stopped=status();assert not stopped['Active'] and stopped['PID']==0,stopped
-            assert not shows_start_time(terminal)
+            assert 'Up for ' not in terminal.screen.text()
+            assert sidebar_seconds(terminal) is None
             capture(terminal,output,'toggle-stopped')
             results['toggle_stop_and_pending_dedup']=True
 
@@ -124,17 +144,24 @@ def main():
             results['start_failure_rereads_off']=True
 
             run(argv+['service','start'])
-            terminal.wait('● Running');terminal.wait('Just started');terminal.settle()
+            terminal.wait('● Running');initial = wait_sidebar_clock(terminal, 0, 60);terminal.settle()
             external=status();assert external['Active'],external
             capture(terminal,output,'external-start')
             results['external_start_sync']=True
-            terminal.wait('Started 1m ago', timeout=85)
+            wait_sidebar_clock(terminal, initial + 1, 60)
+            results['sidebar_seconds_advance']=True
+            terminal.resize(80, 24)
+            terminal.wait('Up for <1m')
+            assert sidebar_seconds(terminal) is None
+            terminal.wait('Up for 1m', timeout=85)
             capture(terminal,output,'uptime-advanced')
+            terminal.resize(120, 40)
+            wait_sidebar_clock(terminal, 60, 120)
             results['uptime_updates']=True
             old_pid=external['PID']
             run(argv+['service','restart'])
             restarted=status();assert restarted['Active'] and restarted['PID']!=old_pid,restarted
-            terminal.wait('Just started')
+            wait_sidebar_clock(terminal, 0, 60)
             capture(terminal,output,'external-restart')
             results['external_restart_and_uptime_reset']=True
             terminal.send(b'r');terminal.settle()

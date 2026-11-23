@@ -37,7 +37,7 @@ func assertSidebarFocusVisible(t *testing.T, m Model, id string, height int) {
 }
 
 func TestSidebarCompactsPaddingBeforeScrollingNavigation(t *testing.T) {
-	for _, size := range [][2]int{{120, 26}, {120, 25}, {120, 24}, {100, 20}, {80, 24}, {80, 12}, {60, 10}, {80, 7}} {
+	for _, size := range [][2]int{{120, 27}, {120, 26}, {120, 25}, {120, 24}, {100, 20}, {80, 24}, {80, 12}, {60, 10}, {80, 7}} {
 		t.Run(fmt.Sprintf("%dx%d", size[0], size[1]), func(t *testing.T) {
 			o := dashboardOptions{Width: size[0], Height: size[1], Page: "overview", SidebarOpen: true}
 			screen, targets, _ := renderDashboard(o)
@@ -47,7 +47,7 @@ func TestSidebarCompactsPaddingBeforeScrollingNavigation(t *testing.T) {
 			}
 			geometry := sidebarGeometry(o, !sidebarVisible(o.Width, o.Height))
 			itemHeight := 1
-			if size[1] >= 26 {
+			if size[1] >= 27 {
 				itemHeight = 3
 			}
 			for i, target := range visible {
@@ -193,7 +193,7 @@ func TestSidebarTabReturnsToLogicalNavigationAfterMouseScrolling(t *testing.T) {
 	m.returnToNavigation()
 	m.layout()
 	assertSidebarFocusVisible(t, m, "nav.settings", 1)
-	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 26})
+	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 27})
 	assertSidebarFocusVisible(t, m, "nav.settings", 3)
 }
 

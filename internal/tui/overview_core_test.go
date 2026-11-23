@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -11,7 +12,7 @@ import (
 	"github.com/nelvko/lazyclash/internal/service"
 )
 
-func TestCoreCardReportsWhenTheCurrentProcessStarted(t *testing.T) {
+func TestCoreCardShowsElapsedUptimeWithoutSeconds(t *testing.T) {
 	now := time.Now()
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		t.Run(language, func(t *testing.T) {
@@ -27,42 +28,78 @@ func TestCoreCardReportsWhenTheCurrentProcessStarted(t *testing.T) {
 				elapsed time.Duration
 				want    string
 			}{
-				{0, locale.T("dashboard.core.startedNow")},
-				{time.Minute - time.Nanosecond, locale.T("dashboard.core.startedNow")},
-				{time.Minute, locale.T("dashboard.core.startedMinutes", 1)},
-				{time.Hour - time.Nanosecond, locale.T("dashboard.core.startedMinutes", 59)},
-				{time.Hour, locale.T("dashboard.core.startedHours", 1)},
-				{24*time.Hour - time.Nanosecond, locale.T("dashboard.core.startedHours", 23)},
-				{24 * time.Hour, locale.T("dashboard.core.startedDays", 1)},
-				{3*24*time.Hour + time.Minute, locale.T("dashboard.core.startedDays", 3)},
+				{0, locale.T("dashboard.core.uptimeUnderMinute")},
+				{time.Minute - time.Nanosecond, locale.T("dashboard.core.uptimeUnderMinute")},
+				{time.Minute, locale.T("dashboard.core.uptimeMinutes", 1)},
+				{time.Hour - time.Nanosecond, locale.T("dashboard.core.uptimeMinutes", 59)},
+				{time.Hour, locale.T("dashboard.core.uptimeHours", 1)},
+				{time.Hour + time.Minute - time.Nanosecond, locale.T("dashboard.core.uptimeHours", 1)},
+				{time.Hour + time.Minute, locale.T("dashboard.core.uptimeHoursMinutes", 1, 1)},
+				{24*time.Hour - time.Nanosecond, locale.T("dashboard.core.uptimeHoursMinutes", 23, 59)},
+				{24 * time.Hour, locale.T("dashboard.core.uptimeDays", 1)},
+				{25*time.Hour - time.Nanosecond, locale.T("dashboard.core.uptimeDays", 1)},
+				{25 * time.Hour, locale.T("dashboard.core.uptimeDaysHours", 1, 1)},
+				{3*24*time.Hour + time.Minute, locale.T("dashboard.core.uptimeDays", 3)},
+				{3*24*time.Hour + 21*time.Hour + 59*time.Minute, locale.T("dashboard.core.uptimeDaysHours", 3, 21)},
 			} {
-				o.Now = now.Add(tc.elapsed)
-				if got := render(); !strings.Contains(got, tc.want) {
-					t.Fatalf("%v: missing process start age %q:\n%s", tc.elapsed, tc.want, got)
+				if got := coreUptimeLabel(tc.elapsed, locale); got != tc.want {
+					t.Fatalf("%v: uptime = %q, want %q", tc.elapsed, got, tc.want)
 				}
 			}
-			o.Now = now.Add(2*time.Hour + 18*time.Minute + 34*time.Second)
+			o.Now = now.Add(time.Hour + 2*time.Minute + 11*time.Second)
 			plain := render()
-			title := "Mihomo core"
+			title, uptime := "Core status", "Up for 1h 2m"
 			if language == i18n.Chinese {
-				title = "Mihomo 内核"
+				title, uptime = "内核状态", "已运行 1 小时 2 分钟"
 			}
 			status := "● " + locale.T("dashboard.status.running")
-			if !strings.Contains(plain, title) || strings.Count(plain, "Mihomo") != 1 || strings.Count(plain, status) != 1 || !strings.Contains(plain, locale.T("dashboard.core.startedHours", 2)) {
-				t.Fatalf("core identity, state or age incorrect:\n%s", plain)
+			if !strings.Contains(plain, title) || strings.Count(plain, "Mihomo") != 1 || strings.Count(plain, status) != 1 || !strings.Contains(plain, uptime) {
+				t.Fatalf("core identity, state or uptime incorrect:\n%s", plain)
 			}
-			if strings.Contains(plain, "v1.19.33") || strings.Contains(plain, "02:18:34") || strings.Contains(plain, "4242") {
+			if strings.Contains(plain, "v1.19.33") || strings.Contains(plain, "01:02:11") || strings.Contains(plain, "4242") {
 				t.Fatalf("healthy card displayed detailed diagnostics:\n%s", plain)
 			}
 			o.Now = o.Now.Add(time.Second)
 			if next := render(); next != plain {
-				t.Fatalf("core card changed within the same hour:\n%s", next)
+				t.Fatalf("core card changed within the same minute:\n%s", next)
 			}
 			o.Snapshot.Service = service.Status{Active: true, State: "active", PID: 4243, StartedAt: o.Now.Add(-time.Second)}
-			if next := render(); !strings.Contains(next, locale.T("dashboard.core.startedNow")) || strings.Contains(next, locale.T("dashboard.core.startedHours", 2)) {
-				t.Fatalf("new process inherited the previous process's age:\n%s", next)
+			if next := render(); !strings.Contains(next, locale.T("dashboard.core.uptimeUnderMinute")) || strings.Contains(next, uptime) {
+				t.Fatalf("new process inherited the previous process's uptime:\n%s", next)
 			}
 		})
+	}
+}
+
+func TestCoreCardShowsUptimeOnlyWhenSidebarClockIsHidden(t *testing.T) {
+	now := time.Now()
+	for _, language := range []string{i18n.English, i18n.Chinese} {
+		for _, tc := range []struct {
+			width, height           int
+			hideHints, clockVisible bool
+		}{
+			{160, 45, false, true},
+			{sidebarMinWidth, 24, false, true},
+			{sidebarMinWidth - 1, 24, false, false},
+			{80, 24, false, false},
+			{120, 11, false, true},
+			{120, 10, false, false},
+			{120, 10, true, true},
+		} {
+			t.Run(fmt.Sprintf("%s/%dx%d/hideHints=%t", language, tc.width, tc.height, tc.hideHints), func(t *testing.T) {
+				o := dashboardOptions{Locale: i18n.New(language), Width: tc.width, Height: tc.height, Page: "overview", HideKeyHints: tc.hideHints, Now: now,
+					Snapshot: app.Snapshot{Installed: true, Service: service.Status{State: "active", Active: true, PID: 42, StartedAt: now.Add(-time.Hour - 2*time.Minute - 11*time.Second)}}}
+				screen, _, _ := renderDashboard(o)
+				plain := ansi.Strip(screen)
+				if strings.Contains(plain, "01:02:11") != tc.clockVisible {
+					t.Fatalf("unexpected sidebar clock visibility:\n%s", plain)
+				}
+				minutes := o.Locale.T("dashboard.core.uptimeHoursMinutes", 1, 2)
+				if strings.Contains(plain, minutes) == tc.clockVisible {
+					t.Fatalf("overview must show %q exactly when the sidebar clock is absent:\n%s", minutes, plain)
+				}
+			})
+		}
 	}
 }
 
@@ -123,14 +160,22 @@ func TestCoreStatusKeepsFailuresTransitionsAndMissingTimingExplicit(t *testing.T
 				block := overviewCoreCard(o, 72)
 				plain := ansi.Strip(strings.Join(block.lines, "\n"))
 				face, _, _ := headerCoreState(o)
-				if !strings.Contains(plain, face) || strings.Contains(plain, o.Locale.T("dashboard.core.startedHours", 1)) != tc.uptime || strings.Contains(plain, o.Locale.T("dashboard.core.startedNow")) {
-					t.Fatalf("core invented state/time (want %q):\n%s", face, plain)
+				action, _ := coreCardAction(t, block)
+				if identity, state := strings.TrimSpace(ansi.Strip(block.lines[action.Y+2])), strings.TrimSpace(ansi.Strip(block.lines[action.Y+3])); identity != "Mihomo" || state != face {
+					t.Fatalf("%s: expected identity followed by the current state, got %q and %q", tc.name, identity, state)
+				}
+				prefix := "Up for "
+				if language == i18n.Chinese {
+					prefix = "已运行"
+				}
+				if strings.Contains(plain, prefix) != tc.uptime || (tc.uptime && !strings.Contains(plain, o.Locale.T("dashboard.core.uptimeHours", 1))) {
+					t.Fatalf("core reported incorrect uptime for %s:\n%s", tc.name, plain)
 				}
 				if strings.Contains(plain, o.Snapshot.Version) {
 					t.Fatalf("matching installed and running versions repeated in overview:\n%s", plain)
 				}
 				if strings.Count(plain, face) != 1 {
-					t.Fatalf("state repeated:\n%s", plain)
+					t.Fatalf("expected one %q state label:\n%s", face, plain)
 				}
 				if tc.state == "reloading" && face != "◌ "+o.Locale.T("dashboard.status.reloading") {
 					t.Fatalf("reload labeled as another operation: %q", face)
@@ -143,9 +188,6 @@ func TestCoreStatusKeepsFailuresTransitionsAndMissingTimingExplicit(t *testing.T
 				}
 				if tc.apiError != "" && !strings.Contains(plain, o.Locale.T("dashboard.core.monitorUnavailable")) {
 					t.Fatal("controller failure replaced process state")
-				}
-				if len(block.targets) != 1 || block.targets[0].ID != "core.toggle" {
-					t.Fatalf("core exposes extra controls: %+v", block.targets)
 				}
 			})
 		}

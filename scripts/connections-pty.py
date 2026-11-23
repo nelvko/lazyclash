@@ -588,8 +588,7 @@ def exercise(preview, binary, output, language, profile, args):
         assert position(terminal, host) == row, "dismissing the inspector moved the list"
         search(terminal, "github-agent")
 
-        # A paused connection list freezes its data while runtime monitoring
-        # continues in the background, including sidebar metrics.
+        # The paused list keeps its snapshot while runtime monitoring continues.
         wait_until(terminal, lambda: query_count(report) >= 2, "second runtime sample missing")
         resize_terminal(terminal, words, 80, 24)
         terminal.settle()

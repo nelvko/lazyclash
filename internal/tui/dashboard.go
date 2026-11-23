@@ -404,27 +404,6 @@ func regionsOverlap(a, b hitRegion) bool {
 	return a.X < b.X+b.W && b.X < a.X+a.W && a.Y < b.Y+b.H && b.Y < a.Y+a.H
 }
 
-func sidebarTraffic(o dashboardOptions, inner int) []string {
-	style := func(value, color string) string {
-		return themed(value, color, sidebarBackground, o.Dim)
-	}
-	up, down := "--", "--"
-	s := o.Runtime
-	traffic := s.Traffic
-	if !o.StateUnavailable && o.Snapshot.Installed && o.RuntimeReceived && s.State == "ready" && s.Error == "" &&
-		s.TrafficError == "" && traffic != nil && traffic.Up >= 0 && traffic.Down >= 0 {
-		up = formatBytes(traffic.Up) + "/s"
-		down = formatBytes(traffic.Down) + "/s"
-	}
-	rate := func(arrow, color, value string) string {
-		value = cellCrop(value, max(1, inner-2))
-		gap := max(1, inner-1-ansi.StringWidth(value))
-		return style(arrow, color) + style(strings.Repeat(" ", gap)+value, text)
-	}
-	colors := trafficCurveColors()
-	return []string{rate("↑", colors.upload, up), rate("↓", colors.download, down)}
-}
-
 type dashboardBlock struct {
 	lines   []string
 	targets []hitRegion

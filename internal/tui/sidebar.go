@@ -19,7 +19,7 @@ type sidebarState struct {
 }
 
 type sidebarLayout struct {
-	width, menuY, end, height, itemHeight int
+	width, menuY, end, height, itemHeight, footerHeight int
 }
 
 func sidebarGeometry(o dashboardOptions, popup bool) sidebarLayout {
@@ -30,8 +30,12 @@ func sidebarGeometry(o dashboardOptions, popup bool) sidebarLayout {
 	}
 	available := max(0, s.end-s.menuY)
 	if !popup {
-		// Core state stays visible even when navigation needs to scroll.
-		available = max(0, available-1)
+		// Preserve a complete compact menu before reserving the clock row.
+		footerRows := 1
+		if available >= len(navPages())+2 {
+			footerRows++
+		}
+		available = max(0, available-footerRows)
 	}
 	// Keep all seven destinations visible before spending rows on padding.
 	if available < len(navPages())*s.itemHeight {
@@ -42,8 +46,16 @@ func sidebarGeometry(o dashboardOptions, popup bool) sidebarLayout {
 		available = max(0, available-1)
 	}
 	s.height = min(total, available/s.itemHeight*s.itemHeight)
+	if g.sidebar && !popup {
+		s.footerHeight = s.end - s.menuY - s.height
+		if s.height < total {
+			s.footerHeight-- // The scroll indicator owns the row below the menu.
+		}
+	}
 	return s
 }
+
+func (g sidebarLayout) hasClockRow() bool { return g.footerHeight >= 2 }
 
 func (s *sidebarState) prepare(o dashboardOptions, g sidebarLayout, popup bool, lines []string) {
 	bounds := hitRegion{Y: g.menuY, W: g.width, H: g.height}
@@ -193,35 +205,34 @@ func drawSidebar(rows []string, o dashboardOptions, popup bool) []hitRegion {
 		putRows(rows, g.width-2, g.menuY+g.height, themed("↓", muted, sidebarBackground, o.Dim), o.Width)
 	}
 	if !popup {
-		footer := sidebarFooter(o, g.width, g.end-g.menuY-g.height)
+		footer := g.footer(o)
 		footerY := g.end - len(footer)
 		for row, line := range footer {
-			putRows(rows, 2, footerY+row, line, o.Width)
+			putRows(rows, (g.width-ansi.StringWidth(line))/2, footerY+row, line, o.Width)
 		}
 	}
 	return visible
 }
 
-func sidebarFooter(o dashboardOptions, width, available int) []string {
+func (g sidebarLayout) footer(o dashboardOptions) []string {
 	full, _, color := headerCoreState(o)
 	symbol, label, _ := strings.Cut(full, " ")
-	inner := max(1, width-4)
-	description := o.Locale.T("dashboard.sidebar.coreStatus", label)
-	if ansi.StringWidth(symbol+" "+description) > inner {
-		description = label
-	}
-	status := themed(symbol, color, sidebarBackground, o.Dim) + themed(" "+description, text, sidebarBackground, o.Dim)
+	status := themed(symbol, color, sidebarBackground, o.Dim) + themed(" "+label, text, sidebarBackground, o.Dim)
 	var footer []string
-	if available >= 3 {
-		footer = append(footer, themed(strings.Repeat("─", inner), divider, sidebarBackground, o.Dim))
+	if g.footerHeight >= 3 {
+		footer = append(footer, themed(strings.Repeat("─", g.width-4), divider, sidebarBackground, o.Dim))
 	}
-	if available >= 5 && o.Page != "" && o.Page != "overview" {
-		footer = append(footer, sidebarTraffic(o, inner)...)
+	if g.footerHeight >= 5 {
+		footer = append(footer, "")
 	}
-	footer = append(footer, cellCrop(status, inner))
-	// Keep the state on the same baseline across pages. In tall windows,
-	// leave a quiet row between the state and the global key hints.
-	if available >= 6 {
+	if g.hasClockRow() {
+		if elapsed, ok := o.coreUptime(); ok {
+			clock := lipgloss.NewStyle().Bold(true).Render(formatCoreUptime(elapsed))
+			footer = append(footer, themed(clock, text, sidebarBackground, o.Dim))
+		}
+	}
+	footer = append(footer, status)
+	if g.footerHeight >= 4 {
 		footer = append(footer, "")
 	}
 	return footer
