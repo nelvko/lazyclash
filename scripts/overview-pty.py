@@ -41,7 +41,7 @@ def fixture_terminal(preview, binary, report, language, profile, scenario):
 
 
 def focused(terminal, label):
-    pattern = r"›\s*(?:[<\[]\s*)?" + re.escape(label) + r"(?:\s|[>\]●]|$)"
+    pattern = r"›\s*(?:[<\[]\s*)?" + re.escape(label) + r"(?:\s|[>\]]|$)"
     return any(re.search(pattern, row) for row in terminal.screen.text().splitlines())
 
 
@@ -185,60 +185,6 @@ def assert_card_outline(terminal, profile, complete=True):
             "height": bottom - top + 1 if bottom is not None else None}
 
 
-def network_tab_labels(words):
-    return [words[key] for key in ("terminal.title", "dashboard.network.tun", "dashboard.field.systemProxy")]
-
-
-def assert_network_card(rows, words, scenario, selected=None):
-    assert rows[0] == words["dashboard.overview.network"], "network heading gained an action: " + rows[0]
-    # A translated status or port label can wrap across terminal rows.
-    compact = "".join("".join(rows).split())
-    port = "".join((words["dashboard.network.mixedPort"] % "17897").split())
-    tabs = ["".join(label.split()) for label in network_tab_labels(words)]
-    offsets = [compact.find(tab) for tab in tabs]
-    assert min(offsets) >= 0 and offsets == sorted(offsets), "network tabs missing or out of order: " + repr(rows)
-    assert compact.endswith(port) and "127.0.0.1:" not in compact, "network card lost its saved port summary"
-    detail = compact[offsets[-1] + len(tabs[-1]):-len(port)]
-    states = [words["terminal.state.pending" if scenario == "pending" else "terminal.state.off"],
-              words["tun.saved_state"] % words["dashboard.control.on"] if scenario == "pending" else words["dashboard.control.tunHint"],
-              words["dashboard.network.systemProxyState"]]
-    visible = [i for i, state in enumerate(states) if "".join(state.split()) in detail]
-    assert len(visible) == 1, "network card should show only the selected tab's state: " + repr(rows)
-    if selected is not None:
-        assert visible == [selected], "network selection differs from its status: " + repr(rows)
-    active = visible[0]
-    activation = "".join(words["terminal.activationAction"].split()) in detail
-    assert activation == (active == 0 and scenario == "pending"), "incorrect activation command visibility"
-    action = None
-    if active == 0:
-        if scenario == "pending":
-            action = "disable"
-        elif scenario == "stopped":
-            assert "".join(words["terminal.startCore"].split()) in detail, "stopped service omitted the terminal prerequisite"
-        elif scenario != "unavailable":
-            action = "enable"
-    elif active == 1 and scenario == "pending":
-        actual = words["dashboard.overview.tunActual"] % words["dashboard.control.off"]
-        assert "".join(actual.split()) in detail, "host TUN drift omitted the runtime state"
-        action = "disable"
-    if action:
-        assert words["dashboard.network." + action] in detail, "network detail omitted its action"
-
-
-def visible_network_rows(terminal, words):
-    # The selected card can grow or shrink. Read its own column from the title
-    # down to the saved port, leaving the adjacent routing card out of checks.
-    x, y = text_point(terminal, words["dashboard.overview.network"])
-    right, _ = text_point(terminal, words["dashboard.overview.route"])
-    rows = []
-    for cells in terminal.screen.cells[y:]:
-        row = "".join(cells[x:right - 4]).strip()
-        rows.append(row)
-        if "17897" in row:
-            return rows
-    raise AssertionError("saved port not visible within the network card")
-
-
 def inspect_row_cards(preview, terminal, output, width, height, words, profile, scenario, args):
     names = ("service", "profile", "network", "route", "traffic", "environment")
     titles = [words["dashboard.profile.title"] if name == "profile" else
@@ -255,10 +201,11 @@ def inspect_row_cards(preview, terminal, output, width, height, words, profile, 
             for value in ("12.0 KiB/s", "2.2 MiB/s"):
                 assert value in terminal.screen.text(), "traffic card omitted a live rate: " + value
         if name == "network":
-            x, y = outline["x"], outline["y"]
-            right, bottom = x + outline["width"] - 1, y + outline["height"] - 1
-            rows = ["".join(row[x + 1:right]).strip() for row in terminal.screen.cells[y + 1:bottom]]
-            assert_network_card(rows, words, scenario)
+            assert "127.0.0.1:" not in terminal.screen.text(), "network summary retained detail-only listener addresses"
+            if scenario == "pending":
+                assert words["dashboard.network.disable"] in terminal.screen.text(), "saved TUN state lost its explicit disable control"
+                assert words["tun.saved_state"] % words["dashboard.control.on"] in terminal.screen.text(), "saved TUN state was not retained"
+                assert words["dashboard.overview.tunActual"] % words["dashboard.control.off"] in terminal.screen.text(), "observed TUN state was confused with the saved state"
         if name == "environment":
             x, y = outline["x"], outline["y"]
             right, bottom = x + outline["width"], y + outline["height"]
@@ -323,7 +270,6 @@ def exercise(preview, binary, output, language, profile, scenario, args):
         assert source[1] == profile_name[1] + (2 if scenario in ("pending", "unavailable") else 1), \
             "unexpected status rows between the applied name and source"
         expiry = subscription_allowance(terminal)
-        assert_network_card(visible_network_rows(terminal, words), words, scenario, selected=1 if scenario == "pending" else 0)
         assert words["dashboard.network.mixedPort"] % "17897" in screen, "network summary omitted the saved mixed port"
         assert "127.0.0.1:" not in screen, "overview retained addresses intended for network details"
         if scenario == "pending":
@@ -341,6 +287,7 @@ def exercise(preview, binary, output, language, profile, scenario, args):
         # navigation before checking both safe Enter transitions.
         return_navigation(terminal, words)
         assert_borderless(terminal)
+        assert "─────" in terminal.screen.text(), "borderless cards removed the internal network divider"
         preview.capture(terminal, output, "overview-navigation", args)
         terminal.key(b"\r")
         terminal.settle()
@@ -352,10 +299,11 @@ def exercise(preview, binary, output, language, profile, scenario, args):
         assert_borderless(terminal)
         preview.capture(terminal, output, "control-focus", args)
 
-        expected = [lifecycle, words["dashboard.overview.profilesAction"], words["dashboard.overview.proxiesAction"]]
+        expected = [lifecycle, words["dashboard.overview.profilesAction"], words["dashboard.overview.settingsAction"], words["dashboard.overview.proxiesAction"]]
         if scenario != "unavailable":
             expected.extend([words["dashboard.mode." + mode] for mode in ("rule", "global", "direct")])
-        expected.extend(network_tab_labels(words))
+        if scenario == "pending":
+            expected.append(words["dashboard.network.disable"])
 
         for width, height in SIZES:
             terminal.resize(width, height)
@@ -373,18 +321,6 @@ def exercise(preview, binary, output, language, profile, scenario, args):
             preview.capture(terminal, output, "card-focus-%dx%d" % (width, height), args)
             if width >= 120:
                 inspect_row_cards(preview, terminal, output, width, height, words, profile, scenario, args)
-            else:
-                terminal.key(b"\x1b[B")
-                terminal.key(b"\x1b[B")
-                terminal.settle()
-                preview.capture(terminal, output, "network-card-%dx%d" % (width, height), args)
-                terminal.key(b"\r")
-                terminal.settle()
-                assert any(focused(terminal, label) for label in network_tab_labels(words)), "Enter did not enter network tab navigation"
-                return_navigation(terminal, words)
-                terminal.key(b"\t")
-                terminal.key(b"\x1b[H")
-                terminal.settle()
             terminal.key(b"\r")
             terminal.settle()
             assert_borderless(terminal)
@@ -394,63 +330,14 @@ def exercise(preview, binary, output, language, profile, scenario, args):
             preview.capture(terminal, output, "tab-revealed-%dx%d" % (width, height), args)
             assert words["dashboard.footer.quit"] in terminal.screen.text().splitlines()[-1], "Quit hint left the footer"
 
-        tabs = network_tab_labels(words)
-        focus_control(terminal, tabs[0])
-        terminal.key(b"\r")
-        terminal.settle()
-        assert_network_card(visible_network_rows(terminal, words), words, scenario, selected=0)
-        for selected in (2, 1, 0):
-            terminal.click_text(tabs[selected])
-            terminal.settle()
-            assert_network_card(visible_network_rows(terminal, words), words, scenario, selected)
-            preview.capture(terminal, output, ("network-terminal", "network-tun", "network-system")[selected], args)
-            if selected == 2:
-                terminal.resize(120, 32)
-                terminal.settle()
-                assert_network_card(visible_network_rows(terminal, words), words, scenario, selected)
-                terminal.resize(160, 45)
-                terminal.settle()
-                focus_control(terminal, tabs[1])
-                assert_network_card(visible_network_rows(terminal, words), words, scenario, selected)
-                terminal.key(b"\r")
-                terminal.settle()
-                assert_network_card(visible_network_rows(terminal, words), words, scenario, selected=1)
-        terminal.click_text("17897")
-        terminal.settle()
-        assert_network_card(visible_network_rows(terminal, words), words, scenario, selected=0)
-
-        if scenario == "pending":
-            focus_control(terminal, words["terminal.activationAction"])
-            terminal.key(b"\r")
-            terminal.wait("source '/tmp/overview-fixture/bash.sh'")
-            preview.capture(terminal, output, "terminal-activation-command", args)
-            terminal.key(b"\x1b")
-            terminal.settle()
-            assert focused(terminal, words["terminal.activationAction"]), "closing the command lost its original control"
-            assert_network_card(visible_network_rows(terminal, words), words, scenario, selected=0)
-            terminal.click_text(words["terminal.activationAction"])
-            terminal.wait("source '/tmp/overview-fixture/bash.sh'")
-            terminal.key(b"\x1b")
-            terminal.settle()
-
-        # The ports editor belongs to Settings. Distinguish its Edit button
-        # from the editor preference by the focused action's footer hint.
-        terminal.key(b"7")
-        terminal.wait(words["settings.ports"])
-        edit_hint = (words["navigation.controls.activate"] % words["navigation.controls.editPorts"]).split(" · ")[0]
-        for _ in range(20):
-            terminal.settle()
-            if terminal.screen.text().splitlines()[-1].lstrip().startswith(edit_hint):
-                break
-            terminal.key(b"\t")
-        else:
-            raise AssertionError("Settings did not expose the port editor")
-        terminal.key(b"\r")
+        # Network addresses moved into the existing read-only edit preview.
+        focus_control(terminal, words["dashboard.overview.settingsAction"])
+        terminal.click_text(words["dashboard.overview.settingsAction"])
         terminal.wait("127.0.0.1:17897")
         terminal.wait("127.0.0.1:19097")
         for secret in ("private-user", "private-password", "private-path", "private-token", "private-fragment"):
             assert secret not in terminal.screen.text(), "network details leaked controller metadata: " + secret
-        preview.capture(terminal, output, "network-details-from-settings", args)
+        preview.capture(terminal, output, "network-details-from-overview", args)
         terminal.key(b"\x1b")
         terminal.settle()
         for secret in ("private-user", "private-password", "private-path", "private-token", "private-fragment"):
@@ -479,12 +366,12 @@ def exercise(preview, binary, output, language, profile, scenario, args):
         terminal.exit()
         calls = json.loads(report.read_text())
         assert calls["service_changes"] == calls["modes"] == calls["selections"] == 0, calls
-        assert calls["tun_changes"] == calls["terminal_changes"] == 0, calls
+        assert calls["tun_changes"] == 0, calls
         assert calls["settings_reads"] == 1 and calls["settings_writes"] == 0, calls
         assert calls["runtime_queries"] > 0, calls
         check_profile(preview, terminal, profile)
         (output / "pty.raw").write_bytes(terminal.raw)
-        print("PASS %s/%s/%s: paired equal-size cards, full-width traffic, five dimensions, core heading action, keyboard and mouse network tabs, read-only saved port and Settings port editor; %s" %
+        print("PASS %s/%s/%s: paired equal-size cards, network/mode order, full-width traffic, single-column environment, five dimensions, core observation and heading action, borderless/focus states, Tab reveal and read-only network details; %s" %
               (language, profile, scenario, json.dumps(calls)), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")

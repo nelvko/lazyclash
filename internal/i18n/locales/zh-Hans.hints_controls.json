@@ -9,7 +9,6 @@
   "navigation.controls.reviewDelete": "审阅删除",
   "navigation.controls.hideHints": "隐藏按键提示",
   "navigation.controls.showHints": "显示按键提示",
-  "navigation.controls.viewNetworkSection": "查看%s",
   "navigation.controls.editPorts": "编辑端口",
   "navigation.controls.openProfiles": "打开订阅页",
   "navigation.controls.openProxies": "打开代理页",

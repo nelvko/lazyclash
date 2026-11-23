@@ -428,19 +428,12 @@ func overviewCardRegionsFromModel(m Model) []hitRegion {
 }
 
 func (m *Model) enterOverviewCard() {
-	selectedTab := ""
-	if m.focus == "overview.card.dashboard.overview.network" {
-		selectedTab = "network.tab." + m.navigationOptions().selectedNetworkSection()
-	}
 	for _, card := range overviewCardRegionsFromModel(*m) {
 		if card.ID != m.focus {
 			continue
 		}
 		for _, target := range m.contentTargets() {
 			if strings.HasPrefix(target.ID, "overview.card.") {
-				continue
-			}
-			if selectedTab != "" && target.ID != selectedTab {
 				continue
 			}
 			if target.X >= card.X && target.X < card.X+card.W && target.Y >= card.Y && target.Y < card.Y+card.H {
@@ -534,35 +527,6 @@ func (m *Model) requestQuit() tea.Cmd {
 	return tea.Quit
 }
 
-// A refreshed switch can replace its focused action with the opposite one.
-// Prefer that row, then its tab or containing card if it is now read-only.
-func overviewNetworkFocus(previous string, targets []hitRegion) hitRegion {
-	var row string
-	switch previous {
-	case "terminal.enable", "terminal.disable", "terminal.activation":
-		row = "terminal"
-	case "tun.enable", "tun.disable":
-		row = "tun"
-	default:
-		return hitRegion{}
-	}
-	var tab, card hitRegion
-	for _, target := range targets {
-		switch target.ID {
-		case row + ".enable", row + ".disable":
-			return target
-		case "network.tab." + row:
-			tab = target
-		case "overview.card.dashboard.overview.network":
-			card = target
-		}
-	}
-	if tab.ID != "" {
-		return tab
-	}
-	return card
-}
-
 func (m *Model) repairPageFocus() {
 	if m.page == "connections" && (m.connections.detail != nil || m.connections.confirming) || m.providers.open || m.helpOpen || m.form != "" || m.wizard.open || m.wizard.networkOpen || m.ports.open || m.notification.panel.open || m.menu.open {
 		return
@@ -576,19 +540,10 @@ func (m *Model) repairPageFocus() {
 		case m.page == "rules":
 			valid = valid || m.rulesFocusValid()
 		default:
-			targets := append(m.contentTargets(), m.fixedContentTargets()...)
-			for _, target := range targets {
+			for _, target := range append(m.contentTargets(), m.fixedContentTargets()...) {
 				if target.ID == m.focus {
 					valid = true
 					break
-				}
-			}
-			if !valid && m.page == "overview" {
-				if target := overviewNetworkFocus(m.focus, targets); target.ID != "" {
-					m.focus = target.ID
-					m.revealBodyTarget(target)
-					m.rememberPageView()
-					return
 				}
 			}
 		}

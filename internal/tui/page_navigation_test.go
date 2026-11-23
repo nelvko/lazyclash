@@ -92,10 +92,10 @@ func TestPageNavigationOverviewStartsAtCardBeforeItsControls(t *testing.T) {
 	}
 }
 
-func TestOverviewControlsRequireExplicitActivationAfterEnteringCard(t *testing.T) {
+func TestOverviewHeadingActionsRequireExplicitActivationAfterEnteringCard(t *testing.T) {
 	for _, action := range []struct{ card, id string }{
 		{"dashboard.profile.title", "card.profiles"},
-		{"dashboard.overview.network", "network.tab.terminal"},
+		{"dashboard.overview.network", "card.network"},
 		{"dashboard.control.routingMode", "card.proxies"},
 	} {
 		t.Run(action.id, func(t *testing.T) {
@@ -115,7 +115,7 @@ func TestOverviewControlsRequireExplicitActivationAfterEnteringCard(t *testing.T
 			id := m.id
 			m, _ = update(m, special(tea.KeyEnter))
 			if m.page != "overview" || m.focus != action.id || m.id != id || m.busy || m.ports.open || m.wizard.open || reads != 0 || mutations != 0 {
-				t.Fatalf("entering a card activated its first control: page=%s focus=%s", m.page, m.focus)
+				t.Fatalf("entering a card activated its heading navigation: page=%s focus=%s", m.page, m.focus)
 			}
 		})
 	}

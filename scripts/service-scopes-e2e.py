@@ -251,24 +251,6 @@ def replace_private_bytes(path, content):
     assert result.returncode == 0, "Could not restore private fixture configuration"
 
 
-def open_host_tun_confirmation(terminal):
-    def reveal(label):
-        for _ in range(18):
-            terminal.settle()
-            if label in terminal.screen.text():
-                return
-            terminal.key(b"\x1b[<65;60;12M")
-        raise AssertionError("Overview did not reveal " + label + "\n" + terminal.screen.text())
-
-    reveal("Virtual NIC")
-    terminal.click_text("Virtual NIC")
-    reveal("Entire host")
-    reveal("Enable")
-    terminal.click_text("Enable")
-    terminal.wait("Enable TUN for this host?")
-    terminal.wait("other users and services")
-
-
 def root_tun_ui_smoke(root, terminal_class, work):
     for columns, rows in ((120, 36), (80, 24)):
         terminal = terminal_class(root.command)
@@ -278,7 +260,19 @@ def root_tun_ui_smoke(root, terminal_class, work):
             terminal.resize(columns, rows)
             terminal.settle()
             terminal.wait("Overview")
-            open_host_tun_confirmation(terminal)
+            terminal.key(b"7")
+            terminal.wait("Settings")
+            def open_confirmation():
+                for _ in range(18):
+                    terminal.settle()
+                    if "Enable host TUN" in terminal.screen.text():
+                        break
+                    # Scroll only the settings content, not the sidebar.
+                    terminal.key(b"\x1b[<65;60;12M")
+                terminal.click_text("Enable host TUN")
+                terminal.wait("Enable TUN for this host?")
+                terminal.wait("other users and services")
+            open_confirmation()
             (work / ("pty-root-tun-%dx%d.txt" % (columns, rows))).write_text(terminal.screen.text())
             terminal.key(b"\r")
             terminal.wait_absent("Enable TUN for this host?")
@@ -286,7 +280,7 @@ def root_tun_ui_smoke(root, terminal_class, work):
             assert_tun_released(root)
             print("Root TUI host-scope confirmation %dx%d: readable, defaults Cancel, no network changes" % (columns, rows), flush=True)
             if columns == 120:
-                open_host_tun_confirmation(terminal)
+                open_confirmation()
                 terminal.key(b"\t\r")
                 wait(lambda: root.status()["TUNActual"])
                 assert root.status()["TUN"]

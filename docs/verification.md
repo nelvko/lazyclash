@@ -1,13 +1,5 @@
 # 验证入口
 
-## 概览网络设置分段（2026-11-24）
-
-真实 PTY 中分别使用中文真彩运行实例、英文无色停止实例、中文终端待激活且主机 TUN 状态不一致的夹具，在 160×45、120×32、80×24、60×20、40×16 间缩放。Tab 移动焦点，Enter 或点击切换分段；跨尺寸保留选中项，端口摘要只读，从设置页进入端口编辑。每组只读取一次端口，服务、端口、终端代理和 TUN 的写入次数均为零。另验证了查看完整激活命令、Esc 返回及服务状态变化后的焦点。状态回归覆盖无关 API 请求失败、PID 切换和迟到的旧快照。
-
-[中文宽屏](../.test-artifacts/proxy-network-card/network-zh-160x45.png) · [中文窄屏](../.test-artifacts/proxy-network-card/network-zh-40x16.png) · [英文无色](../.test-artifacts/proxy-network-card/network-en-60x20.png) · [虚拟网卡状态](../.test-artifacts/proxy-network-card/network-zh-tun.png)
-
-专用 Linux/arm64 VM 的隔离 Bash、Mihomo 和 systemd 用户实例验证了首次启用并确认、执行激活命令、关闭恢复原环境和再次开启，随后卸载并清理测试单元。主机 TUN 的 120×36、80×24 确认与默认取消使用内存后端，实际路由配置保持原状。[终端代理操作画面](../.test-artifacts/network-cvr/e2e/network-disable.txt) · [TUN 确认画面](../.test-artifacts/network-cvr/e2e/root-confirmation-80x24.txt)
-
 ## 概览当前订阅（2026-11-23）
 
 在 160×45 和 80×24 的真实 PTY 中，点击「当前订阅」的「订阅 ›」打开订阅页，同一条目在两页显示相同的描述或来源、更新时间、剩余量与总量及到期信息。内存夹具覆盖本地文件、未选用订阅、更新未生效、已过期和尚未应用。另在中英文终端验证了缩放到 40×16 后的操作。[宽屏概览](../.test-artifacts/current-subscription/described-overview-160x45.png) · [订阅页对照](../.test-artifacts/current-subscription/described-profiles-160x45.png) · [窄屏状态提示](../.test-artifacts/current-subscription/pending-overview-80x24.png)

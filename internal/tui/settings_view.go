@@ -83,7 +83,7 @@ func settingsService(o dashboardOptions, width int) dashboardBlock {
 	ports := settingsRow{label: tr("settings.ports"), value: tr("settings.afterInstall")}
 	if s.Installed {
 		ports.value = ""
-		ports.note = savedMixedPortLabel(o) + "\n" + controllerHostPort(s.Controller)
+		ports.note = savedMixedPortLabel(o) + "\n" + overviewControllerAddress(s.Controller)
 		ports.actions = []overviewControlButton{{id: "runtime-settings", label: tr("settings.edit"), enabled: !o.Busy}}
 	}
 	return settingsSection(o, width, tr("settings.serviceGroup"), []settingsRow{autostart, ports})

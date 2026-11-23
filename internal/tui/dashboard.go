@@ -34,7 +34,6 @@ type dashboardOptions struct {
 	Width, Height                   int
 	Page                            string
 	SelectedGroup                   string
-	NetworkSection                  string
 	Snapshot                        app.Snapshot
 	Focus                           string
 	Hover                           string

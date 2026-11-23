@@ -24,7 +24,6 @@ func TestRuntimeUnexpectedSessionEndInvalidatesMetricsAndRetriesWithoutSpinning(
 			sample := liveRuntime()
 			sample.ObservedAt = time.Now().Add(-time.Second)
 			m = acceptRuntimeFixture(m, sample)
-			m.snapshot.TUN, m.snapshot.TUNActual, m.snapshot.TUNError = true, new(false), "TUN drift"
 			m.appendLogs([]mihomo.LogEntry{{Level: "info", Message: "retained"}})
 			ended, ok := commands[0]().(runtimeEndedMsg)
 			if !ok {
@@ -33,9 +32,6 @@ func TestRuntimeUnexpectedSessionEndInvalidatesMetricsAndRetriesWithoutSpinning(
 			retry := m.acceptRuntimeEnded(ended)
 			if retry == nil || m.runtime.active || m.runtime.pending || m.runtime.snapshot.State != "unavailable" || m.runtime.snapshot.Traffic != nil || m.runtime.snapshot.Memory != nil || m.runtime.snapshot.Connections != nil {
 				t.Fatal("ended session retained live metrics or failed to schedule recovery")
-			}
-			if !m.snapshot.TUN || m.snapshot.TUNActual != nil || m.snapshot.TUNError != "" {
-				t.Fatal("ended session lost the saved TUN setting or left an obsolete observation")
 			}
 			points := m.runtime.history.points
 			if len(points) != 2 || points[1].Valid || len(m.logs.entries) != 1 || !m.logs.reconnecting || m.logs.err == nil {

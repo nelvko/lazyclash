@@ -130,7 +130,6 @@ type Model struct {
 	messageTransient      bool
 	messageInformational  bool
 	page, focus, hover    string
-	networkSection        string
 	tunFocus              string
 	guideSkipped          bool
 	scroll, total         int
@@ -410,7 +409,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.adoptSnapshot(v.snapshot)
 			} else if !errors.Is(v.err, context.Canceled) {
 				m.snapshot.ServiceError = "Service status unavailable; refresh or check doctor"
-				m.snapshot.TUNActual, m.snapshot.TUNError = nil, ""
 			}
 		}
 	case tea.ColorProfileMsg:
@@ -1293,11 +1291,6 @@ func (m *Model) activate(id string) tea.Cmd {
 		return m.serviceAction("start")
 	case "core.toggle":
 		return m.coreToggleAction()
-	case "network.tab.terminal", "network.tab.tun", "network.tab.system":
-		if m.page == "overview" && !m.busy && !m.quitting {
-			m.networkSection = strings.TrimPrefix(id, "network.tab.")
-		}
-		return nil
 	case "core.start", "core.stop", "core.restart":
 		// Other pages retain their existing recovery/start actions. Overview
 		// exposes only its observed-state toggle.
@@ -1308,7 +1301,9 @@ func (m *Model) activate(id string) tea.Cmd {
 	case "terminal.enable", "terminal.disable":
 		return m.terminalProxyAction(id == "terminal.enable")
 	case "terminal.activation":
-		m.showTerminalActivation()
+		m.prepareNotification("terminal-proxy", m.tr("terminal.title"))
+		m.message = m.tr("terminal.activation", m.snapshot.TerminalProxy.ActivationCommand)
+		m.messageInformational = true
 		return nil
 	case "tun.enable", "tun.disable":
 		return m.tunAction(id == "tun.enable")
@@ -1318,6 +1313,10 @@ func (m *Model) activate(id string) tea.Cmd {
 	case "card.logs":
 		m.navigate("logs")
 		return nil
+	case "card.network":
+		m.navigate("settings")
+		m.focus = "runtime-settings"
+		return m.openPorts()
 	case "logo":
 		return m.startLogoPulse()
 	}

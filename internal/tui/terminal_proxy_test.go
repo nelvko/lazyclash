@@ -17,12 +17,6 @@ type terminalBackend struct {
 	fail    bool
 }
 
-func runningTerminalBackend() *terminalBackend {
-	b := &terminalBackend{fakeBackend: hostTUNBackend()}
-	b.snapshot.Service.Active, b.snapshot.Service.State = true, "active"
-	return b
-}
-
 func (b *terminalBackend) SetTerminalProxy(_ context.Context, enabled, install bool) error {
 	b.calls++
 	b.install = install
@@ -36,7 +30,7 @@ func (b *terminalBackend) SetTerminalProxy(_ context.Context, enabled, install b
 }
 
 func TestTerminalProxyInstallationRequiresConfirmationAndNeverClaimsApplied(t *testing.T) {
-	b := runningTerminalBackend()
+	b := &terminalBackend{fakeBackend: hostTUNBackend()}
 	b.snapshot.TerminalProxy = shellintegration.Status{Shell: "bash", State: "uninstalled"}
 	m := ready(b.fakeBackend)
 	m.backend = b
@@ -71,8 +65,7 @@ func TestTerminalProxyInstallationRequiresConfirmationAndNeverClaimsApplied(t *t
 }
 
 func TestTerminalProxyInstallationFailureDoesNotSaveSuccess(t *testing.T) {
-	b := runningTerminalBackend()
-	b.fail = true
+	b := &terminalBackend{fakeBackend: hostTUNBackend(), fail: true}
 	b.snapshot.TerminalProxy = shellintegration.Status{Shell: "zsh", State: "uninstalled"}
 	m := ready(b.fakeBackend)
 	m.backend = b
@@ -88,7 +81,7 @@ func TestTerminalProxyInstallationFailureDoesNotSaveSuccess(t *testing.T) {
 
 func TestOverviewTerminalProxyShowsDesiredAndAppliedSeparately(t *testing.T) {
 	for _, state := range []string{"uninstalled", "off", "on", "pending", "enabling", "disabling", "unsupported", "error"} {
-		o := dashboardOptions{NetworkSection: "terminal", Snapshot: hostTUNBackend().snapshot}
+		o := dashboardOptions{Snapshot: hostTUNBackend().snapshot}
 		o.Snapshot.TerminalProxy = shellintegration.Status{State: state, Desired: state == "pending", Pending: state == "pending", ActivationCommand: "source '/private/example/bash.sh'"}
 		for _, width := range []int{16, 40, 100} {
 			card := overviewNetworkCard(o, width)
@@ -105,7 +98,7 @@ func TestOverviewTerminalProxyShowsDesiredAndAppliedSeparately(t *testing.T) {
 }
 
 func TestLoadedTerminalCanToggleAfterAnotherTerminalUninstallsFiles(t *testing.T) {
-	b := runningTerminalBackend()
+	b := &terminalBackend{fakeBackend: hostTUNBackend()}
 	b.snapshot.TerminalProxy = shellintegration.Status{Shell: "bash", State: "off", Loaded: true}
 	m := ready(b.fakeBackend)
 	m.backend = b
@@ -117,110 +110,5 @@ func TestLoadedTerminalCanToggleAfterAnotherTerminalUninstallsFiles(t *testing.T
 	m, _ = update(m, actionCmd(t, cmd)())
 	if b.calls != 1 || b.install {
 		t.Fatal("loaded hook was not reused")
-	}
-}
-
-func TestTerminalProxyReversesRequestedStateBeforeShellAcknowledges(t *testing.T) {
-	for _, state := range []string{"pending", "enabling", "disabling", "error"} {
-		t.Run(state, func(t *testing.T) {
-			b := runningTerminalBackend()
-			wantEnable := state == "disabling"
-			b.snapshot.TerminalProxy = shellintegration.Status{
-				State: state, Loaded: state != "pending", Desired: !wantEnable, Applied: wantEnable,
-			}
-			if !wantEnable {
-				// Undoing a request only touches the shell, even if the core disappeared.
-				b.snapshot.Installed = false
-				b.snapshot.Service.Active = false
-			}
-			m := ready(b.fakeBackend)
-			m.backend = b
-			defer m.stopRuntime()
-			if cmd := m.terminalProxyAction(!wantEnable); cmd != nil || m.busy {
-				t.Fatal("duplicate or stale action sent the same request")
-			}
-			cmd := m.terminalProxyAction(wantEnable)
-			if cmd == nil || !m.busy {
-				t.Fatal("reverse action unavailable")
-			}
-			m, _ = update(m, actionCmd(t, cmd)())
-			if b.calls != 1 || b.install || m.snapshot.TerminalProxy.Desired != wantEnable {
-				t.Fatal("reverse action did not save the new request")
-			}
-		})
-	}
-}
-
-func TestTerminalProxyRechecksEnableAvailabilityAtActivationAndConfirmation(t *testing.T) {
-	for _, change := range []string{"stopped", "uninstalled", "unavailable", "service error", "transition", "unsupported shell", "requested"} {
-		t.Run(change, func(t *testing.T) {
-			b := runningTerminalBackend()
-			b.snapshot.TerminalProxy = shellintegration.Status{State: "uninstalled", Shell: "zsh"}
-			m := ready(b.fakeBackend)
-			m.backend = b
-			defer m.stopRuntime()
-			m.width, m.height = 120, 32
-			m.activate("terminal.enable")
-			if m.form != "terminal-confirm" {
-				t.Fatal("missing installation confirmation")
-			}
-			switch change {
-			case "stopped":
-				m.snapshot.Service.Active = false
-			case "uninstalled":
-				m.snapshot.Installed = false
-			case "unavailable":
-				m.snapshot.Capabilities.Runtime.Supported = false
-			case "service error":
-				m.snapshot.ServiceError = "service ownership could not be verified"
-			case "transition":
-				m.snapshot.Service.State = "reloading"
-			case "unsupported shell":
-				m.snapshot.TerminalProxy.State = "unsupported"
-			case "requested":
-				m.snapshot.TerminalProxy.Desired = true
-			}
-			if cmd := m.terminalConfirmationAction("terminal.confirm"); cmd != nil || m.form != "" || m.busy {
-				t.Fatal("stale confirmation started installation")
-			}
-			if cmd := m.activate("terminal.enable"); cmd != nil || m.form != "" || m.busy || b.calls != 0 {
-				t.Fatal("unavailable action reached the backend")
-			}
-		})
-	}
-}
-
-func TestTerminalActivationCommandOpensScrollableDetailsAndReturnsToControl(t *testing.T) {
-	b := runningTerminalBackend()
-	command := "source '/a path  with spaces/bash.sh'"
-	b.snapshot.TerminalProxy = shellintegration.Status{State: "pending", Desired: true, Pending: true, ActivationCommand: command}
-	m := ready(b.fakeBackend)
-	defer m.stopRuntime()
-	m.width, m.height = 120, 45
-	m.layout()
-	m, _ = click(m, findTarget(t, m, "network.tab.terminal"))
-	m, _ = click(m, findTarget(t, m, "terminal.activation"))
-	if !m.notification.panel.open || !strings.Contains(ansi.Strip(m.screen), command) {
-		t.Fatal("activation command did not open immediately or lost quoted whitespace")
-	}
-	m, _ = update(m, key("esc"))
-	if m.notification.panel.open || m.focus != "terminal.activation" {
-		t.Fatalf("Escape returned to %q", m.focus)
-	}
-
-	m.snapshot.TerminalProxy.ActivationCommand = "source '/" + strings.Repeat("long-path/", 24) + "bash.sh'"
-	m.width, m.height = 36, 12
-	m.activate("terminal.activation")
-	m.layout()
-	m, _ = update(m, key("end"))
-	if !strings.Contains(ansi.Strip(m.screen), "bash.sh'") {
-		t.Fatal("narrow terminal could not scroll to the full command")
-	}
-	m, _ = update(m, key("esc"))
-	// A cancelled pending record still carries an activation command.
-	m.snapshot.TerminalProxy.State, m.snapshot.TerminalProxy.Desired = "off", false
-	m.activate("terminal.activation")
-	if m.notification.panel.open {
-		t.Fatal("cancelled shell request exposed an activation command")
 	}
 }
