@@ -10,7 +10,7 @@ import (
 	"github.com/nelvko/lazyclash/internal/service"
 )
 
-func TestOverviewNetworkKeepsUnavailableControlsDisabledAndAddressesInDetails(t *testing.T) {
+func TestOverviewNetworkShowsOnlyTheSelectedSectionAndKeepsUnavailableControlsReadOnly(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		t.Run(language, func(t *testing.T) {
 			o := dashboardOptions{Locale: i18n.New(language), Snapshot: app.Snapshot{
@@ -19,28 +19,52 @@ func TestOverviewNetworkKeepsUnavailableControlsDisabledAndAddressesInDetails(t 
 				Service:      service.Status{Active: true, State: "active"},
 				Capabilities: app.Capabilities{Scope: "user", Runtime: app.Capability{Supported: true}},
 			}}
-			for _, width := range []int{16, 40, 100} {
-				card := overviewNetworkCard(o, width)
-				plain := ansi.Strip(strings.Join(card.lines, "\n"))
-				assertCanvas(t, strings.Join(card.lines, "\n"), width, len(card.lines))
-				assertRegions(t, card.targets, width, len(card.lines))
-				for _, target := range card.targets {
-					if target.ID != "card.network" {
-						t.Fatalf("unavailable network control became actionable: %s", target.ID)
-					}
+			sections := []struct{ id, state string }{
+				{"terminal", "terminal.state.unsupported"}, {"tun", "dashboard.control.tunHint"}, {"system", "dashboard.network.systemProxyState"},
+			}
+			for _, selected := range sections {
+				// An ordinary user first sees the terminal section without choosing a tab.
+				if selected.id != "terminal" {
+					o.NetworkSection = selected.id
 				}
-				for _, hidden := range []string{"127.0.0.1", "private-user", "private-password", "private-path", "private-token"} {
-					if strings.Contains(plain, hidden) {
-						t.Fatalf("network summary retained addresses or credentials: %s", plain)
+				for _, width := range []int{16, 40, 100} {
+					card := overviewNetworkCard(o, width)
+					view := strings.Join(card.lines, "\n")
+					plain := ansi.Strip(view)
+					assertCanvas(t, view, width, len(card.lines))
+					assertRegions(t, card.targets, width, len(card.lines))
+					if width >= 40 && strings.TrimSpace(ansi.Strip(card.lines[1])) != o.Locale.T("dashboard.overview.network") {
+						t.Fatalf("unexpected network title row: %s", card.lines[1])
 					}
-				}
-				if width >= 40 && (!strings.Contains(plain, o.Locale.T("dashboard.control.tunHint")) || !strings.Contains(plain, o.Locale.T("dashboard.network.systemProxyState"))) {
-					t.Fatalf("unsupported controls lost their reason: %s", plain)
+					if len(card.targets) != len(sections) {
+						t.Fatalf("%s: expected only the three browsing controls, got %+v", selected.id, card.targets)
+					}
+					for i, section := range sections {
+						if card.targets[i].ID != "network.tab."+section.id {
+							t.Fatalf("%s: unexpected control order %+v", selected.id, card.targets)
+						}
+						if width == 100 {
+							for _, key := range []string{"dashboard.network.scope." + section.id, section.state} {
+								if strings.Contains(plain, o.Locale.T(key)) != (selected.id == section.id) {
+									t.Fatalf("selected %s: wrong visibility for %s:\n%s", selected.id, key, plain)
+								}
+							}
+						}
+					}
+					for _, hidden := range []string{"127.0.0.1", "private-user", "private-password", "private-path", "private-token"} {
+						if strings.Contains(plain, hidden) {
+							t.Fatalf("network summary exposed %s", hidden)
+						}
+					}
 				}
 			}
 			o.Snapshot.Installed = false
-			if card := overviewNetworkCard(o, 100); len(card.targets) != 0 {
-				t.Fatal("uninstalled network card exposed a settings or TUN action")
+			for _, section := range sections {
+				o.NetworkSection = section.id
+				card := overviewNetworkCard(o, 100)
+				if len(card.targets) != len(sections) || hasAction(card.targets, "tun.enable") || hasAction(card.targets, "terminal.enable") {
+					t.Fatalf("uninstalled %s should still allow browsing only: %+v", section.id, card.targets)
+				}
 			}
 		})
 	}

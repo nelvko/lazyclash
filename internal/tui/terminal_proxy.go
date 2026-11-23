@@ -4,6 +4,7 @@ import (
 	"context"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/nelvko/lazyclash/internal/app"
 )
 
 type terminalProxyBackend interface {
@@ -14,6 +15,32 @@ func (m *Model) controlConfirmation() bool {
 	return m.form == "tun-confirm" || m.form == "terminal-confirm"
 }
 
+// The shell applies requests after exiting the TUI. While it catches up,
+// the next action should reverse the saved request.
+func terminalProxyControl(s app.Snapshot) (id string, available bool) {
+	switch s.TerminalProxy.State {
+	case "uninstalled", "off", "on", "enabling", "disabling", "pending", "error":
+		if s.TerminalProxy.Desired {
+			return "terminal.disable", true
+		}
+		return "terminal.enable", s.Service.Active && runtimeControlIssue(s) == ""
+	default:
+		return "terminal.enable", false
+	}
+}
+
+func terminalActivationAvailable(s app.Snapshot) bool {
+	return s.TerminalProxy.State == "pending" && s.TerminalProxy.ActivationCommand != ""
+}
+
+func (m *Model) showTerminalActivation() {
+	if m.busy || m.quitting || !terminalActivationAvailable(m.snapshot) {
+		return
+	}
+	m.notification.restoreFocus = m.focus
+	m.notification.panel.showMessage(m.tr("terminal.activationAction"), m.tr("terminal.activation", m.snapshot.TerminalProxy.ActivationCommand))
+}
+
 func (m *Model) terminalProxyAction(enabled bool) tea.Cmd {
 	if m.busy || m.quitting {
 		return nil
@@ -21,10 +48,11 @@ func (m *Model) terminalProxyAction(enabled bool) tea.Cmd {
 	if _, ok := m.backend.(terminalProxyBackend); !ok {
 		return nil
 	}
-	s := m.snapshot.TerminalProxy
-	if s.State == "" || s.State == "unsupported" {
+	action, available := terminalProxyControl(m.snapshot)
+	if !available || enabled != (action == "terminal.enable") {
 		return nil
 	}
+	s := m.snapshot.TerminalProxy
 	if enabled && !s.Installed && !s.Loaded {
 		m.form, m.tunFocus = "terminal-confirm", "terminal.cancel"
 		m.failure = ""
@@ -58,6 +86,10 @@ func (m *Model) terminalConfirmationAction(id string) tea.Cmd {
 	}
 	m.form, m.tunFocus = "", ""
 	if id == "terminal.cancel" {
+		return nil
+	}
+	action, available := terminalProxyControl(m.snapshot)
+	if !available || action != "terminal.enable" {
 		return nil
 	}
 	return m.applyTerminalProxy(true, true)

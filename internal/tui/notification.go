@@ -334,6 +334,7 @@ func (m *Model) dashboardOptions() dashboardOptions {
 	}
 	o := dashboardOptions{Locale: m.locale, Width: m.width, Height: m.height, Page: m.page, Busy: m.busy, PlainButtons: m.buttonPlain(), Dim: m.feedbackDialogOpen() || m.helpOpen || m.notification.panel.open || m.providers.open || (m.page == "connections" && m.connections.confirming), SidebarOpen: m.sidebarOpen, HideKeyHints: m.keyHints.hidden || m.wizard.open || m.wizard.networkOpen, GuideSkipped: m.guideSkipped, Notifications: items, Spinner: m.spinner.View(), LogoFrame: m.logoFrame, LogoIntroFrame: m.logoIntro.frame, InlineInstall: m.page == "overview" && m.inlineInstallVisible(), BodyRange: m.page == "proxies" && m.proxiesReady() && !m.proxiesDirect() && m.hasExpandedProxyGroups()}
 	o.Now = time.Now()
+	o.NetworkSection = m.networkSection
 	o.TrafficHistory, o.TrafficNow = m.runtime.history.points, o.Now
 	if m.busy && strings.HasPrefix(m.notification.operation.Key, "service.") {
 		o.CoreAction = strings.TrimPrefix(m.notification.operation.Key, "service.")

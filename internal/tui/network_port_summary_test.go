@@ -36,8 +36,13 @@ func TestNetworkSummariesShowSavedMixedPortWithoutDraftsOrCredentials(t *testing
 							t.Fatalf("summary exposed a draft or credential %q: %s", hidden, plain)
 						}
 					}
-					if name == "overview" && hasAction(card.targets, "runtime-settings") {
-						t.Fatal("read-only port summary added an editing action")
+					if name == "overview" {
+						if hasAction(card.targets, "runtime-settings") || hasAction(card.targets, "card.network") {
+							t.Fatal("read-only port summary added an editing action")
+						}
+						if !strings.HasSuffix(strings.TrimSpace(plain), label) {
+							t.Fatal("overview port summary is not the last content row")
+						}
 					}
 					if name == "settings" && (!hasAction(card.targets, "runtime-settings") || !strings.Contains(plain, "127.0.0.1:9097")) {
 						t.Fatal("settings lost its existing edit action or sanitized control address")

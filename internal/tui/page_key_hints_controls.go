@@ -54,6 +54,21 @@ func (m *Model) profilesContextHelp() string {
 }
 
 func (m *Model) overviewContextHelp() string {
+	var section string
+	switch m.focus {
+	case "network.tab.terminal":
+		section = "terminal.title"
+	case "network.tab.tun":
+		section = "dashboard.network.tun"
+	case "network.tab.system":
+		section = "dashboard.field.systemProxy"
+	}
+	if section != "" {
+		if m.busy {
+			return m.tr("navigation.controls.browse")
+		}
+		return m.controlActionHelp(m.tr("navigation.controls.viewNetworkSection", m.tr(section)))
+	}
 	if strings.HasPrefix(m.focus, "overview.card.") {
 		if m.overviewCardHasControls() {
 			return m.tr("overview.cardHint")
@@ -109,7 +124,7 @@ func (m *Model) settingsContextHelp() string {
 		if m.keyHints.hidden {
 			label = "navigation.controls.showHints"
 		}
-	case "runtime-settings", "card.network":
+	case "runtime-settings":
 		label = "navigation.controls.editPorts"
 	case "card.profiles":
 		label = "navigation.controls.openProfiles"

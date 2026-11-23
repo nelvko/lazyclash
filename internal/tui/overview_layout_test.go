@@ -30,7 +30,8 @@ func TestOverviewPairedLayoutAlignsBothEdgesAndKeepsActionOwnership(t *testing.T
 	owners := map[string]string{
 		"core.toggle": "dashboard.control.core",
 		"mode.rule":   "dashboard.control.routingMode", "mode.global": "dashboard.control.routingMode", "mode.direct": "dashboard.control.routingMode", "card.proxies": "dashboard.control.routingMode",
-		"card.profiles": "dashboard.profile.title", "tun.enable": "dashboard.overview.network", "card.network": "dashboard.overview.network",
+		"card.profiles": "dashboard.profile.title", "tun.enable": "dashboard.overview.network",
+		"network.tab.terminal": "dashboard.overview.network", "network.tab.tun": "dashboard.overview.network", "network.tab.system": "dashboard.overview.network",
 	}
 	renders := map[string]func(dashboardOptions, int) dashboardBlock{
 		"dashboard.control.core": overviewCoreCard, "dashboard.traffic.title": overviewTrafficCard,
@@ -427,8 +428,8 @@ func TestOverviewNetworkMovesAddressesToDetailsAndKeepsControllerMetadataSafe(t 
 				Installed: true, MixedPort: 17890, Controller: "http://private-user:private-password@127.0.0.1:19090/private-path?token=private-token#private-fragment",
 			}}
 			card := func() string { return ansi.Strip(strings.Join(overviewNetworkCard(o, 100).lines, "\n")) }
-			if value := card(); strings.Contains(value, "127.0.0.1:") || !hasAction(overviewNetworkCard(o, 100).targets, "card.network") {
-				t.Fatalf("network overview retained detail addresses or lost its settings entry: %s", value)
+			if value := card(); strings.Contains(value, "127.0.0.1:") || hasAction(overviewNetworkCard(o, 100).targets, "card.network") {
+				t.Fatalf("network overview exposed detail addresses or an obsolete settings entry: %s", value)
 			}
 			for _, secret := range []string{"private-user", "private-password", "private-path", "private-token", "private-fragment"} {
 				if strings.Contains(card(), secret) {
@@ -442,8 +443,8 @@ func TestOverviewNetworkMovesAddressesToDetailsAndKeepsControllerMetadataSafe(t 
 				}
 			}
 			o.Snapshot.Installed, o.Snapshot.MixedPort = false, 17890
-			if value := card(); strings.Contains(value, "127.0.0.1:") || len(overviewNetworkCard(o, 100).targets) != 0 {
-				t.Fatal("uninstalled network card exposed stale addresses or actions")
+			if value := card(); strings.Contains(value, "127.0.0.1:") || strings.Contains(value, "17890") {
+				t.Fatal("uninstalled network card exposed stale addresses or ports")
 			}
 		})
 	}
@@ -452,7 +453,7 @@ func TestOverviewNetworkMovesAddressesToDetailsAndKeepsControllerMetadataSafe(t 
 		{"http://user:password@[::1]:19090/path?token=secret", "[::1]:19090"},
 		{"127.0.0.1:not-a-port", "--"}, {"127.0.0.1:0", "--"}, {"127.0.0.1:65536", "--"}, {"", "--"},
 	} {
-		if got := overviewControllerAddress(sample.input); got != sample.want {
+		if got := controllerHostPort(sample.input); got != sample.want {
 			t.Fatalf("controller display %q: got %q, want %q", sample.input, got, sample.want)
 		}
 	}
@@ -472,23 +473,29 @@ func TestOverviewNetworkSeparatesSavedAndObservedHostTUN(t *testing.T) {
 			if value := card(); !strings.Contains(value, locale.T("tun.saved_state", locale.T("dashboard.control.on"))) || !strings.Contains(value, locale.T("dashboard.overview.tunActual", locale.T("dashboard.control.off"))) || !strings.Contains(value, locale.T("tun.host_scope")) || !strings.Contains(value, o.Snapshot.TUNError) || !hasAction(overviewNetworkCard(o, 100).targets, "tun.disable") {
 				t.Fatalf("host TUN mismatch lost saved/observed distinction, scope or recovery action: %s", value)
 			}
-			for _, missing := range []string{"no observation", "service error", "API error"} {
+			// A /proxies or /version failure is independent of the successful
+			// /configs response that supplied the running TUN state.
+			o.Snapshot.APIError = "Proxy groups unavailable"
+			if value := card(); !strings.Contains(value, locale.T("dashboard.overview.tunActual", locale.T("dashboard.control.off"))) {
+				t.Fatalf("an unrelated API error erased the confirmed TUN state: %s", value)
+			}
+			for _, missing := range []string{"no observation", "service error"} {
 				o.Snapshot.TUNActual, o.Snapshot.ServiceError, o.Snapshot.APIError = &actual, "", ""
 				switch missing {
 				case "no observation":
 					o.Snapshot.TUNActual = nil
 				case "service error":
 					o.Snapshot.ServiceError = "Service unavailable"
-				case "API error":
-					o.Snapshot.APIError = "Controller unavailable"
 				}
 				if value := card(); !strings.Contains(value, locale.T("dashboard.overview.tunActual", locale.T("dashboard.status.unknown"))) || strings.Contains(value, locale.T("dashboard.overview.tunActual", locale.T("dashboard.control.on"))) || strings.Contains(value, locale.T("dashboard.overview.tunActual", locale.T("dashboard.control.off"))) {
 					t.Fatalf("%s presented saved or stale TUN as observed: %s", missing, value)
 				}
 			}
 			o.Busy = true
-			if len(overviewNetworkCard(o, 100).targets) != 0 {
-				t.Fatal("busy network card retained an actionable control")
+			for _, target := range overviewNetworkCard(o, 100).targets {
+				if !strings.HasPrefix(target.ID, "network.tab.") {
+					t.Fatalf("busy network card exposed action %s", target.ID)
+				}
 			}
 		})
 	}

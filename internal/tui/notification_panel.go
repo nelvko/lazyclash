@@ -16,6 +16,8 @@ import (
 type notificationPanel struct {
 	open        bool
 	detailID    uint64
+	title       string
+	message     string
 	viewport    viewport.Model
 	initialized bool
 	focus       int
@@ -31,7 +33,13 @@ func (p *notificationPanel) show(id uint64) {
 		p.initialized = true
 	}
 	p.open, p.detailID, p.focus = true, id, 0
+	p.title, p.message = "", ""
 	p.viewport.GotoTop()
+}
+
+func (p *notificationPanel) showMessage(title, message string) {
+	p.show(0)
+	p.title, p.message = title, message
 }
 
 func (p *notificationPanel) dismiss() {
@@ -160,6 +168,15 @@ func (p *notificationPanel) render(items []notificationItem, width, height int, 
 		p.initialized = true
 	}
 	w, h := min(90, width), min(30, height)
+	closeLabel := locale.T("notification.collapse")
+	var messageLines []string
+	if p.message != "" {
+		closeLabel = locale.T("notification.hints.empty")
+		message := notificationText(p.message)
+		w = min(w, max(24, ansi.StringWidth(p.title)+6, ansi.StringWidth(message)+6, ansi.StringWidth(closeLabel)+10))
+		messageLines = strings.Split(wrapText(message, max(1, w-6)), "\n")
+		h = min(h, len(messageLines)+6)
+	}
 	x, y := (width-w)/2, (height-h)/2
 	p.bounds = hitRegion{X: x, Y: y, W: w, H: h}
 	rows := make([]string, height)
@@ -169,7 +186,7 @@ func (p *notificationPanel) render(items []notificationItem, width, height int, 
 	options := dashboardOptions{PlainButtons: len(plain) > 0 && plain[0]}
 	if w < 20 || h < 6 {
 		options.Focus = "notification.panel.close"
-		label := notificationButton(options.Focus, locale.T("notification.collapse"), width, options)
+		label := notificationButton(options.Focus, closeLabel, width, options)
 		putRows(rows, 0, 0, label, width)
 		p.bounds = hitRegion{W: width, H: height}
 		p.targets = []hitRegion{{ID: "notification.panel.close", W: min(width, ansi.StringWidth(label)), H: 1}}
@@ -178,7 +195,7 @@ func (p *notificationPanel) render(items []notificationItem, width, height int, 
 	inner := w - 6
 	p.viewport.SetWidth(inner)
 	p.viewport.SetHeight(h - 6)
-	var lines []string
+	lines := messageLines
 	p.actions = nil
 	var actionLabels []string
 	if p.detailID != 0 {
@@ -194,7 +211,7 @@ func (p *notificationPanel) render(items []notificationItem, width, height int, 
 				lines = append(lines, strings.Split(wrapText(notificationText(item.Details), inner), "\n")...)
 			}
 		}
-	} else {
+	} else if p.message == "" {
 		for _, item := range items {
 			lines = append(lines, strings.Split(wrapText(notificationHeading(item, locale, ""), inner), "\n")...)
 			lines = append(lines, strings.Split(wrapText(notificationText(item.Message), inner), "\n")...)
@@ -242,7 +259,11 @@ func (p *notificationPanel) render(items []notificationItem, width, height int, 
 	}
 	box[0] = themed("╭"+strings.Repeat("─", w-2)+"╮", border, raised, false)
 	box[h-1] = themed("╰"+strings.Repeat("─", w-2)+"╯", border, raised, false)
-	putRows(box, 3, 1, themed(cellCrop(locale.T("notification.listTitle"), inner), text, raised, false), w)
+	title := p.title
+	if title == "" {
+		title = locale.T("notification.listTitle")
+	}
+	putRows(box, 3, 1, themed(cellCrop(title, inner), text, raised, false), w)
 	view := strings.Split(p.viewport.View(), "\n")
 	for index, line := range view {
 		if index >= p.viewport.Height() {
@@ -250,16 +271,15 @@ func (p *notificationPanel) render(items []notificationItem, width, height int, 
 		}
 		putRows(box, 3, index+3, themed(cellPad(line, inner), text, raised, false), w)
 	}
-	backID, backLabel := "notification.panel.close", locale.T("notification.collapse")
-	help := p.contextHelp(locale)
+	backID, backLabel := "notification.panel.close", closeLabel
 	if p.detailID != 0 {
 		backID, backLabel = "notification.panel.back", locale.T("notification.back")
 	}
 	back := notificationButton(backID, backLabel, inner, options)
 	backWidth := ansi.StringWidth(back)
 	putRows(box, 3, h-2, back, w)
-	if left := 3 + backWidth + 2; left < w-3 {
-		putRows(box, left, h-2, helpText(cellCrop(help, w-left-3), raised, false), w)
+	if left := 3 + backWidth + 2; p.message == "" && left < w-3 {
+		putRows(box, left, h-2, helpText(cellCrop(p.contextHelp(locale), w-left-3), raised, false), w)
 	}
 	p.targets = []hitRegion{{ID: backID, X: x + 3, Y: y + h - 2, W: backWidth, H: 1}}
 	if p.detailID != 0 {

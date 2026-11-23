@@ -194,7 +194,7 @@ func (m *Model) proxyModeRows(width int) int {
 		return 0
 	}
 	actions := m.proxyModeActions()
-	perRow := max(1, width/proxyModeSegmentWidth(actions))
+	perRow := max(1, width/segmentWidth(actions))
 	return (len(actions) + perRow - 1) / perRow
 }
 

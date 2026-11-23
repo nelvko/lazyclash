@@ -200,7 +200,7 @@ lazyclash doctor
 
 网络 flags：`--download-method direct|environment|accelerated`、`--acceleration-prefix URL`、`--remember-download-settings`。未指定的设置复用已保存偏好。
 
-概览 → 网络设置 → **终端代理**控制当前交互式 Shell。首次开启时确认安装 Shell Integration，退出 TUI 后按提示执行一次 `source`；这次 source 会立即应用已保存请求，无须重新进入 TUI。以后直接运行 `lazyclash`，切换后退出即自动同步，关闭会恢复接管前的原始变量。
+概览 → 网络设置 → **终端代理**控制当前交互式 Shell。首次开启时确认安装 Shell Integration，可在此查看激活命令，退出 TUI 后执行一次 `source`；这次 source 会立即应用已保存请求，无须重新进入 TUI。以后直接运行 `lazyclash`，切换后退出即自动同步，关闭会恢复接管前的原始变量。
 
 ```sh
 lazyclash shell status           # 当前 Shell、安装/加载/回执与代理状态

@@ -223,7 +223,7 @@ func (m *Model) proxyModeActions() []headerAction {
 	return actions
 }
 
-func proxyModeSegmentWidth(actions []headerAction) int {
+func segmentWidth(actions []headerAction) int {
 	labelWidth := 0
 	for _, action := range actions {
 		labelWidth = max(labelWidth, ansi.StringWidth(action.label))
@@ -233,15 +233,19 @@ func proxyModeSegmentWidth(actions []headerAction) int {
 
 // The same three selectable faces wrap on the smallest screens.
 func renderProxyModeSegments(o dashboardOptions, actions []headerAction, width int) dashboardBlock {
+	return renderSegments(o, actions, width, bg, "mode."+o.Snapshot.Mode.Desired)
+}
+
+func renderSegments(o dashboardOptions, actions []headerAction, width int, surface, selected string) dashboardBlock {
 	block := dashboardBlock{lines: []string{""}}
-	segmentWidth := proxyModeSegmentWidth(actions)
-	w := min(width, segmentWidth)
+	naturalWidth := segmentWidth(actions)
+	w := min(width, naturalWidth)
 	x := 0
 	for _, action := range actions {
-		options := dashboardButtonOptions(action.id, o, false, bg)
+		options := dashboardButtonOptions(action.id, o, false, surface)
 		options.Kind = buttonSegment
-		options.Selectable, options.Selected = true, o.Snapshot.Mode.Desired == strings.TrimPrefix(action.id, "mode.")
-		options.Width, options.Disabled = segmentWidth-2, !action.enabled || o.Busy
+		options.Selectable, options.Selected = true, action.id == selected
+		options.Width, options.Disabled = naturalWidth-2, !action.enabled || o.Busy
 		if x > 0 && x+w > width {
 			block.blank()
 			x = 0

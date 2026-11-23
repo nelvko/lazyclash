@@ -12,6 +12,7 @@ import (
 	"github.com/nelvko/lazyclash/internal/configuration"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 	"github.com/nelvko/lazyclash/internal/service"
+	"github.com/nelvko/lazyclash/internal/shellintegration"
 )
 
 // TestOverviewPTYFixture runs the real TUI with isolated in-memory observations.
@@ -36,7 +37,7 @@ func TestOverviewPTYFixture(t *testing.T) {
 	raw, err := json.Marshal(map[string]int64{
 		"service_changes": b.controls.Load(), "modes": b.modes.Load(),
 		"selections": b.selections.Load(), "runtime_queries": b.runtimeQueries.Load(),
-		"tun_changes":    b.tunChanges.Load(),
+		"tun_changes": b.tunChanges.Load(), "terminal_changes": b.terminalChanges.Load(),
 		"settings_reads": b.settingsReads.Load(), "settings_writes": b.settingsWrites.Load(),
 	})
 	if err != nil {
@@ -51,7 +52,7 @@ type overviewPTYBackend struct {
 	*fakeBackend
 	scenario                                    string
 	controls, modes, selections, runtimeQueries atomic.Int64
-	tunChanges                                  atomic.Int64
+	tunChanges, terminalChanges                 atomic.Int64
 	settingsReads, settingsWrites               atomic.Int64
 }
 
@@ -73,10 +74,11 @@ func newOverviewPTYBackend(scenario string) *overviewPTYBackend {
 			"香港 01 · 日常线路": {Name: "香港 01 · 日常线路", Type: "Trojan"},
 			"DIRECT":       {Name: "DIRECT", Type: "Direct"},
 		},
-		Service:      service.Status{Active: true, State: "active", PID: 4242, EnableState: "disabled", StartedAt: time.Now().Add(-2*time.Hour - 18*time.Minute - 34*time.Second)},
-		Mode:         app.ModeStatus{Desired: "rule", Actual: "rule", Running: true},
-		Desired:      app.DesiredState{Known: true, Running: true},
-		Capabilities: app.Capabilities{Scope: "user", Runtime: app.Capability{Supported: true}},
+		TerminalProxy: shellintegration.Status{State: "off", Shell: "bash", Installed: true, Loaded: true},
+		Service:       service.Status{Active: true, State: "active", PID: 4242, EnableState: "disabled", StartedAt: time.Now().Add(-2*time.Hour - 18*time.Minute - 34*time.Second)},
+		Mode:          app.ModeStatus{Desired: "rule", Actual: "rule", Running: true},
+		Desired:       app.DesiredState{Known: true, Running: true},
+		Capabilities:  app.Capabilities{Scope: "user", Runtime: app.Capability{Supported: true}},
 	}
 	switch scenario {
 	case "stopped":
@@ -97,6 +99,10 @@ func newOverviewPTYBackend(scenario string) *overviewPTYBackend {
 	case "direct":
 		s.Mode.Desired, s.Mode.Actual = "direct", "direct"
 	case "pending":
+		s.TerminalProxy = shellintegration.Status{
+			State: "pending", Shell: "bash", Installed: true, Desired: true, Pending: true,
+			ActivationCommand: "source '/tmp/overview-fixture/bash.sh'",
+		}
 		s.ProfilePending, s.ProfileDetails[0].Pending = true, true
 		s.Capabilities.Scope, s.Capabilities.TUN.Supported = "system", true
 		s.TUN = true
@@ -139,6 +145,11 @@ func (b *overviewPTYBackend) Select(ctx context.Context, _, _ string) error {
 
 func (b *overviewPTYBackend) SetTUN(ctx context.Context, _ bool) error {
 	b.tunChanges.Add(1)
+	return ctx.Err()
+}
+
+func (b *overviewPTYBackend) SetTerminalProxy(ctx context.Context, _, _ bool) error {
+	b.terminalChanges.Add(1)
 	return ctx.Err()
 }
 

@@ -306,7 +306,7 @@ func TestOverviewLayoutPreservesDetailsAndActionTargets(t *testing.T) {
 	}
 	for _, width := range []int{112, 87, 72} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
-			o := dashboardOptions{Height: 45, GuideDismissed: true, Snapshot: snapshot, Runtime: liveRuntime(), RuntimeReceived: true}
+			o := dashboardOptions{Height: 45, GuideDismissed: true, Snapshot: snapshot, Runtime: liveRuntime(), RuntimeReceived: true, NetworkSection: "tun"}
 			body, hits := overviewContent(o, width)
 			rows := strings.Split(body, "\n")
 			words := map[string]int{}
@@ -323,7 +323,7 @@ func TestOverviewLayoutPreservesDetailsAndActionTargets(t *testing.T) {
 			}
 			assertCanvas(t, body, width, len(rows))
 			assertRegions(t, hits, width, len(rows))
-			for id, label := range map[string]string{"card.profiles": o.Locale.T("dashboard.overview.profilesAction"), "card.network": o.Locale.T("dashboard.overview.settingsAction"), "card.proxies": o.Locale.T("dashboard.overview.proxiesAction")} {
+			for id, label := range map[string]string{"card.profiles": o.Locale.T("dashboard.overview.profilesAction"), "card.proxies": o.Locale.T("dashboard.overview.proxiesAction")} {
 				found := false
 				for _, hit := range hits {
 					if hit.ID == id {

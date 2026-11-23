@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -39,6 +40,25 @@ type portsMsg struct {
 	hasSnapshot  bool
 	err          error
 	refreshError error
+}
+
+// Controller metadata contains a local address; display only its host and port,
+// excluding any user info, path or query even in an incomplete observation.
+func controllerHostPort(value string) string {
+	value = clean(value)
+	if !strings.Contains(value, "://") {
+		value = "//" + value
+	}
+	endpoint, err := url.Parse(value)
+	if err != nil {
+		return "--"
+	}
+	if _, port, err := net.SplitHostPort(endpoint.Host); err == nil {
+		if number, err := strconv.Atoi(port); err == nil && number > 0 && number <= 65535 {
+			return endpoint.Host
+		}
+	}
+	return "--"
 }
 
 func newPortsState() portsState {
@@ -362,7 +382,7 @@ func (m *Model) portsDocument(width int) (wizardDocument, []wizardButton, string
 		if p.current.MixedPort > 0 && p.current.MixedPort <= 65535 {
 			proxy = net.JoinHostPort("127.0.0.1", strconv.Itoa(p.current.MixedPort))
 		}
-		if host, _, err := net.SplitHostPort(overviewControllerAddress(m.snapshot.Controller)); err == nil && p.current.ControllerPort > 0 && p.current.ControllerPort <= 65535 {
+		if host, _, err := net.SplitHostPort(controllerHostPort(m.snapshot.Controller)); err == nil && p.current.ControllerPort > 0 && p.current.ControllerPort <= 65535 {
 			controller = net.JoinHostPort(host, strconv.Itoa(p.current.ControllerPort))
 		}
 		d.pair(m.tr("ports.proxy_address"), proxy)
