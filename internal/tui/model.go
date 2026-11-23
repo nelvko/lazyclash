@@ -409,6 +409,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.adoptSnapshot(v.snapshot)
 			} else if !errors.Is(v.err, context.Canceled) {
 				m.snapshot.ServiceError = "Service status unavailable; refresh or check doctor"
+				m.snapshot.TUNActual, m.snapshot.TUNError = nil, ""
 			}
 		}
 	case tea.ColorProfileMsg:

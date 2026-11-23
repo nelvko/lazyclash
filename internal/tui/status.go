@@ -63,12 +63,23 @@ func (m *Model) observeCoreState(state string) tea.Cmd {
 	return nil
 }
 
+// The runtime heartbeat observes ownership and process identity. Only a full
+// configuration read can supply the running TUN value and its drift diagnostic.
+func reconcileTUNObservation(snapshot *app.Snapshot, runtime app.RuntimeSnapshot) {
+	process := runtime.Service
+	if runtime.State != "ready" || process.PID <= 0 || process.PID != snapshot.Service.PID ||
+		process.StartTimestampMonotonic != snapshot.Service.StartTimestampMonotonic {
+		snapshot.TUNActual, snapshot.TUNError = nil, ""
+	}
+}
+
 // A full settings/profile read can finish after a newer live ownership check.
 // Merge that newer process observation while keeping the read's profile data.
 func (m *Model) adoptSnapshot(snapshot app.Snapshot) {
 	latest := m.runtime.observed[app.RuntimeStatus]
 	if !snapshot.ServiceObservedAt.IsZero() && latest.After(snapshot.ServiceObservedAt) {
 		runtime := m.runtime.snapshot
+		reconcileTUNObservation(&snapshot, runtime)
 		if runtime.Service.State != "" {
 			snapshot.Service = runtime.Service
 			snapshot.ServiceError, snapshot.ServiceDiagnostic = "", nil

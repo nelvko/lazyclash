@@ -60,6 +60,7 @@ func TestUnknownOperationStatePreservesInstallationAndProfileLibrary(t *testing.
 		Applied: "saved", Profiles: []string{"default", "saved"},
 		Service:      service.Status{Active: true, State: "active", PID: 42},
 		ServiceError: "old diagnostic", ServiceDiagnostic: errors.New("old cause"),
+		TUN: true, TUNActual: new(false), TUNError: "Running TUN differs from the saved policy",
 		Groups: []mihomo.Group{{Name: "PROXY"}}, Mode: app.ModeStatus{Desired: "rule", Actual: "global"},
 	}})
 	m.markOperationStateUnknown()
@@ -71,6 +72,9 @@ func TestUnknownOperationStatePreservesInstallationAndProfileLibrary(t *testing.
 	}
 	if len(m.snapshot.Groups) != 0 || m.snapshot.Mode.Actual != "" || m.snapshot.Mode.Desired != "rule" || m.snapshot.RunningVersion != "" || m.snapshot.APIError == "" {
 		t.Fatal("unknown runtime retained unconfirmed actual configuration")
+	}
+	if !m.snapshot.TUN || m.snapshot.TUNActual != nil || m.snapshot.TUNError != "" {
+		t.Fatal("failed refresh lost saved TUN or retained its previous observation")
 	}
 }
 

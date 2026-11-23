@@ -177,6 +177,7 @@ func (m *Model) acceptRuntimeEnded(msg runtimeEndedMsg) tea.Cmd {
 	m.runtime.chartScale.lowSince = time.Time{}
 	m.observeConnections(now)
 	m.snapshot.APIError, m.snapshot.APIDiagnostic = err.Error(), err
+	m.snapshot.TUNActual, m.snapshot.TUNError = nil, ""
 	m.logs.startReconnect(err)
 	m.runtime.retryAt = now.Add(time.Second)
 	id := m.runtime.generation
@@ -289,6 +290,7 @@ func (m *Model) acceptRuntimeEvent(event app.RuntimeEvent) bool {
 		if event.Err != nil {
 			current = app.RuntimeSnapshot{State: "unavailable", Error: event.Err.Error(), Diagnostic: event.Err}
 		}
+		reconcileTUNObservation(&m.snapshot, current)
 		changed := event.Instance != m.runtime.instance
 		if changed {
 			m.logs.recoveryUntil = time.Time{}

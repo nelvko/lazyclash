@@ -66,5 +66,6 @@ func (m *Model) markOperationStateUnknown() {
 	m.snapshot.Groups = nil
 	m.snapshot.APIError, m.snapshot.APIDiagnostic = message, nil
 	m.snapshot.Mode.Actual = ""
+	m.snapshot.TUNActual, m.snapshot.TUNError = nil, ""
 	m.snapshot.RunningVersion = ""
 }
