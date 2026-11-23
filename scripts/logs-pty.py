@@ -202,7 +202,7 @@ def exercise(preview, binary, output, language, profile, args):
     report = output / "calls.json"
     terminal = fixture_terminal(preview, binary, report, language, profile)
     try:
-        terminal.wait("v1.19.33")
+        terminal.wait("Logs preview")
         wait_until(terminal, lambda: calls(report).get("emitted", 0) >= 60, "session did not collect logs before opening Logs")
         assert_continuing(terminal, report)
         preview.capture(terminal, output, "collecting-from-overview", args)

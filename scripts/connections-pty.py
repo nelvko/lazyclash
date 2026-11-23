@@ -494,7 +494,7 @@ def exercise(preview, binary, output, language, profile, args):
     report = output / "calls.json"
     terminal = fixture_terminal(preview, binary, report, language, profile)
     try:
-        terminal.wait("v1.19.33")
+        terminal.wait("Connections preview")
         terminal.key(b"c")
         terminal.wait("api.github.com")
         wait_header_pause(terminal, words)

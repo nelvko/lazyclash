@@ -68,7 +68,7 @@ def exercise(preview, binary, output, language, profile, args):
     report = output / "calls.json"
     terminal = fixture_terminal(preview, binary, report, language, profile)
     try:
-        terminal.wait("v1.19.33")
+        terminal.wait("Settings preview")
         terminal.key(b"7")
         terminal.wait(words["settings.interface"])
         terminal.settle()

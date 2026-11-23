@@ -75,7 +75,7 @@ def exercise_overview(preview, overview, binary, output, language, profile, args
     report = output / "calls.json"
     terminal = overview.fixture_terminal(preview, binary, report, language, profile, "running")
     try:
-        terminal.wait("v1.19.33")
+        terminal.wait("subscription.example")
         baseline = None
         for number, page in enumerate(PAGES, 1):
             overview.return_navigation(terminal, words)
@@ -152,7 +152,7 @@ def exercise_logs(preview, overview, logs, binary, output, language, profile, ar
     report = output / "calls.json"
     terminal = logs.fixture_terminal(preview, binary, report, language, profile)
     try:
-        terminal.wait("v1.19.33")
+        terminal.wait("Logs preview")
         terminal.key(b"6")
         terminal.wait(words["logs.capturing"])
         for width, height in ((160, 45), (80, 24)):

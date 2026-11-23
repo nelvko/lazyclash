@@ -129,7 +129,7 @@ def main():
         words = proxy.labels(language)
         terminal = proxy.fixture_terminal(preview, args.binary, report, language, "truecolor")
         try:
-            terminal.wait("v1.19.33")
+            terminal.wait("PTY example")
             terminal.key(b"2")
             terminal.wait("PROXY")
             terminal.settle()

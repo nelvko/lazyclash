@@ -529,7 +529,7 @@ def exercise(preview, binary, output, language, profile, args):
     words = labels(language)
     terminal = fixture_terminal(preview, binary, report, language, profile)
     try:
-        terminal.wait("v1.19.33")
+        terminal.wait("PTY example")
         terminal.key(b"2")
         terminal.wait("PROXY")
         terminal.settle()
@@ -834,7 +834,7 @@ def exercise_mode_positions(preview, binary, output, language, profile, args):
     sequence = ("global", "direct", "rule", "direct", "global", "rule")
     geometry = {}
     try:
-        terminal.wait("v1.19.33")
+        terminal.wait("PTY example")
         terminal.key(b"2")
         terminal.wait("PROXY")
         for width, height in sizes:
@@ -884,7 +884,7 @@ def exercise_groups(preview, binary, output, args):
     report = output / "calls.json"
     terminal = fixture_terminal(preview, binary, report, language, profile, 200, 50)
     try:
-        terminal.wait("v1.19.33")
+        terminal.wait("PTY example")
         terminal.key(b"2")
         terminal.wait("PROXY")
         terminal.resize(120, 25)
@@ -995,7 +995,7 @@ def exercise_node_delay(preview, binary, output, args):
     terminal = fixture_terminal(preview, binary, report, language, profile,
         extra_environment={"LAZYCLASH_PROXIES_PTY_RETEST": "1"})
     try:
-        terminal.wait("v1.19.33")
+        terminal.wait("PTY example")
         terminal.key(b"2")
         terminal.wait("PROXY")
         open_group(terminal, "PROXY")

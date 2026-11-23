@@ -110,7 +110,7 @@ def exercise(preview, binary, output, language, profile, args):
     report = output / "calls.json"
     terminal = fixture_terminal(preview, binary, report, language, profile)
     try:
-        terminal.wait("v1.19.33")
+        terminal.wait("Rules preview")
         terminal.key(b"5")
         terminal.wait("private_ip")
         terminal.settle()
@@ -409,7 +409,7 @@ def exercise_scroll(preview, binary, output, count, args):
                "wheel_events_per_direction": args.event_count // 2,
                "measurement": "local PTY event batches through visible VT output; not physical trackpad input"}
     try:
-        terminal.wait("v1.19.33")
+        terminal.wait("Rules preview")
         terminal.key(b"5")
         terminal.wait("private_ip")
         terminal.settle()

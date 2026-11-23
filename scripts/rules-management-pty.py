@@ -97,7 +97,7 @@ def exercise(preview, binary, output, language, profile, args):
     report = output / "calls.json"
     terminal = fixture_terminal(preview, binary, report, language, profile)
     try:
-        terminal.wait("v1.19.33")
+        terminal.wait("PTY rule providers")
         terminal.key(b"5")
         terminal.wait("source.example.invalid")
         RULES.search(terminal, "source")

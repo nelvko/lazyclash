@@ -153,7 +153,7 @@ def exercise(preview, binary, output, language, profile, scenario, args):
     report = output / "calls.json"
     terminal = fixture_terminal(preview, binary, report, language, profile, scenario)
     try:
-        terminal.wait("v1.19.33")
+        terminal.wait("subscription.example")
         show_traffic(terminal, words)
         if scenario == "gap":
             wait_until(terminal, lambda: progress(report).get("phase") == "gap", "fixture did not omit its traffic sample")

@@ -62,7 +62,7 @@ def exercise(preview, binary, output, language, profile, args):
     report = output / "calls.json"
     terminal = fixture_terminal(preview, binary, report, language, profile)
     try:
-        terminal.wait("v1.19.33")
+        terminal.wait("PTY example")
         terminal.key(b"2")
         terminal.wait("PROXY")
         terminal.settle()
@@ -175,7 +175,7 @@ def exercise_direct(preview, binary, output, args):
     report = output / "calls.json"
     terminal = fixture_terminal(preview, binary, report, "zh-Hans", "truecolor")
     try:
-        terminal.wait("v1.19.33")
+        terminal.wait("PTY example")
         terminal.key(b"2")
         terminal.wait("PROXY")
         PROXIES.open_group(terminal, "PROXY")
