@@ -26,7 +26,7 @@ func sidebarGeometry(o dashboardOptions, popup bool) sidebarLayout {
 	g := dashboardGeometry(o)
 	s := sidebarLayout{width: min(sidebarWidth, o.Width), menuY: g.headerHeight, end: dashboardContentBottom(o), itemHeight: 3}
 	if popup {
-		s.menuY += 2
+		s.menuY = g.contentY + 1
 	}
 	available := max(0, s.end-s.menuY)
 	if !popup {
@@ -91,7 +91,7 @@ func drawSidebar(rows []string, o dashboardOptions, popup bool) []hitRegion {
 	var logoTarget *hitRegion
 	start := 0
 	if popup {
-		start = header.headerHeight + 1
+		start = header.contentY
 	}
 	for y := start; y < g.end; y++ {
 		putRows(rows, 0, y, themed(strings.Repeat(" ", g.width), text, sidebarBackground, o.Dim), o.Width)

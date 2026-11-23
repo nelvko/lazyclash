@@ -92,19 +92,21 @@ func notificationLayout(o dashboardOptions) []notificationOverlay {
 	if g.sidebar {
 		right = 3
 	}
-	width := min(54, o.Width-right-g.x)
+	rightEdge := o.Width - right
+	// Right-side header actions may be covered, but the title, compact
+	// navigation and core status must remain readable.
+	page := "▎ " + pageTitle(o.Page, o.Locale)
+	titleX, title := dashboardHeaderTitle(o, g, page)
+	title = dashboardTitle(o, title, page, g.headerX+g.headerWidth-titleX)
+	cornerWidth := min(54, rightEdge-titleX-ansi.StringWidth(title)-2)
+	width := cornerWidth
 	y := 0
 	capacity := 2
 	if compact {
-		width = o.Width - right - 2
+		width = rightEdge - 2
 		y, capacity = g.headerY+1, 1
-	} else {
-		// The card may replace right-side header actions, but the page title
-		// and compact navigation remain usable while notifications arrive.
-		titleEnd := g.x + ansi.StringWidth("▎ "+pageTitle(o.Page, o.Locale)) + 2
-		width = min(width, o.Width-right-titleEnd)
 	}
-	x := o.Width - right - width
+	x := rightEdge - width
 	bottom := min(dashboardContentBottom(o), max(g.y, min(15, o.Height/2)))
 	inputTargets := notificationInputs(o, g)
 	if modeFeedback {
@@ -126,6 +128,12 @@ func notificationLayout(o dashboardOptions) []notificationOverlay {
 		if input.X < x+width && input.X+input.W > x && input.Y >= y {
 			bottom = min(bottom, input.Y)
 		}
+	}
+	if g.headerY > 0 && bottom == g.contentY && !modeFeedback && cornerWidth >= 16 {
+		// An input directly below the three-row header leaves no room for
+		// a bordered card. The existing compact controls fit from 16 cells.
+		width, x = cornerWidth, rightEdge-cornerWidth
+		y, capacity, compact = 0, 1, true
 	}
 	var chosen []notificationOverlay
 	for count := min(capacity, len(o.Notifications)); count > 0; count-- {
@@ -197,7 +205,7 @@ func notificationInputs(o dashboardOptions, g dashboardLayout) []hitRegion {
 		switch target.ID {
 		case "proxies.search", "conn.search", "rules.search", "providers.search", "logs.search":
 			target.X += g.x
-			target.Y += g.y - o.BodyTopRows
+			target.Y += g.contentY
 			targets = append(targets, target)
 		}
 	}

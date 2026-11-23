@@ -168,7 +168,7 @@ func (m *Model) fixedContentTargets() []hitRegion {
 	}
 	for i := range b.targets {
 		b.targets[i].X += g.x
-		b.targets[i].Y += g.y - o.BodyTopRows
+		b.targets[i].Y += g.contentY
 	}
 	return b.targets
 }

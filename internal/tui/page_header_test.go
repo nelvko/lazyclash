@@ -79,7 +79,7 @@ func TestPageHeadersUsePageActionsAcrossSizesAndFocus(t *testing.T) {
 					for _, id := range actions {
 						target := findTarget(t, m, id)
 						if target.Y >= g.headerHeight {
-							t.Fatalf("%s overlaps the divider or body: %+v", id, target)
+							t.Fatalf("%s extends below the header: %+v", id, target)
 						}
 						painted := ansi.Strip(ansi.Cut(lines[target.Y], target.X, target.X+target.W))
 						if strings.TrimSpace(strings.TrimPrefix(painted, " ›")) == "" {
@@ -111,27 +111,24 @@ func TestPageHeadersUsePageActionsAcrossSizesAndFocus(t *testing.T) {
 	}
 }
 
-func TestPageHeaderDividerBoundsAndBodyGapStayConsistentAcrossPages(t *testing.T) {
+func TestPageHeaderSpacingAndBoundsStayConsistentAcrossPages(t *testing.T) {
 	for _, size := range [][2]int{{30, 12}, {60, 20}, {80, 24}, {120, 18}, {120, 32}, {160, 45}, {216, 55}} {
 		for _, page := range navPages() {
 			t.Run(fmt.Sprintf("%s/%dx%d", page, size[0], size[1]), func(t *testing.T) {
 				m := headerModel(page, size[0], size[1])
 				g := dashboardGeometry(m.dashboardOptions())
 				lines := strings.Split(m.screen, "\n")
-				left, right := 0, size[0]
-				if sidebarVisible(size[0], size[1]) {
-					left = sidebarWidth
-				}
-				line := ansi.Strip(lines[g.headerHeight])
-				if first := ansi.StringWidth(strings.SplitN(line, "▔", 2)[0]); first != left {
-					t.Fatalf("divider starts at %d, want %d", first, left)
-				}
-				if actual := strings.Count(line, "▔"); actual != right-left {
-					t.Fatalf("divider spans %d cells, want %d", actual, right-left)
+				right := size[0]
+				if strings.Contains(ansi.Strip(strings.Join(lines[:g.headerHeight+1], "\n")), "▔") {
+					t.Fatal("header retained a horizontal divider")
 				}
 				bodyStart := g.y - m.dashboardOptions().BodyTopRows
-				if bodyStart != g.headerHeight+1 {
-					t.Fatal("body does not start immediately below the divider")
+				gap := 0
+				if size[1] < 24 {
+					gap = 1
+				}
+				if bodyStart != g.headerHeight+gap {
+					t.Fatal("body has incorrect spacing below the header")
 				}
 				for y := 0; y < g.headerHeight; y++ {
 					if padding := ansi.Cut(lines[y], right-1, right); !strings.Contains(padding, themed(" ", text, bg, false)) {

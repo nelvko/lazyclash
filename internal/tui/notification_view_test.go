@@ -74,16 +74,16 @@ func TestOversizedNotificationRetainsDetailsEntryWithoutPartialToast(t *testing.
 }
 
 func TestNotificationHeaderRetainsTitleAndShowsShortCompleteMessage(t *testing.T) {
-	for _, size := range [][2]int{{160, 45}, {120, 32}, {100, 24}, {80, 24}, {60, 20}, {120, 18}} {
+	for _, size := range [][2]int{{160, 45}, {120, 32}, {100, 24}, {80, 24}, {40, 24}, {60, 20}, {120, 18}} {
 		for _, language := range []string{i18n.English, i18n.Chinese} {
 			o := dashboardOptions{Locale: i18n.New(language), Width: size[0], Height: size[1], Page: "profiles", Body: strings.Repeat("body\n", 50)}
 			g := dashboardGeometry(o)
 			o.BodyTargets = []hitRegion{{ID: "profiles.url", W: g.width, H: 3}}
 			o.Notifications = []notificationItem{{ID: 1, Page: "profiles", Context: strings.Repeat("Fetching subscription ", 8), Kind: "error", Message: "Save failed. Please retry.", Details: "full diagnostic"}}
 			layers := notificationLayout(o)
-			if g.y == 2 {
-				// The compact header has one row before the input; retain the
-				// existing overflow entry instead of covering the input.
+			if size == [2]int{120, 18} || size == [2]int{40, 24} {
+				// There is only one row below the title and no corner large enough
+				// for a complete card beside it.
 				if len(layers) != 1 || len(layers[0].IDs) != 0 || layers[0].Targets[0].ID != "notification.expand" {
 					t.Fatalf("%v/%s: compact notification lost its entry point: %+v", size, language, layers)
 				}
@@ -92,13 +92,15 @@ func TestNotificationHeaderRetainsTitleAndShowsShortCompleteMessage(t *testing.T
 			if len(layers) != 1 || len(layers[0].IDs) != 1 {
 				t.Fatalf("%v/%s: short message unnecessarily hidden behind overflow: %+v", size, language, layers)
 			}
-			titleX := g.x
-			if !g.sidebar {
-				titleX = max(12, g.x)
-			}
-			title := hitRegion{X: titleX, Y: g.headerY, W: ansi.StringWidth("▎ " + pageTitle(o.Page, o.Locale)), H: 1}
-			if regionsOverlap(title, layers[0].Bounds) {
-				t.Fatalf("%v/%s: notification covered page title", size, language)
+			without := o
+			without.Notifications = nil
+			base, _, _ := renderDashboard(without)
+			screen, _, _ := renderDashboard(o)
+			// With no header actions the last nonblank cell of the title
+			// row includes the core state when the sidebar is folded.
+			title := strings.TrimRight(ansi.Strip(strings.Split(base, "\n")[g.headerY]), " ")
+			if !strings.HasPrefix(ansi.Strip(strings.Split(screen, "\n")[g.headerY]), title) {
+				t.Fatalf("%v/%s: notification covered page title or core state", size, language)
 			}
 			plain := strings.Join(strings.Fields(strings.ReplaceAll(ansi.Strip(layers[0].Content), "│", " ")), " ")
 			if !strings.Contains(plain, o.Notifications[0].Message) {
@@ -115,6 +117,22 @@ func TestCompactNotificationKeepsOperationContext(t *testing.T) {
 		if len(layers) != 1 || !strings.Contains(ansi.Strip(layers[0].Content), "Stop service") {
 			t.Fatalf("%v: compact notification lost operation context: %+v", size, layers)
 		}
+	}
+}
+
+func TestBorderedNotificationBesideFoldedSidebarTitle(t *testing.T) {
+	o := dashboardOptions{Locale: i18n.New(i18n.English), Width: 100, Height: 24, Page: "connections"}
+	base, _, _ := renderDashboard(o)
+	titleY := dashboardGeometry(o).headerY
+	title := strings.TrimRight(ansi.Strip(strings.Split(base, "\n")[titleY]), " ")
+	o.Notifications = []notificationItem{{ID: 1, Kind: "error", Message: "Connection failed."}}
+	layers := notificationLayout(o)
+	if len(layers) != 1 || !strings.HasPrefix(ansi.Strip(layers[0].Content), "╭") {
+		t.Fatal("a wide page with free body space should keep its bordered card")
+	}
+	screen, _, _ := renderDashboard(o)
+	if !strings.HasPrefix(ansi.Strip(strings.Split(screen, "\n")[titleY]), title) {
+		t.Fatal("wide card covered the menu, logo, page title or core status")
 	}
 }
 
