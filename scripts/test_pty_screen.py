@@ -43,6 +43,27 @@ class ScreenTests(unittest.TestCase):
         self.assertEqual(screen.cells[0][16], "x")
         self.assertEqual(screen.cells[0][8], "y")
 
+    def test_insert_mode_preserves_suffix_when_uptime_resets(self):
+        screen = Screen(12, 1)
+        screen.feed(b"Up for 1m\x1b[8G<\x1b[4")
+        screen.feed(b"h1\x1b[4l")
+        self.assertEqual(screen.text(), "Up for <1m")
+        screen.feed(b"X")
+        self.assertEqual(screen.text(), "Up for <1X")
+
+    def test_insert_mode_moves_styles_with_cells_for_wide_text(self):
+        spec = importlib.util.spec_from_file_location("onboarding_pty", Path(__file__).with_name("onboarding-pty.py"))
+        preview = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(preview)
+        screen = preview.StyledScreen(8, 1)
+        screen.feed(b"\x1b[31mABC")
+        first = screen.style
+        screen.feed(b"\x1b[34mDEFGH")
+        second = screen.style
+        screen.feed("\x1b[3G\x1b[32m\x1b[4h新\x1b[4l".encode())
+        self.assertEqual(screen.cells[0], ["A", "B", "新", "", "C", "D", "E", "F"])
+        self.assertEqual(screen.styles[0], [first] * 2 + [screen.style] * 2 + [first] + [second] * 3)
+
 
 if __name__ == "__main__":
     unittest.main()

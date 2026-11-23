@@ -38,6 +38,7 @@ class Screen:
         self.x = self.y = 0
         self.top, self.bottom = 0, rows - 1
         self.saved = (0, 0)
+        self.insert_mode = False
         self.synchronized = False
         self.state, self.sequence = "text", ""
         self.decoder = codecs.getincrementaldecoder("utf-8")("replace")
@@ -124,6 +125,9 @@ class Screen:
                 if self.x + width > self.columns:
                     self.x = 0
                     self.newline()
+                if self.insert_mode:
+                    # ICH shifts both cells and their attributes in styled screens.
+                    self.csi("@", str(width))
                 self.cells[self.y][self.x] = char
                 if width == 2:
                     self.cells[self.y][self.x + 1] = ""
@@ -141,7 +145,9 @@ class Screen:
         values = sequence.split(";")
         numbers = [int(value) if value.isdigit() else 0 for value in values]
         n = numbers[0] or 1
-        if final in ("H", "f"):
+        if final in ("h", "l") and 4 in numbers:
+            self.insert_mode = final == "h"
+        elif final in ("H", "f"):
             self.y = min(self.rows - 1, max(0, numbers[0] - 1))
             self.x = min(self.columns - 1, max(0, (numbers[1] if len(numbers) > 1 else 1) - 1))
         elif final == "A": self.y = max(0, self.y - n)
