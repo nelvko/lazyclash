@@ -50,26 +50,28 @@ class Terminal(HOOKS.Shell):
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             self.read_for(.05)
-            if text in self.screen.text():
+            if not self.screen.synchronized and text in self.screen.text():
                 return
         raise AssertionError('missing '+text+'\n'+self.screen.text())
 
+    def key(self, data):
+        os.write(self.fd, data)
+        self.read_for(.08)
+
     def toggle(self, command, label, install=False):
         os.write(self.fd, (command+'\n').encode())
-        self.wait('Terminal proxy')
-        self.read_for(.4)
+        VT.Terminal.click_text(self, 'Terminal proxy')
+        self.wait('Sets proxy environment variables for this shell.')
+        before = 'On · applied in this terminal' if label == 'Disable' else 'Off · this terminal'
+        self.wait('Shell Integration not installed' if install else before)
         (self.output/('network-'+label.lower()+'.txt')).write_text(self.screen.text())
-        rows = self.screen.text().splitlines()
-        row = next(i for i, text in enumerate(rows) if 'Terminal proxy' in text)
-        column = rows[row].find(label, rows[row].find('Terminal proxy'))
-        assert column >= 0, rows[row]
-        os.write(self.fd, f'\x1b[<0;{column+2};{row+1}M\x1b[<0;{column+2};{row+1}m'.encode())
+        VT.Terminal.click_text(self, label)
         if install:
             self.wait('Install Shell Integration?')
             (self.output/'install-consent.txt').write_text(self.screen.text())
             os.write(self.fd, b'y')
-        self.wait('Terminal proxy request saved', timeout=20)
-        self.read_for(.3)
+        after = 'Turning off' if label == 'Disable' else 'Turning on'
+        self.wait('Pending activation' if install else after)
         os.write(self.fd, b'q')
         self.read_for(.7)
 
