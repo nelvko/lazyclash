@@ -459,8 +459,9 @@ func TestOverviewLayoutPreservesDetailsAndActionTargets(t *testing.T) {
 func TestInstalledCoreDoesNotRequireGuideOrSubscription(t *testing.T) {
 	o := dashboardOptions{Width: 160, Height: 45, Page: "overview", Snapshot: app.Snapshot{Installed: true, Service: service.Status{State: "inactive"}}}
 	value, targets, _ := renderDashboard(o)
-	if strings.Contains(ansi.Strip(value), "Get started") || !strings.Contains(ansi.Strip(value), "Not applied") {
-		t.Fatal("missing runnable configuration must be shown as state, not a mandatory guide")
+	plain := ansi.Strip(value)
+	if strings.Contains(plain, "Get started") || !strings.Contains(plain, "No profile selected") || strings.Contains(plain, "Not applied") {
+		t.Fatal("an installed core with no selection should show the empty subscription card")
 	}
 	o.Snapshot.ConfigReady = true
 	value, targets, _ = renderDashboard(o)

@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/buildinfo"
+	"github.com/nelvko/lazyclash/internal/configuration"
 	"github.com/nelvko/lazyclash/internal/i18n"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 	"github.com/nelvko/lazyclash/internal/service"
@@ -322,43 +323,98 @@ func TestOverviewAlignedVersionsAndModesCollapseOnlyConfirmedState(t *testing.T)
 	}
 }
 
-func TestOverviewProfileDistinguishesFailedSourceUpdateAndSafeMetadata(t *testing.T) {
-	updated := time.Now().AddDate(0, 0, -40)
+func TestOverviewSubscriptionShowsAppliedCardMetadata(t *testing.T) {
+	for _, lang := range []struct{ id, title string }{{i18n.English, "Current subscription"}, {i18n.Chinese, "当前订阅"}} {
+		t.Run(lang.id, func(t *testing.T) {
+			m := profilesPreview(false)
+			m.locale = i18n.New(lang.id)
+			m.snapshot.Applied, m.snapshot.ProfilePending = "Travel", false
+			info := &m.snapshot.ProfileDetails[3]
+			info.Kind, info.Origin, info.Description = "remote", "travel.example", "Business trips"
+			now := time.Now()
+			info.UpdatedAt = now.Add(-40 * 24 * time.Hour)
+			expiry := now.AddDate(0, 1, 0)
+			info.Quota = &configuration.SubscriptionQuota{TotalBytes: 100, UsedBytes: 25, ExpiresAt: expiry.Unix()}
+			for _, width := range []int{25, 56} {
+				block := overviewProfileCard(m.navigationOptions(), width)
+				card := ansi.Strip(strings.Join(block.lines, "\n"))
+				profile := ansi.Strip(strings.Join(m.profileCard(2, width).lines, "\n"))
+				want := []string{info.Name, m.tr("profiles.updated_days", 40), "75 B / 100 B", "━", "─"}
+				if width == 56 {
+					want = append(want, info.Description, expiry.Format(time.DateOnly))
+				} else if strings.Contains(card, expiry.Format(time.DateOnly)) {
+					t.Errorf("width %d: date displaced the remaining allowance:\n%s", width, card)
+				}
+				for _, field := range want {
+					if !strings.Contains(card, field) || !strings.Contains(profile, field) {
+						t.Errorf("width %d: missing shared field %q:\noverview:\n%s\nprofiles:\n%s", width, field, card, profile)
+					}
+				}
+				if !strings.Contains(card, lang.title) || len(block.targets) != 1 || block.targets[0].ID != "card.profiles" {
+					t.Errorf("width %d: incorrect overview heading or navigation: %s\n%+v", width, card, block.targets)
+				}
+				for _, hidden := range []string{info.Origin, "Everyday", "⋯", "↻", "▌"} {
+					if strings.Contains(card, hidden) {
+						t.Errorf("width %d: overview unexpectedly shows %q:\n%s", width, hidden, card)
+					}
+				}
+				for _, row := range block.lines {
+					if ansi.StringWidth(row) != width {
+						t.Errorf("row does not fit width %d: %q", width, row)
+					}
+				}
+			}
+
+			card := func() string {
+				return ansi.Strip(strings.Join(overviewProfileCard(m.navigationOptions(), 56).lines, "\n"))
+			}
+			info.Quota.ExpiresAt = now.Add(-time.Hour).Unix()
+			if view := card(); !strings.Contains(view, m.tr("profiles.expired")) {
+				t.Errorf("past expiry missing: %s", view)
+			}
+			info.Quota, info.Description = nil, ""
+			for _, source := range []struct{ kind, origin, want string }{
+				{"remote", "travel.example", "travel.example"},
+				{"local", "/private/profile-source.yaml", m.tr("profiles.create_local")},
+				{"imported", "/private/profile-source.yaml", m.tr("profiles.imported_origin")},
+			} {
+				info.Kind, info.Origin = source.kind, source.origin
+				view := card()
+				if !strings.Contains(view, source.want) || strings.Contains(view, "/private/") || strings.Contains(view, "━") || strings.Contains(view, " B / ") {
+					t.Errorf("%s has incorrect source or allowance: %s", source.kind, view)
+				}
+			}
+			m.snapshot.Applied = ""
+			if view := card(); !strings.Contains(view, m.tr("profiles.none_selected")) || strings.Contains(view, info.Name) {
+				t.Errorf("empty selection displayed a saved subscription: %s", view)
+			}
+		})
+	}
+}
+
+func TestOverviewSubscriptionShowsApplicationState(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		t.Run(language, func(t *testing.T) {
-			locale := i18n.New(language)
-			o := dashboardOptions{Locale: locale, Snapshot: app.Snapshot{
-				Installed: true, ConfigReady: true, Applied: "work", Profiles: []string{"work"},
-				ProfileDetails: []app.ProfileInfo{{ID: "work", Name: "Work", Kind: "remote", Refreshable: true, Origin: "subscription.example.invalid", UpdatedAt: updated, Validated: true, HasOverrides: true, Description: "hidden-profile-description"}},
-			}}
-			card := func() string { return ansi.Strip(strings.Join(overviewProfileCard(o, 100).lines, "\n")) }
-			if value := card(); !strings.Contains(value, "Work") || !strings.Contains(value, "subscription.example.invalid") || !strings.Contains(value, updated.Format("2006-01-02")) || strings.Contains(value, "hidden-profile-description") {
-				t.Fatalf("overview lost useful safe profile metadata or exposed its description: %s", value)
-			}
-			for _, obsolete := range []string{"Includes overrides", "包含覆写配置", "1 saved profiles", "已保存 1 份配置"} {
-				if strings.Contains(card(), obsolete) {
-					t.Fatalf("overview retained detail-only profile metadata %q", obsolete)
+			m := profilesPreview(false)
+			m.locale = i18n.New(language)
+			info := &m.snapshot.ProfileDetails[1]
+			check := func(key string) {
+				t.Helper()
+				view := ansi.Strip(strings.Join(overviewProfileCard(m.navigationOptions(), 56).lines, "\n"))
+				if !strings.Contains(view, m.tr(key)) {
+					t.Errorf("missing status %q: %s", m.tr(key), view)
 				}
 			}
 			for _, fromSnapshot := range []bool{true, false} {
-				o.Snapshot.ProfilePending = fromSnapshot
-				o.Snapshot.ProfileDetails[0].Pending = !fromSnapshot
-				if value := card(); !strings.Contains(value, locale.T("profiles.refresh_failed")) || strings.Contains(value, locale.T("dashboard.profile.ready")) {
-					t.Fatalf("unapplied profile changes appeared ready: %s", value)
-				}
+				m.snapshot.ProfilePending, info.Pending = fromSnapshot, !fromSnapshot
+				check("profiles.refresh_failed")
 			}
-			o.Snapshot.ProfilePending, o.Snapshot.ProfileDetails[0].Pending = false, false
-			o.Snapshot.ProfileDetails[0].Validated = false
-			if value := card(); !strings.Contains(value, locale.T("profiles.validation_pending")) || strings.Contains(value, locale.T("dashboard.profile.ready")) {
-				t.Fatalf("unvalidated profile appeared ready: %s", value)
-			}
-			for kind, origin := range map[string]string{"local": locale.T("profiles.create_local"), "imported": locale.T("profiles.imported_origin")} {
-				o.Snapshot.ProfileDetails[0].Kind = kind
-				o.Snapshot.ProfileDetails[0].Origin = "/private/profile-source.yaml"
-				if value := card(); !strings.Contains(value, origin) || strings.Contains(value, "/private/profile-source.yaml") {
-					t.Fatalf("profile kind %s lost its safe source label: %s", kind, value)
-				}
-			}
+			m.snapshot.ProfilePending, info.Pending, info.Validated = false, false, false
+			check("profiles.validation_pending")
+			info.Validated, m.snapshot.ServiceError = true, "unavailable"
+			check("profiles.selected_unavailable")
+			m.snapshot.ServiceError, m.snapshot.ConfigReady = "", false
+			check("dashboard.profile.notApplied")
 		})
 	}
 }

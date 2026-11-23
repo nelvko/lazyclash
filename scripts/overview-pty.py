@@ -139,6 +139,18 @@ def text_points(terminal, label):
                 yield x, y
 
 
+def subscription_allowance(terminal):
+    balance = "7.0 GiB / 10.0 GiB"
+    point = text_point(terminal, balance)
+    assert point is not None, "subscription card omitted its remaining and total quota"
+    x, y = point
+    row = "".join(terminal.screen.cells[y][x:])
+    expiry = re.search(r"\d{4}-\d{2}-\d{2}", row)
+    assert expiry, "subscription balance row omitted the expiry: " + row
+    assert terminal.screen.cells[y + 1][x] == "━", "subscription card omitted the remaining quota bar"
+    return expiry.group()
+
+
 def assert_card_outline(terminal, profile, complete=True):
     cells = terminal.screen.cells
     corners = [(x, y) for y, row in enumerate(cells) for x, value in enumerate(row) if value == "┌"]
@@ -242,11 +254,16 @@ def exercise(preview, binary, output, language, profile, scenario, args):
             assert "香港 01" not in screen, "Direct retained a stale selected node"
         else:
             assert "12.0 KiB/s" not in screen, "unavailable observation retained live metrics"
-        assert "subscription.example" in screen, "profile card omitted its source origin"
+        profile_name = text_point(terminal, "日常订阅 · 工作与生活.yaml")
+        source = text_point(terminal, "subscription.example")
+        assert profile_name and source, "profile card omitted the applied name or its source"
+        assert source[1] == profile_name[1] + (2 if scenario in ("pending", "unavailable") else 1), \
+            "unexpected status rows between the applied name and source"
+        expiry = subscription_allowance(terminal)
         assert words["dashboard.network.mixedPort"] % "17897" in screen, "network summary omitted the saved mixed port"
         assert "127.0.0.1:" not in screen, "overview retained addresses intended for network details"
         if scenario == "pending":
-            assert words["profiles.changes_pending"] in screen, "profile card hid its unapplied changes"
+            assert words["profiles.refresh_failed"] in screen, "profile card hid its unapplied changes"
 
         # The first observation may already focus a card. Start explicitly from
         # navigation before checking both safe Enter transitions.
@@ -316,6 +333,7 @@ def exercise(preview, binary, output, language, profile, scenario, args):
         terminal.wait(words["dashboard.page.profiles"])
         terminal.wait_absent(words["dashboard.action.restart"])
         preview.capture(terminal, output, "profiles-from-overview", args)
+        assert subscription_allowance(terminal) == expiry, "subscription expiry differs between pages"
         terminal.key(b"1")
         terminal.settle()
         if scenario not in ("stopped", "unavailable"):

@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"charm.land/bubbles/v2/progress"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
@@ -149,12 +148,22 @@ func (m *Model) profileButtons(buttons []profileButton, width int) dashboardBloc
 }
 
 func (m *Model) profileInfo(name string) app.ProfileInfo {
-	for _, info := range m.snapshot.ProfileDetails {
-		if info.ID == name {
-			return info
-		}
+	if info := snapshotProfileDetails(&m.snapshot, name); info != nil {
+		return *info
 	}
 	return app.ProfileInfo{ID: name, Name: name}
+}
+
+func snapshotProfileDetails(s *app.Snapshot, id string) *app.ProfileInfo {
+	if id == "" {
+		return nil
+	}
+	for i := range s.ProfileDetails {
+		if s.ProfileDetails[i].ID == id {
+			return &s.ProfileDetails[i]
+		}
+	}
+	return nil
 }
 
 func snapshotProfileName(snapshot app.Snapshot, id string, locales ...i18n.Localizer) string {
@@ -164,10 +173,8 @@ func snapshotProfileName(snapshot app.Snapshot, id string, locales ...i18n.Local
 	if id == snapshot.Applied && snapshot.AppliedName != "" {
 		return snapshot.AppliedName
 	}
-	for _, info := range snapshot.ProfileDetails {
-		if info.ID == id {
-			return info.Name
-		}
+	if info := snapshotProfileDetails(&snapshot, id); info != nil {
+		return info.Name
 	}
 	return id
 }
@@ -206,88 +213,11 @@ func (m *Model) paintProfileCard(name string, index, width int, compact bool) da
 	for _, control := range controlViews {
 		title += control
 	}
-	now := time.Now()
-	age := profileAge(info.UpdatedAt, now, m.locale)
-	subtitle := strings.TrimSpace(clean(info.Description))
-	if subtitle == "" {
-		subtitle = m.profileOrigin(info)
-	}
-	metadata := profileCardPair(subtitle, age, inner)
-	quota, expiresAt := profileAllowance(info)
-	expiry := m.profileCardExpiry(expiresAt, now)
-	// Keep the numeric balance intact when the date would displace it.
-	// The detail pane always has room for both, on separate rows.
-	if quota != "" && ansi.StringWidth(quota)+2+ansi.StringWidth(expiry) > inner {
-		expiry = ""
-	}
-	allowance := profileCardPair(quota, expiry, inner)
-	status := m.profileWarning(info, selected)
-	footer := themed(cellCrop(status, inner), warning, surface, false)
-	if info.Quota != nil && info.Quota.TotalBytes > 0 {
-		barWidth := inner
-		if status != "" {
-			barWidth -= ansi.StringWidth(status) + 2
-		}
-		if barWidth >= 4 {
-			bar := progress.New(progress.WithWidth(barWidth), progress.WithoutPercentage(), progress.WithFillCharacters('━', '─'))
-			bar.FullColor, bar.EmptyColor = lipgloss.Color(success), lipgloss.Color(border)
-			total := info.Quota.TotalBytes
-			left := total - min(total, info.Quota.UsedBytes)
-			graph := bar.ViewAs(float64(left) / float64(total))
-			if status != "" {
-				graph += "  " + footer
-			}
-			footer = graph
-		}
-	}
-	lines := []string{title, themed(metadata, muted, surface, false), themed(allowance, text, surface, false), footer}
+	status := profileWarning(info, &m.snapshot, m.locale)
+	lines := append([]string{title}, profileCardDetails(info, time.Now(), m.locale, inner, surface, status)...)
 	picture := profileCardSurface(lines, width, surface, selected, compact)
 	parent := hitRegion{ID: id, W: width, H: len(picture)}
 	return dashboardBlock{lines: picture, targets: m.profileCardTargets(parent, controls, widths, compact)}
-}
-
-// The right-hand value shares the card controls' right margin.
-func profileCardPair(left, right string, width int) string {
-	if right == "" {
-		return cellCrop(left, width)
-	}
-	right = cellCrop(right, width)
-	available := width - ansi.StringWidth(right)
-	return cellPad(cellCrop(left, max(0, available-1)), available) + right
-}
-
-func profileAllowance(info app.ProfileInfo) (amount string, expiresAt int64) {
-	if q := info.Quota; q != nil {
-		if q.TotalBytes > 0 {
-			remaining := q.TotalBytes - min(q.TotalBytes, q.UsedBytes)
-			amount = formatBytes(remaining) + " / " + formatBytes(q.TotalBytes)
-		}
-		expiresAt = q.ExpiresAt
-	}
-	return amount, expiresAt
-}
-
-func (m *Model) profileCardExpiry(expiresAt int64, now time.Time) string {
-	if expiresAt <= 0 {
-		return ""
-	}
-	if now.Unix() >= expiresAt {
-		return m.tr("profiles.expired")
-	}
-	return time.Unix(expiresAt, 0).Format(time.DateOnly)
-}
-
-func (m *Model) profileWarning(info app.ProfileInfo, selected bool) string {
-	switch {
-	case selected && (m.snapshot.ServiceError != "" || (m.snapshot.Service.Active && m.snapshot.APIError != "")):
-		return m.tr("profiles.selected_unavailable")
-	case info.Pending && info.Refreshable:
-		return m.tr("profiles.refresh_failed")
-	case !info.Validated:
-		return m.tr("profiles.validation_pending")
-	default:
-		return ""
-	}
 }
 
 func profileCardControls(refreshID, menuID string, width int, refreshable bool) []profileButton {
@@ -343,32 +273,4 @@ func profileCardSurface(lines []string, width int, surface string, selected, com
 		rows = append(rows, row(line))
 	}
 	return rows
-}
-
-func profileAge(updated, now time.Time, locale i18n.Localizer) string {
-	if updated.IsZero() {
-		return ""
-	}
-	age := now.Sub(updated)
-	switch {
-	case age < time.Minute:
-		return locale.T("profiles.just_updated")
-	case age < time.Hour:
-		return locale.T("profiles.updated_minutes", int(age/time.Minute))
-	case age < 24*time.Hour:
-		return locale.T("profiles.updated_hours", int(age/time.Hour))
-	default:
-		return locale.T("profiles.updated_days", int(age/(24*time.Hour)))
-	}
-}
-
-func (m *Model) profileOrigin(info app.ProfileInfo) string {
-	switch info.Kind {
-	case "local":
-		return m.tr("profiles.create_local")
-	case "imported":
-		return m.tr("profiles.imported_origin")
-	default:
-		return strings.TrimSpace(clean(info.Origin))
-	}
 }

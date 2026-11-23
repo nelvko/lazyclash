@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/nelvko/lazyclash/internal/app"
+	"github.com/nelvko/lazyclash/internal/configuration"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 	"github.com/nelvko/lazyclash/internal/service"
 )
@@ -63,7 +64,9 @@ func newOverviewPTYBackend(scenario string) *overviewPTYBackend {
 		Profiles: []string{"default", "overview-preview", "travel"},
 		ProfileDetails: []app.ProfileInfo{{ID: "overview-preview", Name: "日常订阅 · 工作与生活.yaml",
 			Core: "mihomo", Kind: "remote", Origin: "subscription.example", Refreshable: true, Validated: true,
-			UpdatedAt: time.Date(2026, 11, 8, 4, 30, 0, 0, time.UTC)}},
+			UpdatedAt: time.Now().Add(-2 * time.Hour),
+			Quota: &configuration.SubscriptionQuota{UsedBytes: 3 << 30, TotalBytes: 10 << 30,
+				ExpiresAt: time.Now().AddDate(0, 1, 0).Unix()}}},
 		MixedPort: 17897, Controller: "http://private-user:private-password@127.0.0.1:19097/private-path?token=private-token#private-fragment",
 		Groups: groups, Proxies: map[string]mihomo.Proxy{
 			"PROXY":        {Name: "PROXY", Type: "Selector", Now: groups[0].Now, All: groups[0].All},

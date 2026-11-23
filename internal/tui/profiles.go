@@ -39,7 +39,7 @@ type profilePasteTimeoutMsg struct{ deadline time.Time }
 
 type profileExpiredMsg struct{}
 
-// Wake an idle Profiles page at the earliest future expiry, even without a core.
+// Wake the idle overview or subscription grid when a displayed subscription expires.
 func (m *Model) syncProfileExpiry(msg tea.Msg, previousPage string) tea.Cmd {
 	if m.page == previousPage && !m.quitting {
 		switch msg.(type) {
@@ -49,9 +49,12 @@ func (m *Model) syncProfileExpiry(msg tea.Msg, previousPage string) tea.Cmd {
 		}
 	}
 	var next int64
-	if m.page == "profiles" && !m.quitting {
+	if !m.quitting && (m.page == "profiles" || m.page == "overview") {
 		now := time.Now().Unix()
 		for _, info := range m.snapshot.ProfileDetails {
+			if m.page == "overview" && info.ID != m.snapshot.Applied {
+				continue
+			}
 			q := info.Quota
 			if q != nil && q.ExpiresAt > now && (next == 0 || q.ExpiresAt < next) {
 				next = q.ExpiresAt

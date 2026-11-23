@@ -1,5 +1,9 @@
 # 验证入口
 
+## 概览当前订阅（2026-11-23）
+
+在 160×45 和 80×24 的真实 PTY 中，点击「当前订阅」的「订阅 ›」打开订阅页，同一条目在两页显示相同的描述或来源、更新时间、剩余量与总量及到期信息。内存夹具覆盖本地文件、未选用订阅、更新未生效、已过期和尚未应用。另在中英文终端验证了缩放到 40×16 后的操作。[宽屏概览](../.test-artifacts/current-subscription/described-overview-160x45.png) · [订阅页对照](../.test-artifacts/current-subscription/described-profiles-160x45.png) · [窄屏状态提示](../.test-artifacts/current-subscription/pending-overview-80x24.png)
+
 ## 概览启动时间与内核管理详情（2026-11-23）
 
 中英文 PTY 在 160×45、120×32、80×24、60×20、40×16 及恢复尺寸下验证了概览的运行、停止、版本不一致与服务不可用状态，包含真彩和无色模式。中文 150×54 终端中，健康内核卡只显示「运行中」和「2 小时前启动」。从设置打开「管理 / 更新」后，同一帧可见安装版本、运行版本和精确运行时长。另有 28 次 PTY 启动检查覆盖其余页面使用的 16 个夹具入口。[内核卡](../.test-artifacts/core-quiet-overview/screenshots/core-card.png) · [管理详情](../.test-artifacts/core-quiet-overview/screenshots/core-management-150x54.png)

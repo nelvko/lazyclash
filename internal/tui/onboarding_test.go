@@ -199,8 +199,8 @@ func TestOnboardingDefaultConfigurationNeedsNoSubscriptionOrGuideCompletion(t *t
 			if label := m.tr("profiles.none_selected"); !strings.Contains(plain, label) {
 				t.Fatalf("overview did not show the empty selection: missing %q\n%s", label, plain)
 			}
-			if strings.Contains(plain, m.tr("dashboard.overview.sourceLabel")) {
-				t.Fatal("overview displayed a profile source while no subscription was selected")
+			if !hasAction(actions, "card.profiles") {
+				t.Fatal("empty subscription card lost its navigation entry")
 			}
 			if overviewSetupVisible(m.navigationOptions()) || hasAction(actions, "install") || hasAction(actions, "guide.later") || !hasAction(actions, "core.toggle") || calls != 0 || m.busy {
 				t.Fatal("a subscription or completed guide was required before explicitly starting the built-in configuration")

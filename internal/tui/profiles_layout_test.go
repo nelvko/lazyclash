@@ -92,7 +92,7 @@ func TestProfileGridEndsEachCardAtItsQuotaBar(t *testing.T) {
 			m := profilesPreview(false)
 			m.width, m.height, m.focus = size.width, size.height, "profiles.url"
 			info := &m.snapshot.ProfileDetails[1]
-			info.Pending = false
+			info.Pending, m.snapshot.ProfilePending = false, false
 			info.Quota = &configuration.SubscriptionQuota{TotalBytes: 100}
 			m.layout()
 
@@ -138,7 +138,7 @@ func TestProfileCardShowsRemainingFractionAndOptionalExpiry(t *testing.T) {
 	m := profilesPreview(false)
 	m.width, m.height = 160, 40
 	info := &m.snapshot.ProfileDetails[1]
-	info.Pending = false
+	info.Pending, m.snapshot.ProfilePending = false, false
 	date := time.Now().AddDate(1, 0, 0)
 	dateText := date.Format("2006-01-02")
 	for _, tc := range []struct {
@@ -198,8 +198,7 @@ func TestProfileCardExpiryUsesExactInstantAndLocalizedExpiredLabel(t *testing.T)
 		{i18n.English, "Expired"},
 		{i18n.Chinese, "已过期"},
 	} {
-		m := profilesPreview(false)
-		m.locale = i18n.New(language.name)
+		locale := i18n.New(language.name)
 		for _, tc := range []struct {
 			name      string
 			expiresAt int64
@@ -211,7 +210,7 @@ func TestProfileCardExpiryUsesExactInstantAndLocalizedExpiredLabel(t *testing.T)
 			{"at", expiry.Unix(), expiry, language.expired},
 			{"after", expiry.Unix(), expiry.Add(time.Second), language.expired},
 		} {
-			if got := m.profileCardExpiry(tc.expiresAt, tc.now); got != tc.want {
+			if got := profileCardExpiry(tc.expiresAt, tc.now, locale); got != tc.want {
 				t.Errorf("%s/%s: got %q, want %q", language.name, tc.name, got, tc.want)
 			}
 		}
@@ -242,6 +241,26 @@ func TestIdleProfilesRedrawAtExpiryAndCancelOnExit(t *testing.T) {
 	m.page = "overview"
 	if m.syncProfileExpiry(nil, "profiles") != nil || m.profilesUI.cancelExpiry != nil {
 		t.Fatal("leaving Profiles retained the expiry timer")
+	}
+}
+
+func TestOverviewSchedulesExpiryOnlyForAppliedSubscription(t *testing.T) {
+	m := profilesPreview(false)
+	m.page = "overview"
+	now := time.Now().Unix()
+	m.snapshot.ProfileDetails[1].Quota = &configuration.SubscriptionQuota{ExpiresAt: now + 60}
+	m.snapshot.ProfileDetails[2].Quota = &configuration.SubscriptionQuota{ExpiresAt: now + 30}
+
+	if cmd := m.syncProfileExpiry(nil, "profiles"); cmd == nil || m.profilesUI.expiryAt != now+60 {
+		t.Fatalf("overview scheduled expiry %d, want applied subscription at %d", m.profilesUI.expiryAt, now+60)
+	}
+	m.snapshot.Applied = m.snapshot.ProfileDetails[2].ID
+	if cmd := m.syncProfileExpiry(resultMsg{}, "overview"); cmd == nil || m.profilesUI.expiryAt != now+30 {
+		t.Fatalf("newly selected subscription expiry was not scheduled: %d", m.profilesUI.expiryAt)
+	}
+	m.snapshot.Applied = ""
+	if cmd := m.syncProfileExpiry(resultMsg{}, "overview"); cmd != nil || m.profilesUI.cancelExpiry != nil {
+		t.Fatal("empty subscription card retained an expiry timer")
 	}
 }
 
