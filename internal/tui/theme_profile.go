@@ -129,6 +129,9 @@ func terminalColor(c color.Color, profile colorprofile.Profile) color.Color {
 		{buttonPrimaryHoverBackground, 75, 14},
 		{buttonDangerForeground, 217, 9},
 		{buttonDangerHoverBackground, 238, 0},
+		{switchForeground, 231, 15},
+		{switchOnBackground, 29, 2},
+		{switchOffBackground, 241, 8},
 		{success, 114, 10},
 		{errorColor, 210, 9},
 	}

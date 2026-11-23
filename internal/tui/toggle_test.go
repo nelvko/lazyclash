@@ -49,6 +49,33 @@ func TestToggleStatesAndTheme(t *testing.T) {
 	}
 }
 
+func TestFilledToggleRendersEqualWidthStateSurfaces(t *testing.T) {
+	for _, tc := range []struct {
+		state                     toggleState
+		busy                      bool
+		face, foreground, surface string
+	}{
+		{toggleOn, false, " ● ON  ", switchForeground, switchOnBackground},
+		{toggleOff, false, " OFF ○ ", switchForeground, switchOffBackground},
+		{toggleOn, true, "   —   ", muted, panel},
+		{togglePending, false, "   —   ", muted, panel},
+		{toggleUnknown, false, "   —   ", muted, panel},
+		{toggleUnavailable, false, "   —   ", muted, panel},
+		{toggleUnsupported, false, "   —   ", muted, panel},
+	} {
+		view := renderToggle(toggleModel{state: tc.state}, toggleOptions{Filled: true, Focused: true, Surface: panel, Busy: tc.busy})
+		if !strings.HasSuffix(view, themed(tc.face, tc.foreground, tc.surface, false)) {
+			t.Fatalf("state %d busy=%t has wrong switch face or colors: %q", tc.state, tc.busy, view)
+		}
+		for _, profile := range []colorprofile.Profile{colorprofile.TrueColor, colorprofile.ANSI256, colorprofile.ANSI, colorprofile.ASCII} {
+			got := terminalTheme(view, profile)
+			if ansi.StringWidth(got) != 9 || ansi.Strip(got) != " ›"+tc.face {
+				t.Fatalf("%s changed the switch size, focus or label: %q", profile, got)
+			}
+		}
+	}
+}
+
 func TestToggleCustomLabelsAndSingleLine(t *testing.T) {
 	labels := toggleLabels{
 		On: "运行中", Off: "已停止", Pending: "停止中…",

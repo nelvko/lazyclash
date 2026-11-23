@@ -45,6 +45,9 @@ const (
 	buttonPrimaryHoverBackground  = "#6aa4df"
 	buttonDangerForeground        = "#f5a3a8"
 	buttonDangerHoverBackground   = "#493940"
+	switchForeground              = "#ffffff"
+	switchOnBackground            = "#22916b"
+	switchOffBackground           = "#62666c"
 )
 
 func themed(s, foreground, background string, dimmed bool) string {

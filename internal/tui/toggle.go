@@ -65,8 +65,10 @@ type toggleLabels struct {
 type toggleOptions struct {
 	Labels  toggleLabels
 	Surface string
-	// Width is the exact total width in terminal cells when positive. Otherwise
-	// all six labels determine a stable natural width. Overflow is truncated.
+	// The filled switch has a fixed binary legend and reserves a focus gutter.
+	// The text presentation uses Labels, Width and RightAligned.
+	Filled, Hovered, Busy bool
+	// A positive Width is exact. Otherwise all six labels set the natural width.
 	Width        int
 	RightAligned bool
 	Focused, Dim bool
@@ -106,10 +108,14 @@ func (labels toggleLabels) face(state toggleState) (string, string) {
 	}
 }
 
-// renderToggle is appearance only, with no border, focus gutter or face
-// padding. The symbol and text always have one separating cell. Width padding
-// belongs to the containing row and is never underlined as part of the face.
+// renderToggle draws the parent's observation. Rendering never changes the state.
 func renderToggle(t toggleModel, o toggleOptions) string {
+	if o.Surface == "" {
+		o.Surface = bg
+	}
+	if o.Filled {
+		return renderFilledToggle(t, o)
+	}
 	labels := o.Labels.resolved()
 	value, foreground := labels.face(t.state)
 	width := o.Width
@@ -131,9 +137,25 @@ func renderToggle(t toggleModel, o toggleOptions) string {
 	} else {
 		value += padding
 	}
-	surface := o.Surface
-	if surface == "" {
-		surface = bg
+	return themed(value, foreground, o.Surface, o.Dim)
+}
+
+func renderFilledToggle(t toggleModel, o toggleOptions) string {
+	// The card describes transitional and unavailable states beside the control.
+	// Keep their slot and focus marker in place while activation is blocked.
+	blocked := o.Busy || !t.canToggle()
+	value, foreground, surface := "   —   ", muted, o.Surface
+	if !blocked {
+		foreground = switchForeground
+		if t.state == toggleOn {
+			value, surface = " ● ON  ", switchOnBackground
+		} else {
+			value, surface = " OFF ○ ", switchOffBackground
+		}
+		if o.Hovered {
+			value = lipgloss.NewStyle().Underline(true).Render(value)
+		}
 	}
-	return themed(value, foreground, surface, o.Dim)
+	gutter := buttonFocusGutter(buttonOptions{Surface: o.Surface, Focused: o.Focused, Busy: blocked, Dim: o.Dim})
+	return gutter + themed(value, foreground, surface, o.Dim)
 }

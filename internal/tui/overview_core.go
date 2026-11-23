@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/i18n"
 	"github.com/nelvko/lazyclash/internal/service"
 )
@@ -73,24 +72,12 @@ func overviewCoreCard(o dashboardOptions, width int) dashboardBlock {
 	for len(content.lines) < minRows {
 		content.blank()
 	}
-	heading := overviewLabelSlot(o, inner, overviewHeading(o, tr("dashboard.overview.service")), coreActionFace(o, control), "core.toggle")
+	face := renderToggle(control, toggleOptions{
+		Filled: true, Surface: panel, Focused: o.Focus == "core.toggle",
+		Hovered: o.Hover == "core.toggle", Busy: o.Busy, Dim: o.Dim,
+	})
+	heading := overviewLabelSlot(o, inner, overviewHeading(o, tr("dashboard.overview.service")), face, "core.toggle")
 	return overviewPanel(o, width, heading, content, nil)
-}
-
-func coreActionFace(o dashboardOptions, control toggleModel) string {
-	start, stop := o.Locale.T("dashboard.settings.start"), o.Locale.T("dashboard.settings.stop")
-	options := dashboardButtonOptions("core.toggle", o, false, panel)
-	options.Width = max(ansi.StringWidth(start), ansi.StringWidth(stop))
-	if o.Busy || !control.canToggle() {
-		// Keep keyboard focus visible during a transition. A plain dash occupies
-		// the same slot as the button, without advertising a service action.
-		options.Kind, options.Busy = buttonText, true
-		return renderButton("—", options)
-	}
-	if control.state == toggleOn {
-		return renderButton(stop, options)
-	}
-	return renderButton(start, options)
 }
 
 func observedCoreUptime(status service.Status, now time.Time) (time.Duration, bool) {
