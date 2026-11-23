@@ -22,6 +22,11 @@ func TestProfileWindowMatchesFullGrid(t *testing.T) {
 				t.Fatal("logical focus and full-grid mouse targets differ")
 			}
 			rows := strings.Count(o.Body, "\n") + 1
+			cards := m.profileGridCards()
+			last := cards[len(cards)-1]
+			if rows != last.Y+last.H {
+				t.Fatalf("grid scrolls past its last card: %d rows, last card %+v", rows, last)
+			}
 			for _, offset := range []int{0, 1, 9, 14, rows / 2, rows - g.height - 1, rows} {
 				m.scroll, o.Scroll = offset, offset
 				window := o

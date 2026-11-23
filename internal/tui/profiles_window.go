@@ -17,15 +17,16 @@ type profileGridLayout struct {
 
 func (m *Model) layoutProfiles(width int) profileGridLayout {
 	width = max(1, width)
-	l := profileGridLayout{width: width, columns: 1, cardH: 6, compact: m.compactProfileCards()}
+	// The title, source, allowance and footer each occupy one row.
+	l := profileGridLayout{width: width, columns: 1, cardH: 4, compact: m.compactProfileCards()}
 	if !m.snapshotReady {
 		body, targets := m.unavailableProfiles(width)
 		l.intro = dashboardBlock{lines: strings.Split(body, "\n"), targets: targets}
 		l.total = len(l.intro.lines)
 		return l
 	}
-	if l.compact {
-		l.cardH = 4
+	if !l.compact {
+		l.cardH++ // Leave one row above the title.
 	}
 	if width >= 86 {
 		l.columns = 2
@@ -33,15 +34,16 @@ func (m *Model) layoutProfiles(width int) profileGridLayout {
 	l.cardWidth = (width - 2*(l.columns-1)) / l.columns
 	l.names = m.profiles()
 	l.intro = m.profilesIntro(width)
-	l.total = len(l.intro.lines) + l.rowCount()*l.stride()
-	if len(l.names) == 0 {
-		l.emptyY = l.total
-		height := max(1, dashboardGeometry(m.dashboardOptions()).height-l.total)
-		l.empty = m.emptyState(width, height, emptyStateOptions{
-			Title: m.tr("empty.profiles.none"), Detail: m.tr("profiles.empty_hint"),
-		})
-		l.total += len(l.empty.lines)
+	if rows := l.rowCount(); rows > 0 {
+		l.total = l.rowY(rows-1) + l.cardH
+		return l
 	}
+	l.emptyY = len(l.intro.lines)
+	height := max(1, dashboardGeometry(m.dashboardOptions()).height-l.emptyY)
+	l.empty = m.emptyState(width, height, emptyStateOptions{
+		Title: m.tr("empty.profiles.none"), Detail: m.tr("profiles.empty_hint"),
+	})
+	l.total = l.emptyY + len(l.empty.lines)
 	return l
 }
 

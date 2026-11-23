@@ -341,9 +341,6 @@ func profileCardSurface(lines []string, width int, surface string, selected, com
 	for _, line := range lines {
 		rows = append(rows, row(line))
 	}
-	if !compact {
-		rows = append(rows, row(""))
-	}
 	return rows
 }
 

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/configuration"
@@ -22,7 +23,7 @@ func TestProfileCardsKeepBoundedMetadataAndAlignedStatus(t *testing.T) {
 				m.snapshot.ProfileDetails[1].Origin = strings.Repeat("long-source.", 12) + "example"
 				for index := range m.profiles() {
 					card := m.profileCard(index, width)
-					if len(card.lines) != 6 {
+					if len(card.lines) != 5 {
 						t.Fatalf("card %d changed the grid height: %d rows", index, len(card.lines))
 					}
 					for row, line := range card.lines {
@@ -61,7 +62,7 @@ func TestProfileCardOriginAndAgeAlignBelowTitleAndActions(t *testing.T) {
 	for _, width := range []int{32, 55} {
 		card := m.profileCard(1, width)
 		row := ansi.Strip(card.lines[2])
-		if len(card.lines) != 6 || ansi.StringWidth(row) != width || !strings.HasPrefix(row, "  出差备用") ||
+		if ansi.StringWidth(row) != width || !strings.HasPrefix(row, "  出差备用") ||
 			!strings.Contains(row, "…") || !strings.HasSuffix(row, "32d ago  ") || strings.Contains(row, info.Origin) {
 			t.Fatalf("description displaced the age or changed the card layout at %d: %q", width, row)
 		}
@@ -70,6 +71,54 @@ func TestProfileCardOriginAndAgeAlignBelowTitleAndActions(t *testing.T) {
 	info.UpdatedAt = time.Time{}
 	if row := ansi.Strip(m.profileCard(1, 55).lines[2]); strings.TrimSpace(row) != info.Origin {
 		t.Fatalf("missing timestamp produced metadata %q", row)
+	}
+}
+
+func TestProfileGridEndsEachCardAtItsQuotaBar(t *testing.T) {
+	for _, size := range []struct{ width, height, topPadding, columns int }{{160, 40, 1, 2}, {80, 24, 0, 1}} {
+		t.Run(fmt.Sprintf("%dx%d", size.width, size.height), func(t *testing.T) {
+			m := profilesPreview(false)
+			m.width, m.height, m.focus = size.width, size.height, "profiles.url"
+			info := &m.snapshot.ProfileDetails[1]
+			info.Pending = false
+			info.Quota = &configuration.SubscriptionQuota{TotalBytes: 100}
+			m.layout()
+
+			first := findTarget(t, m, "profile.0")
+			field := findTarget(t, m, "profiles.url")
+			if first.X != field.X || first.H != size.topPadding+4 {
+				t.Fatalf("card and input geometry: card=%+v field=%+v", first, field)
+			}
+			if size.columns == 2 {
+				neighbor := findTarget(t, m, "profile.1")
+				if first.Y != neighbor.Y || first.H != neighbor.H || first.W == field.W {
+					t.Fatalf("wide grid should align card rows independently of the input width: %+v %+v %+v", first, neighbor, field)
+				}
+			}
+			rows := strings.Split(ansi.Strip(m.screen), "\n")
+			title := ansi.Cut(rows[first.Y+size.topPadding], first.X, first.X+first.W)
+			if !strings.HasPrefix(title, "▌ "+info.Name) {
+				t.Fatalf("misplaced title: %q", title)
+			}
+			bottom := first.Y + first.H - 1
+			bar := ansi.Cut(rows[bottom], first.X, first.X+first.W)
+			if want := "▌ " + strings.Repeat("━", first.W-4) + "  "; bar != want {
+				t.Fatalf("quota bar missing from the last card row or misaligned with content: %q", bar)
+			}
+			nextRow := findTarget(t, m, fmt.Sprintf("profile.%d", size.columns))
+			if nextRow.X != first.X || nextRow.Y != bottom+2 {
+				t.Fatalf("expected one gutter row between cards: %+v %+v", first, nextRow)
+			}
+			x := first.X + first.W/2
+			m, _ = update(m, tea.MouseClickMsg{X: x, Y: bottom + 1, Button: tea.MouseRight})
+			if m.menu.open {
+				t.Fatal("right-click in the row gap opened a card menu")
+			}
+			m, _ = update(m, tea.MouseClickMsg{X: x, Y: bottom, Button: tea.MouseRight})
+			if !m.menu.open || m.profilesUI.menuProfile != info.ID {
+				t.Fatal("right-click on the progress bar did not open its card menu")
+			}
+		})
 	}
 }
 
