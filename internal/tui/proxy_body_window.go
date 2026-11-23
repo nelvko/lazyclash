@@ -128,8 +128,9 @@ func (m *Model) proxyBodyRange(layout proxyBodyLayout, start, end int) (stickyGr
 }
 
 func proxyNodeWidths(width int) (rightPadding, contentWidth, valueWidth int) {
-	rightPadding = min(2, max(0, width-4))
-	contentWidth = max(0, width-4-rightPadding)
+	const prefixWidth = 2 // selection rail and keyboard focus marker
+	rightPadding = min(1, max(0, width-prefixWidth))
+	contentWidth = max(0, width-prefixWidth-rightPadding)
 	valueWidth = min(10, contentWidth/2)
 	return rightPadding, contentWidth, valueWidth
 }

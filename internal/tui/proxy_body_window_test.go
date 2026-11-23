@@ -5,6 +5,8 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+
+	"github.com/charmbracelet/colorprofile"
 )
 
 func TestProxyWindowMatchesFullBody(t *testing.T) {
@@ -39,42 +41,60 @@ func TestProxyWindowMatchesFullBody(t *testing.T) {
 	}
 }
 
-func TestProxyMemberRangeCountsVisibleTextRatherThanPadding(t *testing.T) {
-	m, _ := proxiesModel(t, 160, 40)
-	width := dashboardBodyWidth(m.dashboardOptions())
-	layout := m.layoutProxiesBody(width)
-	_, hits := m.proxiesBody(width)
-	first := listSearchTarget(t, hits, "node.0.0").Y
-	for _, tc := range []struct {
-		name               string
-		start, end         int
-		wantGroup, members string
+func TestProxyMemberRangeCountsVisibleCardRowsAndSkipsGaps(t *testing.T) {
+	type viewport struct {
+		name           string
+		start, end     int // offsets from the first card
+		group, members string
+	}
+	for _, mode := range []struct {
+		profile colorprofile.Profile
+		windows []viewport
 	}{
-		{"bottom header padding above visible names", first - 2, first + 2, "", "1–3 / 8"},
-		{"gutter above visible names", first - 1, first + 2, "PROXY", "1–3 / 8"},
-		{"top padding", first, first + 1, "", ""},
-		{"name only", first + 1, first + 2, "PROXY", "1–3 / 8"},
-		{"protocol only", first + 2, first + 3, "PROXY", "1–3 / 8"},
-		{"bottom padding", first + 3, first + 4, "", ""},
-		{"next row's padding at viewport bottom", 0, first + 6, "", "1–3 / 8"},
-		{"previous row's padding at viewport top", first + 3, first + 7, "PROXY", "4–6 / 8"},
+		{colorprofile.TrueColor, []viewport{
+			{"heading above visible names", -1, 2, "", "1–4 / 8"},
+			{"top edge only", 0, 1, "", ""},
+			{"edge above visible names", 0, 2, "PROXY", "1–4 / 8"},
+			{"name only", 1, 2, "PROXY", "1–4 / 8"},
+			{"protocol only", 2, 3, "PROXY", "1–4 / 8"},
+			{"two adjacent edges only", 3, 5, "", ""},
+			{"last edge at viewport bottom", 1, 5, "PROXY", "1–4 / 8"},
+			{"first edge at viewport top", 3, 6, "PROXY", "5–8 / 8"},
+		}},
+		{colorprofile.ASCII, []viewport{
+			{"heading above visible names", -2, 1, "", "1–4 / 8"},
+			{"gutter only", -1, 0, "", ""},
+			{"gutter above visible names", -1, 1, "PROXY", "1–4 / 8"},
+			{"name only", 0, 1, "PROXY", "1–4 / 8"},
+			{"protocol only", 1, 2, "PROXY", "1–4 / 8"},
+			{"row gap only", 2, 3, "", ""},
+			{"row gap at viewport top", 2, 4, "PROXY", "5–8 / 8"},
+		}},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			wantLabel := ""
-			if tc.members != "" {
-				wantLabel = m.tr("proxies.range.group", tc.members)
-			}
-			if group, label := m.proxyBodyRange(layout, tc.start, tc.end); group != tc.wantGroup || label != wantLabel {
-				t.Fatalf("viewport shows sticky group %q and range %q, want %q and %q", group, label, tc.wantGroup, wantLabel)
-			}
-			height := tc.end - tc.start
-			if group := proxyStickyGroup(m.snapshot.Groups, hits, tc.start, height); group != tc.wantGroup {
-				t.Fatalf("full body shows sticky group %q, want %q", group, tc.wantGroup)
-			}
-			if label := proxyVisibleRange(m.locale, hits, tc.start, height, width); label != wantLabel {
-				t.Fatalf("full body shows range %q, want %q", label, wantLabel)
-			}
-		})
+		m, _ := proxiesModel(t, 160, 40)
+		m.colorProfile = mode.profile
+		width := dashboardBodyWidth(m.dashboardOptions())
+		layout := m.layoutProxiesBody(width)
+		_, hits := m.proxiesBody(width)
+		first := listSearchTarget(t, hits, "node.0.0").Y
+		for _, tc := range mode.windows {
+			t.Run(fmt.Sprintf("%v/%s", mode.profile, tc.name), func(t *testing.T) {
+				start, end := first+tc.start, first+tc.end
+				label := ""
+				if tc.members != "" {
+					label = m.tr("proxies.range.group", tc.members)
+				}
+				if gotGroup, gotLabel := m.proxyBodyRange(layout, start, end); gotGroup != tc.group || gotLabel != label {
+					t.Fatalf("viewport shows sticky group %q and range %q, want %q and %q", gotGroup, gotLabel, tc.group, label)
+				}
+				if group := proxyStickyGroup(m.snapshot.Groups, hits, start, end-start); group != tc.group {
+					t.Fatalf("full body shows sticky group %q, want %q", group, tc.group)
+				}
+				if got := proxyVisibleRange(m.locale, hits, start, end-start, width); got != label {
+					t.Fatalf("full body shows range %q, want %q", got, label)
+				}
+			})
+		}
 	}
 }
 

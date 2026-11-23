@@ -50,11 +50,7 @@ func TestProxiesWideGroupClickKeepsItsHeadingInPlace(t *testing.T) {
 			m, _ = click(m, group)
 			opened := findTarget(t, m, group.ID)
 			firstNode := findTarget(t, m, "node.1.0")
-			gap := 0
-			if height == 40 {
-				gap = 1
-			}
-			if opened.Y != group.Y || opened.H != group.H || firstNode.Y != opened.Y+opened.H+gap ||
+			if opened.Y != group.Y || opened.H != group.H || firstNode.Y != opened.Y+opened.H ||
 				findTarget(t, m, preceding.ID).Y != preceding.Y || findTarget(t, m, following.ID).Y <= following.Y {
 				t.Fatalf("expanded nodes did not push down only later groups: heading=%+v want row=%d node=%+v", opened, group.Y, firstNode)
 			}
@@ -308,11 +304,11 @@ func TestProxiesExpansionAndSortFollowGroupNamesUntilSourceChanges(t *testing.T)
 	}
 }
 
-func TestProxiesExpandedHeaderEndsBeforeItsGutter(t *testing.T) {
-	for _, edge := range []string{"top", "text", "bottom", "bottom without color", "gutter"} {
+func TestProxiesExpandedHeaderEndsBeforeItsMembers(t *testing.T) {
+	for _, edge := range []string{"top", "text", "bottom", "bottom without color", "plain gutter", "card edge"} {
 		t.Run(edge, func(t *testing.T) {
 			m, _ := proxiesModel(t, 160, 70)
-			m.noColor = edge == "bottom without color"
+			m.noColor = edge == "bottom without color" || edge == "plain gutter"
 			m.expandProxyGroup("AUTO")
 			m.focus = "group.0"
 			m.layout()
@@ -342,25 +338,31 @@ func TestProxiesExpandedHeaderEndsBeforeItsGutter(t *testing.T) {
 					top, bottom = min(top, hit.Y), max(bottom, hit.Y+hit.H)
 				}
 			}
-			y := top
+			x, y := right-1, top
 			switch edge {
 			case "text":
 				y = top + 1
 			case "bottom", "bottom without color":
 				y = bottom - 1
-			case "gutter":
+			case "plain gutter", "card edge":
+				x = findTarget(t, m, "node.0.1").X
 				y = bottom
 			}
-			m, _ = update(m, tea.MouseMotionMsg{X: right - 1, Y: y})
+			m, _ = update(m, tea.MouseMotionMsg{X: x, Y: y})
 			wantHover := "group.0"
-			if edge == "gutter" {
+			if edge == "plain gutter" {
 				wantHover = ""
+			} else if edge == "card edge" {
+				wantHover = "node.0.1"
 			}
 			if m.hover != wantHover {
 				t.Fatalf("%s hover = %q, want %q", edge, m.hover, wantHover)
 			}
-			m, _ = update(m, tea.MouseClickMsg{X: right - 1, Y: y, Button: tea.MouseLeft})
-			if m.proxyGroupExpanded("PROXY") != (edge == "gutter") || !m.proxyGroupExpanded("AUTO") {
+			m, _ = update(m, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
+			if edge == "card edge" && m.proxies.pendingNode != "HK 01" || edge == "plain gutter" && m.busy {
+				t.Fatalf("clicking %s misrouted the selection: pending=%s busy=%t", edge, m.proxies.pendingNode, m.busy)
+			}
+			if m.proxyGroupExpanded("PROXY") != (edge == "plain gutter" || edge == "card edge") || !m.proxyGroupExpanded("AUTO") {
 				t.Fatalf("clicking %s changed the wrong group: expanded=%+v bounds=%v", edge, m.proxies.expanded, []int{left, right, top, bottom})
 			}
 		})

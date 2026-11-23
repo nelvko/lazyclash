@@ -6,6 +6,9 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/colorprofile"
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -13,12 +16,12 @@ func TestProxyGridUsesMinimumCardWidth(t *testing.T) {
 	for _, test := range []struct {
 		width, indent, columns, cardWidth int
 	}{
-		{0, 0, 1, 1}, {35, 0, 1, 35}, {36, 0, 1, 36},
-		{72, 0, 1, 72}, {73, 0, 2, 36},
-		{109, 0, 2, 54}, {110, 0, 3, 36},
-		{146, 0, 3, 48}, {147, 0, 4, 36},
-		{74, 2, 1, 72}, {75, 2, 2, 36},
-		{112, 2, 3, 36}, {149, 2, 4, 36},
+		{0, 0, 1, 1}, {28, 0, 1, 28}, {29, 0, 1, 29},
+		{58, 0, 1, 58}, {59, 0, 2, 29},
+		{88, 0, 2, 43}, {89, 0, 3, 29},
+		{118, 0, 3, 38}, {119, 0, 4, 29},
+		{60, 2, 1, 58}, {61, 2, 2, 29},
+		{91, 2, 3, 29}, {121, 2, 4, 29},
 		{175, 2, 4, 42}, {375, 2, 4, 92},
 	} {
 		t.Run(fmt.Sprint(test.width, "/", test.indent), func(t *testing.T) {
@@ -40,7 +43,7 @@ func TestProxyGridKeepsUnicodeCardsInsideTheirSlots(t *testing.T) {
 		"English node", strings.Repeat("香港节点", 16), strings.Repeat("🇭🇰 香港🧪", 12),
 		strings.Repeat("ＦＵＬＬＷＩＤＴＨ", 8), strings.Repeat("very-long-node-", 10), "短",
 	}
-	for _, width := range []int{40, 76, 77, 80, 96, 100, 120, 160, 200} {
+	for _, width := range []int{40, 62, 63, 80, 92, 93, 120, 145, 146, 160, 200} {
 		t.Run(fmt.Sprint(width), func(t *testing.T) {
 			m, _ := proxiesModel(t, width, 40)
 			for _, name := range names {
@@ -62,26 +65,25 @@ func TestProxyGridKeepsUnicodeCardsInsideTheirSlots(t *testing.T) {
 					t.Fatalf("Unicode text overflowed the grid: %q", ansi.Strip(line))
 				}
 			}
+			nameRow, cardRows := 0, 2
+			if width >= 115 {
+				nameRow, cardRows = 1, 4
+			}
 			for i := range names {
 				card := m.proxyNode(0, i, grid.cardWidth)
-				if len(card.lines) != len(m.proxyNode(0, 0, grid.cardWidth).lines) {
-					t.Fatal("node type or name changed the card height")
+				if len(card.lines) != cardRows {
+					t.Fatalf("node card occupies %d rows, want %d", len(card.lines), cardRows)
 				}
-				nameRow := 0
-				if len(card.lines) == 4 {
-					nameRow = 1
-				}
-				metaRow := nameRow + 1
 				for _, line := range card.lines {
 					if ansi.StringWidth(line) != grid.cardWidth {
 						t.Fatalf("Unicode card changed its slot width: %q", ansi.Strip(line))
 					}
 				}
-				prefix := "    "
+				prefix := "  "
 				if i == 1 {
-					prefix = "▌   "
+					prefix = "▌ "
 				}
-				if !strings.Contains(ansi.Strip(card.lines[nameRow]), "42 ms") || !strings.HasPrefix(ansi.Strip(card.lines[metaRow]), prefix+"Shadowsocks") {
+				if !strings.Contains(ansi.Strip(card.lines[nameRow]), "42 ms") || !strings.HasPrefix(ansi.Strip(card.lines[nameRow+1]), prefix+"Shadowsocks") {
 					t.Fatal("node name displaced its delay or protocol")
 				}
 				if i >= 1 && i <= 4 && !strings.Contains(ansi.Strip(card.lines[nameRow]), "…") {
@@ -95,27 +97,130 @@ func TestProxyGridKeepsUnicodeCardsInsideTheirSlots(t *testing.T) {
 	}
 }
 
-func TestProxyWideGridPadsCardsAndSeparatesRows(t *testing.T) {
+func TestProxyGridFitsItsCardEdgesToTerminalSizeAndColors(t *testing.T) {
+	for _, tc := range []struct {
+		width, height int
+		profile       colorprofile.Profile
+		noColor       bool
+		cardRows, gap int
+	}{
+		{115, 25, colorprofile.TrueColor, false, 4, 0},
+		{160, 40, colorprofile.ANSI256, false, 4, 0},
+		{160, 40, colorprofile.ANSI, false, 2, 1},
+		{160, 40, colorprofile.ASCII, false, 2, 1},
+		{160, 40, colorprofile.TrueColor, true, 2, 1},
+		{114, 25, colorprofile.TrueColor, false, 2, 0},
+		{115, 24, colorprofile.TrueColor, false, 2, 0},
+	} {
+		t.Run(fmt.Sprintf("%dx%d/%v/noColor=%t", tc.width, tc.height, tc.profile, tc.noColor), func(t *testing.T) {
+			m, _ := proxiesModel(t, tc.width, tc.height)
+			m.colorProfile, m.noColor = tc.profile, tc.noColor
+			width := dashboardBodyWidth(m.dashboardOptions())
+			grid := m.proxyGrid(width)
+			body := m.proxyGroupBody(0, width)
+			rows := (len(m.snapshot.Groups[0].All) + grid.columns - 1) / grid.columns
+			stride := tc.cardRows + tc.gap
+			if got, want := len(body.lines), rows*stride-tc.gap; got != want {
+				t.Fatalf("%d rows of cards occupy %d lines, want %d", rows, got, want)
+			}
+			for y, line := range body.lines {
+				plain := ansi.Strip(line)
+				position := y % stride
+				if tc.cardRows == 4 && position == 0 && !strings.Contains(plain, "▆") ||
+					tc.cardRows == 4 && position == 3 && !strings.Contains(plain, "▂") ||
+					tc.cardRows == 2 && strings.ContainsAny(plain, "▂▆") {
+					t.Fatalf("unexpected card edge at row %d: %q", y, plain)
+				}
+				if blank := strings.TrimSpace(plain) == ""; blank != (position == tc.cardRows) {
+					t.Fatalf("unexpected grid spacing at row %d: %q", y, plain)
+				}
+				if position == tc.cardRows {
+					for _, hit := range body.targets {
+						if hit.Y <= y && y < hit.Y+hit.H {
+							t.Fatalf("gap at row %d activates a card: %+v", y, hit)
+						}
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestProxyCardFacesAndSelectedRailContinueIntoTheEdges(t *testing.T) {
+	for _, tc := range []struct {
+		name, surface   string
+		selected, hover bool
+	}{
+		{"normal", raised, false, false},
+		{"hover", buttonHoverBackground, false, true},
+		{"selected", buttonSelectedBackground, true, false},
+		{"hover on selected", buttonSelectedBackground, true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m, _ := proxiesModel(t, 150, 40)
+			left := tc.surface
+			if tc.selected {
+				m.snapshot.Groups[0].Now = "HK 01"
+				left = accent
+			}
+			if tc.hover {
+				m.hover = "node.0.1"
+			}
+			card := m.proxyNode(0, 1, 29)
+			screen := uv.NewScreenBuffer(29, 4)
+			uv.NewStyledString(strings.Join(card.lines, "\n")).Draw(screen, screen.Bounds())
+			for _, pixel := range []struct {
+				x, y                          int
+				glyph, foreground, background string
+				attrs                         uint8
+			}{
+				{0, 0, "▆", left, bg, 0}, {1, 0, "▆", tc.surface, bg, 0},
+				{2, 1, "H", text, tc.surface, uv.AttrBold}, {2, 2, "S", muted, tc.surface, 0},
+				{0, 3, "▂", bg, left, 0}, {1, 3, "▂", bg, tc.surface, 0},
+			} {
+				got := screen.CellAt(pixel.x, pixel.y)
+				want := uv.Style{Fg: lipgloss.Color(pixel.foreground), Bg: lipgloss.Color(pixel.background), Attrs: pixel.attrs}
+				if got == nil || got.Content != pixel.glyph || !got.Style.Equal(&want) {
+					t.Fatalf("wrong face at (%d,%d): got %+v, want %q with %+v", pixel.x, pixel.y, got, pixel.glyph, want)
+				}
+			}
+			if tc.selected {
+				for _, y := range []int{1, 2} {
+					if got := screen.CellAt(0, y); got.Content != "▌" || !got.Style.Equal(&uv.Style{Fg: lipgloss.Color(accent), Bg: lipgloss.Color(accent)}) {
+						t.Fatalf("rail was interrupted on row %d: %+v", y, got)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestProxyHelpClearsCardEdgesWithoutReflow(t *testing.T) {
 	m, _ := proxiesModel(t, 160, 40)
 	width := dashboardBodyWidth(m.dashboardOptions())
 	grid := m.proxyGrid(width)
-	body := m.proxyGroupBody(0, width)
-	rows := (len(m.snapshot.Groups[0].All) + grid.columns - 1) / grid.columns
-	if len(body.lines) != rows*5-1 {
-		t.Fatalf("%d rows of cards occupy %d terminal lines", rows, len(body.lines))
+	total := m.total
+	before := m.proxyNode(0, 0, grid.cardWidth)
+	if len(before.lines) != 4 || !strings.Contains(m.screen, "▆") || !strings.Contains(m.screen, "▂") {
+		t.Fatal("rich grid fixture lost its visible card edges")
 	}
-	for y, line := range body.lines {
-		if blank := strings.Trim(ansi.Strip(line), " ▌") == ""; blank != (y%5 != 1 && y%5 != 2) {
-			t.Fatalf("unexpected grid spacing at line %d: %q", y, ansi.Strip(line))
+
+	m, _ = update(m, key("?"))
+	card := m.proxyNode(0, 0, grid.cardWidth)
+	if !m.helpOpen || strings.ContainsAny(m.screen, "▆▂") {
+		t.Fatal("opening help left block glyphs in the backdrop")
+	}
+	if m.total != total || len(card.lines) != len(before.lines) || m.proxyGrid(width) != grid {
+		t.Fatal("opening help changed the grid geometry")
+	}
+	for _, y := range []int{0, 3} {
+		if ansi.Strip(card.lines[y]) != strings.Repeat(" ", grid.cardWidth) {
+			t.Fatalf("dimmed edge at row %d did not keep its blank cells", y)
 		}
-		if y%5 != 4 {
-			continue
-		}
-		for _, hit := range body.targets {
-			if hit.Y <= y && y < hit.Y+hit.H {
-				t.Fatalf("gap at row %d activates a card: %+v", y, hit)
-			}
-		}
+	}
+	m, _ = update(m, special(tea.KeyEscape))
+	if m.helpOpen || !strings.Contains(m.screen, "▆") || !strings.Contains(m.screen, "▂") || m.total != total {
+		t.Fatal("closing help did not restore the card edges in place")
 	}
 }
 

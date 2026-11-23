@@ -322,6 +322,10 @@ func (m *Model) notificationAction(action string) bool {
 	return true
 }
 
+func (m *Model) dashboardDimmed() bool {
+	return m.feedbackDialogOpen() || m.helpOpen || m.notification.panel.open || m.providers.open || (m.page == "connections" && m.connections.confirming)
+}
+
 func (m *Model) dashboardOptions() dashboardOptions {
 	items := m.notification.items
 	if m.page == "overview" && m.inlineInstallVisible() {
@@ -332,7 +336,7 @@ func (m *Model) dashboardOptions() dashboardOptions {
 			}
 		}
 	}
-	o := dashboardOptions{Locale: m.locale, Width: m.width, Height: m.height, Page: m.page, Busy: m.busy, PlainButtons: m.buttonPlain(), Dim: m.feedbackDialogOpen() || m.helpOpen || m.notification.panel.open || m.providers.open || (m.page == "connections" && m.connections.confirming), SidebarOpen: m.sidebarOpen, HideKeyHints: m.keyHints.hidden || m.wizard.open || m.wizard.networkOpen, GuideSkipped: m.guideSkipped, Notifications: items, Spinner: m.spinner.View(), LogoFrame: m.logoFrame, LogoIntroFrame: m.logoIntro.frame, InlineInstall: m.page == "overview" && m.inlineInstallVisible(), BodyRange: m.page == "proxies" && m.proxiesReady() && !m.proxiesDirect() && m.hasExpandedProxyGroups()}
+	o := dashboardOptions{Locale: m.locale, Width: m.width, Height: m.height, Page: m.page, Busy: m.busy, PlainButtons: m.buttonPlain(), Dim: m.dashboardDimmed(), SidebarOpen: m.sidebarOpen, HideKeyHints: m.keyHints.hidden || m.wizard.open || m.wizard.networkOpen, GuideSkipped: m.guideSkipped, Notifications: items, Spinner: m.spinner.View(), LogoFrame: m.logoFrame, LogoIntroFrame: m.logoIntro.frame, InlineInstall: m.page == "overview" && m.inlineInstallVisible(), BodyRange: m.page == "proxies" && m.proxiesReady() && !m.proxiesDirect() && m.hasExpandedProxyGroups()}
 	o.Now = time.Now()
 	o.TrafficHistory, o.TrafficNow = m.runtime.history.points, o.Now
 	if m.busy && strings.HasPrefix(m.notification.operation.Key, "service.") {

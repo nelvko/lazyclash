@@ -94,9 +94,7 @@ func (m *Model) layoutProxiesBody(width int) proxyBodyLayout {
 	}
 	compactGroups := m.compactProxyCards()
 	columns := m.proxyHeaderColumns()
-	if !compactGroups {
-		layout.memberGutter = 1
-	}
+	layout.memberGutter = layout.grid.rowGap
 	for i, gi := range groups {
 		if i > 0 && compactGroups && m.proxyGroupExpanded(m.snapshot.Groups[groups[i-1]].Name) {
 			b.blank()
@@ -379,8 +377,8 @@ func (m *Model) proxyDelayLabel(group, node string) (string, string) {
 	r := m.proxyDelay(group, node).result
 	switch r.State {
 	case "success":
-		color := text
-		if r.Delay >= 800 {
+		color := success
+		if r.Delay >= 150 {
 			color = warning
 		}
 		return fmt.Sprintf("%d ms", r.Delay), color
@@ -399,21 +397,25 @@ func (m *Model) proxyNode(gi, ni, width int) dashboardBlock {
 	referenceID := fmt.Sprintf("proxies.reference.%d.%d", gi, ni)
 	delayID := fmt.Sprintf("proxies.delay.%d.%d", gi, ni)
 	selected := g.Now == node && g.Type != "LoadBalance" && g.Type != "Relay"
-	surface := panel
+	surface := raised
 	if selected {
-		surface = selectionBackground
+		surface = buttonSelectedBackground
 	} else if m.hover == id || m.hover == referenceID || m.hover == delayID {
-		surface = hoverBackground
+		surface = buttonHoverBackground
 	}
-	prefix := "  "
+	prefix := " "
 	if m.focus == id || m.focus == delayID {
-		prefix = "› "
+		prefix = "›"
 	}
-	rail := " "
+	padding := m.proxyCardPadding()
+	rail, railSurface := " ", surface
 	if selected {
 		rail = "▌"
+		if padding > 0 {
+			railSurface = accent
+		}
 	}
-	edge := themed(rail+" ", accent, surface, false)
+	edge := themed(rail, accent, railSurface, false)
 	value, color := m.proxyDelayLabel(g.Name, node)
 	if !m.proxyTestable(node) {
 		value = "—"
@@ -431,19 +433,16 @@ func (m *Model) proxyNode(gi, ni, width int) dashboardBlock {
 		delaySurface = inputBackground
 	}
 	value = cellCrop(value, valueWidth)
-	leftPadding := max(0, (valueWidth-ansi.StringWidth(value))/2)
-	value = cellPad(strings.Repeat(" ", leftPadding)+value, valueWidth)
+	value = strings.Repeat(" ", valueWidth-ansi.StringWidth(value)) + value
 	trailing := themed(strings.Repeat(" ", rightPadding), text, surface, false)
-	line := edge + themed(prefix, focus, surface, false) + themed(cellPad(clean(node), nameWidth), text, surface, false) + themed(" ", color, surface, false) + themed(value, color, delaySurface, false) + trailing
+	name := lipgloss.NewStyle().Bold(true).Render(clean(node))
+	line := edge + themed(prefix, focus, surface, false) + themed(cellPad(name, nameWidth), text, surface, false) + themed(" ", color, surface, false) + themed(value, color, delaySurface, false) + trailing
 	metaWidth := contentWidth
 	_, _, reference := m.proxyGroup(node)
 	if reference {
 		metaWidth = nameWidth
 	}
-	meta := edge + themed("  "+cellPad(clean(m.proxyNodeMeta(node)), metaWidth), muted, surface, false)
-	padding := m.proxyCardPadding()
-	b := dashboardBlock{lines: make([]string, proxyCardHeight(padding))}
-	b.lines[padding] = themed(cellPad(line, width), text, surface, false)
+	meta := edge + themed(" "+cellPad(clean(m.proxyNodeMeta(node)), metaWidth), muted, surface, false)
 	var actions []hitRegion
 	actionX := width - rightPadding - valueWidth
 	if valueWidth > 0 {
@@ -458,10 +457,11 @@ func (m *Model) proxyNode(gi, ni, width int) dashboardBlock {
 		actions = append(actions, hitRegion{ID: referenceID, X: actionX, Y: padding + 1, W: valueWidth, H: 1})
 	}
 	meta += trailing
+	b := dashboardBlock{lines: make([]string, proxyCardHeight(padding))}
+	b.lines[padding] = themed(cellPad(line, width), text, surface, false)
 	b.lines[padding+1] = themed(cellPad(meta, width), text, surface, false)
 	if padding > 0 {
-		pad := themed(cellPad(edge, width), text, surface, false)
-		b.lines[0], b.lines[len(b.lines)-1] = pad, pad
+		b.lines[0], b.lines[len(b.lines)-1] = proxyCardEdges(width, railSurface, surface, m.dashboardDimmed())
 	}
 	// Keep one full-height left region for navigation, then fill each row around
 	// its independent actions. Disabled delay slots remain inert.
@@ -489,6 +489,20 @@ func (m *Model) proxyNode(gi, ni, width int) dashboardBlock {
 		}
 	}
 	return b
+}
+
+func proxyCardEdges(width int, rail, surface string, dimmed bool) (top, bottom string) {
+	if dimmed {
+		// The monochrome backdrop would turn the shaped edges into solid text.
+		blank := strings.Repeat(" ", width)
+		return blank, blank
+	}
+	// Each end leaves a quarter cell of page background. Together the
+	// edges separate adjacent rows without spending a whole line on a gap.
+	rest := max(0, width-1)
+	top = themed("▆", rail, bg, false) + themed(strings.Repeat("▆", rest), surface, bg, false)
+	bottom = themed("▂", bg, rail, false) + themed(strings.Repeat("▂", rest), bg, surface, false)
+	return top, bottom
 }
 
 // For a padded card, the full-height primary region includes both text rows.

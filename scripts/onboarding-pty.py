@@ -219,6 +219,9 @@ def png(screen, path, font_path, cjk_path, size):
                           text, font=emoji, embedded_color=True)
             elif text == "▔":
                 draw.rectangle((left, top, left + cell_w - 1, top + max(1, round(cell_h / 8)) - 1), fill=fg)
+            elif text in ("▆", "▂"):
+                height = round(cell_h * (3 if text == "▆" else 1) / 4)
+                draw.rectangle((left, top + cell_h - height, left + cell_w - 1, top + cell_h - 1), fill=fg)
             elif text == "▌":
                 draw.rectangle((left, top, left + max(1, round(cell_w / 2)) - 1, top + cell_h - 1), fill=fg)
             else:

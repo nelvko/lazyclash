@@ -10,14 +10,14 @@ import (
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
 
-func TestProxiesLatencyPaletteEmphasizesOnlySlowSuccessfulSamples(t *testing.T) {
+func TestProxiesLatencyPaletteHighlightsFastAndSlowSuccessfulSamples(t *testing.T) {
 	m, _ := proxiesModel(t, 160, 40)
 	for _, tc := range []struct {
 		state string
 		delay int
 		color string
 	}{
-		{"success", 42, text}, {"success", 799, text}, {"success", 800, warning},
+		{"success", 42, success}, {"success", 149, success}, {"success", 150, warning},
 		{"timeout", 0, muted}, {"failed", 0, muted},
 	} {
 		m.proxies.results[proxyResultKey("PROXY", "HK 01")] = proxyMeasurement{
@@ -72,30 +72,30 @@ func TestProxiesDelayInteractionStylePreservesStateAndGeometry(t *testing.T) {
 									slot = target
 								}
 							}
-							if slot.X != 38 || slot.Y != 1 || slot.W != 10 || slot.H != 1 {
+							if slot.X != 39 || slot.Y != 1 || slot.W != 10 || slot.H != 1 {
 								t.Fatalf("delay styling moved its action: %+v", slot)
 							}
 							line := card.lines[1]
 							if strings.Contains(line, "\x1b[4m") {
 								t.Fatalf("delay state gained an underline: %q", line)
 							}
-							surface := panel
+							surface := raised
 							if selected {
-								surface = selectionBackground
+								surface = buttonSelectedBackground
 							} else if interaction == "hover" {
-								surface = hoverBackground
+								surface = buttonHoverBackground
 							}
 							valueSurface := surface
 							if interaction != "none" && state != "testing" && state != "queued" {
 								valueSurface = inputBackground
 							}
-							padded := cellPad(strings.Repeat(" ", (slot.W-ansi.StringWidth(label))/2)+label, slot.W)
+							padded := strings.Repeat(" ", slot.W-ansi.StringWidth(label)) + label
 							if !strings.Contains(line, themed(padded, foreground, valueSurface, false)) {
-								t.Fatalf("delay lost its state color, centering or interaction background: %q", line)
+								t.Fatalf("delay lost its state color, alignment or interaction background: %q", line)
 							}
 							plain := ansi.Strip(line)
 							if ansi.StringWidth(plain) != 50 || ansi.Cut(plain, slot.X, slot.X+slot.W) != padded ||
-								!strings.Contains(line, themed("  ", text, surface, false)) ||
+								!strings.Contains(line, themed(" ", text, surface, false)) ||
 								!strings.Contains(line, themed(" ", foreground, surface, false)) {
 								t.Fatalf("delay styling changed card geometry or outside padding: %q", line)
 							}

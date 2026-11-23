@@ -98,7 +98,7 @@ func TestProxiesNodeDelayClickTestsOnlyItsNodeWithoutSelecting(t *testing.T) {
 	}
 }
 
-func TestProxiesNodeDelaySlotHasFixedWidthAndCenteredValues(t *testing.T) {
+func TestProxiesNodeDelaySlotHasFixedWidthAndRightAlignedValues(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		for _, state := range []string{"untested", "success", "timeout", "failed", "testing", "queued"} {
 			t.Run(language+"/"+state, func(t *testing.T) {
@@ -128,7 +128,7 @@ func TestProxiesNodeDelaySlotHasFixedWidthAndCenteredValues(t *testing.T) {
 					expected = m.tr("proxies.queued")
 				}
 				defer m.stopProxyTests()
-				for _, width := range []int{36, 50, 72} {
+				for _, width := range []int{29, 50, 72} {
 					card := m.proxyNode(0, 1, width)
 					var slot hitRegion
 					for _, hit := range card.targets {
@@ -136,15 +136,13 @@ func TestProxiesNodeDelaySlotHasFixedWidthAndCenteredValues(t *testing.T) {
 							slot = hit
 						}
 					}
-					if slot.Y != 1 || slot.H != 1 || slot.W != 10 || slot.X+slot.W != width-2 {
+					if slot.Y != 1 || slot.H != 1 || slot.W != 10 || slot.X+slot.W != width-1 {
 						t.Fatalf("delay slot moved with its value: width=%d slot=%+v", width, slot)
 					}
 					line := ansi.Strip(card.lines[1])
 					value := ansi.Cut(line, slot.X, slot.X+slot.W)
-					left := ansi.StringWidth(value) - ansi.StringWidth(strings.TrimLeft(value, " "))
-					right := ansi.StringWidth(value) - ansi.StringWidth(strings.TrimRight(value, " "))
-					if strings.TrimSpace(value) != expected || max(left, right)-min(left, right) > 1 || !strings.HasSuffix(line, "  ") {
-						t.Fatalf("delay value is not centered within its slot: value=%q expected=%q padding=%d/%d", value, expected, left, right)
+					if strings.TrimLeft(value, " ") != expected || !strings.HasSuffix(line, expected+" ") {
+						t.Fatalf("delay value lost its right alignment: value=%q expected=%q", value, expected)
 					}
 				}
 			})
@@ -204,14 +202,14 @@ func TestProxiesNodeDelayDisabledSlotsAreInertAndKeepOuterPadding(t *testing.T) 
 			}
 			const width = 50
 			card := m.proxyNode(0, ni, width)
-			for x := width - 12; x < width; x++ {
+			for x := width - 11; x < width; x++ {
 				hitID := ""
 				for _, hit := range card.targets {
 					if hit.Y == 1 && hit.X <= x && hit.X+hit.W > x {
 						hitID = hit.ID
 					}
 				}
-				if x < width-2 && hitID != "" || x >= width-2 && hitID != fmt.Sprintf("node.0.%d", ni) {
+				if x < width-1 && hitID != "" || x >= width-1 && hitID != fmt.Sprintf("node.0.%d", ni) {
 					t.Fatalf("disabled slot captures selection or swallows outer padding: state=%s x=%d id=%s", state, x, hitID)
 				}
 			}
@@ -398,7 +396,7 @@ func TestProxiesNodeDelayFocusFollowsNodeIdentityAndOwnsItsCard(t *testing.T) {
 	m.focus = "proxies.delay.0.1"
 	m.layout()
 	card := m.proxyNode(0, 1, 50)
-	if !strings.HasPrefix(ansi.Strip(card.lines[1]), "  › HK 01") || m.snapshot.Groups[0].Now != "AUTO" {
+	if !strings.HasPrefix(ansi.Strip(card.lines[1]), " ›HK 01") || m.snapshot.Groups[0].Now != "AUTO" {
 		t.Fatal("focusing the delay lost its card focus or changed selection")
 	}
 	m.snapshot.Groups[0], m.snapshot.Groups[2] = m.snapshot.Groups[2], m.snapshot.Groups[0]

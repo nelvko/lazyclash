@@ -147,8 +147,7 @@ func TestProxiesStickyGroupFollowsVisibleMembersWithoutMovingFocus(t *testing.T)
 	first := listSearchTarget(t, hits, "group.0")
 	second := listSearchTarget(t, hits, "group.1")
 	lastMember := listSearchTarget(t, hits, "node.0.5")
-	lastPaddingRow := lastMember.Y + lastMember.H - 1
-	lastTextRow := lastPaddingRow - 1
+	lastTextRow := lastMember.Y + lastMember.H - 2
 	g := dashboardGeometry(m.dashboardOptions())
 	for _, state := range []struct {
 		name  string
@@ -159,7 +158,7 @@ func TestProxiesStickyGroupFollowsVisibleMembersWithoutMovingFocus(t *testing.T)
 		{"heading partly visible", first.Y + first.H - 1, ""},
 		{"first heading offscreen", first.Y + first.H, "first"},
 		{"last visible first-group member", lastTextRow, "first"},
-		{"only bottom padding of first-group members visible", lastPaddingRow, ""},
+		{"only lower edge of first group", lastTextRow + 1, ""},
 		{"second heading visible", second.Y, ""},
 		{"second heading offscreen", second.Y + second.H, "second"},
 		{"back to first heading", first.Y, ""},

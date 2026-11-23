@@ -1,7 +1,7 @@
 package tui
 
 const (
-	proxyNodeMinWidth    = 36
+	proxyNodeMinWidth    = 29
 	proxyNodeContentRows = 2
 	proxyColumnGap       = 1
 	proxyMaxColumns      = 4
@@ -17,7 +17,7 @@ func (m *Model) compactProxyCards() bool {
 }
 
 func (m *Model) proxyCardPadding() int {
-	if m.compactProxyCards() {
+	if m.compactProxyCards() || m.buttonPlain() {
 		return 0
 	}
 	return 1
@@ -42,7 +42,9 @@ func (m *Model) proxyGrid(bodyWidth int) proxyGridLayout {
 	}
 	grid := layoutProxyGrid(bodyWidth, indent)
 	grid.cardPadding = m.proxyCardPadding()
-	grid.rowGap = grid.cardPadding
+	if grid.cardPadding == 0 && !m.compactProxyCards() {
+		grid.rowGap = 1
+	}
 	return grid
 }
 

@@ -216,6 +216,10 @@ def hover_cell(terminal, x, y):
     terminal.settle()
 
 
+def terminal_color(preview, profile, rgb, ansi256):
+    return preview.PREVIEW.palette(ansi256) if profile == "256" else tuple(bytes.fromhex(rgb))
+
+
 def wheel_body(terminal, down=True):
     button = 65 if down else 64
     terminal.key(("\x1b[<%d;%d;%dM" % (button, terminal.screen.columns - 5, terminal.screen.rows // 2)).encode())
@@ -346,12 +350,13 @@ def assert_header_hover(terminal, name, words, profile):
     hover_cell(terminal, 0, 0)
     normal = terminal.screen.styles[y - 1][left][1]
     first_x, first_y = min((candidate_position(terminal, member) for member in MEMBERS), key=lambda p: (p[1], p[0]))
-    assert first_y - card_vertical_padding(terminal) == y + 3, "first card surface is not one row below the group header"
-    assert not "".join(terminal.screen.cells[y + 2][left:right]).strip(), "header-to-card gap has visible content"
-    if profile != "no-color":
-        card = terminal.screen.styles[first_y][first_x][1]
-        assert normal != card == terminal.screen.styles[y + 3][first_x][1], "first card is missing its top padding"
-    click_cell(terminal, first_x, y + 2)
+    assert first_y == y + 3, "unexpected distance from the group heading to the first node name"
+    if profile == "no-color":
+        assert not "".join(terminal.screen.cells[y + 2][left:right]).strip(), "plain header-to-card gap contains text"
+    else:
+        assert terminal.screen.cells[y + 2][first_x] == "▆", "first card edge does not follow the header"
+    # This cell sits outside the card grid, on the same row as its top edge.
+    click_cell(terminal, left, y + 2)
     terminal.settle()
     assert group_header(terminal, name)[3].rstrip().endswith("▾"), "clicking the gutter folded the group"
     click_cell(terminal, first_x, y + 1)
@@ -369,7 +374,7 @@ def assert_header_hover(terminal, name, words, profile):
         for row in (y - 1, y, y + 1):
             for column in range(left, right):
                 assert terminal.screen.styles[row][column][1] == hover, "header hover surface has an uncolored gap at %d,%d" % (column, row)
-        assert all(terminal.screen.styles[y + 2][c][1] == normal for c in range(left, right)), "gutter shares header hover"
+        assert terminal.screen.styles[y + 2][first_x][1] == normal, "card edge shares header hover"
 
 
 def assert_group_types(terminal, words):
@@ -402,7 +407,7 @@ def click_candidate(terminal, name):
 
 def card_bounds(terminal, name):
     x, y = candidate_position(terminal, name)
-    left = x - 4
+    left = x - 2
     columns = set()
     for member in MEMBERS:
         try:
@@ -419,8 +424,8 @@ def card_bounds(terminal, name):
 
 def delay_slot(terminal, name):
     left, y, right = card_bounds(terminal, name)
-    width = min(10, (right - left - 6) // 2)
-    return right - 2 - width, y, width
+    width = min(10, (right - left - 3) // 2)
+    return right - 1 - width, y, width
 
 
 def delay_label(terminal, name):
@@ -443,12 +448,10 @@ def click_delay(terminal, name):
     click_cell(terminal, x + width // 2, y)
 
 
-def assert_delay_centered(terminal, name):
+def assert_delay_right_aligned(terminal, name):
     x, y, width = delay_slot(terminal, name)
     cells = terminal.screen.cells[y][x:x + width]
-    first = next(index for index, cell in enumerate(cells) if cell != " ")
-    last = next(index for index, cell in enumerate(reversed(cells)) if cell != " ")
-    assert abs(first - last) <= 1, "delay is not centered in its card slot: %s %r" % (name, cells)
+    assert cells[-1] != " " and "".join(cells).strip(), "delay does not reach the end of its slot: %s %r" % (name, cells)
 
 
 def assert_four_columns(terminal):
@@ -456,10 +459,6 @@ def assert_four_columns(terminal):
     xs = sorted({x for x, _ in positions})
     assert len(xs) == 4, "wide grid did not keep four columns: " + repr(positions)
     return xs
-
-
-def card_vertical_padding(terminal):
-    return int(terminal.screen.columns >= SIDEBAR_MIN_WIDTH and terminal.screen.rows > 24)
 
 
 def assert_card_spacing(terminal, profile):
@@ -470,26 +469,44 @@ def assert_card_spacing(terminal, profile):
         except AssertionError:
             continue  # A short view may clip cards that are not focused.
     ys = sorted({y for _, y in positions})
-    padding = card_vertical_padding(terminal)
-    stride = 2 + 3 * padding
+    spacious = terminal.screen.columns >= SIDEBAR_MIN_WIDTH and terminal.screen.rows > 24
+    edges = spacious and profile != "no-color"
+    stride = 4 if edges else 2 + int(spacious)
     assert len(ys) >= 2 and all(b - a == stride for a, b in zip(ys, ys[1:])), (
         "unexpected spacing between card rows: " + repr(positions))
-    if padding == 0:
+    if not spacious:
         _, heading_y, _, _ = group_header(terminal, "PROXY")
         heading_rows = 2 if terminal.screen.columns < SIDEBAR_MIN_WIDTH else 1
         assert ys[0] == heading_y + heading_rows, "compact group retained a blank row before its first card"
-        return
-    first = min(x for x, _ in positions) - 4
-    gap_row = terminal.screen.cells[ys[0] - 2]
-    assert not "".join(gap_row[first:]).strip(), "group header touches the first card row"
+    elif not edges:
+        first = min(x for x, _ in positions) - 2
+        gap_row = terminal.screen.cells[ys[0] - 1]
+        assert not "".join(gap_row[first:]).strip(), "group header touches the first card row"
     cells, styles = terminal.screen.cells, terminal.screen.styles
+    xs = sorted({x for x, _ in positions})
+    if edges:
+        card_width = xs[1] - xs[0] - 1
+        assert ys[0] == group_header(terminal, "PROXY")[1] + 3, "first card edge does not follow the header"
+    else:
+        assert not any(c in ("▆", "▂") for row in cells[ys[0] - 1:ys[-1] + 3] for c in row[xs[0]:]), (
+            "plain or compact cards contain block edges")
     for x, y in positions:
-        assert not cells[y - 1][x].strip() and not cells[y + 2][x].strip(), "card padding contains text"
+        assert cells[y + 1][x].strip(), "metadata is missing below the node name"
         if profile != "no-color":
             card = styles[y][x][1]
-            assert styles[y - 1][x][1] == styles[y + 2][x][1] == card, "padding is outside the card surface"
-            if y != ys[-1]:
-                assert styles[y + 3][x][1] != card, "adjacent card surfaces lack their one-row gap"
+            assert styles[y + 1][x][1] == card, "metadata and name do not share the card background"
+            if edges:
+                left = x - 2
+                page = styles[y][left - 1][1]
+                assert card != page, "card has the same background as its gutter"
+                for c in range(left, left + card_width):
+                    surface = styles[y][c][1] if c == left else card
+                    assert cells[y - 1][c] == "▆" and styles[y - 1][c][:2] == (surface, page), "top edge has a seam"
+                    assert cells[y + 2][c] == "▂" and styles[y + 2][c][:2] == (page, surface), "bottom edge has a seam"
+                if cells[y][left] == "▌":
+                    assert styles[y][left][0] == styles[y][left][1] != card, "selected rail is not a solid accent"
+                    assert styles[y + 1][left][:2] == styles[y][left][:2], "selected rail changes between text rows"
+    return len(xs)
 
 
 def enter_reference(terminal, name, label):
@@ -561,32 +578,39 @@ def exercise(preview, binary, output, language, profile, args):
         assert "0/0" not in terminal.screen.text(), "idle measurement progress is visible"
         preview.capture(terminal, output, "groups-wide", args)
 
-        # At 160 columns the adaptive grid has three candidate columns.
-        # Horizontal keys move to the nearest card; Up keeps its column.
+        # Traverse the four-column grid and return to the first row.
         terminal.key(b"\x1b[C")  # Enter the observed selection, AUTO.
-        terminal.key(b"\x1b[B")  # JP 01, second left candidate
-        terminal.key(b"\x1b[C")  # SG 01, second middle candidate
-        terminal.key(b"\x1b[A")  # HK 01, first middle candidate
+        terminal.key(b"\x1b[B")  # SG 01, below AUTO.
+        terminal.key(b"\x1b[C")  # US 01, to its right.
+        terminal.key(b"\x1b[A")  # HK 01, above US 01.
         terminal.settle()
         assert any(re.search(r"›\s*(?:✓\s*)?HK 01", line) for line in terminal.screen.text().splitlines()), "keyboard could not reach the right candidate column"
         # Selection goes through the asynchronous backend and snapshot readback.
         terminal.key(b"\r")
         wait_until(terminal, lambda: chosen(terminal, "HK 01"), "manual choice was not confirmed")
         terminal.settle()
-        # Both added padding rows belong to the same node selection surface.
-        padding = card_vertical_padding(terminal)
+        # Both outer rows select their own card, including the colored edges.
+        edge_rows = int(profile != "no-color")
         x, y = candidate_position(terminal, "HK 02")
-        click_cell(terminal, x - 1, y - padding)
-        wait_until(terminal, lambda: chosen(terminal, "HK 02"), "top padding did not select its card")
+        click_cell(terminal, x - 2, y - edge_rows)
+        wait_until(terminal, lambda: chosen(terminal, "HK 02"), "top edge did not select its card")
         terminal.settle()
         _, y, right = card_bounds(terminal, "HK 01")
-        click_cell(terminal, right - 1, y + 1 + padding)
-        wait_until(terminal, lambda: chosen(terminal, "HK 01"), "bottom padding did not select its card")
+        click_cell(terminal, right - 1, y + 1 + edge_rows)
+        wait_until(terminal, lambda: chosen(terminal, "HK 01"), "bottom edge did not select its card")
         terminal.settle()
         x, y = candidate_position(terminal, "HK 01")
-        top, bottom = y - padding, y + 1 + padding
-        assert all(terminal.screen.cells[row][x - 4] == "▌" for row in range(top, bottom + 1)), "selection rail did not span the padded card"
-        assert terminal.screen.cells[top - 1][x - 4] != "▌" and terminal.screen.cells[bottom + 1][x - 4] != "▌", "selection rail extends outside the card"
+        rail = x - 2
+        assert all(terminal.screen.cells[row][rail] == "▌" for row in (y, y + 1)), "selection rail did not span both rows"
+        assert all(terminal.screen.cells[row][rail] != "▌" for row in (y - 1, y + 2)), "selection rail extends outside the card"
+        if profile != "no-color":
+            other_x, other_y = candidate_position(terminal, "JP 01")
+            assert terminal.screen.styles[y][x][1] == terminal_color(preview, profile, "425d78", 24), "selected surface lost its blue tint"
+            assert terminal.screen.styles[y][rail][1] == terminal_color(preview, profile, "85b3e0", 110), "selection rail lost its accent"
+            assert terminal.screen.styles[other_y][other_x][1] == terminal_color(preview, profile, "3a424a", 237), "normal surface lost its raised shade"
+            hover_cell(terminal, other_x, other_y)
+            assert terminal.screen.styles[other_y][other_x][1] == terminal_color(preview, profile, "46515c", 239), "hovered surface did not brighten"
+            hover_cell(terminal, 0, 0)
         preview.capture(terminal, output, "selected", args)
         before = terminal.screen.text()
         terminal.key(b"i")
@@ -669,13 +693,16 @@ def exercise(preview, binary, output, language, profile, args):
         assert after == before, "measurement silently reordered candidates: %r -> %r" % (before, after)
         assert "777 ms" not in terminal.screen.text(), "late canceled value leaked into completed result"
         if profile != "no-color":
-            for name, muted in (("US 01", False), ("SG 01", True), ("AUTO", True)):
+            for name in ("HK 01", "US 01", "SG 01", "AUTO"):
                 name_x, y = candidate_position(terminal, name)
                 delay_x, _, width = delay_slot(terminal, name)
-                value_color = terminal.screen.styles[y][delay_x + width // 2][0]
-                reference_row = y + 1 if muted else y
-                expected_color = terminal.screen.styles[reference_row][name_x][0]
-                assert value_color == expected_color, "delay uses an unexpected foreground: " + name
+                value_color = terminal.screen.styles[y][delay_x + width - 1][0]
+                if name == "HK 01":
+                    assert value_color == terminal_color(preview, profile, "99c794", 114), "45 ms is not green"
+                elif name == "US 01":
+                    assert value_color == terminal_color(preview, profile, "f9ae58", 215), "211 ms is not amber"
+                else:
+                    assert value_color == terminal.screen.styles[y + 1][name_x][0], "delay status is not muted: " + name
         preview.capture(terminal, output, "measurement-complete", args)
         wait_until(terminal, lambda: completed_label not in terminal.screen.text(), "completed measurement status stayed visible", timeout=5)
         terminal.wait("211 ms")
@@ -689,20 +716,16 @@ def exercise(preview, binary, output, language, profile, args):
         # Keep a node focused across terminal geometry changes. Each frame is
         # captured from the PTY after redraw rather than directly from Model.View.
         click_candidate(terminal, "HK 01")
-        for width, height in [(160, 45), (200, 40), (240, 40), (120, 32), (96, 40), (80, 24), (60, 20), (40, 16), (120, 18)]:
+        for width, height, columns in [(160, 45, 4), (150, 48, 4), (200, 40, 4), (240, 40, 4),
+                                       (120, 32, 3), (96, 40, 3), (80, 24, 2), (60, 20, 1),
+                                       (40, 16, 1), (120, 18, 3)]:
             terminal.resize(width, height)
             terminal.settle()
             terminal.wait("HK 01")
             terminal.wait("ms")
             assert_proxy_header(terminal, words)
-            assert_card_spacing(terminal, profile)
-            if width in (200, 240):
-                assert_four_columns(terminal)
-            if width == 160:
-                assert len({candidate_position(terminal, name)[0] for name in MEMBERS}) == 3, "160-column grid lost its three-column layout"
-            if width < SIDEBAR_MIN_WIDTH:
-                slots = {candidate_position(terminal, name)[0] for name in ("HK 01", "HK 02")}
-                assert len(slots) == (2 if width >= 77 else 1), "compact grid ignored its available width: " + repr(slots)
+            observed = assert_card_spacing(terminal, profile)
+            assert observed == columns, "%dx%d grid shows %d columns, expected %d" % (width, height, observed, columns)
             if width == 200:
                 terminal.key(b"\x1b[C")  # HK 01 -> JP 01 -> AUTO, the fourth slot.
                 terminal.key(b"\x1b[C")
@@ -814,7 +837,7 @@ def exercise(preview, binary, output, language, profile, args):
         if profile == "256":
             assert not preview.RGB.search(raw), "ANSI256 emitted RGB text"
         (output / "pty.raw").write_bytes(raw)
-        print("PASS %s/%s: plain page header, selection/padding, automatic node click/Enter stay in list, retired shortcuts, references, group navigation, sort, cancel/late results, strategies, centered Direct empty state/restoration, resize/four-column cap" % (language, profile), flush=True)
+        print("PASS %s/%s: plain page header, two-row selection, automatic node click/Enter stay in list, retired shortcuts, references, group navigation, sort, cancel/late results, strategies, centered Direct empty state/restoration, resize/four-column cap" % (language, profile), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")
         (output / "failed.ansi").write_bytes(terminal.raw)
@@ -935,7 +958,7 @@ def exercise_groups(preview, binary, output, args):
         assert group_header(terminal, "AUTO")[1] == auto_y, "opening a second group moved its heading"
         assert all(group_header(terminal, name)[3].rstrip().endswith("▾") for name in ("PROXY", "AUTO")), "opening a second group collapsed the first"
         assert not any(words["proxies.search_group"] % name in terminal.screen.text() for name in ("PROXY", "AUTO")), "visible groups retained a sticky label"
-        terminal.resize(120, 28)
+        terminal.resize(120, 13)
         terminal.settle()
         prefix, suffix = (words["proxies.range.expanded"] % (2, "@")).split("@")
         assert re.search(re.escape(prefix) + r"\d+–\d+ / 12" + re.escape(suffix), terminal.screen.text()), "combined range omits its two groups"
@@ -1002,14 +1025,14 @@ def exercise_node_delay(preview, binary, output, args):
         terminal.wait("Hysteria2")
         terminal.settle()
         for name in MEMBERS:
-            assert_delay_centered(terminal, name)
-        preview.capture(terminal, output, "centered-initial-values-statuses", args)
+            assert_delay_right_aligned(terminal, name)
+        preview.capture(terminal, output, "right-aligned-initial-values-statuses", args)
 
         # Existing and new values use the same independent, repeatable action.
         for expected in ("45 ms", "46 ms"):
             click_delay(terminal, "HK 01")
             wait_delay(terminal, "HK 01", words["proxies.testing"])
-            assert_delay_centered(terminal, "HK 01")
+            assert_delay_right_aligned(terminal, "HK 01")
             wait_delay(terminal, "HK 01", expected)
         click_delay(terminal, "US 01")
         wait_delay(terminal, "US 01", words["proxies.testing"])
@@ -1028,15 +1051,15 @@ def exercise_node_delay(preview, binary, output, args):
         assert group_header(terminal, "AUTO")[3].rstrip().endswith("▸"), "reference delay click entered its group"
         assert group_header(terminal, "PROXY")[3].rstrip().endswith("▾"), "delay click left its parent group"
         for name in MEMBERS:
-            assert_delay_centered(terminal, name)
-        preview.capture(terminal, output, "centered-retested-values-failed-reference", args)
+            assert_delay_right_aligned(terminal, name)
+        preview.capture(terminal, output, "right-aligned-retested-values-failed-reference", args)
         terminal.exit()
         calls = json.loads(report.read_text())
         assert calls["requests"] == {"PROXY/HK 01": 2, "PROXY/US 01": 1, "PROXY/AUTO": 2}, calls
         assert calls["tests"] == 5 and calls["canceled"] == 0 and calls["max_tests"] == 1, calls
         assert calls["selections"] == 0 and calls["modes"] == 0 and calls["selected"]["PROXY"] == "AUTO", calls
         (output / "pty.raw").write_bytes(terminal.raw)
-        print("PASS independent node-delay fixture: centered values/statuses, repeat test, untested/failed actions, reference isolation, inert built-ins; " + json.dumps(calls, ensure_ascii=False), flush=True)
+        print("PASS independent node-delay fixture: right-aligned values/statuses, repeat test, untested/failed actions, reference isolation, inert built-ins; " + json.dumps(calls, ensure_ascii=False), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")
         (output / "failed.ansi").write_bytes(terminal.raw)
