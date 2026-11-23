@@ -292,11 +292,11 @@ func TestOverviewAlignedVersionsAndModesCollapseOnlyConfirmedState(t *testing.T)
 				Mode:    app.ModeStatus{Desired: "rule", Actual: "rule", Running: true},
 			}}
 			core := func() string { return ansi.Strip(strings.Join(overviewCoreCard(o, 100).lines, "\n")) }
-			if value := core(); strings.Count(value, "v1.19.33") != 1 || strings.Contains(value, "456") || strings.Contains(value, locale.T("dashboard.kernel.desired", locale.T("dashboard.status.running"))) {
-				t.Fatalf("normal core card duplicated versions or retained diagnostic fields: %s", value)
+			if value := core(); strings.Contains(value, "v1.19.33") || strings.Contains(value, "456") || strings.Contains(value, locale.T("dashboard.kernel.desired", locale.T("dashboard.status.running"))) {
+				t.Fatalf("normal core card retained diagnostic fields: %s", value)
 			}
 			o.Snapshot.Version = "v1.20.0"
-			if value := core(); !strings.Contains(value, locale.T("dashboard.kernel.installed", "v1.20.0")) || strings.Count(value, "v1.19.33") != 1 {
+			if value := core(); !strings.Contains(value, locale.T("dashboard.kernel.installed", "v1.20.0")) || !strings.Contains(value, locale.T("dashboard.kernel.running", "v1.19.33")) || !strings.Contains(value, locale.T("dashboard.core.restartVersion")) {
 				t.Fatalf("version mismatch lost explicit installed/running distinction: %s", value)
 			}
 			mode := func() string { return ansi.Strip(strings.Join(overviewModeCard(o, 100).lines, "\n")) }

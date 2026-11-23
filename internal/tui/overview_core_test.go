@@ -11,45 +11,56 @@ import (
 	"github.com/nelvko/lazyclash/internal/service"
 )
 
-func TestCoreStatusShowsOnlyCurrentStateVersionAndRealProcessUptime(t *testing.T) {
+func TestCoreCardReportsWhenTheCurrentProcessStarted(t *testing.T) {
 	now := time.Now()
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		t.Run(language, func(t *testing.T) {
-			o := dashboardOptions{Locale: i18n.New(language), Now: now, Snapshot: app.Snapshot{
-				Installed: true, HasRun: true, Version: "v1.19.33", RunningVersion: "v1.19.33",
-				Service: service.Status{Active: true, State: "active", PID: 4242, StartedAt: now.Add(-2*time.Hour - 18*time.Minute - 34*time.Second)},
-				Desired: app.DesiredState{Known: true, Running: true},
+			locale := i18n.New(language)
+			o := dashboardOptions{Locale: locale, Now: now, Snapshot: app.Snapshot{
+				Installed: true, Version: "v1.19.33", RunningVersion: "v1.19.33",
+				Service: service.Status{Active: true, State: "active", PID: 4242, StartedAt: now},
 			}}
-			render := func() (string, dashboardBlock) {
-				block := overviewCoreCard(o, 72)
-				return ansi.Strip(strings.Join(block.lines, "\n")), block
+			render := func() string {
+				return ansi.Strip(strings.Join(overviewCoreCard(o, 72).lines, "\n"))
 			}
-			plain, block := render()
-			status := "● " + o.Locale.T("dashboard.status.running")
-			for _, want := range []string{o.Locale.T("dashboard.overview.service"), "Mihomo", status, "v1.19.33", o.Locale.T("dashboard.core.uptime", "02:18:34")} {
-				if !strings.Contains(plain, want) {
-					t.Fatalf("core status omitted %q:\n%s", want, plain)
+			for _, tc := range []struct {
+				elapsed time.Duration
+				want    string
+			}{
+				{0, locale.T("dashboard.core.startedNow")},
+				{time.Minute - time.Nanosecond, locale.T("dashboard.core.startedNow")},
+				{time.Minute, locale.T("dashboard.core.startedMinutes", 1)},
+				{time.Hour - time.Nanosecond, locale.T("dashboard.core.startedMinutes", 59)},
+				{time.Hour, locale.T("dashboard.core.startedHours", 1)},
+				{24*time.Hour - time.Nanosecond, locale.T("dashboard.core.startedHours", 23)},
+				{24 * time.Hour, locale.T("dashboard.core.startedDays", 1)},
+				{3*24*time.Hour + time.Minute, locale.T("dashboard.core.startedDays", 3)},
+			} {
+				o.Now = now.Add(tc.elapsed)
+				if got := render(); !strings.Contains(got, tc.want) {
+					t.Fatalf("%v: missing process start age %q:\n%s", tc.elapsed, tc.want, got)
 				}
 			}
-			if strings.Count(plain, status) != 1 || strings.Count(plain, "v1.19.33") != 1 || strings.Contains(plain, "4242") {
-				t.Fatalf("core retained repeated state or process diagnostics:\n%s", plain)
+			o.Now = now.Add(2*time.Hour + 18*time.Minute + 34*time.Second)
+			plain := render()
+			title := "Mihomo core"
+			if language == i18n.Chinese {
+				title = "Mihomo 内核"
 			}
-			if heading := ansi.Strip(block.lines[1]); !strings.Contains(heading, o.Locale.T("dashboard.overview.service")) || strings.Contains(heading, "v1.19.33") {
-				t.Fatalf("heading retained detached version metadata: %q", heading)
+			status := "● " + locale.T("dashboard.status.running")
+			if !strings.Contains(plain, title) || strings.Count(plain, "Mihomo") != 1 || strings.Count(plain, status) != 1 || !strings.Contains(plain, locale.T("dashboard.core.startedHours", 2)) {
+				t.Fatalf("core identity, state or age incorrect:\n%s", plain)
 			}
-			if len(block.targets) != 1 || block.targets[0].ID != "core.toggle" {
-				t.Fatalf("core must expose exactly one toggle, got %+v", block.targets)
+			if strings.Contains(plain, "v1.19.33") || strings.Contains(plain, "02:18:34") || strings.Contains(plain, "4242") {
+				t.Fatalf("healthy card displayed detailed diagnostics:\n%s", plain)
 			}
-			o.Now = now.Add(time.Second)
-			if plain, _ := render(); !strings.Contains(plain, "02:18:35") {
-				t.Fatal("uptime did not advance locally")
-			}
-			if !strings.Contains(ansi.Strip(strings.Join(overviewCoreCard(o, 72).lines, "\n")), "02:18:35") {
-				t.Fatal("reopening reset uptime")
+			o.Now = o.Now.Add(time.Second)
+			if next := render(); next != plain {
+				t.Fatalf("core card changed within the same hour:\n%s", next)
 			}
 			o.Snapshot.Service = service.Status{Active: true, State: "active", PID: 4243, StartedAt: o.Now.Add(-time.Second)}
-			if plain, _ := render(); !strings.Contains(plain, "00:00:01") || strings.Contains(plain, "02:18:") {
-				t.Fatal("new process inherited old uptime")
+			if next := render(); !strings.Contains(next, locale.T("dashboard.core.startedNow")) || strings.Contains(next, locale.T("dashboard.core.startedHours", 2)) {
+				t.Fatalf("new process inherited the previous process's age:\n%s", next)
 			}
 		})
 	}
@@ -112,8 +123,11 @@ func TestCoreStatusKeepsFailuresTransitionsAndMissingTimingExplicit(t *testing.T
 				block := overviewCoreCard(o, 72)
 				plain := ansi.Strip(strings.Join(block.lines, "\n"))
 				face, _, _ := headerCoreState(o)
-				if !strings.Contains(plain, face) || strings.Contains(plain, "01:00:00") != tc.uptime {
+				if !strings.Contains(plain, face) || strings.Contains(plain, o.Locale.T("dashboard.core.startedHours", 1)) != tc.uptime || strings.Contains(plain, o.Locale.T("dashboard.core.startedNow")) {
 					t.Fatalf("core invented state/time (want %q):\n%s", face, plain)
+				}
+				if strings.Contains(plain, o.Snapshot.Version) {
+					t.Fatalf("matching installed and running versions repeated in overview:\n%s", plain)
 				}
 				if strings.Count(plain, face) != 1 {
 					t.Fatalf("state repeated:\n%s", plain)

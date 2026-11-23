@@ -13,7 +13,35 @@ import (
 	"github.com/nelvko/lazyclash/internal/downloadnet"
 	"github.com/nelvko/lazyclash/internal/i18n"
 	"github.com/nelvko/lazyclash/internal/mihomo"
+	"github.com/nelvko/lazyclash/internal/service"
 )
+
+func TestCoreManagementShowsVersionsAndConfirmedUptime(t *testing.T) {
+	for _, language := range []string{i18n.English, i18n.Chinese} {
+		t.Run(language, func(t *testing.T) {
+			m := ready(&fakeBackend{snapshot: app.Snapshot{
+				Installed: true, Version: "v1.20.0", RunningVersion: "v1.19.33",
+				Service: service.Status{Active: true, State: "active", PID: 42, StartedAt: time.Now().Add(-62 * time.Minute)},
+			}})
+			m.locale = i18n.New(language)
+			m.openManagementWizard(false)
+			screen := func() string {
+				doc, _, _ := m.wizardDocument(80)
+				return ansi.Strip(strings.Join(doc.lines, "\n"))
+			}
+			details := screen()
+			for _, field := range []string{m.tr("wizard.installed_version") + ": v1.20.0", m.tr("wizard.running_version") + ": v1.19.33", m.tr("wizard.uptime") + ": 01:02:"} {
+				if !strings.Contains(details, field) {
+					t.Fatalf("missing management detail %q in %s", field, details)
+				}
+			}
+			m.snapshot.ServiceError = "service observation failed"
+			if strings.Contains(screen(), m.tr("wizard.uptime")) {
+				t.Fatal("an unavailable service observation retained an uptime")
+			}
+		})
+	}
+}
 
 func TestCoreUpdateRequiresManualCheckAndConfirmation(t *testing.T) {
 	checks, upgrades := 0, 0

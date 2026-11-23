@@ -15,7 +15,6 @@ import socket
 import subprocess
 import sys
 import tempfile
-import time
 
 
 SPEC = importlib.util.spec_from_file_location('core_toggle_smoke', Path(__file__).with_name('pty-smoke.py'))
@@ -29,18 +28,8 @@ def free_port():
         return listener.getsockname()[1]
 
 
-def uptime_seconds(terminal):
-    match = re.search(r'Uptime (\d+):(\d+):(\d+)', terminal.screen.text())
-    return None if match is None else int(match[1])*3600+int(match[2])*60+int(match[3])
-
-
-def wait_condition(terminal, predicate, description, timeout=20):
-    end = time.monotonic()+timeout
-    while time.monotonic() < end:
-        terminal.read(.05)
-        if predicate():
-            return
-    raise AssertionError(description+'\n'+terminal.screen.text())
+def shows_start_time(terminal):
+    return re.search(r'Just started|Started \d+[mhd] ago', terminal.screen.text()) is not None
 
 
 def capture(terminal, output, label):
@@ -50,7 +39,7 @@ def capture(terminal, output, label):
 
 def heading_action(terminal, label):
     for y, row in enumerate(terminal.screen.cells):
-        if 'Core status' not in ''.join(row):
+        if 'Mihomo core' not in ''.join(row):
             continue
         for x, cell in enumerate(row):
             if cell and ''.join(row[x:]).startswith(label):
@@ -95,7 +84,7 @@ def main():
             terminal.wait('○ Stopped');terminal.settle()
             assert not status()['Active']
             assert heading_action(terminal, 'Start') is not None
-            assert 'Uptime ' not in terminal.screen.text()
+            assert not shows_start_time(terminal)
             capture(terminal,output,'stopped')
             results['stopped_observation']=True
 
@@ -103,20 +92,17 @@ def main():
             # pending. Their state changes must not create a second operation.
             x, y = heading_action(terminal, 'Start')
             terminal.send(f'\x1b[<0;{x+1};{y+1}M\x1b[<0;{x+1};{y+1}m'.encode()+b'\r \r')
-            terminal.wait('● Running');terminal.wait('Uptime ');terminal.settle()
+            terminal.wait('● Running');terminal.wait('Just started');terminal.settle()
             active=status();assert active['Active'] and active['PID']>0,active
             first_pid=active['PID']
             assert heading_action(terminal, 'Stop') is not None
             capture(terminal,output,'toggle-started')
             results['toggle_start_and_pending_dedup']=True
-            wait_condition(terminal,lambda: uptime_seconds(terminal) is not None and uptime_seconds(terminal)>=2,'real process uptime did not advance')
-            capture(terminal,output,'uptime-advanced')
-            results['uptime_updates']=True
 
             terminal.send(b' \r \r')
             terminal.wait('○ Stopped');terminal.settle()
             stopped=status();assert not stopped['Active'] and stopped['PID']==0,stopped
-            assert 'Uptime ' not in terminal.screen.text()
+            assert not shows_start_time(terminal)
             capture(terminal,output,'toggle-stopped')
             results['toggle_stop_and_pending_dedup']=True
 
@@ -138,15 +124,17 @@ def main():
             results['start_failure_rereads_off']=True
 
             run(argv+['service','start'])
-            terminal.wait('● Running');terminal.wait('Uptime ');terminal.settle()
+            terminal.wait('● Running');terminal.wait('Just started');terminal.settle()
             external=status();assert external['Active'],external
             capture(terminal,output,'external-start')
             results['external_start_sync']=True
-            wait_condition(terminal,lambda: uptime_seconds(terminal) is not None and uptime_seconds(terminal)>=3,'uptime did not advance before external restart')
+            terminal.wait('Started 1m ago', timeout=85)
+            capture(terminal,output,'uptime-advanced')
+            results['uptime_updates']=True
             old_pid=external['PID']
             run(argv+['service','restart'])
             restarted=status();assert restarted['Active'] and restarted['PID']!=old_pid,restarted
-            wait_condition(terminal,lambda: uptime_seconds(terminal) is not None and uptime_seconds(terminal)<=2,'external restart did not reanchor uptime')
+            terminal.wait('Just started')
             capture(terminal,output,'external-restart')
             results['external_restart_and_uptime_reset']=True
             terminal.send(b'r');terminal.settle()

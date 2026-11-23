@@ -5,17 +5,18 @@ import (
 	"strings"
 	"time"
 
-	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nelvko/lazyclash/internal/i18n"
+	"github.com/nelvko/lazyclash/internal/service"
 )
 
 func overviewCoreCard(o dashboardOptions, width int) dashboardBlock {
 	tr := o.Locale.T
 	s := o.Snapshot
 	style := func(value, color string) string { return themed(clean(value), color, panel, o.Dim) }
-	name := lipgloss.NewStyle().Bold(true).Render(style("Mihomo", text))
+	state, _, color := headerCoreState(o)
 	if !s.Installed && !o.StateUnavailable {
-		return overviewControlPanel(o, width, tr("dashboard.overview.service"), []string{name}, []overviewControlButton{
+		return overviewControlPanel(o, width, tr("dashboard.overview.service"), []string{style(state, color)}, []overviewControlButton{
 			{id: "core.install", label: tr("dashboard.action.install"), enabled: !o.Busy},
 		})
 	}
@@ -23,37 +24,18 @@ func overviewCoreCard(o dashboardOptions, width int) dashboardBlock {
 	control := overviewCoreToggle(o)
 	transition := control.state == togglePending
 	running := !o.StateUnavailable && s.Service.Active && s.ServiceError == ""
-	version := s.Version
-	if running && s.RunningVersion != "" {
-		version = s.RunningVersion
+	lines := []string{style(cellCrop(state, inner), color)}
+	if running && !transition {
+		if elapsed, ok := observedCoreUptime(s.Service, o.Now); ok {
+			lines = append(lines, style(coreStartAge(elapsed, o.Locale), muted))
+		}
 	}
-	now := o.Now
-	if now.IsZero() {
-		now = time.Now()
-	}
-	uptime := ""
-	if running && s.Service.State == "active" && !transition && s.Service.PID > 0 && !s.Service.StartedAt.IsZero() && !s.Service.StartedAt.After(now) {
-		uptime = tr("dashboard.core.uptime", formatCoreUptime(now.Sub(s.Service.StartedAt)))
-	}
-	state, _, color := headerCoreState(o)
-	if version = clean(version); version != "" {
-		name += themed("  "+version, muted, panel, o.Dim)
-	}
-	content := overviewTextBlock([]string{themed(cellCrop(state, inner), color, panel, o.Dim), name}, inner)
-	// A long-running process can add hour digits. Reserve its time row across
-	// lifecycle changes, including any extra lines needed on narrow screens.
-	timeRows := overviewTextBlock([]string{themed(uptime, muted, panel, o.Dim)}, inner)
-	budget := tr("dashboard.core.uptime", formatCoreUptime(time.Duration(1<<63-1)))
-	for n := len(strings.Split(wrapText(budget, inner), "\n")); len(timeRows.lines) < n; {
-		timeRows.blank()
-	}
-	content.append(timeRows)
-	var details []string
 	if running && s.RunningVersion != "" && s.Version != "" && s.RunningVersion != s.Version {
-		details = append(details, style(tr("dashboard.kernel.installed", clean(s.Version)), warning), style(tr("dashboard.core.restartVersion"), warning))
+		lines = append(lines, style(tr("dashboard.kernel.running", clean(s.RunningVersion)), warning),
+			style(tr("dashboard.kernel.installed", clean(s.Version)), warning), style(tr("dashboard.core.restartVersion"), warning))
 	}
 	if running && s.Desired.Known && !s.Desired.Running && !transition {
-		details = append(details, style(tr("dashboard.core.stopRequested"), warning))
+		lines = append(lines, style(tr("dashboard.core.stopRequested"), warning))
 	}
 	stopped := s.Service.State == "inactive" || s.Service.State == "failed"
 	unexpectedExit := stopped && s.Service.State != "failed" && s.Desired.Known && s.Desired.Running
@@ -62,9 +44,9 @@ func overviewCoreCard(o dashboardOptions, width int) dashboardBlock {
 		if s.Service.Result != "" && s.Service.Result != "success" {
 			reason = tr("dashboard.core.failureReason", clean(s.Service.Result), s.Service.ExitCode)
 		}
-		details = append(details, style(reason, errorColor))
+		lines = append(lines, style(reason, errorColor))
 	} else if unexpectedExit && !transition {
-		details = append(details, style(tr("dashboard.core.exitHint"), warning))
+		lines = append(lines, style(tr("dashboard.core.exitHint"), warning))
 	}
 	monitorUnavailable := s.APIError != ""
 	if o.RuntimeReceived && o.Runtime.State == "ready" {
@@ -74,16 +56,23 @@ func overviewCoreCard(o dashboardOptions, width int) dashboardBlock {
 		monitorUnavailable = monitorUnavailable || o.Runtime.Error != "" || o.Runtime.TrafficError != "" || o.Runtime.MemoryError != "" || o.Runtime.ConnectionsError != ""
 	}
 	if s.ServiceError != "" {
-		details = append(details, style(cellCrop(o.Locale.Diagnostic(s.ServiceError, s.ServiceDiagnostic), inner), warning))
+		lines = append(lines, style(cellCrop(o.Locale.Diagnostic(s.ServiceError, s.ServiceDiagnostic), inner), warning))
 	} else if running && monitorUnavailable {
-		details = append(details, style(tr("dashboard.core.monitorUnavailable"), warning))
+		lines = append(lines, style(tr("dashboard.core.monitorUnavailable"), warning))
 	} else if control.state == toggleUnknown {
-		details = append(details, style(tr("dashboard.core.unknownHint"), muted))
+		lines = append(lines, style(tr("dashboard.core.unknownHint"), muted))
 	}
 	if issue := runtimeStopIssue(s, o.Locale); !o.StateUnavailable && issue != "" {
-		details = append(details, style(issue, muted))
+		lines = append(lines, style(issue, muted))
 	}
-	content.append(overviewTextBlock(details, inner))
+	content := overviewTextBlock(lines, inner)
+	// Reserve the age line after any diagnostics so the card stays steady
+	// across startup, shutdown and changes of time unit on narrow screens.
+	longestAge := coreStartAge(time.Duration(1<<63-1), o.Locale)
+	minRows := 2 + strings.Count(wrapText(longestAge, inner), "\n")
+	for len(content.lines) < minRows {
+		content.blank()
+	}
 	heading := overviewLabelSlot(o, inner, overviewHeading(o, tr("dashboard.overview.service")), coreActionFace(o, control), "core.toggle")
 	return overviewPanel(o, width, heading, content, nil)
 }
@@ -102,6 +91,30 @@ func coreActionFace(o dashboardOptions, control toggleModel) string {
 		return renderButton(stop, options)
 	}
 	return renderButton(start, options)
+}
+
+func observedCoreUptime(status service.Status, now time.Time) (time.Duration, bool) {
+	if !status.Active || status.State != "active" || status.PID <= 0 || status.StartedAt.IsZero() {
+		return 0, false
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	elapsed := now.Sub(status.StartedAt)
+	return elapsed, elapsed >= 0
+}
+
+func coreStartAge(elapsed time.Duration, locale i18n.Localizer) string {
+	switch {
+	case elapsed < time.Minute:
+		return locale.T("dashboard.core.startedNow")
+	case elapsed < time.Hour:
+		return locale.T("dashboard.core.startedMinutes", int(elapsed/time.Minute))
+	case elapsed < 24*time.Hour:
+		return locale.T("dashboard.core.startedHours", int(elapsed/time.Hour))
+	default:
+		return locale.T("dashboard.core.startedDays", int(elapsed/(24*time.Hour)))
+	}
 }
 
 func formatCoreUptime(elapsed time.Duration) string {

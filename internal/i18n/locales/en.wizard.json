@@ -59,6 +59,7 @@
   "wizard.installed_version": "Installed version",
   "wizard.running_unknown": "Running (version unavailable)",
   "wizard.running_version": "Running version",
+  "wizard.uptime": "Uptime",
   "wizard.local.choose": "Use a local binary instead of downloading",
   "wizard.local.selected": "[x] Local binary selected",
   "wizard.local.executable": "Local Mihomo executable",

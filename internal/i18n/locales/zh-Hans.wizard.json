@@ -59,6 +59,7 @@
   "wizard.installed_version": "已安装版本",
   "wizard.running_unknown": "运行中（版本不可用）",
   "wizard.running_version": "运行版本",
+  "wizard.uptime": "运行时长",
   "wizard.local.choose": "使用本地可执行文件，跳过下载",
   "wizard.local.selected": "[x] 已选择本地可执行文件",
   "wizard.local.executable": "本地 Mihomo 可执行文件",

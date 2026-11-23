@@ -67,8 +67,15 @@ def assert_core_affordance(terminal, words, scenario, profile, expect_focus=Fals
     assert re.fullmatch(r"\s*" + marker + r"\s*" + face + r"[\s│]*", heading), \
         "incorrect heading action or focus: " + repr(heading)
     body = ["".join(row[x:right]) for row in terminal.screen.cells[y + 1:y + 7]]
-    assert any(line.lstrip().startswith(status) for line in body), "missing core observation: " + status
-    assert any(re.search(r"Mihomo\s+v1\.19\.33", line) for line in body), "missing core identity/version"
+    state_row = next((i for i, line in enumerate(body) if line.lstrip().startswith(status)), None)
+    assert state_row is not None, "missing core observation: " + status
+    age = words["dashboard.core.startedHours"] % 2
+    if scenario in ("stopped", "unavailable"):
+        assert all(age not in line for line in body), "inactive or unobserved core retained its start time"
+    else:
+        assert body[state_row + 1].lstrip().startswith(age), "missing relative start time below core state"
+    if scenario != "drift":
+        assert all("v1.19.33" not in line for line in body), "core card exposed a version without a mismatch"
     return action
 
 
@@ -217,17 +224,18 @@ def exercise(preview, binary, output, language, profile, scenario, args):
     report = output / "calls.json"
     terminal = fixture_terminal(preview, binary, report, language, profile, scenario)
     try:
-        terminal.wait("v1.19.33" if scenario != "unavailable" else "Fixture service observation unavailable")
+        terminal.wait("subscription.example")
         terminal.settle()
         preview.capture(terminal, output, "overview-initial", args)
         screen = terminal.screen.text()
         lifecycle = assert_core_affordance(terminal, words, scenario, profile)
         if scenario in ("running", "pending"):
-            for value in ("02:18:", "香港 01", "日常订阅"):
+            for value in ("香港 01", "日常订阅"):
                 assert value in screen, "missing initial observation: " + value
             assert "4242" not in screen, "core status retained diagnostic PID"
         elif scenario == "drift":
-            for value in ("v1.20.0", "v1.19.33", words["dashboard.core.restartVersion"]):
+            for value in (words["dashboard.kernel.installed"] % "v1.20.0",
+                          words["dashboard.kernel.running"] % "v1.19.33", words["dashboard.core.restartVersion"]):
                 assert value in screen, "missing state discrepancy: " + value
         elif scenario == "direct":
             assert words["dashboard.overview.modeDirect"] in screen, "actual Direct omitted its explanation"

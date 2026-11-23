@@ -413,7 +413,7 @@ func TestOverviewLayoutPreservesDetailsAndActionTargets(t *testing.T) {
 			for _, word := range strings.Fields(strings.ReplaceAll(ansi.Strip(body), "│", " ")) {
 				words[word]++
 			}
-			for _, value := range []string{"Connections", "↑ Upload", "↓ Download", "1.0 MiB", "2.0 MiB", "2.0 KiB/s", "4.0 KiB/s", "16.0 MiB", "Not supported by the user service.", "Installed version:", "v1.20.0", "v1.19.33", "Restart to use the installed version", "Stop was requested; the process is still running"} {
+			for _, value := range []string{"Connections", "↑ Upload", "↓ Download", "1.0 MiB", "2.0 MiB", "2.0 KiB/s", "4.0 KiB/s", "16.0 MiB", "Not supported by the user service.", "Installed version: v1.20.0", "Running version: v1.19.33", "Restart to use the installed version", "Stop was requested; the process is still running"} {
 				for _, word := range strings.Fields(value) {
 					if words[word] == 0 {
 						t.Errorf("overview lost word %q from detail %q", word, value)

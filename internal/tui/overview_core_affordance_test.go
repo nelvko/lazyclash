@@ -51,7 +51,7 @@ func TestCoreCardPlacesActionInHeadingAndGroupsReadOnlyDetails(t *testing.T) {
 						t.Fatalf("heading action not at the right edge: %+v / %q", hit, ansi.Strip(block.lines[hit.Y]))
 					}
 					full, _, _ := headerCoreState(o)
-					want := []string{full, "Mihomo  v1.19.33", o.Locale.T("dashboard.core.uptime", "01:00:00")}
+					want := []string{full, o.Locale.T("dashboard.core.startedHours", 1)}
 					var body []string
 					for _, line := range block.lines[hit.Y+1:] {
 						line = strings.TrimRight(ansi.Strip(line), " ")
@@ -153,9 +153,9 @@ func TestCoreCardMouseOnlyActivatesTheStartStopButton(t *testing.T) {
 				}
 
 				state, _, _ := headerCoreState(m.navigationOptions())
-				fields := []string{state, "Mihomo"}
+				fields := []string{state}
 				if active {
-					fields = append(fields, strings.TrimSpace(m.tr("dashboard.core.uptime", "")))
+					fields = append(fields, m.tr("dashboard.core.startedHours", 1))
 				}
 				g := dashboardGeometry(m.navigationOptions())
 				for _, field := range fields {

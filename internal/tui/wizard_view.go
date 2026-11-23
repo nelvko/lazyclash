@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"runtime"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/textinput"
 	"charm.land/lipgloss/v2"
@@ -312,6 +313,9 @@ func (m *Model) wizardDocument(width int) (wizardDocument, []wizardButton, strin
 				running = m.tr("wizard.running_unknown")
 			}
 			d.pair(m.tr("wizard.running_version"), running)
+			if elapsed, ok := observedCoreUptime(m.snapshot.Service, time.Now()); ok && m.snapshotReady && m.snapshot.ServiceError == "" {
+				d.pair(m.tr("wizard.uptime"), formatCoreUptime(elapsed))
+			}
 		}
 		d.pair(m.tr("wizard.platform_detected"), runtime.GOOS+"/"+mihomo.RecommendedVariant())
 		d.space()
