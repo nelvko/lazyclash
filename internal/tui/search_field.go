@@ -62,13 +62,6 @@ func searchControlWidth(controls dashboardBlock) int {
 	return ansi.StringWidth(controls.lines[0])
 }
 
-func (m *Model) searchToolbarGap() int {
-	if m.height >= 24 {
-		return 1
-	}
-	return 0
-}
-
 func (m *Model) filterToolbarRows(width int) int {
 	if m.page == "logs" {
 		return m.logFilterRows(width)

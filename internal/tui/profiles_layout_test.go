@@ -13,6 +13,18 @@ import (
 	"github.com/nelvko/lazyclash/internal/i18n"
 )
 
+func TestSubscriptionInputAlignsWithRulesSearch(t *testing.T) {
+	for _, size := range [][2]int{{160, 40}, {80, 24}, {60, 18}} {
+		m := profileNavigationModel(size[0], size[1])
+		field := findTarget(t, m, "profiles.url")
+		rules, id := searchFieldModel(t, "rules", size[0], size[1])
+		search := findTarget(t, rules, id)
+		if field.Y != search.Y {
+			t.Errorf("%v: subscription input starts at row %d, rules search at %d", size, field.Y, search.Y)
+		}
+	}
+}
+
 func TestProfileCardsKeepBoundedMetadataAndAlignedStatus(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		for _, width := range []int{12, 16, 28, 55} {

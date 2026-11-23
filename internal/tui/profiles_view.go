@@ -21,11 +21,7 @@ func (m *Model) profilesBody(width int) (string, []hitRegion) {
 }
 
 func (m *Model) profilesIntro(width int) dashboardBlock {
-	var body dashboardBlock
-	if !m.compactProfileCards() && m.searchToolbarGap() > 0 {
-		body.blank()
-	}
-	body.append(m.profilesToolbar(width))
+	body := m.profilesToolbar(width)
 	body.blank()
 	return body
 }
@@ -75,7 +71,7 @@ func (m *Model) profilesToolbar(width int) dashboardBlock {
 	paste := renderButton("⎘", buttonOptions{Kind: buttonText, Surface: bg, Compact: true,
 		Hovered: m.hover == pasteID, Focused: m.focus == pasteID, Disabled: disabled})
 	var trailing dashboardBlock
-	if pasteWidth := ansi.StringWidth(paste); inputFieldInlineTrailing(fieldWidth, pasteWidth, true) {
+	if pasteWidth := ansi.StringWidth(paste); pasteWidth <= fieldWidth {
 		trailing = dashboardBlock{lines: []string{paste}, targets: []hitRegion{{ID: pasteID, W: pasteWidth, H: 1}}}
 	}
 	body = renderInputField(input, inputFieldOptions{ID: "profiles.url", ClearID: "profiles.url.clear", ClearHovered: m.hover == "profiles.url.clear", ClearFocused: m.focus == "profiles.url.clear", Width: fieldWidth, Surface: bg,

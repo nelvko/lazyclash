@@ -16,7 +16,7 @@ func TestInitialProfileReadFailureDoesNotPresentAnEmptyLibrary(t *testing.T) {
 	m.page = "profiles"
 	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 32})
 	view := ansi.Strip(m.View().Content)
-	for _, absent := range []string{m.tr("empty.profiles.none"), m.tr("profiles.empty_hint"), "Mihomo not installed", "Paste subscription URL or local path"} {
+	for _, absent := range []string{m.tr("empty.profiles.none"), m.tr("profiles.empty_hint"), "Mihomo not installed", m.tr("profiles.url_placeholder")} {
 		if strings.Contains(view, absent) {
 			t.Fatalf("unreadable snapshot was presented as known state: %q\n%s", absent, view)
 		}

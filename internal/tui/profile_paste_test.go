@@ -9,7 +9,7 @@ import (
 )
 
 func TestProfilePasteMouseInsertsAtCursor(t *testing.T) {
-	for _, width := range []int{120, 60, 40} {
+	for _, width := range []int{120, 60, 40, 24} {
 		model := profileInteractionsModel(&fakeBackend{}, width, 24)
 		model.activate("profiles.url")
 		model, _ = update(model, tea.PasteMsg{Content: "https://example.invalid/.yaml"})
@@ -19,7 +19,11 @@ func TestProfilePasteMouseInsertsAtCursor(t *testing.T) {
 		}
 		field := findTarget(t, model, "profiles.url")
 		paste := findTarget(t, model, "profiles.url.paste")
-		if paste.Y != field.Y+1 || paste.X <= field.X+2+field.InputWidth || paste.X+paste.W >= field.X+field.W {
+		if width == 24 {
+			if paste.Y != field.Y+field.H || paste.X+paste.W != field.X+field.W {
+				t.Fatalf("narrow field did not wrap the paste button to its right edge: %+v %+v", field, paste)
+			}
+		} else if paste.Y != field.Y+1 || paste.X <= field.X+2+field.InputWidth || paste.X+paste.W >= field.X+field.W {
 			t.Fatalf("width %d: paste button overlaps the editor or frame: %+v %+v", width, field, paste)
 		}
 

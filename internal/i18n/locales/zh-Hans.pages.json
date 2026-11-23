@@ -1,6 +1,6 @@
 {
   "search.clear": "清空",
-  "profiles.url_placeholder": "粘贴订阅 URL 或本地路径",
+  "profiles.url_placeholder": "订阅链接或本地文件路径",
   "profiles.paste": "粘贴",
   "profiles.clipboard_waiting": "正在等待终端返回剪贴板…",
   "profiles.clipboard_unavailable": "无法读取剪贴板，请使用终端自带的粘贴快捷键。",

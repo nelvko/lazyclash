@@ -106,7 +106,7 @@ func TestProfileUpdateFormattingAndInputsUseSelectedLanguage(t *testing.T) {
 	if got := profileAge(now.Add(-2*time.Hour), now, i18n.New(i18n.English)); got != "2h ago" {
 		t.Fatalf("English formatter changed: %s", got)
 	}
-	if got := newProfilesState(i18n.New(i18n.Chinese)).url.Placeholder; got != "粘贴订阅 URL 或本地路径" {
+	if got := newProfilesState(i18n.New(i18n.Chinese)).url.Placeholder; got != "订阅链接或本地文件路径" {
 		t.Fatalf("unexpected subscription placeholder: %s", got)
 	}
 	if got := newLogsState(i18n.New(i18n.Chinese)).search.Placeholder; got != "搜索日志" {

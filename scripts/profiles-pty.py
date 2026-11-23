@@ -147,7 +147,7 @@ def main():
             header_row(terminal, "Update all")
             (output / "profiles-empty.txt").write_text(terminal.screen.text())
             assert "Sources (" not in terminal.screen.text(), "source management remained in the Profiles header"
-            terminal.click_text("Paste subscription URL or local path")
+            terminal.click_text("Subscription URL or local file path")
             terminal.wait("Enter Import")
             secret = "pty-private-token-q1234567"
             address = "http://127.0.0.1:%d/%s?token=%s" % (server.server_port, secret, secret)
