@@ -127,14 +127,9 @@ func TestProxyGridFitsItsCardEdgesToTerminalSizeAndColors(t *testing.T) {
 				plain := ansi.Strip(line)
 				position := y % stride
 				if tc.cardRows == 4 && position == 0 && !strings.Contains(plain, "▄") ||
-					tc.cardRows == 2 && strings.ContainsAny(plain, "▄▗") {
+					tc.cardRows == 4 && position == 3 && !strings.Contains(plain, "▀") ||
+					tc.cardRows == 2 && strings.ContainsAny(plain, "▄▀▗▝") {
 					t.Fatalf("unexpected card edge at row %d: %q", y, plain)
-				}
-				if tc.cardRows == 4 && position == 3 {
-					if strings.Trim(plain, " ▌") != "" {
-						t.Fatalf("unexpected content on the bottom edge: %q", plain)
-					}
-					continue
 				}
 				if blank := strings.TrimSpace(plain) == ""; blank != (position == tc.cardRows) {
 					t.Fatalf("unexpected grid spacing at row %d: %q", y, plain)
@@ -151,7 +146,7 @@ func TestProxyGridFitsItsCardEdgesToTerminalSizeAndColors(t *testing.T) {
 	}
 }
 
-func TestProxyCardFacesAndSelectedRailContinueIntoTheEdges(t *testing.T) {
+func TestProxyCardsCenterBothTextRowsAndAlignTheSelectedRail(t *testing.T) {
 	for _, tc := range []struct {
 		name, surface   string
 		selected, hover bool
@@ -179,18 +174,13 @@ func TestProxyCardFacesAndSelectedRailContinueIntoTheEdges(t *testing.T) {
 			}{
 				{1, 0, "▄", tc.surface, bg, 0},
 				{2, 1, "H", text, tc.surface, uv.AttrBold}, {2, 2, "S", muted, tc.surface, 0},
+				{1, 3, "▀", tc.surface, bg, 0},
 			} {
 				got := screen.CellAt(pixel.x, pixel.y)
 				want := uv.Style{Fg: lipgloss.Color(pixel.foreground), Bg: lipgloss.Color(pixel.background), Attrs: pixel.attrs}
 				if got == nil || got.Content != pixel.glyph || !got.Style.Equal(&want) {
 					t.Fatalf("wrong face at (%d,%d): got %+v, want %q with %+v", pixel.x, pixel.y, got, pixel.glyph, want)
 				}
-			}
-			bottom := screen.CellAt(1, 3)
-			wantBottom := bottom.Style
-			wantBottom.Bg = lipgloss.Color(tc.surface)
-			if bottom.Content != " " || !bottom.Style.Equal(&wantBottom) {
-				t.Fatalf("bottom edge does not fill its cell with the card surface: %+v", bottom)
 			}
 			if !tc.selected {
 				for _, y := range []int{0, 3} {
@@ -201,7 +191,7 @@ func TestProxyCardFacesAndSelectedRailContinueIntoTheEdges(t *testing.T) {
 				}
 				return
 			}
-			for y, glyph := range []string{"▗", "▌", "▌", "▌"} {
+			for y, glyph := range []string{"▗", "▌", "▌", "▝"} {
 				fg, background := accent, bg
 				if glyph == "▌" {
 					fg, background = bg, accent // the accent fills the right half of the cell
@@ -227,7 +217,7 @@ func TestProxyHelpClearsCardEdgesWithoutReflow(t *testing.T) {
 
 	m, _ = update(m, key("?"))
 	card := m.proxyNode(0, 0, grid.cardWidth)
-	if !m.helpOpen || strings.ContainsAny(m.screen, "▄▗") {
+	if !m.helpOpen || strings.ContainsAny(m.screen, "▄▀▗▝") {
 		t.Fatal("opening help left block glyphs in the backdrop")
 	}
 	if m.total != total || len(card.lines) != len(before.lines) || m.proxyGrid(width) != grid {

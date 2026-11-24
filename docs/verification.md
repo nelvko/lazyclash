@@ -1,5 +1,9 @@
 # 验证入口
 
+## 节点卡片文字居中（2026-11-24）
+
+在 Kitty 真彩终端中，用六个示例节点检查了普通和选中卡片。原生截图中卡面高 90 像素，两行文字区域上下各留 15 像素。按可见笔画测量，「香港 01 / VLESS」上下留白为 17 和 20 像素，「日本 02 / Trojan」为 17 和 15 像素。8 像素宽的选中竖条与卡面等高。每排仍占四个终端行，相邻卡面的间隔为一行。[Kitty 原生截图局部](../.test-artifacts/proxy-centered-cards/kitty-selected-normal.png)
+
 ## 深色节点卡片（2026-11-24）
 
 170×32 中文真彩终端中，六个示例节点按四加二排列。字符格重绘后，每张卡片约 420×94 像素，上下两排相隔 14 像素。150×46 下展开含 47 个节点的组，首屏完整显示前 36 个节点的名称、延迟和协议。两张预览均使用合成数据。[六节点预览](../.test-artifacts/proxy-card-density-preview/six-final-170x32.png) · [47 节点预览](../.test-artifacts/proxy-card-density-preview/forty-seven-final-150x46.png)

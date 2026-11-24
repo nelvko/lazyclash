@@ -488,7 +488,7 @@ def assert_card_spacing(terminal, profile):
         card_width = xs[1] - xs[0] - 1
         assert ys[0] == group_header(terminal, "PROXY")[1] + 3, "first card edge does not follow the header"
     else:
-        assert not any(c in ("▄", "▗") for row in cells[ys[0] - 1:ys[-1] + 3] for c in row[xs[0] - 2:]), (
+        assert not any(c in ("▄", "▀", "▗", "▝") for row in cells[ys[0] - 1:ys[-1] + 3] for c in row[xs[0] - 2:]), (
             "plain or compact cards contain block edges")
     for x, y in positions:
         assert cells[y + 1][x].strip(), "metadata is missing below the node name"
@@ -502,13 +502,13 @@ def assert_card_spacing(terminal, profile):
                 selected = cells[y][left] == "▌"
                 for c in range(left + int(selected), left + card_width):
                     assert cells[y - 1][c] == "▄" and styles[y - 1][c][:2] == (card, page), "top edge has a seam"
-                    assert cells[y + 2][c] == " " and styles[y + 2][c][1] == card, "bottom edge has a seam"
+                    assert cells[y + 2][c] == "▀" and styles[y + 2][c][:2] == (card, page), "bottom half-cell does not mirror the top edge"
                 if selected:
                     ink, accent = styles[y][left][:2]
                     assert ink == page and accent != ink, "selected rail fills more than the right half cell"
-                    assert cells[y - 1][left] == "▗" and styles[y - 1][left][:2] == (accent, page), "selected rail misses the top of the card"
-                    for row in (y + 1, y + 2):
-                        assert cells[row][left] == "▌" and styles[row][left][:2] == (page, accent), "selected rail does not reach the bottom of the card"
+                    assert cells[y + 1][left] == "▌" and styles[y + 1][left][:2] == (page, accent), "rail changes between the two text rows"
+                    for row, cap in ((y - 1, "▗"), (y + 2, "▝")):
+                        assert cells[row][left] == cap and styles[row][left][:2] == (accent, page), "rail and face differ in height"
             elif cells[y][left] == "▌":
                 assert styles[y][left][1] == card and styles[y][left][0] != card, "compact rail lost its half-cell marker"
     return len(xs)
@@ -607,7 +607,8 @@ def exercise(preview, binary, output, language, profile, args):
         x, y = candidate_position(terminal, "HK 01")
         rail = x - 2
         bottom = y + 1 + edge_rows
-        assert all(terminal.screen.cells[row][rail] == "▌" for row in range(y, bottom + 1)), "selection rail did not reach the card bottom"
+        expected_rail = "▗▌▌▝" if edge_rows else "▌▌"
+        assert "".join(terminal.screen.cells[row][rail] for row in range(y - edge_rows, bottom + 1)) == expected_rail, "incorrect selection rail"
         assert terminal.screen.cells[bottom + 1][rail] != "▌", "selection rail extends below the card"
         if profile != "no-color":
             other_x, other_y = candidate_position(terminal, "JP 01")

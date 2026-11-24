@@ -462,7 +462,7 @@ func (m *Model) proxyNode(gi, ni, width int) dashboardBlock {
 	b.lines[padding] = themed(cellPad(line, width), text, surface, false)
 	b.lines[padding+1] = themed(cellPad(meta, width), text, surface, false)
 	if padding > 0 {
-		b.lines[0], b.lines[len(b.lines)-1] = proxyCardEdges(width, edge, surface, selected, m.dashboardDimmed())
+		b.lines[0], b.lines[len(b.lines)-1] = proxyCardEdges(width, surface, selected, m.dashboardDimmed())
 	}
 	// Keep one full-height left region for navigation, then fill each row around
 	// its independent actions. Disabled delay slots remain inert.
@@ -492,21 +492,20 @@ func (m *Model) proxyNode(gi, ni, width int) dashboardBlock {
 	return b
 }
 
-func proxyCardEdges(width int, edge, surface string, selected, dimmed bool) (top, bottom string) {
+func proxyCardEdges(width int, surface string, selected, dimmed bool) (top, bottom string) {
 	if dimmed {
 		// The monochrome backdrop would turn the shaped edges into solid text.
 		blank := strings.Repeat(" ", width)
 		return blank, blank
 	}
-	// Put the half-line gap above the card. The face and selection rail can
-	// then share a half-height top and a full-height bottom using block glyphs.
+	// Mirror the face and its half-width rail around the two text rows.
 	if selected && width > 0 {
 		top = themed("▗", accent, bg, false)
-		bottom = edge
+		bottom = themed("▝", accent, bg, false)
 		width--
 	}
 	top += themed(strings.Repeat("▄", width), surface, bg, false)
-	bottom += themed(strings.Repeat(" ", width), text, surface, false)
+	bottom += themed(strings.Repeat("▀", width), surface, bg, false)
 	return top, bottom
 }
 

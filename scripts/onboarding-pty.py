@@ -222,9 +222,11 @@ def png(screen, path, font_path, cjk_path, size):
             elif text in ("▆", "▂"):
                 height = round(cell_h * (3 if text == "▆" else 1) / 4)
                 draw.rectangle((left, top + cell_h - height, left + cell_w - 1, top + cell_h - 1), fill=fg)
-            elif text in ("▄", "▗"):
-                first_x = left + round(cell_w / 2) if text == "▗" else left
-                draw.rectangle((first_x, top + round(cell_h / 2), left + cell_w - 1, top + cell_h - 1), fill=fg)
+            elif text in ("▄", "▀", "▗", "▝"):
+                first_x = left + round(cell_w / 2) if text in ("▗", "▝") else left
+                half_height = cell_h // 2
+                first_y = top if text in ("▀", "▝") else top + cell_h - half_height
+                draw.rectangle((first_x, first_y, left + cell_w - 1, first_y + half_height - 1), fill=fg)
             elif text == "▌":
                 draw.rectangle((left, top, left + max(1, round(cell_w / 2)) - 1, top + cell_h - 1), fill=fg)
             else:
