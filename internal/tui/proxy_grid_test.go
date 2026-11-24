@@ -126,10 +126,15 @@ func TestProxyGridFitsItsCardEdgesToTerminalSizeAndColors(t *testing.T) {
 			for y, line := range body.lines {
 				plain := ansi.Strip(line)
 				position := y % stride
-				if tc.cardRows == 4 && position == 0 && !strings.Contains(plain, "▆") ||
-					tc.cardRows == 4 && position == 3 && !strings.Contains(plain, "▂") ||
-					tc.cardRows == 2 && strings.ContainsAny(plain, "▂▆") {
+				if tc.cardRows == 4 && position == 0 && !strings.Contains(plain, "▄") ||
+					tc.cardRows == 2 && strings.ContainsAny(plain, "▄▗") {
 					t.Fatalf("unexpected card edge at row %d: %q", y, plain)
+				}
+				if tc.cardRows == 4 && position == 3 {
+					if strings.Trim(plain, " ▌") != "" {
+						t.Fatalf("unexpected content on the bottom edge: %q", plain)
+					}
+					continue
 				}
 				if blank := strings.TrimSpace(plain) == ""; blank != (position == tc.cardRows) {
 					t.Fatalf("unexpected grid spacing at row %d: %q", y, plain)
@@ -158,10 +163,8 @@ func TestProxyCardFacesAndSelectedRailContinueIntoTheEdges(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			m, _ := proxiesModel(t, 150, 40)
-			left := tc.surface
 			if tc.selected {
 				m.snapshot.Groups[0].Now = "HK 01"
-				left = accent
 			}
 			if tc.hover {
 				m.hover = "node.0.1"
@@ -174,9 +177,8 @@ func TestProxyCardFacesAndSelectedRailContinueIntoTheEdges(t *testing.T) {
 				glyph, foreground, background string
 				attrs                         uint8
 			}{
-				{0, 0, "▆", left, bg, 0}, {1, 0, "▆", tc.surface, bg, 0},
+				{1, 0, "▄", tc.surface, bg, 0},
 				{2, 1, "H", text, tc.surface, uv.AttrBold}, {2, 2, "S", muted, tc.surface, 0},
-				{0, 3, "▂", bg, left, 0}, {1, 3, "▂", bg, tc.surface, 0},
 			} {
 				got := screen.CellAt(pixel.x, pixel.y)
 				want := uv.Style{Fg: lipgloss.Color(pixel.foreground), Bg: lipgloss.Color(pixel.background), Attrs: pixel.attrs}
@@ -184,11 +186,29 @@ func TestProxyCardFacesAndSelectedRailContinueIntoTheEdges(t *testing.T) {
 					t.Fatalf("wrong face at (%d,%d): got %+v, want %q with %+v", pixel.x, pixel.y, got, pixel.glyph, want)
 				}
 			}
-			if tc.selected {
-				for _, y := range []int{1, 2} {
-					if got := screen.CellAt(0, y); got.Content != "▌" || !got.Style.Equal(&uv.Style{Fg: lipgloss.Color(accent), Bg: lipgloss.Color(accent)}) {
-						t.Fatalf("rail was interrupted on row %d: %+v", y, got)
+			bottom := screen.CellAt(1, 3)
+			wantBottom := bottom.Style
+			wantBottom.Bg = lipgloss.Color(tc.surface)
+			if bottom.Content != " " || !bottom.Style.Equal(&wantBottom) {
+				t.Fatalf("bottom edge does not fill its cell with the card surface: %+v", bottom)
+			}
+			if !tc.selected {
+				for _, y := range []int{0, 3} {
+					first, next := screen.CellAt(0, y), screen.CellAt(1, y)
+					if first.Content != next.Content || !first.Style.Equal(&next.Style) {
+						t.Fatalf("unselected edge has a seam on row %d: %+v", y, first)
 					}
+				}
+				return
+			}
+			for y, glyph := range []string{"▗", "▌", "▌", "▌"} {
+				fg, background := accent, bg
+				if glyph == "▌" {
+					fg, background = bg, accent // the accent fills the right half of the cell
+				}
+				got := screen.CellAt(0, y)
+				if got.Content != glyph || !got.Style.Equal(&uv.Style{Fg: lipgloss.Color(fg), Bg: lipgloss.Color(background)}) {
+					t.Fatalf("half-cell rail differs on row %d: %+v", y, got)
 				}
 			}
 		})
@@ -201,13 +221,13 @@ func TestProxyHelpClearsCardEdgesWithoutReflow(t *testing.T) {
 	grid := m.proxyGrid(width)
 	total := m.total
 	before := m.proxyNode(0, 0, grid.cardWidth)
-	if len(before.lines) != 4 || !strings.Contains(m.screen, "▆") || !strings.Contains(m.screen, "▂") {
+	if len(before.lines) != 4 || !strings.Contains(m.screen, "▄") || !strings.Contains(m.screen, "▗") {
 		t.Fatal("rich grid fixture lost its visible card edges")
 	}
 
 	m, _ = update(m, key("?"))
 	card := m.proxyNode(0, 0, grid.cardWidth)
-	if !m.helpOpen || strings.ContainsAny(m.screen, "▆▂") {
+	if !m.helpOpen || strings.ContainsAny(m.screen, "▄▗") {
 		t.Fatal("opening help left block glyphs in the backdrop")
 	}
 	if m.total != total || len(card.lines) != len(before.lines) || m.proxyGrid(width) != grid {
@@ -219,7 +239,7 @@ func TestProxyHelpClearsCardEdgesWithoutReflow(t *testing.T) {
 		}
 	}
 	m, _ = update(m, special(tea.KeyEscape))
-	if m.helpOpen || !strings.Contains(m.screen, "▆") || !strings.Contains(m.screen, "▂") || m.total != total {
+	if m.helpOpen || !strings.Contains(m.screen, "▄") || !strings.Contains(m.screen, "▗") || m.total != total {
 		t.Fatal("closing help did not restore the card edges in place")
 	}
 }

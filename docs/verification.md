@@ -6,6 +6,8 @@
 
 卡片 PTY 在真彩、256 色和无色模式下验证了窗口缩放、选中竖条、延迟配色、点击重测与引用组跳转。模型测试另覆盖卡片边缘的鼠标命中、部分行滚动时的成员计数，以及打开和关闭帮助时卡片的位置。
 
+在相同字号的 170×32 终端预览里，选中竖条宽 6 像素，高 94 像素，逐行核对后与同排卡面上下齐平。[选中卡片前后对比](../.test-artifacts/proxy-flush-rail/compare.png) · [六节点全图](../.test-artifacts/proxy-flush-rail/six-flush-170x32.png)
+
 ## 概览当前订阅（2026-11-23）
 
 在 160×45 和 80×24 的真实 PTY 中，点击「当前订阅」的「订阅 ›」打开订阅页，同一条目在两页显示相同的描述或来源、更新时间、剩余量与总量及到期信息。内存夹具覆盖本地文件、未选用订阅、更新未生效、已过期和尚未应用。另在中英文终端验证了缩放到 40×16 后的操作。[宽屏概览](../.test-artifacts/current-subscription/described-overview-160x45.png) · [订阅页对照](../.test-artifacts/current-subscription/described-profiles-160x45.png) · [窄屏状态提示](../.test-artifacts/current-subscription/pending-overview-80x24.png)

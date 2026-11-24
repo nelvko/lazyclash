@@ -354,7 +354,7 @@ def assert_header_hover(terminal, name, words, profile):
     if profile == "no-color":
         assert not "".join(terminal.screen.cells[y + 2][left:right]).strip(), "plain header-to-card gap contains text"
     else:
-        assert terminal.screen.cells[y + 2][first_x] == "▆", "first card edge does not follow the header"
+        assert terminal.screen.cells[y + 2][first_x] == "▄", "first card edge does not follow the header"
     # This cell sits outside the card grid, on the same row as its top edge.
     click_cell(terminal, left, y + 2)
     terminal.settle()
@@ -488,24 +488,29 @@ def assert_card_spacing(terminal, profile):
         card_width = xs[1] - xs[0] - 1
         assert ys[0] == group_header(terminal, "PROXY")[1] + 3, "first card edge does not follow the header"
     else:
-        assert not any(c in ("▆", "▂") for row in cells[ys[0] - 1:ys[-1] + 3] for c in row[xs[0]:]), (
+        assert not any(c in ("▄", "▗") for row in cells[ys[0] - 1:ys[-1] + 3] for c in row[xs[0] - 2:]), (
             "plain or compact cards contain block edges")
     for x, y in positions:
         assert cells[y + 1][x].strip(), "metadata is missing below the node name"
         if profile != "no-color":
             card = styles[y][x][1]
             assert styles[y + 1][x][1] == card, "metadata and name do not share the card background"
+            left = x - 2
             if edges:
-                left = x - 2
                 page = styles[y][left - 1][1]
                 assert card != page, "card has the same background as its gutter"
-                for c in range(left, left + card_width):
-                    surface = styles[y][c][1] if c == left else card
-                    assert cells[y - 1][c] == "▆" and styles[y - 1][c][:2] == (surface, page), "top edge has a seam"
-                    assert cells[y + 2][c] == "▂" and styles[y + 2][c][:2] == (page, surface), "bottom edge has a seam"
-                if cells[y][left] == "▌":
-                    assert styles[y][left][0] == styles[y][left][1] != card, "selected rail is not a solid accent"
-                    assert styles[y + 1][left][:2] == styles[y][left][:2], "selected rail changes between text rows"
+                selected = cells[y][left] == "▌"
+                for c in range(left + int(selected), left + card_width):
+                    assert cells[y - 1][c] == "▄" and styles[y - 1][c][:2] == (card, page), "top edge has a seam"
+                    assert cells[y + 2][c] == " " and styles[y + 2][c][1] == card, "bottom edge has a seam"
+                if selected:
+                    ink, accent = styles[y][left][:2]
+                    assert ink == page and accent != ink, "selected rail fills more than the right half cell"
+                    assert cells[y - 1][left] == "▗" and styles[y - 1][left][:2] == (accent, page), "selected rail misses the top of the card"
+                    for row in (y + 1, y + 2):
+                        assert cells[row][left] == "▌" and styles[row][left][:2] == (page, accent), "selected rail does not reach the bottom of the card"
+            elif cells[y][left] == "▌":
+                assert styles[y][left][1] == card and styles[y][left][0] != card, "compact rail lost its half-cell marker"
     return len(xs)
 
 
@@ -601,8 +606,9 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.settle()
         x, y = candidate_position(terminal, "HK 01")
         rail = x - 2
-        assert all(terminal.screen.cells[row][rail] == "▌" for row in (y, y + 1)), "selection rail did not span both rows"
-        assert all(terminal.screen.cells[row][rail] != "▌" for row in (y - 1, y + 2)), "selection rail extends outside the card"
+        bottom = y + 1 + edge_rows
+        assert all(terminal.screen.cells[row][rail] == "▌" for row in range(y, bottom + 1)), "selection rail did not reach the card bottom"
+        assert terminal.screen.cells[bottom + 1][rail] != "▌", "selection rail extends below the card"
         if profile != "no-color":
             other_x, other_y = candidate_position(terminal, "JP 01")
             assert terminal.screen.styles[y][x][1] == terminal_color(preview, profile, "425d78", 24), "selected surface lost its blue tint"

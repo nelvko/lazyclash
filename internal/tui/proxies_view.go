@@ -408,14 +408,15 @@ func (m *Model) proxyNode(gi, ni, width int) dashboardBlock {
 		prefix = "›"
 	}
 	padding := m.proxyCardPadding()
-	rail, railSurface := " ", surface
+	rail, railColor, railSurface := " ", accent, surface
 	if selected {
 		rail = "▌"
 		if padding > 0 {
-			railSurface = accent
+			// Paint the inner half against the card while retaining the plain-text marker.
+			railColor, railSurface = bg, accent
 		}
 	}
-	edge := themed(rail, accent, railSurface, false)
+	edge := themed(rail, railColor, railSurface, false)
 	value, color := m.proxyDelayLabel(g.Name, node)
 	if !m.proxyTestable(node) {
 		value = "—"
@@ -461,7 +462,7 @@ func (m *Model) proxyNode(gi, ni, width int) dashboardBlock {
 	b.lines[padding] = themed(cellPad(line, width), text, surface, false)
 	b.lines[padding+1] = themed(cellPad(meta, width), text, surface, false)
 	if padding > 0 {
-		b.lines[0], b.lines[len(b.lines)-1] = proxyCardEdges(width, railSurface, surface, m.dashboardDimmed())
+		b.lines[0], b.lines[len(b.lines)-1] = proxyCardEdges(width, edge, surface, selected, m.dashboardDimmed())
 	}
 	// Keep one full-height left region for navigation, then fill each row around
 	// its independent actions. Disabled delay slots remain inert.
@@ -491,17 +492,21 @@ func (m *Model) proxyNode(gi, ni, width int) dashboardBlock {
 	return b
 }
 
-func proxyCardEdges(width int, rail, surface string, dimmed bool) (top, bottom string) {
+func proxyCardEdges(width int, edge, surface string, selected, dimmed bool) (top, bottom string) {
 	if dimmed {
 		// The monochrome backdrop would turn the shaped edges into solid text.
 		blank := strings.Repeat(" ", width)
 		return blank, blank
 	}
-	// Each end leaves a quarter cell of page background. Together the
-	// edges separate adjacent rows without spending a whole line on a gap.
-	rest := max(0, width-1)
-	top = themed("▆", rail, bg, false) + themed(strings.Repeat("▆", rest), surface, bg, false)
-	bottom = themed("▂", bg, rail, false) + themed(strings.Repeat("▂", rest), bg, surface, false)
+	// Put the half-line gap above the card. The face and selection rail can
+	// then share a half-height top and a full-height bottom using block glyphs.
+	if selected && width > 0 {
+		top = themed("▗", accent, bg, false)
+		bottom = edge
+		width--
+	}
+	top += themed(strings.Repeat("▄", width), surface, bg, false)
+	bottom += themed(strings.Repeat(" ", width), text, surface, false)
 	return top, bottom
 }
 
