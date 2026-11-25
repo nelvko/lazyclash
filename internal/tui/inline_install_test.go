@@ -435,8 +435,8 @@ func TestInlinePresentationRetainsSidebarAndFitsTerminal(t *testing.T) {
 					assertRegions(t, m.targets, size[0], size[1])
 					g := dashboardGeometry(m.dashboardOptions())
 					if size[0] >= 38 {
-						if g.width != min(96, g.headerWidth) || g.x != g.headerX {
-							t.Fatalf("inline body must cap at 96 cells and align with the full header: %+v", g)
+						if g.width != g.headerWidth || g.x != g.headerX {
+							t.Fatalf("inline body must fill the same width as its header: %+v", g)
 						}
 						if strings.Contains(m.screen, "▔") {
 							t.Fatal("inline setup retained a horizontal page divider")
@@ -454,6 +454,54 @@ func TestInlinePresentationRetainsSidebarAndFitsTerminal(t *testing.T) {
 				})
 			}
 		}
+	}
+}
+
+func TestInlineInstallTextUsesAvailableWidthAndControlsStayCompact(t *testing.T) {
+	for _, tc := range []struct{ width, textX, textWidth int }{
+		{160, 24, 131}, // Sidebar visible.
+		{48, 4, 40},    // Compact header, with room for an interactive form.
+	} {
+		t.Run(fmt.Sprint(tc.width), func(t *testing.T) {
+			m := ready(&fakeBackend{})
+			m.width, m.height = tc.width, 55
+			m.wizard.more, m.wizard.localMode = true, true
+			m.wizard.local.SetValue("/tmp/mihomo")
+			m.layout()
+			input := findTarget(t, m, "setup.local")
+			install := findTarget(t, m, "setup.install")
+			if input.W != min(60, tc.textWidth) || input.X != tc.textX || install.X != tc.textX {
+				t.Fatalf("local input %+v and install button %+v do not fit the left-aligned form", input, install)
+			}
+
+			// An unbroken path or diagnostic can use the complete row. Check
+			// both its longest run and total visible cells to catch clipping.
+			const length = 123
+			checkText := func(marker string) {
+				t.Helper()
+				screen := ansi.Strip(m.screen)
+				want := min(length, tc.textWidth)
+				if strings.Count(screen, marker) != length || !strings.Contains(screen, strings.Repeat(marker, want)) ||
+					strings.Contains(screen, strings.Repeat(marker, want+1)) {
+					t.Fatalf("expected all %d %q cells, wrapped at %d columns:\n%s", length, marker, want, screen)
+				}
+			}
+			m.wizard.step, m.wizard.details = stepInstalling, true
+			m.wizard.progress = mihomo.Progress{Stage: "download", Total: 100, Detail: strings.Repeat("~", length)}
+			m.wizard.logs = []string{strings.Repeat("^", length)}
+			m.layout()
+			checkText("~")
+			checkText("^")
+			screen := ansi.Strip(m.screen)
+			barWidth := min(54, tc.textWidth)
+			if strings.Count(screen, "░") != barWidth || !strings.Contains(screen, strings.Repeat("░", barWidth)) {
+				t.Fatalf("expected a %d-cell progress bar:\n%s", barWidth, screen)
+			}
+
+			m.wizard.step, m.wizard.err = stepResult, strings.Repeat("#", length)
+			m.layout()
+			checkText("#")
+		})
 	}
 }
 

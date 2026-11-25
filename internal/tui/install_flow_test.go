@@ -316,7 +316,7 @@ func TestInstallFlowPTYFixture(t *testing.T) {
 			return app.CoreUpdateCheck{}, errors.New("fixture expected stable channel")
 		}
 		if scenario == "check-retry" && attempt == 1 {
-			return app.CoreUpdateCheck{}, errors.New("Fixture version check failed")
+			return app.CoreUpdateCheck{}, errors.New("Fixture version check failed while reading release metadata. Retry when the test mirror publishes its manifest.")
 		}
 		return app.CoreUpdateCheck{LatestVersion: "v1.19.33", Channel: channel, Status: mihomo.UpdateNotInstalled, CheckedAt: time.Now()}, nil
 	}
@@ -333,7 +333,8 @@ func TestInstallFlowPTYFixture(t *testing.T) {
 	}
 	b.install = func(ctx context.Context, plan app.InstallPlan, _ downloadnet.Config, progress func(mihomo.Progress)) (app.InstallResult, error) {
 		installs.Add(1)
-		progress(mihomo.Progress{Stage: "download", Downloaded: 12 << 20, Total: 20 << 20, BytesPerSecond: 2 << 20, Detail: "Fixture transfer"})
+		progress(mihomo.Progress{Stage: "download", Downloaded: 12 << 20, Total: 20 << 20, BytesPerSecond: 2 << 20,
+			Detail: "Fixture transfer is copying the selected release to the staging directory before verifying the archive checksum."})
 		if scenario == "success" || scenario == "check-retry" {
 			select {
 			case <-ctx.Done():

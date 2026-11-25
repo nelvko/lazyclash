@@ -30,6 +30,7 @@ type hitRegion struct {
 	DropdownRight bool
 }
 type dashboardOptions struct {
+	settingsMouseRows bool // Include hover-only settings rows in screen hit testing.
 	Locale                          i18n.Localizer
 	Theme, EffectiveTheme           string
 	MessageTransient                bool
@@ -104,9 +105,6 @@ func dashboardGeometry(o dashboardOptions) dashboardLayout {
 		left = (o.Width - width) / 2
 		if sidebar {
 			left = sidebarWidth + (o.Width-sidebarWidth-width)/2
-		}
-		if o.InlineInstall {
-			width, left = min(96, width), headerX
 		}
 		if !sidebar && o.InlineInstall && o.Width < 38 {
 			// The compact setup notice needs the full row at very small sizes.
@@ -241,6 +239,7 @@ func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
 			body, bodyTargets = overviewContent(o, g.width)
 		}
 	case "settings":
+		o.settingsMouseRows = true
 		body, bodyTargets = settingsContent(o, g.width)
 	default:
 		body, bodyTargets = o.Body, o.BodyTargets

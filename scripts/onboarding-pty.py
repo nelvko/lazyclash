@@ -22,6 +22,8 @@ import time
 import unicodedata
 import uuid
 
+from tui_layout import sidebar_visible
+
 
 HERE = Path(__file__).resolve().parent
 SPEC = importlib.util.spec_from_file_location("lazyclash_onboarding_terminal", HERE / "pty-smoke.py")
@@ -255,6 +257,22 @@ def assert_uninstalled(home):
         raise AssertionError("Set up later permanently dismissed the guide")
 
 
+def check_install_frame(screen):
+    top = next(row for row in screen.cells if "┌" in row)
+    sidebar = sidebar_visible(screen.columns, screen.rows)
+    expected = (22, screen.columns - 4) if sidebar else (2, screen.columns - 3)
+    actual = (top.index("┌"), top.index("┐"))
+    assert actual == expected, (actual, expected)
+
+
+def check_fixture_wrap(screen, start, end, count, wrapped):
+    lines = screen.text().splitlines()
+    starts = [y for y, line in enumerate(lines) if start in line]
+    ends = [y for y, line in enumerate(lines) if end in line]
+    assert len(starts) == len(ends) == count, (start, starts, ends)
+    assert all((y < z if wrapped else y == z) for y, z in zip(starts, ends)), (start, starts, ends)
+
+
 def focus_control(terminal, label):
     """Use the real focus order; focused controls may scroll into view."""
     for _ in range(24):
@@ -268,14 +286,14 @@ def focus_control(terminal, label):
 def words(language):
     return ({"overview": "概览", "title": "安装 Mihomo 内核", "later": "稍后设置",
              "install": "下载并安装", "downloading": "正在下载", "cancelled": "安装已取消，清理已完成",
-             "routing": "代理模式", "profiles": "订阅", "quit": "q 退出", "more": "更多选项",
+             "core": "内核状态", "profiles": "订阅", "quit": "q 退出", "more": "更多选项", "details": "显示详情",
              "method": "下载方式", "network": "下载方式", "prefix": "加速地址",
              "choices": ("直连", "使用环境代理", "GitHub 加速"), "retry": "重试", "back": "返回概览",
              "start": "启动内核", "ready": "无需订阅即可启动内核", "apply": "应用"}
             if language == "zh-Hans" else
             {"overview": "Overview", "title": "Install the Mihomo core", "later": "Set up later",
              "install": "Download and install", "downloading": "Downloading", "cancelled": "Installation canceled; cleanup completed",
-             "routing": "Proxy mode", "profiles": "Profiles", "quit": "q Quit", "more": "More options",
+             "core": "Core status", "profiles": "Profiles", "quit": "q Quit", "more": "More options", "details": "Show details",
              "method": "Download method", "network": "Download method", "prefix": "Acceleration URL",
              "choices": ("Direct", "Use environment proxy", "GitHub acceleration"), "retry": "Retry", "back": "Back to overview",
              "start": "Start core", "ready": "start the core without a subscription", "apply": "Apply"})
@@ -356,8 +374,9 @@ def run(binary, output, language, profile, sizes, args, scenario):
                 if args.test_binary:
                     terminal.wait("Fixture version check failed" if scenario == "check-retry" else "v1.19.33")
                 capture(terminal, output, name + "-initial", args)
+                check_install_frame(terminal.screen)
                 screen = terminal.screen.text()
-                if "1 / 3" in screen or "[1 " in screen or labels["routing"] in screen:
+                if "1 / 3" in screen or "[1 " in screen or labels["core"] in screen:
                     raise AssertionError("First-run inline guidance retained mandatory steps or unavailable cards")
                 if labels["quit"] not in screen.splitlines()[-1]:
                     raise AssertionError("Quit hint is not in the final terminal row")
@@ -367,6 +386,8 @@ def run(binary, output, language, profile, sizes, args, scenario):
                     terminal.resize(columns, rows)
                 elif args.test_binary:
                     if scenario == "check-retry":
+                        if columns >= 160 or columns == 80:
+                            check_fixture_wrap(terminal.screen, "Fixture version check failed", "manifest.", 1, columns == 80)
                         focus_control(terminal, labels["retry"])
                         terminal.key(b"\r")
                         terminal.wait("v1.19.33")
@@ -385,6 +406,15 @@ def run(binary, output, language, profile, sizes, args, scenario):
                         terminal.wait(labels["ready"])
                         capture(terminal, output, name + "-success", args)
                     else:
+                        if columns >= 160 and rows >= 24:
+                            terminal.click_text(labels["details"])
+                            for cols, height in ((80, 24), (columns, rows)):
+                                terminal.resize(cols, height)
+                                settle(terminal)
+                                check_install_frame(terminal.screen)
+                                # The current transfer detail and its expanded log entry both reflow.
+                                check_fixture_wrap(terminal.screen, "Fixture transfer", "checksum.", 2, cols == 80)
+                                capture(terminal, output, name + "-details-%dx%d" % (cols, height), args)
                         terminal.key(b"\x1b")
                         terminal.wait(labels["cancelled"])
                         capture(terminal, output, name + "-cancelled", args)
@@ -394,7 +424,7 @@ def run(binary, output, language, profile, sizes, args, scenario):
                     focus_control(terminal, labels["later"])
                     terminal.key(b"\r")
                 terminal.wait_absent(labels["title"])
-                terminal.wait(labels["routing"])
+                terminal.wait(labels["core"])
                 capture(terminal, output, name + "-overview", args)
                 terminal.key(b"3")
                 terminal.wait(labels["profiles"])
