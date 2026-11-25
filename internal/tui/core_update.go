@@ -20,7 +20,7 @@ func (m *Model) checkCoreUpdate() tea.Cmd {
 	return m.queryCoreVersion("check-update", "")
 }
 
-func (m *Model) checkInstallVersion() tea.Cmd {
+func (m *Model) checkInstallVersion(operation ...notificationOperation) tea.Cmd {
 	if m.busy {
 		return nil
 	}
@@ -28,15 +28,15 @@ func (m *Model) checkInstallVersion() tea.Cmd {
 	w.updateMode, w.upgrading = false, false
 	w.step, w.focus, w.reveal = stepVersion, "install", true
 	w.release, w.plan = mihomo.Release{}, app.InstallPlan{}
-	return m.queryCoreVersion("install-check", mihomo.ChannelStable)
+	return m.queryCoreVersion("install-check", mihomo.ChannelStable, operation...)
 }
 
 // Installation and upgrades share the same read-only version query. Only an
 // explicit install action proceeds from this observation to asset resolution.
-func (m *Model) queryCoreVersion(kind string, channel mihomo.Channel) tea.Cmd {
+func (m *Model) queryCoreVersion(kind string, channel mihomo.Channel, operation ...notificationOperation) tea.Cmd {
 	w := &m.wizard
 	w.updateCheck, w.err, w.failedKind, w.refreshError = app.CoreUpdateCheck{}, "", "", ""
-	ctx := m.newJob("check-update")
+	ctx := m.newJob("check-update", operation...)
 	id, backend, cfg := m.id, m.backend, w.cfg
 	m.message = m.tr("core_update.checking")
 	return tea.Batch(func() tea.Msg {

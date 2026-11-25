@@ -89,23 +89,28 @@ func (m *Model) selection() string {
 	}
 	return "latest"
 }
-func (m *Model) resolveVersion() tea.Cmd {
+func (m *Model) requestInstall() tea.Cmd {
+	m.wizard.installRequested = true
+	return m.resolveVersion(notificationOperation{Key: "install", Context: m.tr("notification.install")})
+}
+
+func (m *Model) resolveVersion(operation ...notificationOperation) tea.Cmd {
 	if m.wizard.localMode {
-		return m.preparePlan()
+		return m.preparePlan(operation...)
 	}
 	if m.wizard.specific && strings.TrimSpace(m.wizard.version.Value()) == "" {
 		m.wizard.err = m.tr("wizard.version.required")
 		return nil
 	}
 	if !m.wizard.specific && m.wizard.updateCheck.LatestVersion == "" {
-		return m.checkInstallVersion()
+		return m.checkInstallVersion(operation...)
 	}
 	cfg, selection := m.wizard.cfg, m.selection()
 	if !m.wizard.specific {
 		// Pin the shared version check, never look up mutable latest twice.
 		selection = m.wizard.updateCheck.LatestVersion
 	}
-	ctx := m.newJob("resolve")
+	ctx := m.newJob("resolve", operation...)
 	id := m.id
 	backend := m.backend
 	m.wizard.err = ""
@@ -118,8 +123,8 @@ func (m *Model) resolveVersion() tea.Cmd {
 		return wizardMsg{id: id, kind: "resolve", release: r, err: err}
 	}, m.spinner.Tick)
 }
-func (m *Model) preparePlan() tea.Cmd {
-	ctx := m.newJob("prepare")
+func (m *Model) preparePlan(operation ...notificationOperation) tea.Cmd {
+	ctx := m.newJob("prepare", operation...)
 	id := m.id
 	backend := m.backend
 	release := m.wizard.release
@@ -135,12 +140,12 @@ func (m *Model) preparePlan() tea.Cmd {
 		return wizardMsg{id: id, kind: "prepare", plan: p, err: err}
 	}, m.spinner.Tick)
 }
-func (m *Model) installCore() tea.Cmd {
+func (m *Model) installCore(operation ...notificationOperation) tea.Cmd {
 	m.wizard.upgrading = false
-	return m.runCoreInstall()
+	return m.runCoreInstall(operation...)
 }
 
-func (m *Model) runCoreInstall() tea.Cmd {
+func (m *Model) runCoreInstall(operation ...notificationOperation) tea.Cmd {
 	if m.busy {
 		return nil
 	}
@@ -148,7 +153,7 @@ func (m *Model) runCoreInstall() tea.Cmd {
 		m.wizard.err = m.locale.Diagnostic(m.wizard.plan.BlockedReason, m.wizard.plan.BlockedDiagnostic)
 		return nil
 	}
-	ctx := m.newJob("install")
+	ctx := m.newJob("install", operation...)
 	id := m.id
 	backend := m.backend
 	plan, cfg := m.wizard.plan, m.wizard.cfg
@@ -252,7 +257,7 @@ func (m *Model) handleWizardResult(v wizardMsg) tea.Cmd {
 		w.focus = "install"
 		m.message = m.tr("core_update.checked")
 		if w.installRequested {
-			return m.resolveVersion()
+			return m.resolveVersion(m.notification.operation)
 		}
 	case "check-update":
 		w.updateCheck = v.updateCheck
@@ -274,14 +279,14 @@ func (m *Model) handleWizardResult(v wizardMsg) tea.Cmd {
 		m.message = m.tr("wizard.version_resolved", v.release.Version)
 		w.focus = "install"
 		if w.installRequested {
-			return m.preparePlan()
+			return m.preparePlan(m.notification.operation)
 		}
 	case "prepare":
 		w.plan = v.plan
 		w.release = v.plan.Release
 		if w.installRequested && v.plan.BlockedReason == "" && v.plan.ExistingVersion == "" {
 			w.installRequested = false
-			return m.installCore()
+			return m.installCore(m.notification.operation)
 		}
 		w.installRequested = false
 		w.step = stepConfirm
@@ -705,7 +710,7 @@ func (m *Model) wizardActivate(id string) tea.Cmd {
 	case "upgrade":
 		if !m.busy && w.updateCheck.Status == mihomo.UpdateAvailable && w.updateCheck.Channel == mihomo.ChannelStable {
 			w.upgrading = true
-			return m.runCoreInstall()
+			return m.runCoreInstall(notificationOperation{Key: "upgrade", Context: m.tr("core_update.title")})
 		}
 	case "network":
 		m.openNetwork(w.err != "")
@@ -785,8 +790,7 @@ func (m *Model) wizardActivate(id string) tea.Cmd {
 		if w.step == stepResult {
 			w.step = stepVersion
 			w.err = ""
-			w.installRequested = true
-			return m.resolveVersion()
+			return m.requestInstall()
 		}
 		if !w.localMode && !w.specific {
 			return m.checkInstallVersion()
@@ -807,8 +811,7 @@ func (m *Model) wizardActivate(id string) tea.Cmd {
 			if w.step == stepConfirm {
 				return m.installCore()
 			}
-			w.installRequested = true
-			return m.resolveVersion()
+			return m.requestInstall()
 		}
 	case "details":
 		w.details = !w.details

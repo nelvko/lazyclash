@@ -206,6 +206,7 @@ func New(ctx context.Context, backend Backend, languages ...string) Model {
 	m.colorProfile = colorprofile.Env(os.Environ())
 	m.noColor = os.Getenv("NO_COLOR") != ""
 	m.colorProfile = themeProfile(os.Environ(), m.colorProfile)
+	m.prepareNotification("refresh", "")
 	m.syncNotification()
 	m.layout()
 	return m
@@ -240,7 +241,7 @@ func (m *Model) snapshotCmd(id uint64, ctx context.Context, initial bool) tea.Cm
 		return resultMsg{id: id, snapshot: s, hasSnapshot: err == nil, prefs: p, err: errors.Join(pe, err), success: "State refreshed", transient: true}
 	}
 }
-func (m *Model) newJob(kind string) context.Context {
+func (m *Model) newJob(kind string, operations ...notificationOperation) context.Context {
 	m.stopProxyTests()
 	m.stopRules()
 	m.stopProviders()
@@ -252,13 +253,28 @@ func (m *Model) newJob(kind string) context.Context {
 	m.opCtx, m.cancel = context.WithCancel(m.ctx)
 	m.busy = true
 	m.job = kind
-	m.prepareNotification(kind, "")
+	op := notificationOperation{Key: kind}
+	if len(operations) > 0 {
+		op = operations[0]
+	}
+	// An automatic wizard phase gets its own cancellable request but keeps
+	// the foreground notification of the user action that started the chain.
+	if op.ID == 0 || op.ID != m.notification.operation.ID {
+		m.startNotification(op)
+	}
 	m.failure = ""
 	m.messageTransient = false
 	m.messageInformational = false
 	return m.opCtx
 }
 func (m *Model) abortLookup() {
+	for _, item := range m.notification.items {
+		if item.Operation == m.notification.operation.ID && item.Kind == "working" {
+			m.dismissNotificationID(item.ID)
+			break
+		}
+	}
+	m.message, m.failure = "", ""
 	if m.cancel != nil {
 		m.cancel()
 	}
@@ -273,12 +289,10 @@ func (m *Model) refresh() tea.Cmd {
 	return tea.Batch(m.snapshotCmd(m.id, ctx, false), m.spinner.Tick)
 }
 func (m *Model) begin(label, success string, work func(context.Context) error, operations ...notificationOperation) tea.Cmd {
-	ctx := m.newJob("action")
-	m.notification.operation.Context = label
-	if len(operations) > 0 {
-		op := operations[0]
-		m.notification.operation.Key, m.notification.operation.Context = op.Key, op.Context
+	if len(operations) == 0 {
+		operations = []notificationOperation{{Key: "action", Context: label}}
 	}
+	ctx := m.newJob("action", operations...)
 	id := m.id
 	backend := m.backend
 	m.message = label
@@ -1077,8 +1091,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.logs.search, cmd = m.logs.search.Update(msg)
 		}
 	}
+	// Publish the preceding result before first-run setup can start its own job.
+	m.syncNotification()
 	inline := m.syncInlineInstall()
-	notification := m.syncNotification()
+	if inline != nil {
+		m.syncNotification()
+	}
 	m.reconcileProfiles()
 	previousFocus := m.focus
 	nextProxies := m.syncProxies()
@@ -1106,8 +1124,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.layout()
 	intro := m.syncLogoIntro()
 	timers := m.syncNotificationTimers(time.Now())
-	if inline != nil || notification != nil || timers != nil || completion != nil || next != nil || nextRules != nil || nextRuleProviders != nil || intro != nil || nextProxies != nil {
-		return m, tea.Batch(cmd, inline, notification, timers, completion, next, nextRules, nextRuleProviders, intro, nextProxies)
+	if inline != nil || timers != nil || completion != nil || next != nil || nextRules != nil || nextRuleProviders != nil || intro != nil || nextProxies != nil {
+		return m, tea.Batch(cmd, inline, timers, completion, next, nextRules, nextRuleProviders, intro, nextProxies)
 	}
 	return m, cmd
 }

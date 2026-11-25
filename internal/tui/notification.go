@@ -72,9 +72,15 @@ func (m *Model) feedbackDialogOpen() bool {
 }
 
 func (m *Model) prepareNotification(key, context string) {
+	m.startNotification(notificationOperation{Key: key, Context: context})
+}
+
+func (m *Model) startNotification(op notificationOperation) {
 	n := &m.notification
 	n.nextOperation++
-	n.operation = notificationOperation{ID: n.nextOperation, Key: key, Page: m.page, Context: context, Dialog: m.feedbackDialogOpen()}
+	op.ID, op.Page, op.Dialog = n.nextOperation, m.page, m.feedbackDialogOpen()
+	n.operation = op
+	key := op.Key
 	if m.wizard.inline && (key == "check-update" || key == "resolve" || key == "prepare" || key == "install") {
 		n.operation.Inline = true
 	}
@@ -90,17 +96,14 @@ func (m *Model) prepareNotification(key, context string) {
 
 // Existing notifications survive page changes, later operations and dialogs;
 // dialog-owned results are never replayed as global feedback.
-func (m *Model) syncNotification() tea.Cmd {
+func (m *Model) syncNotification() {
 	n := &m.notification
 	source := m.notificationSource()
 	if source == n.source {
-		return nil
+		return
 	}
 	n.source = source
 	op := n.operation
-	if op.Inline && source.inlineVisible && !n.critical {
-		return nil
-	}
 	index := -1
 	for i, item := range n.items {
 		if item.Operation == op.ID || (op.Key != "" && item.Key == op.Key && item.Kind == "error") {
@@ -108,9 +111,14 @@ func (m *Model) syncNotification() tea.Cmd {
 			break
 		}
 	}
+	// An already published operation must reach its result even after its owner
+	// moves back into view. New ordinary feedback belongs to that owner.
+	if op.Inline && source.inlineVisible && !n.critical && index < 0 {
+		return
+	}
 	retain := n.retainDialog || (n.critical && source.failure != "")
 	if ((m.feedbackDialogOpen() || n.operation.Dialog) && !retain) || (source.failure == "" && (source.message == "" || (source.transient && index < 0))) || (source.busy && m.job == "refresh" && index < 0) {
-		return nil
+		return
 	}
 	kind, message := "done", source.message
 	if source.busy {
@@ -121,7 +129,7 @@ func (m *Model) syncNotification() tea.Cmd {
 		kind = "info"
 	}
 	if source.busy && op.ID == n.dismissedOperation && op.ID != 0 {
-		return nil
+		return
 	}
 	if op.Page == "" {
 		op.Page = m.page
@@ -169,7 +177,6 @@ func (m *Model) syncNotification() tea.Cmd {
 		}
 	}
 	n.visible = len(n.items) > 0
-	return nil
 }
 
 // Visible cards and quiet records consume their display time. Overflow and
