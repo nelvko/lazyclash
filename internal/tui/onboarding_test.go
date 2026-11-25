@@ -217,7 +217,7 @@ func TestOnboardingDefaultConfigurationNeedsNoSubscriptionOrGuideCompletion(t *t
 			}
 			body, _ = overviewContent(m.navigationOptions(), dashboardBodyWidth(m.dashboardOptions()))
 			plain = ansi.Strip(body)
-			for _, label := range []string{m.tr("dashboard.overview.currentNode"), "DIRECT"} {
+			for _, label := range []string{m.tr("dashboard.overview.groupSelection"), "PROXY → DIRECT"} {
 				if !strings.Contains(plain, label) {
 					t.Fatalf("normal built-in running strategy missing %q", label)
 				}

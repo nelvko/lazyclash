@@ -369,9 +369,9 @@ func TestNewWizardClearsPreviousFailureAndNetworkPreviewIsActual(t *testing.T) {
 func TestOverviewReflectsSelectedGroupAndPrefersPROXY(t *testing.T) {
 	snapshot := app.Snapshot{Installed: true, Mode: app.ModeStatus{Desired: "rule", Actual: "rule", Running: true}, Groups: []mihomo.Group{{Name: "GLOBAL", Type: "Selector", Now: "global-node"}, {Name: "PROXY", Type: "Selector", Now: "proxy-node"}, {Name: "Work", Type: "Selector", Now: "work-node"}}}
 	snapshot.Service.Active = true
-	for _, tc := range []struct{ selected, want string }{{"", "proxy-node"}, {"Work", "work-node"}, {"GLOBAL", "global-node"}, {"missing", "proxy-node"}} {
-		lines := overviewNodeLines(dashboardOptions{Snapshot: snapshot, SelectedGroup: tc.selected})
-		value := ansi.Strip(strings.Join(lines, "\n"))
+	for _, tc := range []struct{ selected, want string }{{"", "PROXY → proxy-node"}, {"Work", "Work → work-node"}, {"GLOBAL", "PROXY → proxy-node"}, {"missing", "PROXY → proxy-node"}} {
+		card := overviewModeCard(dashboardOptions{Snapshot: snapshot, SelectedGroup: tc.selected}, 80)
+		value := ansi.Strip(strings.Join(card.lines, "\n"))
 		if !strings.Contains(value, tc.want) {
 			t.Fatalf("selected %q: %s", tc.selected, value)
 		}
@@ -379,7 +379,7 @@ func TestOverviewReflectsSelectedGroupAndPrefersPROXY(t *testing.T) {
 	m := ready(&fakeBackend{snapshot: snapshot})
 	setProxyTestGroup(&m, "Work")
 	m, _ = update(m, tea.WindowSizeMsg{Width: 160, Height: 45})
-	if !strings.Contains(ansi.Strip(m.View().Content), "work-node") {
+	if !strings.Contains(ansi.Strip(m.View().Content), "Work → work-node") {
 		t.Fatal("model did not pass session group selection to Overview")
 	}
 }

@@ -14,14 +14,21 @@ func TestSelectionGroupsKeepEqualWidthsAndAdjacentFocusGutters(t *testing.T) {
 		for _, plain := range []bool{false, true} {
 			for _, width := range []int{20, 40, 60, 160} {
 				t.Run(fmt.Sprintf("%s/plain=%t/width=%d", language, plain, width), func(t *testing.T) {
-					o := dashboardOptions{Locale: i18n.New(language), Snapshot: settingsTestSnapshot(), PlainButtons: plain}
+					o := dashboardOptions{Locale: i18n.New(language), Snapshot: settingsTestSnapshot(), PlainButtons: plain, Focus: "mode.global"}
 					modeIDs := []string{"mode.rule", "mode.global", "mode.direct"}
-					check := func(block dashboardBlock, ids []string) {
+					check := func(block dashboardBlock, centered bool) {
 						t.Helper()
 						body := strings.Join(block.lines, "\n")
 						assertRegions(t, block.targets, width, len(block.lines))
 						var previous hitRegion
-						for _, id := range ids {
+						var rowStart int
+						checkMargin := func(end int) {
+							t.Helper()
+							if right := width - end; centered && max(rowStart-right, right-rowStart) > 1 {
+								t.Fatalf("mode row has uneven left/right margins: %d/%d", rowStart, right)
+							}
+						}
+						for i, id := range modeIDs {
 							var current hitRegion
 							for _, hit := range block.targets {
 								if hit.ID == id {
@@ -33,8 +40,12 @@ func TestSelectionGroupsKeepEqualWidthsAndAdjacentFocusGutters(t *testing.T) {
 								t.Fatalf("choice %s has no hit region", id)
 							}
 							painted := settingsPaintedTarget(t, body, block.targets, id)
-							if strings.Contains(painted, "✓") || ansi.StringWidth(painted) != current.W {
+							label := o.Locale.T("dashboard." + id)
+							if !strings.Contains(painted, label) || ansi.StringWidth(painted) != current.W {
 								t.Fatalf("choice face does not match its hit region: %q / %+v", painted, current)
+							}
+							if plain && (strings.HasPrefix(painted, "›") != (id == o.Focus) || strings.HasSuffix(painted, "●") != (id == "mode.rule")) {
+								t.Fatalf("focus and saved selection should be visible on their respective segments: %s %q", id, painted)
 							}
 							if previous.ID != "" {
 								if current.W != previous.W {
@@ -44,14 +55,21 @@ func TestSelectionGroupsKeepEqualWidthsAndAdjacentFocusGutters(t *testing.T) {
 									t.Fatalf("extra space was added before the fixed focus gutter: %+v / %+v", previous, current)
 								}
 							}
+							if i == 0 || current.Y != previous.Y {
+								if i > 0 {
+									checkMargin(previous.X + previous.W)
+								}
+								rowStart = current.X
+							}
 							previous = current
 						}
+						checkMargin(previous.X + previous.W)
 						assertCanvas(t, body, width, len(block.lines))
 					}
-					check(overviewModeCard(o, width), modeIDs)
+					check(overviewModeCard(o, width), true)
 					m, _ := proxiesModel(t, 160, 40)
-					m.locale, m.noColor = o.Locale, plain
-					check(m.proxyModes(width), modeIDs)
+					m.locale, m.noColor, m.focus = o.Locale, plain, o.Focus
+					check(m.proxyModes(width), false)
 				})
 			}
 		}
@@ -90,7 +108,7 @@ func TestProxyModeSelectionShowsSavedPreferenceAndObservedMismatch(t *testing.T)
 func TestBusyModeControlsKeepSelectionWithoutHitRegions(t *testing.T) {
 	o := dashboardOptions{Locale: i18n.New(i18n.English), Snapshot: settingsTestSnapshot(), Busy: true, PlainButtons: true}
 	overview := overviewModeCard(o, 80)
-	if len(overview.targets) != 0 || strings.Count(ansi.Strip(strings.Join(overview.lines, "\n")), "<") != 1 {
+	if len(overview.targets) != 0 || strings.Count(ansi.Strip(strings.Join(overview.lines, "\n")), "●") != 1 {
 		t.Fatal("busy overview mode controls lost their saved selection or retained actionable targets")
 	}
 	m, _ := proxiesModel(t, 160, 40)

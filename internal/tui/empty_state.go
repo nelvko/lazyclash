@@ -63,7 +63,7 @@ func (m *Model) emptyState(width, height int, o emptyStateOptions) dashboardBloc
 		}
 		b.lines = append(b.lines, button)
 	}
-	b = centerEmptyState(b, width, height)
+	b = centerContentBlock(b, width, height)
 	for i, line := range b.lines {
 		b.lines[i] = themed(line, text, o.Surface, false)
 	}
@@ -71,8 +71,7 @@ func (m *Model) emptyState(width, height int, o emptyStateOptions) dashboardBloc
 }
 
 // Place each text row and its hit regions together, including wide characters.
-// No scroll offset is retained when the contents fit the empty viewport.
-func centerEmptyState(block dashboardBlock, width, height int) dashboardBlock {
+func centerContentBlock(block dashboardBlock, width, height int) dashboardBlock {
 	if width <= 0 || height <= 0 {
 		return dashboardBlock{}
 	}

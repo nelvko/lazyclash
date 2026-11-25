@@ -1,21 +1,26 @@
 package tui
 
 import (
-	"strings"
+	"cmp"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
+	"github.com/nelvko/lazyclash/internal/mihomo"
 )
 
 func overviewModeCard(o dashboardOptions, width int) dashboardBlock {
 	tr, s := o.Locale.T, o.Snapshot
-	inner := max(1, width-4)
+	inner := overviewInnerWidth(width)
 	action := overviewControlButton{id: "card.proxies", label: tr("dashboard.overview.proxiesAction"), enabled: s.Installed && !o.Busy}
-	if !s.Installed {
-		return overviewActionPanel(o, width, tr("dashboard.overview.route"), overviewTextBlock([]string{
-			themed(tr("dashboard.control.modeAfterInstall"), muted, panel, o.Dim),
-		}, inner), action)
+	panelWith := func(content dashboardBlock) dashboardBlock {
+		return overviewActionPanel(o, width, tr("dashboard.overview.route"), centerContentBlock(content, inner, len(content.lines)), action)
 	}
-	names := map[string]string{"rule": tr("dashboard.mode.rule"), "global": tr("dashboard.mode.global"), "direct": tr("dashboard.mode.direct")}
+	if o.StateUnavailable {
+		return panelWith(overviewTextBlock([]string{themed(tr("dashboard.overview.selectionUnavailable"), muted, panel, o.Dim)}, inner))
+	}
+	if !s.Installed {
+		return panelWith(overviewTextBlock([]string{themed(tr("dashboard.control.modeAfterInstall"), muted, panel, o.Dim)}, inner))
+	}
 	issue := runtimeControlIssue(s, o.Locale)
 	if issue == "" && s.Service.Active {
 		if s.Mode.Error != "" {
@@ -24,96 +29,91 @@ func overviewModeCard(o dashboardOptions, width int) dashboardBlock {
 			issue = clean(o.Locale.Diagnostic(s.APIError, s.APIDiagnostic))
 		}
 	}
-	var buttons []overviewControlButton
-	for _, mode := range []string{"rule", "global", "direct"} {
-		buttons = append(buttons, overviewControlButton{id: "mode." + mode, label: names[mode], enabled: !o.Busy && issue == "", selected: s.Mode.Desired == mode})
+	content := renderProxyModeSegments(o, proxyModeChoices(o.Locale, issue == ""), inner, panel)
+	add := func(value, color string) {
+		content.append(overviewTextBlock([]string{themed(value, color, panel, o.Dim)}, inner))
 	}
-	content := overviewButtons(o, inner, buttons)
-	known := s.Service.Active && s.ServiceError == "" && s.APIError == "" && s.Mode.Error == "" && names[s.Mode.Actual] != ""
-	if known {
-		key := map[string]string{"rule": "dashboard.overview.modeRule", "global": "dashboard.overview.modeGlobal", "direct": "dashboard.overview.modeDirect"}[s.Mode.Actual]
-		content.append(overviewTextBlock([]string{themed(tr(key), muted, panel, o.Dim)}, inner))
-	}
+	known := s.Service.Active && s.ServiceError == "" && s.APIError == "" && s.Mode.Error == "" && mihomo.ValidMode(s.Mode.Actual)
 	if !known || s.Mode.Desired != s.Mode.Actual {
-		saved, actual := names[s.Mode.Desired], tr("dashboard.status.unknown")
-		if saved == "" {
-			saved = tr("dashboard.status.unknown")
+		saved, actual := tr("dashboard.status.unknown"), tr("dashboard.status.unknown")
+		if mihomo.ValidMode(s.Mode.Desired) {
+			saved = dashboardModeLabel(s.Mode.Desired, o.Locale)
 		}
 		if known {
-			actual = names[s.Mode.Actual]
+			actual = dashboardModeLabel(s.Mode.Actual, o.Locale)
 		}
-		content.append(overviewTextBlock([]string{themed(tr("dashboard.control.savedMode", saved), muted, panel, o.Dim)}, inner))
+		add(tr("dashboard.control.savedMode", saved), muted)
 		if s.Service.Active {
-			content.append(overviewTextBlock([]string{themed(tr("dashboard.control.runningMode", actual), warning, panel, o.Dim)}, inner))
+			add(tr("dashboard.control.runningMode", actual), warning)
 		}
 	}
 	if issue != "" {
-		content.append(overviewTextBlock([]string{themed(issue, warning, panel, o.Dim)}, inner))
+		add(issue, warning)
 	}
-	if !known || s.Mode.Actual != "direct" {
-		content.blank()
-		content.append(overviewTextBlock([]string{themed(strings.Repeat("─", inner), divider, panel, o.Dim)}, inner))
-		content.append(overviewTextBlock(overviewNodeLines(o), inner))
-	}
-	return overviewActionPanel(o, width, tr("dashboard.overview.route"), content, action)
-}
 
-func overviewNodeLines(o dashboardOptions) []string {
-	tr, s := o.Locale.T, o.Snapshot
-	style := func(value, color string) string { return themed(clean(value), color, panel, o.Dim) }
-	status := tr("dashboard.groups.inactive")
-	if !s.Installed {
-		status = tr("dashboard.groups.afterStart")
-	} else if s.ServiceError != "" {
-		status = tr("dashboard.groups.serviceUnavailable")
-	} else if s.Service.Active && s.APIError != "" {
-		status = tr("dashboard.groups.apiUnavailable")
-	} else if s.Service.Active {
-		status = tr("dashboard.groups.empty")
-		if s.Mode.Error != "" || s.Mode.Actual != "rule" && s.Mode.Actual != "global" {
-			status = tr("dashboard.overview.nodeUnavailable")
-		} else if len(s.Groups) > 0 {
-			group := s.Groups[0]
-			name := o.SelectedGroup
-			if s.Mode.Actual == "global" {
-				name = "GLOBAL"
-			}
-			found := false
-			for _, candidate := range s.Groups {
-				if candidate.Name == name {
-					group, found = candidate, true
-					break
-				}
-			}
-			if !found && s.Mode.Actual == "global" {
-				return []string{style(tr("dashboard.overview.currentNode"), muted), style(tr("dashboard.overview.nodeUnavailable"), muted)}
-			}
-			if !found {
-				for _, candidate := range s.Groups {
-					if candidate.Name == "PROXY" {
-						group, found = candidate, true
-						break
-					}
-				}
-			}
-			if !found {
-				for _, candidate := range s.Groups {
-					if candidate.Type == "Selector" {
-						group = candidate
-						break
-					}
-				}
-			}
-			node := clean(group.Now)
-			if node == "" {
-				node = "--"
-			}
-			return []string{style(tr("dashboard.overview.currentNode"), muted), lipgloss.NewStyle().Bold(true).Render(style(node, text))}
+	content.blank()
+	switch {
+	case !known:
+		if s.ServiceError == "" && !s.Service.Active {
+			add(tr("dashboard.groups.startHint"), muted)
+		} else {
+			add(tr("dashboard.overview.selectionUnavailable"), muted)
+		}
+	case s.Mode.Actual == "direct":
+		add(tr("dashboard.overview.modeDirect"), muted)
+	default:
+		group := overviewRouteGroup(s.Groups, s.Mode.Actual, o.SelectedGroup)
+		if group != nil {
+			add(tr("dashboard.overview.groupSelection"), muted)
+			content.lines = append(content.lines, overviewGroupSelection(o, *group, inner)...)
+		} else if s.Mode.Actual == "global" {
+			add(tr("dashboard.overview.selectionUnavailable"), muted)
+		} else {
+			add(tr("dashboard.groups.empty"), muted)
 		}
 	}
-	lines := []string{style(tr("dashboard.overview.currentNode"), muted), style(status, muted)}
-	if s.Installed && !s.Service.Active && s.ServiceError == "" {
-		lines = append(lines, style(tr("dashboard.groups.startHint"), muted))
+	return panelWith(content)
+}
+
+// Rule mode can route through many groups. Show the group being browsed, or
+// the preferred rule group, while reserving GLOBAL for the global mode.
+func overviewRouteGroup(groups []mihomo.Group, mode, selected string) *mihomo.Group {
+	var proxy, selector, first *mihomo.Group
+	for i := range groups {
+		g := &groups[i]
+		if (g.Name == "GLOBAL") != (mode == "global") {
+			continue
+		}
+		if mode == "global" || g.Name == selected {
+			return g
+		}
+		if g.Name == "PROXY" {
+			proxy = g
+		}
+		if selector == nil && g.Type == "Selector" {
+			selector = g
+		}
+		if first == nil {
+			first = g
+		}
 	}
-	return lines
+	return cmp.Or(proxy, selector, first)
+}
+
+func overviewGroupSelection(o dashboardOptions, group mihomo.Group, width int) []string {
+	member := clean(group.Now)
+	color := text
+	switch {
+	case group.Type == "LoadBalance" || group.Type == "Relay":
+		member, color = o.Locale.T("proxies.distributed"), muted
+	case member == "":
+		member, color = o.Locale.T("proxies.no_selection"), muted
+	}
+	name := themed(clean(group.Name), text, panel, o.Dim)
+	value := themed(lipgloss.NewStyle().Bold(color == text).Render(member), color, panel, o.Dim)
+	path := name + themed(" → ", muted, panel, o.Dim) + value
+	if ansi.StringWidth(path) <= width {
+		return []string{path}
+	}
+	return []string{cellCrop(name, width), cellCrop(themed("→ ", muted, panel, o.Dim)+value, width)}
 }

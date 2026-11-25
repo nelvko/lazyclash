@@ -41,7 +41,7 @@ def fixture_terminal(preview, binary, report, language, profile, scenario):
 
 
 def focused(terminal, label):
-    pattern = r"›\s*(?:[<\[]\s*)?" + re.escape(label) + r"(?:\s|[>\]]|$)"
+    pattern = r"›\s*(?:[<\[]\s*)?" + re.escape(label) + r"(?:\s|[>\]●]|$)"
     return any(re.search(pattern, row) for row in terminal.screen.text().splitlines())
 
 
@@ -329,6 +329,16 @@ def inspect_row_cards(preview, terminal, output, width, height, words, profile, 
                 assert value in terminal.screen.text(), "traffic card omitted a live rate: " + value
         if name == "network":
             inspect_network_card(terminal, outline, words, scenario)
+        if name == "route":
+            x, y = outline["x"] + 1, outline["y"] + 1
+            right, bottom = x + outline["width"] - 2, y + outline["height"] - 2
+            lines = ["".join(row[x:right]).strip() for row in terminal.screen.cells[y:bottom]]
+            group = {"running": "PROXY", "pending": "PROXY", "drift": "GLOBAL"}.get(scenario)
+            if group:
+                caption = lines.index(words["dashboard.overview.groupSelection"])
+                assert lines[caption + 1] == group + " → 香港 01 · 日常线路", "incorrect group selection: " + repr(lines)
+            else:
+                assert all("香港 01" not in line for line in lines), "unobserved member in routing card"
         if name == "environment":
             x, y = outline["x"], outline["y"]
             right, bottom = x + outline["width"], y + outline["height"]

@@ -302,7 +302,7 @@ func TestOverviewAlignedVersionsAndModesCollapseOnlyConfirmedState(t *testing.T)
 			}
 			mode := func() string { return ansi.Strip(strings.Join(overviewModeCard(o, 100).lines, "\n")) }
 			rule := locale.T("dashboard.mode.rule")
-			if value := mode(); !strings.Contains(value, locale.T("dashboard.overview.modeRule")) || strings.Contains(value, locale.T("dashboard.control.savedMode", rule)) || strings.Contains(value, locale.T("dashboard.control.runningMode", rule)) {
+			if value := mode(); !strings.Contains(value, rule) || strings.Contains(value, locale.T("dashboard.control.savedMode", rule)) || strings.Contains(value, locale.T("dashboard.control.runningMode", rule)) {
 				t.Fatalf("confirmed aligned mode retained duplicate state lines: %s", value)
 			}
 			o.Snapshot.Mode.Actual = "global"
@@ -310,12 +310,12 @@ func TestOverviewAlignedVersionsAndModesCollapseOnlyConfirmedState(t *testing.T)
 				t.Fatalf("mode mismatch lost explicit saved/running distinction: %s", value)
 			}
 			o.Snapshot.Mode.Actual = ""
-			if value := mode(); !strings.Contains(value, locale.T("dashboard.control.runningMode", locale.T("dashboard.status.unknown"))) || strings.Contains(value, locale.T("dashboard.overview.modeRule")) {
+			if value := mode(); !strings.Contains(value, locale.T("dashboard.control.runningMode", locale.T("dashboard.status.unknown"))) {
 				t.Fatalf("unobserved mode appeared aligned: %s", value)
 			}
 			for _, unknown := range []string{"", "unrecognized"} {
 				o.Snapshot.Mode.Desired, o.Snapshot.Mode.Actual = unknown, unknown
-				if value := mode(); !strings.Contains(value, locale.T("dashboard.control.runningMode", locale.T("dashboard.status.unknown"))) || strings.Contains(value, locale.T("dashboard.overview.modeRule")) {
+				if value := mode(); !strings.Contains(value, locale.T("dashboard.control.runningMode", locale.T("dashboard.status.unknown"))) {
 					t.Fatalf("matching unknown modes appeared confirmed: %s", value)
 				}
 			}
@@ -498,7 +498,7 @@ func TestOverviewModeUsesActualModeAndDoesNotExposeStaleNodeSelection(t *testing
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		for _, state := range []struct {
 			name, desired, actual, serviceError, apiError, modeError, want string
-			missingGlobal, unsupported                                     bool
+			missingGlobal, unsupported, stopped, unreadable                bool
 		}{
 			{name: "rule", desired: "rule", actual: "rule", want: "proxy-node"},
 			{name: "global ignores stale group selection", desired: "global", actual: "global", want: "global-node"},
@@ -509,11 +509,13 @@ func TestOverviewModeUsesActualModeAndDoesNotExposeStaleNodeSelection(t *testing
 			{name: "service unavailable", desired: "rule", actual: "rule", serviceError: "fixture service unavailable"},
 			{name: "API unavailable", desired: "rule", actual: "rule", apiError: "fixture API unavailable"},
 			{name: "mode unavailable", desired: "rule", actual: "rule", modeError: "fixture mode unavailable"},
+			{name: "stopped service with stale groups", desired: "rule", actual: "rule", stopped: true},
+			{name: "unreadable snapshot with stale groups", desired: "rule", actual: "rule", unreadable: true},
 			{name: "readable mode with unavailable runtime controls", desired: "rule", actual: "rule", unsupported: true, want: "proxy-node"},
 		} {
 			t.Run(language+"/"+state.name, func(t *testing.T) {
-				o := dashboardOptions{Locale: i18n.New(language), SelectedGroup: "PROXY", Snapshot: app.Snapshot{
-					Installed: true, Service: service.Status{Active: true, State: "active"},
+				o := dashboardOptions{Locale: i18n.New(language), SelectedGroup: "PROXY", StateUnavailable: state.unreadable, Snapshot: app.Snapshot{
+					Installed: true, Service: service.Status{Active: !state.stopped},
 					Mode:         app.ModeStatus{Desired: state.desired, Actual: state.actual, Running: true, Error: state.modeError},
 					ServiceError: state.serviceError, APIError: state.apiError,
 					Groups:       []mihomo.Group{{Name: "PROXY", Type: "Selector", Now: "proxy-node"}, {Name: "GLOBAL", Type: "Selector", Now: "global-node"}},
@@ -529,10 +531,13 @@ func TestOverviewModeUsesActualModeAndDoesNotExposeStaleNodeSelection(t *testing
 						t.Fatalf("mode card exposed or hid an unrelated node %q:\n%s", node, plain)
 					}
 				}
-				if state.actual == "direct" && !strings.Contains(plain, o.Locale.T("dashboard.overview.modeDirect")) {
-					t.Fatal("confirmed Direct lost its mode explanation")
+				if state.actual == "direct" && (!strings.Contains(plain, o.Locale.T("dashboard.overview.modeDirect")) || strings.Contains(plain, o.Locale.T("dashboard.overview.groupSelection"))) {
+					t.Fatal("confirmed Direct should explain that traffic connects directly and hide group selection")
 				}
-				if state.unsupported && (!strings.Contains(plain, o.Locale.T("dashboard.overview.modeRule")) || hasAction(block.targets, "mode.global")) {
+				if (state.missingGlobal || state.unreadable) && !strings.Contains(plain, o.Locale.T("dashboard.overview.selectionUnavailable")) {
+					t.Fatal("missing group selection should be reported as unavailable")
+				}
+				if state.unsupported && hasAction(block.targets, "mode.global") {
 					t.Fatal("control availability was confused with a valid observed mode")
 				}
 			})

@@ -355,9 +355,9 @@ func TestOverviewLayoutPreservesDetailsAndActionTargets(t *testing.T) {
 	}
 	t.Run("uninstalled", func(t *testing.T) {
 		o := dashboardOptions{Snapshot: app.Snapshot{ServiceError: "Service management is unsupported on macOS"}}
-		group := ansi.Strip(strings.Join(overviewNodeLines(o), "\n"))
-		if !strings.Contains(group, "Proxy groups appear after the core starts.") || strings.Contains(group, "Service unavailable") {
-			t.Fatalf("uninstalled core was presented as a service failure: %s", group)
+		card := ansi.Strip(strings.Join(overviewModeCard(o, 80).lines, "\n"))
+		if !strings.Contains(card, o.Locale.T("dashboard.control.modeAfterInstall")) || strings.Contains(card, "Service unavailable") {
+			t.Fatalf("uninstalled core was presented as a service failure: %s", card)
 		}
 	})
 }

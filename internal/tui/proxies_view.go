@@ -18,7 +18,7 @@ func (m *Model) proxyButton(id, label string, surface string, enabled bool) stri
 	return renderButton(clean(label), o)
 }
 func (m *Model) proxyModes(width int) dashboardBlock {
-	return renderProxyModeSegments(m.navigationOptions(), m.proxyModeActions(), width)
+	return renderProxyModeSegments(m.navigationOptions(), m.proxyModeActions(), width, bg)
 }
 
 func (m *Model) proxiesToolbar(width int) dashboardBlock {

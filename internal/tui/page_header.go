@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nelvko/lazyclash/internal/i18n"
 )
 
 type headerAction struct {
@@ -206,10 +207,13 @@ func renderPageHeader(o dashboardOptions, g dashboardLayout, titleX, titleWidth 
 }
 
 func (m *Model) proxyModeActions() []headerAction {
-	enabled := m.proxiesReady() && m.snapshot.Mode.Error == ""
+	return proxyModeChoices(m.locale, m.proxiesReady() && m.snapshot.Mode.Error == "")
+}
+
+func proxyModeChoices(locale i18n.Localizer, enabled bool) []headerAction {
 	var actions []headerAction
 	for _, mode := range []string{"rule", "global", "direct"} {
-		actions = append(actions, headerAction{id: "mode." + mode, label: m.tr("dashboard.mode." + mode), enabled: enabled})
+		actions = append(actions, headerAction{id: "mode." + mode, label: locale.T("dashboard.mode." + mode), enabled: enabled})
 	}
 	return actions
 }
@@ -223,13 +227,13 @@ func proxyModeSegmentWidth(actions []headerAction) int {
 }
 
 // The same three selectable faces wrap on the smallest screens.
-func renderProxyModeSegments(o dashboardOptions, actions []headerAction, width int) dashboardBlock {
+func renderProxyModeSegments(o dashboardOptions, actions []headerAction, width int, surface string) dashboardBlock {
 	block := dashboardBlock{lines: []string{""}}
 	segmentWidth := proxyModeSegmentWidth(actions)
 	w := min(width, segmentWidth)
 	x := 0
 	for _, action := range actions {
-		options := dashboardButtonOptions(action.id, o, false, bg)
+		options := dashboardButtonOptions(action.id, o, false, surface)
 		options.Kind = buttonSegment
 		options.Selectable, options.Selected = true, o.Snapshot.Mode.Desired == strings.TrimPrefix(action.id, "mode.")
 		options.Width, options.Disabled = segmentWidth-2, !action.enabled || o.Busy
@@ -251,7 +255,7 @@ func renderProxyModeSegments(o dashboardOptions, actions []headerAction, width i
 // between the two groups. Smaller terminals use a dedicated header row.
 func renderLeadingPageHeader(o dashboardOptions, g dashboardLayout, left int) (string, int, int, []hitRegion) {
 	h := o.Header
-	modes := renderProxyModeSegments(o, h.leading, g.headerWidth)
+	modes := renderProxyModeSegments(o, h.leading, g.headerWidth, bg)
 	renderActions := func(compact bool) []string {
 		var values []string
 		for _, action := range h.actions {
