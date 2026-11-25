@@ -341,6 +341,12 @@ func TestProfileRefreshControlsKeepTheCurrentSelection(t *testing.T) {
 	if refreshed != "work" || refreshes != 1 || backend.applied != 0 || m.form != "" || m.snapshot.Applied != "default" {
 		t.Fatal("card refresh opened, selected, or applied its containing card")
 	}
+	if len(m.notification.items) != 1 || m.notification.items[0].Message != m.tr("feedback.refreshed", "work") {
+		t.Fatal("single-profile refresh did not report its own result", m.notification.items)
+	}
+	// Dismiss the single-profile result before using the header button beneath it.
+	closeID := "notification.close." + strconv.FormatUint(m.notification.items[0].ID, 10)
+	m, _ = click(m, findTarget(t, m, closeID))
 	m, cmd = click(m, findTarget(t, m, "profiles.update-all"))
 	m = finishProfileJob(t, m, cmd)
 	if all != 1 || backend.applied != 0 || m.snapshot.Applied != "default" || m.message != m.tr("feedback.refreshed_all", 1) {
