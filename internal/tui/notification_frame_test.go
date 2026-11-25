@@ -199,3 +199,28 @@ func TestTruncatedNamedSuccessRemainsAvailableUntilRead(t *testing.T) {
 		t.Fatal("the complete selection was unavailable from the one-line summary")
 	}
 }
+
+func TestProxyHoverPausesTheCardDisplacedByDelayedProgress(t *testing.T) {
+	m := proxyHoverModel(t, 48)
+	m.width = 80
+	m.notification.source = m.notificationSource()
+	m.notification.items = []notificationItem{
+		{ID: 41, Kind: "done", Message: "Saved", remaining: 3 * time.Second},
+		{ID: 42, Kind: "working", Message: "Loading", showAfter: time.Now().Add(time.Hour)},
+	}
+	m.layout()
+	m.syncNotificationTimers(time.Now())
+	saved := noticeByID(t, m, 41)
+	if saved.started.IsZero() {
+		t.Fatal("the visible success should already be counting down")
+	}
+
+	m.notification.items[1].showAfter = time.Now().Add(-time.Second)
+	hit := findTarget(t, m, "menu")
+	m, _ = update(m, tea.MouseMotionMsg{X: hit.X, Y: hit.Y})
+	if !hasAction(m.targets, "notification.close.42") || !noticeByID(t, m, 41).started.IsZero() {
+		t.Fatal("the hover frame displayed new progress without pausing the folded success")
+	}
+	m, _ = update(m, notificationExpiredMsg{id: saved.ID, generation: saved.generation})
+	noticeByID(t, m, saved.ID)
+}

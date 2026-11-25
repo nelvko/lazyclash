@@ -357,8 +357,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if mouse, ok := msg.(tea.MouseMsg); ok && m.updateRulesMouse(mouse) {
 		return m, nil
 	}
-	if motion, ok := msg.(tea.MouseMotionMsg); ok && m.updateProxyHover(motion) {
-		return m, nil
+	if motion, ok := msg.(tea.MouseMotionMsg); ok {
+		if handled, cmd := m.updateProxyHover(motion); handled {
+			return m, cmd
+		}
 	}
 	if wheel, ok := msg.(tea.MouseWheelMsg); ok && m.updateProxyWheel(wheel) {
 		return m, nil
