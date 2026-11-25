@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 )
 
 func TestProfileSnapshotProvidesSafeCardMetadata(t *testing.T) {
@@ -177,11 +179,34 @@ func TestRefreshAllProfilesStopsAfterCancellation(t *testing.T) {
 		cancel()
 		return context.Canceled
 	}
-	if _, err := a.RefreshAllProfiles(ctx); !errors.Is(err, context.Canceled) {
-		t.Fatal("batch refresh lost cancellation", err)
+	if summary, err := a.RefreshAllProfiles(ctx); !errors.Is(err, context.Canceled) || summary != (ProfileRefreshSummary{}) {
+		t.Fatal("a canceled validation must stop the batch without reporting a failed update", summary, err)
 	}
 	if validations != 1 || string(read(t, index)) != string(before) || len(svc.actions) != 0 {
 		t.Fatal("cancelled batch continued refreshing or committed state")
+	}
+}
+
+func TestRefreshAllProfilesPreservesCancellationAfterSourceWasSaved(t *testing.T) {
+	a, svc := installedApp(t)
+	path := filepath.Join(t.TempDir(), "work.yaml")
+	write(t, path, []byte("rules: ['MATCH,DIRECT']\n"))
+	if err := a.AddSubscription(t.Context(), "work", path); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Apply(t.Context(), "work"); err != nil {
+		t.Fatal(err)
+	}
+	updated := []byte("rules: ['MATCH,REJECT']\n")
+	write(t, path, updated)
+	svc.verifyErr = context.Canceled
+	summary, err := a.RefreshAllProfiles(t.Context())
+	if summary != (ProfileRefreshSummary{Failed: 1}) || !errors.Is(err, context.Canceled) || diagnostic.CancellationOnly(err) || !diagnostic.RequiresAttention(err) {
+		t.Fatalf("saved but unapplied profile was treated as ordinary cancellation: %+v %v", summary, err)
+	}
+	lib, _, err := a.library().Load()
+	if err != nil || lib.Profiles["work"].Spec.Revision != digest(updated) {
+		t.Fatal("fixture did not commit the new source before canceling", err)
 	}
 }
 

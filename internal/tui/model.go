@@ -593,7 +593,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.messageInformational = false
 		if v.err != nil {
 			m.notification.details = m.locale.Error(v.err)
-			m.notification.critical = notificationCritical(v.err)
+			m.notification.critical = diagnostic.RequiresAttention(v.err)
 			if !v.hasSnapshot && m.notification.operation.Key != "refresh" && m.snapshotReady {
 				m.markOperationStateUnknown()
 			}
@@ -613,7 +613,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.failure = v.success
 				}
 			}
-			if notificationCancellation(v.err) {
+			if diagnostic.CancellationOnly(v.err) {
 				m.message = m.tr("model.canceled")
 				if !v.transient && v.success != "" {
 					m.message += " · " + v.success
@@ -654,7 +654,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if v.kind == "upgrade" {
 				m.notification.operation.Context = m.tr("core_update.title")
 			}
-			m.notification.critical = notificationCritical(v.err)
+			m.notification.critical = diagnostic.RequiresAttention(v.err)
 			if !v.hasSnapshot && m.snapshotReady {
 				m.markOperationStateUnknown()
 			}

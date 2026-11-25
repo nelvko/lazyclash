@@ -10,6 +10,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 	"github.com/nelvko/lazyclash/internal/service"
 )
 
@@ -410,5 +411,37 @@ func TestProfileRefreshBatchShowsCommittedCountAndFailedDetails(t *testing.T) {
 	n := m.notification.items[0]
 	if n.Kind != "error" || n.Message != m.tr("feedback.refresh_partial", 2, 1) || n.Details != "Work: download unavailable" {
 		t.Fatalf("batch lost the committed count or per-profile failure: %+v", n)
+	}
+}
+
+func TestProfileRefreshCancellationOnlySilencesUncommittedWork(t *testing.T) {
+	for _, tt := range []struct {
+		label, kind string
+		err         error
+		failed      int
+	}{
+		{"canceled validation", "info", diagnostic.New("diagnostic.profile.validate", "validation: %w", context.Canceled), 0},
+		{"saved but not applied", "error", diagnostic.New("diagnostic.profile.refreshNotApplied", "source saved, runtime unchanged: %w", context.Canceled), 1},
+		{"recovery failed", "error", errors.Join(context.Canceled, errors.New("service recovery failed")), 1},
+	} {
+		t.Run(tt.label, func(t *testing.T) {
+			b := &fakeBackend{snapshot: app.Snapshot{Installed: true, Profiles: []string{"work"}, ProfileDetails: []app.ProfileInfo{{ID: "work", Name: "Work", Refreshable: true}}},
+				refreshAllProfiles: func(context.Context) (app.ProfileRefreshSummary, error) {
+					return app.ProfileRefreshSummary{Failed: tt.failed}, tt.err
+				}}
+			m := profileInteractionsModel(b, 120, 32)
+			m, cmd := click(m, findTarget(t, m, "profiles.update-all"))
+			m = finishProfileJob(t, m, cmd)
+			if len(m.notification.items) != 1 {
+				t.Fatal(m.notification.items)
+			}
+			item := m.notification.items[0]
+			if item.Kind != tt.kind || item.Silent != (tt.failed == 0) {
+				t.Fatal("incorrect cancellation disposition", item)
+			}
+			if tt.failed != 0 && (item.Message != m.tr("feedback.refresh_partial", 0, 1) || item.Details != tt.err.Error()) {
+				t.Fatal("missing partial failure", item)
+			}
+		})
 	}
 }

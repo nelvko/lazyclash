@@ -14,6 +14,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 )
 
 type portsState struct {
@@ -215,7 +216,7 @@ func (m *Model) acceptPorts(msg portsMsg) {
 			m.markOperationStateUnknown()
 		}
 		m.notification.operation.Context = m.tr("notification.ports")
-		m.notification.critical = notificationCritical(msg.err) || msg.refreshError != nil || msg.result.Changed && msg.err != nil
+		m.notification.critical = diagnostic.RequiresAttention(msg.err) || msg.refreshError != nil || msg.result.Changed && msg.err != nil
 		if (m.notification.critical || m.notification.retainDialog) && (msg.err != nil || msg.refreshError != nil) {
 			var summary []string
 			if p.applied {

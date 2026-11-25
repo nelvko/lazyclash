@@ -247,7 +247,7 @@ func (a *App) RefreshAllProfiles(ctx context.Context) (ProfileRefreshSummary, er
 			continue
 		}
 		if err := a.Refresh(ctx, profile.ID); err != nil {
-			if ctx.Err() != nil && err == context.Canceled {
+			if ctx.Err() != nil && diagnostic.CancellationOnly(err) {
 				return summary, errors.Join(append(failures, err)...)
 			}
 			summary.Failed++
