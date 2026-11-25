@@ -71,7 +71,10 @@ func (a *App) buildProfile(ctx context.Context, lib configuration.Library, name 
 }
 
 func (a *App) buildRecipe(record buildRecord, m manifest) ([]byte, error) {
-	opts := mihomo.BuildOptions{Controller: m.Controller, Secret: m.Secret, MixedPort: m.Port, Mode: m.Mode, TUN: m.TUN, ServiceName: a.Name}
+	opts := mihomo.BuildOptions{
+		Controller: m.Controller, Secret: m.Secret, MixedPort: m.Port,
+		General: m.CoreSettings, Mode: m.Mode, TUN: m.TUN, ServiceName: a.Name,
+	}
 	var err error
 	if record.Profile == "default" {
 		opts.Base, err = mihomo.Default(m.Controller, m.Secret, m.Port)

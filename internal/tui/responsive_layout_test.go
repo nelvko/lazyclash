@@ -63,7 +63,7 @@ func TestWideShortWindowKeepsEveryNavigationDestinationReachable(t *testing.T) {
 func TestSettingsValuesAndActionsStayBesideAlignedLabels(t *testing.T) {
 	for _, width := range []int{60, 100, 220} {
 		o := dashboardOptions{}
-		block := settingsSection(o, width, "Preferences", []settingsRow{
+		block := settingsSection(o, width, "Preferences", "", []settingsRow{
 			{label: "Language", value: "English"},
 			{label: "Shortcut hints", value: "Visible"},
 			{label: "Theme", actions: []overviewControlButton{{id: "theme", label: "Choose", enabled: true}}},

@@ -106,6 +106,7 @@
   "diagnostic.runtime.autostartUnsupported": "this runtime cannot configure autostart",
   "diagnostic.runtime.stopIncomplete": "service has not fully stopped; inspect status and retry Stop",
   "diagnostic.runtime.stopInspection": "stop was requested, but saved runtime state needs inspection",
+  "diagnostic.settings.coreOption": "invalid Mihomo general setting or value",
   "diagnostic.settings.portRange": "proxy and controller ports must be between 1024 and 65535",
   "diagnostic.settings.portsDiffer": "proxy and controller ports must differ",
   "diagnostic.settings.serviceChanging": "service is changing state; wait and review the port settings again",

@@ -31,6 +31,7 @@ type Snapshot struct {
 	ServiceDiagnostic   error `json:"-"`
 	Controller          string
 	MixedPort           int
+	CoreSettings        mihomo.GeneralSettings
 	TerminalProxy       shellintegration.Status
 	ProfilePending      bool
 	Generation          string
@@ -72,6 +73,7 @@ func (a *App) Snapshot(ctx context.Context) (Snapshot, error) {
 			out.Version = m.Version
 			out.Controller = m.Controller
 			out.MixedPort = m.Port
+			out.CoreSettings = m.CoreSettings
 			out.Applied = m.selectedProfile()
 			out.Generation = generation
 			r, _, err := a.loadRuntimeRecord(m)

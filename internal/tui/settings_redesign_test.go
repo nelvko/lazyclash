@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -84,15 +86,16 @@ func TestSettingsGroupsAdaptToBodyWidthAndShortTerminals(t *testing.T) {
 					return 0, 0
 				}
 				ix, iy := position(o.Locale.T("settings.interface"))
+				mx, my := position(o.Locale.T("settings.mihomo"))
 				sx, sy := position(o.Locale.T("settings.serviceGroup"))
 				cx, cy := position(o.Locale.T("settings.core"))
 				dx, dy := position(o.Locale.T("settings.diagnostics"))
 				if size[0] >= 80 {
-					if sx <= ix || sy != iy || cx != ix || cy <= iy || dx != sx || dy != cy {
-						t.Fatalf("wide settings are not grouped in two columns: interface=%d,%d service=%d,%d core=%d,%d diagnostics=%d,%d", ix, iy, sx, sy, cx, cy, dx, dy)
+					if mx <= ix || my != iy || sx != ix || sy <= iy || cx != mx || cy != sy || dx != ix || dy <= sy {
+						t.Fatalf("wide settings are not grouped in two columns:\n%s", ansi.Strip(body))
 					}
-				} else if sx != ix || sy <= iy || cx != ix || cy <= sy || dx != ix || dy <= cy {
-					t.Fatalf("compact settings did not stack in reading order: interface=%d,%d service=%d,%d core=%d,%d diagnostics=%d,%d", ix, iy, sx, sy, cx, cy, dx, dy)
+				} else if mx != ix || my <= iy || sx != ix || sy <= my || cx != ix || cy <= sy || dx != ix || dy <= cy {
+					t.Fatalf("compact settings did not stack in reading order:\n%s", ansi.Strip(body))
 				}
 			})
 		}
@@ -112,9 +115,11 @@ func TestSettingsActionsKeepCompleteLabelsAndUniqueTargets(t *testing.T) {
 				o.Snapshot.Service.Enabled = active
 				o.Snapshot.TUN = active
 				tr := o.Locale.T
+				inherited := tr("settings.followProfile") + " ▾"
 				labels := map[string]string{
 					"settings.language": languageLabel, "key-hints.toggle": tr("dashboard.control.on"),
-					"settings.theme":   "Dark ▾",
+					"settings.theme": "Dark ▾",
+					"settings.ipv6":  inherited, "settings.unifiedDelay": inherited, "settings.logLevel": inherited,
 					"editor.configure": tr("settings.edit"),
 					"install":          tr("settings.manage"), "runtime-settings": tr("settings.edit"),
 					"restart": tr("dashboard.action.restart"), "card.logs": tr("settings.openLogs"),
@@ -150,6 +155,53 @@ func TestSettingsActionsKeepCompleteLabelsAndUniqueTargets(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+func TestSettingsMihomoMenuResetsOnlyChosenOverride(t *testing.T) {
+	b := &fakeBackend{snapshot: settingsTestSnapshot()}
+	b.snapshot.CoreSettings.IPv6, b.snapshot.CoreSettings.UnifiedDelay, b.snapshot.CoreSettings.LogLevel = "off", "on", "warning"
+	b.snapshot.TUN = true
+	calls := 0
+	b.setCoreSetting = func(_ context.Context, key, value string) error {
+		calls++
+		if key != "ipv6" || value != "" {
+			t.Fatalf("reset sent key=%q value=%q", key, value)
+		}
+		if calls == 1 {
+			return errors.New("reload failed")
+		}
+		b.snapshot.CoreSettings.IPv6 = value
+		return nil
+	}
+	m := ready(b)
+	directionCleanup(t, &m)
+	m.page, m.focus, m.width, m.height = "settings", "settings.ipv6", 160, 45
+	m.layout()
+	if !strings.Contains(ansi.Strip(m.screen), m.tr("settings.tunIPv6")) {
+		t.Fatal("saved IPv6 preference lacks the host TUN override explanation")
+	}
+	for attempt := 1; attempt <= 2; attempt++ {
+		m, _ = update(m, special(tea.KeyEnter))
+		if !m.menu.open || !m.menu.items[m.menu.selected].Checked || m.menu.items[m.menu.selected].ID != "off" {
+			t.Fatalf("attempt %d did not open with the saved IPv6 value", attempt)
+		}
+		m, _ = update(m, special(tea.KeyHome))
+		var cmd tea.Cmd
+		m, cmd = update(m, special(tea.KeyEnter))
+		if !m.busy || m.snapshot.CoreSettings.IPv6 != "off" {
+			t.Fatal("choice changed before the backend committed")
+		}
+		m = finishProfileJob(t, m, cmd)
+		if attempt == 1 && (m.snapshot.CoreSettings.IPv6 != "off" || !strings.Contains(m.failure, "reload failed")) {
+			t.Fatal("unsuccessful override reset changed the current value or hid the error")
+		}
+	}
+	if calls != 2 || m.snapshot.CoreSettings.IPv6 != "" || m.snapshot.CoreSettings.UnifiedDelay != "on" || m.snapshot.CoreSettings.LogLevel != "warning" {
+		t.Fatalf("unexpected saved Mihomo settings after reset: %+v", m.snapshot.CoreSettings)
+	}
+	if !strings.Contains(settingsPaintedTarget(t, m.screen, m.targets, m.focus), m.tr("settings.followProfile")) {
+		t.Fatal("the IPv6 control did not return to the inherited state")
 	}
 }
 

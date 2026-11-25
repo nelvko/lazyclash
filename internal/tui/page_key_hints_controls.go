@@ -108,6 +108,8 @@ func (m *Model) settingsContextHelp() string {
 		label = "settings.chooseLanguage"
 	case "settings.theme":
 		label = "settings.chooseTheme"
+	case "settings.ipv6", "settings.unifiedDelay", "settings.logLevel":
+		return m.controlActionHelp(m.tr("settings.chooseCoreSetting", m.tr(m.focus)))
 	case "key-hints.toggle":
 		label = "navigation.controls.hideHints"
 		if m.keyHints.hidden {

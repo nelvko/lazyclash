@@ -102,19 +102,15 @@ func (a *App) SetTUN(ctx context.Context, enabled bool) error {
 				return err
 			}
 		}
-		raw, err := store.Read(config)
-		if err != nil {
-			return err
-		}
-		nextConfig, err := mihomo.WithTUN(raw, enabled, a.Name)
+		nextManifest := m
+		nextManifest.TUN = enabled
+		nextConfig, err := a.tunConfig(nextManifest, config)
 		if err != nil {
 			return err
 		}
 		if err := a.validateConfig(ctx, m, nextConfig); err != nil {
 			return err
 		}
-		nextManifest := m
-		nextManifest.TUN = enabled
 		base := filepath.Join(a.Home, "installation")
 		next, err := a.writeGeneration(base, nextManifest, nextConfig)
 		if err != nil {
@@ -181,6 +177,24 @@ func (a *App) SetTUN(ctx context.Context, enabled bool) error {
 		keep = true
 		return nil
 	})
+}
+
+func (a *App) tunConfig(next manifest, configPath string) ([]byte, error) {
+	if !next.TUN {
+		// A pinned build restores pre-TUN IPv6 and DNS, including inherited
+		// values. Losing the source must never prevent disabling host TUN.
+		if cfg, err := a.buildAppliedRecipe(next); err == nil {
+			return cfg, nil
+		}
+	}
+	raw, err := store.Read(configPath)
+	if err != nil {
+		return nil, err
+	}
+	if next.TUN {
+		return mihomo.WithTUN(raw, true, a.Name)
+	}
+	return mihomo.WithoutTUN(raw, next.CoreSettings)
 }
 
 // ServiceLifecycle is a finite root operation invoked by systemd. It deliberately

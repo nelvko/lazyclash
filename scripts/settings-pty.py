@@ -53,6 +53,15 @@ def focus(terminal, label, footer_hint=""):
     raise AssertionError("Tab did not reveal " + label + "\n" + terminal.screen.text())
 
 
+def dismiss_toasts(terminal):
+    for _ in range(8):
+        terminal.settle()
+        if "×" not in terminal.screen.text():
+            return
+        click(terminal, position(terminal, "×"))
+    raise AssertionError("Toasts still cover the Settings cards")
+
+
 def fixture_terminal(preview, binary, report, language, profile):
     environment = {"LAZYCLASH_SETTINGS_PTY_REPORT": str(report), "LAZYCLASH_SETTINGS_PTY_LANGUAGE": language}
     wrapper = preview.WRAPPER.replace("os.execv(sys.argv[5], sys.argv[5:])",
@@ -73,11 +82,42 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.key(b"7")
         terminal.wait(words["settings.interface"])
         terminal.settle()
-        for heading in ("settings.interface", "settings.serviceGroup", "settings.core", "settings.diagnostics"):
+        for heading in ("settings.interface", "settings.mihomo", "settings.serviceGroup", "settings.core", "settings.diagnostics"):
             terminal.wait(words[heading])
         terminal.wait(words["dashboard.network.mixedPort"] % "7897")
         terminal.wait("lazyclash doctor")
         preview.capture(terminal, output, "settings-wide", args)
+
+        inherit = words["settings.followProfile"]
+        for key, value in (("settings.ipv6", words["dashboard.control.on"]),
+                           ("settings.unifiedDelay", words["dashboard.control.off"]),
+                           ("settings.logLevel", "debug")):
+            # The other rows still follow the profile, so click the trigger
+            # on this specific row and verify its selected option.
+            _, y = position(terminal, words[key])
+            row = terminal.screen.cells[y]
+            x = next(x for x, cell in enumerate(row) if cell and "".join(row[x:]).startswith(inherit + " ▾"))
+            click(terminal, (x, y))
+            terminal.wait("✓ " + inherit)
+            if key == "settings.ipv6":
+                terminal.key(b"\x1b[B")
+                terminal.key(b"\x1b")  # Cancel leaves the inherited value intact.
+                terminal.wait_absent("✓ " + inherit)
+                terminal.key(b"\r")
+                terminal.wait("✓ " + inherit)
+                terminal.key(b"\x1b[B")
+                terminal.key(b"\r")
+            else:
+                terminal.click_text("    " + value + " ")
+            terminal.wait(value + " ▾")
+            dismiss_toasts(terminal)
+        preview.capture(terminal, output, "mihomo-overrides-wide", args)
+        terminal.click_text("debug ▾")
+        terminal.wait("✓ debug")
+        terminal.click_text(inherit)
+        terminal.wait_absent("debug ▾")
+        terminal.wait(inherit + " ▾")
+        dismiss_toasts(terminal)
 
         terminal.click_text("Dark ▾")
         terminal.wait("✓ Dark")
@@ -161,12 +201,7 @@ def exercise(preview, binary, output, language, profile, args):
 
         # Completed preference Toasts can cover the right card's top border.
         # Close them through their real mouse targets before measuring layout.
-        for _ in range(8):
-            if "×" not in terminal.screen.text():
-                break
-            click(terminal, position(terminal, "×"))
-            terminal.settle()
-        assert "×" not in terminal.screen.text(), "preference Toasts still cover the Settings cards"
+        dismiss_toasts(terminal)
 
         for width, height in SIZES:
             terminal.resize(width, height)
@@ -205,6 +240,13 @@ def exercise(preview, binary, output, language, profile, args):
                 preview.capture(terminal, output, "theme-menu-compact", args)
                 terminal.key(b"\x1b")
                 terminal.wait_absent("✓ Dark")
+                focus(terminal, words["dashboard.control.off"] + " ▾")
+                terminal.key(b"\r")
+                terminal.wait("✓ " + words["dashboard.control.off"])
+                terminal.wait(inherit)
+                preview.capture(terminal, output, "mihomo-menu-compact", args)
+                terminal.key(b"\x1b")
+                terminal.wait_absent("✓ " + words["dashboard.control.off"])
             focus(terminal, words["settings.openLogs"])
             preview.capture(terminal, output, "tab-logs-%dx%d" % (width, height), args)
             focus(terminal, words["settings.edit"], words["navigation.controls.editPorts"])
@@ -237,6 +279,8 @@ def exercise(preview, binary, output, language, profile, args):
         assert calls["language_saves"] == 2 and calls["language"] == language, calls
         assert calls["hint_saves"] == 2 and not calls["hints_hidden"], calls
         assert calls["theme_saves"] == 3 and calls["theme"] == "dark", calls
+        assert calls["core_changes"] == [["ipv6", "on"], ["unified-delay", "off"],
+                                         ["log-level", "debug"], ["log-level", ""]], calls
         assert calls["port_reads"] == len(SIZES), calls
         assert calls["log_streams"] == 1, calls
         assert calls["service_changes"] == calls["mode_changes"] == calls["port_applies"] == 0, calls
@@ -247,7 +291,7 @@ def exercise(preview, binary, output, language, profile, args):
         if profile == "no-color":
             assert not any(value not in (b"", b"0") for value in preview.SGR.findall(raw)), "NO_COLOR emitted styling"
         (output / "pty.raw").write_bytes(raw)
-        print("PASS %s/%s: theme and language dropdowns, busy guard, hints, adaptive width/columns, wheel, Tab, ports return and diagnostics Logs; %s" % (language, profile, json.dumps(calls)), flush=True)
+        print("PASS %s/%s: core overrides and inheritance, theme and language dropdowns, busy guard, hints, adaptive width/columns, wheel, Tab, ports return and diagnostics Logs; %s" % (language, profile, json.dumps(calls)), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")
         (output / "failed.ansi").write_bytes(terminal.raw)

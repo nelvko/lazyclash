@@ -18,19 +18,20 @@ import (
 )
 
 type manifest struct {
-	TUN          bool         `json:"tun"`
-	LifecycleSHA string       `json:"lifecycle_sha256,omitempty"`
-	Build        *buildRecord `json:"build,omitempty"`
-	ID           string       `json:"id"`
-	Service      string       `json:"service"`
-	Version      string       `json:"version"`
-	Controller   string       `json:"controller"`
-	Secret       string       `json:"secret"`
-	Port         int          `json:"mixed_port"`
-	Applied      string       `json:"applied"`
-	Mode         string       `json:"mode,omitempty"`
-	SHA          string       `json:"config_sha256"`
-	BinarySHA    string       `json:"binary_sha256"`
+	TUN          bool                   `json:"tun"`
+	LifecycleSHA string                 `json:"lifecycle_sha256,omitempty"`
+	Build        *buildRecord           `json:"build,omitempty"`
+	ID           string                 `json:"id"`
+	Service      string                 `json:"service"`
+	Version      string                 `json:"version"`
+	Controller   string                 `json:"controller"`
+	Secret       string                 `json:"secret"`
+	Port         int                    `json:"mixed_port"`
+	Applied      string                 `json:"applied"`
+	Mode         string                 `json:"mode,omitempty"`
+	CoreSettings mihomo.GeneralSettings `json:"core_settings,omitzero"`
+	SHA          string                 `json:"config_sha256"`
+	BinarySHA    string                 `json:"binary_sha256"`
 }
 
 func (m manifest) selectedProfile() string {
@@ -104,6 +105,9 @@ func (a *App) load() (manifest, string, error) {
 	}
 	if m.Mode != "" && !mihomo.ValidMode(m.Mode) {
 		return m, "", diagnostic.New("diagnostic.installation.persistedMode", "invalid persisted proxy mode")
+	}
+	if err := m.CoreSettings.Validate(); err != nil {
+		return m, "", err
 	}
 	cfg, err := store.Read(filepath.Join(dir, target, "config.yaml"))
 	if err != nil {

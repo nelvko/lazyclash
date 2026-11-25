@@ -32,6 +32,7 @@ type Backend interface {
 	SaveEditorPreference(context.Context, string) error
 	SaveKeyHintsPreference(context.Context, bool) error
 	SetAutostart(context.Context, bool) error
+	SetCoreSetting(context.Context, string, string) error
 	SetMode(context.Context, string) error
 	SetTUN(context.Context, bool) error
 	CheckUpdate(context.Context, mihomo.Channel, downloadnet.Config) (app.CoreUpdateCheck, error)
@@ -1299,6 +1300,10 @@ func (m *Model) activate(id string) tea.Cmd {
 		return nil
 	case "settings.theme":
 		m.openPageSelectionMenu("settings", id, m.theme, themeMenuItems)
+		return nil
+	case "settings.ipv6", "settings.unifiedDelay", "settings.logLevel":
+		_, current, items := coreSettingChoices(m.locale, m.snapshot.CoreSettings, id)
+		m.openPageSelectionMenu("settings", id, current, items)
 		return nil
 	case "editor.configure":
 		return m.openEditorPreference()

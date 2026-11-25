@@ -15,7 +15,7 @@ import (
 )
 
 // TestSettingsPTYFixture runs the real TUI using only an opt-in memory backend.
-// Preference writes and port reads are observed without storage or services.
+// Setting writes and port reads are observed without storage or services.
 func TestSettingsPTYFixture(t *testing.T) {
 	report := os.Getenv("LAZYCLASH_SETTINGS_PTY_REPORT")
 	if report == "" {
@@ -38,6 +38,7 @@ func TestSettingsPTYFixture(t *testing.T) {
 	}
 	b.mu.Lock()
 	prefs := b.preferences
+	coreChanges := b.coreChanges
 	b.mu.Unlock()
 	raw, err := json.Marshal(map[string]any{
 		"language_saves": b.languages.Load(), "hint_saves": b.hints.Load(), "port_reads": b.portReads.Load(),
@@ -45,6 +46,7 @@ func TestSettingsPTYFixture(t *testing.T) {
 		"log_streams": b.logStreams.Load(),
 		"language":    prefs.Language, "hints_hidden": prefs.HideKeyHints,
 		"theme_saves": b.themes.Load(), "theme": prefs.Theme,
+		"core_changes": coreChanges,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -58,9 +60,34 @@ type settingsPTYBackend struct {
 	*fakeBackend
 	mu                                               sync.Mutex
 	preferences                                      app.Preferences
+	coreSettings                                     mihomo.GeneralSettings
+	coreChanges                                      [][2]string
 	languages, hints, themes, portReads, portApplies atomic.Int64
 	controls, modes                                  atomic.Int64
 	logStreams                                       atomic.Int64
+}
+
+func (b *settingsPTYBackend) Snapshot(ctx context.Context) (app.Snapshot, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	snapshot, err := b.fakeBackend.Snapshot(ctx)
+	snapshot.CoreSettings = b.coreSettings
+	return snapshot, err
+}
+
+func (b *settingsPTYBackend) SetCoreSetting(ctx context.Context, key, value string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	settings, err := b.coreSettings.With(key, value)
+	if err != nil {
+		return err
+	}
+	b.coreSettings = settings
+	b.coreChanges = append(b.coreChanges, [2]string{key, value})
+	return nil
 }
 
 func (b *settingsPTYBackend) LoadPreferences(ctx context.Context) (app.Preferences, error) {

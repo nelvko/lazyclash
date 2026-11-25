@@ -48,7 +48,7 @@ func settingsSelectRow(o dashboardOptions, id, label, current string, items []me
 
 func settingsContent(o dashboardOptions, width int) (string, []hitRegion) {
 	sections := []func(dashboardOptions, int) dashboardBlock{
-		settingsInterface, settingsService, settingsCore, settingsDiagnostics,
+		settingsInterface, settingsMihomo, settingsService, settingsCore, settingsDiagnostics,
 	}
 	var body dashboardBlock
 	columns := 1
@@ -59,7 +59,7 @@ func settingsContent(o dashboardOptions, width int) (string, []hitRegion) {
 		if i > 0 {
 			body.blank()
 		}
-		body.append(overviewRow(o, width, columns, func(column, cardWidth int) dashboardBlock {
+		body.append(overviewRow(o, width, min(columns, len(sections)-i), func(column, cardWidth int) dashboardBlock {
 			return sections[i+column](o, cardWidth)
 		}))
 	}
@@ -72,7 +72,7 @@ func settingsInterface(o dashboardOptions, width int) dashboardBlock {
 	if o.HideKeyHints {
 		state = tr("dashboard.control.off")
 	}
-	return settingsSection(o, width, tr("settings.interface"), []settingsRow{
+	return settingsSection(o, width, tr("settings.interface"), "", []settingsRow{
 		settingsSelectRow(o, "settings.language", tr("dashboard.language.title"), o.Locale.Language(), languageMenuItems),
 		{label: tr("dashboard.interface.keyHints"), note: tr("settings.keyHintsHint"), actions: []overviewControlButton{
 			{id: "key-hints.toggle", label: state, enabled: true, selected: !o.HideKeyHints},
@@ -124,7 +124,7 @@ func settingsService(o dashboardOptions, width int) dashboardBlock {
 		ports.note = savedMixedPortLabel(o) + "\n" + overviewControllerAddress(s.Controller)
 		ports.actions = []overviewControlButton{{id: "runtime-settings", label: tr("settings.edit"), enabled: !o.Busy}}
 	}
-	return settingsSection(o, width, tr("settings.serviceGroup"), []settingsRow{autostart, ports})
+	return settingsSection(o, width, tr("settings.serviceGroup"), "", []settingsRow{autostart, ports})
 }
 
 func settingsCore(o dashboardOptions, width int) dashboardBlock {
@@ -142,7 +142,7 @@ func settingsCore(o dashboardOptions, width int) dashboardBlock {
 		rows[0].actions = append(rows[0].actions, overviewControlButton{id: "restart", label: tr("dashboard.action.restart"), enabled: !o.Busy && runtimeControlIssue(s, o.Locale) == ""})
 		rows = append(rows, settingsRow{label: tr("settings.remove"), note: tr("settings.removeHint")})
 	}
-	return settingsSection(o, width, tr("settings.core"), rows)
+	return settingsSection(o, width, tr("settings.core"), "", rows)
 }
 
 func settingsDiagnostics(o dashboardOptions, width int) dashboardBlock {
@@ -161,10 +161,10 @@ func settingsDiagnostics(o dashboardOptions, width int) dashboardBlock {
 	if s.Drift != "" {
 		rows = append(rows, settingsRow{note: clean(o.Locale.Detail(s.Drift)), color: warning})
 	}
-	return settingsSection(o, width, tr("settings.diagnostics"), rows)
+	return settingsSection(o, width, tr("settings.diagnostics"), "", rows)
 }
 
-func settingsSection(o dashboardOptions, width int, title string, rows []settingsRow) dashboardBlock {
+func settingsSection(o dashboardOptions, width int, title, description string, rows []settingsRow) dashboardBlock {
 	inner, left, top := max(1, width-4), 2, 1
 	if width < 4 {
 		inner, left, top = max(1, width), 0, 0
@@ -175,6 +175,9 @@ func settingsSection(o dashboardOptions, width int, title string, rows []setting
 		b.lines = append(b.lines, strings.Split(wrapText(style(s, color), inner), "\n")...)
 	}
 	addText(lipgloss.NewStyle().Bold(true).Render(title), text)
+	if description != "" {
+		addText(description, muted)
+	}
 	b.blank()
 	labelColumn := 0
 	for _, row := range rows {

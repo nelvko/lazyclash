@@ -106,6 +106,7 @@
   "diagnostic.runtime.autostartUnsupported": "当前运行环境无法配置自动启动",
   "diagnostic.runtime.stopIncomplete": "服务尚未完全停止；请检查状态并重试停止操作",
   "diagnostic.runtime.stopInspection": "已请求停止，但保存的运行状态需要检查",
+  "diagnostic.settings.coreOption": "Mihomo 通用设置项或取值无效",
   "diagnostic.settings.portRange": "代理和控制 API 端口必须在 1024–65535 之间",
   "diagnostic.settings.portsDiffer": "代理和控制 API 端口必须不同",
   "diagnostic.settings.serviceChanging": "服务正在切换状态；请等待后重新审阅端口设置",

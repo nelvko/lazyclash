@@ -46,6 +46,7 @@ type fakeBackend struct {
 	setOverrides        func(context.Context, string, []byte) error
 	control             func(context.Context, string) error
 	autostart           func(context.Context, bool) error
+	setCoreSetting      func(context.Context, string, string) error
 	mode                func(context.Context, string) error
 	tun                 func(context.Context, bool) error
 	runtime             func(context.Context) (app.RuntimeSnapshot, error)
@@ -125,6 +126,12 @@ func (f *fakeBackend) SetGuideDismissed(context.Context, bool) error { return ni
 func (f *fakeBackend) SetAutostart(ctx context.Context, enabled bool) error {
 	if f.autostart != nil {
 		return f.autostart(ctx, enabled)
+	}
+	return ctx.Err()
+}
+func (f *fakeBackend) SetCoreSetting(ctx context.Context, key, value string) error {
+	if f.setCoreSetting != nil {
+		return f.setCoreSetting(ctx, key, value)
 	}
 	return ctx.Err()
 }

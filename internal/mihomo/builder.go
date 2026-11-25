@@ -17,6 +17,7 @@ type BuildOptions struct {
 	Controller, Secret string
 	MixedPort          int
 	Mode               string
+	General            GeneralSettings
 	TUN                bool
 	ServiceName        string
 }
@@ -33,6 +34,10 @@ func Build(opts BuildOptions) ([]byte, error) {
 			return nil, err
 		}
 	}
+	if err := opts.General.Validate(); err != nil {
+		return nil, err
+	}
+	opts.General.apply(cfg)
 	if err := validateContainers(cfg); err != nil {
 		return nil, err
 	}
