@@ -98,23 +98,46 @@ func renderSettingsSwitch(action overviewControlButton, o buttonOptions) string 
 }
 
 func settingsContent(o dashboardOptions, width int) (string, []hitRegion) {
-	sections := []func(dashboardOptions, int) dashboardBlock{
-		settingsInterface, settingsMihomo, settingsService, settingsCore, settingsDiagnostics,
-	}
-	var body dashboardBlock
-	columns := 1
-	if width >= 80 {
-		columns = 2
-	}
-	for i := 0; i < len(sections); i += columns {
-		if i > 0 {
-			body.blank()
+	stack := func(cardWidth int, sections ...func(dashboardOptions, int) dashboardBlock) dashboardBlock {
+		var column dashboardBlock
+		for i, section := range sections {
+			if i > 0 {
+				column.blank()
+			}
+			column.append(section(o, cardWidth))
 		}
-		body.append(overviewRow(o, width, min(columns, len(sections)-i), func(column, cardWidth int) dashboardBlock {
-			return sections[i+column](o, cardWidth)
-		}))
+		return column
 	}
-	return strings.Join(body.lines, "\n"), body.targets
+	if width < 80 {
+		column := stack(width, settingsInterface, settingsMihomo, settingsService, settingsCore, settingsDiagnostics)
+		return strings.Join(column.lines, "\n"), column.targets
+	}
+
+	const gap = 2
+	leftWidth := (width - gap) / 2
+	rightWidth := width - leftWidth - gap
+	left := stack(leftWidth, settingsInterface, settingsService, settingsDiagnostics)
+	right := stack(rightWidth, settingsMihomo, settingsCore)
+
+	blank := func(cells int) string { return themed(strings.Repeat(" ", cells), text, bg, o.Dim) }
+	leftBlank, gutter, rightBlank := blank(leftWidth), blank(gap), blank(rightWidth)
+	lines := make([]string, max(len(left.lines), len(right.lines)))
+	for y := range lines {
+		l, r := leftBlank, rightBlank
+		if y < len(left.lines) && left.lines[y] != "" {
+			l = left.lines[y]
+		}
+		if y < len(right.lines) && right.lines[y] != "" {
+			r = right.lines[y]
+		}
+		lines[y] = l + gutter + r
+	}
+	targets := left.targets
+	for _, hit := range right.targets {
+		hit.X += leftWidth + gap
+		targets = append(targets, hit)
+	}
+	return strings.Join(lines, "\n"), targets
 }
 
 func settingsInterface(o dashboardOptions, width int) dashboardBlock {

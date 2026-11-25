@@ -46,6 +46,32 @@ def switch_track(enabled):
     return "░░░░██" if enabled else "██░░░░"
 
 
+def check_card_stacks(terminal, words, columns):
+    """Check each card's actual terminal borders against its column and neighbors."""
+    cells = terminal.screen.cells
+    stacks = []
+    for column in columns:
+        bounds = []
+        for heading in column:
+            x, y = position(terminal, words["settings." + heading])
+            left, top = x - 3, y - 1
+            assert cells[top][left] == "┌", heading
+            right = cells[top].index("┐", left)
+            bottom = next(y for y in range(top + 1, len(cells)) if cells[y][left] == "└")
+            assert cells[bottom][right] == "┘", heading
+            assert "".join(cells[bottom - 1][left + 1:right]).strip(), heading + " has trailing empty rows"
+            if bounds:
+                prev_left, prev_right, _, prev_bottom = bounds[-1]
+                assert (left, right, top) == (prev_left, prev_right, prev_bottom + 2), heading
+                assert not "".join(cells[top - 1][left:right + 1]).strip(), heading + " has no clear gap"
+            bounds.append((left, right, top, bottom))
+        stacks.append(bounds)
+    if len(stacks) == 2:
+        left, right = stacks
+        assert left[0][1] + 3 == right[0][0] and left[0][2] == right[0][2]
+        assert left[1][2] < right[1][2], "the short interface card still waits for the core preferences card"
+
+
 def check_switch(terminal, words, key, enabled, profile):
     label_x, y = position(terminal, words[key])
     row = terminal.screen.cells[y]
@@ -107,7 +133,15 @@ def exercise(preview, binary, output, language, profile, args):
             terminal.wait(words[heading])
         terminal.wait(words["dashboard.network.mixedPort"] % "7897")
         terminal.wait("lazyclash doctor")
+        check_card_stacks(terminal, words, (("interface", "serviceGroup", "diagnostics"), ("mihomo", "core")))
         preview.capture(terminal, output, "settings-wide", args)
+        # A tall single column lets the same terminal frame expose the entire reading order.
+        terminal.resize(80, 80)
+        terminal.settle()
+        check_card_stacks(terminal, words, (("interface", "mihomo", "serviceGroup", "core", "diagnostics"),))
+        preview.capture(terminal, output, "settings-single-column", args)
+        terminal.resize(160, 45)
+        terminal.settle()
 
         switch_defaults = {
             "settings.ipv6": True, "settings.unifiedDelay": False,
@@ -361,7 +395,7 @@ def exercise(preview, binary, output, language, profile, args):
         # The diagnostics action only opens the read-only Logs page. The
         # Settings shortcut restores the existing page after its stream stops.
         focus(terminal, words["settings.openLogs"])
-        terminal.key(b"\r")
+        click(terminal, position(terminal, words["settings.openLogs"]))
         terminal.wait("settings-pty readonly log")
         preview.capture(terminal, output, "diagnostics-open-logs", args)
         terminal.key(b"7")

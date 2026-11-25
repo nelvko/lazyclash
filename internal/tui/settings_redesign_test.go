@@ -65,39 +65,75 @@ func TestSettingsFillWindowWidthAcrossSidebarAndColumnBreakpoints(t *testing.T) 
 	}
 }
 
-func TestSettingsGroupsAdaptToBodyWidthAndShortTerminals(t *testing.T) {
-	for _, language := range []string{i18n.English, i18n.Chinese} {
-		for _, size := range [][2]int{{160, 45}, {80, 24}, {79, 24}, {60, 20}, {120, 18}, {20, 7}, {3, 2}, {1, 1}} {
-			t.Run(fmt.Sprintf("%s/%dx%d", language, size[0], size[1]), func(t *testing.T) {
-				o := dashboardOptions{Locale: i18n.New(language), Height: size[1], Snapshot: settingsTestSnapshot()}
-				body, hits := settingsContent(o, size[0])
-				rows := strings.Split(body, "\n")
-				assertCanvas(t, body, size[0], len(rows))
-				assertRegions(t, hits, size[0], len(rows))
-				if size[0] < 40 {
-					return
-				}
-				position := func(label string) (int, int) {
+func TestSettingsCardsStackAtTheirNaturalHeights(t *testing.T) {
+	installed := settingsTestSnapshot()
+	running := installed
+	running.Service.Active, running.Service.State = true, "active"
+	running.Drift = strings.Repeat("Configuration differs from the service. ", 20)
+
+	for _, tc := range []struct {
+		name          string
+		width, height int
+		snapshot      app.Snapshot
+	}{
+		{"installed", 160, 45, installed},
+		{"odd width with long diagnostic", 121, 18, running},
+		{"two columns before installation", 80, 24, app.Snapshot{}},
+		{"single column", 79, 24, installed},
+		{"narrow", 40, 16, running},
+		{"minimal", 3, 2, installed},
+		{"one cell", 1, 1, installed},
+	} {
+		for _, language := range []string{i18n.English, i18n.Chinese} {
+			t.Run(tc.name+"/"+language, func(t *testing.T) {
+				o := dashboardOptions{Locale: i18n.New(language), Height: tc.height, Snapshot: tc.snapshot}
+				body, hits := settingsContent(o, tc.width)
+				rows := strings.Split(ansi.Strip(body), "\n")
+				assertCanvas(t, body, tc.width, len(rows))
+				assertRegions(t, hits, tc.width, len(rows))
+
+				// Each column must reproduce its standalone cards, including their
+				// bottom borders and local hit rectangles, with one blank row between.
+				checkColumn := func(x, width int, cards ...func(dashboardOptions, int) dashboardBlock) int {
+					t.Helper()
+					var want []string
+					for index, render := range cards {
+						if index > 0 {
+							want = append(want, "")
+						}
+						card := render(o, width)
+						for _, target := range card.targets {
+							target.X += x
+							target.Y += len(want)
+							if got := findTarget(t, Model{targets: hits}, target.ID); got != target {
+								t.Fatalf("misplaced %s: got %+v, want %+v", target.ID, got, target)
+							}
+						}
+						want = append(want, card.lines...)
+					}
 					for y, row := range rows {
-						plain := ansi.Strip(row)
-						if x := strings.Index(plain, label); x >= 0 {
-							return ansi.StringWidth(plain[:x]), y
+						expected := ""
+						if y < len(want) {
+							expected = ansi.Strip(want[y])
+						}
+						got := ansi.Cut(row, x, x+width)
+						if strings.TrimRight(got, " ") != strings.TrimRight(expected, " ") {
+							t.Fatalf("column at %d, row %d: got %q, want %q", x, y, got, expected)
 						}
 					}
-					t.Fatalf("missing section %q", label)
-					return 0, 0
+					return len(want)
 				}
-				ix, iy := position(o.Locale.T("settings.interface"))
-				mx, my := position(o.Locale.T("settings.mihomo"))
-				sx, sy := position(o.Locale.T("settings.serviceGroup"))
-				cx, cy := position(o.Locale.T("settings.core"))
-				dx, dy := position(o.Locale.T("settings.diagnostics"))
-				if size[0] >= 80 {
-					if mx <= ix || my != iy || sx != ix || sy <= iy || cx != mx || cy != sy || dx != ix || dy <= sy {
-						t.Fatalf("wide settings are not grouped in two columns:\n%s", ansi.Strip(body))
-					}
-				} else if mx != ix || my <= iy || sx != ix || sy <= my || cx != ix || cy <= sy || dx != ix || dy <= cy {
-					t.Fatalf("compact settings did not stack in reading order:\n%s", ansi.Strip(body))
+				var height int
+				if tc.width < 80 {
+					height = checkColumn(0, tc.width, settingsInterface, settingsMihomo, settingsService, settingsCore, settingsDiagnostics)
+				} else {
+					left := (tc.width - 2) / 2
+					leftHeight := checkColumn(0, left, settingsInterface, settingsService, settingsDiagnostics)
+					rightHeight := checkColumn(left+2, tc.width-left-2, settingsMihomo, settingsCore)
+					height = max(leftHeight, rightHeight)
+				}
+				if len(rows) != height {
+					t.Fatalf("body height = %d, want %d", len(rows), height)
 				}
 			})
 		}

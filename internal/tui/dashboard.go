@@ -448,58 +448,6 @@ func (b *dashboardBlock) copyVisibleBlock(block dashboardBlock, y, start int) {
 
 func (b *dashboardBlock) blank() { b.lines = append(b.lines, "") }
 
-func overviewRow(o dashboardOptions, width, columns int, render func(int, int) dashboardBlock) dashboardBlock {
-	cardWidth := (width - 2*(columns-1)) / columns
-	blocks := make([]dashboardBlock, columns)
-	widths := make([]int, columns)
-	height := 0
-	for column := range blocks {
-		widths[column] = cardWidth
-		if column == columns-1 {
-			widths[column] = width - column*(cardWidth+2)
-		}
-		blocks[column] = render(column, widths[column])
-		height = max(height, len(blocks[column].lines))
-	}
-	var row dashboardBlock
-	for column := range blocks {
-		block := &blocks[column]
-		padding := height - len(block.lines)
-		if padding > 0 {
-			insert := len(block.lines) - 1
-			if block.footerY > 0 {
-				insert = block.footerY
-			}
-			lines := append([]string(nil), block.lines[:insert]...)
-			blank := panelFrame(nil, widths[column], 3, o)[1]
-			for range padding {
-				lines = append(lines, blank)
-			}
-			block.lines = append(lines, block.lines[insert:]...)
-			for i := range block.targets {
-				if block.targets[i].Y >= insert {
-					block.targets[i].Y += padding
-				}
-			}
-		}
-		for _, hit := range block.targets {
-			hit.X += column * (cardWidth + 2)
-			row.targets = append(row.targets, hit)
-		}
-	}
-	for y := 0; y < height; y++ {
-		line := ""
-		for column, block := range blocks {
-			if column > 0 {
-				line += themed("  ", text, bg, o.Dim)
-			}
-			line += block.lines[y]
-		}
-		row.lines = append(row.lines, line)
-	}
-	return row
-}
-
 func panelFrame(lines []string, width, height int, o dashboardOptions, edge ...string) []string {
 	edgeColor := divider
 	if len(edge) > 0 {
