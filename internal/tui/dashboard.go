@@ -30,7 +30,6 @@ type hitRegion struct {
 	DropdownRight bool
 }
 type dashboardOptions struct {
-	settingsMouseRows bool // Include hover-only settings rows in screen hit testing.
 	Locale                          i18n.Localizer
 	Theme, EffectiveTheme           string
 	MessageTransient                bool
@@ -239,7 +238,6 @@ func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
 			body, bodyTargets = overviewContent(o, g.width)
 		}
 	case "settings":
-		o.settingsMouseRows = true
 		body, bodyTargets = settingsContent(o, g.width)
 	default:
 		body, bodyTargets = o.Body, o.BodyTargets
