@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -32,6 +33,8 @@ func TestNotificationShortcutPreservesPageOnEmptyAndTogglesWithItems(t *testing.
 func TestNotificationDirectDetailsCollapseAndOutsideClickIsConsumed(t *testing.T) {
 	m := noticeModel()
 	id := publishNotice(&m, "profile.refresh", "error", "Unavailable")
+	m.notification.items[0].Details = "The source returned HTTP 503."
+	m.layout()
 	focus := m.focus
 	details := fmt.Sprintf("notification.details.%d", id)
 	outside := findTarget(t, m, "nav.settings")
@@ -93,7 +96,8 @@ func TestNotificationListReturnsToScrolledItemAndClosesWhenEmpty(t *testing.T) {
 	m := noticeModel()
 	m, _ = update(m, tea.WindowSizeMsg{Width: 60, Height: 20})
 	for i := range 7 {
-		publishNotice(&m, fmt.Sprintf("item-%d", i), "error", fmt.Sprintf("Diagnostic %d", i))
+		publishNotice(&m, fmt.Sprintf("item-%d", i), "error", fmt.Sprintf("Refresh failed %d", i))
+		m.notification.items[i].Details = fmt.Sprintf("Diagnostic %d", i)
 	}
 	focus := m.focus
 	m, _ = update(m, tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl})
@@ -125,5 +129,51 @@ func TestNotificationListReturnsToScrolledItemAndClosesWhenEmpty(t *testing.T) {
 	}
 	if m.focus != focus {
 		t.Fatalf("dismissing last item: focus=%q, want %q", m.focus, focus)
+	}
+}
+
+func TestShortSuccessHasNoHiddenDetailsAction(t *testing.T) {
+	for _, size := range [][2]int{{160, 45}, {40, 24}} {
+		m := profileNavigationModel(size[0], size[1])
+		id := publishNotice(&m, "profile.apply", "done", "Saved")
+		closeID := fmt.Sprintf("notification.close.%d", id)
+		detailsID := fmt.Sprintf("notification.details.%d", id)
+		if !hasAction(m.targets, closeID) || hasAction(m.targets, detailsID) || hasAction(m.focusTargets(), detailsID) {
+			t.Fatalf("%v: short notification has incorrect targets: %+v", size, m.targets)
+		}
+		// A stale focused control can no longer open a detail view after a
+		// message gets shorter or the terminal expands.
+		m.focus = detailsID
+		m, _ = update(m, special(tea.KeyEnter))
+		if m.notification.panel.open || m.focus == detailsID || len(m.notification.items) != 1 {
+			t.Fatalf("%v: the hidden Details action was still reachable", size)
+		}
+		m, _ = update(m, tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl})
+		p := &m.notification.panel
+		if len(p.actions) != 1 || p.actions[0].ID != fmt.Sprintf("notification.panel.dismiss.%d", id) {
+			t.Fatalf("%v: short notification in the list exposed extra controls: %+v", size, p.actions)
+		}
+		m, _ = update(m, special(tea.KeyEnter))
+		if m.notification.panel.open || len(m.notification.items) != 0 {
+			t.Fatalf("%v: Enter did not dismiss the short notice", size)
+		}
+	}
+}
+
+func TestEscapeOnTruncatedCardDismissesOnlyItsNotice(t *testing.T) {
+	m := profileNavigationModel(40, 24)
+	older := publishNotice(&m, "first", "done", "Saved")
+	// A quiet entry still exists in Ctrl+N, but never competes for a toast.
+	m.notification.items[0].Silent = true
+	clipped := publishNotice(&m, "profile.apply", "done", "Selected subscription “"+strings.Repeat("office ", 15)+"”")
+	details := fmt.Sprintf("notification.details.%d", clipped)
+	findTarget(t, m, details)
+	if !noticeByID(t, m, clipped).started.IsZero() {
+		t.Fatal("truncated toast consumed its display time")
+	}
+	m.focus = details
+	m, _ = update(m, special(tea.KeyEscape))
+	if len(m.notification.items) != 1 || m.notification.items[0].ID != older || m.notification.panel.open {
+		t.Fatalf("Esc dismissed a different notification: %+v", m.notification.items)
 	}
 }

@@ -44,21 +44,37 @@ func (p *notificationPanel) show(id uint64) {
 
 // Match the item when rebuilding the list; other results can change while
 // the user reads details. Restore the offset after the new content is sized.
-func (p *notificationPanel) restoreListSelection() {
-	if p.detailID == 0 && p.listAction != "" {
-		for i, action := range p.actions {
-			if action.ID == p.listAction {
-				p.focus = i
-				return
-			}
-		}
-		// The viewed notice was dismissed. Focus the next visible control
-		// at that list position, or the final control if it was the last.
-		for i, action := range p.actions {
+func (p *notificationPanel) restoreListSelection(previous string) {
+	if p.listAction != "" {
+		previous = p.listAction
+	}
+	if previous == "" {
+		return
+	}
+	for i, action := range p.actions {
+		if action.ID == previous {
 			p.focus = i
-			if action.Y >= p.listOffset {
-				break
-			}
+			return
+		}
+	}
+	// Resizing the list can remove the Details button. Keep selection
+	// on the same card if it still has a control.
+	id := previous[strings.LastIndex(previous, ".")+1:]
+	for i, action := range p.actions {
+		if strings.HasSuffix(action.ID, "."+id) {
+			p.focus = i
+			return
+		}
+	}
+	if p.listAction == "" {
+		return
+	}
+	// The viewed notice was dismissed. Focus the next visible control
+	// at that list position, or the final control if it was the last.
+	for i, action := range p.actions {
+		p.focus = i
+		if action.Y >= p.listOffset {
+			break
 		}
 	}
 }
@@ -221,6 +237,10 @@ func (p *notificationPanel) mouse(msg tea.MouseMsg) string {
 }
 
 func (p *notificationPanel) render(items []notificationItem, width, height int, locale i18n.Localizer, plain ...bool) (string, []hitRegion) {
+	var selected string
+	if p.focus >= 0 && p.focus < len(p.actions) {
+		selected = p.actions[p.focus].ID
+	}
 	p.actions, p.targets = nil, nil
 	if !p.open || len(items) == 0 || width <= 0 || height <= 0 {
 		p.bounds = hitRegion{}
@@ -262,7 +282,7 @@ func (p *notificationPanel) render(items []notificationItem, width, height int, 
 		return button, p.targets
 	}
 	if p.detailID == 0 {
-		return p.renderList(items, locale, options)
+		return p.renderList(items, locale, options, selected)
 	}
 	for _, item := range items {
 		if item.ID == p.detailID {
@@ -272,44 +292,43 @@ func (p *notificationPanel) render(items []notificationItem, width, height int, 
 	return "", nil
 }
 
-func (p *notificationPanel) renderList(items []notificationItem, locale i18n.Localizer, options dashboardOptions) (string, []hitRegion) {
+func (p *notificationPanel) renderList(items []notificationItem, locale i18n.Localizer, options dashboardOptions, previous string) (string, []hitRegion) {
 	x, y, w := p.bounds.X, p.bounds.Y, p.bounds.W
 	inner := w - 4
 	var lines, labels []string
 	for _, item := range items {
-		edge := notificationColor(item.Kind)
-		summary, _, _ := strings.Cut(notificationText(item.Message), "\n")
-		card := []string{
-			themed(cellCrop(notificationHeading(item, locale, ""), inner), edge, raised, false),
-			themed(cellCrop(summary, inner), text, raised, false),
-		}
-		// Actions live in the card whose operation they control. Their rows
-		// are content offsets in the stack viewport until clipping below.
-		detailsID := fmt.Sprintf("notification.panel.details.%d", item.ID)
+		body := notificationBody(item, locale, "")
+		first, _, more := strings.Cut(body, "\n")
 		dismissID := fmt.Sprintf("notification.panel.dismiss.%d", item.ID)
-		detailsLabel, dismissLabel := locale.T("notification.details"), locale.T("notification.dismiss")
-		details := notificationButton(detailsID, detailsLabel, inner, options)
-		dismiss := notificationButton(dismissID, dismissLabel, inner, options)
-		row := len(lines) + 1 + len(card)
-		detailsWidth, dismissWidth := ansi.StringWidth(details), ansi.StringWidth(dismiss)
-		p.actions = append(p.actions, hitRegion{ID: detailsID, X: 2, Y: row, W: detailsWidth, H: 1})
-		labels = append(labels, detailsLabel, dismissLabel)
-		if detailsWidth+dismissWidth > inner {
-			card = append(card, details, dismiss)
-			p.actions = append(p.actions, hitRegion{ID: dismissID, X: 2, Y: row + 1, W: dismissWidth, H: 1})
-		} else {
-			card = append(card, details+dismiss)
-			p.actions = append(p.actions, hitRegion{ID: dismissID, X: 2 + detailsWidth, Y: row, W: dismissWidth, H: 1})
+		close := notificationButton(dismissID, "×", inner, options)
+		closeWidth := ansi.StringWidth(close)
+		space := inner - closeWidth
+		summary := first
+		if more {
+			summary += "…"
 		}
+		summary = cellCrop(summary, space)
+		card := []string{themed(cellPad(summary, space), text, raised, false) + close}
+		bodyRow := len(lines) + 1
+		if more || summary != first || notificationExtra(item) != "" {
+			id := fmt.Sprintf("notification.panel.details.%d", item.ID)
+			label := locale.T("notification.details")
+			button := notificationButton(id, label, inner, options)
+			p.actions = append(p.actions, hitRegion{ID: id, X: 2, Y: bodyRow + 1, W: ansi.StringWidth(button), H: 1})
+			labels = append(labels, label)
+			card = append(card, button)
+		}
+		p.actions = append(p.actions, hitRegion{ID: dismissID, X: 2 + space, Y: bodyRow, W: closeWidth, H: 1})
+		labels = append(labels, "×")
 		if item.Kind == "working" {
 			id := fmt.Sprintf("notification.cancel.%d", item.ID)
 			label := locale.T("notification.cancel")
 			button := notificationButton(id, label, inner, options)
-			p.actions = append(p.actions, hitRegion{ID: id, X: 2, Y: len(lines) + 1 + len(card), W: ansi.StringWidth(button), H: 1})
+			p.actions = append(p.actions, hitRegion{ID: id, X: 2, Y: bodyRow + len(card), W: ansi.StringWidth(button), H: 1})
 			labels = append(labels, label)
 			card = append(card, button)
 		}
-		lines = append(lines, inputFrame(card, w, edge, raised)...)
+		lines = append(lines, inputFrame(card, w, notificationColor(item.Kind), raised)...)
 	}
 
 	// The collection has a shared header and footer. Only individual cards
@@ -317,7 +336,7 @@ func (p *notificationPanel) renderList(items []notificationItem, locale i18n.Loc
 	p.bounds.H = min(p.bounds.H, len(lines)+2)
 	p.viewport.SetWidth(w)
 	p.viewport.SetHeight(p.bounds.H - 2)
-	p.restoreListSelection()
+	p.restoreListSelection(previous)
 	p.focus = max(0, min(p.focus, len(p.actions)-1))
 	selected := p.actions[p.focus]
 	options.Focus = selected.ID
@@ -343,30 +362,24 @@ func (p *notificationPanel) renderList(items []notificationItem, locale i18n.Loc
 func (p *notificationPanel) renderDetail(item notificationItem, locale i18n.Localizer, options dashboardOptions) (string, []hitRegion) {
 	w := p.bounds.W
 	inner := w - 4
-	lines := strings.Split(wrapText(notificationHeading(item, locale, ""), inner), "\n")
-	lines = append(lines, "")
-	lines = append(lines, strings.Split(wrapText(notificationText(item.Message), inner), "\n")...)
-	if item.Details != "" && item.Details != item.Message {
+	lines := strings.Split(wrapText(notificationBody(item, locale, ""), inner), "\n")
+	if extra := notificationExtra(item); extra != "" {
 		lines = append(lines, "")
-		lines = append(lines, strings.Split(wrapText(notificationText(item.Details), inner), "\n")...)
+		lines = append(lines, strings.Split(wrapText(extra, inner), "\n")...)
 	}
-	p.bounds.H = min(p.bounds.H, 4+len(lines))
-	p.contentY = p.bounds.Y + 2
+	p.bounds.H = min(p.bounds.H, max(5, 3+len(lines)))
+	p.contentY = p.bounds.Y + 1
 	p.viewport.SetWidth(inner)
-	p.viewport.SetHeight(p.bounds.H - 4)
+	p.viewport.SetHeight(p.bounds.H - 3)
 	p.viewport.SetContentLines(lines)
 
-	title := strings.Trim(locale.T("notification.details"), "[] ")
+	rows := strings.Split(p.viewport.View(), "\n")
 	id := fmt.Sprintf("notification.panel.dismiss.%d", item.ID)
-	label := notificationButton(id, locale.T("notification.dismiss"), inner, options)
-	if ansi.StringWidth(title)+1+ansi.StringWidth(label) > inner {
-		label = notificationButton(id, "×", inner, options)
-	}
-	buttonWidth := ansi.StringWidth(label)
-	rows := []string{cellPad(title, inner-buttonWidth) + label}
-	p.targets = append(p.targets, hitRegion{ID: id, X: p.bounds.X + w - 2 - buttonWidth, Y: p.bounds.Y + 1, W: buttonWidth, H: 1})
-	rows = append(rows, strings.Split(p.viewport.View(), "\n")...)
-	rows = append(rows, p.footer(locale, options, inner, 2))
+	close := notificationButton(id, "×", inner, options)
+	closeWidth := ansi.StringWidth(close)
+	footer := p.footer(locale, options, inner-closeWidth, 2)
+	p.targets = append(p.targets, hitRegion{ID: id, X: p.bounds.X + w - 2 - closeWidth, Y: p.contentY + p.viewport.Height(), W: closeWidth, H: 1})
+	rows = append(rows, footer+close)
 	for i, line := range rows {
 		rows[i] = themed(cellPad(line, inner), text, raised, false)
 	}

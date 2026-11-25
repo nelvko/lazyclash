@@ -3,6 +3,7 @@ package tui
 import (
 	"crypto/sha256"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -283,18 +284,18 @@ func (m *Model) dismissNotificationID(id uint64) {
 	}
 }
 
+func (m *Model) hasNotificationControl(action string) bool {
+	return slices.ContainsFunc(m.targets, func(hit hitRegion) bool { return hit.ID == action })
+}
+
 func (m *Model) dismissFocusedNotification() {
-	for _, overlay := range m.notification.overlays {
-		for _, target := range overlay.Targets {
-			if target.ID != m.focus {
-				continue
+	if m.hasNotificationControl(m.focus) {
+		switch control, rawID, _ := strings.Cut(strings.TrimPrefix(m.focus, "notification."), "."); control {
+		case "close", "details", "cancel":
+			if id, err := strconv.ParseUint(rawID, 10, 64); err == nil {
+				m.dismissNotificationID(id)
+				return
 			}
-			if target.ID != "notification.expand" && !strings.HasPrefix(target.ID, "notification.summary.") && len(overlay.IDs) == 1 {
-				m.dismissNotificationID(overlay.IDs[0])
-			} else {
-				m.restoreNotificationFocus()
-			}
-			return
 		}
 	}
 	m.restoreNotificationFocus()
@@ -350,7 +351,7 @@ func (m *Model) notificationAction(action string) bool {
 	case "notification.panel.back":
 		n.panel.show(0)
 	default:
-		for _, prefix := range []string{"notification.close.", "notification.details.", "notification.summary.", "notification.panel.dismiss.", "notification.panel.details."} {
+		for _, prefix := range []string{"notification.close.", "notification.details.", "notification.panel.dismiss.", "notification.panel.details."} {
 			if !strings.HasPrefix(action, prefix) {
 				continue
 			}
@@ -360,7 +361,7 @@ func (m *Model) notificationAction(action string) bool {
 			}
 			if prefix == "notification.close." || prefix == "notification.panel.dismiss." {
 				m.dismissNotificationID(id)
-			} else {
+			} else if m.hasNotificationControl(action) {
 				m.openNotifications(id)
 			}
 			return true

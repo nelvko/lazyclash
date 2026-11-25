@@ -11,8 +11,6 @@ func (m *Model) notificationContextHelp() string {
 	switch {
 	case m.focus == "notification.expand":
 		return m.tr("notification.hints.list") + " · " + m.tr("notification.hints.overflowControls")
-	case strings.HasPrefix(m.focus, "notification.summary."):
-		return m.tr("notification.hints.details") + " · " + m.tr("notification.hints.overflowControls")
 	case strings.HasPrefix(m.focus, "notification.close."):
 		action = "dismiss"
 	case strings.HasPrefix(m.focus, "notification.cancel."):

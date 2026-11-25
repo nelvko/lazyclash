@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	"unicode"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/i18n"
@@ -15,6 +14,14 @@ type notificationOverlay struct {
 	Bounds  hitRegion
 	Targets []hitRegion
 	IDs     []uint64
+}
+
+func (card *notificationOverlay) position(x, y int) {
+	card.Bounds.X, card.Bounds.Y = x, y
+	for i := range card.Targets {
+		card.Targets[i].X += x
+		card.Targets[i].Y += y
+	}
 }
 
 func notificationColor(kind string) string {
@@ -35,33 +42,6 @@ func notificationLabel(locale i18n.Localizer, kind, spinner string) string {
 		return strings.TrimSpace(locale.T("notification.working", clean(spinner)))
 	}
 	return locale.T("notification." + kind)
-}
-
-func notificationHeading(item notificationItem, locale i18n.Localizer, spinner string) string {
-	parts := []string{notificationLabel(locale, item.Kind, spinner)}
-	if item.Page != "" {
-		parts = append(parts, pageTitle(item.Page, locale))
-	}
-	if item.Context != "" {
-		parts = append(parts, clean(item.Context))
-	}
-	return strings.Join(parts, " · ")
-}
-
-// Preserve diagnostic paragraphs while excluding terminal control sequences.
-func notificationText(value string) string {
-	return strings.Map(func(r rune) rune {
-		if r == '\n' {
-			return r
-		}
-		if r == '\t' {
-			return ' '
-		}
-		if unicode.IsControl(r) {
-			return -1
-		}
-		return r
-	}, ansi.Strip(value))
 }
 
 func (n *notificationState) covers(x, y int) bool {
@@ -140,11 +120,15 @@ func notificationLayout(o dashboardOptions, headerActions ...hitRegion) []notifi
 			bottom = min(bottom, input.Y)
 		}
 	}
-	if g.headerY > 0 && bottom == g.contentY && !modeFeedback && cornerWidth >= 16 {
-		// An input directly below the three-row header leaves no room for
-		// a bordered card. The existing compact controls fit from 16 cells.
-		width, x = cornerWidth, rightEdge-cornerWidth
-		y, capacity, compact = 0, 1, true
+	singleResult := len(items) == 1 && items[0].Kind != "working"
+	if g.headerY > 0 && bottom == g.contentY && !modeFeedback && (cornerWidth >= 16 || singleResult) {
+		// A single compact result fits entirely above the title. A progress
+		// action or overflow row must stay to the right of the title below.
+		width = cornerWidth
+		if singleResult {
+			width = min(54, rightEdge-2)
+		}
+		x, y, capacity, compact = rightEdge-width, 0, 1, true
 	}
 	// A failed operation can be retried from a page header action. Keep the
 	// actual button cells available even when the error outlives this page.
@@ -169,7 +153,7 @@ func notificationLayout(o dashboardOptions, headerActions ...hitRegion) []notifi
 		}
 		for _, item := range o.Notifications[start:] {
 			card := notificationCard(item, o, width, compact)
-			card.Bounds.X, card.Bounds.Y = x, cursor
+			card.position(x, cursor)
 			if cursor+card.Bounds.H > limit {
 				fits = false
 				break
@@ -182,10 +166,6 @@ func notificationLayout(o dashboardOptions, headerActions ...hitRegion) []notifi
 			}
 			if !fits {
 				break
-			}
-			for i := range card.Targets {
-				card.Targets[i].X += x
-				card.Targets[i].Y += cursor
 			}
 			overlays = append(overlays, card)
 			cursor += card.Bounds.H
@@ -210,28 +190,31 @@ func notificationLayout(o dashboardOptions, headerActions ...hitRegion) []notifi
 				row = g.contentY - 1
 			}
 		}
-		caption, displayedID := notificationSummary(items[:remaining], len(chosen) > 0, width, o)
-		action := "notification.expand"
-		if len(items) == 1 && items[0].Kind != "working" {
-			action = fmt.Sprintf("notification.summary.%d", items[0].ID)
+		var overflow notificationOverlay
+		if singleResult {
+			overflow = notificationCard(items[0], o, width, true)
+		} else {
+			const action = "notification.expand"
+			label := notificationButton(action, notificationOverflowCaption(items[:remaining], width, o), width, o)
+			overflow = notificationOverlay{
+				Content: themed(cellPad(label, width), text, raised, false),
+				Bounds:  hitRegion{ID: "notification", W: width, H: 1},
+				Targets: []hitRegion{{ID: action, W: ansi.StringWidth(label), H: 1}},
+			}
 		}
-		label := notificationButton(action, caption, width, o)
-		overflow := notificationOverlay{
-			Content: themed(cellPad(label, width), text, raised, false),
-			Bounds:  hitRegion{ID: "notification", X: x, Y: row, W: width, H: 1},
-			Targets: []hitRegion{{ID: action, X: x, Y: row, W: ansi.StringWidth(label), H: 1}},
-		}
-		if displayedID != 0 {
-			overflow.IDs = []uint64{displayedID}
-		}
+		overflow.position(x, row)
 		chosen = append(chosen, overflow)
 	}
 	return chosen
 }
 
-// A folded result still names what happened. Multiple folded notices give
-// precedence to unresolved errors while retaining their count.
-func notificationSummary(items []notificationItem, besideCards bool, width int, o dashboardOptions) (caption string, displayedID uint64) {
+// Surface the most important unresolved result alongside the overflow count.
+func notificationOverflowCaption(items []notificationItem, width int, o dashboardOptions) string {
+	if len(o.Notifications) == 1 {
+		// The task and its Cancel button expand together from a one-row slot.
+		first, _, _ := strings.Cut(notificationBody(items[0], o.Locale, o.Spinner), "\n")
+		return first + " ›"
+	}
 	item := items[len(items)-1]
 	for i := len(items) - 1; i >= 0; i-- {
 		if items[i].Kind == "error" {
@@ -244,33 +227,11 @@ func notificationSummary(items []notificationItem, besideCards bool, width int, 
 	}
 	kind := notificationLabel(o.Locale, item.Kind, "")
 	available := width - 4 // Button focus and padding.
-	if len(items) == 1 && !besideCards {
-		message, _, _ := strings.Cut(notificationText(item.Message), "\n")
-		// Producers put the complete success summary on the first line and
-		// optional state details on following lines. Only a fully readable
-		// success consumes its usual display time on a one-line surface.
-		if item.Kind == "done" && message != "" && ansi.StringWidth(message) <= available {
-			displayedID = item.ID
-		}
-		if item.Kind != "done" && message != "" {
-			message = kind + " · " + message
-		} else if message == "" {
-			message = kind
-		}
-		suffix := " · " + o.Locale.T("notification.expand")
-		if ansi.StringWidth(message+suffix) <= available {
-			return message + suffix, displayedID
-		}
-		if ansi.StringWidth(message)+2 <= available {
-			return message + " ›", displayedID
-		}
-		return cellCrop(message, available), displayedID
-	}
-	caption = kind + " · " + o.Locale.T("notification.more", len(items))
+	caption := kind + " · " + o.Locale.T("notification.more", len(items))
 	if ansi.StringWidth(caption) > available {
-		return fmt.Sprintf("%s ×%d", kind, len(items)), 0
+		return fmt.Sprintf("%s ×%d", kind, len(items))
 	}
-	return caption, 0
+	return caption
 }
 
 func notificationInputs(o dashboardOptions, g dashboardLayout) []hitRegion {
@@ -319,43 +280,57 @@ func notificationCard(item notificationItem, o dashboardOptions, width int, comp
 	detailsID := fmt.Sprintf("notification.details.%d", item.ID)
 	closeLabel := notificationButton(closeID, "×", inner, o)
 	detailsLabel := notificationButton(detailsID, o.Locale.T("notification.details"), inner, o)
-	detailsWidth := ansi.StringWidth(detailsLabel)
+	body := notificationBody(item, o.Locale, o.Spinner)
+	hasExtra := notificationExtra(item) != ""
 	closeWidth := ansi.StringWidth(closeLabel)
-	showDetails := item.Details != "" || item.Context != ""
-	controlWidth := closeWidth
-	if compact && showDetails {
-		// Keep the heading visible when fixed focus gutters consume a large
-		// share of a compact card. Full details remain one click away.
-		if detailsWidth+closeWidth+1 >= inner {
-			detailsLabel = notificationButton(detailsID, "⋯", inner, o)
-			detailsWidth = ansi.StringWidth(detailsLabel)
+	bodyWidth := inner - closeWidth
+	var preview []string
+	var truncated bool
+	if compact {
+		first, _, more := strings.Cut(body, "\n")
+		truncated = more || ansi.StringWidth(first) > bodyWidth
+		if truncated || hasExtra {
+			// Keep at least half the row for the message on very narrow screens.
+			if ansi.StringWidth(detailsLabel) > bodyWidth/2 {
+				detailsLabel = notificationButton(detailsID, "⋯", inner, o)
+			}
+			bodyWidth -= ansi.StringWidth(detailsLabel)
+			truncated = more || ansi.StringWidth(first) > bodyWidth
 		}
-		controlWidth += detailsWidth
+		preview = []string{first}
+	} else {
+		preview = strings.Split(wrapText(body, bodyWidth), "\n")
+		if len(preview) > 2 {
+			preview, truncated = preview[:2], true
+		}
 	}
-	heading := notificationHeading(item, o.Locale, o.Spinner)
-	message := strings.Split(wrapText(notificationText(item.Message), inner), "\n")
-	lines := make([]string, 0, len(message)+3)
+	if truncated {
+		last := len(preview) - 1
+		preview[last] = cellCrop(preview[last]+"…", bodyWidth)
+	}
+	showDetails := truncated || hasExtra
+	var lines []string
 	var targets []hitRegion
 	if !compact {
 		lines = append(lines, themed("╭"+strings.Repeat("─", width-2)+"╮", color, raised, false))
 	}
 	wrap := func(value string) string {
 		if compact {
-			return themed(cellPad(value, width), text, raised, false)
+			return themed(cellPad(value, width), color, raised, false)
 		}
 		return themed("│ ", color, raised, false) + themed(cellPad(value, inner), text, raised, false) + themed(" │", color, raised, false)
 	}
-	value := themed(cellCrop(heading, max(1, inner-controlWidth-1)), color, raised, false)
-	value = cellPad(value, max(1, inner-controlWidth))
-	if compact && showDetails {
-		targets = append(targets, hitRegion{ID: detailsID, X: padding + inner - controlWidth, Y: len(lines), W: detailsWidth, H: 1})
-		value += detailsLabel
-	}
-	value += closeLabel
-	targets = append(targets, hitRegion{ID: closeID, X: padding + inner - closeWidth, Y: len(lines), W: closeWidth, H: 1})
-	lines = append(lines, wrap(value))
-	for _, line := range message {
-		lines = append(lines, wrap(line))
+	for i, line := range preview {
+		value := cellPad(line, bodyWidth)
+		if i == 0 {
+			if compact && showDetails {
+				targets = append(targets, hitRegion{ID: detailsID, X: padding + bodyWidth, Y: len(lines), W: ansi.StringWidth(detailsLabel), H: 1})
+				value += detailsLabel
+			}
+			targets = append(targets, hitRegion{ID: closeID, X: padding + inner - closeWidth, Y: len(lines), W: closeWidth, H: 1})
+			value += closeLabel
+		}
+		lines = append(lines, wrap(value))
 	}
 	if item.Kind == "working" && o.Busy {
 		id := fmt.Sprintf("notification.cancel.%d", item.ID)
@@ -366,17 +341,19 @@ func notificationCard(item notificationItem, o dashboardOptions, width int, comp
 	if !compact {
 		edge := "╰" + strings.Repeat("─", width-2) + "╯"
 		if showDetails {
-			label := detailsLabel
-			x := width - ansi.StringWidth(label) - 2
-			edge = ansi.Cut(edge, 0, x) + label + "─╯"
-			targets = append(targets, hitRegion{ID: detailsID, X: x, Y: len(lines), W: ansi.StringWidth(label), H: 1})
+			x := width - ansi.StringWidth(detailsLabel) - 2
+			edge = ansi.Cut(edge, 0, x) + detailsLabel + "─╯"
+			targets = append(targets, hitRegion{ID: detailsID, X: x, Y: len(lines), W: ansi.StringWidth(detailsLabel), H: 1})
 		}
 		lines = append(lines, themed(edge, color, raised, false))
 	}
-	return notificationOverlay{
+	card := notificationOverlay{
 		Content: strings.Join(lines, "\n"),
 		Bounds:  hitRegion{ID: "notification", W: width, H: len(lines)},
 		Targets: targets,
-		IDs:     []uint64{item.ID},
 	}
+	if !truncated {
+		card.IDs = []uint64{item.ID}
+	}
+	return card
 }

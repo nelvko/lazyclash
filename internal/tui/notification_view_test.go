@@ -21,7 +21,7 @@ func TestNotificationLayoutShowsNewestTwoWithoutShorteningOlderMessage(t *testin
 		t.Fatalf("expected two newest complete cards followed by overflow: %+v", layers)
 	}
 	for index, item := range o.Notifications[1:] {
-		plain := strings.Join(strings.Fields(strings.ReplaceAll(ansi.Strip(layers[index].Content), "│", " ")), " ")
+		plain := strings.Join(strings.Fields(strings.NewReplacer("│", " ", "×", " ").Replace(ansi.Strip(layers[index].Content))), " ")
 		if !strings.Contains(plain, "The previous configuration is available.") || !strings.Contains(plain, fmt.Sprintf("Saved profile %d.", item.ID)) {
 			t.Fatalf("visible notification lost its explanation: %s", plain)
 		}
@@ -63,14 +63,56 @@ func TestNotificationLayoutKeepsInputsAccessibleAndNeverMovesBelowThem(t *testin
 	}
 }
 
-func TestOversizedNotificationRetainsDetailsEntryWithoutPartialToast(t *testing.T) {
+func TestNotificationDetailsMatchWhatTheCardCanDisplay(t *testing.T) {
+	o := dashboardOptions{Locale: i18n.New(i18n.Chinese), PlainButtons: true}
+	for _, shape := range []struct {
+		width   int
+		compact bool
+	}{{54, false}, {36, true}} {
+		for _, tt := range []struct {
+			message, extra   string
+			details, clipped bool
+		}{
+			{"已选用订阅「工作」", "", false, false},
+			{"已选用订阅「工作」", " 已选用订阅「工作」 ", false, false},
+			{"已选用订阅「工作」", "详细说明", true, false},
+			{strings.Repeat("长订阅名", 20), "", true, true},
+			{"一行\n二行", "", shape.compact, shape.compact},
+		} {
+			item := notificationItem{ID: 5, Page: "profiles", Context: "使用配置", Message: tt.message, Details: tt.extra, Kind: "done"}
+			card := notificationCard(item, o, shape.width, shape.compact)
+			assertCanvas(t, card.Content, shape.width, card.Bounds.H)
+			assertRegions(t, card.Targets, shape.width, card.Bounds.H)
+			plain := ansi.Strip(card.Content)
+			if hasAction(card.Targets, "notification.details.5") != tt.details || (len(card.IDs) == 0) != tt.clipped {
+				t.Fatalf("%v/%q: unexpected controls or visibility: %+v", shape, tt.message, card)
+			}
+			if strings.Contains(plain, "…") != tt.clipped || strings.Contains(plain, item.Context) || strings.Contains(plain, o.Locale.T("notification.done")) {
+				t.Fatalf("%v/%q: unexpected title or clipping: %s", shape, tt.message, plain)
+			}
+			for _, target := range card.Targets {
+				row := strings.Split(plain, "\n")[target.Y]
+				cells := strings.TrimSpace(cellSlice(row, target.X, target.X+target.W))
+				want := "×"
+				if target.ID == "notification.details.5" {
+					want = "详情"
+				}
+				if cells != want || target.ID == "notification.close.5" && !strings.Contains(row, string([]rune(tt.message)[0])) {
+					t.Fatalf("%v/%q: control %q occupied %q on row %q", shape, tt.message, target.ID, cells, row)
+				}
+			}
+		}
+	}
+}
+
+func TestOversizedNotificationKeepsDetailAndCloseTargetsWhileTruncated(t *testing.T) {
 	o := dashboardOptions{Locale: i18n.New(i18n.English), Width: 60, Height: 20, Page: "profiles", Body: strings.Repeat("body\n", 50)}
 	g := dashboardGeometry(o)
 	o.BodyTargets = []hitRegion{{ID: "profiles.url", W: g.width, H: 3}}
 	o.Notifications = []notificationItem{{ID: 8, Kind: "error", Page: "profiles", Message: strings.Repeat("Complete user explanation. ", 40), Details: "full technical details"}}
 	layers := notificationLayout(o)
-	if len(layers) != 1 || len(layers[0].IDs) != 0 || layers[0].Targets[0].ID != "notification.summary.8" {
-		t.Fatal("oversized notification was clipped or became inaccessible", layers)
+	if len(layers) != 1 || len(layers[0].IDs) != 0 || !hasAction(layers[0].Targets, "notification.details.8") || !hasAction(layers[0].Targets, "notification.close.8") || !strings.Contains(ansi.Strip(layers[0].Content), "…") {
+		t.Fatal("truncated notification lost its ellipsis, details or close action", layers)
 	}
 }
 
@@ -80,18 +122,10 @@ func TestNotificationHeaderRetainsTitleAndShowsShortCompleteMessage(t *testing.T
 			o := dashboardOptions{Locale: i18n.New(language), Width: size[0], Height: size[1], Page: "profiles", Body: strings.Repeat("body\n", 50)}
 			g := dashboardGeometry(o)
 			o.BodyTargets = []hitRegion{{ID: "profiles.url", W: g.width, H: 3}}
-			o.Notifications = []notificationItem{{ID: 1, Page: "profiles", Context: strings.Repeat("Fetching subscription ", 8), Kind: "error", Message: "Save failed. Please retry.", Details: "full diagnostic"}}
+			o.Notifications = []notificationItem{{ID: 1, Page: "profiles", Context: "switch profile", Kind: "done", Message: "Saved"}}
 			layers := notificationLayout(o)
-			if size == [2]int{120, 18} || size == [2]int{40, 24} {
-				// There is only one row below the title and no corner large enough
-				// for a complete card beside it.
-				if len(layers) != 1 || len(layers[0].IDs) != 0 || layers[0].Targets[0].ID != "notification.summary.1" {
-					t.Fatalf("%v/%s: compact notification lost its entry point: %+v", size, language, layers)
-				}
-				continue
-			}
-			if len(layers) != 1 || len(layers[0].IDs) != 1 {
-				t.Fatalf("%v/%s: short message unnecessarily hidden behind overflow: %+v", size, language, layers)
+			if len(layers) != 1 || len(layers[0].IDs) != 1 || len(layers[0].Targets) != 1 || layers[0].Targets[0].ID != "notification.close.1" {
+				t.Fatalf("%v/%s: a complete success should show only the close control: %+v", size, language, layers)
 			}
 			without := o
 			without.Notifications = nil
@@ -104,10 +138,20 @@ func TestNotificationHeaderRetainsTitleAndShowsShortCompleteMessage(t *testing.T
 				t.Fatalf("%v/%s: notification covered page title or core state", size, language)
 			}
 			plain := strings.Join(strings.Fields(strings.ReplaceAll(ansi.Strip(layers[0].Content), "│", " ")), " ")
-			if !strings.Contains(plain, o.Notifications[0].Message) {
+			if !strings.Contains(plain, o.Notifications[0].Message) || strings.Contains(plain, o.Notifications[0].Context) || strings.Contains(plain, notificationLabel(o.Locale, "done", "")) {
 				t.Fatalf("%v/%s: explanation shortened: %s", size, language, plain)
 			}
 		}
+	}
+}
+
+func TestFoldedWorkingNotificationKeepsItsMessageAndListAction(t *testing.T) {
+	o := dashboardOptions{Locale: i18n.New(i18n.English), Width: 120, Height: 18, Page: "connections", Busy: true,
+		Notifications: []notificationItem{{ID: 1, Kind: "working", Message: "Refreshing subscription"}}}
+	o.BodyTargets = []hitRegion{{ID: "conn.search", W: dashboardGeometry(o).width, H: 1}}
+	layers := notificationLayout(o)
+	if len(layers) != 1 || !hasAction(layers[0].Targets, "notification.expand") || !strings.Contains(ansi.Strip(layers[0].Content), "Refreshing subscription") {
+		t.Fatalf("folded task lost its progress or the entry to its controls: %+v", layers)
 	}
 }
 
@@ -255,13 +299,13 @@ func TestExpandedNotificationsPreservePageOutsideTheirBounds(t *testing.T) {
 func TestNotificationListKeepsLongEntryActionsAndNextResultInView(t *testing.T) {
 	items := []notificationItem{
 		{ID: 1, Kind: "error", Context: strings.Repeat("长订阅名", 20), Message: strings.Repeat("很长的说明", 20) + "\n具体原因"},
-		{ID: 2, Kind: "done", Message: "已选用「工作」"},
+		{ID: 2, Kind: "done", Message: "已选用订阅「工作」"},
 	}
 	var p notificationPanel
 	p.show(0)
 	locale := i18n.New(i18n.Chinese)
 	box, hits := p.render(items, 40, 24, locale)
-	if !strings.Contains(ansi.Strip(box), items[1].Message) || !hasAction(hits, "notification.panel.details.1") || !hasAction(hits, "notification.panel.details.2") {
+	if !strings.Contains(ansi.Strip(box), items[1].Message) || !hasAction(hits, "notification.panel.details.1") || hasAction(hits, "notification.panel.details.2") || !hasAction(hits, "notification.panel.dismiss.2") {
 		t.Fatal("a long error pushed its own controls or the next result out of the compact list")
 	}
 	p.show(1)
@@ -275,8 +319,8 @@ func TestNotificationListKeepsLongEntryActionsAndNextResultInView(t *testing.T) 
 
 func TestExpandedStackFramesEachNotificationAndItsOwnControls(t *testing.T) {
 	items := []notificationItem{
-		{ID: 9, Kind: "done", Message: "Selected Work"},
-		{ID: 17, Kind: "error", Message: "Refresh failed"},
+		{ID: 9, Kind: "done", Page: "profiles", Context: "Apply", Message: "Selected Work"},
+		{ID: 17, Kind: "error", Message: "Refresh failed", Details: "Could not download the subscription"},
 	}
 	locale := i18n.New(i18n.English)
 	for _, size := range [][2]int{{160, 45}, {60, 20}, {40, 24}} {
@@ -302,7 +346,7 @@ func TestExpandedStackFramesEachNotificationAndItsOwnControls(t *testing.T) {
 		}
 		for i, item := range items {
 			card := strings.Join(rows[starts[i]+1:ends[i]], "\n")
-			if !strings.Contains(card, notificationLabel(locale, item.Kind, "")) || !strings.Contains(card, item.Message) {
+			if !strings.Contains(card, notificationBody(item, locale, "")) || item.Kind == "done" && strings.Contains(card, item.Context) {
 				t.Fatalf("%v: card %d lost its status or result: %s", size, item.ID, card)
 			}
 			for _, action := range []string{"details", "dismiss"} {
@@ -310,8 +354,9 @@ func TestExpandedStackFramesEachNotificationAndItsOwnControls(t *testing.T) {
 				inside := slices.ContainsFunc(targets, func(hit hitRegion) bool {
 					return hit.ID == id && hit.Y > p.bounds.Y+starts[i] && hit.Y < p.bounds.Y+ends[i]
 				})
-				if !inside {
-					t.Fatalf("%v: %s was not inside its own card", size, id)
+				want := action == "dismiss" || item.Details != ""
+				if inside != want {
+					t.Fatalf("%v: %s in card = %v, want %v", size, id, inside, want)
 				}
 			}
 		}

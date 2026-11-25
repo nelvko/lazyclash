@@ -68,12 +68,11 @@ func TestActionButtonGroupsKeepOneCellBeforeFocusAndNoneAfter(t *testing.T) {
 					d.buttons(wizardButton{"done", m.tr("wizard.done")}, wizardButton{"later", m.tr("dashboard.guide.later")})
 					return strings.Join(d.lines, "\n"), d.targets
 				}},
-				{"notification", "notification.panel.details.1", "notification.panel.dismiss.1", func(m *Model) (string, []hitRegion) {
-					var panel notificationPanel
-					panel.show(0)
-					panel.focus = 1
-					box, hits := panel.render([]notificationItem{{ID: 1, Kind: "done", Message: "Saved"}}, 90, 24, m.locale, m.noColor)
-					return overlay("", box, panel.bounds.X, panel.bounds.Y, 90, 24), hits
+				{"notification", "notification.details.1", "notification.close.1", func(m *Model) (string, []hitRegion) {
+					item := notificationItem{ID: 1, Kind: "done", Message: "Saved", Details: "Saved to the local profile library."}
+					o := dashboardOptions{Locale: m.locale, PlainButtons: m.noColor, Focus: "notification.close.1"}
+					card := notificationCard(item, o, 54, true)
+					return card.Content, card.Targets
 				}},
 				{"get-started", "install", "guide.later", func(m *Model) (string, []hitRegion) {
 					m.focus = "guide.later"

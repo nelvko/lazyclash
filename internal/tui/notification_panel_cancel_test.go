@@ -37,6 +37,8 @@ func TestNotificationPanelCancelsFoldedTaskWithoutQuitting(t *testing.T) {
 					task := actionCmd(t, cmd)
 					m.syncNotification()
 					m.notification.items[0].showAfter = time.Time{}
+					// A newer notice occupies the compact slot while this task continues.
+					m.notification.publish(notificationItem{Kind: "error", Message: "Save failed"}, -1)
 					m.layout()
 					id := m.notification.items[0].ID
 					cancelID := fmt.Sprintf("notification.cancel.%d", id)

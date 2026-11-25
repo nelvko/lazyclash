@@ -47,16 +47,62 @@ func noticeByID(t *testing.T, m Model, id uint64) notificationItem {
 	return notificationItem{}
 }
 
-func TestNotificationHeadingsFollowLocaleAndOperationContext(t *testing.T) {
+func TestNotificationBodyShowsResultAndOnlyAddsContextToFailures(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		locale := i18n.New(language)
-		for _, kind := range []string{"done", "working", "info", "error"} {
-			item := notificationItem{ID: 1, Kind: kind, Page: "profiles", Context: "Work profile", Message: "cancel-is-a-user-name"}
-			heading := notificationHeading(item, locale, "")
-			if !strings.Contains(heading, notificationLabel(locale, kind, "")) || !strings.Contains(heading, pageTitle("profiles", locale)) || !strings.Contains(heading, item.Context) {
-				t.Fatalf("%s/%s lost type, source or operation: %s", language, kind, heading)
+		item := notificationItem{Page: "profiles", Context: "Refresh Office", Message: "Result"}
+		for kind, want := range map[string]string{
+			"done": "Result", "info": "Result", "working": "⠋ Result",
+			"warning": locale.T("notification.message", locale.T("notification.warning"), "Result"),
+			"error":   locale.T("notification.message", "Refresh Office", "Result"),
+		} {
+			item.Kind = kind
+			if got := notificationBody(item, locale, "⠋"); got != want {
+				t.Errorf("%s/%s: got %q, want %q", language, kind, got, want)
 			}
 		}
+	}
+}
+
+func TestNotificationDetailsRequireAdditionalText(t *testing.T) {
+	item := notificationItem{Context: "Refresh Office", Message: "Current subscription: Office\ntimeout"}
+	for _, duplicate := range []string{"", "  ", item.Message, "\x1b[31mtimeout\x1b[0m\n"} {
+		item.Details = duplicate
+		if extra := notificationExtra(item); extra != "" {
+			t.Errorf("offered details that repeat the message: %q", extra)
+		}
+	}
+	item.Details = "\x1b[31mRetry later\x1b[0m"
+	if extra := notificationExtra(item); extra != "Retry later" {
+		t.Errorf("lost diagnostic: %q", extra)
+	}
+}
+
+func TestNotificationListResizeKeepsFocusOnItsOwnCard(t *testing.T) {
+	items := []notificationItem{
+		{ID: 10, Kind: "done", Message: "Selected subscription “Office”"},
+		{ID: 20, Kind: "done", Message: "Selected subscription “Home”"},
+	}
+	var p notificationPanel
+	p.show(0)
+	locale := i18n.New(i18n.English)
+	p.render(items, 32, 24, locale)
+	for p.actions[p.focus].ID != "notification.panel.details.20" {
+		if p.focus == len(p.actions)-1 {
+			t.Fatal("narrow stack did not offer details for the clipped name")
+		}
+		p.key(special(tea.KeyTab))
+	}
+	p.show(20)
+	p.render(items, 160, 45, locale)
+	p.show(0)
+	_, hits := p.render(items, 160, 45, locale)
+	if hasAction(hits, "notification.panel.details.20") || p.key(special(tea.KeyEnter)) != "notification.panel.dismiss.20" {
+		t.Fatalf("widening the stack retained empty details or changed the selected card: %+v", hits)
+	}
+	p.render(items, 32, 24, locale)
+	if p.key(special(tea.KeyEnter)) != "notification.panel.dismiss.20" {
+		t.Fatal("newly visible Details stole focus from Close")
 	}
 }
 

@@ -59,7 +59,7 @@ func TestNotificationPanelTabMovesMarkerWithoutMovingButtons(t *testing.T) {
 		for _, size := range [][2]int{{80, 24}, {32, 12}} {
 			for _, plain := range []bool{false, true} {
 				t.Run(fmt.Sprintf("%s/%dx%d/plain=%v", language, size[0], size[1], plain), func(t *testing.T) {
-					items := []notificationItem{{ID: 1, Kind: "done", Message: "Saved."}}
+					items := []notificationItem{{ID: 1, Kind: "done", Message: "Saved.", Details: "Saved to the local profile library."}}
 					var panel notificationPanel
 					panel.show(0)
 					_, before := panel.render(items, size[0], size[1], i18n.New(language), plain)

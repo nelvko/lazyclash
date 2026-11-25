@@ -91,7 +91,7 @@ func TestNotificationHintsFollowTheFocusedAction(t *testing.T) {
 		}
 		var panel notificationPanel
 		panel.show(0)
-		panel.render([]notificationItem{{ID: 1, Kind: "working", Message: "fixture"}}, 120, 40, m.locale)
+		panel.render([]notificationItem{{ID: 1, Kind: "working", Message: "Downloading", Details: "Waiting for a response from the server."}}, 120, 40, m.locale)
 		for i, action := range panel.actions {
 			panel.focus = i
 			hint := "details"

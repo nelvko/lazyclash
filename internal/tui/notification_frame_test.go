@@ -21,8 +21,8 @@ func TestActionableWarningPersistsAfterItsCardBecomesVisible(t *testing.T) {
 		m, _ = update(m, keyHintsSavedMsg{generation: 1, hidden: m.keyHints.hidden,
 			err: errors.New("preference file could not be written and the setting could not be saved")})
 		warning := m.notification.items[0]
-		if !hasAction(m.targets, fmt.Sprintf("notification.summary.%d", warning.ID)) || hasAction(m.targets, fmt.Sprintf("notification.close.%d", warning.ID)) {
-			t.Fatalf("%v: expected a folded warning above the fixed search", size)
+		if !hasAction(m.targets, fmt.Sprintf("notification.details.%d", warning.ID)) || !hasAction(m.targets, fmt.Sprintf("notification.close.%d", warning.ID)) {
+			t.Fatalf("%v: expected the warning and its controls above the fixed search", size)
 		}
 		if !strings.Contains(ansi.Strip(m.screen), m.tr("notification.warning")) || !warning.started.IsZero() {
 			t.Fatalf("%v: folded warning lost severity or consumed its remaining time", size)
@@ -65,7 +65,8 @@ func TestNotificationEscapeDismissesTheFocusedCard(t *testing.T) {
 	m := noticeModel()
 	older := publishNotice(&m, "service.start", "error", "Start failed")
 	newer := publishNotice(&m, "service.stop", "error", "Stop failed")
-	m.focus = fmt.Sprintf("notification.details.%d", older)
+	m.focus = fmt.Sprintf("notification.close.%d", older)
+	findTarget(t, m, m.focus)
 	m.notification.restoreFocus = "nav.overview"
 	m, _ = update(m, special(tea.KeyEscape))
 	if len(m.notification.items) != 1 || m.notification.items[0].ID != newer || m.focus != "nav.overview" {
@@ -135,8 +136,8 @@ func TestFailedProfileUpdateKeepsHeaderRetryClickable(t *testing.T) {
 
 func TestNamedSuccessRemainsReadableOnCompactProfiles(t *testing.T) {
 	for _, text := range []struct{ language, name, result string }{
-		{i18n.English, "Office", "Selected “Office”\nApplies on next start"},
-		{i18n.Chinese, "办公", "已选用「办公」\n下次启动内核时生效"},
+		{i18n.English, "Office", "Selected subscription “Office”"},
+		{i18n.Chinese, "办公", "已选用订阅「办公」"},
 	} {
 		for _, size := range [][2]int{{40, 24}, {80, 24}, {120, 18}} {
 			m, _ := profileClickModel(t, true, false, false, false)
@@ -150,10 +151,8 @@ func TestNamedSuccessRemainsReadableOnCompactProfiles(t *testing.T) {
 			if item.started.IsZero() || item.remaining != 3*time.Second {
 				t.Fatalf("%s/%v: the complete successful selection has no three-second deadline", text.language, size)
 			}
-			if summary := fmt.Sprintf("notification.summary.%d", id); hasAction(m.targets, summary) {
-				m.focus = summary
-				m, _ = update(m, special(tea.KeyEscape))
-				noticeByID(t, m, id)
+			if targets := m.notification.overlays[0].Targets; len(targets) != 1 || targets[0].ID != fmt.Sprintf("notification.close.%d", id) {
+				t.Fatalf("%s/%v: complete selection offered a redundant action: %+v", text.language, size, targets)
 			}
 			m, _ = update(m, notificationExpiredMsg{id: id, generation: item.generation})
 			if len(m.notification.items) != 0 {
@@ -166,7 +165,10 @@ func TestNamedSuccessRemainsReadableOnCompactProfiles(t *testing.T) {
 func TestResizedNotificationViewportCannotActivateOffscreenSelection(t *testing.T) {
 	var p notificationPanel
 	p.show(0)
-	items := []notificationItem{{ID: 3, Kind: "working", Message: "Waiting for profile refresh"}}
+	items := []notificationItem{
+		{ID: 2, Kind: "done", Message: "Saved"},
+		{ID: 3, Kind: "working", Message: "Waiting for profile refresh"},
+	}
 	locale := i18n.New(i18n.English)
 	p.render(items, 80, 24, locale)
 	p.focus = len(p.actions) - 1
@@ -188,14 +190,14 @@ func TestTruncatedNamedSuccessRemainsAvailableUntilRead(t *testing.T) {
 	m, _ := profileClickModel(t, true, false, false, false)
 	m, _ = update(m, tea.WindowSizeMsg{Width: 40, Height: 24})
 	name := "Office · " + strings.Repeat("Shared ", 8) + "London"
-	message := "Selected “" + name + "”"
+	message := "Selected subscription “" + name + "”"
 	id := publishNotice(&m, "profile.apply", "done", message)
 	item := noticeByID(t, m, id)
-	summary := fmt.Sprintf("notification.summary.%d", id)
-	if !hasAction(m.targets, summary) || !item.started.IsZero() || strings.Contains(ansi.Strip(m.screen), "London") {
+	details := fmt.Sprintf("notification.details.%d", id)
+	if !hasAction(m.targets, details) || !item.started.IsZero() || strings.Contains(ansi.Strip(m.screen), "London") {
 		t.Fatal("a truncated name counted as a complete selection confirmation")
 	}
-	m, _ = click(m, findTarget(t, m, summary))
+	m, _ = click(m, findTarget(t, m, details))
 	if m.notification.panel.detailID != id || !strings.Contains(ansi.Strip(m.screen), "London") {
 		t.Fatal("the complete selection was unavailable from the one-line summary")
 	}
