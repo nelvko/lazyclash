@@ -172,7 +172,7 @@ func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
 			targets = append(targets, r)
 		}
 	}
-	pageText := themed("▎ ", accent, bg, o.Dim) +
+	pageText := themed("▎ ", pageTitleMarker, bg, o.Dim) +
 		themed(lipgloss.NewStyle().Bold(true).Render(pageTitle(o.Page, o.Locale)), pageTitleForeground, bg, o.Dim)
 	if o.Height < 7 || o.Width < 20 {
 		put(0, 0, dashboardTitle(o, logoText(bg, o.Dim)+" / "+pageText, pageText, o.Width))

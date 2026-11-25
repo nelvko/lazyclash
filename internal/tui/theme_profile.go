@@ -114,6 +114,7 @@ func terminalColor(c color.Color, profile colorprofile.Profile) color.Color {
 		{inputBackground, 235, 0},
 		{text, 253, 15},
 		{pageTitleForeground, 255, 15},
+		{pageTitleMarker, 67, 8},
 		{muted, 249, 7},
 		{disabled, 245, 8},
 		{selectionBackground, 240, 4},
