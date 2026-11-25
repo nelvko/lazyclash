@@ -1,9 +1,6 @@
 package tui
 
-import (
-	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/x/ansi"
-)
+import tea "charm.land/bubbletea/v2"
 
 func (m *Model) canConfigureHostTUN() bool {
 	return m.snapshot.Capabilities.TUN.Supported && runtimeControlIssue(m.snapshot, m.locale) == ""
@@ -16,48 +13,37 @@ func (m *Model) networkTUNDocument(width int) (wizardDocument, []wizardButton, s
 	s := m.snapshot
 	if !s.Capabilities.TUN.Supported {
 		d.line(m.tr("diagnostic.runtime.tunUnavailable"))
-		return d, buttons, ""
+		return d, buttons, subtitle
 	}
 	if issue := runtimeControlIssue(s, m.locale); issue != "" {
 		d.line(themed(issue, warning, raised, false))
 		return d, buttons, subtitle
 	}
 
-	actual, color := m.tr("dashboard.status.unknown"), muted
+	actual := m.tr("dashboard.status.unknown")
 	if s.Service.Active {
 		if s.APIError == "" && s.TUNActual != nil {
-			actual = "○ " + m.tr("dashboard.control.off")
+			actual = m.tr("dashboard.control.off")
 			if *s.TUNActual {
-				actual, color = "● "+m.tr("dashboard.control.on"), success
+				actual = m.tr("dashboard.control.on")
 			}
 		}
 	} else if s.Service.State == "inactive" || s.Service.State == "failed" {
 		actual = m.tr("dashboard.status.stopped")
 	}
-	d.networkValue(m.tr("network.tunConfig.runtime"), actual, color)
+	d.pair(m.tr("network.tunConfig.runtime"), actual)
 	if s.TUNError != "" {
 		d.line(themed(clean(m.locale.Detail(s.TUNError)), warning, raised, false))
 	}
-	d.networkValue(m.tr("network.tunConfig.preset"), m.tr("network.tunConfig.presetValue"), text)
 	d.space()
 	check := "[ ] "
 	if m.ports.tunEnabled {
 		check = "[x] "
 	}
-	button := renderButton(check+m.tr("network.tunConfig.enable"), buttonOptions{
-		Kind: buttonText, Surface: raised, Compact: true, Plain: d.plain,
-		Focused: m.ports.focus == "tun.policy", Hovered: d.hover == "tun.policy",
-	})
-	d.networkRow(m.tr("network.tunConfig.policy"), dashboardBlock{
-		lines:   []string{button},
-		targets: []hitRegion{{ID: "tun.policy", W: ansi.StringWidth(button), H: 1}},
-	})
+	d.control("tun.policy", check+m.tr("network.tunConfig.policy"), m.ports.focus)
+	d.line(m.tr("network.tunConfig.preset"))
 	if s.Service.Active {
-		hintColor := muted
-		if m.ports.tunEnabled != m.ports.tunOriginal && m.ports.tunEnabled != s.TUN {
-			hintColor = warning
-		}
-		d.line(themed(m.tr("network.tunConfig.restart"), hintColor, raised, false))
+		d.line(m.tr("network.tunConfig.restart"))
 	}
 	buttons = []wizardButton{{"ports.cancel", m.tr("ports.cancel")}, {"tun.save", m.tr("profile_settings.save")}}
 	return d, buttons, subtitle

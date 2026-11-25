@@ -58,13 +58,13 @@ func TestOverviewNetworkHostTUNKeepsObservedStateAndActionGuards(t *testing.T) {
 	}}
 	card := overviewNetworkCard(o, 100)
 	plain := ansi.Strip(strings.Join(card.lines, "\n"))
-	if !hasAction(card.targets, "tun.disable") || strings.Contains(plain, "Saved:") || strings.Contains(plain, "Running:") || !strings.Contains(plain, "Host TUN") {
+	if !hasAction(card.targets, "tun.disable") || strings.Contains(plain, "Saved:") || strings.Contains(plain, "Running TUN:") || !strings.Contains(plain, "Host TUN") {
 		t.Fatalf("confirmed host TUN state lost its scope or retained duplicate observations: %s", plain)
 	}
 	actual = false
 	card = overviewNetworkCard(o, 100)
 	plain = ansi.Strip(strings.Join(card.lines, "\n"))
-	if !hasAction(card.targets, "tun.disable") || !strings.Contains(plain, "Saved: On") || !strings.Contains(plain, "Running: Off") {
+	if !hasAction(card.targets, "tun.disable") || !strings.Contains(plain, "Saved: On") || !strings.Contains(plain, "Running TUN: Off") {
 		t.Fatalf("saved/runtime drift lost distinction or recovery control: %s", plain)
 	}
 	for _, kind := range []string{"service error", "transition", "busy"} {
@@ -108,33 +108,11 @@ func TestNetworkCardPairsConfigurationAndSwitchInReadingOrder(t *testing.T) {
 				if i == 0 && !strings.Contains(face, "›") {
 					t.Fatalf("focused configuration lacks a monochrome cursor: %q", face)
 				}
-				if i >= 2 && h.X != card.targets[i-2].X {
-					t.Fatalf("row controls must share the same columns: %+v", card.targets)
-				}
-				if i%2 == 1 && !strings.Contains(face, "○") {
-					t.Fatalf("toggle target missed its observed state: %q / %+v", face, h)
+				if i%2 == 1 && (h.X+h.W != width-2 || !strings.Contains(face, "○")) {
+					t.Fatalf("right-aligned toggle target missed its observed state: %q / %+v", face, h)
 				}
 			}
 		}
-	}
-}
-
-func TestNetworkCardAlignsObservedAndSavedStateBelowItsSwitch(t *testing.T) {
-	actual := false
-	o := dashboardOptions{Snapshot: hostTUNBackend().snapshot, Height: 45, Locale: i18n.New(i18n.Chinese)}
-	o.Snapshot.Service = service.Status{Active: true, State: "active"}
-	o.Snapshot.TerminalProxy.State = "off"
-	o.Snapshot.TUN, o.Snapshot.TUNActual = true, &actual
-	card := overviewNetworkCard(o, 66)
-	terminal, tun := card.targets[1], card.targets[3]
-	if terminal.X != tun.X || terminal.Y+2 != tun.Y {
-		t.Fatalf("wide rows lost their common control column or vertical separation: %+v", card.targets)
-	}
-	detail := o.Locale.T("dashboard.overview.tunActual", o.Locale.T("dashboard.control.off"))
-	line := ansi.Strip(card.lines[tun.Y+1])
-	offset := strings.Index(line, detail)
-	if offset < 0 || ansi.StringWidth(line[:offset]) != tun.X+2 {
-		t.Fatalf("running observation did not line up under the switch: %q / %+v", line, tun)
 	}
 }
 

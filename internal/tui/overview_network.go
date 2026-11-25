@@ -9,30 +9,10 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-type overviewNetworkItem struct {
-	title, config, status string
-	configID, toggleID    string
-	observation           string
-	extra                 dashboardBlock
-}
-
 func overviewNetworkCard(o dashboardOptions, width int) dashboardBlock {
 	inner := overviewInnerWidth(width)
-	terminal, tun := overviewTerminalItem(o, inner), overviewTUNItem(o, inner)
-	titleWidth := max(ansi.StringWidth(terminal.title), ansi.StringWidth(tun.title))
-	configWidth := ansi.StringWidth(terminal.config)
-	statusWidth := max(ansi.StringWidth(terminal.status), ansi.StringWidth(tun.status))
-	// Share column starts between rows. Cap the gaps on wide dashboards so
-	// the status still reads as part of its feature.
-	free := max(0, inner-titleWidth-configWidth-statusWidth)
-	firstGap := min(4, free/3)
-	configX := titleWidth + firstGap
-	statusX := configX + configWidth + min(8, free-firstGap)
-	content := terminal.render(o, inner, configX, statusX)
-	if o.Height >= 30 && inner >= 44 {
-		content.blank()
-	}
-	content.append(tun.render(o, inner, configX, statusX))
+	content := overviewTerminalRow(o, inner)
+	content.append(overviewTUNRow(o, inner))
 	title := overviewTextBlock([]string{overviewHeading(o, o.Locale.T("dashboard.overview.network"))}, inner)
 	return overviewPanel(o, width, title, content, nil)
 }
@@ -44,66 +24,53 @@ func networkToggleLabels(o dashboardOptions) toggleLabels {
 		Unknown: tr("dashboard.status.unknown")}
 }
 
-func newOverviewNetworkItem(o dashboardOptions, title, configID, toggleID string, state toggleState, labels toggleLabels) overviewNetworkItem {
-	config := overviewControlButton{id: configID, label: o.Locale.T("dashboard.network.configure"), enabled: o.Snapshot.Installed && !o.Busy && !o.StateUnavailable}
-	kind := buttonText
-	if o.PlainButtons {
-		kind = buttonSecondary // Brackets distinguish controls without color.
-	}
-	item := overviewNetworkItem{title: title, config: overviewButton(o, config, kind), toggleID: toggleID}
-	if config.enabled {
-		item.configID = configID
-	}
-
-	label, _ := labels.resolved().face(state)
-	focused := toggleID != "" && o.Focus == toggleID
-	surface, marker, left, right := panel, " ", " ", " "
-	if toggleID != "" {
-		surface = raised
-		if focused {
-			marker = "›"
-		}
-		if o.PlainButtons {
-			left, right = "[", "]"
-		}
-	}
-	item.status = themed(marker, focus, panel, o.Dim) + themed(left, muted, surface, o.Dim) +
-		renderToggle(toggleModel{state: state}, toggleOptions{Labels: labels, Width: ansi.StringWidth(label), Surface: surface,
-			Focused: focused || toggleID != "" && o.Hover == toggleID, Dim: o.Dim}) + themed(right, muted, surface, o.Dim)
-	return item
-}
-
-func (item overviewNetworkItem) render(o dashboardOptions, width, configX, statusX int) dashboardBlock {
-	b := overviewTextBlock([]string{themed(item.title, text, panel, o.Dim)}, width)
-	add := func(face, id string, column int) {
+// Visible labels and both hit regions use terminal-cell coordinates. When space is
+// tight each control moves as a unit, preserving focus order and mouse ownership.
+func overviewNetworkRow(o dashboardOptions, width int, title, configID, toggleID string, state toggleState, labels toggleLabels) dashboardBlock {
+	b := overviewTextBlock([]string{overviewHeading(o, title)}, width)
+	add := func(face, id string, alignRight bool) {
 		face = cellCrop(face, width)
 		w := ansi.StringWidth(face)
 		y := len(b.lines) - 1
 		used := ansi.StringWidth(b.lines[y])
-		x := max(used, min(column, width-w))
-		if x+w > width {
+		x := used
+		if used+w > width {
 			b.blank()
 			y, used, x = y+1, 0, 0
+		}
+		if alignRight {
+			x = max(x, width-w)
 		}
 		b.lines[y] += themed(strings.Repeat(" ", x-used), text, panel, o.Dim) + face
 		if id != "" && w > 0 {
 			b.targets = append(b.targets, hitRegion{ID: id, X: x, Y: y, W: w, H: 1})
 		}
 	}
-	add(item.config, item.configID, configX)
-	add(item.status, item.toggleID, statusX)
-	if item.observation != "" {
-		indent := statusX + 2
-		if indent+ansi.StringWidth(item.observation) > width {
-			indent = min(2, max(0, width-ansi.StringWidth(item.observation)))
-		}
-		b.append(overviewTextBlock([]string{themed(strings.Repeat(" ", indent)+item.observation, warning, panel, o.Dim)}, width))
+	config := overviewControlButton{id: configID, label: o.Locale.T("dashboard.network.configure"), enabled: o.Snapshot.Installed && !o.Busy && !o.StateUnavailable}
+	if !config.enabled {
+		configID = ""
 	}
-	b.append(item.extra)
+	add(overviewButton(o, config, buttonSecondary), configID, false)
+
+	label, _ := labels.resolved().face(state)
+	focused := toggleID != "" && o.Focus == toggleID
+	face := renderToggle(toggleModel{state: state}, toggleOptions{Labels: labels, Width: ansi.StringWidth(label), Surface: panel, Focused: focused || toggleID != "" && o.Hover == toggleID, Dim: o.Dim})
+	if toggleID != "" {
+		marker := "  "
+		if focused {
+			marker = " ›"
+		}
+		left, right := " ", " "
+		if o.PlainButtons {
+			left, right = "[", "]"
+		}
+		face = themed(marker+left, focus, panel, o.Dim) + face + themed(right, muted, panel, o.Dim)
+	}
+	add(face, toggleID, true)
 	return b
 }
 
-func overviewTerminalItem(o dashboardOptions, width int) overviewNetworkItem {
+func overviewTerminalRow(o dashboardOptions, width int) dashboardBlock {
 	tr, s := o.Locale.T, o.Snapshot
 	t := s.TerminalProxy
 	labels := networkToggleLabels(o)
@@ -135,17 +102,17 @@ func overviewTerminalItem(o dashboardOptions, width int) overviewNetworkItem {
 			id = "terminal.enable"
 		}
 	}
-	row := newOverviewNetworkItem(o, tr("terminal.title"), "network.primaryConfig", id, state, labels)
+	row := overviewNetworkRow(o, width, tr("terminal.title"), "network.primaryConfig", id, state, labels)
 	if !o.StateUnavailable && t.State == "pending" && t.Pending && t.ActivationCommand != "" {
-		row.extra.append(overviewButtons(o, width, []overviewControlButton{{id: "terminal.activation", label: tr("terminal.activationAction"), enabled: !o.Busy && !o.StateUnavailable}}))
+		row.append(overviewButtons(o, width, []overviewControlButton{{id: "terminal.activation", label: tr("terminal.activationAction"), enabled: !o.Busy && !o.StateUnavailable}}))
 	}
 	if !o.StateUnavailable && t.State == "error" {
-		row.observation = tr("dashboard.network.inspectShell")
+		row.append(overviewTextBlock([]string{themed(tr("terminal.state.error"), warning, panel, o.Dim)}, width))
 	}
 	return row
 }
 
-func overviewTUNItem(o dashboardOptions, width int) overviewNetworkItem {
+func overviewTUNRow(o dashboardOptions, width int) dashboardBlock {
 	tr, s := o.Locale.T, o.Snapshot
 	labels := networkToggleLabels(o)
 	state, id, observed := toggleUnsupported, "", ""
@@ -183,10 +150,12 @@ func overviewTUNItem(o dashboardOptions, width int) overviewNetworkItem {
 			}
 		}
 	}
-	row := newOverviewNetworkItem(o, tr("dashboard.network.tun"), "network.tunConfig", id, state, labels)
-	row.observation = observed
+	row := overviewNetworkRow(o, width, tr("dashboard.network.tun"), "network.tunConfig", id, state, labels)
+	if observed != "" {
+		row.append(overviewTextBlock([]string{themed(observed, warning, panel, o.Dim)}, width))
+	}
 	if s.TUNError != "" {
-		row.extra.append(overviewTextBlock([]string{themed(clean(o.Locale.Detail(s.TUNError)), warning, panel, o.Dim)}, width))
+		row.append(overviewTextBlock([]string{themed(clean(o.Locale.Detail(s.TUNError)), warning, panel, o.Dim)}, width))
 	}
 	return row
 }

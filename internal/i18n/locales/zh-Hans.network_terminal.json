@@ -1,10 +1,9 @@
 {
   "network.terminalConfig.title": "终端代理设置",
-  "network.terminalConfig.shell": "Shell",
-  "network.terminalConfig.state": "代理状态",
-  "network.terminalConfig.address": "监听地址",
-  "network.terminalConfig.port": "混合端口",
-  "network.terminalConfig.shared": "此实例的所有客户端共用该端口。",
+  "network.terminalConfig.shell": "当前 Shell",
+  "network.terminalConfig.state": "终端代理",
+  "network.terminalConfig.port": "混合端口（HTTP / SOCKS5）",
+  "network.terminalConfig.shared": "此端口由当前实例的所有客户端共用。保存前可审阅变更。",
   "network.terminalConfig.changed": "编辑期间控制端口已更改，请重新打开设置读取当前值。",
   "network.terminalConfig.save": "保存…"
 }

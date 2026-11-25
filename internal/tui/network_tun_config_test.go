@@ -104,23 +104,11 @@ func TestNetworkTUNShowsObservedStateAndRestrictsEditing(t *testing.T) {
 				{"", "dashboard.control.off"}, {"failed to read", "dashboard.status.unknown"},
 			} {
 				m.snapshot.APIError = observation.apiError
-				for _, width := range []int{28, 60} {
-					d, _, _ := m.networkTUNDocument(width)
-					raw := ansi.Strip(strings.Join(d.lines, "\n"))
-					if !strings.Contains(ansi.Strip(d.lines[0]), m.tr(observation.state)) ||
-						!strings.Contains(ansi.Strip(d.lines[0]), m.tr("network.tunConfig.runtime")) {
-						t.Fatalf("form omitted the observed state:\n%s", raw)
-					}
-					if len(d.targets) != 1 || d.targets[0].ID != "tun.policy" {
-						t.Fatalf("expected one editable startup policy: %+v", d.targets)
-					}
-					hit := d.targets[0]
-					face := ansi.Strip(cellSlice(d.lines[hit.Y], hit.X, hit.X+hit.W))
-					if !strings.Contains(face, "[x] "+m.tr("network.tunConfig.enable")) ||
-						!strings.Contains(ansi.Strip(d.lines[hit.Y]), m.tr("network.tunConfig.policy")) ||
-						strings.Contains(raw, "…") {
-						t.Fatalf("%d-cell TUN form lost its startup control or cropped a value:\n%s", width, raw)
-					}
+				d, _, _ := m.networkTUNDocument(76)
+				plain := ansi.Strip(strings.Join(d.lines, "\n"))
+				if !strings.Contains(plain, m.tr("network.tunConfig.runtime")+": "+m.tr(observation.state)) ||
+					!strings.Contains(plain, "[x] "+m.tr("network.tunConfig.policy")) {
+					t.Fatalf("form confused the observed and saved states:\n%s", plain)
 				}
 			}
 			m.snapshot.Capabilities.TUN.Supported = false

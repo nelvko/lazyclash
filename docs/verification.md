@@ -1,9 +1,5 @@
 # 验证入口
 
-## 网络设置视觉布局（2026-11-25）
-
-在真实 PTY 中使用隔离数据检查中文真彩的普通用户和系统实例，以及英文无色的普通用户实例。两种弹窗都在 160×45、80×24 和 40×16 下验证了居中留边、标题底色连续、长值换行、窗外点击和翻页后底部操作的位置。每场均只读取两次端口配置，取消后返回原控件。端口输入另有光标、清除按钮及键盘编辑的回归测试。[双行卡片](../.test-artifacts/network-polish/network-card-pending.png) · [80×24 终端代理](../.test-artifacts/network-polish/terminal-config-80x24.png) · [40×16 虚拟网卡](../.test-artifacts/network-polish/tun-config-40x16.png)
-
 ## 网络设置卡与配置弹窗（2026-11-25）
 
 概览 PTY 使用隔离后端，覆盖中文真彩、英文无色及英文 256 色，共六组运行场景。鼠标分别打开终端代理和虚拟网卡配置，在 160×45、80×24、40×16 下核对弹窗相对整个终端居中、两侧至少两列、上下至少一行留白。正文翻页后取消按钮仍可见，点击窗外不会触发概览操作。Esc 或点击取消后按 Enter 可重开原弹窗。系统实例切换 TUN 草稿再取消，每场最终均记录两次端口读取，各项写入均为零。截图按真实 PTY 字符格重绘。[网络卡](../.test-artifacts/network-config-modals/final/20261125-111356-33f164/zh-Hans/truecolor/pending/network-card-160x45.png) · [80×24 终端代理设置](../.test-artifacts/network-config-modals/final/20261125-111356-33f164/zh-Hans/truecolor/pending/terminal-config-80x24.png) · [40×16 英文只读 TUN 设置](../.test-artifacts/network-config-modals/final/20261125-111356-c2537a/en/no-color/running/tun-config-40x16.png)
