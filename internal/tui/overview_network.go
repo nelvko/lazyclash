@@ -118,16 +118,21 @@ func overviewTerminalSection(o dashboardOptions, width int) dashboardBlock {
 	labels := networkToggleLabels(o)
 	state := toggleUnsupported
 	switch t.State {
-	case "off", "uninstalled":
+	case "off", "uninstalled", "incomplete":
 		state = toggleOff
 		if t.State == "uninstalled" {
 			labels.Off = tr("dashboard.network.notSetUp")
+		} else if t.State == "incomplete" {
+			labels.Off = tr("dashboard.network.incomplete")
 		}
 	case "on":
 		state = toggleOn
 	case "pending", "enabling", "disabling":
 		state = togglePending
 		labels.Pending = tr("dashboard.network." + t.State)
+	case "conflict":
+		state = toggleUnknown
+		labels.Unknown = tr("dashboard.network.conflict")
 	case "error":
 		state = toggleUnknown
 		labels.Unknown = tr("dashboard.network.syncError")

@@ -144,7 +144,7 @@ func (b *overviewPTYBackend) SetTUN(ctx context.Context, _ bool) error {
 	return ctx.Err()
 }
 
-func (b *overviewPTYBackend) SetTerminalProxy(ctx context.Context, _, _ bool) error {
+func (b *overviewPTYBackend) SetTerminalProxy(ctx context.Context, _ bool) error {
 	b.terminalChanges.Add(1)
 	return ctx.Err()
 }

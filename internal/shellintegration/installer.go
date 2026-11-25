@@ -12,10 +12,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 	"github.com/nelvko/lazyclash/internal/store"
 )
 
@@ -107,26 +109,46 @@ func (m *Manager) installJournalPath(shell string) string {
 // bytes. An rc reference by itself does not mean that the current shell loaded
 // the integration; Current separately validates its runtime session marker.
 func (m *Manager) Installation(shell string) (bool, error) {
+	state, err := m.installationState(shell)
+	return state == "installed", err
+}
+
+func (m *Manager) installationState(shell string) (string, error) {
 	if !installerShell(shell) {
-		return false, nil
+		return "uninstalled", nil
 	}
 	if _, err := os.Lstat(m.installJournalPath(shell)); err == nil {
-		return false, ErrInstallPending
+		return "", ErrInstallPending
 	} else if !errors.Is(err, os.ErrNotExist) {
-		return false, err
+		return "", err
 	}
 	receipt, _, err := m.readInstallReceipt(shell)
 	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
+		return "uninstalled", nil
 	}
 	if err != nil {
-		return false, err
+		return "", err
 	}
-	return m.verifyInstallReceipt(receipt)
+	script, missing, err := m.inspectInstallation(&receipt)
+	if err != nil {
+		return "conflict", err
+	}
+	if script == nil || len(missing) > 0 {
+		return "incomplete", nil
+	}
+	return "installed", nil
 }
 
-// Install edits shell startup files only after the caller has obtained user
-// confirmation. It does not load the integration into an already-running shell.
+// InstallCurrent prepares startup files without changing any session's proxy request.
+func (m *Manager) InstallCurrent() error {
+	owner, err := m.currentOwner()
+	if err != nil {
+		return err
+	}
+	return m.Install(owner.Shell)
+}
+
+// Install prepares the hook for the next interactive shell.
 func (m *Manager) Install(shell string) error {
 	if !installerShell(shell) {
 		return fmt.Errorf("unsupported shell %q", shell)
@@ -142,18 +164,6 @@ func (m *Manager) Install(shell string) error {
 	if err := m.recoverInstall(shell); err != nil {
 		return err
 	}
-	if receipt, _, err := m.readInstallReceipt(shell); err == nil {
-		ok, err := m.verifyInstallReceipt(receipt)
-		if err != nil {
-			return err
-		}
-		if ok {
-			return nil
-		}
-		return errors.New("installed Shell Integration was modified; refusing to overwrite")
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
 	executable, err := os.Executable()
 	if err != nil {
 		return err
@@ -163,7 +173,7 @@ func (m *Manager) Install(shell string) error {
 		return err
 	}
 	journal, err := m.planInstall(shell, executable)
-	if err != nil {
+	if err != nil || len(journal.Changes) == 0 {
 		return err
 	}
 	return m.commitInstall(journal)
@@ -190,6 +200,23 @@ func (m *Manager) planInstall(shell, executable string) (installJournal, error) 
 		return journal, err
 	}
 	script = bytes.ReplaceAll(script, []byte("@LAZYCLASH_EXECUTABLE@"), []byte(integrationQuote(executable, shell)))
+	// A release install can replace a previously downloaded standalone binary.
+	// Refresh only our verified script so new shells call the installed path.
+	if receipt, _, err := m.readInstallReceipt(shell); err == nil {
+		before, missing, err := m.inspectInstallation(&receipt)
+		if err != nil {
+			return journal, err
+		}
+		journal.Receipt = receipt
+		if !bytes.Equal(before, script) {
+			journal.Receipt.ScriptHash = installerHash(script)
+			journal.Changes = append(journal.Changes, installChange{Path: path, Before: before, After: script, Exists: before != nil, Mode: 0600})
+		}
+		journal.Changes = append(journal.Changes, missing...)
+		return journal, nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return journal, err
+	}
 	journal.Receipt = installReceipt{Version: installReceiptVersion, Shell: shell, Script: path, ScriptHash: installerHash(script)}
 	if _, err := os.Lstat(path); !errors.Is(err, os.ErrNotExist) {
 		if err != nil {
@@ -207,18 +234,35 @@ func (m *Manager) planInstall(shell, executable string) (installJournal, error) 
 		if err != nil {
 			return journal, err
 		}
-		if bytes.Contains(before, []byte("# >>> lazyclash Shell Integration")) || bytes.Contains(before, []byte("# <<< lazyclash Shell Integration")) {
-			return journal, fmt.Errorf("unmanaged lazyclash reference in %s; refusing to duplicate or overwrite", rc)
+		if hasIntegrationReference(before, path) {
+			return journal, referenceConflict(rc)
 		}
-		block := m.integrationReference(shell)
-		if len(before) > 0 {
-			block = "\n" + block
-		}
-		after := append(append([]byte{}, before...), []byte(block)...)
-		journal.Receipt.References = append(journal.Receipt.References, installReference{Path: rc, Block: block, Created: !exists})
-		journal.Changes = append(journal.Changes, installChange{Path: rc, Before: before, After: after, Exists: exists, Mode: uint32(mode.Perm())})
+		ref, change := m.appendReference(shell, rc, before, mode, exists)
+		journal.Receipt.References = append(journal.Receipt.References, ref)
+		journal.Changes = append(journal.Changes, change)
 	}
 	return journal, nil
+}
+
+// Also recognize an unmarked source line so repair cannot append a second hook.
+func hasIntegrationReference(raw []byte, script string) bool {
+	return bytes.Contains(raw, []byte("# >>> lazyclash Shell Integration")) ||
+		bytes.Contains(raw, []byte("# <<< lazyclash Shell Integration")) ||
+		bytes.Contains(raw, []byte("lazyclash/shell/"+filepath.Base(script)))
+}
+
+func referenceConflict(path string) error {
+	return diagnostic.New("diagnostic.shell.referenceConflict", "check the existing lazyclash startup reference in %s for edits or duplicates, then retry", path)
+}
+
+func (m *Manager) appendReference(shell, path string, before []byte, mode os.FileMode, exists bool) (installReference, installChange) {
+	block := m.integrationReference(shell)
+	if len(before) > 0 {
+		block = "\n" + block
+	}
+	ref := installReference{Path: path, Block: block, Created: !exists}
+	after := append(append([]byte{}, before...), block...)
+	return ref, installChange{Path: path, Before: before, After: after, Exists: exists, Mode: uint32(mode.Perm())}
 }
 
 func (m *Manager) startupPaths(shell string) ([]string, error) {
@@ -323,27 +367,43 @@ func (m *Manager) readInstallReceipt(shell string) (installReceipt, []byte, erro
 	return receipt, raw, nil
 }
 
-func (m *Manager) verifyInstallReceipt(receipt installReceipt) (bool, error) {
+// Inspect all receipt-owned files before staging any writes. A missing reference
+// can be appended to the current contents; a partially edited block needs review.
+func (m *Manager) inspectInstallation(receipt *installReceipt) ([]byte, []installChange, error) {
 	script, err := readInstallMetadata(receipt.Script)
-	if errors.Is(err, os.ErrNotExist) {
-		return false, nil
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, nil, err
 	}
-	if err != nil {
-		return false, err
+	if err == nil && installerHash(script) != receipt.ScriptHash {
+		return nil, nil, diagnostic.New("diagnostic.shell.scriptConflict", "the integration script %s has local changes; move it to a backup location and retry", receipt.Script)
 	}
-	if installerHash(script) != receipt.ScriptHash {
-		return false, nil
-	}
-	for _, ref := range receipt.References {
-		raw, _, exists, err := readStartup(ref.Path)
+	var missing []installChange
+	for i, ref := range receipt.References {
+		raw, mode, exists, err := readStartup(ref.Path)
 		if err != nil {
-			return false, err
+			return nil, nil, err
 		}
-		if !exists || bytes.Count(raw, []byte(ref.Block)) != 1 {
-			return false, nil
+		beforeBlock, afterBlock, found := bytes.Cut(raw, []byte(ref.Block))
+		if found && !hasIntegrationReference(beforeBlock, receipt.Script) && !hasIntegrationReference(afterBlock, receipt.Script) {
+			continue
 		}
+		if found || hasIntegrationReference(raw, receipt.Script) {
+			return nil, nil, referenceConflict(ref.Path)
+		}
+		// A previous login file or ZDOTDIR can differ from today's startup path.
+		// In particular, recreating .bash_profile could shadow an existing .profile.
+		paths, err := m.startupPaths(receipt.Shell)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !slices.Contains(paths, ref.Path) {
+			return nil, nil, diagnostic.New("diagnostic.shell.startupMoved", "the recorded startup file %s is no longer selected by this shell; check the startup files before reinstalling", ref.Path)
+		}
+		var change installChange
+		receipt.References[i], change = m.appendReference(receipt.Shell, ref.Path, raw, mode, exists)
+		missing = append(missing, change)
 	}
-	return true, nil
+	return script, missing, nil
 }
 
 func (m *Manager) commitInstall(journal installJournal) error {

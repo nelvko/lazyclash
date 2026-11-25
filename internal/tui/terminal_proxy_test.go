@@ -12,54 +12,41 @@ import (
 
 type terminalBackend struct {
 	*fakeBackend
-	calls   int
-	install bool
-	fail    bool
+	calls int
+	fail  bool
 }
 
-func (b *terminalBackend) SetTerminalProxy(_ context.Context, enabled, install bool) error {
+func (b *terminalBackend) SetTerminalProxy(_ context.Context, enabled bool) error {
 	b.calls++
-	b.install = install
 	if b.fail {
 		return errors.New("installation failed")
 	}
 	b.snapshot.TerminalProxy.Desired = enabled
-	b.snapshot.TerminalProxy.Installed = true
-	b.snapshot.TerminalProxy.State = "pending"
+	if enabled && !b.snapshot.TerminalProxy.Loaded {
+		b.snapshot.TerminalProxy.Installed = true
+		b.snapshot.TerminalProxy.State = "pending"
+	}
 	return nil
 }
 
-func TestTerminalProxyInstallationRequiresConfirmationAndNeverClaimsApplied(t *testing.T) {
+func TestFirstTerminalProxyEnableInstallsWithoutConfirmationAndAwaitsActivation(t *testing.T) {
 	b := &terminalBackend{fakeBackend: hostTUNBackend()}
 	b.snapshot.TerminalProxy = shellintegration.Status{Shell: "bash", State: "uninstalled"}
 	m := ready(b.fakeBackend)
 	m.backend = b
 	defer m.stopRuntime()
 	m.width, m.height = 120, 32
-	m.activate("terminal.enable")
-	if m.form != "terminal-confirm" || m.tunFocus != "terminal.cancel" || b.calls != 0 {
-		t.Fatal("installation did not wait for confirmation")
-	}
-	m, _ = update(m, key("enter"))
-	if m.form != "" || b.calls != 0 {
-		t.Fatal("default cancel installed integration")
-	}
-	m.activate("terminal.enable")
-	m.layout()
-	if !strings.Contains(ansi.Strip(m.screen), "bash") {
-		t.Fatal("shell omitted from consent")
-	}
-	m, cmd := update(m, key("y"))
-	if b.calls != 0 || !m.busy {
-		t.Fatal("installation was not asynchronous")
+	cmd := m.activate("terminal.enable")
+	if m.form != "" || b.calls != 0 || !m.busy || cmd == nil {
+		t.Fatal("first enable must directly start the asynchronous operation")
 	}
 	m, _ = update(m, actionCmd(t, cmd)())
-	if b.calls != 1 || !b.install || m.snapshot.TerminalProxy.Applied || m.snapshot.TerminalProxy.State != "pending" {
+	if b.calls != 1 || !m.snapshot.TerminalProxy.Installed || m.snapshot.TerminalProxy.Applied || m.snapshot.TerminalProxy.State != "pending" {
 		t.Fatal("saved request was confused with applied environment")
 	}
 	cmd = m.activate("terminal.disable")
 	m, _ = update(m, actionCmd(t, cmd)())
-	if b.calls != 2 || b.install || m.snapshot.TerminalProxy.Desired {
+	if b.calls != 2 || m.snapshot.TerminalProxy.Desired {
 		t.Fatal("disable reinstalled or lost request")
 	}
 }
@@ -71,8 +58,7 @@ func TestTerminalProxyInstallationFailureDoesNotSaveSuccess(t *testing.T) {
 	m.backend = b
 	defer m.stopRuntime()
 	m.width, m.height = 120, 32
-	m.activate("terminal.enable")
-	m, cmd := update(m, key("y"))
+	cmd := m.activate("terminal.enable")
 	m, _ = update(m, actionCmd(t, cmd)())
 	if b.calls != 1 || m.snapshot.TerminalProxy.Desired || m.snapshot.TerminalProxy.Installed || m.failure == "" {
 		t.Fatal("failed install claimed success")
@@ -80,7 +66,7 @@ func TestTerminalProxyInstallationFailureDoesNotSaveSuccess(t *testing.T) {
 }
 
 func TestOverviewTerminalProxyShowsDesiredAndAppliedSeparately(t *testing.T) {
-	for state, label := range map[string]string{"uninstalled": "notSetUp", "off": "off", "on": "on", "pending": "pending", "enabling": "enabling", "disabling": "disabling", "unsupported": "unsupported", "error": "syncError"} {
+	for state, label := range map[string]string{"uninstalled": "notSetUp", "incomplete": "incomplete", "conflict": "conflict", "off": "off", "on": "on", "pending": "pending", "enabling": "enabling", "disabling": "disabling", "unsupported": "unsupported", "error": "syncError"} {
 		o := dashboardOptions{Snapshot: hostTUNBackend().snapshot}
 		o.Snapshot.TerminalProxy = shellintegration.Status{State: state, Desired: state == "pending", Pending: state == "pending", ActivationCommand: "source '/private/example/bash.sh'"}
 		for _, width := range []int{16, 40, 100} {
@@ -108,7 +94,7 @@ func TestLoadedTerminalCanToggleAfterAnotherTerminalUninstallsFiles(t *testing.T
 		t.Fatal("loaded terminal requested another install")
 	}
 	m, _ = update(m, actionCmd(t, cmd)())
-	if b.calls != 1 || b.install {
+	if b.calls != 1 || m.snapshot.TerminalProxy.Installed {
 		t.Fatal("loaded hook was not reused")
 	}
 }

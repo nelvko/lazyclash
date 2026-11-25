@@ -137,6 +137,110 @@ func TestInstallIdempotentPreservesConfigAndPermissions(t *testing.T) {
 	}
 }
 
+func TestRepairMissingBashReferencePreservesUserFiles(t *testing.T) {
+	m := stateManager(t, testOwner(100))
+	rc := filepath.Join(m.HomeDir, ".bashrc")
+	profile := filepath.Join(m.HomeDir, ".profile")
+	writeStartup(t, profile, "# login\n")
+	if err := m.InstallCurrent(); err != nil {
+		t.Fatal(err)
+	}
+	originalScript := startupValue(t, m.IntegrationPath("bash"))
+	originalProfile := startupValue(t, profile)
+	const userRC = "export MY_OPTION=yes" // no final newline
+	writeStartup(t, rc, userRC)
+	if err := os.Chmod(rc, 0640); err != nil {
+		t.Fatal(err)
+	}
+	status, err := m.Current()
+	if err != nil || status.State != "incomplete" || status.ActivationCommand != "" {
+		t.Fatalf("expected a repairable installation, got %+v, %v", status, err)
+	}
+	for range 2 {
+		if err := m.InstallCurrent(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := startupValue(t, rc); got != userRC+"\n"+m.integrationReference("bash") {
+		t.Fatalf("unexpected repaired rc: %q", got)
+	}
+	if startupValue(t, profile) != originalProfile || startupValue(t, m.IntegrationPath("bash")) != originalScript {
+		t.Fatal("repair changed an intact file")
+	}
+	if err := m.FinalizeUninstall(); err != nil {
+		t.Fatal(err)
+	}
+	if got := startupValue(t, rc); got != userRC {
+		t.Fatalf("uninstall did not restore user's exact contents: %q", got)
+	}
+	info, err := os.Stat(rc)
+	if err != nil || info.Mode().Perm() != 0640 {
+		t.Fatalf("startup file lost original permissions: %v %v", info, err)
+	}
+}
+
+func TestRepairPreservesConflictingStartupFilesAndScripts(t *testing.T) {
+	for _, issue := range []string{"partial reference", "duplicate reference", "unmarked source", "edited script"} {
+		t.Run(issue, func(t *testing.T) {
+			m := stateManager(t, testOwner(100))
+			if err := m.InstallCurrent(); err != nil {
+				t.Fatal(err)
+			}
+			rc := filepath.Join(m.HomeDir, ".bashrc")
+			script := m.IntegrationPath("bash")
+			path := rc
+			switch issue {
+			case "partial reference":
+				writeStartup(t, rc, "# >>> lazyclash Shell Integration (bash) >>>\n# customized\n")
+			case "duplicate reference":
+				writeStartup(t, rc, strings.Repeat(m.integrationReference("bash"), 2))
+			case "unmarked source":
+				writeStartup(t, rc, "source "+script+"\n")
+			case "edited script":
+				path = script
+				writeStartup(t, script, "# custom hook\n")
+			}
+			before := startupValue(t, path)
+			status, err := m.Current()
+			if err != nil || status.State != "conflict" || !strings.Contains(status.Detail, path) || status.ActivationCommand != "" {
+				t.Fatalf("expected a conflict naming %s, got %+v, %v", path, status, err)
+			}
+			if err := m.InstallCurrent(); err == nil || !strings.Contains(err.Error(), path) {
+				t.Fatalf("installation should explain the conflict at %s: %v", path, err)
+			}
+			if startupValue(t, path) != before {
+				t.Fatal("changed user file")
+			}
+		})
+	}
+}
+
+func TestRepairRecreatesMissingHookAndNeverShadowsBashLoginProfile(t *testing.T) {
+	m := stateManager(t, testOwner(100))
+	if err := m.InstallCurrent(); err != nil {
+		t.Fatal(err)
+	}
+	hook := m.IntegrationPath("bash")
+	expected := startupValue(t, hook)
+	if err := os.Remove(hook); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.InstallCurrent(); err != nil || startupValue(t, hook) != expected {
+		t.Fatalf("failed to restore the missing hook: %v", err)
+	}
+	oldLogin := filepath.Join(m.HomeDir, ".bash_profile")
+	if err := os.Remove(oldLogin); err != nil {
+		t.Fatal(err)
+	}
+	writeStartup(t, filepath.Join(m.HomeDir, ".profile"), "# new login configuration\n")
+	if err := m.InstallCurrent(); err == nil {
+		t.Fatal("repair accepted a stale Bash login path")
+	}
+	if _, err := os.Lstat(oldLogin); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("repair shadowed the user's .profile: %v", err)
+	}
+}
+
 func TestInstallZshRespectsZDOTDIR(t *testing.T) {
 	m := installerManager(t)
 	dot := filepath.Join(m.HomeDir, "custom-zsh")

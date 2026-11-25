@@ -49,7 +49,7 @@ func (m *Model) clearInputField(id string) (bool, tea.Cmd) {
 		}
 		return true, nil
 	}
-	if m.form != "" && !m.controlConfirmation() {
+	if m.form != "" && m.form != "tun-confirm" {
 		if m.form == "profile-delete" {
 			return true, nil
 		}

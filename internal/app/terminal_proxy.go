@@ -31,24 +31,14 @@ func (a *App) terminalProxyStatus() shellintegration.Status {
 
 // SetTerminalProxy saves intent for the calling shell. Only that shell's hook
 // can apply it or restore the original environment after the TUI returns.
-func (a *App) SetTerminalProxy(ctx context.Context, enabled, install bool) error {
+func (a *App) SetTerminalProxy(ctx context.Context, enabled bool) error {
 	m, err := shellintegration.New()
 	if err != nil {
 		return err
 	}
 	s, err := m.Current()
-	if enabled && install && s.Shell != "" && !s.Loaded && errors.Is(err, shellintegration.ErrInstallPending) {
-		// The prior attempt may have stopped between guarded file writes.
-		// Resume only after the user confirms installation again.
-		if err := a.locked(ctx, func() error { _, err := a.terminalEndpointLocked(ctx); return err }); err != nil {
-			return err
-		}
-		if err := m.Install(s.Shell); err != nil {
-			return err
-		}
-		s, err = m.Current()
-	}
-	if err != nil {
+	// An interrupted startup-file transaction can be resumed by the next enable.
+	if err != nil && !(enabled && errors.Is(err, shellintegration.ErrInstallPending)) {
 		return err
 	}
 	if s.State == "unsupported" {
@@ -61,9 +51,6 @@ func (a *App) SetTerminalProxy(ctx context.Context, enabled, install bool) error
 		return m.Set(false, a.terminalEndpoint(0))
 	}
 	if !s.Installed && !s.Loaded {
-		if !install {
-			return fmt.Errorf("Shell Integration installation requires confirmation")
-		}
 		// Validate before changing startup files, then observe again after the
 		// installation: another management process may have changed the port.
 		if err := a.locked(ctx, func() error { _, err := a.terminalEndpointLocked(ctx); return err }); err != nil {

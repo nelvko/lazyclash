@@ -15,6 +15,9 @@ func (m *Model) terminalConfigFields(d *wizardDocument) {
 		state = "unsupported"
 	}
 	d.pair(m.tr("network.terminalConfig.state"), m.tr("terminal.state."+state))
+	if state == "conflict" && status.Detail != "" {
+		d.line(clean(m.locale.Diagnostic(status.Detail, status.Diagnostic)))
+	}
 	if state == "pending" && status.Pending && status.ActivationCommand != "" {
 		d.line(clean(status.ActivationCommand))
 	}

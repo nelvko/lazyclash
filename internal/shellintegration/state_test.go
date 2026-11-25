@@ -64,15 +64,19 @@ func loadedState(t *testing.T, id string, port int) {
 func TestPendingFirstSourceUsesLatestIntentAndRequiresApplicationACK(t *testing.T) {
 	owner := testOwner(100)
 	m := stateManager(t, owner)
-	if err := m.Install("bash"); err != nil {
+	if err := m.InstallCurrent(); err != nil {
 		t.Fatal(err)
+	}
+	status, err := m.Current()
+	if err != nil || !status.Installed || status.State != "off" || status.Pending || status.ActivationCommand != "" {
+		t.Fatalf("install alone should leave this shell off without a source prompt: %+v, %v", status, err)
 	}
 	endpoint := Endpoint{Namespace: "instance-one", Host: "127.0.0.1", Port: 7890}
 	if err := m.Set(true, endpoint); err != nil {
 		t.Fatal(err)
 	}
-	status, err := m.Current()
-	if err != nil || status.State != "pending" || status.Applied || !status.Desired {
+	status, err = m.Current()
+	if err != nil || status.State != "pending" || status.Applied || !status.Desired || status.ActivationCommand == "" {
 		t.Fatalf("pending = %+v, %v", status, err)
 	}
 	notice, err := m.TakeNotice()
@@ -84,6 +88,10 @@ func TestPendingFirstSourceUsesLatestIntentAndRequiresApplicationACK(t *testing.
 	}
 	if err = m.Set(false, endpoint); err != nil {
 		t.Fatal(err)
+	}
+	status, err = m.Current()
+	if err != nil || status.ActivationCommand != "" {
+		t.Fatalf("canceled request still suggests sourcing the hook: %+v, %v", status, err)
 	}
 	endpoint.Port = 8899
 	if err = m.Set(true, endpoint); err != nil {
@@ -105,7 +113,7 @@ func TestPendingFirstSourceUsesLatestIntentAndRequiresApplicationACK(t *testing.
 	}
 	loadedState(t, attachment.SessionID, 8899)
 	status, err = m.Current()
-	if err != nil || status.State != "enabling" || status.Applied {
+	if err != nil || status.State != "enabling" || status.Applied || status.ActivationCommand != "" {
 		t.Fatalf("unacknowledged status %+v %v", status, err)
 	}
 	ackState(t, m, attachment.SessionID, request, true)

@@ -120,7 +120,7 @@ func (m *Manager) Current() (Status, error) {
 	if err != nil {
 		return Status{State: "unsupported", Detail: err.Error()}, nil
 	}
-	status := Status{Shell: owner.Shell, State: "off", ActivationCommand: m.ActivationCommand(owner.Shell)}
+	status := Status{Shell: owner.Shell, State: "off"}
 	if ticket, err := m.findUninstallTicket(owner); err == nil && ticket.SessionID != "" {
 		status.Detail = "Shell Integration uninstall is pending shell restoration and cleanup"
 		if ticket.Reason != "" {
@@ -129,12 +129,16 @@ func (m *Manager) Current() (Status, error) {
 	} else if err != nil && !os.IsNotExist(err) {
 		return status, err
 	}
-	status.Installed, err = m.Installation(owner.Shell)
-	if err != nil {
+	installation, err := m.installationState(owner.Shell)
+	if err != nil && installation != "conflict" {
 		return status, err
 	}
+	status.Installed = installation == "installed"
 	if !status.Installed {
-		status.State = "uninstalled"
+		status.State = installation
+		if err != nil {
+			status.Detail, status.Diagnostic = err.Error(), err
+		}
 	}
 	if record, loaded, loadErr := m.checkedLoadedSession(owner); loadErr != nil {
 		status.State = "error"
@@ -203,6 +207,9 @@ func (m *Manager) Current() (Status, error) {
 		}
 		return status, nil
 	}
+	if installation == "incomplete" || installation == "conflict" {
+		return status, nil
+	}
 	pending, err := m.readPending(owner)
 	if err == nil {
 		status.Pending = true
@@ -211,6 +218,7 @@ func (m *Manager) Current() (Status, error) {
 		status.MixedPort = pending.Endpoint.Port
 		if pending.Enabled {
 			status.State = "pending"
+			status.ActivationCommand = m.ActivationCommand(owner.Shell)
 		}
 		return status, nil
 	}
@@ -460,6 +468,9 @@ func (m *Manager) TakeNotice() (string, error) {
 	}
 	if pending.NoticeAttempted || !pending.Enabled {
 		return "", nil
+	}
+	if installed, err := m.Installation(owner.Shell); err != nil || !installed {
+		return "", err
 	}
 	pending.NoticeAttempted = true
 	if err = jsonFile(m.pendingPath(owner), pending); err != nil {

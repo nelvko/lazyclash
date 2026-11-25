@@ -45,26 +45,14 @@ func (m *Model) applyTUN(enabled bool) tea.Cmd {
 }
 
 func (m *Model) tunConfirmationKey(key tea.KeyPressMsg) tea.Cmd {
-	prefix := "tun."
-	if m.form == "terminal-confirm" {
-		prefix = "terminal."
-	}
 	switch key.String() {
 	case "esc":
-		return m.tunConfirmationAction(prefix + "cancel")
+		return m.tunConfirmationAction("tun.cancel")
 	case "tab", "shift+tab", "left", "right", "h", "l":
-		if m.tunFocus == prefix+"confirm" {
-			m.tunFocus = prefix + "cancel"
+		if m.tunFocus == "tun.confirm" {
+			m.tunFocus = "tun.cancel"
 		} else {
-			m.tunFocus = prefix + "confirm"
-		}
-	case "y", "Y":
-		if m.form == "terminal-confirm" {
-			return m.tunConfirmationAction(prefix + "confirm")
-		}
-	case "n", "N":
-		if m.form == "terminal-confirm" {
-			return m.tunConfirmationAction(prefix + "cancel")
+			m.tunFocus = "tun.confirm"
 		}
 	case "enter":
 		return m.tunConfirmationAction(m.tunFocus)
@@ -73,9 +61,6 @@ func (m *Model) tunConfirmationKey(key tea.KeyPressMsg) tea.Cmd {
 }
 
 func (m *Model) tunConfirmationAction(id string) tea.Cmd {
-	if m.form == "terminal-confirm" {
-		return m.terminalConfirmationAction(id)
-	}
 	if m.form != "tun-confirm" || m.busy || m.quitting {
 		return nil
 	}
@@ -103,15 +88,9 @@ func (m *Model) renderTUNConfirmation(base string) (string, []hitRegion) {
 		return overlay("", m.tr("profiles.enlarge"), 0, 0, m.width, m.height), nil
 	}
 	inner := width - 4
-	title, confirm, prefix := m.tr("tun.confirm_title"), m.tr("tun.enable"), "tun."
-	details := []string{m.tr("tun.confirm_host"), m.tr("tun.confirm_restart")}
-	if m.form == "terminal-confirm" {
-		title, confirm, prefix = m.tr("terminal.installTitle"), m.tr("terminal.install"), "terminal."
-		details = []string{m.tr("terminal.installDetail", m.snapshot.TerminalProxy.Shell), m.tr("terminal.installNotice")}
-	}
-	lines := strings.Split(wrapText(themed(title, text, raised, false), inner), "\n")
+	lines := strings.Split(wrapText(themed(m.tr("tun.confirm_title"), text, raised, false), inner), "\n")
 	lines = append(lines, "")
-	for _, detail := range details {
+	for _, detail := range []string{m.tr("tun.confirm_host"), m.tr("tun.confirm_restart")} {
 		lines = append(lines, strings.Split(wrapText(themed(detail, warning, raised, false), inner), "\n")...)
 	}
 	lines = append(lines, "")
@@ -121,7 +100,7 @@ func (m *Model) renderTUNConfirmation(base string) (string, []hitRegion) {
 	for _, button := range []struct {
 		id, label string
 		kind      buttonKind
-	}{{prefix + "cancel", m.tr("wizard.cancel"), buttonSecondary}, {prefix + "confirm", confirm, buttonDangerConfirm}} {
+	}{{"tun.cancel", m.tr("wizard.cancel"), buttonSecondary}, {"tun.confirm", m.tr("tun.enable"), buttonDangerConfirm}} {
 		value := renderButton(button.label, buttonOptions{Kind: button.kind, Surface: raised, Focused: m.tunFocus == button.id, Hovered: m.hover == button.id, Plain: m.buttonPlain()})
 		buttonWidth := min(inner, ansi.StringWidth(value))
 		if column > 0 && column+buttonWidth > inner {

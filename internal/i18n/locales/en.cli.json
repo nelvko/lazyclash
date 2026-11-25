@@ -121,6 +121,7 @@
   "cli.flag.tun.scope": "TUN traffic scope; enabling requires host",
   "cli.flag.tun.confirm-host": "Confirm that TUN may change routing and DNS for the entire host",
   "cli.command.shell.short": "Manage per-terminal Shell Integration",
+  "cli.command.shell.install.short": "Install the calling shell's startup hook",
   "cli.command.shell.status.short": "Show the calling shell's integration and proxy state",
   "cli.command.shell.uninstall.short": "Restore this shell and remove owned integration references",
   "cli.shell.status": "Shell: %s\nInstalled: %t\nLoaded: %t\nHook acknowledged: %t\nProxy state: %s\nPending activation: %t",

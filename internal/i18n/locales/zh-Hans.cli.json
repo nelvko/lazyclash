@@ -121,6 +121,7 @@
   "cli.flag.tun.scope": "TUN 流量作用域；启用时必须为 host",
   "cli.flag.tun.confirm-host": "确认 TUN 可以改变整台主机的路由与 DNS",
   "cli.command.shell.short": "管理当前终端的 Shell Integration",
+  "cli.command.shell.install.short": "为当前 Shell 安装启动脚本",
   "cli.command.shell.status.short": "查看当前 Shell 的集成与代理状态",
   "cli.command.shell.uninstall.short": "恢复当前 Shell 并移除集成引用",
   "cli.shell.status": "Shell：%s\n已安装：%t\n已加载：%t\nHook 已确认：%t\n代理状态：%s\n存在待激活请求：%t",

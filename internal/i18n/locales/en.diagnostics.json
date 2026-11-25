@@ -1,4 +1,7 @@
 {
+  "diagnostic.shell.referenceConflict": "check the existing lazyclash startup reference in %s for edits or duplicates, then retry",
+  "diagnostic.shell.scriptConflict": "the integration script %s has local changes; move it to a backup location and retry",
+  "diagnostic.shell.startupMoved": "the recorded startup file %s is no longer selected by this shell; check the startup files before reinstalling",
   "diagnostic.release.probeSize": "release-file size is invalid or exceeds 64 MiB",
   "diagnostic.release.probeRange": "release-file probe returned an invalid Content-Range",
   "diagnostic.network.absoluteURL": "expected an absolute HTTP(S) URL without a fragment",

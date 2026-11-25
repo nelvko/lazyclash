@@ -13,6 +13,13 @@ import (
 
 func newShellCommand() *cobra.Command {
 	cmd := &cobra.Command{Use: "shell", Short: "Manage per-terminal Shell Integration", Args: noArgs}
+	install := &cobra.Command{Use: "install", Short: "Install the calling shell's startup hook", Args: noArgs, RunE: func(cmd *cobra.Command, _ []string) error {
+		m, err := shellintegration.New()
+		if err != nil {
+			return err
+		}
+		return m.InstallCurrent()
+	}}
 	var asJSON bool
 	status := &cobra.Command{Use: "status", Short: "Show the calling shell's integration and proxy state", Args: noArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		m, err := shellintegration.New()
@@ -29,7 +36,7 @@ func newShellCommand() *cobra.Command {
 		tr := commandLocale(cmd).T
 		_, err = fmt.Fprintln(cmd.OutOrStdout(), tr("cli.shell.status", s.Shell, s.Installed, s.Loaded, s.HookConfirmed, s.State, s.Pending))
 		if s.Detail != "" {
-			fmt.Fprintln(cmd.OutOrStdout(), s.Detail)
+			fmt.Fprintln(cmd.OutOrStdout(), commandLocale(cmd).Diagnostic(s.Detail, s.Diagnostic))
 		}
 		if s.Pending && s.ActivationCommand != "" {
 			fmt.Fprintln(cmd.OutOrStdout(), s.ActivationCommand)
@@ -119,7 +126,7 @@ func newShellCommand() *cobra.Command {
 		}
 	}}
 	finish.Flags().StringVar(&finishSession, "session", "", "Session awaiting restoration")
-	cmd.AddCommand(status, uninstall, attach, finalize, finish)
+	cmd.AddCommand(install, status, uninstall, attach, finalize, finish)
 	return cmd
 }
 

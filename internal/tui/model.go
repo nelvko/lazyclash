@@ -686,7 +686,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.updateWizardInput(v)
 		} else if m.inlineInputActive() {
 			cmd = m.updateInlineInput(v)
-		} else if m.controlConfirmation() || m.form == "profile-delete" || m.form == "profile-document" || m.form == "profile-overrides" && m.busy {
+		} else if m.form == "tun-confirm" || m.form == "profile-delete" || m.form == "profile-document" || m.form == "profile-overrides" && m.busy {
 			break
 		} else if m.form != "" {
 			if m.profileFieldsForm() {
@@ -1053,7 +1053,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.updateWizardInput(msg)
 		} else if m.inlineInputActive() {
 			cmd = m.updateInlineInput(msg)
-		} else if m.controlConfirmation() || m.form == "profile-delete" || m.form == "profile-document" || m.form == "profile-overrides" && m.busy {
+		} else if m.form == "tun-confirm" || m.form == "profile-delete" || m.form == "profile-document" || m.form == "profile-overrides" && m.busy {
 			break
 		} else if m.form != "" {
 			if m.profileFieldsForm() {
@@ -1185,7 +1185,7 @@ func (m *Model) formKey(k tea.KeyPressMsg) tea.Cmd {
 			return nil
 		}
 	}
-	if m.controlConfirmation() {
+	if m.form == "tun-confirm" {
 		return m.tunConfirmationKey(k)
 	}
 	if handled, cmd := m.profileCreateKey(k); handled {
@@ -1543,7 +1543,7 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 					return m.wizardActivate(r.ID)
 				}
 				if m.form != "" {
-					if m.controlConfirmation() {
+					if m.form == "tun-confirm" {
 						return m.tunConfirmationAction(r.ID)
 					}
 					if m.profileFieldsForm() {
@@ -1743,7 +1743,7 @@ func (m *Model) renderLayout() {
 		m.screen, m.targets = m.renderHelp(base)
 	} else if m.wizard.open || m.wizard.networkOpen {
 		m.screen, m.targets = m.renderWizard(base)
-	} else if m.controlConfirmation() {
+	} else if m.form == "tun-confirm" {
 		m.screen, m.targets = m.renderTUNConfirmation(base)
 	} else if m.form != "" {
 		m.screen, m.targets = m.renderProfileForm(base)

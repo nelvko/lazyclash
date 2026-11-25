@@ -36,6 +36,7 @@ type Status struct {
 	Pending           bool   `json:"pending"`
 	ActivationCommand string `json:"activation_command,omitempty"`
 	Detail            string `json:"detail,omitempty"`
+	Diagnostic        error  `json:"-"`
 	Revision          uint64 `json:"revision"`
 	MixedPort         int    `json:"mixed_port,omitempty"`
 }

@@ -54,18 +54,14 @@ class Terminal(HOOKS.Shell):
                 return
         raise AssertionError('missing '+text+'\n'+self.screen.text())
 
-    def toggle(self, command, label, install=False):
+    def toggle(self, command, label, initial_state=None):
         os.write(self.fd, (command+'\n').encode())
-        state = '● On' if label == 'Disable' else ('○ Not set up' if install else '○ Off')
+        state = initial_state or ('● On' if label == 'Disable' else '○ Off')
         column, row = self.wait_terminal_state(state)
         (self.output/('network-'+label.lower()+'.txt')).write_text(self.screen.text())
         os.write(self.fd, f'\x1b[<0;{column+1};{row+1}M\x1b[<0;{column+1};{row+1}m'.encode())
-        if install:
-            self.wait('Install Shell Integration?')
-            (self.output/'install-consent.txt').write_text(self.screen.text())
-            os.write(self.fd, b'y')
         pending = 'Pending off' if label == 'Disable' else 'Pending on'
-        self.wait_terminal_state('◌ ' + ('Activation needed' if install else pending))
+        self.wait_terminal_state('◌ ' + ('Activation needed' if initial_state else pending))
         os.write(self.fd, b'q')
         self.read_for(.7)
 
@@ -90,6 +86,7 @@ def main():
     parser.add_argument('--binary', required=True)
     parser.add_argument('--mihomo', required=True)
     parser.add_argument('--output', required=True)
+    parser.add_argument('--missing-reference', action='store_true', help='Start with a valid Bash hook and a missing .bashrc loading block')
     args = parser.parse_args()
     binary = str(Path(args.binary).resolve())
     output = Path(args.output).resolve()
@@ -126,8 +123,19 @@ def main():
             shell = Terminal('bash', env, output)
             shell.command("export http_proxy='original-lower' HTTP_PROXY='original-upper'; unset https_proxy HTTPS_PROXY all_proxy ALL_PROXY no_proxy NO_PROXY")
             command = shlex.join(argv)
+            if args.missing_reference:
+                rc, profile = root/'.bashrc', root/'.profile'
+                rc.write_text('# user bashrc\n')
+                profile.write_text('# user profile\n')
+                shell.command(shlex.quote(binary)+' shell install')
+                profile_before = profile.read_bytes()
+                rc.write_text('# user replaced bashrc\n')
             start = len(shell.transcript)
-            shell.toggle(command, 'Enable', install=True)
+            shell.toggle(command, 'Enable', '○ Needs repair' if args.missing_reference else '○ Not set up')
+            if args.missing_reference:
+                assert rc.read_text().startswith('# user replaced bashrc\n') and rc.read_text().count('# >>> lazyclash') == 1
+                assert profile.read_bytes() == profile_before
+                result['missing_reference_repaired'] = True
             first_exit = bytes(shell.transcript[start:])
             assert b'Run once in this terminal:' in first_exit, first_exit[-3000:]
             assert first_exit.rfind(b'Run once in this terminal:') > first_exit.rfind(b'\x1b[?1049l'), 'notice printed before alternate screen restored'
