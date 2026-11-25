@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"slices"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -33,7 +34,7 @@ func (m *Model) renderProfileCreateForm(base string) (string, []hitRegion) {
 		}
 	}
 	footer := m.profileFormFooter(inner)
-	// The footer has a one-row gap above it and the bottom border below it.
+	// Keep one row of space above and below the footer.
 	bodyH := height - bodyY - len(footer.lines) - 2
 	body, scroll := m.profileFormBody(inner, bodyH)
 	if !settings {
@@ -41,7 +42,13 @@ func (m *Model) renderProfileCreateForm(base string) (string, []hitRegion) {
 		height = bodyY + bodyH + len(footer.lines) + 2
 	}
 	x, y := (m.width-width)/2, (m.height-height)/2
-	rows := profileDialogCanvas(width, height)
+	var rows []string
+	if settings {
+		rows = profileDialogCanvas(width, height)
+	} else {
+		blank := themed(strings.Repeat(" ", width), text, raised, false)
+		rows = slices.Repeat([]string{blank}, height)
+	}
 	put := func(row int, line string) {
 		putRows(rows, 2, row, themed(cellCrop(line, inner), text, raised, false), width)
 	}
