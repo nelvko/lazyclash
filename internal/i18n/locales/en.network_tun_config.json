@@ -1,9 +1,11 @@
 {
   "network.tunConfig.title": "TUN settings",
   "network.tunConfig.toggle": "Toggle",
-  "network.tunConfig.scope": "System service · Entire host",
-  "network.tunConfig.runtime": "Current TUN state",
-  "network.tunConfig.policy": "Enable TUN when Mihomo starts",
-  "network.tunConfig.preset": "Managed preset · Mixed stack · MTU 1500 · Strict routing",
-  "network.tunConfig.restart": "Changing this setting restarts Mihomo and interrupts active connections."
+  "network.tunConfig.scope": "Host-wide",
+  "network.tunConfig.runtime": "Status",
+  "network.tunConfig.policy": "On startup",
+  "network.tunConfig.enable": "Enable",
+  "network.tunConfig.preset": "Preset",
+  "network.tunConfig.presetValue": "Mixed stack · MTU 1500 · Strict routing",
+  "network.tunConfig.restart": "Changing this setting restarts Mihomo and closes active connections."
 }

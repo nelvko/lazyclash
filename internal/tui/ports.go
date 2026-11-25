@@ -407,6 +407,7 @@ func (m *Model) portsDocument(width int) (wizardDocument, []wizardButton, string
 		d.line(m.tr("ports.review_boundary"))
 	case "edit":
 		if p.kind == "terminal" {
+			subtitle = "HTTP / SOCKS5"
 			m.terminalConfigFields(&d)
 			buttons = append(buttons, wizardButton{"ports.review", m.tr("network.terminalConfig.save")})
 			break
@@ -451,8 +452,10 @@ func (m *Model) portsDocument(width int) (wizardDocument, []wizardButton, string
 		} else {
 			d.line(m.tr("ports.stopped_boundary"))
 		}
-		d.space()
-		d.line(m.tr("ports.preserved"))
+		if p.kind == "" {
+			d.space()
+			d.line(m.tr("ports.preserved"))
+		}
 		buttons = []wizardButton{{"ports.back", m.tr("ports.back")}, {"ports.apply", label}}
 	case "applying":
 		subtitle = m.tr("ports.applying")
@@ -506,7 +509,7 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 		// Network configurations float over the entire dashboard, including
 		// the sidebar. Even the narrow layout keeps a visible gutter.
 		modal = true
-		w = min(66, max(34, w*3/5), max(0, w-4))
+		w = min(60, max(36, w*2/3), max(0, w-4))
 		h -= 2
 		x = (m.width - w) / 2
 	} else if modal {
@@ -576,15 +579,22 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 	if h < 30 {
 		bodyY = 2
 	}
+	var header []string
+	footerInset := 3 // The full port editor also shows shortcuts below the actions.
+	if p.kind != "" {
+		header = networkHeader(m.tr("network."+p.kind+"Config.title"), subtitle, inner)
+		bodyY = len(header) + 2
+		footerInset = 1
+	}
 	var errors []string
 	if p.err != "" {
 		errors = strings.Split(wrapText(p.err, inner), "\n")
 	}
 	if modal {
-		h = min(h, bodyY+len(doc.lines)+len(errors)+len(footer)+4)
+		h = min(h, bodyY+len(doc.lines)+len(errors)+len(footer)+footerInset+1)
 		y = (m.height - h) / 2
 	}
-	footerY := h - len(footer) - 3
+	footerY := h - len(footer) - footerInset
 	// Validation stays next to the fixed actions instead of disappearing below
 	// the editor. Keep at least a complete field in the scrolling body; unusually
 	// long diagnostics also remain available in full at the end of that body.
@@ -626,14 +636,16 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 		putRows(rows, 0, i, themed("│", border, raised, false), w)
 		putRows(rows, w-1, i, themed("│", border, raised, false), w)
 	}
-	title := "ports.title"
 	if p.kind != "" {
-		title = "network." + p.kind + "Config.title"
-	}
-	putRows(rows, 3, 1, themed(cellCrop(m.tr(title), inner), text, raised, false), w)
-	if bodyY == 5 {
-		putRows(rows, 3, 2, themed(subtitle, muted, raised, false), w)
-		putRows(rows, 2, 3, themed(strings.Repeat("─", w-4), divider, raised, false), w)
+		for i, line := range header {
+			putRows(rows, 3, 1+i, line, w)
+		}
+	} else {
+		putRows(rows, 3, 1, themed(cellCrop(m.tr("ports.title"), inner), text, raised, false), w)
+		if bodyY == 5 {
+			putRows(rows, 3, 2, themed(subtitle, muted, raised, false), w)
+			putRows(rows, 2, 3, themed(strings.Repeat("─", w-4), divider, raised, false), w)
+		}
 	}
 	var hits []hitRegion
 	for i, line := range strings.Split(p.viewport.View(), "\n") {
@@ -660,8 +672,9 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 		hit.X, hit.Y = hit.X+x+3, hit.Y+y+footerY
 		hits = append(hits, hit)
 	}
-	help := m.portsContextHelp()
-	putRows(rows, 3, h-2, helpText(cellCrop(help, inner), raised, false), w)
+	if p.kind == "" {
+		putRows(rows, 3, h-2, helpText(cellCrop(m.portsContextHelp(), inner), raised, false), w)
+	}
 	if len(doc.lines) > bodyH {
 		putRows(rows, w-3, bodyY+bodyH-1, themed("↕", info, raised, false), w)
 	}

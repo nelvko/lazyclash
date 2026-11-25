@@ -1,9 +1,10 @@
 {
   "network.terminalConfig.title": "Terminal proxy settings",
-  "network.terminalConfig.shell": "Current shell",
-  "network.terminalConfig.state": "Terminal proxy",
-  "network.terminalConfig.port": "Mixed port (HTTP / SOCKS5)",
-  "network.terminalConfig.shared": "This instance shares the port with other clients. Review the changes before applying.",
+  "network.terminalConfig.shell": "Shell",
+  "network.terminalConfig.state": "Status",
+  "network.terminalConfig.address": "Address",
+  "network.terminalConfig.port": "Mixed port",
+  "network.terminalConfig.shared": "All clients of this instance share this port.",
   "network.terminalConfig.changed": "The controller port changed while editing. Reopen these settings to load its current value.",
   "network.terminalConfig.save": "Save…"
 }

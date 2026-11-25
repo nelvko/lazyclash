@@ -166,6 +166,10 @@ def check_network_modal(terminal, title):
     margins = left, len(cells[top])-1-right, top, len(cells)-1-bottom
     assert min(margins[:2]) >= 2 and min(margins[2:]) >= 1, (title, margins)
     assert abs(margins[0]-margins[1]) <= 1 and abs(margins[2]-margins[3]) <= 1, (title, margins)
+    header_background = terminal.screen.styles[y][x][1]
+    assert all(style[1] == header_background for style in terminal.screen.styles[y][left+1:right]), \
+        "dialog title and scope must share a continuous background"
+    return left, top, right, bottom
 
 
 def inspect_network_editors(preview, terminal, output, words, scenario, args):
@@ -190,13 +194,15 @@ def inspect_network_editors(preview, terminal, output, words, scenario, args):
             terminal.resize(w, h)
             terminal.settle()
             terminal.wait(title)
-            check_network_modal(terminal, title)
-            # Clicking the backdrop and paging the viewport leave the modal in control.
+            left, top, right, bottom = check_network_modal(terminal, title)
+            action = next((x, y) for x, y in text_points(terminal, cancel) if left < x < right and top < y < bottom)
+            preview.capture(terminal, output, f"{section}-config-{w}x{h}", args)
+            # Scrolling the form and clicking the backdrop keep the action in place.
             click_point(terminal, (0, 0))
             terminal.key(b"\x1b[6~")
+            terminal.settle()
             terminal.wait(title)
-            terminal.wait(cancel)
-            preview.capture(terminal, output, f"{section}-config-{w}x{h}", args)
+            assert action in text_points(terminal, cancel), "scrolling moved the dialog footer"
         terminal.resize(160, 45)
         terminal.settle()
         if section == "tun" and scenario == "pending":

@@ -1,6 +1,9 @@
 package tui
 
-import tea "charm.land/bubbletea/v2"
+import (
+	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
+)
 
 func (m *Model) canConfigureHostTUN() bool {
 	return m.snapshot.Capabilities.TUN.Supported && runtimeControlIssue(m.snapshot, m.locale) == ""
@@ -13,37 +16,48 @@ func (m *Model) networkTUNDocument(width int) (wizardDocument, []wizardButton, s
 	s := m.snapshot
 	if !s.Capabilities.TUN.Supported {
 		d.line(m.tr("diagnostic.runtime.tunUnavailable"))
-		return d, buttons, subtitle
+		return d, buttons, ""
 	}
 	if issue := runtimeControlIssue(s, m.locale); issue != "" {
 		d.line(themed(issue, warning, raised, false))
 		return d, buttons, subtitle
 	}
 
-	actual := m.tr("dashboard.status.unknown")
+	actual, color := m.tr("dashboard.status.unknown"), muted
 	if s.Service.Active {
 		if s.APIError == "" && s.TUNActual != nil {
-			actual = m.tr("dashboard.control.off")
+			actual = "○ " + m.tr("dashboard.control.off")
 			if *s.TUNActual {
-				actual = m.tr("dashboard.control.on")
+				actual, color = "● "+m.tr("dashboard.control.on"), success
 			}
 		}
 	} else if s.Service.State == "inactive" || s.Service.State == "failed" {
 		actual = m.tr("dashboard.status.stopped")
 	}
-	d.pair(m.tr("network.tunConfig.runtime"), actual)
+	d.networkValue(m.tr("network.tunConfig.runtime"), actual, color)
 	if s.TUNError != "" {
 		d.line(themed(clean(m.locale.Detail(s.TUNError)), warning, raised, false))
 	}
+	d.networkValue(m.tr("network.tunConfig.preset"), m.tr("network.tunConfig.presetValue"), text)
 	d.space()
 	check := "[ ] "
 	if m.ports.tunEnabled {
 		check = "[x] "
 	}
-	d.control("tun.policy", check+m.tr("network.tunConfig.policy"), m.ports.focus)
-	d.line(m.tr("network.tunConfig.preset"))
+	button := renderButton(check+m.tr("network.tunConfig.enable"), buttonOptions{
+		Kind: buttonText, Surface: raised, Compact: true, Plain: d.plain,
+		Focused: m.ports.focus == "tun.policy", Hovered: d.hover == "tun.policy",
+	})
+	d.networkRow(m.tr("network.tunConfig.policy"), dashboardBlock{
+		lines:   []string{button},
+		targets: []hitRegion{{ID: "tun.policy", W: ansi.StringWidth(button), H: 1}},
+	})
 	if s.Service.Active {
-		d.line(m.tr("network.tunConfig.restart"))
+		hintColor := muted
+		if m.ports.tunEnabled != m.ports.tunOriginal && m.ports.tunEnabled != s.TUN {
+			hintColor = warning
+		}
+		d.line(themed(m.tr("network.tunConfig.restart"), hintColor, raised, false))
 	}
 	buttons = []wizardButton{{"ports.cancel", m.tr("ports.cancel")}, {"tun.save", m.tr("profile_settings.save")}}
 	return d, buttons, subtitle

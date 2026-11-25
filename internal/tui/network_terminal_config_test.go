@@ -45,6 +45,26 @@ func TestTerminalConfigReviewsOnlySharedPort(t *testing.T) {
 	}
 }
 
+func TestTerminalConfigCompactFieldKeepsCursorAndClearOnValueRow(t *testing.T) {
+	m := terminalConfigModel(t, &fakeBackend{snapshot: app.Snapshot{Installed: true}})
+	defer m.stopRuntime()
+	for _, size := range [][2]int{{80, 24}, {40, 16}} {
+		m.ports.mixed.SetValue("17897")
+		m.ports.mixed.SetCursor(2)
+		m, _ = update(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+		field := findTarget(t, m, "ports.mixed")
+		clear := findTarget(t, m, "ports.mixed.clear")
+		if field.H != 1 || clear.Y != field.Y || clear.X <= field.X+5 {
+			t.Fatalf("bad one-line editor geometry: field=%+v clear=%+v", field, clear)
+		}
+		assertSearchCursorCell(t, m, "8")
+		m, _ = click(m, clear)
+		if m.ports.mixed.Value() != "" || m.ports.focus != "ports.mixed" || m.ports.step != "edit" {
+			t.Fatal("clear did not leave the compact field ready for input")
+		}
+	}
+}
+
 func TestTerminalConfigRejectsConcurrentControllerPortChange(t *testing.T) {
 	b := &fakeBackend{snapshot: app.Snapshot{Installed: true}}
 	b.prepareSettings = func(_ context.Context, proposed app.RuntimeSettings) (app.RuntimeSettingsPlan, error) {
