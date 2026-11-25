@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/diagnostic"
+	"github.com/nelvko/lazyclash/internal/i18n"
 	"github.com/nelvko/lazyclash/internal/service"
 )
 
@@ -293,5 +294,23 @@ func TestProfileSwitchReportsOnlyConfirmedOutcome(t *testing.T) {
 				t.Fatal("missing service diagnostic", item)
 			}
 		})
+	}
+}
+
+func TestProfileChangeHeadingKeepsProgressInTheMessage(t *testing.T) {
+	for _, language := range []string{i18n.English, i18n.Chinese} {
+		m, b := profileClickModel(t, true, false, false, false)
+		b.snapshot.Service.State = "inactive"
+		m.locale = i18n.New(language)
+		m, cmd := click(m, findTarget(t, m, "profile.0"))
+		if len(m.notification.items) != 1 || m.notification.items[0].Message != m.tr("profiles.applying") {
+			t.Fatalf("missing working message: %+v", m.notification.items)
+		}
+		m = finishProfileJob(t, m, cmd)
+		item := m.notification.items[0]
+		heading := notificationHeading(item, m.locale, "")
+		if item.Kind != "done" || !strings.Contains(heading, m.tr("profiles.use")) || !strings.Contains(heading, "Office display name") || strings.Contains(heading, m.tr("profiles.applying")) {
+			t.Fatalf("completion heading still describes the operation as in progress: %s", heading)
+		}
 	}
 }

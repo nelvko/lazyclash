@@ -16,13 +16,17 @@ func (m *Model) profileFeedbackName(id string) string {
 
 func (m *Model) beginProfileImport(draft app.ProfileDraft, operation, label string) tea.Cmd {
 	locale, backend := m.locale, m.backend
+	title := m.tr("profiles.import_title")
+	if operation == "profile.create" {
+		title = m.tr("profiles.create_title")
+	}
 	return m.beginResult(label, func(ctx context.Context) (string, error) {
 		name, err := backend.ImportProfile(ctx, draft)
 		if err != nil {
 			return "", err
 		}
 		return locale.T("feedback.profile_created", name), nil
-	}, notificationOperation{Key: notificationKey(operation, draft.Address), Context: label})
+	}, notificationOperation{Key: notificationKey(operation, draft.Address), Context: title})
 }
 
 // The saved selection and a running core are distinct observations. A

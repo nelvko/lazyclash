@@ -761,7 +761,7 @@ func (m *Model) proxyActivate(id string) tea.Cmd {
 			}
 		} else if strings.HasPrefix(id, "node.") && node != "" && g.Type == "Selector" && g.Now != node && !m.busy && m.proxiesReady() {
 			m.focus = fmt.Sprintf("node.%d.%d", gi, indexOf(g.All, node))
-			cmd := m.begin(m.tr("model.switching_node"), m.tr("model.node_selected"), func(ctx context.Context) error { return m.backend.Select(ctx, g.Name, node) }, notificationOperation{Key: notificationKey("node.select", g.Name+"\x00"+node), Context: m.tr("model.switching_node") + " · " + clean(g.Name) + " / " + clean(node)})
+			cmd := m.begin(m.tr("model.switching_node"), m.tr("model.node_selected"), func(ctx context.Context) error { return m.backend.Select(ctx, g.Name, node) }, notificationOperation{Key: notificationKey("node.select", g.Name+"\x00"+node), Context: clean(g.Name) + " / " + clean(node)})
 			m.proxies.pendingGroup, m.proxies.pendingNode = g.Name, node
 			return cmd
 		}

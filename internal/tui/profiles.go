@@ -323,7 +323,7 @@ func (m *Model) profileAction(id string) (bool, tea.Cmd) {
 				return m.tr("feedback.refresh_partial", summary.Updated, summary.Failed), err
 			}
 			return m.tr("feedback.refreshed_all", summary.Updated), err
-		}, notificationOperation{Key: "profile.refresh-all", Context: label})
+		}, notificationOperation{Key: "profile.refresh-all", Context: m.tr("header.updateAll")})
 
 	}
 	profiles := m.profiles()
@@ -342,7 +342,7 @@ func (m *Model) profileAction(id string) (bool, tea.Cmd) {
 			return true, m.applyProfile(name)
 		case "refresh":
 			return true, m.begin(m.tr("profiles.updating"), m.tr("feedback.refreshed", m.profileFeedbackName(name)), func(ctx context.Context) error { return m.backend.Refresh(ctx, name) },
-				m.profileNotification("refresh", m.tr("profiles.updating"), name))
+				m.profileNotification("refresh", m.tr("profiles.update"), name))
 		case "overrides":
 			return true, m.openProfileEdit("profile-overrides", name)
 		case "delete":
@@ -359,7 +359,7 @@ func (m *Model) canUseDefaultFrom(name string) bool {
 func (m *Model) applyProfile(name string) tea.Cmd {
 	label := m.tr("profiles.applying")
 	return m.begin(label, m.tr("feedback.selected", m.profileFeedbackName(name)), func(ctx context.Context) error { return m.backend.Apply(ctx, name) },
-		m.profileNotification("apply", label, name))
+		m.profileNotification("apply", m.tr("profiles.use"), name))
 }
 
 func (m *Model) profileNotification(operation, label, name string) notificationOperation {
@@ -438,7 +438,7 @@ func (m *Model) profileFormKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 					return err
 				}
 				return m.backend.SetProfileOverrides(ctx, name, raw)
-			}, m.profileNotification("overrides", m.tr("profiles.importing_overrides"), name))
+			}, m.profileNotification("overrides", m.tr("profiles.overrides"), name))
 		}
 	}
 	var cmd tea.Cmd

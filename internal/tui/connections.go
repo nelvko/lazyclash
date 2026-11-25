@@ -456,7 +456,7 @@ func (m *Model) connectionActivate(id string) tea.Cmd {
 		m.hover, m.focus = "", "conn.back"
 		cmd := m.begin(m.tr("connections.closing"), m.tr("connections.close_requested"), func(ctx context.Context) error {
 			return m.backend.CloseObservedConnection(ctx, id, start)
-		}, notificationOperation{Key: notificationKey("connection.close", id), Context: m.tr("connections.closing") + " · " + id})
+		}, notificationOperation{Key: notificationKey("connection.close", id), Context: m.tr("connections.close") + " · " + id})
 		if m.connections.closeRequests == nil {
 			m.connections.closeRequests = make(map[string]connectionCloseRequest)
 		}
@@ -472,7 +472,7 @@ func (m *Model) connectionActivate(id string) tea.Cmd {
 		available := m.canCloseAllConnections()
 		m.connectionActivate("conn.cancel")
 		if !available {
-			m.prepareNotification("connections.close-all", m.tr("connections.closing_all"))
+			m.prepareNotification("connections.close-all", m.tr("connections.close_all"))
 			m.failure = m.tr("connections.close_all_unavailable")
 			return nil
 		}
@@ -481,7 +481,7 @@ func (m *Model) connectionActivate(id string) tea.Cmd {
 		m.connections.paused, m.connections.frozen = false, nil
 		m.connections.frozenClosed = nil
 		m.connections.frozenRates = connectionRatesState{}
-		return m.begin(m.tr("connections.closing_all"), m.tr("connections.close_all_requested"), m.backend.CloseAllConnections, notificationOperation{Key: "connections.close-all", Context: m.tr("connections.closing_all")})
+		return m.begin(m.tr("connections.closing_all"), m.tr("connections.close_all_requested"), m.backend.CloseAllConnections, notificationOperation{Key: "connections.close-all", Context: m.tr("connections.close_all")})
 	}
 	return nil
 }

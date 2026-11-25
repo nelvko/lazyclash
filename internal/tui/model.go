@@ -434,6 +434,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.languageOverride = v.language
 			m.savedLanguage = v.language
 			m.message, m.failure = m.tr("language.saved"), ""
+			m.notification.operation.Context = m.tr("dashboard.language.title")
 			m.refreshLocalizedInputs()
 		}
 		if m.quitting && !m.keyHints.pending {
@@ -1425,28 +1426,28 @@ func (m *Model) activate(id string) tea.Cmd {
 		m.scroll = 0
 		m.returnToNavigation()
 	case id == "dismiss":
-		return m.begin(m.tr("model.saving_guide"), m.tr("model.guide_dismissed"), func(ctx context.Context) error { return m.backend.SetGuideDismissed(ctx, true) }, notificationOperation{Key: "guide.dismiss", Context: m.tr("model.saving_guide")})
+		return m.begin(m.tr("model.saving_guide"), m.tr("model.guide_dismissed"), func(ctx context.Context) error { return m.backend.SetGuideDismissed(ctx, true) }, notificationOperation{Key: "guide.dismiss", Context: m.tr("dashboard.guide.later")})
 	case id == "start" || id == "stop" || id == "restart":
 		return m.serviceAction(id)
 	case id == "autostart-enable" || id == "autostart-disable":
 		enabled := id == "autostart-enable"
-		return m.begin(m.tr("model.updating_autostart"), m.tr("model.autostart_saved"), func(ctx context.Context) error { return m.backend.SetAutostart(ctx, enabled) }, notificationOperation{Key: id, Context: m.tr("model.updating_autostart")})
+		return m.begin(m.tr("model.updating_autostart"), m.tr("model.autostart_saved"), func(ctx context.Context) error { return m.backend.SetAutostart(ctx, enabled) }, notificationOperation{Key: id, Context: m.tr("settings.autostart")})
 	case strings.HasPrefix(id, "mode."):
 		if m.busy || m.quitting {
 			return nil
 		}
 		mode := strings.TrimPrefix(id, "mode.")
 		if !mihomo.ValidMode(mode) {
-			m.prepareNotification("mode."+mode, m.tr("model.applying_mode")+" · "+mode)
+			m.prepareNotification("mode."+mode, m.tr("dashboard.control.routingMode")+" · "+mode)
 			m.failure = m.tr("model.invalid_mode")
 			return nil
 		}
 		if issue := runtimeControlIssue(m.snapshot, m.locale); issue != "" {
-			m.prepareNotification("mode."+mode, m.tr("model.applying_mode")+" · "+mode)
+			m.prepareNotification("mode."+mode, m.tr("dashboard.control.routingMode")+" · "+mode)
 			m.failure = issue
 			return nil
 		}
-		return m.begin(m.tr("model.applying_mode"), m.tr("model.mode_saved"), func(ctx context.Context) error { return m.backend.SetMode(ctx, mode) }, notificationOperation{Key: "mode." + mode, Context: m.tr("model.applying_mode") + " · " + mode})
+		return m.begin(m.tr("model.applying_mode"), m.tr("model.mode_saved"), func(ctx context.Context) error { return m.backend.SetMode(ctx, mode) }, notificationOperation{Key: "mode." + mode, Context: m.tr("dashboard.control.routingMode") + " · " + mode})
 	}
 	return nil
 }

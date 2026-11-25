@@ -96,7 +96,7 @@ func (m *Model) profileDeleteKey(k tea.KeyPressMsg) tea.Cmd {
 			}
 			return m.begin(label, message, func(ctx context.Context) error {
 				return m.backend.DeleteProfileWithReplacement(ctx, name, replacement)
-			}, m.profileNotification("delete", label, name))
+			}, m.profileNotification("delete", m.tr("profiles.delete"), name))
 		}
 	}
 	return nil

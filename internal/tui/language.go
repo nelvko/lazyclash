@@ -19,9 +19,7 @@ func (m *Model) changeLanguage(language string) tea.Cmd {
 	if language == m.locale.Language() && language == m.savedLanguage {
 		return nil
 	}
-	ctx := m.newJob("language")
-	m.notification.operation.Key = "language." + language
-	m.notification.operation.Context = m.tr("language.saving")
+	ctx := m.newJob("language", notificationOperation{Key: "language." + language, Context: m.tr("dashboard.language.title")})
 	id, backend := m.id, m.backend
 	m.message = m.tr("language.saving")
 	return tea.Batch(func() tea.Msg {

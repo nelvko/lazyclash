@@ -17,10 +17,9 @@ func (m *Model) changeTheme(theme string) tea.Cmd {
 	if m.busy || m.quitting || m.page != "settings" || m.theme == theme {
 		return nil
 	}
-	ctx := m.newJob("theme")
+	ctx := m.newJob("theme", notificationOperation{Key: "theme", Context: m.tr("settings.theme")})
 	id, backend := m.id, m.backend
 	m.message = m.tr("settings.themeSaving")
-	m.notification.operation.Context = m.message
 	return tea.Batch(func() tea.Msg {
 		return themeSavedMsg{id, theme, backend.SaveThemePreference(ctx, theme)}
 	}, m.spinner.Tick)

@@ -63,5 +63,5 @@ func (m *Model) saveCoreSetting(id, key, current, value string) tea.Cmd {
 	backend := m.backend
 	return m.begin(label, m.tr("settings.coreSaved", m.tr(id)), func(ctx context.Context) error {
 		return backend.SetCoreSetting(ctx, key, value)
-	}, notificationOperation{Key: id, Context: label})
+	}, notificationOperation{Key: id, Context: m.tr(id)})
 }

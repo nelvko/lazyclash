@@ -29,7 +29,7 @@ func (m *Model) openProfileSettings(id string) tea.Cmd {
 	m.form, m.name = "profile-settings", id
 	m.profileCreate.name.Placeholder = m.tr("profiles.display_name")
 	m.message = m.tr("profile_settings.loading")
-	ctx := m.newJob("profile.settings.load", m.profileNotification("settings.load", m.message, id))
+	ctx := m.newJob("profile.settings.load", m.profileNotification("settings.load", m.tr("dashboard.page.settings"), id))
 	request, backend := m.id, m.backend
 	return func() tea.Msg {
 		values, err := backend.GetProfileSettings(ctx, id)
@@ -98,7 +98,7 @@ func (m *Model) saveProfileSettings() tea.Cmd {
 	label := m.tr("profile_settings.saving")
 	return m.begin(label, m.tr("profile_settings.saved"), func(ctx context.Context) error {
 		return m.backend.SaveProfileSettings(ctx, values)
-	}, m.profileNotification("settings.save", label, values.ID))
+	}, m.profileNotification("settings.save", m.tr("profile_settings.save"), values.ID))
 }
 
 func (m *Model) focusProfileByID(id string) {
@@ -126,7 +126,7 @@ func (m *Model) profileSettingsAction(field int) tea.Cmd {
 			label := m.tr("profiles.deactivating")
 			return m.begin(label, m.tr("feedback.deactivated", m.profileFeedbackName(id)), func(ctx context.Context) error {
 				return m.backend.DeactivateProfile(ctx, id)
-			}, m.profileNotification("deactivate", label, id))
+			}, m.profileNotification("deactivate", m.tr("profile_settings.deactivate"), id))
 		}
 	}
 	return nil
