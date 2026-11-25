@@ -2,7 +2,7 @@
   "help.profiles.click": "单击卡片使用该配置。",
   "help.profiles.menu": "右键点击卡片、点击 ⋯ 按钮，或聚焦卡片后按 m / Shift+F10 打开操作菜单。",
   "help.profiles.menuControls": "菜单：↑↓ / j/k 选择，Home / End 首末项，Enter 执行；Esc / Tab / Shift+Tab 或点击外部关闭。",
-  "help.messages.toast": "右上角显示错误、警告、重要消息和持续任务进度；普通成功与信息仅短暂保留在通知列表。浏览页面时，Ctrl+N 查看列表和详情。",
+  "help.messages.toast": "订阅变更、内核重启、终端代理后续步骤、错误和慢任务进度在右上角提示。偏好和节点等选择在原控件显示。浏览时按 Ctrl+N 查看通知和详情。",
   "help.messages.dismiss": "错误通知保留到手动关闭。进度通知中的「取消任务」可停止任务；关闭通知不会取消任务。任务进行时仍可浏览；弹窗任务的取消方式以当前提示为准。",
   "navigation.actionMenu": "↑↓ 选择 · Enter 确定 · Esc 关闭"
 }
