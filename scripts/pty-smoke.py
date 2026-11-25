@@ -428,7 +428,7 @@ def main():
             terminal.key(b"a")
             terminal.wait("Subscription URL or local YAML path")
             terminal.key(os.fsencode(config) + b"\r")
-            terminal.wait("Configuration saved")
+            terminal.wait("Profile created: “preimport”")
             imported = subprocess.run(command + ["profile", "show", "preimport"],
                                       check=True, capture_output=True, timeout=15)
             saved = json.loads(imported.stdout)
@@ -832,8 +832,9 @@ def main():
             terminal.key(b"\x1b[B")  # DIRECT
             terminal.key(b"\x1b[C")  # REJECT in the second column
             terminal.key(b"\r")
-            terminal.wait("Node selected")
             terminal.wait_selected_proxy("REJECT")
+            if "Node selected" in terminal.screen.text():
+                raise AssertionError("Confirmed node selection displayed a redundant notification")
             check_proxy_selection("REJECT")
 
             # Exercise a real candidate click as well as the sidebar click.
