@@ -5,6 +5,7 @@ Requires an already built --binary (absolute path). It does not build, create a
 VM, install a core/service or change system network settings. First-run
 guidance may perform its automatic read-only stable-version check.
 --output stores per-profile raw PTY captures and current-screen text snapshots.
+Pass --notifications-only to exercise feedback, compact layouts and cancellation.
 """
 import argparse
 import importlib.util
@@ -71,15 +72,19 @@ def enter_network(terminal):
 def focused_prefix(terminal):
     settle(terminal)
     terminal.wait("Acceleration URL")
-    # The current-screen emulator handles the v2 renderer's cell-diff output.
-    # Reading raw historical text here could falsely retain an old focus/input.
-    lines = terminal.screen.text().splitlines()
-    return any("›" in line and PREFIX in line for line in lines)
+    # The input draws its native cursor immediately after the typed URL.
+    screen = terminal.screen
+    row = screen.cells[screen.y]
+    cursor_shown = terminal.raw.rfind(b"\x1b[?25h") > terminal.raw.rfind(b"\x1b[?25l")
+    return cursor_shown and "".join(row[:screen.x]).endswith(PREFIX)
 
 
 def exercise_notifications(terminal, output, profile):
     # Three independent commands share a cause, but retain their own context.
     # The uninstalled guards do not touch a service or query a release.
+    # Settings accepts all three service shortcuts. Overview reserves r.
+    terminal.key(b"7")
+    terminal.wait("Interface preferences")
     error = "Mihomo is not installed"
     terminal.key(b"s")
     terminal.wait(error)
@@ -137,9 +142,9 @@ def exercise_notifications(terminal, output, profile):
             raise AssertionError("Toast is not in the upper-right corner")
         save_screen(terminal, output, profile, "notification-%sx%s" % (columns, rows))
 
+    terminal.resize(40, 24)
     terminal.key(b"3")
-    terminal.wait("Profiles")
-    terminal.wait("Expand")  # Tight header space keeps an accessible entry.
+    terminal.wait("Error · 2 more · Expand")
     terminal.key(b"\x0e")  # Ctrl+N opens the bounded collection from any page.
     terminal.wait("Notifications")
     terminal.wait(error)  # Switching pages preserved both unrelated failures.
@@ -147,8 +152,16 @@ def exercise_notifications(terminal, output, profile):
     terminal.wait("Stop service")
     terminal.key(b"x")
     terminal.wait_absent("Restart service")
+    terminal.key(b"\x1b")
+    terminal.wait_absent("Notifications")
+    # The single folded error shows its cause and opens the full list by mouse.
+    terminal.wait("Error · " + error)
+    save_screen(terminal, output, profile, "notification-single-summary-40x24")
+    terminal.click_text(error)
+    terminal.wait("Notifications")
+    terminal.wait("Stop service")
     terminal.key(b"x")
-    terminal.wait_absent(error)
+    terminal.wait("No notifications")
     terminal.key(b"\x1b")
     terminal.wait_absent("Notifications")
 
@@ -192,7 +205,39 @@ def exercise_notifications(terminal, output, profile):
     terminal.wait("Proxy mode")
 
 
-def exercise(binary, output, profile):
+def exercise_network(terminal, output, profile):
+    # Network setup is a single method choice. Prefixes are visible
+    # public URLs, and abandoning the modal discards the complete draft.
+    enter_network(terminal)
+    terminal.key(b"\r")  # Direct -> environment
+    terminal.key(b"\r")  # Environment -> GitHub acceleration
+    terminal.wait("Acceleration URL")
+    terminal.key(b"\t")
+    terminal.key(PREFIX.encode("ascii"))
+    terminal.wait(PREFIX)
+    for columns, rows in SIZES:
+        mark = len(terminal.text())
+        terminal.resize(columns, rows)
+        terminal.wait(PREFIX, after=mark)
+        if not focused_prefix(terminal):
+            raise AssertionError("resize lost the draft input or its focus at %sx%s" % (columns, rows))
+        terminal.wait("Esc")
+        save_screen(terminal, output, profile, "network-%sx%s" % (columns, rows))
+    terminal.resize(120, 32)
+    settle(terminal)
+    terminal.wait(PREFIX)
+    terminal.key(b"\x1b")
+    terminal.wait_absent("Acceleration URL")
+    enter_network(terminal)
+    terminal.wait("Direct")
+    terminal.wait_absent("Acceleration URL")
+    terminal.wait_absent(PREFIX)
+    terminal.key(b"\x1b")
+    terminal.wait_absent("Use environment proxy")
+    terminal.wait("Proxy mode")
+
+
+def exercise(binary, output, profile, notifications_only):
     terminal = None
     with tempfile.TemporaryDirectory(prefix="lazyclash-theme-pty-") as temporary:
         home = Path(temporary) / "home"
@@ -209,38 +254,10 @@ def exercise(binary, output, profile):
             terminal.wait("Install the Mihomo core", after=mark)
             terminal.click_text("Set up later")
             terminal.wait("Proxy mode")
-            terminal.key(b"1")  # Enter Overview content before runtime shortcuts.
             save_screen(terminal, output, profile, "overview")
             exercise_notifications(terminal, output, profile)
-            # Network setup is a single method choice. Prefixes are visible
-            # public URLs, and abandoning the modal discards the complete draft.
-            enter_network(terminal)
-            terminal.key(b"\r")  # Direct -> environment
-            terminal.key(b"\r")  # Environment -> GitHub acceleration
-            terminal.wait("Acceleration URL")
-            terminal.key(b"\t")
-            terminal.key(PREFIX.encode("ascii"))
-            terminal.wait(PREFIX)
-            for columns, rows in SIZES:
-                mark = len(terminal.text())
-                terminal.resize(columns, rows)
-                terminal.wait(PREFIX, after=mark)
-                if not focused_prefix(terminal):
-                    raise AssertionError("resize lost the draft input or its focus at %sx%s" % (columns, rows))
-                terminal.wait("Esc")
-                save_screen(terminal, output, profile, "network-%sx%s" % (columns, rows))
-            terminal.resize(120, 32)
-            settle(terminal)
-            terminal.wait(PREFIX)
-            terminal.key(b"\x1b")
-            terminal.wait_absent("Acceleration URL")
-            enter_network(terminal)
-            terminal.wait("Direct")
-            terminal.wait_absent("Acceleration URL")
-            terminal.wait_absent(PREFIX)
-            terminal.key(b"\x1b")
-            terminal.wait_absent("Use environment proxy")
-            terminal.wait("Proxy mode")
+            if not notifications_only:
+                exercise_network(terminal, output, profile)
             terminal.exit()
 
             raw = bytes(terminal.raw)
@@ -258,7 +275,8 @@ def exercise(binary, output, profile):
                     raise AssertionError("NO_COLOR run emitted SGR styling: " + repr(styled[:4]))
             if (home / "installation").exists() or (home / "preferences.json").exists():
                 raise AssertionError("read-only theme exercise installed a core or saved preferences")
-            return {"profile": profile, "status": "passed", "sizes": SIZES,
+            return {"profile": profile, "status": "passed", "sizes": SIZES + [(40, 24)],
+                    "notifications_only": notifications_only,
                     "rgb": bool(RGB.search(raw)), "indexed": bool(INDEXED.search(raw))}
         finally:
             if terminal is not None:
@@ -271,12 +289,13 @@ def main():
     parser.add_argument("--binary", type=Path, required=True, help="Absolute path to an already built lazyclash")
     parser.add_argument("--output", type=Path, required=True, help="Directory for isolated PTY evidence")
     parser.add_argument("--profile", choices=("all", "truecolor", "256", "no-color"), default="all")
+    parser.add_argument("--notifications-only", action="store_true", help="Run just the notification checks through the product TUI")
     args = parser.parse_args()
     if not args.binary.is_absolute() or not args.binary.is_file() or not os.access(args.binary, os.X_OK):
         parser.error("--binary must be an absolute path to an executable file")
     args.output.mkdir(parents=True, exist_ok=True)
     profiles = ("truecolor", "256", "no-color") if args.profile == "all" else (args.profile,)
-    results = [exercise(args.binary, args.output, profile) for profile in profiles]
+    results = [exercise(args.binary, args.output, profile, args.notifications_only) for profile in profiles]
     (args.output / "results.json").write_text(json.dumps(results, indent=2) + "\n")
     for result in results:
         print("Dark theme PTY %s: passed (%s sizes)" % (result["profile"], len(result["sizes"])))
