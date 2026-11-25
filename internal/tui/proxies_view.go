@@ -139,7 +139,7 @@ func (m *Model) proxyGroupHeader(gi, width int, cols proxyHeaderColumns) dashboa
 	typeID := proxyTypeTarget + strconv.Itoa(gi)
 	expanded := m.proxyGroupExpanded(g.Name)
 	marker, arrow := "  ", "▸"
-	if m.focus == id {
+	if m.focus == id && !m.menu.dropdownOpen(id) {
 		marker = "› "
 	}
 	color := text
@@ -168,18 +168,7 @@ func (m *Model) proxyGroupHeader(gi, width int, cols proxyHeaderColumns) dashboa
 		id, value string
 	}
 	var actions []headerAction
-	addAction := func(id, label string) {
-		o := dashboardButtonOptions(id, m.navigationOptions(), false, surface)
-		o.Kind, o.Compact, o.Disabled = buttonText, width < 52, m.busy || m.quitting
-		actions = append(actions, headerAction{id, renderButton(label, o)})
-	}
-	if expanded && m.proxySortable(g) {
-		label := m.tr("proxies.sort")
-		if order := m.proxySort(g.Name); order != "default" {
-			label = m.tr("proxies.sort."+order) + " ↑"
-		}
-		addAction(sortID, label)
-	}
+	testValue := ""
 	testing := m.proxies.testGroup == g.Name && m.proxies.testing
 	showResult := m.proxies.testGroup == g.Name && m.proxies.testStatusVisible
 	if testing || showResult || expanded && m.proxyGroupHasTestAction(g.Name) {
@@ -190,7 +179,20 @@ func (m *Model) proxyGroupHeader(gi, width int, cols proxyHeaderColumns) dashboa
 		case showResult:
 			label = m.tr("proxies.test."+m.proxies.testStatus, m.proxies.completed, m.proxies.total)
 		}
-		addAction(testID, label)
+		o := dashboardButtonOptions(testID, m.navigationOptions(), false, surface)
+		o.Kind, o.Compact, o.Disabled = buttonText, width < 52, m.busy || m.quitting
+		testValue = renderButton(label, o)
+	}
+	if expanded && m.proxySortable(g) {
+		o := dashboardButtonOptions(sortID, m.navigationOptions(), false, surface)
+		o.Disabled = m.busy || m.quitting
+		// Keep the adjacent test progress visible when the tools share a short row.
+		available := max(1, width-1-ansi.StringWidth(testValue))
+		value, _ := m.proxySortDropdown(g.Name).render(sortID, o, m.menu.dropdownOpen(sortID), available)
+		actions = append(actions, headerAction{sortID, value})
+	}
+	if testValue != "" {
+		actions = append(actions, headerAction{testID, testValue})
 	}
 	var actionValues []string
 	for _, action := range actions {
@@ -222,7 +224,7 @@ func (m *Model) proxyGroupHeader(gi, width int, cols proxyHeaderColumns) dashboa
 	// the group. The remaining header surface belongs to the folding target.
 	var actionRegions []hitRegion
 	appendAction := func(action headerAction, x, y, w int) {
-		hit := hitRegion{ID: action.id, X: x, Y: y, W: w, H: 1}
+		hit := hitRegion{ID: action.id, X: x, Y: y, W: w, H: 1, DropdownRight: action.id == sortID}
 		actionRegions = append(actionRegions, hit)
 		if !m.busy && !m.quitting {
 			b.targets = append(b.targets, hit)

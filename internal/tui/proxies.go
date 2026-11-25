@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -393,7 +394,7 @@ func (m *Model) sortProxies(order string) {
 	m.revealContentFocus()
 }
 func (m *Model) openProxySort() {
-	if !m.proxiesReady() || m.busy {
+	if !m.proxiesReady() || m.menu.open || m.busy || m.quitting {
 		return
 	}
 	gi, g, _, ok := m.proxyAtFocus()
@@ -401,32 +402,52 @@ func (m *Model) openProxySort() {
 		return
 	}
 	m.proxies.sortReturn = m.proxyLocation()
-	items := make([]menuItem, 0, 3)
-	for _, order := range []string{"default", "delay", "name"} {
-		label := m.tr("proxies.sort." + order)
-		if order == m.proxySort(g.Name) {
-			label = "✓ " + label
-		}
-		items = append(items, menuItem{ID: order, Label: label})
-	}
-	m.proxies.sortMenu = true
-	sortID := fmt.Sprintf("proxies.sort.%d", gi)
 	m.focus = fmt.Sprintf("group.%d", gi)
 	if m.proxyGroupExpanded(g.Name) {
-		m.focus = sortID
+		m.focus = fmt.Sprintf("proxies.sort.%d", gi)
 	}
+	m.hover = ""
+	m.revealContentFocus()
 	m.layout()
-	x, y := dashboardGeometry(m.dashboardOptions()).x, dashboardGeometry(m.dashboardOptions()).y
-	for _, hit := range m.targets {
-		if hit.ID == fmt.Sprintf("group.%d", gi) {
-			x, y = hit.X, hit.Y+1
-		}
-		if hit.ID == sortID {
-			x, y = hit.X, hit.Y+1
-			break
+	if anchor, ok := m.proxySortMenuAnchor(m.targets); ok {
+		m.proxies.sortMenu = true
+		m.proxySortDropdown(g.Name).show(&m.menu, anchor)
+	} else {
+		m.restoreProxyLocation(m.proxies.sortReturn)
+		m.proxies.sortReturn = proxyLocation{}
+	}
+}
+
+func (m *Model) proxySortDropdown(group string) dropdown {
+	return dropdown{Value: m.proxySort(group), Items: []menuItem{
+		{ID: "default", Label: m.tr("proxies.sort.default")},
+		{ID: "delay", Label: m.tr("proxies.sort.delay")},
+		{ID: "name", Label: m.tr("proxies.sort.name")},
+	}}
+}
+
+func (m *Model) proxySortMenuAnchor(targets []hitRegion) (hitRegion, bool) {
+	location := m.proxies.sortReturn
+	index, group, ok := m.proxyGroup(cmp.Or(location.identity.group, location.group))
+	if !ok || !m.proxySortable(group) {
+		return hitRegion{}, false
+	}
+	expanded := m.proxyGroupExpanded(group.Name)
+	id := fmt.Sprintf("group.%d", index)
+	if expanded {
+		id = fmt.Sprintf("proxies.sort.%d", index)
+	}
+	for _, hit := range targets {
+		if hit.ID == id {
+			if !expanded {
+				// The keyboard shortcut also works on a folded group heading.
+				// Anchor at its name, even when its folding target fills the row.
+				hit.W = min(hit.W, dropdownGutter+m.proxySortDropdown(group.Name).width())
+			}
+			return hit, true
 		}
 	}
-	m.menu.show(items, x, y)
+	return hitRegion{}, false
 }
 func (m *Model) proxyMenuResult(result menuResult) tea.Cmd {
 	if !result.Closed || !m.proxies.sortMenu {
@@ -438,10 +459,14 @@ func (m *Model) proxyMenuResult(result menuResult) tea.Cmd {
 		m.proxies.sortReturn = proxyLocation{}
 		return nil
 	}
+	location := m.proxies.sortReturn
+	m.proxies.sortReturn = proxyLocation{}
+	m.restoreProxyLocation(location)
 	if result.Action != "" && m.page == "proxies" {
-		m.sortProxies(result.Action)
+		if _, group, _, ok := m.proxyAtFocus(); ok && group.Name == cmp.Or(location.identity.group, location.group) {
+			m.sortProxies(result.Action)
+		}
 	}
-	m.restoreProxyLocation(m.proxies.sortReturn)
 	m.revealContentFocus()
 	return nil
 }

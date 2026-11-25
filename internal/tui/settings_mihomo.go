@@ -28,7 +28,7 @@ func settingsMihomo(o dashboardOptions, width int) dashboardBlock {
 	return settingsSection(o, width, tr("settings.mihomo"), tr("settings.allProfiles"), []settingsRow{
 		ipv6,
 		settingsSwitchRow("settings.unifiedDelay", tr("settings.unifiedDelay"), s.CoreSettings.UnifiedDelay == "on", !o.Busy),
-		settingsSelectRow(o, "settings.logLevel", tr("settings.logLevel"), s.CoreSettings.LogLevel, coreLogLevelItems),
+		settingsSelectRow(o, "settings.logLevel", tr("settings.logLevel")),
 	})
 }
 

@@ -20,7 +20,7 @@ func (m *Model) prepareProfileDelete() {
 	m.profilesUI.deleteCurrent = m.canUseDefaultFrom(m.name)
 	m.profilesUI.deleteReplacement = ""
 	if m.profilesUI.deleteCurrent {
-		items := m.profileReplacementItems()
+		items := m.profileReplacementDropdown().Items
 		// The final item is direct routing. Preselect the sole saved alternative,
 		// or direct routing if the library has no alternative.
 		if len(items) <= 2 {
@@ -29,7 +29,7 @@ func (m *Model) prepareProfileDelete() {
 	}
 }
 
-func (m *Model) profileReplacementItems() []menuItem {
+func (m *Model) profileReplacementDropdown() dropdown {
 	var items []menuItem
 	for _, id := range m.profiles() {
 		if id != m.name {
@@ -37,17 +37,14 @@ func (m *Model) profileReplacementItems() []menuItem {
 		}
 	}
 	items = append(items, menuItem{ID: "default", Label: m.tr("profiles.direct")})
-	for i := range items {
-		items[i].Checked = items[i].ID == m.profilesUI.deleteReplacement
-	}
-	return items
+	return dropdown{Items: items, Value: m.profilesUI.deleteReplacement, Placeholder: m.tr("profiles.choose_replacement")}
 }
 
 func (m *Model) renderReplacementMenu() {
 	for _, hit := range m.targets {
 		if hit.ID == deleteChoice {
 			m.menu.setAnchor(hit)
-			m.screen = m.menu.render(m.screen, m.width, m.height, m.height)
+			m.screen = m.renderMenu(m.screen, m.height)
 			return
 		}
 	}
@@ -86,7 +83,7 @@ func (m *Model) profileDeleteKey(k tea.KeyPressMsg) tea.Cmd {
 		case deleteCancel:
 			m.closeProfileForm()
 		case deleteChoice:
-			m.menu.showSelection(m.profileReplacementItems(), m.profilesUI.deleteReplacement, targets[idx])
+			m.profileReplacementDropdown().show(&m.menu, targets[idx])
 		case deleteConfirm:
 			name, replacement := m.name, m.profilesUI.deleteReplacement
 			m.closeProfileForm()
@@ -108,35 +105,31 @@ func (m *Model) renderProfileDeleteForm(base string) (string, []hitRegion) {
 	inner := width - 4
 	active := m.profilesUI.deleteCurrent
 	valid := slices.Contains(m.profiles(), m.name) && active == m.canUseDefaultFrom(m.name)
-	replacement := m.profilesUI.deleteReplacement
 	hint, confirm := m.tr("profiles.delete_hint"), m.tr("profiles.delete_confirm")
-	var choice string
+	var choice dropdown
 	if !valid {
 		hint = m.tr("profiles.delete_stale")
 	} else if active {
-		items := m.profileReplacementItems()
-		selected := slices.IndexFunc(items, func(item menuItem) bool { return item.ID == replacement })
-		label := m.tr("profiles.choose_replacement")
+		replacements := m.profileReplacementDropdown()
+		selected := slices.IndexFunc(replacements.Items, func(item menuItem) bool { return item.ID == replacements.Value })
 		if selected < 0 {
 			valid = false
-			hint = label
+			hint = replacements.Placeholder
 		} else {
-			label = items[selected].Label
-			if replacement == "default" {
+			if replacements.Value == "default" {
 				hint = m.tr("profiles.delete_direct")
 				confirm = m.tr("profiles.confirm_direct")
 			} else {
-				hint = m.tr("profiles.delete_switch", label)
+				hint = m.tr("profiles.delete_switch", replacements.Items[selected].Label)
 				confirm = m.tr("profiles.confirm_switch")
 			}
 			if !m.snapshot.Service.Active && m.snapshot.ServiceError == "" {
 				hint += " " + m.tr("profiles.delete_stopped")
 			}
 		}
-		if len(items) > 1 || selected < 0 {
-			choice = label + " ▾"
+		if len(replacements.Items) > 1 || selected < 0 {
+			choice = replacements
 		}
-
 	}
 	title := m.tr("profiles.delete_title", clean(m.profileInfo(m.name).Name))
 	lines := strings.Split(wrapText(hint, inner), "\n")
@@ -167,7 +160,7 @@ func (m *Model) renderProfileDeleteForm(base string) (string, []hitRegion) {
 	height := min(9, m.height)
 	if active {
 		height = 5 + len(lines) + len(buttons.lines)
-		if choice != "" {
+		if len(choice.Items) > 0 {
 			height++
 		}
 		// An active deletion changes routing. Its consequences must fit before
@@ -188,12 +181,15 @@ func (m *Model) renderProfileDeleteForm(base string) (string, []hitRegion) {
 		put(2+i, themed(line, muted, raised, false))
 	}
 	var hits []hitRegion
-	if choice != "" {
+	if len(choice.Items) > 0 {
 		row := buttonRow - 1
-		value := renderButton(choice, buttonOptions{Kind: buttonSecondary, Surface: raised, Focused: m.profilesUI.deleteFocus == deleteChoice, Hovered: m.hover == deleteChoice, Plain: m.buttonPlain()})
-		put(row, cellCrop(value, inner))
-		if !m.busy && !m.quitting {
-			hits = append(hits, hitRegion{ID: deleteChoice, X: x + 2, Y: y + row, W: min(inner, ansi.StringWidth(value)), H: 1})
+		o := buttonOptions{Surface: raised, Focused: m.profilesUI.deleteFocus == deleteChoice, Hovered: m.hover == deleteChoice, Disabled: m.busy || m.quitting, Plain: m.buttonPlain()}
+		value, hit := choice.render(deleteChoice, o, m.menu.dropdownOpen(deleteChoice), inner)
+		put(row, value)
+		if !o.Disabled {
+			hit.X += x + 2
+			hit.Y += y + row
+			hits = append(hits, hit)
 		}
 	}
 	for i, line := range buttons.lines {

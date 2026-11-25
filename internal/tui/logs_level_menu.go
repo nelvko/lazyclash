@@ -8,16 +8,16 @@ import (
 
 var logLevelKeys = [...]string{"logs.level_all", "logs.level_info", "logs.level_warn", "logs.level_error"}
 
-func (m *Model) logLevelMenuItems() []menuItem {
+func (m *Model) logLevelDropdown() dropdown {
 	items := make([]menuItem, len(logLevelKeys))
 	for level, key := range logLevelKeys {
-		items[level] = menuItem{ID: strconv.Itoa(level), Label: m.tr(key), Checked: level == m.logs.level}
+		items[level] = menuItem{ID: strconv.Itoa(level), Label: m.tr(key)}
 	}
-	return items
+	return dropdown{Items: items, Value: strconv.Itoa(m.logs.level)}
 }
 
 func (m *Model) openLogLevelMenu() {
-	if m.openPageSelectionMenu("logs", "logs.level", strconv.Itoa(m.logs.level), m.logLevelMenuItems()) {
+	if m.openPageSelectionMenu("logs", "logs.level", m.logLevelDropdown()) {
 		m.logs.editing = false
 		m.logs.search.Blur()
 		m.logs.levelMenu = true
@@ -29,7 +29,7 @@ func (m *Model) reconcileLogsLevelMenu() {
 		m.logsLevelMenuResult(menuResult{Closed: true})
 		return
 	}
-	m.menu.setItems(m.logLevelMenuItems())
+	m.logLevelDropdown().sync(&m.menu)
 }
 
 func (m *Model) logsLevelMenuResult(result menuResult) tea.Cmd {

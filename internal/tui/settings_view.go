@@ -16,6 +16,7 @@ type settingsControl uint8
 const (
 	settingsInline settingsControl = iota
 	settingsTrailing
+	settingsSelect
 	settingsSwitch
 )
 
@@ -37,18 +38,21 @@ var themeMenuItems = []menuItem{
 	{ID: app.ThemeAuto, Label: "Auto"},
 }
 
-func menuItemLabel(items []menuItem, id string) string {
-	for _, item := range items {
-		if item.ID == id {
-			return item.Label
-		}
+func (o dashboardOptions) settingsDropdown(id string) dropdown {
+	switch id {
+	case "settings.language":
+		return dropdown{Items: languageMenuItems, Value: o.Locale.Language()}
+	case "settings.theme":
+		return dropdown{Items: themeMenuItems, Value: cmp.Or(o.Theme, app.ThemeDark)}
+	case "settings.logLevel":
+		return dropdown{Items: coreLogLevelItems, Value: o.Snapshot.CoreSettings.LogLevel}
 	}
-	return id
+	return dropdown{}
 }
 
-func settingsSelectRow(o dashboardOptions, id, label, current string, items []menuItem) settingsRow {
-	return settingsRow{label: label, control: settingsTrailing, actions: []overviewControlButton{
-		{id: id, label: menuItemLabel(items, current) + " ▾", enabled: !o.Busy},
+func settingsSelectRow(o dashboardOptions, id, label string) settingsRow {
+	return settingsRow{label: label, control: settingsSelect, actions: []overviewControlButton{
+		{id: id, enabled: !o.Busy},
 	}}
 }
 
@@ -112,7 +116,7 @@ func settingsInterface(o dashboardOptions, width int) dashboardBlock {
 	hints := settingsSwitchRow("key-hints.toggle", tr("dashboard.interface.keyHints"), !o.HideKeyHints, true)
 	hints.note = tr("settings.keyHintsHint")
 	return settingsSection(o, width, tr("settings.interface"), "", []settingsRow{
-		settingsSelectRow(o, "settings.language", tr("dashboard.language.title"), o.Locale.Language(), languageMenuItems),
+		settingsSelectRow(o, "settings.language", tr("dashboard.language.title")),
 		hints,
 		settingsThemeRow(o),
 		{label: tr("settings.editor"), actions: []overviewControlButton{{id: "editor.configure", label: tr("settings.edit"), enabled: !o.Busy}}},
@@ -121,9 +125,9 @@ func settingsInterface(o dashboardOptions, width int) dashboardBlock {
 
 func settingsThemeRow(o dashboardOptions) settingsRow {
 	theme := cmp.Or(o.Theme, app.ThemeDark)
-	row := settingsSelectRow(o, "settings.theme", o.Locale.T("settings.theme"), theme, themeMenuItems)
+	row := settingsSelectRow(o, "settings.theme", o.Locale.T("settings.theme"))
 	if theme == app.ThemeAuto {
-		row.note = o.Locale.T("settings.themeAuto", menuItemLabel(themeMenuItems, o.EffectiveTheme))
+		row.note = o.Locale.T("settings.themeAuto", (dropdown{Items: themeMenuItems, Value: o.EffectiveTheme}).label())
 	}
 	if theme == app.ThemeLight || theme == app.ThemeAuto && o.EffectiveTheme == app.ThemeLight {
 		row.note = strings.TrimSpace(row.note + " " + o.Locale.T("settings.themeLightPlaceholder"))
@@ -259,9 +263,12 @@ func settingsSection(o dashboardOptions, width int, title, description string, r
 				options := dashboardButtonOptions(action.id, o, action.primary, panel)
 				options.Disabled = !action.enabled
 				var face string
-				if row.control == settingsSwitch {
+				switch row.control {
+				case settingsSelect:
+					face, _ = o.settingsDropdown(action.id).render(action.id, options, o.OpenDropdown == action.id, inner)
+				case settingsSwitch:
 					face = renderSettingsSwitch(action, options)
-				} else {
+				default:
 					face = renderButton(action.label, options)
 				}
 				value := cellCrop(face, inner)
@@ -294,7 +301,7 @@ func settingsSection(o dashboardOptions, width int, title, description string, r
 					x = 0
 				}
 				if action.enabled {
-					b.targets = append(b.targets, hitRegion{ID: action.id, X: left + x, Y: top + len(b.lines) - 1, W: w, H: 1})
+					b.targets = append(b.targets, hitRegion{ID: action.id, X: left + x, Y: top + len(b.lines) - 1, W: w, H: 1, DropdownRight: row.control == settingsSelect && x > 0})
 				}
 				b.lines[len(b.lines)-1] += values[i]
 				x += w

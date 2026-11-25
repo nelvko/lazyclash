@@ -30,7 +30,6 @@
   "proxies.visible_range": "%d–%d / %d",
   "proxies.range.group": "组内成员 %s",
   "proxies.range.expanded": "跨 %d 组 · %s",
-  "proxies.sort": "排序",
   "proxies.sort.default": "默认顺序",
   "proxies.sort.delay": "延迟",
   "proxies.sort.name": "名称",

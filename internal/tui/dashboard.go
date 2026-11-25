@@ -26,6 +26,8 @@ type hitRegion struct {
 	// Nonzero only for a complete shared input frame. The editor starts two
 	// cells from its left edge and one row below its top edge.
 	InputWidth int
+	// A trailing dropdown aligns its popup to the right edge of its face.
+	DropdownRight bool
 }
 type dashboardOptions struct {
 	Locale                          i18n.Localizer
@@ -37,6 +39,7 @@ type dashboardOptions struct {
 	SelectedGroup                   string
 	Snapshot                        app.Snapshot
 	Focus                           string
+	OpenDropdown                    string
 	Hover                           string
 	GuideDismissed                  bool
 	GuideSkipped                    bool

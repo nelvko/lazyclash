@@ -165,19 +165,14 @@ func (m *Model) logViewport(doc *logDocument, width, height int) viewport.Model 
 	return v
 }
 
-func (m *Model) logLevelControl() dashboardBlock {
+func (m *Model) logLevelControl(width int) dashboardBlock {
 	const id = "logs.level"
-	label := m.tr(logLevelKeys[m.logs.level]) + " ▾"
 	o := m.searchControlOptions(id)
-	o.Kind = buttonText
-	for _, key := range logLevelKeys {
-		o.Width = max(o.Width, ansi.StringWidth(m.tr(key)+" ▾"))
-	}
 	o.Disabled = m.busy || m.quitting
-	value := renderButton(label, o)
+	value, hit := m.logLevelDropdown().render(id, o, m.menu.dropdownOpen(id), width)
 	b := dashboardBlock{lines: []string{value}}
 	if !o.Disabled {
-		b.targets = []hitRegion{{ID: id, W: ansi.StringWidth(value), H: 1}}
+		b.targets = []hitRegion{hit}
 	}
 	return b
 }
@@ -211,22 +206,22 @@ func (m *Model) logCountWidth() int {
 	return ansi.StringWidth(m.tr("logs.filtered_count", retainedLogLimit, retainedLogLimit))
 }
 
-func (m *Model) logSearchToolbar() listSearchToolbar {
-	return listSearchToolbar{scope: m.logLevelControl(),
+func (m *Model) logSearchToolbar(width int) listSearchToolbar {
+	return listSearchToolbar{scope: m.logLevelControl(width),
 		countWidth: m.logCountWidth(), matchingWidth: searchControlWidth(m.logSearchButtons())}
 }
 
 func (m *Model) logSearchWidth(width int) int {
-	fieldWidth, _ := m.logSearchToolbar().searchGeometry(width)
+	fieldWidth, _ := m.logSearchToolbar(width).searchGeometry(width)
 	return inputFieldTextWidth(fieldWidth, searchControlWidth(m.logSearchButtons()), true)
 }
 
 func (m *Model) logFilterRows(width int) int {
-	return m.logSearchToolbar().rows(width, m.logFilterActive())
+	return m.logSearchToolbar(width).rows(width, m.logFilterActive())
 }
 
 func (m *Model) logFilterBar(width int) dashboardBlock {
-	bar := m.logSearchToolbar()
+	bar := m.logSearchToolbar(width)
 	fieldWidth, _ := bar.searchGeometry(width)
 	_, err := m.logMatcher()
 	search := m.searchToolbar("logs.search", m.tr("logs.placeholder"), m.logs.search,

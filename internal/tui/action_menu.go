@@ -28,7 +28,7 @@ type actionMenu struct {
 	bounds           hitRegion
 	framed           bool
 	anchor           hitRegion
-	anchored         bool
+	dropdown         *dropdown
 }
 
 var menuKeys = struct{ up, down, first, last, activate, close bubbleskey.Binding }{
@@ -45,22 +45,9 @@ func (m *actionMenu) show(items []menuItem, x, y int) {
 	m.move(1)
 }
 
-// showSelection uses the same popup interaction as actions, with a fixed check
-// for the current value and an independent cursor for the pending choice.
-func (m *actionMenu) showSelection(items []menuItem, currentID string, anchor hitRegion) {
-	m.show(items, anchor.X, anchor.Y+max(1, anchor.H))
-	for i := range m.items {
-		m.items[i].Checked = m.items[i].ID == currentID
-		if m.items[i].Checked && m.items[i].DisabledReason == "" {
-			m.selected = i
-		}
-	}
-	m.setAnchor(anchor)
-}
-
 // setAnchor keeps a popup attached to its trigger after layout or resize.
 func (m *actionMenu) setAnchor(anchor hitRegion) {
-	m.anchor, m.anchored = anchor, true
+	m.anchor = anchor
 	m.x, m.y = anchor.X, anchor.Y+max(1, anchor.H)
 }
 
@@ -192,7 +179,19 @@ func (m *actionMenu) mouse(msg tea.MouseMsg) menuResult {
 	return menuResult{}
 }
 
-func (m *actionMenu) render(base string, width, height, contentBottom int) string {
+func (item menuItem) label() string {
+	label := clean(item.Label)
+	if item.DisabledReason != "" {
+		label += " · " + clean(item.DisabledReason)
+	}
+	return label
+}
+
+func (m *Model) renderMenu(base string, contentBottom int) string {
+	return m.menu.render(base, m.width, m.height, contentBottom, m.monochrome())
+}
+
+func (m *actionMenu) render(base string, width, height, contentBottom int, monochrome bool) string {
 	if !m.open {
 		return base
 	}
@@ -205,30 +204,18 @@ func (m *actionMenu) render(base string, width, height, contentBottom int) strin
 		m.bounds = hitRegion{}
 		return base
 	}
-	labels := make([]string, len(m.items))
-	contentWidth := 0
-	checked := false
-	for _, item := range m.items {
-		checked = checked || item.Checked
-	}
-	for i, item := range m.items {
-		labels[i] = clean(item.Label)
-		if checked {
-			mark := "  "
-			if item.Checked {
-				mark = "✓ "
-			}
-			labels[i] = mark + labels[i]
+	x, menuWidth := m.x, 0
+	if m.dropdown != nil {
+		x, menuWidth = m.dropdown.popupGeometry(m.anchor, width)
+	} else {
+		for _, item := range m.items {
+			menuWidth = max(menuWidth, ansi.StringWidth(item.label())+4)
 		}
-		if item.DisabledReason != "" {
-			labels[i] += " · " + clean(item.DisabledReason)
-		}
-		contentWidth = max(contentWidth, ansi.StringWidth(labels[i]))
+		menuWidth = min(width, max(18, min(48, menuWidth)))
 	}
-	menuWidth := min(width, max(18, min(48, contentWidth+4)))
 	space, above := available, false
 	anchorTop, anchorBottom := 0, 0
-	if m.anchored {
+	if m.dropdown != nil {
 		anchorTop = min(available, max(0, m.anchor.Y))
 		anchorBottom = min(available, max(0, m.anchor.Y+max(1, m.anchor.H)))
 		below := available - anchorBottom
@@ -262,31 +249,26 @@ func (m *actionMenu) render(base string, width, height, contentBottom int) strin
 		m.offset = max(m.offset, m.selected-visible+1)
 	}
 	y := m.y
-	if m.anchored {
+	if m.dropdown != nil {
 		y = anchorBottom
 		if above {
 			y = anchorTop - menuHeight
 		}
 	}
-	m.bounds = hitRegion{X: max(0, min(m.x, width-menuWidth)), Y: max(0, min(y, available-menuHeight)), W: menuWidth, H: menuHeight}
+	m.bounds = hitRegion{X: max(0, min(x, width-menuWidth)), Y: max(0, min(y, available-menuHeight)), W: menuWidth, H: menuHeight}
 	lines := make([]string, 0, menuHeight)
 	if m.framed {
 		lines = append(lines, m.edge(menuWidth, true, m.offset > 0))
 	}
 	for i := m.offset; i < m.offset+visible; i++ {
 		item := m.items[i]
-		prefix, foreground, background := "  ", text, raised
-		if item.Danger {
-			foreground = errorColor
+		inner := menuWidth - 2*padding
+		var line string
+		if m.dropdown != nil {
+			line = dropdownRow(item, inner, i == m.selected, monochrome)
+		} else {
+			line = actionMenuRow(item, inner, i == m.selected)
 		}
-		if item.DisabledReason != "" {
-			foreground = disabled
-		} else if i == m.selected {
-			prefix, background = "› ", selectionBackground
-		}
-		content := cellPad(prefix+labels[i], menuWidth-2*padding)
-		markerWidth := min(2, ansi.StringWidth(content))
-		line := themed(ansi.Cut(content, 0, markerWidth), focus, background, false) + themed(ansi.Cut(content, markerWidth, ansi.StringWidth(content)), foreground, background, false)
 		if m.framed {
 			line = themed("│", border, raised, false) + line + themed("│", border, raised, false)
 		}
@@ -296,6 +278,21 @@ func (m *actionMenu) render(base string, width, height, contentBottom int) strin
 		lines = append(lines, m.edge(menuWidth, false, m.offset+visible < len(m.items)))
 	}
 	return overlay(base, strings.Join(lines, "\n"), m.bounds.X, m.bounds.Y, width, height)
+}
+
+func actionMenuRow(item menuItem, width int, active bool) string {
+	prefix, foreground, background := "  ", text, raised
+	if item.Danger {
+		foreground = errorColor
+	}
+	if item.DisabledReason != "" {
+		foreground = disabled
+	} else if active {
+		prefix, background = "› ", selectionBackground
+	}
+	content := cellPad(prefix+item.label(), width)
+	markerWidth := min(2, ansi.StringWidth(content))
+	return themed(ansi.Cut(content, 0, markerWidth), focus, background, false) + themed(ansi.Cut(content, markerWidth, ansi.StringWidth(content)), foreground, background, false)
 }
 
 func (m actionMenu) edge(width int, top, more bool) string {

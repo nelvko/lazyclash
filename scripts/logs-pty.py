@@ -14,6 +14,8 @@ import sys
 import time
 import uuid
 
+from tui_layout import dropdown_option, dropdown_trigger
+
 
 SIZES = ((160, 45), (120, 32), (80, 24), (60, 20), (40, 16), (160, 45))
 
@@ -71,14 +73,15 @@ def assert_log_toolbar(terminal, words):
     row = terminal.screen.cells[y]
     left = max(i for i, cell in enumerate(row[:x + 1]) if cell == "│")
     right = next(i for i in range(x, len(row)) if row[i] == "│")
-    level_x, level_y = position(terminal, words["logs.level_all"] + " ▾")
+    trigger = dropdown_trigger(terminal, words["logs.level_all"])
+    level_x, level_y = position(terminal, trigger)
     assert not "".join(row[right + 1:]).strip(), "unexpected control after the unfiltered search field"
     if level_y == y:
         assert level_x < left, "level must precede search"
     else:
         assert level_y < y - 1, "narrow scope must precede the complete search frame"
         scope_row = "".join(terminal.screen.cells[level_y][level_x:]).strip()
-        assert scope_row == words["logs.level_all"] + " ▾", "unexpected control after the level dropdown"
+        assert re.fullmatch(re.escape(trigger) + r"(?: *\])?", scope_row), "unexpected control after the level dropdown"
     return left, right, y, level_x, level_y
 
 
@@ -87,9 +90,9 @@ def assert_log_toolbar_tab_order(terminal, words):
     terminal.key(b"/")
     terminal.key(b"\x1b[Z")
     terminal.key(b"\r")
-    terminal.wait("✓ " + words["logs.level_all"])
+    dropdown_option(terminal, words["logs.level_all"], checked=True)
     terminal.key(b"\x1b")
-    terminal.wait_absent("✓ ")
+    terminal.wait_absent("✓")
     # Tab returns from the level control to the editor, which owns text.
     terminal.key(b"\t")
     terminal.key(b"\r")
@@ -107,15 +110,16 @@ def assert_no_log_summary(terminal):
 
 def choose_level(terminal, words, index, mouse=False):
     terminal.key(b"l")
-    terminal.wait("✓ ")
+    terminal.wait("✓")
     if mouse:
-        terminal.click_text(words[("logs.level_all", "logs.level_info", "logs.level_warn", "logs.level_error")[index]])
+        target = words[("logs.level_all", "logs.level_info", "logs.level_warn", "logs.level_error")[index]]
+        terminal.click_text(dropdown_option(terminal, target))
     else:
         terminal.key(b"\x1b[H")
         for _ in range(index):
             terminal.key(b"\x1b[B")
         terminal.key(b"\r")
-    terminal.wait_absent("✓ ")
+    terminal.wait_absent("✓")
     terminal.settle()
 
 
@@ -159,7 +163,7 @@ def wait_log_action(terminal, label):
 
 def wait_log_footer(terminal, words, status_key, min_unread=0):
     status = words[status_key]
-    latest = re.compile(r"\s+(?:" + re.escape(words["logs.latest"]) + r"|↓)(?: \+(\d+))?$")
+    latest = re.compile(r"\s+(?:›\s*)?\[?(?:" + re.escape(words["logs.latest"]) + r"|↓)(?: \+(\d+))?\]?$")
 
     def matches():
         # Exclude the sidebar and shortcut legend. Narrow terminals may crop
@@ -217,14 +221,14 @@ def exercise(preview, binary, output, language, profile, args):
             position(terminal, label)
         assert_log_toolbar(terminal, words)
         preview.capture(terminal, output, "logs-wide", args)
-        terminal.click_text(words["logs.level_all"] + " ▾")
-        terminal.wait("✓ " + words["logs.level_all"])
+        terminal.click_text(dropdown_trigger(terminal, words["logs.level_all"]))
+        dropdown_option(terminal, words["logs.level_all"], checked=True)
         assert_continuing(terminal, report)
         terminal.key(b"q123")
-        terminal.wait("✓ " + words["logs.level_all"])
+        dropdown_option(terminal, words["logs.level_all"], checked=True)
         preview.capture(terminal, output, "level-menu-capturing", args)
         terminal.key(b"\x1b")
-        terminal.wait_absent("✓ ")
+        terminal.wait_absent("✓")
         rows = terminal.screen.text().splitlines()
         _, message_y = position(terminal, "event-059")
         assert re.search(r"\d\d:\d\d:\d\d.*ERROR.*event-059", rows[message_y]), "metadata and message are not on the same row"
@@ -377,10 +381,10 @@ def exercise(preview, binary, output, language, profile, args):
             wait_log_footer(terminal, words, "logs.browsing", min_unread=1)
             preview.capture(terminal, output, "scrolled-%dx%d" % (width, height), args)
             terminal.key(b"l")
-            terminal.wait("✓ " + words["logs.level_all"])
+            dropdown_option(terminal, words["logs.level_all"], checked=True)
             preview.capture(terminal, output, "level-menu-%dx%d" % (width, height), args)
             terminal.key(b"\x1b")
-            terminal.wait_absent("✓ ")
+            terminal.wait_absent("✓")
             assert option_geometry == assert_log_toolbar(terminal, words), "menu moved the toolbar"
             assert_log_toolbar_tab_order(terminal, words)
             # A wrapped entry may end on a continuation without event-.

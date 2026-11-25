@@ -1046,9 +1046,34 @@ func TestProxiesSortingMenuReturnsToFocusedMember(t *testing.T) {
 		t.Fatalf("sort lost focused member: sort=%s focus=%s", m.proxySort("PROXY"), m.focus)
 	}
 	m, _ = update(m, key("s"))
+	if !m.menu.dropdownOpen("proxies.sort.0") || m.menu.items[m.menu.selected].ID != "delay" || !m.menu.items[m.menu.selected].Checked {
+		t.Fatal("reopening did not mark and focus the applied sort")
+	}
+	m, _ = update(m, special(tea.KeyDown))
 	m, _ = update(m, special(tea.KeyEscape))
-	if m.focus != "node.0.1" {
-		t.Fatal("canceling sorting lost focus")
+	if m.focus != "node.0.1" || m.proxySort("PROXY") != "delay" {
+		t.Fatal("canceling sorting lost the original focus or sort")
+	}
+}
+
+func TestProxiesSortingMenuTracksFoldedHeadingAcrossResize(t *testing.T) {
+	m, _ := proxiesModel(t, 160, 40)
+	setProxyTestGroup(&m, "")
+	m.focus = "group.1"
+	m.layout()
+	m, _ = update(m, key("s"))
+	for _, width := range []int{160, 80, 40, 160} {
+		m, _ = update(m, tea.WindowSizeMsg{Width: width, Height: 32})
+		group := findTarget(t, m, "group.1")
+		if !m.menu.dropdownOpen(group.ID) || m.menu.anchor.X != group.X || m.menu.anchor.Y != group.Y ||
+			m.menu.anchor.W > m.proxySortDropdown("AUTO").width()+dropdownGutter || m.proxyGroupExpanded("AUTO") {
+			t.Fatalf("sorting a folded group at %d lost its anchor: %+v, heading %+v", width, m.menu.anchor, group)
+		}
+	}
+	m, _ = update(m, special(tea.KeyEnd))
+	m, _ = update(m, special(tea.KeyEnter))
+	if m.proxySort("AUTO") != "name" || m.proxySort("PROXY") != "default" || m.focus != "group.1" || m.proxyGroupExpanded("AUTO") {
+		t.Fatalf("committing from a folded group misplaced sort or focus: %+v %s", m.proxies.sorts, m.focus)
 	}
 }
 

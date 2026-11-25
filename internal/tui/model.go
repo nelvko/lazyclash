@@ -1295,19 +1295,13 @@ func (m *Model) activate(id string) tea.Cmd {
 		return m.openPorts()
 	}
 	switch id {
-	case "settings.language":
-		m.openPageSelectionMenu("settings", id, m.locale.Language(), languageMenuItems)
-		return nil
-	case "settings.theme":
-		m.openPageSelectionMenu("settings", id, m.theme, themeMenuItems)
+	case "settings.language", "settings.theme", "settings.logLevel":
+		m.openPageSelectionMenu("settings", id, m.navigationOptions().settingsDropdown(id))
 		return nil
 	case "settings.ipv6":
 		return m.toggleCoreSetting(id, "ipv6", m.snapshot.CoreSettings.IPv6)
 	case "settings.unifiedDelay":
 		return m.toggleCoreSetting(id, "unified-delay", m.snapshot.CoreSettings.UnifiedDelay)
-	case "settings.logLevel":
-		m.openPageSelectionMenu("settings", id, m.snapshot.CoreSettings.LogLevel, coreLogLevelItems)
-		return nil
 	case "editor.configure":
 		return m.openEditorPreference()
 	case "card.profiles":
@@ -1766,7 +1760,7 @@ func (m *Model) renderLayout() {
 		m.screen, m.targets = m.renderConnectionsCloseAll(base)
 	} else if m.menu.open {
 		m.anchorPageSelectionMenu(hits)
-		m.screen = m.menu.render(base, m.width, m.height, dashboardContentBottom(o))
+		m.screen = m.renderMenu(base, dashboardContentBottom(o))
 	}
 }
 func (m Model) View() tea.View {

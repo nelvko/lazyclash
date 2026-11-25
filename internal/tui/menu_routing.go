@@ -41,13 +41,17 @@ func (m *Model) reconcileMenu() {
 	switch {
 	case m.form == "profile-delete":
 		if m.menu.open {
-			m.menu.setItems(m.profileReplacementItems())
+			m.profileReplacementDropdown().sync(&m.menu)
 		}
 	case m.logs.levelMenu:
 		m.reconcileLogsLevelMenu()
 	case m.page == "settings":
-		if m.menu.open && !m.pageSelectionMenuAvailable("settings") {
-			m.menu.dismiss()
+		if m.menu.open {
+			if !m.pageSelectionMenuAvailable("settings") {
+				m.menu.dismiss()
+			} else {
+				m.navigationOptions().settingsDropdown(m.menu.anchor.ID).sync(&m.menu)
+			}
 		}
 	case m.proxies.sortMenu:
 		if m.page != "proxies" || m.busy {
@@ -77,7 +81,7 @@ func (m *Model) pageSelectionMenuAvailable(page string) bool {
 		!m.wizard.networkOpen && m.form == "" && !m.notification.panel.open
 }
 
-func (m *Model) openPageSelectionMenu(page, trigger, current string, items []menuItem) bool {
+func (m *Model) openPageSelectionMenu(page, trigger string, control dropdown) bool {
 	if m.menu.open || !m.pageSelectionMenuAvailable(page) {
 		return false
 	}
@@ -85,15 +89,23 @@ func (m *Model) openPageSelectionMenu(page, trigger, current string, items []men
 	m.layout()
 	for _, target := range m.targets {
 		if target.ID == trigger {
-			m.menu.showSelection(items, current, target)
-			return true
+			control.show(&m.menu, target)
+			return m.menu.open
 		}
 	}
 	return false
 }
 
 func (m *Model) anchorPageSelectionMenu(targets []hitRegion) {
-	if !m.menu.anchored {
+	if m.menu.dropdown == nil {
+		return
+	}
+	if m.proxies.sortMenu {
+		if hit, ok := m.proxySortMenuAnchor(targets); ok {
+			m.menu.setAnchor(hit)
+		} else {
+			m.dismissMenu()
+		}
 		return
 	}
 	for _, target := range targets {

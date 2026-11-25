@@ -327,6 +327,10 @@ func (m *Model) dashboardDimmed() bool {
 	return m.feedbackDialogOpen() || m.helpOpen || m.notification.panel.open || m.providers.open || (m.page == "connections" && m.connections.confirming)
 }
 
+func (m *Model) monochrome() bool {
+	return m.noColor || m.colorProfile == colorprofile.ASCII || m.colorProfile == colorprofile.NoTTY
+}
+
 func (m *Model) dashboardOptions() dashboardOptions {
 	items := m.notification.items
 	if m.page == "overview" && m.inlineInstallVisible() {
@@ -341,7 +345,10 @@ func (m *Model) dashboardOptions() dashboardOptions {
 	o.Now = time.Now()
 	o.Theme, o.EffectiveTheme = m.theme, m.effectiveTheme()
 	o.TrafficHistory, o.TrafficNow = m.runtime.history.points, o.Now
-	o.Monochrome = m.noColor || m.colorProfile == colorprofile.ASCII || m.colorProfile == colorprofile.NoTTY
+	o.Monochrome = m.monochrome()
+	if m.menu.open && m.menu.dropdown != nil {
+		o.OpenDropdown = m.menu.anchor.ID
+	}
 	if m.busy && strings.HasPrefix(m.notification.operation.Key, "service.") {
 		o.CoreAction = strings.TrimPrefix(m.notification.operation.Key, "service.")
 	}

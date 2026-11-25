@@ -14,7 +14,7 @@ import sys
 import time
 import uuid
 
-from tui_layout import sidebar_visible
+from tui_layout import dropdown_option, dropdown_trigger, sidebar_visible
 
 
 SIZES = ((240, 45), (200, 40), (160, 45), (120, 32), (105, 32), (104, 32),
@@ -119,22 +119,22 @@ def exercise(preview, binary, output, language, profile, args):
             if key in switch_defaults:
                 check_switch(terminal, words, key, switch_defaults[key], profile)
             else:
-                assert row[right-4] == "▾", "dropdown lacks its two-cell inset: " + key
+                assert row[right-5] == "▾", "dropdown lacks its two-cell face and card insets: " + key
 
         native = {"en": "English", "zh-Hans": "简体中文"}
-        current = native[language] + " ▾"
+        current = dropdown_trigger(terminal, native[language])
         terminal.resize(28, 24)
         terminal.settle()
         terminal.wait(current)
         label_x, label_y = position(terminal, words["dashboard.language.title"])
         trigger = position(terminal, current)
-        # The button reserves two cells for its focus marker and one for face padding.
-        assert trigger == (label_x + 3, label_y + 1), "wrapped dropdown did not start below its label"
+        # Two focus cells and two face-padding cells precede the value.
+        assert trigger == (label_x + 4, label_y + 1), "wrapped dropdown did not start below its label"
         preview.capture(terminal, output, "settings-wrapped-28x24", args)
         click(terminal, trigger)
-        terminal.wait("✓ " + native[language])
+        dropdown_option(terminal, native[language], checked=True)
         terminal.key(b"\x1b")
-        terminal.wait_absent("✓ " + native[language])
+        terminal.wait_absent("✓")
         terminal.key(b"\t")
         terminal.settle()
         wrapped = position(terminal, switch_track(True))
@@ -173,74 +173,86 @@ def exercise(preview, binary, output, language, profile, args):
         dismiss_toasts(terminal)
         check_switch(terminal, words, "settings.unifiedDelay", False, profile)
 
-        terminal.click_text("info ▾")
-        terminal.wait("✓ info")
+        terminal.click_text(dropdown_trigger(terminal, "info"))
+        dropdown_option(terminal, "info", checked=True)
         for level in ("debug", "warning", "error", "silent"):
-            terminal.wait("    " + level + " ")
+            dropdown_option(terminal, level)
         assert all(value not in terminal.screen.text() for value in ("Follow profile", "跟随配置"))
         preview.capture(terminal, output, "log-level-menu-wide", args)
-        terminal.click_text("    debug ")
-        terminal.wait("debug ▾")
+        terminal.click_text(dropdown_option(terminal, "debug"))
+        debug_trigger = dropdown_trigger(terminal, "debug")
         dismiss_toasts(terminal)
 
-        terminal.click_text("Dark ▾")
-        terminal.wait("✓ Dark")
-        terminal.wait("    Auto ")
-        _, checked_y = position(terminal, "✓ Dark")
-        assert position(terminal, "Light")[1] == checked_y - 1, "Light must precede Dark"
-        assert position(terminal, "Auto ")[1] == checked_y + 1, "Auto must follow Dark"
+        dark_trigger = dropdown_trigger(terminal, "Dark")
+        terminal.click_text(dark_trigger)
+        _, checked_y = position(terminal, dropdown_option(terminal, "Dark", checked=True))
+        assert position(terminal, dropdown_option(terminal, "Light"))[1] == checked_y - 1, "Light must precede Dark"
+        assert position(terminal, dropdown_option(terminal, "Auto"))[1] == checked_y + 1, "Auto must follow Dark"
         preview.capture(terminal, output, "theme-menu-wide", args)
         terminal.key(b"\x1b[A")
         terminal.key(b"\x1b")
-        terminal.wait_absent("✓ Dark")
-        terminal.wait("Dark ▾")
+        terminal.wait_absent("✓")
+        terminal.wait(dark_trigger)
 
         terminal.key(b"\r")  # Canceling the dropdown returns focus to its trigger.
-        terminal.wait("✓ Dark")
+        dropdown_option(terminal, "Dark", checked=True)
         terminal.key(b"\x1b[A")
         terminal.key(b"\r")
-        terminal.wait("Light ▾")
+        light_trigger = dropdown_trigger(terminal, "Light")
         terminal.wait(words["settings.themeLightPlaceholder"])
-        terminal.click_text("Light ▾")
-        terminal.wait("✓ Light")
+        terminal.click_text(light_trigger)
+        dropdown_option(terminal, "Light", checked=True)
         mark = len(terminal.raw)
-        terminal.click_text("    Auto ")
-        terminal.wait("Auto ▾")
+        terminal.click_text(dropdown_option(terminal, "Auto"))
+        auto_trigger = dropdown_trigger(terminal, "Auto")
         terminal.wait(words["settings.themeAuto"] % "Dark")
         terminal.settle()
         assert b"\x1b]11;?" in terminal.raw[mark:], "Auto did not query the terminal background"
         terminal.send(b"\x1b]11;rgb:ffff/ffff/ffff\x07")
         terminal.wait(words["settings.themeAuto"] % "Light")
-        terminal.click_text("Auto ▾")
-        terminal.wait("✓ Auto")
-        terminal.click_text("    Dark")
-        terminal.wait("Dark ▾")
+        terminal.click_text(auto_trigger)
+        dropdown_option(terminal, "Auto", checked=True)
+        terminal.click_text(dropdown_option(terminal, "Dark"))
+        terminal.wait(dark_trigger)
 
         other = "zh-Hans" if language == "en" else "en"
-        switched = native[other] + " ▾"
         assert native[other] not in terminal.screen.text(), "closed language dropdown shows both languages"
         assert position(terminal, words["dashboard.interface.keyHints"])[1] == position(terminal, current)[1] + 2, "unexpected text below the language control"
         current_point = position(terminal, current)
         click(terminal, current_point)
-        terminal.wait("✓ " + native[language])
-        terminal.wait(native[other])
+        expanded = dropdown_trigger(terminal, native[language], expanded=True)
+        assert position(terminal, expanded) == current_point
+        dropdown_option(terminal, native[language], checked=True)
+        pending_option = dropdown_option(terminal, native[other])
+        pending_x, pending_y = position(terminal, pending_option)
+        normal_style = terminal.screen.styles[pending_y][pending_x]
         preview.capture(terminal, output, "language-menu-wide", args)
         move = b"\x1b[B" if language == "en" else b"\x1b[A"
         terminal.key(move)
+        terminal.settle()
+        dropdown_option(terminal, native[language], checked=True)
+        dropdown_option(terminal, native[other])
+        if profile == "no-color":
+            assert "›" in terminal.screen.cells[pending_y][:pending_x], "pending row lacks a visible cursor"
+        else:
+            assert terminal.screen.styles[pending_y][pending_x][1] != normal_style[1], "pending row did not highlight"
+            assert "›" not in terminal.screen.cells[pending_y], "color dropdown shows a redundant cursor"
+        preview.capture(terminal, output, "language-menu-pending", args)
         terminal.key(b"\x1b")
         terminal.wait_absent(native[other])
+        preview.capture(terminal, output, "language-focused", args)
         terminal.key(b"\r")
-        terminal.wait("✓ " + native[language])
+        dropdown_option(terminal, native[language], checked=True)
         terminal.key(move)
         terminal.key(b"\r")
         click(terminal, current_point)  # The pending save disables the trigger.
         terminal.wait(labels(other)["settings.interface"])
-        terminal.wait(switched)
+        switched = dropdown_trigger(terminal, native[other])
         terminal.settle()
         preview.capture(terminal, output, "language-switched", args)
         terminal.click_text(switched)
-        terminal.wait("✓ " + native[other])
-        terminal.click_text(native[language])
+        dropdown_option(terminal, native[other], checked=True)
+        terminal.click_text(dropdown_option(terminal, native[language]))
         terminal.wait(words["settings.interface"])
         terminal.settle()
 
@@ -284,22 +296,22 @@ def exercise(preview, binary, output, language, profile, args):
             if width == 40:
                 focus(terminal, current)
                 terminal.key(b"\r")
-                terminal.wait("✓ " + native[language])
+                dropdown_option(terminal, native[language], checked=True)
                 preview.capture(terminal, output, "language-menu-compact", args)
                 terminal.key(b"\x1b")
                 terminal.wait_absent(native[other])
-                focus(terminal, "Dark ▾")
+                focus(terminal, dark_trigger)
                 terminal.key(b"\r")
-                terminal.wait("✓ Dark")
+                dropdown_option(terminal, "Dark", checked=True)
                 preview.capture(terminal, output, "theme-menu-compact", args)
                 terminal.key(b"\x1b")
-                terminal.wait_absent("✓ Dark")
-                focus(terminal, "debug ▾")
+                terminal.wait_absent("✓")
+                focus(terminal, debug_trigger)
                 terminal.key(b"\r")
-                terminal.wait("✓ debug")
+                dropdown_option(terminal, "debug", checked=True)
                 preview.capture(terminal, output, "log-level-menu-compact", args)
                 terminal.key(b"\x1b")
-                terminal.wait_absent("✓ debug")
+                terminal.wait_absent("✓")
                 terminal.settle()
                 x, y = check_switch(terminal, words, "settings.ipv6", False, profile)
                 click(terminal, (x, y))

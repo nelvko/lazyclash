@@ -316,7 +316,7 @@ def group_progress(terminal, words, name, total):
 def sort_menu_item(terminal, label):
     # A short localized label can also occur in a hint or in the body behind
     # the popup. Only use its framed menu row as the click target.
-    item = re.compile(r"│[ ›✓]*(" + re.escape(label) + r") +│")
+    item = re.compile(r"│[ ›]*(" + re.escape(label) + r") +(?:✓ )?│")
     for y, row in enumerate(terminal.screen.cells):
         match = item.search("".join(row))
         if match:
@@ -326,10 +326,10 @@ def sort_menu_item(terminal, label):
 
 def click_group_sort(terminal, words, name, order):
     label = words["proxies.sort." + order]
-    group_action(terminal, name, words["proxies.sort"])
+    group_action(terminal, name, words["proxies.sort.default"])
     wait_until(terminal, lambda: sort_menu_item(terminal, label), "sort menu did not show " + label)
     click_cell(terminal, *sort_menu_item(terminal, label))
-    wait_until(terminal, lambda: group_has_action(terminal, name, label + " ↑"),
+    wait_until(terminal, lambda: group_has_action(terminal, name, label),
                "sort menu did not apply %s to %s" % (label, name))
     terminal.settle()
 
@@ -347,6 +347,9 @@ def assert_header_hover(terminal, name, words, profile):
         button_offset = line.find(words[key])
         assert button_offset >= 0, "expanded header lost its action: " + words[key]
         points.append((cell_offset(cells, button_offset), y))
+    sort_start = line.index(words["proxies.sort.delay"])
+    face_start = cell_offset(cells, sort_start) - 2
+    face_end = cell_offset(cells, line.index("▾", sort_start)) + 3
     hover_cell(terminal, 0, 0)
     normal = terminal.screen.styles[y - 1][left][1]
     first_x, first_y = min((candidate_position(terminal, member) for member in MEMBERS), key=lambda p: (p[1], p[0]))
@@ -373,6 +376,8 @@ def assert_header_hover(terminal, name, words, profile):
         assert hover != normal, "header padding did not receive hover background"
         for row in (y - 1, y, y + 1):
             for column in range(left, right):
+                if row == y and face_start <= column < face_end:
+                    continue  # The dropdown has its own button surface.
                 assert terminal.screen.styles[row][column][1] == hover, "header hover surface has an uncolored gap at %d,%d" % (column, row)
         assert terminal.screen.styles[y + 2][first_x][1] == normal, "card edge shares header hover"
 
@@ -578,7 +583,7 @@ def exercise(preview, binary, output, language, profile, args):
         assert words["proxies.search_group"] % "PROXY" not in terminal.screen.text(), "visible heading has a duplicate group label"
         title, _, _, _ = proxy_header_positions(terminal, words)
         assert words["proxies.collapse_all"] in "".join(terminal.screen.cells[title[1]]), "collapse all is not on the title row"
-        assert words["proxies.sort"] in heading, "expanded group does not expose default sorting"
+        assert words["proxies.sort.default"] in heading, "expanded group does not expose default sorting"
         assert not re.search(r"\d+–\d+ / 8", terminal.screen.text()), "all members fit, but the page shows a visible range"
         assert "0/0" not in terminal.screen.text(), "idle measurement progress is visible"
         preview.capture(terminal, output, "groups-wide", args)
@@ -670,8 +675,10 @@ def exercise(preview, binary, output, language, profile, args):
         sort_label = words["proxies.sort.delay"]
         wait_until(terminal, lambda: sort_menu_item(terminal, sort_label), "sort menu did not show delay order")
         terminal.key(b"\x1b[B")
+        terminal.settle()
+        preview.capture(terminal, output, "group-sort-pending", args)
         terminal.key(b"\r")
-        wait_until(terminal, lambda: group_has_action(terminal, "PROXY", sort_label + " ↑"),
+        wait_until(terminal, lambda: group_has_action(terminal, "PROXY", sort_label),
                    "keyboard sorting did not apply delay order to PROXY")
         terminal.settle()
         before = candidate_order(terminal, words["proxies.enter"])
@@ -976,7 +983,7 @@ def exercise_groups(preview, binary, output, args):
         terminal.key(b"\x1b[H")
         terminal.settle()
         click_group_sort(terminal, words, "PROXY", "delay")
-        assert group_has_action(terminal, "AUTO", words["proxies.sort.name"] + " ↑"), "sorting PROXY replaced AUTO's name sort"
+        assert group_has_action(terminal, "AUTO", words["proxies.sort.name"]), "sorting PROXY replaced AUTO's name sort"
         preview.capture(terminal, output, "multiple-expanded-independent-sort", args)
 
         group_action(terminal, "PROXY", words["proxies.test_group"])

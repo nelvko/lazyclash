@@ -12,6 +12,8 @@ from pathlib import Path
 import tempfile
 import time
 
+from tui_layout import dropdown_option, dropdown_trigger
+
 
 def load_terminal():
     path = Path(__file__).with_name("pty-smoke.py")
@@ -84,11 +86,11 @@ def run(binary, output):
             cancel_initial_lookup(terminal, "Install the Mihomo core", "Use environment proxy")
             terminal.key(b"7")
             terminal.wait("Language")
-            click(terminal, "English ▾")
-            terminal.wait("✓ English")
-            click(terminal, "简体中文")
+            click(terminal, dropdown_trigger(terminal, "English"))
+            dropdown_option(terminal, "English", checked=True)
+            click(terminal, dropdown_option(terminal, "简体中文"))
             terminal.wait("界面偏好")
-            terminal.wait("简体中文 ▾")
+            dropdown_trigger(terminal, "简体中文")
             capture(terminal, output, "settings-zh-120x40")
             assert json.loads((Path(home) / "preferences.json").read_text())["Language"] == "zh-Hans"
             mark = len(terminal.text())
@@ -109,7 +111,7 @@ def run(binary, output):
             cancel_initial_lookup(terminal, "安装 Mihomo 内核", "使用环境代理")
             terminal.key(b"7")
             terminal.wait("语言")
-            terminal.wait("简体中文 ▾")
+            dropdown_trigger(terminal, "简体中文")
             terminal.key(b"?")
             terminal.wait("帮助 / 设置")
             capture(terminal, output, "help-zh")
@@ -125,11 +127,11 @@ def run(binary, output):
             terminal.wait_absent("使用环境代理")
             terminal.key(b"7")
             terminal.wait("语言")
-            click(terminal, "简体中文 ▾")
-            terminal.wait("✓ 简体中文")
-            click(terminal, "English")
+            click(terminal, dropdown_trigger(terminal, "简体中文"))
+            dropdown_option(terminal, "简体中文", checked=True)
+            click(terminal, dropdown_option(terminal, "English"))
             terminal.wait("Interface preferences")
-            terminal.wait("English ▾")
+            dropdown_trigger(terminal, "English")
             capture(terminal, output, "settings-en")
             terminal.exit()
         finally:

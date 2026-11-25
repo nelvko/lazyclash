@@ -30,7 +30,6 @@
   "proxies.visible_range": "%d–%d / %d",
   "proxies.range.group": "Group members %s",
   "proxies.range.expanded": "%d groups · %s",
-  "proxies.sort": "Sort",
   "proxies.sort.default": "Default order",
   "proxies.sort.delay": "Delay",
   "proxies.sort.name": "Name",

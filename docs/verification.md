@@ -1,5 +1,11 @@
 # 验证入口
 
+## 统一下拉框（2026-11-25）
+
+设置页的语言、主题与 Mihomo 日志等级，日志页筛选、代理组排序以及删除当前配置时的替代配置，都经过真实 PTY 验证。终端截图按 PTY 字符格和颜色重绘。中文真彩用底色标出游标，英文无色用行首 `›`，两者都在当前值行尾显示 `✓`。[真彩语言菜单](../.test-artifacts/unified-dropdown/language-menu-pending.png) · [无色语言菜单](../.test-artifacts/unified-dropdown/language-menu-monochrome.png)
+
+设置页覆盖 28×24 换行和 40×16 窄屏，独立运行产品二进制确认重启后读回语言。代理组测试覆盖跨组排序、缩放及原焦点恢复。120×32 删除弹窗测试使用隔离配置和内存后端，通过鼠标和键盘选择接替者后取消，删除调用为零。[代理组排序](../.test-artifacts/unified-dropdown/proxies/zh-Hans/truecolor/group-sort-pending.png) · [替代配置](../.test-artifacts/unified-dropdown/profile-replacement-120x32.png)
+
 ## 终端代理待激活（2026-11-25）
 
 隔离 PTY 从终端代理关闭开始，分别以中文真彩、英文无色或 256 色运行。120×32 双栏和 40×16 堆叠下，鼠标点击「激活命令」会立即开窗，Esc 返回后可按 Enter 重开。路径含空格的 Shell 命令在窄屏按字符格折行，复制请求逐字节保留原命令。打开、复制和关闭只使用当前会话快照。[网络设置卡](../.test-artifacts/terminal-activation-dialog/final/card-120x32-zh-Hans-truecolor.png) · [宽屏弹窗](../.test-artifacts/terminal-activation-dialog/final/dialog-120x32-zh-Hans-truecolor.png) · [窄屏弹窗](../.test-artifacts/terminal-activation-dialog/final/dialog-40x16-zh-Hans-truecolor.png)

@@ -111,7 +111,8 @@ func TestListSearchLogsKeepGeometryAcrossLabelsFiltersAndCacheGrowth(t *testing.
 								}
 							}
 							levelTarget := listSearchTarget(t, bar.targets, "logs.level")
-							if !strings.Contains(ansi.Strip(bar.lines[levelTarget.Y]), m.tr(logLevelKeys[level])+" ▾") {
+							face := ansi.Cut(ansi.Strip(bar.lines[levelTarget.Y]), levelTarget.X, levelTarget.X+levelTarget.W)
+							if !strings.Contains(strings.Join(strings.Fields(face), " "), m.tr(logLevelKeys[level])+" ▾") {
 								t.Fatal("reserved level width clipped the selected label")
 							}
 							if level == 0 && strings.TrimSpace(query) == "" && len(bar.lines) != len(baseline.lines) {
@@ -125,6 +126,19 @@ func TestListSearchLogsKeepGeometryAcrossLabelsFiltersAndCacheGrowth(t *testing.
 					t.Fatal("local toolbar changes interrupted capture")
 				}
 			})
+		}
+	}
+}
+
+func TestLogsDropdownKeepsChevronWhenToolbarClipsTheLabel(t *testing.T) {
+	m := redesignedLogsModel(40, 16, 1)
+	defer m.stopRuntime()
+	for _, width := range []int{1, 4, 7, 10} {
+		bar := m.logFilterBar(width)
+		target := listSearchTarget(t, bar.targets, "logs.level")
+		row := ansi.Strip(bar.lines[target.Y])
+		if target.W > width || !strings.Contains(ansi.Cut(row, target.X, target.X+target.W), "▾") {
+			t.Fatalf("width=%d target=%+v does not include the dropdown chevron: %q", width, target, row)
 		}
 	}
 }

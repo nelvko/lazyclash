@@ -146,7 +146,7 @@ func TestSettingsActionsKeepCompleteLabelsAndUniqueTargets(t *testing.T) {
 					if (label == on || label == off) && painted != "  "+label {
 						t.Fatalf("%s/%d: switch %s should only contain its focus gutter and rail: %q", language, width, hit.ID, painted)
 					}
-					if !strings.Contains(painted, label) || ansi.StringWidth(painted) != hit.W {
+					if !strings.Contains(strings.Join(strings.Fields(painted), " "), label) || ansi.StringWidth(painted) != hit.W {
 						t.Fatalf("%s/%d: %s target misses complete label %q: %q", language, width, hit.ID, label, painted)
 					}
 				}
@@ -286,7 +286,7 @@ func TestSettingsMihomoLogMenuOffersOnlyFixedLevels(t *testing.T) {
 	var cmd tea.Cmd
 	m, cmd = update(m, special(tea.KeyEnter))
 	m = finishProfileJob(t, m, cmd)
-	if !strings.Contains(settingsPaintedTarget(t, m.screen, m.targets, m.focus), "silent ▾") {
+	if !strings.Contains(strings.Join(strings.Fields(settingsPaintedTarget(t, m.screen, m.targets, m.focus)), " "), "silent ▾") {
 		t.Fatal("the dropdown did not display the saved log level")
 	}
 }
@@ -367,9 +367,9 @@ func TestSettingsThemeExplainsLightPlaceholderAndAutoChoice(t *testing.T) {
 		} {
 			o.Theme, o.EffectiveTheme = tc.theme, tc.effective
 			row := settingsThemeRow(o)
-			if row.actions[0].label != menuItemLabel(themeMenuItems, tc.theme)+" ▾" ||
+			if o.settingsDropdown(row.actions[0].id).Value != tc.theme ||
 				strings.Contains(row.note, o.Locale.T("settings.themeLightPlaceholder")) != tc.placeholder ||
-				strings.Contains(row.note, o.Locale.T("settings.themeAuto", menuItemLabel(themeMenuItems, tc.effective))) != (tc.theme == app.ThemeAuto) {
+				strings.Contains(row.note, o.Locale.T("settings.themeAuto", (dropdown{Items: themeMenuItems, Value: tc.effective}).label())) != (tc.theme == app.ThemeAuto) {
 				t.Fatalf("%s/%s/%s: unexpected theme setting %+v", language, tc.theme, tc.effective, row)
 			}
 		}

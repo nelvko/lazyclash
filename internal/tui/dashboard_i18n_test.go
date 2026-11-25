@@ -59,7 +59,7 @@ func TestLanguageDropdownUsesCurrentNativeNameAndDisplayCellHit(t *testing.T) {
 			assertRegions(t, block.targets, width, len(block.lines))
 			hit := findTarget(t, Model{targets: block.targets}, "settings.language")
 			painted := ansi.Strip(ansi.Cut(block.lines[hit.Y], hit.X, hit.X+hit.W))
-			if !strings.Contains(painted, label) || ansi.StringWidth(painted) != hit.W {
+			if !strings.Contains(strings.Join(strings.Fields(painted), " "), label) || ansi.StringWidth(painted) != hit.W {
 				t.Fatalf("%s/%d: language target misses label %q: %q", language, width, label, painted)
 			}
 			if !strings.Contains(ansi.Strip(block.lines[hit.Y+1]), "──") {
