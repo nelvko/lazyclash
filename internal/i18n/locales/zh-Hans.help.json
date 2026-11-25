@@ -9,6 +9,6 @@
   "help.core.overview": "浏览内容时：s 启动 · x 停止内核。",
   "help.navigation.keys": "浏览页面时：? 打开帮助 · q 退出。输入、菜单或弹窗优先处理按键，此时页面快捷键不生效。",
   "help.controls": "帮助中：Tab / Shift+Tab 切换按钮，Enter 执行；↑↓ / j/k 滚动，PgUp / PgDn 翻页，Space 下一页，Home / End 到首尾；Esc / ? 关闭帮助，q 退出程序。",
-  "help.messages.controls": "通知面板：Tab 选择操作，Enter / Space 执行；x / Delete / Backspace 关闭当前通知，不取消任务。Esc / q 返回或关闭面板。",
+  "help.messages.controls": "展开通知后，Tab 选择操作，Enter 执行，x 关闭选中的通知。Esc 返回上一层，再按 Ctrl+N 或点击外侧可直接收起。",
   "help.connections.search": "搜索选项：Aa 区分大小写，下划线 ab 匹配整词，.* 启用正则表达式；Alt+C / Alt+W / Alt+R 在输入或浏览时切换。活跃与已关闭记录共用这些选项；清空文本保留选项，清除筛选重置全部选项。"
 }

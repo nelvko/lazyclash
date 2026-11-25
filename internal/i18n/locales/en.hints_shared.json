@@ -12,8 +12,8 @@
   "notification.hints.list": "Enter Notifications",
   "notification.hints.overflowControls": "Tab Controls · Esc Back",
   "notification.hints.controls": "Tab Controls · Esc Dismiss notice",
-  "notification.hints.listControls": "↑↓ Controls · x Dismiss · Esc Close",
-  "notification.hints.detail": "↑↓ / PgUp/PgDn Scroll · x Dismiss · Esc Back",
+  "notification.hints.listControls": "↑↓ Controls · x Dismiss · Ctrl+N Collapse",
+  "notification.hints.detail": "↑↓ Scroll · PgUp/PgDn Page · x Dismiss",
   "notification.hints.empty": "Esc Close",
   "help.hints.connectionsCore": "While browsing content: r restarts the core. Connection data updates automatically."
 }

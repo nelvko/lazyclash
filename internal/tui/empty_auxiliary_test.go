@@ -99,24 +99,7 @@ func findAuxiliaryLine(lines []string, label string) int {
 	return -1
 }
 
-func TestAuxiliaryEmptyNotificationsCenterInsidePanelContent(t *testing.T) {
-	for _, language := range []string{i18n.English, i18n.Chinese} {
-		for _, size := range [][2]int{{80, 24}, {60, 18}} {
-			var panel notificationPanel
-			panel.show(0)
-			locale := i18n.New(language)
-			screen, hits := panel.render(nil, size[0], size[1], locale)
-			row := assertAuxiliaryCentered(t, strings.Split(screen, "\n"), locale.T("notification.empty"), size[0])
-			if want := panel.contentY + (panel.viewport.Height()-1)/2; row != want {
-				t.Fatalf("empty notifications at %v used row %d, want %d", size, row, want)
-			}
-			assertCanvas(t, screen, size[0], size[1])
-			assertRegions(t, hits, size[0], size[1])
-		}
-	}
-}
-
-func TestAuxiliaryEmptyPanelsDiscardOldListScroll(t *testing.T) {
+func TestEmptyProviderPanelDiscardsOldListScroll(t *testing.T) {
 	m, _ := ruleProvidersModel(t, 40)
 	m.renderProviders("")
 	m.providers.viewport.SetYOffset(80)
@@ -124,18 +107,5 @@ func TestAuxiliaryEmptyPanelsDiscardOldListScroll(t *testing.T) {
 	view, _ := m.renderProviders("")
 	if m.providers.viewport.YOffset() != 0 || !strings.Contains(ansi.Strip(view), m.tr("empty.providers.none")) {
 		t.Fatal("empty provider panel retained its old list scroll")
-	}
-	var panel notificationPanel
-	panel.show(0)
-	items := make([]notificationItem, 40)
-	for index := range items {
-		items[index] = notificationItem{ID: uint64(index + 1), Kind: "error", Message: "Fixture notification"}
-	}
-	locale := i18n.New(i18n.English)
-	panel.render(items, 80, 24, locale)
-	panel.viewport.SetYOffset(80)
-	view, _ = panel.render(nil, 80, 24, locale)
-	if panel.viewport.YOffset() != 0 || !strings.Contains(ansi.Strip(view), locale.T("notification.empty")) {
-		t.Fatal("empty notification panel retained its old list scroll")
 	}
 }

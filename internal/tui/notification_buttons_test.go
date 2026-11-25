@@ -72,7 +72,8 @@ func TestNotificationPanelTabMovesMarkerWithoutMovingButtons(t *testing.T) {
 						if target != before[index] {
 							t.Fatalf("notification button moved after Tab: before=%+v after=%+v", before[index], target)
 						}
-						painted := ansi.Strip(ansi.Cut(strings.Split(screen, "\n")[target.Y], target.X, target.X+target.W))
+						x, y := target.X-panel.bounds.X, target.Y-panel.bounds.Y
+						painted := ansi.Strip(ansi.Cut(strings.Split(screen, "\n")[y], x, x+target.W))
 						if target.ID == "notification.panel.dismiss.1" && !strings.HasPrefix(painted, " › ") {
 							t.Fatalf("focused Close button lost its separate gutter: %q", painted)
 						}

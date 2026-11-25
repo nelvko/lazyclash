@@ -190,7 +190,7 @@ func (m *Model) inlineInstallKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 			return true, nil
 		}
 		switch key {
-		case "q", "?", "tab", "shift+tab", "1", "2", "3", "4", "5", "6", "7":
+		case "q", "?", "ctrl+n", "tab", "shift+tab", "1", "2", "3", "4", "5", "6", "7":
 			return false, nil
 		default:
 			return true, nil

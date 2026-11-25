@@ -21,7 +21,7 @@ func TestActionableWarningPersistsAfterItsCardBecomesVisible(t *testing.T) {
 		m, _ = update(m, keyHintsSavedMsg{generation: 1, hidden: m.keyHints.hidden,
 			err: errors.New("preference file could not be written and the setting could not be saved")})
 		warning := m.notification.items[0]
-		if !hasAction(m.targets, "notification.expand") || hasAction(m.targets, fmt.Sprintf("notification.close.%d", warning.ID)) {
+		if !hasAction(m.targets, fmt.Sprintf("notification.summary.%d", warning.ID)) || hasAction(m.targets, fmt.Sprintf("notification.close.%d", warning.ID)) {
 			t.Fatalf("%v: expected a folded warning above the fixed search", size)
 		}
 		if !strings.Contains(ansi.Strip(m.screen), m.tr("notification.warning")) || !warning.started.IsZero() {
@@ -150,8 +150,8 @@ func TestNamedSuccessRemainsReadableOnCompactProfiles(t *testing.T) {
 			if item.started.IsZero() || item.remaining != 3*time.Second {
 				t.Fatalf("%s/%v: the complete successful selection has no three-second deadline", text.language, size)
 			}
-			if hasAction(m.targets, "notification.expand") {
-				m.focus = "notification.expand"
+			if summary := fmt.Sprintf("notification.summary.%d", id); hasAction(m.targets, summary) {
+				m.focus = summary
 				m, _ = update(m, special(tea.KeyEscape))
 				noticeByID(t, m, id)
 			}
@@ -191,12 +191,17 @@ func TestTruncatedNamedSuccessRemainsAvailableUntilRead(t *testing.T) {
 	message := "Selected “" + name + "”"
 	id := publishNotice(&m, "profile.apply", "done", message)
 	item := noticeByID(t, m, id)
-	if !hasAction(m.targets, "notification.expand") || !item.started.IsZero() || strings.Contains(ansi.Strip(m.screen), "London") {
+	summary := fmt.Sprintf("notification.summary.%d", id)
+	if !hasAction(m.targets, summary) || !item.started.IsZero() || strings.Contains(ansi.Strip(m.screen), "London") {
 		t.Fatal("a truncated name counted as a complete selection confirmation")
 	}
-	m, _ = click(m, findTarget(t, m, "notification.expand"))
-	if !m.notification.panel.open || !strings.Contains(ansi.Strip(m.screen), "London") {
+	m, _ = click(m, findTarget(t, m, summary))
+	if m.notification.panel.detailID != id || !strings.Contains(ansi.Strip(m.screen), "London") {
 		t.Fatal("the complete selection was unavailable from the one-line summary")
+	}
+	m, _ = update(m, special(tea.KeyEscape))
+	if m.notification.panel.open {
+		t.Fatal("Escape from a single folded result should return directly to the page")
 	}
 }
 

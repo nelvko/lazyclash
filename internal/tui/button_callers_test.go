@@ -72,7 +72,8 @@ func TestActionButtonGroupsKeepOneCellBeforeFocusAndNoneAfter(t *testing.T) {
 					var panel notificationPanel
 					panel.show(0)
 					panel.focus = 1
-					return panel.render([]notificationItem{{ID: 1, Kind: "done", Message: "Saved"}}, 90, 24, m.locale, m.noColor)
+					box, hits := panel.render([]notificationItem{{ID: 1, Kind: "done", Message: "Saved"}}, 90, 24, m.locale, m.noColor)
+					return overlay("", box, panel.bounds.X, panel.bounds.Y, 90, 24), hits
 				}},
 				{"get-started", "install", "guide.later", func(m *Model) (string, []hitRegion) {
 					m.focus = "guide.later"

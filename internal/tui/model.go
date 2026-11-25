@@ -1739,9 +1739,15 @@ func (m *Model) renderLayout() {
 	o := m.dashboardOptions()
 	o.Sidebar = &m.sidebar
 	o.SelectedGroup, o.Snapshot, o.Focus, o.Hover = m.proxies.activeGroup, m.snapshot, m.focus, m.hover
+	// Lay out the expanded controls before deriving their keyboard hints.
+	p := &m.notification.panel
+	var expanded string
+	if p.open {
+		expanded, _ = p.render(m.notification.items, m.width, m.height, m.locale, m.buttonPlain())
+	}
 	o.Help, o.GuideDismissed, o.Scroll, o.SidebarOpen = m.contextHelp(), m.snapshot.GuideDismissed, m.scroll, m.sidebarOpen
 	_, _, o.EditingInput = m.activeInputField()
-	o.HelpAfterClose = m.menu.open || m.providers.open || m.ports.open || m.form != "" || m.connections.confirming || m.connections.detail != nil
+	o.HelpAfterClose = p.open || m.menu.open || m.providers.open || m.ports.open || m.form != "" || m.connections.confirming || m.connections.detail != nil
 	o.Runtime, o.RuntimeReceived, o.RuntimePending = m.runtime.snapshot, m.runtime.received, m.runtime.pending
 	o.StateUnavailable = !m.snapshotReady
 	g := dashboardGeometry(o)
@@ -1791,8 +1797,9 @@ func (m *Model) renderLayout() {
 		if m.form == "profile-delete" && m.menu.open {
 			m.renderReplacementMenu()
 		}
-	} else if m.notification.panel.open {
-		m.screen, m.targets = m.notification.panel.render(m.notification.items, m.width, m.height, m.locale, m.buttonPlain())
+	} else if p.open {
+		m.screen = overlay(m.screen, expanded, p.bounds.X, p.bounds.Y, m.width, m.height)
+		m.targets = p.targets
 	} else if m.providers.open {
 		m.screen, m.targets = m.renderProviders(base)
 	} else if m.page == "connections" && m.connections.detail != nil {

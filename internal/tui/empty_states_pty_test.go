@@ -61,8 +61,7 @@ func emptyStatesPTYCases() []emptyStatesPTYCase {
 		emptyStatesPTYCase{page: "providers", state: "stopped", title: "runtime.status.stopped"},
 		emptyStatesPTYCase{page: "providers", state: "failed", title: "empty.providers.read_failed"},
 		emptyStatesPTYCase{page: "profiles", state: "empty", title: "empty.profiles.none"},
-		emptyStatesPTYCase{page: "profiles", state: "failed", title: "profiles.unavailable"},
-		emptyStatesPTYCase{page: "notifications", state: "empty", title: "notification.empty"})
+		emptyStatesPTYCase{page: "profiles", state: "failed", title: "profiles.unavailable"})
 	for _, page := range []string{"rules", "connections", "logs", "proxies"} {
 		cases = append(cases, emptyStatesPTYCase{page: page, state: "initial-failed", title: "empty.read_failed"})
 	}
@@ -152,11 +151,7 @@ func (f *emptyStatesPTYModel) selectCase() {
 	if c.page == "profiles" && c.state == "failed" {
 		m.snapshotReady = false
 	}
-	if c.page == "notifications" {
-		m.page = "rules"
-		m.notification.panel.show(0)
-	}
-	if c.page != "providers" && c.page != "notifications" {
+	if c.page != "providers" {
 		m.enterContent()
 	}
 	if c.page == "proxies" && c.state == "filtered" {

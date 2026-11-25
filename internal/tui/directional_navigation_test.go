@@ -267,6 +267,7 @@ func TestDirectionalNavigationOverlaysOwnTheirKeys(t *testing.T) {
 			case "help":
 				m.keyHintsAction("help.open")
 			case "notifications":
+				publishNotice(&m, "profile.refresh", "error", "Update failed")
 				m.notificationAction("notification.expand")
 			case "profile menu":
 				m.openProfileMenuForCard(1)

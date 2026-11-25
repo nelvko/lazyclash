@@ -123,7 +123,7 @@ func logoGradientColor(column, intro int) string {
 
 func (m *Model) logoVisible() bool {
 	o := m.dashboardOptions()
-	return dashboardGeometry(o).sidebar && !o.Dim && !m.menu.open && !m.busy && !m.quitting && m.ctx.Err() == nil
+	return dashboardGeometry(o).sidebar && !o.Dim && !m.notification.panel.open && !m.menu.open && !m.busy && !m.quitting && m.ctx.Err() == nil
 }
 
 func (m *Model) logoIntroVisible() bool {

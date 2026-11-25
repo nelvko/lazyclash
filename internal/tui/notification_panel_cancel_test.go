@@ -141,7 +141,7 @@ func TestNotificationPanelCancelControlsFitAndOnlyApplyToWorkingItems(t *testing
 				foundCancel := false
 				for range len(panel.actions) {
 					screen, targets := panel.render(items, size[0], size[1], locale)
-					assertCanvas(t, screen, size[0], size[1])
+					assertCanvas(t, screen, panel.bounds.W, panel.bounds.H)
 					assertRegions(t, targets, size[0], size[1])
 					for i, target := range targets {
 						for _, other := range targets[i+1:] {
@@ -156,8 +156,9 @@ func TestNotificationPanelCancelControlsFitAndOnlyApplyToWorkingItems(t *testing
 							t.Fatalf("non-working notification has a Cancel action: %s", target.ID)
 						}
 						foundCancel = true
-						line := strings.Split(screen, "\n")[target.Y]
-						if got := ansi.Strip(ansi.Cut(line, target.X, target.X+target.W)); strings.Trim(got, "› ") != locale.T("notification.cancel") || target.W != ansi.StringWidth(locale.T("notification.cancel"))+4 {
+						line := strings.Split(screen, "\n")[target.Y-panel.bounds.Y]
+						x := target.X - panel.bounds.X
+						if got := ansi.Strip(ansi.Cut(line, x, x+target.W)); strings.Trim(got, "› ") != locale.T("notification.cancel") || target.W != ansi.StringWidth(locale.T("notification.cancel"))+4 {
 							t.Fatalf("Cancel label was obscured: %q", got)
 						}
 						if action := panel.mouse(tea.MouseClickMsg{X: target.X, Y: target.Y, Button: tea.MouseLeft}); action != target.ID {

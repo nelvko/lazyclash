@@ -52,7 +52,7 @@ func (m *Model) searchToolbar(id, placeholder string, input textinput.Model, con
 
 func (m *Model) searchControlOptions(id string) buttonOptions {
 	return buttonOptions{Surface: bg, Focused: m.focus == id, Hovered: m.hover == id,
-		Plain: m.buttonPlain(), Dim: m.feedbackDialogOpen() || m.helpOpen || m.notification.panel.open || m.providers.open}
+		Plain: m.buttonPlain(), Dim: m.dashboardDimmed()}
 }
 
 func searchControlWidth(controls dashboardBlock) int {

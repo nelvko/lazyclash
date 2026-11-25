@@ -211,11 +211,15 @@ func notificationLayout(o dashboardOptions, headerActions ...hitRegion) []notifi
 			}
 		}
 		caption, displayedID := notificationSummary(items[:remaining], len(chosen) > 0, width, o)
-		label := notificationButton("notification.expand", caption, width, o)
+		action := "notification.expand"
+		if len(items) == 1 && items[0].Kind != "working" {
+			action = fmt.Sprintf("notification.summary.%d", items[0].ID)
+		}
+		label := notificationButton(action, caption, width, o)
 		overflow := notificationOverlay{
 			Content: themed(cellPad(label, width), text, raised, false),
 			Bounds:  hitRegion{ID: "notification", X: x, Y: row, W: width, H: 1},
-			Targets: []hitRegion{{ID: "notification.expand", X: x, Y: row, W: ansi.StringWidth(label), H: 1}},
+			Targets: []hitRegion{{ID: action, X: x, Y: row, W: ansi.StringWidth(label), H: 1}},
 		}
 		if displayedID != 0 {
 			overflow.IDs = []uint64{displayedID}

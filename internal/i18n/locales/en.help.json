@@ -9,6 +9,6 @@
   "help.core.overview": "While browsing content: s starts · x stops the core.",
   "help.navigation.keys": "While browsing: ? opens Help · q quits. Page shortcuts are suspended while typing or using a menu or dialog.",
   "help.controls": "In Help: Tab / Shift+Tab changes buttons; Enter activates. ↑↓ / j/k scrolls; PgUp / PgDn turns pages; Space goes to the next page; Home / End jumps to the ends. Esc / ? closes Help; q quits the app.",
-  "help.messages.controls": "In notifications: Tab selects an action; Enter / Space activates it. x / Delete / Backspace dismisses the selected notice without canceling its task. Esc / q goes back or closes the panel.",
+  "help.messages.controls": "In expanded notifications, Tab selects an action and Enter activates it. x dismisses the selected notice. Esc goes back one level. Ctrl+N or a click outside collapses notifications.",
   "help.connections.search": "Search options: Aa matches case, underlined ab matches whole words, and .* enables regular expressions. Alt+C / Alt+W / Alt+R toggle them while searching or browsing. Active and closed records share these options; clearing text keeps them, while Clear filters resets them."
 }

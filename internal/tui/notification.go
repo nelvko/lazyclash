@@ -259,8 +259,13 @@ func (m *Model) dismissNotificationID(id uint64) {
 			continue
 		}
 		n.items = append(n.items[:i:i], n.items[i+1:]...)
-		if n.panel.open && n.panel.detailID == id {
-			n.panel.show(0)
+		if n.panel.open {
+			switch {
+			case len(n.items) == 0:
+				m.notificationAction("notification.panel.close")
+			case n.panel.detailID == id:
+				m.notificationAction(n.panel.backAction())
+			}
 		}
 		if item.Operation == n.operation.ID {
 			n.dismissedOperation = item.Operation
@@ -284,7 +289,7 @@ func (m *Model) dismissFocusedNotification() {
 			if target.ID != m.focus {
 				continue
 			}
-			if target.ID != "notification.expand" && len(overlay.IDs) == 1 {
+			if target.ID != "notification.expand" && !strings.HasPrefix(target.ID, "notification.summary.") && len(overlay.IDs) == 1 {
 				m.dismissNotificationID(overlay.IDs[0])
 			} else {
 				m.restoreNotificationFocus()
@@ -300,8 +305,22 @@ func (m *Model) restoreNotificationFocus() {
 	if m.focus == "" || strings.HasPrefix(m.focus, "notification.") {
 		m.focus = "nav." + m.page
 	}
-	if !sidebarVisible(m.width, m.height) && strings.HasPrefix(m.focus, "nav.") {
+	if !m.sidebarOpen && !sidebarVisible(m.width, m.height) && strings.HasPrefix(m.focus, "nav.") {
 		m.focus = "menu"
+	}
+}
+
+func (m *Model) openNotifications(id uint64) {
+	n := &m.notification
+	for _, item := range n.items {
+		if id == 0 || item.ID == id {
+			if !n.panel.open && !strings.HasPrefix(m.focus, "notification.") {
+				n.restoreFocus = m.focus
+			}
+			n.panel.show(id)
+			m.focus, m.hover = "notification.panel", ""
+			return
+		}
 	}
 }
 
@@ -324,17 +343,14 @@ func (m *Model) notificationAction(action string) bool {
 	}
 	switch action {
 	case "notification.expand":
-		if !n.panel.open && !strings.HasPrefix(m.focus, "notification.") {
-			n.restoreFocus = m.focus
-		}
-		n.panel.show(0)
+		m.openNotifications(0)
 	case "notification.panel.close":
 		n.panel.dismiss()
 		m.restoreNotificationFocus()
 	case "notification.panel.back":
 		n.panel.show(0)
 	default:
-		for _, prefix := range []string{"notification.close.", "notification.details.", "notification.panel.dismiss.", "notification.panel.details."} {
+		for _, prefix := range []string{"notification.close.", "notification.details.", "notification.summary.", "notification.panel.dismiss.", "notification.panel.details."} {
 			if !strings.HasPrefix(action, prefix) {
 				continue
 			}
@@ -342,13 +358,10 @@ func (m *Model) notificationAction(action string) bool {
 			if err != nil {
 				return true
 			}
-			if strings.Contains(prefix, "details") {
-				if !n.panel.open && !strings.HasPrefix(m.focus, "notification.") {
-					n.restoreFocus = m.focus
-				}
-				n.panel.show(id)
-			} else {
+			if prefix == "notification.close." || prefix == "notification.panel.dismiss." {
 				m.dismissNotificationID(id)
+			} else {
+				m.openNotifications(id)
 			}
 			return true
 		}
@@ -357,11 +370,11 @@ func (m *Model) notificationAction(action string) bool {
 }
 
 func (m *Model) dashboardDimmed() bool {
-	return m.feedbackDialogOpen() || m.helpOpen || m.notification.panel.open || m.providers.open || (m.page == "connections" && m.connections.confirming)
+	return m.feedbackDialogOpen() || m.helpOpen || m.providers.open || (m.page == "connections" && m.connections.confirming)
 }
 
 func (m *Model) notificationsObscured() bool {
-	return m.dashboardDimmed() || m.sidebarOpen || m.menu.open || (m.page == "connections" && m.connections.detail != nil)
+	return m.notification.panel.open || m.dashboardDimmed() || m.sidebarOpen || m.menu.open || (m.page == "connections" && m.connections.detail != nil)
 }
 
 func (m *Model) monochrome() bool {
