@@ -237,6 +237,17 @@ func (m *Model) expireNotification(msg notificationExpiredMsg) {
 	}
 }
 
+// A successful read opens its editor or settings form without publishing a
+// success message. It still resolves a prior failure for that exact resource.
+func (m *Model) resolveNotificationError(key string) {
+	for _, item := range m.notification.items {
+		if item.Key == key && item.Kind == "error" {
+			m.dismissNotificationID(item.ID)
+			return
+		}
+	}
+}
+
 func (m *Model) dismissNotificationID(id uint64) {
 	n := &m.notification
 	for i, item := range n.items {

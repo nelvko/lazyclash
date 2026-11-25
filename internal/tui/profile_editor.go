@@ -63,8 +63,8 @@ func (s profileEditorState) cleanup() {
 
 func (m *Model) openProfileEditor(id string, kind app.ProfileDocumentKind) tea.Cmd {
 	m.form, m.name = "profile-document", id
-	ctx := m.newJob("profile.document.read")
 	m.message = m.tr("profile_editor.opening")
+	ctx := m.newJob("profile.document.read", m.profileNotification("document.read."+string(kind), m.message, id))
 	request, backend := m.id, m.backend
 	return func() tea.Msg {
 		doc, err := backend.GetProfileDocument(ctx, id, kind)
@@ -93,11 +93,12 @@ func (m *Model) acceptProfileEditor(msg profileEditorOpenedMsg) tea.Cmd {
 			return tea.Quit
 		}
 		if !errors.Is(msg.err, context.Canceled) {
-			m.prepareNotification("profile.document.open", m.tr("profile_editor.opening"))
+			m.notification.operation.Dialog = false
 			m.failure = m.localizeError(msg.err)
 		}
 		return nil
 	}
+	m.resolveNotificationError(m.notification.operation.Key)
 	m.profileEditor = msg.state
 	return m.launchProfileEditor()
 }
@@ -163,7 +164,7 @@ func (m *Model) finishProfileEditor(msg profileEditorExitedMsg) tea.Cmd {
 	}
 	return m.begin(label, success, func(ctx context.Context) error {
 		return m.backend.SaveProfileDocument(ctx, state.document, raw)
-	}, m.profileNotification("document.save", label, state.document.ID))
+	}, m.profileNotification("document.save."+string(state.document.Kind), label, state.document.ID))
 }
 
 func (m *Model) closeProfileEditor() {

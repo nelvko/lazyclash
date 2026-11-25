@@ -28,8 +28,8 @@ func (m *Model) openProfileSettings(id string) tea.Cmd {
 	m.openProfileCreate()
 	m.form, m.name = "profile-settings", id
 	m.profileCreate.name.Placeholder = m.tr("profiles.display_name")
-	ctx := m.newJob("profile.settings.load")
 	m.message = m.tr("profile_settings.loading")
+	ctx := m.newJob("profile.settings.load", m.profileNotification("settings.load", m.message, id))
 	request, backend := m.id, m.backend
 	return func() tea.Msg {
 		values, err := backend.GetProfileSettings(ctx, id)
@@ -51,10 +51,11 @@ func (m *Model) acceptProfileSettings(msg profileSettingsLoadedMsg) tea.Cmd {
 	}
 	if msg.err != nil {
 		m.closeProfileCreate()
-		m.prepareNotification("profile.settings.load", m.tr("profile_settings.loading"))
+		m.notification.operation.Dialog = false
 		m.failure = m.localizeError(msg.err)
 		return nil
 	}
+	m.resolveNotificationError(m.notification.operation.Key)
 	m.profileCreate.settings = &msg.values
 	m.profileCreate.name.SetValue(msg.values.Name)
 	m.profileCreate.description.SetValue(msg.values.Description)

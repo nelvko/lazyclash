@@ -96,3 +96,46 @@ func TestSuccessfulProfileSettingsRetryResolvesCriticalFailure(t *testing.T) {
 		t.Fatalf("successful retry did not settle the original failure: %+v", m.notification.items)
 	}
 }
+
+func TestProfileReadFailuresResolveOnlyForTheirResource(t *testing.T) {
+	b := &fakeBackend{snapshot: app.Snapshot{Profiles: []string{"one", "two"}, ProfileDetails: profileFixtures("one", "two")}}
+	readErr := errors.New("unavailable")
+	b.getProfileSettings = func(_ context.Context, id string) (app.ProfileSettings, error) {
+		return app.ProfileSettings{ID: id, Name: id}, readErr
+	}
+	b.getDocument = func(_ context.Context, id string, kind app.ProfileDocumentKind) (app.ProfileDocument, error) {
+		return app.ProfileDocument{ID: id, Kind: kind}, readErr
+	}
+	m := profileInteractionsModel(b, 120, 32)
+	read := func(id string, kind app.ProfileDocumentKind) {
+		var cmd tea.Cmd
+		if kind == "" {
+			cmd = m.openProfileSettings(id)
+		} else {
+			cmd = m.openProfileEditor(id, kind)
+		}
+		m, _ = update(m, cmd())
+	}
+	read("one", "")
+	read("two", "")
+	read("one", app.ProfileConfiguration)
+	read("two", app.ProfileConfiguration)
+	read("two", app.ProfileOverrides)
+	if len(m.notification.items) != 5 {
+		t.Fatalf("distinct read failures overwrote each other: %+v", m.notification.items)
+	}
+	otherSettings, otherDocument, otherKind := m.notification.items[1].ID, m.notification.items[2].ID, m.notification.items[4].ID
+	readErr = nil
+	read("one", "")
+	m.closeProfileCreate()
+	read("two", app.ProfileConfiguration)
+	t.Cleanup(m.profileEditor.cleanup)
+	if len(m.notification.items) != 3 {
+		t.Fatalf("successful retries left their old failures: %+v", m.notification.items)
+	}
+	for _, id := range []uint64{otherSettings, otherDocument, otherKind} {
+		if noticeByID(t, m, id).Kind != "error" {
+			t.Fatal("successful read resolved an unrelated error")
+		}
+	}
+}
