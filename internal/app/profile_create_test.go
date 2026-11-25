@@ -38,10 +38,10 @@ func TestCreateHTTPSProfileKeepsMetadataAndRunningGenerationSeparate(t *testing.
 			defer server.Close()
 			a.HTTP = server.Client()
 			address := server.URL + "/download.yaml?token=private-fixture-token"
-			if err := a.CreateProfile(t.Context(), ProfileDraft{
+			if name, err := a.ImportProfile(t.Context(), ProfileDraft{
 				Name: tc.explicit, Description: "  日常\n路由\t说明  ", Address: address, RememberSource: true,
-			}); err != nil {
-				t.Fatal(err)
+			}); err != nil || name != tc.want {
+				t.Fatal("import returned the wrong committed display name", name, err)
 			}
 			profile := namedProfile(t, a, tc.want)
 			requireProfileName(t, a, profile.ID, tc.want, tc.source, tc.want)

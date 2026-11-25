@@ -91,7 +91,11 @@ func TestReplacementSelectorKeepsIdentityAndMakesChoiceExplicit(t *testing.T) {
 		return nil
 	}
 	m, cmd := click(m, findTarget(t, m, deleteConfirm))
-	_ = finishProfileJob(t, m, cmd)
+	m = finishProfileJob(t, m, cmd)
+	if len(m.notification.items) != 1 || !strings.Contains(m.notification.items[0].Message, "Office display name") ||
+		!strings.Contains(m.notification.items[0].Message, "Gamma") {
+		t.Fatal("combined deletion and replacement lost a profile or split the result", m.notification.items)
+	}
 	if got != "alt-c" {
 		t.Fatalf("unexpected replacement %q", got)
 	}

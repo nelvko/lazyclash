@@ -41,15 +41,13 @@ type Backend interface {
 	TestReleaseFile(context.Context, mihomo.Release, downloadnet.Config) error
 	PrepareInstall(context.Context, mihomo.Release, string, bool) (app.InstallPlan, error)
 	InstallCore(context.Context, app.InstallPlan, downloadnet.Config, func(mihomo.Progress)) (app.InstallResult, error)
-	Add(context.Context, string, string) error
-	AddSubscription(context.Context, string, string) error
-	CreateProfile(context.Context, app.ProfileDraft) error
+	ImportProfile(context.Context, app.ProfileDraft) (string, error)
 	GetProfileDocument(context.Context, string, app.ProfileDocumentKind) (app.ProfileDocument, error)
 	SaveProfileDocument(context.Context, app.ProfileDocument, []byte) error
 	GetProfileSettings(context.Context, string) (app.ProfileSettings, error)
 	SaveProfileSettings(context.Context, app.ProfileSettings) error
 	Refresh(context.Context, string) error
-	RefreshAllProfiles(context.Context) error
+	RefreshAllProfiles(context.Context) (app.ProfileRefreshSummary, error)
 	DeleteProfileWithReplacement(context.Context, string, string) error
 	DeactivateProfile(context.Context, string) error
 	SetProfileOverrides(context.Context, string, []byte) error
@@ -78,6 +76,7 @@ type resultMsg struct {
 	// actionSucceeded tracks the mutation separately from the following read.
 	// A refresh failure must not leave a committed creation ready to submit again.
 	actionSucceeded bool
+	previousProfile string
 	prefs           *app.Preferences
 	err             error
 	success         string
@@ -289,15 +288,26 @@ func (m *Model) refresh() tea.Cmd {
 	return tea.Batch(m.snapshotCmd(m.id, ctx, false), m.spinner.Tick)
 }
 func (m *Model) begin(label, success string, work func(context.Context) error, operations ...notificationOperation) tea.Cmd {
+	return m.beginResult(label, func(ctx context.Context) (string, error) {
+		if err := work(ctx); err != nil {
+			return "", err
+		}
+		return success, nil
+	}, operations...)
+}
+
+// work may return both a user-facing summary and an error for partial commits.
+func (m *Model) beginResult(label string, work func(context.Context) (string, error), operations ...notificationOperation) tea.Cmd {
 	if len(operations) == 0 {
 		operations = []notificationOperation{{Key: "action", Context: label}}
 	}
 	ctx := m.newJob("action", operations...)
 	id := m.id
 	backend := m.backend
+	previousProfile := m.snapshot.Applied
 	m.message = label
 	return tea.Batch(func() tea.Msg {
-		err := work(ctx)
+		success, err := work(ctx)
 		actionSucceeded := err == nil
 		refreshCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 8*time.Second)
 		defer cancel()
@@ -305,7 +315,7 @@ func (m *Model) begin(label, success string, work func(context.Context) error, o
 		if se != nil {
 			err = errors.Join(err, diagnostic.New("diagnostic.refresh_state", "refresh current state: %w", se))
 		}
-		return resultMsg{id: id, snapshot: s, hasSnapshot: se == nil, actionSucceeded: actionSucceeded, err: err, success: success}
+		return resultMsg{id: id, snapshot: s, hasSnapshot: se == nil, actionSucceeded: actionSucceeded, previousProfile: previousProfile, err: err, success: success}
 	}, m.spinner.Tick)
 }
 func waitProgress(ctx context.Context, updates <-chan progressMsg) tea.Cmd {
@@ -545,7 +555,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.adoptSnapshot(v.snapshot)
 		}
 		if m.profilesUI.importing {
-			if v.err == nil {
+			if v.actionSucceeded {
 				m.profilesUI.url.Reset()
 			}
 			m.profilesUI.importing = false
@@ -558,10 +568,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.closeProfileForm()
 			m.notification.operation.Dialog = false
 		}
-		profileCreated := m.profileFieldsForm() && m.profileCreate.submitting && v.actionSucceeded
 		if m.profileFieldsForm() && m.profileCreate.submitting {
 			m.profileCreate.submitting = false
 			if v.actionSucceeded {
+				if m.form == "profile-create" {
+					m.notification.operation.Dialog = false
+				}
 				m.closeProfileCreate()
 			}
 		}
@@ -585,11 +597,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.failure = m.localizeError(v.err)
 			m.message = m.tr("model.failed")
-			if profileCreated {
+			if v.success != "" && !v.transient {
+				// The mutation may have committed even when the subsequent observation failed.
 				m.message = v.success
+				if v.actionSucceeded {
+					combined := v.success + " · " + m.failure
+					if ansi.StringWidth(combined) <= 200 {
+						m.failure = combined
+					} else {
+						m.failure = m.tr("feedback.refresh_failed", v.success)
+					}
+				} else {
+					m.failure = v.success
+				}
 			}
 			if notificationCancellation(v.err) {
 				m.message = m.tr("model.canceled")
+				if !v.transient && v.success != "" {
+					m.message += " · " + v.success
+				}
 				m.messageInformational = true
 				m.failure = ""
 			}
@@ -598,6 +624,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.messageTransient = v.transient
 			m.failure = ""
 		}
+		m.finishProfileSelection(v)
 		if m.quitting && !m.keyHints.pending {
 			return m, tea.Quit
 		}
@@ -1248,12 +1275,7 @@ func (m *Model) formKey(k tea.KeyPressMsg) tea.Cmd {
 		m.form = ""
 		m.input.Reset()
 		m.input.Blur()
-		return m.begin(m.tr("model.fetch_config"), m.tr("model.config_saved"), func(ctx context.Context) error {
-			if remember {
-				return m.backend.AddSubscription(ctx, "", source)
-			}
-			return m.backend.Add(ctx, "", source)
-		}, notificationOperation{Key: notificationKey("profile.add", source), Context: m.tr("model.fetch_config")})
+		return m.beginProfileImport(app.ProfileDraft{Address: source, RememberSource: remember}, "profile.add", m.tr("model.fetch_config"))
 	}
 	var cmd tea.Cmd
 	before := m.input.Value()

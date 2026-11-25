@@ -83,7 +83,10 @@ func (a *App) publishProfileGeneration(ctx context.Context, old string, m manife
 			}
 		}
 		if !hot {
-			return errors.Join(cause, recoveryErr)
+			if recoveryErr != nil {
+				return diagnostic.New("diagnostic.recovery.profileSwitch", "profile switch failed and recovery could not be confirmed: %w", errors.Join(cause, recoveryErr))
+			}
+			return cause
 		}
 		if recoveryErr != nil {
 			return diagnostic.New("diagnostic.profile.reloadRecovery", "reload failed and recovery could not be confirmed: %w", errors.Join(cause, recoveryErr))

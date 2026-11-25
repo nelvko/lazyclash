@@ -26,12 +26,20 @@ type ProfileDraft struct {
 // complete profile atomically. Metadata is stored separately from the core
 // recipe and never becomes part of the generated Mihomo YAML.
 func (a *App) CreateProfile(ctx context.Context, draft ProfileDraft) error {
+	_, err := a.ImportProfile(ctx, draft)
+	return err
+}
+
+// ImportProfile returns the final display name assigned in the same commit,
+// including provider titles and any suffix used to distinguish duplicates.
+func (a *App) ImportProfile(ctx context.Context, draft ProfileDraft) (string, error) {
 	if draft.Name != "" && configuration.CleanName(draft.Name) == "" {
-		return diagnostic.New("diagnostic.profile.emptyName", "profile name must not be empty")
+		return "", diagnostic.New("diagnostic.profile.emptyName", "profile name must not be empty")
 	}
 	draft.Description = configuration.CleanDescription(draft.Description)
 	draft.Address = strings.TrimSpace(draft.Address)
-	return a.locked(ctx, func() error {
+	var displayName string
+	err := a.locked(ctx, func() error {
 		lib, old, err := a.library().Load()
 		if err != nil {
 			return err
@@ -72,8 +80,13 @@ func (a *App) CreateProfile(ctx context.Context, draft ProfileDraft) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		return a.library().Save(lib, old)
+		if err := a.library().Save(lib, old); err != nil {
+			return err
+		}
+		displayName = configuration.DisplayName(lib.Profiles[id].Name, id)
+		return nil
 	})
+	return displayName, err
 }
 
 // Add imports a private copy. AddSubscription also remembers the address for
@@ -212,29 +225,41 @@ func (a *App) prepareSelectedRefresh(ctx context.Context, lib *configuration.Lib
 	return cfg, nil
 }
 
+type ProfileRefreshSummary struct {
+	Updated int
+	Failed  int
+}
+
 // RefreshAllProfiles commits each profile independently, preserving successful
 // downloads if another fails. Cancellation stops the remaining downloads.
-func (a *App) RefreshAllProfiles(ctx context.Context) error {
+func (a *App) RefreshAllProfiles(ctx context.Context) (ProfileRefreshSummary, error) {
+	var summary ProfileRefreshSummary
 	profiles, err := a.ListProfiles(ctx)
 	if err != nil {
-		return err
+		return summary, err
 	}
 	var failures []error
 	for _, profile := range profiles {
 		if err := ctx.Err(); err != nil {
-			return errors.Join(append(failures, err)...)
+			return summary, errors.Join(append(failures, err)...)
 		}
 		if !profile.Refreshable {
 			continue
 		}
 		if err := a.Refresh(ctx, profile.ID); err != nil {
-			failures = append(failures, diagnostic.New("diagnostic.profile.namedError", "%s: %w", profile.Name, err))
+			if ctx.Err() != nil && err == context.Canceled {
+				return summary, errors.Join(append(failures, err)...)
+			}
+			summary.Failed++
+			failures = append(failures, diagnostic.New("diagnostic.profile.namedError", "%s: %w", configuration.DisplayName(profile.Name, profile.ID), err))
+		} else {
+			summary.Updated++
 		}
 	}
 	if len(failures) > 0 {
-		return diagnostic.New("diagnostic.profile.updateFailures", "%d profiles could not be updated: %w", len(failures), errors.Join(failures...))
+		return summary, diagnostic.New("diagnostic.profile.updateFailures", "%d profiles could not be updated: %w", len(failures), errors.Join(failures...))
 	}
-	return nil
+	return summary, nil
 }
 
 func (a *App) validateProfile(ctx context.Context, lib *configuration.Library, id string, m manifest, installed bool) error {

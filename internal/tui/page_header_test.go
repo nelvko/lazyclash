@@ -174,9 +174,9 @@ func TestProfilesHeaderStaysFixedAndReachableWhileScrolled(t *testing.T) {
 func TestProfilesHeaderUpdateUsesSharedUseCaseWithoutApplying(t *testing.T) {
 	updates := 0
 	m := headerModel("profiles", 120, 32)
-	b := &profileBackend{fakeBackend: &fakeBackend{snapshot: m.snapshot, refreshAllProfiles: func(context.Context) error {
+	b := &profileBackend{fakeBackend: &fakeBackend{snapshot: m.snapshot, refreshAllProfiles: func(context.Context) (app.ProfileRefreshSummary, error) {
 		updates++
-		return nil
+		return app.ProfileRefreshSummary{Updated: 1}, nil
 	}}}
 	m.backend = b
 	m, cmd := click(m, findTarget(t, m, "profiles.update-all"))
@@ -205,9 +205,9 @@ func TestProfilesHeaderLosingLastSubscriptionRepairsFocusAndBlocksUpdate(t *test
 		t.Run(fmt.Sprintf("%dx%d", size[0], size[1]), func(t *testing.T) {
 			m := headerModel("profiles", size[0], size[1])
 			calls := 0
-			m.backend = &fakeBackend{snapshot: m.snapshot, refreshAllProfiles: func(context.Context) error {
+			m.backend = &fakeBackend{snapshot: m.snapshot, refreshAllProfiles: func(context.Context) (app.ProfileRefreshSummary, error) {
 				calls++
-				return nil
+				return app.ProfileRefreshSummary{Updated: 1}, nil
 			}}
 			m.focus = "profiles.update-all"
 			m.layout()

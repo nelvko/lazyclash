@@ -124,7 +124,7 @@ func (m *Model) profileSettingsAction(field int) tea.Cmd {
 		if m.canUseDefaultFrom(id) {
 			m.closeProfileCreate()
 			label := m.tr("profiles.deactivating")
-			return m.begin(label, m.tr("profiles.deactivated"), func(ctx context.Context) error {
+			return m.begin(label, m.tr("feedback.deactivated", m.profileFeedbackName(id)), func(ctx context.Context) error {
 				return m.backend.DeactivateProfile(ctx, id)
 			}, m.profileNotification("deactivate", label, id))
 		}

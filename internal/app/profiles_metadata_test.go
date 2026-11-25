@@ -129,7 +129,10 @@ func TestRefreshAllProfilesPreservesIndependentSuccessesAndReloadsOnlyTheCurrent
 	good := "rules: ['MATCH,REJECT']\n"
 	current.Store(response{Content: good, BadStatus: http.StatusServiceUnavailable})
 	write(t, local, []byte(good))
-	err = a.RefreshAllProfiles(t.Context())
+	summary, err := a.RefreshAllProfiles(t.Context())
+	if summary.Updated != 1 || summary.Failed != 1 {
+		t.Fatal("batch summary", summary)
+	}
 	if err == nil || !strings.Contains(err.Error(), "a-broken") || strings.Contains(err.Error(), "private-token") || strings.Contains(err.Error(), server.URL) {
 		t.Fatal("batch failure omitted source identity or exposed its private address", err)
 	}
@@ -174,7 +177,7 @@ func TestRefreshAllProfilesStopsAfterCancellation(t *testing.T) {
 		cancel()
 		return context.Canceled
 	}
-	if err := a.RefreshAllProfiles(ctx); !errors.Is(err, context.Canceled) {
+	if _, err := a.RefreshAllProfiles(ctx); !errors.Is(err, context.Canceled) {
 		t.Fatal("batch refresh lost cancellation", err)
 	}
 	if validations != 1 || string(read(t, index)) != string(before) || len(svc.actions) != 0 {
@@ -214,7 +217,7 @@ func TestRefreshAllProfilesSkipsDeletedProfilesAndLeavesNoSourceRecords(t *testi
 	}
 	updated := "rules: ['MATCH,REJECT']\n"
 	content.Store(updated)
-	if err := a.RefreshAllProfiles(t.Context()); err != nil {
+	if _, err := a.RefreshAllProfiles(t.Context()); err != nil {
 		t.Fatal("bulk profile update failed", err)
 	}
 	after, _, err := a.library().Load()

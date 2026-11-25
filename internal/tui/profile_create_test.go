@@ -99,6 +99,11 @@ func TestProfileCreateClosesCommittedDraftWhenStateRefreshFails(t *testing.T) {
 	if calls != 1 || m.form != "" || m.profileCreate.source.Value() != "" {
 		t.Fatal("committed creation remained ready to be submitted again")
 	}
+	if len(m.notification.items) != 1 || m.notification.items[0].Kind != "error" ||
+		!strings.Contains(m.notification.items[0].Message, "Profile created") ||
+		!strings.Contains(m.notification.items[0].Details, "state read unavailable") {
+		t.Fatalf("notification omitted the creation outcome or observation error: %+v", m.notification.items)
+	}
 	if !strings.Contains(m.message, "Profile created") || !strings.Contains(m.failure, "state read unavailable") {
 		t.Fatalf("outcome did not distinguish creation from refresh: %q, %q", m.message, m.failure)
 	}

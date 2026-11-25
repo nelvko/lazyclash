@@ -12,6 +12,7 @@ import (
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/diagnostic"
 	"github.com/nelvko/lazyclash/internal/i18n"
 	"github.com/nelvko/lazyclash/internal/store"
@@ -183,9 +184,7 @@ func (m *Model) beginProfileURLImport() tea.Cmd {
 	m.profilesUI.url.Blur()
 	m.profilesUI.importing = true
 	m.focus = "profiles.add"
-	return m.begin(m.tr("profiles.fetching"), m.tr("profiles.saved_select"), func(ctx context.Context) error {
-		return m.backend.AddSubscription(ctx, "", source)
-	}, notificationOperation{Key: notificationKey("profile.add", source), Context: m.tr("profiles.fetching")})
+	return m.beginProfileImport(app.ProfileDraft{Address: source, RememberSource: true}, "profile.add", m.tr("profiles.fetching"))
 }
 
 func validateProfileSource(source string) error {
@@ -314,8 +313,17 @@ func (m *Model) profileAction(id string) (bool, tea.Cmd) {
 		if !m.hasRefreshableProfiles() {
 			return true, nil
 		}
-		return true, m.begin(m.tr("profiles.updating_all"), m.tr("profiles.updated_all"), m.backend.RefreshAllProfiles,
-			notificationOperation{Key: "profile.refresh-all", Context: m.tr("profiles.updating_all")})
+		label := m.tr("profiles.updating_all")
+		return true, m.beginResult(label, func(ctx context.Context) (string, error) {
+			summary, err := m.backend.RefreshAllProfiles(ctx)
+			if err != nil && summary.Updated == 0 && summary.Failed == 0 {
+				return "", err
+			}
+			if summary.Failed > 0 {
+				return m.tr("feedback.refresh_partial", summary.Updated, summary.Failed), err
+			}
+			return m.tr("feedback.refreshed_all", summary.Updated), err
+		}, notificationOperation{Key: "profile.refresh-all", Context: label})
 
 	}
 	profiles := m.profiles()
@@ -333,7 +341,7 @@ func (m *Model) profileAction(id string) (bool, tea.Cmd) {
 		case "apply":
 			return true, m.applyProfile(name)
 		case "refresh":
-			return true, m.begin(m.tr("profiles.updating"), m.tr("profiles.updated"), func(ctx context.Context) error { return m.backend.Refresh(ctx, name) },
+			return true, m.begin(m.tr("profiles.updating"), m.tr("feedback.refreshed", m.profileFeedbackName(name)), func(ctx context.Context) error { return m.backend.Refresh(ctx, name) },
 				m.profileNotification("refresh", m.tr("profiles.updating"), name))
 		case "overrides":
 			return true, m.openProfileEdit("profile-overrides", name)
@@ -350,14 +358,14 @@ func (m *Model) canUseDefaultFrom(name string) bool {
 
 func (m *Model) applyProfile(name string) tea.Cmd {
 	label := m.tr("profiles.applying")
-	return m.begin(label, m.tr("profiles.applied"), func(ctx context.Context) error { return m.backend.Apply(ctx, name) },
+	return m.begin(label, m.tr("feedback.selected", m.profileFeedbackName(name)), func(ctx context.Context) error { return m.backend.Apply(ctx, name) },
 		m.profileNotification("apply", label, name))
 }
 
 func (m *Model) profileNotification(operation, label, name string) notificationOperation {
 	return notificationOperation{
 		Key:     notificationKey("profile."+operation, name),
-		Context: label + " · " + clean(snapshotProfileName(m.snapshot, name, m.locale)),
+		Context: label + " · " + m.profileFeedbackName(name),
 	}
 }
 

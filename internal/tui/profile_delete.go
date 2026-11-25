@@ -88,7 +88,13 @@ func (m *Model) profileDeleteKey(k tea.KeyPressMsg) tea.Cmd {
 			name, replacement := m.name, m.profilesUI.deleteReplacement
 			m.closeProfileForm()
 			label := m.tr("profiles.deleting")
-			return m.begin(label, m.tr("profiles.deleted"), func(ctx context.Context) error {
+			message := m.tr("feedback.deleted", m.profileFeedbackName(name))
+			if replacement == "default" {
+				message += " · " + m.tr("profiles.none_selected")
+			} else if replacement != "" {
+				message += " · " + m.tr("feedback.selected", m.profileFeedbackName(replacement))
+			}
+			return m.begin(label, message, func(ctx context.Context) error {
 				return m.backend.DeleteProfileWithReplacement(ctx, name, replacement)
 			}, m.profileNotification("delete", label, name))
 		}

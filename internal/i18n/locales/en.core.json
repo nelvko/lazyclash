@@ -1,4 +1,5 @@
 {
+  "diagnostic.recovery.profileSwitch": "profile switch failed and recovery could not be confirmed: %w",
   "diagnostic.canceled": "context canceled",
   "language.saving": "Saving language…",
   "language.saved": "Language saved",

@@ -237,3 +237,14 @@ func TestRepositoryRejectsUnsupportedSchemaAndMissingNameMetadata(t *testing.T) 
 		})
 	}
 }
+
+func TestDisplayNameProtectsSourceAddressesAndPaths(t *testing.T) {
+	for _, label := range []string{"https://private.example/sub?token=example", "Subscription https://example.org", "/tmp/private/config.yaml", "~/private/config.yaml", ""} {
+		if got := DisplayName(label, "p-stable"); got != "p-stable" {
+			t.Fatalf("unsafe notification label %q", got)
+		}
+	}
+	if got := DisplayName("  香港 / HK  ", "id"); got != "香港 / HK" {
+		t.Fatalf("ordinary display name lost: %q", got)
+	}
+}

@@ -41,7 +41,7 @@ type fakeBackend struct {
 	getProfileSettings  func(context.Context, string) (app.ProfileSettings, error)
 	saveProfileSettings func(context.Context, app.ProfileSettings) error
 	refresh             func(context.Context, string) error
-	refreshAllProfiles  func(context.Context) error
+	refreshAllProfiles  func(context.Context) (app.ProfileRefreshSummary, error)
 	deleteProfile       func(context.Context, string) error
 	setOverrides        func(context.Context, string, []byte) error
 	control             func(context.Context, string) error
@@ -171,24 +171,21 @@ func (f *fakeBackend) InstallCore(ctx context.Context, p app.InstallPlan, cfg do
 	}
 	return app.InstallResult{InstalledVersion: p.Release.Version, ActualPath: p.ActualPath, Operation: p.Operation}, nil
 }
-func (f *fakeBackend) Add(ctx context.Context, name, source string) error {
-	if f.add != nil {
-		return f.add(ctx, name, source)
+func (f *fakeBackend) ImportProfile(ctx context.Context, draft app.ProfileDraft) (string, error) {
+	name := draft.Name
+	if name == "" {
+		name = "Imported profile"
 	}
-	return nil
-}
-func (f *fakeBackend) AddSubscription(ctx context.Context, name, source string) error {
-	if f.addSubscription != nil {
-		return f.addSubscription(ctx, name, source)
+	switch {
+	case f.createProfile != nil:
+		return name, f.createProfile(ctx, draft)
+	case draft.RememberSource && f.addSubscription != nil:
+		return name, f.addSubscription(ctx, draft.Name, draft.Address)
+	case !draft.RememberSource && f.add != nil:
+		return name, f.add(ctx, draft.Name, draft.Address)
+	default:
+		return name, ctx.Err()
 	}
-	return ctx.Err()
-}
-
-func (f *fakeBackend) CreateProfile(ctx context.Context, draft app.ProfileDraft) error {
-	if f.createProfile != nil {
-		return f.createProfile(ctx, draft)
-	}
-	return ctx.Err()
 }
 
 func (f *fakeBackend) GetProfileDocument(ctx context.Context, id string, k app.ProfileDocumentKind) (app.ProfileDocument, error) {
@@ -227,11 +224,11 @@ func (f *fakeBackend) Refresh(ctx context.Context, name string) error {
 	}
 	return ctx.Err()
 }
-func (f *fakeBackend) RefreshAllProfiles(ctx context.Context) error {
+func (f *fakeBackend) RefreshAllProfiles(ctx context.Context) (app.ProfileRefreshSummary, error) {
 	if f.refreshAllProfiles != nil {
 		return f.refreshAllProfiles(ctx)
 	}
-	return ctx.Err()
+	return app.ProfileRefreshSummary{}, ctx.Err()
 }
 
 func (f *fakeBackend) DeactivateProfile(ctx context.Context, _ string) error { return ctx.Err() }

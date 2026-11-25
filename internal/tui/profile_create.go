@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"context"
 	"os"
 	"strings"
 
@@ -275,9 +274,7 @@ func (m *Model) submitProfileCreate() tea.Cmd {
 	draft.Address = source
 	m.failure = ""
 	m.profileCreate.submitting = true
-	return m.begin(m.tr("profiles.creating"), m.tr("profiles.created"), func(ctx context.Context) error {
-		return m.backend.CreateProfile(ctx, draft)
-	}, notificationOperation{Key: notificationKey("profile.create", draft.Address), Context: m.tr("profiles.creating")})
+	return m.beginProfileImport(draft, "profile.create", m.tr("profiles.creating"))
 }
 
 func (m *Model) profileCreateMouse(id string) tea.Cmd {

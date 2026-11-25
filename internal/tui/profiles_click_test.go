@@ -8,6 +8,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/nelvko/lazyclash/internal/app"
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 	"github.com/nelvko/lazyclash/internal/service"
 )
 
@@ -61,6 +62,12 @@ func TestProfileClickAppliesStableIDWithoutOpeningDetails(t *testing.T) {
 		}
 		t.Run(name, func(t *testing.T) {
 			m, b := profileClickModel(t, true, active, false, false)
+			b.snapshot.Service.State = "inactive"
+			wantRuntime := m.tr("feedback.next_start")
+			if active {
+				b.snapshot.Service.State = "active"
+				wantRuntime = m.tr("feedback.core_running")
+			}
 			controls := 0
 			b.control = func(context.Context, string) error { controls++; return nil }
 			m, cmd := click(m, findTarget(t, m, "profile.0"))
@@ -70,6 +77,10 @@ func TestProfileClickAppliesStableIDWithoutOpeningDetails(t *testing.T) {
 			m = finishProfileJob(t, m, cmd)
 			if len(b.calls) != 1 || b.calls[0] != "p-stable-profile-id" || m.snapshot.Applied != b.calls[0] {
 				t.Fatalf("click did not apply the stable profile ID: calls=%v selected=%s", b.calls, m.snapshot.Applied)
+			}
+			if len(m.notification.items) != 1 || !strings.Contains(m.notification.items[0].Message, "Office display name") ||
+				!strings.Contains(m.notification.items[0].Message, wantRuntime) {
+				t.Fatal("switch result must identify the profile and observed core state", m.notification.items)
 			}
 			if controls != 0 || m.snapshot.Service.Active != active {
 				t.Fatal("card click performed lifecycle operations outside the shared Apply use case")
@@ -83,7 +94,7 @@ func TestProfileClickCurrentSelectionNeverReapplies(t *testing.T) {
 		t.Run(map[bool]string{false: "unchanged", true: "pending"}[pending], func(t *testing.T) {
 			m, b := profileClickModel(t, true, true, true, pending)
 			m, cmd := click(m, findTarget(t, m, "profile.0"))
-			if cmd != nil || m.busy || len(b.calls) != 0 {
+			if cmd != nil || m.busy || len(b.calls) != 0 || len(m.notification.items) != 0 {
 				t.Fatal("clicking the current card queued an unnecessary reload")
 			}
 		})
@@ -238,6 +249,48 @@ func TestProfileClickCannotEscapeBusyOrOverlayState(t *testing.T) {
 			m, _ = click(m, card)
 			if len(b.calls) != 0 || m.job != job || m.id != generation || m.snapshot.Applied != "default" {
 				t.Fatal("a card click escaped the current task or modal layer")
+			}
+		})
+	}
+}
+
+func TestProfileSwitchReportsOnlyConfirmedOutcome(t *testing.T) {
+	const initial = "old-profile"
+	for _, tt := range []struct {
+		label        string
+		actionErr    error
+		observed     string
+		serviceIssue string
+		want         string
+		forbid       string
+	}{
+		{"ordinary failure", errors.New("candidate rejected"), initial, "", "Old subscription", ""},
+		{"recovery failure", diagnostic.New("diagnostic.recovery.profileSwitch", "could not restore prior generation"), initial, "", "restore", "Old subscription"},
+		{"service read failed after commit", nil, "p-stable-profile-id", "inspect failed", "could not be confirmed", "Core is running"},
+		{"selection changed after commit", nil, initial, "", "Old subscription", "Selected “Office display name”"},
+	} {
+		t.Run(tt.label, func(t *testing.T) {
+			m, b := profileClickModel(t, true, true, false, false)
+			b.err = tt.actionErr
+			b.snapshot.Applied = initial
+			b.snapshot.Service.State = "active"
+			b.snapshot.ProfileDetails = append(b.snapshot.ProfileDetails, app.ProfileInfo{ID: initial, Name: "Old subscription"})
+			m.snapshot = b.snapshot
+			m, cmd := click(m, findTarget(t, m, "profile.0"))
+			result := inlineOperationMsg(t, cmd).(resultMsg)
+			result.snapshot.Applied = tt.observed
+			result.snapshot.ServiceError = tt.serviceIssue
+			m, _ = update(m, result)
+			if len(m.notification.items) != 1 {
+				t.Fatal(m.notification.items)
+			}
+			item := m.notification.items[0]
+			if item.Kind != "error" || !strings.Contains(item.Message, tt.want) ||
+				(tt.forbid != "" && strings.Contains(item.Message, tt.forbid)) {
+				t.Fatalf("incorrect switch outcome: %+v", item)
+			}
+			if tt.serviceIssue != "" && !strings.Contains(item.Details, tt.serviceIssue) {
+				t.Fatal("missing service diagnostic", item)
 			}
 		})
 	}

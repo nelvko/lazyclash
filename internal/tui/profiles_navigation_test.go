@@ -327,8 +327,11 @@ func TestProfileRefreshControlsKeepTheCurrentSelection(t *testing.T) {
 	b := &fakeBackend{
 		snapshot: app.Snapshot{Installed: true, Applied: "default", Profiles: []string{"work"},
 			ProfileDetails: []app.ProfileInfo{{ID: "default", Name: "default", Validated: true}, {ID: "work", Name: "work", Refreshable: true, Validated: true}}},
-		refresh:            func(_ context.Context, name string) error { refreshed = name; refreshes++; return nil },
-		refreshAllProfiles: func(context.Context) error { all++; return nil },
+		refresh: func(_ context.Context, name string) error { refreshed = name; refreshes++; return nil },
+		refreshAllProfiles: func(context.Context) (app.ProfileRefreshSummary, error) {
+			all++
+			return app.ProfileRefreshSummary{Updated: 1}, nil
+		},
 	}
 	m := profileInteractionsModel(b, 160, 40)
 	backend := &profileBackend{fakeBackend: b}
@@ -340,7 +343,7 @@ func TestProfileRefreshControlsKeepTheCurrentSelection(t *testing.T) {
 	}
 	m, cmd = click(m, findTarget(t, m, "profiles.update-all"))
 	m = finishProfileJob(t, m, cmd)
-	if all != 1 || backend.applied != 0 || m.snapshot.Applied != "default" || m.message != m.tr("profiles.updated_all") {
+	if all != 1 || backend.applied != 0 || m.snapshot.Applied != "default" || m.message != m.tr("feedback.refreshed_all", 1) {
 		t.Fatal("Update all bypassed the shared refresh use case or changed the runtime")
 	}
 
@@ -384,5 +387,22 @@ func TestSelectedProfileWarnsOnlyOnRuntimeErrors(t *testing.T) {
 				t.Fatalf("%s: unexpected state on card: %s", tc.name, text)
 			}
 		})
+	}
+}
+
+func TestProfileRefreshBatchShowsCommittedCountAndFailedDetails(t *testing.T) {
+	b := &fakeBackend{snapshot: app.Snapshot{Installed: true, Profiles: []string{"work"}, ProfileDetails: []app.ProfileInfo{{ID: "work", Name: "Work", Refreshable: true}}},
+		refreshAllProfiles: func(context.Context) (app.ProfileRefreshSummary, error) {
+			return app.ProfileRefreshSummary{Updated: 2, Failed: 1}, errors.New("Work: download unavailable")
+		}}
+	m := profileInteractionsModel(b, 120, 32)
+	m, cmd := click(m, findTarget(t, m, "profiles.update-all"))
+	m = finishProfileJob(t, m, cmd)
+	if len(m.notification.items) != 1 {
+		t.Fatal("batch notifications", m.notification.items)
+	}
+	n := m.notification.items[0]
+	if n.Kind != "error" || n.Message != m.tr("feedback.refresh_partial", 2, 1) || n.Details != "Work: download unavailable" {
+		t.Fatalf("batch lost the committed count or per-profile failure: %+v", n)
 	}
 }

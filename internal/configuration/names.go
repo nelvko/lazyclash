@@ -50,6 +50,21 @@ func CleanName(value string) string {
 	return truncateName(value, MaxNameRunes)
 }
 
+// DisplayName omits addresses and filesystem paths even when a user or a
+// provider supplied one as the title. The stable profile ID is safe to show.
+func DisplayName(name, id string) string {
+	name = CleanName(name)
+	for _, word := range strings.Fields(name) {
+		if strings.Contains(word, "://") || (len(word) > 1 && strings.HasPrefix(word, "/")) || strings.HasPrefix(word, "~/") {
+			return id
+		}
+	}
+	if name == "" {
+		return id
+	}
+	return name
+}
+
 // CleanDescription keeps profile metadata safe to render in a single-line
 // card/detail view. Descriptions are never fed into the Mihomo configuration.
 func CleanDescription(value string) string {
