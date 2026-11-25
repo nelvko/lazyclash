@@ -23,6 +23,8 @@ third_party/ultraviolet/ 固定上游源码及中文行重绘补丁
 
 依赖方向为 `main → cli → app`，默认无子命令时由 CLI 进入 TUI，TUI 也直接调用 `app`。业务用例不依赖 Cobra 或 Bubble Tea，不通过启动自身 CLI 完成工作。
 
+TUI 的居中模态对话框共用底板和坐标转换，各页面保留自己的输入与操作逻辑。[模态对话框与预览入口](tui-modals.md)
+
 TUI 通过仓库内的固定 Ultraviolet 副本修复未变化的中文和 emoji 行仍被整行擦写的问题，避免流量刷新时出现横向黑条。原版源码、许可证和测试一并保留；补丁只在行内容完全相同且未被滚动或缩放失效时跳过重绘。`make test/check/race` 和 Linux 验证入口同时执行该依赖的测试，来源、维护及移除条件见 [补丁说明](../third_party/ultraviolet/LAZYCLASH.md)。
 
 语言属于展示层。CLI 在帮助与参数解析前选择语言，TUI 保存偏好成功后原地重绘，不重新构造输入框或重启内核。`i18n.Localizer` 按实例传入，零值保持英文，不使用可变全局语言。资源放在 `internal/i18n/locales/` 的成对 JSON 文件中，以稳定词条 ID 查找，缺失译文回退英文。新增词条需同步两种语言，`make i18n-check` 检查键、格式参数和代码引用。

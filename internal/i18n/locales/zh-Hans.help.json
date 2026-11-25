@@ -7,7 +7,7 @@
   "help.overview.keys": "↑↓ / j/k 浏览卡片；Enter / Space 进入卡片中可用的控件，只读卡片没有进入操作。Tab / Shift+Tab 切换控件，Enter / Space 执行；Esc / ← / h 返回导航。",
   "help.core.proxies": "浏览内容时：x 停止内核。",
   "help.core.overview": "浏览内容时：s 启动 · x 停止内核。",
-  "help.navigation.keys": "浏览页面时：? 打开帮助 · q 退出。输入、菜单或弹窗优先处理按键，此时页面快捷键不生效。",
+  "help.navigation.keys": "浏览页面时按 ? 打开帮助，按 q 退出。输入框、菜单或对话框优先处理按键。",
   "help.controls": "帮助中：Tab / Shift+Tab 切换按钮，Enter 执行；↑↓ / j/k 滚动，PgUp / PgDn 翻页，Space 下一页，Home / End 到首尾；Esc / ? 关闭帮助，q 退出程序。",
   "help.messages.controls": "展开通知后，Tab 选择操作，Enter 执行，x 关闭选中的通知。Esc 返回上一层，再按 Ctrl+N 或点击外侧可直接收起。",
   "help.connections.search": "搜索选项：Aa 区分大小写，下划线 ab 匹配整词，.* 启用正则表达式；Alt+C / Alt+W / Alt+R 在输入或浏览时切换。活跃与已关闭记录共用这些选项；清空文本保留选项，清除筛选重置全部选项。"
