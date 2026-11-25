@@ -43,7 +43,7 @@ func TestSwitchFacesKeepTheirWidthAtEveryFrame(t *testing.T) {
 		style string
 		want  [3]string
 	}{
-		{"slanted", [3]string{"●▱▱", "▰●▱", "▰▰●"}},
+		{"slanted", [3]string{"〇╱╱╱╱", "◢◤〇╱╱", "◢◤◢◤〇"}},
 		{"line", [3]string{"●──", "━●─", "━━●"}},
 		{"slider", [3]string{"      ", "      ", "      "}},
 		{"text", [3]string{"OFF", " ON", " ON"}},
@@ -250,13 +250,19 @@ func TestSwitchUnavailableDuringRefreshOrShellAcknowledgement(t *testing.T) {
 }
 
 func TestSwitchExplicitAmbiguousWidths(t *testing.T) {
-	for _, tc := range []struct{ style, frame string }{{"slanted", "●▱▱"}, {"line", "●──"}} {
-		style := effectiveSwitchStyle(tc.style, false)
-		if ansi.StringWidth(tc.frame) != 3 && style != "text" {
-			t.Fatalf("ambiguous %s frame did not fall back to text", tc.style)
+	for _, tc := range []struct {
+		style  string
+		frames [3]string
+		width  int
+	}{{"slanted", slantedFrames, 6}, {"line", lineFrames, 3}} {
+		want := tc.style
+		for _, frame := range tc.frames {
+			if ansi.StringWidth(frame) != tc.width {
+				want = "text"
+			}
 		}
-		if style == "text" && ansi.StringWidth(tc.frame) == 3 {
-			t.Fatalf("compatible %s lost Unicode rendering", tc.style)
+		if got := effectiveSwitchStyle(tc.style, false); got != want {
+			t.Fatalf("%s frames require style %s, got %s", tc.style, want, got)
 		}
 	}
 }

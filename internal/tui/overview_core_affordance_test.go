@@ -37,7 +37,7 @@ func TestCoreCardPlacesActionInHeadingAndGroupsReadOnlyDetails(t *testing.T) {
 					assertCanvas(t, strings.Join(block.lines, "\n"), width, len(block.lines))
 					assertRegions(t, block.targets, width, len(block.lines))
 					hit, face := coreCardAction(t, block)
-					if face != "   ▰▰●" || hit.W != switchSlotWidth {
+					if face != slantedFrames[2] || hit.W != switchSlotWidth {
 						t.Fatalf("click target misses Stop: %q", face)
 					}
 					title := o.Locale.T("dashboard.overview.service")
@@ -97,9 +97,9 @@ func TestCoreCardActionsKeepTheirSizeAndFocusAcrossLifecycle(t *testing.T) {
 					value := "   ..."
 					switch {
 					case tc.want == "stop":
-						value = "   ▰▰●"
+						value = slantedFrames[2]
 					case tc.want == "start":
-						value = "   ●▱▱"
+						value = slantedFrames[0]
 					case tc.state == "unknown":
 						value = o.Locale.T("dashboard.status.unknown")
 					case tc.problem != "" || tc.busy && tc.action == "":

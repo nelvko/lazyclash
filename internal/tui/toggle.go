@@ -65,7 +65,9 @@ const (
 	switchSlotWidth  = switchWidth * sliderThumbWidth
 )
 
-var slantedFrames = [3]string{"●▱▱", "▰●▱", "▰▰●"}
+// U+3007 is a single two-cell ring, so the thumb stays intact in fonts
+// that leave side bearings around half circles.
+var slantedFrames = [3]string{"〇╱╱╱╱", "◢◤〇╱╱", "◢◤◢◤〇"}
 var lineFrames = [3]string{"●──", "━●─", "━━●"}
 
 // Check every frame using the same width policy as the enclosing layout.
@@ -73,9 +75,11 @@ var lineFrames = [3]string{"●──", "━●─", "━━●"}
 func effectiveSwitchStyle(style string, monochrome bool) string {
 	style = app.NormalizeSwitchStyle(style)
 	var frames [3]string
+	frameWidth := switchWidth
 	switch style {
 	case app.SwitchStyleSlanted:
 		frames = slantedFrames
+		frameWidth = switchSlotWidth
 	case app.SwitchStyleLine:
 		frames = lineFrames
 	case app.SwitchStyleSlider:
@@ -87,7 +91,7 @@ func effectiveSwitchStyle(style string, monochrome bool) string {
 		return style
 	}
 	for _, frame := range frames {
-		if ansi.StringWidth(frame) != switchWidth {
+		if ansi.StringWidth(frame) != frameWidth {
 			return app.SwitchStyleText
 		}
 	}
@@ -170,7 +174,9 @@ func renderToggle(t toggleModel, o toggleOptions) string {
 	case app.SwitchStyleLine:
 		return span(lineFrames[position], "")
 	default:
-		return span(slantedFrames[position], "")
+		// Restore only the weight so the remaining track keeps its color and focus underline.
+		ring := ansi.NewStyle().Bold().String() + "〇" + ansi.NewStyle().Normal().String()
+		return span(strings.Replace(slantedFrames[position], "〇", ring, 1), "")
 	}
 }
 

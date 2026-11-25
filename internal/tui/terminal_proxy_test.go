@@ -79,9 +79,9 @@ func TestOverviewTerminalProxyShowsDesiredAndAppliedSeparately(t *testing.T) {
 			var want string
 			switch state {
 			case "on":
-				want = "▰▰●"
+				want = slantedFrames[2]
 			case "off", "uninstalled":
-				want = "●▱▱"
+				want = slantedFrames[0]
 			default:
 				want = o.Locale.T("dashboard.network." + label)
 			}

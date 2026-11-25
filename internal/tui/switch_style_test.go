@@ -53,7 +53,7 @@ func TestSettingsSwitchStylePreviewsAndImmediateSelection(t *testing.T) {
 	if m.switchStyle != app.SwitchStyleLine || !m.menu.open || len(m.menu.items) != 4 || !m.menu.items[3].Checked {
 		t.Fatal("saved style did not open as the selected item")
 	}
-	for _, face := range []string{"●▱▱ → ▰▰●", "OFF →  ON", "●── → ━━●"} {
+	for _, face := range []string{"〇╱╱╱╱ → ◢◤◢◤〇", "OFF →  ON", "●── → ━━●"} {
 		if !strings.Contains(ansi.Strip(m.screen), face) {
 			t.Fatalf("missing switch preview %q", face)
 		}
@@ -62,7 +62,8 @@ func TestSettingsSwitchStylePreviewsAndImmediateSelection(t *testing.T) {
 		t.Fatalf("missing color slider preview: %q", face)
 	}
 	m, _ = update(m, tea.ColorProfileMsg{Profile: colorprofile.ASCII})
-	if !strings.Contains(ansi.Strip(m.menu.items[1].preview), "OFF →  ON") {
+	if !strings.Contains(ansi.Strip(m.menu.items[0].preview), "〇╱╱╱╱ → ◢◤◢◤〇") ||
+		!strings.Contains(ansi.Strip(m.menu.items[1].preview), "OFF →  ON") {
 		t.Fatal("open preview did not adapt to the terminal's color capability")
 	}
 	m, _ = update(m, special(tea.KeyUp))

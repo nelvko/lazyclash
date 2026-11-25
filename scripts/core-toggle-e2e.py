@@ -101,7 +101,7 @@ def main():
             terminal=SMOKE.Terminal([sys.executable,'-c',wrapper,json.dumps(env),*argv])
             terminal.wait('○ Stopped');terminal.settle()
             assert not status()['Active']
-            assert heading_action(terminal, '●▱▱') is not None
+            assert heading_action(terminal, '〇╱╱╱╱') is not None
             assert 'Up for ' not in terminal.screen.text()
             assert sidebar_seconds(terminal) is None
             capture(terminal,output,'stopped')
@@ -109,12 +109,12 @@ def main():
 
             # All queued repeats arrive while the first lifecycle operation is
             # pending. Their state changes must not create a second operation.
-            x, y = heading_action(terminal, '●▱▱')
+            x, y = heading_action(terminal, '〇╱╱╱╱')
             terminal.send(f'\x1b[<0;{x+1};{y+1}M\x1b[<0;{x+1};{y+1}m'.encode()+b'\r \r')
             terminal.wait('● Running');wait_sidebar_clock(terminal, 0, 60);terminal.settle()
             active=status();assert active['Active'] and active['PID']>0,active
             first_pid=active['PID']
-            assert heading_action(terminal, '▰▰●') is not None
+            assert heading_action(terminal, '◢◤◢◤〇') is not None
             capture(terminal,output,'toggle-started')
             results['toggle_start_and_pending_dedup']=True
 
@@ -138,7 +138,7 @@ def main():
                     if '×' not in terminal.screen.text(): break
                     terminal.click_text('×');terminal.settle()
                 terminal.wait('○ Stopped')
-                assert heading_action(terminal, '●▱▱') is not None
+                assert heading_action(terminal, '〇╱╱╱╱') is not None
                 assert not status()['Active']
                 capture(terminal,output,'failed-start-actual-off')
             results['start_failure_rereads_off']=True
@@ -176,7 +176,7 @@ def main():
             for columns,rows in ((80,24),(60,20),(40,16),(120,40)):
                 terminal.resize(columns,rows);terminal.settle()
                 terminal.wait('○ Stopped')
-                assert heading_action(terminal, '●▱▱') is not None
+                assert heading_action(terminal, '〇╱╱╱╱') is not None
                 capture(terminal,output,f'stopped-{columns}x{rows}')
             results['narrow_layout_and_recovery']=True
             results['saw_starting_frame']='◌ Starting' in terminal.text()

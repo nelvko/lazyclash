@@ -32,7 +32,7 @@ def exercise(preview, args, output, language, profile):
     statuses = (["...", "Unavailable", "Unsupported", "Unknown"] if language == "en"
                 else ["...", "暂不可用", "暂不支持", "状态未知"])
     text = ("OFF", " ON", " ON")
-    slanted = text if args.wide_ambiguous else ("●▱▱", "▰●▱", "▰▰●")
+    slanted = text if args.wide_ambiguous else ("〇╱╱╱╱", "◢◤〇╱╱", "◢◤◢◤〇")
     line = text if args.wide_ambiguous else ("●──", "━●─", "━━●")
     slider = text if profile == "no-color" else (" " * 6,) * 3
 
@@ -40,8 +40,11 @@ def exercise(preview, args, output, language, profile):
         for y, faces in enumerate((slanted, slider, text, line), 2):
             for step, face in enumerate(faces):
                 x = 12 + 9 * step
-                cells = terminal.screen.cells[y][x:x + len(face)]
+                cells = terminal.screen.cells[y][x:x + preview.SMOKE.cell_width(face)]
                 assert "".join(cells) == face, (y, x, cells, face, terminal.screen.text())
+                if y == 2 and not args.wide_ambiguous and profile != "no-color":
+                    bold = [style[2] for style in terminal.screen.styles[y][x:x + 6]]
+                    assert bold == [2 * step <= i < 2 * step + 2 for i in range(6)], (step, bold)
                 if y == 3 and profile != "no-color":
                     backgrounds = [cell[1] for cell in terminal.screen.styles[y][x:x + 6]]
                     start = 2 * step
@@ -112,8 +115,9 @@ def exercise(preview, args, output, language, profile):
             }[profile]
             colors = tuple(terminal.screen.styles[3][x][1] for x in (30, 35))
             assert colors == expected, ("on slider track/thumb", profile, colors)
-            assert all(style[3] for style in terminal.screen.styles[10][12:15]), "focused switch has no underline"
-            assert not any(style[3] for style in terminal.screen.styles[11][12:15]), "unfocused peer retained underline"
+            end = 12 + preview.SMOKE.cell_width(slanted[0])
+            assert all(style[3] for style in terminal.screen.styles[10][12:end]), "focused switch has no underline"
+            assert not any(style[3] for style in terminal.screen.styles[11][12:end]), "unfocused peer retained underline"
         preview.capture(terminal, output, "final", args)
         terminal.exit()
         result = json.loads(report.read_text())

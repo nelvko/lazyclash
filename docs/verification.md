@@ -1,5 +1,11 @@
 # 验证入口
 
+## 放大斜切式开关（2026-11-25）
+
+在同一 144×42 Kitty 设置页，用 Menlo 12 pt 测量实际着色的像素。旧版开启和关闭均为 45×16 像素。新版开启为 83×28 像素，关闭为 89×28 像素，两者占用同一块 90×28 像素的六格点击区域。另用 Monaco 核对了圆环和斜轨。[调整前](../.test-artifacts/slanted-size/native/before-truecolor-Menlo-switches.png) · [调整后](../.test-artifacts/slanted-size/native/final-truecolor-Menlo-switches.png) · [256 色](../.test-artifacts/slanted-size/native/final-256-Menlo-switches.png) · [无色](../.test-artifacts/slanted-size/native/final-plain-Menlo-switches.png)
+
+组件 PTY 验证了三帧中圆环的位置、宽度和字重，覆盖真彩、256 色、16 色、无色及宽字符回退。设置页验证了菜单预览和点击两端，概览页验证了键鼠切换。控件空间不足六格时通过页面回归检查了 `ON` 和 `OFF` 的可读性。
+
 ## 恢复滑块式开关的比例与配色（2026-11-25）
 
 在 144×42 的 Kitty 设置页上，开启的滑块实测宽 90 像素、高 28 像素，其中灰绿轨道占 60 像素，浅绿滑块占 30 像素。256 色实测为 `#5f875f` 和 `#d7ffd7`。Menlo 和 Monaco 两种字体都验证了六格长条以及滑块的左、中、右三个位置。[原生设置页](../.test-artifacts/switch-proportions/native/settings-Menlo.png) · [真彩局部](../.test-artifacts/switch-proportions/native/settings-slider-detail.png) · [256 色局部](../.test-artifacts/switch-proportions/native/settings-256-slider-detail.png) · [Monaco 三帧](../.test-artifacts/switch-proportions/native/component-Monaco.png)

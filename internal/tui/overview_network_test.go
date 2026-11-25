@@ -133,7 +133,7 @@ func TestNetworkCardGroupsSwitchAndConfigurationAtEachWidth(t *testing.T) {
 							}
 							label := o.Locale.T("dashboard.network.configure")
 							if i%2 == 0 {
-								label = "●▱▱"
+								label = slantedFrames[0]
 								heading := "terminal.title"
 								if i == 2 {
 									heading = "dashboard.network.tun"
@@ -362,7 +362,7 @@ func TestNetworkSwitchStylesKeepExactHitRegions(t *testing.T) {
 					continue
 				}
 				face := ansi.Strip(ansi.Cut(card.lines[h.Y], h.X, h.X+h.W))
-				want := map[string]string{app.SwitchStyleSlanted: " ●▱▱  ", app.SwitchStyleSlider: "      ", app.SwitchStyleText: " OFF  ", app.SwitchStyleLine: " ●──  "}[style]
+				want := map[string]string{app.SwitchStyleSlanted: slantedFrames[0], app.SwitchStyleSlider: "      ", app.SwitchStyleText: " OFF  ", app.SwitchStyleLine: " ●──  "}[style]
 				if h.W != switchSlotWidth || h.H != 1 || face != want {
 					t.Fatalf("%s %s region %+v contains %q, want %q", style, h.ID, h, face, want)
 				}

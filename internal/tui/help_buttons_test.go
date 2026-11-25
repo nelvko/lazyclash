@@ -13,18 +13,27 @@ import (
 )
 
 func TestHelpSwitchRetainsEveryVisibleCellAtSmallWidths(t *testing.T) {
-	for _, tc := range []struct {
-		width int
-		face  string
-	}{
-		{3, " ON"}, {5, " ON  "}, {6, "      "}, {7, "      "}, {8, "      "},
-	} {
-		m := Model{width: tc.width, height: 5, helpOpen: true, switchStyle: app.SwitchStyleSlider, colorProfile: colorprofile.TrueColor}
-		screen, hits := m.renderHelp("")
-		hit := findTarget(t, Model{targets: hits}, "key-hints.toggle")
-		face := ansi.Strip(ansi.Cut(strings.Split(screen, "\n")[hit.Y], hit.X, hit.X+hit.W))
-		if face != tc.face || hit.X != switchGutterWidth(tc.width) {
-			t.Fatalf("width %d: help switch %+v shows %q, want %q", tc.width, hit, face, tc.face)
+	for _, width := range []int{3, 5, 6, 7, 8} {
+		for _, style := range []string{"", app.SwitchStyleSlanted, app.SwitchStyleSlider} {
+			for _, state := range []struct {
+				hidden         bool
+				label, slanted string
+			}{{true, "OFF", slantedFrames[0]}, {false, " ON", slantedFrames[2]}} {
+				m := Model{width: width, height: 5, helpOpen: true, switchStyle: style, colorProfile: colorprofile.TrueColor}
+				m.keyHints.hidden = state.hidden
+				screen, hits := m.renderHelp("")
+				hit := findTarget(t, Model{targets: hits}, "key-hints.toggle")
+				face := ansi.Strip(ansi.Cut(strings.Split(screen, "\n")[hit.Y], hit.X, hit.X+hit.W))
+				want := state.slanted
+				if width < switchSlotWidth {
+					want = cellPad(state.label, width)
+				} else if style == app.SwitchStyleSlider {
+					want = "      "
+				}
+				if face != want || hit.X != switchGutterWidth(width) || hit.W != ansi.StringWidth(want) {
+					t.Fatalf("%q at width %d: help switch %+v shows %q, want %q", style, width, hit, face, want)
+				}
+			}
 		}
 	}
 }
@@ -51,7 +60,7 @@ func TestHelpButtonsKeepTheirHitBoundsWhenFocusMoves(t *testing.T) {
 						}
 						painted := ansi.Strip(ansi.Cut(strings.Split(screen, "\n")[target.Y], target.X, target.X+target.W))
 						if target.ID == "key-hints.toggle" {
-							if target.W != switchSlotWidth || painted != "▰▰●   " {
+							if target.W != switchSlotWidth || painted != slantedFrames[2] {
 								t.Fatalf("shortcut Switch hit misses its slot: %q %+v", painted, target)
 							}
 							continue

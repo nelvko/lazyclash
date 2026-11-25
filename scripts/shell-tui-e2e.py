@@ -56,7 +56,7 @@ class Terminal(HOOKS.Shell):
 
     def toggle(self, command, label, first_enable=False):
         os.write(self.fd, (command+'\n').encode())
-        state = '▰▰●' if label == 'Disable' else '●▱▱'
+        state = '◢◤◢◤〇' if label == 'Disable' else '〇╱╱╱╱'
         column, row = self.wait_terminal_state(state)
         (self.output/('network-'+label.lower()+'.txt')).write_text(self.screen.text())
         os.write(self.fd, f'\x1b[<0;{column+1};{row+1}M\x1b[<0;{column+1};{row+1}m'.encode())

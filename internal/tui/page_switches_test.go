@@ -27,7 +27,7 @@ func TestSettingsSwitchShowsLoadingThenAnimatesReadback(t *testing.T) {
 		return settingsPaintedTarget(t, m.screen, []hitRegion{hit}, id)
 	}
 	m, _ = update(m, tea.MouseMotionMsg{X: hit.X + hit.W - 1, Y: hit.Y})
-	if hit.W != switchSlotWidth || m.hover != id || face() != "   ●▱▱" {
+	if hit.W != switchSlotWidth || m.hover != id || face() != slantedFrames[0] {
 		t.Fatalf("initial face=%q hover=%q hit=%+v", face(), m.hover, hit)
 	}
 	m, op := click(m, hit)
@@ -36,16 +36,16 @@ func TestSettingsSwitchShowsLoadingThenAnimatesReadback(t *testing.T) {
 	}
 	m, _ = update(m, special(tea.KeyEnter))
 	m = finishProfileJob(t, m, op)
-	if calls != 1 || face() != "   ●▱▱" || m.snapshot.CoreSettings.UnifiedDelay != "on" {
+	if calls != 1 || face() != slantedFrames[0] || m.snapshot.CoreSettings.UnifiedDelay != "on" {
 		t.Fatalf("initial frame after readback=%q calls=%d", face(), calls)
 	}
 	token := m.switches.items[id].token
 	m, _ = update(m, switchFrameMsg{id: id, token: token, position: 1})
-	if face() != "   ▰●▱" || findTarget(t, m, id) != hit {
+	if face() != slantedFrames[1] || findTarget(t, m, id) != hit {
 		t.Fatalf("middle frame=%q or hit area moved", face())
 	}
 	m, _ = update(m, switchFrameMsg{id: id, token: token, position: 2})
-	if face() != "   ▰▰●" {
+	if face() != slantedFrames[2] {
 		t.Fatalf("confirmed switch face=%q", face())
 	}
 
@@ -57,7 +57,7 @@ func TestSettingsSwitchShowsLoadingThenAnimatesReadback(t *testing.T) {
 	m, _ = update(m, key("1"))
 	m, _ = update(m, key("7"))
 	m, _ = update(m, stale)
-	if face() != "   ●▱▱" || calls != 1 {
+	if face() != slantedFrames[0] || calls != 1 {
 		t.Fatalf("reopened settings face=%q calls=%d", face(), calls)
 	}
 }

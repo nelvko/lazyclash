@@ -55,10 +55,10 @@ def assert_core_affordance(terminal, words, scenario, profile, expect_focus=Fals
         action = words["dashboard.status.unavailable"]
         status = "! " + words["dashboard.status.unknown"]
     elif scenario == "stopped":
-        action = "●▱▱"
+        action = "〇╱╱╱╱"
         status = "○ " + words["dashboard.status.stopped"]
     else:
-        action = "▰▰●"
+        action = "◢◤◢◤〇"
         status = "● " + words["dashboard.status.running"]
     face = re.escape(action)
     marker = "›" if expect_focus else ""
@@ -173,8 +173,8 @@ def inspect_network_editors(preview, terminal, output, words, scenario, args):
     edit = words["dashboard.network.configure"]
     if scenario == "pending":
         primary, tun = words["terminal.title"], words["dashboard.network.tun"]
-        focus_control(terminal, "●▱▱")
-        saved = "▰▰●"
+        focus_control(terminal, "〇╱╱╱╱")
+        saved = "◢◤◢◤〇"
         for title, offset, label in ((primary, 3, edit), (tun, 1, saved), (tun, 3, edit)):
             terminal.key(b"\t")
             terminal.settle()
@@ -211,14 +211,14 @@ def inspect_network_editors(preview, terminal, output, words, scenario, args):
         terminal.settle()
         if section == "tun" and scenario == "pending":
             row = text_point(terminal, words["network.tunConfig.policy"])[1]
-            thumb = next(point for point in text_points(terminal, "▰▰●") if point[1] == row)
+            thumb = next(point for point in text_points(terminal, "◢◤◢◤〇") if point[1] == row)
             click_point(terminal, thumb)
             # Allow the reverse slide to finish and check this draft's row,
             # since the underlying terminal proxy can already be off.
             deadline = time.monotonic() + 2
-            while "●▱▱" not in "".join(terminal.screen.cells[row]) and time.monotonic() < deadline:
+            while "〇╱╱╱╱" not in "".join(terminal.screen.cells[row]) and time.monotonic() < deadline:
                 terminal.read()
-            assert "●▱▱" in "".join(terminal.screen.cells[row])
+            assert "〇╱╱╱╱" in "".join(terminal.screen.cells[row])
         if section == "tun":
             terminal.click_text(cancel)
         else:
@@ -299,9 +299,9 @@ def inspect_network_card(terminal, outline, words, scenario):
             assert ink, "empty network section row under " + title
             margins = ink[0] - start, end - 1 - ink[-1]
             assert abs(margins[0]-margins[1]) <= 1, (title, offset, margins)
-    terminal_face = words["dashboard.status.unavailable"] if scenario in ("stopped", "unavailable") else "●▱▱"
+    terminal_face = words["dashboard.status.unavailable"] if scenario in ("stopped", "unavailable") else "〇╱╱╱╱"
     assert terminal.screen.point_below(terminal_title, 1, terminal_face), "incorrect terminal proxy state"
-    tun_state = ("▰▰●"
+    tun_state = ("◢◤◢◤〇"
                  if scenario == "pending" else words["dashboard.network.unsupported"])
     assert terminal.screen.point_below(tun_title, 1, tun_state), "incorrect state beneath TUN"
     for title in (terminal_title, tun_title):

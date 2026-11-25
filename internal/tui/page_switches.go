@@ -41,8 +41,11 @@ func (o dashboardOptions) switchGutter(opts toggleOptions, width int) string {
 // messages retain their natural width so their explanation can wrap normally.
 func (o dashboardOptions) switchSlot(id string, control toggleModel, opts toggleOptions, width int, align lipgloss.Position) string {
 	opts.Style, opts.Monochrome, opts.Dim = o.SwitchStyle, o.Monochrome, o.Dim
-	if width < switchSlotWidth && opts.Style == app.SwitchStyleSlider {
-		opts.Style = app.SwitchStyleText
+	if width < switchSlotWidth {
+		switch app.NormalizeSwitchStyle(opts.Style) {
+		case app.SwitchStyleSlanted, app.SwitchStyleSlider:
+			opts.Style = app.SwitchStyleText
+		}
 	}
 	if opts.Labels.Unavailable == "" {
 		opts.Labels.Unavailable = o.Locale.T("dashboard.status.unavailable")

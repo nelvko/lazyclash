@@ -47,7 +47,7 @@ def switch_track(enabled, style="slanted", profile="truecolor"):
         if profile != "no-color":
             return " " * 6
         style = "text"
-    return {"slanted": ("●▱▱", "▰▰●"), "line": ("●──", "━━●"),
+    return {"slanted": ("〇╱╱╱╱", "◢◤◢◤〇"), "line": ("●──", "━━●"),
             "text": ("OFF", " ON")}[style][enabled]
 
 
@@ -68,7 +68,8 @@ def check_switch(terminal, words, key, enabled, profile, style="slanted"):
         row = terminal.screen.cells[y]
         right = row.index("│", label_x)
         x = right - 8
-        if "".join(row[x:right]) == switch_track(enabled, style, profile).rjust(6) + "  ":
+        face = switch_track(enabled, style, profile)
+        if "".join(row[x:right - 2]).lstrip() == face.lstrip() and row[right - 2:right] == [" ", " "]:
             break
         if time.monotonic() >= deadline:
             raise AssertionError((key, enabled, style, "".join(row[x:right])))
@@ -95,8 +96,9 @@ def exercise_styles(preview, terminal, words, profile, output, args):
                 arrow = row.index("→")
                 for enabled in (False, True):
                     face = switch_track(enabled, style, profile)
-                    x = arrow + 2 if enabled else arrow - 1 - len(face)
-                    assert "".join(row[x:x + len(face)]) == face
+                    face_width = preview.SMOKE.cell_width(face)
+                    x = arrow + 2 if enabled else arrow - 1 - face_width
+                    assert "".join(row[x:x + face_width]) == face
                     if style == "slider" and profile != "no-color":
                         assert_slider(terminal, x, y, enabled)
             preview.capture(terminal, output, "switch-style-menu", args)
@@ -185,8 +187,8 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.settle()
         wrapped = position(terminal, switch_track(True))
         label = position(terminal, words["dashboard.interface.keyHints"].split()[0])
-        assert wrapped[1] > label[1] and wrapped[0] == label[0] + 5, "switch did not wrap at the label inset"
-        assert terminal.screen.cells[wrapped[1]][label[0]:wrapped[0]] == ["›"] + [" "] * 4
+        assert wrapped[1] > label[1] and wrapped[0] == label[0] + 2, "switch did not wrap after the focus marker"
+        assert terminal.screen.cells[wrapped[1]][label[0]:wrapped[0]] == ["›", " "]
         preview.capture(terminal, output, "switch-wrapped-24x24", args)
         click(terminal, wrapped)
         terminal.wait(switch_track(False))
@@ -196,15 +198,14 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.resize(160, 45)
         terminal.settle()
 
-        # Exercise both edges of the six-cell target, including the empty
-        # space before the three-cell slanted face.
+        # Exercise both edges of the six-cell slanted switch.
         x, y = check_switch(terminal, words, "settings.ipv6", True, profile)
-        before_hover = terminal.screen.styles[y][x + 3:x + 6]
+        before_hover = terminal.screen.styles[y][x:x + 6]
         terminal.key(("\x1b[<35;%d;%dM" % (x + 1, y + 1)).encode())
         terminal.settle()
         check_switch(terminal, words, "settings.ipv6", True, profile)
         if profile != "no-color":
-            assert terminal.screen.styles[y][x + 3:x + 6] != before_hover, "hover did not highlight the switch"
+            assert terminal.screen.styles[y][x:x + 6] != before_hover, "hover did not highlight the switch"
         click(terminal, (x, y))
         dismiss_toasts(terminal)
         check_switch(terminal, words, "settings.ipv6", False, profile)

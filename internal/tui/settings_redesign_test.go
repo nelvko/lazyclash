@@ -117,7 +117,7 @@ func TestSettingsActionsKeepCompleteLabelsAndUniqueTargets(t *testing.T) {
 				o.Snapshot.Service.Enabled = active
 				o.Snapshot.TUN = active
 				tr := o.Locale.T
-				const on, off = "   ▰▰●", "   ●▱▱"
+				on, off := slantedFrames[2], slantedFrames[0]
 				labels := map[string]string{
 					"settings.language": languageLabel, "key-hints.toggle": on,
 					"settings.theme": "Dark ▾", "settings.switchStyle": tr("settings.switchStyle.slanted") + " ▾",
@@ -202,7 +202,7 @@ func TestSettingsSwitchesAndDropdownsAlignAtCardEdges(t *testing.T) {
 					t.Fatalf("%s/%s at %d: label and control misplaced, hit %+v, want X=%d\n%s", language, c.id, width, hit, wantX, ansi.Strip(strings.Join(block.lines, "\n")))
 				}
 				face := ansi.Strip(ansi.Cut(block.lines[hit.Y], hit.X, hit.X+hit.W))
-				focusedSwitch := (face == "   ▰▰●" || face == "   ●▱▱") && ansi.Strip(ansi.Cut(block.lines[hit.Y], hit.X-2, hit.X)) == "› "
+				focusedSwitch := (face == slantedFrames[2] || face == slantedFrames[0]) && ansi.Strip(ansi.Cut(block.lines[hit.Y], hit.X-2, hit.X)) == "› "
 				focusedDropdown := strings.HasPrefix(face, " ›[") && strings.HasSuffix(face, "]")
 				if !focusedSwitch && !focusedDropdown {
 					t.Fatalf("%s/%s at %d: hit misses focused control: %q", language, c.id, width, face)
