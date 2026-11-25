@@ -26,6 +26,11 @@ import unicodedata
 ANSI = re.compile(r"\x1b\][^\x07]*(?:\x07|\x1b\\)|\x1b\[[0-?]*[ -/]*[@-~]|\x1b[@-_]")
 
 
+def cell_width(text):
+    return sum(2 if unicodedata.east_asian_width(char) in ("W", "F") else 1
+               for char in text if not unicodedata.combining(char) and char not in "\ufe0f\u200d")
+
+
 class Screen:
     """Small VT screen for the cursor/erase operations used by Bubble Tea.
 
@@ -51,19 +56,19 @@ class Screen:
         self.top, self.bottom = 0, rows - 1
 
     def point_below(self, heading, row_offset, label):
-        """Locate a left-aligned control beneath its heading, in display cells."""
+        """Locate a control centered beneath its own heading, in display cells."""
+        offset = (cell_width(heading) - cell_width(label)) // 2
         for y, row in enumerate(self.cells):
             if y + row_offset >= self.rows or heading not in "".join(row):
                 continue
             for x, cell in enumerate(row):
                 if cell and "".join(row[x:]).startswith(heading):
                     below = self.cells[y + row_offset]
-                    # Skip the focus marker and optional monochrome button frame.
-                    for col in range(x, self.columns):
-                        if "".join(below[col:]).startswith(label):
+                    # Different width parities can round the two centers a cell apart.
+                    expected = x + offset
+                    for col in range(max(0, expected - 1), min(self.columns, expected + 2)):
+                        if below[col] and "".join(below[col:]).startswith(label):
                             return col, y + row_offset
-                        if below[col] not in (" ", "›", "["):
-                            break
         return None
 
     def scroll(self, top, bottom, count):

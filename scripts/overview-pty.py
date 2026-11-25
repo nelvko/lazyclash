@@ -181,8 +181,7 @@ def inspect_network_editors(preview, terminal, output, words, scenario, args):
             terminal.key(b"\t")
             terminal.settle()
             x, y = terminal.screen.point_below(title, offset, label)
-            left = text_point(terminal, title)[0]
-            assert "›" in terminal.screen.cells[y][left:x], "Tab did not reach " + title + " / " + label
+            assert "›" in terminal.screen.cells[y][max(0, x-3):x], "Tab did not reach " + title + " / " + label
     for section, heading, title in (
             ("terminal", words["terminal.title"], words["network.terminalConfig.title"]),
             ("tun", words["dashboard.network.tun"], words["network.tunConfig.title"])):
@@ -276,10 +275,23 @@ def inspect_network_card(terminal, outline, words, scenario):
     terminal_title, tun_title = words["terminal.title"], words["dashboard.network.tun"]
     left_x, left_y = text_point(terminal, terminal_title)
     tun_x, tun_y = text_point(terminal, tun_title)
+    first_col, end_col = x + 2, right - 2
     if outline["width"] >= 44:
         assert left_y == tun_y and x < left_x < tun_x < right, "network groups are not side by side"
+        split = terminal.screen.cells[left_y].index("│", left_x, tun_x)
+        sections = ((terminal_title, left_y, first_col, split-1),
+                    (tun_title, tun_y, split+2, end_col))
     else:
-        assert left_x == tun_x and y < left_y < tun_y < bottom, "narrow network groups are not stacked"
+        assert y < left_y < tun_y < bottom, "narrow network groups are not stacked"
+        sections = ((terminal_title, left_y, first_col, end_col),
+                    (tun_title, tun_y, first_col, end_col))
+    for title, title_y, start, end in sections:
+        for offset in range(3):  # Heading, switch and configuration button.
+            cells = terminal.screen.cells[title_y+offset]
+            ink = [col for col in range(start, end) if cells[col] != " "]
+            assert ink, "empty network section row under " + title
+            margins = ink[0] - start, end - 1 - ink[-1]
+            assert abs(margins[0]-margins[1]) <= 1, (title, offset, margins)
     assert terminal.screen.point_below(terminal_title, 1, "○ " + words["dashboard.network.off"]), "missing terminal proxy switch"
     tun_state = ("● " + words["tun.saved_state"] % words["dashboard.control.on"]
                  if scenario == "pending" else words["dashboard.network.unsupported"])
@@ -287,7 +299,8 @@ def inspect_network_card(terminal, outline, words, scenario):
     for title in (terminal_title, tun_title):
         assert terminal.screen.point_below(title, 2, edit), "no configuration button beneath " + title
     if scenario == "pending":
-        tun_text = " ".join("".join(row[tun_x:right]).strip(" │") for row in terminal.screen.cells[tun_y:bottom-1])
+        _, _, start, end = sections[1]
+        tun_text = " ".join("".join(row[start:end]).strip() for row in terminal.screen.cells[tun_y:bottom-1])
         assert words["dashboard.overview.tunActual"] % words["dashboard.control.off"] in tun_text, "actual state missing beneath TUN"
 
 

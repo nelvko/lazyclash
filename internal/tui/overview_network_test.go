@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -36,6 +37,11 @@ func TestOverviewNetworkKeepsUnavailableControlsDisabledAndAddressesInDetails(t 
 				}
 				if width >= 40 && strings.Count(plain, o.Locale.T("dashboard.network.unsupported")) != 2 {
 					t.Fatalf("expected one unavailable state per group: %s", plain)
+				}
+				if width == 40 {
+					for _, edit := range card.targets {
+						assertNetworkLabelCentered(t, card.lines[edit.Y-1], 2, width-2, o.Locale.T("dashboard.network.unsupported"))
+					}
 				}
 			}
 			o.Snapshot.Installed = false
@@ -95,58 +101,77 @@ func TestNetworkCardGroupsSwitchAndConfigurationAtEachWidth(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		for _, width := range []int{36, 43, 44, 46, 47, 76} {
 			t.Run(fmt.Sprintf("%s/%d", language, width), func(t *testing.T) {
-				o := dashboardOptions{Snapshot: snapshot, Locale: i18n.New(language), PlainButtons: true, Focus: "network.primaryConfig"}
-				card := overviewNetworkCard(o, width)
-				assertCanvas(t, strings.Join(card.lines, "\n"), width, len(card.lines))
-				assertRegions(t, card.targets, width, len(card.lines))
-				if len(card.targets) != 4 {
-					t.Fatalf("expected two controls per group: %+v", card.targets)
-				}
-				for i, id := range []string{"terminal.enable", "network.primaryConfig", "tun.enable", "network.tunConfig"} {
-					h := card.targets[i]
-					if h.ID != id {
-						t.Fatalf("unexpected reading order: %+v", card.targets)
+				o := dashboardOptions{Snapshot: snapshot, Locale: i18n.New(language)}
+				for _, plain := range []bool{false, true} {
+					o.PlainButtons, o.Focus = plain, ""
+					idle := overviewNetworkCard(o, width)
+					assertCanvas(t, strings.Join(idle.lines, "\n"), width, len(idle.lines))
+					assertRegions(t, idle.targets, width, len(idle.lines))
+					if len(idle.targets) != 4 {
+						t.Fatalf("expected two controls per group: %+v", idle.targets)
 					}
-					face := ansi.Strip(ansi.Cut(card.lines[h.Y], h.X, h.X+h.W))
-					label := o.Locale.T("dashboard.network.configure")
-					if i%2 == 0 {
-						label = "○ " + o.Locale.T("dashboard.network.off")
-					}
-					if !strings.Contains(face, label) || (h.ID == o.Focus) != strings.Contains(face, "›") {
-						t.Fatalf("%s target misses its monochrome face or focus marker: %q", id, face)
-					}
-					if width >= 44 && (i < 2 && h.X+h.W > width/2 || i >= 2 && h.X < width/2) {
-						t.Fatalf("%s hit crosses into the other group: %+v", id, h)
-					}
-				}
-				heading := func(key string) (x, y int) {
-					t.Helper()
-					for y, row := range card.lines {
-						if before, _, found := strings.Cut(ansi.Strip(row), o.Locale.T(key)); found {
-							return ansi.StringWidth(before), y
+					ids := []string{"terminal.enable", "network.primaryConfig", "tun.enable", "network.tunConfig"}
+					for _, focus := range append([]string{""}, ids...) {
+						o.Focus = focus
+						card := overviewNetworkCard(o, width)
+						if !slices.Equal(card.targets, idle.targets) {
+							t.Fatalf("focusing %q moved a control: %+v vs %+v", focus, card.targets, idle.targets)
+						}
+						for i, id := range ids {
+							h := card.targets[i]
+							if h.ID != id {
+								t.Fatalf("unexpected reading order: %+v", card.targets)
+							}
+							start, end := 2, width-2
+							if width >= 44 {
+								leftEnd := start + (end-start-3)/2
+								if i < 2 {
+									end = leftEnd
+								} else {
+									start = leftEnd + 3
+								}
+							}
+							label := o.Locale.T("dashboard.network.configure")
+							if i%2 == 0 {
+								label = "○ " + o.Locale.T("dashboard.network.off")
+								heading := "terminal.title"
+								if i == 2 {
+									heading = "dashboard.network.tun"
+								}
+								assertNetworkLabelCentered(t, card.lines[h.Y-1], start, end, o.Locale.T(heading))
+							}
+							assertNetworkLabelCentered(t, card.lines[h.Y], start, end, label)
+							face := ansi.Strip(ansi.Cut(card.lines[h.Y], h.X, h.X+h.W))
+							if !strings.Contains(face, label) || strings.Contains(face, "›") != (id == focus) ||
+								h.X < start || h.X+h.W > end {
+								t.Fatalf("%s target misses its face or crosses its group: %+v, %q", id, h, face)
+							}
+							if i%2 == 1 && h.Y != card.targets[i-1].Y+1 {
+								t.Fatalf("%s must be below its switch: %+v", id, card.targets)
+							}
+						}
+						if width < 44 && card.targets[2].Y-1 <= card.targets[1].Y ||
+							width >= 44 && card.targets[0].Y != card.targets[2].Y {
+							t.Fatalf("incorrect group arrangement at width %d: %+v", width, card.targets)
 						}
 					}
-					t.Fatalf("missing group heading %q", o.Locale.T(key))
-					return 0, 0
-				}
-				terminalX, terminalY := heading("terminal.title")
-				tunX, tunY := heading("dashboard.network.tun")
-				terminalToggle, terminalConfig := card.targets[0], card.targets[1]
-				tunToggle, tunConfig := card.targets[2], card.targets[3]
-				if terminalToggle.Y <= terminalY || terminalConfig.Y <= terminalToggle.Y ||
-					tunToggle.Y <= tunY || tunConfig.Y <= tunToggle.Y {
-					t.Fatalf("each group must place its switch and configuration under its heading: %+v", card.targets)
-				}
-				if width < 44 {
-					if terminalX != tunX || tunY <= terminalConfig.Y {
-						t.Fatalf("narrow card did not stack whole groups: %+v", card.targets)
-					}
-				} else if terminalY != tunY || terminalX >= width/2 || tunX < width/2 ||
-					terminalToggle.Y != tunToggle.Y || terminalConfig.Y != tunConfig.Y {
-					t.Fatalf("wide card misplaced its paired headings or controls: %+v", card.targets)
 				}
 			})
 		}
+	}
+}
+
+// Measure the label itself, excluding brackets and the reserved focus gutter.
+func assertNetworkLabelCentered(t *testing.T, line string, start, end int, label string) {
+	t.Helper()
+	section := ansi.Strip(ansi.Cut(line, start, end))
+	before, after, ok := strings.Cut(section, label)
+	if !ok {
+		t.Fatalf("section %q does not contain %q", section, label)
+	}
+	left, right := ansi.StringWidth(before), ansi.StringWidth(after)
+	if max(left-right, right-left) > 1 {
+		t.Fatalf("%q is off-center in %q: %d left, %d right", label, section, left, right)
 	}
 }
 
@@ -161,7 +186,11 @@ func TestOverviewNetworkKeepsExtraActionsAndObservationsInTheirColumns(t *testin
 	var left, right []string
 	for _, row := range card.lines {
 		left = append(left, strings.TrimSpace(ansi.Strip(ansi.Cut(row, 0, 22))))
-		right = append(right, strings.TrimSpace(ansi.Strip(ansi.Cut(row, 24, 46))))
+		part := strings.TrimSpace(ansi.Strip(ansi.Cut(row, 24, 44)))
+		right = append(right, part)
+		if part != "" && strings.Contains(o.Snapshot.TUNError, part) {
+			assertNetworkLabelCentered(t, row, 24, 44, part)
+		}
 	}
 	rightText := strings.Join(strings.Fields(strings.Join(right, " ")), " ")
 	leftText := strings.Join(strings.Fields(strings.Join(left, " ")), " ")
@@ -175,7 +204,9 @@ func TestOverviewNetworkKeepsExtraActionsAndObservationsInTheirColumns(t *testin
 			}
 			var label []string
 			for _, row := range card.lines[target.Y : target.Y+target.H] {
-				label = append(label, ansi.Strip(ansi.Cut(row, target.X, target.X+target.W)))
+				part := strings.TrimSpace(ansi.Strip(ansi.Cut(row, target.X, target.X+target.W)))
+				assertNetworkLabelCentered(t, row, 2, 21, part)
+				label = append(label, part)
 			}
 			if !strings.Contains(strings.Join(strings.Fields(strings.Join(label, " ")), " "), o.Locale.T("terminal.activationAction")) {
 				t.Fatalf("click area does not contain the full activation label: %q", label)
@@ -211,7 +242,32 @@ func TestNetworkCardTabVisitsEachGroupBeforeTheNext(t *testing.T) {
 				if m.focus != step.id || m.ports.open || m.form != "" || m.busy {
 					t.Fatalf("%s focused %q, want %q without activation", step.key.String(), m.focus, step.id)
 				}
-				findTarget(t, m, step.id)
+				h := findTarget(t, m, step.id)
+				if step.key.String() == "tab" && (step.id == "network.primaryConfig" || step.id == "network.tunConfig") {
+					// Click the displayed label, whose location is also checked against
+					// the section center above, and return to the same keyboard stop.
+					row := strings.Split(m.screen, "\n")[h.Y]
+					before, _, found := strings.Cut(ansi.Strip(ansi.Cut(row, h.X, h.X+h.W)), m.tr("dashboard.network.configure"))
+					if !found {
+						t.Fatalf("missing configuration label at %+v", h)
+					}
+					var cmd tea.Cmd
+					m, cmd = update(m, tea.MouseClickMsg{X: h.X + ansi.StringWidth(before), Y: h.Y, Button: tea.MouseLeft})
+					kind := "tun"
+					if step.id == "network.primaryConfig" {
+						kind = "terminal"
+					}
+					if !m.ports.open || m.ports.kind != kind {
+						t.Fatalf("click on %s opened %q", step.id, m.ports.kind)
+					}
+					if cmd != nil {
+						m, _ = update(m, actionCmd(t, cmd)())
+					}
+					m, _ = update(m, special(tea.KeyEscape))
+					if m.ports.open || m.focus != step.id {
+						t.Fatalf("closing %s lost the clicked control: %s", kind, m.focus)
+					}
+				}
 			}
 		})
 	}

@@ -50,22 +50,45 @@ func networkToggleLabels(o dashboardOptions) toggleLabels {
 		Unknown: tr("dashboard.status.unknown")}
 }
 
-// A wrapped control has one keyboard stop and a mouse target covering all its lines.
-func networkActionBlock(face, id string, width int) dashboardBlock {
-	b := overviewTextBlock([]string{face}, width)
+// Wrap the face separately from its focus gutter so a focus change cannot
+// reflow a label. A wrapped action still has a single tab stop and hit box.
+func centeredNetworkBlock(face string, width, gutter int, id string) dashboardBlock {
+	marker := ansi.Cut(face, 0, gutter)
+	if gutter > 0 {
+		face = ansi.Cut(face, gutter, ansi.StringWidth(face))
+	}
+	b := overviewTextBlock([]string{face}, max(1, width-gutter))
+	left, right := width, 0
+	for i, line := range b.lines {
+		plain := ansi.Strip(line)
+		indent := len(plain) - len(strings.TrimLeft(plain, " "))
+		visible := ansi.StringWidth(strings.Trim(plain, " "))
+		lineWidth := ansi.StringWidth(plain)
+		x := max(0, min(width-lineWidth, (width-visible)/2-indent))
+		right = max(right, x+lineWidth)
+		if i == 0 && gutter > 0 {
+			n := min(x, gutter)
+			line = ansi.Cut(marker, gutter-n, gutter) + line
+			x -= n
+		}
+		left = min(left, x)
+		b.lines[i] = strings.Repeat(" ", x) + line
+	}
 	if id != "" {
-		b.targets = []hitRegion{{ID: id, W: min(width, ansi.StringWidth(face)), H: len(b.lines)}}
+		b.targets = []hitRegion{{ID: id, X: left, W: right - left, H: len(b.lines)}}
 	}
 	return b
 }
 
 func overviewNetworkSection(o dashboardOptions, width int, title, configID, toggleID string, state toggleState, labels toggleLabels) dashboardBlock {
-	b := overviewTextBlock([]string{overviewHeading(o, title)}, width)
+	b := centeredNetworkBlock(overviewHeading(o, title), width, 0, "")
 	label, _ := labels.resolved().face(state)
 	focused := toggleID != "" && o.Focus == toggleID
 	face := renderToggle(toggleModel{state: state}, toggleOptions{Labels: labels, Width: ansi.StringWidth(label), Surface: panel, Focused: focused || toggleID != "" && o.Hover == toggleID, Dim: o.Dim})
+	gutter := 0
 	if toggleID != "" {
 		marker := "  "
+		gutter = 2
 		if focused {
 			marker = " ›"
 		}
@@ -75,7 +98,7 @@ func overviewNetworkSection(o dashboardOptions, width int, title, configID, togg
 		}
 		face = themed(marker+left, focus, panel, o.Dim) + face + themed(right, muted, panel, o.Dim)
 	}
-	b.append(networkActionBlock(face, toggleID, width))
+	b.append(centeredNetworkBlock(face, width, gutter, toggleID))
 	config := overviewControlButton{id: configID, label: o.Locale.T("dashboard.network.configure"), enabled: o.Snapshot.Installed && !o.Busy && !o.StateUnavailable}
 	if !config.enabled {
 		configID = ""
@@ -84,7 +107,7 @@ func overviewNetworkSection(o dashboardOptions, width int, title, configID, togg
 	if o.PlainButtons {
 		kind = buttonSecondary
 	}
-	b.append(networkActionBlock(overviewButton(o, config, kind), configID, width))
+	b.append(centeredNetworkBlock(overviewButton(o, config, kind), width, 2, configID))
 	return b
 }
 
@@ -127,10 +150,10 @@ func overviewTerminalSection(o dashboardOptions, width int) dashboardBlock {
 		if action.enabled {
 			id = action.id
 		}
-		section.append(networkActionBlock(overviewButton(o, action, buttonSecondary), id, width))
+		section.append(centeredNetworkBlock(overviewButton(o, action, buttonSecondary), width, 2, id))
 	}
 	if !o.StateUnavailable && t.State == "error" {
-		section.append(overviewTextBlock([]string{themed(tr("terminal.state.error"), warning, panel, o.Dim)}, width))
+		section.append(centeredNetworkBlock(themed(tr("terminal.state.error"), warning, panel, o.Dim), width, 0, ""))
 	}
 	return section
 }
@@ -175,10 +198,10 @@ func overviewTUNSection(o dashboardOptions, width int) dashboardBlock {
 	}
 	section := overviewNetworkSection(o, width, tr("dashboard.network.tun"), "network.tunConfig", id, state, labels)
 	if observed != "" {
-		section.append(overviewTextBlock([]string{themed(observed, warning, panel, o.Dim)}, width))
+		section.append(centeredNetworkBlock(themed(observed, warning, panel, o.Dim), width, 0, ""))
 	}
 	if s.TUNError != "" {
-		section.append(overviewTextBlock([]string{themed(clean(o.Locale.Detail(s.TUNError)), warning, panel, o.Dim)}, width))
+		section.append(centeredNetworkBlock(themed(clean(o.Locale.Detail(s.TUNError)), warning, panel, o.Dim), width, 0, ""))
 	}
 	return section
 }
