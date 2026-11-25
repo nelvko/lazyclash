@@ -55,7 +55,7 @@ func (m *Model) acceptProfileSettings(msg profileSettingsLoadedMsg) tea.Cmd {
 		m.failure = m.localizeError(msg.err)
 		return nil
 	}
-	m.resolveNotificationError(m.notification.operation.Key)
+	m.resolveNotificationIssue(m.notification.operation.Key)
 	m.profileCreate.settings = &msg.values
 	m.profileCreate.name.SetValue(msg.values.Name)
 	m.profileCreate.description.SetValue(msg.values.Description)

@@ -57,17 +57,16 @@ func (m *Model) acceptKeyHintsSaved(msg keyHintsSavedMsg) tea.Cmd {
 	if msg.hidden != m.keyHints.hidden {
 		return m.saveKeyHints()
 	}
-	if msg.err != nil && m.ctx.Err() == nil && !m.quitting {
+	const key = "key-hints.save"
+	if msg.err == nil {
+		m.resolveNotificationIssue(key)
+	} else if m.ctx.Err() == nil && !m.quitting {
 		n := &m.notification
-		n.nextID++
 		n.nextOperation++
-		n.generation++
-		n.items = append(n.items, notificationItem{
-			ID: n.nextID, Operation: n.nextOperation, Key: "key-hints.save", Page: m.keyHints.originPage,
+		n.publish(notificationItem{
+			Operation: n.nextOperation, Key: key, Page: m.keyHints.originPage,
 			Kind: "warning", Message: m.tr("keyHints.saveFailed", m.localizeError(msg.err)),
-			remaining: 4 * time.Second, generation: n.generation,
-		})
-		n.visible = true
+		}, n.itemIndex(0, key))
 	}
 	if m.quitting && !m.busy {
 		return tea.Quit

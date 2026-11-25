@@ -98,7 +98,7 @@ func (m *Model) acceptProfileEditor(msg profileEditorOpenedMsg) tea.Cmd {
 		}
 		return nil
 	}
-	m.resolveNotificationError(m.notification.operation.Key)
+	m.resolveNotificationIssue(m.notification.operation.Key)
 	m.profileEditor = msg.state
 	return m.launchProfileEditor()
 }

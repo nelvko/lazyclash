@@ -66,7 +66,6 @@ func themeSample(name string) Model {
 			{ID: 2, Page: "profiles", Context: "Update subscription", Kind: "error", Message: "Subscription download timed out. Check your connection and retry.", Details: "Download failed: connection timeout.\nThe saved subscription remains available."},
 			{ID: 3, Page: "overview", Context: "Start service", Kind: "error", Message: "Could not start Mihomo. Check the service and retry.", Details: "Start failed: the user service manager could not confirm that Mihomo is ready.\n" + strings.Repeat("A bounded notification viewport retains full diagnostic paragraphs.\n", 24) + "End of full diagnostic."},
 		}
-		m.notification.visible = true
 		if name == "notification-list" {
 			m.notification.panel.show(0)
 		} else if name == "notification-details" || name == "notification-details-end" {

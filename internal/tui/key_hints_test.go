@@ -206,3 +206,24 @@ func TestKeyHintsWarningFollowsLastToggleAcrossPageChanges(t *testing.T) {
 		t.Fatalf("warning lost the originating page of the saved choice: %+v", m.notification.items)
 	}
 }
+
+func TestRepeatedKeyHintsSaveFailureResolvesOnSuccess(t *testing.T) {
+	m := noticeModel()
+	saveErr := errors.New("disk full")
+	m.backend = &keyHintsBackend{fakeBackend: &fakeBackend{}, saveHints: func(context.Context, bool) error { return saveErr }}
+	m.begin("Other task", "Finished", func(context.Context) error { return nil })
+	op := m.notification.operation
+	toggle := func() { m.acceptKeyHintsSaved(m.toggleKeyHints()().(keyHintsSavedMsg)) }
+	toggle()
+	first := m.notification.items[0]
+	m.navigate("logs")
+	toggle()
+	if len(m.notification.items) != 1 || m.notification.items[0].ID != first.ID || m.notification.items[0].Page != "logs" || m.notification.items[0].generation == first.generation {
+		t.Fatalf("duplicate or stale warning: %+v", m.notification.items)
+	}
+	saveErr = nil
+	toggle()
+	if len(m.notification.items) != 0 || !m.busy || m.notification.operation != op {
+		t.Fatal("preference recovery changed the foreground task or left a warning")
+	}
+}

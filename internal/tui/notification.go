@@ -55,7 +55,6 @@ type notificationState struct {
 	nextID, nextOperation uint64
 	dismissedOperation    uint64
 	generation            uint64
-	visible               bool
 	details               string
 	critical              bool
 	warning               bool
@@ -106,13 +105,7 @@ func (m *Model) syncNotification() {
 	}
 	n.source = source
 	op := n.operation
-	index := -1
-	for i, item := range n.items {
-		if item.Operation == op.ID || (op.Key != "" && item.Key == op.Key && item.Kind == "error") {
-			index = i
-			break
-		}
-	}
+	index := n.itemIndex(op.ID, op.Key)
 	// An already published operation must reach its result even after its owner
 	// moves back into view. New ordinary feedback belongs to that owner.
 	if op.Inline && source.inlineVisible && !n.critical && index < 0 {
@@ -138,8 +131,7 @@ func (m *Model) syncNotification() {
 	if op.Page == "" {
 		op.Page = m.page
 	}
-	n.generation++
-	item := notificationItem{Operation: op.ID, Key: op.Key, Page: op.Page, Context: op.Context, Message: message, Kind: kind, Critical: n.critical, generation: n.generation}
+	item := notificationItem{Operation: op.ID, Key: op.Key, Page: op.Page, Context: op.Context, Message: message, Kind: kind, Critical: n.critical}
 	if source.busy && n.retainDialog {
 		item.Critical = true
 	}
@@ -159,7 +151,27 @@ func (m *Model) syncNotification() {
 			item.Message = m.tr("notification.failure_details")
 		}
 	}
-	switch kind {
+	n.publish(item, index)
+}
+
+func (n *notificationState) itemIndex(operation uint64, key string) int {
+	for i, item := range n.items {
+		if operation != 0 && item.Operation == operation {
+			return i
+		}
+		if key != "" && item.Key == key && (item.Kind == "error" || item.Kind == "warning") {
+			return i
+		}
+	}
+	return -1
+}
+
+// Foreground tasks and independent preference saves share identities, retry
+// replacement and expiry. Publishing a background warning never changes the job.
+func (n *notificationState) publish(item notificationItem, index int) {
+	n.generation++
+	item.generation = n.generation
+	switch item.Kind {
 	case "done":
 		item.remaining = 3 * time.Second
 	case "info", "warning":
@@ -172,13 +184,12 @@ func (m *Model) syncNotification() {
 	} else {
 		item.ID = n.items[index].ID
 		// A retry is a new arrival, but still replaces the original failure.
-		if n.items[index].Operation != op.ID {
+		if n.items[index].Operation != item.Operation {
 			n.items = append(append(n.items[:index:index], n.items[index+1:]...), item)
 		} else {
 			n.items[index] = item
 		}
 	}
-	n.visible = len(n.items) > 0
 }
 
 // Visible cards and quiet records consume their display time. Overflow and
@@ -230,14 +241,11 @@ func (m *Model) expireNotification(msg notificationExpiredMsg) {
 	}
 }
 
-// A successful read opens its editor or settings form without publishing a
-// success message. It still resolves a prior failure for that exact resource.
-func (m *Model) resolveNotificationError(key string) {
-	for _, item := range m.notification.items {
-		if item.Key == key && item.Kind == "error" {
-			m.dismissNotificationID(item.ID)
-			return
-		}
+// A locally visible success still resolves the earlier warning or error.
+func (m *Model) resolveNotificationIssue(key string) {
+	n := &m.notification
+	if index := n.itemIndex(0, key); index >= 0 {
+		m.dismissNotificationID(n.items[index].ID)
 	}
 }
 
@@ -262,7 +270,6 @@ func (m *Model) dismissNotificationID(id uint64) {
 		break
 	}
 	n.generation++
-	n.visible = len(n.items) > 0
 	if strings.HasPrefix(m.focus, "notification.") && strings.HasSuffix(m.focus, "."+strconv.FormatUint(id, 10)) {
 		m.restoreNotificationFocus()
 	}

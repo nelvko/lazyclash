@@ -167,7 +167,6 @@ func TestPageNavigationEscapeReturnsToSidebarWithoutDismissingToast(t *testing.T
 	m := pageNavigationModel()
 	m.navigate("overview")
 	m.notification.items = []notificationItem{{ID: 77, Kind: "error", Page: "profiles", Context: "Update", Message: "Subscription is unavailable"}}
-	m.notification.visible = true
 	m.layout()
 	m, _ = update(m, special(tea.KeyEscape))
 	if m.focus != "nav.overview" || m.page != "overview" {
