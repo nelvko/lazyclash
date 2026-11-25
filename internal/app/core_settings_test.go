@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -26,11 +27,11 @@ func appliedConfigFields(t *testing.T, a *App) map[string]any {
 	return cfg
 }
 
-func TestCoreSettingsOverrideProfileSwitchRefreshAndReopen(t *testing.T) {
+func TestInstanceCoreSettingsSurviveProfileSwitchRefreshAndReopen(t *testing.T) {
 	a, service := installedApp(t)
 	ctx := t.Context()
 	first, second := filepath.Join(t.TempDir(), "one.yaml"), filepath.Join(t.TempDir(), "two.yaml")
-	source := []byte("ipv6: true\nunified-delay: false\nlog-level: error\nrules: ['MATCH,DIRECT']\n")
+	source := []byte("ipv6: false\nunified-delay: true\nlog-level: error\nrules: ['MATCH,DIRECT']\n")
 	write(t, first, source)
 	write(t, second, []byte("ipv6: false\nlog-level: info\nrules: ['MATCH,REJECT']\n"))
 	if err := a.Add(ctx, "one", first); err != nil {
@@ -39,25 +40,21 @@ func TestCoreSettingsOverrideProfileSwitchRefreshAndReopen(t *testing.T) {
 	if err := a.AddSubscription(ctx, "two", second); err != nil {
 		t.Fatal(err)
 	}
+	wantDefaults := mihomo.GeneralSettings{IPv6: "on", UnifiedDelay: "off", LogLevel: "info"}
+	assertInstanceSettings(t, a, wantDefaults)
 	if err := a.Apply(ctx, "one"); err != nil {
 		t.Fatal(err)
 	}
-	if cfg := appliedConfigFields(t, a); cfg["ipv6"] != true || cfg["unified-delay"] != false || cfg["log-level"] != "error" {
-		t.Fatalf("lost inherited values before editing")
-	}
+	assertInstanceSettings(t, a, wantDefaults)
 	for key, value := range map[string]string{"ipv6": "off", "unified-delay": "on", "log-level": "debug"} {
 		if err := a.SetCoreSetting(ctx, key, value); err != nil {
 			t.Fatal(err)
 		}
 	}
-	assertOverrides := func(a *App) {
-		t.Helper()
-		cfg := appliedConfigFields(t, a)
-		if cfg["ipv6"] != false || cfg["unified-delay"] != true || cfg["log-level"] != "debug" {
-			t.Fatalf("wrong core settings: ipv6=%v unified-delay=%v log-level=%v", cfg["ipv6"], cfg["unified-delay"], cfg["log-level"])
-		}
-	}
-	assertOverrides(a)
+	want := mihomo.GeneralSettings{IPv6: "off", UnifiedDelay: "on", LogLevel: "debug"}
+	assertInstanceSettings(t, a, want)
+	otherInstance, _ := installedApp(t)
+	assertInstanceSettings(t, otherInstance, wantDefaults)
 	if !bytes.Equal(source, read(t, savedSourcePath(t, a, "one"))) {
 		t.Fatal("editing settings changed the raw subscription")
 	}
@@ -67,13 +64,13 @@ func TestCoreSettingsOverrideProfileSwitchRefreshAndReopen(t *testing.T) {
 	if err := a.Apply(ctx, "two"); err != nil {
 		t.Fatal(err)
 	}
-	assertOverrides(a)
+	assertInstanceSettings(t, a, want)
 	revision := []byte("ipv6: true\nunified-delay: false\nlog-level: info\nrules: ['MATCH,DIRECT']\n")
 	write(t, second, revision)
 	if err := a.Refresh(ctx, "two"); err != nil {
 		t.Fatal(err)
 	}
-	assertOverrides(a)
+	assertInstanceSettings(t, a, want)
 	if !bytes.Equal(revision, read(t, savedSourcePath(t, a, "two"))) {
 		t.Fatal("refresh overwrote source fields with instance overrides")
 	}
@@ -83,25 +80,24 @@ func TestCoreSettingsOverrideProfileSwitchRefreshAndReopen(t *testing.T) {
 	}
 	reopened.Service, reopened.Validate = service, a.Validate
 	snap, err := reopened.Snapshot(ctx)
-	want := mihomo.GeneralSettings{IPv6: "off", UnifiedDelay: "on", LogLevel: "debug"}
 	if err != nil || snap.CoreSettings != want {
 		t.Fatalf("reopened settings = %+v, err = %v", snap.CoreSettings, err)
-	}
-	if err := reopened.SetCoreSetting(ctx, "log-level", ""); err != nil {
-		t.Fatal(err)
-	}
-	if cfg := appliedConfigFields(t, reopened); cfg["log-level"] != "warning" || cfg["ipv6"] != false || cfg["unified-delay"] != true {
-		t.Fatal("clearing a setting must reveal the per-profile override and preserve other choices")
 	}
 	if err := reopened.DeactivateProfile(ctx, "two"); err != nil {
 		t.Fatal(err)
 	}
-	if err := reopened.SetCoreSetting(ctx, "ipv6", ""); err != nil {
+	assertInstanceSettings(t, reopened, want)
+	if err := reopened.SetMode(ctx, "global"); err != nil {
 		t.Fatal(err)
 	}
-	if cfg := appliedConfigFields(t, reopened); cfg["ipv6"] != nil || cfg["unified-delay"] != true || cfg["log-level"] != "warning" {
-		t.Fatal("clearing a setting must preserve the built-in profile's omission")
+	plan, err := reopened.PrepareRuntimeSettings(ctx, availableSettings(t))
+	if err != nil {
+		t.Fatal(err)
 	}
+	if _, err := reopened.ApplyRuntimeSettings(ctx, plan); err != nil {
+		t.Fatal(err)
+	}
+	assertInstanceSettings(t, reopened, want)
 	if len(service.actions) != 0 || service.active {
 		t.Fatal("editing settings on a stopped service changed its state")
 	}
@@ -132,7 +128,7 @@ func TestCoreSettingsChangeOnRunningServiceCommitsOnlyAfterReload(t *testing.T) 
 			t.Fatal("reload should preserve the service process", loadErr)
 		}
 		if reject {
-			if err == nil || current != old || m.CoreSettings.LogLevel != "" || requests != 2 {
+			if err == nil || current != old || m.CoreSettings != mihomo.DefaultGeneralSettings() || requests != 2 {
 				t.Fatal("rejected reload failed to restore the old generation", err, requests)
 			}
 		} else if err != nil || current == old || m.CoreSettings.LogLevel != "debug" || requests != 1 {
@@ -141,46 +137,103 @@ func TestCoreSettingsChangeOnRunningServiceCommitsOnlyAfterReload(t *testing.T) 
 	}
 }
 
-func TestPinMatchingCoreSettingWithoutReload(t *testing.T) {
-	a, svc := installedApp(t)
-	ctx := t.Context()
-	svc.active = true
-	svc.verifyErr = errors.New("unchanged YAML must not contact the service")
-	if err := a.SetCoreSetting(ctx, "log-level", "warning"); err != nil {
-		t.Fatal(err)
-	}
-	m, _, err := a.load()
-	if err != nil || m.CoreSettings.LogLevel != "warning" {
-		t.Fatal("pinning the built-in log level was not saved", err)
-	}
-	svc.active, svc.verifyErr = false, nil
+func TestCoreSettingEditsDeployedConfigWithMissingProfileSource(t *testing.T) {
+	a, _ := installedApp(t)
 	addFixtureProfile(t, a, "source")
-	if err := a.Apply(ctx, "source"); err != nil {
+	if err := a.Apply(t.Context(), "source"); err != nil {
 		t.Fatal(err)
 	}
-	if cfg := appliedConfigFields(t, a); cfg["log-level"] != "warning" {
-		t.Fatal("matching override was lost when selecting a profile without a log level")
-	}
-	// A failed background refresh can leave newer content in the library
-	// than in the deployed generation. Inherit from the deployed revision.
-	lib, old, err := a.library().Load()
-	if err != nil {
+	if err := os.Remove(savedSourcePath(t, a, "source")); err != nil {
 		t.Fatal(err)
 	}
-	entry := lib.Profiles["source"]
-	entry.Spec.Revision, err = a.library().Put([]byte("log-level: error\nrules: ['MATCH,REJECT']\n"))
-	if err != nil {
+	want := appliedConfigFields(t, a)
+	want["log-level"] = "debug"
+	if err := a.SetCoreSetting(t.Context(), "log-level", "debug"); err != nil {
 		t.Fatal(err)
 	}
-	lib.Profiles["source"] = entry
-	if err := a.library().Save(lib, old); err != nil {
+	if !reflect.DeepEqual(appliedConfigFields(t, a), want) {
+		t.Fatal("setting edit changed unrelated deployed configuration")
+	}
+	assertInstanceSettings(t, a, mihomo.GeneralSettings{IPv6: "on", UnifiedDelay: "off", LogLevel: "debug"})
+}
+
+// Read the raw manifest so load's defaults cannot mask a missing write.
+func assertInstanceSettings(t *testing.T, a *App, want mihomo.GeneralSettings) {
+	t.Helper()
+	var m manifest
+	path := filepath.Join(a.Home, "installation", "current", "manifest.json")
+	if err := json.Unmarshal(read(t, path), &m); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.SetCoreSetting(ctx, "log-level", ""); err != nil {
-		t.Fatal(err)
+	if m.CoreSettings != want {
+		t.Fatalf("stored settings = %+v, want %+v", m.CoreSettings, want)
 	}
-	if cfg := appliedConfigFields(t, a); cfg["log-level"] != nil {
-		t.Fatal("resetting the override activated a pending source revision")
+	cfg := appliedConfigFields(t, a)
+	if cfg["ipv6"] != (m.TUN || want.IPv6 == "on") || cfg["unified-delay"] != (want.UnifiedDelay == "on") || cfg["log-level"] != want.LogLevel {
+		t.Fatalf("applied settings = %v / %v / %v, want %+v (TUN %v)", cfg["ipv6"], cfg["unified-delay"], cfg["log-level"], want, m.TUN)
+	}
+}
+
+func TestUnsetCoreSettingsUseDeployedGenerationUntilNextWrite(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		saved       map[string]string
+		ipv6, delay any
+		level       string
+		want        mihomo.GeneralSettings
+	}{
+		{"omitted fields", nil, nil, nil, "warning", mihomo.GeneralSettings{IPv6: "on", UnifiedDelay: "off", LogLevel: "warning"}},
+		{"partly pinned", map[string]string{"log_level": "debug"}, false, true, "debug", mihomo.GeneralSettings{IPv6: "off", UnifiedDelay: "on", LogLevel: "debug"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			a, _ := installedApp(t)
+			addFixtureProfile(t, a, "source")
+			_, current, err := a.load()
+			if err != nil {
+				t.Fatal(err)
+			}
+			dir := filepath.Join(a.Home, "installation", current)
+			manifestPath := filepath.Join(dir, "manifest.json")
+			cfg := appliedConfigFields(t, a)
+			for key, value := range map[string]any{"ipv6": tc.ipv6, "unified-delay": tc.delay, "log-level": tc.level} {
+				if value == nil {
+					delete(cfg, key)
+				} else {
+					cfg[key] = value
+				}
+			}
+			cfgBytes, err := yaml.Marshal(cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			write(t, filepath.Join(dir, "config.yaml"), cfgBytes)
+			var disk map[string]any
+			if err := json.Unmarshal(read(t, manifestPath), &disk); err != nil {
+				t.Fatal(err)
+			}
+			disk["config_sha256"] = digest(cfgBytes)
+			if tc.saved == nil {
+				delete(disk, "core_settings")
+			} else {
+				disk["core_settings"] = tc.saved
+			}
+			rawManifest, err := json.Marshal(disk)
+			if err != nil {
+				t.Fatal(err)
+			}
+			write(t, manifestPath, rawManifest)
+			snap, err := a.Snapshot(t.Context())
+			if err != nil || snap.CoreSettings != tc.want {
+				t.Fatalf("resolved settings = %+v, want %+v, err = %v", snap.CoreSettings, tc.want, err)
+			}
+			if _, target, err := a.load(); err != nil || target != current || !bytes.Equal(rawManifest, read(t, manifestPath)) {
+				t.Fatal("reading settings changed the generation", err)
+			}
+			if err := a.Apply(t.Context(), "source"); err != nil {
+				t.Fatal(err)
+			}
+			assertInstanceSettings(t, a, tc.want)
+		})
 	}
 }
 
@@ -196,7 +249,12 @@ func TestCoreSettingsValidationAndNoopPreserveGeneration(t *testing.T) {
 			t.Fatalf("accepted %s=%s", key, value)
 		}
 	}
-	if err := a.SetCoreSetting(t.Context(), "log-level", ""); err != nil {
+	for _, key := range []string{"ipv6", "unified-delay", "log-level"} {
+		if err := a.SetCoreSetting(t.Context(), key, ""); err == nil {
+			t.Fatalf("accepted empty %s", key)
+		}
+	}
+	if err := a.SetCoreSetting(t.Context(), "log-level", "info"); err != nil {
 		t.Fatal("unchanged settings should succeed without validation", err)
 	}
 	if _, current, err := a.load(); current != old || err != nil {

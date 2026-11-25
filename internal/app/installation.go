@@ -29,7 +29,7 @@ type manifest struct {
 	Port         int                    `json:"mixed_port"`
 	Applied      string                 `json:"applied"`
 	Mode         string                 `json:"mode,omitempty"`
-	CoreSettings mihomo.GeneralSettings `json:"core_settings,omitzero"`
+	CoreSettings mihomo.GeneralSettings `json:"core_settings"`
 	SHA          string                 `json:"config_sha256"`
 	BinarySHA    string                 `json:"binary_sha256"`
 }
@@ -106,15 +106,13 @@ func (a *App) load() (manifest, string, error) {
 	if m.Mode != "" && !mihomo.ValidMode(m.Mode) {
 		return m, "", diagnostic.New("diagnostic.installation.persistedMode", "invalid persisted proxy mode")
 	}
-	if err := m.CoreSettings.Validate(); err != nil {
+	cfg, err := a.readGenerationConfig(target, m.SHA)
+	if err != nil {
 		return m, "", err
 	}
-	cfg, err := store.Read(filepath.Join(dir, target, "config.yaml"))
+	m.CoreSettings, err = m.CoreSettings.ResolveApplied(cfg)
 	if err != nil {
-		return m, "", diagnostic.New("diagnostic.installation.configUnavailable", "installation configuration is unavailable: %v", err)
-	}
-	if digest(cfg) != m.SHA {
-		return m, "", diagnostic.New("diagnostic.installation.configModified", "active configuration was modified; refusing to replace user changes")
+		return m, "", err
 	}
 	bin, _, _ := a.paths()
 	info, err := os.Lstat(bin)
@@ -135,7 +133,7 @@ func (a *App) load() (manifest, string, error) {
 		return m, "", err
 	}
 	// Validate stored connection settings without exposing credentials.
-	if _, err := mihomo.Default(m.Controller, m.Secret, m.Port); err != nil {
+	if err := mihomo.ValidateEndpoints(m.Controller, m.Secret, m.Port); err != nil {
 		return m, "", diagnostic.New("diagnostic.installation.controllerSettings", "invalid managed controller settings")
 	}
 	if err := a.bindTUN(m, cfg); err != nil {
@@ -143,6 +141,18 @@ func (a *App) load() (manifest, string, error) {
 	}
 	return m, target, nil
 }
+
+func (a *App) readGenerationConfig(target, sha string) ([]byte, error) {
+	cfg, err := store.Read(filepath.Join(a.Home, "installation", target, "config.yaml"))
+	if err != nil {
+		return nil, diagnostic.New("diagnostic.installation.configUnavailable", "installation configuration is unavailable: %v", err)
+	}
+	if digest(cfg) != sha {
+		return nil, diagnostic.New("diagnostic.installation.configModified", "active configuration was modified; refusing to replace user changes")
+	}
+	return cfg, nil
+}
+
 func (a *App) writeGeneration(base string, m manifest, config []byte) (string, error) {
 	target := "generations/g-" + randomID()
 	dir := filepath.Join(base, target)

@@ -34,10 +34,12 @@ func Build(opts BuildOptions) ([]byte, error) {
 			return nil, err
 		}
 	}
-	if err := opts.General.Validate(); err != nil {
+	if opts.General == (GeneralSettings{}) {
+		opts.General = DefaultGeneralSettings()
+	}
+	if err := opts.General.apply(cfg, opts.TUN); err != nil {
 		return nil, err
 	}
-	opts.General.apply(cfg)
 	if err := validateContainers(cfg); err != nil {
 		return nil, err
 	}

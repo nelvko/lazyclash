@@ -12,6 +12,7 @@ import (
 	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/buildinfo"
 	"github.com/nelvko/lazyclash/internal/i18n"
+	"github.com/nelvko/lazyclash/internal/mihomo"
 	"github.com/nelvko/lazyclash/internal/service"
 )
 
@@ -21,6 +22,7 @@ func settingsTestSnapshot() app.Snapshot {
 		Version: "v1.19.33", RunningVersion: "v1.19.32", Controller: "127.0.0.1:9097",
 		Service:      service.Status{State: "inactive", Linger: true, LingerKnown: true},
 		Mode:         app.ModeStatus{Desired: "rule", Actual: "global"},
+		CoreSettings: mihomo.DefaultGeneralSettings(),
 		Capabilities: app.Capabilities{Scope: "system", Runtime: app.Capability{Supported: true}, TUN: app.Capability{Supported: true}},
 	}
 }
@@ -115,19 +117,19 @@ func TestSettingsActionsKeepCompleteLabelsAndUniqueTargets(t *testing.T) {
 				o.Snapshot.Service.Enabled = active
 				o.Snapshot.TUN = active
 				tr := o.Locale.T
-				inherited := tr("settings.followProfile") + " ▾"
+				const on, off = "░░░░██", "██░░░░"
 				labels := map[string]string{
-					"settings.language": languageLabel, "key-hints.toggle": tr("dashboard.control.on"),
+					"settings.language": languageLabel, "key-hints.toggle": on,
 					"settings.theme": "Dark ▾",
-					"settings.ipv6":  inherited, "settings.unifiedDelay": inherited, "settings.logLevel": inherited,
+					"settings.ipv6":  on, "settings.unifiedDelay": off, "settings.logLevel": "info ▾",
 					"editor.configure": tr("settings.edit"),
 					"install":          tr("settings.manage"), "runtime-settings": tr("settings.edit"),
 					"restart": tr("dashboard.action.restart"), "card.logs": tr("settings.openLogs"),
 				}
 				if active {
-					labels["autostart-disable"] = tr("dashboard.control.on")
+					labels["autostart-disable"] = on
 				} else {
-					labels["autostart-enable"] = tr("dashboard.control.off")
+					labels["autostart-enable"] = off
 				}
 				body, hits := settingsContent(o, width)
 				seen := map[string]bool{}
@@ -141,6 +143,9 @@ func TestSettingsActionsKeepCompleteLabelsAndUniqueTargets(t *testing.T) {
 						t.Fatalf("unexpected action %q", hit.ID)
 					}
 					painted := settingsPaintedTarget(t, body, hits, hit.ID)
+					if (label == on || label == off) && painted != "  "+label {
+						t.Fatalf("%s/%d: switch %s should only contain its focus gutter and rail: %q", language, width, hit.ID, painted)
+					}
 					if !strings.Contains(painted, label) || ansi.StringWidth(painted) != hit.W {
 						t.Fatalf("%s/%d: %s target misses complete label %q: %q", language, width, hit.ID, label, painted)
 					}
@@ -192,7 +197,9 @@ func TestSettingsSwitchesAndDropdownsAlignAtCardEdges(t *testing.T) {
 					t.Fatalf("%s/%s at %d: label and control misplaced, hit %+v, want X=%d\n%s", language, c.id, width, hit, wantX, ansi.Strip(strings.Join(block.lines, "\n")))
 				}
 				face := ansi.Strip(ansi.Cut(block.lines[hit.Y], hit.X, hit.X+hit.W))
-				if !strings.HasPrefix(face, " ›") || !strings.HasSuffix(face, "]") && !strings.HasSuffix(face, ">") {
+				focusedSwitch := face == "› ░░░░██" || face == "› ██░░░░"
+				focusedDropdown := strings.HasPrefix(face, " ›[") && strings.HasSuffix(face, "]")
+				if !focusedSwitch && !focusedDropdown {
 					t.Fatalf("%s/%s at %d: hit misses focused control: %q", language, c.id, width, face)
 				}
 			}
@@ -200,15 +207,15 @@ func TestSettingsSwitchesAndDropdownsAlignAtCardEdges(t *testing.T) {
 	}
 }
 
-func TestSettingsMihomoMenuResetsOnlyChosenOverride(t *testing.T) {
+func TestSettingsMihomoSwitchWaitsForSavedValueAndAllowsRetry(t *testing.T) {
 	b := &fakeBackend{snapshot: settingsTestSnapshot()}
 	b.snapshot.CoreSettings.IPv6, b.snapshot.CoreSettings.UnifiedDelay, b.snapshot.CoreSettings.LogLevel = "off", "on", "warning"
 	b.snapshot.TUN = true
 	calls := 0
 	b.setCoreSetting = func(_ context.Context, key, value string) error {
 		calls++
-		if key != "ipv6" || value != "" {
-			t.Fatalf("reset sent key=%q value=%q", key, value)
+		if key != "ipv6" || value != "on" {
+			t.Fatalf("toggle sent key=%q value=%q", key, value)
 		}
 		if calls == 1 {
 			return errors.New("reload failed")
@@ -224,26 +231,63 @@ func TestSettingsMihomoMenuResetsOnlyChosenOverride(t *testing.T) {
 		t.Fatal("saved IPv6 preference lacks the host TUN override explanation")
 	}
 	for attempt := 1; attempt <= 2; attempt++ {
-		m, _ = update(m, special(tea.KeyEnter))
-		if !m.menu.open || !m.menu.items[m.menu.selected].Checked || m.menu.items[m.menu.selected].ID != "off" {
-			t.Fatalf("attempt %d did not open with the saved IPv6 value", attempt)
-		}
-		m, _ = update(m, special(tea.KeyHome))
 		var cmd tea.Cmd
-		m, cmd = update(m, special(tea.KeyEnter))
-		if !m.busy || m.snapshot.CoreSettings.IPv6 != "off" {
-			t.Fatal("choice changed before the backend committed")
+		if attempt == 1 {
+			m, cmd = update(m, special(tea.KeyEnter))
+		} else {
+			hit := findTarget(t, m, "settings.ipv6")
+			m, cmd = update(m, tea.MouseClickMsg{X: hit.X + hit.W - 1, Y: hit.Y, Button: tea.MouseLeft})
+		}
+		if m.menu.open || !m.busy || m.snapshot.CoreSettings.IPv6 != "off" {
+			t.Fatal("activating the switch should save immediately and display the last confirmed setting")
 		}
 		m = finishProfileJob(t, m, cmd)
 		if attempt == 1 && (m.snapshot.CoreSettings.IPv6 != "off" || !strings.Contains(m.failure, "reload failed")) {
-			t.Fatal("unsuccessful override reset changed the current value or hid the error")
+			t.Fatal("failed switch changed the current value or hid the error")
 		}
 	}
-	if calls != 2 || m.snapshot.CoreSettings.IPv6 != "" || m.snapshot.CoreSettings.UnifiedDelay != "on" || m.snapshot.CoreSettings.LogLevel != "warning" {
-		t.Fatalf("unexpected saved Mihomo settings after reset: %+v", m.snapshot.CoreSettings)
+	if calls != 2 || m.snapshot.CoreSettings.IPv6 != "on" || m.snapshot.CoreSettings.UnifiedDelay != "on" || m.snapshot.CoreSettings.LogLevel != "warning" {
+		t.Fatalf("unexpected saved Mihomo settings after toggle: %+v", m.snapshot.CoreSettings)
 	}
-	if !strings.Contains(settingsPaintedTarget(t, m.screen, m.targets, m.focus), m.tr("settings.followProfile")) {
-		t.Fatal("the IPv6 control did not return to the inherited state")
+	if settingsPaintedTarget(t, m.screen, m.targets, m.focus) != "› ░░░░██" {
+		t.Fatal("the IPv6 switch did not display the confirmed value")
+	}
+}
+
+func TestSettingsMihomoLogMenuOffersOnlyFixedLevels(t *testing.T) {
+	b := &fakeBackend{snapshot: settingsTestSnapshot()}
+	b.setCoreSetting = func(_ context.Context, key, value string) error {
+		if key != "log-level" || value != "silent" {
+			t.Fatalf("log menu sent key=%q value=%q", key, value)
+		}
+		b.snapshot.CoreSettings.LogLevel = value
+		return nil
+	}
+	m := ready(b)
+	directionCleanup(t, &m)
+	m.page, m.focus, m.width, m.height = "settings", "settings.logLevel", 160, 45
+	m.layout()
+	m, _ = update(m, special(tea.KeyEnter))
+	want := []string{"debug", "info", "warning", "error", "silent"}
+	if !m.menu.open || len(m.menu.items) != len(want) || m.menu.selected != 1 {
+		t.Fatalf("unexpected log-level menu: %+v", m.menu)
+	}
+	for i, level := range want {
+		if item := m.menu.items[i]; item.ID != level || item.Label != level || item.Checked != (level == "info") {
+			t.Fatalf("unexpected log level at %d: %+v", i, item)
+		}
+	}
+	m, _ = update(m, special(tea.KeyEnter))
+	if m.menu.open || m.busy {
+		t.Fatal("selecting the current log level started a save")
+	}
+	m, _ = click(m, findTarget(t, m, m.focus))
+	m, _ = update(m, special(tea.KeyEnd))
+	var cmd tea.Cmd
+	m, cmd = update(m, special(tea.KeyEnter))
+	m = finishProfileJob(t, m, cmd)
+	if !strings.Contains(settingsPaintedTarget(t, m.screen, m.targets, m.focus), "silent ▾") {
+		t.Fatal("the dropdown did not display the saved log level")
 	}
 }
 

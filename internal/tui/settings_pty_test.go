@@ -21,14 +21,17 @@ func TestSettingsPTYFixture(t *testing.T) {
 	if report == "" {
 		t.Skip("explicit Settings PTY report path required")
 	}
-	b := &settingsPTYBackend{fakeBackend: &fakeBackend{snapshot: app.Snapshot{
-		Installed: true, ConfigReady: true, HasRun: true,
-		Version: "v1.19.33", RunningVersion: "v1.19.33", MixedPort: 7897, Controller: "127.0.0.1:9097",
-		Applied: "settings-pty", AppliedName: "Settings preview", Generation: "settings-pty-generation",
-		Service:      service.Status{Active: true, State: "active", Enabled: true, EnableState: "enabled", Linger: true, LingerKnown: true, PID: 4242},
-		Mode:         app.ModeStatus{Desired: "rule", Actual: "rule", Running: true},
-		Capabilities: app.Capabilities{Scope: "user", Runtime: app.Capability{Supported: true}},
-	}}}
+	b := &settingsPTYBackend{
+		coreSettings: mihomo.DefaultGeneralSettings(),
+		fakeBackend: &fakeBackend{snapshot: app.Snapshot{
+			Installed: true, ConfigReady: true, HasRun: true,
+			Version: "v1.19.33", RunningVersion: "v1.19.33", MixedPort: 7897, Controller: "127.0.0.1:9097",
+			Applied: "settings-pty", AppliedName: "Settings preview", Generation: "settings-pty-generation",
+			Service:      service.Status{Active: true, State: "active", Enabled: true, EnableState: "enabled", Linger: true, LingerKnown: true, PID: 4242},
+			Mode:         app.ModeStatus{Desired: "rule", Actual: "rule", Running: true},
+			Capabilities: app.Capabilities{Scope: "user", Runtime: app.Capability{Supported: true}},
+		}},
+	}
 	language := os.Getenv("LAZYCLASH_SETTINGS_PTY_LANGUAGE")
 	if language == "" {
 		language = "en"

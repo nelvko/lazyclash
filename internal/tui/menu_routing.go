@@ -22,8 +22,10 @@ func (m *Model) applyMenuResult(result menuResult) tea.Cmd {
 					return m.changeLanguage(result.Action)
 				case "settings.theme":
 					return m.changeTheme(result.Action)
-				case "settings.ipv6", "settings.unifiedDelay", "settings.logLevel":
-					return m.changeCoreSetting(m.menu.anchor.ID, result.Action)
+				case "settings.logLevel":
+					if result.Action != m.snapshot.CoreSettings.LogLevel {
+						return m.saveCoreSetting(m.menu.anchor.ID, "log-level", result.Action)
+					}
 				}
 			}
 		}

@@ -11,14 +11,19 @@ import (
 	"github.com/nelvko/lazyclash/internal/i18n"
 )
 
-// Settings reuses the dashboard's scrolling, focus and button components.
-// Bubbles has no settings form or switch component; these rows only lay out
-// existing actions, without owning state or changing their activation paths.
+type settingsControl uint8
+
+const (
+	settingsInline settingsControl = iota
+	settingsTrailing
+	settingsSwitch
+)
+
 type settingsRow struct {
 	label, value, note string
 	color              string
 	actions            []overviewControlButton
-	trailingControl    bool // Switches and dropdowns align to the card's right inset.
+	control            settingsControl
 }
 
 var languageMenuItems = []menuItem{
@@ -42,9 +47,44 @@ func menuItemLabel(items []menuItem, id string) string {
 }
 
 func settingsSelectRow(o dashboardOptions, id, label, current string, items []menuItem) settingsRow {
-	return settingsRow{label: label, trailingControl: true, actions: []overviewControlButton{
+	return settingsRow{label: label, control: settingsTrailing, actions: []overviewControlButton{
 		{id: id, label: menuItemLabel(items, current) + " ▾", enabled: !o.Busy},
 	}}
+}
+
+func settingsSwitchRow(id, label string, on, enabled bool) settingsRow {
+	return settingsRow{label: label, control: settingsSwitch, actions: []overviewControlButton{
+		{id: id, selected: on, enabled: enabled},
+	}}
+}
+
+// Use the same six terminal cells in all color modes. Shading the rail glyph
+// and its background identically makes a solid track in full color.
+func renderSettingsSwitch(action overviewControlButton, o buttonOptions) string {
+	railColor, thumbColor := divider, disabled
+	if action.selected {
+		railColor, thumbColor = "#456652", "#addbb0"
+	}
+	marker := "  "
+	if o.Focused && action.enabled {
+		marker = "› "
+	}
+	if !action.enabled {
+		railColor, thumbColor = divider, disabled
+	} else if o.Hovered {
+		thumbColor = pageTitleForeground
+	}
+	railBG, thumbBG := railColor, thumbColor
+	if o.Plain {
+		railBG, thumbBG = o.Surface, o.Surface
+	}
+	rail := themed("░░░░", railColor, railBG, o.Dim)
+	thumb := themed("██", thumbColor, thumbBG, o.Dim)
+	track := thumb + rail
+	if action.selected {
+		track = rail + thumb
+	}
+	return themed(marker, focus, o.Surface, o.Dim) + track
 }
 
 func settingsContent(o dashboardOptions, width int) (string, []hitRegion) {
@@ -69,15 +109,11 @@ func settingsContent(o dashboardOptions, width int) (string, []hitRegion) {
 
 func settingsInterface(o dashboardOptions, width int) dashboardBlock {
 	tr := o.Locale.T
-	state := tr("dashboard.control.on")
-	if o.HideKeyHints {
-		state = tr("dashboard.control.off")
-	}
+	hints := settingsSwitchRow("key-hints.toggle", tr("dashboard.interface.keyHints"), !o.HideKeyHints, true)
+	hints.note = tr("settings.keyHintsHint")
 	return settingsSection(o, width, tr("settings.interface"), "", []settingsRow{
 		settingsSelectRow(o, "settings.language", tr("dashboard.language.title"), o.Locale.Language(), languageMenuItems),
-		{label: tr("dashboard.interface.keyHints"), note: tr("settings.keyHintsHint"), trailingControl: true, actions: []overviewControlButton{
-			{id: "key-hints.toggle", label: state, enabled: true, selected: !o.HideKeyHints},
-		}},
+		hints,
 		settingsThemeRow(o),
 		{label: tr("settings.editor"), actions: []overviewControlButton{{id: "editor.configure", label: tr("settings.edit"), enabled: !o.Busy}}},
 	})
@@ -97,20 +133,18 @@ func settingsThemeRow(o dashboardOptions) settingsRow {
 
 func settingsService(o dashboardOptions, width int) dashboardBlock {
 	tr, s := o.Locale.T, o.Snapshot
-	autostart := settingsRow{label: tr("settings.autostart"), value: tr("settings.afterInstall"), trailingControl: true}
+	autostart := settingsRow{label: tr("settings.autostart"), value: tr("settings.afterInstall")}
 	if s.Installed {
-		id, state := "autostart-enable", tr("dashboard.control.off")
+		id, command := "autostart-enable", "dashboard.settings.enableAutostart"
 		if s.Service.Enabled {
-			id, state = "autostart-disable", tr("dashboard.control.on")
+			id, command = "autostart-disable", "dashboard.settings.disableAutostart"
 		}
-		autostart.value = ""
-		autostart.actions = []overviewControlButton{{id: id, label: state, enabled: !o.Busy, selected: s.Service.Enabled}}
 		if s.ServiceError != "" || s.Service.EnableState != "" && s.Service.EnableState != "enabled" && s.Service.EnableState != "disabled" {
+			autostart.control = settingsTrailing
 			autostart.value = tr("dashboard.status.unknown")
-			autostart.actions[0].label = tr("dashboard.settings.enableAutostart")
-			if s.Service.Enabled {
-				autostart.actions[0].label = tr("dashboard.settings.disableAutostart")
-			}
+			autostart.actions = []overviewControlButton{{id: id, label: tr(command), enabled: !o.Busy}}
+		} else {
+			autostart = settingsSwitchRow(id, autostart.label, s.Service.Enabled, !o.Busy)
 		}
 		if !s.Service.Linger && s.Capabilities.Scope != "system" {
 			autostart.note = tr("dashboard.settings.lingerDisabled")
@@ -221,15 +255,16 @@ func settingsSection(o dashboardOptions, width int, title, description string, r
 		if len(row.actions) > 0 {
 			var values []string
 			total := 0
-			selectionWidth := overviewSelectionWidth(row.actions)
 			for _, action := range row.actions {
 				options := dashboardButtonOptions(action.id, o, action.primary, panel)
-				options.Disabled, options.Selected = !action.enabled, action.selected
-				options.Selectable = action.selectable() || strings.HasPrefix(action.id, "autostart-")
-				if options.Selectable {
-					options.Width = max(6, selectionWidth)
+				options.Disabled = !action.enabled
+				var face string
+				if row.control == settingsSwitch {
+					face = renderSettingsSwitch(action, options)
+				} else {
+					face = renderButton(action.label, options)
 				}
-				value := cellCrop(renderButton(action.label, options), inner)
+				value := cellCrop(face, inner)
 				values = append(values, value)
 				total += ansi.StringWidth(value)
 			}
@@ -239,7 +274,7 @@ func settingsSection(o dashboardOptions, width int, title, description string, r
 				available := inner - used - total
 				gap := labelColumn + 2 - used
 				switch {
-				case row.trailingControl:
+				case row.control != settingsInline:
 					gap = max(2, available)
 				case row.value != "":
 					gap = 1

@@ -70,20 +70,30 @@ func (a *App) buildProfile(ctx context.Context, lib configuration.Library, name 
 	return cfg, record, err
 }
 
+// Use the generation's immutable inputs. Library edits and downloads may be
+// newer than the profile that the user actually applied.
+func (a *App) buildAppliedRecipe(m manifest) ([]byte, error) {
+	if m.Build == nil || m.Build.Profile != m.Applied ||
+		(m.Applied != "default" && (m.Build.Recipe == nil || m.Build.Recipe.Core != "mihomo")) {
+		return nil, diagnostic.New("diagnostic.profile.pinnedRecipeMissing", "could not identify the applied profile recipe")
+	}
+	return a.buildRecipe(*m.Build, m)
+}
+
 func (a *App) buildRecipe(record buildRecord, m manifest) ([]byte, error) {
 	opts := mihomo.BuildOptions{
 		Controller: m.Controller, Secret: m.Secret, MixedPort: m.Port,
 		General: m.CoreSettings, Mode: m.Mode, TUN: m.TUN, ServiceName: a.Name,
 	}
-	var err error
 	if record.Profile == "default" {
-		opts.Base, err = mihomo.Default(m.Controller, m.Secret, m.Port)
+		opts.Base = []byte(mihomo.DefaultProfile)
 	} else {
-		opts.Base, err = a.library().Read(record.Recipe.Revision)
+		base, err := a.library().Read(record.Recipe.Revision)
+		if err != nil {
+			return nil, err
+		}
+		opts.Base = base
 		opts.Overrides = []byte(record.Recipe.Overrides)
-	}
-	if err != nil {
-		return nil, err
 	}
 	cfg, err := mihomo.Build(opts)
 	if err != nil {

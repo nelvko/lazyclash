@@ -3,12 +3,11 @@ package app
 import (
 	"context"
 
-	"github.com/nelvko/lazyclash/internal/diagnostic"
+	"github.com/nelvko/lazyclash/internal/mihomo"
 )
 
-// SetCoreSetting updates one override under the instance lock so concurrent
-// edits to different settings compose. Clearing it restores the deployed
-// profile's own value, including a per-profile override.
+// SetCoreSetting updates one instance preference under the lock so concurrent
+// edits to different settings compose.
 func (a *App) SetCoreSetting(ctx context.Context, key, value string) error {
 	return a.locked(ctx, func() error {
 		m, target, err := a.load()
@@ -22,8 +21,12 @@ func (a *App) SetCoreSetting(ctx context.Context, key, value string) error {
 		if next == m.CoreSettings {
 			return nil
 		}
+		deployed, err := a.readGenerationConfig(target, m.SHA)
+		if err != nil {
+			return err
+		}
 		m.CoreSettings = next
-		cfg, err := a.buildAppliedRecipe(m)
+		cfg, err := mihomo.WithGeneralSettings(deployed, next, m.TUN)
 		if err != nil {
 			return err
 		}
@@ -34,14 +37,4 @@ func (a *App) SetCoreSetting(ctx context.Context, key, value string) error {
 		}
 		return a.publishProfileRefresh(ctx, target, m, cfg)
 	})
-}
-
-// Use the generation's immutable inputs. Library edits and downloads may be
-// newer than the profile that the user actually applied.
-func (a *App) buildAppliedRecipe(m manifest) ([]byte, error) {
-	if m.Build == nil || m.Build.Profile != m.Applied ||
-		(m.Applied != "default" && (m.Build.Recipe == nil || m.Build.Recipe.Core != "mihomo")) {
-		return nil, diagnostic.New("diagnostic.profile.pinnedRecipeMissing", "could not identify the applied profile recipe")
-	}
-	return a.buildRecipe(*m.Build, m)
 }

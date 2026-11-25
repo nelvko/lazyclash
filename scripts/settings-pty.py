@@ -42,6 +42,27 @@ def click(terminal, point):
     terminal.key(("\x1b[<0;%d;%dM\x1b[<0;%d;%dm" % (x + 1, y + 1, x + 1, y + 1)).encode())
 
 
+def switch_track(enabled):
+    return "░░░░██" if enabled else "██░░░░"
+
+
+def check_switch(terminal, words, key, enabled, profile):
+    label_x, y = position(terminal, words[key])
+    row = terminal.screen.cells[y]
+    right = row.index("│", label_x)
+    track_x = right - 8
+    assert "".join(row[track_x:right]) == switch_track(enabled) + "  ", key
+    before_track = "".join(row[label_x:track_x])
+    assert before_track[len(words[key]):].strip(" ›") == "", (key, before_track)
+    if profile != "no-color":
+        styles = terminal.screen.styles[y]
+        rail_x, thumb_x = (track_x, track_x + 4) if enabled else (track_x + 2, track_x)
+        rail = styles[rail_x]
+        assert rail[0] == rail[1] and rail[1] != styles[right-1][1], (key, "rail", rail)
+        assert styles[thumb_x][0] != rail[0], (key, "thumb", styles[thumb_x])
+    return track_x, y
+
+
 def focus(terminal, label, footer_hint=""):
     pattern = re.compile(r"›\s*(?:[<\[]\s*)?" + re.escape(label))
     for _ in range(36):
@@ -88,18 +109,15 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait("lazyclash doctor")
         preview.capture(terminal, output, "settings-wide", args)
 
-        for key in ("dashboard.language.title", "settings.theme", "settings.ipv6", "settings.unifiedDelay",
-                    "settings.logLevel", "dashboard.interface.keyHints", "settings.autostart"):
+        switch_defaults = {"settings.ipv6": True, "settings.unifiedDelay": False,
+                           "dashboard.interface.keyHints": True, "settings.autostart": True}
+        for key in ("dashboard.language.title", "settings.theme", "settings.logLevel", *switch_defaults):
             x, y = position(terminal, words[key])
             row = terminal.screen.cells[y]
             right = row.index("│", x)
             assert row[x-3:x] == ["│", " ", " "] and row[right-2:right] == [" ", " "], key
-            if key in ("dashboard.interface.keyHints", "settings.autostart"):
-                if profile == "no-color":
-                    assert row[right-3] == ">", "toggle lacks its two-cell inset: " + key
-                else:
-                    colors = terminal.screen.styles[y]
-                    assert colors[right-3][1] != colors[right-2][1], "toggle lacks its two-cell inset: " + key
+            if key in switch_defaults:
+                check_switch(terminal, words, key, switch_defaults[key], profile)
             else:
                 assert row[right-4] == "▾", "dropdown lacks its two-cell inset: " + key
 
@@ -117,38 +135,52 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait("✓ " + native[language])
         terminal.key(b"\x1b")
         terminal.wait_absent("✓ " + native[language])
+        terminal.key(b"\t")
+        terminal.settle()
+        wrapped = position(terminal, switch_track(True))
+        label = position(terminal, words["dashboard.interface.keyHints"].split()[0])
+        assert wrapped[1] > label[1] and wrapped[0] == label[0] + 2, "switch did not wrap at the label inset"
+        assert terminal.screen.cells[wrapped[1]][label[0]:wrapped[0]] == ["›", " "]
+        preview.capture(terminal, output, "switch-wrapped-28x24", args)
+        click(terminal, wrapped)
+        terminal.wait(switch_track(False))
+        terminal.key(b"\x14")
+        terminal.wait(switch_track(True))
+        dismiss_toasts(terminal)
         terminal.resize(160, 45)
         terminal.settle()
 
-        inherit = words["settings.followProfile"]
-        for key, value in (("settings.ipv6", words["dashboard.control.on"]),
-                           ("settings.unifiedDelay", words["dashboard.control.off"]),
-                           ("settings.logLevel", "debug")):
-            # The other rows still follow the profile, so click the trigger
-            # on this specific row and verify its selected option.
-            _, y = position(terminal, words[key])
-            row = terminal.screen.cells[y]
-            x = next(x for x, cell in enumerate(row) if cell and "".join(row[x:]).startswith(inherit + " ▾"))
-            click(terminal, (x, y))
-            terminal.wait("✓ " + inherit)
-            if key == "settings.ipv6":
-                terminal.key(b"\x1b[B")
-                terminal.key(b"\x1b")  # Cancel leaves the inherited value intact.
-                terminal.wait_absent("✓ " + inherit)
-                terminal.key(b"\r")
-                terminal.wait("✓ " + inherit)
-                terminal.key(b"\x1b[B")
-                terminal.key(b"\r")
-            else:
-                terminal.click_text("    " + value + " ")
-            terminal.wait(value + " ▾")
-            dismiss_toasts(terminal)
-        preview.capture(terminal, output, "mihomo-overrides-wide", args)
-        terminal.click_text("debug ▾")
-        terminal.wait("✓ debug")
-        terminal.click_text(inherit)
-        terminal.wait_absent("debug ▾")
-        terminal.wait(inherit + " ▾")
+        # The current IPv6 thumb, unified-delay rail and keyboard all activate
+        # their own switch through the same controls users see in the cards.
+        x, y = check_switch(terminal, words, "settings.ipv6", True, profile)
+        thumb_before = terminal.screen.styles[y][x + 5]
+        rail_before = terminal.screen.styles[y][x]
+        terminal.key(("\x1b[<35;%d;%dM" % (x + 6, y + 1)).encode())
+        terminal.settle()
+        check_switch(terminal, words, "settings.ipv6", True, profile)
+        if profile != "no-color":
+            assert terminal.screen.styles[y][x + 5] != thumb_before, "hover did not highlight the thumb"
+            assert terminal.screen.styles[y][x] == rail_before, "hover changed the rail"
+        click(terminal, (x + 5, y))
+        dismiss_toasts(terminal)
+        check_switch(terminal, words, "settings.ipv6", False, profile)
+        x, y = check_switch(terminal, words, "settings.unifiedDelay", False, profile)
+        click(terminal, (x + 2, y))
+        dismiss_toasts(terminal)
+        check_switch(terminal, words, "settings.unifiedDelay", True, profile)
+        preview.capture(terminal, output, "mihomo-switches-wide", args)
+        terminal.key(b"\r")
+        dismiss_toasts(terminal)
+        check_switch(terminal, words, "settings.unifiedDelay", False, profile)
+
+        terminal.click_text("info ▾")
+        terminal.wait("✓ info")
+        for level in ("debug", "warning", "error", "silent"):
+            terminal.wait("    " + level + " ")
+        assert all(value not in terminal.screen.text() for value in ("Follow profile", "跟随配置"))
+        preview.capture(terminal, output, "log-level-menu-wide", args)
+        terminal.click_text("    debug ")
+        terminal.wait("debug ▾")
         dismiss_toasts(terminal)
 
         terminal.click_text("Dark ▾")
@@ -213,18 +245,10 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.settle()
 
         # Exercise the row's mouse target and the global recovery shortcut.
-        _, y = position(terminal, words["dashboard.interface.keyHints"])
-        on = words["dashboard.control.on"]
-        for row_y in range(y, min(y + 3, terminal.screen.rows)):
-            row = terminal.screen.cells[row_y]
-            points = [(x, row_y) for x, cell in enumerate(row) if cell and "".join(row[x:]).startswith(on)]
-            if points:
-                click(terminal, points[0])
-                break
-        else:
-            raise AssertionError("Shortcut hints row has no toggle")
+        x, y = check_switch(terminal, words, "dashboard.interface.keyHints", True, profile)
+        click(terminal, (x + 4, y))
         terminal.settle()
-        assert words["dashboard.control.off"] in terminal.screen.text(), "mouse did not turn hints off"
+        check_switch(terminal, words, "dashboard.interface.keyHints", False, profile)
         preview.capture(terminal, output, "hints-hidden", args)
         terminal.key(b"\x14")  # Ctrl+T restores the hidden footer.
         terminal.settle()
@@ -270,13 +294,19 @@ def exercise(preview, binary, output, language, profile, args):
                 preview.capture(terminal, output, "theme-menu-compact", args)
                 terminal.key(b"\x1b")
                 terminal.wait_absent("✓ Dark")
-                focus(terminal, words["dashboard.control.off"] + " ▾")
+                focus(terminal, "debug ▾")
                 terminal.key(b"\r")
-                terminal.wait("✓ " + words["dashboard.control.off"])
-                terminal.wait(inherit)
-                preview.capture(terminal, output, "mihomo-menu-compact", args)
+                terminal.wait("✓ debug")
+                preview.capture(terminal, output, "log-level-menu-compact", args)
                 terminal.key(b"\x1b")
-                terminal.wait_absent("✓ " + words["dashboard.control.off"])
+                terminal.wait_absent("✓ debug")
+                terminal.settle()
+                x, y = check_switch(terminal, words, "settings.ipv6", False, profile)
+                click(terminal, (x, y))
+                dismiss_toasts(terminal)
+                check_switch(terminal, words, "settings.ipv6", True, profile)
+                check_switch(terminal, words, "settings.unifiedDelay", False, profile)
+                preview.capture(terminal, output, "mihomo-switches-40x16", args)
             focus(terminal, words["settings.openLogs"])
             preview.capture(terminal, output, "tab-logs-%dx%d" % (width, height), args)
             focus(terminal, words["settings.edit"], words["navigation.controls.editPorts"])
@@ -307,10 +337,11 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.exit()
         calls = json.loads(report.read_text())
         assert calls["language_saves"] == 2 and calls["language"] == language, calls
-        assert calls["hint_saves"] == 2 and not calls["hints_hidden"], calls
+        assert calls["hint_saves"] == 4 and not calls["hints_hidden"], calls
         assert calls["theme_saves"] == 3 and calls["theme"] == "dark", calls
-        assert calls["core_changes"] == [["ipv6", "on"], ["unified-delay", "off"],
-                                         ["log-level", "debug"], ["log-level", ""]], calls
+        assert calls["core_changes"] == [["ipv6", "off"], ["unified-delay", "on"],
+                                         ["unified-delay", "off"], ["log-level", "debug"],
+                                         ["ipv6", "on"]], calls
         assert calls["port_reads"] == len(SIZES), calls
         assert calls["log_streams"] == 1, calls
         assert calls["service_changes"] == calls["mode_changes"] == calls["port_applies"] == 0, calls
@@ -321,7 +352,7 @@ def exercise(preview, binary, output, language, profile, args):
         if profile == "no-color":
             assert not any(value not in (b"", b"0") for value in preview.SGR.findall(raw)), "NO_COLOR emitted styling"
         (output / "pty.raw").write_bytes(raw)
-        print("PASS %s/%s: core overrides and inheritance, theme and language dropdowns, busy guard, hints, adaptive width/columns, wheel, Tab, ports return and diagnostics Logs; %s" % (language, profile, json.dumps(calls)), flush=True)
+        print("PASS %s/%s: core switches and log level, theme and language dropdowns, busy guard, hints, adaptive width/columns, wheel, Tab, ports return and diagnostics Logs; %s" % (language, profile, json.dumps(calls)), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")
         (output / "failed.ansi").write_bytes(terminal.raw)

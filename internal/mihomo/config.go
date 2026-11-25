@@ -18,9 +18,37 @@ import (
 
 const MaxConfigSize = 8 << 20
 
+// DefaultProfile is the built-in routing configuration for a fresh instance.
+const DefaultProfile = `mode: rule
+proxies: []
+proxy-groups:
+  - name: PROXY
+    type: select
+    proxies: [DIRECT, REJECT]
+rules: ["MATCH,PROXY"]
+`
+
 // Default needs no subscription or geodata files and still exposes a useful group.
 func Default(controller, secret string, mixedPort int) ([]byte, error) {
-	return Effective([]byte("mode: rule\nlog-level: warning\nproxies: []\nproxy-groups:\n  - name: PROXY\n    type: select\n    proxies: [DIRECT, REJECT]\nrules: [\"MATCH,PROXY\"]\n"), controller, secret, mixedPort)
+	return Build(BuildOptions{Base: []byte(DefaultProfile), Controller: controller, Secret: secret, MixedPort: mixedPort})
+}
+
+// ValidateEndpoints checks the instance's managed listeners and API secret.
+func ValidateEndpoints(controller, secret string, mixedPort int) error {
+	if err := loopbackAddress(controller); err != nil {
+		return err
+	}
+	if secret == "" || strings.IndexFunc(secret, unicode.IsControl) >= 0 {
+		return diagnostic.New("diagnostic.config.controllerSecret", "controller secret must be nonempty and contain no control characters")
+	}
+	if mixedPort < 1024 || mixedPort > 65535 {
+		return diagnostic.New("diagnostic.config.mixedPort", "mixed port must be between 1024 and 65535")
+	}
+	_, apiPort, _ := net.SplitHostPort(controller)
+	if apiPort == strconv.Itoa(mixedPort) {
+		return diagnostic.New("diagnostic.config.portConflict", "controller and proxy ports must differ")
+	}
+	return nil
 }
 
 // Effective owns the local listeners and credentials. Subscription routing and
@@ -29,18 +57,8 @@ func Effective(raw []byte, controller, secret string, mixedPort int) ([]byte, er
 	if len(bytes.TrimSpace(raw)) == 0 || len(raw) > MaxConfigSize {
 		return nil, diagnostic.New("diagnostic.config.yamlSize", "Mihomo YAML must be nonempty and at most 8 MiB")
 	}
-	if err := loopbackAddress(controller); err != nil {
+	if err := ValidateEndpoints(controller, secret, mixedPort); err != nil {
 		return nil, err
-	}
-	if secret == "" || strings.IndexFunc(secret, unicode.IsControl) >= 0 {
-		return nil, diagnostic.New("diagnostic.config.controllerSecret", "controller secret must be nonempty and contain no control characters")
-	}
-	if mixedPort < 1024 || mixedPort > 65535 {
-		return nil, diagnostic.New("diagnostic.config.mixedPort", "mixed port must be between 1024 and 65535")
-	}
-	_, apiPort, _ := net.SplitHostPort(controller)
-	if apiPort == strconv.Itoa(mixedPort) {
-		return nil, diagnostic.New("diagnostic.config.portConflict", "controller and proxy ports must differ")
 	}
 	cfg, err := decodeConfig(raw)
 	if err != nil {

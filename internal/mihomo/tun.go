@@ -33,12 +33,13 @@ func ManagedTUN(serviceName string) (TUNResources, error) {
 // Subscription fields never authorize network administration. DNS interception
 // stays inside the TUN; this policy does not change the host resolver settings.
 func WithTUN(raw []byte, enabled bool, serviceName string) ([]byte, error) {
-	if !enabled {
-		return WithoutTUN(raw, GeneralSettings{})
-	}
 	cfg, err := decodeConfig(raw)
 	if err != nil {
 		return nil, err
+	}
+	if !enabled {
+		cfg["tun"] = map[string]any{"enable": false}
+		return yaml.Marshal(cfg)
 	}
 	r, err := ManagedTUN(serviceName)
 	if err != nil {
@@ -84,10 +85,9 @@ func WithoutTUN(raw []byte, settings GeneralSettings) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := settings.Validate(); err != nil {
+	if err := settings.apply(cfg, false); err != nil {
 		return nil, err
 	}
 	cfg["tun"] = map[string]any{"enable": false}
-	settings.apply(cfg)
 	return yaml.Marshal(cfg)
 }

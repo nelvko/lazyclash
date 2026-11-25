@@ -1301,9 +1301,12 @@ func (m *Model) activate(id string) tea.Cmd {
 	case "settings.theme":
 		m.openPageSelectionMenu("settings", id, m.theme, themeMenuItems)
 		return nil
-	case "settings.ipv6", "settings.unifiedDelay", "settings.logLevel":
-		_, current, items := coreSettingChoices(m.locale, m.snapshot.CoreSettings, id)
-		m.openPageSelectionMenu("settings", id, current, items)
+	case "settings.ipv6":
+		return m.toggleCoreSetting(id, "ipv6", m.snapshot.CoreSettings.IPv6)
+	case "settings.unifiedDelay":
+		return m.toggleCoreSetting(id, "unified-delay", m.snapshot.CoreSettings.UnifiedDelay)
+	case "settings.logLevel":
+		m.openPageSelectionMenu("settings", id, m.snapshot.CoreSettings.LogLevel, coreLogLevelItems)
 		return nil
 	case "editor.configure":
 		return m.openEditorPreference()

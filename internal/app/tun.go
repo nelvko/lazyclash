@@ -181,8 +181,8 @@ func (a *App) SetTUN(ctx context.Context, enabled bool) error {
 
 func (a *App) tunConfig(next manifest, configPath string) ([]byte, error) {
 	if !next.TUN {
-		// A pinned build restores pre-TUN IPv6 and DNS, including inherited
-		// values. Losing the source must never prevent disabling host TUN.
+		// A pinned build restores the instance IPv6 setting and the profile's
+		// DNS policy. Losing the source must never prevent disabling host TUN.
 		if cfg, err := a.buildAppliedRecipe(next); err == nil {
 			return cfg, nil
 		}
