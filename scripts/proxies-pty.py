@@ -81,24 +81,16 @@ def assert_proxy_header(terminal, words, direct=False):
     assert words["dashboard.page.proxies"] in header, "proxy header lost its page title"
     assert words["header.refresh"] not in header and "↻" not in header, "proxy header retained a manual refresh action"
     assert not re.search(r"\b\d+\s+groups\b|\d+\s*个代理组", header), "proxy header retained the group total"
+    placeholder = words["proxies.search_placeholder"]
+    assert (placeholder in terminal.screen.text()) == (not direct), "search field visibility does not match the routing mode"
     if terminal.screen.columns >= 50:
         assert len({y for _, y in modes + [provider]}) == 1, "mode choices and provider action do not share a header row"
-        direct_x, direct_y = modes[-1]
-        row = terminal.screen.cells[direct_y]
         faces = proxy_mode_faces(terminal, words)
         assert all(x + width == next_x for (x, _, width), (next_x, _, _) in zip(faces, faces[1:])), (
             "mode segments are not contiguous and equal-width: %r" % (faces,))
-        direct_width = cell_offset(row[direct_x:], len(words["dashboard.mode.direct"]))
-        search_x = next((x for x in range(direct_x + direct_width, provider[0])
-                         if row[x] and ("".join(row[x:]).startswith(words["proxies.search"]) or row[x] == "/")), None)
-        if direct:
-            assert search_x is None, "Direct mode retained a search action"
-        else:
-            assert search_x is not None, "search action is missing between routing modes and providers"
-            # A utility label starts three cells into its own button. Direct
-            # reserves the Search slot so that the mode faces cannot move.
-            x, _, width = faces[-1]
-            assert search_x - 3 - (x + width) == 4, "mode/search spacing changed"
+        # The provider label starts three cells into its button.
+        x, _, width = faces[-1]
+        assert provider[0] - 3 - (x + width) == 4, "mode/provider spacing changed"
         provider_label = words["providers.title.proxies"]
         if not "".join(terminal.screen.cells[provider[1]][provider[0]:]).startswith(provider_label):
             provider_label = "≡"

@@ -493,7 +493,7 @@ func click(m Model, r hitRegion) (Model, tea.Cmd) {
 	if r.InputWidth > 0 {
 		// A shared input frame also contains inner actions. Clicking the input
 		// target means its editor, rather than an action at the frame's center.
-		x, y = r.X+2+r.InputWidth/2, r.Y+1
+		x, y = r.X+2+r.InputWidth/2, r.Y+min(1, r.H-1)
 	}
 	return update(m, tea.MouseClickMsg{X: x, Y: y, Button: tea.MouseLeft})
 }

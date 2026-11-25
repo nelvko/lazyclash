@@ -1,10 +1,11 @@
 package tui
 
 const (
-	proxyNodeMinWidth    = 29
-	proxyNodeContentRows = 2
-	proxyColumnGap       = 1
-	proxyMaxColumns      = 4
+	proxyNodeMinWidth     = 29
+	proxyNodeContentRows  = 2
+	proxyColumnGap        = 1
+	proxyMaxColumns       = 4
+	proxyCompactMaxHeight = 24
 )
 
 type proxyGridLayout struct {
@@ -13,7 +14,7 @@ type proxyGridLayout struct {
 }
 
 func (m *Model) compactProxyCards() bool {
-	return m.proxiesNarrow() || m.height <= 24
+	return m.proxiesNarrow() || m.height <= proxyCompactMaxHeight
 }
 
 func (m *Model) proxyCardPadding() int {

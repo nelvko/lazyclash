@@ -178,7 +178,7 @@ func TestSearchCursorRespectsColorCapability(t *testing.T) {
 	}
 }
 
-func TestProxySearchCompactCursorAndClearAcrossResize(t *testing.T) {
+func TestProxySearchCursorAndClearAcrossResize(t *testing.T) {
 	for _, language := range []string{"en", "zh-Hans"} {
 		t.Run(language, func(t *testing.T) {
 			m, _ := proxiesModel(t, 160, 45)
@@ -193,8 +193,9 @@ func TestProxySearchCompactCursorAndClearAcrossResize(t *testing.T) {
 				field := findTarget(t, m, "proxies.search")
 				clear := findTarget(t, m, "proxies.clear")
 				cursor := m.View().Cursor
-				if field.H != 1 || field.W > inputFieldMaxWidth || field.InputWidth != searchInputWidth(field.W) || clear.Y != field.Y || cursor == nil || cursor.Y != field.Y || cursor.X < field.X+2 || cursor.X > field.X+2+field.InputWidth {
-					t.Fatalf("compact input or cursor moved out of its single row at %v: field=%+v clear=%+v cursor=%+v", size, field, clear, cursor)
+				textRow := field.Y + field.H/2
+				if field.W > inputFieldMaxWidth || field.InputWidth != searchInputWidth(field.W) || clear.Y != textRow || cursor == nil || cursor.Y != textRow || cursor.X < field.X+2 || cursor.X > field.X+2+field.InputWidth {
+					t.Fatalf("input or cursor moved out of the text row at %v: field=%+v clear=%+v cursor=%+v", size, field, clear, cursor)
 				}
 				assertSearchCursorCell(t, m, "A")
 				assertCanvas(t, m.View().Content, size[0], size[1])
@@ -203,10 +204,10 @@ func TestProxySearchCompactCursorAndClearAcrossResize(t *testing.T) {
 			field := findTarget(t, m, "proxies.search")
 			m, _ = click(m, findTarget(t, m, "proxies.clear"))
 			if m.proxies.search.Value() != "" || !m.proxies.search.Focused() || !m.proxies.editing || m.focus != "proxies.search" || hasAction(m.targets, "proxies.clear") || m.View().Cursor == nil {
-				t.Fatal("compact clear action lost the editable input or retained its query")
+				t.Fatal("clear action lost the editable input or retained its query")
 			}
 			if got := findTarget(t, m, "proxies.search"); got != field {
-				t.Fatalf("clearing compact search changed its geometry: before=%+v after=%+v", field, got)
+				t.Fatalf("clearing search changed its geometry: before=%+v after=%+v", field, got)
 			}
 			for _, overlay := range []string{"help", "notifications"} {
 				covered := m
@@ -216,7 +217,7 @@ func TestProxySearchCompactCursorAndClearAcrossResize(t *testing.T) {
 					covered.notification.panel.open = true
 				}
 				if cursor := covered.View().Cursor; cursor != nil {
-					t.Fatalf("%s overlay retained compact search cursor: %+v", overlay, cursor)
+					t.Fatalf("%s overlay retained the search cursor: %+v", overlay, cursor)
 				}
 			}
 		})

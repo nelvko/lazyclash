@@ -112,7 +112,6 @@ func TestProxiesHintsDescribeFocusedAction(t *testing.T) {
 			{"proxies.back", "PROXY", "back", 160},
 			{"proxies.directory", "PROXY", "directory", 160},
 			{"proxies.search", "PROXY", "search", 160},
-			{"proxies.search-open", "PROXY", "search", 160},
 			{"proxies.clear", "PROXY", "clear", 160},
 		} {
 			setProxyTestGroup(&m, tc.group)

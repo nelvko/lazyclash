@@ -44,7 +44,7 @@ def calls(report):
 
 def assert_header(terminal, words):
     PROXIES.assert_proxy_header(terminal, words)
-    assert words["providers.search.proxies"] not in terminal.screen.text(), "main-page search returned"
+    assert words["providers.search.proxies"] not in terminal.screen.text(), "provider search appeared outside its panel"
     if terminal.screen.columns < 50:
         _, _, _, bottom = PROXIES.proxy_header_positions(terminal, words)
         modes = [RULES.position(terminal, words["dashboard.mode." + mode]) for mode in ("rule", "global", "direct")]

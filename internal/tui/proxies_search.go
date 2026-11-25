@@ -54,8 +54,7 @@ func (m *Model) proxyGroupMatches(query string, group mihomo.Group) bool {
 }
 
 func (m *Model) proxySearchVisible() bool {
-	return m.proxiesReady() && !m.proxiesDirect() &&
-		(m.proxies.searchReturn != nil || m.proxies.editing || m.proxySearchQuery() != "")
+	return m.proxiesReady() && !m.proxiesDirect()
 }
 
 func (m *Model) proxyNarrowGroupLabelVisible() bool {
@@ -66,9 +65,8 @@ func (m *Model) proxyNarrowGroupLabelVisible() bool {
 	return exists
 }
 
-// Search is opened explicitly, keeping the unfiltered directory compact.
 func (m *Model) focusProxySearch() tea.Cmd {
-	if m.busy || m.quitting || !m.proxiesReady() || m.proxiesDirect() {
+	if m.busy || m.quitting || !m.proxySearchVisible() {
 		return nil
 	}
 	if m.proxies.searchReturn == nil {
@@ -189,6 +187,13 @@ func (m *Model) proxySearchBlock(width int) dashboardBlock {
 	return m.searchField("proxies.search", m.tr("proxies.search_placeholder"), m.proxies.search, width, false)
 }
 
+func (m *Model) proxySearchRows() int {
+	if m.height <= proxyCompactMaxHeight {
+		return 1
+	}
+	return 3
+}
+
 func (m *Model) proxyModeRows(width int) int {
 	if m.width >= 50 {
 		return 0
@@ -203,7 +208,7 @@ func (m *Model) proxyFixedRows(o dashboardOptions) int {
 	modeRows := m.proxyModeRows(g.width)
 	rows, groupRows := 0, 0
 	if m.proxySearchVisible() {
-		rows = 1
+		rows = m.proxySearchRows()
 	}
 	if m.proxyNarrowGroupLabelVisible() {
 		groupRows = 1

@@ -66,14 +66,9 @@ func (m *Model) pageHeader() pageHeader {
 		if m.width >= 50 {
 			h.leading = m.proxyModeActions()
 		}
-		search := headerAction{"proxies.search-open", tr("proxies.search"), "/", m.proxiesReady()}
-		if m.proxiesDirect() {
-			// Keep the utility column at its measured width as modes change.
-			search.id, search.enabled = "", false
-		} else if search.enabled && !m.proxiesNarrow() && m.hasExpandedProxyGroups() {
+		if m.proxiesReady() && !m.proxiesDirect() && !m.proxiesNarrow() && m.hasExpandedProxyGroups() {
 			h.titleAction = headerAction{id: "proxies.collapse_all", label: tr("proxies.collapse_all"), enabled: !m.quitting}
 		}
-		h.actions = append(h.actions, search)
 		h.actions = append(h.actions, headerAction{"proxies.providers", tr("providers.title.proxies"), "≡", m.providersSupported(providerProxies)})
 	case "profiles":
 		h.actions = []headerAction{{"profiles.update-all", tr("header.updateAll"), "↻", m.hasRefreshableProfiles()}}
@@ -132,11 +127,7 @@ func renderHeaderButton(o dashboardOptions, action headerAction, label string) s
 	if action.id == "conn.close-all" {
 		options.Kind = buttonDanger
 	}
-	value := renderButton(label, options)
-	if action.id == "" {
-		return themed(strings.Repeat(" ", ansi.StringWidth(value)), text, bg, o.Dim)
-	}
-	return value
+	return renderButton(label, options)
 }
 
 // On small terminals actions get their own header row. They remain outside the

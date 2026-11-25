@@ -17,7 +17,7 @@ func TestProxiesSearchFiltersNamesAndTypesWithoutChangingExpansion(t *testing.T)
 	before := cloneProxyExpansion(m.proxies.expanded)
 	m, _ = update(m, key("/"))
 	if !m.proxies.editing || m.focus != "proxies.search" || !hasAction(m.targets, "proxies.search") {
-		t.Fatal("search shortcut did not reveal the shared input")
+		t.Fatal("search shortcut did not focus the shared input")
 	}
 	m, _ = update(m, tea.PasteMsg{Content: "hk 02"})
 	if m.proxies.search.Value() != "hk 02" || !hasAction(m.contentTargets(), "node.0.2") ||
@@ -33,7 +33,7 @@ func TestProxiesSearchFiltersNamesAndTypesWithoutChangingExpansion(t *testing.T)
 	}
 	m.proxyActivate("proxies.clear")
 	m, _ = update(m, special(tea.KeyEscape))
-	if m.proxySearchVisible() || !reflect.DeepEqual(before, m.proxies.expanded) {
+	if m.proxies.editing || m.proxySearchQuery() != "" || !reflect.DeepEqual(before, m.proxies.expanded) {
 		t.Fatal("clearing search did not restore the collapsed directory")
 	}
 	m.proxies.search.SetValue("selector")

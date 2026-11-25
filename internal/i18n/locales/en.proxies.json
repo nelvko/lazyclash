@@ -1,5 +1,4 @@
 {
-  "proxies.search": "Search",
   "proxies.search_placeholder": "Search groups or nodes…",
   "proxies.search_no_match": "No matching groups or nodes.",
   "proxies.search_group": "Group: %s",
@@ -44,5 +43,5 @@
   "proxies.switching": "Switching",
   "proxies.test.done": "Tested %d/%d",
   "proxies.test.canceled": "Canceled %d/%d",
-  "help.proxies.tools": "/ searches groups and nodes; Enter / Esc leaves the input and keeps the filter. s sorts; t tests the current group, or cancels that group's running test."
+  "help.proxies.tools": "Click the search field or press / to find groups and nodes. Enter focuses the first result. Esc clears the search and returns to your previous position. s sorts. t tests the current group or cancels its running test."
 }

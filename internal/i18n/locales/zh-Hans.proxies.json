@@ -1,5 +1,4 @@
 {
-  "proxies.search": "搜索",
   "proxies.search_placeholder": "搜索策略组或节点…",
   "proxies.search_no_match": "没有匹配的代理组或节点。",
   "proxies.search_group": "代理组：%s",
@@ -44,5 +43,5 @@
   "proxies.switching": "切换中",
   "proxies.test.done": "已完成 %d/%d",
   "proxies.test.canceled": "已取消 %d/%d",
-  "help.proxies.tools": "/ 搜索组和节点；输入时 Enter / Esc 返回结果并保留筛选。s 排序；t 测试当前组，再按一次取消该组测试。"
+  "help.proxies.tools": "点击搜索框或按 / 查找组和节点。Enter 聚焦首个结果，Esc 清空搜索并回到原来的浏览位置。s 排序。t 测试当前组，再按一次取消该组测试。"
 }

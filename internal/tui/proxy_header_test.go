@@ -101,36 +101,29 @@ func TestApplyingProfileAutomaticallyUpdatesProxyGroups(t *testing.T) {
 	}
 }
 
-func TestProxiesSearchStartsCollapsedAndOpensOnDemand(t *testing.T) {
+func TestProxiesSearchFieldIsVisibleWithoutTakingFocus(t *testing.T) {
 	m, _ := proxiesModel(t, 160, 40)
-	if hasAction(m.targets, "proxies.search") || m.proxies.editing {
-		t.Fatal("default proxy directory should not reserve a search input")
+	defer m.stopRuntime()
+	field := findTarget(t, m, "proxies.search")
+	if m.proxies.editing || m.focus == field.ID || m.proxies.search.Focused() || !hasAction(m.focusTargets(), field.ID) {
+		t.Fatal("default proxy directory should offer search while preserving browsing focus")
 	}
-	m, _ = click(m, findTarget(t, m, "proxies.search-open"))
-	if _, id, active := m.activeInputField(); !active || id != "proxies.search" || !hasAction(m.targets, id) || m.busy {
-		t.Fatal("header search action did not open an editable input")
+	if hasAction(m.targets, "proxies.search-open") || hasAction(m.focusTargets(), "proxies.search-open") {
+		t.Fatal("proxy directory has a duplicate search button")
+	}
+	m, _ = click(m, field)
+	if _, id, active := m.activeInputField(); !active || id != field.ID || m.busy {
+		t.Fatal("clicking the visible field did not start editing")
 	}
 	m, _ = update(m, special(tea.KeyEscape))
-	if hasAction(m.targets, "proxies.search") || m.proxies.editing {
-		t.Fatal("empty search should close after Escape")
+	if findTarget(t, m, field.ID) != field || m.proxies.editing || m.proxies.search.Focused() {
+		t.Fatal("Escape should leave the search field visible and unfocused")
 	}
-	m.stopRuntime()
-}
-
-func TestProxiesSearchActionsFitShortSingleRowHeader(t *testing.T) {
-	for _, width := range []int{100, 101, 110, 120} {
-		m := headerModel("proxies", width, 20)
-		g := dashboardGeometry(m.dashboardOptions())
-		for _, id := range []string{"proxies.search-open", "proxies.providers"} {
-			hit := findTarget(t, m, id)
-			if hit.Y >= g.headerHeight || hit.X+hit.W > g.headerX+g.headerWidth {
-				t.Fatalf("%d columns: header action escaped its allocated row: %+v header=%+v", width, hit, g)
-			}
-			row := strings.Split(m.screen, "\n")[hit.Y]
-			if strings.TrimSpace(ansi.Strip(ansi.Cut(row, hit.X, hit.X+hit.W))) == "" {
-				t.Fatalf("%d columns: header action was overwritten by body or divider: %+v", width, hit)
-			}
-		}
+	m.snapshotReady = false
+	m.layout()
+	m, _ = update(m, key("/"))
+	if hasAction(m.targets, field.ID) || hasAction(m.focusTargets(), field.ID) || m.proxies.editing {
+		t.Fatal("an unavailable proxy directory exposed search")
 	}
 }
 
@@ -169,12 +162,8 @@ func TestProxyProvidersHeaderKeepsModeOrderAcrossSizes(t *testing.T) {
 					if provider.X+provider.W != g.headerX+g.headerWidth {
 						t.Fatal("provider action is not aligned to the header's right edge")
 					}
-					search := findTarget(t, m, "proxies.search-open")
-					if search.Y != provider.Y || search.X+search.W > provider.X {
-						t.Fatal("search action should precede providers without overlap")
-					}
-					if gap := search.X - previous.X - previous.W; gap != 4 {
-						t.Fatalf("mode choices should sit beside search with a four-cell gap, got %d", gap)
+					if gap := provider.X - previous.X - previous.W; gap != 4 {
+						t.Fatalf("mode choices should sit beside providers with a four-cell gap, got %d", gap)
 					}
 				}
 				assertCanvas(t, m.screen, size[0], size[1])
@@ -196,7 +185,6 @@ func TestProxyModeAndProviderPositionsSurviveViewChanges(t *testing.T) {
 				for _, id := range []string{"mode.rule", "mode.global", "mode.direct", "proxies.providers"} {
 					anchors = append(anchors, findTarget(t, m, id))
 				}
-				search := findTarget(t, m, "proxies.search-open")
 				check := func() {
 					t.Helper()
 					for _, want := range anchors {
@@ -207,18 +195,12 @@ func TestProxyModeAndProviderPositionsSurviveViewChanges(t *testing.T) {
 							t.Fatalf("%s lost keyboard access", want.ID)
 						}
 					}
-					if m.proxiesDirect() {
-						row := strings.Split(m.screen, "\n")[search.Y]
-						cell := ansi.Strip(ansi.Cut(row, search.X, search.X+search.W))
-						if strings.TrimSpace(cell) != "" || hasAction(m.focusTargets(), search.ID) || hasAction(m.targets, search.ID) {
-							t.Fatalf("hidden search left a visible or actionable face: %q", cell)
-						}
-					} else if got := findTarget(t, m, search.ID); got != search {
-						t.Fatalf("search moved: got %+v want %+v", got, search)
+					if m.proxiesDirect() && (hasAction(m.targets, "proxies.search") || hasAction(m.focusTargets(), "proxies.search")) {
+						t.Fatal("Direct mode retained a search input")
 					}
 				}
 
-				// Opening a group or search adds other controls above or beside the list.
+				// Group navigation and search editing leave the page actions in place.
 				setProxyTestGroup(&m, "PROXY")
 				m.focus, m.scroll = "group.0", 999
 				m.layout()

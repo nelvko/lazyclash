@@ -18,7 +18,7 @@ func (m *Model) proxiesContextHelp() string {
 		control = "directory"
 	case "proxies.collapse_all":
 		control = "collapseAll"
-	case "proxies.search", "proxies.search-open":
+	case "proxies.search":
 		control = "search"
 	case "proxies.clear", "proxies.empty.clear":
 		control = "clear"

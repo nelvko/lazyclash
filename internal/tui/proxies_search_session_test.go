@@ -3,9 +3,11 @@ package tui
 import (
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func proxySearchScrolledReferenceModel(t *testing.T, width int) Model {
@@ -27,7 +29,7 @@ func proxySearchScrolledReferenceModel(t *testing.T, width int) Model {
 
 func TestProxiesSearchEscapeRestoresOriginalBrowsingSession(t *testing.T) {
 	for _, width := range []int{80, 160} {
-		for _, entry := range []string{"slash", "header"} {
+		for _, entry := range []string{"slash", "click"} {
 			for _, exit := range []string{"editor", "results"} {
 				t.Run(fmt.Sprintf("%d/%s/%s", width, entry, exit), func(t *testing.T) {
 					m := proxySearchScrolledReferenceModel(t, width)
@@ -37,8 +39,8 @@ func TestProxiesSearchEscapeRestoresOriginalBrowsingSession(t *testing.T) {
 					for i := range history {
 						history[i].expanded = cloneProxyExpansion(history[i].expanded)
 					}
-					if entry == "header" {
-						m, _ = click(m, findTarget(t, m, "proxies.search-open"))
+					if entry == "click" {
+						m, _ = click(m, findTarget(t, m, "proxies.search"))
 					} else {
 						m, _ = update(m, key("/"))
 					}
@@ -53,7 +55,7 @@ func TestProxiesSearchEscapeRestoresOriginalBrowsingSession(t *testing.T) {
 						}
 					}
 					m, _ = update(m, special(tea.KeyEscape))
-					if m.proxies.editing || m.proxySearchVisible() || m.proxySearchQuery() != "" {
+					if m.proxies.editing || m.proxies.searchReturn != nil || m.proxySearchQuery() != "" || !hasAction(m.targets, "proxies.search") {
 						t.Fatalf("Escape did not end the complete search session: editing=%t query=%q", m.proxies.editing, m.proxySearchQuery())
 					}
 					if !reflect.DeepEqual(m.proxyLocation(), location) || m.proxies.activeGroup != activeGroup ||
@@ -135,23 +137,50 @@ func TestProxiesSearchShortcutDoesNotEscapeAnOpenNavigationDrawer(t *testing.T) 
 	}
 }
 
-func TestProxiesSearchInputUsesOnePinnedRow(t *testing.T) {
-	for _, width := range []int{40, 80, 160} {
-		t.Run(fmt.Sprint(width), func(t *testing.T) {
-			m := proxySearchScrolledReferenceModel(t, width)
-			m, _ = update(m, key("/"))
-			block := m.proxySearchBlock(dashboardBodyWidth(m.dashboardOptions()))
-			if len(block.lines) != 1 {
-				t.Fatalf("proxy search occupied %d rows instead of one", len(block.lines))
-			}
+func TestProxiesSearchFieldStaysPinnedAndFitsWindowHeight(t *testing.T) {
+	for _, size := range []struct{ width, height, fieldRows int }{{40, 16, 1}, {80, 24, 1}, {160, 24, 1}, {80, 25, 3}, {160, 40, 3}} {
+		t.Run(fmt.Sprintf("%dx%d", size.width, size.height), func(t *testing.T) {
+			m := proxySearchScrolledReferenceModel(t, size.width)
+			m, _ = update(m, tea.WindowSizeMsg{Width: size.width, Height: size.height})
 			before := findTarget(t, m, "proxies.search")
+			if before.H != size.fieldRows || hasAction(m.contentTargets(), before.ID) {
+				t.Fatalf("expected a fixed %d-row search field: %+v", size.fieldRows, before)
+			}
+			if size.fieldRows == 3 {
+				lines := strings.Split(m.screen, "\n")
+				top := ansi.Strip(ansi.Cut(lines[before.Y], before.X, before.X+before.W))
+				bottom := ansi.Strip(ansi.Cut(lines[before.Y+2], before.X, before.X+before.W))
+				if top != "╭"+strings.Repeat("─", before.W-2)+"╮" || bottom != "╰"+strings.Repeat("─", before.W-2)+"╯" {
+					t.Fatalf("default search field lost its full outline: top=%q bottom=%q", top, bottom)
+				}
+			}
+			m, _ = update(m, key("/"))
 			m, _ = update(m, tea.PasteMsg{Content: "节点"})
 			m.scroll = 10
 			m.layout()
 			after := findTarget(t, m, "proxies.search")
-			if before.Y != after.Y || after.H != 1 || hasAction(m.contentTargets(), "proxies.search") {
-				t.Fatalf("search did not remain in one fixed row while results scrolled: before=%+v after=%+v", before, after)
+			if before != after || hasAction(m.contentTargets(), after.ID) {
+				t.Fatalf("editing or scrolling moved search: before=%+v after=%+v", before, after)
 			}
 		})
+	}
+}
+
+func TestProxiesSearchShortcutRevealsFieldInShortScrollingBody(t *testing.T) {
+	m := proxySearchScrolledReferenceModel(t, 40)
+	m, _ = update(m, tea.WindowSizeMsg{Width: 40, Height: 7})
+	m.revealContentFocus()
+	m.layout()
+	if !hasAction(m.contentTargets(), "proxies.search") || hasAction(m.targets, "proxies.search") {
+		t.Fatal("short-window fixture should scroll the field out of view")
+	}
+	location := m.proxyLocation()
+	m, _ = update(m, key("/"))
+	if !hasAction(m.targets, "proxies.search") || m.View().Cursor == nil {
+		t.Fatal("slash did not reveal the editable field")
+	}
+	m, _ = update(m, special(tea.KeyEscape))
+	if !reflect.DeepEqual(m.proxyLocation(), location) || hasAction(m.targets, "proxies.search") {
+		t.Fatal("Escape did not restore the scrolled member list")
 	}
 }

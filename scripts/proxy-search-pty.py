@@ -20,7 +20,7 @@ def load(name, filename):
 
 def visible_groups(terminal, proxy):
     groups = []
-    for name in ("PROXY", "AUTO", "ChatGPT", "YouTube", "Hong Kong", "Japan", "BALANCE", "EMPTY", "GLOBAL"):
+    for name in ("PROXY", "AUTO", "ChatGPT", "YouTube", "Hong Kong", "Japan", "BALANCE", "EMPTY", "CHAIN", "GLOBAL"):
         try:
             _, y, _, _ = proxy.group_header(terminal, name)
             groups.append((y, name))
@@ -39,18 +39,17 @@ def view_context(terminal, proxy, words):
 
 
 def open_search(terminal, proxy, words, method):
+    x, y = proxy.control_position(terminal, words["proxies.search_placeholder"])
+    cells = terminal.screen.cells
+    field_left = x - 2
+    assert cells[y][field_left] == "│", "search text is outside its field"
+    for offset, corner in ((-1, "╭"), (1, "╰")):
+        assert (cells[y + offset][field_left] == corner) == (terminal.screen.rows > 24), (
+            "unexpected search frame height at %dx%d" % (terminal.screen.columns, terminal.screen.rows))
     if method == "slash":
         terminal.key(b"/")
     else:
-        _, _, provider, _ = proxy.proxy_header_positions(terminal, words)
-        row = terminal.screen.cells[provider[1]]
-        positions = [x for x in range(provider[0])
-                     if "".join(row[x:]).startswith(words["proxies.search"]) or
-                     row[x] == "/" and (x == 0 or row[x - 1].isspace()) and
-                     (x + 1 == len(row) or row[x + 1].isspace())]
-        assert positions, "header search action is missing\n" + terminal.screen.text()
-        proxy.click_cell(terminal, positions[-1], provider[1])
-    terminal.wait(words["proxies.search_placeholder"])
+        proxy.click_cell(terminal, x, y)
     terminal.settle()
 
 
@@ -63,7 +62,7 @@ def paste_query(terminal, value):
 def escape_restores(terminal, proxy, words, before, query):
     terminal.key(b"\x1b")
     terminal.settle()
-    assert words["proxies.search_placeholder"] not in terminal.screen.text(), "Esc left the search input visible"
+    assert words["proxies.search_placeholder"] in terminal.screen.text(), "Esc did not leave an empty search field"
     after = view_context(terminal, proxy, words)
     assert after == before, "Esc did not restore the original scroll, focus and expansions after %r\n%s" % (query, terminal.screen.text())
 
@@ -77,7 +76,8 @@ def expanded_restoration(terminal, proxy, preview, output, words, args):
     terminal.settle()
     before = view_context(terminal, proxy, words)
     assert "PROXY" not in visible_groups(terminal, proxy), "restoration fixture did not scroll away from the first group"
-    assert any(re.search(r"›\s*EMPTY\b", row) for row in before), "restoration fixture lost its original group focus"
+    last_group = visible_groups(terminal, proxy)[-1]
+    assert re.search(r"›\s*" + re.escape(last_group) + r"\b", proxy.group_header(terminal, last_group)[3]), "End did not focus the last group"
     preview.capture(terminal, output, "before-search-scrolled", args)
 
     open_search(terminal, proxy, words, "slash")
@@ -159,7 +159,7 @@ def main():
                     assert words["proxies.search_group"] % first not in terminal.screen.text(), "visible wide heading has a duplicate group label"
                 first_y = proxy.group_header(terminal, first)[1]
                 open_search(terminal, proxy, words, "slash" if index % 2 == 0 else "click")
-                assert proxy.group_header(terminal, first)[1] == first_y + 1, "proxy search occupies more than one compact row"
+                assert proxy.group_header(terminal, first)[1] == first_y, "focusing the search field moved the proxy list"
                 preview.capture(terminal, output, "search-empty-%dx%d" % (width, height), args)
                 paste_query(terminal, "hk 02")
                 if narrow:
@@ -199,7 +199,7 @@ def main():
             terminal.exit()
             calls = json.loads(report.read_text())
             assert calls["selections"] == calls["modes"] == calls["tests"] == 0, calls
-            print("PASS %s: click/slash entry, group/node filters, Enter keeps results, nonempty Esc from editing/results restores scroll/focus/expansion, current-node focus, no-match shortcut isolation, pinned search with a sticky group, one-row compact resize; no backend mutations" % language, flush=True)
+            print("PASS %s: persistent three-row/one-row search, click/slash entry, group/node filters, Enter keeps results, Esc restores scroll/focus/expansion, current-node focus, no-match shortcut isolation, pinned search with a sticky group; no backend mutations" % language, flush=True)
         except BaseException:
             preview.capture(terminal, output, "failed", args)
             raise
