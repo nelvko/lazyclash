@@ -115,6 +115,7 @@
   "diagnostic.settings.planChanged": "port settings plan changed; review the settings again",
   "diagnostic.settings.reviewChanged": "installation or service changed since review; review the port settings again",
   "diagnostic.settings.checkChanged": "service changed while checking the settings; review them again",
+  "diagnostic.settings.endpointPublish": "ports were saved, but terminal proxy endpoint could not be published: %w",
   "diagnostic.settings.stopRequired": "managed service did not stop before changing ports",
   "diagnostic.api.controllerURL": "invalid local controller URL",
   "diagnostic.api.request": "cannot construct local controller request",

@@ -115,6 +115,7 @@
   "diagnostic.settings.planChanged": "端口设置计划已更改；请重新审阅",
   "diagnostic.settings.reviewChanged": "安装或服务在审阅后发生变化；请重新审阅端口设置",
   "diagnostic.settings.checkChanged": "服务在检查设置时发生变化；请重新审阅",
+  "diagnostic.settings.endpointPublish": "端口已保存，发布终端代理端点失败：%w",
   "diagnostic.settings.stopRequired": "受管理的服务未能在更改端口前停止",
   "diagnostic.api.controllerURL": "本地控制 API URL 无效",
   "diagnostic.api.request": "无法构建本地控制 API 请求",

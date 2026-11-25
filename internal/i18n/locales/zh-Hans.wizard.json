@@ -157,6 +157,7 @@
   "ports.applying_message": "正在应用运行设置…",
   "ports.applied": "运行设置已应用",
   "ports.finished": "运行设置应用已结束，请查看结果",
+  "ports.endpoint_failed": "终端代理端点发布失败",
   "ports.refresh_failed": "无法刷新概览，请关闭此对话框后重新刷新。",
   "ports.cancel": "取消",
   "ports.edit": "编辑端口",

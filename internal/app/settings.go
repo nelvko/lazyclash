@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -275,7 +274,7 @@ func (a *App) ApplyRuntimeSettings(ctx context.Context, plan RuntimeSettingsPlan
 		keep = true
 		result = RuntimeSettingsResult{Settings: fresh.Proposed, Controller: controller, Restarted: fresh.Active, Changed: true}
 		if publishErr := a.publishTerminalEndpoint(result.Settings.MixedPort); publishErr != nil {
-			return fmt.Errorf("ports were saved, but terminal proxy endpoint could not be published: %w", publishErr)
+			return diagnostic.New("diagnostic.settings.endpointPublish", "ports were saved, but terminal proxy endpoint could not be published: %w", publishErr)
 		}
 		return nil
 	})

@@ -430,3 +430,52 @@ func TestRuntimePortsLateResultCannotQuitWhileNewerRollbackIsPending(t *testing.
 		t.Fatal("current rollback completion did not request a safe quit")
 	}
 }
+
+func TestCommittedPortsSurfacePostApplyFailures(t *testing.T) {
+	for _, language := range []string{i18n.English, i18n.Chinese} {
+		for _, sample := range []struct {
+			name                    string
+			endpointErr, refreshErr error
+		}{
+			{"endpoint", errors.New("endpoint-write-offline"), nil},
+			{"snapshot", nil, errors.New("snapshot-read-offline")},
+			{"both", errors.New("endpoint-write-offline"), errors.New("snapshot-read-offline")},
+			{"complete", nil, nil},
+		} {
+			t.Run(language+"/"+sample.name, func(t *testing.T) {
+				b := &fakeBackend{snapshot: app.Snapshot{Installed: true}}
+				b.applySettings = func(_ context.Context, plan app.RuntimeSettingsPlan) (app.RuntimeSettingsResult, error) {
+					b.snapshotErr = sample.refreshErr
+					return app.RuntimeSettingsResult{Settings: plan.Proposed, Controller: "127.0.0.1:19090", Changed: true}, sample.endpointErr
+				}
+				m := portsModel(t, b)
+				m.locale = i18n.New(language)
+				m = reviewPorts(t, m)
+				m, cmd := update(m, special(tea.KeyEnter))
+				m, _ = update(m, actionCmd(t, cmd)())
+				screen := ansi.Strip(m.screen)
+				if !m.ports.applied || m.ports.current.MixedPort != 18080 || !strings.Contains(screen, m.tr("ports.applied")) || hasAction(m.targets, "ports.retry") {
+					t.Fatalf("committed settings incorrectly presented for reapplication: %s", screen)
+				}
+				if sample.endpointErr == nil && sample.refreshErr == nil {
+					if len(m.notification.items) != 0 {
+						t.Fatal("successful result duplicated into dashboard notifications")
+					}
+					return
+				}
+				if len(m.notification.items) != 1 {
+					t.Fatalf("lost post-apply failure: %+v", m.notification.items)
+				}
+				n := m.notification.items[0]
+				if n.Kind != "error" || !n.Critical || !strings.Contains(n.Message, m.tr("ports.applied")) {
+					t.Fatalf("notification lost the committed outcome: %+v", n)
+				}
+				for _, err := range []error{sample.endpointErr, sample.refreshErr} {
+					if err != nil && (!strings.Contains(screen, err.Error()) || !strings.Contains(n.Details, err.Error())) {
+						t.Fatalf("missing cause %v in result or notification: %s / %+v", err, screen, n)
+					}
+				}
+			})
+		}
+	}
+}

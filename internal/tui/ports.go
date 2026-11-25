@@ -198,21 +198,10 @@ func (m *Model) acceptPorts(msg portsMsg) {
 			p.viewport.GotoTop()
 		}
 	case "apply":
-		m.notification.operation.Context = m.tr("notification.ports")
-		m.notification.critical = notificationCritical(msg.err) || msg.refreshError != nil
-		if !msg.hasSnapshot && m.snapshotReady {
-			m.markOperationStateUnknown()
-		}
-		if m.notification.critical || m.notification.retainDialog {
-			m.failure = m.localizeError(msg.err)
-			m.notification.details = m.locale.Error(msg.err)
-			if msg.refreshError != nil {
-				m.failure = m.tr("notification.state_unknown")
-				m.notification.details += "\n" + m.locale.Error(msg.refreshError)
-			}
-		}
 		p.result, p.step, p.focus = msg.result, "result", "ports.done"
-		p.applied = msg.err == nil
+		// Changed is set after the transaction commits. Endpoint publication
+		// and the dashboard observation can still fail independently.
+		p.applied = msg.err == nil || msg.result.Changed
 		if p.applied {
 			p.current = msg.result.Settings
 			m.message = m.tr("ports.applied")
@@ -220,7 +209,30 @@ func (m *Model) acceptPorts(msg portsMsg) {
 			m.message = m.tr("ports.finished")
 		}
 		if msg.refreshError != nil {
-			p.refreshError = m.tr("ports.refresh_failed")
+			p.refreshError = m.tr("ports.refresh_failed") + " " + m.localizeError(msg.refreshError)
+		}
+		if !msg.hasSnapshot && m.snapshotReady {
+			m.markOperationStateUnknown()
+		}
+		m.notification.operation.Context = m.tr("notification.ports")
+		m.notification.critical = notificationCritical(msg.err) || msg.refreshError != nil || msg.result.Changed && msg.err != nil
+		if (m.notification.critical || m.notification.retainDialog) && (msg.err != nil || msg.refreshError != nil) {
+			var summary []string
+			if p.applied {
+				summary = append(summary, m.message)
+			}
+			if msg.err != nil {
+				reason := p.err
+				if p.applied {
+					reason = m.tr("ports.endpoint_failed")
+				}
+				summary = append(summary, reason)
+			}
+			if msg.refreshError != nil {
+				summary = append(summary, m.tr("notification.state_unknown"))
+			}
+			m.failure = strings.Join(summary, " · ")
+			m.notification.details = m.locale.Error(errors.Join(msg.err, msg.refreshError))
 		}
 	}
 }

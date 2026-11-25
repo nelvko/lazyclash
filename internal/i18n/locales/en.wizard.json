@@ -157,6 +157,7 @@
   "ports.applying_message": "Applying runtime settings…",
   "ports.applied": "Runtime settings applied",
   "ports.finished": "Runtime settings application finished; review the result",
+  "ports.endpoint_failed": "Could not publish the terminal proxy endpoint",
   "ports.refresh_failed": "Could not refresh the dashboard; refresh again after closing this dialog.",
   "ports.cancel": "Cancel",
   "ports.edit": "Edit ports",
