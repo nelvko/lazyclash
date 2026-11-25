@@ -228,14 +228,11 @@ func TestProfileMenuCannotOpenBehindDialogsOrWhileBusy(t *testing.T) {
 
 func TestProfileMenuUsesUncoveredCardCellsWithoutClickingThroughToast(t *testing.T) {
 	m, b := profileClickModel(t, true, true, false, false)
-	m.message = "Subscription saved; select its card to apply"
-	m.messageTransient = false
-	m.syncNotification()
-	m.layout()
-	options := m.dashboardOptions()
-	_, options.BodyTargets = m.pageBody(dashboardGeometry(options).width)
-	options.Scroll = m.scroll
-	_, toast, _ := notificationToast(options)
+	publishNotice(&m, "profile.refresh", "error", "Subscription update failed")
+	if len(m.notification.overlays) != 1 {
+		t.Fatal("expected one visible notification")
+	}
+	toast := m.notification.overlays[0].Bounds
 	var card hitRegion
 	for _, region := range m.profileMenuCardRegions() {
 		if region.ID == "profile.0" {

@@ -52,11 +52,6 @@ func proxyDirectSetMode(t *testing.T, m Model, mode string) Model {
 	if m.busy || m.snapshot.Mode.Actual != mode {
 		t.Fatalf("mode %s was not confirmed: busy=%t mode=%+v", mode, m.busy, m.snapshot.Mode)
 	}
-	// Mode success notifications temporarily cover the header actions.
-	for len(m.notification.items) > 0 {
-		m.dismissNotification()
-	}
-	m.layout()
 	return m
 }
 

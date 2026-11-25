@@ -10,6 +10,7 @@
   "notification.hints.dismiss": "Enter 关闭通知",
   "notification.hints.cancel": "Enter 取消任务",
   "notification.hints.list": "Enter 通知列表",
+  "notification.hints.overflowControls": "Tab 控件 · Esc 返回",
   "notification.hints.controls": "Tab 控件 · Esc 关闭通知",
   "notification.hints.listControls": "↑↓ 控件 · x 关闭通知 · Esc 关闭面板",
   "notification.hints.detail": "↑↓ / PgUp/PgDn 滚动 · x 关闭通知 · Esc 返回",

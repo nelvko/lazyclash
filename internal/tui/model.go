@@ -839,7 +839,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "enter", "space", " ":
 				m.notificationAction(m.focus)
 			case "esc":
-				m.dismissNotification()
+				m.dismissFocusedNotification()
 			case "tab":
 				m.cycleFocus(1)
 			case "shift+tab":
@@ -1507,15 +1507,8 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 	if m.page == "connections" && (m.connections.detail != nil || m.connections.confirming) {
 		return m.connectionDialogMouse(event)
 	}
-	if _, wheel := event.(tea.MouseWheelMsg); wheel && len(m.notification.items) > 0 {
-		o := m.dashboardOptions()
-		m.populatePageBody(&o)
-		o.Scroll = m.scroll
-		for _, toast := range notificationLayout(o) {
-			if k.X >= toast.Bounds.X && k.X < toast.Bounds.X+toast.Bounds.W && k.Y >= toast.Bounds.Y && k.Y < toast.Bounds.Y+toast.Bounds.H {
-				return nil
-			}
-		}
+	if _, wheel := event.(tea.MouseWheelMsg); wheel && m.notification.covers(k.X, k.Y) {
+		return nil
 	}
 	if wheel, ok := event.(tea.MouseWheelMsg); ok && m.sidebarWheel(wheel) {
 		return nil
@@ -1736,7 +1729,8 @@ func (m *Model) renderLayout() {
 	if m.page == "connections" && o.BodyTopRows > 0 {
 		o.BodyTop = m.connectionsToolbar(g.width, o.BodyTopRows)
 	}
-	base, hits, total := renderDashboard(o)
+	base, hits, total, notifications := drawDashboard(o)
+	m.notification.overlays = notifications
 	if o.Dim {
 		base = themed(base, backdropText, sidebarBackground, true)
 	}
@@ -1744,7 +1738,6 @@ func (m *Model) renderLayout() {
 	m.scroll = min(m.scroll, max(0, total-g.height))
 	m.screen, m.targets = base, hits
 	if !o.Dim && !m.sidebarOpen && !m.menu.open {
-		notifications := notificationLayout(o)
 		m.decorateContentFocus(g, notifications)
 		m.showProxyTypeHint(g, notifications)
 		m.rememberPageView()

@@ -53,17 +53,8 @@ func (m *Model) openProfileMenu(index, x, y int) {
 }
 
 func (m *Model) openProfileMenuAt(x, y int) {
-	if !m.profileMenuAvailable() {
+	if !m.profileMenuAvailable() || m.notification.covers(x, y) {
 		return
-	}
-	options := m.dashboardOptions()
-	m.populatePageBody(&options)
-	options.Scroll = m.scroll
-	for _, notification := range notificationLayout(options) {
-		toast := notification.Bounds
-		if x >= toast.X && x < toast.X+toast.W && y >= toast.Y && y < toast.Y+toast.H {
-			return
-		}
 	}
 	for _, hit := range m.profileMenuCardRegions() {
 		if x < hit.X || x >= hit.X+hit.W || y < hit.Y || y >= hit.Y+hit.H {

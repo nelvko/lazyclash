@@ -338,9 +338,6 @@ func TestProfileRefreshControlsKeepTheCurrentSelection(t *testing.T) {
 	if refreshed != "work" || refreshes != 1 || backend.applied != 0 || m.form != "" || m.snapshot.Applied != "default" {
 		t.Fatal("card refresh opened, selected, or applied its containing card")
 	}
-	// The result occupies the header action area until it is dismissed.
-	m.dismissNotification()
-	m.layout()
 	m, cmd = click(m, findTarget(t, m, "profiles.update-all"))
 	m = finishProfileJob(t, m, cmd)
 	if all != 1 || backend.applied != 0 || m.snapshot.Applied != "default" || m.message != m.tr("profiles.updated_all") {

@@ -60,6 +60,7 @@ type notificationState struct {
 	critical              bool
 	warning               bool
 	retainDialog          bool
+	overlays              []notificationOverlay
 	panel                 notificationPanel
 	restoreFocus          string
 }
@@ -188,34 +189,26 @@ func (m *Model) syncNotificationTimers(now time.Time) tea.Cmd {
 		return nil
 	}
 	visible := map[uint64]bool{}
-	if !n.panel.open && !m.menu.open {
-		for _, item := range n.items {
-			if item.Silent && !m.feedbackDialogOpen() && !m.helpOpen && !m.sidebarOpen {
-				visible[item.ID] = true
-			}
-		}
-		o := m.dashboardOptions()
-		o.Scroll = m.scroll
-		m.populatePageBody(&o)
-		for _, overlay := range notificationLayout(o) {
-			for _, id := range overlay.IDs {
-				visible[id] = true
-			}
+	for _, overlay := range n.overlays {
+		for _, id := range overlay.IDs {
+			visible[id] = true
 		}
 	}
+	obscured := m.notificationsObscured()
 	var commands []tea.Cmd
 	for i := range n.items {
 		item := &n.items[i]
 		if item.remaining <= 0 {
 			continue
 		}
-		if !visible[item.ID] && !item.started.IsZero() {
+		running := !obscured && (item.Silent || visible[item.ID])
+		if !running && !item.started.IsZero() {
 			item.remaining = max(time.Nanosecond, item.remaining-now.Sub(item.started))
 			item.started = time.Time{}
 			n.generation++
 			item.generation = n.generation
 		}
-		if visible[item.ID] && item.started.IsZero() {
+		if running && item.started.IsZero() {
 			item.started = now
 			n.generation++
 			item.generation = n.generation
@@ -275,10 +268,21 @@ func (m *Model) dismissNotificationID(id uint64) {
 	}
 }
 
-func (m *Model) dismissNotification() {
-	if items := m.notification.items; len(items) > 0 {
-		m.dismissNotificationID(items[len(items)-1].ID)
+func (m *Model) dismissFocusedNotification() {
+	for _, overlay := range m.notification.overlays {
+		for _, target := range overlay.Targets {
+			if target.ID != m.focus {
+				continue
+			}
+			if target.ID != "notification.expand" && len(overlay.IDs) == 1 {
+				m.dismissNotificationID(overlay.IDs[0])
+			} else {
+				m.restoreNotificationFocus()
+			}
+			return
+		}
 	}
+	m.restoreNotificationFocus()
 }
 
 func (m *Model) restoreNotificationFocus() {
@@ -346,13 +350,19 @@ func (m *Model) dashboardDimmed() bool {
 	return m.feedbackDialogOpen() || m.helpOpen || m.notification.panel.open || m.providers.open || (m.page == "connections" && m.connections.confirming)
 }
 
+func (m *Model) notificationsObscured() bool {
+	return m.dashboardDimmed() || m.sidebarOpen || m.menu.open || (m.page == "connections" && m.connections.detail != nil)
+}
+
 func (m *Model) monochrome() bool {
 	return m.noColor || m.colorProfile == colorprofile.ASCII || m.colorProfile == colorprofile.NoTTY
 }
 
 func (m *Model) dashboardOptions() dashboardOptions {
 	items := m.notification.items
-	if m.page == "overview" && m.inlineInstallVisible() {
+	if m.notificationsObscured() {
+		items = nil
+	} else if m.page == "overview" && m.inlineInstallVisible() {
 		items = nil
 		for _, item := range m.notification.items {
 			if item.Operation != m.notification.operation.ID || !m.notification.operation.Inline || item.Critical {
@@ -392,21 +402,4 @@ func (m *Model) dashboardOptions() dashboardOptions {
 		}
 	}
 	return o
-}
-
-// Single-card adapter for geometry callers outside the dashboard.
-func notificationToast(o dashboardOptions) (string, hitRegion, hitRegion) {
-	overlays := notificationLayout(o)
-	if len(overlays) == 0 {
-		return "", hitRegion{}, hitRegion{}
-	}
-	first := overlays[0]
-	var close hitRegion
-	for _, target := range first.Targets {
-		if strings.HasPrefix(target.ID, "notification.close.") {
-			close = target
-			break
-		}
-	}
-	return first.Content, first.Bounds, close
 }

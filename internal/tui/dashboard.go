@@ -152,10 +152,10 @@ func dashboardHeaderTitle(o dashboardOptions, g dashboardLayout, page string) (i
 	return max(12, g.headerX), page
 }
 
-func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
+func drawDashboard(o dashboardOptions) (string, []hitRegion, int, []notificationOverlay) {
 	tr := o.Locale.T
 	if o.Width <= 0 || o.Height <= 0 {
-		return "", nil, 0
+		return "", nil, 0, nil
 	}
 	if o.Page == "" {
 		o.Page = "overview"
@@ -180,7 +180,7 @@ func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
 			put(0, o.Height-1, themed(cellCrop(tr("dashboard.menuCompact"), o.Width), muted, bg, o.Dim))
 			add(hitRegion{ID: "menu", X: 0, Y: o.Height - 1, W: min(ansi.StringWidth(tr("dashboard.menu")), o.Width), H: 1})
 		}
-		return strings.Join(rows, "\n"), targets, 0
+		return strings.Join(rows, "\n"), targets, 0, nil
 	}
 	titleX, titleText := dashboardHeaderTitle(o, g, pageText)
 	if !g.sidebar {
@@ -318,7 +318,8 @@ func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
 	if !o.HideKeyHints {
 		put(2, o.Height-1, dashboardKeyHints(o))
 	}
-	for _, notification := range notificationLayout(o) {
+	notifications := notificationLayout(o, headerTargets...)
+	for _, notification := range notifications {
 		bounds := notification.Bounds
 		put(bounds.X, bounds.Y, notification.Content)
 		// A Toast owns every cell it covers, including its padding and border.
@@ -335,7 +336,7 @@ func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
 		}
 	}
 
-	return strings.Join(rows, "\n"), targets, total
+	return strings.Join(rows, "\n"), targets, total, notifications
 }
 
 // navPages defines both visible order and the 1–7 page shortcuts.

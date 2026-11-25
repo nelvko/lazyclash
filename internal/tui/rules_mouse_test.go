@@ -251,10 +251,7 @@ func TestRulesMousePreservesOverlayOwnership(t *testing.T) {
 		m := rulesMouseModel(t, 670, 160, 45)
 		m.notification.items = []notificationItem{{ID: 1, Kind: "error", Message: "Fixture notification"}}
 		m.layout()
-		o := m.navigationOptions()
-		o.Scroll = m.scroll
-		m.populatePageBody(&o)
-		toasts := notificationLayout(o)
+		toasts := m.notification.overlays
 		if len(toasts) != 1 {
 			t.Fatal("fixture did not expose one notification")
 		}

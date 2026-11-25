@@ -154,6 +154,7 @@ func TestNotificationOverflowStartsClockOnlyWhenExpandedAndVisible(t *testing.T)
 	}
 	m.notificationAction(fmt.Sprintf("notification.panel.dismiss.%d", two))
 	m.notificationAction("notification.panel.close")
+	m.layout()
 	m.syncNotificationTimers(time.Now())
 	if noticeByID(t, m, one).started.IsZero() {
 		t.Fatal("revealed overflow item did not begin its display clock")
@@ -249,7 +250,7 @@ func TestNotificationCanvasRetainsGeometryAndNoClickThrough(t *testing.T) {
 			if dashboardGeometry(m.dashboardOptions()) != before || m.total != total {
 				t.Fatal("notification changed body geometry")
 			}
-			for _, overlay := range notificationLayout(m.dashboardOptions()) {
+			for _, overlay := range m.notification.overlays {
 				for _, target := range m.targets {
 					if !strings.HasPrefix(target.ID, "notification.") && regionsOverlap(target, overlay.Bounds) {
 						t.Fatalf("covered control receives clicks: %+v", target)

@@ -10,7 +10,7 @@ func (m *Model) notificationContextHelp() string {
 	action := "details"
 	switch {
 	case m.focus == "notification.expand":
-		action = "list"
+		return m.tr("notification.hints.list") + " · " + m.tr("notification.hints.overflowControls")
 	case strings.HasPrefix(m.focus, "notification.close."):
 		action = "dismiss"
 	case strings.HasPrefix(m.focus, "notification.cancel."):
@@ -23,11 +23,12 @@ func (p notificationPanel) contextHelp(locale i18n.Localizer) string {
 	if p.detailID != 0 {
 		return locale.T("notification.hints.detail")
 	}
-	if p.focus < 0 || p.focus >= len(p.actions) {
+	focused, visible := p.focusedAction()
+	if !visible {
 		return locale.T("notification.hints.empty")
 	}
 	action := "details"
-	id := p.actions[p.focus].ID
+	id := focused.ID
 	if strings.HasPrefix(id, "notification.panel.dismiss.") {
 		action = "dismiss"
 	} else if strings.HasPrefix(id, "notification.cancel.") {

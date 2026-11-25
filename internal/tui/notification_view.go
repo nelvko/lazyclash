@@ -64,7 +64,17 @@ func notificationText(value string) string {
 	}, ansi.Strip(value))
 }
 
-func notificationLayout(o dashboardOptions) []notificationOverlay {
+func (n *notificationState) covers(x, y int) bool {
+	point := hitRegion{X: x, Y: y, W: 1, H: 1}
+	for _, card := range n.overlays {
+		if regionsOverlap(point, card.Bounds) {
+			return true
+		}
+	}
+	return false
+}
+
+func notificationLayout(o dashboardOptions, headerActions ...hitRegion) []notificationOverlay {
 	if o.Dim || o.SidebarOpen || len(o.Notifications) == 0 || o.Width < 20 || o.Height < 7 {
 		return nil
 	}
@@ -73,10 +83,11 @@ func notificationLayout(o dashboardOptions) []notificationOverlay {
 		now = time.Now()
 	}
 	items := make([]notificationItem, 0, len(o.Notifications))
-	modeFeedback := false
+	modeFeedback, hasError := false, false
 	for _, item := range o.Notifications {
 		if !item.Silent && (item.showAfter.IsZero() || !now.Before(item.showAfter)) {
 			items = append(items, item)
+			hasError = hasError || item.Kind == "error"
 			if o.Page == "proxies" && item.Page == "proxies" && strings.HasPrefix(item.Key, "mode.") {
 				modeFeedback = true
 			}
@@ -135,6 +146,15 @@ func notificationLayout(o dashboardOptions) []notificationOverlay {
 		width, x = cornerWidth, rightEdge-cornerWidth
 		y, capacity, compact = 0, 1, true
 	}
+	// A failed operation can be retried from a page header action. Keep the
+	// actual button cells available even when the error outlives this page.
+	if hasError {
+		for _, action := range headerActions {
+			if action.X < x+width && action.X+action.W > x && action.Y >= y && action.Y < bottom {
+				y = max(y, action.Y+action.H)
+			}
+		}
+	}
 	var chosen []notificationOverlay
 	for count := min(capacity, len(o.Notifications)); count > 0; count-- {
 		start := len(o.Notifications) - count
@@ -182,16 +202,71 @@ func notificationLayout(o dashboardOptions) []notificationOverlay {
 			last := chosen[len(chosen)-1].Bounds
 			row = last.Y + last.H
 		}
-		// Header space always retains an entry point for an oversized message.
-		label := notificationButton("notification.expand", o.Locale.T("notification.more", remaining), width, o)
+		if len(chosen) == 0 && row >= bottom {
+			// Header padding (or the separator below a short header) is
+			// available even when its actions and the input consume all space.
+			row = 0
+			if o.Height < 24 {
+				row = g.contentY - 1
+			}
+		}
+		caption, displayedID := notificationSummary(items[:remaining], len(chosen) > 0, width, o)
+		label := notificationButton("notification.expand", caption, width, o)
 		overflow := notificationOverlay{
 			Content: themed(cellPad(label, width), text, raised, false),
 			Bounds:  hitRegion{ID: "notification", X: x, Y: row, W: width, H: 1},
 			Targets: []hitRegion{{ID: "notification.expand", X: x, Y: row, W: ansi.StringWidth(label), H: 1}},
 		}
+		if displayedID != 0 {
+			overflow.IDs = []uint64{displayedID}
+		}
 		chosen = append(chosen, overflow)
 	}
 	return chosen
+}
+
+// A folded result still names what happened. Multiple folded notices give
+// precedence to unresolved errors while retaining their count.
+func notificationSummary(items []notificationItem, besideCards bool, width int, o dashboardOptions) (caption string, displayedID uint64) {
+	item := items[len(items)-1]
+	for i := len(items) - 1; i >= 0; i-- {
+		if items[i].Kind == "error" {
+			item = items[i]
+			break
+		}
+		if items[i].Kind == "warning" && item.Kind != "warning" {
+			item = items[i]
+		}
+	}
+	kind := notificationLabel(o.Locale, item.Kind, "")
+	available := width - 4 // Button focus and padding.
+	if len(items) == 1 && !besideCards {
+		message, _, _ := strings.Cut(notificationText(item.Message), "\n")
+		// Producers put the complete success summary on the first line and
+		// optional state details on following lines. Only a fully readable
+		// success consumes its usual display time on a one-line surface.
+		if item.Kind == "done" && message != "" && ansi.StringWidth(message) <= available {
+			displayedID = item.ID
+		}
+		if item.Kind != "done" && message != "" {
+			message = kind + " · " + message
+		} else if message == "" {
+			message = kind
+		}
+		suffix := " · " + o.Locale.T("notification.expand")
+		if ansi.StringWidth(message+suffix) <= available {
+			return message + suffix, displayedID
+		}
+		if ansi.StringWidth(message)+2 <= available {
+			return message + " ›", displayedID
+		}
+		return cellCrop(message, available), displayedID
+	}
+	caption = kind + " · " + o.Locale.T("notification.more", len(items))
+	if ansi.StringWidth(caption) > available {
+		return fmt.Sprintf("%s ×%d", kind, len(items)), 0
+	}
+	return caption, 0
 }
 
 func notificationInputs(o dashboardOptions, g dashboardLayout) []hitRegion {

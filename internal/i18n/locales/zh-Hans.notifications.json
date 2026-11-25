@@ -5,6 +5,7 @@
   "notification.error": "错误",
   "notification.message": "%s：%s",
   "notification.more": "另有 %d 条 · 展开",
+  "notification.expand": "展开",
   "notification.details": "[详情]",
   "notification.listTitle": "通知",
   "notification.empty": "暂无通知",

@@ -99,14 +99,12 @@ func TestProxyWheelRespectsNotifications(t *testing.T) {
 	m.notification.source = m.notificationSource()
 	m.notification.items = []notificationItem{{ID: 1, Kind: "error", Message: "Example failure"}}
 	m.layout()
-	o := m.dashboardOptions()
-	o.Body, o.BodyTargets = m.pageBody(dashboardGeometry(o).width)
-	toasts := notificationLayout(o)
+	toasts := m.notification.overlays
 	if len(toasts) != 1 {
 		t.Fatal("fixture did not expose one notification")
 	}
 	toast := toasts[0].Bounds
-	m, _ = update(m, tea.MouseWheelMsg{X: toast.X + 1, Y: toast.Y + 1, Button: tea.MouseWheelDown})
+	m, _ = update(m, tea.MouseWheelMsg{X: toast.X + 1, Y: toast.Y + toast.H/2, Button: tea.MouseWheelDown})
 	if m.scroll != 0 || len(m.notification.items) != 1 {
 		t.Fatal("wheel over a notification scrolled the proxy viewport or dismissed the notification")
 	}

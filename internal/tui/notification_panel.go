@@ -39,8 +39,19 @@ func (p *notificationPanel) dismiss() {
 	p.actions, p.targets = nil, nil
 }
 
+func (p *notificationPanel) contentFits() bool {
+	return p.bounds.W >= 20 && p.bounds.H >= 7
+}
+
 func (p *notificationPanel) key(msg tea.KeyPressMsg) string {
 	key := msg.String()
+	if !p.contentFits() {
+		switch key {
+		case "esc", "q", "enter", "space", " ":
+			return "notification.panel.close"
+		}
+		return ""
+	}
 	switch key {
 	case "esc", "q":
 		if p.detailID != 0 {
@@ -57,8 +68,8 @@ func (p *notificationPanel) key(msg tea.KeyPressMsg) string {
 			p.revealAction()
 		}
 	case "enter", "space", " ":
-		if p.focus >= 0 && p.focus < len(p.actions) {
-			return p.actions[p.focus].ID
+		if action, visible := p.focusedAction(); visible {
+			return action.ID
 		}
 	case "x", "delete", "backspace":
 		if id := p.selectedID(); id != 0 {
@@ -104,14 +115,24 @@ func (p *notificationPanel) reconcileViewportFocus() {
 	}
 }
 
+func (p notificationPanel) focusedAction() (hitRegion, bool) {
+	if p.focus < 0 || p.focus >= len(p.actions) {
+		return hitRegion{}, false
+	}
+	action := p.actions[p.focus]
+	top := p.viewport.YOffset()
+	return action, action.Y >= top && action.Y < top+p.viewport.Height()
+}
+
 func (p *notificationPanel) selectedID() uint64 {
 	if p.detailID != 0 {
 		return p.detailID
 	}
-	if p.focus < 0 || p.focus >= len(p.actions) {
+	action, visible := p.focusedAction()
+	if !visible {
 		return 0
 	}
-	parts := strings.Split(p.actions[p.focus].ID, ".")
+	parts := strings.Split(action.ID, ".")
 	id, _ := strconv.ParseUint(parts[len(parts)-1], 10, 64)
 	return id
 }
@@ -152,7 +173,9 @@ func (p *notificationPanel) mouse(msg tea.MouseMsg) string {
 }
 
 func (p *notificationPanel) render(items []notificationItem, width, height int, locale i18n.Localizer, plain ...bool) (string, []hitRegion) {
+	p.actions, p.targets = nil, nil
 	if !p.open || width <= 0 || height <= 0 {
+		p.bounds = hitRegion{}
 		return "", nil
 	}
 	if !p.initialized {
@@ -167,7 +190,7 @@ func (p *notificationPanel) render(items []notificationItem, width, height int, 
 		rows[i] = themed(strings.Repeat(" ", width), muted, bg, true)
 	}
 	options := dashboardOptions{PlainButtons: len(plain) > 0 && plain[0]}
-	if w < 20 || h < 6 {
+	if !p.contentFits() {
 		options.Focus = "notification.panel.close"
 		label := notificationButton(options.Focus, locale.T("notification.collapse"), width, options)
 		putRows(rows, 0, 0, label, width)
@@ -179,7 +202,6 @@ func (p *notificationPanel) render(items []notificationItem, width, height int, 
 	p.viewport.SetWidth(inner)
 	p.viewport.SetHeight(h - 6)
 	var lines []string
-	p.actions = nil
 	var actionLabels []string
 	if p.detailID != 0 {
 		for _, item := range items {

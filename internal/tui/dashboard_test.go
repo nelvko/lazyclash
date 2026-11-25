@@ -24,6 +24,12 @@ func assertCanvas(t *testing.T, value string, width, height int) {
 		}
 	}
 }
+
+func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
+	screen, targets, total, _ := drawDashboard(o)
+	return screen, targets, total
+}
+
 func assertRegions(t *testing.T, regions []hitRegion, width, height int) {
 	t.Helper()
 	for _, r := range regions {
