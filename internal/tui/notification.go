@@ -148,6 +148,9 @@ func (m *Model) syncNotification() {
 			item.Details = message
 		}
 		if ansi.StringWidth(clean(message)) > 200 {
+			if clean(item.Details) != clean(message) {
+				item.Details = message + "\n\n" + item.Details
+			}
 			item.Message = m.tr("notification.failure_details")
 		}
 	}

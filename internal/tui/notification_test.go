@@ -60,6 +60,18 @@ func TestNotificationHeadingsFollowLocaleAndOperationContext(t *testing.T) {
 	}
 }
 
+func TestLongNotificationKeepsCommittedResultAlongsideDiagnostic(t *testing.T) {
+	m := noticeModel()
+	m.prepareNotification("profile.apply", "Switch profile")
+	m.failure = "Saved " + strings.Repeat("订阅", 60) + " · Runtime state unknown"
+	m.notification.details = "Service inspection failed"
+	m.syncNotification()
+	item := m.notification.items[0]
+	if item.Message != m.tr("notification.failure_details") || !strings.Contains(item.Details, m.failure) || !strings.Contains(item.Details, m.notification.details) {
+		t.Fatalf("long notification lost the committed result or its diagnostic: %+v", item)
+	}
+}
+
 func TestNotificationRoutineRefreshAndUnsubmittedInputAreQuiet(t *testing.T) {
 	m := noticeModel()
 	m, _ = update(m, key("g"))
