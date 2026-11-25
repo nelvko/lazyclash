@@ -11,8 +11,34 @@ import (
 
 func overviewNetworkCard(o dashboardOptions, width int) dashboardBlock {
 	inner := overviewInnerWidth(width)
-	content := overviewTerminalRow(o, inner)
-	content.append(overviewTUNRow(o, inner))
+	var content dashboardBlock
+	// At 40 content cells the divider leaves 18–19 cells per group.
+	const gapWidth = 3
+	if inner >= 40 {
+		leftWidth := (inner - gapWidth) / 2
+		left := overviewTerminalSection(o, leftWidth)
+		right := overviewTUNSection(o, inner-leftWidth-gapWidth)
+		gap := themed(" │ ", divider, panel, o.Dim)
+		for y := 0; y < max(len(left.lines), len(right.lines)); y++ {
+			l, r := "", ""
+			if y < len(left.lines) {
+				l = left.lines[y]
+			}
+			if y < len(right.lines) {
+				r = right.lines[y]
+			}
+			content.lines = append(content.lines, cellPad(l, leftWidth)+gap+r)
+		}
+		content.targets = append(content.targets, left.targets...)
+		for _, hit := range right.targets {
+			hit.X += leftWidth + gapWidth
+			content.targets = append(content.targets, hit)
+		}
+	} else {
+		content = overviewTerminalSection(o, inner)
+		content.lines = append(content.lines, themed(strings.Repeat("─", inner), divider, panel, o.Dim))
+		content.append(overviewTUNSection(o, inner))
+	}
 	title := overviewTextBlock([]string{overviewHeading(o, o.Locale.T("dashboard.overview.network"))}, inner)
 	return overviewPanel(o, width, title, content, nil)
 }
@@ -24,34 +50,17 @@ func networkToggleLabels(o dashboardOptions) toggleLabels {
 		Unknown: tr("dashboard.status.unknown")}
 }
 
-// Visible labels and both hit regions use terminal-cell coordinates. When space is
-// tight each control moves as a unit, preserving focus order and mouse ownership.
-func overviewNetworkRow(o dashboardOptions, width int, title, configID, toggleID string, state toggleState, labels toggleLabels) dashboardBlock {
-	b := overviewTextBlock([]string{overviewHeading(o, title)}, width)
-	add := func(face, id string, alignRight bool) {
-		face = cellCrop(face, width)
-		w := ansi.StringWidth(face)
-		y := len(b.lines) - 1
-		used := ansi.StringWidth(b.lines[y])
-		x := used
-		if used+w > width {
-			b.blank()
-			y, used, x = y+1, 0, 0
-		}
-		if alignRight {
-			x = max(x, width-w)
-		}
-		b.lines[y] += themed(strings.Repeat(" ", x-used), text, panel, o.Dim) + face
-		if id != "" && w > 0 {
-			b.targets = append(b.targets, hitRegion{ID: id, X: x, Y: y, W: w, H: 1})
-		}
+// A wrapped control has one keyboard stop and a mouse target covering all its lines.
+func networkActionBlock(face, id string, width int) dashboardBlock {
+	b := overviewTextBlock([]string{face}, width)
+	if id != "" {
+		b.targets = []hitRegion{{ID: id, W: min(width, ansi.StringWidth(face)), H: len(b.lines)}}
 	}
-	config := overviewControlButton{id: configID, label: o.Locale.T("dashboard.network.configure"), enabled: o.Snapshot.Installed && !o.Busy && !o.StateUnavailable}
-	if !config.enabled {
-		configID = ""
-	}
-	add(overviewButton(o, config, buttonSecondary), configID, false)
+	return b
+}
 
+func overviewNetworkSection(o dashboardOptions, width int, title, configID, toggleID string, state toggleState, labels toggleLabels) dashboardBlock {
+	b := overviewTextBlock([]string{overviewHeading(o, title)}, width)
 	label, _ := labels.resolved().face(state)
 	focused := toggleID != "" && o.Focus == toggleID
 	face := renderToggle(toggleModel{state: state}, toggleOptions{Labels: labels, Width: ansi.StringWidth(label), Surface: panel, Focused: focused || toggleID != "" && o.Hover == toggleID, Dim: o.Dim})
@@ -66,11 +75,20 @@ func overviewNetworkRow(o dashboardOptions, width int, title, configID, toggleID
 		}
 		face = themed(marker+left, focus, panel, o.Dim) + face + themed(right, muted, panel, o.Dim)
 	}
-	add(face, toggleID, true)
+	b.append(networkActionBlock(face, toggleID, width))
+	config := overviewControlButton{id: configID, label: o.Locale.T("dashboard.network.configure"), enabled: o.Snapshot.Installed && !o.Busy && !o.StateUnavailable}
+	if !config.enabled {
+		configID = ""
+	}
+	kind := buttonText
+	if o.PlainButtons {
+		kind = buttonSecondary
+	}
+	b.append(networkActionBlock(overviewButton(o, config, kind), configID, width))
 	return b
 }
 
-func overviewTerminalRow(o dashboardOptions, width int) dashboardBlock {
+func overviewTerminalSection(o dashboardOptions, width int) dashboardBlock {
 	tr, s := o.Locale.T, o.Snapshot
 	t := s.TerminalProxy
 	labels := networkToggleLabels(o)
@@ -102,17 +120,22 @@ func overviewTerminalRow(o dashboardOptions, width int) dashboardBlock {
 			id = "terminal.enable"
 		}
 	}
-	row := overviewNetworkRow(o, width, tr("terminal.title"), "network.primaryConfig", id, state, labels)
+	section := overviewNetworkSection(o, width, tr("terminal.title"), "network.primaryConfig", id, state, labels)
 	if !o.StateUnavailable && t.State == "pending" && t.Pending && t.ActivationCommand != "" {
-		row.append(overviewButtons(o, width, []overviewControlButton{{id: "terminal.activation", label: tr("terminal.activationAction"), enabled: !o.Busy && !o.StateUnavailable}}))
+		action := overviewControlButton{id: "terminal.activation", label: tr("terminal.activationAction"), enabled: !o.Busy}
+		id := ""
+		if action.enabled {
+			id = action.id
+		}
+		section.append(networkActionBlock(overviewButton(o, action, buttonSecondary), id, width))
 	}
 	if !o.StateUnavailable && t.State == "error" {
-		row.append(overviewTextBlock([]string{themed(tr("terminal.state.error"), warning, panel, o.Dim)}, width))
+		section.append(overviewTextBlock([]string{themed(tr("terminal.state.error"), warning, panel, o.Dim)}, width))
 	}
-	return row
+	return section
 }
 
-func overviewTUNRow(o dashboardOptions, width int) dashboardBlock {
+func overviewTUNSection(o dashboardOptions, width int) dashboardBlock {
 	tr, s := o.Locale.T, o.Snapshot
 	labels := networkToggleLabels(o)
 	state, id, observed := toggleUnsupported, "", ""
@@ -150,14 +173,14 @@ func overviewTUNRow(o dashboardOptions, width int) dashboardBlock {
 			}
 		}
 	}
-	row := overviewNetworkRow(o, width, tr("dashboard.network.tun"), "network.tunConfig", id, state, labels)
+	section := overviewNetworkSection(o, width, tr("dashboard.network.tun"), "network.tunConfig", id, state, labels)
 	if observed != "" {
-		row.append(overviewTextBlock([]string{themed(observed, warning, panel, o.Dim)}, width))
+		section.append(overviewTextBlock([]string{themed(observed, warning, panel, o.Dim)}, width))
 	}
 	if s.TUNError != "" {
-		row.append(overviewTextBlock([]string{themed(clean(o.Locale.Detail(s.TUNError)), warning, panel, o.Dim)}, width))
+		section.append(overviewTextBlock([]string{themed(clean(o.Locale.Detail(s.TUNError)), warning, panel, o.Dim)}, width))
 	}
-	return row
+	return section
 }
 
 // The target names carry explicit enable/disable intent. After a refreshed

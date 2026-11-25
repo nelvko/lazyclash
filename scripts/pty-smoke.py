@@ -50,20 +50,20 @@ class Screen:
         self.x, self.y = min(self.x, columns - 1), min(self.y, rows - 1)
         self.top, self.bottom = 0, rows - 1
 
-    def point_on_row(self, heading, label):
-        """Locate a control to the right of its row heading, in terminal cells."""
+    def point_below(self, heading, row_offset, label):
+        """Locate a left-aligned control beneath its heading, in display cells."""
         for y, row in enumerate(self.cells):
-            if heading not in "".join(row):
+            if y + row_offset >= self.rows or heading not in "".join(row):
                 continue
-            after_heading = False
             for x, cell in enumerate(row):
-                if not cell:
-                    continue
-                rest = "".join(row[x:])
-                if after_heading and rest.startswith(label):
-                    return x, y
-                if rest.startswith(heading):
-                    after_heading = True
+                if cell and "".join(row[x:]).startswith(heading):
+                    below = self.cells[y + row_offset]
+                    # Skip the focus marker and optional monochrome button frame.
+                    for col in range(x, self.columns):
+                        if "".join(below[col:]).startswith(label):
+                            return col, y + row_offset
+                        if below[col] not in (" ", "›", "["):
+                            break
         return None
 
     def scroll(self, top, bottom, count):

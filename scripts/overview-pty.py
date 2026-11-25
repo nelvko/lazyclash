@@ -119,7 +119,10 @@ def check_profile(preview, terminal, profile):
 
 
 def assert_borderless(terminal):
-    assert not any(value in terminal.screen.text() for value in "┌┐└┘│"), "inactive card retained an outer border"
+    assert not any(value in terminal.screen.text() for value in "┌┐└┘"), "inactive card retained an outer border"
+    # The network card can have one internal vertical divider.
+    edges = {x for row in terminal.screen.cells for x, value in enumerate(row) if value == "│"}
+    assert len(edges) <= 1, "inactive card retained outer sides"
 
 
 def return_navigation(terminal, words):
@@ -170,12 +173,22 @@ def check_network_modal(terminal, title):
 
 def inspect_network_editors(preview, terminal, output, words, scenario, args):
     edit = words["dashboard.network.configure"]
+    if scenario == "pending":
+        primary, tun = words["terminal.title"], words["dashboard.network.tun"]
+        focus_control(terminal, "○ " + words["dashboard.network.off"])
+        saved = "● " + words["tun.saved_state"] % words["dashboard.control.on"]
+        for title, offset, label in ((primary, 2, edit), (tun, 1, saved), (tun, 2, edit)):
+            terminal.key(b"\t")
+            terminal.settle()
+            x, y = terminal.screen.point_below(title, offset, label)
+            left = text_point(terminal, title)[0]
+            assert "›" in terminal.screen.cells[y][left:x], "Tab did not reach " + title + " / " + label
     for section, heading, title in (
             ("terminal", words["terminal.title"], words["network.terminalConfig.title"]),
             ("tun", words["dashboard.network.tun"], words["network.tunConfig.title"])):
         cancel = words["profiles.close"] if section == "tun" and scenario != "pending" else words["ports.cancel"]
         focus_control(terminal, edit)
-        point = terminal.screen.point_on_row(heading, edit)
+        point = terminal.screen.point_below(heading, 2, edit)
         assert point is not None, "network edit action missing for " + heading
         click_point(terminal, point)
         terminal.wait(title)
@@ -251,6 +264,33 @@ def assert_card_outline(terminal, profile, complete=True):
             "height": bottom - top + 1 if bottom is not None else None}
 
 
+def inspect_network_card(terminal, outline, words, scenario):
+    x, y = outline["x"], outline["y"]
+    right, bottom = x + outline["width"], y + outline["height"]
+    card_rows = ["".join(row[x:right]) for row in terminal.screen.cells[y:bottom]]
+    card_text = "\n".join(card_rows)
+    edit = words["dashboard.network.configure"]
+    assert card_text.count(edit) == 2, "both network sections need their own editor"
+    for hidden in ("127.0.0.1:", "17897", words["dashboard.field.systemProxy"]):
+        assert hidden not in card_text, "network summary retained " + hidden
+    terminal_title, tun_title = words["terminal.title"], words["dashboard.network.tun"]
+    left_x, left_y = text_point(terminal, terminal_title)
+    tun_x, tun_y = text_point(terminal, tun_title)
+    if outline["width"] >= 44:
+        assert left_y == tun_y and x < left_x < tun_x < right, "network groups are not side by side"
+    else:
+        assert left_x == tun_x and y < left_y < tun_y < bottom, "narrow network groups are not stacked"
+    assert terminal.screen.point_below(terminal_title, 1, "○ " + words["dashboard.network.off"]), "missing terminal proxy switch"
+    tun_state = ("● " + words["tun.saved_state"] % words["dashboard.control.on"]
+                 if scenario == "pending" else words["dashboard.network.unsupported"])
+    assert terminal.screen.point_below(tun_title, 1, tun_state), "incorrect state beneath TUN"
+    for title in (terminal_title, tun_title):
+        assert terminal.screen.point_below(title, 2, edit), "no configuration button beneath " + title
+    if scenario == "pending":
+        tun_text = " ".join("".join(row[tun_x:right]).strip(" │") for row in terminal.screen.cells[tun_y:bottom-1])
+        assert words["dashboard.overview.tunActual"] % words["dashboard.control.off"] in tun_text, "actual state missing beneath TUN"
+
+
 def inspect_row_cards(preview, terminal, output, width, height, words, profile, scenario, args):
     names = ("service", "profile", "network", "route", "traffic", "environment")
     titles = [words["dashboard.profile.title"] if name == "profile" else
@@ -267,15 +307,7 @@ def inspect_row_cards(preview, terminal, output, width, height, words, profile, 
             for value in ("12.0 KiB/s", "2.2 MiB/s"):
                 assert value in terminal.screen.text(), "traffic card omitted a live rate: " + value
         if name == "network":
-            x, y = outline["x"], outline["y"]
-            card_rows = ["".join(row[x:x+outline["width"]]) for row in terminal.screen.cells[y:y+outline["height"]]]
-            card_text = "\n".join(card_rows)
-            assert card_text.count(words["dashboard.network.configure"]) == 2, "both network rows need their own editor"
-            for hidden in ("127.0.0.1:", "17897", words["dashboard.field.systemProxy"]):
-                assert hidden not in card_text, "network summary retained " + hidden
-            if scenario == "pending":
-                assert words["tun.saved_state"] % words["dashboard.control.on"] in card_text, "saved TUN state was not retained"
-                assert words["dashboard.overview.tunActual"] % words["dashboard.control.off"] in card_text, "observed TUN state was confused with the saved state"
+            inspect_network_card(terminal, outline, words, scenario)
         if name == "environment":
             x, y = outline["x"], outline["y"]
             right, bottom = x + outline["width"], y + outline["height"]
@@ -388,6 +420,15 @@ def exercise(preview, binary, output, language, profile, scenario, args):
             preview.capture(terminal, output, "card-focus-%dx%d" % (width, height), args)
             if width >= 120:
                 inspect_row_cards(preview, terminal, output, width, height, words, profile, scenario, args)
+            elif width in (80, 40):
+                for _ in range(2):
+                    terminal.key(b"\x1b[B")
+                    terminal.settle()
+                inspect_network_card(terminal, assert_card_outline(terminal, profile), words, scenario)
+                preview.capture(terminal, output, "network-card-%dx%d" % (width, height), args)
+                return_navigation(terminal, words)
+                terminal.key(b"\t")
+                terminal.settle()
             terminal.key(b"\r")
             terminal.settle()
             assert_borderless(terminal)

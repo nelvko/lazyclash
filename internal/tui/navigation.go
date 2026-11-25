@@ -43,9 +43,13 @@ func (m *Model) focusTargets() []hitRegion {
 		}
 	}
 	body := m.contentTargets()
+	var networkCard hitRegion
 	for _, target := range body {
 		target.X += g.x
 		target.Y += g.y
+		if target.ID == "overview.card.dashboard.overview.network" {
+			networkCard = target
+		}
 		if listTarget(target.ID) || strings.HasPrefix(target.ID, "proxies.delay.") || strings.HasPrefix(target.ID, "overview.card.") || target.ID == "logs.list" {
 			list = append(list, target)
 		} else {
@@ -70,20 +74,26 @@ func (m *Model) focusTargets() []hitRegion {
 	} else if len(body) == 0 {
 		controls = append(controls, hitRegion{ID: "content", X: g.x, Y: g.y, W: g.width, H: 1})
 	}
-	sort.SliceStable(controls[1:], func(i, j int) bool {
-		a, b := controls[i+1], controls[j+1]
+	tabPosition := func(r hitRegion) (int, int) {
+		// Treat the network card as one group in the page order. Its renderer
+		// supplies the controls of each section together at either width.
+		if networkCard.W > 0 && r.ID != networkCard.ID && !strings.HasPrefix(r.ID, "notification.") && regionsOverlap(r, networkCard) {
+			return networkCard.Y + 1, networkCard.X
+		}
 		// Read framed searches at their text row, alongside scope controls,
 		// rather than placing the frame's top before controls to its left.
-		if a.H == 3 && searchClearID(a.ID) != "" {
-			a.Y++
+		if r.H == 3 && searchClearID(r.ID) != "" {
+			r.Y++
 		}
-		if b.H == 3 && searchClearID(b.ID) != "" {
-			b.Y++
+		return r.Y, r.X
+	}
+	sort.SliceStable(controls[1:], func(i, j int) bool {
+		ay, ax := tabPosition(controls[i+1])
+		by, bx := tabPosition(controls[j+1])
+		if ay == by {
+			return ax < bx
 		}
-		if a.Y == b.Y {
-			return a.X < b.X
-		}
-		return a.Y < b.Y
+		return ay < by
 	})
 	return controls
 }
