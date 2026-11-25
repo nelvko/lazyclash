@@ -200,24 +200,27 @@ func TestOverviewNetworkKeepsExtraActionsAndObservationsInTheirColumns(t *testin
 	if !strings.Contains(rightText, o.Snapshot.TUNError) || !strings.Contains(rightText, "Running TUN: Off") || strings.Contains(leftText, "Mihomo") {
 		t.Fatalf("TUN diagnostic missing from its column: %s", ansi.Strip(strings.Join(card.lines, "\n")))
 	}
-	for _, target := range card.targets {
-		if target.ID == "terminal.activation" {
-			if target.H < 2 || target.X+target.W > 23 {
-				t.Fatalf("wrapped activation action has incorrect click area: %+v", target)
+	for _, language := range []string{i18n.English, i18n.Chinese} {
+		o.Locale = i18n.New(language)
+		for _, width := range []int{16, 36, 44, 46, 76} {
+			card := overviewNetworkCard(o, width)
+			config, command := card.targets[1], card.targets[2]
+			if config.ID != "network.primaryConfig" || command.ID != "terminal.activation" {
+				t.Fatalf("unexpected action order: %+v", card.targets)
 			}
-			var label []string
-			for _, row := range card.lines[target.Y : target.Y+target.H] {
-				part := strings.TrimSpace(ansi.Strip(ansi.Cut(row, target.X, target.X+target.W)))
-				assertNetworkLabelCentered(t, row, 2, 21, part)
-				label = append(label, part)
+			if width == 16 {
+				if command.Y != config.Y+config.H {
+					t.Fatalf("expected stacked actions: %+v", card.targets)
+				}
+			} else if config.Y != command.Y || config.X+config.W > command.X {
+				t.Fatalf("expected two separate actions on one row: %+v", card.targets)
 			}
-			if !strings.Contains(strings.Join(strings.Fields(strings.Join(label, " ")), " "), o.Locale.T("terminal.activationAction")) {
-				t.Fatalf("click area does not contain the full activation label: %q", label)
+			face := ansi.Strip(ansi.Cut(card.lines[command.Y], command.X, command.X+command.W))
+			if !strings.Contains(face, o.Locale.T("dashboard.network.activationCommand")) {
+				t.Fatalf("command target misses its label: %+v, %q", command, face)
 			}
-			return
 		}
 	}
-	t.Fatal("pending terminal activation action is unreachable")
 }
 
 func TestNetworkCardTabVisitsEachGroupBeforeTheNext(t *testing.T) {

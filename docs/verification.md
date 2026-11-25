@@ -1,5 +1,9 @@
 # 验证入口
 
+## 终端代理待激活（2026-11-25）
+
+隔离 PTY 从终端代理关闭开始，分别以中文真彩、英文无色或 256 色运行。120×32 双栏和 40×16 堆叠下，鼠标点击「激活命令」会立即开窗，Esc 返回后可按 Enter 重开。路径含空格的 Shell 命令在窄屏按字符格折行，复制请求逐字节保留原命令。打开、复制和关闭只使用当前会话快照。[网络设置卡](../.test-artifacts/terminal-activation-dialog/final/card-120x32-zh-Hans-truecolor.png) · [宽屏弹窗](../.test-artifacts/terminal-activation-dialog/final/dialog-120x32-zh-Hans-truecolor.png) · [窄屏弹窗](../.test-artifacts/terminal-activation-dialog/final/dialog-40x16-zh-Hans-truecolor.png)
+
 ## 发行包安装与终端代理首次开启（2026-11-25）
 
 在 Linux/arm64 专用虚拟机的真实 PTY 和临时 HOME 中运行发行包的 `install.sh`。五种 Bash 启动方式、Zsh 自定义 ZDOTDIR、Fish conf.d 均能自动加载脚本，新终端默认关闭代理，保留原有代理变量和提示符。[七组启动结果](../.test-artifacts/shell-auto-setup/startup/summary.json)

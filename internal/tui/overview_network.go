@@ -80,7 +80,7 @@ func centeredNetworkBlock(face string, width, gutter int, id string) dashboardBl
 	return b
 }
 
-func overviewNetworkSection(o dashboardOptions, width int, title, configID, toggleID string, state toggleState, labels toggleLabels) dashboardBlock {
+func overviewNetworkSection(o dashboardOptions, width int, title, toggleID string, state toggleState, labels toggleLabels) dashboardBlock {
 	b := centeredNetworkBlock(overviewHeading(o, title), width, 0, "")
 	label, _ := labels.resolved().face(state)
 	focused := toggleID != "" && o.Focus == toggleID
@@ -99,17 +99,43 @@ func overviewNetworkSection(o dashboardOptions, width int, title, configID, togg
 		face = themed(marker+left, focus, panel, o.Dim) + face + themed(right, muted, panel, o.Dim)
 	}
 	b.append(centeredNetworkBlock(face, width, gutter, toggleID))
-	config := overviewControlButton{id: configID, label: o.Locale.T("dashboard.network.configure"), enabled: o.Snapshot.Installed && !o.Busy && !o.StateUnavailable}
-	if !config.enabled {
-		configID = ""
-	}
-	kind := buttonText
-	if o.PlainButtons {
-		kind = buttonSecondary
-	}
 	b.blank()
-	b.append(centeredNetworkBlock(overviewButton(o, config, kind), width, 2, configID))
 	return b
+}
+
+func networkConfigActions(o dashboardOptions, width int, configID string, showCommand bool) dashboardBlock {
+	button := func(id, label string, enabled bool) (string, string) {
+		opts := dashboardButtonOptions(id, o, false, panel)
+		opts.Disabled, opts.Compact = !enabled, showCommand
+		if !o.PlainButtons {
+			opts.Kind = buttonText
+		}
+		if !enabled {
+			id = ""
+		}
+		return renderButton(o.Locale.T(label), opts), id
+	}
+	config, configID := button(configID, "dashboard.network.configure", o.Snapshot.Installed && !o.Busy && !o.StateUnavailable)
+	if !showCommand {
+		return centeredNetworkBlock(config, width, 2, configID)
+	}
+	command, commandID := button("terminal.activation", "dashboard.network.activationCommand", !o.Busy)
+	configWidth, commandWidth := ansi.StringWidth(config), ansi.StringWidth(command)
+	free := width - configWidth - commandWidth
+	if free < 0 {
+		stacked := centeredNetworkBlock(config, width, 1, configID)
+		stacked.append(centeredNetworkBlock(command, width, 1, commandID))
+		return stacked
+	}
+	left := free / 2
+	row := dashboardBlock{lines: []string{strings.Repeat(" ", left) + config + command}}
+	if configID != "" {
+		row.targets = append(row.targets, hitRegion{ID: configID, X: left, W: configWidth, H: 1})
+	}
+	if commandID != "" {
+		row.targets = append(row.targets, hitRegion{ID: commandID, X: left + configWidth, W: commandWidth, H: 1})
+	}
+	return row
 }
 
 func overviewTerminalSection(o dashboardOptions, width int) dashboardBlock {
@@ -149,15 +175,8 @@ func overviewTerminalSection(o dashboardOptions, width int) dashboardBlock {
 			id = "terminal.enable"
 		}
 	}
-	section := overviewNetworkSection(o, width, tr("terminal.title"), "network.primaryConfig", id, state, labels)
-	if !o.StateUnavailable && t.State == "pending" && t.Pending && t.ActivationCommand != "" {
-		action := overviewControlButton{id: "terminal.activation", label: tr("terminal.activationAction"), enabled: !o.Busy}
-		id := ""
-		if action.enabled {
-			id = action.id
-		}
-		section.append(centeredNetworkBlock(overviewButton(o, action, buttonSecondary), width, 2, id))
-	}
+	section := overviewNetworkSection(o, width, tr("terminal.title"), id, state, labels)
+	section.append(networkConfigActions(o, width, "network.primaryConfig", !o.StateUnavailable && pendingActivationCommand(t) != ""))
 	if !o.StateUnavailable && t.State == "error" {
 		section.append(centeredNetworkBlock(themed(tr("terminal.state.error"), warning, panel, o.Dim), width, 0, ""))
 	}
@@ -202,7 +221,8 @@ func overviewTUNSection(o dashboardOptions, width int) dashboardBlock {
 			}
 		}
 	}
-	section := overviewNetworkSection(o, width, tr("dashboard.network.tun"), "network.tunConfig", id, state, labels)
+	section := overviewNetworkSection(o, width, tr("dashboard.network.tun"), id, state, labels)
+	section.append(networkConfigActions(o, width, "network.tunConfig", false))
 	if observed != "" {
 		section.append(centeredNetworkBlock(themed(observed, warning, panel, o.Dim), width, 0, ""))
 	}

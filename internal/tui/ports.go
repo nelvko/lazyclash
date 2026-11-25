@@ -18,7 +18,7 @@ import (
 
 type portsState struct {
 	open, cancelling, applied bool
-	kind                      string // Empty for Settings → Ports; overview edits one network feature.
+	kind                      string // Empty for Settings → Ports; otherwise an overview network dialog.
 	tunOriginal, tunEnabled   bool
 	step, focus, returnFocus  string
 	controls                  []string
@@ -234,6 +234,8 @@ func (m *Model) closePorts() {
 	m.focus = m.ports.returnFocus
 	if !m.snapshot.Installed {
 		m.focus = "install"
+	} else if m.ports.kind == "activation" {
+		m.syncNetworkActionFocus()
 	}
 	if m.ports.step == "loading" || m.ports.step == "preparing" {
 		m.message = ""
@@ -257,6 +259,11 @@ func (m *Model) portsActivate(id string) tea.Cmd {
 		return m.networkTUNActivate(id)
 	}
 	switch id {
+	case "terminal.copyActivation":
+		if command := pendingActivationCommand(m.snapshot.TerminalProxy); m.ports.kind == "activation" && command != "" {
+			m.ports.step = "copy-requested"
+			return tea.SetClipboard(command)
+		}
 	case "ports.cancel", "ports.done":
 		m.closePorts()
 	case "ports.review":
@@ -390,6 +397,10 @@ func (m *Model) portsDocument(width int) (wizardDocument, []wizardButton, string
 		return m.networkTUNDocument(width)
 	}
 	d := wizardDocument{locale: m.locale, width: width, hover: m.hover, plain: m.buttonPlain(), busy: m.busy}
+	if p.kind == "activation" {
+		buttons := m.terminalActivationDocument(&d)
+		return d, buttons, ""
+	}
 	buttons := []wizardButton{{"ports.cancel", m.tr("ports.cancel")}}
 	subtitle := m.tr("ports.edit")
 	switch p.step {
@@ -506,7 +517,12 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 		// Network configurations float over the entire dashboard, including
 		// the sidebar. Even the narrow layout keeps a visible gutter.
 		modal = true
-		w = min(66, max(34, w*3/5), max(0, w-4))
+		preferredWidth := min(66, max(34, w*3/5))
+		if p.kind == "activation" {
+			command := pendingActivationCommand(m.snapshot.TerminalProxy)
+			preferredWidth = max(preferredWidth, min(80, ansi.StringWidth(clean(command))+6))
+		}
+		w = min(preferredWidth, max(0, w-4))
 		h -= 2
 		x = (m.width - w) / 2
 	} else if modal {
@@ -527,7 +543,7 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 	}
 	inner := w - 6
 	doc, buttons, subtitle := m.portsDocument(inner)
-	if p.kind == "tun" && len(buttons) == 1 {
+	if (p.kind == "tun" || p.kind == "activation") && len(buttons) == 1 {
 		p.focus = buttons[0].ID
 	}
 	p.controls = nil
@@ -542,12 +558,16 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 		if !blocked {
 			p.controls = append(p.controls, button.ID)
 		}
-		primary := button.ID == "tun.save" || button.ID == "ports.review" || button.ID == "ports.apply" || button.ID == "ports.retry" || button.ID == "ports.done" && p.applied
+		primary := button.ID == "terminal.copyActivation" || button.ID == "tun.save" || button.ID == "ports.review" || button.ID == "ports.apply" || button.ID == "ports.retry" || button.ID == "ports.done" && p.applied
 		kind := buttonSecondary
 		if primary {
 			kind = buttonPrimary
 		}
-		value := renderButton(button.Label, buttonOptions{Kind: kind, Surface: raised,
+		minWidth := 0
+		if button.ID == "terminal.copyActivation" {
+			minWidth = max(ansi.StringWidth(m.tr("terminal.activationCopy")), ansi.StringWidth(m.tr("terminal.activationCopyRequested")))
+		}
+		value := renderButton(button.Label, buttonOptions{Kind: kind, Surface: raised, Width: minWidth,
 			Focused: p.focus == button.ID, Hovered: m.hover == button.ID,
 			Disabled: blocked && !m.busy, Busy: blocked && m.busy, Plain: m.buttonPlain()})
 		width := min(inner, ansi.StringWidth(value))
@@ -573,18 +593,26 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 		}
 	}
 	bodyY := 5
-	if h < 30 {
+	if p.kind == "activation" {
+		bodyY = 3
+	} else if h < 30 {
 		bodyY = 2
 	}
 	var errors []string
 	if p.err != "" {
 		errors = strings.Split(wrapText(p.err, inner), "\n")
 	}
+	// The activation dialog uses the dashboard's key hints. Its fixed footer
+	// only needs the bottom border after the buttons.
+	footerInset := 3
+	if p.kind == "activation" {
+		footerInset = 1
+	}
 	if modal {
-		h = min(h, bodyY+len(doc.lines)+len(errors)+len(footer)+4)
+		h = min(h, bodyY+len(doc.lines)+len(errors)+len(footer)+footerInset+1)
 		y = (m.height - h) / 2
 	}
-	footerY := h - len(footer) - 3
+	footerY := h - len(footer) - footerInset
 	// Validation stays next to the fixed actions instead of disappearing below
 	// the editor. Keep at least a complete field in the scrolling body; unusually
 	// long diagnostics also remain available in full at the end of that body.
@@ -627,7 +655,9 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 		putRows(rows, w-1, i, themed("│", border, raised, false), w)
 	}
 	title := "ports.title"
-	if p.kind != "" {
+	if p.kind == "activation" {
+		title = "terminal.activationTitle"
+	} else if p.kind != "" {
 		title = "network." + p.kind + "Config.title"
 	}
 	putRows(rows, 3, 1, themed(cellCrop(m.tr(title), inner), text, raised, false), w)
@@ -660,8 +690,9 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 		hit.X, hit.Y = hit.X+x+3, hit.Y+y+footerY
 		hits = append(hits, hit)
 	}
-	help := m.portsContextHelp()
-	putRows(rows, 3, h-2, helpText(cellCrop(help, inner), raised, false), w)
+	if p.kind != "activation" {
+		putRows(rows, 3, h-2, helpText(cellCrop(m.portsContextHelp(), inner), raised, false), w)
+	}
 	if len(doc.lines) > bodyH {
 		putRows(rows, w-3, bodyY+bodyH-1, themed("↕", info, raised, false), w)
 	}

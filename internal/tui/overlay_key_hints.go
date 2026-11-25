@@ -42,6 +42,8 @@ func (m *Model) portsContextHelp() string {
 	}
 	label := ""
 	switch m.ports.focus {
+	case "terminal.copyActivation":
+		label = m.tr("terminal.activationCopy")
 	case "ports.mixed", "ports.controller", "ports.review":
 		label = m.tr("ports.review")
 		if m.ports.kind == "terminal" {
@@ -49,7 +51,7 @@ func (m *Model) portsContextHelp() string {
 		}
 	case "ports.cancel", "ports.done", "ports.back":
 		label = m.tr(m.ports.focus)
-		if m.ports.kind == "tun" && !m.canConfigureHostTUN() {
+		if m.ports.kind == "activation" || m.ports.kind == "tun" && !m.canConfigureHostTUN() {
 			label = m.tr("profiles.close")
 		}
 	case "tun.policy":

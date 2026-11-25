@@ -1331,9 +1331,7 @@ func (m *Model) activate(id string) tea.Cmd {
 	case "terminal.enable", "terminal.disable":
 		return m.terminalProxyAction(id == "terminal.enable")
 	case "terminal.activation":
-		m.prepareNotification("terminal-proxy", m.tr("terminal.title"))
-		m.message = m.tr("terminal.activation", m.snapshot.TerminalProxy.ActivationCommand)
-		m.messageInformational = true
+		m.openTerminalActivation()
 		return nil
 	case "tun.enable", "tun.disable":
 		return m.tunAction(id == "tun.enable")
