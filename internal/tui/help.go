@@ -53,6 +53,15 @@ func (m *Model) helpLines(width int) []string {
 }
 
 func (m *Model) helpKey(k tea.KeyPressMsg) tea.Cmd {
+	if m.keyHints.helpFocus == "key-hints.toggle" {
+		switch k.String() {
+		case "enter", "space", " ":
+			if k.IsRepeat {
+				return nil
+			}
+			return m.toggleKeyHints()
+		}
+	}
 	switch k.String() {
 	case "esc", "?":
 		_, cmd := m.keyHintsAction("help.close")
@@ -64,9 +73,6 @@ func (m *Model) helpKey(k tea.KeyPressMsg) tea.Cmd {
 			m.keyHints.helpFocus = "key-hints.toggle"
 		}
 	case "enter":
-		if m.keyHints.helpFocus == "key-hints.toggle" {
-			return m.toggleKeyHints()
-		}
 		_, cmd := m.keyHintsAction("help.close")
 		return cmd
 	case "q":
@@ -96,14 +102,17 @@ func (m *Model) helpMouse(event tea.MouseMsg) tea.Cmd {
 			m.helpScroll += 3
 		}
 	}
-	if _, clicked := event.(tea.MouseClickMsg); clicked && event.Mouse().Button == tea.MouseLeft {
-		for _, hit := range m.targets {
-			k := event.Mouse()
-			if k.X >= hit.X && k.X < hit.X+hit.W && k.Y >= hit.Y && k.Y < hit.Y+hit.H {
+	k := event.Mouse()
+	m.hover = ""
+	for _, hit := range m.targets {
+		if k.X >= hit.X && k.X < hit.X+hit.W && k.Y >= hit.Y && k.Y < hit.Y+hit.H {
+			m.hover = hit.ID
+			if _, clicked := event.(tea.MouseClickMsg); clicked && k.Button == tea.MouseLeft {
 				m.keyHints.helpFocus = hit.ID
 				_, cmd := m.keyHintsAction(hit.ID)
 				return cmd
 			}
+			break
 		}
 	}
 	return nil
@@ -135,9 +144,7 @@ func (m *Model) renderHelp(base string) (string, []hitRegion) {
 		putRows(rows, 0, m.height-1, label, m.width)
 		hits := []hitRegion{{ID: "help.close", X: 0, Y: m.height - 1, W: max(1, ansi.StringWidth(label)), H: 1}}
 		if m.height >= 3 {
-			label = button("key-hints.toggle", m.keyHintsLabel(), m.width)
-			putRows(rows, 0, m.height-2, label, m.width)
-			hits = append(hits, hitRegion{ID: "key-hints.toggle", X: 0, Y: m.height - 2, W: max(1, ansi.StringWidth(label)), H: 1})
+			hits = m.putHelpSwitch(rows, hits, 0, m.height-2, m.width)
 		}
 		return strings.Join(rows, "\n"), hits
 	}
@@ -155,8 +162,7 @@ func (m *Model) renderHelp(base string) (string, []hitRegion) {
 		putRows(rows, w-1, i, themed("│", border, raised, false), w)
 	}
 	putRows(rows, 3, 1, themed(tr("help.title", pageTitle(m.page, m.locale)), text, raised, false), w)
-	toggle := button("key-hints.toggle", m.keyHintsLabel(), inner)
-	putRows(rows, 3, 2, toggle, w)
+	hits := m.putHelpSwitch(rows, nil, 3, 2, inner)
 	for i := 0; i < visible && i+m.helpScroll < len(lines); i++ {
 		putRows(rows, 3, i+4, themed(cellPad(lines[i+m.helpScroll], inner), text, raised, false), w)
 	}
@@ -166,15 +172,29 @@ func (m *Model) renderHelp(base string) (string, []hitRegion) {
 	if footerX < w-3 {
 		putRows(rows, footerX, h-2, helpText(cellCrop(tr("help.footer"), w-footerX-3), raised, false), w)
 	}
-	return overlay(base, strings.Join(rows, "\n"), x, y, m.width, m.height), []hitRegion{
-		{ID: "help.close", X: x + 3, Y: y + h - 2, W: ansi.StringWidth(label), H: 1},
-		{ID: "key-hints.toggle", X: x + 3, Y: y + 2, W: ansi.StringWidth(toggle), H: 1},
+	for i := range hits {
+		hits[i].X += x
+		hits[i].Y += y
 	}
+	closeHit := hitRegion{ID: "help.close", X: x + 3, Y: y + h - 2, W: ansi.StringWidth(label), H: 1}
+	return overlay(base, strings.Join(rows, "\n"), x, y, m.width, m.height), append([]hitRegion{closeHit}, hits...)
 }
 
-func (m *Model) keyHintsLabel() string {
-	if m.keyHints.hidden {
-		return m.tr("help.keyHints.show")
+func (m *Model) putHelpSwitch(rows []string, hits []hitRegion, x, y, width int) []hitRegion {
+	const id = "key-hints.toggle"
+	o := m.dashboardOptions()
+	o.Dim = false
+	control := o.settingsToggle(id)
+	focused, hovered := m.keyHints.helpFocus == id, m.hover == id
+	face := o.switchFace(id, control, toggleOptions{Surface: raised, Focused: focused, Hovered: hovered})
+	gutter := ""
+	if width >= switchWidth+2 {
+		gutter = switchGutter(focused, hovered, o.Monochrome, raised, false)
 	}
-	return m.tr("help.keyHints.hide")
+	putRows(rows, x, y, cellCrop(gutter+face+" "+themed(m.tr("dashboard.interface.keyHints"), text, raised, false), width), m.width)
+	if control.canToggle() {
+		left := ansi.StringWidth(gutter)
+		hits = append(hits, hitRegion{ID: id, X: x + left, Y: y, W: min(switchWidth, width-left), H: 1})
+	}
+	return hits
 }

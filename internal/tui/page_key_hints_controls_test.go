@@ -106,7 +106,8 @@ func TestSettingsHintsNameTheFocusedControl(t *testing.T) {
 			}
 		}
 		m.focus = "key-hints.toggle"
-		m, _ = update(m, special(tea.KeyEnter))
+		m, save := update(m, special(tea.KeyEnter))
+		m = finishKeyHintsSave(t, m, save)
 		if !m.keyHints.hidden || !strings.HasPrefix(m.contextHelp(), "Enter "+m.tr("navigation.controls.showHints")+" · ") {
 			t.Fatal("key-hint switch did not describe the reverse action")
 		}

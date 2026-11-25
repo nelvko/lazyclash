@@ -3,7 +3,14 @@ package tui
 import tea "charm.land/bubbletea/v2"
 
 func (m *Model) canConfigureHostTUN() bool {
-	return m.snapshot.Capabilities.TUN.Supported && runtimeControlIssue(m.snapshot, m.locale) == ""
+	return m.snapshot.Capabilities.TUN.Supported && m.tunConfigIssue() == ""
+}
+
+func (m *Model) tunConfigIssue() string {
+	if m.tunPolicyUnknown {
+		return m.tr("notification.state_unknown")
+	}
+	return runtimeControlIssue(m.snapshot, m.locale)
 }
 
 func (m *Model) networkTUNDocument(width int) (wizardDocument, []wizardButton, string) {
@@ -15,7 +22,7 @@ func (m *Model) networkTUNDocument(width int) (wizardDocument, []wizardButton, s
 		d.line(m.tr("diagnostic.runtime.tunUnavailable"))
 		return d, buttons, subtitle
 	}
-	if issue := runtimeControlIssue(s, m.locale); issue != "" {
+	if issue := m.tunConfigIssue(); issue != "" {
 		d.line(themed(issue, warning, raised, false))
 		return d, buttons, subtitle
 	}
@@ -36,11 +43,13 @@ func (m *Model) networkTUNDocument(width int) (wizardDocument, []wizardButton, s
 		d.line(themed(clean(m.locale.Detail(s.TUNError)), warning, raised, false))
 	}
 	d.space()
-	check := "[ ] "
-	if m.ports.tunEnabled {
-		check = "[x] "
-	}
-	d.control("tun.policy", check+m.tr("network.tunConfig.policy"), m.ports.focus)
+	o := m.navigationOptions()
+	o.Focus, o.Dim = m.ports.focus, false
+	control := boolToggle(m.ports.tunEnabled)
+	const id = "tun.policy"
+	face := o.switchFace(id, control, toggleOptions{Surface: raised, Focused: o.Focus == id, Hovered: o.Hover == id})
+	d.targets = append(d.targets, hitRegion{ID: id, X: 2, Y: len(d.lines), W: switchWidth, H: 1})
+	d.line(switchGutter(o.Focus == id, o.Hover == id, o.Monochrome, raised, false) + face + "  " + themed(m.tr("network.tunConfig.policy"), text, raised, false))
 	d.line(m.tr("network.tunConfig.preset"))
 	if s.Service.Active {
 		d.line(m.tr("network.tunConfig.restart"))

@@ -123,7 +123,7 @@ func TestCoreStatusKeepsFailuresTransitionsAndMissingTimingExplicit(t *testing.T
 			{name: "unrecognized state", state: "new-state", toggle: toggleUnknown},
 			{name: "service unavailable", state: "unknown", serviceError: "fixture manager unavailable", toggle: toggleUnavailable},
 			{name: "monitor unavailable", state: "active", active: true, apiError: "fixture controller unavailable", toggle: toggleOn, uptime: true},
-			{name: "read-only running process", state: "active", active: true, unsupported: true, toggle: toggleUnavailable, uptime: true},
+			{name: "read-only running process", state: "active", active: true, unsupported: true, toggle: toggleUnsupported, uptime: true},
 			{name: "stale running snapshot", state: "active", active: true, stateUnavailable: true, toggle: toggleUnavailable},
 			{name: "missing time", state: "active", active: true, missingTime: true, toggle: toggleOn},
 			{name: "future time", state: "active", active: true, futureTime: true, toggle: toggleOn},

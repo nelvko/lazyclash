@@ -11,6 +11,8 @@ import (
 type menuItem struct {
 	ID, Label, DisabledReason string
 	Danger, Checked           bool
+	// preview contains trusted, pre-rendered cells alongside the plain label.
+	preview string
 }
 
 type menuResult struct {
@@ -212,7 +214,7 @@ func (m *actionMenu) render(base string, width, height, contentBottom int) strin
 		checked = checked || item.Checked
 	}
 	for i, item := range m.items {
-		labels[i] = clean(item.Label)
+		labels[i] = clean(item.Label) + item.preview
 		if checked {
 			mark := "  "
 			if item.Checked {

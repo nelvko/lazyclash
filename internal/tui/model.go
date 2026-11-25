@@ -29,6 +29,7 @@ type Backend interface {
 	SetGuideDismissed(context.Context, bool) error
 	SaveLanguagePreference(context.Context, string) error
 	SaveThemePreference(context.Context, string) error
+	SaveSwitchStylePreference(context.Context, string) error
 	SaveEditorPreference(context.Context, string) error
 	SaveKeyHintsPreference(context.Context, bool) error
 	SetAutostart(context.Context, bool) error
@@ -121,6 +122,9 @@ type Model struct {
 	savedLanguage         string
 	editorPreference      string
 	theme                 string
+	switchStyle           string
+	styleSaveGeneration   uint64
+	styleSavePending      bool
 	terminalLight         bool
 	ctx                   context.Context
 	backend               Backend
@@ -135,6 +139,7 @@ type Model struct {
 	messageTransient      bool
 	messageInformational  bool
 	page, focus, hover    string
+	tunPolicyUnknown      bool
 	tunFocus              string
 	guideSkipped          bool
 	scroll, total         int
@@ -144,6 +149,7 @@ type Model struct {
 	sidebarOpen           bool
 	sidebar               sidebarState
 	keyHints              keyHintsState
+	switches              switchAnimations
 	pageViews             map[string]pageViewState
 	form, name            string
 	rememberSource        bool
@@ -189,6 +195,7 @@ func New(ctx context.Context, backend Backend, languages ...string) Model {
 	}
 	m.locale = i18n.New(i18n.Resolve(m.languageOverride, "", os.Getenv))
 	m.theme = app.ThemeDark
+	m.switchStyle = app.SwitchStyleSlanted
 	m.profilesUI = newProfilesState(m.locale)
 	m.message = m.tr("model.loading")
 	m.connections.search = textinput.New()
@@ -340,7 +347,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	var cmd tea.Cmd
-	previousPage := m.page
+	previousPage, previousStyle, previousProfile := m.page, m.switchStyle, m.colorProfile
 	switch v := msg.(type) {
 	case profileEditorOpenedMsg:
 		cmd = m.acceptProfileEditor(v)
@@ -356,8 +363,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if v.generation == m.proxies.generation && !m.proxies.testing {
 			m.proxies.testStatusVisible = false
 		}
+	case switchFrameMsg:
+		cmd = m.switches.frame(v)
 	case keyHintsSavedMsg:
 		cmd = m.acceptKeyHintsSaved(v)
+	case switchStyleSavedMsg:
+		cmd = m.acceptSwitchStyleSaved(v)
 	case themeSavedMsg:
 		if v.id != m.id {
 			return m, nil
@@ -370,8 +381,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.applyThemePreference(v.theme)
 			m.message = m.tr("settings.themeSaved")
 		}
-		if m.quitting && !m.keyHints.pending {
-			return m, tea.Quit
+		if m.quitting {
+			return m, m.quitWhenSaved()
 		}
 	case notificationExpiredMsg:
 		m.expireNotification(v)
@@ -387,8 +398,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.editorPreference = v.value
 			m.closeEditorPreference()
 		}
-		if m.quitting && !m.keyHints.pending {
-			return m, tea.Quit
+		if m.quitting {
+			return m, m.quitWhenSaved()
 		}
 	case languageSavedMsg:
 		if v.id != m.id {
@@ -410,16 +421,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.message, m.failure = m.tr("language.saved"), ""
 			m.refreshLocalizedInputs()
 		}
-		if m.quitting && !m.keyHints.pending {
-			return m, tea.Quit
+		if m.quitting {
+			return m, m.quitWhenSaved()
 		}
 	case portsMsg:
 		if v.id != m.id || !m.ports.open {
 			return m, nil
 		}
 		m.acceptPorts(v)
-		if m.quitting && !m.busy && !m.keyHints.pending {
-			return m, tea.Quit
+		if m.quitting && !m.busy {
+			return m, m.quitWhenSaved()
 		}
 	case coreStatusMsg:
 		if v.generation == m.statusGeneration {
@@ -467,16 +478,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.syncRuntime()
 		}
 	case parentCanceledMsg:
-		m.stopProxyTests()
-		m.stopRuntime()
-		m.stopRules()
-		m.stopProviders()
-		m.stopCoreStatus()
-		if m.busy {
-			m.cancelTask(true)
-		} else {
-			return m, tea.Quit
-		}
+		cmd = m.requestQuit()
+		return m, cmd
 	case tea.WindowSizeMsg:
 		if strings.HasPrefix(m.hover, proxyTypeTarget) {
 			m.hover = ""
@@ -550,6 +553,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if v.prefs != nil {
 			cmd = m.applyThemePreference(v.prefs.Theme)
+			if m.styleSaveGeneration == 0 {
+				m.switchStyle = app.NormalizeSwitchStyle(v.prefs.SwitchStyle)
+			}
 			m.loadKeyHintsPreference(v.prefs.HideKeyHints)
 			m.editorPreference = v.prefs.Editor
 			m.savedLanguage = v.prefs.Language
@@ -581,8 +587,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.messageTransient = v.transient
 			m.failure = ""
 		}
-		if m.quitting && !m.keyHints.pending {
-			return m, tea.Quit
+		if m.quitting {
+			return m, m.quitWhenSaved()
 		}
 		if m.wizard.inline && m.wizard.step == stepResult && m.notification.operation.Key == "service.start" && v.actionSucceeded {
 			m.wizard.inline = false
@@ -617,16 +623,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.failure = m.localizeError(v.err)
 			}
 		}
-		if m.quitting && !m.keyHints.pending {
-			return m, tea.Quit
+		if m.quitting {
+			return m, m.quitWhenSaved()
 		}
 	case networkMsg:
 		if v.id != m.id {
 			return m, nil
 		}
 		cmd = m.handleNetworkResult(v)
-		if m.quitting && !m.busy && !m.keyHints.pending {
-			return m, tea.Quit
+		if m.quitting && !m.busy {
+			return m, m.quitWhenSaved()
 		}
 	case nextProgressMsg:
 		if v.id == m.id && m.busy {
@@ -902,7 +908,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			break
 		}
 		if m.busy {
-			if (key == "enter" || key == "space" || key == " ") && m.focus == "key-hints.toggle" {
+			if !v.IsRepeat && (key == "enter" || key == "space" || key == " ") && m.focus == "key-hints.toggle" {
 				_, cmd = m.keyHintsAction(m.focus)
 				break
 			}
@@ -1013,6 +1019,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "shift+tab":
 			m.cycleFocus(-1)
 		case "enter", "space", " ":
+			if v.IsRepeat && pageSwitchAction(m.focus) {
+				break
+			}
 			if m.focus == "core.toggle" && m.page == "overview" {
 				cmd = m.coreToggleKey(v)
 			} else {
@@ -1103,11 +1112,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.page != previousPage {
 		m.stopLogoIntro()
 	}
+	if previousPage != m.page || previousStyle != m.switchStyle || previousProfile != m.colorProfile {
+		m.switches.reset()
+	}
+	switchTick := m.syncSwitches(msg)
 	m.layout()
 	intro := m.syncLogoIntro()
 	timers := m.syncNotificationTimers(time.Now())
-	if inline != nil || notification != nil || timers != nil || completion != nil || next != nil || nextRules != nil || nextRuleProviders != nil || intro != nil || nextProxies != nil {
-		return m, tea.Batch(cmd, inline, notification, timers, completion, next, nextRules, nextRuleProviders, intro, nextProxies)
+	if inline != nil || notification != nil || timers != nil || completion != nil || next != nil || nextRules != nil || nextRuleProviders != nil || intro != nil || nextProxies != nil || switchTick != nil {
+		return m, tea.Batch(cmd, inline, notification, timers, completion, next, nextRules, nextRuleProviders, intro, nextProxies, switchTick)
 	}
 	return m, cmd
 }
@@ -1300,6 +1313,11 @@ func (m *Model) activate(id string) tea.Cmd {
 		return nil
 	case "settings.theme":
 		m.openPageSelectionMenu("settings", id, m.theme, themeMenuItems)
+		return nil
+	case "settings.switchStyle":
+		if !m.styleSavePending {
+			m.openPageSelectionMenu("settings", id, m.switchStyle, switchStyleMenuItems(m.locale))
+		}
 		return nil
 	case "settings.ipv6":
 		return m.toggleCoreSetting(id, "ipv6", m.snapshot.CoreSettings.IPv6)
@@ -1766,6 +1784,9 @@ func (m *Model) renderLayout() {
 		m.screen, m.targets = m.renderConnectionsCloseAll(base)
 	} else if m.menu.open {
 		m.anchorPageSelectionMenu(hits)
+		if m.menu.anchor.ID == "settings.switchStyle" {
+			setSwitchStylePreviews(&m.menu, o.Monochrome)
+		}
 		m.screen = m.menu.render(base, m.width, m.height, dashboardContentBottom(o))
 	}
 }

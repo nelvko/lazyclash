@@ -322,6 +322,12 @@ func (m *Model) portsKey(k tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 	if p.kind != "" {
+		if p.focus == "tun.policy" && k.IsRepeat {
+			switch key {
+			case "enter", "space", " ", "left", "right":
+				return nil
+			}
+		}
 		switch key {
 		case "down":
 			key = "tab"

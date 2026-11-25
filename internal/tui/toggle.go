@@ -1,12 +1,15 @@
 package tui
 
 import (
+	"cmp"
 	"strings"
+	"time"
 
 	bubbleskey "charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nelvko/lazyclash/internal/app"
 )
 
 type toggleState uint8
@@ -20,37 +23,27 @@ const (
 	toggleUnsupported
 )
 
-// toggleModel holds observations supplied by its parent, never a desired value.
-// The zero value is unknown and cannot be activated. Bubbles has no toggle
-// component; use its key bindings and the existing shared theme/layout helpers.
+// Observations and animation frames never represent a requested business state.
+// The zero value is unknown and cannot be activated.
 type toggleModel struct {
-	state, lastConfirmed toggleState
-	reason               string
+	state    toggleState
+	reason   string
+	sliding  bool
+	position int
 }
 
-// setState synchronizes an external observation. lastConfirmed is historical:
-// it survives pending/unavailable/unknown observations without making them
-// actionable. The parent can present reason beside the control or in details.
 func (t *toggleModel) setState(state toggleState, reason string) {
 	t.state, t.reason = state, reason
-	if state == toggleOn || state == toggleOff {
-		t.lastConfirmed = state
-	}
 }
 
 func (t toggleModel) canToggle() bool {
 	return t.state == toggleOn || t.state == toggleOff
 }
 
-// toggleIntent is a request, not confirmation that the feature changed.
 type toggleIntent struct{ On bool }
 
 var toggleActivateKey = bubbleskey.NewBinding(bubbleskey.WithKeys("enter", "space", " "))
 
-// intent is called only by the parent that currently owns keyboard input,
-// after editor/modal/navigation routing. It neither changes state nor starts a
-// Cmd. The parent must set pending synchronously before returning its operation
-// Cmd, and reject stale results using its existing job identity/generation.
 func (t toggleModel) intent(msg tea.KeyPressMsg, focused bool) (toggleIntent, bool) {
 	if !focused || !t.canToggle() || msg.IsRepeat || !bubbleskey.Matches(msg, toggleActivateKey) {
 		return toggleIntent{}, false
@@ -58,82 +51,211 @@ func (t toggleModel) intent(msg tea.KeyPressMsg, focused bool) (toggleIntent, bo
 	return toggleIntent{On: t.state == toggleOff}, true
 }
 
-type toggleLabels struct {
-	On, Off, Pending, Unavailable, Unsupported, Unknown string
-}
+type toggleLabels struct{ Unavailable, Unsupported, Unknown string }
 
 type toggleOptions struct {
-	Labels  toggleLabels
-	Surface string
-	// Width is the exact total width in terminal cells when positive. Otherwise
-	// all six labels determine a stable natural width. Overflow is truncated.
-	Width        int
-	RightAligned bool
-	Focused, Dim bool
+	Style, Surface                    string
+	Labels                            toggleLabels
+	Focused, Hovered, Monochrome, Dim bool
 }
 
-func (labels toggleLabels) resolved() toggleLabels {
-	label := func(value, fallback string) string {
-		// A toggle is one themed terminal row. Caller-provided ANSI must not
-		// override semantic colors, and newlines/tabs must not alter geometry.
-		value = strings.Join(strings.Fields(ansi.Strip(value)), " ")
-		if value == "" {
-			return fallback
+const switchWidth = 3
+
+var slantedFrames = [3]string{"●▱▱", "▰●▱", "▰▰●"}
+var lineFrames = [3]string{"●──", "━●─", "━━●"}
+
+// Check every frame using the same width policy as the enclosing layout.
+// x/ansi also honors RUNEWIDTH_EASTASIAN at process startup.
+func effectiveSwitchStyle(style string, monochrome bool) string {
+	style = app.NormalizeSwitchStyle(style)
+	var frames [3]string
+	switch style {
+	case app.SwitchStyleSlanted:
+		frames = slantedFrames
+	case app.SwitchStyleLine:
+		frames = lineFrames
+	case app.SwitchStyleSlider:
+		if monochrome {
+			return app.SwitchStyleText
 		}
-		return value
-	}
-	return toggleLabels{
-		On: label(labels.On, "已开启"), Off: label(labels.Off, "已关闭"),
-		Pending: label(labels.Pending, "切换中…"), Unavailable: label(labels.Unavailable, "不可用"),
-		Unsupported: label(labels.Unsupported, "暂不支持"), Unknown: label(labels.Unknown, "状态未知"),
-	}
-}
-
-func (labels toggleLabels) face(state toggleState) (string, string) {
-	switch state {
-	case toggleOn:
-		return "● " + labels.On, success
-	case toggleOff:
-		return "○ " + labels.Off, muted
-	case togglePending:
-		return "◌ " + labels.Pending, accent
-	case toggleUnavailable:
-		return labels.Unavailable, disabled
-	case toggleUnsupported:
-		return labels.Unsupported, disabled
+		return style
 	default:
-		return labels.Unknown, disabled
+		return style
+	}
+	for _, frame := range frames {
+		if ansi.StringWidth(frame) != switchWidth {
+			return app.SwitchStyleText
+		}
+	}
+	return style
+}
+
+func switchEndpoint(state toggleState) int {
+	if state == toggleOn {
+		return switchWidth - 1
+	}
+	return 0
+}
+
+func renderToggle(t toggleModel, o toggleOptions) string {
+	surface := cmp.Or(o.Surface, bg)
+	if !t.canToggle() {
+		var label string
+		switch t.state {
+		case togglePending:
+			return themed("...", accent, surface, o.Dim)
+		case toggleUnavailable:
+			label = cmp.Or(o.Labels.Unavailable, "暂不可用")
+		case toggleUnsupported:
+			label = cmp.Or(o.Labels.Unsupported, "暂不支持")
+		default:
+			label = cmp.Or(o.Labels.Unknown, "状态未知")
+		}
+		return themed(strings.Join(strings.Fields(ansi.Strip(label)), " "), disabled, surface, o.Dim)
+	}
+	// A dimmed modal backdrop strips nested styles, including slider backgrounds.
+	style := effectiveSwitchStyle(o.Style, o.Monochrome || o.Dim)
+	position := switchEndpoint(t.state)
+	if t.sliding && style != app.SwitchStyleText {
+		position = t.position
+	}
+	thumb, track := muted, divider
+	if position > 0 {
+		thumb, track = success, switchOnTrack
+	}
+	span := func(value, background string) string {
+		if o.Dim {
+			return themed(value, thumb, surface, true)
+		}
+		s := ansi.NewStyle().ForegroundColor(lipgloss.Color(thumb))
+		if background != "" {
+			s = s.BackgroundColor(lipgloss.Color(background))
+		}
+		if o.Focused {
+			s = s.Underline(true).UnderlineColor(lipgloss.Color(focus))
+		} else if o.Hovered {
+			s = s.Underline(true)
+		}
+		return s.Styled(value)
+	}
+	switch style {
+	case app.SwitchStyleSlider:
+		var face strings.Builder
+		for cell := range switchWidth {
+			background := track
+			if cell == position {
+				background = thumb
+			}
+			face.WriteString(span(" ", background))
+		}
+		return face.String()
+	case app.SwitchStyleText:
+		label := "OFF"
+		if t.state == toggleOn {
+			label = " ON"
+		}
+		background := raised
+		if surface == raised {
+			background = panel
+		}
+		return span(label, background)
+	case app.SwitchStyleLine:
+		return span(lineFrames[position], "")
+	default:
+		return span(slantedFrames[position], "")
 	}
 }
 
-// renderToggle is appearance only, with no border, focus gutter or face
-// padding. The symbol and text always have one separating cell. Width padding
-// belongs to the containing row and is never underlined as part of the face.
-func renderToggle(t toggleModel, o toggleOptions) string {
-	labels := o.Labels.resolved()
-	value, foreground := labels.face(t.state)
-	width := o.Width
-	if width <= 0 {
-		for _, state := range []toggleState{toggleOn, toggleOff, togglePending, toggleUnavailable, toggleUnsupported, toggleUnknown} {
-			face, _ := labels.face(state)
-			width = max(width, ansi.StringWidth(face))
-		}
+// A page supplies stable control IDs and confirmed observations. A frame never
+// changes activation, even while the rendered thumb is between endpoints.
+type switchAnimations struct {
+	items      map[string]switchMotion
+	generation uint64
+}
+
+type switchMotion struct {
+	confirmed toggleState
+	position  int
+	token     uint64 // zero when stationary
+}
+
+type switchFrameMsg struct {
+	id       string
+	token    uint64
+	position int
+}
+
+func (a *switchAnimations) reset() {
+	clear(a.items) // tokens remain unique across page changes
+}
+
+func (a *switchAnimations) forget(id string) {
+	delete(a.items, id)
+}
+
+func (a *switchAnimations) observe(id string, state toggleState, animate bool) tea.Cmd {
+	if a.items == nil {
+		a.items = make(map[string]switchMotion)
 	}
-	value = cellCrop(value, width)
-	padding := strings.Repeat(" ", max(0, width-ansi.StringWidth(value)))
-	if o.Focused {
-		// Style the complete span without inserting escapes inside combining
-		// characters or ZWJ/flag graphemes.
-		value = ansi.NewStyle().Underline(true).UnderlineColor(lipgloss.Color(focus)).Styled(value)
+	motion := a.items[id]
+	// A refresh or a request awaiting shell acknowledgement can temporarily
+	// disable a still-mounted switch. Keep its last confirmed endpoint until
+	// the parent supplies an actual value. The disabled face remains inert.
+	if state == togglePending || state == toggleUnavailable {
+		motion.token = 0
+		motion.position = switchEndpoint(motion.confirmed)
+		a.items[id] = motion
+		return nil
 	}
-	if o.RightAligned {
-		value = padding + value
-	} else {
-		value += padding
+	if state != toggleOn && state != toggleOff {
+		delete(a.items, id)
+		return nil
 	}
-	surface := o.Surface
-	if surface == "" {
-		surface = bg
+	if !animate || motion.confirmed == toggleUnknown {
+		a.items[id] = switchMotion{confirmed: state, position: switchEndpoint(state)}
+		return nil
 	}
-	return themed(value, foreground, surface, o.Dim)
+	if motion.confirmed == state {
+		return nil
+	}
+	motion.confirmed = state
+	motion.token = 0
+	if motion.position != switchEndpoint(state) {
+		a.generation++
+		motion.token = a.generation
+	}
+	a.items[id] = motion
+	return motion.tick(id)
+}
+
+func (s switchMotion) tick(id string) tea.Cmd {
+	if s.token == 0 {
+		return nil
+	}
+	step := 1
+	if s.confirmed == toggleOff {
+		step = -1
+	}
+	next := switchFrameMsg{id, s.token, s.position + step}
+	return tea.Tick(60*time.Millisecond, func(time.Time) tea.Msg { return next })
+}
+
+func (a *switchAnimations) frame(msg switchFrameMsg) tea.Cmd {
+	motion := a.items[msg.id]
+	if motion.token == 0 || motion.token != msg.token || motion.position == msg.position {
+		return nil
+	}
+	motion.position = msg.position
+	if motion.position == switchEndpoint(motion.confirmed) {
+		motion.token = 0
+	}
+	a.items[msg.id] = motion
+	return motion.tick(msg.id)
+}
+
+func (a switchAnimations) control(id string, observed toggleModel) toggleModel {
+	if motion := a.items[id]; motion.token != 0 && observed.state == motion.confirmed {
+		observed.sliding, observed.position = true, motion.position
+	}
+	return observed
 }

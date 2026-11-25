@@ -22,6 +22,8 @@ func (m *Model) applyMenuResult(result menuResult) tea.Cmd {
 					return m.changeLanguage(result.Action)
 				case "settings.theme":
 					return m.changeTheme(result.Action)
+				case "settings.switchStyle":
+					return m.changeSwitchStyle(result.Action)
 				case "settings.logLevel":
 					if result.Action != m.snapshot.CoreSettings.LogLevel {
 						return m.saveCoreSetting(m.menu.anchor.ID, "log-level", result.Action)

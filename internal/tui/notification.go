@@ -88,6 +88,19 @@ func (m *Model) prepareNotification(key, context string) {
 	}
 }
 
+func (m *Model) preferenceSaveWarning(key, message string) {
+	n := &m.notification
+	n.nextID++
+	n.nextOperation++
+	n.generation++
+	n.items = append(n.items, notificationItem{
+		ID: n.nextID, Operation: n.nextOperation, Key: key, Page: m.page,
+		Kind: "warning", Message: message,
+		remaining: 4 * time.Second, generation: n.generation,
+	})
+	n.visible = true
+}
+
 // Existing notifications survive page changes, later operations and dialogs;
 // dialog-owned results are never replayed as global feedback.
 func (m *Model) syncNotification() tea.Cmd {
@@ -337,9 +350,16 @@ func (m *Model) dashboardOptions() dashboardOptions {
 			}
 		}
 	}
-	o := dashboardOptions{Locale: m.locale, Width: m.width, Height: m.height, Page: m.page, Busy: m.busy, PlainButtons: m.buttonPlain(), Dim: m.dashboardDimmed(), SidebarOpen: m.sidebarOpen, HideKeyHints: m.keyHints.hidden || m.wizard.open || m.wizard.networkOpen, GuideSkipped: m.guideSkipped, Notifications: items, Spinner: m.spinner.View(), LogoFrame: m.logoFrame, LogoIntroFrame: m.logoIntro.frame, InlineInstall: m.page == "overview" && m.inlineInstallVisible(), BodyRange: m.page == "proxies" && m.proxiesReady() && !m.proxiesDirect() && m.hasExpandedProxyGroups()}
+	o := dashboardOptions{Locale: m.locale, Width: m.width, Height: m.height, Page: m.page, Busy: m.busy, PlainButtons: m.buttonPlain(), Dim: m.dashboardDimmed(), SidebarOpen: m.sidebarOpen, HideKeyHints: m.keyHints.hidden, WizardOpen: m.wizard.open || m.wizard.networkOpen, GuideSkipped: m.guideSkipped, Notifications: items, Spinner: m.spinner.View(), LogoFrame: m.logoFrame, LogoIntroFrame: m.logoIntro.frame, InlineInstall: m.page == "overview" && m.inlineInstallVisible(), BodyRange: m.page == "proxies" && m.proxiesReady() && !m.proxiesDirect() && m.hasExpandedProxyGroups()}
+	o.TUNPolicyUnknown = m.tunPolicyUnknown
 	o.Now = time.Now()
+	o.Switches, o.KeyHintsPending = &m.switches, m.keyHints.pending
+	if m.busy {
+		o.PendingAction = m.notification.operation.Key
+	}
 	o.Theme, o.EffectiveTheme = m.theme, m.effectiveTheme()
+	o.SwitchStyle = m.switchStyle
+	o.SwitchStyleSaving = m.styleSavePending
 	o.TrafficHistory, o.TrafficNow = m.runtime.history.points, o.Now
 	o.Monochrome = m.noColor || m.colorProfile == colorprofile.ASCII || m.colorProfile == colorprofile.NoTTY
 	if m.busy && strings.HasPrefix(m.notification.operation.Key, "service.") {

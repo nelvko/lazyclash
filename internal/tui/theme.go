@@ -31,6 +31,7 @@ const (
 	primaryButtonBackground = "#5c99d6"
 	primaryButtonForeground = sidebarBackground
 	success                 = "#99c794"
+	switchOnTrack           = "#405844"
 	warning                 = focus
 	errorColor              = "#f28d92"
 	info                    = accent

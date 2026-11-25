@@ -27,19 +27,12 @@ func (m *Model) loadKeyHintsPreference(hidden bool) {
 }
 
 func (m *Model) toggleKeyHints() tea.Cmd {
-	m.keyHints.hidden = !m.keyHints.hidden
-	m.keyHints.changed = true
-	m.revealContentFocus()
-	return m.saveKeyHints()
-}
-
-func (m *Model) saveKeyHints() tea.Cmd {
-	if m.keyHints.pending {
+	if m.keyHints.pending || m.quitting {
 		return nil
 	}
 	m.keyHints.pending = true
 	m.keyHints.generation++
-	id, hidden, backend, ctx := m.keyHints.generation, m.keyHints.hidden, m.backend, m.ctx
+	id, hidden, backend, ctx := m.keyHints.generation, !m.keyHints.hidden, m.backend, m.ctx
 	return func() tea.Msg {
 		ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 		defer cancel()
@@ -52,24 +45,16 @@ func (m *Model) acceptKeyHintsSaved(msg keyHintsSavedMsg) tea.Cmd {
 		return nil
 	}
 	m.keyHints.pending = false
-	// Serialize saves and coalesce intermediate toggles so the final choice wins.
-	if msg.hidden != m.keyHints.hidden {
-		return m.saveKeyHints()
+	if msg.err == nil {
+		m.keyHints.changed = true
+		m.keyHints.hidden = msg.hidden
+		m.revealContentFocus()
 	}
 	if msg.err != nil && m.ctx.Err() == nil && !m.quitting {
-		n := &m.notification
-		n.nextID++
-		n.nextOperation++
-		n.generation++
-		n.items = append(n.items, notificationItem{
-			ID: n.nextID, Operation: n.nextOperation, Key: "key-hints.save", Page: m.page,
-			Kind: "warning", Message: m.tr("keyHints.saveFailed", m.localizeError(msg.err)),
-			remaining: 4 * time.Second, generation: n.generation,
-		})
-		n.visible = true
+		m.preferenceSaveWarning("key-hints.save", m.tr("keyHints.saveFailed", m.localizeError(msg.err)))
 	}
 	if m.quitting && !m.busy {
-		return tea.Quit
+		return m.quitWhenSaved()
 	}
 	return nil
 }
@@ -83,6 +68,9 @@ func (m *Model) keyHintsShortcut(k tea.KeyPressMsg) (bool, tea.Cmd) {
 		(m.page == "connections" && (m.connections.editing || m.connections.confirming || m.connections.detail != nil)) ||
 		(m.page == "rules" && (m.rules.editing || m.providers.editing)) || (m.page == "logs" && m.logs.editing)) {
 		return false, nil
+	}
+	if k.IsRepeat {
+		return true, nil
 	}
 	return true, m.toggleKeyHints()
 }

@@ -31,6 +31,12 @@ func TestHelpButtonsKeepTheirHitBoundsWhenFocusMoves(t *testing.T) {
 							t.Fatalf("focus moved the hit bounds: before=%+v after=%+v", before[index], target)
 						}
 						painted := ansi.Strip(ansi.Cut(strings.Split(screen, "\n")[target.Y], target.X, target.X+target.W))
+						if target.ID == "key-hints.toggle" {
+							if target.W != switchWidth || painted != "▰▰●" {
+								t.Fatalf("shortcut Switch hit misses its three cells: %q %+v", painted, target)
+							}
+							continue
+						}
 						marker := "  "
 						if target.ID == m.keyHints.helpFocus {
 							marker = " ›"

@@ -153,6 +153,11 @@ func (m *Model) bodyListKey(k tea.KeyPressMsg) bool {
 
 func (m *Model) revealBodyTarget(hit hitRegion) {
 	height := max(1, dashboardGeometry(m.dashboardOptions()).height)
+	// An oversized overview card cannot show both edges. Reveal its title
+	// and first control, so entering the card starts in reading order.
+	if strings.HasPrefix(hit.ID, "overview.card.") {
+		hit.H = min(hit.H, height)
+	}
 	if hit.Y < m.scroll {
 		m.scroll = hit.Y
 	}

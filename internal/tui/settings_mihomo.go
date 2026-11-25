@@ -21,13 +21,13 @@ func settingsMihomo(o dashboardOptions, width int) dashboardBlock {
 			{label: tr("settings.ipv6")}, {label: tr("settings.unifiedDelay")}, {label: tr("settings.logLevel")},
 		})
 	}
-	ipv6 := settingsSwitchRow("settings.ipv6", tr("settings.ipv6"), s.CoreSettings.IPv6 == "on", !o.Busy)
+	ipv6 := settingsSwitchRow(o, "settings.ipv6", tr("settings.ipv6"))
 	if s.TUN {
 		ipv6.note = tr("settings.tunIPv6")
 	}
 	return settingsSection(o, width, tr("settings.mihomo"), tr("settings.allProfiles"), []settingsRow{
 		ipv6,
-		settingsSwitchRow("settings.unifiedDelay", tr("settings.unifiedDelay"), s.CoreSettings.UnifiedDelay == "on", !o.Busy),
+		settingsSwitchRow(o, "settings.unifiedDelay", tr("settings.unifiedDelay")),
 		settingsSelectRow(o, "settings.logLevel", tr("settings.logLevel"), s.CoreSettings.LogLevel, coreLogLevelItems),
 	})
 }

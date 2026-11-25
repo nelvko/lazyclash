@@ -107,7 +107,7 @@ func TestNetworkTUNShowsObservedStateAndRestrictsEditing(t *testing.T) {
 				d, _, _ := m.networkTUNDocument(76)
 				plain := ansi.Strip(strings.Join(d.lines, "\n"))
 				if !strings.Contains(plain, m.tr("network.tunConfig.runtime")+": "+m.tr(observation.state)) ||
-					!strings.Contains(plain, "[x] "+m.tr("network.tunConfig.policy")) {
+					!strings.Contains(plain, "▰▰●  "+m.tr("network.tunConfig.policy")) {
 					t.Fatalf("form confused the observed and saved states:\n%s", plain)
 				}
 			}

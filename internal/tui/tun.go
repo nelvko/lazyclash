@@ -12,7 +12,7 @@ func (m *Model) tunAction(enabled bool) tea.Cmd {
 	if m.busy || m.quitting {
 		return nil
 	}
-	if !m.tunAvailable() {
+	if !m.tunAvailable() || enabled == m.snapshot.TUN {
 		return nil
 	}
 	if enabled {
@@ -30,7 +30,7 @@ func (m *Model) tunAvailable() bool {
 		m.failure = m.tr("dashboard.control.tunHint")
 		return false
 	}
-	if issue := runtimeControlIssue(m.snapshot, m.locale); issue != "" {
+	if issue := m.tunConfigIssue(); issue != "" {
 		m.prepareNotification("tun", m.tr("tun.title"))
 		m.failure = issue
 		return false

@@ -39,15 +39,12 @@ func overviewNetworkCard(o dashboardOptions, width int) dashboardBlock {
 		content.lines = append(content.lines, themed(strings.Repeat("─", inner), divider, panel, o.Dim))
 		content.append(overviewTUNSection(o, inner))
 	}
+	// Automatic system proxy management has no supported backend.
+	system := o.switchFace("", toggleModel{state: toggleUnsupported}, toggleOptions{Surface: panel})
+	content.blank()
+	content.append(overviewLabelSlot(o, inner, themed(o.Locale.T("dashboard.field.systemProxy"), text, panel, o.Dim), system, ""))
 	title := overviewTextBlock([]string{overviewHeading(o, o.Locale.T("dashboard.overview.network"))}, inner)
 	return overviewPanel(o, width, title, content, nil)
-}
-
-func networkToggleLabels(o dashboardOptions) toggleLabels {
-	tr := o.Locale.T
-	return toggleLabels{On: tr("dashboard.network.on"), Off: tr("dashboard.network.off"),
-		Unavailable: tr("dashboard.status.unavailable"), Unsupported: tr("dashboard.network.unsupported"),
-		Unknown: tr("dashboard.status.unknown")}
 }
 
 // Wrap the face separately from its focus gutter so a focus change cannot
@@ -80,25 +77,30 @@ func centeredNetworkBlock(face string, width, gutter int, id string) dashboardBl
 	return b
 }
 
-func overviewNetworkSection(o dashboardOptions, width int, title, toggleID string, state toggleState, labels toggleLabels) dashboardBlock {
+func overviewNetworkSection(o dashboardOptions, width int, title, id, stableID string, control toggleModel) dashboardBlock {
 	b := centeredNetworkBlock(overviewHeading(o, title), width, 0, "")
-	label, _ := labels.resolved().face(state)
-	focused := toggleID != "" && o.Focus == toggleID
-	face := renderToggle(toggleModel{state: state}, toggleOptions{Labels: labels, Width: ansi.StringWidth(label), Surface: panel, Focused: focused || toggleID != "" && o.Hover == toggleID, Dim: o.Dim})
-	gutter := 0
-	if toggleID != "" {
-		marker := "  "
-		gutter = 2
-		if focused {
-			marker = " ›"
+	face := o.switchFace(stableID, control, toggleOptions{Surface: panel,
+		Focused: id != "" && o.Focus == id, Hovered: id != "" && o.Hover == id,
+		Labels: toggleLabels{Unavailable: control.reason, Unknown: control.reason}})
+	// A slider contains only styled spaces. Center the full face by display
+	// width, without trimming its track or the leading space of " ON".
+	w := ansi.StringWidth(face)
+	if w <= width {
+		x := (width - w) / 2
+		line := face
+		if x >= 2 {
+			gutter := switchGutter(id != "" && o.Focus == id, id != "" && o.Hover == id, o.Monochrome, panel, o.Dim)
+			line = strings.Repeat(" ", x-2) + gutter + face
+		} else {
+			line = strings.Repeat(" ", x) + face
 		}
-		left, right := " ", " "
-		if o.PlainButtons {
-			left, right = "[", "]"
+		if id != "" {
+			b.targets = append(b.targets, hitRegion{ID: id, X: x, Y: len(b.lines), W: w, H: 1})
 		}
-		face = themed(marker+left, focus, panel, o.Dim) + face + themed(right, muted, panel, o.Dim)
+		b.lines = append(b.lines, line)
+	} else {
+		b.append(centeredNetworkBlock(face, width, 0, ""))
 	}
-	b.append(centeredNetworkBlock(face, width, gutter, toggleID))
 	b.blank()
 	return b
 }
@@ -138,93 +140,146 @@ func networkConfigActions(o dashboardOptions, width int, configID string, showCo
 	return row
 }
 
-func overviewTerminalSection(o dashboardOptions, width int) dashboardBlock {
-	tr, s := o.Locale.T, o.Snapshot
+func overviewTerminalToggle(o dashboardOptions) toggleModel {
+	s := o.Snapshot
+	switch {
+	case o.StateUnavailable:
+		return toggleModel{state: toggleUnknown}
+	case o.PendingAction == "terminal-proxy":
+		return toggleModel{state: togglePending}
+	}
 	t := s.TerminalProxy
-	labels := networkToggleLabels(o)
-	state := toggleUnsupported
 	switch t.State {
 	case "off", "uninstalled", "incomplete":
-		state = toggleOff
-		if t.State == "uninstalled" {
-			labels.Off = tr("dashboard.network.notSetUp")
-		} else if t.State == "incomplete" {
-			labels.Off = tr("dashboard.network.incomplete")
+		if !s.Installed || !s.Service.Active || s.ServiceError != "" || o.Busy {
+			return toggleModel{state: toggleUnavailable}
 		}
+		return toggleModel{state: toggleOff}
 	case "on":
-		state = toggleOn
+		if o.Busy {
+			return toggleModel{state: toggleUnavailable}
+		}
+		return toggleModel{state: toggleOn}
 	case "pending", "enabling", "disabling":
-		state = togglePending
-		labels.Pending = tr("dashboard.network." + t.State)
+		// The request has finished. Only the calling shell can apply it. An
+		// explicit cancel action can withdraw it without implying it is on.
+		return toggleModel{state: toggleUnavailable, reason: o.Locale.T("dashboard.network." + t.State)}
 	case "conflict":
-		state = toggleUnknown
-		labels.Unknown = tr("dashboard.network.conflict")
+		return toggleModel{state: toggleUnknown, reason: o.Locale.T("dashboard.network.conflict")}
 	case "error":
-		state = toggleUnknown
-		labels.Unknown = tr("dashboard.network.syncError")
+		return toggleModel{state: toggleUnknown, reason: o.Locale.T("dashboard.network.syncError")}
+	default:
+		return toggleModel{state: toggleUnsupported}
 	}
-	if o.StateUnavailable {
-		state = toggleUnknown
-		labels.Unknown = tr("dashboard.status.unknown")
+}
+
+func terminalRequestWaiting(state string) bool {
+	return state == "pending" || state == "enabling" || state == "disabling"
+}
+
+func terminalActionID(o dashboardOptions, control toggleModel) string {
+	if o.Busy || o.StateUnavailable {
+		return ""
 	}
-	id := ""
-	if state != toggleUnsupported && !o.Busy && !o.StateUnavailable {
-		if t.Desired || t.Applied && t.State != "disabling" {
-			id = "terminal.disable"
-		} else if s.Installed && s.Service.Active {
-			id = "terminal.enable"
+	t := o.Snapshot.TerminalProxy
+	if control.canToggle() {
+		if control.state == toggleOn {
+			return "terminal.disable"
+		}
+		return "terminal.enable"
+	}
+	// A hook acknowledgment can report failure after the request was saved.
+	// Its user may still withdraw the requested proxy or retry enabling it.
+	ackError := t.State == "error" && t.HookConfirmed
+	if terminalRequestWaiting(t.State) || ackError {
+		if t.Desired || ackError && t.Applied {
+			return "terminal.disable"
+		}
+		if o.Snapshot.Installed && o.Snapshot.Service.Active && o.Snapshot.ServiceError == "" {
+			return "terminal.enable"
 		}
 	}
-	section := overviewNetworkSection(o, width, tr("terminal.title"), id, state, labels)
+	return ""
+}
+
+func overviewTerminalSection(o dashboardOptions, width int) dashboardBlock {
+	t := o.Snapshot.TerminalProxy
+	control := overviewTerminalToggle(o)
+	id := terminalActionID(o, control)
+	faceID := id
+	if !control.canToggle() {
+		faceID = ""
+	}
+	section := overviewNetworkSection(o, width, o.Locale.T("terminal.title"), faceID, "terminal.toggle", control)
+	if faceID == "" && id != "" {
+		label := "dashboard.network.cancelRequest"
+		if t.State == "error" {
+			label = "navigation.controls.disableTerminal"
+			if id == "terminal.enable" {
+				label = "navigation.controls.enableTerminal"
+			}
+		}
+		recovery := overviewControlButton{id: id, label: o.Locale.T(label), enabled: true}
+		section.append(centeredNetworkBlock(overviewButton(o, recovery, buttonText), width, 2, id))
+	}
 	section.append(networkConfigActions(o, width, "network.primaryConfig", !o.StateUnavailable && pendingActivationCommand(t) != ""))
-	if !o.StateUnavailable && t.State == "error" {
-		section.append(centeredNetworkBlock(themed(tr("terminal.state.error"), warning, panel, o.Dim), width, 0, ""))
+	if !o.StateUnavailable && t.State == "incomplete" {
+		section.append(centeredNetworkBlock(themed(o.Locale.T("dashboard.network.incomplete"), warning, panel, o.Dim), width, 0, ""))
 	}
 	return section
 }
 
-func overviewTUNSection(o dashboardOptions, width int) dashboardBlock {
-	tr, s := o.Locale.T, o.Snapshot
-	labels := networkToggleLabels(o)
-	state, id, observed := toggleUnsupported, "", ""
+func overviewTUNToggle(o dashboardOptions) toggleModel {
+	s := o.Snapshot
 	switch {
 	case o.StateUnavailable:
-		state = toggleUnknown
+		return toggleModel{state: toggleUnknown}
 	case !s.Capabilities.TUN.Supported:
-	case !s.Installed:
-		state = toggleUnavailable
+		return toggleModel{state: toggleUnsupported}
+	case o.TUNPolicyUnknown:
+		return toggleModel{state: toggleUnknown}
+	case o.PendingAction == "tun":
+		return toggleModel{state: togglePending}
+	case !s.Installed || o.Busy || runtimeControlIssue(s, o.Locale) != "":
+		return toggleModel{state: toggleUnavailable}
+	case s.TUN:
+		return toggleModel{state: toggleOn}
 	default:
-		state = toggleOff
+		return toggleModel{state: toggleOff}
+	}
+}
+
+func overviewTUNSection(o dashboardOptions, width int) dashboardBlock {
+	tr, s := o.Locale.T, o.Snapshot
+	control := overviewTUNToggle(o)
+	id := ""
+	if control.canToggle() {
+		id = "tun.enable"
 		if s.TUN {
-			state = toggleOn
-		}
-		issue := runtimeControlIssue(s, o.Locale)
-		if !o.Busy && issue == "" {
-			id = "tun.enable"
-			if s.TUN {
-				id = "tun.disable"
-			}
-		}
-		verified := s.Service.Active && s.TUNActual != nil && s.APIError == "" && issue == ""
-		if !verified || *s.TUNActual != s.TUN {
-			labels.Off = tr("tun.saved_state", tr("dashboard.control.off"))
-			labels.On = tr("tun.saved_state", tr("dashboard.control.on"))
-			if s.Service.Active {
-				actual := tr("dashboard.status.unknown")
-				if verified {
-					actual = tr("dashboard.control.off")
-					if *s.TUNActual {
-						actual = tr("dashboard.control.on")
-					}
-				}
-				observed = tr("dashboard.overview.tunActual", actual)
-			}
+			id = "tun.disable"
 		}
 	}
-	section := overviewNetworkSection(o, width, tr("dashboard.network.tun"), id, state, labels)
+	section := overviewNetworkSection(o, width, tr("dashboard.network.tun"), id, "tun.toggle", control)
 	section.append(networkConfigActions(o, width, "network.tunConfig", false))
-	if observed != "" {
-		section.append(centeredNetworkBlock(themed(observed, warning, panel, o.Dim), width, 0, ""))
+	// The switch controls the saved host policy. Only show extra state when
+	// the running observation differs or cannot confirm the policy.
+	verified := s.Service.Active && s.TUNActual != nil && s.APIError == "" && runtimeControlIssue(s, o.Locale) == ""
+	if !o.TUNPolicyUnknown && !o.StateUnavailable && s.Installed && s.Capabilities.TUN.Supported && (!verified || *s.TUNActual != s.TUN) {
+		saved := tr("dashboard.control.off")
+		if s.TUN {
+			saved = tr("dashboard.control.on")
+		}
+		section.append(centeredNetworkBlock(themed(tr("tun.saved_state", saved), muted, panel, o.Dim), width, 0, ""))
+		if s.Service.Active {
+			actual := tr("dashboard.status.unknown")
+			if verified {
+				actual = tr("dashboard.control.off")
+				if *s.TUNActual {
+					actual = tr("dashboard.control.on")
+				}
+			}
+			section.append(centeredNetworkBlock(themed(tr("dashboard.overview.tunActual", actual), warning, panel, o.Dim), width, 0, ""))
+		}
 	}
 	if s.TUNError != "" {
 		section.append(centeredNetworkBlock(themed(clean(o.Locale.Detail(s.TUNError)), warning, panel, o.Dim), width, 0, ""))

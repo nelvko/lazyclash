@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -28,19 +29,25 @@ type toggleFixture struct {
 	width, height int
 	profile       colorprofile.Profile
 	english       bool
+	animations    switchAnimations
 }
 
 func newToggleFixture() toggleFixture {
 	m := toggleFixture{width: 80, height: 24, profile: colorprofile.TrueColor}
 	m.toggles[0].setState(toggleOff, "")
 	m.toggles[1].setState(toggleOn, "")
+	m.animations.observe("0", toggleOff, false)
+	m.animations.observe("1", toggleOn, false)
 	return m
 }
 
 func (m toggleFixture) Init() tea.Cmd { return nil }
 
 func (m toggleFixture) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
 	switch msg := msg.(type) {
+	case switchFrameMsg:
+		cmd = m.animations.frame(msg)
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 	case tea.ColorProfileMsg:
@@ -84,30 +91,41 @@ func (m toggleFixture) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if intent.On {
 				result.state = toggleOn
 			}
-			return m, tea.Tick(time.Second, func(time.Time) tea.Msg { return result })
+			cmd = tea.Tick(time.Second, func(time.Time) tea.Msg { return result })
 		}
 	}
-	return m, nil
+	cmds := []tea.Cmd{cmd}
+	for i, toggle := range m.toggles {
+		cmds = append(cmds, m.animations.observe(strconv.Itoa(i), toggle.state, effectiveSwitchStyle("slanted", false) != "text"))
+	}
+	return m, tea.Batch(cmds...)
 }
 
 func (m toggleFixture) View() tea.View {
-	labels := toggleLabels{}
+	opts := toggleOptions{Surface: panel, Monochrome: m.profile <= colorprofile.ASCII}
 	if m.english {
-		labels = toggleLabels{On: "On", Off: "Off", Pending: "Switching…", Unavailable: "Unavailable", Unsupported: "Unsupported", Unknown: "Unknown"}
+		opts.Labels = toggleLabels{Unavailable: "Unavailable", Unsupported: "Unsupported", Unknown: "Unknown"}
 	}
-	lines := []string{"LazyClash / Toggle component", ""}
-	for _, state := range []toggleState{toggleOn, toggleOff, togglePending, toggleUnavailable, toggleUnsupported, toggleUnknown} {
-		toggle := toggleModel{}
-		toggle.setState(state, "")
-		lines = append(lines, fmt.Sprintf("%d ", state)+renderToggle(toggle, toggleOptions{Labels: labels, Width: max(1, m.width-2), RightAligned: true, Surface: panel}))
+	lines := []string{"LazyClash / Switch", "            OFF   STEP  ON"}
+	for _, style := range []string{"slanted", "slider", "text", "line"} {
+		opts.Style = style
+		off := renderToggle(toggleModel{state: toggleOff}, opts)
+		mid := renderToggle(toggleModel{state: toggleOn, sliding: true, position: 1}, opts)
+		on := renderToggle(toggleModel{state: toggleOn}, opts)
+		lines = append(lines, cellPad(style, 12)+off+"   "+mid+"   "+on)
 	}
-	lines = append(lines, "")
+	opts.Style = "slanted"
+	for _, state := range []toggleState{togglePending, toggleUnavailable, toggleUnsupported, toggleUnknown} {
+		lines = append(lines, fmt.Sprintf("%d ", state)+renderToggle(toggleModel{state: state}, opts))
+	}
 	for i, toggle := range m.toggles {
-		lines = append(lines, fmt.Sprintf("%d ", i)+renderToggle(toggle, toggleOptions{Labels: labels, Width: max(1, m.width-2), RightAligned: true, Focused: m.focus == i}))
+		opts.Focused = m.focus == i
+		control := m.animations.control(strconv.Itoa(i), toggle)
+		lines = append(lines, fmt.Sprintf("Live %d      ", i)+renderToggle(control, opts))
 	}
 	lines = append(lines,
 		fmt.Sprintf("focus=%d calls=%d,%d stale=%d", m.focus, m.calls[0], m.calls[1], m.stale),
-		fmt.Sprintf("state=%d,%d last=%d,%d", m.toggles[0].state, m.toggles[1].state, m.toggles[0].lastConfirmed, m.toggles[1].lastConfirmed),
+		fmt.Sprintf("state=%d,%d", m.toggles[0].state, m.toggles[1].state),
 		"Enter/Space toggle; Tab focus; r refresh",
 		"u unavailable; s unsupported; ? unknown; q quit")
 	rows := make([]string, max(0, m.height))
@@ -127,7 +145,7 @@ func TestToggleParentRoutesIntentAndRejectsStaleResult(t *testing.T) {
 	m := newToggleFixture()
 	next, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeySpace, Text: " "})
 	m = next.(toggleFixture)
-	if cmd == nil || m.calls != [2]int{1, 0} || m.toggles[0].state != togglePending || m.toggles[0].lastConfirmed != toggleOff || m.toggles[1].state != toggleOn {
+	if cmd == nil || m.calls != [2]int{1, 0} || m.toggles[0].state != togglePending || m.toggles[1].state != toggleOn {
 		t.Fatal("parent did not start a single pending operation on the selected control")
 	}
 	next, cmd = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
@@ -140,19 +158,19 @@ func TestToggleParentRoutesIntentAndRejectsStaleResult(t *testing.T) {
 	m = next.(toggleFixture)
 	next, _ = m.Update(toggleFixtureResult{index: 0, generation: generation, state: toggleOn})
 	m = next.(toggleFixture)
-	if m.stale != 1 || m.toggles[0].state != toggleOff || m.toggles[0].lastConfirmed != toggleOff {
+	if m.stale != 1 || m.toggles[0].state != toggleOff {
 		t.Fatal("old result overrode a newer authoritative observation")
 	}
 	next, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	m = next.(toggleFixture)
 	next, cmd = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	m = next.(toggleFixture)
-	if cmd == nil || m.calls != [2]int{1, 1} || m.toggles[1].state != togglePending || m.toggles[1].lastConfirmed != toggleOn {
+	if cmd == nil || m.calls != [2]int{1, 1} || m.toggles[1].state != togglePending {
 		t.Fatal("focus routing affected the wrong control or confirmed the target early")
 	}
 	next, _ = m.Update(toggleFixtureResult{index: 1, generation: m.generations[1], state: toggleOff})
 	m = next.(toggleFixture)
-	if m.toggles[1].state != toggleOff || m.toggles[1].lastConfirmed != toggleOff {
+	if m.toggles[1].state != toggleOff {
 		t.Fatal("fresh authoritative result was not adopted")
 	}
 }

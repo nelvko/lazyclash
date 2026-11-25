@@ -18,8 +18,9 @@ func (m *Model) terminalProxyAction(enabled bool) tea.Cmd {
 	if !ok {
 		return nil
 	}
-	s := m.snapshot.TerminalProxy
-	if s.State == "" || s.State == "unsupported" {
+	o := m.navigationOptions()
+	id := terminalActionID(o, overviewTerminalToggle(o))
+	if id == "" || enabled != (id == "terminal.enable") {
 		return nil
 	}
 	return m.begin(m.tr("terminal.updating"), m.tr("terminal.saved"), func(ctx context.Context) error {
