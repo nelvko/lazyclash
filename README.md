@@ -17,7 +17,9 @@ go run .
 
 服务与内核安装支持 **Linux/systemd 的 user/system 服务、arm64 与 amd64**。macOS 可构建、运行 TUI、配置下载网络及查询 Linux 发布信息，但预检查会明确阻止安装和服务管理，没有 macOS 空后端。
 
-发行打包使用 `make package VERSION=dev`：在 `bin/packages/` 生成 `lazyclash_dev_linux_amd64.tar.gz`、`lazyclash_dev_linux_arm64.tar.gz` 和 `lazyclash_dev_SHA256SUMS`。每个归档包含一个 lazyclash 可执行程序及 README；Mihomo 在使用时下载或从明确选择的本地文件安装。管理员使用 root 实例前，应把可信发行程序安装到受保护的位置，例如 `/usr/local/bin/lazyclash`。
+发行打包使用 `make package VERSION=dev`：在 `bin/packages/` 生成 `lazyclash_dev_linux_amd64.tar.gz`、`lazyclash_dev_linux_arm64.tar.gz` 和 `lazyclash_dev_SHA256SUMS`。每个归档包含 lazyclash 可执行程序、当前用户安装脚本 `install.sh` 及 README；Mihomo 在使用时下载或从明确选择的本地文件安装。管理员使用 root 实例前，应把可信发行程序安装到受保护的位置，例如 `/usr/local/bin/lazyclash`。
+
+在 Linux 上解压对应架构的发行包，在解压目录执行 `./install.sh`。程序安装到 `~/.local/bin/lazyclash`；可通过完整路径启动，或将该目录加入 PATH。安装器为当前交互式 Bash、Zsh 或 Fish 配置启动脚本，终端代理默认关闭。新开的终端会自动加载脚本；没有交互终端时只安装程序。也可以直接运行解压出的二进制，首次开启终端代理时会自动配置该 Shell。
 
 在 macOS 终端执行 `./scripts/dev.sh` 可进入现有的专用 OrbStack 虚拟机；进入后直接输入 `lazyclash`，每次都会先在 macOS 上构建最新代码，再在虚拟机里运行。修改代码后只需退出 lazyclash 并重新执行 `lazyclash`，无需退出虚拟机或重新执行脚本；构建失败时显示错误，不启动旧版本。脚本自动选择唯一的 `lazyclash` / `lazyclash-*` 虚拟机并检测其架构，构建产物为 `bin/linux-架构/lazyclash`，开发启动器位于其 `dev/` 子目录，仅将启动器目录加入当前虚拟机 Shell 的 PATH。程序使用正常默认数据目录和服务名，安装及启动由你在 TUI 中操作。多个专用虚拟机时可用 `./scripts/dev.sh VM_NAME` 选择；`exit` 返回 macOS。
 

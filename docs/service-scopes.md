@@ -69,6 +69,6 @@ CLI/TUI 直接调用共享应用用例，安装、更新、配置和 TUN 变更�
 
 ## 打包与验证
 
-`make package VERSION=dev` 在 `bin/packages/` 生成 Linux/amd64、Linux/arm64 的发行归档与 SHA256SUMS；归档包含一个 lazyclash 程序和 README。Mihomo 由安装用例下载或从明确选择的本地文件安装，不随 lazyclash 归档附带。
+`make package VERSION=dev` 在 `bin/packages/` 生成 Linux/amd64、Linux/arm64 的发行归档与 SHA256SUMS。每个归档包含 lazyclash 程序、当前用户安装脚本 `install.sh` 和 README。Mihomo 由安装用例下载或从明确选择的本地文件安装。
 
 本轮已通过宿主 check/race、Linux 全包测试、root 身份/数据权限回归，以及打包产物的双作用域、真实 TUN HTTP/DNS、崩溃恢复、损坏配置停止清理和显式交接端到端验收。root TUI 在 120×36、80×24 验证确认与默认取消，120×36 另实际确认启用 TUN。实际结果与限制统一记录在 [验证说明](verification.md)。执行入口为 `scripts/service-scopes-e2e.sh VM /absolute/packaged/lazyclash /absolute/vm/mihomo`，使用隔离目录、专用 unit 和受控网络 fixture。SSH 最后会话注销、机器重启及未实测平台分别验收，不能用编译或配置校验推断通过。

@@ -1,5 +1,15 @@
 # 验证入口
 
+## 发行包安装与终端代理首次开启（2026-11-25）
+
+在 Linux/arm64 专用虚拟机的真实 PTY 和临时 HOME 中运行发行包的 `install.sh`。五种 Bash 启动方式、Zsh 自定义 ZDOTDIR、Fish conf.d 均能自动加载脚本，新终端默认关闭代理，保留原有代理变量和提示符。[七组启动结果](../.test-artifacts/shell-auto-setup/startup/summary.json)
+
+直接使用二进制时，真实 Bash 中点击一次开启便自动补装，退出 TUI 后提示一次 `source`。执行后用 curl 经隔离的 Mihomo 用户服务发起 HTTPS 请求成功。端口更新、关闭恢复、再次开启和卸载均通过。[首次开关与恢复结果](../.test-artifacts/shell-auto-setup/toggle/result.json)
+
+在临时 HOME 中保留已有 Bash 脚本和 `.profile` 引用，仅移除 `.bashrc` 里的托管段。卡片显示「待修复」，一次点击后追加一份加载引用，原有 `.bashrc` 内容和 `.profile` 均保留。随后在同一终端执行 `source` 并通过实际代理请求。[Linux PTY 修复结果](../.test-artifacts/shell-reference-repair/result.json)
+
+`make check build` 和专用 Linux/arm64 虚拟机的全包测试通过。通用 `e2e.sh` 预检发现 9097 已被占用，提前退出。上述终端代理验收使用独立动态端口。
+
 ## 网络设置左右分区（2026-11-25）
 
 「配置前留白」在 46 列和 36 列卡宽下与选定 demo 逐格一致，覆盖 TUN 保存状态与运行状态一致、有差异两种情况。真实 PTY 另核对了两个分区的空行、鼠标点击「配置」、Esc 返回及 Enter 重开弹窗。[120×32 双栏](../.test-artifacts/network-spacing-implemented/network-card-120x32.png) · [40×16 堆叠](../.test-artifacts/network-spacing-implemented/network-card-40x16.png)

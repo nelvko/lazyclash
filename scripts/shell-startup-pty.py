@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Verify installed Shell Integration in real Linux interactive startup chains.
 
-The helper is the internal/shellintegration Go test binary. Its TestMain routes
-the scripts' one-time attach/finalize calls through the actual product binary.
+Run the unpacked release installer directly in each supported shell.
 All startup files, state, and config live beneath a fresh temporary HOME.
 """
 
@@ -81,9 +80,10 @@ def write(path, value):
     path.chmod(0o600)
 
 
-def run_scenario(name, shell_name, login_file, binary, helper, output):
+def run_scenario(name, shell_name, login_file, installer, output):
     with tempfile.TemporaryDirectory(prefix="lazyclash-startup-") as temporary:
         home = pathlib.Path(temporary).resolve()
+        binary = home / ".local" / "bin" / "lazyclash"
         config, cache = home / ".config", home / ".cache"
         env = dict(os.environ)
         for key in tuple(env):
@@ -91,8 +91,7 @@ def run_scenario(name, shell_name, login_file, binary, helper, output):
                 env.pop(key)
         env.update(HOME=str(home), XDG_CONFIG_HOME=str(config),
                    XDG_CACHE_HOME=str(cache), TERM="xterm-256color",
-                   LAZYCLASH_SHELL_PTY_DRIVER="1",
-                   LAZYCLASH_TEST_SHELL_BINARY=str(binary),
+                   http_proxy="http://existing.example:8080",
                    PS1="LC_READY> ", LC_ALL="C.UTF-8")
         expected_profile = "nonlogin"
         if shell_name == "bash":
@@ -136,14 +135,17 @@ def run_scenario(name, shell_name, login_file, binary, helper, output):
             try:
                 installing.send("printf '\\nLC_INSTALL_READY\\n'")
                 installing.expect(r"\r?\nLC_INSTALL_READY\r?\n")
-                command = (f"LAZYCLASH_SHELL_PTY_ACTION=install {shlex.quote(str(helper))} "
-                           "-test.run='^TestShellPTYDriver$'")
-                if shell_name == "fish":
-                    command = "env " + command
-                installing.send(command)
-                installing.expect(r"PASS\r?\n")
-                installing.send("printf '\\nLC_INSTALLED\\n'")
+                if name == "bash-array":
+                    # Move from a standalone download to the installed binary.
+                    download = home / "standalone-lazyclash"
+                    shutil.copy2(installer.with_name("lazyclash"), download)
+                    installing.send(shlex.quote(str(download)) + " shell install && printf '\\nLC_STANDALONE\\n'")
+                    installing.expect(r"\r?\nLC_STANDALONE\r?\n")
+                    download.unlink()
+                installing.send(shlex.quote(str(installer)) + " && printf '\\nLC_INSTALLED\\n'")
                 installing.expect(r"\r?\nLC_INSTALLED\r?\n")
+                installing.send(shlex.quote(str(binary)) + " shell status --json")
+                installing.expect(r'"state":"off","installed":true,"loaded":false[^\r\n]*"pending":false')
             finally:
                 installing.close()
 
@@ -159,7 +161,9 @@ def run_scenario(name, shell_name, login_file, binary, helper, output):
                 started.send("printf '\\nLC_PROMPTS:%s\\n' \"$LC_USER_PROMPTS\"")
                 started.expect(r"\r?\nLC_PROMPTS:[1-9][0-9]*\r?\n")
                 started.send(shlex.quote(str(binary)) + " shell status --json")
-                started.expect(r'"loaded":\s*true')
+                started.expect(r'"state":"off","installed":true,"loaded":true[^\r\n]*"pending":false')
+                started.send("printf '\\nLC_ORIGINAL:%s\\n' \"$http_proxy\"")
+                started.expect(r"\r?\nLC_ORIGINAL:http://existing.example:8080\r?\n")
             finally:
                 started.close()
         return {"name": name, "shell": shell_name, "startup": startup_argv,
@@ -169,13 +173,12 @@ def run_scenario(name, shell_name, login_file, binary, helper, output):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--binary", type=pathlib.Path, required=True)
-    parser.add_argument("--helper", type=pathlib.Path, required=True)
+    parser.add_argument("--installer", type=pathlib.Path, required=True, help="install.sh from an unpacked Linux release")
     parser.add_argument("--output", type=pathlib.Path, required=True)
     args = parser.parse_args()
     if not sys.platform.startswith("linux"):
         parser.error("Linux controlling-PTY tests must run on Linux")
-    binary, helper = args.binary.resolve(), args.helper.resolve()
+    installer = args.installer.resolve()
     args.output.mkdir(parents=True, exist_ok=True)
     results = []
     scenarios = [("bash-nonlogin", "bash", None), ("bash-array", "bash", None),
@@ -188,7 +191,7 @@ def main():
             if not shutil.which(shell):
                 results.append({"name": name, "result": "skipped", "reason": f"{shell} missing"})
                 continue
-            result = run_scenario(name, shell, login, binary, helper, args.output)
+            result = run_scenario(name, shell, login, installer, args.output)
             results.append(result)
             print(json.dumps(result), flush=True)
     finally:
