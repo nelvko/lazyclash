@@ -6,9 +6,44 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/i18n"
 )
+
+func TestNotificationSuccessPaintsOneSurfaceThroughItsControls(t *testing.T) {
+	for _, compact := range []bool{false, true} {
+		item := notificationItem{ID: 7, Kind: "done", Message: "Saved"}
+		o := dashboardOptions{Locale: i18n.New(i18n.English), Focus: "notification.close.7"}
+		card := notificationCard(item, o, 34, compact)
+		screen := uv.NewScreenBuffer(card.Bounds.W, card.Bounds.H)
+		uv.NewStyledString(card.Content).Draw(screen, screen.Bounds())
+		for y := range card.Bounds.H {
+			for x := range card.Bounds.W {
+				cell := screen.CellAt(x, y)
+				// Compare the actual painted cells, including padding between
+				// nested styled spans and the focused close button.
+				color := noticeText
+				switch cell.Content {
+				case "✓":
+					color = noticeCheck
+				case "›":
+					color = focus
+				case " ":
+					color = "" // Only the surface is visible here.
+				}
+				want := uv.Style{Fg: cell.Style.Fg, Bg: lipgloss.Color(noticeSlate)}
+				if color != "" {
+					want.Fg = lipgloss.Color(color)
+				}
+				if !cell.Style.Equal(&want) {
+					t.Fatalf("compact=%t: cell %d,%d (%q) has style %+v, want %+v", compact, x, y, cell.Content, cell.Style, want)
+				}
+			}
+		}
+	}
+}
 
 func TestNotificationButtonsKeepTheirBoundsAndMessageWhenFocused(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
@@ -45,8 +80,8 @@ func TestNotificationButtonsKeepTheirBoundsAndMessageWhenFocused(t *testing.T) {
 						if !strings.Contains(ansi.Strip(after.Content), item.Message) {
 							t.Fatal("toast controls displaced a short complete message")
 						}
-						assertCanvas(t, after.Content, width, after.Bounds.H)
-						assertRegions(t, after.Targets, width, after.Bounds.H)
+						assertCanvas(t, after.Content, after.Bounds.W, after.Bounds.H)
+						assertRegions(t, after.Targets, after.Bounds.W, after.Bounds.H)
 					}
 				})
 			}

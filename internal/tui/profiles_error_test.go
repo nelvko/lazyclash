@@ -21,12 +21,20 @@ func TestInitialProfileReadFailureDoesNotPresentAnEmptyLibrary(t *testing.T) {
 			t.Fatalf("unreadable snapshot was presented as known state: %q\n%s", absent, view)
 		}
 	}
-	for _, present := range []string{"Profiles unavailable", "invalid configuration library", "Retry"} {
+	for _, present := range []string{"Profiles unavailable", "invalid configuration", "Retry"} {
 		if !strings.Contains(view, present) {
 			t.Fatalf("missing read failure feedback %q\n%s", present, view)
 		}
 	}
 	findTarget(t, m, "page.refresh")
+	// The compact summary clips the cause. The complete diagnostic remains
+	// readable from the page before the user retries.
+	m, _ = click(m, findTarget(t, m, "notification.details.1"))
+	detail := strings.Join(strings.Fields(ansi.Strip(m.View().Content)), " ")
+	if !m.notification.panel.open || !strings.Contains(detail, b.snapshotErr.Error()) {
+		t.Fatalf("missing complete profile read error in Details: %s", detail)
+	}
+	m, _ = update(m, special(tea.KeyEscape))
 
 	cmd := m.activate("page.refresh")
 	m.layout()

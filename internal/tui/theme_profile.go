@@ -135,6 +135,13 @@ func terminalColor(c color.Color, profile colorprofile.Profile) color.Color {
 		{settingsSwitchOffHoverThumb, 252, 15},
 		{success, 114, 10},
 		{errorColor, 210, 9},
+		{noticeSlate, 24, 4},
+		{noticeText, 255, 15},
+		{noticeCheck, 194, 10},
+		{noticeWarning, 223, 11},
+		{noticeErrorFill, 95, 1},
+		{noticeErrorText, 255, 15},
+		{noticeErrorMark, 255, 15},
 	}
 	r, g, b, _ := c.RGBA()
 	for _, fallback := range fallbacks {

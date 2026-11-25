@@ -84,6 +84,11 @@ func TestMarianaTrueColorAnd256Contrast(t *testing.T) {
 		{"error", errorColor, inputBackground},
 		{"focus", focus, raised},
 		{"accent", accent, raised},
+		{"notification body", noticeText, noticeSlate},
+		{"notification check", noticeCheck, noticeSlate},
+		{"notification warning", noticeWarning, noticeSlate},
+		{"notification failure", noticeErrorText, noticeErrorFill},
+		{"notification failure mark", noticeErrorMark, noticeErrorFill},
 	} {
 		for _, profile := range []colorprofile.Profile{colorprofile.TrueColor, colorprofile.ANSI256} {
 			t.Run(profile.String()+"/"+pair.name, func(t *testing.T) {

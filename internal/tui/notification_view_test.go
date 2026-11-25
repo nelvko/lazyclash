@@ -11,23 +11,33 @@ import (
 	"github.com/nelvko/lazyclash/internal/i18n"
 )
 
-func TestNotificationLayoutShowsNewestTwoWithoutShorteningOlderMessage(t *testing.T) {
+func TestNotificationLayoutSizesAndAlignsNewestCards(t *testing.T) {
 	o := dashboardOptions{Locale: i18n.New(i18n.English), Width: 120, Height: 32, Page: "overview"}
-	for id := uint64(1); id <= 3; id++ {
-		o.Notifications = append(o.Notifications, notificationItem{ID: id, Page: "overview", Context: "Save", Kind: "done", Message: fmt.Sprintf("Saved profile %d. The previous configuration is available.", id)})
+	for i, message := range []string{"Old result", "Saved", "Selected subscription “Office network”"} {
+		o.Notifications = append(o.Notifications, notificationItem{ID: uint64(i + 1), Kind: "done", Message: message})
 	}
 	layers := notificationLayout(o)
-	if len(layers) != 3 || len(layers[0].IDs) != 1 || layers[0].IDs[0] != 2 || layers[1].IDs[0] != 3 {
-		t.Fatalf("expected two newest complete cards followed by overflow: %+v", layers)
+	if len(layers) != 3 || len(layers[0].IDs) != 1 || layers[0].IDs[0] != 2 || len(layers[1].IDs) != 1 || layers[1].IDs[0] != 3 {
+		t.Fatalf("expected the two newest cards followed by overflow: %+v", layers)
 	}
-	for index, item := range o.Notifications[1:] {
-		plain := strings.Join(strings.Fields(strings.NewReplacer("│", " ", "×", " ").Replace(ansi.Strip(layers[index].Content))), " ")
-		if !strings.Contains(plain, "The previous configuration is available.") || !strings.Contains(plain, fmt.Sprintf("Saved profile %d.", item.ID)) {
-			t.Fatalf("visible notification lost its explanation: %s", plain)
+	edge := o.Width - 3
+	for _, layer := range layers {
+		if layer.Bounds.X+layer.Bounds.W != edge {
+			t.Fatalf("card or overflow label left its right anchor: %+v", layer.Bounds)
 		}
 	}
-	if layers[0].Bounds.Y != 0 || layers[0].Bounds.Y+layers[0].Bounds.H > layers[1].Bounds.Y {
-		t.Fatal("cards moved away from the top or overlap")
+	if layers[0].Bounds.W != 26 || layers[1].Bounds.W <= layers[0].Bounds.W || layers[1].Bounds.W > maxNotificationWidth {
+		t.Fatalf("the card width did not follow its content: %+v / %+v", layers[0].Bounds, layers[1].Bounds)
+	}
+	for index, item := range o.Notifications[1:] {
+		rows := strings.Split(ansi.Strip(layers[index].Content), "\n")
+		if len(rows) != 3 || strings.TrimSpace(rows[0]+rows[2]) != "" ||
+			!strings.Contains(rows[1], "✓ "+item.Message) || !strings.Contains(rows[1], "×") {
+			t.Fatalf("expected a borderless card with padded result and close control: %q", rows)
+		}
+	}
+	if layers[0].Bounds.Y != 0 || layers[1].Bounds.Y <= layers[0].Bounds.Y+layers[0].Bounds.H {
+		t.Fatal("independent cards need a free row between their backgrounds")
 	}
 	if !strings.Contains(ansi.Strip(layers[2].Content), "1") || layers[2].Targets[0].ID != "notification.expand" {
 		t.Fatal("overflow lost its count or entry point")
@@ -77,12 +87,12 @@ func TestNotificationDetailsMatchWhatTheCardCanDisplay(t *testing.T) {
 			{"已选用订阅「工作」", " 已选用订阅「工作」 ", false, false},
 			{"已选用订阅「工作」", "详细说明", true, false},
 			{strings.Repeat("长订阅名", 20), "", true, true},
-			{"一行\n二行", "", shape.compact, shape.compact},
+			{"一行\n二行", "", true, true},
 		} {
 			item := notificationItem{ID: 5, Page: "profiles", Context: "使用配置", Message: tt.message, Details: tt.extra, Kind: "done"}
 			card := notificationCard(item, o, shape.width, shape.compact)
-			assertCanvas(t, card.Content, shape.width, card.Bounds.H)
-			assertRegions(t, card.Targets, shape.width, card.Bounds.H)
+			assertCanvas(t, card.Content, card.Bounds.W, card.Bounds.H)
+			assertRegions(t, card.Targets, card.Bounds.W, card.Bounds.H)
 			plain := ansi.Strip(card.Content)
 			if hasAction(card.Targets, "notification.details.5") != tt.details || (len(card.IDs) == 0) != tt.clipped {
 				t.Fatalf("%v/%q: unexpected controls or visibility: %+v", shape, tt.message, card)
@@ -127,6 +137,9 @@ func TestNotificationHeaderRetainsTitleAndShowsShortCompleteMessage(t *testing.T
 			if len(layers) != 1 || len(layers[0].IDs) != 1 || len(layers[0].Targets) != 1 || layers[0].Targets[0].ID != "notification.close.1" {
 				t.Fatalf("%v/%s: a complete success should show only the close control: %+v", size, language, layers)
 			}
+			if o.Width >= 100 && o.Height >= 24 && layers[0].Bounds.H != 3 {
+				t.Fatalf("%v: wide success lost its padding above the input", size)
+			}
 			without := o
 			without.Notifications = nil
 			base, _, _ := renderDashboard(without)
@@ -165,15 +178,15 @@ func TestCompactNotificationKeepsOperationContext(t *testing.T) {
 	}
 }
 
-func TestBorderedNotificationBesideFoldedSidebarTitle(t *testing.T) {
+func TestSolidNotificationBesideFoldedSidebarTitle(t *testing.T) {
 	o := dashboardOptions{Locale: i18n.New(i18n.English), Width: 100, Height: 24, Page: "connections"}
 	base, _, _ := renderDashboard(o)
 	titleY := dashboardGeometry(o).headerY
 	title := strings.TrimRight(ansi.Strip(strings.Split(base, "\n")[titleY]), " ")
 	o.Notifications = []notificationItem{{ID: 1, Kind: "error", Message: "Connection failed."}}
 	layers := notificationLayout(o)
-	if len(layers) != 1 || !strings.HasPrefix(ansi.Strip(layers[0].Content), "╭") {
-		t.Fatal("a wide page with free body space should keep its bordered card")
+	if len(layers) != 1 || layers[0].Bounds.H != 3 || strings.ContainsAny(ansi.Strip(layers[0].Content), "╭╮╰╯│─") {
+		t.Fatal("a wide page with free body space should use a padded solid card")
 	}
 	screen, _, _ := renderDashboard(o)
 	if !strings.HasPrefix(ansi.Strip(strings.Split(screen, "\n")[titleY]), title) {
@@ -183,7 +196,7 @@ func TestBorderedNotificationBesideFoldedSidebarTitle(t *testing.T) {
 
 func TestNotificationPanelKeepsFullMessagesAndScrollableTechnicalDetails(t *testing.T) {
 	items := []notificationItem{
-		{ID: 1, Page: "profiles", Kind: "error", Message: "First complete explanation.", Details: strings.Repeat("Technical paragraph\n", 80) + "last-detail-marker"},
+		{ID: 1, Page: "profiles", Kind: "error", Message: "First explanation.", Details: strings.Repeat("Technical paragraph\n", 80) + "last-detail-marker"},
 		{ID: 2, Page: "settings", Kind: "done", Message: "Second complete explanation."},
 	}
 	var panel notificationPanel
@@ -317,46 +330,43 @@ func TestNotificationListKeepsLongEntryActionsAndNextResultInView(t *testing.T) 
 	}
 }
 
-func TestExpandedStackFramesEachNotificationAndItsOwnControls(t *testing.T) {
+func TestExpandedStackSeparatesBorderlessCardsAndTheirOwnControls(t *testing.T) {
 	items := []notificationItem{
 		{ID: 9, Kind: "done", Page: "profiles", Context: "Apply", Message: "Selected Work"},
-		{ID: 17, Kind: "error", Message: "Refresh failed", Details: "Could not download the subscription"},
+		{ID: 17, Kind: "error", Message: "Retry", Details: "Could not download the subscription"},
 	}
 	locale := i18n.New(i18n.English)
 	for _, size := range [][2]int{{160, 45}, {60, 20}, {40, 24}} {
-		var p notificationPanel
-		p.show(0)
-		stack, targets := p.render(items, size[0], size[1], locale)
-		assertCanvas(t, stack, p.bounds.W, p.bounds.H)
-		rows := strings.Split(ansi.Strip(stack), "\n")
-		if strings.HasPrefix(rows[0], "╭") || strings.HasSuffix(rows[len(rows)-1], "╯") {
-			t.Fatalf("%v: an outer border enclosed the whole collection", size)
-		}
-		var starts, ends []int
-		for i, row := range rows {
-			if strings.HasPrefix(row, "╭") && strings.HasSuffix(row, "╮") {
-				starts = append(starts, i)
+		for _, plain := range []bool{false, true} {
+			var p notificationPanel
+			p.show(0)
+			stack, targets := p.render(items, size[0], size[1], locale, plain)
+			assertCanvas(t, stack, p.bounds.W, p.bounds.H)
+			rows := strings.Split(ansi.Strip(stack), "\n")
+			if strings.ContainsAny(strings.Join(rows, ""), "╭╮╰╯│─") {
+				t.Fatalf("%v: the stack still paints a frame", size)
 			}
-			if strings.HasPrefix(row, "╰") && strings.HasSuffix(row, "╯") {
-				ends = append(ends, i)
-			}
-		}
-		if len(starts) != 2 || len(ends) != 2 || ends[0] >= starts[1] {
-			t.Fatalf("%v: expected two separately bordered cards:\n%s", size, strings.Join(rows, "\n"))
-		}
-		for i, item := range items {
-			card := strings.Join(rows[starts[i]+1:ends[i]], "\n")
-			if !strings.Contains(card, notificationBody(item, locale, "")) || item.Kind == "done" && strings.Contains(card, item.Context) {
-				t.Fatalf("%v: card %d lost its status or result: %s", size, item.ID, card)
-			}
-			for _, action := range []string{"details", "dismiss"} {
-				id := fmt.Sprintf("notification.panel.%s.%d", action, item.ID)
-				inside := slices.ContainsFunc(targets, func(hit hitRegion) bool {
-					return hit.ID == id && hit.Y > p.bounds.Y+starts[i] && hit.Y < p.bounds.Y+ends[i]
-				})
-				want := action == "dismiss" || item.Details != ""
-				if inside != want {
-					t.Fatalf("%v: %s in card = %v, want %v", size, id, inside, want)
+			previousRow := -1
+			for _, item := range items {
+				marker := notificationPaint(item.Kind).marker
+				message := marker + " " + notificationBody(item, locale, "")
+				row := slices.IndexFunc(rows, func(row string) bool { return strings.Contains(row, message) })
+				if row < 1 || !strings.Contains(rows[row], "×") {
+					t.Fatalf("%v: card %d lost its status, result or close action:\n%s", size, item.ID, stack)
+				}
+				if previousRow >= 0 && (row-previousRow < 3 || strings.TrimSpace(rows[previousRow+2]) != "") {
+					t.Fatalf("%v: adjacent notifications have no separation", size)
+				}
+				previousRow = row
+				for _, action := range []string{"details", "dismiss"} {
+					id := fmt.Sprintf("notification.panel.%s.%d", action, item.ID)
+					inside := slices.ContainsFunc(targets, func(hit hitRegion) bool {
+						return hit.ID == id && hit.Y == p.bounds.Y+row
+					})
+					want := action == "dismiss" || item.Details != ""
+					if inside != want {
+						t.Fatalf("%v: %s on the message row = %v, want %v", size, id, inside, want)
+					}
 				}
 			}
 		}

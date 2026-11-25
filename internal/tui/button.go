@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"cmp"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -22,6 +23,7 @@ const (
 type buttonOptions struct {
 	Kind                 buttonKind
 	Surface              string
+	TextColor            string // Optional foreground for text actions on colored surfaces.
 	Focused, Hovered     bool
 	Disabled, Busy       bool
 	Selected, Selectable bool
@@ -50,7 +52,7 @@ func renderButton(label string, o buttonOptions) string {
 	case buttonPrimary:
 		foreground, background, bold = primaryButtonForeground, primaryButtonBackground, true
 	case buttonText:
-		foreground, background = accent, o.Surface
+		foreground, background = cmp.Or(o.TextColor, accent), o.Surface
 	case buttonDanger:
 		foreground = buttonDangerForeground
 	case buttonDangerConfirm:

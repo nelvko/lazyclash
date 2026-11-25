@@ -7,6 +7,7 @@ import (
 
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/i18n"
 )
@@ -257,7 +258,7 @@ func (p *notificationPanel) render(items []notificationItem, width, height int, 
 	if width < 24 {
 		right = 0
 	}
-	w := min(54, width-2*right)
+	w := min(maxNotificationWidth, width-2*right)
 	x, y := width-right-w, 0
 	if width < 100 || height < 24 {
 		y = min(2, max(1, height-6), height-1)
@@ -269,7 +270,7 @@ func (p *notificationPanel) render(items []notificationItem, width, height int, 
 	}
 	maxHeight = min(maxHeight, height-y-1)
 	p.bounds = hitRegion{X: x, Y: y, W: w, H: maxHeight}
-	options := dashboardOptions{PlainButtons: len(plain) > 0 && plain[0]}
+	options := dashboardOptions{Locale: locale, PlainButtons: len(plain) > 0 && plain[0]}
 	if !p.contentFits() {
 		options.Focus = "notification.panel.close"
 		button := notificationButton(options.Focus, locale.T("notification.collapse"), w, options)
@@ -293,62 +294,60 @@ func (p *notificationPanel) render(items []notificationItem, width, height int, 
 }
 
 func (p *notificationPanel) renderList(items []notificationItem, locale i18n.Localizer, options dashboardOptions, previous string) (string, []hitRegion) {
-	x, y, w := p.bounds.X, p.bounds.Y, p.bounds.W
-	inner := w - 4
-	var lines, labels []string
-	for _, item := range items {
-		body := notificationBody(item, locale, "")
-		first, _, more := strings.Cut(body, "\n")
-		dismissID := fmt.Sprintf("notification.panel.dismiss.%d", item.ID)
-		close := notificationButton(dismissID, "×", inner, options)
-		closeWidth := ansi.StringWidth(close)
-		space := inner - closeWidth
-		summary := first
-		if more {
-			summary += "…"
-		}
-		summary = cellCrop(summary, space)
-		card := []string{themed(cellPad(summary, space), text, raised, false) + close}
-		bodyRow := len(lines) + 1
-		if more || summary != first || notificationExtra(item) != "" {
-			id := fmt.Sprintf("notification.panel.details.%d", item.ID)
-			label := locale.T("notification.details")
-			button := notificationButton(id, label, inner, options)
-			p.actions = append(p.actions, hitRegion{ID: id, X: 2, Y: bodyRow + 1, W: ansi.StringWidth(button), H: 1})
-			labels = append(labels, label)
-			card = append(card, button)
-		}
-		p.actions = append(p.actions, hitRegion{ID: dismissID, X: 2 + space, Y: bodyRow, W: closeWidth, H: 1})
-		labels = append(labels, "×")
-		if item.Kind == "working" {
-			id := fmt.Sprintf("notification.cancel.%d", item.ID)
-			label := locale.T("notification.cancel")
-			button := notificationButton(id, label, inner, options)
-			p.actions = append(p.actions, hitRegion{ID: id, X: 2, Y: bodyRow + len(card), W: ansi.StringWidth(button), H: 1})
-			labels = append(labels, label)
-			card = append(card, button)
-		}
-		lines = append(lines, inputFrame(card, w, notificationColor(item.Kind), raised)...)
+	x, y, maxWidth := p.bounds.X, p.bounds.Y, p.bounds.W
+	options.Busy = true // Retained working cards expose their own Cancel control.
+	renderCard := func(item notificationItem) notificationOverlay {
+		return notificationCardWithControls(item, options, maxWidth, false,
+			fmt.Sprintf("notification.panel.dismiss.%d", item.ID), fmt.Sprintf("notification.panel.details.%d", item.ID))
 	}
 
-	// The collection has a shared header and footer. Only individual cards
-	// have borders, so each result stays associated with its own actions.
-	p.bounds.H = min(p.bounds.H, len(lines)+2)
+	cards := make([]notificationOverlay, 0, len(items))
+	w, height := 0, 0
+	for i, item := range items {
+		if i > 0 {
+			height++ // A neutral row separates adjacent cards, even without color.
+		}
+		card := renderCard(item)
+		card.position(maxWidth-card.Bounds.W, height)
+		height += card.Bounds.H
+		w = max(w, card.Bounds.W)
+		cards = append(cards, card)
+		p.actions = append(p.actions, card.Targets...)
+	}
+	x += maxWidth - w
+	p.bounds.X, p.bounds.W, p.bounds.H = x, w, min(p.bounds.H, height+2)
+	for i := range p.actions {
+		p.actions[i].X -= maxWidth - w
+	}
+
 	p.viewport.SetWidth(w)
 	p.viewport.SetHeight(p.bounds.H - 2)
 	p.restoreListSelection(previous)
 	p.focus = max(0, min(p.focus, len(p.actions)-1))
 	selected := p.actions[p.focus]
 	options.Focus = selected.ID
-	focused := notificationButton(selected.ID, labels[p.focus], selected.W, options)
-	lines[selected.Y] = ansi.Cut(lines[selected.Y], 0, selected.X) + focused + ansi.Cut(lines[selected.Y], selected.X+selected.W, w)
+	lines := make([]string, 0, height)
+	for i, card := range cards {
+		if i > 0 {
+			lines = append(lines, themed(strings.Repeat(" ", w), text, raised, false))
+		}
+		// Controls follow the focused notification after resizing or a retry.
+		// Repaint that card with the same labels and geometry as its Toast.
+		if selected.Y >= card.Bounds.Y && selected.Y < card.Bounds.Y+card.Bounds.H {
+			card.Content = renderCard(items[i]).Content
+		}
+		indent := themed(strings.Repeat(" ", w-card.Bounds.W), text, raised, false)
+		for _, line := range strings.Split(card.Content, "\n") {
+			lines = append(lines, indent+line)
+		}
+	}
 	p.viewport.SetContentLines(lines)
 	p.restoreListScroll()
 
 	p.contentY = y + 1
 	rows := []string{themed(cellPad("  "+locale.T("notification.listTitle"), w), text, raised, false)}
 	rows = append(rows, strings.Split(p.viewport.View(), "\n")...)
-	rows = append(rows, p.footer(locale, options, w, 0))
+	rows = append(rows, p.footer(locale, options, w, 0, noticePaint{foreground: text, background: raised}))
 	for _, action := range p.actions {
 		action.X += x
 		action.Y += p.contentY - p.viewport.YOffset()
@@ -360,12 +359,29 @@ func (p *notificationPanel) renderList(items []notificationItem, locale i18n.Loc
 }
 
 func (p *notificationPanel) renderDetail(item notificationItem, locale i18n.Localizer, options dashboardOptions) (string, []hitRegion) {
-	w := p.bounds.W
+	paint := notificationPaint(item.Kind)
+	body, extra := notificationBody(item, locale, ""), notificationExtra(item)
+	prefix := ""
+	if paint.marker != "" {
+		prefix = themed(paint.marker+" ", paint.signal, paint.background, false)
+	}
+	prefixWidth := ansi.StringWidth(prefix)
+	w := min(p.bounds.W, max(minNotificationWidth, 4+prefixWidth+max(lipgloss.Width(body), lipgloss.Width(extra))))
+	p.bounds.X += p.bounds.W - w
+	p.bounds.W = w
 	inner := w - 4
-	lines := strings.Split(wrapText(notificationBody(item, locale, ""), inner), "\n")
-	if extra := notificationExtra(item); extra != "" {
+	readingWidth := inner - prefixWidth
+	lines := strings.Split(wrapText(body, readingWidth), "\n")
+	if extra != "" {
 		lines = append(lines, "")
-		lines = append(lines, strings.Split(wrapText(extra, inner), "\n")...)
+		lines = append(lines, strings.Split(wrapText(extra, readingWidth), "\n")...)
+	}
+	for i := range lines {
+		if i == 0 {
+			lines[i] = prefix + lines[i]
+		} else {
+			lines[i] = strings.Repeat(" ", prefixWidth) + lines[i]
+		}
 	}
 	p.bounds.H = min(p.bounds.H, max(5, 3+len(lines)))
 	p.contentY = p.bounds.Y + 1
@@ -375,27 +391,25 @@ func (p *notificationPanel) renderDetail(item notificationItem, locale i18n.Loca
 
 	rows := strings.Split(p.viewport.View(), "\n")
 	id := fmt.Sprintf("notification.panel.dismiss.%d", item.ID)
-	close := notificationButton(id, "×", inner, options)
+	close := paint.button(id, "×", inner, options)
 	closeWidth := ansi.StringWidth(close)
-	footer := p.footer(locale, options, inner-closeWidth, 2)
+	footer := p.footer(locale, options, inner-closeWidth, 2, paint)
 	p.targets = append(p.targets, hitRegion{ID: id, X: p.bounds.X + w - 2 - closeWidth, Y: p.contentY + p.viewport.Height(), W: closeWidth, H: 1})
 	rows = append(rows, footer+close)
-	for i, line := range rows {
-		rows[i] = themed(cellPad(line, inner), text, raised, false)
+	blank := themed(strings.Repeat(" ", w), paint.foreground, paint.background, false)
+	for i, row := range rows {
+		rows[i] = themed("  "+cellPad(row, inner)+"  ", paint.foreground, paint.background, false)
 	}
-	return strings.Join(inputFrame(rows, w, notificationColor(item.Kind), raised), "\n"), p.targets
+	return blank + "\n" + strings.Join(rows, "\n") + "\n" + blank, p.targets
 }
 
-// inset is the horizontal border and padding of the detail card, or zero
+// inset is the horizontal padding of the detail card, or zero
 // for the footer below the stack. Both keep their controls outside the viewport.
-func (p *notificationPanel) footer(locale i18n.Localizer, options dashboardOptions, width, inset int) string {
+func (p *notificationPanel) footer(locale i18n.Localizer, options dashboardOptions, width, inset int, paint noticePaint) string {
 	id, label := p.backAction(), locale.T("notification.collapse")
 	if id == "notification.panel.back" {
 		label = locale.T("notification.back")
 	}
-	button := notificationButton(id, label, width, options)
-	footerY := p.contentY + p.viewport.Height()
-	p.targets = append(p.targets, hitRegion{ID: id, X: p.bounds.X + inset, Y: footerY, W: ansi.StringWidth(button), H: 1})
 	arrow := ""
 	switch {
 	case !p.viewport.AtTop() && !p.viewport.AtBottom():
@@ -405,5 +419,9 @@ func (p *notificationPanel) footer(locale i18n.Localizer, options dashboardOptio
 	case !p.viewport.AtTop():
 		arrow = "↑"
 	}
-	return themed(cellPad(button, width-ansi.StringWidth(arrow))+arrow, muted, raised, false)
+	buttonWidth := width - ansi.StringWidth(arrow)
+	button := paint.button(id, label, buttonWidth, options)
+	footerY := p.contentY + p.viewport.Height()
+	p.targets = append(p.targets, hitRegion{ID: id, X: p.bounds.X + inset, Y: footerY, W: ansi.StringWidth(button), H: 1})
+	return themed(cellPad(button, buttonWidth)+arrow, paint.foreground, paint.background, false)
 }
