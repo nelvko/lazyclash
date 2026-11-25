@@ -12,6 +12,8 @@ type dropdown struct {
 	Items       []menuItem
 	Value       string
 	Placeholder string
+	CenterPopup bool
+	ShowCursor  bool
 }
 
 const dropdownGutter = 2
@@ -34,6 +36,9 @@ func (d dropdown) width() int {
 	w := max(ansi.StringWidth(clean(d.Placeholder)), ansi.StringWidth(d.label()))
 	for _, item := range d.Items {
 		w = max(w, ansi.StringWidth(item.label()))
+	}
+	if d.ShowCursor {
+		w++ // A space separates the visible cursor from the option label.
 	}
 	return min(48, w+6)
 }
@@ -100,20 +105,24 @@ func (d dropdown) popupGeometry(anchor hitRegion, screenWidth int) (x, width int
 	// Regular trigger hits include a two-cell gutter. For a cropped trigger
 	// leave at least one visible cell as the point of attachment.
 	x = anchor.X + min(dropdownGutter, max(0, anchor.W-1))
-	if anchor.DropdownRight {
+	if d.CenterPopup {
+		x = (2*anchor.X + anchor.W - width) / 2
+	} else if anchor.DropdownRight {
 		x = anchor.X + anchor.W - width
 	}
 	return max(0, min(x, screenWidth-width)), width
 }
 
-func dropdownRow(item menuItem, width int, active, monochrome bool) string {
+func (d dropdown) row(item menuItem, width int, active, monochrome bool) string {
 	foreground, background := text, raised
 	cursor := " "
 	if item.DisabledReason != "" {
 		foreground = disabled
 	} else if active {
 		background = selectionBackground
-		if monochrome {
+		if d.ShowCursor {
+			cursor = themed("›", focus, background, false)
+		} else if monochrome {
 			cursor = "›"
 		}
 	}
@@ -122,13 +131,17 @@ func dropdownRow(item menuItem, width int, active, monochrome bool) string {
 		check = "✓"
 	}
 	// Drop optional padding first when the terminal cannot fit a framed row.
+	gap := ""
+	if d.ShowCursor && width >= 4 {
+		gap = " "
+	}
 	var row string
 	switch {
 	case width >= 8:
-		row = cursor + cellPad(item.label(), width-4) + " " + check + " "
+		row = cursor + gap + cellPad(item.label(), width-4-len(gap)) + " " + check + " "
 	case width >= 2:
-		row = cursor + cellPad(item.label(), width-2) + check
-	case active && monochrome:
+		row = cursor + gap + cellPad(item.label(), width-2-len(gap)) + check
+	case active && (d.ShowCursor || monochrome):
 		row = cursor
 	case item.Checked:
 		row = check

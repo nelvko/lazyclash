@@ -13,6 +13,9 @@ func (m *Model) applyMenuResult(result menuResult) tea.Cmd {
 		return nil
 	case m.logs.levelMenu:
 		return m.logsLevelMenuResult(result)
+	case m.menu.anchor.ID == overviewRouteGroupTarget:
+		m.applyOverviewGroupChoice(result)
+		return nil
 	case m.page == "settings":
 		if result.Closed {
 			m.hover = ""
@@ -45,6 +48,8 @@ func (m *Model) reconcileMenu() {
 		}
 	case m.logs.levelMenu:
 		m.reconcileLogsLevelMenu()
+	case m.menu.dropdownOpen(overviewRouteGroupTarget):
+		m.reconcileOverviewGroupMenu()
 	case m.page == "settings":
 		if m.menu.open {
 			if !m.pageSelectionMenuAvailable("settings") {
@@ -64,7 +69,7 @@ func (m *Model) reconcileMenu() {
 }
 
 func (m *Model) dismissMenu() {
-	if m.form == "profile-delete" || m.page == "settings" {
+	if m.form == "profile-delete" || m.page == "settings" || m.menu.dropdownOpen(overviewRouteGroupTarget) {
 		m.menu.dismiss()
 		return
 	}
@@ -86,6 +91,7 @@ func (m *Model) openPageSelectionMenu(page, trigger string, control dropdown) bo
 		return false
 	}
 	m.focus, m.hover = trigger, ""
+	m.revealContentFocus()
 	m.layout()
 	for _, target := range m.targets {
 		if target.ID == trigger {

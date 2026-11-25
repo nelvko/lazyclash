@@ -2,6 +2,7 @@ package tui
 
 import (
 	"cmp"
+	"strings"
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -29,11 +30,15 @@ func overviewModeCard(o dashboardOptions, width int) dashboardBlock {
 			issue = clean(o.Locale.Diagnostic(s.APIError, s.APIDiagnostic))
 		}
 	}
-	content := renderProxyModeSegments(o, proxyModeChoices(o.Locale, issue == ""), inner, panel)
+	known := s.Service.Active && s.ServiceError == "" && s.APIError == "" && s.Mode.Error == "" && mihomo.ValidMode(s.Mode.Actual)
+	selectedMode := s.Mode.Desired
+	if known {
+		selectedMode = s.Mode.Actual
+	}
+	content := renderProxyModeSegments(o, proxyModeChoices(o.Locale, issue == ""), inner, buttonRoutingSegment, selectedMode)
 	add := func(value, color string) {
 		content.append(overviewTextBlock([]string{themed(value, color, panel, o.Dim)}, inner))
 	}
-	known := s.Service.Active && s.ServiceError == "" && s.APIError == "" && s.Mode.Error == "" && mihomo.ValidMode(s.Mode.Actual)
 	if !known || s.Mode.Desired != s.Mode.Actual {
 		saved, actual := tr("dashboard.status.unknown"), tr("dashboard.status.unknown")
 		if mihomo.ValidMode(s.Mode.Desired) {
@@ -62,10 +67,9 @@ func overviewModeCard(o dashboardOptions, width int) dashboardBlock {
 	case s.Mode.Actual == "direct":
 		add(tr("dashboard.overview.modeDirect"), muted)
 	default:
-		group := overviewRouteGroup(s.Groups, s.Mode.Actual, o.SelectedGroup)
+		group, canChoose := overviewRouteGroup(s.Groups, s.Mode.Actual, o.SelectedGroup)
 		if group != nil {
-			add(tr("dashboard.overview.groupSelection"), muted)
-			content.lines = append(content.lines, overviewGroupSelection(o, *group, inner)...)
+			content.append(overviewGroupSelection(o, *group, canChoose && !o.Busy, inner))
 		} else if s.Mode.Actual == "global" {
 			add(tr("dashboard.overview.selectionUnavailable"), muted)
 		} else {
@@ -77,15 +81,20 @@ func overviewModeCard(o dashboardOptions, width int) dashboardBlock {
 
 // Rule mode can route through many groups. Show the group being browsed, or
 // the preferred rule group, while reserving GLOBAL for the global mode.
-func overviewRouteGroup(groups []mihomo.Group, mode, selected string) *mihomo.Group {
-	var proxy, selector, first *mihomo.Group
+func overviewRouteGroup(groups []mihomo.Group, mode, selected string) (group *mihomo.Group, canChoose bool) {
+	var requested, proxy, selector, first *mihomo.Group
+	count := 0
 	for i := range groups {
 		g := &groups[i]
 		if (g.Name == "GLOBAL") != (mode == "global") {
 			continue
 		}
-		if mode == "global" || g.Name == selected {
-			return g
+		if mode == "global" {
+			return g, false
+		}
+		count++
+		if g.Name == selected {
+			requested = g
 		}
 		if g.Name == "PROXY" {
 			proxy = g
@@ -97,23 +106,65 @@ func overviewRouteGroup(groups []mihomo.Group, mode, selected string) *mihomo.Gr
 			first = g
 		}
 	}
-	return cmp.Or(proxy, selector, first)
+	return cmp.Or(requested, proxy, selector, first), count > 1
 }
 
-func overviewGroupSelection(o dashboardOptions, group mihomo.Group, width int) []string {
-	member := clean(group.Now)
-	color := text
-	switch {
-	case group.Type == "LoadBalance" || group.Type == "Relay":
-		member, color = o.Locale.T("proxies.distributed"), muted
-	case member == "":
-		member, color = o.Locale.T("proxies.no_selection"), muted
+// Wrap between hops so each arrow stays with its destination. The card centers
+// the resulting rows and their hit regions together.
+func overviewGroupSelection(o dashboardOptions, group mihomo.Group, canChoose bool, width int) dashboardBlock {
+	name := clean(group.Name)
+	row := themed(cellCrop(name, width), text, panel, o.Dim)
+	var block dashboardBlock
+	trailing := ""
+	if canChoose {
+		// Balance the popup's keyboard-focus gutter on the right of this row.
+		gutter := min(dropdownGutter, max(0, width-1))
+		marker := strings.Repeat(" ", gutter)
+		trailing = strings.Repeat(" ", min(gutter, max(0, width-gutter-3)))
+		expanded := o.OpenDropdown == overviewRouteGroupTarget
+		focused := o.Focus == overviewRouteGroupTarget || expanded
+		if focused && gutter > 0 {
+			marker = "›" + marker[1:]
+		}
+		arrow := "▾"
+		if expanded {
+			arrow = "▴"
+		}
+		labelWidth := width - gutter - len(trailing) - 2
+		row = themed(marker, focus, panel, o.Dim)
+		if labelWidth > 0 {
+			label := lipgloss.NewStyle().Underline(focused || o.Hover == overviewRouteGroupTarget).Render(cellCrop(name, labelWidth))
+			row += themed(label+" ", text, panel, o.Dim)
+		}
+		row += themed(arrow, accent, panel, o.Dim)
+		block.targets = []hitRegion{{ID: overviewRouteGroupTarget, W: ansi.StringWidth(row), H: 1}}
+		if expanded {
+			row += trailing
+			block.lines = []string{row}
+			block.targets[0].W = ansi.StringWidth(row)
+			return block
+		}
 	}
-	name := themed(clean(group.Name), text, panel, o.Dim)
-	value := themed(lipgloss.NewStyle().Bold(color == text).Render(member), color, panel, o.Dim)
-	path := name + themed(" → ", muted, panel, o.Dim) + value
-	if ansi.StringWidth(path) <= width {
-		return []string{path}
+
+	members, hasEndpoint := overviewRoutePath(o.Snapshot.Groups, group, o.Locale)
+	for i, member := range members {
+		value := member
+		color := text
+		if i == len(members)-1 {
+			if hasEndpoint {
+				value = lipgloss.NewStyle().Bold(true).Render(value)
+			} else {
+				color = muted
+			}
+		}
+		hop := themed("→ ", muted, panel, o.Dim) + themed(value, color, panel, o.Dim)
+		if ansi.StringWidth(row)+1+ansi.StringWidth(hop)+len(trailing) > width {
+			block.lines = append(block.lines, row+trailing)
+			row, trailing = cellCrop(hop, width), ""
+		} else {
+			row += " " + hop
+		}
 	}
-	return []string{cellCrop(name, width), cellCrop(themed("→ ", muted, panel, o.Dim)+value, width)}
+	block.lines = append(block.lines, row+trailing)
+	return block
 }

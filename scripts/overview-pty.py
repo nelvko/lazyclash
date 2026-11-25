@@ -344,10 +344,14 @@ def inspect_row_cards(preview, terminal, output, width, height, words, profile, 
             x, y = outline["x"] + 1, outline["y"] + 1
             right, bottom = x + outline["width"] - 2, y + outline["height"] - 2
             lines = ["".join(row[x:right]).strip() for row in terminal.screen.cells[y:bottom]]
-            group = {"running": "PROXY", "pending": "PROXY", "drift": "GLOBAL"}.get(scenario)
-            if group:
-                caption = lines.index(words["dashboard.overview.groupSelection"])
-                assert lines[caption + 1] == group + " → 香港 01 · 日常线路", "incorrect group selection: " + repr(lines)
+            path = {"running": "PROXY ▾ → 香港 01 · 日常线路", "pending": "PROXY → 香港 01 · 日常线路",
+                    "drift": "GLOBAL → PROXY → 香港 01 · 日常线路"}.get(scenario)
+            if path:
+                assert path in " ".join(" ".join(lines).split()), "incorrect routing path: " + repr(lines)
+                if scenario in ("running", "pending"):
+                    modes = next(i for i, line in enumerate(lines) if words["dashboard.mode.global"] in line)
+                    assert not lines[modes + 1] and path == " ".join(lines[modes + 2].split()), \
+                        "expected a blank line and the path directly beneath the modes: " + repr(lines)
             else:
                 assert all("香港 01" not in line for line in lines), "unobserved member in routing card"
         if name == "environment":
@@ -381,6 +385,36 @@ def inspect_row_cards(preview, terminal, output, width, height, words, profile, 
     (output / ("card-geometry-%dx%d.json" % (width, height))).write_text(json.dumps(dict(zip(names, geometry)), indent=2) + "\n")
     return_navigation(terminal, words)
     terminal.key(b"\t")
+    terminal.settle()
+
+
+def inspect_route_picker(preview, terminal, output, words, args):
+    for width, height in ((160, 45), (40, 16)):
+        terminal.resize(width, height)
+        terminal.settle()
+        focus_control(terminal, "PROXY")
+        terminal.key(b"\r")
+        terminal.wait("负载均衡")
+        assert "GLOBAL" not in terminal.screen.text(), "global group offered in Rule mode"
+        preview.capture(terminal, output, f"group-menu-{width}x{height}", args)
+        terminal.key(b"\x1b[B")
+        terminal.key(b"\r")
+        terminal.wait_absent("负载均衡")
+        terminal.wait("新加坡 02")
+        screen = terminal.screen.text()
+        assert re.search(r"办公\s*▾\s*→\s*自动选择\s*→\s*新加坡 02", screen), screen
+        preview.capture(terminal, output, f"group-path-{width}x{height}", args)
+
+        terminal.click_text("▾")
+        terminal.wait("负载均衡")
+        terminal.click_text("负载均衡")
+        terminal.wait(words["proxies.distributed"])
+        terminal.key(b"\r")
+        terminal.wait("办公")
+        terminal.click_text("PROXY")
+        terminal.wait_absent("负载均衡")
+        terminal.wait("香港 01")
+    terminal.resize(160, 45)
     terminal.settle()
 
 
@@ -482,6 +516,8 @@ def exercise(preview, binary, output, language, profile, scenario, args):
             preview.capture(terminal, output, "tab-revealed-%dx%d" % (width, height), args)
             assert words["dashboard.footer.quit"] in terminal.screen.text().splitlines()[-1], "Quit hint left the footer"
 
+        if scenario == "running":
+            inspect_route_picker(preview, terminal, output, words, args)
         inspect_network_editors(preview, terminal, output, words, profile, scenario, args)
 
         # Read-only page transitions use the card's real mouse target.

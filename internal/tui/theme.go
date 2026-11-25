@@ -44,6 +44,13 @@ const (
 	buttonDangerForeground        = "#f5a3a8"
 	buttonDangerHoverBackground   = "#493940"
 
+	routingIdleText                = "#c7cdd5"
+	routingIdleBackground          = "#373f48"
+	routingSelectedText            = "#ffffff"
+	routingSelectedBackground      = "#536d88"
+	routingSelectedHoverBackground = "#57738f"
+	routingFocus                   = "#ffcc83"
+
 	settingsSwitchOnThumb       = "#a8cff2"
 	settingsSwitchOnHoverThumb  = "#c5e3ff"
 	settingsSwitchOffHoverThumb = "#c1c8d1"

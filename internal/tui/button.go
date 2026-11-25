@@ -17,6 +17,7 @@ const (
 	buttonDanger
 	buttonDangerConfirm
 	buttonSegment
+	buttonRoutingSegment
 )
 
 type buttonOptions struct {
@@ -58,13 +59,20 @@ func renderButton(label string, o buttonOptions) string {
 		foreground, background, bold = primaryButtonForeground, errorColor, true
 	}
 	selected := o.Selectable && o.Selected
+	selectedText, selectedBG, selectedHover := text, buttonSelectedBackground, buttonSelectedHoverBackground
+	markerColor := focus
+	if o.Kind == buttonRoutingSegment {
+		foreground, background = routingIdleText, routingIdleBackground
+		selectedText, selectedBG, selectedHover = routingSelectedText, routingSelectedBackground, routingSelectedHoverBackground
+		markerColor = routingFocus
+	}
 	if selected {
-		foreground, background, bold = text, buttonSelectedBackground, true
+		foreground, background, bold = selectedText, selectedBG, true
 	}
 	if o.Hovered && !o.Disabled && !o.Busy {
 		switch {
 		case selected:
-			background = buttonSelectedHoverBackground
+			background = selectedHover
 		case o.Kind == buttonText:
 			underline = true
 		case o.Kind == buttonPrimary:
@@ -93,12 +101,12 @@ func renderButton(label string, o buttonOptions) string {
 		leftPadding = 0
 	}
 	label = strings.Repeat(" ", leftPadding) + label + strings.Repeat(" ", padding-leftPadding)
-	if o.Kind == buttonSegment {
+	if o.Kind == buttonSegment || o.Kind == buttonRoutingSegment {
 		// Keep both cues inside the face so adjacent modes share a continuous
 		// surface. The right cell distinguishes selection from keyboard focus.
 		left, right := " ", " "
 		if o.Focused && !o.Disabled {
-			left = themed("›", focus, background, o.Dim)
+			left = themed("›", markerColor, background, o.Dim)
 		}
 		if o.Plain && selected {
 			right = "●"
@@ -114,7 +122,6 @@ func renderButton(label string, o buttonOptions) string {
 	}
 	face = lipgloss.NewStyle().Bold(bold).Underline(underline).Render(face)
 	marker := "  "
-	markerColor := focus
 	if o.Focused && !o.Disabled {
 		marker = " ›"
 	}

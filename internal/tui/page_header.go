@@ -227,15 +227,22 @@ func proxyModeSegmentWidth(actions []headerAction) int {
 }
 
 // The same three selectable faces wrap on the smallest screens.
-func renderProxyModeSegments(o dashboardOptions, actions []headerAction, width int, surface string) dashboardBlock {
+func renderProxyModeSegments(o dashboardOptions, actions []headerAction, width int, kind buttonKind, selectedMode string) dashboardBlock {
 	block := dashboardBlock{lines: []string{""}}
 	segmentWidth := proxyModeSegmentWidth(actions)
+	surface := bg
+	if kind == buttonRoutingSegment {
+		surface = panel
+		// Give each card segment eight cells when possible. Reclaim extra
+		// padding before wrapping a row that still fits all three labels.
+		segmentWidth = max(segmentWidth, min(8, width/max(1, len(actions))))
+	}
 	w := min(width, segmentWidth)
 	x := 0
 	for _, action := range actions {
 		options := dashboardButtonOptions(action.id, o, false, surface)
-		options.Kind = buttonSegment
-		options.Selectable, options.Selected = true, o.Snapshot.Mode.Desired == strings.TrimPrefix(action.id, "mode.")
+		options.Kind = kind
+		options.Selectable, options.Selected = true, action.id == "mode."+selectedMode
 		options.Width, options.Disabled = segmentWidth-2, !action.enabled || o.Busy
 		if x > 0 && x+w > width {
 			block.blank()
@@ -255,7 +262,7 @@ func renderProxyModeSegments(o dashboardOptions, actions []headerAction, width i
 // between the two groups. Smaller terminals use a dedicated header row.
 func renderLeadingPageHeader(o dashboardOptions, g dashboardLayout, left int) (string, int, int, []hitRegion) {
 	h := o.Header
-	modes := renderProxyModeSegments(o, h.leading, g.headerWidth, bg)
+	modes := renderProxyModeSegments(o, h.leading, g.headerWidth, buttonSegment, o.Snapshot.Mode.Desired)
 	renderActions := func(compact bool) []string {
 		var values []string
 		for _, action := range h.actions {

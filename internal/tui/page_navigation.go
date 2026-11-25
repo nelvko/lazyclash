@@ -114,7 +114,6 @@ func (m *Model) navigationOptions() dashboardOptions {
 	o := m.dashboardOptions()
 	o.Snapshot, o.Focus, o.Hover = m.snapshot, m.focus, m.hover
 	o.GuideDismissed = m.snapshot.GuideDismissed
-	o.SelectedGroup = m.proxies.activeGroup
 	o.Runtime, o.RuntimeReceived, o.RuntimePending = m.runtime.snapshot, m.runtime.received, m.runtime.pending
 	o.StateUnavailable = !m.snapshotReady
 	return o
@@ -344,7 +343,10 @@ func (m *Model) enterContent() {
 }
 
 func (m *Model) revealContentFocus() {
-	if m.providers.open || m.helpOpen || m.form != "" || m.wizard.open || m.wizard.networkOpen || m.ports.open || m.notification.panel.open || m.menu.open || m.sidebarOpen {
+	if m.providers.open || m.helpOpen || m.form != "" || m.wizard.open || m.wizard.networkOpen || m.ports.open || m.notification.panel.open || m.sidebarOpen {
+		return
+	}
+	if m.menu.open && !m.menu.dropdownOpen(overviewRouteGroupTarget) {
 		return
 	}
 	for _, target := range m.contentTargets() {
@@ -357,6 +359,10 @@ func (m *Model) revealContentFocus() {
 
 func (m *Model) contentNavigationKey(k tea.KeyPressMsg) bool {
 	if m.overviewScrollKey(k) {
+		return true
+	}
+	if m.page == "overview" && m.focus == overviewRouteGroupTarget && !m.busy && (k.String() == "up" || k.String() == "down") {
+		m.activate(overviewRouteGroupTarget)
 		return true
 	}
 	if strings.HasPrefix(m.focus, "overview.card.") {
@@ -548,6 +554,11 @@ func (m *Model) repairPageFocus() {
 			}
 		}
 		if !valid {
+			if m.page == "overview" && m.focus == overviewRouteGroupTarget {
+				m.focus = "overview.card.dashboard.control.routingMode"
+				m.revealContentFocus()
+				return
+			}
 			m.enterContent()
 			return
 		}

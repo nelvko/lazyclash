@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"cmp"
 	"crypto/sha256"
 	"fmt"
 	"slices"
@@ -392,6 +393,7 @@ func (m *Model) dashboardOptions() dashboardOptions {
 	}
 	o := dashboardOptions{Locale: m.locale, Width: m.width, Height: m.height, Page: m.page, Busy: m.busy, PlainButtons: m.buttonPlain(), Dim: m.dashboardDimmed(), SidebarOpen: m.sidebarOpen, HideKeyHints: m.keyHints.hidden || m.wizard.open || m.wizard.networkOpen, GuideSkipped: m.guideSkipped, Notifications: items, Spinner: m.spinner.View(), LogoFrame: m.logoFrame, LogoIntroFrame: m.logoIntro.frame, InlineInstall: m.page == "overview" && m.inlineInstallVisible(), BodyRange: m.page == "proxies" && m.proxiesReady() && !m.proxiesDirect() && m.hasExpandedProxyGroups()}
 	o.Now = time.Now()
+	o.SelectedGroup = cmp.Or(m.overviewGroup, m.proxies.activeGroup)
 	o.Theme, o.EffectiveTheme = m.theme, m.effectiveTheme()
 	o.TrafficHistory, o.TrafficNow = m.runtime.history.points, o.Now
 	o.Monochrome = m.monochrome()

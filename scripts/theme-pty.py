@@ -282,7 +282,7 @@ def exercise_notifications(terminal, output, profile):
     terminal.wait_absent(validation)
     terminal.key(b"\t")  # End editing before using a page shortcut.
     terminal.key(b"1")
-    terminal.wait("Traffic Routing")
+    terminal.wait("Routing Mode")
     terminal.wait_absent(validation)
     terminal.key(b"s")
     terminal.wait("Start service")  # The same failure can be shown again after closing.
@@ -290,7 +290,7 @@ def exercise_notifications(terminal, output, profile):
     terminal.wait("Notifications")
     terminal.key(b"x")
     terminal.wait_absent("Start service")
-    empty_shortcut(terminal, "Traffic Routing")
+    empty_shortcut(terminal, "Routing Mode")
 
     terminal.key(b"a")
     terminal.wait("Import configuration")
@@ -299,10 +299,10 @@ def exercise_notifications(terminal, output, profile):
     terminal.key(b"\x1b")
     terminal.wait_absent("Import configuration")
     terminal.wait_absent("A value is required")
-    empty_shortcut(terminal, "Traffic Routing")
+    empty_shortcut(terminal, "Routing Mode")
     save_screen(terminal, output, profile, "notification-canceled")
     terminal.resize(160, 45)
-    terminal.wait("Traffic Routing")
+    terminal.wait("Routing Mode")
 
 
 def exercise_profile_updates(terminal, output, profile, command, directory):
@@ -394,7 +394,7 @@ def exercise_profile_updates(terminal, output, profile, command, directory):
     empty_shortcut(terminal, "Settings")
     terminal.resize(160, 45)
     terminal.key(b"1")
-    terminal.wait("Traffic Routing")
+    terminal.wait("Routing Mode")
 
 
 def exercise_network(terminal, output, profile):
@@ -426,7 +426,7 @@ def exercise_network(terminal, output, profile):
     terminal.wait_absent(PREFIX)
     terminal.key(b"\x1b")
     terminal.wait_absent("Use environment proxy")
-    terminal.wait("Traffic Routing")
+    terminal.wait("Routing Mode")
 
 
 def exercise(binary, output, profile, notifications_only):
@@ -445,7 +445,7 @@ def exercise(binary, output, profile, notifications_only):
             terminal.resize(160, 45)
             terminal.wait("Install the Mihomo Core", after=mark)
             terminal.click_text("Set up later")
-            terminal.wait("Traffic Routing")
+            terminal.wait("Routing Mode")
             save_screen(terminal, output, profile, "overview")
             exercise_notifications(terminal, output, profile)
             exercise_profile_updates(terminal, output, profile, product, Path(temporary))

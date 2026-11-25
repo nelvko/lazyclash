@@ -531,7 +531,7 @@ func TestOverviewModeUsesActualModeAndDoesNotExposeStaleNodeSelection(t *testing
 						t.Fatalf("mode card exposed or hid an unrelated node %q:\n%s", node, plain)
 					}
 				}
-				if state.actual == "direct" && (!strings.Contains(plain, o.Locale.T("dashboard.overview.modeDirect")) || strings.Contains(plain, o.Locale.T("dashboard.overview.groupSelection"))) {
+				if state.actual == "direct" && (!strings.Contains(plain, o.Locale.T("dashboard.overview.modeDirect")) || hasAction(block.targets, overviewRouteGroupTarget)) {
 					t.Fatal("confirmed Direct should explain that traffic connects directly and hide group selection")
 				}
 				if (state.missingGlobal || state.unreadable) && !strings.Contains(plain, o.Locale.T("dashboard.overview.selectionUnavailable")) {

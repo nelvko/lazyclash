@@ -148,6 +148,7 @@ type Model struct {
 	rememberSource        bool
 	profilesUI            profilesState
 	proxies               proxiesState
+	overviewGroup         string
 	profileEditor         profileEditorState
 	profileCreate         profileCreateState
 	menu                  actionMenu
@@ -844,6 +845,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			_, cmd = m.connectionKey(v)
 			break
 		}
+		if m.overviewModeNavigation(key) {
+			break
+		}
 		if key == "left" || key == "h" {
 			// Editors and overlays above own their keys. Let horizontal controls
 			// handle the original key before reusing the existing Escape hierarchy.
@@ -1388,6 +1392,12 @@ func (m *Model) activate(id string) tea.Cmd {
 	case "card.proxies":
 		m.navigate("proxies")
 		return nil
+	case overviewRouteGroupTarget:
+		d := m.navigationOptions().overviewRuleGroupDropdown()
+		if len(d.Items) > 1 {
+			m.openPageSelectionMenu("overview", id, d)
+		}
+		return nil
 	case "card.logs":
 		m.navigate("logs")
 		return nil
@@ -1738,7 +1748,7 @@ func (m *Model) renderLayout() {
 	}
 	o := m.dashboardOptions()
 	o.Sidebar = &m.sidebar
-	o.SelectedGroup, o.Snapshot, o.Focus, o.Hover = m.proxies.activeGroup, m.snapshot, m.focus, m.hover
+	o.Snapshot, o.Focus, o.Hover = m.snapshot, m.focus, m.hover
 	// Lay out the expanded controls before deriving their keyboard hints.
 	p := &m.notification.panel
 	var expanded string

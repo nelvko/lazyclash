@@ -6,6 +6,38 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
+func (m *Model) overviewModeNavigation(key string) bool {
+	if m.page != "overview" || m.sidebarOpen || !strings.HasPrefix(m.focus, "mode.") {
+		return false
+	}
+	var step int
+	switch key {
+	case "left", "h":
+		step = -1
+	case "right", "l":
+		step = 1
+	default:
+		return false
+	}
+	current := -1
+	var choices []hitRegion
+	for _, hit := range m.contentTargets() {
+		if strings.HasPrefix(hit.ID, "mode.") {
+			if hit.ID == m.focus {
+				current = len(choices)
+			}
+			choices = append(choices, hit)
+		}
+	}
+	if current < 0 {
+		return false
+	}
+	next := choices[(current+step+len(choices))%len(choices)]
+	m.focus, m.hover = next.ID, ""
+	m.revealBodyTarget(next)
+	return true
+}
+
 // Paging is a browsing action. Keep its focus on visible content, so Enter
 // cannot unexpectedly return to a control on the page the user just left.
 func (m *Model) overviewScrollKey(key tea.KeyPressMsg) bool {

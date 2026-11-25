@@ -265,7 +265,7 @@ func (m *actionMenu) render(base string, width, height, contentBottom int, monoc
 		inner := menuWidth - 2*padding
 		var line string
 		if m.dropdown != nil {
-			line = dropdownRow(item, inner, i == m.selected, monochrome)
+			line = m.dropdown.row(item, inner, i == m.selected, monochrome)
 		} else {
 			line = actionMenuRow(item, inner, i == m.selected)
 		}

@@ -12,6 +12,7 @@
   "navigation.controls.editPorts": "编辑端口",
   "navigation.controls.openProfiles": "打开订阅页",
   "navigation.controls.openProxies": "打开代理页",
+  "navigation.controls.viewGroup": "查看策略组",
   "navigation.controls.openLogs": "打开日志页",
   "navigation.controls.manageCore": "管理内核",
   "navigation.controls.importProfile": "导入配置",
@@ -24,5 +25,6 @@
   "navigation.profiles.importing": "Enter 导入 · Tab 控件 · Esc 结束输入",
   "navigation.profiles.controls": "Tab 控件 · ← / Esc 返回",
   "navigation.profiles.detailsBack": "Tab 控件 · ↑↓ 滚动 · Esc 关闭详情",
-  "navigation.overview.readOnlyCard": "↑↓ 卡片 · Tab 下一项 · ← / Esc 返回"
+  "navigation.overview.readOnlyCard": "↑↓ 卡片 · Tab 下一项 · ← / Esc 返回",
+  "navigation.overview.modeChoice": "←→ 选择模式 · Enter / 空格 应用 · Tab 下一项 · Esc 返回"
 }

@@ -39,6 +39,9 @@ func TestSelectionGroupsKeepEqualWidthsAndAdjacentFocusGutters(t *testing.T) {
 							if current.ID == "" {
 								t.Fatalf("choice %s has no hit region", id)
 							}
+							if centered && width >= 40 && current.W != 8 {
+								t.Fatalf("overview segment %s is %d cells wide, want 8", id, current.W)
+							}
 							painted := settingsPaintedTarget(t, body, block.targets, id)
 							label := o.Locale.T("dashboard." + id)
 							if !strings.Contains(painted, label) || ansi.StringWidth(painted) != current.W {
@@ -71,6 +74,25 @@ func TestSelectionGroupsKeepEqualWidthsAndAdjacentFocusGutters(t *testing.T) {
 					m.locale, m.noColor, m.focus = o.Locale, plain, o.Focus
 					check(m.proxyModes(width), false)
 				})
+			}
+		}
+	}
+}
+
+func TestOverviewSegmentsDistinguishRunningModeFromFocus(t *testing.T) {
+	o := dashboardOptions{Locale: i18n.New(i18n.English), Snapshot: settingsTestSnapshot(), PlainButtons: true, Focus: "mode.direct"}
+	o.Snapshot.Mode.Desired, o.Snapshot.Mode.Actual = "rule", "global"
+	for _, tc := range []struct {
+		active bool
+		want   string
+	}{{true, "mode.global"}, {false, "mode.rule"}} {
+		o.Snapshot.Service.Active = tc.active
+		card := overviewModeCard(o, 80)
+		body := strings.Join(card.lines, "\n")
+		for _, id := range []string{"mode.rule", "mode.global", "mode.direct"} {
+			face := settingsPaintedTarget(t, body, card.targets, id)
+			if strings.HasSuffix(face, "●") != (id == tc.want) || strings.HasPrefix(face, "›") != (id == o.Focus) {
+				t.Fatalf("service active=%t: incorrect mode selection or focus on %s: %q", tc.active, id, face)
 			}
 		}
 	}

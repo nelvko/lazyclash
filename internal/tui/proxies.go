@@ -808,6 +808,16 @@ func (m *Model) syncProxies() tea.Cmd {
 	sourceChanged := source != m.proxies.source
 	_, previousScope, _ := strings.Cut(m.proxies.source, "\x00")
 	sameScope := m.proxies.source != "" && scope == previousScope
+	if !sameScope {
+		m.overviewGroup = ""
+		if m.menu.dropdownOpen(overviewRouteGroupTarget) {
+			m.menu.dismiss()
+		}
+	} else if m.overviewGroup != "" && m.snapshot.Mode.Actual == "rule" && m.proxiesReady() && m.snapshot.Mode.Error == "" {
+		if _, _, present := m.proxyGroup(m.overviewGroup); !present {
+			m.overviewGroup = ""
+		}
+	}
 	var searchReturn *proxySearchReturn
 	if modeChanged || sourceChanged && m.proxies.source != "" {
 		searchReturn = m.proxies.searchReturn

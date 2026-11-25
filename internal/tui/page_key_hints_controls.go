@@ -54,6 +54,9 @@ func (m *Model) profilesContextHelp() string {
 }
 
 func (m *Model) overviewContextHelp() string {
+	if strings.HasPrefix(m.focus, "mode.") {
+		return m.tr("navigation.overview.modeChoice")
+	}
 	if strings.HasPrefix(m.focus, "overview.card.") {
 		if m.overviewCardHasControls() {
 			return m.tr("overview.cardHint")
@@ -125,6 +128,8 @@ func (m *Model) settingsContextHelp() string {
 		label = "navigation.controls.openProfiles"
 	case "card.proxies":
 		label = "navigation.controls.openProxies"
+	case overviewRouteGroupTarget:
+		label = "navigation.controls.viewGroup"
 	case "card.logs":
 		label = "navigation.controls.openLogs"
 	case "network":
