@@ -85,13 +85,13 @@ func (m *Model) tunConfirmationAction(id string) tea.Cmd {
 func (m *Model) renderTUNConfirmation(base string) (string, []hitRegion) {
 	width := min(76, m.width)
 	if width < 24 || m.height < 9 {
-		return overlay("", m.tr("profiles.enlarge"), 0, 0, m.width, m.height), nil
+		return m.renderModalNotice(m.tr("profiles.enlarge"))
 	}
-	inner := width - 4
-	lines := strings.Split(wrapText(themed(m.tr("tun.confirm_title"), text, raised, false), inner), "\n")
+	inner := width - 2*modalPaddingX
+	lines := strings.Split(wrapText(themed(m.tr("tun.confirm_title"), text, modalBackground, false), inner), "\n")
 	lines = append(lines, "")
 	for _, detail := range []string{m.tr("tun.confirm_host"), m.tr("tun.confirm_restart")} {
-		lines = append(lines, strings.Split(wrapText(themed(detail, warning, raised, false), inner), "\n")...)
+		lines = append(lines, strings.Split(wrapText(themed(detail, warning, modalBackground, false), inner), "\n")...)
 	}
 	lines = append(lines, "")
 	buttonRow := len(lines)
@@ -101,31 +101,28 @@ func (m *Model) renderTUNConfirmation(base string) (string, []hitRegion) {
 		id, label string
 		kind      buttonKind
 	}{{"tun.cancel", m.tr("wizard.cancel"), buttonSecondary}, {"tun.confirm", m.tr("tun.enable"), buttonDangerConfirm}} {
-		value := renderButton(button.label, buttonOptions{Kind: button.kind, Surface: raised, Focused: m.tunFocus == button.id, Hovered: m.hover == button.id, Plain: m.buttonPlain()})
+		value := renderButton(button.label, buttonOptions{Kind: button.kind, Surface: modalBackground, Focused: m.tunFocus == button.id, Hovered: m.hover == button.id, Plain: m.buttonPlain()})
 		buttonWidth := min(inner, ansi.StringWidth(value))
 		if column > 0 && column+buttonWidth > inner {
 			lines = append(lines, line)
 			line, column = "", 0
 			buttonRow++
 		}
-		targets = append(targets, hitRegion{ID: button.id, X: column + 2, Y: buttonRow + 1, W: buttonWidth, H: 1})
+		targets = append(targets, hitRegion{ID: button.id, X: column + modalPaddingX, Y: buttonRow + 1, W: buttonWidth, H: 1})
 		line += cellCrop(value, inner)
 		column += buttonWidth
 	}
 	lines = append(lines, line)
 	height := len(lines) + 2
 	if height > m.height {
-		return overlay("", m.tr("profiles.enlarge"), 0, 0, m.width, m.height), nil
+		return m.renderModalNotice(m.tr("profiles.enlarge"))
 	}
-	rows := []string{themed("┌"+strings.Repeat("─", width-2)+"┐", border, raised, false)}
-	for _, line := range lines {
-		rows = append(rows, themed("│ ", border, raised, false)+themed(cellPad(line, inner), text, raised, false)+themed(" │", border, raised, false))
+	surface := m.newModalSurface(width, height)
+	for i, line := range lines {
+		surface.put(modalPaddingX, i+1, line)
 	}
-	rows = append(rows, themed("└"+strings.Repeat("─", width-2)+"┘", border, raised, false))
-	x, y := (m.width-width)/2, (m.height-height)/2
-	for i := range targets {
-		targets[i].X += x
-		targets[i].Y += y
+	for i, target := range targets {
+		targets[i] = surface.screen(target)
 	}
-	return overlay(base, strings.Join(rows, "\n"), x, y, m.width, m.height), targets
+	return surface.render(base), targets
 }

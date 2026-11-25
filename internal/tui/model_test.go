@@ -584,7 +584,8 @@ func TestResponsiveWizardModalAndFullPage(t *testing.T) {
 				t.Fatal("wizard title missing")
 			}
 			modal := size[0] >= 110 && size[1] >= 30
-			if strings.HasPrefix(plain, "┌") == modal {
+			screen, _ := m.renderWizard("visible dashboard")
+			if strings.HasPrefix(ansi.Strip(screen), "visible dashboard") != modal {
 				t.Fatalf("wrong modal/full-page layout at %v:\n%s", size, plain)
 			}
 			assertCanvas(t, m.View().Content, size[0], size[1])

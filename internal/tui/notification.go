@@ -370,10 +370,6 @@ func (m *Model) notificationAction(action string) bool {
 	return true
 }
 
-func (m *Model) dashboardDimmed() bool {
-	return m.feedbackDialogOpen() || m.helpOpen || m.providers.open || (m.page == "connections" && m.connections.confirming)
-}
-
 func (m *Model) notificationsObscured() bool {
 	return m.notification.panel.open || m.dashboardDimmed() || m.sidebarOpen || m.menu.open || (m.page == "connections" && m.connections.detail != nil)
 }

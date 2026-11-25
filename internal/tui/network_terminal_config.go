@@ -35,7 +35,7 @@ func (m *Model) terminalActivationDocument(d *wizardDocument) []wizardButton {
 	}
 	// Preserve spaces inside quoted paths, including at a soft line break.
 	for _, line := range strings.Split(ansi.Hardwrap(clean(command), d.width, true), "\n") {
-		d.lines = append(d.lines, themed(line, info, raised, false))
+		d.lines = append(d.lines, themed(line, info, modalBackground, false))
 	}
 	d.space()
 	d.line(m.tr("terminal.activation"))

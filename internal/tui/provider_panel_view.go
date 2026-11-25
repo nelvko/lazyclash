@@ -34,7 +34,7 @@ func (m *Model) providersStatus() string {
 
 func (m *Model) providersToolbar(width, rows int) dashboardBlock {
 	b := m.searchField("providers.search", m.providerSearchPlaceholder(), m.providers.search, width, false)
-	b.lines = append(b.lines, themed(cellCrop(m.providersStatus(), width), muted, raised, false), "")
+	b.lines = append(b.lines, themed(cellCrop(m.providersStatus(), width), muted, modalBackground, false), "")
 	b.lines = b.lines[:min(rows, len(b.lines))]
 	visible := b.targets[:0]
 	for _, target := range b.targets {
@@ -74,7 +74,7 @@ func (m *Model) providerUpdateButton(provider providerRow, width int) string {
 	if label == "" || width < ansi.StringWidth(label)+8 {
 		return ""
 	}
-	options := dashboardButtonOptions("provider.update."+provider.Name, m.navigationOptions(), false, raised)
+	options := dashboardButtonOptions("provider.update."+provider.Name, m.navigationOptions(), false, modalBackground)
 	options.Dim, options.Disabled = false, !enabled
 	update := m.providers.updates[provider.Name]
 	options.Busy = update.state == "queued" || update.state == "updating"
@@ -83,7 +83,7 @@ func (m *Model) providerUpdateButton(provider providerRow, width int) string {
 
 func (m *Model) providerRows(provider providerRow, width int) []string {
 	id := "provider.row." + provider.Name
-	surface := raised
+	surface := modalBackground
 	if m.focus == id {
 		surface = panel
 	}
@@ -146,7 +146,7 @@ func (m *Model) providersBodyWindow(width, start, height int) ruleBodyWindow {
 	p := m.providers
 	list := m.filteredProviders()
 	if len(list) == 0 {
-		o := emptyStateOptions{Title: m.tr("empty.providers.none"), Surface: raised}
+		o := emptyStateOptions{Title: m.tr("empty.providers.none"), Surface: modalBackground}
 		switch {
 		case !m.providersSupported(p.kind):
 			o.Title = m.tr("providers.unsupported")
@@ -188,7 +188,7 @@ func (m *Model) providersBodyWindow(width, start, height int) ruleBodyWindow {
 	}
 	var b dashboardBlock
 	add := func(value, color string) {
-		b.lines = append(b.lines, strings.Split(wrapText(themed(clean(value), color, raised, false), max(1, width)), "\n")...)
+		b.lines = append(b.lines, strings.Split(wrapText(themed(clean(value), color, modalBackground, false), max(1, width)), "\n")...)
 	}
 	if p.err != nil {
 		add(m.localizeError(p.err), errorColor)
@@ -198,7 +198,7 @@ func (m *Model) providersBodyWindow(width, start, height int) ruleBodyWindow {
 	if !p.received || p.snapshot.State != "ready" {
 		add(m.providersStatus(), muted)
 		if p.received {
-			options := dashboardButtonOptions("providers.reload", m.navigationOptions(), false, raised)
+			options := dashboardButtonOptions("providers.reload", m.navigationOptions(), false, modalBackground)
 			options.Dim, options.Disabled = false, p.pending || m.busy || !p.active
 			label := renderButton(m.tr("providers.retry"), options)
 			if !options.Disabled {
@@ -241,7 +241,7 @@ func (m *Model) providersBodyWindow(width, start, height int) ruleBodyWindow {
 			}
 		}
 		if index < len(list)-1 && row+3 >= start && row+3 < end {
-			b.lines = append(b.lines, themed(strings.Repeat("─", max(0, width)), divider, raised, false))
+			b.lines = append(b.lines, themed(strings.Repeat("─", max(0, width)), divider, modalBackground, false))
 		}
 	}
 	return ruleBodyWindow{dashboardBlock: b, start: start, total: total, prefix: prefix}
@@ -264,67 +264,56 @@ func (m *Model) providersCanUpdateAll() bool {
 // The provider viewport is separate from the effective-rule list underneath it.
 func (m *Model) renderProviders(base string) (string, []hitRegion) {
 	p := &m.providers
-	w, h, x, y := m.width, m.height, 0, 0
-	modal := w >= 110 && h >= 30
-	if modal {
+	w, h := m.width, m.height
+	if m.canFloatDocument() {
 		w, h = min(96, w-12), min(34, h-4)
-		x, y = (m.width-w)/2, (m.height-h)/2
-	} else {
-		base = ""
 	}
-	p.bounds = hitRegion{X: x, Y: y, W: w, H: h}
+	surface := m.newModalSurface(w, h)
+	p.bounds = surface.bounds
 	p.controls, p.rowTargets = nil, nil
 	p.bodyBounds = hitRegion{}
 	if w <= 0 || h <= 0 {
-		return base, nil
-	}
-	rows := make([]string, h)
-	for i := range rows {
-		rows[i] = themed(strings.Repeat(" ", w), text, raised, false)
+		return surface.render(base), nil
 	}
 	button := func(id, label string, disabled, primary bool) string {
 		kind := buttonSecondary
 		if primary {
 			kind = buttonPrimary
 		}
-		return renderButton(label, buttonOptions{Kind: kind, Surface: raised, Focused: m.focus == id,
+		return renderButton(label, buttonOptions{Kind: kind, Surface: modalBackground, Focused: m.focus == id,
 			Hovered: m.hover == id, Disabled: disabled, Plain: m.buttonPlain()})
 	}
 	close := button("providers.back", m.tr("providers.close"), false, false)
 	if w < 24 || h < 13 {
-		putRows(rows, 0, 0, themed(cellCrop(m.providerTitle(), w), text, raised, false), w)
+		surface.put(0, 0, cellCrop(m.providerTitle(), w))
 		closeY := h - 1
-		putRows(rows, 0, closeY, cellCrop(close, w), w)
-		hits := []hitRegion{{ID: "providers.back", X: x, Y: y + closeY, W: min(w, ansi.StringWidth(close)), H: 1}}
+		surface.put(0, closeY, cellCrop(close, w))
+		hits := []hitRegion{surface.screen(hitRegion{ID: "providers.back", Y: closeY, W: min(w, ansi.StringWidth(close)), H: 1})}
 		p.controls = hits
-		return overlay(base, strings.Join(rows, "\n"), x, y, m.width, m.height), hits
+		return surface.render(base), hits
 	}
-	inner := w - 6
-	for i := 1; i < h-1; i++ {
-		putRows(rows, 0, i, themed("│", border, raised, false), w)
-		putRows(rows, w-1, i, themed("│", border, raised, false), w)
-	}
-	putRows(rows, 0, 0, themed("╭"+strings.Repeat("─", w-2)+"╮", border, raised, false), w)
-	putRows(rows, 0, h-1, themed("╰"+strings.Repeat("─", w-2)+"╯", border, raised, false), w)
+	inner := w - 2*modalBodyInset
 	allEnabled := m.providersCanUpdateAll()
 	all := button("providers.all", m.tr("providers.update_all"), !allEnabled, true)
 	allWidth := min(inner, ansi.StringWidth(all))
-	putRows(rows, 3, 1, themed(cellCrop(m.providerTitle(), max(1, inner-allWidth-2)), text, raised, false), w)
-	putRows(rows, w-3-allWidth, 1, all, w)
+	surface.put(modalBodyInset, 1, cellCrop(m.providerTitle(), max(1, inner-allWidth-2)))
+	surface.put(w-modalBodyInset-allWidth, 1, cellCrop(all, allWidth))
 	var hits []hitRegion
 	if allEnabled {
-		hit := hitRegion{ID: "providers.all", X: x + w - 3 - allWidth, Y: y + 1, W: allWidth, H: 1}
+		hit := surface.screen(hitRegion{ID: "providers.all", X: w - modalBodyInset - allWidth, Y: 1, W: allWidth, H: 1})
 		hits = append(hits, hit)
 		p.controls = append(p.controls, hit)
 	}
 	resizeSearchInput(&p.search, searchInputWidth(inner))
 	search := m.providersToolbar(inner, 4)
 	for i, line := range search.lines {
-		putRows(rows, 3, 3+i, themed(cellPad(line, inner), text, raised, false), w)
+		surface.put(modalBodyInset, 3+i, cellPad(line, inner))
 	}
 	var clearTarget hitRegion
 	for _, target := range search.targets {
-		target.X, target.Y = target.X+x+3, target.Y+y+3
+		target.X += modalBodyInset
+		target.Y += 3
+		target = surface.screen(target)
 		hits = append(hits, target)
 		if target.ID == "providers.clear" {
 			clearTarget = target
@@ -335,9 +324,9 @@ func (m *Model) renderProviders(base string) (string, []hitRegion) {
 	if clearTarget.ID != "" {
 		p.controls = append(p.controls, clearTarget)
 	}
-	putRows(rows, 2, 7, themed(strings.Repeat("─", w-4), divider, raised, false), w)
+	surface.divider(7)
 	bodyY, bodyH := 8, max(1, h-12)
-	p.bodyBounds = hitRegion{X: x + 3, Y: y + bodyY, W: inner, H: bodyH}
+	p.bodyBounds = surface.screen(hitRegion{X: modalBodyInset, Y: bodyY, W: inner, H: bodyH})
 	resized := p.viewport.Width() != inner || p.viewport.Height() != bodyH
 	p.viewport.SetWidth(inner)
 	p.viewport.SetHeight(bodyH)
@@ -354,7 +343,7 @@ func (m *Model) renderProviders(base string) (string, []hitRegion) {
 		if i >= bodyH {
 			break
 		}
-		putRows(rows, 3, bodyY+i, themed(cellPad(line, inner), text, raised, false), w)
+		surface.put(modalBodyInset, bodyY+i, cellPad(line, inner))
 	}
 	for _, target := range doc.targets {
 		target.X += p.bodyBounds.X
@@ -364,16 +353,16 @@ func (m *Model) renderProviders(base string) (string, []hitRegion) {
 			hits = append(hits, clipped)
 		}
 	}
-	putRows(rows, 2, h-4, themed(strings.Repeat("─", w-4), divider, raised, false), w)
+	surface.divider(h - 4)
 	closeWidth := min(inner, ansi.StringWidth(close))
-	putRows(rows, w-3-closeWidth, h-2, close, w)
-	closeHit := hitRegion{ID: "providers.back", X: x + w - 3 - closeWidth, Y: y + h - 2, W: closeWidth, H: 1}
+	surface.put(w-modalBodyInset-closeWidth, h-2, cellCrop(close, closeWidth))
+	closeHit := surface.screen(hitRegion{ID: "providers.back", X: w - modalBodyInset - closeWidth, Y: h - 2, W: closeWidth, H: 1})
 	hits, p.controls = append(hits, closeHit), append(p.controls, closeHit)
 	if room := inner - closeWidth - 2; room > 0 {
-		putRows(rows, 3, h-2, helpText(m.providersFooterHelp(room), raised, false), w)
+		surface.put(modalBodyInset, h-2, helpText(m.providersFooterHelp(room), modalBackground, false))
 	}
 	if p.viewport.TotalLineCount() > bodyH {
-		putRows(rows, w-2, bodyY+bodyH-1, themed("↕", info, raised, false), w)
+		surface.put(w-modalPaddingX, bodyY+bodyH-1, themed("↕", info, modalBackground, false))
 	}
-	return overlay(base, strings.Join(rows, "\n"), x, y, m.width, m.height), hits
+	return surface.render(base), hits
 }

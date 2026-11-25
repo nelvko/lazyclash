@@ -157,21 +157,32 @@ def click_point(terminal, point):
     terminal.key(f"\x1b[<0;{x+1};{y+1}M\x1b[<0;{x+1};{y+1}m".encode())
 
 
-def check_network_modal(terminal, title):
-    """Find the frame enclosing its title; input fields have their own frames."""
+def check_network_modal(terminal, title, profile):
     cells = terminal.screen.cells
-    x, y = next((x, y) for x, y in text_points(terminal, title)
-                if y > 0 and "┌" in cells[y-1][:x] and "┐" in cells[y-1][x+1:])
-    top = y - 1
-    left = max(i for i in range(x) if cells[top][i] == "┌")
-    right = next(i for i in range(x+1, len(cells[top])) if cells[top][i] == "┐")
-    bottom = next(i for i in range(y+1, len(cells)) if cells[i][left] == "└" and cells[i][right] == "┘")
+    if profile == "no-color":
+        x, y = next((x, y) for x, y in text_points(terminal, title)
+                    if y > 0 and "┌" in cells[y-1][:x] and "┐" in cells[y-1][x+1:])
+        top = y - 1
+        left = max(i for i in range(x) if cells[top][i] == "┌")
+        right = next(i for i in range(x+1, len(cells[top])) if cells[top][i] == "┐")
+        bottom = next(i for i in range(y+1, len(cells)) if cells[i][left] == "└" and cells[i][right] == "┘")
+    else:
+        styles = terminal.screen.styles
+        x, y = next((x, y) for x, y in text_points(terminal, title)
+                    if y > 0 and styles[y][x][1] != styles[y][0][1])
+        top = y - 1
+        surface = styles[y][x][1]
+        columns = [i for i, cell in enumerate(styles[top]) if cell[1] == surface]
+        left, right = min(columns), max(columns)
+        bottom = next(i for i in range(y+1, len(cells)) if styles[i][left][1] != surface) - 1
+        for row in (cells[top], cells[bottom]):
+            assert all(cell == " " for cell in row[left:right+1]), (title, row)
     margins = left, len(cells[top])-1-right, top, len(cells)-1-bottom
     assert min(margins[:2]) >= 2 and min(margins[2:]) >= 1, (title, margins)
     assert abs(margins[0]-margins[1]) <= 1 and abs(margins[2]-margins[3]) <= 1, (title, margins)
 
 
-def inspect_network_editors(preview, terminal, output, words, scenario, args):
+def inspect_network_editors(preview, terminal, output, words, profile, scenario, args):
     edit = words["dashboard.network.configure"]
     if scenario == "pending":
         primary, tun = words["terminal.title"], words["dashboard.network.tun"]
@@ -202,7 +213,7 @@ def inspect_network_editors(preview, terminal, output, words, scenario, args):
             terminal.resize(w, h)
             terminal.settle()
             terminal.wait(title)
-            check_network_modal(terminal, title)
+            check_network_modal(terminal, title, profile)
             # Clicking the backdrop and paging the viewport leave the modal in control.
             click_point(terminal, (0, 0))
             terminal.key(b"\x1b[6~")
@@ -471,7 +482,7 @@ def exercise(preview, binary, output, language, profile, scenario, args):
             preview.capture(terminal, output, "tab-revealed-%dx%d" % (width, height), args)
             assert words["dashboard.footer.quit"] in terminal.screen.text().splitlines()[-1], "Quit hint left the footer"
 
-        inspect_network_editors(preview, terminal, output, words, scenario, args)
+        inspect_network_editors(preview, terminal, output, words, profile, scenario, args)
 
         # Read-only page transitions use the card's real mouse target.
         focus_control(terminal, words["dashboard.overview.profilesAction"])

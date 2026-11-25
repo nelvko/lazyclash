@@ -220,21 +220,21 @@ func (m *Model) profileEditorKey(k tea.KeyPressMsg) tea.Cmd {
 func (m *Model) renderProfileEditor(base string) (string, []hitRegion) {
 	w := min(72, m.width)
 	if w < 10 || m.height < 5 {
-		return overlay(base, m.tr("profiles.enlarge"), 0, 0, m.width, m.height), nil
+		return m.renderModalNotice(m.tr("profiles.enlarge"))
 	}
-	inner := w - 4
+	inner := w - 2*modalPaddingX
 	title := m.tr("profile_editor.title", clean(m.profileInfo(m.name).Name))
-	lines := []string{themed(cellCrop(title, inner), text, raised, false)}
+	lines := []string{themed(cellCrop(title, inner), text, modalBackground, false)}
 	if m.busy {
-		lines = append(lines, themed(cellCrop(m.message, inner), muted, raised, false))
+		lines = append(lines, themed(cellCrop(m.message, inner), muted, modalBackground, false))
 	} else {
 		for _, line := range strings.Split(wrapText(clean(m.failure), inner), "\n") {
-			lines = append(lines, themed(cellCrop(line, inner), errorColor, raised, false))
+			lines = append(lines, themed(cellCrop(line, inner), errorColor, modalBackground, false))
 		}
 		// The path also lets the user save a copy in their editor if another
 		// interface has changed the profile and this session can no longer commit.
 		for _, line := range strings.Split(wrapText(m.tr("profile_editor.file", clean(m.profileEditor.path)), inner), "\n") {
-			lines = append(lines, themed(cellCrop(line, inner), muted, raised, false))
+			lines = append(lines, themed(cellCrop(line, inner), muted, modalBackground, false))
 		}
 	}
 	labels := []string{m.tr("profile_editor.continue"), m.tr("profile_editor.retry"), m.tr("profiles.close")}
@@ -245,7 +245,7 @@ func (m *Model) renderProfileEditor(base string) (string, []hitRegion) {
 	if !m.busy {
 		x := 0
 		for i, id := range profileEditorActions {
-			b := renderButton(labels[i], buttonOptions{Surface: raised, Focused: i == m.profileEditor.action, Hovered: m.hover == id, Plain: m.buttonPlain()})
+			b := renderButton(labels[i], buttonOptions{Surface: modalBackground, Focused: i == m.profileEditor.action, Hovered: m.hover == id, Plain: m.buttonPlain()})
 			size := min(inner, ansi.StringWidth(b))
 			if i == 0 || x+size > inner {
 				buttons.lines = append(buttons.lines, "")
@@ -262,14 +262,14 @@ func (m *Model) renderProfileEditor(base string) (string, []hitRegion) {
 	actionsY := 1 + len(lines)
 	lines = append(lines, buttons.lines...)
 	h := min(m.height, 2+len(lines))
-	surface := m.newModalSurface(w, h, raised)
+	surface := m.newModalSurface(w, h)
 	for i, line := range lines {
 		if i+1 < h-1 {
-			surface.put(2, 1+i, cellCrop(line, inner))
+			surface.put(modalPaddingX, 1+i, cellCrop(line, inner))
 		}
 	}
 	for i, hit := range buttons.targets {
-		hit.X += 2
+		hit.X += modalPaddingX
 		hit.Y += actionsY
 		buttons.targets[i] = surface.screen(hit)
 	}

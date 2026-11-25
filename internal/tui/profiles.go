@@ -484,12 +484,12 @@ func (m *Model) renderProfileForm(base string) (string, []hitRegion) {
 	if m.pathForm() {
 		limit = inputImportMaxWidth
 	}
-	boxW, boxH := min(limit+4, m.width), min(12, m.height)
+	boxW, boxH := min(limit+2*modalPaddingX, m.width), min(12, m.height)
 	if m.pathForm() {
 		boxH = min(18, m.height)
 	}
 	if boxW < 24 || boxH < 7 {
-		return overlay("", m.tr("profiles.enlarge"), 0, 0, m.width, m.height), nil
+		return m.renderModalNotice(m.tr("profiles.enlarge"))
 	}
 	title, label, hint := m.tr("profiles.add_subscription"), m.tr("profiles.source_label"), m.tr("profiles.source_hint")
 	if m.form == "source" && !m.rememberSource {
@@ -502,21 +502,21 @@ func (m *Model) renderProfileForm(base string) (string, []hitRegion) {
 		title, label = m.tr("profiles.overrides_title", clean(m.profileInfo(m.name).Name)), m.tr("profiles.overrides_path")
 		hint = m.tr("profiles.overrides_hint")
 	}
-	inner := boxW - 4
-	surface := m.newModalSurface(boxW, boxH, raised)
-	put := func(row int, value string) { surface.put(2, row, cellCrop(value, inner)) }
-	put(1, themed(cellCrop(title, inner), text, raised, false))
+	inner := boxW - 2*modalPaddingX
+	surface := m.newModalSurface(boxW, boxH)
+	put := func(row int, value string) { surface.put(modalPaddingX, row, cellCrop(value, inner)) }
+	put(1, themed(cellCrop(title, inner), text, modalBackground, false))
 	inputRow := 2
 	if boxH >= 11 {
-		put(2, themed(cellCrop(hint, inner), muted, raised, false))
-		put(3, themed(cellCrop(label, inner), muted, raised, false))
+		put(2, themed(cellCrop(hint, inner), muted, modalBackground, false))
+		put(3, themed(cellCrop(label, inner), muted, modalBackground, false))
 		inputRow = 5
 	} else if boxH >= 9 {
-		put(2, themed(cellCrop(label, inner), muted, raised, false))
+		put(2, themed(cellCrop(label, inner), muted, modalBackground, false))
 		inputRow = 3
 	}
-	m.input = prepareInputField(m.input, inputFieldTextWidth(inner, 0, true), raised, m.failure != "")
-	field := renderInputField(m.input, inputFieldOptions{ID: "import-input", ClearID: "import-input.clear", ClearHovered: m.hover == "import-input.clear", ClearFocused: m.focus == "import-input.clear", Width: inner, Surface: raised,
+	m.input = prepareInputField(m.input, inputFieldTextWidth(inner, 0, true), modalBackground, m.failure != "")
+	field := renderInputField(m.input, inputFieldOptions{ID: "import-input", ClearID: "import-input.clear", ClearHovered: m.hover == "import-input.clear", ClearFocused: m.focus == "import-input.clear", Width: inner, Surface: modalBackground,
 		Focused: m.input.Focused(), Hovered: m.hover == "import-input", Invalid: m.failure != "",
 		Disabled: m.busy || m.quitting})
 	for row, line := range field.lines {
@@ -538,11 +538,11 @@ func (m *Model) renderProfileForm(base string) (string, []hitRegion) {
 		}
 	}
 	if m.failure != "" && inputRow+len(field.lines) < boxH-2 {
-		put(boxH-3, themed(cellCrop(m.failure, inner), errorColor, raised, false))
+		put(boxH-3, themed(cellCrop(m.failure, inner), errorColor, modalBackground, false))
 	}
-	put(boxH-2, themed(cellCrop(footer, inner), muted, raised, false))
+	put(boxH-2, themed(cellCrop(footer, inner), muted, modalBackground, false))
 	for i, hit := range field.targets {
-		hit.X += 2
+		hit.X += modalPaddingX
 		hit.Y += inputRow
 		field.targets[i] = surface.screen(hit)
 	}

@@ -107,7 +107,7 @@ func (p pathCompletion) view(width, rows int, locales ...i18n.Localizer) []strin
 		status = locale.T("path.no_matches")
 	}
 	if status != "" {
-		return []string{themed(cellCrop(status, width), muted, raised, false)}
+		return []string{themed(cellCrop(status, width), muted, modalBackground, false)}
 	}
 	count := min(rows, len(p.matches))
 	showCount := rows > 1 && (len(p.matches) > rows || p.limited)
@@ -118,7 +118,7 @@ func (p pathCompletion) view(width, rows int, locales ...i18n.Localizer) []strin
 	lines := make([]string, 0, rows)
 	for i := start; i < min(start+count, len(p.matches)); i++ {
 		match := p.matches[i]
-		prefix, foreground, background := "  ", text, raised
+		prefix, foreground, background := "  ", text, modalBackground
 		if match.directory {
 			foreground = accent
 		}
@@ -132,7 +132,7 @@ func (p pathCompletion) view(width, rows int, locales ...i18n.Localizer) []strin
 		if p.limited {
 			label = locale.T("path.more_entries")
 		}
-		lines = append(lines, themed(cellCrop(label, width), muted, raised, false))
+		lines = append(lines, themed(cellCrop(label, width), muted, modalBackground, false))
 	}
 	return lines
 }

@@ -16,7 +16,7 @@ func (m *Model) networkTUNDocument(width int) (wizardDocument, []wizardButton, s
 		return d, buttons, subtitle
 	}
 	if issue := runtimeControlIssue(s, m.locale); issue != "" {
-		d.line(themed(issue, warning, raised, false))
+		d.line(themed(issue, warning, modalBackground, false))
 		return d, buttons, subtitle
 	}
 
@@ -33,7 +33,7 @@ func (m *Model) networkTUNDocument(width int) (wizardDocument, []wizardButton, s
 	}
 	d.pair(m.tr("network.tunConfig.runtime"), actual)
 	if s.TUNError != "" {
-		d.line(themed(clean(m.locale.Detail(s.TUNError)), warning, raised, false))
+		d.line(themed(clean(m.locale.Detail(s.TUNError)), warning, modalBackground, false))
 	}
 	d.space()
 	check := "[ ] "

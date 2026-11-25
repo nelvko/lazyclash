@@ -64,6 +64,20 @@ func TestProfilesCanvasAcrossSizesAndColors(t *testing.T) {
 	}
 }
 
+func TestProfileFormsShowOnlyResizeNoticeWhenTooShort(t *testing.T) {
+	for _, form := range []string{"profile-create", "profile-settings", "profile-delete", "profile-document", "profile-overrides", "editor-preference", "source"} {
+		t.Run(form, func(t *testing.T) {
+			m := profilesPreview(false)
+			m.form, m.width, m.height = form, 40, 4
+			view, hits := m.renderProfileForm(strings.Repeat("#", m.width))
+			assertCanvas(t, view, m.width, m.height)
+			if strings.TrimSpace(ansi.Strip(view)) != m.tr("profiles.enlarge") || len(hits) != 0 {
+				t.Fatalf("resize notice exposed dashboard content or actions: %q, %+v", ansi.Strip(view), hits)
+			}
+		})
+	}
+}
+
 func TestExportProfilesViews(t *testing.T) {
 	dir := os.Getenv("LAZYCLASH_PROFILES_PREVIEW_DIR")
 	if dir == "" {

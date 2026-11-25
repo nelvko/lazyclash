@@ -99,7 +99,7 @@ func (m *Model) coreUpdateDocument(d wizardDocument) (wizardDocument, []wizardBu
 		}
 		d.line(status)
 		if c.InstalledError != "" {
-			d.line(themed(clean(m.locale.Diagnostic(c.InstalledError, c.InstalledDiagnostic)), errorColor, raised, false))
+			d.line(themed(clean(m.locale.Diagnostic(c.InstalledError, c.InstalledDiagnostic)), errorColor, modalBackground, false))
 		}
 		if c.Status == mihomo.UpdateAvailable && c.Channel == mihomo.ChannelStable {
 			confirmation := m.tr("core_update.confirm_short")
@@ -107,7 +107,7 @@ func (m *Model) coreUpdateDocument(d wizardDocument) (wizardDocument, []wizardBu
 				d.space()
 				confirmation = m.tr("core_update.confirm")
 			}
-			d.line(themed(confirmation, warning, raised, false))
+			d.line(themed(confirmation, warning, modalBackground, false))
 			buttons = append(buttons, wizardButton{"upgrade", m.tr("core_update.upgrade")})
 		}
 		d.space()
@@ -116,7 +116,7 @@ func (m *Model) coreUpdateDocument(d wizardDocument) (wizardDocument, []wizardBu
 	}
 	if w.err != "" {
 		d.space()
-		d.line(themed(clean(w.err), errorColor, raised, false))
+		d.line(themed(clean(w.err), errorColor, modalBackground, false))
 	}
 	d.space()
 	d.control("network", m.tr("wizard.network.title"), w.focus)
@@ -129,13 +129,13 @@ func (m *Model) coreUpgradeResultDocument(d wizardDocument) (wizardDocument, []w
 	w := &m.wizard
 	buttons := []wizardButton{{"done", m.tr("wizard.done")}}
 	if w.err != "" {
-		d.line(themed(m.tr("core_update.failed"), errorColor, raised, false))
+		d.line(themed(m.tr("core_update.failed"), errorColor, modalBackground, false))
 		d.pair(m.tr("wizard.failed_stage"), m.wizardFailedStage(w.failedStage))
-		d.line(themed(clean(w.err), errorColor, raised, false))
+		d.line(themed(clean(w.err), errorColor, modalBackground, false))
 		d.line(m.tr("core_update.retry"))
 		buttons = append(buttons, wizardButton{"check-update", m.tr("core_update.check")})
 	} else {
-		d.line(themed(m.tr("core_update.succeeded"), success, raised, false))
+		d.line(themed(m.tr("core_update.succeeded"), success, modalBackground, false))
 		d.pair(m.tr("wizard.existing_version"), w.upgradeResult.PreviousVersion)
 		d.pair(m.tr("wizard.installed_version"), w.upgradeResult.InstalledVersion)
 		if w.upgradeResult.Restarted {
@@ -146,7 +146,7 @@ func (m *Model) coreUpgradeResultDocument(d wizardDocument) (wizardDocument, []w
 	}
 	if w.refreshError != "" {
 		d.space()
-		d.line(themed(w.refreshError, warning, raised, false))
+		d.line(themed(w.refreshError, warning, modalBackground, false))
 	}
 	if w.details && len(w.logs) > 0 {
 		d.space()

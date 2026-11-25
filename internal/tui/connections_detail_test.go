@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/i18n"
 )
@@ -13,6 +14,7 @@ import (
 func TestConnectionDetailOverlayKeepsListInPlaceAndOwnsInput(t *testing.T) {
 	m := connectionsModel(t, &fakeBackend{})
 	m.width, m.height = 160, 30
+	m.colorProfile = colorprofile.TrueColor
 	m.connections.search.SetValue("host-")
 	for i := range 60 {
 		c := fixtureConnection(fmt.Sprintf("id-%02d", i), fmt.Sprintf("host-%02d.example", i), i)
@@ -32,11 +34,18 @@ func TestConnectionDetailOverlayKeepsListInPlaceAndOwnsInput(t *testing.T) {
 	if m.dashboardOptions().Dim || box.X < m.width/2 || box.Y+box.H != m.height-2 {
 		t.Fatalf("wide inspector should float above an undimmed list at the lower right: %+v", box)
 	}
+	screenRows := strings.Split(ansi.Strip(m.screen), "\n")
+	for _, y := range []int{box.Y, box.Y + box.H - 1} {
+		edge := ansi.Cut(screenRows[y], box.X, box.X+box.W)
+		if ansi.StringWidth(strings.TrimSpace(edge)) != box.W {
+			t.Fatal("the undimmed inspector lost its outline in TrueColor")
+		}
+	}
 	if m.hover != "" || m.pageViews["connections"].focus != "connection.id-12" {
 		t.Fatal("inspector retained the hovered row or overwrote the list's remembered focus")
 	}
 	// The same destination is still visible at the same row on the left.
-	line := strings.Split(ansi.Strip(m.screen), "\n")[row.Y]
+	line := screenRows[row.Y]
 	if !strings.Contains(ansi.Cut(line, 0, box.X), "host-12.example") || !strings.Contains(m.screen, m.tr("connections.details")) {
 		t.Fatal("opening details replaced or displaced the connection list")
 	}

@@ -49,7 +49,7 @@ func TestProfileCreateAlignsFieldsAndPaintsModalSurface(t *testing.T) {
 				cell := screen.CellAt(x, y)
 				if cell.Content == " " {
 					want := cell.Style
-					want.Bg = lipgloss.Color(raised)
+					want.Bg = lipgloss.Color(modalBackground)
 					if !cell.Style.Equal(&want) {
 						t.Fatalf("%s: blank cell at %d,%d lost the modal surface", language, x, y)
 					}

@@ -331,8 +331,10 @@ def exercise_options(terminal, output, name, labels, args):
         terminal.resize(columns, rows)
         settle(terminal)
         terminal.wait(prefix)
-        if not any("›" in line and prefix in line for line in terminal.screen.text().splitlines()):
-            raise AssertionError("Network resize lost acceleration input focus")
+        terminal.key(b"x")
+        terminal.wait(prefix + "x")
+        terminal.key(b"\x7f")
+        terminal.wait_absent(prefix + "x")
         capture(terminal, output, name + "-network-resize-%dx%d" % (columns, rows), args)
     terminal.key(b"\x1b")
     terminal.wait_absent(labels["prefix"])

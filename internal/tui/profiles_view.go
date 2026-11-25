@@ -104,7 +104,7 @@ func (m *Model) profilesToolbar(width int) dashboardBlock {
 		}
 	}
 	if !inline {
-		body.append(m.profileButtons(buttons, width))
+		body.append(m.profileButtons(buttons, width, bg))
 	}
 	return body
 }
@@ -128,11 +128,11 @@ func (m *Model) profileButtonView(b profileButton, surface string) string {
 		Disabled: b.id == "" || m.busy || m.quitting, Plain: b.id != "" && m.buttonPlain()})
 }
 
-func (m *Model) profileButtons(buttons []profileButton, width int) dashboardBlock {
+func (m *Model) profileButtons(buttons []profileButton, width int, surface string) dashboardBlock {
 	body := dashboardBlock{lines: []string{""}}
 	x, y := 0, 0
 	for _, b := range buttons {
-		value := m.profileButtonView(b, bg)
+		value := m.profileButtonView(b, surface)
 		w := min(width, ansi.StringWidth(value))
 		if x > 0 && x+w > width {
 			body.lines = append(body.lines, "")

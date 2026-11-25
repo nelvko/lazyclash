@@ -469,7 +469,7 @@ func (m *Model) portsDocument(width int) (wizardDocument, []wizardButton, string
 			d.line(m.tr("ports.unchanged"))
 			label = m.tr("ports.keep_current")
 		} else if p.plan.Active {
-			d.line(themed(m.tr("ports.restart_warning"), warning, raised, false))
+			d.line(themed(m.tr("ports.restart_warning"), warning, modalBackground, false))
 			d.line(m.tr("ports.restart_boundary"))
 			label = m.tr("ports.apply_restart")
 		} else {
@@ -482,7 +482,7 @@ func (m *Model) portsDocument(width int) (wizardDocument, []wizardButton, string
 		subtitle = m.tr("ports.applying")
 		d.label(m.tr("ports.applying_title"))
 		if p.cancelling {
-			d.line(themed(m.tr("ports.restoring"), warning, raised, false))
+			d.line(themed(m.tr("ports.restoring"), warning, modalBackground, false))
 		} else {
 			d.line(m.spinner.View() + m.tr("ports.updating"))
 		}
@@ -491,7 +491,7 @@ func (m *Model) portsDocument(width int) (wizardDocument, []wizardButton, string
 		subtitle = m.tr("ports.result")
 		buttons = []wizardButton{{"ports.done", m.tr("ports.done")}}
 		if p.applied {
-			d.line(themed(m.tr("ports.applied"), success, raised, false))
+			d.line(themed(m.tr("ports.applied"), success, modalBackground, false))
 			d.pair(m.tr("ports.proxy_port"), strconv.Itoa(p.result.Settings.MixedPort))
 			if p.kind == "" {
 				d.pair(m.tr("ports.controller"), p.result.Controller)
@@ -504,12 +504,12 @@ func (m *Model) portsDocument(width int) (wizardDocument, []wizardButton, string
 				d.line(m.tr("ports.no_restart"))
 			}
 		} else {
-			d.line(themed(m.tr("ports.incomplete"), errorColor, raised, false))
+			d.line(themed(m.tr("ports.incomplete"), errorColor, modalBackground, false))
 			d.line(m.tr("ports.retry_boundary"))
 			buttons = append(buttons, wizardButton{"ports.retry", m.tr("ports.review_retry")})
 		}
 		if p.refreshError != "" {
-			d.line(themed(p.refreshError, warning, raised, false))
+			d.line(themed(p.refreshError, warning, modalBackground, false))
 		}
 	case "load-error":
 		subtitle = m.tr("ports.unavailable")
@@ -517,15 +517,15 @@ func (m *Model) portsDocument(width int) (wizardDocument, []wizardButton, string
 		buttons = append(buttons, wizardButton{"ports.retry", m.tr("ports.retry")})
 	}
 	if p.cancelling && p.step != "applying" {
-		d.line(themed(m.tr("ports.cancelling"), warning, raised, false))
+		d.line(themed(m.tr("ports.cancelling"), warning, modalBackground, false))
 	}
 	return d, buttons, subtitle
 }
 
 func (m *Model) renderPorts(base string) (string, []hitRegion) {
 	p := &m.ports
-	w, h, x, y := m.width, m.height, 0, 0
-	modal := w >= 110 && h >= 30
+	w, h := m.width, m.height
+	modal := m.canFloatDocument()
 	if p.kind != "" {
 		// Network configurations float over the entire dashboard, including
 		// the sidebar. Even the narrow layout keeps a visible gutter.
@@ -533,14 +533,12 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 		preferredWidth := min(66, max(34, w*3/5))
 		if p.kind == "activation" {
 			command := pendingActivationCommand(m.snapshot.TerminalProxy)
-			preferredWidth = max(preferredWidth, min(80, ansi.StringWidth(clean(command))+6))
+			preferredWidth = max(preferredWidth, min(80, ansi.StringWidth(clean(command))+2*modalBodyInset))
 		}
 		w = min(preferredWidth, max(0, w-4))
 		h -= 2
-		x = (m.width - w) / 2
 	} else if modal {
 		w, h = min(78, w-12), h-4
-		x = (m.width - w) / 2
 	}
 	if w < 34 || h < 10 {
 		p.controls = nil
@@ -548,13 +546,15 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 		if m.busy {
 			label = m.tr("ports.compact_busy")
 		}
-		if p.kind != "" {
-			label = cellCrop(label, max(1, m.width-2))
-			return overlay(base, themed(label, text, raised, false), (m.width-ansi.StringWidth(label))/2, m.height/2, m.width, m.height), nil
+		if p.kind == "" {
+			return m.renderModalNotice(label)
 		}
-		return overlay("", themed(cellCrop(label, w), text, raised, false), 0, 0, m.width, m.height), nil
+		label = cellCrop(label, max(1, m.width-2))
+		surface := m.newModalSurface(ansi.StringWidth(label), 1)
+		surface.put(0, 0, label)
+		return surface.render(base), nil
 	}
-	inner := w - 6
+	inner := w - 2*modalBodyInset
 	doc, buttons, subtitle := m.portsDocument(inner)
 	if (p.kind == "tun" || p.kind == "activation") && len(buttons) == 1 {
 		p.focus = buttons[0].ID
@@ -580,7 +580,7 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 		if button.ID == "terminal.copyActivation" {
 			minWidth = max(ansi.StringWidth(m.tr("terminal.activationCopy")), ansi.StringWidth(m.tr("terminal.activationCopyRequested")))
 		}
-		value := renderButton(button.Label, buttonOptions{Kind: kind, Surface: raised, Width: minWidth,
+		value := renderButton(button.Label, buttonOptions{Kind: kind, Surface: modalBackground, Width: minWidth,
 			Focused: p.focus == button.ID, Hovered: m.hover == button.ID,
 			Disabled: blocked && !m.busy, Busy: blocked && m.busy, Plain: m.buttonPlain()})
 		width := min(inner, ansi.StringWidth(value))
@@ -616,14 +616,13 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 		errors = strings.Split(wrapText(p.err, inner), "\n")
 	}
 	// The activation dialog uses the dashboard's key hints. Its fixed footer
-	// only needs the bottom border after the buttons.
+	// needs one row of padding after the buttons.
 	footerInset := 3
 	if p.kind == "activation" {
 		footerInset = 1
 	}
 	if modal {
 		h = min(h, bodyY+len(doc.lines)+len(errors)+len(footer)+footerInset+1)
-		y = (m.height - h) / 2
 	}
 	footerY := h - len(footer) - footerInset
 	// Validation stays next to the fixed actions instead of disappearing below
@@ -632,7 +631,7 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 	errorHeight := min(len(errors), max(1, (footerY-bodyY-1)/2))
 	if len(errors) > errorHeight {
 		doc.space()
-		doc.line(themed(p.err, errorColor, raised, false))
+		doc.line(themed(p.err, errorColor, modalBackground, false))
 		errors = append([]string(nil), errors[:errorHeight]...)
 		errors[len(errors)-1] = cellCrop(errors[len(errors)-1], max(1, inner-2)) + " …"
 	}
@@ -657,60 +656,47 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 		p.reveal = false
 	}
 	p.viewport.SetYOffset(p.viewport.YOffset())
-	rows := make([]string, h)
-	for i := range rows {
-		rows[i] = themed(strings.Repeat(" ", w), text, raised, false)
-	}
-	putRows(rows, 0, 0, themed("┌"+strings.Repeat("─", w-2)+"┐", border, raised, false), w)
-	putRows(rows, 0, h-1, themed("└"+strings.Repeat("─", w-2)+"┘", border, raised, false), w)
-	for i := 1; i < h-1; i++ {
-		putRows(rows, 0, i, themed("│", border, raised, false), w)
-		putRows(rows, w-1, i, themed("│", border, raised, false), w)
-	}
+	surface := m.newModalSurface(w, h)
 	title := "ports.title"
 	if p.kind == "activation" {
 		title = "terminal.activationTitle"
 	} else if p.kind != "" {
 		title = "network." + p.kind + "Config.title"
 	}
-	putRows(rows, 3, 1, themed(cellCrop(m.tr(title), inner), text, raised, false), w)
+	surface.put(modalBodyInset, 1, cellCrop(m.tr(title), inner))
 	if bodyY == 5 {
-		putRows(rows, 3, 2, themed(subtitle, muted, raised, false), w)
-		putRows(rows, 2, 3, themed(strings.Repeat("─", w-4), divider, raised, false), w)
+		surface.put(modalBodyInset, 2, themed(subtitle, muted, modalBackground, false))
+		surface.divider(3)
 	}
 	var hits []hitRegion
 	for i, line := range strings.Split(p.viewport.View(), "\n") {
 		if i >= bodyH {
 			break
 		}
-		putRows(rows, 3, i+bodyY, themed(cellPad(line, inner), text, raised, false), w)
+		surface.put(modalBodyInset, i+bodyY, cellPad(line, inner))
 	}
 	for _, hit := range doc.targets {
-		hit.X, hit.Y = hit.X+3, bodyY+hit.Y-p.viewport.YOffset()
-		if clipped, ok := clipRegion(hit, 3, bodyY, inner, bodyH); ok {
-			clipped.X, clipped.Y = clipped.X+x, clipped.Y+y
-			hits = append(hits, clipped)
+		hit.X, hit.Y = hit.X+modalBodyInset, bodyY+hit.Y-p.viewport.YOffset()
+		if clipped, ok := clipRegion(hit, modalBodyInset, bodyY, inner, bodyH); ok {
+			hits = append(hits, surface.screen(clipped))
 		}
 	}
 	for i, line := range errors {
-		putRows(rows, 3, errorY+i, themed(cellPad(line, inner), errorColor, raised, false), w)
+		surface.put(modalBodyInset, errorY+i, themed(cellPad(line, inner), errorColor, modalBackground, false))
 	}
-	putRows(rows, 2, footerY-1, themed(strings.Repeat("─", w-4), divider, raised, false), w)
+	surface.divider(footerY - 1)
 	for i, value := range footer {
-		putRows(rows, 3, footerY+i, themed(value, text, raised, false), w)
+		surface.put(modalBodyInset, footerY+i, value)
 	}
 	for _, hit := range footerHits {
-		hit.X, hit.Y = hit.X+x+3, hit.Y+y+footerY
-		hits = append(hits, hit)
+		hit.X, hit.Y = hit.X+modalBodyInset, hit.Y+footerY
+		hits = append(hits, surface.screen(hit))
 	}
 	if p.kind != "activation" {
-		putRows(rows, 3, h-2, helpText(cellCrop(m.portsContextHelp(), inner), raised, false), w)
+		surface.put(modalBodyInset, h-2, helpText(cellCrop(m.portsContextHelp(), inner), modalBackground, false))
 	}
 	if len(doc.lines) > bodyH {
-		putRows(rows, w-3, bodyY+bodyH-1, themed("↕", info, raised, false), w)
+		surface.put(w-modalBodyInset, bodyY+bodyH-1, themed("↕", info, modalBackground, false))
 	}
-	if !modal {
-		base = ""
-	}
-	return overlay(base, strings.Join(rows, "\n"), x, y, m.width, m.height), hits
+	return surface.render(base), hits
 }

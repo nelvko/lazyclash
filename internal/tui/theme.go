@@ -21,7 +21,6 @@ const (
 	pageTitleMarker         = "#708ca8"
 	muted                   = "#a9afbc"
 	disabled                = "#7b8896"
-	backdropText            = disabled
 	border                  = "#647382"
 	divider                 = "#444c54"
 	accent                  = "#85b3e0"
@@ -52,10 +51,7 @@ const (
 
 func themed(s, foreground, background string, dimmed bool) string {
 	if dimmed {
-		// A real, opaque backdrop: flatten nested components before rendering
-		// the active modal. No terminal transparency or faint attribute needed.
-		s = ansi.Strip(s)
-		foreground, background = backdropText, sidebarBackground
+		return modalBackdrop(s)
 	}
 	style := lipgloss.NewStyle().Foreground(lipgloss.Color(foreground)).Background(lipgloss.Color(background))
 	// Nested spans reset all SGR attributes. Restore the enclosing surface after

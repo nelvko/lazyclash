@@ -1763,7 +1763,7 @@ func (m *Model) renderLayout() {
 	base, hits, total, notifications := drawDashboard(o)
 	m.notification.overlays = notifications
 	if o.Dim {
-		base = themed(base, backdropText, sidebarBackground, true)
+		base = modalBackdrop(base)
 	}
 	m.total = total
 	m.scroll = min(m.scroll, max(0, total-g.height))
@@ -1818,7 +1818,7 @@ func (m Model) View() tea.View {
 	}
 	// Style the canvas cells only. View's foreground/background properties emit
 	// OSC 10/11 and change the terminal's default palette, which we do not own.
-	view := tea.NewView(terminalTheme(themed(m.screen, text, bg, false), profile))
+	view := tea.NewView(terminalTheme(themed(m.screen, text, m.canvasBackground(), false), profile))
 	view.AltScreen = true
 	view.MouseMode = tea.MouseModeAllMotion
 	view.Cursor = m.inputCursor()

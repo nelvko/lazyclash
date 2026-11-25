@@ -37,7 +37,7 @@ func (m *Model) searchField(id, placeholder string, input textinput.Model, width
 func (m *Model) searchToolbar(id, placeholder string, input textinput.Model, controls dashboardBlock, width int, invalid bool) dashboardBlock {
 	surface := bg
 	if id == "providers.search" {
-		surface = raised
+		surface = modalBackground
 	}
 	input.Placeholder = placeholder
 	clearID := searchClearID(id)

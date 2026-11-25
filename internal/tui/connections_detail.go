@@ -88,15 +88,15 @@ func (m *Model) connectionDetailLines(width int, active bool) []string {
 		}
 	}
 	lines := strings.Split(wrapText(connectionDestination(c), width), "\n")
-	lines = append(lines, strings.Split(wrapText(themed(status, statusColor, panel, false), width), "\n")...)
+	lines = append(lines, strings.Split(wrapText(themed(status, statusColor, inspectorBackground, false), width), "\n")...)
 	if m.failure != "" && m.notification.operation.Key == notificationKey("connection.close", c.ID) {
-		lines = append(lines, strings.Split(wrapText(themed(clean(m.failure), errorColor, panel, false), width), "\n")...)
+		lines = append(lines, strings.Split(wrapText(themed(clean(m.failure), errorColor, inspectorBackground, false), width), "\n")...)
 	}
 	lines = append(lines, "")
 	labelWidth := max(ansi.StringWidth(tr("connections.network_inbound")), ansi.StringWidth(tr("connections.closed_observed")))
 	field := func(key, value string) {
 		if width-labelWidth < 10 {
-			lines = append(lines, strings.Split(wrapText(themed(tr(key), muted, panel, false), width), "\n")...)
+			lines = append(lines, strings.Split(wrapText(themed(tr(key), muted, inspectorBackground, false), width), "\n")...)
 			lines = append(lines, strings.Split(wrapText(connectionValue(value), width), "\n")...)
 			return
 		}
@@ -105,7 +105,7 @@ func (m *Model) connectionDetailLines(width int, active bool) []string {
 			if i != 0 {
 				label = strings.Repeat(" ", labelWidth)
 			}
-			lines = append(lines, themed(label, muted, panel, false)+"  "+part)
+			lines = append(lines, themed(label, muted, inspectorBackground, false)+"  "+part)
 		}
 	}
 	md := c.Metadata
@@ -121,7 +121,7 @@ func (m *Model) connectionDetailLines(width int, active bool) []string {
 	field("connections.download_total", formatBytes(c.Download))
 	field("connections.upload_total", formatBytes(c.Upload))
 	if m.connections.detailHistorical {
-		lines = append(lines, strings.Split(wrapText(themed(tr("connections.archived_hint"), muted, panel, false), width), "\n")...)
+		lines = append(lines, strings.Split(wrapText(themed(tr("connections.archived_hint"), muted, inspectorBackground, false), width), "\n")...)
 	}
 	lines = append(lines, "")
 	field("connections.duration", connectionDuration(c, now))
@@ -157,12 +157,12 @@ func (m *Model) renderConnectionDetail(base string) (string, []hitRegion) {
 	}
 	if w < 18 || m.height < 9 {
 		m.focus = "conn.back"
-		body := themed(cellPad("×", w), text, panel, false)
-		y := m.height / 2
-		m.connections.detailBounds = hitRegion{X: x, Y: y, W: w, H: 1}
-		return overlay(base, body, x, y, m.width, m.height), []hitRegion{{ID: "conn.back", X: x, Y: y, W: w, H: 1}}
+		surface := m.newInspectorSurface(hitRegion{X: x, Y: m.height / 2, W: w, H: 1})
+		m.connections.detailBounds = surface.bounds
+		surface.put(0, 0, "×")
+		return surface.render(base), []hitRegion{surface.screen(hitRegion{ID: "conn.back", W: w, H: 1})}
 	}
-	inner := w - 4
+	inner := w - 2*modalPaddingX
 	document := m.connectionDetailLines(inner, active)
 	// Six rows frame the scrolling fields: borders, title, separator,
 	// and a fixed action row with one row of breathing room.
@@ -171,21 +171,24 @@ func (m *Model) renderConnectionDetail(base string) (string, []hitRegion) {
 	if wide {
 		y = m.height - h - 2
 	}
-	m.connections.detailBounds = hitRegion{X: x, Y: y, W: w, H: h}
+	surface := m.newInspectorSurface(hitRegion{X: x, Y: y, W: w, H: h})
+	m.connections.detailBounds = surface.bounds
 	v.SetWidth(inner)
 	v.SetHeight(h - 6)
 	v.SetContentLines(document)
 	button := func(id, label string, kind buttonKind) string {
-		return renderButton(label, buttonOptions{Kind: kind, Surface: panel, Compact: true,
+		return renderButton(label, buttonOptions{Kind: kind, Surface: inspectorBackground, Compact: true,
 			Focused: m.focus == id, Hovered: m.hover == id, Plain: m.buttonPlain()})
 	}
 	closeButton := button("conn.back", "×", buttonText)
 	closeWidth := ansi.StringWidth(closeButton)
 	heading := cellPad(m.tr("connections.details"), inner-closeWidth) + closeButton
-	rows := []string{heading, themed(strings.Repeat("─", inner), divider, panel, false)}
-	rows = append(rows, strings.Split(v.View(), "\n")...)
-	rows = append(rows, "")
-	hits := []hitRegion{{ID: "conn.back", X: x + w - 2 - closeWidth, Y: y + 1, W: closeWidth, H: 1}}
+	surface.put(modalPaddingX, 1, heading)
+	surface.divider(2)
+	for i, line := range strings.Split(v.View(), "\n") {
+		surface.put(modalPaddingX, 3+i, cellCrop(line, inner))
+	}
+	hits := []hitRegion{surface.screen(hitRegion{ID: "conn.back", X: w - modalPaddingX - closeWidth, Y: 1, W: closeWidth, H: 1})}
 	arrow := ""
 	if !v.AtTop() || !v.AtBottom() {
 		arrow = "↓"
@@ -199,9 +202,8 @@ func (m *Model) renderConnectionDetail(base string) (string, []hitRegion) {
 	footer := ""
 	if m.canCloseDetail() {
 		footer = button("conn.close", m.tr("connections.close"), buttonDanger)
-		hits = append(hits, hitRegion{ID: "conn.close", X: x + 2, Y: y + h - 2, W: min(footerWidth, ansi.StringWidth(footer)), H: 1})
+		hits = append(hits, surface.screen(hitRegion{ID: "conn.close", X: modalPaddingX, Y: h - 2, W: min(footerWidth, ansi.StringWidth(footer)), H: 1}))
 	}
-	rows = append(rows, cellPad(footer, footerWidth)+themed(arrow, muted, panel, false))
-	box := panelFrame(rows, w, h, dashboardOptions{}, border)
-	return overlay(base, strings.Join(box, "\n"), x, y, m.width, m.height), hits
+	surface.put(modalPaddingX, h-2, cellPad(footer, footerWidth)+themed(arrow, muted, inspectorBackground, false))
+	return surface.render(base), hits
 }

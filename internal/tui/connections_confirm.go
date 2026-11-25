@@ -8,9 +8,9 @@ import (
 
 func (m *Model) renderConnectionsCloseAll(base string) (string, []hitRegion) {
 	width := min(64, max(1, m.width-2))
-	inner := max(1, width-4)
+	inner := max(1, width-2*modalPaddingX)
 	button := func(id, label string, kind buttonKind) string {
-		return renderButton(label, buttonOptions{Kind: kind, Surface: panel, Compact: true,
+		return renderButton(label, buttonOptions{Kind: kind, Surface: modalBackground, Compact: true,
 			Focused: m.focus == id, Hovered: m.hover == id, Plain: m.buttonPlain()})
 	}
 	cancel := button("conn.cancel", m.tr("connections.cancel"), buttonSecondary)
@@ -22,17 +22,19 @@ func (m *Model) renderConnectionsCloseAll(base string) (string, []hitRegion) {
 	rows = append(rows, "")
 	height := len(rows) + 3
 	if height > m.height || ansi.StringWidth(actions) > inner {
-		notice := themed(cellPad(m.tr("profiles.enlarge"), width), text, panel, false)
-		return overlay(base, notice, (m.width-width)/2, m.height/2, m.width, m.height), nil
+		surface := m.newModalSurface(width, 1)
+		surface.put(0, 0, cellCrop(m.tr("profiles.enlarge"), width))
+		return surface.render(base), nil
 	}
-	left := inner - ansi.StringWidth(actions)
-	rows = append(rows, strings.Repeat(" ", left)+actions)
-	box := panelFrame(rows, width, height, dashboardOptions{}, border)
-	x, y := (m.width-width)/2, (m.height-height)/2
-	actionX, actionY := x+2+left, y+height-2
+	surface := m.newModalSurface(width, height)
+	for i, line := range rows {
+		surface.put(modalPaddingX, 1+i, line)
+	}
+	actionX, actionY := modalPaddingX+inner-ansi.StringWidth(actions), height-2
+	surface.put(actionX, actionY, actions)
 	hits := []hitRegion{
-		{ID: "conn.cancel", X: actionX, Y: actionY, W: ansi.StringWidth(cancel), H: 1},
-		{ID: "conn.confirm", X: actionX + ansi.StringWidth(cancel) + 1, Y: actionY, W: ansi.StringWidth(confirm), H: 1},
+		surface.screen(hitRegion{ID: "conn.cancel", X: actionX, Y: actionY, W: ansi.StringWidth(cancel), H: 1}),
+		surface.screen(hitRegion{ID: "conn.confirm", X: actionX + ansi.StringWidth(cancel) + 1, Y: actionY, W: ansi.StringWidth(confirm), H: 1}),
 	}
-	return overlay(base, strings.Join(box, "\n"), x, y, m.width, m.height), hits
+	return surface.render(base), hits
 }

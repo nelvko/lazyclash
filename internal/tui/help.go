@@ -82,7 +82,7 @@ func (m *Model) helpKey(k tea.KeyPressMsg) tea.Cmd {
 	case "home":
 		m.helpScroll = 0
 	case "end":
-		m.helpScroll = len(m.helpLines(max(1, min(82, m.width)-6)))
+		m.helpScroll = len(m.helpLines(max(1, min(82, m.width)-2*modalBodyInset)))
 	}
 	return nil
 }
@@ -112,63 +112,50 @@ func (m *Model) helpMouse(event tea.MouseMsg) tea.Cmd {
 func (m *Model) renderHelp(base string) (string, []hitRegion) {
 	tr := m.tr
 	w, h := min(82, m.width), min(28, m.height)
-	x, y := (m.width-w)/2, (m.height-h)/2
 	button := func(id, label string, width int) string {
 		label = strings.Trim(label, "[] ")
 		return cellCrop(renderButton(cellCrop(label, max(1, width-4)), buttonOptions{
-			Kind: buttonText, Surface: raised, Focused: m.keyHints.helpFocus == id || id == "help.close" && m.keyHints.helpFocus == "", Hovered: m.hover == id, Plain: m.buttonPlain(),
+			Kind: buttonText, Surface: modalBackground, Focused: m.keyHints.helpFocus == id || id == "help.close" && m.keyHints.helpFocus == "", Hovered: m.hover == id, Plain: m.buttonPlain(),
 		}), width)
 	}
 	if w < 26 || h < 8 {
-		rows := make([]string, max(1, m.height))
-		for i := range rows {
-			rows[i] = themed(strings.Repeat(" ", max(0, m.width)), text, raised, false)
-		}
 		if m.width < 1 || m.height < 1 {
 			return "", nil
 		}
-		putRows(rows, 0, 0, themed(cellCrop(tr("help.small"), m.width), text, raised, false), m.width)
+		surface := m.newModalSurface(m.width, m.height)
+		surface.put(0, 0, cellCrop(tr("help.small"), m.width))
 		label := button("help.close", tr("help.close"), m.width)
 		if ansi.StringWidth(label) == 0 {
 			label = "×"
 		}
-		putRows(rows, 0, m.height-1, label, m.width)
+		surface.put(0, m.height-1, label)
 		hits := []hitRegion{{ID: "help.close", X: 0, Y: m.height - 1, W: max(1, ansi.StringWidth(label)), H: 1}}
 		if m.height >= 3 {
 			label = button("key-hints.toggle", m.keyHintsLabel(), m.width)
-			putRows(rows, 0, m.height-2, label, m.width)
+			surface.put(0, m.height-2, label)
 			hits = append(hits, hitRegion{ID: "key-hints.toggle", X: 0, Y: m.height - 2, W: max(1, ansi.StringWidth(label)), H: 1})
 		}
-		return strings.Join(rows, "\n"), hits
+		return surface.render(base), hits
 	}
-	inner, visible := w-6, h-7
+	inner, visible := w-2*modalBodyInset, h-7
 	lines := m.helpLines(inner)
 	m.helpScroll = min(max(0, m.helpScroll), max(0, len(lines)-visible))
-	rows := make([]string, h)
-	for i := range rows {
-		rows[i] = themed(strings.Repeat(" ", w), text, raised, false)
-	}
-	putRows(rows, 0, 0, themed("┌"+strings.Repeat("─", w-2)+"┐", border, raised, false), w)
-	putRows(rows, 0, h-1, themed("└"+strings.Repeat("─", w-2)+"┘", border, raised, false), w)
-	for i := 1; i < h-1; i++ {
-		putRows(rows, 0, i, themed("│", border, raised, false), w)
-		putRows(rows, w-1, i, themed("│", border, raised, false), w)
-	}
-	putRows(rows, 3, 1, themed(tr("help.title", pageTitle(m.page, m.locale)), text, raised, false), w)
+	surface := m.newModalSurface(w, h)
+	surface.put(modalBodyInset, 1, cellCrop(tr("help.title", pageTitle(m.page, m.locale)), inner))
 	toggle := button("key-hints.toggle", m.keyHintsLabel(), inner)
-	putRows(rows, 3, 2, toggle, w)
+	surface.put(modalBodyInset, 2, toggle)
 	for i := 0; i < visible && i+m.helpScroll < len(lines); i++ {
-		putRows(rows, 3, i+4, themed(cellPad(lines[i+m.helpScroll], inner), text, raised, false), w)
+		surface.put(modalBodyInset, i+4, lines[i+m.helpScroll])
 	}
 	label := button("help.close", tr("help.close"), inner)
-	putRows(rows, 3, h-2, label, w)
-	footerX := 3 + ansi.StringWidth(label) + 3
-	if footerX < w-3 {
-		putRows(rows, footerX, h-2, helpText(cellCrop(tr("help.footer"), w-footerX-3), raised, false), w)
+	surface.put(modalBodyInset, h-2, label)
+	footerX := modalBodyInset + ansi.StringWidth(label) + 3
+	if footerX < w-modalBodyInset {
+		surface.put(footerX, h-2, helpText(cellCrop(tr("help.footer"), w-footerX-modalBodyInset), modalBackground, false))
 	}
-	return overlay(base, strings.Join(rows, "\n"), x, y, m.width, m.height), []hitRegion{
-		{ID: "help.close", X: x + 3, Y: y + h - 2, W: ansi.StringWidth(label), H: 1},
-		{ID: "key-hints.toggle", X: x + 3, Y: y + 2, W: ansi.StringWidth(toggle), H: 1},
+	return surface.render(base), []hitRegion{
+		surface.screen(hitRegion{ID: "help.close", X: modalBodyInset, Y: h - 2, W: ansi.StringWidth(label), H: 1}),
+		surface.screen(hitRegion{ID: "key-hints.toggle", X: modalBodyInset, Y: 2, W: ansi.StringWidth(toggle), H: 1}),
 	}
 }
 

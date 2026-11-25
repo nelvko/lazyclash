@@ -103,12 +103,12 @@ func (m *Model) profileDeleteKey(k tea.KeyPressMsg) tea.Cmd {
 }
 
 func (m *Model) renderProfileDeleteForm(base string) (string, []hitRegion) {
-	width := min(inputFieldMaxWidth+4, m.width)
+	width := min(inputFieldMaxWidth+2*modalPaddingX, m.width)
 	if width < 24 || m.height < 7 {
-		return overlay("", m.tr("profiles.enlarge"), 0, 0, m.width, m.height), nil
+		return m.renderModalNotice(m.tr("profiles.enlarge"))
 	}
 
-	inner := width - 4
+	inner := width - 2*modalPaddingX
 	active := m.profilesUI.deleteCurrent
 	valid := slices.Contains(m.profiles(), m.name) && active == m.canUseDefaultFrom(m.name)
 	hint, confirm := m.tr("profiles.delete_hint"), m.tr("profiles.delete_confirm")
@@ -150,7 +150,7 @@ func (m *Model) renderProfileDeleteForm(base string) (string, []hitRegion) {
 		{deleteConfirm, confirm, buttonDangerConfirm, valid},
 	} {
 		enabled := b.enabled && !m.busy && !m.quitting
-		value := renderButton(b.label, buttonOptions{Kind: b.kind, Surface: raised, Focused: m.profilesUI.deleteFocus == b.id, Hovered: m.hover == b.id, Disabled: !enabled, Plain: m.buttonPlain()})
+		value := renderButton(b.label, buttonOptions{Kind: b.kind, Surface: modalBackground, Focused: m.profilesUI.deleteFocus == b.id, Hovered: m.hover == b.id, Disabled: !enabled, Plain: m.buttonPlain()})
 		row := len(buttons.lines) - 1
 		x := ansi.StringWidth(buttons.lines[row])
 		if x > 0 && x+ansi.StringWidth(value) > inner {
@@ -172,27 +172,27 @@ func (m *Model) renderProfileDeleteForm(base string) (string, []hitRegion) {
 		// An active deletion changes routing. Its consequences must fit before
 		// confirmation is offered, including when a terminal is resized.
 		if height > m.height {
-			return overlay("", m.tr("profiles.enlarge"), 0, 0, m.width, m.height), nil
+			return m.renderModalNotice(m.tr("profiles.enlarge"))
 		}
 	}
-	surface := m.newModalSurface(width, height, raised)
-	put := func(row int, value string) { surface.put(2, row, cellCrop(value, inner)) }
-	put(1, themed(cellCrop(title, inner), text, raised, false))
+	surface := m.newModalSurface(width, height)
+	put := func(row int, value string) { surface.put(modalPaddingX, row, cellCrop(value, inner)) }
+	put(1, themed(cellCrop(title, inner), text, modalBackground, false))
 	buttonRow := height - 2 - len(buttons.lines)
 	for i, line := range lines {
 		if 2+i >= buttonRow {
 			break
 		}
-		put(2+i, themed(line, muted, raised, false))
+		put(2+i, themed(line, muted, modalBackground, false))
 	}
 	var hits []hitRegion
 	if len(choice.Items) > 0 {
 		row := buttonRow - 1
-		o := buttonOptions{Surface: raised, Focused: m.profilesUI.deleteFocus == deleteChoice, Hovered: m.hover == deleteChoice, Disabled: m.busy || m.quitting, Plain: m.buttonPlain()}
+		o := buttonOptions{Surface: modalBackground, Focused: m.profilesUI.deleteFocus == deleteChoice, Hovered: m.hover == deleteChoice, Disabled: m.busy || m.quitting, Plain: m.buttonPlain()}
 		value, hit := choice.render(deleteChoice, o, m.menu.dropdownOpen(deleteChoice), inner)
 		put(row, value)
 		if !o.Disabled {
-			hit.X += 2
+			hit.X += modalPaddingX
 			hit.Y += row
 			hits = append(hits, surface.screen(hit))
 		}
@@ -201,10 +201,10 @@ func (m *Model) renderProfileDeleteForm(base string) (string, []hitRegion) {
 		put(buttonRow+i, line)
 	}
 	for _, hit := range buttons.targets {
-		hit.X += 2
+		hit.X += modalPaddingX
 		hit.Y += buttonRow
 		hits = append(hits, surface.screen(hit))
 	}
-	put(height-2, themed(cellCrop(m.profileDeleteContextHelp(), inner), muted, raised, false))
+	put(height-2, themed(cellCrop(m.profileDeleteContextHelp(), inner), muted, modalBackground, false))
 	return surface.render(base), hits
 }

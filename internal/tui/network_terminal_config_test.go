@@ -142,22 +142,21 @@ func TestNetworkConfigFloatsCenteredWithVisibleBackground(t *testing.T) {
 		for _, size := range [][2]int{{160, 45}, {120, 32}, {80, 24}, {40, 16}} {
 			w, h := size[0], size[1]
 			m.width, m.height = w, h
-			base := strings.TrimSuffix(strings.Repeat(strings.Repeat(".", w)+"\n", h), "\n")
+			backgroundRow := strings.Repeat(".", w)
+			base := strings.TrimSuffix(strings.Repeat(backgroundRow+"\n", h), "\n")
 			screen, targets := m.renderPorts(base)
 			lines := strings.Split(ansi.Strip(screen), "\n")
 			top, bottom, left, right := -1, -1, -1, -1
 			for y, line := range lines {
-				if before, after, ok := strings.Cut(line, "┌"); ok {
-					top, left = y, ansi.StringWidth(before)
-					_, padding, found := strings.Cut(after, "┐")
-					if !found {
-						t.Fatal("missing dialog corner")
-					}
-					right = ansi.StringWidth(padding)
+				if line == backgroundRow {
+					continue
 				}
-				if strings.Contains(line, "└") {
-					bottom = h - y - 1
+				if top == -1 {
+					top = y
+					left = len(line) - len(strings.TrimLeft(line, "."))
+					right = len(line) - len(strings.TrimRight(line, "."))
 				}
+				bottom = h - y - 1
 			}
 			if left < 1 || top < 1 || right-left < 0 || right-left > 1 || bottom-top < 0 || bottom-top > 1 || lines[0] != strings.Repeat(".", w) {
 				t.Fatalf("%s in %dx%d has incorrect margins L%d R%d T%d B%d\n%s", kind, w, h, left, right, top, bottom, strings.Join(lines, "\n"))

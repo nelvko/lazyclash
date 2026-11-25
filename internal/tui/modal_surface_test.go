@@ -27,7 +27,7 @@ func TestModalSurfaceUsesPaddingForLowColorOutline(t *testing.T) {
 			m := Model{width: 19, height: 9, colorProfile: mode.profile, noColor: mode.noColor}
 			for _, size := range [][2]int{{11, 5}, {19, 5}, {11, 9}, {19, 9}} {
 				w, h := size[0], size[1]
-				s := m.newModalSurface(w, h, raised)
+				s := m.newModalSurface(w, h)
 				s.put(2, 1, "按钮")
 				hit := s.screen(hitRegion{ID: "action", X: 2, Y: 1, W: 4, H: 1})
 				x, y := (m.width-w)/2, (m.height-h)/2
@@ -58,7 +58,7 @@ func TestModalSurfaceUsesPaddingForLowColorOutline(t *testing.T) {
 
 func TestModalSurfaceRestoresBackgroundBetweenControls(t *testing.T) {
 	m := Model{width: 24, height: 8, colorProfile: colorprofile.TrueColor}
-	s := m.newModalSurface(16, 4, raised)
+	s := m.newModalSurface(16, 4)
 	action := themed("按钮", text, primaryButtonBackground, false)
 	s.put(2, 1, action+"  "+action)
 	screen := uv.NewScreenBuffer(m.width, m.height)
@@ -72,6 +72,22 @@ func TestModalSurfaceRestoresBackgroundBetweenControls(t *testing.T) {
 		style.Bg = lipgloss.Color(sample.want)
 		if !cell.Style.Equal(&style) {
 			t.Fatalf("cell at local column %d lost its %s background", sample.x, sample.want)
+		}
+	}
+}
+
+func TestModalBackdropFillsPartialWideCellsAtBothEdges(t *testing.T) {
+	m := Model{width: 10, height: 3, helpOpen: true, colorProfile: colorprofile.TrueColor}
+	base := modalBackdrop(strings.Repeat("中文中文中\n", 2) + "中文中文中")
+	m.screen = m.newModalSurface(4, 1).render(base) // Starts and ends halfway through a wide glyph.
+	screen := uv.NewScreenBuffer(m.width, m.height)
+	uv.NewStyledString(m.View().Content).Draw(screen, screen.Bounds())
+	for _, x := range []int{2, 7} {
+		cell := screen.CellAt(x, 1)
+		style := cell.Style
+		style.Bg = lipgloss.Color(backdropBackground)
+		if cell.Content != " " || !cell.Style.Equal(&style) {
+			t.Fatalf("column %d exposed a cell outside the modal: %+v", x, cell)
 		}
 	}
 }

@@ -32,7 +32,7 @@ func TestActionButtonGroupsKeepOneCellBeforeFocusAndNoneAfter(t *testing.T) {
 				}},
 				{"profile-actions", "profiles.rename.1", "profiles.delete.1", func(m *Model) (string, []hitRegion) {
 					m.focus = "profiles.delete.1"
-					b := m.profileButtons([]profileButton{{"profiles.rename.1", m.tr("profiles.rename"), false}, {"profiles.delete.1", m.tr("profiles.delete"), false}}, 120)
+					b := m.profileButtons([]profileButton{{"profiles.rename.1", m.tr("profiles.rename"), false}, {"profiles.delete.1", m.tr("profiles.delete"), false}}, 120, bg)
 					return strings.Join(b.lines, "\n"), b.targets
 				}},
 				{"profile-create", "profile-create.save", "profile-create.cancel", func(m *Model) (string, []hitRegion) {

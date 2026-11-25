@@ -9,24 +9,24 @@ import (
 
 func (m *Model) renderProfileCreateForm(base string) (string, []hitRegion) {
 	settings := m.form == "profile-settings"
-	width, height := min(inputFieldMaxWidth+4, m.width-4), m.height-2
+	width, height := min(inputFieldMaxWidth+2*modalPaddingX, m.width-4), m.height-2
 	if settings {
-		width, height = min(inputImportMaxWidth+4, m.width), min(32, height)
+		width, height = min(inputImportMaxWidth+2*modalPaddingX, m.width), min(32, height)
 	}
 	if width < 26 || height < 12 {
-		return overlay(base, m.tr("profiles.enlarge"), 0, 0, m.width, m.height), nil
+		return m.renderModalNotice(m.tr("profiles.enlarge"))
 	}
-	inner := width - 4
+	inner := width - 2*modalPaddingX
 	title := m.tr("profiles.create_title")
 	if settings {
 		title = m.tr("profile_settings.title", clean(m.profileInfo(m.name).Name))
 	}
-	header := themed(lipgloss.NewStyle().Bold(true).Render(cellCrop(title, inner)), text, raised, false)
+	header := themed(lipgloss.NewStyle().Bold(true).Render(cellCrop(title, inner)), text, modalBackground, false)
 	bodyY := 2
 	if !settings {
 		hint := m.tr("profiles.create_hint")
 		if ansi.StringWidth(header)+2+ansi.StringWidth(hint) <= inner {
-			header = cellPad(header, inner-ansi.StringWidth(hint)) + themed(hint, muted, raised, false)
+			header = cellPad(header, inner-ansi.StringWidth(hint)) + themed(hint, muted, modalBackground, false)
 		}
 		if height >= 18 {
 			bodyY++
@@ -40,8 +40,8 @@ func (m *Model) renderProfileCreateForm(base string) (string, []hitRegion) {
 		bodyH = len(body.lines)
 		height = bodyY + bodyH + len(footer.lines) + 2
 	}
-	surface := m.newModalSurface(width, height, raised)
-	put := func(row int, line string) { surface.put(2, row, cellCrop(line, inner)) }
+	surface := m.newModalSurface(width, height)
+	put := func(row int, line string) { surface.put(modalPaddingX, row, cellCrop(line, inner)) }
 	put(1, header)
 	for i, line := range body.lines[scroll:min(scroll+bodyH, len(body.lines))] {
 		put(bodyY+i, line)
@@ -49,7 +49,7 @@ func (m *Model) renderProfileCreateForm(base string) (string, []hitRegion) {
 	var targets []hitRegion
 	for _, hit := range body.targets {
 		if hit, ok := clipRegion(hit, 0, scroll, inner, bodyH); ok {
-			hit.X += 2
+			hit.X += modalPaddingX
 			hit.Y += bodyY - scroll
 			targets = append(targets, surface.screen(hit))
 		}
@@ -59,7 +59,7 @@ func (m *Model) renderProfileCreateForm(base string) (string, []hitRegion) {
 		put(footerY+i, line)
 	}
 	for _, hit := range footer.targets {
-		hit.X += 2
+		hit.X += modalPaddingX
 		hit.Y += footerY
 		targets = append(targets, surface.screen(hit))
 	}
@@ -89,19 +89,19 @@ func (m *Model) profileFormField(field, width int) dashboardBlock {
 	if m.focus == id {
 		color = text
 	}
-	heading := themed(m.tr(label), color, raised, false)
+	heading := themed(m.tr(label), color, modalBackground, false)
 	if m.form == "profile-create" && field == profileCreateSource && strings.TrimSpace(m.profileCreate.source.Value()) != "" {
 		kind := m.tr("profiles.create_local")
 		if m.profileCreate.remoteSource() {
 			kind = m.tr("profiles.create_remote")
 		}
 		if ansi.StringWidth(heading)+2+ansi.StringWidth(kind) <= width {
-			heading = cellPad(heading, width-ansi.StringWidth(kind)) + themed(kind, muted, raised, false)
+			heading = cellPad(heading, width-ansi.StringWidth(kind)) + themed(kind, muted, modalBackground, false)
 		}
 	}
 	block := dashboardBlock{lines: []string{heading}}
 	block.append(renderInputField(*m.profileCreate.input(field), inputFieldOptions{
-		ID: id, ClearID: id + ".clear", Width: width, Surface: raised,
+		ID: id, ClearID: id + ".clear", Width: width, Surface: modalBackground,
 		Focused: m.focus == id, Hovered: m.hover == id, Invalid: m.failure != "" && m.focus == id,
 		Disabled: m.busy || m.quitting, ClearHovered: m.hover == id+".clear", ClearFocused: m.focus == id+".clear",
 	}))
@@ -179,13 +179,13 @@ func (m *Model) profileSettingsBody(rows []dashboardBlock, width, height int) (d
 		}
 	}
 	for _, line := range m.settingsInfoLines(m.profileInfo(m.name)) {
-		body.lines = append(body.lines, themed(cellCrop(line, width), muted, raised, false))
+		body.lines = append(body.lines, themed(cellCrop(line, width), muted, modalBackground, false))
 	}
 	buttons := []profileButton{{"profile-settings.overrides", m.tr("profile_settings.import"), false}}
 	if m.canUseDefaultFrom(m.name) {
 		buttons = append(buttons, profileButton{"profile-settings.deactivate", m.tr("profile_settings.deactivate"), false})
 	}
-	body.append(m.profileButtons(buttons, width))
+	body.append(m.profileButtons(buttons, width, modalBackground))
 	if focusEnd == 0 {
 		focusEnd = len(body.lines)
 	}
@@ -207,28 +207,28 @@ func (m *Model) profileFormFooter(width int) dashboardBlock {
 	} else if m.profileCreate.field == profileCreateSource {
 		hint = m.tr("profiles.create_source_keys")
 	}
-	saveButton := renderButton(save, buttonOptions{Kind: buttonPrimary, Surface: raised,
+	saveButton := renderButton(save, buttonOptions{Kind: buttonPrimary, Surface: modalBackground,
 		Focused: m.focus == "profile-create.save", Hovered: m.hover == "profile-create.save",
 		Busy: m.busy, Disabled: m.quitting, Plain: m.buttonPlain()})
-	cancelButton := renderButton(m.tr("profiles.create_cancel"), buttonOptions{Surface: raised,
+	cancelButton := renderButton(m.tr("profiles.create_cancel"), buttonOptions{Surface: modalBackground,
 		Focused: m.focus == "profile-create.cancel", Hovered: m.hover == "profile-create.cancel",
 		Disabled: m.busy || m.quitting, Plain: m.buttonPlain()})
 	feedback := ""
 	if m.failure != "" {
-		feedback = themed(m.failure, errorColor, raised, false)
+		feedback = themed(m.failure, errorColor, modalBackground, false)
 	} else if m.busy {
-		feedback = themed(m.spinner.View()+" "+m.message, accent, raised, false)
+		feedback = themed(m.spinner.View()+" "+m.message, accent, modalBackground, false)
 	}
 
 	var footer dashboardBlock
 	saveW, cancelW := ansi.StringWidth(saveButton), ansi.StringWidth(cancelButton)
 	saveX, cancelX, buttonY := cancelW, 0, 0
 	if settings {
-		footer.lines = []string{cancelButton + saveButton, themed(hint, muted, raised, false), feedback}
+		footer.lines = []string{cancelButton + saveButton, themed(hint, muted, modalBackground, false), feedback}
 	} else {
 		saveX = width - saveW - cancelW
 		cancelX = saveX + saveW
-		prompt := themed(cellCrop(hint, width), muted, raised, false)
+		prompt := themed(cellCrop(hint, width), muted, modalBackground, false)
 		if feedback != "" {
 			prompt = cellCrop(feedback, width)
 		}

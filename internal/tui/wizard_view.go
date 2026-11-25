@@ -52,7 +52,7 @@ func (d *wizardDocument) line(s string) {
 }
 func (d *wizardDocument) space() { d.lines = append(d.lines, "") }
 func (d *wizardDocument) label(s string) {
-	d.line(themed(lipgloss.NewStyle().Bold(true).Render(s), text, raised, false))
+	d.line(themed(lipgloss.NewStyle().Bold(true).Render(s), text, modalBackground, false))
 }
 func (d *wizardDocument) control(id, label, focused string) {
 	blocked := d.disabled != nil && d.disabled(id)
@@ -62,7 +62,7 @@ func (d *wizardDocument) control(id, label, focused string) {
 			kind = buttonText
 		}
 		value := renderButton(label, buttonOptions{
-			Kind: kind, Surface: raised, Focused: id == focused, Hovered: id == d.hover,
+			Kind: kind, Surface: modalBackground, Focused: id == focused, Hovered: id == d.hover,
 			Disabled: blocked && !d.busy, Busy: blocked && d.busy, Plain: d.plain,
 		})
 		y := len(d.lines)
@@ -73,13 +73,13 @@ func (d *wizardDocument) control(id, label, focused string) {
 		return
 	}
 	prefix := "  "
-	color, background := text, raised
+	color, background := text, modalBackground
 	if strings.HasPrefix(label, "(*)") || strings.HasPrefix(label, "[x]") {
 		color, background = selectionForeground, selectionBackground
 	}
 	if id == focused {
 		prefix = "› "
-		color, background = focus, raised
+		color, background = focus, modalBackground
 	}
 	y := len(d.lines)
 	value := prefix + label
@@ -88,7 +88,7 @@ func (d *wizardDocument) control(id, label, focused string) {
 		value = lipgloss.NewStyle().Underline(true).Render(value)
 	}
 	if blocked {
-		color, background = disabled, raised
+		color, background = disabled, modalBackground
 		value += d.tr("wizard.busy_suffix")
 	}
 	d.line(themed(value, color, background, false))
@@ -105,7 +105,7 @@ func (d *wizardDocument) field(id, label string, input *textinput.Model, focus s
 	if len(d.lines) > 0 && d.lines[len(d.lines)-1] != "" {
 		d.space()
 	}
-	d.line(themed(label, labelColor, raised, false))
+	d.line(themed(label, labelColor, modalBackground, false))
 	if id == focus {
 		if !input.Focused() {
 			input.Focus()
@@ -114,9 +114,9 @@ func (d *wizardDocument) field(id, label string, input *textinput.Model, focus s
 		input.Blur()
 	}
 	width := min(d.width, inputFieldMaxWidth)
-	*input = prepareInputField(*input, inputFieldTextWidth(width, 0, true), raised, input.Err != nil)
+	*input = prepareInputField(*input, inputFieldTextWidth(width, 0, true), modalBackground, input.Err != nil)
 	blocked := d.disabled != nil && d.disabled(id)
-	field := renderInputField(*input, inputFieldOptions{ID: id, ClearID: id + ".clear", ClearHovered: d.hover == id+".clear", ClearFocused: focus == id+".clear", Width: width, Surface: raised,
+	field := renderInputField(*input, inputFieldOptions{ID: id, ClearID: id + ".clear", ClearHovered: d.hover == id+".clear", ClearFocused: focus == id+".clear", Width: width, Surface: modalBackground,
 		Focused: id == focus, Hovered: id == d.hover, Invalid: input.Err != nil, Disabled: blocked})
 	for _, hit := range field.targets {
 		hit.Y += len(d.lines)
@@ -152,13 +152,13 @@ func (d *wizardDocument) check(label string, state checkState) {
 	case checkFailed:
 		status = d.tr("wizard.check.failed")
 	}
-	d.line(themed(label+": ", muted, raised, false) + themed(status, color, raised, false))
+	d.line(themed(label+": ", muted, modalBackground, false) + themed(status, color, modalBackground, false))
 	if state.Detail != "" {
-		d.line(themed(clean(state.Detail), color, raised, false))
+		d.line(themed(clean(state.Detail), color, modalBackground, false))
 	}
 }
 func (d *wizardDocument) pair(label, value string) {
-	d.line(themed(label+": ", muted, raised, false) + themed(clean(value), text, raised, false))
+	d.line(themed(label+": ", muted, modalBackground, false) + themed(clean(value), text, modalBackground, false))
 }
 func (m *Model) wizardSourceName(cfg downloadnet.Config) string {
 	return m.tr("wizard.method." + cfg.Normalized().Method)
@@ -268,7 +268,7 @@ func (m *Model) wizardDocument(width int) (wizardDocument, []wizardButton, strin
 				if value, err := w.draft.Preview(original); err == nil {
 					d.line(value)
 				} else {
-					d.line(themed(m.localizeError(err), errorColor, raised, false))
+					d.line(themed(m.localizeError(err), errorColor, modalBackground, false))
 				}
 			}
 		}
@@ -289,7 +289,7 @@ func (m *Model) wizardDocument(width int) (wizardDocument, []wizardButton, strin
 		d.line(m.tr("wizard.network.scope"))
 		if w.err != "" {
 			d.space()
-			d.line(themed(clean(w.err), errorColor, raised, false))
+			d.line(themed(clean(w.err), errorColor, modalBackground, false))
 		}
 		apply := m.tr("wizard.apply")
 		if w.failedKind != "" && w.failedKind != "save-network" {
@@ -370,7 +370,7 @@ func (m *Model) wizardDocument(width int) (wizardDocument, []wizardButton, strin
 		}
 		if w.err != "" {
 			d.space()
-			d.line(themed(clean(w.err), errorColor, raised, false))
+			d.line(themed(clean(w.err), errorColor, modalBackground, false))
 		}
 		d.space()
 		localLabel := m.tr("wizard.local.choose")
@@ -444,7 +444,7 @@ func (m *Model) wizardDocument(width int) (wizardDocument, []wizardButton, strin
 			d.line(m.tr("wizard.verification.no_signature"))
 		}
 		for _, s := range p.Warnings {
-			d.line(themed(clean(m.localizeDetail(s)), warning, raised, false))
+			d.line(themed(clean(m.localizeDetail(s)), warning, modalBackground, false))
 		}
 		if p.ExistingVersion != "" && p.ExistingVersion == p.Release.Version {
 			mark := "[ ]"
@@ -458,10 +458,10 @@ func (m *Model) wizardDocument(width int) (wizardDocument, []wizardButton, strin
 		d.line(m.tr("wizard.confirm_boundary"))
 		if p.BlockedReason != "" {
 			d.space()
-			d.line(themed(m.tr("wizard.cannot_install", clean(m.locale.Diagnostic(p.BlockedReason, p.BlockedDiagnostic))), errorColor, raised, false))
+			d.line(themed(m.tr("wizard.cannot_install", clean(m.locale.Diagnostic(p.BlockedReason, p.BlockedDiagnostic))), errorColor, modalBackground, false))
 		}
 		if w.err != "" {
-			d.line(themed(clean(w.err), errorColor, raised, false))
+			d.line(themed(clean(w.err), errorColor, modalBackground, false))
 		}
 		install := m.tr("wizard.install")
 		if p.Operation == "use existing" {
@@ -497,7 +497,7 @@ func (m *Model) wizardDocument(width int) (wizardDocument, []wizardButton, strin
 			if w.progress.Total > 0 {
 				count := min(36, max(1, width-4))
 				filled := int(min(float64(count), float64(w.progress.Downloaded)*float64(count)/float64(w.progress.Total)))
-				d.line(themed(strings.Repeat("━", filled), info, raised, false) + themed(strings.Repeat("─", count-filled), border, raised, false))
+				d.line(themed(strings.Repeat("━", filled), info, modalBackground, false) + themed(strings.Repeat("─", count-filled), border, modalBackground, false))
 			} else {
 				d.line(m.spinner.View() + m.tr("wizard.download_unknown"))
 			}
@@ -509,7 +509,7 @@ func (m *Model) wizardDocument(width int) (wizardDocument, []wizardButton, strin
 		if w.details {
 			d.space()
 			for _, s := range w.logs {
-				d.line(themed(clean(s), muted, raised, false))
+				d.line(themed(clean(s), muted, modalBackground, false))
 			}
 		}
 		return d, []wizardButton{{"cancel", m.tr("wizard.cancel")}}, title
@@ -518,21 +518,21 @@ func (m *Model) wizardDocument(width int) (wizardDocument, []wizardButton, strin
 			return m.coreUpgradeResultDocument(d)
 		}
 		if w.err != "" {
-			d.line(themed(m.tr("wizard.incomplete"), errorColor, raised, false))
+			d.line(themed(m.tr("wizard.incomplete"), errorColor, modalBackground, false))
 			d.pair(m.tr("wizard.failed_stage"), m.wizardFailedStage(w.failedStage))
-			d.line(themed(clean(w.err), errorColor, raised, false))
+			d.line(themed(clean(w.err), errorColor, modalBackground, false))
 			d.space()
 			d.line(m.tr("wizard.retry_boundary"))
 			d.control("network", m.tr("wizard.network.title"), w.focus)
 			d.control("details", map[bool]string{false: m.tr("wizard.details_view"), true: m.tr("wizard.details_hide")}[w.details], w.focus)
 			if w.details {
 				for _, s := range w.logs {
-					d.line(themed(clean(s), muted, raised, false))
+					d.line(themed(clean(s), muted, modalBackground, false))
 				}
 			}
 			return d, []wizardButton{{"done", m.tr("wizard.overview")}, {"retry", m.tr("wizard.retry")}}, title
 		}
-		d.line(themed(m.tr("wizard.installed"), success, raised, false))
+		d.line(themed(m.tr("wizard.installed"), success, modalBackground, false))
 		d.pair(m.tr("wizard.installed_version"), w.result.InstalledVersion)
 		d.pair(m.tr("wizard.install_path"), w.result.ActualPath)
 		d.pair(m.tr("wizard.operation"), m.wizardOperation(w.result.Operation))
@@ -558,27 +558,27 @@ func (m *Model) renderWizard(base string) (string, []hitRegion) {
 	w := &m.wizard
 	// A bounded modal needs both its minimum width and minimum height. A wide,
 	// short terminal uses the same single-column document without a background.
-	modal := m.width >= 110 && m.height >= 30
+	modal := m.canFloatDocument()
 	boxW, boxH := m.width, m.height
-	x, y := 0, 0
 	if modal {
 		boxW = min(86, m.width-12)
 		boxH = min(33, m.height-4)
-		x = (m.width - boxW) / 2
-		y = (m.height - boxH) / 2
 	}
 	if boxW < 34 || boxH < 10 {
-		lines := []string{themed(cellCrop(logo+" · "+wizardStepLabel(m.locale, w.step), boxW), text, raised, false), cellCrop(m.tr("wizard.enlarge"), boxW), cellCrop(m.tr("wizard.compact_help"), boxW)}
+		lines := []string{logo + " · " + wizardStepLabel(m.locale, w.step), m.tr("wizard.enlarge"), m.tr("wizard.compact_help")}
 		if w.cancelling {
-			lines = append(lines, cellCrop(m.tr("wizard.cancelling_progress"), boxW))
+			lines = append(lines, m.tr("wizard.cancelling_progress"))
 		}
 		if w.progress.Stage != "" {
-			lines = append(lines, cellCrop(m.stageLabel(w.progress.Stage), boxW))
+			lines = append(lines, m.stageLabel(w.progress.Stage))
 		}
-		lines = lines[:min(len(lines), boxH)]
-		return overlay("", strings.Join(lines, "\n"), 0, 0, m.width, m.height), nil
+		surface := m.newModalSurface(boxW, boxH)
+		for y, line := range lines {
+			surface.put(0, y, cellCrop(line, boxW))
+		}
+		return surface.render(base), nil
 	}
-	innerW := boxW - 6
+	innerW := boxW - 2*modalBodyInset
 	doc, buttons, title := m.wizardDocument(innerW)
 	// Construct bottom actions independently, wrapping at narrow widths.
 	var footer []string
@@ -604,7 +604,7 @@ func (m *Model) renderWizard(base string) (string, []hitRegion) {
 		}
 		blocked := m.wizardControlDisabled(b.ID)
 		label := renderButton(b.Label, buttonOptions{
-			Kind: kind, Surface: raised, Focused: w.focus == b.ID, Hovered: m.hover == b.ID,
+			Kind: kind, Surface: modalBackground, Focused: w.focus == b.ID, Hovered: m.hover == b.ID,
 			Disabled: blocked && !m.busy, Busy: blocked && m.busy, Plain: m.buttonPlain(),
 		})
 		bw := min(innerW, ansi.StringWidth(label))
@@ -623,7 +623,6 @@ func (m *Model) renderWizard(base string) (string, []hitRegion) {
 	footerH := len(footer)
 	if modal {
 		boxH = min(boxH, len(doc.lines)+footerH+9)
-		y = (m.height - boxH) / 2
 	}
 	bodyY := 5
 	if boxH < 16 {
@@ -653,59 +652,44 @@ func (m *Model) renderWizard(base string) (string, []hitRegion) {
 		w.reveal = false
 	}
 	w.scroll = max(0, min(w.scroll, max(0, len(doc.lines)-bodyH)))
-	rows := make([]string, boxH)
-	for i := range rows {
-		rows[i] = themed(strings.Repeat(" ", boxW), text, raised, false)
-	}
-	putRows(rows, 0, 0, themed("┌"+strings.Repeat("─", boxW-2)+"┐", border, raised, false), boxW)
-	for r := 1; r < boxH-1; r++ {
-		putRows(rows, 0, r, themed("│", border, raised, false), boxW)
-		putRows(rows, boxW-1, r, themed("│", border, raised, false), boxW)
-	}
-	putRows(rows, 0, boxH-1, themed("└"+strings.Repeat("─", boxW-2)+"┘", border, raised, false), boxW)
-	putRows(rows, 3, 1, themed(lipgloss.NewStyle().Bold(true).Render(cellCrop(title, innerW)), text, raised, false), boxW)
+	surface := m.newModalSurface(boxW, boxH)
+	surface.put(modalBodyInset, 1, lipgloss.NewStyle().Bold(true).Render(cellCrop(title, innerW)))
 	step := wizardStepLabel(m.locale, w.step)
 	if w.networkOpen {
 		step = m.tr("wizard.network.subtitle")
 	}
 	if bodyY == 5 {
-		putRows(rows, 3, 2, themed(cellCrop(step, innerW), muted, raised, false), boxW)
-		putRows(rows, 2, 3, themed(strings.Repeat("─", boxW-4), border, raised, false), boxW)
+		surface.put(modalBodyInset, 2, themed(cellCrop(step, innerW), muted, modalBackground, false))
+		surface.divider(3)
 	}
 	for i := 0; i < bodyH && w.scroll+i < len(doc.lines); i++ {
-		putRows(rows, 3, bodyY+i, themed(cellPad(doc.lines[w.scroll+i], innerW), text, raised, false), boxW)
+		surface.put(modalBodyInset, bodyY+i, cellPad(doc.lines[w.scroll+i], innerW))
 	}
 	var hits []hitRegion
 	for _, r := range doc.targets {
-		r.X += 3
+		r.X += modalBodyInset
 		r.Y += bodyY - w.scroll
-		if clipped, ok := clipRegion(r, 3, bodyY, innerW, bodyH); ok {
-			clipped.X += x
-			clipped.Y += y
-			hits = append(hits, clipped)
+		if clipped, ok := clipRegion(r, modalBodyInset, bodyY, innerW, bodyH); ok {
+			hits = append(hits, surface.screen(clipped))
 		}
 	}
 	footerY := boxH - footerH - 3
-	putRows(rows, 2, footerY-1, themed(strings.Repeat("─", boxW-4), border, raised, false), boxW)
+	surface.divider(footerY - 1)
 	for i, line := range footer {
-		putRows(rows, 3, footerY+i, themed(line, text, raised, false), boxW)
+		surface.put(modalBodyInset, footerY+i, line)
 	}
 	for _, r := range buttonHits {
-		r.X += x + 3
-		r.Y += y + footerY
-		hits = append(hits, r)
+		r.X += modalBodyInset
+		r.Y += footerY
+		hits = append(hits, surface.screen(r))
 	}
 	help := m.tr("wizard.help")
 	if m.busy {
 		help = m.tr("wizard.busy_help")
 	}
-	putRows(rows, 3, boxH-2, helpText(cellCrop(help, innerW), raised, false), boxW)
+	surface.put(modalBodyInset, boxH-2, helpText(cellCrop(help, innerW), modalBackground, false))
 	if len(doc.lines) > bodyH {
-		putRows(rows, boxW-3, bodyY+bodyH-1, themed("↕", info, raised, false), boxW)
+		surface.put(boxW-modalBodyInset, bodyY+bodyH-1, themed("↕", info, modalBackground, false))
 	}
-	box := strings.Join(rows, "\n")
-	if !modal {
-		base = ""
-	}
-	return overlay(base, box, x, y, m.width, m.height), hits
+	return surface.render(base), hits
 }
