@@ -1785,7 +1785,7 @@ func (m *Model) renderLayout() {
 	} else if m.menu.open {
 		m.anchorPageSelectionMenu(hits)
 		if m.menu.anchor.ID == "settings.switchStyle" {
-			setSwitchStylePreviews(&m.menu, o.Monochrome)
+			setSwitchStylePreviews(&m.menu, o.Monochrome, m.width)
 		}
 		m.screen = m.menu.render(base, m.width, m.height, dashboardContentBottom(o))
 	}

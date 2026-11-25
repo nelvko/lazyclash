@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/lipgloss/v2"
 	"github.com/nelvko/lazyclash/internal/i18n"
 	"github.com/nelvko/lazyclash/internal/service"
 )
@@ -75,13 +76,13 @@ func overviewCoreCard(o dashboardOptions, width int) dashboardBlock {
 		}
 	}
 	const id = "core.toggle"
-	face := o.switchFace(id, control, toggleOptions{Surface: panel, Focused: o.Focus == id, Hovered: o.Hover == id})
-	// Reserve a gutter independently of the switch. In particular, the
-	// all-space slider must retain each of its three painted hit cells.
-	heading := overviewLabelSlot(o, inner, overviewHeading(o, tr("dashboard.overview.service")), switchGutter(o.Focus == id, o.Hover == id, o.Monochrome, panel, o.Dim)+face, id)
-	if len(heading.targets) > 0 && heading.targets[0].W > 2 {
-		heading.targets[0].X += 2
-		heading.targets[0].W -= 2
+	opts := toggleOptions{Surface: panel, Focused: o.Focus == id, Hovered: o.Hover == id}
+	face := o.switchSlot(id, control, opts, inner, lipgloss.Right)
+	heading := overviewLabelSlot(o, inner, overviewHeading(o, tr("dashboard.overview.service")), o.switchGutter(opts, inner)+face, id)
+	if len(heading.targets) > 0 {
+		gutter := switchGutterWidth(inner)
+		heading.targets[0].X += gutter
+		heading.targets[0].W -= gutter
 	}
 	return overviewPanel(o, width, heading, content, nil)
 }

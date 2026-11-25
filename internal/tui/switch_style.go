@@ -38,17 +38,29 @@ func settingsSwitchStyleRow(o dashboardOptions) settingsRow {
 	return row
 }
 
-func setSwitchStylePreviews(menu *actionMenu, monochrome bool) {
+func setSwitchStylePreviews(menu *actionMenu, monochrome bool, width int) {
 	labelWidth := switchStyleLabelWidth(menu.items)
+	faceWidth := switchSlotWidth
+	if monochrome {
+		faceWidth = switchWidth
+	}
+	separator, gap := " → ", 2
+	// A framed selection menu normally spends six columns on its border,
+	// cursor and checkmark. Keep both full faces visible in a narrow window.
+	menu.compactMarkers = width < 6+labelWidth+gap+2*faceWidth+ansi.StringWidth(separator)
+	if menu.compactMarkers {
+		separator = "→"
+		gap = min(1, max(0, width-4-labelWidth-2*faceWidth-ansi.StringWidth(separator)))
+	}
 	for i, item := range menu.items {
 		options := toggleOptions{Style: item.ID, Surface: raised, Monochrome: monochrome}
 		if i == menu.selected {
 			options.Surface = selectionBackground
 		}
-		padding := strings.Repeat(" ", labelWidth-ansi.StringWidth(item.Label)+2)
 		off := renderToggle(toggleModel{state: toggleOff}, options)
 		on := renderToggle(toggleModel{state: toggleOn}, options)
-		menu.items[i].preview = padding + off + " → " + on
+		padding := labelWidth - ansi.StringWidth(item.Label) + gap + faceWidth - ansi.StringWidth(off)
+		menu.items[i].preview = strings.Repeat(" ", padding) + off + separator + on
 	}
 }
 

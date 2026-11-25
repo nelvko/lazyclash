@@ -2,6 +2,7 @@ package tui
 
 import (
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
 )
@@ -13,21 +14,36 @@ func boolToggle(on bool) toggleModel {
 	return toggleModel{state: toggleOff}
 }
 
-func switchGutter(focused, hovered, monochrome bool, surface string, dim bool) string {
+func switchGutterWidth(width int) int {
+	if width < switchSlotWidth+2 {
+		return 0
+	}
+	return 2
+}
+
+func (o dashboardOptions) switchGutter(opts toggleOptions, width int) string {
+	if switchGutterWidth(width) == 0 {
+		return ""
+	}
 	marker := "  "
-	if focused {
+	if opts.Focused {
 		marker = "› "
 		if ansi.StringWidth(marker) != 2 {
 			marker = "> "
 		}
-	} else if hovered && monochrome {
+	} else if opts.Hovered && o.Monochrome {
 		marker = ". "
 	}
-	return themed(marker, focus, surface, dim)
+	return themed(marker, focus, opts.Surface, o.Dim)
 }
 
-func (o dashboardOptions) switchFace(id string, control toggleModel, opts toggleOptions) string {
+// A switch keeps one layout slot across skins and animation frames. Status
+// messages retain their natural width so their explanation can wrap normally.
+func (o dashboardOptions) switchSlot(id string, control toggleModel, opts toggleOptions, width int, align lipgloss.Position) string {
 	opts.Style, opts.Monochrome, opts.Dim = o.SwitchStyle, o.Monochrome, o.Dim
+	if width < switchSlotWidth && opts.Style == app.SwitchStyleSlider {
+		opts.Style = app.SwitchStyleText
+	}
 	if opts.Labels.Unavailable == "" {
 		opts.Labels.Unavailable = o.Locale.T("dashboard.status.unavailable")
 	}
@@ -40,7 +56,11 @@ func (o dashboardOptions) switchFace(id string, control toggleModel, opts toggle
 	if o.Switches != nil {
 		control = o.Switches.control(id, control)
 	}
-	return renderToggle(control, opts)
+	face := renderToggle(control, opts)
+	if !control.canToggle() && control.state != togglePending {
+		return face
+	}
+	return lipgloss.PlaceHorizontal(min(width, switchSlotWidth), align, cellCrop(face, width))
 }
 
 func pageSwitchAction(id string) bool {

@@ -59,7 +59,11 @@ type toggleOptions struct {
 	Focused, Hovered, Monochrome, Dim bool
 }
 
-const switchWidth = 3
+const (
+	switchWidth      = 3 // Compact faces and logical animation positions.
+	sliderThumbWidth = 2
+	switchSlotWidth  = switchWidth * sliderThumbWidth
+)
 
 var slantedFrames = [3]string{"●▱▱", "▰●▱", "▰▰●"}
 var lineFrames = [3]string{"●──", "━●─", "━━●"}
@@ -121,7 +125,10 @@ func renderToggle(t toggleModel, o toggleOptions) string {
 	}
 	thumb, track := muted, divider
 	if position > 0 {
-		thumb, track = success, switchOnTrack
+		thumb = success
+		if style == app.SwitchStyleSlider {
+			thumb, track = switchOnThumb, switchOnTrack
+		}
 	}
 	span := func(value, background string) string {
 		if o.Dim {
@@ -141,12 +148,13 @@ func renderToggle(t toggleModel, o toggleOptions) string {
 	switch style {
 	case app.SwitchStyleSlider:
 		var face strings.Builder
+		segment := strings.Repeat(" ", sliderThumbWidth)
 		for cell := range switchWidth {
 			background := track
 			if cell == position {
 				background = thumb
 			}
-			face.WriteString(span(" ", background))
+			face.WriteString(span(segment, background))
 		}
 		return face.String()
 	case app.SwitchStyleText:

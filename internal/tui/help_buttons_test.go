@@ -6,9 +6,28 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/i18n"
 )
+
+func TestHelpSwitchRetainsEveryVisibleCellAtSmallWidths(t *testing.T) {
+	for _, tc := range []struct {
+		width int
+		face  string
+	}{
+		{3, " ON"}, {5, " ON  "}, {6, "      "}, {7, "      "}, {8, "      "},
+	} {
+		m := Model{width: tc.width, height: 5, helpOpen: true, switchStyle: app.SwitchStyleSlider, colorProfile: colorprofile.TrueColor}
+		screen, hits := m.renderHelp("")
+		hit := findTarget(t, Model{targets: hits}, "key-hints.toggle")
+		face := ansi.Strip(ansi.Cut(strings.Split(screen, "\n")[hit.Y], hit.X, hit.X+hit.W))
+		if face != tc.face || hit.X != switchGutterWidth(tc.width) {
+			t.Fatalf("width %d: help switch %+v shows %q, want %q", tc.width, hit, face, tc.face)
+		}
+	}
+}
 
 func TestHelpButtonsKeepTheirHitBoundsWhenFocusMoves(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
@@ -32,8 +51,8 @@ func TestHelpButtonsKeepTheirHitBoundsWhenFocusMoves(t *testing.T) {
 						}
 						painted := ansi.Strip(ansi.Cut(strings.Split(screen, "\n")[target.Y], target.X, target.X+target.W))
 						if target.ID == "key-hints.toggle" {
-							if target.W != switchWidth || painted != "▰▰●" {
-								t.Fatalf("shortcut Switch hit misses its three cells: %q %+v", painted, target)
+							if target.W != switchSlotWidth || painted != "▰▰●   " {
+								t.Fatalf("shortcut Switch hit misses its slot: %q %+v", painted, target)
 							}
 							continue
 						}

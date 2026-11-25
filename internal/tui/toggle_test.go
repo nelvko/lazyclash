@@ -1,11 +1,13 @@
 package tui
 
 import (
+	"image/color"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/colorprofile"
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -36,14 +38,14 @@ func TestToggleIntentFocusAndBlockedStates(t *testing.T) {
 	}
 }
 
-func TestSwitchFacesUseThreeCellsAtEveryFrame(t *testing.T) {
+func TestSwitchFacesKeepTheirWidthAtEveryFrame(t *testing.T) {
 	for _, tc := range []struct {
 		style string
 		want  [3]string
 	}{
 		{"slanted", [3]string{"●▱▱", "▰●▱", "▰▰●"}},
 		{"line", [3]string{"●──", "━●─", "━━●"}},
-		{"slider", [3]string{"   ", "   ", "   "}},
+		{"slider", [3]string{"      ", "      ", "      "}},
 		{"text", [3]string{"OFF", " ON", " ON"}},
 	} {
 		for _, profile := range []colorprofile.Profile{colorprofile.TrueColor, colorprofile.ANSI256, colorprofile.ANSI, colorprofile.ASCII} {
@@ -62,7 +64,7 @@ func TestSwitchFacesUseThreeCellsAtEveryFrame(t *testing.T) {
 				check := func(view string) {
 					t.Helper()
 					view = terminalTheme(view, profile)
-					if got := ansi.Strip(view); got != want || ansi.StringWidth(view) != 3 {
+					if got := ansi.Strip(view); got != want || ansi.StringWidth(view) != ansi.StringWidth(want) {
 						t.Fatalf("%s %s frame %d: want %q, got %q", tc.style, profile, i, want, view)
 					}
 				}
@@ -103,8 +105,35 @@ func TestSwitchStatusAndAppearanceFallbacks(t *testing.T) {
 	}
 }
 
+func TestSliderPaintsTwoCellThumbAcrossSixCellTrack(t *testing.T) {
+	for _, profile := range []colorprofile.Profile{colorprofile.TrueColor, colorprofile.ANSI256, colorprofile.ANSI} {
+		for position := range 3 {
+			control := toggleModel{state: toggleOn, sliding: true, position: position}
+			face := terminalTheme(renderToggle(control, toggleOptions{Style: "slider"}), profile)
+			screen := uv.NewScreenBuffer(6, 1)
+			uv.NewStyledString(face).Draw(screen, screen.Bounds())
+			track, thumb := switchOnTrack, switchOnThumb
+			if position == 0 {
+				track, thumb = divider, muted
+			}
+			for x := range 6 {
+				background := track
+				if x/2 == position {
+					background = thumb
+				}
+				want := terminalColor(lipgloss.Color(background), profile)
+				cell := screen.CellAt(x, 0)
+				if cell == nil || cell.Content != " " || cell.Style.Bg == nil ||
+					color.RGBA64Model.Convert(cell.Style.Bg) != color.RGBA64Model.Convert(want) {
+					t.Fatalf("%s frame %d column %d: got %+v, want a space with background %v", profile, position, x, cell, want)
+				}
+			}
+		}
+	}
+}
+
 func TestSwitchSliderTrackContrast(t *testing.T) {
-	for _, pair := range [][2]string{{muted, divider}, {success, switchOnTrack}} {
+	for _, pair := range [][2]string{{muted, divider}, {switchOnThumb, switchOnTrack}} {
 		for _, profile := range []colorprofile.Profile{colorprofile.TrueColor, colorprofile.ANSI256} {
 			thumb := terminalColor(lipgloss.Color(pair[0]), profile)
 			track := terminalColor(lipgloss.Color(pair[1]), profile)

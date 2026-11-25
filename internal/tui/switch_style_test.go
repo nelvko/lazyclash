@@ -11,7 +11,36 @@ import (
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
+	"github.com/nelvko/lazyclash/internal/i18n"
 )
+
+func TestSwitchStyleMenuFitsBothPreviews(t *testing.T) {
+	for _, language := range []string{"en", "zh-Hans"} {
+		items := switchStyleMenuItems(i18n.New(language))
+		for _, width := range []int{24, 25, 28, 40} {
+			var menu actionMenu
+			menu.showSelection(items, app.SwitchStyleSlider, hitRegion{})
+			setSwitchStylePreviews(&menu, false, width)
+			rows := strings.Split(ansi.Strip(menu.render("", width, 8, 8)), "\n")
+			arrowX := -1
+			for i, item := range items {
+				row := rows[menu.bounds.Y+1+i]
+				before, after, found := strings.Cut(row, "→")
+				if !found || !strings.Contains(before, item.Label) || strings.Contains(row, "…") {
+					t.Fatalf("%s at width %d: incomplete preview %q", language, width, row)
+				}
+				column := ansi.StringWidth(before)
+				if arrowX != -1 && column != arrowX {
+					t.Fatalf("%s at width %d: arrow in column %d, want %d", language, width, column, arrowX)
+				}
+				arrowX = column
+				if item.ID == app.SwitchStyleSlider && !strings.HasPrefix(after, strings.Repeat(" ", switchSlotWidth)) {
+					t.Fatalf("%s at width %d: clipped slider %q", language, width, row)
+				}
+			}
+		}
+	}
+}
 
 func TestSettingsSwitchStylePreviewsAndImmediateSelection(t *testing.T) {
 	b := &fakeBackend{snapshot: settingsTestSnapshot(), prefs: app.Preferences{Theme: app.ThemeLight, SwitchStyle: app.SwitchStyleLine}}

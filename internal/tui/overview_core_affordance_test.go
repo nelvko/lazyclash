@@ -37,7 +37,7 @@ func TestCoreCardPlacesActionInHeadingAndGroupsReadOnlyDetails(t *testing.T) {
 					assertCanvas(t, strings.Join(block.lines, "\n"), width, len(block.lines))
 					assertRegions(t, block.targets, width, len(block.lines))
 					hit, face := coreCardAction(t, block)
-					if face != "▰▰●" || hit.W != switchWidth {
+					if face != "   ▰▰●" || hit.W != switchSlotWidth {
 						t.Fatalf("click target misses Stop: %q", face)
 					}
 					title := o.Locale.T("dashboard.overview.service")
@@ -94,12 +94,12 @@ func TestCoreCardActionsKeepTheirSizeAndFocusAcrossLifecycle(t *testing.T) {
 				} {
 					o := dashboardOptions{Locale: i18n.New(language), Busy: tc.busy, CoreAction: tc.action, PlainButtons: plain,
 						Snapshot: app.Snapshot{Installed: true, Service: service.Status{Active: tc.active, State: tc.state}, ServiceError: tc.problem}}
-					value := "..."
+					value := "   ..."
 					switch {
 					case tc.want == "stop":
-						value = "▰▰●"
+						value = "   ▰▰●"
 					case tc.want == "start":
-						value = "●▱▱"
+						value = "   ●▱▱"
 					case tc.state == "unknown":
 						value = o.Locale.T("dashboard.status.unknown")
 					case tc.problem != "" || tc.busy && tc.action == "":
@@ -112,7 +112,7 @@ func TestCoreCardActionsKeepTheirSizeAndFocusAcrossLifecycle(t *testing.T) {
 					}
 					if slot.ID == "" {
 						slot = hit
-					} else if ansi.StringWidth(value) == switchWidth && hit != slot {
+					} else if ansi.StringWidth(value) == switchSlotWidth && hit != slot {
 						t.Fatalf("%s moved the action: %+v, want %+v", tc.state, hit, slot)
 					}
 					o.Focus = "core.toggle"

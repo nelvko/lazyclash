@@ -117,7 +117,7 @@ func TestSettingsActionsKeepCompleteLabelsAndUniqueTargets(t *testing.T) {
 				o.Snapshot.Service.Enabled = active
 				o.Snapshot.TUN = active
 				tr := o.Locale.T
-				const on, off = "▰▰●", "●▱▱"
+				const on, off = "   ▰▰●", "   ●▱▱"
 				labels := map[string]string{
 					"settings.language": languageLabel, "key-hints.toggle": on,
 					"settings.theme": "Dark ▾", "settings.switchStyle": tr("settings.switchStyle.slanted") + " ▾",
@@ -144,7 +144,7 @@ func TestSettingsActionsKeepCompleteLabelsAndUniqueTargets(t *testing.T) {
 					}
 					painted := settingsPaintedTarget(t, body, hits, hit.ID)
 					if (label == on || label == off) && painted != label {
-						t.Fatalf("%s/%d: switch %s should cover its three cells: %q", language, width, hit.ID, painted)
+						t.Fatalf("%s/%d: switch %s should cover its slot: %q", language, width, hit.ID, painted)
 					}
 					if !strings.Contains(painted, label) || ansi.StringWidth(painted) != hit.W {
 						t.Fatalf("%s/%d: %s target misses complete label %q: %q", language, width, hit.ID, label, painted)
@@ -202,7 +202,7 @@ func TestSettingsSwitchesAndDropdownsAlignAtCardEdges(t *testing.T) {
 					t.Fatalf("%s/%s at %d: label and control misplaced, hit %+v, want X=%d\n%s", language, c.id, width, hit, wantX, ansi.Strip(strings.Join(block.lines, "\n")))
 				}
 				face := ansi.Strip(ansi.Cut(block.lines[hit.Y], hit.X, hit.X+hit.W))
-				focusedSwitch := (face == "▰▰●" || face == "●▱▱") && ansi.Strip(ansi.Cut(block.lines[hit.Y], hit.X-2, hit.X)) == "› "
+				focusedSwitch := (face == "   ▰▰●" || face == "   ●▱▱") && ansi.Strip(ansi.Cut(block.lines[hit.Y], hit.X-2, hit.X)) == "› "
 				focusedDropdown := strings.HasPrefix(face, " ›[") && strings.HasSuffix(face, "]")
 				if !focusedSwitch && !focusedDropdown {
 					t.Fatalf("%s/%s at %d: hit misses focused control: %q", language, c.id, width, face)
@@ -257,7 +257,7 @@ func TestSettingsMihomoSwitchWaitsForSavedValueAndAllowsRetry(t *testing.T) {
 	// Text has no animation, exposing the final observation immediately.
 	m.switchStyle = app.SwitchStyleText
 	m.layout()
-	if settingsPaintedTarget(t, m.screen, m.targets, m.focus) != " ON" {
+	if settingsPaintedTarget(t, m.screen, m.targets, m.focus) != "    ON" {
 		t.Fatal("the IPv6 switch did not display the confirmed value")
 	}
 }

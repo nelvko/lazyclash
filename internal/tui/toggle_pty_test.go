@@ -106,13 +106,13 @@ func (m toggleFixture) View() tea.View {
 	if m.english {
 		opts.Labels = toggleLabels{Unavailable: "Unavailable", Unsupported: "Unsupported", Unknown: "Unknown"}
 	}
-	lines := []string{"LazyClash / Switch", "            OFF   STEP  ON"}
+	lines := []string{"LazyClash / Switch", "            OFF      STEP     ON"}
 	for _, style := range []string{"slanted", "slider", "text", "line"} {
 		opts.Style = style
 		off := renderToggle(toggleModel{state: toggleOff}, opts)
 		mid := renderToggle(toggleModel{state: toggleOn, sliding: true, position: 1}, opts)
 		on := renderToggle(toggleModel{state: toggleOn}, opts)
-		lines = append(lines, cellPad(style, 12)+off+"   "+mid+"   "+on)
+		lines = append(lines, cellPad(style, 12)+cellPad(off, 9)+cellPad(mid, 9)+on)
 	}
 	opts.Style = "slanted"
 	for _, state := range []toggleState{togglePending, toggleUnavailable, toggleUnsupported, toggleUnknown} {
@@ -182,10 +182,7 @@ func TestTogglePTYFixture(t *testing.T) {
 	}
 	m := newToggleFixture()
 	m.english = os.Getenv("LAZYCLASH_LANG") == "en"
-	m.profile = themeProfile(os.Environ(), colorprofile.ANSI256)
-	if os.Getenv("COLORTERM") == "truecolor" {
-		m.profile = themeProfile(os.Environ(), colorprofile.TrueColor)
-	}
+	m.profile = themeProfile(os.Environ(), colorprofile.Detect(os.Stdout, os.Environ()))
 	result, err := tea.NewProgram(m, tea.WithoutSignalHandler()).Run()
 	if err != nil {
 		t.Fatal(err)

@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -40,7 +41,7 @@ func overviewNetworkCard(o dashboardOptions, width int) dashboardBlock {
 		content.append(overviewTUNSection(o, inner))
 	}
 	// Automatic system proxy management has no supported backend.
-	system := o.switchFace("", toggleModel{state: toggleUnsupported}, toggleOptions{Surface: panel})
+	system := o.switchSlot("", toggleModel{state: toggleUnsupported}, toggleOptions{Surface: panel}, inner, lipgloss.Right)
 	content.blank()
 	content.append(overviewLabelSlot(o, inner, themed(o.Locale.T("dashboard.field.systemProxy"), text, panel, o.Dim), system, ""))
 	title := overviewTextBlock([]string{overviewHeading(o, o.Locale.T("dashboard.overview.network"))}, inner)
@@ -79,21 +80,20 @@ func centeredNetworkBlock(face string, width, gutter int, id string) dashboardBl
 
 func overviewNetworkSection(o dashboardOptions, width int, title, id, stableID string, control toggleModel) dashboardBlock {
 	b := centeredNetworkBlock(overviewHeading(o, title), width, 0, "")
-	face := o.switchFace(stableID, control, toggleOptions{Surface: panel,
+	opts := toggleOptions{Surface: panel,
 		Focused: id != "" && o.Focus == id, Hovered: id != "" && o.Hover == id,
-		Labels: toggleLabels{Unavailable: control.reason, Unknown: control.reason}})
+		Labels: toggleLabels{Unavailable: control.reason, Unknown: control.reason}}
+	face := o.switchSlot(stableID, control, opts, width, lipgloss.Center)
 	// A slider contains only styled spaces. Center the full face by display
 	// width, without trimming its track or the leading space of " ON".
 	w := ansi.StringWidth(face)
 	if w <= width {
-		x := (width - w) / 2
-		line := face
+		x := (width - w + 1) / 2
+		gutter := ""
 		if x >= 2 {
-			gutter := switchGutter(id != "" && o.Focus == id, id != "" && o.Hover == id, o.Monochrome, panel, o.Dim)
-			line = strings.Repeat(" ", x-2) + gutter + face
-		} else {
-			line = strings.Repeat(" ", x) + face
+			gutter = o.switchGutter(opts, width)
 		}
+		line := strings.Repeat(" ", x-ansi.StringWidth(gutter)) + gutter + face
 		if id != "" {
 			b.targets = append(b.targets, hitRegion{ID: id, X: x, Y: len(b.lines), W: w, H: 1})
 		}

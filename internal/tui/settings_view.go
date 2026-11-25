@@ -233,10 +233,8 @@ func settingsSection(o dashboardOptions, width int, title, description string, r
 				options.Disabled = !action.enabled
 				var face string
 				if row.control == settingsSwitch {
-					face = o.switchFace(settingsSwitchID(action.id), o.settingsToggle(action.id), toggleOptions{
-						Surface: panel, Focused: options.Focused, Hovered: options.Hovered,
-					})
-					face = switchGutter(options.Focused, options.Hovered, o.Monochrome, panel, o.Dim) + face
+					opts := toggleOptions{Surface: panel, Focused: options.Focused, Hovered: options.Hovered}
+					face = o.switchGutter(opts, inner) + o.switchSlot(settingsSwitchID(action.id), o.settingsToggle(action.id), opts, inner, lipgloss.Right)
 				} else {
 					face = renderButton(action.label, options)
 				}
@@ -272,7 +270,7 @@ func settingsSection(o dashboardOptions, width int, title, description string, r
 				if action.enabled {
 					gutter := 0
 					if row.control == settingsSwitch {
-						gutter = 2
+						gutter = switchGutterWidth(inner)
 					}
 					if w > gutter {
 						b.targets = append(b.targets, hitRegion{ID: action.id, X: left + x + gutter, Y: top + len(b.lines) - 1, W: w - gutter, H: 1})

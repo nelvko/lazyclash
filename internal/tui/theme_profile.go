@@ -130,7 +130,8 @@ func terminalColor(c color.Color, profile colorprofile.Profile) color.Color {
 		{buttonDangerForeground, 217, 9},
 		{buttonDangerHoverBackground, 238, 0},
 		{success, 114, 10},
-		{switchOnTrack, 22, 2},
+		{switchOnTrack, 65, 8},
+		{switchOnThumb, 194, 10},
 		{errorColor, 210, 9},
 	}
 	r, g, b, _ := c.RGBA()

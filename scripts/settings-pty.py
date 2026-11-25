@@ -45,18 +45,19 @@ def click(terminal, point):
 def switch_track(enabled, style="slanted", profile="truecolor"):
     if style == "slider":
         if profile != "no-color":
-            return "   "
+            return " " * 6
         style = "text"
     return {"slanted": ("●▱▱", "▰▰●"), "line": ("●──", "━━●"),
             "text": ("OFF", " ON")}[style][enabled]
 
 
 def assert_slider(terminal, x, y, enabled):
-    cells = terminal.screen.cells[y][x:x + 3]
-    colors = [cell[1] for cell in terminal.screen.styles[y][x:x + 3]]
+    cells = terminal.screen.cells[y][x:x + 6]
+    colors = [cell[1] for cell in terminal.screen.styles[y][x:x + 6]]
     if enabled:
         colors.reverse()
-    assert cells == [" "] * 3 and colors[0] != colors[1] == colors[2], (cells, colors)
+    assert cells == [" "] * 6 and colors[0] != colors[2], (cells, colors)
+    assert colors == [colors[0]] * 2 + [colors[2]] * 4, colors
 
 
 def check_switch(terminal, words, key, enabled, profile, style="slanted"):
@@ -66,8 +67,8 @@ def check_switch(terminal, words, key, enabled, profile, style="slanted"):
         label_x, y = position(terminal, words[key])
         row = terminal.screen.cells[y]
         right = row.index("│", label_x)
-        x = right - 5
-        if "".join(row[x:right]) == switch_track(enabled, style, profile) + "  ":
+        x = right - 8
+        if "".join(row[x:right]) == switch_track(enabled, style, profile).rjust(6) + "  ":
             break
         if time.monotonic() >= deadline:
             raise AssertionError((key, enabled, style, "".join(row[x:right])))
@@ -92,8 +93,10 @@ def exercise_styles(preview, terminal, words, profile, output, args):
                 y = top + index
                 row = terminal.screen.cells[y]
                 arrow = row.index("→")
-                for enabled, x in ((False, arrow - 4), (True, arrow + 2)):
-                    assert "".join(row[x:x + 3]) == switch_track(enabled, style, profile)
+                for enabled in (False, True):
+                    face = switch_track(enabled, style, profile)
+                    x = arrow + 2 if enabled else arrow - 1 - len(face)
+                    assert "".join(row[x:x + len(face)]) == face
                     if style == "slider" and profile != "no-color":
                         assert_slider(terminal, x, y, enabled)
             preview.capture(terminal, output, "switch-style-menu", args)
@@ -182,8 +185,8 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.settle()
         wrapped = position(terminal, switch_track(True))
         label = position(terminal, words["dashboard.interface.keyHints"].split()[0])
-        assert wrapped[1] > label[1] and wrapped[0] == label[0] + 2, "switch did not wrap at the label inset"
-        assert terminal.screen.cells[wrapped[1]][label[0]:wrapped[0]] == ["›", " "]
+        assert wrapped[1] > label[1] and wrapped[0] == label[0] + 5, "switch did not wrap at the label inset"
+        assert terminal.screen.cells[wrapped[1]][label[0]:wrapped[0]] == ["›"] + [" "] * 4
         preview.capture(terminal, output, "switch-wrapped-24x24", args)
         click(terminal, wrapped)
         terminal.wait(switch_track(False))
@@ -193,20 +196,20 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.resize(160, 45)
         terminal.settle()
 
-        # The current IPv6 thumb, unified-delay rail and keyboard all activate
-        # their own switch through the same controls users see in the cards.
+        # Exercise both edges of the six-cell target, including the empty
+        # space before the three-cell slanted face.
         x, y = check_switch(terminal, words, "settings.ipv6", True, profile)
-        before_hover = terminal.screen.styles[y][x:x + 3]
-        terminal.key(("\x1b[<35;%d;%dM" % (x + 3, y + 1)).encode())
+        before_hover = terminal.screen.styles[y][x + 3:x + 6]
+        terminal.key(("\x1b[<35;%d;%dM" % (x + 1, y + 1)).encode())
         terminal.settle()
         check_switch(terminal, words, "settings.ipv6", True, profile)
         if profile != "no-color":
-            assert terminal.screen.styles[y][x:x + 3] != before_hover, "hover did not highlight the switch"
-        click(terminal, (x + 2, y))
+            assert terminal.screen.styles[y][x + 3:x + 6] != before_hover, "hover did not highlight the switch"
+        click(terminal, (x, y))
         dismiss_toasts(terminal)
         check_switch(terminal, words, "settings.ipv6", False, profile)
         x, y = check_switch(terminal, words, "settings.unifiedDelay", False, profile)
-        click(terminal, (x + 2, y))
+        click(terminal, (x + 5, y))
         dismiss_toasts(terminal)
         check_switch(terminal, words, "settings.unifiedDelay", True, profile)
         preview.capture(terminal, output, "mihomo-switches-wide", args)

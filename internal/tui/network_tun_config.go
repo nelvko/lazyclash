@@ -1,6 +1,10 @@
 package tui
 
-import tea "charm.land/bubbletea/v2"
+import (
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
+)
 
 func (m *Model) canConfigureHostTUN() bool {
 	return m.snapshot.Capabilities.TUN.Supported && m.tunConfigIssue() == ""
@@ -47,9 +51,18 @@ func (m *Model) networkTUNDocument(width int) (wizardDocument, []wizardButton, s
 	o.Focus, o.Dim = m.ports.focus, false
 	control := boolToggle(m.ports.tunEnabled)
 	const id = "tun.policy"
-	face := o.switchFace(id, control, toggleOptions{Surface: raised, Focused: o.Focus == id, Hovered: o.Hover == id})
-	d.targets = append(d.targets, hitRegion{ID: id, X: 2, Y: len(d.lines), W: switchWidth, H: 1})
-	d.line(switchGutter(o.Focus == id, o.Hover == id, o.Monochrome, raised, false) + face + "  " + themed(m.tr("network.tunConfig.policy"), text, raised, false))
+	opts := toggleOptions{Surface: raised, Focused: o.Focus == id, Hovered: o.Hover == id}
+	face := o.switchSlot(id, control, opts, width, lipgloss.Left)
+	gutter := o.switchGutter(opts, width)
+	d.targets = append(d.targets, hitRegion{ID: id, X: ansi.StringWidth(gutter), Y: len(d.lines), W: ansi.StringWidth(face), H: 1})
+	controlLine := gutter + face
+	label := themed(m.tr("network.tunConfig.policy"), text, raised, false)
+	if ansi.StringWidth(controlLine)+2+ansi.StringWidth(label) <= width {
+		d.lines = append(d.lines, controlLine+"  "+label)
+	} else {
+		d.lines = append(d.lines, controlLine)
+		d.line(label)
+	}
 	d.line(m.tr("network.tunConfig.preset"))
 	if s.Service.Active {
 		d.line(m.tr("network.tunConfig.restart"))

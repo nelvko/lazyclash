@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -186,15 +187,17 @@ func (m *Model) putHelpSwitch(rows []string, hits []hitRegion, x, y, width int) 
 	o.Dim = false
 	control := o.settingsToggle(id)
 	focused, hovered := m.keyHints.helpFocus == id, m.hover == id
-	face := o.switchFace(id, control, toggleOptions{Surface: raised, Focused: focused, Hovered: hovered})
-	gutter := ""
-	if width >= switchWidth+2 {
-		gutter = switchGutter(focused, hovered, o.Monochrome, raised, false)
+	opts := toggleOptions{Surface: raised, Focused: focused, Hovered: hovered}
+	face := o.switchSlot(id, control, opts, width, lipgloss.Left)
+	gutter := o.switchGutter(opts, width)
+	line := gutter + face
+	if labelWidth := width - ansi.StringWidth(line) - 1; labelWidth > 0 {
+		line += " " + themed(cellCrop(m.tr("dashboard.interface.keyHints"), labelWidth), text, raised, false)
 	}
-	putRows(rows, x, y, cellCrop(gutter+face+" "+themed(m.tr("dashboard.interface.keyHints"), text, raised, false), width), m.width)
+	putRows(rows, x, y, line, m.width)
 	if control.canToggle() {
 		left := ansi.StringWidth(gutter)
-		hits = append(hits, hitRegion{ID: id, X: x + left, Y: y, W: min(switchWidth, width-left), H: 1})
+		hits = append(hits, hitRegion{ID: id, X: x + left, Y: y, W: ansi.StringWidth(face), H: 1})
 	}
 	return hits
 }

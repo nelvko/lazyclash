@@ -143,7 +143,7 @@ func TestNetworkCardGroupsSwitchAndConfigurationAtEachWidth(t *testing.T) {
 							assertNetworkLabelCentered(t, card.lines[h.Y], start, end, label)
 							face := ansi.Strip(ansi.Cut(card.lines[h.Y], h.X, h.X+h.W))
 							if !strings.Contains(face, label) || strings.Contains(face, "›") != (id == focus && i%2 == 1) ||
-								h.X < start || h.X+h.W > end || i%2 == 0 && h.W != switchWidth {
+								h.X < start || h.X+h.W > end || i%2 == 0 && h.W != switchSlotWidth {
 								t.Fatalf("%s target misses its face or crosses its group: %+v, %q", id, h, face)
 							}
 							if i%2 == 1 {
@@ -362,8 +362,8 @@ func TestNetworkSwitchStylesKeepExactHitRegions(t *testing.T) {
 					continue
 				}
 				face := ansi.Strip(ansi.Cut(card.lines[h.Y], h.X, h.X+h.W))
-				want := map[string]string{app.SwitchStyleSlanted: "●▱▱", app.SwitchStyleSlider: "   ", app.SwitchStyleText: "OFF", app.SwitchStyleLine: "●──"}[style]
-				if h.W != switchWidth || h.H != 1 || face != want {
+				want := map[string]string{app.SwitchStyleSlanted: " ●▱▱  ", app.SwitchStyleSlider: "      ", app.SwitchStyleText: " OFF  ", app.SwitchStyleLine: " ●──  "}[style]
+				if h.W != switchSlotWidth || h.H != 1 || face != want {
 					t.Fatalf("%s %s region %+v contains %q, want %q", style, h.ID, h, face, want)
 				}
 			}
