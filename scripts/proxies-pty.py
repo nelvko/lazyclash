@@ -81,8 +81,10 @@ def assert_proxy_header(terminal, words, direct=False):
     assert words["dashboard.page.proxies"] in header, "proxy header lost its page title"
     assert words["header.refresh"] not in header and "↻" not in header, "proxy header retained a manual refresh action"
     assert not re.search(r"\b\d+\s+groups\b|\d+\s*个代理组", header), "proxy header retained the group total"
-    placeholder = words["proxies.search_placeholder"]
-    assert (placeholder in terminal.screen.text()) == (not direct), "search field visibility does not match the routing mode"
+    assert words["proxies.search_placeholder"] not in terminal.screen.text(), "browsing the directory opened search"
+    if direct:
+        search_hint = words["navigation.proxies.searchKey"]
+        assert search_hint not in rows[-1], "Direct mode retained the footer search hint"
     if terminal.screen.columns >= 50:
         assert len({y for _, y in modes + [provider]}) == 1, "mode choices and provider action do not share a header row"
         faces = proxy_mode_faces(terminal, words)

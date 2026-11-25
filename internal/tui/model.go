@@ -1621,7 +1621,7 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 					if r.ID == "logo" {
 						return m.startLogoPulse()
 					}
-					if m.page == "proxies" && r.ID == "proxies.search" {
+					if m.page == "proxies" && (r.ID == "proxies.search" || r.ID == "proxies.search-hint") {
 						return m.focusProxySearch()
 					}
 					if index, ok := strings.CutPrefix(r.ID, proxyTypeTarget); ok {

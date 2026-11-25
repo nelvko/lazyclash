@@ -39,18 +39,28 @@ def view_context(terminal, proxy, words):
 
 
 def open_search(terminal, proxy, words, method):
-    x, y = proxy.control_position(terminal, words["proxies.search_placeholder"])
+    placeholder = words["proxies.search_placeholder"]
+    assert placeholder not in terminal.screen.text(), "search was already open"
+    if method == "slash":
+        terminal.key(b"/")
+    else:
+        hint = words["navigation.proxies.searchKey"]
+        row = terminal.screen.cells[-1]
+        text_offset = "".join(row).find(hint)
+        assert text_offset >= 0, "missing footer search hint: " + "".join(row)
+        # Click the label itself so both the slash and its description must
+        # belong to the same shortcut. Translate the text offset to PTY cells.
+        x = proxy.cell_offset(row, text_offset + len(hint) - 1)
+        proxy.click_cell(terminal, x, terminal.screen.rows - 1)
+    terminal.wait(placeholder)
+    terminal.settle()
+    x, y = proxy.control_position(terminal, placeholder)
     cells = terminal.screen.cells
     field_left = x - 2
     assert cells[y][field_left] == "│", "search text is outside its field"
     for offset, corner in ((-1, "╭"), (1, "╰")):
         assert (cells[y + offset][field_left] == corner) == (terminal.screen.rows > 24), (
             "unexpected search frame height at %dx%d" % (terminal.screen.columns, terminal.screen.rows))
-    if method == "slash":
-        terminal.key(b"/")
-    else:
-        proxy.click_cell(terminal, x, y)
-    terminal.settle()
 
 
 def paste_query(terminal, value):
@@ -62,9 +72,27 @@ def paste_query(terminal, value):
 def escape_restores(terminal, proxy, words, before, query):
     terminal.key(b"\x1b")
     terminal.settle()
-    assert words["proxies.search_placeholder"] in terminal.screen.text(), "Esc did not leave an empty search field"
+    assert words["proxies.search_placeholder"] not in terminal.screen.text(), "Esc left an idle search field"
     after = view_context(terminal, proxy, words)
     assert after == before, "Esc did not restore the original scroll, focus and expansions after %r\n%s" % (query, terminal.screen.text())
+
+
+def collapsed_directory(terminal, proxy, preview, output, words, args):
+    groups = visible_groups(terminal, proxy)
+    assert len(groups) >= 4 and all(proxy.group_header(terminal, name)[3].rstrip().endswith("▸") for name in groups), (
+        "fixture must start in a collapsed directory")
+    proxy.assert_proxy_header(terminal, words)
+    preview.capture(terminal, output, "directory-idle", args)
+
+    terminal.key(b"\x14")  # Ctrl+T hides the footer.
+    terminal.settle()
+    before = view_context(terminal, proxy, words)
+    assert words["dashboard.footer.help"] not in terminal.screen.text(), "footer is still visible"
+    open_search(terminal, proxy, words, "slash")
+    paste_query(terminal, "YouTube")
+    escape_restores(terminal, proxy, words, before, "YouTube without footer")
+    terminal.key(b"\x14")
+    terminal.wait(words["dashboard.footer.help"])
 
 
 def expanded_restoration(terminal, proxy, preview, output, words, args):
@@ -133,6 +161,7 @@ def main():
             terminal.key(b"2")
             terminal.wait("PROXY")
             terminal.settle()
+            collapsed_directory(terminal, proxy, preview, output, words, args)
             expanded_restoration(terminal, proxy, preview, output, words, args)
             proxy.open_group(terminal, "AUTO")
             terminal.key(b"\x1b[C")
@@ -159,7 +188,8 @@ def main():
                     assert words["proxies.search_group"] % first not in terminal.screen.text(), "visible wide heading has a duplicate group label"
                 first_y = proxy.group_header(terminal, first)[1]
                 open_search(terminal, proxy, words, "slash" if index % 2 == 0 else "click")
-                assert proxy.group_header(terminal, first)[1] == first_y, "focusing the search field moved the proxy list"
+                assert proxy.group_header(terminal, first)[1] == first_y + (3 if height > 24 else 1), (
+                    "opening search reserved the wrong number of rows")
                 preview.capture(terminal, output, "search-empty-%dx%d" % (width, height), args)
                 paste_query(terminal, "hk 02")
                 if narrow:
@@ -199,7 +229,7 @@ def main():
             terminal.exit()
             calls = json.loads(report.read_text())
             assert calls["selections"] == calls["modes"] == calls["tests"] == 0, calls
-            print("PASS %s: persistent three-row/one-row search, click/slash entry, group/node filters, Enter keeps results, Esc restores scroll/focus/expansion, current-node focus, no-match shortcut isolation, pinned search with a sticky group; no backend mutations" % language, flush=True)
+            print("PASS %s: default collapsed directory, clickable footer, slash with footer hidden, three-row/one-row search, group/node filters, Enter keeps results, Esc closes search and restores scroll/focus/expansion; no backend mutations" % language, flush=True)
         except BaseException:
             preview.capture(terminal, output, "failed", args)
             raise

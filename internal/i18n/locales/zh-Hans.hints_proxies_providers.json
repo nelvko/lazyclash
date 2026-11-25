@@ -1,5 +1,6 @@
 {
   "navigation.proxies.directBrowse": "Tab 控件 · Esc 返回",
+  "navigation.proxies.searchKey": "/ 搜索",
   "navigation.proxies.emptyBrowse": "/ 搜索 · Tab 控件 · Esc 返回",
   "navigation.proxies.listBrowse": "/ 搜索 · ↑↓ 移动",
   "navigation.proxies.columnsKey": "←→ 邻列",

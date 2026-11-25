@@ -101,28 +101,28 @@ func TestApplyingProfileAutomaticallyUpdatesProxyGroups(t *testing.T) {
 	}
 }
 
-func TestProxiesSearchFieldIsVisibleWithoutTakingFocus(t *testing.T) {
+func TestProxiesIdleSearchLeavesDirectoryAndMembersUnobstructed(t *testing.T) {
 	m, _ := proxiesModel(t, 160, 40)
 	defer m.stopRuntime()
-	field := findTarget(t, m, "proxies.search")
-	if m.proxies.editing || m.focus == field.ID || m.proxies.search.Focused() || !hasAction(m.focusTargets(), field.ID) {
-		t.Fatal("default proxy directory should offer search while preserving browsing focus")
-	}
-	if hasAction(m.targets, "proxies.search-open") || hasAction(m.focusTargets(), "proxies.search-open") {
-		t.Fatal("proxy directory has a duplicate search button")
-	}
-	m, _ = click(m, field)
-	if _, id, active := m.activeInputField(); !active || id != field.ID || m.busy {
-		t.Fatal("clicking the visible field did not start editing")
-	}
-	m, _ = update(m, special(tea.KeyEscape))
-	if findTarget(t, m, field.ID) != field || m.proxies.editing || m.proxies.search.Focused() {
-		t.Fatal("Escape should leave the search field visible and unfocused")
+	setProxyTestGroup(&m, "")
+	m.layout()
+	for _, expanded := range []bool{false, true} {
+		if expanded {
+			m, _ = click(m, findTarget(t, m, "group.0"))
+		}
+		if m.proxyGroupExpanded("PROXY") != expanded {
+			t.Fatal("directory did not reach the expected expansion state")
+		}
+		if m.dashboardOptions().BodyTopRows != 0 || hasAction(m.targets, "proxies.search") ||
+			hasAction(m.focusTargets(), "proxies.search") || hasAction(m.targets, "proxies.search-open") ||
+			strings.Contains(ansi.Strip(m.screen), m.tr("proxies.search_placeholder")) {
+			t.Fatalf("idle search occupied space or exposed a field with expanded=%t", expanded)
+		}
 	}
 	m.snapshotReady = false
 	m.layout()
 	m, _ = update(m, key("/"))
-	if hasAction(m.targets, field.ID) || hasAction(m.focusTargets(), field.ID) || m.proxies.editing {
+	if hasAction(m.targets, "proxies.search-hint") || hasAction(m.targets, "proxies.search") || m.proxies.editing {
 		t.Fatal("an unavailable proxy directory exposed search")
 	}
 }
@@ -195,8 +195,8 @@ func TestProxyModeAndProviderPositionsSurviveViewChanges(t *testing.T) {
 							t.Fatalf("%s lost keyboard access", want.ID)
 						}
 					}
-					if m.proxiesDirect() && (hasAction(m.targets, "proxies.search") || hasAction(m.focusTargets(), "proxies.search")) {
-						t.Fatal("Direct mode retained a search input")
+					if m.proxiesDirect() && (hasAction(m.targets, "proxies.search-hint") || hasAction(m.targets, "proxies.search") || hasAction(m.focusTargets(), "proxies.search")) {
+						t.Fatal("Direct mode retained a search input or mouse shortcut")
 					}
 				}
 

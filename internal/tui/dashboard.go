@@ -316,7 +316,13 @@ func drawDashboard(o dashboardOptions) (string, []hitRegion, int, []notification
 		targets = append(kept, drawSidebar(rows, o, true)...)
 	}
 	if !o.HideKeyHints {
-		put(2, o.Height-1, dashboardKeyHints(o))
+		footer, searchHint := dashboardKeyHints(o)
+		put(2, o.Height-1, footer)
+		if searchHint.ID != "" {
+			searchHint.X += 2
+			searchHint.Y = o.Height - 1
+			add(searchHint)
+		}
 	}
 	notifications := notificationLayout(o, headerTargets...)
 	for _, notification := range notifications {

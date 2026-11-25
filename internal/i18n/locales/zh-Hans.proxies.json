@@ -43,5 +43,5 @@
   "proxies.switching": "切换中",
   "proxies.test.done": "已完成 %d/%d",
   "proxies.test.canceled": "已取消 %d/%d",
-  "help.proxies.tools": "点击搜索框或按 / 查找组和节点。Enter 聚焦首个结果，Esc 清空搜索并回到原来的浏览位置。s 排序。t 测试当前组，再按一次取消该组测试。"
+  "help.proxies.tools": "按 / 或点击底栏的「/ 搜索」查找组和节点。Enter 聚焦首个结果，Esc 收起搜索框并回到原来的浏览位置。s 排序。t 测试当前组，再按一次取消该组测试。"
 }

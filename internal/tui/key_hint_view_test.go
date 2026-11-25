@@ -42,18 +42,21 @@ func TestKeyHintsKeepHelpVisibleOnEveryPage(t *testing.T) {
 
 func TestKeyHintsPreferActivationAndDropWholeSecondaryHints(t *testing.T) {
 	o := dashboardOptions{Width: 40, Help: "s Sort · t Test · ↑↓ Move · Enter Select · / Search · Esc Back · ? Help"}
-	footer := ansi.Strip(dashboardKeyHints(o))
+	line, _ := dashboardKeyHints(o)
+	footer := ansi.Strip(line)
 	if !strings.HasPrefix(footer, "Enter Select") || strings.Contains(footer, "Sort") || strings.Contains(footer, "Test") {
 		t.Fatalf("secondary keys displaced the current action: %q", footer)
 	}
 	o.Width = 80
-	footer = ansi.Strip(dashboardKeyHints(o))
+	line, _ = dashboardKeyHints(o)
+	footer = ansi.Strip(line)
 	if !strings.HasPrefix(footer, "Enter Select · / Search · ↑↓ Move · Esc Back") {
 		t.Fatalf("wider footer did not restore primary hints in order: %q", footer)
 	}
 	for width := 20; width <= 180; width++ {
 		o.Width = width
-		footer = ansi.Strip(dashboardKeyHints(o))
+		line, _ = dashboardKeyHints(o)
+		footer = ansi.Strip(line)
 		if ansi.StringWidth(footer) != width-4 || strings.Contains(footer, "…") {
 			t.Fatalf("width %d has clipped or overflowing hints: %q", width, footer)
 		}
@@ -73,7 +76,7 @@ func TestEditingHintExplainsHowToReachHelp(t *testing.T) {
 			m.locale, m.page, m.width, m.height = i18n.New(language), page, 80, 24
 			switch page {
 			case "proxies":
-				m.focus, m.proxies.editing = "proxies.search", true
+				m.focusProxySearch()
 			case "profiles":
 				m.focus, m.profilesUI.editing = "profiles.url", true
 			case "connections":

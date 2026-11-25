@@ -54,7 +54,11 @@ func (m *Model) proxyGroupMatches(query string, group mihomo.Group) bool {
 }
 
 func (m *Model) proxySearchVisible() bool {
-	return m.proxiesReady() && !m.proxiesDirect()
+	return m.proxies.searchReturn != nil && m.proxiesReady() && !m.proxiesDirect()
+}
+
+func (m *Model) canFocusProxySearch() bool {
+	return !m.busy && !m.quitting && m.proxiesReady() && !m.proxiesDirect()
 }
 
 func (m *Model) proxyNarrowGroupLabelVisible() bool {
@@ -66,7 +70,7 @@ func (m *Model) proxyNarrowGroupLabelVisible() bool {
 }
 
 func (m *Model) focusProxySearch() tea.Cmd {
-	if m.busy || m.quitting || !m.proxySearchVisible() {
+	if !m.canFocusProxySearch() {
 		return nil
 	}
 	if m.proxies.searchReturn == nil {

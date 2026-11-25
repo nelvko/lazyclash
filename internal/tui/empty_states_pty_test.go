@@ -120,7 +120,6 @@ func (f *emptyStatesPTYModel) selectCase() {
 		m.appendLogs([]mihomo.LogEntry{{Level: "info", Message: "fixture retained event"}})
 		m.logs.search.SetValue("missing")
 		m.snapshot.Groups = []mihomo.Group{{Name: "Fixture group", Type: "Selector", Now: "DIRECT", All: []string{"DIRECT"}}}
-		m.proxies.search.SetValue("missing")
 	}
 	if c.state == "stopped" {
 		m.snapshot.Service.State, m.snapshot.Service.Active = "inactive", false
@@ -159,6 +158,11 @@ func (f *emptyStatesPTYModel) selectCase() {
 	}
 	if c.page != "providers" && c.page != "notifications" {
 		m.enterContent()
+	}
+	if c.page == "proxies" && c.state == "filtered" {
+		m.focusProxySearch()
+		m.proxies.search.SetValue("missing")
+		m.proxySearchKey(tea.KeyPressMsg{Code: tea.KeyEnter})
 	}
 	m.layout()
 	if c.title == "" {

@@ -53,7 +53,8 @@ func TestNarrowExclusiveKeyHintsDoNotAdvertiseBareHelp(t *testing.T) {
 		{Width: 12, EditingInput: true},
 		{Width: 12, HelpAfterClose: true},
 	} {
-		if got := ansi.Strip(dashboardKeyHints(o)); got != "Esc" {
+		line, _ := dashboardKeyHints(o)
+		if got := ansi.Strip(line); got != "Esc" {
 			t.Fatalf("narrow exclusive input advertised unavailable help: %q", got)
 		}
 	}

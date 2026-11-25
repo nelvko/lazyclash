@@ -252,11 +252,15 @@ func TestProxiesFixedTargetsMatchSearchControls(t *testing.T) {
 	for _, width := range []int{80, 160} {
 		for _, query := range []string{"", "HK"} {
 			m, _ := proxiesModel(t, width, 24)
+			m.focusProxySearch()
 			m.proxies.search.SetValue(query)
 			o := m.dashboardOptions()
 			m.populatePageBody(&o)
 			g := dashboardGeometry(o)
 			want := append([]hitRegion(nil), o.BodyTop.targets...)
+			if !hasAction(want, "proxies.search") || hasAction(want, "proxies.clear") != (query != "") {
+				t.Fatalf("%d columns query %q: fixed toolbar lacks the expected search controls: %+v", width, query, want)
+			}
 			for i := range want {
 				want[i].X += g.x
 				want[i].Y += g.y - o.BodyTopRows

@@ -205,11 +205,15 @@ func (m *Model) contextHelp() string {
 	if strings.HasPrefix(m.focus, "notification.") {
 		return m.notificationContextHelp()
 	}
-	if strings.HasPrefix(m.focus, "nav.") {
-		return m.tr("navigation.sidebar")
-	}
-	if m.focus == "menu" {
-		return m.tr("navigation.menu")
+	if strings.HasPrefix(m.focus, "nav.") || m.focus == "menu" {
+		hint := m.tr("navigation.sidebar")
+		if m.focus == "menu" {
+			hint = m.tr("navigation.menu")
+		}
+		if m.page == "proxies" && m.canFocusProxySearch() {
+			hint += " · " + m.tr("navigation.proxies.searchKey")
+		}
+		return hint
 	}
 	if m.busy {
 		return m.tr("navigation.hints.busy")

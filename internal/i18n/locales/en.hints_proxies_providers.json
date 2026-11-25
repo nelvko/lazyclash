@@ -1,5 +1,6 @@
 {
   "navigation.proxies.directBrowse": "Tab Controls · Esc Back",
+  "navigation.proxies.searchKey": "/ Search",
   "navigation.proxies.emptyBrowse": "/ Search · Tab Controls · Esc Back",
   "navigation.proxies.listBrowse": "/ Search · ↑↓ Move",
   "navigation.proxies.columnsKey": "←→ Columns",
