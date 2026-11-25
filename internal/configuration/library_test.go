@@ -138,6 +138,8 @@ func TestRepositoryRejectsInvalidProfileMetadataBeforePublishing(t *testing.T) {
 		{"missing-revision", func(record *ProfileRecord) { record.Spec.Revision = "" }},
 		{"invalid-revision", func(record *ProfileRecord) { record.Spec.Revision = "../private-token" }},
 		{"oversized-overrides", func(record *ProfileRecord) { record.Spec.Overrides = strings.Repeat("x", MaxDocumentSize+1) }},
+		{"multiline-user-agent", func(record *ProfileRecord) { record.UserAgent = "client\r\nprivate-token" }},
+		{"local-user-agent", func(record *ProfileRecord) { record.Address, record.UserAgent = "/profile.yaml", "client" }},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			r, lib, original, _ := publishedRepository(t)

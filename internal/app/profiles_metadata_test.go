@@ -29,7 +29,7 @@ func TestProfileSnapshotProvidesSafeCardMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	address.User = url.UserPassword("private-user-token", "private-password-token")
-	if err := a.AddSubscription(t.Context(), "remote", address.String()); err != nil {
+	if err := a.CreateProfile(t.Context(), ProfileDraft{Name: "remote", Address: address.String(), UserAgent: "private-agent-token", RememberSource: true}); err != nil {
 		t.Fatal(err)
 	}
 	local := filepath.Join(t.TempDir(), "private-local-token.yaml")
@@ -85,7 +85,7 @@ func TestProfileSnapshotProvidesSafeCardMetadata(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, secret := range []string{"private-path-token", "private-query-token", "private-user-token", "private-password-token", "private-local-token", "private-override-token", local, address.String()} {
+	for _, secret := range []string{"private-path-token", "private-query-token", "private-user-token", "private-password-token", "private-agent-token", "private-local-token", "private-override-token", local, address.String()} {
 		if strings.Contains(string(public), secret) {
 			t.Fatal("card metadata exposed private source or override data")
 		}

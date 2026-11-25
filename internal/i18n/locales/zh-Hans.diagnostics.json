@@ -74,6 +74,7 @@
   "diagnostic.profile.serviceChanged": "服务在校验配置时发生变化；请重试",
   "diagnostic.profile.metadataSave": "配置已应用，但无法保存配置校验元数据：%w",
   "diagnostic.source.invalidURL": "订阅 URL 无效",
+  "diagnostic.source.invalidUserAgent": "User-Agent 必须是有效的单行 HTTP 请求头值",
   "diagnostic.source.redirectLimit": "订阅重定向次数过多",
   "diagnostic.source.httpsDowngrade": "订阅重定向会将 HTTPS 降级",
   "diagnostic.source.download": "订阅下载失败（URL 已隐藏）",

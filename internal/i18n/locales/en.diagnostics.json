@@ -74,6 +74,7 @@
   "diagnostic.profile.serviceChanged": "service changed while validating the profile; retry the operation",
   "diagnostic.profile.metadataSave": "configuration applied, but profile validation metadata could not be saved: %w",
   "diagnostic.source.invalidURL": "invalid subscription URL",
+  "diagnostic.source.invalidUserAgent": "User-Agent must be a valid single-line HTTP header value",
   "diagnostic.source.redirectLimit": "too many subscription redirects",
   "diagnostic.source.httpsDowngrade": "subscription redirect would downgrade HTTPS",
   "diagnostic.source.download": "subscription download failed (URL withheld)",

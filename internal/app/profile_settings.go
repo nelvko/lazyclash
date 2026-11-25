@@ -9,23 +9,24 @@ import (
 	"github.com/nelvko/lazyclash/internal/diagnostic"
 )
 
-// ProfileSettings is read on demand by the editor. The unredacted address
-// may contain credentials and is never included in ProfileInfo or Snapshot.
+// ProfileSettings is read on demand by the editor. Private request details
+// stay out of ProfileInfo and Snapshot.
 type ProfileSettings struct {
 	ID          string
 	Name        string
 	Description string
 	Address     string `json:"-"`
+	UserAgent   string `json:"-"`
 	reviewed    string
 }
 
 func profileSettings(id string, record configuration.ProfileRecord) ProfileSettings {
 	// Quota, timestamps and recipe revisions can change while the form is
 	// open. They are never copied back from the form.
-	fields := [...]string{id, record.Name, record.NameSource, record.NameBase, record.Description, record.Address}
+	fields := [...]string{id, record.Name, record.NameSource, record.NameBase, record.Description, record.Address, record.UserAgent}
 	reviewed, _ := json.Marshal(fields)
 	return ProfileSettings{
-		ID: id, Name: record.Name, Description: record.Description, Address: record.Address,
+		ID: id, Name: record.Name, Description: record.Description, Address: record.Address, UserAgent: record.UserAgent,
 		reviewed: digest(reviewed),
 	}
 }
@@ -47,7 +48,7 @@ func (a *App) GetProfileSettings(ctx context.Context, id string) (ProfileSetting
 	return settings, err
 }
 
-// SaveProfileSettings commits all three fields together. An unchanged name
+// SaveProfileSettings commits the edited fields together. An unchanged name
 // keeps its provenance, including when a replacement source provides a title.
 func (a *App) SaveProfileSettings(ctx context.Context, edited ProfileSettings) error {
 	edited.Name = configuration.CleanName(edited.Name)
@@ -56,6 +57,11 @@ func (a *App) SaveProfileSettings(ctx context.Context, edited ProfileSettings) e
 	}
 	edited.Description = configuration.CleanDescription(edited.Description)
 	edited.Address = strings.TrimSpace(edited.Address)
+	userAgent, err := configuration.SourceUserAgent(edited.Address, edited.UserAgent)
+	if err != nil {
+		return err
+	}
+	edited.UserAgent = userAgent
 	return a.locked(ctx, func() error {
 		lib, old, err := a.library().Load()
 		if err != nil {
@@ -75,12 +81,14 @@ func (a *App) SaveProfileSettings(ctx context.Context, edited ProfileSettings) e
 		}
 		previous := entry
 		entry.Description = edited.Description
+		entry.UserAgent = edited.UserAgent
 		lib.Profiles[id] = entry
 		if edited.Name != current.Name {
 			nameProfile(&lib, id, configuration.NameCandidate{Name: edited.Name, Source: configuration.NameCustom})
 		}
-		if edited.Address != current.Address {
-			if err := a.readProfileSource(ctx, &lib, id, edited.Address, true); err != nil {
+		addressChanged := edited.Address != current.Address
+		if addressChanged || edited.UserAgent != current.UserAgent {
+			if err := a.readProfileSource(ctx, &lib, id, edited.Address, addressChanged); err != nil {
 				return err
 			}
 			return a.saveProfileEdit(ctx, lib, old, id, previous)

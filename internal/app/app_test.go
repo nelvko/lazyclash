@@ -569,7 +569,7 @@ func TestSubscriptionRedirectDoesNotForwardTokenInReferer(t *testing.T) {
 	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, target.URL, http.StatusFound) }))
 	defer source.Close()
 	a.HTTP = nil
-	download, err := a.downloadSource(t.Context(), source.URL+"/token-in-path?token=private")
+	download, err := a.downloadSource(t.Context(), source.URL+"/token-in-path?token=private", "")
 	if err != nil || string(download.Raw) != "fixture" {
 		t.Fatal(string(download.Raw), err)
 	}

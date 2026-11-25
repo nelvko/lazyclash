@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/nelvko/lazyclash/internal/configuration"
@@ -19,11 +18,14 @@ type downloadedSource struct {
 	Headers http.Header
 }
 
-func (a *App) downloadSource(ctx context.Context, source string) (downloadedSource, error) {
-	if strings.HasPrefix(source, "https://") || strings.HasPrefix(source, "http://") {
+func (a *App) downloadSource(ctx context.Context, source, userAgent string) (downloadedSource, error) {
+	if configuration.IsRemoteSource(source) {
 		req, err := http.NewRequestWithContext(ctx, "GET", source, nil)
 		if err != nil {
 			return downloadedSource{}, diagnostic.New("diagnostic.source.invalidURL", "invalid subscription URL")
+		}
+		if userAgent != "" {
+			req.Header.Set("User-Agent", userAgent)
 		}
 		tr := http.DefaultTransport.(*http.Transport).Clone()
 		tr.Proxy = nil

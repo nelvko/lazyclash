@@ -42,6 +42,7 @@ type ProfileRecord struct {
 	NameBase    string    `json:"name_base"`
 	Description string    `json:"description,omitempty"`
 	Address     string    `json:"address,omitempty"`
+	UserAgent   string    `json:"user_agent,omitempty"`
 	UpdatedAt   time.Time `json:"updated_at"`
 
 	Quota SubscriptionQuota `json:"quota,omitzero"`
@@ -102,6 +103,9 @@ func (l Library) validate() error {
 			return invalid
 		}
 		if record.Name == "" || record.NameBase == "" || record.Name != CleanName(record.Name) || record.NameBase != CleanName(record.NameBase) || record.Description != CleanDescription(record.Description) || used[NameKey(record.Name)] {
+			return invalid
+		}
+		if ua, err := SourceUserAgent(record.Address, record.UserAgent); err != nil || ua != record.UserAgent {
 			return invalid
 		}
 		switch record.NameSource {

@@ -19,6 +19,7 @@ type ProfileDraft struct {
 	Name           string
 	Description    string
 	Address        string
+	UserAgent      string
 	RememberSource bool
 }
 
@@ -38,8 +39,12 @@ func (a *App) ImportProfile(ctx context.Context, draft ProfileDraft) (string, er
 	}
 	draft.Description = configuration.CleanDescription(draft.Description)
 	draft.Address = strings.TrimSpace(draft.Address)
+	userAgent, err := configuration.SourceUserAgent(draft.Address, draft.UserAgent)
+	if err != nil {
+		return "", err
+	}
 	var displayName string
-	err := a.locked(ctx, func() error {
+	err = a.locked(ctx, func() error {
 		lib, old, err := a.library().Load()
 		if err != nil {
 			return err
@@ -48,7 +53,7 @@ func (a *App) ImportProfile(ctx context.Context, draft ProfileDraft) (string, er
 		if err != nil {
 			return err
 		}
-		download, err := a.downloadSource(ctx, draft.Address)
+		download, err := a.downloadSource(ctx, draft.Address, userAgent)
 		if err != nil {
 			return err
 		}
@@ -67,6 +72,7 @@ func (a *App) ImportProfile(ctx context.Context, draft ProfileDraft) (string, er
 		}
 		if draft.RememberSource {
 			entry.Address = draft.Address
+			entry.UserAgent = userAgent
 		}
 		lib.Profiles[id] = entry
 		nameProfile(&lib, id, configuration.ResolveName(draft.Name, download.Headers, draft.Address))
@@ -172,7 +178,10 @@ func (a *App) readProfileSource(ctx context.Context, lib *configuration.Library,
 	if _, err := a.library().Read(entry.Spec.Revision); err != nil {
 		return err
 	}
-	download, err := a.downloadSource(ctx, address)
+	if !configuration.IsRemoteSource(address) {
+		entry.UserAgent = ""
+	}
+	download, err := a.downloadSource(ctx, address, entry.UserAgent)
 	if err != nil {
 		return err
 	}
