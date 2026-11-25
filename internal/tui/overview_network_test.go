@@ -30,12 +30,12 @@ func TestOverviewNetworkKeepsUnavailableControlsDisabledAndAddressesInDetails(t 
 				if len(card.targets) != 2 || card.targets[0].ID != "network.primaryConfig" || card.targets[1].ID != "network.tunConfig" {
 					t.Fatalf("expected only the two configuration actions: %+v", card.targets)
 				}
-				for _, hidden := range []string{"17890", "127.0.0.1", "private-user", "private-password", "private-path", "private-token"} {
+				for _, hidden := range []string{"17890", o.Locale.T("dashboard.field.systemProxy"), "127.0.0.1", "private-user", "private-password", "private-path", "private-token"} {
 					if strings.Contains(plain, hidden) {
 						t.Fatalf("network summary retained addresses or credentials: %s", plain)
 					}
 				}
-				if width >= 40 && strings.Count(plain, o.Locale.T("dashboard.network.unsupported")) != 3 {
+				if width >= 40 && strings.Count(plain, o.Locale.T("dashboard.network.unsupported")) != 2 {
 					t.Fatalf("expected one unavailable state per group: %s", plain)
 				}
 				if width == 40 {
@@ -133,7 +133,7 @@ func TestNetworkCardGroupsSwitchAndConfigurationAtEachWidth(t *testing.T) {
 							}
 							label := o.Locale.T("dashboard.network.configure")
 							if i%2 == 0 {
-								label = slantedFrames[0]
+								label = "○ " + o.Locale.T("dashboard.network.off")
 								heading := "terminal.title"
 								if i == 2 {
 									heading = "dashboard.network.tun"
@@ -142,8 +142,8 @@ func TestNetworkCardGroupsSwitchAndConfigurationAtEachWidth(t *testing.T) {
 							}
 							assertNetworkLabelCentered(t, card.lines[h.Y], start, end, label)
 							face := ansi.Strip(ansi.Cut(card.lines[h.Y], h.X, h.X+h.W))
-							if !strings.Contains(face, label) || strings.Contains(face, "›") != (id == focus && i%2 == 1) ||
-								h.X < start || h.X+h.W > end || i%2 == 0 && h.W != switchSlotWidth {
+							if !strings.Contains(face, label) || strings.Contains(face, "›") != (id == focus) ||
+								h.X < start || h.X+h.W > end {
 								t.Fatalf("%s target misses its face or crosses its group: %+v, %q", id, h, face)
 							}
 							if i%2 == 1 {
@@ -341,50 +341,5 @@ func TestPortsDetailsShowFreshAddressesAndKeepControllerCredentialsPrivate(t *te
 				}
 			}
 		})
-	}
-}
-
-func TestNetworkSwitchStylesKeepExactHitRegions(t *testing.T) {
-	snapshot := hostTUNBackend().snapshot
-	snapshot.Service = service.Status{Active: true, State: "active"}
-	snapshot.TerminalProxy.State = "off"
-	for _, width := range []int{36, 44, 100} {
-		o := dashboardOptions{Snapshot: snapshot, Focus: "terminal.enable"}
-		original := overviewNetworkCard(o, width)
-		for _, style := range []string{app.SwitchStyleSlanted, app.SwitchStyleSlider, app.SwitchStyleText, app.SwitchStyleLine} {
-			o.SwitchStyle, o.Hover = style, "tun.enable"
-			card := overviewNetworkCard(o, width)
-			if !slices.Equal(original.targets, card.targets) {
-				t.Fatalf("%s at width %d moved hit regions: %+v", style, width, card.targets)
-			}
-			for _, h := range card.targets {
-				if h.ID != o.Focus && h.ID != o.Hover {
-					continue
-				}
-				face := ansi.Strip(ansi.Cut(card.lines[h.Y], h.X, h.X+h.W))
-				want := map[string]string{app.SwitchStyleSlanted: slantedFrames[0], app.SwitchStyleSlider: "      ", app.SwitchStyleText: " OFF  ", app.SwitchStyleLine: " ●──  "}[style]
-				if h.W != switchSlotWidth || h.H != 1 || face != want {
-					t.Fatalf("%s %s region %+v contains %q, want %q", style, h.ID, h, face, want)
-				}
-			}
-		}
-	}
-}
-
-func TestTUNPostreadFailureRemainsUnknownUntilFreshPolicy(t *testing.T) {
-	b := hostTUNBackend()
-	m := ready(b)
-	defer m.stopRuntime()
-	m.notification.operation.Key = "tun"
-	m.markOperationStateUnknown()
-	// A runtime update can recover the service but cannot read the saved policy.
-	m.snapshot.Service = b.snapshot.Service
-	m.snapshot.ServiceError = ""
-	if control := overviewTUNToggle(m.navigationOptions()); control.state != toggleUnknown || m.canConfigureHostTUN() {
-		t.Fatal("a service-only observation re-enabled the unconfirmed TUN policy")
-	}
-	m.adoptSnapshot(b.snapshot)
-	if !overviewTUNToggle(m.navigationOptions()).canToggle() || !m.canConfigureHostTUN() {
-		t.Fatal("a new full read did not restore the policy control")
 	}
 }

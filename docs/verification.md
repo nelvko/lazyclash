@@ -1,25 +1,5 @@
 # 验证入口
 
-## 放大斜切式开关（2026-11-25）
-
-在同一 144×42 Kitty 设置页，用 Menlo 12 pt 测量实际着色的像素。旧版开启和关闭均为 45×16 像素。新版开启为 83×28 像素，关闭为 89×28 像素，两者占用同一块 90×28 像素的六格点击区域。另用 Monaco 核对了圆环和斜轨。[调整前](../.test-artifacts/slanted-size/native/before-truecolor-Menlo-switches.png) · [调整后](../.test-artifacts/slanted-size/native/final-truecolor-Menlo-switches.png) · [256 色](../.test-artifacts/slanted-size/native/final-256-Menlo-switches.png) · [无色](../.test-artifacts/slanted-size/native/final-plain-Menlo-switches.png)
-
-组件 PTY 验证了三帧中圆环的位置、宽度和字重，覆盖真彩、256 色、16 色、无色及宽字符回退。设置页验证了菜单预览和点击两端，概览页验证了键鼠切换。控件空间不足六格时通过页面回归检查了 `ON` 和 `OFF` 的可读性。
-
-## 恢复滑块式开关的比例与配色（2026-11-25）
-
-在 144×42 的 Kitty 设置页上，开启的滑块实测宽 90 像素、高 28 像素，其中灰绿轨道占 60 像素，浅绿滑块占 30 像素。256 色实测为 `#5f875f` 和 `#d7ffd7`。Menlo 和 Monaco 两种字体都验证了六格长条以及滑块的左、中、右三个位置。[原生设置页](../.test-artifacts/switch-proportions/native/settings-Menlo.png) · [真彩局部](../.test-artifacts/switch-proportions/native/settings-slider-detail.png) · [256 色局部](../.test-artifacts/switch-proportions/native/settings-256-slider-detail.png) · [Monaco 三帧](../.test-artifacts/switch-proportions/native/component-Monaco.png)
-
-组件 PTY 逐格验证真彩、256 色、16 色下各帧的轨道与滑块颜色，以及无色时的文本回退。设置页验证了样式切换和六格点击范围。24 列的中英文样式菜单仍能同时显示完整的关、开预览。概览页在中文 256 色 PTY 中通过终端代理与 TUN 卡片的键鼠导航、缩放和草稿取消。`make check build`、Python 脚本测试和专用 Linux/arm64 虚拟机的全包测试均通过。
-
-## 全局开关样式初版（2026-11-25）
-
-组件 PTY 覆盖中英文、真彩、256 色和无色，从 160×45 缩放到 40×16 后恢复。四种样式的三个字符格与命中区域保持一致。显式打开 `RUNEWIDTH_EASTASIAN=1` 后，宽度超出三列的字形回退为文本。原生 Kitty 分别使用 Menlo 和 Monaco，三帧中的亮色滑块均占一格（19 像素），另外两格背景连续。[Menlo](../.test-artifacts/switch-component-native/Menlo.png) · [Monaco](../.test-artifacts/switch-component-native/Monaco.png)
-
-设置页真实 PTY 验证中英文、真彩、256 色、无色和 24×24 窄窗折行。每组保存四次样式，服务、路由模式和端口写入均为零。相同页面内可用鼠标及键盘切换开关。读回失败、重复输入、动画期间反向切换、离页后的过期帧和样式写入失败由 Go 回归覆盖。[设置菜单](../.test-artifacts/unified-switch/settings/20261125-172336-2dfe93/zh-Hans/truecolor/switch-style-menu.png) · [滑块式设置页](../.test-artifacts/unified-switch/settings/20261125-172336-2dfe93/zh-Hans/truecolor/switch-style-slider.png)
-
-专用 Debian/arm64 VM 中，随机 systemd 用户服务经过鼠标启动、空格停止、端口冲突失败、外部启停和重启回读。真实 Bash 验证了首次启用、source 激活、经 Mihomo 的 CONNECT 请求及关闭后的环境恢复。主机 TUN 在 120×36、80×24 均默认取消，显式确认后读回启用，再关闭并释放网络资源。通用安装端到端脚本的默认端口 9097 已被占用，脚本在预检阶段退出。[内核验收](../.test-artifacts/unified-switch/linux/core/result.json) · [Shell 验收](../.test-artifacts/unified-switch/linux/shell/result.json) · [TUN 验收](../.test-artifacts/unified-switch/linux/host-tun-e2e.log)
-
 ## 终端代理待激活（2026-11-25）
 
 隔离 PTY 从终端代理关闭开始，分别以中文真彩、英文无色或 256 色运行。120×32 双栏和 40×16 堆叠下，鼠标点击「激活命令」会立即开窗，Esc 返回后可按 Enter 重开。路径含空格的 Shell 命令在窄屏按字符格折行，复制请求逐字节保留原命令。打开、复制和关闭只使用当前会话快照。[网络设置卡](../.test-artifacts/terminal-activation-dialog/final/card-120x32-zh-Hans-truecolor.png) · [宽屏弹窗](../.test-artifacts/terminal-activation-dialog/final/dialog-120x32-zh-Hans-truecolor.png) · [窄屏弹窗](../.test-artifacts/terminal-activation-dialog/final/dialog-40x16-zh-Hans-truecolor.png)

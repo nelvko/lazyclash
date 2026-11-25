@@ -31,7 +31,6 @@ func (b *terminalBackend) SetTerminalProxy(_ context.Context, enabled bool) erro
 
 func TestFirstTerminalProxyEnableInstallsWithoutConfirmationAndAwaitsActivation(t *testing.T) {
 	b := &terminalBackend{fakeBackend: hostTUNBackend()}
-	b.snapshot.Service.Active, b.snapshot.Service.State = true, "active"
 	b.snapshot.TerminalProxy = shellintegration.Status{Shell: "bash", State: "uninstalled"}
 	m := ready(b.fakeBackend)
 	m.backend = b
@@ -54,7 +53,6 @@ func TestFirstTerminalProxyEnableInstallsWithoutConfirmationAndAwaitsActivation(
 
 func TestTerminalProxyInstallationFailureDoesNotSaveSuccess(t *testing.T) {
 	b := &terminalBackend{fakeBackend: hostTUNBackend(), fail: true}
-	b.snapshot.Service.Active, b.snapshot.Service.State = true, "active"
 	b.snapshot.TerminalProxy = shellintegration.Status{Shell: "zsh", State: "uninstalled"}
 	m := ready(b.fakeBackend)
 	m.backend = b
@@ -68,24 +66,14 @@ func TestTerminalProxyInstallationFailureDoesNotSaveSuccess(t *testing.T) {
 }
 
 func TestOverviewTerminalProxyShowsDesiredAndAppliedSeparately(t *testing.T) {
-	for state, label := range map[string]string{"uninstalled": "", "incomplete": "incomplete", "conflict": "conflict", "off": "", "on": "", "pending": "pending", "enabling": "enabling", "disabling": "disabling", "unsupported": "unsupported", "error": "syncError"} {
+	for state, label := range map[string]string{"uninstalled": "notSetUp", "incomplete": "incomplete", "conflict": "conflict", "off": "off", "on": "on", "pending": "pending", "enabling": "enabling", "disabling": "disabling", "unsupported": "unsupported", "error": "syncError"} {
 		o := dashboardOptions{Snapshot: hostTUNBackend().snapshot}
-		o.Snapshot.Service.Active, o.Snapshot.Service.State = true, "active"
 		o.Snapshot.TerminalProxy = shellintegration.Status{State: state, Desired: state == "pending", Pending: state == "pending", ActivationCommand: "source '/private/example/bash.sh'"}
 		for _, width := range []int{16, 40, 100} {
 			card := overviewNetworkCard(o, width)
 			assertCanvas(t, strings.Join(card.lines, "\n"), width, len(card.lines))
 			assertRegions(t, card.targets, width, len(card.lines))
-			var want string
-			switch state {
-			case "on":
-				want = slantedFrames[2]
-			case "off", "uninstalled":
-				want = slantedFrames[0]
-			default:
-				want = o.Locale.T("dashboard.network." + label)
-			}
-			if width >= 100 && !strings.Contains(ansi.Strip(strings.Join(card.lines, "\n")), want) {
+			if width >= 100 && !strings.Contains(ansi.Strip(strings.Join(card.lines, "\n")), o.Locale.T("dashboard.network."+label)) {
 				t.Fatalf("lost %s state", state)
 			}
 			if state == "pending" && !hasAction(card.targets, "terminal.activation") {
@@ -97,7 +85,6 @@ func TestOverviewTerminalProxyShowsDesiredAndAppliedSeparately(t *testing.T) {
 
 func TestLoadedTerminalCanToggleAfterAnotherTerminalUninstallsFiles(t *testing.T) {
 	b := &terminalBackend{fakeBackend: hostTUNBackend()}
-	b.snapshot.Service.Active, b.snapshot.Service.State = true, "active"
 	b.snapshot.TerminalProxy = shellintegration.Status{Shell: "bash", State: "off", Loaded: true}
 	m := ready(b.fakeBackend)
 	m.backend = b
@@ -109,28 +96,5 @@ func TestLoadedTerminalCanToggleAfterAnotherTerminalUninstallsFiles(t *testing.T
 	m, _ = update(m, actionCmd(t, cmd)())
 	if b.calls != 1 || m.snapshot.TerminalProxy.Installed {
 		t.Fatal("loaded hook was not reused")
-	}
-}
-
-func TestTerminalProxyHookErrorOffersRecoveryOnlyAfterAcknowledgment(t *testing.T) {
-	b := &terminalBackend{fakeBackend: hostTUNBackend()}
-	b.snapshot.Service.Active, b.snapshot.Service.State = true, "active"
-	b.snapshot.TerminalProxy = shellintegration.Status{State: "error", HookConfirmed: true, Desired: true}
-	m := ready(b.fakeBackend)
-	m.backend = b
-	defer m.stopRuntime()
-	card := overviewNetworkCard(m.navigationOptions(), 76)
-	if !hasAction(card.targets, "terminal.disable") || overviewTerminalToggle(m.navigationOptions()).canToggle() {
-		t.Fatal("shell acknowledgment error must expose an explicit recovery action next to an inert state")
-	}
-	cmd := m.activate("terminal.disable")
-	if cmd == nil || !m.busy {
-		t.Fatal("the hook error could not be recovered")
-	}
-	b.snapshotErr = errors.New("fixture read failed")
-	m, _ = update(m, actionCmd(t, cmd)())
-	card = overviewNetworkCard(m.navigationOptions(), 76)
-	if hasAction(card.targets, "terminal.disable") || hasAction(card.targets, "terminal.enable") || m.activate("terminal.disable") != nil {
-		t.Fatal("failed postread reused stale acknowledgment to enable a recovery action")
 	}
 }

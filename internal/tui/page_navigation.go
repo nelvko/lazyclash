@@ -521,11 +521,7 @@ func (m *Model) requestQuit() tea.Cmd {
 		m.cancelTask(true)
 		return nil
 	}
-	return m.quitWhenSaved()
-}
-
-func (m *Model) quitWhenSaved() tea.Cmd {
-	if m.keyHints.pending || m.styleSavePending {
+	if m.keyHints.pending {
 		return nil
 	}
 	return tea.Quit
@@ -536,8 +532,7 @@ func (m *Model) repairPageFocus() {
 		return
 	}
 	state := m.pageViews[m.page]
-	savingFocused := m.focus == "key-hints.toggle" && m.keyHints.pending || m.focus == "settings.switchStyle" && m.styleSavePending
-	if !m.busy && !savingFocused && m.focus != "content" && m.focus != "menu" && !strings.HasPrefix(m.focus, "nav.") && !strings.HasPrefix(m.focus, "notification.") {
+	if !m.busy && m.focus != "content" && m.focus != "menu" && !strings.HasPrefix(m.focus, "nav.") && !strings.HasPrefix(m.focus, "notification.") {
 		valid := m.pageHeader().enabled(m.focus)
 		switch {
 		case m.page == "proxies" && listTarget(m.focus):

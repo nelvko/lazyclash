@@ -19,11 +19,6 @@ const (
 	ThemeLight = "light"
 	ThemeDark  = "dark"
 	ThemeAuto  = "auto"
-
-	SwitchStyleSlanted = "slanted"
-	SwitchStyleSlider  = "slider"
-	SwitchStyleText    = "text"
-	SwitchStyleLine    = "line"
 )
 
 // Preferences never contains controller credentials or subscription URLs.
@@ -33,13 +28,12 @@ type Preferences struct {
 	HasRun         bool
 	Language       string `json:",omitempty"`
 	Theme          string `json:",omitempty"`
-	SwitchStyle    string `json:",omitempty"`
 	Editor         string `json:",omitempty"`
 	HideKeyHints   bool   `json:",omitempty"`
 }
 
 func defaultPreferences() Preferences {
-	return Preferences{Network: downloadnet.Config{Method: downloadnet.MethodDirect}, Theme: ThemeDark, SwitchStyle: SwitchStyleSlanted}
+	return Preferences{Network: downloadnet.Config{Method: downloadnet.MethodDirect}, Theme: ThemeDark}
 }
 
 func (a *App) loadPreferencesLocked() (Preferences, []byte, error) {
@@ -52,17 +46,9 @@ func (a *App) loadPreferencesLocked() (Preferences, []byte, error) {
 		return Preferences{}, nil, err
 	}
 	var p Preferences
-	// A mistyped style is a presentation fallback, even when its JSON type
-	// is wrong. Other invalid preferences still follow the usual error path.
-	fields := struct {
-		*Preferences
-		SwitchStyle json.RawMessage
-	}{Preferences: &p}
-	if json.Unmarshal(raw, &fields) != nil {
+	if json.Unmarshal(raw, &p) != nil {
 		return p, nil, diagnostic.New("diagnostic.preferences.invalid", "invalid preferences file; preserving it for inspection")
 	}
-	_ = json.Unmarshal(fields.SwitchStyle, &p.SwitchStyle)
-	p.SwitchStyle = NormalizeSwitchStyle(p.SwitchStyle)
 	if !validTheme(p.Theme) {
 		p.Theme = ThemeDark
 	}
@@ -182,22 +168,6 @@ func (a *App) SaveThemePreference(ctx context.Context, theme string) error {
 		return diagnostic.New("theme.unsupported", "Theme must be Light, Dark or Auto")
 	}
 	return a.editPreferences(ctx, func(p *Preferences) error { p.Theme = theme; return nil })
-}
-
-func NormalizeSwitchStyle(style string) string {
-	switch style {
-	case SwitchStyleSlider, SwitchStyleText, SwitchStyleLine:
-		return style
-	default:
-		return SwitchStyleSlanted
-	}
-}
-
-func (a *App) SaveSwitchStylePreference(ctx context.Context, style string) error {
-	if style != NormalizeSwitchStyle(style) {
-		return diagnostic.New("settings.invalidSwitchStyle", "Unknown switch style")
-	}
-	return a.editPreferences(ctx, func(p *Preferences) error { p.SwitchStyle = style; return nil })
 }
 
 // SaveKeyHintsPreference changes presentation without replacing other preferences.

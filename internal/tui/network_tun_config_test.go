@@ -5,48 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/i18n"
 )
-
-func TestNetworkTUNSliderKeepsItsTrackWhenPolicyLabelWraps(t *testing.T) {
-	m := ready(hostTUNBackend())
-	defer m.stopRuntime()
-	m.openNetworkConfig("tun")
-	m.colorProfile, m.noColor = colorprofile.TrueColor, false
-	m.switchStyle = app.SwitchStyleSlider
-	m.ports.focus = "tun.policy"
-	label := m.tr("network.tunConfig.policy")
-	for _, width := range []int{5, 6, 8, 20, 80} {
-		doc, _, _ := m.networkTUNDocument(width)
-		hit := findTarget(t, Model{targets: doc.targets}, "tun.policy")
-		row := doc.lines[hit.Y]
-		wantWidth := min(width, switchSlotWidth)
-		if hit.W != wantWidth || hit.H != 1 {
-			t.Fatalf("width %d: policy hit = %+v, want %d cells", width, hit, wantWidth)
-		}
-		face := ansi.Strip(ansi.Cut(row, hit.X, hit.X+hit.W))
-		if width < switchSlotWidth {
-			if strings.TrimSpace(face) != "OFF" {
-				t.Fatalf("width %d: truncated slider lost its state: %q", width, face)
-			}
-		} else {
-			want := renderToggle(boolToggle(false), toggleOptions{Style: app.SwitchStyleSlider, Surface: raised, Focused: true})
-			if face != "      " || !strings.Contains(row, want) {
-				t.Fatalf("width %d: missing painted slider: %q", width, row)
-			}
-		}
-		if width >= hit.X+hit.W+2+ansi.StringWidth(label) {
-			if !strings.HasSuffix(ansi.Strip(row), "  "+label) {
-				t.Fatalf("width %d: missing policy label after slider", width)
-			}
-		} else if ansi.StringWidth(row) != hit.X+hit.W {
-			t.Fatalf("width %d: narrow policy row does not end at its switch", width)
-		}
-	}
-}
 
 func TestNetworkTUNDraftRequiresSaveAndHostConfirmation(t *testing.T) {
 	b := hostTUNBackend()
@@ -146,7 +107,7 @@ func TestNetworkTUNShowsObservedStateAndRestrictsEditing(t *testing.T) {
 				d, _, _ := m.networkTUNDocument(76)
 				plain := ansi.Strip(strings.Join(d.lines, "\n"))
 				if !strings.Contains(plain, m.tr("network.tunConfig.runtime")+": "+m.tr(observation.state)) ||
-					!strings.Contains(plain, slantedFrames[2]+"  "+m.tr("network.tunConfig.policy")) {
+					!strings.Contains(plain, "[x] "+m.tr("network.tunConfig.policy")) {
 					t.Fatalf("form confused the observed and saved states:\n%s", plain)
 				}
 			}

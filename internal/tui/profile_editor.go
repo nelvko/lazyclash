@@ -90,7 +90,7 @@ func (m *Model) acceptProfileEditor(msg profileEditorOpenedMsg) tea.Cmd {
 		msg.state.cleanup()
 		m.closeProfileEditor()
 		if m.quitting {
-			return m.quitWhenSaved()
+			return tea.Quit
 		}
 		if !errors.Is(msg.err, context.Canceled) {
 			m.prepareNotification("profile.document.open", m.tr("profile_editor.opening"))
@@ -142,7 +142,10 @@ func (m *Model) finishProfileEditor(msg profileEditorExitedMsg) tea.Cmd {
 			m.closeProfileEditor()
 		}
 		m.quitting = true
-		return m.quitWhenSaved()
+		if m.keyHints.pending {
+			return nil
+		}
+		return tea.Quit
 	}
 	if msg.err != nil {
 		m.failure = m.localizeError(msg.err)

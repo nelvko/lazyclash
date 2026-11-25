@@ -108,8 +108,6 @@ func (m *Model) settingsContextHelp() string {
 		label = "settings.chooseLanguage"
 	case "settings.theme":
 		label = "settings.chooseTheme"
-	case "settings.switchStyle":
-		label = "settings.chooseSwitchStyle"
 	case "settings.ipv6", "settings.unifiedDelay":
 		return m.controlActionHelp(m.tr("settings.toggleCoreSetting", m.tr(m.focus)))
 	case "settings.logLevel":

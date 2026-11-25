@@ -1,20 +1,9 @@
 package tui
 
-import (
-	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/x/ansi"
-)
+import tea "charm.land/bubbletea/v2"
 
 func (m *Model) canConfigureHostTUN() bool {
-	return m.snapshot.Capabilities.TUN.Supported && m.tunConfigIssue() == ""
-}
-
-func (m *Model) tunConfigIssue() string {
-	if m.tunPolicyUnknown {
-		return m.tr("notification.state_unknown")
-	}
-	return runtimeControlIssue(m.snapshot, m.locale)
+	return m.snapshot.Capabilities.TUN.Supported && runtimeControlIssue(m.snapshot, m.locale) == ""
 }
 
 func (m *Model) networkTUNDocument(width int) (wizardDocument, []wizardButton, string) {
@@ -26,7 +15,7 @@ func (m *Model) networkTUNDocument(width int) (wizardDocument, []wizardButton, s
 		d.line(m.tr("diagnostic.runtime.tunUnavailable"))
 		return d, buttons, subtitle
 	}
-	if issue := m.tunConfigIssue(); issue != "" {
+	if issue := runtimeControlIssue(s, m.locale); issue != "" {
 		d.line(themed(issue, warning, raised, false))
 		return d, buttons, subtitle
 	}
@@ -47,22 +36,11 @@ func (m *Model) networkTUNDocument(width int) (wizardDocument, []wizardButton, s
 		d.line(themed(clean(m.locale.Detail(s.TUNError)), warning, raised, false))
 	}
 	d.space()
-	o := m.navigationOptions()
-	o.Focus, o.Dim = m.ports.focus, false
-	control := boolToggle(m.ports.tunEnabled)
-	const id = "tun.policy"
-	opts := toggleOptions{Surface: raised, Focused: o.Focus == id, Hovered: o.Hover == id}
-	face := o.switchSlot(id, control, opts, width, lipgloss.Left)
-	gutter := o.switchGutter(opts, width)
-	d.targets = append(d.targets, hitRegion{ID: id, X: ansi.StringWidth(gutter), Y: len(d.lines), W: ansi.StringWidth(face), H: 1})
-	controlLine := gutter + face
-	label := themed(m.tr("network.tunConfig.policy"), text, raised, false)
-	if ansi.StringWidth(controlLine)+2+ansi.StringWidth(label) <= width {
-		d.lines = append(d.lines, controlLine+"  "+label)
-	} else {
-		d.lines = append(d.lines, controlLine)
-		d.line(label)
+	check := "[ ] "
+	if m.ports.tunEnabled {
+		check = "[x] "
 	}
+	d.control("tun.policy", check+m.tr("network.tunConfig.policy"), m.ports.focus)
 	d.line(m.tr("network.tunConfig.preset"))
 	if s.Service.Active {
 		d.line(m.tr("network.tunConfig.restart"))

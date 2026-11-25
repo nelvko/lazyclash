@@ -5,6 +5,8 @@
   "dashboard.interface.keyHintsOn": "开启",
   "dashboard.interface.keyHintsOff": "关闭",
   "dashboard.interface.keyHintsHint": "Ctrl+T 显示或隐藏底部提示，并记住选择。",
+  "help.keyHints.show": "显示快捷键提示 · Ctrl+T",
+  "help.keyHints.hide": "隐藏快捷键提示 · Ctrl+T",
   "help.keyHints.shortcut": "Ctrl+T：浏览页面或查看帮助时，显示／隐藏快捷键提示。",
   "keyHints.saveFailed": "无法记住快捷键提示设置：%s",
   "navigation.drawer": "↑↓ 切页 · → 内容 · ← 关闭 · ? 帮助",

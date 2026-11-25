@@ -24,66 +24,59 @@ func (b *keyHintsBackend) SaveKeyHintsPreference(ctx context.Context, hidden boo
 	return ctx.Err()
 }
 
-func finishKeyHintsSave(t *testing.T, m Model, cmd tea.Cmd) Model {
-	t.Helper()
-	if cmd == nil {
-		t.Fatal("missing hint preference save")
-	}
-	msg := cmd()
-	for {
-		batch, ok := msg.(tea.BatchMsg)
-		if !ok {
-			break
-		}
-		msg = batch[0]()
-	}
-	if _, ok := msg.(keyHintsSavedMsg); !ok {
-		t.Fatalf("expected hint preference completion, got %T", msg)
-	}
-	m, _ = update(m, msg)
-	return m
-}
-
-func TestKeyHintsWaitForSaveAndIgnoreDuplicateActivation(t *testing.T) {
+func TestKeyHintsSaveCoalescesRapidChoicesWithoutBlockingNavigation(t *testing.T) {
 	m := ready(&fakeBackend{})
+	b := &keyHintsBackend{fakeBackend: &fakeBackend{}}
+	var saved []bool
+	b.saveHints = func(_ context.Context, hidden bool) error {
+		saved = append(saved, hidden)
+		return nil
+	}
+	m.backend = b
 	first := m.toggleKeyHints()
-	if m.keyHints.hidden || !m.keyHints.pending || m.busy || first == nil {
-		t.Fatal("preference change must wait for confirmation independently of the busy task")
+	if !m.keyHints.hidden || m.busy || first == nil {
+		t.Fatal("toggle did not immediately apply independently of the busy task")
 	}
-	if m.toggleKeyHints() != nil || m.keyHints.hidden {
-		t.Fatal("a pending switch accepted a duplicate activation")
+	if m.toggleKeyHints() != nil || m.toggleKeyHints() != nil || m.toggleKeyHints() != nil {
+		t.Fatal("parallel saves were started while one was pending")
 	}
-	m.acceptKeyHintsSaved(keyHintsSavedMsg{generation: m.keyHints.generation - 1, hidden: true})
-	if m.keyHints.hidden || !m.keyHints.pending {
-		t.Fatal("stale completion changed the current operation")
+	if m.keyHints.hidden {
+		t.Fatal("last requested choice did not win immediately")
 	}
-	m = finishKeyHintsSave(t, m, first)
-	if !m.keyHints.hidden || m.keyHints.pending || m.busy {
-		t.Fatal("confirmed preference did not apply")
+	last := m.acceptKeyHintsSaved(first().(keyHintsSavedMsg))
+	if last == nil || len(saved) != 1 || !saved[0] {
+		t.Fatal("first completion did not enqueue the final choice")
 	}
-	m.loadKeyHintsPreference(false)
-	if !m.keyHints.hidden {
-		t.Fatal("older startup read replaced the confirmed choice")
+	if m.acceptKeyHintsSaved(last().(keyHintsSavedMsg)) != nil || len(saved) != 2 || saved[1] || m.keyHints.pending || m.busy {
+		t.Fatal("coalesced persistence did not finish with the latest choice")
 	}
 }
 
-func TestKeyHintsFailedSaveKeepsActualPreferenceAndExistingOperation(t *testing.T) {
+func TestKeyHintsStartupAndFailureKeepSessionChoiceAndExistingOperation(t *testing.T) {
 	m := ready(&fakeBackend{})
 	m.loadKeyHintsPreference(true)
+	if !m.keyHints.hidden {
+		t.Fatal("saved choice did not load")
+	}
 	m.backend = &keyHintsBackend{fakeBackend: &fakeBackend{}, saveHints: func(context.Context, bool) error { return errors.New("disk full") }}
 	m.busy, m.job, m.message, m.failure = true, "action", "Updating configuration", ""
 	operation := m.notification.operation
 	cmd := m.toggleKeyHints()
+	m.loadKeyHintsPreference(true)
+	if m.keyHints.hidden {
+		t.Fatal("late startup preference replaced the user's newer choice")
+	}
 	m.acceptKeyHintsSaved(cmd().(keyHintsSavedMsg))
-	if !m.keyHints.hidden || m.keyHints.pending || !m.busy || m.job != "action" || m.message != "Updating configuration" || m.failure != "" || m.notification.operation != operation {
-		t.Fatal("failed preference save changed the previous value or disturbed the current task")
+	if m.keyHints.hidden || !m.busy || m.job != "action" || m.message != "Updating configuration" || m.failure != "" || m.notification.operation != operation {
+		t.Fatal("preference failure disturbed the current operation or display choice")
 	}
+	found := false
 	for _, item := range m.notification.items {
-		if item.Key == "key-hints.save" && strings.Contains(item.Message, "disk full") {
-			return
-		}
+		found = found || (item.Key == "key-hints.save" && strings.Contains(item.Message, "disk full"))
 	}
-	t.Fatal("preference persistence failure was silent")
+	if !found {
+		t.Fatal("preference persistence failure was silent")
+	}
 }
 
 func TestKeyHintsQuitWaitsForFinalPreferenceSave(t *testing.T) {
@@ -127,7 +120,7 @@ func TestKeyHintsShortcutBelongsToPagesDrawerAndHelpButNotInputs(t *testing.T) {
 				m.menu.open = true
 			}
 			handled, _ := m.keyHintsShortcut(ctrlT)
-			if handled != want || m.keyHints.pending != want || m.keyHints.hidden {
+			if handled != want || m.keyHints.hidden != want {
 				t.Fatalf("shortcut handling=%v hidden=%v, want %v", handled, m.keyHints.hidden, want)
 			}
 		})
@@ -181,8 +174,7 @@ func TestHelpCanRestoreHintsWithMouseAfterKeyboardOpen(t *testing.T) {
 			}
 			if size[1] >= 3 {
 				toggle := findTarget(t, m, "key-hints.toggle")
-				save := m.helpMouse(tea.MouseClickMsg{X: toggle.X, Y: toggle.Y, Button: tea.MouseLeft})
-				m = finishKeyHintsSave(t, m, save)
+				m.helpMouse(tea.MouseClickMsg{X: toggle.X, Y: toggle.Y, Button: tea.MouseLeft})
 				if m.keyHints.hidden || !m.helpOpen || !m.busy {
 					t.Fatal("mouse recovery did not apply without closing help or disturbing the task")
 				}

@@ -52,15 +52,17 @@ def assert_core_affordance(terminal, words, scenario, profile, expect_focus=Fals
     right = neighbor[0] if neighbor and neighbor[1] == y else terminal.screen.columns
     heading = "".join(terminal.screen.cells[y][x:right]).removeprefix(title)
     if scenario == "unavailable":
-        action = words["dashboard.status.unavailable"]
+        action = "—"
         status = "! " + words["dashboard.status.unknown"]
     elif scenario == "stopped":
-        action = "〇╱╱╱╱"
+        action = words["dashboard.settings.start"]
         status = "○ " + words["dashboard.status.stopped"]
     else:
-        action = "◢◤◢◤〇"
+        action = words["dashboard.settings.stop"]
         status = "● " + words["dashboard.status.running"]
     face = re.escape(action)
+    if profile == "no-color" and scenario != "unavailable":
+        face = r"\[\s*" + face + r"\s*\]"
     marker = "›" if expect_focus else ""
     assert re.fullmatch(r"\s*" + marker + r"\s*" + face + r"[\s│]*", heading), \
         "incorrect heading action or focus: " + repr(heading)
@@ -173,8 +175,8 @@ def inspect_network_editors(preview, terminal, output, words, scenario, args):
     edit = words["dashboard.network.configure"]
     if scenario == "pending":
         primary, tun = words["terminal.title"], words["dashboard.network.tun"]
-        focus_control(terminal, "〇╱╱╱╱")
-        saved = "◢◤◢◤〇"
+        focus_control(terminal, "○ " + words["dashboard.network.off"])
+        saved = "● " + words["tun.saved_state"] % words["dashboard.control.on"]
         for title, offset, label in ((primary, 3, edit), (tun, 1, saved), (tun, 3, edit)):
             terminal.key(b"\t")
             terminal.settle()
@@ -210,15 +212,8 @@ def inspect_network_editors(preview, terminal, output, words, scenario, args):
         terminal.resize(160, 45)
         terminal.settle()
         if section == "tun" and scenario == "pending":
-            row = text_point(terminal, words["network.tunConfig.policy"])[1]
-            thumb = next(point for point in text_points(terminal, "◢◤◢◤〇") if point[1] == row)
-            click_point(terminal, thumb)
-            # Allow the reverse slide to finish and check this draft's row,
-            # since the underlying terminal proxy can already be off.
-            deadline = time.monotonic() + 2
-            while "〇╱╱╱╱" not in "".join(terminal.screen.cells[row]) and time.monotonic() < deadline:
-                terminal.read()
-            assert "〇╱╱╱╱" in "".join(terminal.screen.cells[row])
+            terminal.click_text("[x]")
+            terminal.wait("[ ]")
         if section == "tun":
             terminal.click_text(cancel)
         else:
@@ -244,14 +239,21 @@ def subscription_allowance(terminal):
     return expiry.group()
 
 
-def assert_card_outline(terminal, profile, complete=True):
+def assert_card_outline(terminal, profile, complete=True, clipped_title=None):
     cells = terminal.screen.cells
     corners = [(x, y) for y, row in enumerate(cells) for x, value in enumerate(row) if value == "┌"]
-    assert len(corners) == 1, "card focus did not draw exactly one top-left corner"
-    left, top = corners[0]
-    right = next((x for x in range(left + 1, len(cells[top])) if cells[top][x] == "┐"), None)
-    assert right is not None, "card focus omitted its top-right corner"
-    assert all(value == "─" for value in cells[top][left + 1:right]), "card focus has an incomplete top edge"
+    if clipped_title and not corners:
+        # At 40×16 the TUN observation pushes just the top border above the viewport.
+        title_x, top = text_point(terminal, clipped_title)
+        assert top == 2, "card title is not at the top of the scrolled content"
+        left = cells[top].index("│", 0, title_x)
+        right = cells[top].index("│", title_x)
+    else:
+        assert len(corners) == 1, "card focus did not draw exactly one top-left corner"
+        left, top = corners[0]
+        right = next((x for x in range(left + 1, len(cells[top])) if cells[top][x] == "┐"), None)
+        assert right is not None, "card focus omitted its top-right corner"
+        assert all(value == "─" for value in cells[top][left + 1:right]), "card focus has an incomplete top edge"
     bottom = next((y for y in range(top + 1, len(cells)) if cells[y][left] == "└"), None)
     if complete:
         assert bottom is not None, "card focus omitted its bottom-left corner"
@@ -270,13 +272,12 @@ def assert_card_outline(terminal, profile, complete=True):
 
 def inspect_network_card(terminal, outline, words, scenario):
     x, y = outline["x"], outline["y"]
-    right = x + outline["width"]
-    bottom = y + outline["height"] if outline["height"] is not None else terminal.screen.rows - 1
+    right, bottom = x + outline["width"], y + outline["height"]
     card_rows = ["".join(row[x:right]) for row in terminal.screen.cells[y:bottom]]
     card_text = "\n".join(card_rows)
     edit = words["dashboard.network.configure"]
     assert card_text.count(edit) == 2, "both network sections need their own editor"
-    for hidden in ("127.0.0.1:", "17897"):
+    for hidden in ("127.0.0.1:", "17897", words["dashboard.field.systemProxy"]):
         assert hidden not in card_text, "network summary retained " + hidden
     terminal_title, tun_title = words["terminal.title"], words["dashboard.network.tun"]
     left_x, left_y = text_point(terminal, terminal_title)
@@ -299,14 +300,13 @@ def inspect_network_card(terminal, outline, words, scenario):
             assert ink, "empty network section row under " + title
             margins = ink[0] - start, end - 1 - ink[-1]
             assert abs(margins[0]-margins[1]) <= 1, (title, offset, margins)
-    terminal_face = words["dashboard.status.unavailable"] if scenario in ("stopped", "unavailable") else "〇╱╱╱╱"
-    assert terminal.screen.point_below(terminal_title, 1, terminal_face), "incorrect terminal proxy state"
-    tun_state = ("◢◤◢◤〇"
+    assert terminal.screen.point_below(terminal_title, 1, "○ " + words["dashboard.network.off"]), "missing terminal proxy switch"
+    tun_state = ("● " + words["tun.saved_state"] % words["dashboard.control.on"]
                  if scenario == "pending" else words["dashboard.network.unsupported"])
     assert terminal.screen.point_below(tun_title, 1, tun_state), "incorrect state beneath TUN"
     for title in (terminal_title, tun_title):
         assert terminal.screen.point_below(title, 3, edit), "no configuration button beneath " + title
-    if scenario == "pending" and outline["height"] is not None:
+    if scenario == "pending":
         _, _, start, end = sections[1]
         tun_text = " ".join("".join(row[start:end]).strip() for row in terminal.screen.cells[tun_y:bottom-1])
         assert words["dashboard.overview.tunActual"] % words["dashboard.control.off"] in tun_text, "actual state missing beneath TUN"
@@ -445,7 +445,8 @@ def exercise(preview, binary, output, language, profile, scenario, args):
                 for _ in range(2):
                     terminal.key(b"\x1b[B")
                     terminal.settle()
-                outline = assert_card_outline(terminal, profile, complete=width != 40)
+                clipped_title = words["dashboard.overview.network"] if width == 40 and scenario == "pending" else None
+                outline = assert_card_outline(terminal, profile, clipped_title=clipped_title)
                 inspect_network_card(terminal, outline, words, scenario)
                 preview.capture(terminal, output, "network-card-%dx%d" % (width, height), args)
                 return_navigation(terminal, words)

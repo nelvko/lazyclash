@@ -44,7 +44,7 @@ func (m *Model) acceptProfileSettings(msg profileSettingsLoadedMsg) tea.Cmd {
 	m.cancel()
 	m.busy, m.job, m.message = false, "", ""
 	if m.quitting {
-		return m.quitWhenSaved()
+		return tea.Quit
 	}
 	if m.form != "profile-settings" {
 		return nil

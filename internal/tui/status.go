@@ -87,14 +87,8 @@ func (m *Model) adoptSnapshot(snapshot app.Snapshot) {
 			snapshot.Installed, snapshot.ConfigReady = false, false
 		}
 	}
-	m.snapshot, m.snapshotReady, m.tunPolicyUnknown = snapshot, true, false
+	m.snapshot, m.snapshotReady = snapshot, true
 	m.syncNetworkActionFocus()
-	if m.page == "settings" && (m.focus == "autostart-enable" || m.focus == "autostart-disable") {
-		m.focus = "autostart-enable"
-		if snapshot.Service.Enabled {
-			m.focus = "autostart-disable"
-		}
-	}
 	if !m.runtime.active || !snapshot.ServiceObservedAt.IsZero() {
 		m.runtime.history.observeSnapshot(snapshot)
 	}

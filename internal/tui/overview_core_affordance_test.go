@@ -37,7 +37,7 @@ func TestCoreCardPlacesActionInHeadingAndGroupsReadOnlyDetails(t *testing.T) {
 					assertCanvas(t, strings.Join(block.lines, "\n"), width, len(block.lines))
 					assertRegions(t, block.targets, width, len(block.lines))
 					hit, face := coreCardAction(t, block)
-					if face != slantedFrames[2] || hit.W != switchSlotWidth {
+					if strings.Trim(face, " []") != o.Locale.T("dashboard.settings.stop") {
 						t.Fatalf("click target misses Stop: %q", face)
 					}
 					title := o.Locale.T("dashboard.overview.service")
@@ -94,30 +94,23 @@ func TestCoreCardActionsKeepTheirSizeAndFocusAcrossLifecycle(t *testing.T) {
 				} {
 					o := dashboardOptions{Locale: i18n.New(language), Busy: tc.busy, CoreAction: tc.action, PlainButtons: plain,
 						Snapshot: app.Snapshot{Installed: true, Service: service.Status{Active: tc.active, State: tc.state}, ServiceError: tc.problem}}
-					value := "   ..."
-					switch {
-					case tc.want == "stop":
-						value = slantedFrames[2]
-					case tc.want == "start":
-						value = slantedFrames[0]
-					case tc.state == "unknown":
-						value = o.Locale.T("dashboard.status.unknown")
-					case tc.problem != "" || tc.busy && tc.action == "":
-						value = o.Locale.T("dashboard.status.unavailable")
+					value := "—"
+					if tc.want != "" {
+						value = o.Locale.T("dashboard.settings." + tc.want)
 					}
 					idle := overviewCoreCard(o, 72)
 					hit, face := coreCardAction(t, idle)
-					if face != value {
+					if strings.Trim(face, " []") != value {
 						t.Fatalf("%s action = %q, want %q", tc.state, face, value)
 					}
 					if slot.ID == "" {
 						slot = hit
-					} else if ansi.StringWidth(value) == switchSlotWidth && hit != slot {
+					} else if hit != slot {
 						t.Fatalf("%s moved the action: %+v, want %+v", tc.state, hit, slot)
 					}
 					o.Focus = "core.toggle"
 					focusedHit, focused := coreCardAction(t, overviewCoreCard(o, 72))
-					if focusedHit != hit || focused != value || !strings.Contains(ansi.Strip(overviewCoreCard(o, 72).lines[hit.Y]), "›") {
+					if focusedHit != hit || !strings.Contains(focused, "›") || strings.Trim(focused, " []›") != value {
 						t.Fatalf("%s lost its visible focus or action: %q / %+v", tc.state, focused, focusedHit)
 					}
 

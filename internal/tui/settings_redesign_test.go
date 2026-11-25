@@ -117,11 +117,11 @@ func TestSettingsActionsKeepCompleteLabelsAndUniqueTargets(t *testing.T) {
 				o.Snapshot.Service.Enabled = active
 				o.Snapshot.TUN = active
 				tr := o.Locale.T
-				on, off := slantedFrames[2], slantedFrames[0]
+				const on, off = "░░░░██", "██░░░░"
 				labels := map[string]string{
 					"settings.language": languageLabel, "key-hints.toggle": on,
-					"settings.theme": "Dark ▾", "settings.switchStyle": tr("settings.switchStyle.slanted") + " ▾",
-					"settings.ipv6": on, "settings.unifiedDelay": off, "settings.logLevel": "info ▾",
+					"settings.theme": "Dark ▾",
+					"settings.ipv6":  on, "settings.unifiedDelay": off, "settings.logLevel": "info ▾",
 					"editor.configure": tr("settings.edit"),
 					"install":          tr("settings.manage"), "runtime-settings": tr("settings.edit"),
 					"restart": tr("dashboard.action.restart"), "card.logs": tr("settings.openLogs"),
@@ -143,8 +143,8 @@ func TestSettingsActionsKeepCompleteLabelsAndUniqueTargets(t *testing.T) {
 						t.Fatalf("unexpected action %q", hit.ID)
 					}
 					painted := settingsPaintedTarget(t, body, hits, hit.ID)
-					if (label == on || label == off) && painted != label {
-						t.Fatalf("%s/%d: switch %s should cover its slot: %q", language, width, hit.ID, painted)
+					if (label == on || label == off) && painted != "  "+label {
+						t.Fatalf("%s/%d: switch %s should only contain its focus gutter and rail: %q", language, width, hit.ID, painted)
 					}
 					if !strings.Contains(painted, label) || ansi.StringWidth(painted) != hit.W {
 						t.Fatalf("%s/%d: %s target misses complete label %q: %q", language, width, hit.ID, label, painted)
@@ -171,7 +171,6 @@ func TestSettingsSwitchesAndDropdownsAlignAtCardEdges(t *testing.T) {
 	}{
 		{"settings.language", "dashboard.language.title", settingsInterface},
 		{"settings.theme", "settings.theme", settingsInterface},
-		{"settings.switchStyle", "settings.switchStyle", settingsInterface},
 		{"key-hints.toggle", "dashboard.interface.keyHints", settingsInterface},
 		{"autostart-enable", "settings.autostart", settingsService},
 		{"settings.ipv6", "settings.ipv6", settingsMihomo},
@@ -187,22 +186,18 @@ func TestSettingsSwitchesAndDropdownsAlignAtCardEdges(t *testing.T) {
 				return block, findTarget(t, Model{targets: block.targets}, c.id)
 			}
 			_, wide := render(120)
-			gutter := 0
-			if pageSwitchAction(c.id) {
-				gutter = 2
-			}
-			exactFit := 2*inset + ansi.StringWidth(label) + 2 + gutter + wide.W
+			exactFit := 2*inset + ansi.StringWidth(label) + 2 + wide.W
 			for _, width := range []int{exactFit - 1, exactFit, 120} {
 				block, hit := render(width)
 				labelY, wantX := hit.Y, width-inset-wide.W
 				if width < exactFit {
-					labelY, wantX = hit.Y-1, inset+gutter
+					labelY, wantX = hit.Y-1, inset
 				}
 				if labelY < 0 || !strings.HasPrefix(ansi.Strip(block.lines[labelY]), "│  "+label) || hit.X != wantX || hit.W != wide.W {
 					t.Fatalf("%s/%s at %d: label and control misplaced, hit %+v, want X=%d\n%s", language, c.id, width, hit, wantX, ansi.Strip(strings.Join(block.lines, "\n")))
 				}
 				face := ansi.Strip(ansi.Cut(block.lines[hit.Y], hit.X, hit.X+hit.W))
-				focusedSwitch := (face == slantedFrames[2] || face == slantedFrames[0]) && ansi.Strip(ansi.Cut(block.lines[hit.Y], hit.X-2, hit.X)) == "› "
+				focusedSwitch := face == "› ░░░░██" || face == "› ██░░░░"
 				focusedDropdown := strings.HasPrefix(face, " ›[") && strings.HasSuffix(face, "]")
 				if !focusedSwitch && !focusedDropdown {
 					t.Fatalf("%s/%s at %d: hit misses focused control: %q", language, c.id, width, face)
@@ -254,10 +249,7 @@ func TestSettingsMihomoSwitchWaitsForSavedValueAndAllowsRetry(t *testing.T) {
 	if calls != 2 || m.snapshot.CoreSettings.IPv6 != "on" || m.snapshot.CoreSettings.UnifiedDelay != "on" || m.snapshot.CoreSettings.LogLevel != "warning" {
 		t.Fatalf("unexpected saved Mihomo settings after toggle: %+v", m.snapshot.CoreSettings)
 	}
-	// Text has no animation, exposing the final observation immediately.
-	m.switchStyle = app.SwitchStyleText
-	m.layout()
-	if settingsPaintedTarget(t, m.screen, m.targets, m.focus) != "    ON" {
+	if settingsPaintedTarget(t, m.screen, m.targets, m.focus) != "› ░░░░██" {
 		t.Fatal("the IPv6 switch did not display the confirmed value")
 	}
 }
@@ -302,12 +294,12 @@ func TestSettingsMihomoLogMenuOffersOnlyFixedLevels(t *testing.T) {
 func TestSettingsUninstalledActionsAndHeaderOwnership(t *testing.T) {
 	o := dashboardOptions{Locale: i18n.New(i18n.English), Width: 160, Height: 45}
 	body, hits := settingsContent(o, 120)
-	for _, id := range []string{"install", "card.logs", "settings.language", "key-hints.toggle", "settings.theme", "settings.switchStyle", "editor.configure"} {
+	for _, id := range []string{"install", "card.logs", "settings.language", "key-hints.toggle", "settings.theme", "editor.configure"} {
 		if !hasAction(hits, id) {
 			t.Fatalf("uninstalled settings lost %s", id)
 		}
 	}
-	if len(hits) != 7 || !strings.Contains(ansi.Strip(body), o.Locale.T("settings.afterInstall")) {
+	if len(hits) != 6 || !strings.Contains(ansi.Strip(body), o.Locale.T("settings.afterInstall")) {
 		t.Fatal("uninstalled settings expose installed-core actions or omit their availability")
 	}
 	if hasAction(hits, "network") {
@@ -316,7 +308,7 @@ func TestSettingsUninstalledActionsAndHeaderOwnership(t *testing.T) {
 	o.Page = "settings"
 	o.Header = (&Model{page: "settings", locale: o.Locale}).pageHeader()
 	_, hits = settingsContent(o, 120)
-	if hasAction(hits, "network") || len(hits) != 7 {
+	if hasAction(hits, "network") || len(hits) != 6 {
 		t.Fatal("download settings are duplicated in the header and body")
 	}
 	_, hits, _ = renderDashboard(o)

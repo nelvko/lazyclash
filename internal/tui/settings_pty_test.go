@@ -49,7 +49,6 @@ func TestSettingsPTYFixture(t *testing.T) {
 		"log_streams": b.logStreams.Load(),
 		"language":    prefs.Language, "hints_hidden": prefs.HideKeyHints,
 		"theme_saves": b.themes.Load(), "theme": prefs.Theme,
-		"switch_style_saves": b.styles.Load(), "switch_style": prefs.SwitchStyle,
 		"core_changes": coreChanges,
 	})
 	if err != nil {
@@ -67,7 +66,6 @@ type settingsPTYBackend struct {
 	coreSettings                                     mihomo.GeneralSettings
 	coreChanges                                      [][2]string
 	languages, hints, themes, portReads, portApplies atomic.Int64
-	styles                                           atomic.Int64
 	controls, modes                                  atomic.Int64
 	logStreams                                       atomic.Int64
 }
@@ -129,14 +127,6 @@ func (b *settingsPTYBackend) SaveThemePreference(ctx context.Context, theme stri
 	defer b.mu.Unlock()
 	b.preferences.Theme = theme
 	b.themes.Add(1)
-	return ctx.Err()
-}
-
-func (b *settingsPTYBackend) SaveSwitchStylePreference(ctx context.Context, style string) error {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.preferences.SwitchStyle = style
-	b.styles.Add(1)
 	return ctx.Err()
 }
 

@@ -11,8 +11,6 @@ import (
 type menuItem struct {
 	ID, Label, DisabledReason string
 	Danger, Checked           bool
-	// preview contains trusted, pre-rendered cells alongside the plain label.
-	preview string
 }
 
 type menuResult struct {
@@ -29,7 +27,6 @@ type actionMenu struct {
 	x, y             int
 	bounds           hitRegion
 	framed           bool
-	compactMarkers   bool
 	anchor           hitRegion
 	anchored         bool
 }
@@ -210,30 +207,25 @@ func (m *actionMenu) render(base string, width, height, contentBottom int) strin
 	}
 	labels := make([]string, len(m.items))
 	contentWidth := 0
-	markerGap := " "
-	if m.compactMarkers {
-		markerGap = ""
-	}
-	cursorWidth := 1 + len(markerGap)
 	checked := false
 	for _, item := range m.items {
 		checked = checked || item.Checked
 	}
 	for i, item := range m.items {
-		labels[i] = clean(item.Label) + item.preview
+		labels[i] = clean(item.Label)
 		if checked {
-			mark := " "
+			mark := "  "
 			if item.Checked {
-				mark = "✓"
+				mark = "✓ "
 			}
-			labels[i] = mark + markerGap + labels[i]
+			labels[i] = mark + labels[i]
 		}
 		if item.DisabledReason != "" {
 			labels[i] += " · " + clean(item.DisabledReason)
 		}
 		contentWidth = max(contentWidth, ansi.StringWidth(labels[i]))
 	}
-	menuWidth := min(width, max(18, min(48, contentWidth+cursorWidth+2)))
+	menuWidth := min(width, max(18, min(48, contentWidth+4)))
 	space, above := available, false
 	anchorTop, anchorBottom := 0, 0
 	if m.anchored {
@@ -283,17 +275,17 @@ func (m *actionMenu) render(base string, width, height, contentBottom int) strin
 	}
 	for i := m.offset; i < m.offset+visible; i++ {
 		item := m.items[i]
-		prefix, foreground, background := " ", text, raised
+		prefix, foreground, background := "  ", text, raised
 		if item.Danger {
 			foreground = errorColor
 		}
 		if item.DisabledReason != "" {
 			foreground = disabled
 		} else if i == m.selected {
-			prefix, background = "›", selectionBackground
+			prefix, background = "› ", selectionBackground
 		}
-		content := cellPad(prefix+markerGap+labels[i], menuWidth-2*padding)
-		markerWidth := min(cursorWidth, ansi.StringWidth(content))
+		content := cellPad(prefix+labels[i], menuWidth-2*padding)
+		markerWidth := min(2, ansi.StringWidth(content))
 		line := themed(ansi.Cut(content, 0, markerWidth), focus, background, false) + themed(ansi.Cut(content, markerWidth, ansi.StringWidth(content)), foreground, background, false)
 		if m.framed {
 			line = themed("│", border, raised, false) + line + themed("│", border, raised, false)

@@ -54,14 +54,14 @@ class Terminal(HOOKS.Shell):
                 return
         raise AssertionError('missing '+text+'\n'+self.screen.text())
 
-    def toggle(self, command, label, first_enable=False):
+    def toggle(self, command, label, initial_state=None):
         os.write(self.fd, (command+'\n').encode())
-        state = '◢◤◢◤〇' if label == 'Disable' else '〇╱╱╱╱'
+        state = initial_state or ('● On' if label == 'Disable' else '○ Off')
         column, row = self.wait_terminal_state(state)
         (self.output/('network-'+label.lower()+'.txt')).write_text(self.screen.text())
         os.write(self.fd, f'\x1b[<0;{column+1};{row+1}M\x1b[<0;{column+1};{row+1}m'.encode())
         pending = 'Pending off' if label == 'Disable' else 'Pending on'
-        self.wait_terminal_state('Activation needed' if first_enable else pending)
+        self.wait_terminal_state('◌ ' + ('Activation needed' if initial_state else pending))
         os.write(self.fd, b'q')
         self.read_for(.7)
 
@@ -131,7 +131,7 @@ def main():
                 profile_before = profile.read_bytes()
                 rc.write_text('# user replaced bashrc\n')
             start = len(shell.transcript)
-            shell.toggle(command, 'Enable', first_enable=True)
+            shell.toggle(command, 'Enable', '○ Needs repair' if args.missing_reference else '○ Not set up')
             if args.missing_reference:
                 assert rc.read_text().startswith('# user replaced bashrc\n') and rc.read_text().count('# >>> lazyclash') == 1
                 assert profile.read_bytes() == profile_before

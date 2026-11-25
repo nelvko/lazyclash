@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/i18n"
 	"github.com/nelvko/lazyclash/internal/service"
 )
@@ -75,16 +75,24 @@ func overviewCoreCard(o dashboardOptions, width int) dashboardBlock {
 			content.blank()
 		}
 	}
-	const id = "core.toggle"
-	opts := toggleOptions{Surface: panel, Focused: o.Focus == id, Hovered: o.Hover == id}
-	face := o.switchSlot(id, control, opts, inner, lipgloss.Right)
-	heading := overviewLabelSlot(o, inner, overviewHeading(o, tr("dashboard.overview.service")), o.switchGutter(opts, inner)+face, id)
-	if len(heading.targets) > 0 {
-		gutter := switchGutterWidth(inner)
-		heading.targets[0].X += gutter
-		heading.targets[0].W -= gutter
-	}
+	heading := overviewLabelSlot(o, inner, overviewHeading(o, tr("dashboard.overview.service")), coreActionFace(o, control), "core.toggle")
 	return overviewPanel(o, width, heading, content, nil)
+}
+
+func coreActionFace(o dashboardOptions, control toggleModel) string {
+	start, stop := o.Locale.T("dashboard.settings.start"), o.Locale.T("dashboard.settings.stop")
+	options := dashboardButtonOptions("core.toggle", o, false, panel)
+	options.Width = max(ansi.StringWidth(start), ansi.StringWidth(stop))
+	if o.Busy || !control.canToggle() {
+		// Keep keyboard focus visible during a transition. A plain dash occupies
+		// the same slot as the button, without advertising a service action.
+		options.Kind, options.Busy = buttonText, true
+		return renderButton("—", options)
+	}
+	if control.state == toggleOn {
+		return renderButton(stop, options)
+	}
+	return renderButton(start, options)
 }
 
 func (o dashboardOptions) coreUptime() (time.Duration, bool) {

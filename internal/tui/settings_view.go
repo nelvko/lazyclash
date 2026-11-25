@@ -52,11 +52,39 @@ func settingsSelectRow(o dashboardOptions, id, label, current string, items []me
 	}}
 }
 
-func settingsSwitchRow(o dashboardOptions, id, label string) settingsRow {
-	control := o.settingsToggle(id)
+func settingsSwitchRow(id, label string, on, enabled bool) settingsRow {
 	return settingsRow{label: label, control: settingsSwitch, actions: []overviewControlButton{
-		{id: id, enabled: control.canToggle()},
+		{id: id, selected: on, enabled: enabled},
 	}}
+}
+
+// Use the same six terminal cells in all color modes. Shading the rail glyph
+// and its background identically makes a solid track in full color.
+func renderSettingsSwitch(action overviewControlButton, o buttonOptions) string {
+	railColor, thumbColor := divider, disabled
+	if action.selected {
+		railColor, thumbColor = "#456652", "#addbb0"
+	}
+	marker := "  "
+	if o.Focused && action.enabled {
+		marker = "› "
+	}
+	if !action.enabled {
+		railColor, thumbColor = divider, disabled
+	} else if o.Hovered {
+		thumbColor = pageTitleForeground
+	}
+	railBG, thumbBG := railColor, thumbColor
+	if o.Plain {
+		railBG, thumbBG = o.Surface, o.Surface
+	}
+	rail := themed("░░░░", railColor, railBG, o.Dim)
+	thumb := themed("██", thumbColor, thumbBG, o.Dim)
+	track := thumb + rail
+	if action.selected {
+		track = rail + thumb
+	}
+	return themed(marker, focus, o.Surface, o.Dim) + track
 }
 
 func settingsContent(o dashboardOptions, width int) (string, []hitRegion) {
@@ -81,13 +109,12 @@ func settingsContent(o dashboardOptions, width int) (string, []hitRegion) {
 
 func settingsInterface(o dashboardOptions, width int) dashboardBlock {
 	tr := o.Locale.T
-	hints := settingsSwitchRow(o, "key-hints.toggle", tr("dashboard.interface.keyHints"))
+	hints := settingsSwitchRow("key-hints.toggle", tr("dashboard.interface.keyHints"), !o.HideKeyHints, true)
 	hints.note = tr("settings.keyHintsHint")
 	return settingsSection(o, width, tr("settings.interface"), "", []settingsRow{
 		settingsSelectRow(o, "settings.language", tr("dashboard.language.title"), o.Locale.Language(), languageMenuItems),
 		hints,
 		settingsThemeRow(o),
-		settingsSwitchStyleRow(o),
 		{label: tr("settings.editor"), actions: []overviewControlButton{{id: "editor.configure", label: tr("settings.edit"), enabled: !o.Busy}}},
 	})
 }
@@ -117,7 +144,7 @@ func settingsService(o dashboardOptions, width int) dashboardBlock {
 			autostart.value = tr("dashboard.status.unknown")
 			autostart.actions = []overviewControlButton{{id: id, label: tr(command), enabled: !o.Busy}}
 		} else {
-			autostart = settingsSwitchRow(o, id, autostart.label)
+			autostart = settingsSwitchRow(id, autostart.label, s.Service.Enabled, !o.Busy)
 		}
 		if !s.Service.Linger && s.Capabilities.Scope != "system" {
 			autostart.note = tr("dashboard.settings.lingerDisabled")
@@ -233,8 +260,7 @@ func settingsSection(o dashboardOptions, width int, title, description string, r
 				options.Disabled = !action.enabled
 				var face string
 				if row.control == settingsSwitch {
-					opts := toggleOptions{Surface: panel, Focused: options.Focused, Hovered: options.Hovered}
-					face = o.switchGutter(opts, inner) + o.switchSlot(settingsSwitchID(action.id), o.settingsToggle(action.id), opts, inner, lipgloss.Right)
+					face = renderSettingsSwitch(action, options)
 				} else {
 					face = renderButton(action.label, options)
 				}
@@ -268,13 +294,7 @@ func settingsSection(o dashboardOptions, width int, title, description string, r
 					x = 0
 				}
 				if action.enabled {
-					gutter := 0
-					if row.control == settingsSwitch {
-						gutter = switchGutterWidth(inner)
-					}
-					if w > gutter {
-						b.targets = append(b.targets, hitRegion{ID: action.id, X: left + x + gutter, Y: top + len(b.lines) - 1, W: w - gutter, H: 1})
-					}
+					b.targets = append(b.targets, hitRegion{ID: action.id, X: left + x, Y: top + len(b.lines) - 1, W: w, H: 1})
 				}
 				b.lines[len(b.lines)-1] += values[i]
 				x += w

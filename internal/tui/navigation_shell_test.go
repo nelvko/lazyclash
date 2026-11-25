@@ -48,8 +48,7 @@ func TestNavigationShellConnectionConfirmationOwnsPageShortcuts(t *testing.T) {
 	}
 	// Once help owns the interface, its own display control remains available.
 	m.keyHintsAction("help.open")
-	m, save := update(m, tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl})
-	m = finishKeyHintsSave(t, m, save)
+	m, _ = update(m, tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl})
 	if !m.helpOpen || !m.keyHints.hidden || !m.connections.confirming {
 		t.Fatal("help could not own its shortcut above a connection confirmation")
 	}
@@ -150,8 +149,7 @@ func TestNavigationShellHintResizeKeepsFocusedListRowVisible(t *testing.T) {
 	if !hasAction(m.targets, m.focus) {
 		t.Fatal("fixture did not position the focused row in the visible viewport")
 	}
-	m, save := update(m, tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl})
-	m = finishKeyHintsSave(t, m, save)
+	m, _ = update(m, tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl})
 	if m.keyHints.hidden || !hasAction(m.targets, m.focus) {
 		t.Fatal("restoring the hint bar hid the focused row")
 	}

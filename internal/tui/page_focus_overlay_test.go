@@ -95,8 +95,7 @@ func TestPageNavigationClosingHelpRevealsFocusAfterRestoringHints(t *testing.T) 
 				t.Fatal("fixture did not reveal the focused row")
 			}
 			m, _ = update(m, key("?"))
-			m, save := click(m, findTarget(t, m, "key-hints.toggle"))
-			m = finishKeyHintsSave(t, m, save)
+			m, _ = click(m, findTarget(t, m, "key-hints.toggle"))
 			if !m.helpOpen || m.keyHints.hidden {
 				t.Fatal("help did not restore the footer")
 			}

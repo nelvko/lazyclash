@@ -17,9 +17,7 @@ func overviewCoreToggle(o dashboardOptions) toggleModel {
 		state = toggleUnavailable
 	case o.CoreAction == "start" || o.CoreAction == "stop" || o.CoreAction == "restart":
 		state = togglePending
-	case runtimeStopIssue(s, o.Locale) != "":
-		state = toggleUnsupported
-	case s.ServiceError != "" || o.Busy:
+	case s.ServiceError != "" || runtimeStopIssue(s, o.Locale) != "":
 		state, reason = toggleUnavailable, runtimeControlIssue(s, o.Locale)
 	case s.Service.State == "activating" || s.Service.State == "deactivating" || s.Service.State == "reloading":
 		state = togglePending

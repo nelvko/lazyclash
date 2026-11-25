@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/nelvko/lazyclash/internal/diagnostic"
-	"github.com/nelvko/lazyclash/internal/shellintegration"
 )
 
 // Inspect every branch: a cancelled request can also carry a failed rollback.
@@ -68,14 +67,4 @@ func (m *Model) markOperationStateUnknown() {
 	m.snapshot.APIError, m.snapshot.APIDiagnostic = message, nil
 	m.snapshot.Mode.Actual = ""
 	m.snapshot.RunningVersion = ""
-	switch m.notification.operation.Key {
-	case "terminal-proxy":
-		m.snapshot.TerminalProxy = shellintegration.Status{State: "error", Detail: message}
-	case "tun":
-		m.tunPolicyUnknown = true
-	case "settings.ipv6":
-		m.snapshot.CoreSettings.IPv6 = ""
-	case "settings.unifiedDelay":
-		m.snapshot.CoreSettings.UnifiedDelay = ""
-	}
 }

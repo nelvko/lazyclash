@@ -30,8 +30,6 @@ type hitRegion struct {
 type dashboardOptions struct {
 	Locale                          i18n.Localizer
 	Theme, EffectiveTheme           string
-	SwitchStyle                     string
-	SwitchStyleSaving               bool
 	MessageTransient                bool
 	MessageInformational            bool
 	Width, Height                   int
@@ -50,17 +48,13 @@ type dashboardOptions struct {
 	Help                            string
 	EditingInput                    bool
 	HelpAfterClose                  bool
-	HideKeyHints, WizardOpen        bool
+	HideKeyHints                    bool
 	SidebarOpen                     bool
 	Sidebar                         *sidebarState
 	LogoFrame                       int
 	LogoIntroFrame                  int
 	Busy                            bool
 	CoreAction                      string
-	TUNPolicyUnknown                bool
-	PendingAction                   string
-	KeyHintsPending                 bool
-	Switches                        *switchAnimations
 	Now                             time.Time
 	PlainButtons                    bool
 	Monochrome                      bool
@@ -142,7 +136,7 @@ func dashboardGeometry(o dashboardOptions) dashboardLayout {
 func dashboardBodyWidth(o dashboardOptions) int { return dashboardGeometry(o).width }
 
 func dashboardContentBottom(o dashboardOptions) int {
-	if o.HideKeyHints || o.WizardOpen {
+	if o.HideKeyHints {
 		return o.Height
 	}
 	return o.Height - 1
@@ -321,7 +315,7 @@ func renderDashboard(o dashboardOptions) (string, []hitRegion, int) {
 		}
 		targets = append(kept, drawSidebar(rows, o, true)...)
 	}
-	if !o.HideKeyHints && !o.WizardOpen {
+	if !o.HideKeyHints {
 		put(2, o.Height-1, dashboardKeyHints(o))
 	}
 	for _, notification := range notificationLayout(o) {
