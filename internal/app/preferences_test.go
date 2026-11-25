@@ -82,6 +82,39 @@ func TestThemePreferenceDefaultsAndPersists(t *testing.T) {
 	}
 }
 
+func TestSwitchStyleDefaultsAndPersistsIndependently(t *testing.T) {
+	a, _ := testApp(t)
+	path := filepath.Join(a.Home, "preferences.json")
+	for _, field := range []string{"", `,"SwitchStyle":"unknown"`, `,"SwitchStyle":false`, `,"SwitchStyle":null`, `,"SwitchStyle":{}`} {
+		raw := `{"Theme":"light","Language":"en"` + field + "}"
+		write(t, path, []byte(raw))
+		prefs, err := a.ReadPreferences(t.Context())
+		if err != nil || prefs.SwitchStyle != SwitchStyleSlanted || prefs.Theme != ThemeLight || string(read(t, path)) != raw {
+			t.Fatalf("reading %s: prefs=%+v err=%v", raw, prefs, err)
+		}
+	}
+	for _, style := range []string{SwitchStyleSlanted, SwitchStyleSlider, SwitchStyleText, SwitchStyleLine} {
+		if err := a.SaveSwitchStylePreference(t.Context(), style); err != nil {
+			t.Fatal(err)
+		}
+		prefs, err := a.LoadPreferences(t.Context())
+		if err != nil || prefs.SwitchStyle != style || prefs.Theme != ThemeLight || prefs.Language != "en" {
+			t.Fatalf("saved %s: prefs=%+v err=%v", style, prefs, err)
+		}
+	}
+	before := string(read(t, path))
+	if err := a.SaveSwitchStylePreference(t.Context(), "custom"); err == nil || string(read(t, path)) != before {
+		t.Fatal("invalid style modified the saved preference")
+	}
+	if err := a.SaveThemePreference(t.Context(), ThemeAuto); err != nil {
+		t.Fatal(err)
+	}
+	prefs, err := a.LoadPreferences(t.Context())
+	if err != nil || prefs.SwitchStyle != SwitchStyleLine {
+		t.Fatalf("saving the theme lost the switch style: prefs=%+v err=%v", prefs, err)
+	}
+}
+
 func TestSuccessfulFirstRunSurvivesStopAndLaterSessions(t *testing.T) {
 	a, _ := installedApp(t)
 	snapshot, err := a.Snapshot(t.Context())
