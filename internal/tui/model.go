@@ -1295,13 +1295,19 @@ func (m *Model) activate(id string) tea.Cmd {
 		return m.openPorts()
 	}
 	switch id {
-	case "settings.language", "settings.theme", "settings.logLevel":
+	case "settings.language", "settings.theme", "settings.logLevel", "settings.findProcessMode":
 		m.openPageSelectionMenu("settings", id, m.navigationOptions().settingsDropdown(id))
 		return nil
 	case "settings.ipv6":
 		return m.toggleCoreSetting(id, "ipv6", m.snapshot.CoreSettings.IPv6)
 	case "settings.unifiedDelay":
 		return m.toggleCoreSetting(id, "unified-delay", m.snapshot.CoreSettings.UnifiedDelay)
+	case "settings.tcpConcurrent":
+		return m.toggleCoreSetting(id, "tcp-concurrent", m.snapshot.CoreSettings.TCPConcurrent)
+	case "settings.tcpKeepAlive":
+		return m.toggleCoreSetting(id, "disable-keep-alive", m.snapshot.CoreSettings.DisableKeepAlive)
+	case "settings.etagSupport":
+		return m.toggleCoreSetting(id, "etag-support", m.snapshot.CoreSettings.ETagSupport)
 	case "editor.configure":
 		return m.openEditorPreference()
 	case "card.profiles":

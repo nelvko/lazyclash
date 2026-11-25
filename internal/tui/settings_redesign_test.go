@@ -122,8 +122,10 @@ func TestSettingsActionsKeepCompleteLabelsAndUniqueTargets(t *testing.T) {
 					"settings.language": languageLabel, "key-hints.toggle": on,
 					"settings.theme": "Dark ▾",
 					"settings.ipv6":  on, "settings.unifiedDelay": off, "settings.logLevel": "info ▾",
-					"editor.configure": tr("settings.edit"),
-					"install":          tr("settings.manage"), "runtime-settings": tr("settings.edit"),
+					"settings.tcpConcurrent": off, "settings.tcpKeepAlive": on, "settings.etagSupport": on,
+					"settings.findProcessMode": tr("settings.processAsNeeded") + " ▾",
+					"editor.configure":         tr("settings.edit"),
+					"install":                  tr("settings.manage"), "runtime-settings": tr("settings.edit"),
 					"restart": tr("dashboard.action.restart"), "card.logs": tr("settings.openLogs"),
 				}
 				if active {
@@ -176,6 +178,10 @@ func TestSettingsSwitchesAndDropdownsAlignAtCardEdges(t *testing.T) {
 		{"settings.ipv6", "settings.ipv6", settingsMihomo},
 		{"settings.unifiedDelay", "settings.unifiedDelay", settingsMihomo},
 		{"settings.logLevel", "settings.logLevel", settingsMihomo},
+		{"settings.tcpConcurrent", "settings.tcpConcurrent", settingsMihomo},
+		{"settings.tcpKeepAlive", "settings.tcpKeepAlive", settingsMihomo},
+		{"settings.findProcessMode", "settings.findProcessMode", settingsMihomo},
+		{"settings.etagSupport", "settings.etagSupport", settingsMihomo},
 	}
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		for _, c := range controls {
@@ -288,6 +294,96 @@ func TestSettingsMihomoLogMenuOffersOnlyFixedLevels(t *testing.T) {
 	m = finishProfileJob(t, m, cmd)
 	if !strings.Contains(strings.Join(strings.Fields(settingsPaintedTarget(t, m.screen, m.targets, m.focus)), " "), "silent ▾") {
 		t.Fatal("the dropdown did not display the saved log level")
+	}
+}
+
+func TestSettingsCoreSwitchesSaveMihomoValues(t *testing.T) {
+	for _, tc := range []struct {
+		id, key, first, second string
+		startsOn               bool
+	}{
+		{"settings.tcpConcurrent", "tcp-concurrent", "on", "off", false},
+		{"settings.tcpKeepAlive", "disable-keep-alive", "on", "off", true},
+		{"settings.etagSupport", "etag-support", "off", "on", true},
+	} {
+		t.Run(tc.id, func(t *testing.T) {
+			b := &fakeBackend{snapshot: settingsTestSnapshot()}
+			var written string
+			b.setCoreSetting = func(_ context.Context, key, value string) error {
+				if key != tc.key {
+					t.Fatalf("sent key %q, want %q", key, tc.key)
+				}
+				saved, err := b.snapshot.CoreSettings.With(key, value)
+				if err == nil {
+					b.snapshot.CoreSettings = saved
+					written = value
+				}
+				return err
+			}
+			m := ready(b)
+			directionCleanup(t, &m)
+			m.page, m.focus, m.width, m.height = "settings", tc.id, 160, 45
+			m.layout()
+			on := tc.startsOn
+			for _, want := range []string{tc.first, tc.second} {
+				var cmd tea.Cmd
+				m, cmd = update(m, special(tea.KeyEnter))
+				m = finishProfileJob(t, m, cmd)
+				if written != want {
+					t.Fatalf("saved %s=%s, want %s", tc.key, written, want)
+				}
+				on = !on
+				track := "› ██░░░░"
+				if on {
+					track = "› ░░░░██"
+				}
+				if got := settingsPaintedTarget(t, m.screen, m.targets, tc.id); got != track {
+					t.Fatalf("after saving %s=%s, switch = %q, want %q", tc.key, want, got, track)
+				}
+			}
+		})
+	}
+}
+
+func TestSettingsProcessMenuUsesLocalizedLabelsAndNativeValues(t *testing.T) {
+	for _, lang := range []string{i18n.English, i18n.Chinese} {
+		t.Run(lang, func(t *testing.T) {
+			b := &fakeBackend{snapshot: settingsTestSnapshot()}
+			b.setCoreSetting = func(_ context.Context, key, value string) error {
+				if key != "find-process-mode" || value != "always" {
+					t.Fatalf("selection saved %s=%s", key, value)
+				}
+				b.snapshot.CoreSettings.FindProcessMode = value
+				return nil
+			}
+			m := ready(b)
+			directionCleanup(t, &m)
+			m.locale = i18n.New(lang)
+			m.page, m.focus, m.width, m.height = "settings", "settings.findProcessMode", 160, 45
+			m.layout()
+			m, _ = click(m, findTarget(t, m, m.focus))
+			want := []menuItem{
+				{ID: "strict", Label: m.tr("settings.processAsNeeded"), Checked: true},
+				{ID: "always", Label: m.tr("settings.processAlways")},
+				{ID: "off", Label: m.tr("settings.processOff")},
+			}
+			if !m.menu.open || len(m.menu.items) != len(want) || m.menu.selected != 0 {
+				t.Fatalf("unexpected process menu: %+v", m.menu)
+			}
+			for i, item := range want {
+				if m.menu.items[i] != item {
+					t.Fatalf("process menu item %d = %+v, want %+v", i, m.menu.items[i], item)
+				}
+			}
+			m, _ = update(m, special(tea.KeyDown))
+			var cmd tea.Cmd
+			m, cmd = update(m, special(tea.KeyEnter))
+			m = finishProfileJob(t, m, cmd)
+			face := settingsPaintedTarget(t, m.screen, m.targets, m.focus)
+			if !strings.Contains(face, m.tr("settings.processAlways")) {
+				t.Fatalf("saved process mode missing from trigger %q", face)
+			}
+		})
 	}
 }
 

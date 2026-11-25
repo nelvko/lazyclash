@@ -15,11 +15,16 @@ import (
 	"github.com/nelvko/lazyclash/internal/service"
 )
 
+func focusedPortsEntry(backend *fakeBackend, width, height int) Model {
+	m := ready(backend)
+	m.page, m.focus = "settings", "runtime-settings"
+	m, _ = update(m, tea.WindowSizeMsg{Width: width, Height: height})
+	return m
+}
+
 func portsModel(t *testing.T, backend *fakeBackend) Model {
 	t.Helper()
-	m := ready(backend)
-	m.width, m.height, m.page, m.focus = 120, 32, "settings", "runtime-settings"
-	m.layout()
+	m := focusedPortsEntry(backend, 120, 32)
 	m, cmd := click(m, findTarget(t, m, "runtime-settings"))
 	if !m.ports.open || !m.busy || m.ports.step != "loading" {
 		t.Fatal("runtime settings did not load asynchronously")
@@ -44,9 +49,7 @@ func TestSettingsOpensAddressDetailsWithoutApplying(t *testing.T) {
 		writes++
 		return app.RuntimeSettingsResult{}, nil
 	}
-	m := ready(backend)
-	m.width, m.height, m.page, m.focus = 160, 60, "settings", "runtime-settings"
-	m.layout()
+	m := focusedPortsEntry(backend, 160, 60)
 	m, cmd := click(m, findTarget(t, m, "runtime-settings"))
 	if m.page != "settings" || !m.ports.open || !m.busy || m.ports.step != "loading" || reads != 0 || writes != 0 {
 		t.Fatal("settings action did not open the existing settings dialog with an asynchronous read")
@@ -243,9 +246,7 @@ func TestRuntimePortsCancellingDisablesRepeatedCancelAction(t *testing.T) {
 }
 
 func TestRuntimePortsModalKeepsSharedSessionAndDoesNotClickThrough(t *testing.T) {
-	m := ready(&fakeBackend{snapshot: app.Snapshot{Installed: true}})
-	m.width, m.height, m.page, m.focus = 120, 32, "settings", "runtime-settings"
-	m.layout()
+	m := focusedPortsEntry(&fakeBackend{snapshot: app.Snapshot{Installed: true}}, 120, 32)
 	background := findTarget(t, m, "nav.overview")
 	m, cmd := click(m, findTarget(t, m, "runtime-settings"))
 	m, _ = update(m, actionCmd(t, cmd)())

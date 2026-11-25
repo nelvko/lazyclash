@@ -23,9 +23,9 @@ func (m *Model) applyMenuResult(result menuResult) tea.Cmd {
 				case "settings.theme":
 					return m.changeTheme(result.Action)
 				case "settings.logLevel":
-					if result.Action != m.snapshot.CoreSettings.LogLevel {
-						return m.saveCoreSetting(m.menu.anchor.ID, "log-level", result.Action)
-					}
+					return m.saveCoreSetting(m.menu.anchor.ID, "log-level", m.snapshot.CoreSettings.LogLevel, result.Action)
+				case "settings.findProcessMode":
+					return m.saveCoreSetting(m.menu.anchor.ID, "find-process-mode", m.snapshot.CoreSettings.FindProcessMode, result.Action)
 				}
 			}
 		}

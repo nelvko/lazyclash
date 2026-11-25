@@ -46,6 +46,12 @@ func (o dashboardOptions) settingsDropdown(id string) dropdown {
 		return dropdown{Items: themeMenuItems, Value: cmp.Or(o.Theme, app.ThemeDark)}
 	case "settings.logLevel":
 		return dropdown{Items: coreLogLevelItems, Value: o.Snapshot.CoreSettings.LogLevel}
+	case "settings.findProcessMode":
+		return dropdown{Value: o.Snapshot.CoreSettings.FindProcessMode, Items: []menuItem{
+			{ID: "strict", Label: o.Locale.T("settings.processAsNeeded")},
+			{ID: "always", Label: o.Locale.T("settings.processAlways")},
+			{ID: "off", Label: o.Locale.T("settings.processOff")},
+		}}
 	}
 	return dropdown{}
 }

@@ -2,8 +2,8 @@
 
 设置页集中管理界面偏好、持久服务设置和维护操作。卡片左侧列出设置名称，右侧显示开关和下拉框。
 
-- **界面偏好**包含语言下拉框、快捷键提示栏开关和主题下拉框。
-- **Mihomo 设置**包含当前实例的 IPv6 开关、统一延迟开关和日志等级下拉框。
+- **界面偏好**包含语言、快捷键提示栏、主题和外部编辑器。
+- **内核偏好**决定本机 Mihomo 如何建连、测量延迟、匹配进程、记录日志和下载资源。每个实例独立保存这些选择。
 - **服务与端口**包含自动启动、注销后运行条件和本地端口编辑。端口摘要显示已保存的 HTTP/SOCKS5 mixed 端口与脱敏控制 API 地址。
 - **内核管理**包含 Mihomo 安装版本、安装或管理和更新入口、重启与卸载说明。
 - **故障排查**包含客户端版本、日志页入口和终端命令 `lazyclash doctor`。服务错误、异常退出结果和配置漂移仅在出现时展示。
@@ -11,17 +11,21 @@
 下载设置位于固定页头。日常启停和 TUN 在概览，路由模式在概览和代理页，配置导入在订阅页。
 点概览「终端代理」下的「配置」可在弹窗中修改混合端口。控制 API 端口在设置页的「服务与端口」中修改。两处的端口变更都需审阅后应用。
 
-## Mihomo 通用设置
+## 内核偏好
 
-安装内核后即可修改。点击滑轨或滑块，或用 Tab 聚焦后按 Enter，即可切换。日志等级从下拉框选择。
+安装内核后即可修改。点击滑轨或滑块，或用 Tab 聚焦后按 Enter，即可切换。日志等级和进程匹配从下拉框选择。
 
 | 设置项 | 新实例默认值 | 用途 |
 | --- | --- | --- |
 | IPv6 | 开 | 控制 Mihomo 的 IPv6 支持。启用主机 TUN 时内核临时开启 IPv6，关闭 TUN 后恢复保存的选择。 |
 | 统一延迟 | 关 | 调整节点延迟测试的计算方式，减少不同代理协议握手时间对结果的影响。 |
 | 日志等级 | `info` | 控制内核输出的详细程度，可选 `debug`、`info`、`warning`、`error`、`silent`。 |
+| TCP 并发连接 | 关 | 同一域名解析出多个 IP 时并发尝试 TCP 连接，采用最先连通的地址。对应 `tcp-concurrent`。 |
+| TCP 保活 | 开 | 允许内核为 TCP 连接启用保活探测。开启对应 `disable-keep-alive: false`。空闲时长和探测间隔仍取自配置。 |
+| 进程匹配 | 按需（`strict`） | 按需在规则用到进程信息时查询。也可选始终查询（`always`）或关闭查询（`off`）。对应 `find-process-mode`。 |
+| 资源下载 ETag | 开 | Mihomo 更新远程代理集和规则集时，可用服务器返回的 ETag 检查资源是否变化，节省重复下载。对应 `etag-support`。 |
 
-这三项保存在当前实例，优先于订阅原文和该订阅的覆写。刷新或切换订阅、重新打开 TUI 和重启内核都会保留选择。已有实例保留明确设置过的值。原先选择「跟随配置」的项取当前已部署配置中的值，缺省时取上表默认值。
+这些偏好优先于订阅原文和该订阅的覆写。刷新或切换订阅、重新打开 TUI 和重启内核都会保留选择。已有实例继续使用已经保存的偏好。首次出现的选项从当前已部署的配置读取，缺省时使用上表默认值。[Mihomo v1.19.33 默认配置](https://github.com/MetaCubeX/mihomo/blob/v1.19.33/config/config.go#L454-L476)
 
 保存时会校验生成的配置。运行中的内核按需热重载，停止的内核在下次启动时读取新配置。订阅源文件保持原样。[Mihomo 通用配置文档](https://wiki.metacubex.one/config/general/)
 
@@ -37,7 +41,7 @@ Tab/Shift+Tab 按可见阅读顺序遍历操作，现有滚动机制自动揭示
 底栏按聚焦控件显示实际操作，例如选择语言、编辑端口或查看日志。通过 Tab 聚焦选项后按 Enter 执行，← / Esc 返回导航。
 改变窗口尺寸会重新计算布局与命中区域。语言、提示栏和主题选择会保存到下次启动。
 
-语言、主题和日志等级使用相同的下拉框。语言可选 English 和简体中文，主题按 Light、Dark、Auto 排列。每个控件按本组选项的最长显示宽度排版，切换选项时箭头保持原位。点击控件，或用 Tab 聚焦后按 Enter 打开，箭头由 `▾` 变为 `▴`。行尾 `✓` 标出当前值。用 ↑/↓ 移动高亮行，无色终端用行首 `›` 表示游标。按 Enter 或点击选项保存，Esc 取消本次选择。
+语言、主题、日志等级和进程匹配使用相同的下拉框。语言可选 English 和简体中文，主题按 Light、Dark、Auto 排列。每个控件按本组选项的最长显示宽度排版，切换选项时箭头保持原位。点击控件，或用 Tab 聚焦后按 Enter 打开，箭头由 `▾` 变为 `▴`。行尾 `✓` 标出当前值。用 ↑/↓ 移动高亮行，无色终端用行首 `›` 表示游标。按 Enter 或点击选项保存，Esc 取消本次选择。
 
 默认的 Dark 沿用 Mariana 配色。Light 是可保存的浅色主题占位，目前与 Dark 外观相同。Auto 根据终端报告的背景明暗选择主题，终端未报告背景色时使用 Dark。
 
@@ -98,4 +102,6 @@ PTY 使用隔离的内存后端，不访问真实 Mihomo、订阅或系统服务
 
 实例设置固定后，Linux/arm64 实测验证了新安装的默认值和首次导入订阅后的值。通过设置页修改三项后，切换订阅、刷新、重启服务并重开 TUI，均与保存值一致。运行中的 Mihomo v1.19.33 热重载时保留原进程。[真实内核读回结果](../.test-artifacts/settings-fixed-switches/linux-real-core.json)
 
-设置页的四个开关使用相同的六格滑轨。中文宽屏预览展示两种滑块位置，窄屏预览展示长名称下方的键盘焦点和完整滑轨。[160×45 双列设置页](../.test-artifacts/settings-fixed-switches/rail-only/20261125-170352-e741fa/zh-Hans/truecolor/settings-wide.png) · [28×24 开关换行](../.test-artifacts/settings-fixed-switches/rail-only/20261125-170352-e741fa/zh-Hans/truecolor/switch-wrapped-28x24.png)
+当时设置页的四个开关使用相同的六格滑轨。中文宽屏预览展示两种滑块位置，窄屏预览展示长名称下方的键盘焦点和完整滑轨。[160×45 双列设置页](../.test-artifacts/settings-fixed-switches/rail-only/20261125-170352-e741fa/zh-Hans/truecolor/settings-wide.png) · [28×24 开关换行](../.test-artifacts/settings-fixed-switches/rail-only/20261125-170352-e741fa/zh-Hans/truecolor/switch-wrapped-28x24.png)
+
+扩充后的「内核偏好」在中英文、真彩、256 色和无色终端中验证了四个新增控件。Linux/arm64 专用实例从 Mihomo v1.19.33 的控制 API 读回全部七个字段，并在切换到含相反设置的订阅、刷新和重启服务后再次核对。[宽屏卡片](../.test-artifacts/core-preferences/final-pty/20261125-205212-fd8601/zh-Hans/truecolor/settings-wide.png) · [40×16 进程匹配菜单](../.test-artifacts/core-preferences/final-pty/20261125-205212-fd8601/zh-Hans/truecolor/process-menu-40x16.png) · [真实内核读回结果](../.test-artifacts/core-preferences/linux-real-core.json)

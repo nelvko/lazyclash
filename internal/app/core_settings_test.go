@@ -31,7 +31,15 @@ func TestInstanceCoreSettingsSurviveProfileSwitchRefreshAndReopen(t *testing.T) 
 	a, service := installedApp(t)
 	ctx := t.Context()
 	first, second := filepath.Join(t.TempDir(), "one.yaml"), filepath.Join(t.TempDir(), "two.yaml")
-	source := []byte("ipv6: false\nunified-delay: true\nlog-level: error\nrules: ['MATCH,DIRECT']\n")
+	source := []byte(`ipv6: false
+unified-delay: true
+log-level: error
+tcp-concurrent: true
+disable-keep-alive: true
+find-process-mode: always
+etag-support: false
+rules: ['MATCH,DIRECT']
+`)
 	write(t, first, source)
 	write(t, second, []byte("ipv6: false\nlog-level: info\nrules: ['MATCH,REJECT']\n"))
 	if err := a.Add(ctx, "one", first); err != nil {
@@ -40,25 +48,35 @@ func TestInstanceCoreSettingsSurviveProfileSwitchRefreshAndReopen(t *testing.T) 
 	if err := a.AddSubscription(ctx, "two", second); err != nil {
 		t.Fatal(err)
 	}
-	wantDefaults := mihomo.GeneralSettings{IPv6: "on", UnifiedDelay: "off", LogLevel: "info"}
+	wantDefaults := mihomo.GeneralSettings{
+		IPv6: "on", UnifiedDelay: "off", LogLevel: "info",
+		TCPConcurrent: "off", DisableKeepAlive: "off", FindProcessMode: "strict", ETagSupport: "on",
+	}
 	assertInstanceSettings(t, a, wantDefaults)
 	if err := a.Apply(ctx, "one"); err != nil {
 		t.Fatal(err)
 	}
 	assertInstanceSettings(t, a, wantDefaults)
-	for key, value := range map[string]string{"ipv6": "off", "unified-delay": "on", "log-level": "debug"} {
+	for key, value := range map[string]string{
+		"ipv6": "off", "unified-delay": "on", "log-level": "debug",
+		"tcp-concurrent": "on", "disable-keep-alive": "on", "find-process-mode": "off", "etag-support": "off",
+	} {
 		if err := a.SetCoreSetting(ctx, key, value); err != nil {
 			t.Fatal(err)
 		}
 	}
-	want := mihomo.GeneralSettings{IPv6: "off", UnifiedDelay: "on", LogLevel: "debug"}
+	want := mihomo.GeneralSettings{
+		IPv6: "off", UnifiedDelay: "on", LogLevel: "debug",
+		TCPConcurrent: "on", DisableKeepAlive: "on", FindProcessMode: "off", ETagSupport: "off",
+	}
 	assertInstanceSettings(t, a, want)
 	otherInstance, _ := installedApp(t)
 	assertInstanceSettings(t, otherInstance, wantDefaults)
 	if !bytes.Equal(source, read(t, savedSourcePath(t, a, "one"))) {
 		t.Fatal("editing settings changed the raw subscription")
 	}
-	if err := a.SetProfileOverrides(ctx, "two", []byte("set:\n  log-level: warning\n")); err != nil {
+	overrides := []byte("set: {log-level: warning, tcp-concurrent: false, disable-keep-alive: false, find-process-mode: always, etag-support: true}\n")
+	if err := a.SetProfileOverrides(ctx, "two", overrides); err != nil {
 		t.Fatal(err)
 	}
 	if err := a.Apply(ctx, "two"); err != nil {
@@ -139,7 +157,11 @@ func TestCoreSettingsChangeOnRunningServiceCommitsOnlyAfterReload(t *testing.T) 
 
 func TestCoreSettingEditsDeployedConfigWithMissingProfileSource(t *testing.T) {
 	a, _ := installedApp(t)
-	addFixtureProfile(t, a, "source")
+	source := filepath.Join(t.TempDir(), "source.yaml")
+	write(t, source, []byte("keep-alive-idle: 30\nkeep-alive-interval: 10\nrules: ['MATCH,DIRECT']\n"))
+	if err := a.Add(t.Context(), "source", source); err != nil {
+		t.Fatal(err)
+	}
 	if err := a.Apply(t.Context(), "source"); err != nil {
 		t.Fatal(err)
 	}
@@ -147,14 +169,16 @@ func TestCoreSettingEditsDeployedConfigWithMissingProfileSource(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := appliedConfigFields(t, a)
-	want["log-level"] = "debug"
-	if err := a.SetCoreSetting(t.Context(), "log-level", "debug"); err != nil {
+	want["disable-keep-alive"] = true
+	if err := a.SetCoreSetting(t.Context(), "disable-keep-alive", "on"); err != nil {
 		t.Fatal(err)
 	}
 	if !reflect.DeepEqual(appliedConfigFields(t, a), want) {
 		t.Fatal("setting edit changed unrelated deployed configuration")
 	}
-	assertInstanceSettings(t, a, mihomo.GeneralSettings{IPv6: "on", UnifiedDelay: "off", LogLevel: "debug"})
+	settings := mihomo.DefaultGeneralSettings()
+	settings.DisableKeepAlive = "on"
+	assertInstanceSettings(t, a, settings)
 }
 
 // Read the raw manifest so load's defaults cannot mask a missing write.
@@ -169,21 +193,37 @@ func assertInstanceSettings(t *testing.T, a *App, want mihomo.GeneralSettings) {
 		t.Fatalf("stored settings = %+v, want %+v", m.CoreSettings, want)
 	}
 	cfg := appliedConfigFields(t, a)
-	if cfg["ipv6"] != (m.TUN || want.IPv6 == "on") || cfg["unified-delay"] != (want.UnifiedDelay == "on") || cfg["log-level"] != want.LogLevel {
-		t.Fatalf("applied settings = %v / %v / %v, want %+v (TUN %v)", cfg["ipv6"], cfg["unified-delay"], cfg["log-level"], want, m.TUN)
+	for key, value := range map[string]any{
+		"ipv6": m.TUN || want.IPv6 == "on", "unified-delay": want.UnifiedDelay == "on", "log-level": want.LogLevel,
+		"tcp-concurrent": want.TCPConcurrent == "on", "disable-keep-alive": want.DisableKeepAlive == "on",
+		"find-process-mode": want.FindProcessMode, "etag-support": want.ETagSupport == "on",
+	} {
+		if cfg[key] != value {
+			t.Fatalf("applied %s = %v, want %v", key, cfg[key], value)
+		}
 	}
 }
 
 func TestUnsetCoreSettingsUseDeployedGenerationUntilNextWrite(t *testing.T) {
+	omitted := mihomo.DefaultGeneralSettings()
+	omitted.LogLevel = "warning"
+	pinned := mihomo.GeneralSettings{
+		IPv6: "off", UnifiedDelay: "on", LogLevel: "debug",
+		TCPConcurrent: "on", DisableKeepAlive: "on", FindProcessMode: "always", ETagSupport: "off",
+	}
+	applied := map[string]any{
+		"ipv6": false, "unified-delay": true, "log-level": "debug",
+		"tcp-concurrent": true, "disable-keep-alive": true, "find-process-mode": "always", "etag-support": false,
+	}
 	for _, tc := range []struct {
-		name        string
-		saved       map[string]string
-		ipv6, delay any
-		level       string
-		want        mihomo.GeneralSettings
+		name    string
+		saved   map[string]string
+		applied map[string]any
+		want    mihomo.GeneralSettings
 	}{
-		{"omitted fields", nil, nil, nil, "warning", mihomo.GeneralSettings{IPv6: "on", UnifiedDelay: "off", LogLevel: "warning"}},
-		{"partly pinned", map[string]string{"log_level": "debug"}, false, true, "debug", mihomo.GeneralSettings{IPv6: "off", UnifiedDelay: "on", LogLevel: "debug"}},
+		{"omitted fields", nil, map[string]any{"log-level": "warning"}, omitted},
+		{"partly pinned", map[string]string{"log_level": "debug"}, applied, pinned},
+		{"three saved fields", map[string]string{"ipv6": "off", "unified_delay": "on", "log_level": "debug"}, applied, pinned},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			a, _ := installedApp(t)
@@ -195,10 +235,9 @@ func TestUnsetCoreSettingsUseDeployedGenerationUntilNextWrite(t *testing.T) {
 			dir := filepath.Join(a.Home, "installation", current)
 			manifestPath := filepath.Join(dir, "manifest.json")
 			cfg := appliedConfigFields(t, a)
-			for key, value := range map[string]any{"ipv6": tc.ipv6, "unified-delay": tc.delay, "log-level": tc.level} {
-				if value == nil {
-					delete(cfg, key)
-				} else {
+			for _, key := range []string{"ipv6", "unified-delay", "log-level", "tcp-concurrent", "disable-keep-alive", "find-process-mode", "etag-support"} {
+				delete(cfg, key)
+				if value, ok := tc.applied[key]; ok {
 					cfg[key] = value
 				}
 			}
@@ -243,16 +282,22 @@ func TestCoreSettingsValidationAndNoopPreserveGeneration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a.Validate = func(context.Context, string, string, string) error { return errors.New("core rejected settings") }
-	for key, value := range map[string]string{"log-level": "verbose", "ipv6": "auto", "allow-lan": "on", "unified-delay": "on"} {
+	for key, value := range map[string]string{
+		"log-level": "verbose", "ipv6": "auto", "allow-lan": "on", "unified-delay": "inherit",
+		"tcp-concurrent": "true", "disable-keep-alive": "auto", "find-process-mode": "on", "etag-support": "true",
+	} {
 		if err := a.SetCoreSetting(t.Context(), key, value); err == nil {
 			t.Fatalf("accepted %s=%s", key, value)
 		}
 	}
-	for _, key := range []string{"ipv6", "unified-delay", "log-level"} {
+	for _, key := range []string{"ipv6", "unified-delay", "log-level", "tcp-concurrent", "disable-keep-alive", "find-process-mode", "etag-support"} {
 		if err := a.SetCoreSetting(t.Context(), key, ""); err == nil {
 			t.Fatalf("accepted empty %s", key)
 		}
+	}
+	a.Validate = func(context.Context, string, string, string) error { return errors.New("core rejected settings") }
+	if err := a.SetCoreSetting(t.Context(), "unified-delay", "on"); err == nil {
+		t.Fatal("published a setting after the core rejected the configuration")
 	}
 	if err := a.SetCoreSetting(t.Context(), "log-level", "info"); err != nil {
 		t.Fatal("unchanged settings should succeed without validation", err)

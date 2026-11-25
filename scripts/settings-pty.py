@@ -109,9 +109,12 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait("lazyclash doctor")
         preview.capture(terminal, output, "settings-wide", args)
 
-        switch_defaults = {"settings.ipv6": True, "settings.unifiedDelay": False,
-                           "dashboard.interface.keyHints": True, "settings.autostart": True}
-        for key in ("dashboard.language.title", "settings.theme", "settings.logLevel", *switch_defaults):
+        switch_defaults = {
+            "settings.ipv6": True, "settings.unifiedDelay": False,
+            "settings.tcpConcurrent": False, "settings.tcpKeepAlive": True, "settings.etagSupport": True,
+            "dashboard.interface.keyHints": True, "settings.autostart": True,
+        }
+        for key in ("dashboard.language.title", "settings.theme", "settings.logLevel", "settings.findProcessMode", *switch_defaults):
             x, y = position(terminal, words[key])
             row = terminal.screen.cells[y]
             right = row.index("│", x)
@@ -181,6 +184,20 @@ def exercise(preview, binary, output, language, profile, args):
         preview.capture(terminal, output, "log-level-menu-wide", args)
         terminal.click_text(dropdown_option(terminal, "debug"))
         debug_trigger = dropdown_trigger(terminal, "debug")
+        dismiss_toasts(terminal)
+
+        for key in ("settings.tcpConcurrent", "settings.tcpKeepAlive", "settings.etagSupport"):
+            point = check_switch(terminal, words, key, switch_defaults[key], profile)
+            click(terminal, point)
+            dismiss_toasts(terminal)
+            check_switch(terminal, words, key, not switch_defaults[key], profile)
+
+        process_trigger = dropdown_trigger(terminal, words["settings.processAsNeeded"])
+        terminal.click_text(process_trigger)
+        dropdown_option(terminal, words["settings.processAsNeeded"], checked=True)
+        dropdown_option(terminal, words["settings.processOff"])
+        terminal.click_text(dropdown_option(terminal, words["settings.processAlways"]))
+        process_trigger = dropdown_trigger(terminal, words["settings.processAlways"])
         dismiss_toasts(terminal)
 
         dark_trigger = dropdown_trigger(terminal, "Dark")
@@ -319,6 +336,12 @@ def exercise(preview, binary, output, language, profile, args):
                 check_switch(terminal, words, "settings.ipv6", True, profile)
                 check_switch(terminal, words, "settings.unifiedDelay", False, profile)
                 preview.capture(terminal, output, "mihomo-switches-40x16", args)
+                focus(terminal, process_trigger)
+                terminal.key(b"\r")
+                dropdown_option(terminal, words["settings.processAlways"], checked=True)
+                preview.capture(terminal, output, "process-menu-40x16", args)
+                terminal.key(b"\x1b")
+                terminal.wait_absent("✓")
             focus(terminal, words["settings.openLogs"])
             preview.capture(terminal, output, "tab-logs-%dx%d" % (width, height), args)
             focus(terminal, words["settings.edit"], words["navigation.controls.editPorts"])
@@ -353,6 +376,8 @@ def exercise(preview, binary, output, language, profile, args):
         assert calls["theme_saves"] == 3 and calls["theme"] == "dark", calls
         assert calls["core_changes"] == [["ipv6", "off"], ["unified-delay", "on"],
                                          ["unified-delay", "off"], ["log-level", "debug"],
+                                         ["tcp-concurrent", "on"], ["disable-keep-alive", "on"],
+                                         ["etag-support", "off"], ["find-process-mode", "always"],
                                          ["ipv6", "on"]], calls
         assert calls["port_reads"] == len(SIZES), calls
         assert calls["log_streams"] == 1, calls

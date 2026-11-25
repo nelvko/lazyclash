@@ -16,34 +16,47 @@ var coreLogLevelItems = []menuItem{
 
 func settingsMihomo(o dashboardOptions, width int) dashboardBlock {
 	tr, s := o.Locale.T, o.Snapshot
-	if !s.Installed {
-		return settingsSection(o, width, tr("settings.mihomo"), tr("settings.afterInstall"), []settingsRow{
-			{label: tr("settings.ipv6")}, {label: tr("settings.unifiedDelay")}, {label: tr("settings.logLevel")},
-		})
+	switchRow := func(id string, on bool) settingsRow {
+		return settingsSwitchRow(id, tr(id), on, !o.Busy)
 	}
-	ipv6 := settingsSwitchRow("settings.ipv6", tr("settings.ipv6"), s.CoreSettings.IPv6 == "on", !o.Busy)
+	prefs := s.CoreSettings
+	ipv6 := switchRow("settings.ipv6", prefs.IPv6 == "on")
 	if s.TUN {
 		ipv6.note = tr("settings.tunIPv6")
 	}
-	return settingsSection(o, width, tr("settings.mihomo"), tr("settings.allProfiles"), []settingsRow{
+	etag := switchRow("settings.etagSupport", prefs.ETagSupport == "on")
+	etag.note = tr("settings.etagHint")
+	rows := []settingsRow{
 		ipv6,
-		settingsSwitchRow("settings.unifiedDelay", tr("settings.unifiedDelay"), s.CoreSettings.UnifiedDelay == "on", !o.Busy),
+		switchRow("settings.unifiedDelay", prefs.UnifiedDelay == "on"),
 		settingsSelectRow(o, "settings.logLevel", tr("settings.logLevel")),
-	})
+		switchRow("settings.tcpConcurrent", prefs.TCPConcurrent == "on"),
+		switchRow("settings.tcpKeepAlive", prefs.DisableKeepAlive == "off"),
+		settingsSelectRow(o, "settings.findProcessMode", tr("settings.findProcessMode")),
+		etag,
+	}
+	note := tr("settings.allProfiles")
+	if !s.Installed {
+		note = tr("settings.afterInstall")
+		for i, row := range rows {
+			rows[i] = settingsRow{label: row.label}
+		}
+	}
+	return settingsSection(o, width, tr("settings.mihomo"), note, rows)
 }
 
 func (m *Model) toggleCoreSetting(id, key, current string) tea.Cmd {
 	switch current {
 	case "on":
-		return m.saveCoreSetting(id, key, "off")
+		return m.saveCoreSetting(id, key, current, "off")
 	case "off":
-		return m.saveCoreSetting(id, key, "on")
+		return m.saveCoreSetting(id, key, current, "on")
 	}
 	return nil
 }
 
-func (m *Model) saveCoreSetting(id, key, value string) tea.Cmd {
-	if !m.pageSelectionMenuAvailable("settings") || !m.snapshot.Installed {
+func (m *Model) saveCoreSetting(id, key, current, value string) tea.Cmd {
+	if value == current || !m.pageSelectionMenuAvailable("settings") || !m.snapshot.Installed {
 		return nil
 	}
 	label := m.tr("settings.coreSaving", m.tr(id))
