@@ -175,9 +175,8 @@ func (m *Model) renderProfileDeleteForm(base string) (string, []hitRegion) {
 			return overlay("", m.tr("profiles.enlarge"), 0, 0, m.width, m.height), nil
 		}
 	}
-	x, y := (m.width-width)/2, (m.height-height)/2
-	rows := profileDialogCanvas(width, height)
-	put := func(row int, value string) { putRows(rows, 2, row, cellPad(value, inner), width) }
+	surface := m.newModalSurface(width, height, raised)
+	put := func(row int, value string) { surface.put(2, row, cellCrop(value, inner)) }
 	put(1, themed(cellCrop(title, inner), text, raised, false))
 	buttonRow := height - 2 - len(buttons.lines)
 	for i, line := range lines {
@@ -193,19 +192,19 @@ func (m *Model) renderProfileDeleteForm(base string) (string, []hitRegion) {
 		value, hit := choice.render(deleteChoice, o, m.menu.dropdownOpen(deleteChoice), inner)
 		put(row, value)
 		if !o.Disabled {
-			hit.X += x + 2
-			hit.Y += y + row
-			hits = append(hits, hit)
+			hit.X += 2
+			hit.Y += row
+			hits = append(hits, surface.screen(hit))
 		}
 	}
 	for i, line := range buttons.lines {
 		put(buttonRow+i, line)
 	}
 	for _, hit := range buttons.targets {
-		hit.X += x + 2
-		hit.Y += y + buttonRow
-		hits = append(hits, hit)
+		hit.X += 2
+		hit.Y += buttonRow
+		hits = append(hits, surface.screen(hit))
 	}
 	put(height-2, themed(cellCrop(m.profileDeleteContextHelp(), inner), muted, raised, false))
-	return overlay(base, strings.Join(rows, "\n"), x, y, m.width, m.height), hits
+	return surface.render(base), hits
 }

@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -129,7 +128,7 @@ func renderButton(label string, o buttonOptions) string {
 }
 
 func (m *Model) buttonPlain() bool {
-	return m.noColor || m.colorProfile != colorprofile.Unknown && m.colorProfile <= colorprofile.ANSI
+	return m.lowColor()
 }
 
 func dashboardButtonOptions(id string, o dashboardOptions, primary bool, surface string) buttonOptions {

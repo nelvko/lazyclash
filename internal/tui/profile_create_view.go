@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"slices"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -41,17 +40,8 @@ func (m *Model) renderProfileCreateForm(base string) (string, []hitRegion) {
 		bodyH = len(body.lines)
 		height = bodyY + bodyH + len(footer.lines) + 2
 	}
-	x, y := (m.width-width)/2, (m.height-height)/2
-	var rows []string
-	if settings {
-		rows = profileDialogCanvas(width, height)
-	} else {
-		blank := themed(strings.Repeat(" ", width), text, raised, false)
-		rows = slices.Repeat([]string{blank}, height)
-	}
-	put := func(row int, line string) {
-		putRows(rows, 2, row, themed(cellCrop(line, inner), text, raised, false), width)
-	}
+	surface := m.newModalSurface(width, height, raised)
+	put := func(row int, line string) { surface.put(2, row, cellCrop(line, inner)) }
 	put(1, header)
 	for i, line := range body.lines[scroll:min(scroll+bodyH, len(body.lines))] {
 		put(bodyY+i, line)
@@ -59,9 +49,9 @@ func (m *Model) renderProfileCreateForm(base string) (string, []hitRegion) {
 	var targets []hitRegion
 	for _, hit := range body.targets {
 		if hit, ok := clipRegion(hit, 0, scroll, inner, bodyH); ok {
-			hit.X += x + 2
-			hit.Y += y + bodyY - scroll
-			targets = append(targets, hit)
+			hit.X += 2
+			hit.Y += bodyY - scroll
+			targets = append(targets, surface.screen(hit))
 		}
 	}
 	footerY := bodyY + bodyH + 1
@@ -69,11 +59,11 @@ func (m *Model) renderProfileCreateForm(base string) (string, []hitRegion) {
 		put(footerY+i, line)
 	}
 	for _, hit := range footer.targets {
-		hit.X += x + 2
-		hit.Y += y + footerY
-		targets = append(targets, hit)
+		hit.X += 2
+		hit.Y += footerY
+		targets = append(targets, surface.screen(hit))
 	}
-	return overlay(base, strings.Join(rows, "\n"), x, y, m.width, m.height), targets
+	return surface.render(base), targets
 }
 
 func (m *Model) profileFormField(field, width int) dashboardBlock {

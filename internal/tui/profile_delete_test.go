@@ -13,14 +13,11 @@ import (
 
 func profileDeleteDialogText(m Model) string {
 	screen, _ := m.renderProfileDeleteForm("")
-	var content []string
-	for _, line := range strings.Split(ansi.Strip(screen), "\n") {
-		if _, rest, ok := strings.Cut(line, "│"); ok {
-			body, _, _ := strings.Cut(rest, "│")
-			content = append(content, strings.TrimSpace(body))
-		}
+	lines := strings.Split(ansi.Strip(screen), "\n")
+	for i, line := range lines {
+		lines[i] = strings.Trim(line, " │")
 	}
-	return strings.Join(content, " ")
+	return strings.Join(lines, " ")
 }
 
 func TestDeleteCurrentProfileShowsDirectRoutingBeforeConfirm(t *testing.T) {

@@ -262,16 +262,16 @@ func (m *Model) renderProfileEditor(base string) (string, []hitRegion) {
 	actionsY := 1 + len(lines)
 	lines = append(lines, buttons.lines...)
 	h := min(m.height, 2+len(lines))
-	x, y := (m.width-w)/2, (m.height-h)/2
-	rows := profileDialogCanvas(w, h)
+	surface := m.newModalSurface(w, h, raised)
 	for i, line := range lines {
 		if i+1 < h-1 {
-			putRows(rows, 2, 1+i, cellPad(line, inner), w)
+			surface.put(2, 1+i, cellCrop(line, inner))
 		}
 	}
-	for i := range buttons.targets {
-		buttons.targets[i].X += x + 2
-		buttons.targets[i].Y += y + actionsY
+	for i, hit := range buttons.targets {
+		hit.X += 2
+		hit.Y += actionsY
+		buttons.targets[i] = surface.screen(hit)
 	}
-	return overlay(base, strings.Join(rows, "\n"), x, y, m.width, m.height), buttons.targets
+	return surface.render(base), buttons.targets
 }

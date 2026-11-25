@@ -10,6 +10,10 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+func (m *Model) lowColor() bool {
+	return m.noColor || m.colorProfile != colorprofile.Unknown && m.colorProfile <= colorprofile.ANSI
+}
+
 // themeProfile keeps a late terminal capability response from overriding the
 // user's explicit request for no color. NO_COLOR uses its standard nonempty
 // value semantics rather than treating the value as a boolean.

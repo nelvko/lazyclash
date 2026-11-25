@@ -470,16 +470,6 @@ func readProfileOverrides(path string) ([]byte, error) {
 	return raw, nil
 }
 
-func profileDialogCanvas(width, height int) []string {
-	rows := make([]string, height)
-	for row := range rows {
-		rows[row] = themed("│"+strings.Repeat(" ", width-2)+"│", border, raised, false)
-	}
-	rows[0] = themed("╭"+strings.Repeat("─", width-2)+"╮", border, raised, false)
-	rows[height-1] = themed("╰"+strings.Repeat("─", width-2)+"╯", border, raised, false)
-	return rows
-}
-
 func (m *Model) renderProfileForm(base string) (string, []hitRegion) {
 	if m.form == "profile-document" {
 		return m.renderProfileEditor(base)
@@ -498,7 +488,6 @@ func (m *Model) renderProfileForm(base string) (string, []hitRegion) {
 	if m.pathForm() {
 		boxH = min(18, m.height)
 	}
-	x, y := (m.width-boxW)/2, (m.height-boxH)/2
 	if boxW < 24 || boxH < 7 {
 		return overlay("", m.tr("profiles.enlarge"), 0, 0, m.width, m.height), nil
 	}
@@ -514,8 +503,8 @@ func (m *Model) renderProfileForm(base string) (string, []hitRegion) {
 		hint = m.tr("profiles.overrides_hint")
 	}
 	inner := boxW - 4
-	rows := profileDialogCanvas(boxW, boxH)
-	put := func(row int, value string) { putRows(rows, 2, row, cellPad(value, inner), boxW) }
+	surface := m.newModalSurface(boxW, boxH, raised)
+	put := func(row int, value string) { surface.put(2, row, cellCrop(value, inner)) }
 	put(1, themed(cellCrop(title, inner), text, raised, false))
 	inputRow := 2
 	if boxH >= 11 {
@@ -552,9 +541,10 @@ func (m *Model) renderProfileForm(base string) (string, []hitRegion) {
 		put(boxH-3, themed(cellCrop(m.failure, inner), errorColor, raised, false))
 	}
 	put(boxH-2, themed(cellCrop(footer, inner), muted, raised, false))
-	for i := range field.targets {
-		field.targets[i].X += x + 2
-		field.targets[i].Y += y + inputRow
+	for i, hit := range field.targets {
+		hit.X += 2
+		hit.Y += inputRow
+		field.targets[i] = surface.screen(hit)
 	}
-	return overlay(base, strings.Join(rows, "\n"), x, y, m.width, m.height), field.targets
+	return surface.render(base), field.targets
 }
