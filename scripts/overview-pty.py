@@ -177,7 +177,7 @@ def inspect_network_editors(preview, terminal, output, words, scenario, args):
         primary, tun = words["terminal.title"], words["dashboard.network.tun"]
         focus_control(terminal, "○ " + words["dashboard.network.off"])
         saved = "● " + words["tun.saved_state"] % words["dashboard.control.on"]
-        for title, offset, label in ((primary, 2, edit), (tun, 1, saved), (tun, 2, edit)):
+        for title, offset, label in ((primary, 3, edit), (tun, 1, saved), (tun, 3, edit)):
             terminal.key(b"\t")
             terminal.settle()
             x, y = terminal.screen.point_below(title, offset, label)
@@ -187,7 +187,7 @@ def inspect_network_editors(preview, terminal, output, words, scenario, args):
             ("tun", words["dashboard.network.tun"], words["network.tunConfig.title"])):
         cancel = words["profiles.close"] if section == "tun" and scenario != "pending" else words["ports.cancel"]
         focus_control(terminal, edit)
-        point = terminal.screen.point_below(heading, 2, edit)
+        point = terminal.screen.point_below(heading, 3, edit)
         assert point is not None, "network edit action missing for " + heading
         click_point(terminal, point)
         terminal.wait(title)
@@ -239,14 +239,21 @@ def subscription_allowance(terminal):
     return expiry.group()
 
 
-def assert_card_outline(terminal, profile, complete=True):
+def assert_card_outline(terminal, profile, complete=True, clipped_title=None):
     cells = terminal.screen.cells
     corners = [(x, y) for y, row in enumerate(cells) for x, value in enumerate(row) if value == "┌"]
-    assert len(corners) == 1, "card focus did not draw exactly one top-left corner"
-    left, top = corners[0]
-    right = next((x for x in range(left + 1, len(cells[top])) if cells[top][x] == "┐"), None)
-    assert right is not None, "card focus omitted its top-right corner"
-    assert all(value == "─" for value in cells[top][left + 1:right]), "card focus has an incomplete top edge"
+    if clipped_title and not corners:
+        # At 40×16 the TUN observation pushes just the top border above the viewport.
+        title_x, top = text_point(terminal, clipped_title)
+        assert top == 2, "card title is not at the top of the scrolled content"
+        left = cells[top].index("│", 0, title_x)
+        right = cells[top].index("│", title_x)
+    else:
+        assert len(corners) == 1, "card focus did not draw exactly one top-left corner"
+        left, top = corners[0]
+        right = next((x for x in range(left + 1, len(cells[top])) if cells[top][x] == "┐"), None)
+        assert right is not None, "card focus omitted its top-right corner"
+        assert all(value == "─" for value in cells[top][left + 1:right]), "card focus has an incomplete top edge"
     bottom = next((y for y in range(top + 1, len(cells)) if cells[y][left] == "└"), None)
     if complete:
         assert bottom is not None, "card focus omitted its bottom-left corner"
@@ -286,7 +293,8 @@ def inspect_network_card(terminal, outline, words, scenario):
         sections = ((terminal_title, left_y, first_col, end_col),
                     (tun_title, tun_y, first_col, end_col))
     for title, title_y, start, end in sections:
-        for offset in range(3):  # Heading, switch and configuration button.
+        assert all(cell == " " for cell in terminal.screen.cells[title_y+2][start:end]), "missing space above configuration under " + title
+        for offset in (0, 1, 3):  # Heading, switch and configuration button.
             cells = terminal.screen.cells[title_y+offset]
             ink = [col for col in range(start, end) if cells[col] != " "]
             assert ink, "empty network section row under " + title
@@ -297,7 +305,7 @@ def inspect_network_card(terminal, outline, words, scenario):
                  if scenario == "pending" else words["dashboard.network.unsupported"])
     assert terminal.screen.point_below(tun_title, 1, tun_state), "incorrect state beneath TUN"
     for title in (terminal_title, tun_title):
-        assert terminal.screen.point_below(title, 2, edit), "no configuration button beneath " + title
+        assert terminal.screen.point_below(title, 3, edit), "no configuration button beneath " + title
     if scenario == "pending":
         _, _, start, end = sections[1]
         tun_text = " ".join("".join(row[start:end]).strip() for row in terminal.screen.cells[tun_y:bottom-1])
@@ -437,7 +445,9 @@ def exercise(preview, binary, output, language, profile, scenario, args):
                 for _ in range(2):
                     terminal.key(b"\x1b[B")
                     terminal.settle()
-                inspect_network_card(terminal, assert_card_outline(terminal, profile), words, scenario)
+                clipped_title = words["dashboard.overview.network"] if width == 40 and scenario == "pending" else None
+                outline = assert_card_outline(terminal, profile, clipped_title=clipped_title)
+                inspect_network_card(terminal, outline, words, scenario)
                 preview.capture(terminal, output, "network-card-%dx%d" % (width, height), args)
                 return_navigation(terminal, words)
                 terminal.key(b"\t")

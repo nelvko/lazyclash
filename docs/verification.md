@@ -2,6 +2,8 @@
 
 ## 网络设置左右分区（2026-11-25）
 
+「配置前留白」在 46 列和 36 列卡宽下与选定 demo 逐格一致，覆盖 TUN 保存状态与运行状态一致、有差异两种情况。真实 PTY 另核对了两个分区的空行、鼠标点击「配置」、Esc 返回及 Enter 重开弹窗。[120×32 双栏](../.test-artifacts/network-spacing-implemented/network-card-120x32.png) · [40×16 堆叠](../.test-artifacts/network-spacing-implemented/network-card-40x16.png)
+
 居中布局在中英文、真彩、256 色和无色 PTY 中验证。各项可见文字距分区两侧的留白最多相差一个字符格，聚焦时文字位置稳定。鼠标点击居中的「配置」可打开对应弹窗，Esc 返回原控件。[居中卡片](../.test-artifacts/network-centered/network-card.png) · [40×16 上下排列](../.test-artifacts/network-centered/network-card-40x16.png)
 
 卡片外宽 43 格上下排列，44 格开始左右并排。中英文回归覆盖分区边界、奇数宽度、长状态与多行操作的鼠标命中。四组真实 PTY 使用隔离数据，分别验证中文真彩系统实例、中文服务观测不可用、英文无色普通用户和英文 256 色系统实例。在 120×32、80×24 和 40×16 检查分区位置，点击各自的「配置」打开对应弹窗；每组读取两次端口配置，取消后写入次数为零。宽屏和窄屏按 Tab 与 Shift+Tab 均沿两个分区的阅读顺序往返。[宽屏卡片](../.test-artifacts/network-sections/network-card.png) · [40×16 窄屏](../.test-artifacts/network-sections/navigation/20261125-140049-685328/zh-Hans/truecolor/pending/network-card-40x16.png)

@@ -107,6 +107,7 @@ func overviewNetworkSection(o dashboardOptions, width int, title, configID, togg
 	if o.PlainButtons {
 		kind = buttonSecondary
 	}
+	b.blank()
 	b.append(centeredNetworkBlock(overviewButton(o, config, kind), width, 2, configID))
 	return b
 }

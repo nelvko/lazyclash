@@ -40,7 +40,7 @@ func TestOverviewNetworkKeepsUnavailableControlsDisabledAndAddressesInDetails(t 
 				}
 				if width == 40 {
 					for _, edit := range card.targets {
-						assertNetworkLabelCentered(t, card.lines[edit.Y-1], 2, width-2, o.Locale.T("dashboard.network.unsupported"))
+						assertNetworkLabelCentered(t, card.lines[edit.Y-2], 2, width-2, o.Locale.T("dashboard.network.unsupported"))
 					}
 				}
 			}
@@ -146,8 +146,11 @@ func TestNetworkCardGroupsSwitchAndConfigurationAtEachWidth(t *testing.T) {
 								h.X < start || h.X+h.W > end {
 								t.Fatalf("%s target misses its face or crosses its group: %+v, %q", id, h, face)
 							}
-							if i%2 == 1 && h.Y != card.targets[i-1].Y+1 {
-								t.Fatalf("%s must be below its switch: %+v", id, card.targets)
+							if i%2 == 1 {
+								toggle := card.targets[i-1]
+								if h.Y != toggle.Y+toggle.H+1 || strings.TrimSpace(ansi.Strip(ansi.Cut(card.lines[h.Y-1], start, end))) != "" {
+									t.Fatalf("%s must have one blank row above it: %+v", id, card.targets)
+								}
 							}
 						}
 						if width < 44 && card.targets[2].Y-1 <= card.targets[1].Y ||
