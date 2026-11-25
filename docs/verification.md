@@ -1,5 +1,11 @@
 # 验证入口
 
+## 通知与订阅切换（2026-11-25）
+
+中英文真实 PTY 各验证两种状态。160×45 下切换后能看到订阅名和“内核运行中”，40×24 下单行摘要保留订阅名，打开详情可读到“下次启动内核时生效”。四组测试使用内存后端，并核对每次只提交一次目标订阅 ID。图片由实际终端字符格重绘。[中文宽屏](../.test-artifacts/notification-refactor/zh-Hans-160x45.png) · [中文窄屏](../.test-artifacts/notification-refactor/zh-Hans-40x24.png) · [英文宽屏](../.test-artifacts/notification-refactor/en-160x45.png) · [英文窄屏](../.test-artifacts/notification-refactor/en-40x24.png)
+
+运行 `make build` 后，可用 `python3 scripts/theme-pty.py --notifications-only --binary "$PWD/bin/lazyclash" --output .test-artifacts/notification-refactor/pty` 复验通知交互。macOS 和 Linux 的产品二进制均在真彩、256 色和无色模式下覆盖六种尺寸，验证折叠摘要、关闭指定通知、跨页保留及取消未提交表单。Go 回归另覆盖跨安装阶段的进度替换、遮挡和溢出时暂停计时，以及批量更新的部分成功和回滚异常。[macOS PTY 结果](../.test-artifacts/notification-refactor/macos-theme-pty.json) · [Linux PTY 结果](../.test-artifacts/notification-refactor/linux-theme-pty.json)
+
 ## 统一下拉框（2026-11-25）
 
 设置页的语言、主题与 Mihomo 日志等级，日志页筛选、代理组排序以及删除当前配置时的替代配置，都经过真实 PTY 验证。终端截图按 PTY 字符格和颜色重绘。中文真彩用底色标出游标，英文无色用行首 `›`，两者都在当前值行尾显示 `✓`。[真彩语言菜单](../.test-artifacts/unified-dropdown/language-menu-pending.png) · [无色语言菜单](../.test-artifacts/unified-dropdown/language-menu-monochrome.png)
