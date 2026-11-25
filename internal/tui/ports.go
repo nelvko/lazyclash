@@ -18,6 +18,8 @@ import (
 
 type portsState struct {
 	open, cancelling, applied bool
+	kind                      string // Empty for Settings → Ports; overview edits one network feature.
+	tunOriginal, tunEnabled   bool
 	step, focus, returnFocus  string
 	controls                  []string
 	mixed, controller         textinput.Model
@@ -55,12 +57,25 @@ func newPortsState() portsState {
 }
 
 func (m *Model) openPorts() tea.Cmd {
+	return m.openNetworkConfig("")
+}
+
+func (m *Model) openNetworkConfig(kind string) tea.Cmd {
 	if !m.snapshot.Installed {
 		m.failure = m.tr("ports.require_install")
 		return nil
 	}
 	p := newPortsState()
-	p.open, p.returnFocus, p.reveal = true, m.focus, true
+	p.kind, p.open, p.returnFocus, p.reveal = kind, true, m.focus, true
+	if kind == "tun" {
+		p.step, p.focus = "edit", "ports.cancel"
+		p.tunOriginal, p.tunEnabled = m.snapshot.TUN, m.snapshot.TUN
+		if m.canConfigureHostTUN() {
+			p.focus = "tun.policy"
+		}
+		m.ports = p
+		return nil
+	}
 	m.ports = p
 	return m.loadPorts()
 }
@@ -102,19 +117,29 @@ func (m *Model) preparePorts() tea.Cmd {
 	}
 	if mixed == controller {
 		p.err = m.tr("ports.validation.distinct")
-		p.controller.Err = errors.New(p.err)
-		p.focus, p.reveal = "ports.controller", true
+		if p.kind == "terminal" {
+			p.mixed.Err, p.focus = errors.New(p.err), "ports.mixed"
+		} else {
+			p.controller.Err, p.focus = errors.New(p.err), "ports.controller"
+		}
+		p.reveal = true
 		return nil
 	}
 	ctx := m.newJob("ports-prepare")
 	id, backend := m.id, m.backend
 	settings := app.RuntimeSettings{MixedPort: mixed, ControllerPort: controller}
+	terminalOnly, locale := p.kind == "terminal", m.locale
 	p.err, p.cancelling = "", false
 	p.step, p.focus = "preparing", "ports.cancel"
 	p.viewport.GotoTop()
 	m.message = m.tr("ports.checking_message")
 	return tea.Batch(func() tea.Msg {
 		plan, err := backend.PrepareRuntimeSettings(ctx, settings)
+		// The terminal editor owns only the mixed port. Never let a concurrent
+		// controller-port change turn the hidden, loaded value into a proposal.
+		if err == nil && terminalOnly && plan.Current.ControllerPort != plan.Proposed.ControllerPort {
+			err = errors.New(locale.T("network.terminalConfig.changed"))
+		}
 		return portsMsg{id: id, kind: "prepare", plan: plan, err: err}
 	}, m.spinner.Tick)
 }
@@ -228,6 +253,9 @@ func (m *Model) portsActivate(id string) tea.Cmd {
 		}
 		return nil
 	}
+	if m.ports.kind == "tun" && strings.HasPrefix(id, "tun.") {
+		return m.networkTUNActivate(id)
+	}
 	switch id {
 	case "ports.cancel", "ports.done":
 		m.closePorts()
@@ -282,7 +310,23 @@ func (m *Model) portsKey(k tea.KeyPressMsg) tea.Cmd {
 		}
 		return nil
 	}
-	switch k.String() {
+	key := k.String()
+	if p.kind != "" && key != "esc" && len(p.controls) == 0 {
+		return nil
+	}
+	if p.kind != "" {
+		switch key {
+		case "down":
+			key = "tab"
+		case "up":
+			key = "shift+tab"
+		case "space", " ", "left", "right":
+			if p.focus == "tun.policy" {
+				return m.portsActivate(p.focus)
+			}
+		}
+	}
+	switch key {
 	case "esc":
 		if p.step == "review" {
 			return m.portsActivate("ports.back")
@@ -297,7 +341,7 @@ func (m *Model) portsKey(k tea.KeyPressMsg) tea.Cmd {
 		}
 		if len(p.controls) > 0 {
 			delta := 1
-			if k.String() == "shift+tab" {
+			if key == "shift+tab" {
 				delta = -1
 			}
 			p.focus = p.controls[(index+delta+len(p.controls))%len(p.controls)]
@@ -342,6 +386,9 @@ func (m *Model) portsMouse(event tea.MouseMsg) tea.Cmd {
 
 func (m *Model) portsDocument(width int) (wizardDocument, []wizardButton, string) {
 	p := &m.ports
+	if p.kind == "tun" {
+		return m.networkTUNDocument(width)
+	}
 	d := wizardDocument{locale: m.locale, width: width, hover: m.hover, plain: m.buttonPlain(), busy: m.busy}
 	buttons := []wizardButton{{"ports.cancel", m.tr("ports.cancel")}}
 	subtitle := m.tr("ports.edit")
@@ -353,10 +400,17 @@ func (m *Model) portsDocument(width int) (wizardDocument, []wizardButton, string
 		subtitle = m.tr("ports.checking")
 		d.label(m.tr("ports.checking_title"))
 		d.pair(m.tr("ports.proxy_port"), p.mixed.Value())
-		d.pair(m.tr("ports.controller_port"), p.controller.Value())
+		if p.kind == "" {
+			d.pair(m.tr("ports.controller_port"), p.controller.Value())
+		}
 		d.line(m.spinner.View() + m.tr("ports.checking_detail"))
 		d.line(m.tr("ports.review_boundary"))
 	case "edit":
+		if p.kind == "terminal" {
+			m.terminalConfigFields(&d)
+			buttons = append(buttons, wizardButton{"ports.review", m.tr("network.terminalConfig.save")})
+			break
+		}
 		d.label(m.tr("ports.listeners"))
 		proxy, controller := "--", "--"
 		if p.current.MixedPort > 0 && p.current.MixedPort <= 65535 {
@@ -379,10 +433,12 @@ func (m *Model) portsDocument(width int) (wizardDocument, []wizardButton, string
 		subtitle = m.tr("ports.review")
 		d.label(m.tr("ports.reviewed"))
 		d.pair(m.tr("ports.proxy_port"), fmt.Sprintf("%d → %d", p.plan.Current.MixedPort, p.plan.Proposed.MixedPort))
-		d.pair(m.tr("ports.controller_port"), fmt.Sprintf("%d → %d", p.plan.Current.ControllerPort, p.plan.Proposed.ControllerPort))
-		d.pair(m.tr("ports.listen_address"), m.tr("ports.loopback", p.plan.ControllerHost))
-		d.pair(m.tr("ports.profile"), snapshotProfileName(m.snapshot, p.plan.AppliedProfile, m.locale))
-		d.pair(m.tr("ports.api_key"), m.tr("ports.key_retained"))
+		if p.kind == "" {
+			d.pair(m.tr("ports.controller_port"), fmt.Sprintf("%d → %d", p.plan.Current.ControllerPort, p.plan.Proposed.ControllerPort))
+			d.pair(m.tr("ports.listen_address"), m.tr("ports.loopback", p.plan.ControllerHost))
+			d.pair(m.tr("ports.profile"), snapshotProfileName(m.snapshot, p.plan.AppliedProfile, m.locale))
+			d.pair(m.tr("ports.api_key"), m.tr("ports.key_retained"))
+		}
 		d.space()
 		label := m.tr("ports.apply")
 		if !p.plan.Changed {
@@ -413,7 +469,9 @@ func (m *Model) portsDocument(width int) (wizardDocument, []wizardButton, string
 		if p.applied {
 			d.line(themed(m.tr("ports.applied"), success, raised, false))
 			d.pair(m.tr("ports.proxy_port"), strconv.Itoa(p.result.Settings.MixedPort))
-			d.pair(m.tr("ports.controller"), p.result.Controller)
+			if p.kind == "" {
+				d.pair(m.tr("ports.controller"), p.result.Controller)
+			}
 			if p.result.Restarted {
 				d.line(m.tr("ports.restarted"))
 			} else if !m.snapshot.Service.Active && p.refreshError == "" {
@@ -444,19 +502,34 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 	p := &m.ports
 	w, h, x, y := m.width, m.height, 0, 0
 	modal := w >= 110 && h >= 30
-	if modal {
+	if p.kind != "" {
+		// Network configurations float over the entire dashboard, including
+		// the sidebar. Even the narrow layout keeps a visible gutter.
+		modal = true
+		w = min(66, max(34, w*3/5), max(0, w-4))
+		h -= 2
+		x = (m.width - w) / 2
+	} else if modal {
 		w, h = min(78, w-12), h-4
 		x = (m.width - w) / 2
 	}
 	if w < 34 || h < 10 {
+		p.controls = nil
 		label := m.tr("ports.compact_help")
 		if m.busy {
 			label = m.tr("ports.compact_busy")
+		}
+		if p.kind != "" {
+			label = cellCrop(label, max(1, m.width-2))
+			return overlay(base, themed(label, text, raised, false), (m.width-ansi.StringWidth(label))/2, m.height/2, m.width, m.height), nil
 		}
 		return overlay("", themed(cellCrop(label, w), text, raised, false), 0, 0, m.width, m.height), nil
 	}
 	inner := w - 6
 	doc, buttons, subtitle := m.portsDocument(inner)
+	if p.kind == "tun" && len(buttons) == 1 {
+		p.focus = buttons[0].ID
+	}
 	p.controls = nil
 	for _, hit := range doc.targets {
 		p.controls = append(p.controls, hit.ID)
@@ -469,7 +542,7 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 		if !blocked {
 			p.controls = append(p.controls, button.ID)
 		}
-		primary := button.ID == "ports.review" || button.ID == "ports.apply" || button.ID == "ports.retry" || button.ID == "ports.done" && p.applied
+		primary := button.ID == "tun.save" || button.ID == "ports.review" || button.ID == "ports.apply" || button.ID == "ports.retry" || button.ID == "ports.done" && p.applied
 		kind := buttonSecondary
 		if primary {
 			kind = buttonPrimary
@@ -488,6 +561,17 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 		line += cellCrop(value, inner)
 	}
 	footer = append(footer, line)
+	if p.kind != "" {
+		for row, value := range footer {
+			offset := max(0, inner-ansi.StringWidth(value))
+			footer[row] = strings.Repeat(" ", offset) + value
+			for i := range footerHits {
+				if footerHits[i].Y == row {
+					footerHits[i].X += offset
+				}
+			}
+		}
+	}
 	bodyY := 5
 	if h < 30 {
 		bodyY = 2
@@ -542,7 +626,11 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 		putRows(rows, 0, i, themed("│", border, raised, false), w)
 		putRows(rows, w-1, i, themed("│", border, raised, false), w)
 	}
-	putRows(rows, 3, 1, themed(m.tr("ports.title"), text, raised, false), w)
+	title := "ports.title"
+	if p.kind != "" {
+		title = "network." + p.kind + "Config.title"
+	}
+	putRows(rows, 3, 1, themed(cellCrop(m.tr(title), inner), text, raised, false), w)
 	if bodyY == 5 {
 		putRows(rows, 3, 2, themed(subtitle, muted, raised, false), w)
 		putRows(rows, 2, 3, themed(strings.Repeat("─", w-4), divider, raised, false), w)

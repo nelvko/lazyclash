@@ -80,14 +80,14 @@ func TestTerminalProxyInstallationFailureDoesNotSaveSuccess(t *testing.T) {
 }
 
 func TestOverviewTerminalProxyShowsDesiredAndAppliedSeparately(t *testing.T) {
-	for _, state := range []string{"uninstalled", "off", "on", "pending", "enabling", "disabling", "unsupported", "error"} {
+	for state, label := range map[string]string{"uninstalled": "notSetUp", "off": "off", "on": "on", "pending": "pending", "enabling": "enabling", "disabling": "disabling", "unsupported": "unsupported", "error": "syncError"} {
 		o := dashboardOptions{Snapshot: hostTUNBackend().snapshot}
 		o.Snapshot.TerminalProxy = shellintegration.Status{State: state, Desired: state == "pending", Pending: state == "pending", ActivationCommand: "source '/private/example/bash.sh'"}
 		for _, width := range []int{16, 40, 100} {
 			card := overviewNetworkCard(o, width)
 			assertCanvas(t, strings.Join(card.lines, "\n"), width, len(card.lines))
 			assertRegions(t, card.targets, width, len(card.lines))
-			if width >= 100 && !strings.Contains(ansi.Strip(strings.Join(card.lines, "\n")), o.Locale.T("terminal.state."+state)) {
+			if width >= 100 && !strings.Contains(ansi.Strip(strings.Join(card.lines, "\n")), o.Locale.T("dashboard.network."+label)) {
 				t.Fatalf("lost %s state", state)
 			}
 			if state == "pending" && !hasAction(card.targets, "terminal.activation") {

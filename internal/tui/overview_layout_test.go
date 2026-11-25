@@ -30,7 +30,7 @@ func TestOverviewPairedLayoutAlignsBothEdgesAndKeepsActionOwnership(t *testing.T
 	owners := map[string]string{
 		"core.toggle": "dashboard.control.core",
 		"mode.rule":   "dashboard.control.routingMode", "mode.global": "dashboard.control.routingMode", "mode.direct": "dashboard.control.routingMode", "card.proxies": "dashboard.control.routingMode",
-		"card.profiles": "dashboard.profile.title", "tun.enable": "dashboard.overview.network", "card.network": "dashboard.overview.network",
+		"card.profiles": "dashboard.profile.title", "tun.enable": "dashboard.overview.network", "network.primaryConfig": "dashboard.overview.network",
 	}
 	renders := map[string]func(dashboardOptions, int) dashboardBlock{
 		"dashboard.control.core": overviewCoreCard, "dashboard.traffic.title": overviewTrafficCard,
@@ -427,7 +427,7 @@ func TestOverviewNetworkMovesAddressesToDetailsAndKeepsControllerMetadataSafe(t 
 				Installed: true, MixedPort: 17890, Controller: "http://private-user:private-password@127.0.0.1:19090/private-path?token=private-token#private-fragment",
 			}}
 			card := func() string { return ansi.Strip(strings.Join(overviewNetworkCard(o, 100).lines, "\n")) }
-			if value := card(); strings.Contains(value, "127.0.0.1:") || !hasAction(overviewNetworkCard(o, 100).targets, "card.network") {
+			if value := card(); strings.Contains(value, "127.0.0.1:") || !hasAction(overviewNetworkCard(o, 100).targets, "network.primaryConfig") {
 				t.Fatalf("network overview retained detail addresses or lost its settings entry: %s", value)
 			}
 			for _, secret := range []string{"private-user", "private-password", "private-path", "private-token", "private-fragment"} {
@@ -469,7 +469,7 @@ func TestOverviewNetworkSeparatesSavedAndObservedHostTUN(t *testing.T) {
 				Capabilities: app.Capabilities{Scope: "system", Runtime: app.Capability{Supported: true}, TUN: app.Capability{Supported: true}},
 			}}
 			card := func() string { return ansi.Strip(strings.Join(overviewNetworkCard(o, 100).lines, "\n")) }
-			if value := card(); !strings.Contains(value, locale.T("tun.saved_state", locale.T("dashboard.control.on"))) || !strings.Contains(value, locale.T("dashboard.overview.tunActual", locale.T("dashboard.control.off"))) || !strings.Contains(value, locale.T("tun.host_scope")) || !strings.Contains(value, o.Snapshot.TUNError) || !hasAction(overviewNetworkCard(o, 100).targets, "tun.disable") {
+			if value := card(); !strings.Contains(value, locale.T("tun.saved_state", locale.T("dashboard.control.on"))) || !strings.Contains(value, locale.T("dashboard.overview.tunActual", locale.T("dashboard.control.off"))) || !strings.Contains(value, o.Snapshot.TUNError) || !hasAction(overviewNetworkCard(o, 100).targets, "tun.disable") {
 				t.Fatalf("host TUN mismatch lost saved/observed distinction, scope or recovery action: %s", value)
 			}
 			for _, missing := range []string{"no observation", "service error", "API error"} {

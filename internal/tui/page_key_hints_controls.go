@@ -113,8 +113,10 @@ func (m *Model) settingsContextHelp() string {
 		if m.keyHints.hidden {
 			label = "navigation.controls.showHints"
 		}
-	case "runtime-settings", "card.network":
+	case "runtime-settings":
 		label = "navigation.controls.editPorts"
+	case "network.primaryConfig", "network.tunConfig":
+		label = "dashboard.network.configure"
 	case "card.profiles":
 		label = "navigation.controls.openProfiles"
 	case "card.proxies":

@@ -104,7 +104,7 @@ func TestCoreSummaryPreservesSystemdTransitionsAndFailure(t *testing.T) {
 		t.Fatal("failed core did not show concise status and recovery")
 	}
 	access := ansi.Strip(strings.Join(overviewNetworkCard(dashboardOptions{Snapshot: s}, 72).lines, "\n"))
-	if !strings.Contains(access, "Not supported by the user service.") {
+	if !strings.Contains(access, "Unsupported") {
 		t.Fatal("access card hid TUN capability")
 	}
 }

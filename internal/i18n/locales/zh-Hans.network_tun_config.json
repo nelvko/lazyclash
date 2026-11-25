@@ -1,0 +1,9 @@
+{
+  "network.tunConfig.title": "虚拟网卡设置",
+  "network.tunConfig.toggle": "切换",
+  "network.tunConfig.scope": "系统服务 · 整台主机",
+  "network.tunConfig.runtime": "TUN 运行状态",
+  "network.tunConfig.policy": "随 Mihomo 启动启用 TUN",
+  "network.tunConfig.preset": "托管预设 · 混合协议栈 · MTU 1500 · 严格路由",
+  "network.tunConfig.restart": "修改此设置会重启 Mihomo，并中断现有连接。"
+}

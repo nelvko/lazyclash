@@ -95,7 +95,7 @@ func TestPageNavigationOverviewStartsAtCardBeforeItsControls(t *testing.T) {
 func TestOverviewHeadingActionsRequireExplicitActivationAfterEnteringCard(t *testing.T) {
 	for _, action := range []struct{ card, id string }{
 		{"dashboard.profile.title", "card.profiles"},
-		{"dashboard.overview.network", "card.network"},
+		{"dashboard.overview.network", "network.primaryConfig"},
 		{"dashboard.control.routingMode", "card.proxies"},
 	} {
 		t.Run(action.id, func(t *testing.T) {

@@ -31,7 +31,7 @@ func portsModel(t *testing.T, backend *fakeBackend) Model {
 	return m
 }
 
-func TestOverviewNetworkOpensAddressDetailsWithoutApplying(t *testing.T) {
+func TestSettingsOpensAddressDetailsWithoutApplying(t *testing.T) {
 	reads, writes := 0, 0
 	backend := &fakeBackend{snapshot: onboardingDefaultSnapshot()}
 	backend.snapshot.MixedPort = 17890
@@ -45,15 +45,15 @@ func TestOverviewNetworkOpensAddressDetailsWithoutApplying(t *testing.T) {
 		return app.RuntimeSettingsResult{}, nil
 	}
 	m := ready(backend)
-	m.width, m.height = 160, 60
+	m.width, m.height, m.page, m.focus = 160, 60, "settings", "runtime-settings"
 	m.layout()
-	m, cmd := click(m, findTarget(t, m, "card.network"))
+	m, cmd := click(m, findTarget(t, m, "runtime-settings"))
 	if m.page != "settings" || !m.ports.open || !m.busy || m.ports.step != "loading" || reads != 0 || writes != 0 {
-		t.Fatal("access action did not open the existing settings dialog with an asynchronous read")
+		t.Fatal("settings action did not open the existing settings dialog with an asynchronous read")
 	}
 	m, _ = update(m, actionCmd(t, cmd)())
 	if m.busy || m.ports.step != "edit" || reads != 1 || writes != 0 || m.ports.mixed.Value() != "17890" || m.ports.controller.Value() != "19090" {
-		t.Fatal("access action applied settings or failed to show the current configured ports")
+		t.Fatal("settings action applied settings or failed to show the current configured ports")
 	}
 	plain := ansi.Strip(m.screen)
 	for _, address := range []string{"127.0.0.1:17890", "127.0.0.1:19090"} {

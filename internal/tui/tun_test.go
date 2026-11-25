@@ -117,7 +117,7 @@ func TestSystemEnvironmentShowsScopeAndHostTUNWhileUserControlsStayUnavailable(t
 	}
 	block = overviewNetworkCard(o, 64)
 	plain = ansi.Strip(strings.Join(block.lines, "\n"))
-	if !strings.Contains(plain, "Entire host") || !hasAction(block.targets, "tun.enable") {
+	if !strings.Contains(plain, "Host TUN") || !hasAction(block.targets, "tun.enable") {
 		t.Fatal("access card omitted host TUN scope or control")
 	}
 	b.snapshot.Capabilities = app.Capabilities{Scope: "user", Runtime: app.Capability{Supported: true}}

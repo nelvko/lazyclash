@@ -1,5 +1,13 @@
 # 验证入口
 
+## 网络设置卡与配置弹窗（2026-11-25）
+
+概览 PTY 使用隔离后端，覆盖中文真彩、英文无色及英文 256 色，共六组运行场景。鼠标分别打开终端代理和虚拟网卡配置，在 160×45、80×24、40×16 下核对弹窗相对整个终端居中、两侧至少两列、上下至少一行留白。正文翻页后取消按钮仍可见，点击窗外不会触发概览操作。Esc 或点击取消后按 Enter 可重开原弹窗。系统实例切换 TUN 草稿再取消，每场最终均记录两次端口读取，各项写入均为零。截图按真实 PTY 字符格重绘。[网络卡](../.test-artifacts/network-config-modals/final/20261125-111356-33f164/zh-Hans/truecolor/pending/network-card-160x45.png) · [80×24 终端代理设置](../.test-artifacts/network-config-modals/final/20261125-111356-33f164/zh-Hans/truecolor/pending/terminal-config-80x24.png) · [40×16 英文只读 TUN 设置](../.test-artifacts/network-config-modals/final/20261125-111356-c2537a/en/no-color/running/tun-config-40x16.png)
+
+`make check build`、10 项 Python 回归和 `./scripts/verify-linux.sh lazyclash-e2e` 通过。在专用 Linux/arm64 VM 中，真实 Bash、Mihomo 和随机 systemd 用户服务完成首次启用、source 激活、关闭恢复、再次启用和卸载恢复。该用户服务和临时 Shell Integration 已清理。
+
+`service-scopes-e2e.sh --ui-tun-only` 在 120×36 和 80×24 下验证主机 TUN 确认默认取消。120×36 下显式确认后读回已启用的运行状态，通过 CLI 关闭并检查网络资源释放。脚本核对已恢复的 OrbStack 全局 service drop-in 和生成器摘要，并清理专用单元、账号和数据。[真实 TUN 验收日志](../.test-artifacts/network-config-modals/linux/host-tun-acceptance.log)
+
 ## 实时流量缺测与窄屏刻度（2026-11-25）
 
 使用六组固定流量，在三种图表尺寸、真彩、256 色和无色终端中核验了 54 组输出。同一段零流量与缺测数据在 128 列图上显示两处缺测。40 列图保留时间标签旁的空格，较长缺口显示两格标记，较短缺口的标记让位于刻度文字。单元测试覆盖有效零值、失败采样、3 秒连线边界、不同量程下刻度区宽度，以及各色彩模式下曲线子点的保留。[128 列真彩](../.test-artifacts/traffic-axis-gaps/experiments/zero-gap-128x6-truecolor-original.png) · [40 列无色](../.test-artifacts/traffic-axis-gaps/experiments/zero-gap-40x4-no-color-original.png)

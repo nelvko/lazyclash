@@ -101,8 +101,8 @@ func TestOverviewControlStatesRemainExplicit(t *testing.T) {
 	}}
 	block := overviewNetworkCard(o, 56)
 	plain := ansi.Strip(strings.Join(block.lines, "\n"))
-	if hasAction(block.targets, "tun.enable") || hasAction(block.targets, "tun.disable") || !strings.Contains(plain, "TUN") || !strings.Contains(plain, "Not supported by the user service.") || !strings.Contains(plain, "Unmanaged") {
-		t.Fatal("access card hid capability explanations or made them actionable")
+	if hasAction(block.targets, "tun.enable") || hasAction(block.targets, "tun.disable") || !strings.Contains(plain, "TUN") || !strings.Contains(plain, "Unsupported") || strings.Contains(plain, "System proxy") || !hasAction(block.targets, "network.tunConfig") {
+		t.Fatal("network card hid capability information, mixed in desktop controls, or made unavailable TUN actionable")
 	}
 	o.Busy = true
 	core := overviewCoreCard(o, 56)

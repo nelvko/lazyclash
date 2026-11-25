@@ -44,8 +44,18 @@ func (m *Model) portsContextHelp() string {
 	switch m.ports.focus {
 	case "ports.mixed", "ports.controller", "ports.review":
 		label = m.tr("ports.review")
+		if m.ports.kind == "terminal" {
+			label = m.tr("network.terminalConfig.save")
+		}
 	case "ports.cancel", "ports.done", "ports.back":
 		label = m.tr(m.ports.focus)
+		if m.ports.kind == "tun" && !m.canConfigureHostTUN() {
+			label = m.tr("profiles.close")
+		}
+	case "tun.policy":
+		label = m.tr("network.tunConfig.toggle")
+	case "tun.save":
+		label = m.tr("profile_settings.save")
 	case "ports.apply":
 		label = m.tr("ports.apply")
 		if !m.ports.plan.Changed {

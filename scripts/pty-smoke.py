@@ -50,6 +50,22 @@ class Screen:
         self.x, self.y = min(self.x, columns - 1), min(self.y, rows - 1)
         self.top, self.bottom = 0, rows - 1
 
+    def point_on_row(self, heading, label):
+        """Locate a control to the right of its row heading, in terminal cells."""
+        for y, row in enumerate(self.cells):
+            if heading not in "".join(row):
+                continue
+            after_heading = False
+            for x, cell in enumerate(row):
+                if not cell:
+                    continue
+                rest = "".join(row[x:])
+                if after_heading and rest.startswith(label):
+                    return x, y
+                if rest.startswith(heading):
+                    after_heading = True
+        return None
+
     def scroll(self, top, bottom, count):
         count = max(-(bottom - top + 1), min(count, bottom - top + 1))
         region = self.cells[top:bottom + 1]

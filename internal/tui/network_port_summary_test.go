@@ -10,7 +10,7 @@ import (
 	"github.com/nelvko/lazyclash/internal/i18n"
 )
 
-func TestNetworkSummariesShowSavedMixedPortWithoutDraftsOrCredentials(t *testing.T) {
+func TestOnlySettingsSummarizesSavedMixedPort(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		m := Model{locale: i18n.New(language), ports: newPortsState(), snapshot: app.Snapshot{
 			Installed: true, MixedPort: 7897,
@@ -28,7 +28,7 @@ func TestNetworkSummariesShowSavedMixedPortWithoutDraftsOrCredentials(t *testing
 					card := render(o, width)
 					plain := ansi.Strip(strings.Join(card.lines, "\n"))
 					label := m.tr("dashboard.network.mixedPort", "7897")
-					if strings.Count(plain, label) != 1 {
+					if name == "settings" && strings.Count(plain, label) != 1 {
 						t.Fatalf("saved mixed port must occupy one summary row: %s", plain)
 					}
 					for _, hidden := range []string{"18080", "18888", "private-user", "private-password", "private-path", "private-token", "private-fragment"} {
@@ -36,8 +36,8 @@ func TestNetworkSummariesShowSavedMixedPortWithoutDraftsOrCredentials(t *testing
 							t.Fatalf("summary exposed a draft or credential %q: %s", hidden, plain)
 						}
 					}
-					if name == "overview" && hasAction(card.targets, "runtime-settings") {
-						t.Fatal("read-only port summary added an editing action")
+					if name == "overview" && (strings.Contains(plain, "7897") || hasAction(card.targets, "runtime-settings")) {
+						t.Fatal("overview exposed a standalone port setting")
 					}
 					if name == "settings" && (!hasAction(card.targets, "runtime-settings") || !strings.Contains(plain, "127.0.0.1:9097")) {
 						t.Fatal("settings lost its existing edit action or sanitized control address")

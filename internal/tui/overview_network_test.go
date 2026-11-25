@@ -24,23 +24,26 @@ func TestOverviewNetworkKeepsUnavailableControlsDisabledAndAddressesInDetails(t 
 				plain := ansi.Strip(strings.Join(card.lines, "\n"))
 				assertCanvas(t, strings.Join(card.lines, "\n"), width, len(card.lines))
 				assertRegions(t, card.targets, width, len(card.lines))
-				for _, target := range card.targets {
-					if target.ID != "card.network" {
-						t.Fatalf("unavailable network control became actionable: %s", target.ID)
-					}
+				if len(card.targets) != 2 || card.targets[0].ID != "network.primaryConfig" || card.targets[1].ID != "network.tunConfig" {
+					t.Fatalf("expected only the two configuration actions: %+v", card.targets)
 				}
-				for _, hidden := range []string{"127.0.0.1", "private-user", "private-password", "private-path", "private-token"} {
+				for _, hidden := range []string{"17890", o.Locale.T("dashboard.field.systemProxy"), "127.0.0.1", "private-user", "private-password", "private-path", "private-token"} {
 					if strings.Contains(plain, hidden) {
 						t.Fatalf("network summary retained addresses or credentials: %s", plain)
 					}
 				}
-				if width >= 40 && (!strings.Contains(plain, o.Locale.T("dashboard.control.tunHint")) || !strings.Contains(plain, o.Locale.T("dashboard.network.systemProxyState"))) {
-					t.Fatalf("unsupported controls lost their reason: %s", plain)
+				if width >= 40 && (strings.Count(plain, o.Locale.T("dashboard.network.unsupported")) != 2 || len(card.lines) != 6) {
+					t.Fatalf("expected compact two-row unavailable state: %s", plain)
 				}
 			}
 			o.Snapshot.Installed = false
 			if card := overviewNetworkCard(o, 100); len(card.targets) != 0 {
 				t.Fatal("uninstalled network card exposed a settings or TUN action")
+			}
+			o.StateUnavailable = true
+			card := overviewNetworkCard(o, 100)
+			if len(card.targets) != 0 || strings.Count(ansi.Strip(strings.Join(card.lines, "\n")), o.Locale.T("dashboard.status.unknown")) != 2 {
+				t.Fatal("missing snapshot was reported as a known capability or active control")
 			}
 		})
 	}
@@ -55,7 +58,7 @@ func TestOverviewNetworkHostTUNKeepsObservedStateAndActionGuards(t *testing.T) {
 	}}
 	card := overviewNetworkCard(o, 100)
 	plain := ansi.Strip(strings.Join(card.lines, "\n"))
-	if !hasAction(card.targets, "tun.disable") || strings.Contains(plain, "Saved:") || strings.Contains(plain, "Running TUN:") || !strings.Contains(plain, "Entire host") {
+	if !hasAction(card.targets, "tun.disable") || strings.Contains(plain, "Saved:") || strings.Contains(plain, "Running TUN:") || !strings.Contains(plain, "Host TUN") {
 		t.Fatalf("confirmed host TUN state lost its scope or retained duplicate observations: %s", plain)
 	}
 	actual = false
@@ -78,6 +81,75 @@ func TestOverviewNetworkHostTUNKeepsObservedStateAndActionGuards(t *testing.T) {
 		if hasAction(card.targets, "tun.disable") || hasAction(card.targets, "tun.enable") {
 			t.Fatalf("%s retained an actionable TUN operation", kind)
 		}
+	}
+}
+
+func TestNetworkCardPairsConfigurationAndSwitchInReadingOrder(t *testing.T) {
+	snapshot := hostTUNBackend().snapshot
+	snapshot.Service = service.Status{Active: true, State: "active"}
+	actual := snapshot.TUN
+	snapshot.TUNActual = &actual
+	snapshot.TerminalProxy.State = "off"
+	for _, language := range []string{i18n.English, i18n.Chinese} {
+		for _, width := range []int{36, 46, 76} {
+			o := dashboardOptions{Snapshot: snapshot, Locale: i18n.New(language), PlainButtons: true, Focus: "network.primaryConfig"}
+			card := overviewNetworkCard(o, width)
+			assertCanvas(t, strings.Join(card.lines, "\n"), width, len(card.lines))
+			assertRegions(t, card.targets, width, len(card.lines))
+			if len(card.targets) != 4 || len(card.lines) != 6 {
+				t.Fatalf("%s/%d: expected two control rows, got %v\n%s", language, width, card.targets, ansi.Strip(strings.Join(card.lines, "\n")))
+			}
+			for i, id := range []string{"network.primaryConfig", "terminal.enable", "network.tunConfig", "tun.enable"} {
+				h := card.targets[i]
+				if h.ID != id || h.Y != 3+i/2 {
+					t.Fatalf("%s/%d: control %d misplaced: %+v", language, width, i, card.targets)
+				}
+				face := ansi.Strip(ansi.Cut(card.lines[h.Y], h.X, h.X+h.W))
+				if i == 0 && !strings.Contains(face, "›") {
+					t.Fatalf("focused configuration lacks a monochrome cursor: %q", face)
+				}
+				if i%2 == 1 && (h.X+h.W != width-2 || !strings.Contains(face, "○")) {
+					t.Fatalf("right-aligned toggle target missed its observed state: %q / %+v", face, h)
+				}
+			}
+		}
+	}
+}
+
+func TestNetworkToggleFocusFollowsNewObservation(t *testing.T) {
+	snapshot := hostTUNBackend().snapshot
+	snapshot.TerminalProxy.State = "on"
+	snapshot.TerminalProxy.Desired = true
+	m := Model{page: "overview", width: 120, height: 32, focus: "terminal.enable"}
+	m.adoptSnapshot(snapshot)
+	if m.focus != "terminal.disable" {
+		t.Fatalf("updated terminal switch lost focus: %s", m.focus)
+	}
+	m.focus = "tun.enable"
+	snapshot.TUN = true
+	m.adoptSnapshot(snapshot)
+	if m.focus != "tun.disable" {
+		t.Fatalf("updated host TUN switch lost focus: %s", m.focus)
+	}
+	snapshot.Capabilities.TUN.Supported = false
+	m.adoptSnapshot(snapshot)
+	if m.focus != "network.tunConfig" {
+		t.Fatalf("unavailable switch stole focus from the TUN row: %s", m.focus)
+	}
+}
+
+func TestNetworkSwitchCanReversePendingShellRequest(t *testing.T) {
+	o := dashboardOptions{Snapshot: hostTUNBackend().snapshot}
+	o.Snapshot.Service.Active = true
+	terminal := &o.Snapshot.TerminalProxy
+	terminal.State, terminal.Applied = "disabling", true
+	card := overviewNetworkCard(o, 46)
+	if !hasAction(card.targets, "terminal.enable") || hasAction(card.targets, "terminal.disable") {
+		t.Fatal("a pending off request must allow the user to request on again")
+	}
+	terminal.State, terminal.Applied, terminal.Pending, terminal.ActivationCommand = "off", false, true, "source shell-hook"
+	if hasAction(overviewNetworkCard(o, 46).targets, "terminal.activation") {
+		t.Fatal("an off request waiting in a shell ticket must not offer first-time activation")
 	}
 }
 

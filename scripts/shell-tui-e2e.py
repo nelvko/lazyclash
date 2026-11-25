@@ -56,22 +56,27 @@ class Terminal(HOOKS.Shell):
 
     def toggle(self, command, label, install=False):
         os.write(self.fd, (command+'\n').encode())
-        self.wait('Terminal proxy')
-        self.read_for(.4)
+        state = '● On' if label == 'Disable' else ('○ Not set up' if install else '○ Off')
+        column, row = self.wait_terminal_state(state)
         (self.output/('network-'+label.lower()+'.txt')).write_text(self.screen.text())
-        rows = self.screen.text().splitlines()
-        row = next(i for i, text in enumerate(rows) if 'Terminal proxy' in text)
-        column = rows[row].find(label, rows[row].find('Terminal proxy'))
-        assert column >= 0, rows[row]
-        os.write(self.fd, f'\x1b[<0;{column+2};{row+1}M\x1b[<0;{column+2};{row+1}m'.encode())
+        os.write(self.fd, f'\x1b[<0;{column+1};{row+1}M\x1b[<0;{column+1};{row+1}m'.encode())
         if install:
             self.wait('Install Shell Integration?')
             (self.output/'install-consent.txt').write_text(self.screen.text())
             os.write(self.fd, b'y')
-        self.wait('Terminal proxy request saved', timeout=20)
-        self.read_for(.3)
+        pending = 'Pending off' if label == 'Disable' else 'Pending on'
+        self.wait_terminal_state('◌ ' + ('Activation needed' if install else pending))
         os.write(self.fd, b'q')
         self.read_for(.7)
+
+    def wait_terminal_state(self, state):
+        deadline = time.monotonic() + 20
+        while time.monotonic() < deadline:
+            self.read_for(.05)
+            point = self.screen.point_on_row('Terminal proxy', state)
+            if not self.screen.synchronized and point is not None:
+                return point
+        raise AssertionError('Terminal proxy did not show '+state+'\n'+self.screen.text())
 
 
 def port():

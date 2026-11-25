@@ -149,6 +149,72 @@ def text_points(terminal, label):
                 yield x, y
 
 
+def click_point(terminal, point):
+    x, y = point
+    terminal.key(f"\x1b[<0;{x+1};{y+1}M\x1b[<0;{x+1};{y+1}m".encode())
+
+
+def check_network_modal(terminal, title):
+    """Find the frame enclosing its title; input fields have their own frames."""
+    cells = terminal.screen.cells
+    x, y = next((x, y) for x, y in text_points(terminal, title)
+                if y > 0 and "┌" in cells[y-1][:x] and "┐" in cells[y-1][x+1:])
+    top = y - 1
+    left = max(i for i in range(x) if cells[top][i] == "┌")
+    right = next(i for i in range(x+1, len(cells[top])) if cells[top][i] == "┐")
+    bottom = next(i for i in range(y+1, len(cells)) if cells[i][left] == "└" and cells[i][right] == "┘")
+    margins = left, len(cells[top])-1-right, top, len(cells)-1-bottom
+    assert min(margins[:2]) >= 2 and min(margins[2:]) >= 1, (title, margins)
+    assert abs(margins[0]-margins[1]) <= 1 and abs(margins[2]-margins[3]) <= 1, (title, margins)
+
+
+def inspect_network_editors(preview, terminal, output, words, scenario, args):
+    edit = words["dashboard.network.configure"]
+    for section, heading, title in (
+            ("terminal", words["terminal.title"], words["network.terminalConfig.title"]),
+            ("tun", words["dashboard.network.tun"], words["network.tunConfig.title"])):
+        cancel = words["profiles.close"] if section == "tun" and scenario != "pending" else words["ports.cancel"]
+        focus_control(terminal, edit)
+        point = terminal.screen.point_on_row(heading, edit)
+        assert point is not None, "network edit action missing for " + heading
+        click_point(terminal, point)
+        terminal.wait(title)
+        terminal.wait(cancel)
+        if section == "terminal":
+            terminal.wait("bash")
+            terminal.wait(words["network.terminalConfig.save"])
+            terminal.wait("127.0.0.1:17897")
+            for hidden in ("19097", "private-user", "private-password", "private-path", "private-token", "private-fragment"):
+                assert hidden not in terminal.screen.text(), "terminal editor leaked controller details: " + hidden
+        for w, h in ((160, 45), (80, 24), (40, 16)):
+            terminal.resize(w, h)
+            terminal.settle()
+            terminal.wait(title)
+            check_network_modal(terminal, title)
+            # Clicking the backdrop and paging the viewport leave the modal in control.
+            click_point(terminal, (0, 0))
+            terminal.key(b"\x1b[6~")
+            terminal.wait(title)
+            terminal.wait(cancel)
+            preview.capture(terminal, output, f"{section}-config-{w}x{h}", args)
+        terminal.resize(160, 45)
+        terminal.settle()
+        if section == "tun" and scenario == "pending":
+            terminal.click_text("[x]")
+            terminal.wait("[ ]")
+        if section == "tun":
+            terminal.click_text(cancel)
+        else:
+            terminal.key(b"\x1b")
+        terminal.settle()
+        # Keyboard activation reopens the editor that the mouse entered.
+        terminal.key(b"\r")
+        terminal.wait(title)
+        terminal.wait(cancel)
+        terminal.key(b"\x1b")
+        terminal.settle()
+
+
 def subscription_allowance(terminal):
     balance = "7.0 GiB / 10.0 GiB"
     point = text_point(terminal, balance)
@@ -201,11 +267,15 @@ def inspect_row_cards(preview, terminal, output, width, height, words, profile, 
             for value in ("12.0 KiB/s", "2.2 MiB/s"):
                 assert value in terminal.screen.text(), "traffic card omitted a live rate: " + value
         if name == "network":
-            assert "127.0.0.1:" not in terminal.screen.text(), "network summary retained detail-only listener addresses"
+            x, y = outline["x"], outline["y"]
+            card_rows = ["".join(row[x:x+outline["width"]]) for row in terminal.screen.cells[y:y+outline["height"]]]
+            card_text = "\n".join(card_rows)
+            assert card_text.count(words["dashboard.network.configure"]) == 2, "both network rows need their own editor"
+            for hidden in ("127.0.0.1:", "17897", words["dashboard.field.systemProxy"]):
+                assert hidden not in card_text, "network summary retained " + hidden
             if scenario == "pending":
-                assert words["dashboard.network.disable"] in terminal.screen.text(), "saved TUN state lost its explicit disable control"
-                assert words["tun.saved_state"] % words["dashboard.control.on"] in terminal.screen.text(), "saved TUN state was not retained"
-                assert words["dashboard.overview.tunActual"] % words["dashboard.control.off"] in terminal.screen.text(), "observed TUN state was confused with the saved state"
+                assert words["tun.saved_state"] % words["dashboard.control.on"] in card_text, "saved TUN state was not retained"
+                assert words["dashboard.overview.tunActual"] % words["dashboard.control.off"] in card_text, "observed TUN state was confused with the saved state"
         if name == "environment":
             x, y = outline["x"], outline["y"]
             right, bottom = x + outline["width"], y + outline["height"]
@@ -270,7 +340,7 @@ def exercise(preview, binary, output, language, profile, scenario, args):
         assert source[1] == profile_name[1] + (2 if scenario in ("pending", "unavailable") else 1), \
             "unexpected status rows between the applied name and source"
         expiry = subscription_allowance(terminal)
-        assert words["dashboard.network.mixedPort"] % "17897" in screen, "network summary omitted the saved mixed port"
+        assert "17897" not in screen, "the saved mixed port belongs in its editor"
         assert "127.0.0.1:" not in screen, "overview retained addresses intended for network details"
         if scenario == "pending":
             assert words["profiles.refresh_failed"] in screen, "profile card hid its unapplied changes"
@@ -287,7 +357,6 @@ def exercise(preview, binary, output, language, profile, scenario, args):
         # navigation before checking both safe Enter transitions.
         return_navigation(terminal, words)
         assert_borderless(terminal)
-        assert "─────" in terminal.screen.text(), "borderless cards removed the internal network divider"
         preview.capture(terminal, output, "overview-navigation", args)
         terminal.key(b"\r")
         terminal.settle()
@@ -299,11 +368,9 @@ def exercise(preview, binary, output, language, profile, scenario, args):
         assert_borderless(terminal)
         preview.capture(terminal, output, "control-focus", args)
 
-        expected = [lifecycle, words["dashboard.overview.profilesAction"], words["dashboard.overview.settingsAction"], words["dashboard.overview.proxiesAction"]]
+        expected = [lifecycle, words["dashboard.overview.profilesAction"], words["dashboard.network.configure"], words["dashboard.overview.proxiesAction"]]
         if scenario != "unavailable":
             expected.extend([words["dashboard.mode." + mode] for mode in ("rule", "global", "direct")])
-        if scenario == "pending":
-            expected.append(words["dashboard.network.disable"])
 
         for width, height in SIZES:
             terminal.resize(width, height)
@@ -330,20 +397,7 @@ def exercise(preview, binary, output, language, profile, scenario, args):
             preview.capture(terminal, output, "tab-revealed-%dx%d" % (width, height), args)
             assert words["dashboard.footer.quit"] in terminal.screen.text().splitlines()[-1], "Quit hint left the footer"
 
-        # Network addresses moved into the existing read-only edit preview.
-        focus_control(terminal, words["dashboard.overview.settingsAction"])
-        terminal.click_text(words["dashboard.overview.settingsAction"])
-        terminal.wait("127.0.0.1:17897")
-        terminal.wait("127.0.0.1:19097")
-        for secret in ("private-user", "private-password", "private-path", "private-token", "private-fragment"):
-            assert secret not in terminal.screen.text(), "network details leaked controller metadata: " + secret
-        preview.capture(terminal, output, "network-details-from-overview", args)
-        terminal.key(b"\x1b")
-        terminal.settle()
-        for secret in ("private-user", "private-password", "private-path", "private-token", "private-fragment"):
-            assert secret not in terminal.screen.text(), "returning to Settings leaked controller metadata: " + secret
-        terminal.key(b"1")
-        terminal.settle()
+        inspect_network_editors(preview, terminal, output, words, scenario, args)
 
         # Read-only page transitions use the card's real mouse target.
         focus_control(terminal, words["dashboard.overview.profilesAction"])
@@ -366,12 +420,12 @@ def exercise(preview, binary, output, language, profile, scenario, args):
         terminal.exit()
         calls = json.loads(report.read_text())
         assert calls["service_changes"] == calls["modes"] == calls["selections"] == 0, calls
-        assert calls["tun_changes"] == 0, calls
-        assert calls["settings_reads"] == 1 and calls["settings_writes"] == 0, calls
+        assert calls["tun_changes"] == calls["terminal_changes"] == 0, calls
+        assert calls["settings_reads"] == 2 and calls["settings_writes"] == 0, calls
         assert calls["runtime_queries"] > 0, calls
         check_profile(preview, terminal, profile)
         (output / "pty.raw").write_bytes(terminal.raw)
-        print("PASS %s/%s/%s: paired equal-size cards, network/mode order, full-width traffic, single-column environment, five dimensions, core observation and heading action, borderless/focus states, Tab reveal and read-only network details; %s" %
+        print("PASS %s/%s/%s: responsive Overview, centered terminal and TUN editors, keyboard and mouse, draft cancellation; %s" %
               (language, profile, scenario, json.dumps(calls)), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")

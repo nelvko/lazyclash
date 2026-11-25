@@ -251,6 +251,21 @@ def replace_private_bytes(path, content):
     assert result.returncode == 0, "Could not restore private fixture configuration"
 
 
+def open_host_tun_confirmation(terminal):
+    for _ in range(18):
+        terminal.settle()
+        point = terminal.screen.point_on_row("Host TUN", "○ Off")
+        if point is not None:
+            x, y = point
+            terminal.key(f"\x1b[<0;{x+1};{y+1}M\x1b[<0;{x+1};{y+1}m".encode())
+            break
+        terminal.key(b"\x1b[<65;60;12M")
+    else:
+        raise AssertionError("Overview did not reveal the host TUN switch\n"+terminal.screen.text())
+    terminal.wait("Enable TUN for this host?")
+    terminal.wait("other users and services")
+
+
 def root_tun_ui_smoke(root, terminal_class, work):
     for columns, rows in ((120, 36), (80, 24)):
         terminal = terminal_class(root.command)
@@ -260,19 +275,7 @@ def root_tun_ui_smoke(root, terminal_class, work):
             terminal.resize(columns, rows)
             terminal.settle()
             terminal.wait("Overview")
-            terminal.key(b"7")
-            terminal.wait("Settings")
-            def open_confirmation():
-                for _ in range(18):
-                    terminal.settle()
-                    if "Enable host TUN" in terminal.screen.text():
-                        break
-                    # Scroll only the settings content, not the sidebar.
-                    terminal.key(b"\x1b[<65;60;12M")
-                terminal.click_text("Enable host TUN")
-                terminal.wait("Enable TUN for this host?")
-                terminal.wait("other users and services")
-            open_confirmation()
+            open_host_tun_confirmation(terminal)
             (work / ("pty-root-tun-%dx%d.txt" % (columns, rows))).write_text(terminal.screen.text())
             terminal.key(b"\r")
             terminal.wait_absent("Enable TUN for this host?")
@@ -280,7 +283,7 @@ def root_tun_ui_smoke(root, terminal_class, work):
             assert_tun_released(root)
             print("Root TUI host-scope confirmation %dx%d: readable, defaults Cancel, no network changes" % (columns, rows), flush=True)
             if columns == 120:
-                open_confirmation()
+                open_host_tun_confirmation(terminal)
                 terminal.key(b"\t\r")
                 wait(lambda: root.status()["TUNActual"])
                 assert root.status()["TUN"]
@@ -372,7 +375,9 @@ def main():
             terminal.resize(120, 36)
             terminal.settle()
             terminal.wait("Overview")
-            terminal.wait("Scope: system")
+            terminal.key(b"1")  # Enter Overview card browsing.
+            terminal.key(b"\x1b[F")  # Reveal the environment card.
+            terminal.wait("systemd system")
             assert "Run lazyclash as your normal user" not in terminal.text()
             terminal.exit()
         finally:

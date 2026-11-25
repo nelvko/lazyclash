@@ -12,6 +12,7 @@ import (
 	"github.com/nelvko/lazyclash/internal/configuration"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 	"github.com/nelvko/lazyclash/internal/service"
+	"github.com/nelvko/lazyclash/internal/shellintegration"
 )
 
 // TestOverviewPTYFixture runs the real TUI with isolated in-memory observations.
@@ -36,7 +37,7 @@ func TestOverviewPTYFixture(t *testing.T) {
 	raw, err := json.Marshal(map[string]int64{
 		"service_changes": b.controls.Load(), "modes": b.modes.Load(),
 		"selections": b.selections.Load(), "runtime_queries": b.runtimeQueries.Load(),
-		"tun_changes":    b.tunChanges.Load(),
+		"tun_changes": b.tunChanges.Load(), "terminal_changes": b.terminalChanges.Load(),
 		"settings_reads": b.settingsReads.Load(), "settings_writes": b.settingsWrites.Load(),
 	})
 	if err != nil {
@@ -51,7 +52,7 @@ type overviewPTYBackend struct {
 	*fakeBackend
 	scenario                                    string
 	controls, modes, selections, runtimeQueries atomic.Int64
-	tunChanges                                  atomic.Int64
+	tunChanges, terminalChanges                 atomic.Int64
 	settingsReads, settingsWrites               atomic.Int64
 }
 
@@ -61,7 +62,8 @@ func newOverviewPTYBackend(scenario string) *overviewPTYBackend {
 		Installed: true, ConfigReady: true, HasRun: true, GuideDismissed: true,
 		Version: "v1.19.33", RunningVersion: "v1.19.33",
 		Applied: "overview-preview", AppliedName: "日常订阅 · 工作与生活.yaml", Generation: "overview-pty-generation",
-		Profiles: []string{"default", "overview-preview", "travel"},
+		TerminalProxy: shellintegration.Status{Shell: "bash", State: "off", Loaded: true, Installed: true},
+		Profiles:      []string{"default", "overview-preview", "travel"},
 		ProfileDetails: []app.ProfileInfo{{ID: "overview-preview", Name: "日常订阅 · 工作与生活.yaml",
 			Core: "mihomo", Kind: "remote", Origin: "subscription.example", Refreshable: true, Validated: true,
 			UpdatedAt: time.Now().Add(-2 * time.Hour),
@@ -139,6 +141,11 @@ func (b *overviewPTYBackend) Select(ctx context.Context, _, _ string) error {
 
 func (b *overviewPTYBackend) SetTUN(ctx context.Context, _ bool) error {
 	b.tunChanges.Add(1)
+	return ctx.Err()
+}
+
+func (b *overviewPTYBackend) SetTerminalProxy(ctx context.Context, _, _ bool) error {
+	b.terminalChanges.Add(1)
 	return ctx.Err()
 }
 
