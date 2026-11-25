@@ -11,7 +11,7 @@ import (
 )
 
 func TestInputClearMouseEditsWithoutSubmitting(t *testing.T) {
-	for _, scenario := range []string{"profile-url", "generic-form", "create-name", "create-description", "create-source", "ports-mixed", "ports-controller", "wizard-local", "wizard-version", "wizard-prefix", "inline-local", "inline-version"} {
+	for _, scenario := range []string{"profile-url", "generic-form", "create-name", "create-description", "create-source", "create-user-agent", "ports-mixed", "ports-controller", "wizard-local", "wizard-prefix", "inline-local", "inline-version"} {
 		t.Run(scenario, func(t *testing.T) {
 			m, id, writes := inputFieldsScenario(t, scenario, "en")
 			input := inputForClearTest(&m, id)
@@ -71,6 +71,8 @@ func inputForClearTest(m *Model, id string) *textinput.Model {
 		return &m.profileCreate.description
 	case "profile-create.source":
 		return &m.profileCreate.source
+	case "profile-create.user-agent":
+		return &m.profileCreate.userAgent
 	case "ports.mixed":
 		return &m.ports.mixed
 	case "ports.controller":

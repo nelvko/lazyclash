@@ -222,7 +222,7 @@ func TestInputFieldCompactKeepsEditorAndClearOnOneRow(t *testing.T) {
 }
 
 func TestInputFieldCursorAcrossAllEditorsAndResize(t *testing.T) {
-	for _, scenario := range []string{"profile-url", "generic-form", "masked-form", "create-name", "create-description", "create-source", "ports-mixed", "ports-controller", "wizard-local", "wizard-version", "wizard-prefix", "inline-local", "inline-version"} {
+	for _, scenario := range []string{"profile-url", "generic-form", "masked-form", "create-name", "create-description", "create-source", "create-user-agent", "ports-mixed", "ports-controller", "wizard-local", "wizard-version", "wizard-prefix", "inline-local", "inline-version"} {
 		t.Run(scenario, func(t *testing.T) {
 			m, id, _ := inputFieldsScenario(t, scenario, "zh-Hans")
 			fixture := inputFieldsPTY{model: m, scenario: scenario}

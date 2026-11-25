@@ -16,7 +16,10 @@ import (
 func TestProfileCreateKeyboardReachesActionsWithoutEditingHiddenInput(t *testing.T) {
 	m := ready(&fakeBackend{})
 	m.openProfileCreate()
-	for _, want := range []int{profileCreateDescription, profileCreateSource, profileCreateSave, profileCreateCancel, profileCreateName} {
+	if m.focus != "profile-create.source" || !m.profileCreate.source.Focused() {
+		t.Fatalf("initial focus = %s, want editable source", m.focus)
+	}
+	for _, want := range []int{profileCreateUserAgent, profileCreateName, profileCreateDescription, profileCreateSave, profileCreateCancel, profileCreateSource} {
 		m, _ = update(m, special(tea.KeyTab))
 		if m.profileCreate.field != want || m.focus != profileCreateFieldID(want) {
 			t.Fatalf("Tab focus = %s, want %s", m.focus, profileCreateFieldID(want))
@@ -33,6 +36,62 @@ func TestProfileCreateKeyboardReachesActionsWithoutEditingHiddenInput(t *testing
 	m, _ = update(m, special(tea.KeyEnter))
 	if m.form != "" || m.busy {
 		t.Fatal("Enter on Cancel submitted or left the form open")
+	}
+}
+
+func TestProfileCreateKeepsUserAgentDraftWhenSourceChanges(t *testing.T) {
+	for _, submitRemote := range []bool{true, false} {
+		var got app.ProfileDraft
+		m := ready(&fakeBackend{createProfile: func(_ context.Context, draft app.ProfileDraft) error {
+			got = draft
+			return nil
+		}})
+		m.openProfileCreate()
+		m, _ = update(m, special(tea.KeyTab))
+		const agent = "ExampleClient/1.0"
+		m, _ = update(m, tea.PasteMsg{Content: agent})
+		m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
+		m, _ = update(m, tea.PasteMsg{Content: "/tmp/example.yaml"})
+		m, _ = update(m, special(tea.KeyTab))
+		if m.profileCreate.field != profileCreateName || hasAction(m.targets, "profile-create.user-agent") {
+			t.Fatal("local file kept the User-Agent control")
+		}
+		m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
+		want := ""
+		if submitRemote {
+			m, _ = update(m, tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
+			m, _ = update(m, tea.PasteMsg{Content: "https://example.invalid/config.yaml"})
+			m, _ = update(m, special(tea.KeyTab))
+			if m.profileCreate.field != profileCreateUserAgent || m.profileCreate.userAgent.Value() != agent {
+				t.Fatal("returning to a remote URL lost the User-Agent draft")
+			}
+			m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
+			want = agent
+		}
+		m, cmd := update(m, special(tea.KeyEnter))
+		m = finishProfileJob(t, m, cmd)
+		if m.form != "" || got.Address == "" || got.UserAgent != want {
+			t.Fatalf("saved User-Agent = %q, want %q for %q", got.UserAgent, want, got.Address)
+		}
+	}
+}
+
+func TestProfileCreateValidationFocusesSource(t *testing.T) {
+	for _, address := range []string{"", "https://", "~unknown/profile.yaml"} {
+		m := ready(&fakeBackend{})
+		m.openProfileCreate()
+		m.profileCreate.source.SetValue(address)
+		m.profileCreate.name.SetValue("My profile")
+		m.profileCreateSetField(profileCreateDescription)
+		m, _ = update(m, special(tea.KeyEnter))
+		if m.profileCreate.field != profileCreateSave {
+			t.Fatal("Enter on Description did not focus Create")
+		}
+		m, _ = click(m, findTarget(t, m, "profile-create.save"))
+		if m.failure == "" || m.busy || m.focus != "profile-create.source" || !m.profileCreate.source.Focused() ||
+			m.profileCreate.source.Value() != address || m.profileCreate.name.Value() != "My profile" {
+			t.Fatalf("validation for %q failed to restore the editable draft", address)
+		}
 	}
 }
 
@@ -133,13 +192,18 @@ func TestProfileCreateCompletesLocalFileWithoutSubmitting(t *testing.T) {
 		t.Fatal("Tab did not complete the local path without creating a profile")
 	}
 	// A completed file is also an exact match in the next asynchronous listing.
-	// Tab must now reach Create instead of endlessly completing the same path.
+	// Tab must now reach the next field instead of repeating the same match.
 	matches := readPathMatches(m.profileCreate.source.Value())
 	matches.generation = m.paths.generation
 	m, _ = update(m, matches)
 	m, _ = update(m, special(tea.KeyTab))
+	if m.profileCreate.field != profileCreateName || m.busy || calls != 0 {
+		t.Fatal("Tab on an already completed file did not reach Display name")
+	}
+	m, _ = update(m, special(tea.KeyEnter))
+	m, _ = update(m, special(tea.KeyEnter))
 	if m.profileCreate.field != profileCreateSave || m.busy || calls != 0 {
-		t.Fatal("Tab on an already completed file did not reach Create")
+		t.Fatal("Enter did not advance through the optional fields to Create")
 	}
 	m, cmd := update(m, special(tea.KeyEnter))
 	m = finishProfileJob(t, m, cmd)

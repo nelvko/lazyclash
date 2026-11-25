@@ -38,7 +38,7 @@ func openSettingsForTest(t *testing.T, m Model, id string) Model {
 }
 
 func TestProfileSettingsSaveTogetherAndRetainFailedEdits(t *testing.T) {
-	original := app.ProfileSettings{ID: "p-id", Name: "Provider name", Description: "old", Address: "https://provider.example/secret"}
+	original := app.ProfileSettings{ID: "p-id", Name: "Provider name", Description: "old", Address: "https://provider.example/secret", UserAgent: "Previous/1.0"}
 	var saved []app.ProfileSettings
 	b := &fakeBackend{snapshot: app.Snapshot{Profiles: []string{"p-id"}, ProfileDetails: []app.ProfileInfo{{ID: "p-id", Name: original.Name}}},
 		getProfileSettings: func(context.Context, string) (app.ProfileSettings, error) { return original, nil },
@@ -51,8 +51,12 @@ func TestProfileSettingsSaveTogetherAndRetainFailedEdits(t *testing.T) {
 		}}
 	m := profileInteractionsModel(b, 120, 32)
 	m = openSettingsForTest(t, m, original.ID)
-	if m.profileCreate.name.Value() != original.Name || m.profileCreate.description.Value() != original.Description || m.profileCreate.source.Value() != original.Address {
+	if m.profileCreate.name.Value() != original.Name || m.profileCreate.description.Value() != original.Description || m.profileCreate.source.Value() != original.Address || m.profileCreate.userAgent.Value() != original.UserAgent {
 		t.Fatal("fields not prefilled")
+	}
+	m.profileCreate.userAgent.SetValue("")
+	if !m.profileSettingsDirty() {
+		t.Fatal("clearing only the User-Agent was not detected as an edit")
 	}
 	m.profileCreate.name.SetValue("new name")
 	m.profileCreate.description.SetValue("")
@@ -69,9 +73,16 @@ func TestProfileSettingsSaveTogetherAndRetainFailedEdits(t *testing.T) {
 		t.Fatal("failed save lost draft")
 	}
 	m.profileCreate.source.SetValue(original.Address)
+	m, _ = update(m, special(tea.KeyTab))
+	if m.focus != "profile-create.user-agent" {
+		t.Fatalf("remote settings skipped User-Agent, focus = %s", m.focus)
+	}
+	m, _ = update(m, tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
+	m, _ = update(m, tea.PasteMsg{Content: "Updated/2.0"})
+	m, _ = update(m, special(tea.KeyTab))
 	m, cmd = update(m, special(tea.KeyEnter))
 	m = finishProfileJob(t, m, cmd)
-	if len(saved) != 2 || saved[1].ID != original.ID || saved[1].Address != original.Address || saved[1].Description != "" || saved[1].Name != "new name" || m.form != "" || m.focus != "profile.0" {
+	if len(saved) != 2 || saved[1].ID != original.ID || saved[1].Address != original.Address || saved[1].Description != "" || saved[1].Name != "new name" || saved[1].UserAgent != "Updated/2.0" || m.form != "" || m.focus != "profile.0" {
 		t.Fatal("settings save did not submit one complete form or restore card focus")
 	}
 	if strings.Contains(ansi.Strip(m.screen), original.Address) {

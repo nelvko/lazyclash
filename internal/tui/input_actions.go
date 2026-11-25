@@ -62,6 +62,8 @@ func (m *Model) clearInputField(id string) (bool, tea.Cmd) {
 				selected = profileCreateDescription
 			case "profile-create.source":
 				selected = profileCreateSource
+			case "profile-create.user-agent":
+				selected = profileCreateUserAgent
 			default:
 				return false, nil
 			}

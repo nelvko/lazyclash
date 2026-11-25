@@ -58,7 +58,17 @@ def assert_saved_cards(terminal, count):
 
 def header_row(terminal, label):
     needle = "[" + label.strip("[] ") + "]"
-    terminal.wait(needle)
+
+    def header_visible():
+        header = "\n".join(terminal.screen.text().splitlines()[:3])
+        if needle in header:
+            return True
+        # The newest notification covers the page action. Another may replace it.
+        if "×" in header:
+            terminal.click_text("×")
+        return False
+
+    wait_until(terminal, header_visible, "page header not visible: " + label)
     rows = [i for i, line in enumerate(terminal.screen.text().splitlines()) if needle in line]
     assert len(rows) == 1 and rows[0] < 3, "page action was duplicated or left in the scrolling body: " + label + "\n" + terminal.screen.text()
     assert "Mihomo ·" not in "\n".join(terminal.screen.text().splitlines()[:3]), "page retained the generic core status"
@@ -84,6 +94,7 @@ def main():
     future_date = time.strftime("%Y-%m-%d", time.localtime(expires))
     quota = [f"upload={gib}; download={2*gib}; total={10*gib}; expire={expires}"]
     requests = []
+    remote_agents = []
     remote_started = threading.Event()
     remote_release = threading.Event()
 
@@ -91,6 +102,7 @@ def main():
         def do_GET(self):
             requests.append(self.path)
             if self.path == "/new-profile":
+                remote_agents.append(self.headers.get("User-Agent"))
                 remote_started.set()
                 remote_release.wait(timeout=10)
             if self.path == "/invalid-configuration":
@@ -194,7 +206,6 @@ def main():
             (output / "profiles-menu-160x40.txt").write_text(terminal.screen.text())
             terminal.key(b"\x1b")
             terminal.wait_absent("Settings…")
-            terminal.key(b"\x1b")  # dismiss the Add notification before using its covered card controls
             mouse_text(terminal, "↻", button=2)
             terminal.wait("Settings…")
             terminal.key(b"\x1b")
@@ -209,7 +220,7 @@ def main():
             # Clicking outside dismisses the menu without opening the creation form.
             mouse_text(terminal, "[New]")
             terminal.wait_absent("Settings…")
-            assert "Display name (optional)" not in terminal.screen.text(), "outside menu click reached its underlying control"
+            assert "New profile" not in terminal.screen.text(), "outside menu click reached its underlying control"
             terminal.key(b"m")
             terminal.wait("Settings…")
             terminal.key(b"\x1b")
@@ -267,7 +278,7 @@ def main():
             terminal.wait("4.0 GiB / 10.0 GiB left")
             terminal.wait("Expiry date " + cutoff_date)
             terminal.wait(memo)
-            # A malformed replacement must preserve both the record and all three fields.
+            # A malformed replacement must preserve both the record and the draft.
             prior = primary_profile()
             new_memo = "Changed together"
             invalid_address = f"http://127.0.0.1:{server.server_port}/invalid-configuration"
@@ -338,13 +349,10 @@ def main():
             local.write_text("rules: ['MATCH,DIRECT']\n")
             (local_dir / "pty-other.yaml").write_text("rules: ['MATCH,DIRECT']\n")
             terminal.click_text("[New]")
-            terminal.wait("Display name (optional)")
-            terminal.wait("Description (optional)")
-            terminal.wait("URL or absolute local path")
-            terminal.key(b"\t")  # optional display name -> optional description
-            terminal.key(b"\t")  # optional description -> source
+            terminal.wait("New profile")
+            terminal.wait("User-Agent")
             paste(terminal, str(base) + "/配")
-            terminal.wait("Source type: Local file")
+            terminal.wait_absent("User-Agent")
             terminal.wait("› 配置 files/")
             terminal.wait("配置 other/")
             terminal.key(b"\x1b[B")
@@ -365,12 +373,11 @@ def main():
             assert len(library()["profiles"]) == 1, "file completion created a profile"
             assert profile_id("pty-local") is None, "Tab created the selected file profile before Enter"
             terminal.wait("› pty-local")
-            terminal.key(b"\t")
-            terminal.wait("›[Create]")
             terminal.key(b"\r")
             wait_until(terminal, lambda: profile_id("pty-local") is not None, "new local profile was not persisted")
             terminal.wait_absent("Creating profile")
             terminal.wait_absent("nested folder")
+            header_row(terminal, "Update all")
             local_id = profile_id("pty-local")
             local_record = library()["profiles"][local_id]
             assert local_record["address"] == str(local), "new local profile did not retain its source for updates"
@@ -409,16 +416,18 @@ def main():
             # immediate loopback fixture; input must not submit it twice.
             remote_name = "PTY named remote"
             remote_description = "Remote metadata from New profile"
+            remote_agent = "PTY-Subscription/1.0"
             remote_address = "http://127.0.0.1:%d/new-profile" % server.server_port
             terminal.click_text("[New]")
-            terminal.wait("Display name (optional)")
+            terminal.wait("User-Agent")
+            paste(terminal, remote_address)
+            terminal.key(b"\t")
+            paste(terminal, remote_agent)
+            terminal.key(b"\t")
             paste(terminal, remote_name)
             terminal.key(b"\t")
             paste(terminal, remote_description)
             terminal.key(b"\t")
-            paste(terminal, remote_address)
-            terminal.wait("Source type: Remote URL")
-            terminal.key(b"\t")  # no path matches: source -> Create
             terminal.wait("›[Create]")
             terminal.key(b"\t")
             terminal.wait("›[Cancel]")
@@ -434,10 +443,11 @@ def main():
             remote_release.set()
             wait_until(terminal, lambda: profile_id(remote_name) is not None, "named remote profile was not created")
             terminal.wait_absent("Creating profile")
-            terminal.wait_absent("URL or absolute local path")
+            terminal.wait_absent("User-Agent")
             remote_id = profile_id(remote_name)
             remote_record = library()["profiles"][remote_id]
             assert len(requests) == before + 1, "New profile downloaded the remote source more than once"
+            assert remote_agents == [remote_agent], "new remote profile used the wrong User-Agent"
             assert remote_record["name_source"] == "custom" and remote_record["name_base"] == remote_name
             assert remote_record["description"] == remote_description, "New profile lost the description"
             assert remote_record["address"] == remote_address, "New profile lost its remote refresh source"
@@ -493,7 +503,9 @@ def main():
             terminal.wait("Enter New")
             for _ in range(2):
                 before = len(requests)
+                before_remote = len(remote_agents)
                 previous = {pid: record["updated_at"] for pid, record in library()["profiles"].items()}
+                header_row(terminal, "Update all")
                 terminal.click_text("[Update all]")
                 wait_until(terminal, lambda: len(requests) >= before + 3, "Update all did not refresh all three remote profiles")
                 wait_until(terminal, lambda: all(record["updated_at"] != previous[pid] for pid, record in library()["profiles"].items()), "Update all did not save every refreshed profile")
@@ -502,6 +514,7 @@ def main():
                 assert profile_id("My Airport") == primary_id[0], "duplicate refresh changed the custom profile name"
                 assert profile_id(remote_name) == remote_id, "provider refresh changed the New profile custom name or ID"
                 assert library()["profiles"][remote_id]["description"] == remote_description, "provider refresh discarded the description"
+                assert remote_agents[before_remote:] == [remote_agent], "refresh did not reuse the saved User-Agent"
             terminal.exit()
 
             # CLI copy import remains supported independently of the new form.
@@ -575,7 +588,7 @@ def main():
             result = {
                 "passed": True,
                 "usage_scenarios": ["bare remaining and total bytes with bare future date", "card becomes Expired at cutoff without input", "Settings labels the balance and expiry date", "missing header clears old usage and expiry"],
-                "scenarios": ["empty library has no built-in card or count summary", "first card is the first saved profile", "visible URL bracketed paste", "automatic Import without naming modal or Apply", "two-column arrows", "Enter opens Settings", "provider name update retains ID", "Settings protects provider names on description-only edits", "failed source validation retains all settings and form input", "changing the source and manual name together retains the stable ID", "menu Update", "Update all", "New profile local file with optional metadata omitted", "live directory and file matches", "arrow selection and Tab completion without creating", "Unicode and spaced directories with an extensionless configuration", "New profile remote URL with custom name and description", "Tab and Shift+Tab reach Create and Cancel", "busy form ignores editing and duplicate submission", "one download per new remote profile", "retained local source refresh", "CLI one-time copy import", "60x20 resize and Escape", "fixed header while scrolled", "header mouse update without Apply", "20x12 compact header", "page-specific controls", "duplicate imports retain distinct IDs", "repeated updates preserve duplicate suffix", "exit and reopen metadata and source persistence"],
+                "scenarios": ["empty library has no built-in card or count summary", "first card is the first saved profile", "visible URL bracketed paste", "automatic Import without naming modal or Apply", "two-column arrows", "Enter opens Settings", "provider name update retains ID", "Settings protects provider names on description-only edits", "failed source validation retains all settings and form input", "changing the source and manual name together retains the stable ID", "menu Update", "Update all", "New profile local file with optional metadata omitted", "live directory and file matches", "arrow selection and Tab completion without creating", "Unicode and spaced directories with an extensionless configuration", "New remote profile with a custom name, description and User-Agent reused on refresh", "Tab and Shift+Tab reach Create and Cancel", "busy form ignores editing and duplicate submission", "one download per new remote profile", "retained local source refresh", "CLI one-time copy import", "60x20 resize and Escape", "fixed header while scrolled", "header mouse update without Apply", "20x12 compact header", "page-specific controls", "duplicate imports retain distinct IDs", "repeated updates preserve duplicate suffix", "exit and reopen metadata and source persistence"],
                 "menu_scenarios": ["right-click card without Apply", "right-click update icon opens containing card menu", "left-click menu button", "menu owns q, page digits and pasted text", "outside click closes without opening the underlying creation form", "keyboard m and Escape focus restoration", "menu Settings edits metadata atomically", "menu edge avoidance through resize", "retained local file Update rereads the source without HTTP", "copy-import Update is hidden"],
                 "menu_dimensions": [[160, 40], [60, 20], [40, 16], [20, 12]],
                 "delete_scenarios": ["default Enter cancels", "no name input or validation", "confirmation owns typed and pasted text", "confirmation stays visible from 120x32 to 24x7", "explicit mouse confirmation deletes once"],

@@ -97,9 +97,9 @@ func inputFieldsScenario(t *testing.T, scenario, language string) (Model, string
 		read := m.openProfileSettings("input-fixture")
 		m.acceptProfileSettings(read().(profileSettingsLoadedMsg))
 		id = profileCreateFieldID(profileCreateName)
-	case "create-name", "create-description", "create-source":
+	case "create-name", "create-description", "create-source", "create-user-agent":
 		m.openProfileCreate()
-		field := map[string]int{"create-name": profileCreateName, "create-description": profileCreateDescription, "create-source": profileCreateSource}[scenario]
+		field := map[string]int{"create-name": profileCreateName, "create-description": profileCreateDescription, "create-source": profileCreateSource, "create-user-agent": profileCreateUserAgent}[scenario]
 		m.profileCreateSetField(field)
 		id = profileCreateFieldID(field)
 	case "ports-mixed", "ports-controller":
@@ -183,6 +183,8 @@ func (m *inputFieldsPTY) input() *textinput.Model {
 		return &m.model.profileCreate.description
 	case "create-source":
 		return &m.model.profileCreate.source
+	case "create-user-agent":
+		return &m.model.profileCreate.userAgent
 	case "ports-mixed":
 		return &m.model.ports.mixed
 	case "ports-controller":

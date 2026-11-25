@@ -19,7 +19,7 @@ import time
 SIZES = ((160, 45), (80, 24), (60, 20), (40, 16))
 SCENARIOS = (
     "search-connections", "search-rules", "search-logs", "search-providers",
-    "profile-url", "generic-form", "masked-form", "rename-form", "create-name", "create-description", "create-source",
+    "profile-url", "generic-form", "masked-form", "rename-form", "create-name", "create-description", "create-source", "create-user-agent",
     "ports-mixed", "ports-controller", "wizard-local", "wizard-version", "wizard-prefix",
     "inline-local", "inline-version",
 )

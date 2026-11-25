@@ -25,8 +25,8 @@ func (m *Model) profileFieldsForm() bool {
 }
 
 func (m *Model) openProfileSettings(id string) tea.Cmd {
-	m.openProfileCreate()
-	m.form, m.name = "profile-settings", id
+	m.name = id
+	m.openProfileFields("profile-settings")
 	m.profileCreate.name.Placeholder = m.tr("profiles.display_name")
 	m.message = m.tr("profile_settings.loading")
 	ctx := m.newJob("profile.settings.load", m.profileNotification("settings.load", m.tr("dashboard.page.settings"), id))
@@ -60,6 +60,7 @@ func (m *Model) acceptProfileSettings(msg profileSettingsLoadedMsg) tea.Cmd {
 	m.profileCreate.name.SetValue(msg.values.Name)
 	m.profileCreate.description.SetValue(msg.values.Description)
 	m.profileCreate.source.SetValue(msg.values.Address)
+	m.profileCreate.userAgent.SetValue(msg.values.UserAgent)
 	return textinput.Blink
 }
 
@@ -67,7 +68,8 @@ func (m *Model) profileSettingsDirty() bool {
 	record := m.profileCreate.settings
 	return record != nil && (m.profileCreate.name.Value() != record.Name ||
 		m.profileCreate.description.Value() != record.Description ||
-		m.profileCreate.source.Value() != record.Address)
+		m.profileCreate.source.Value() != record.Address ||
+		m.profileCreate.effectiveUserAgent() != record.UserAgent)
 }
 
 func (m *Model) saveProfileSettings() tea.Cmd {
@@ -81,6 +83,7 @@ func (m *Model) saveProfileSettings() tea.Cmd {
 	values := *m.profileCreate.settings
 	values.Name = m.profileCreate.name.Value()
 	values.Description = m.profileCreate.description.Value()
+	values.UserAgent = m.profileCreate.effectiveUserAgent()
 	address := strings.TrimSpace(m.profileCreate.source.Value())
 	if address != values.Address && address != "" {
 		normalized, err := resolveLocalPath(address)
