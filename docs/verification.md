@@ -1,12 +1,18 @@
 # 验证入口
 
-## 右上角通知卡片（2026-11-25）
+## 通知正文与按需详情（2026-11-25）
+
+在 Debian/arm64 专用 VM 中使用 Mihomo v1.19.33、两个独立的 systemd 用户服务和临时端口验证订阅切换。160×45 下，内核运行和停止时均只显示“已选用订阅「Maruko」”和关闭按钮。40×24 下，长订阅名截断时出现详情，点击可读到名字末尾，按 Esc 返回订阅页。运行态从控制 API 读回规则，停止态确认 PID 保持为零，验收后已卸载两个服务。[运行时](../.test-artifacts/concise-notifications/zh-Hans-running-wide-160x45.png) · [停止时](../.test-artifacts/concise-notifications/zh-Hans-stopped-wide-160x45.png) · [窄屏预览](../.test-artifacts/concise-notifications/zh-Hans-stopped-narrow-40x24.png) · [窄屏全文](../.test-artifacts/concise-notifications/zh-Hans-stopped-detail-40x24.png)
+
+运行 `make build` 后，可用 `python3 scripts/theme-pty.py --notifications-only --binary "$PWD/bin/lazyclash" --output .test-artifacts/concise-notifications/pty` 复验。脚本在隔离目录中检查普通成功、独立错误和多行诊断，使用键盘和鼠标核对卡片的关闭、详情、滚动和焦点恢复。macOS 和 Debian/arm64 均通过真彩、256 色和无色终端的七种尺寸验证。[macOS 记录](../.test-artifacts/concise-notifications/macos/results.json) · [Linux 记录](../.test-artifacts/concise-notifications/linux/results.json) · [宽屏多条通知](../.test-artifacts/concise-notifications/zh-Hans-stack-160x45.png) · [窄屏多条通知](../.test-artifacts/concise-notifications/zh-Hans-stack-40x24.png)
+
+## 右上角通知卡片（2026-11-25，简化正文前）
 
 用产品二进制运行 `scripts/theme-pty.py`，会在隔离数据目录中触发多个独立操作，并用 18 个临时订阅制造一条多行错误。宽屏检查每张卡各自的边框、详情和关闭按钮，窄屏用键盘和鼠标滚动到后续卡片及最后一条错误原因。还检查空列表按 Ctrl+N 保留当前页、Esc 回到原条目，以及点击外侧只收起通知。可用 `--notifications-only` 单独复验这些场景。
 
 中文真实终端的字符格重绘展示了 160×45 和 40×24 的设置页。卡片在右上角展开，页头及下方内容保持可见。[宽屏多条通知](../.test-artifacts/inline-notifications/zh-Hans-list-160x45.png) · [窄屏多条通知](../.test-artifacts/inline-notifications/zh-Hans-list-40x24.png) · [窄屏长详情](../.test-artifacts/inline-notifications/zh-Hans-detail-40x24.png)
 
-## 通知与订阅切换（2026-11-25）
+## 通知与订阅切换（2026-11-25，统一成功文案前）
 
 中英文真实 PTY 各验证两种状态。160×45 下切换后能看到订阅名和“内核运行中”，40×24 下单行摘要保留订阅名，打开详情可读到“下次启动内核时生效”。四组测试使用内存后端，并核对每次只提交一次目标订阅 ID。图片由实际终端字符格重绘。[中文宽屏](../.test-artifacts/notification-refactor/zh-Hans-160x45.png) · [中文窄屏](../.test-artifacts/notification-refactor/zh-Hans-40x24.png) · [英文宽屏](../.test-artifacts/notification-refactor/en-160x45.png) · [英文窄屏](../.test-artifacts/notification-refactor/en-40x24.png)
 

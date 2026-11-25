@@ -97,8 +97,7 @@ def corner_boxes(screen):
                     break
 
 
-def list_cards(terminal, underlying, minimum=1, title="Notifications", collapse="Esc Collapse",
-               details="Details", close="× Close"):
+def list_cards(terminal, underlying, minimum=1, title="Notifications", collapse="Esc Collapse"):
     terminal.wait(title)
     terminal.wait(underlying)
     terminal.wait(collapse)
@@ -115,20 +114,23 @@ def list_cards(terminal, underlying, minimum=1, title="Notifications", collapse=
             raise AssertionError("Notification list has an enclosing frame\n" + screen.text())
         if 0 <= heading < top < bottom < footer:
             text = "\n".join("".join(row[left+1:right]) for row in screen.cells[top+1:bottom])
-            if details in text and close in text:
+            if "×" in text:
                 boxes.append((left, top, right, bottom))
     if len(boxes) < minimum:
         raise AssertionError("Too few independent notification cards with controls\n" + screen.text())
     return boxes
 
 
-def detail_corner(terminal, underlying, title="Details"):
-    terminal.wait(title)
+def detail_corner(terminal, underlying, footer="Esc Collapse"):
+    terminal.wait(footer)
     terminal.wait(underlying)
     settle(terminal)
     screen = terminal.screen
     for left, top, right, bottom in corner_boxes(screen):
-        if top < 5 and title in "".join(screen.cells[top+1][left:right]):
+        actions = "".join(screen.cells[bottom-1][left:right])
+        if top < 5 and footer in actions and "×" in actions:
+            if "Details" in "".join(screen.cells[top+1][left:right]):
+                raise AssertionError("Details opened with a redundant title row")
             return left, top, right
     raise AssertionError("Notification detail did not expand in the upper right\n" + screen.text())
 
@@ -166,11 +168,15 @@ def exercise_notifications(terminal, output, profile):
     terminal.wait("Start service")
     terminal.key(b"r")
     terminal.wait("Restart service")
-    screen = terminal.screen.text().splitlines()
-    start_y = next(i for i, line in enumerate(screen) if "Start service" in line)
-    restart_y = next(i for i, line in enumerate(screen) if "Restart service" in line)
-    if start_y >= restart_y or sum(error in line for line in screen[:restart_y + 3]) != 2:
-        raise AssertionError("independent failures were merged or hidden")
+    settle(terminal)
+    screen = terminal.screen.text()
+    for context in ("Start service", "Restart service"):
+        if context + ": " + error not in screen:
+            raise AssertionError("Missing self-contained error message for " + context + "\n" + screen)
+    if "Error · Settings" in screen or "Details" in screen:
+        raise AssertionError("A complete error with a repeated cause added a title or details\n" + screen)
+    if screen.index("Start service:") >= screen.index("Restart service:"):
+        raise AssertionError("Independent failures are out of order")
     deadline = time.monotonic() + 5.2
     while time.monotonic() < deadline:
         terminal.read()
@@ -200,18 +206,16 @@ def exercise_notifications(terminal, output, profile):
     for context in ("Start service", "Restart service", "Stop service"):
         terminal.wait(context)
     save_screen(terminal, output, profile, "notification-list")
-    cards = list_cards(terminal, "Interface preferences", minimum=2)
-    click_card_button(terminal, cards[1], "Details")
-    terminal.wait("Esc Back")
-    detail_corner(terminal, "Interface preferences")
-    terminal.wait("Restart service")
-    terminal.wait_absent("Start service")
-    terminal.key(b"\x1b")
-    cards = list_cards(terminal, "Interface preferences", minimum=2)
-    click_card_button(terminal, cards[0], "× Close")
-    terminal.wait_absent("Start service")
-    terminal.wait("Restart service")
-    terminal.wait("Stop service")
+    cards = list_cards(terminal, "Interface preferences", minimum=3)
+    for box, context in zip(cards, ("Start service", "Restart service", "Stop service")):
+        left, top, right, bottom = box
+        body = "\n".join("".join(row[left+1:right]) for row in terminal.screen.cells[top+1:bottom])
+        if context + ": " + error not in body or "Details" in body or "Error ·" in body:
+            raise AssertionError("Unexpected controls or title in a readable error card\n" + body)
+    click_card_button(terminal, cards[0], "×")
+    terminal.wait_absent("Start service:")
+    terminal.wait("Restart service:")
+    terminal.wait("Stop service:")
     terminal.key(b"\x1b")
     terminal.wait_absent("Esc Collapse")
     for columns, rows in SIZES:
@@ -223,14 +227,13 @@ def exercise_notifications(terminal, output, profile):
             terminal.read()
             screen = terminal.screen.text().splitlines()
             if (not terminal.screen.synchronized
-                    and any(error in line for line in screen)
-                    and any("Stop service" in line for line in screen)
+                    and any("Stop service:" in line for line in screen)
                     and screen[-1].find("q Quit") == columns - 8):
                 break
         else:
             raise AssertionError("notification resize did not finish rendering")
-        error_y = next(i for i, line in enumerate(screen) if error in line)
-        if error_y > 5 or any(error in line for line in screen[-2:]):
+        error_y = next(i for i, line in enumerate(screen) if "Stop service:" in line)
+        if error_y > 8 or any("Stop service:" in line for line in screen[-2:]):
             raise AssertionError("Toast is not in the upper-right corner")
         save_screen(terminal, output, profile, "notification-%sx%s" % (columns, rows))
 
@@ -240,35 +243,42 @@ def exercise_notifications(terminal, output, profile):
     terminal.key(b"3")
     terminal.wait("Error · 3 more · Expand")
     terminal.key(b"\x0e")  # Ctrl+N opens the bounded collection from any page.
+    list_cards(terminal, "Profiles")
+    terminal.resize(40, 18)  # Force part of the third card below the collection viewport.
     cards = list_cards(terminal, "Profiles")
-    terminal.wait(error)
-    terminal.wait("Error · Settings · Restart")
     if len(cards) != 2:
-        raise AssertionError("Compact viewport should show two complete error cards")
+        raise AssertionError("Expected two complete cards before scrolling\n" + terminal.screen.text())
+    terminal.wait("Restart service")
     left, top, right, bottom = cards[0]
     terminal.key(f"\x1b[<65;{(left+right)//2+1};{(top+bottom)//2+1}M".encode())
     cards = list_cards(terminal, "Profiles")
-    _, last_top, _, _ = cards[-1]
-    if "Start service" not in terminal.screen.text().splitlines()[last_top+1]:
-        raise AssertionError("Wheel did not reveal the last notification card")
-    click_card_button(terminal, cards[-1], "× Close")
-    terminal.wait_absent("Start service")
+    last = cards[-1]
+    left, top, right, _ = last
+    if "Start service" not in "".join(terminal.screen.cells[top+1][left:right]):
+        raise AssertionError("Wheel did not reveal the final error card\n" + terminal.screen.text())
+    click_card_button(terminal, last, "×")
+    terminal.wait_absent("Start service:")
     terminal.key(b"\x1b[H")
-    terminal.wait("Error · Settings · Restart")
+    terminal.wait("Restart service")
     terminal.key(b"x")
-    terminal.wait_absent("Error · Settings · Restart")
+    terminal.wait_absent("Restart service:")
     terminal.key(b"\x1b")
     terminal.wait_absent("Esc Collapse")
-    # The single folded error opens its own detail and returns directly to Profiles.
-    terminal.wait("Error · " + error)
+    terminal.resize(40, 24)
+    # The single folded error needs details because its cause was truncated.
+    terminal.wait("Stop service")
     save_screen(terminal, output, profile, "notification-single-summary-40x24")
-    terminal.click_text(error)
-    terminal.wait("Stop service")
+    terminal.click_text("Details")
     terminal.wait("Esc Collapse")
+    terminal.wait("Stop service")
+    left, top, right = detail_corner(terminal, "Profiles")
+    body = " ".join("".join(row[left+1:right]).strip() for row in terminal.screen.cells[top+1:top+3])
+    if "Stop service: " + error not in body:
+        raise AssertionError("Detail lost part of the folded error: " + body)
     terminal.key(b"\x1b")
     terminal.wait_absent("Esc Collapse")
-    terminal.click_text(error)
-    terminal.wait("Stop service")
+    terminal.click_text("Details")
+    terminal.wait("Esc Collapse")
     terminal.key(b"x")
     terminal.wait_absent("Stop service")
     empty_shortcut(terminal, "Profiles")
@@ -309,20 +319,46 @@ def exercise_notifications(terminal, output, profile):
     terminal.wait("Proxy mode")
 
 
-def exercise_long_detail(terminal, output, profile, command, directory):
-    # Real profile imports followed by a missing source produce a multiline
-    # diagnostic with distinct first/last markers, without installing a core.
+def exercise_profile_updates(terminal, output, profile, command, directory):
+    # Refresh the same local subscriptions before and after removing their source
+    # to exercise both an ordinary success and a scrollable multiline diagnostic.
     source = directory / "notice-source.yaml"
     source.write_text('rules: ["MATCH,DIRECT"]\n')
     for i in range(1, 19):
         subprocess.run([*command, "profile", "add", str(source), "--remember-source", "--name", f"Lab-{i:02d}"],
                        check=True, capture_output=True, timeout=10)
-    source.unlink()
     terminal.key(b"g")
     terminal.key(b"3")
     # The header label is already painted while the initial snapshot is empty.
     terminal.wait("Lab-01")
     terminal.wait("Update all")
+    success = "Profiles updated: 18"
+    for columns, rows in ((160, 45), (40, 24)):
+        terminal.click_text("Update all")
+        terminal.wait(success)
+        terminal.resize(columns, rows)
+        terminal.wait(success)
+        settle(terminal)
+        lines = terminal.screen.text().splitlines()
+        summaries = [line for line in lines if success in line]
+        corner = "\n".join(lines[:10])
+        if len(summaries) != 1 or "×" not in summaries[0] or "Details" in corner or "Done ·" in corner:
+            raise AssertionError("Short success needs one message and its own close button\n" + terminal.screen.text())
+        save_screen(terminal, output, profile, f"notification-success-{columns}x{rows}")
+        if columns == 160:
+            terminal.key(b"\x0e")
+            card, = list_cards(terminal, "Profiles")
+            left, top, right, bottom = card
+            if bottom != top + 2 or success not in "".join(terminal.screen.cells[top+1][left:right]):
+                raise AssertionError("Plain success expanded with a title or an extra row\n" + terminal.screen.text())
+            terminal.key(b"\r")  # The only action is Close.
+        else:
+            terminal.click_text("×")
+        terminal.wait_absent(success)
+        empty_shortcut(terminal, "Profiles")
+    terminal.resize(160, 45)
+    settle(terminal)
+    source.unlink()
     terminal.click_text("Update all")
     terminal.wait("Profiles updated: 0. Failed: 18")
     terminal.key(b"7")
@@ -343,7 +379,7 @@ def exercise_long_detail(terminal, output, profile, command, directory):
     save_screen(terminal, output, profile, "notification-list-40x24")
     terminal.key(b"\r")
     terminal.wait("Lab-01")
-    left, top, right = detail_corner(terminal, "Settings")
+    left, top, right = detail_corner(terminal, "Settings", "Esc Back")
     save_screen(terminal, output, profile, "notification-detail-40x24")
     if "Lab-18" in terminal.screen.text():
         raise AssertionError("Long detail did not require scrolling at 40×24")
@@ -414,7 +450,7 @@ def exercise(binary, output, profile, notifications_only):
             terminal.wait("Proxy mode")
             save_screen(terminal, output, profile, "overview")
             exercise_notifications(terminal, output, profile)
-            exercise_long_detail(terminal, output, profile, product, Path(temporary))
+            exercise_profile_updates(terminal, output, profile, product, Path(temporary))
             if not notifications_only:
                 exercise_network(terminal, output, profile)
             terminal.exit()
@@ -434,7 +470,7 @@ def exercise(binary, output, profile, notifications_only):
                     raise AssertionError("NO_COLOR run emitted SGR styling: " + repr(styled[:4]))
             if (home / "installation").exists() or (home / "preferences.json").exists():
                 raise AssertionError("read-only theme exercise installed a core or saved preferences")
-            return {"profile": profile, "status": "passed", "sizes": SIZES + [(40, 24)],
+            return {"profile": profile, "status": "passed", "sizes": SIZES + [(40, 24), (40, 18)],
                     "notifications_only": notifications_only,
                     "rgb": bool(RGB.search(raw)), "indexed": bool(INDEXED.search(raw))}
         finally:
