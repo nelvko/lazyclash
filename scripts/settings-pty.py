@@ -42,25 +42,67 @@ def click(terminal, point):
     terminal.key(("\x1b[<0;%d;%dM\x1b[<0;%d;%dm" % (x + 1, y + 1, x + 1, y + 1)).encode())
 
 
-def switch_track(enabled):
-    return "░░░░██" if enabled else "██░░░░"
+def switch_track(enabled, style="slanted", profile="truecolor"):
+    if style == "slider":
+        if profile != "no-color":
+            return "   "
+        style = "text"
+    return {"slanted": ("●▱▱", "▰▰●"), "line": ("●──", "━━●"),
+            "text": ("OFF", " ON")}[style][enabled]
 
 
-def check_switch(terminal, words, key, enabled, profile):
-    label_x, y = position(terminal, words[key])
-    row = terminal.screen.cells[y]
-    right = row.index("│", label_x)
-    track_x = right - 8
-    assert "".join(row[track_x:right]) == switch_track(enabled) + "  ", key
-    before_track = "".join(row[label_x:track_x])
-    assert before_track[len(words[key]):].strip(" ›") == "", (key, before_track)
-    if profile != "no-color":
-        styles = terminal.screen.styles[y]
-        rail_x, thumb_x = (track_x, track_x + 4) if enabled else (track_x + 2, track_x)
-        rail = styles[rail_x]
-        assert rail[0] == rail[1] and rail[1] != styles[right-1][1], (key, "rail", rail)
-        assert styles[thumb_x][0] != rail[0], (key, "thumb", styles[thumb_x])
-    return track_x, y
+def assert_slider(terminal, x, y, enabled):
+    cells = terminal.screen.cells[y][x:x + 3]
+    colors = [cell[1] for cell in terminal.screen.styles[y][x:x + 3]]
+    if enabled:
+        colors.reverse()
+    assert cells == [" "] * 3 and colors[0] != colors[1] == colors[2], (cells, colors)
+
+
+def check_switch(terminal, words, key, enabled, profile, style="slanted"):
+    # Observe the committed endpoint after any pending operation and slide.
+    deadline = time.monotonic() + 3
+    while True:
+        label_x, y = position(terminal, words[key])
+        row = terminal.screen.cells[y]
+        right = row.index("│", label_x)
+        x = right - 5
+        if "".join(row[x:right]) == switch_track(enabled, style, profile) + "  ":
+            break
+        if time.monotonic() >= deadline:
+            raise AssertionError((key, enabled, style, "".join(row[x:right])))
+        terminal.read(0.05)
+    if style == "slider" and profile != "no-color":
+        assert_slider(terminal, x, y, enabled)
+    return x, y
+
+
+def exercise_styles(preview, terminal, words, profile, output, args):
+    current = "slanted"
+    initial = {key: check_switch(terminal, words, key, enabled, profile)
+               for key, enabled in (("settings.ipv6", True), ("settings.unifiedDelay", False))}
+    for choice in ("slider", "text", "line", "slanted"):
+        name = lambda style: words["settings.switchStyle." + style]
+        terminal.click_text(name(current) + " ▾")
+        terminal.wait("✓ " + name(current))
+        terminal.wait("●── → ━━●")
+        if choice == "slider":
+            _, top = position(terminal, "✓ " + name("slanted"))
+            for index, style in enumerate(("slanted", "slider", "text", "line")):
+                y = top + index
+                row = terminal.screen.cells[y]
+                arrow = row.index("→")
+                for enabled, x in ((False, arrow - 4), (True, arrow + 2)):
+                    assert "".join(row[x:x + 3]) == switch_track(enabled, style, profile)
+                    if style == "slider" and profile != "no-color":
+                        assert_slider(terminal, x, y, enabled)
+            preview.capture(terminal, output, "switch-style-menu", args)
+        terminal.click_text("  " + name(choice) + " ")
+        terminal.wait(name(choice) + " ▾")
+        for key, enabled in (("settings.ipv6", True), ("settings.unifiedDelay", False)):
+            assert check_switch(terminal, words, key, enabled, profile, choice) == initial[key]
+        preview.capture(terminal, output, "switch-style-" + choice, args)
+        current = choice
 
 
 def focus(terminal, label, footer_hint=""):
@@ -111,7 +153,7 @@ def exercise(preview, binary, output, language, profile, args):
 
         switch_defaults = {"settings.ipv6": True, "settings.unifiedDelay": False,
                            "dashboard.interface.keyHints": True, "settings.autostart": True}
-        for key in ("dashboard.language.title", "settings.theme", "settings.logLevel", *switch_defaults):
+        for key in ("dashboard.language.title", "settings.theme", "settings.switchStyle", "settings.logLevel", *switch_defaults):
             x, y = position(terminal, words[key])
             row = terminal.screen.cells[y]
             right = row.index("│", x)
@@ -121,16 +163,17 @@ def exercise(preview, binary, output, language, profile, args):
             else:
                 assert row[right-4] == "▾", "dropdown lacks its two-cell inset: " + key
 
+        exercise_styles(preview, terminal, words, profile, output, args)
         native = {"en": "English", "zh-Hans": "简体中文"}
         current = native[language] + " ▾"
-        terminal.resize(28, 24)
+        terminal.resize(24, 24)
         terminal.settle()
         terminal.wait(current)
         label_x, label_y = position(terminal, words["dashboard.language.title"])
         trigger = position(terminal, current)
         # The button reserves two cells for its focus marker and one for face padding.
         assert trigger == (label_x + 3, label_y + 1), "wrapped dropdown did not start below its label"
-        preview.capture(terminal, output, "settings-wrapped-28x24", args)
+        preview.capture(terminal, output, "settings-wrapped-24x24", args)
         click(terminal, trigger)
         terminal.wait("✓ " + native[language])
         terminal.key(b"\x1b")
@@ -141,7 +184,7 @@ def exercise(preview, binary, output, language, profile, args):
         label = position(terminal, words["dashboard.interface.keyHints"].split()[0])
         assert wrapped[1] > label[1] and wrapped[0] == label[0] + 2, "switch did not wrap at the label inset"
         assert terminal.screen.cells[wrapped[1]][label[0]:wrapped[0]] == ["›", " "]
-        preview.capture(terminal, output, "switch-wrapped-28x24", args)
+        preview.capture(terminal, output, "switch-wrapped-24x24", args)
         click(terminal, wrapped)
         terminal.wait(switch_track(False))
         terminal.key(b"\x14")
@@ -153,15 +196,13 @@ def exercise(preview, binary, output, language, profile, args):
         # The current IPv6 thumb, unified-delay rail and keyboard all activate
         # their own switch through the same controls users see in the cards.
         x, y = check_switch(terminal, words, "settings.ipv6", True, profile)
-        thumb_before = terminal.screen.styles[y][x + 5]
-        rail_before = terminal.screen.styles[y][x]
-        terminal.key(("\x1b[<35;%d;%dM" % (x + 6, y + 1)).encode())
+        before_hover = terminal.screen.styles[y][x:x + 3]
+        terminal.key(("\x1b[<35;%d;%dM" % (x + 3, y + 1)).encode())
         terminal.settle()
         check_switch(terminal, words, "settings.ipv6", True, profile)
         if profile != "no-color":
-            assert terminal.screen.styles[y][x + 5] != thumb_before, "hover did not highlight the thumb"
-            assert terminal.screen.styles[y][x] == rail_before, "hover changed the rail"
-        click(terminal, (x + 5, y))
+            assert terminal.screen.styles[y][x:x + 3] != before_hover, "hover did not highlight the switch"
+        click(terminal, (x + 2, y))
         dismiss_toasts(terminal)
         check_switch(terminal, words, "settings.ipv6", False, profile)
         x, y = check_switch(terminal, words, "settings.unifiedDelay", False, profile)
@@ -246,7 +287,7 @@ def exercise(preview, binary, output, language, profile, args):
 
         # Exercise the row's mouse target and the global recovery shortcut.
         x, y = check_switch(terminal, words, "dashboard.interface.keyHints", True, profile)
-        click(terminal, (x + 4, y))
+        click(terminal, (x + 1, y))
         terminal.settle()
         check_switch(terminal, words, "dashboard.interface.keyHints", False, profile)
         preview.capture(terminal, output, "hints-hidden", args)
@@ -338,6 +379,7 @@ def exercise(preview, binary, output, language, profile, args):
         calls = json.loads(report.read_text())
         assert calls["language_saves"] == 2 and calls["language"] == language, calls
         assert calls["hint_saves"] == 4 and not calls["hints_hidden"], calls
+        assert calls["switch_style_saves"] == 4 and calls["switch_style"] == "slanted", calls
         assert calls["theme_saves"] == 3 and calls["theme"] == "dark", calls
         assert calls["core_changes"] == [["ipv6", "off"], ["unified-delay", "on"],
                                          ["unified-delay", "off"], ["log-level", "debug"],

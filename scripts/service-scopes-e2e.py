@@ -254,7 +254,7 @@ def replace_private_bytes(path, content):
 def open_host_tun_confirmation(terminal):
     for _ in range(18):
         terminal.settle()
-        point = terminal.screen.point_below("Host TUN", 1, "○ Off")
+        point = terminal.screen.point_below("Host TUN", 1, "●▱▱")
         if point is not None:
             x, y = point
             terminal.key(f"\x1b[<0;{x+1};{y+1}M\x1b[<0;{x+1};{y+1}m".encode())

@@ -1,5 +1,13 @@
 # 验证入口
 
+## 全局开关样式（2026-11-25）
+
+组件 PTY 覆盖中英文、真彩、256 色和无色，从 160×45 缩放到 40×16 后恢复。四种样式的三个字符格与命中区域保持一致。显式打开 `RUNEWIDTH_EASTASIAN=1` 后，宽度超出三列的字形回退为文本。原生 Kitty 分别使用 Menlo 和 Monaco，三帧中的亮色滑块均占一格（19 像素），另外两格背景连续。[Menlo](../.test-artifacts/switch-component-native/Menlo.png) · [Monaco](../.test-artifacts/switch-component-native/Monaco.png)
+
+设置页真实 PTY 验证中英文、真彩、256 色、无色和 24×24 窄窗折行。每组保存四次样式，服务、路由模式和端口写入均为零。相同页面内可用鼠标及键盘切换开关。读回失败、重复输入、动画期间反向切换、离页后的过期帧和样式写入失败由 Go 回归覆盖。[设置菜单](../.test-artifacts/unified-switch/settings/20261125-172336-2dfe93/zh-Hans/truecolor/switch-style-menu.png) · [滑块式设置页](../.test-artifacts/unified-switch/settings/20261125-172336-2dfe93/zh-Hans/truecolor/switch-style-slider.png)
+
+专用 Debian/arm64 VM 中，随机 systemd 用户服务经过鼠标启动、空格停止、端口冲突失败、外部启停和重启回读。真实 Bash 验证了首次启用、source 激活、经 Mihomo 的 CONNECT 请求及关闭后的环境恢复。主机 TUN 在 120×36、80×24 均默认取消，显式确认后读回启用，再关闭并释放网络资源。通用安装端到端脚本的默认端口 9097 已被占用，脚本在预检阶段退出。[内核验收](../.test-artifacts/unified-switch/linux/core/result.json) · [Shell 验收](../.test-artifacts/unified-switch/linux/shell/result.json) · [TUN 验收](../.test-artifacts/unified-switch/linux/host-tun-e2e.log)
+
 ## 终端代理待激活（2026-11-25）
 
 隔离 PTY 从终端代理关闭开始，分别以中文真彩、英文无色或 256 色运行。120×32 双栏和 40×16 堆叠下，鼠标点击「激活命令」会立即开窗，Esc 返回后可按 Enter 重开。路径含空格的 Shell 命令在窄屏按字符格折行，复制请求逐字节保留原命令。打开、复制和关闭只使用当前会话快照。[网络设置卡](../.test-artifacts/terminal-activation-dialog/final/card-120x32-zh-Hans-truecolor.png) · [宽屏弹窗](../.test-artifacts/terminal-activation-dialog/final/dialog-120x32-zh-Hans-truecolor.png) · [窄屏弹窗](../.test-artifacts/terminal-activation-dialog/final/dialog-40x16-zh-Hans-truecolor.png)
