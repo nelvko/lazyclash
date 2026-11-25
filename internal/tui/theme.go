@@ -44,6 +44,10 @@ const (
 	buttonPrimaryHoverBackground  = "#6aa4df"
 	buttonDangerForeground        = "#f5a3a8"
 	buttonDangerHoverBackground   = "#493940"
+
+	settingsSwitchOnThumb       = "#a8cff2"
+	settingsSwitchOnHoverThumb  = "#c5e3ff"
+	settingsSwitchOffHoverThumb = "#c1c8d1"
 )
 
 func themed(s, foreground, background string, dimmed bool) string {

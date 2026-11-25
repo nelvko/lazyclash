@@ -130,6 +130,9 @@ func terminalColor(c color.Color, profile colorprofile.Profile) color.Color {
 		{buttonPrimaryHoverBackground, 75, 14},
 		{buttonDangerForeground, 217, 9},
 		{buttonDangerHoverBackground, 238, 0},
+		{settingsSwitchOnThumb, 117, 6},
+		{settingsSwitchOnHoverThumb, 153, 14},
+		{settingsSwitchOffHoverThumb, 252, 15},
 		{success, 114, 10},
 		{errorColor, 210, 9},
 	}

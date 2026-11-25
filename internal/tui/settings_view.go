@@ -71,9 +71,9 @@ func settingsSwitchRow(id, label string, on, enabled bool) settingsRow {
 // Use the same six terminal cells in all color modes. Shading the rail glyph
 // and its background identically makes a solid track in full color.
 func renderSettingsSwitch(action overviewControlButton, o buttonOptions) string {
-	railColor, thumbColor := divider, disabled
+	railColor, thumbColor, hoverThumb := divider, muted, settingsSwitchOffHoverThumb
 	if action.selected {
-		railColor, thumbColor = "#456652", "#addbb0"
+		railColor, thumbColor, hoverThumb = buttonSelectedBackground, settingsSwitchOnThumb, settingsSwitchOnHoverThumb
 	}
 	marker := "  "
 	if o.Focused && action.enabled {
@@ -82,7 +82,7 @@ func renderSettingsSwitch(action overviewControlButton, o buttonOptions) string 
 	if !action.enabled {
 		railColor, thumbColor = divider, disabled
 	} else if o.Hovered {
-		thumbColor = pageTitleForeground
+		thumbColor = hoverThumb
 	}
 	railBG, thumbBG := railColor, thumbColor
 	if o.Plain {
