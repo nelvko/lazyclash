@@ -12,7 +12,7 @@ import (
 	"github.com/nelvko/lazyclash/internal/i18n"
 )
 
-func TestFoldedConnectionsWarningWaitsForItsPaintedCard(t *testing.T) {
+func TestActionableWarningPersistsAfterItsCardBecomesVisible(t *testing.T) {
 	for _, size := range [][2]int{{120, 32}, {40, 24}} {
 		m := connectionsModel(t, &fakeBackend{})
 		m, _ = update(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
@@ -31,8 +31,8 @@ func TestFoldedConnectionsWarningWaitsForItsPaintedCard(t *testing.T) {
 		noticeByID(t, m, warning.ID)
 		m, _ = update(m, key("1"))
 		m, _ = update(m, tea.WindowSizeMsg{Width: 160, Height: 45})
-		if !hasAction(m.targets, fmt.Sprintf("notification.close.%d", warning.ID)) || noticeByID(t, m, warning.ID).started.IsZero() {
-			t.Fatal("revealing the full card did not start its deadline")
+		if !hasAction(m.targets, fmt.Sprintf("notification.close.%d", warning.ID)) || !noticeByID(t, m, warning.ID).started.IsZero() {
+			t.Fatal("a visible save failure must stay available until dismissed or resolved")
 		}
 	}
 }

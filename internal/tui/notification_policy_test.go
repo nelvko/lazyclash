@@ -140,7 +140,7 @@ func TestControlNotificationReportsUnconfirmedModeAndShellActivation(t *testing.
 	snapshot.TerminalProxy.ActivationCommand = "source private-path"
 	m, _ = update(m, resultMsg{id: m.id, success: "Saved", snapshot: snapshot, actionSucceeded: true, hasSnapshot: true})
 	item = m.notification.items[len(m.notification.items)-1]
-	if item.Silent || item.Message != m.tr("terminal.savedActivation") {
+	if item.Kind != "warning" || item.Silent || item.Message != m.tr("terminal.savedActivation") || !item.started.IsZero() {
 		t.Fatalf("pending shell activation: %+v", item)
 	}
 }

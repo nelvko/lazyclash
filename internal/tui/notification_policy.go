@@ -29,7 +29,7 @@ func (m *Model) controlCompletion(s app.Snapshot, message string) (string, bool)
 	key := m.notification.operation.Key
 	switch {
 	case key == "terminal-proxy" && pendingActivationCommand(s.TerminalProxy) != "":
-		return m.tr("terminal.savedActivation"), false
+		return m.tr("terminal.savedActivation"), true
 	case key == "tun":
 		switch {
 		case s.ServiceError == "" && !s.Service.Active && (s.Service.State == "inactive" || s.Service.State == "failed"):

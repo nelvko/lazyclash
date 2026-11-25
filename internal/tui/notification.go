@@ -177,7 +177,7 @@ func (n *notificationState) publish(item notificationItem, index int) {
 	switch item.Kind {
 	case "done":
 		item.remaining = 3 * time.Second
-	case "info", "warning":
+	case "info":
 		item.remaining = 4 * time.Second
 	}
 	if index < 0 {
@@ -237,7 +237,7 @@ func (m *Model) syncNotificationTimers(now time.Time) tea.Cmd {
 
 func (m *Model) expireNotification(msg notificationExpiredMsg) {
 	for _, item := range m.notification.items {
-		if item.ID == msg.id && item.generation == msg.generation && !item.started.IsZero() && item.Kind != "error" && item.Kind != "working" {
+		if item.ID == msg.id && item.generation == msg.generation && !item.started.IsZero() {
 			m.dismissNotificationID(item.ID)
 			return
 		}
