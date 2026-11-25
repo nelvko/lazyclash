@@ -96,7 +96,7 @@ func TestSettingsHintsNameTheFocusedControl(t *testing.T) {
 		m := ready(&fakeBackend{snapshot: settingsTestSnapshot()})
 		m.locale, m.page, m.width, m.height = i18n.New(language), "settings", 160, 45
 		for _, test := range []struct{ focus, label string }{
-			{"language.en", "navigation.controls.applyLanguage"}, {"mode.direct", "navigation.controls.applyMode"},
+			{"settings.language", "settings.chooseLanguage"}, {"mode.direct", "navigation.controls.applyMode"},
 			{"runtime-settings", "navigation.controls.editPorts"}, {"key-hints.toggle", "navigation.controls.hideHints"},
 			{"install", "navigation.controls.manageCore"}, {"autostart-enable", "dashboard.settings.enableAutostart"},
 		} {
@@ -110,7 +110,7 @@ func TestSettingsHintsNameTheFocusedControl(t *testing.T) {
 		if !m.keyHints.hidden || !strings.HasPrefix(m.contextHelp(), "Enter "+m.tr("navigation.controls.showHints")+" · ") {
 			t.Fatal("key-hint switch did not describe the reverse action")
 		}
-		m.focus = "language.en"
+		m.focus = "settings.language"
 		m, _ = update(m, special(tea.KeyLeft))
 		if m.focus != "nav.settings" {
 			t.Fatal("settings Back hint disagrees with horizontal-key navigation")

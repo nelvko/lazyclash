@@ -1,6 +1,6 @@
 {
   "settings.interface": "Interface preferences",
-  "settings.languageHint": "Saved for the next launch.",
+  "settings.chooseLanguage": "Choose language",
   "settings.keyHintsHint": "Show the bottom shortcut bar · Ctrl+T",
   "settings.theme": "Theme",
   "settings.chooseTheme": "Choose theme",

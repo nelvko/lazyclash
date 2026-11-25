@@ -81,6 +81,7 @@ def exercise(preview, binary, output, language, profile, args):
 
         terminal.click_text("Dark ▾")
         terminal.wait("✓ Dark")
+        terminal.wait("    Auto ")
         _, checked_y = position(terminal, "✓ Dark")
         assert position(terminal, "Light")[1] == checked_y - 1, "Light must precede Dark"
         assert position(terminal, "Auto ")[1] == checked_y + 1, "Auto must follow Dark"
@@ -111,16 +112,33 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.click_text("    Dark")
         terminal.wait("Dark ▾")
 
-        # A second language click while the first save is pending must be inert.
         other = "zh-Hans" if language == "en" else "en"
         native = {"en": "English", "zh-Hans": "简体中文"}
-        current_point = position(terminal, native[language])
-        click(terminal, position(terminal, native[other]))
+        current = native[language] + " ▾"
+        switched = native[other] + " ▾"
+        assert native[other] not in terminal.screen.text(), "closed language dropdown shows both languages"
+        assert position(terminal, words["dashboard.interface.keyHints"])[1] == position(terminal, current)[1] + 2, "unexpected text below the language control"
+        current_point = position(terminal, current)
         click(terminal, current_point)
+        terminal.wait("✓ " + native[language])
+        terminal.wait(native[other])
+        preview.capture(terminal, output, "language-menu-wide", args)
+        move = b"\x1b[B" if language == "en" else b"\x1b[A"
+        terminal.key(move)
+        terminal.key(b"\x1b")
+        terminal.wait_absent(native[other])
+        terminal.key(b"\r")
+        terminal.wait("✓ " + native[language])
+        terminal.key(move)
+        terminal.key(b"\r")
+        click(terminal, current_point)  # The pending save disables the trigger.
         terminal.wait(labels(other)["settings.interface"])
+        terminal.wait(switched)
         terminal.settle()
         preview.capture(terminal, output, "language-switched", args)
-        click(terminal, position(terminal, native[language]))
+        terminal.click_text(switched)
+        terminal.wait("✓ " + native[other])
+        terminal.click_text(native[language])
         terminal.wait(words["settings.interface"])
         terminal.settle()
 
@@ -175,6 +193,12 @@ def exercise(preview, binary, output, language, profile, args):
                 assert before != terminal.screen.text(), "wheel did not scroll the narrow Settings body"
             preview.capture(terminal, output, "scrolled-%dx%d" % (width, height), args)
             if width == 40:
+                focus(terminal, current)
+                terminal.key(b"\r")
+                terminal.wait("✓ " + native[language])
+                preview.capture(terminal, output, "language-menu-compact", args)
+                terminal.key(b"\x1b")
+                terminal.wait_absent(native[other])
                 focus(terminal, "Dark ▾")
                 terminal.key(b"\r")
                 terminal.wait("✓ Dark")
@@ -223,7 +247,7 @@ def exercise(preview, binary, output, language, profile, args):
         if profile == "no-color":
             assert not any(value not in (b"", b"0") for value in preview.SGR.findall(raw)), "NO_COLOR emitted styling"
         (output / "pty.raw").write_bytes(raw)
-        print("PASS %s/%s: theme dropdown, language/busy, hints, adaptive width/columns, wheel, Tab, ports return and diagnostics Logs; %s" % (language, profile, json.dumps(calls)), flush=True)
+        print("PASS %s/%s: theme and language dropdowns, busy guard, hints, adaptive width/columns, wheel, Tab, ports return and diagnostics Logs; %s" % (language, profile, json.dumps(calls)), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")
         (output / "failed.ansi").write_bytes(terminal.raw)

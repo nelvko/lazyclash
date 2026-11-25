@@ -104,6 +104,8 @@ func (m *Model) overviewCardHasControls() bool {
 func (m *Model) settingsContextHelp() string {
 	var label string
 	switch m.focus {
+	case "settings.language":
+		label = "settings.chooseLanguage"
 	case "settings.theme":
 		label = "settings.chooseTheme"
 	case "key-hints.toggle":
@@ -149,9 +151,7 @@ func (m *Model) settingsContextHelp() string {
 	case "terminal.activation":
 		label = "terminal.activationAction"
 	}
-	if strings.HasPrefix(m.focus, "language.") {
-		label = "navigation.controls.applyLanguage"
-	} else if strings.HasPrefix(m.focus, "mode.") {
+	if strings.HasPrefix(m.focus, "mode.") {
 		label = "navigation.controls.applyMode"
 	}
 	if label != "" {

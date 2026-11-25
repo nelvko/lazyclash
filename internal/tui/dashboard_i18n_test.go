@@ -50,37 +50,24 @@ func TestLocalizedDashboardPreservesCanvasAndActions(t *testing.T) {
 	}
 }
 
-func TestLanguageControlsUseNativeNamesAndDisplayCellHits(t *testing.T) {
-	for _, language := range []string{"en", "zh-Hans"} {
+func TestLanguageDropdownUsesCurrentNativeNameAndDisplayCellHit(t *testing.T) {
+	for language, label := range map[string]string{i18n.English: "English ▾", i18n.Chinese: "简体中文 ▾"} {
 		for _, width := range []int{20, 30, 56, 80} {
 			o := dashboardOptions{Locale: i18n.New(language), PlainButtons: true}
 			block := settingsInterface(o, width)
 			assertCanvas(t, strings.Join(block.lines, "\n"), width, len(block.lines))
 			assertRegions(t, block.targets, width, len(block.lines))
-			for id, name := range map[string]string{"language.en": "English", "language.zh-Hans": "简体中文"} {
-				found := false
-				for _, hit := range block.targets {
-					if hit.ID != id {
-						continue
-					}
-					painted := ansi.Strip(ansi.Cut(block.lines[hit.Y], hit.X, hit.X+hit.W))
-					if !strings.Contains(painted, name) || ansi.StringWidth(painted) != hit.W {
-						t.Fatalf("%s/%d: language target misses label: %s=%q", language, width, id, painted)
-					}
-					if strings.Contains(painted, "<") != (id == "language."+language) || strings.Contains(painted, "✓") {
-						t.Fatalf("%s: selected language marker follows text instead of language ID", language)
-					}
-					found = true
-				}
-				if !found {
-					t.Fatalf("%s/%d: language action %s missing", language, width, id)
-				}
+			hit := findTarget(t, Model{targets: block.targets}, "settings.language")
+			painted := ansi.Strip(ansi.Cut(block.lines[hit.Y], hit.X, hit.X+hit.W))
+			if !strings.Contains(painted, label) || ansi.StringWidth(painted) != hit.W {
+				t.Fatalf("%s/%d: language target misses label %q: %q", language, width, label, painted)
+			}
+			if !strings.Contains(ansi.Strip(block.lines[hit.Y+1]), "──") {
+				t.Fatalf("%s/%d: a hint occupies the row below the language control", language, width)
 			}
 			o.Busy = true
-			for _, hit := range settingsInterface(o, width).targets {
-				if strings.HasPrefix(hit.ID, "language.") {
-					t.Fatal("language switching remains clickable during an operation")
-				}
+			if hasAction(settingsInterface(o, width).targets, "settings.language") {
+				t.Fatal("language switching remains clickable during an operation")
 			}
 		}
 	}

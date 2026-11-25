@@ -117,6 +117,7 @@ type networkMsg struct {
 type Model struct {
 	locale                i18n.Localizer
 	languageOverride      string
+	savedLanguage         string
 	editorPreference      string
 	theme                 string
 	terminalLight         bool
@@ -404,6 +405,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.locale = i18n.New(v.language)
 			m.languageOverride = v.language
+			m.savedLanguage = v.language
 			m.message, m.failure = m.tr("language.saved"), ""
 			m.refreshLocalizedInputs()
 		}
@@ -549,7 +551,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.applyThemePreference(v.prefs.Theme)
 			m.loadKeyHintsPreference(v.prefs.HideKeyHints)
 			m.editorPreference = v.prefs.Editor
-			m.locale = i18n.New(i18n.Resolve(m.languageOverride, v.prefs.Language, os.Getenv))
+			m.savedLanguage = v.prefs.Language
+			m.locale = i18n.New(i18n.Resolve(m.languageOverride, m.savedLanguage, os.Getenv))
 			m.refreshLocalizedInputs()
 			m.wizard.cfg = v.prefs.Network.Normalized()
 			m.wizard.draft = m.wizard.cfg
@@ -1284,9 +1287,6 @@ func (m *Model) activate(id string) tea.Cmd {
 	if m.notificationAction(id) {
 		return nil
 	}
-	if strings.HasPrefix(id, "language.") {
-		return m.changeLanguage(strings.TrimPrefix(id, "language."))
-	}
 	if handled, cmd := m.profileAction(id); handled {
 		return cmd
 	}
@@ -1294,10 +1294,11 @@ func (m *Model) activate(id string) tea.Cmd {
 		return m.openPorts()
 	}
 	switch id {
+	case "settings.language":
+		m.openPageSelectionMenu("settings", id, m.locale.Language(), languageMenuItems)
+		return nil
 	case "settings.theme":
-		if m.pageSelectionMenuAvailable("settings") && !m.menu.open {
-			m.openPageSelectionMenu(id, m.theme, themeMenuItems)
-		}
+		m.openPageSelectionMenu("settings", id, m.theme, themeMenuItems)
 		return nil
 	case "editor.configure":
 		return m.openEditorPreference()

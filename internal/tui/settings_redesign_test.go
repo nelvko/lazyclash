@@ -101,6 +101,10 @@ func TestSettingsGroupsAdaptToBodyWidthAndShortTerminals(t *testing.T) {
 
 func TestSettingsActionsKeepCompleteLabelsAndUniqueTargets(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
+		languageLabel := "English ▾"
+		if language == i18n.Chinese {
+			languageLabel = "简体中文 ▾"
+		}
 		for _, width := range []int{40, 60, 80, 120, 160} {
 			for _, active := range []bool{false, true} {
 				o := dashboardOptions{Locale: i18n.New(language), Height: 32, Snapshot: settingsTestSnapshot()}
@@ -109,7 +113,7 @@ func TestSettingsActionsKeepCompleteLabelsAndUniqueTargets(t *testing.T) {
 				o.Snapshot.TUN = active
 				tr := o.Locale.T
 				labels := map[string]string{
-					"language.en": "English", "language.zh-Hans": "简体中文", "key-hints.toggle": tr("dashboard.control.on"),
+					"settings.language": languageLabel, "key-hints.toggle": tr("dashboard.control.on"),
 					"settings.theme":   "Dark ▾",
 					"editor.configure": tr("settings.edit"),
 					"install":          tr("settings.manage"), "runtime-settings": tr("settings.edit"),
@@ -152,12 +156,12 @@ func TestSettingsActionsKeepCompleteLabelsAndUniqueTargets(t *testing.T) {
 func TestSettingsUninstalledActionsAndHeaderOwnership(t *testing.T) {
 	o := dashboardOptions{Locale: i18n.New(i18n.English), Width: 160, Height: 45}
 	body, hits := settingsContent(o, 120)
-	for _, id := range []string{"install", "card.logs", "language.en", "language.zh-Hans", "key-hints.toggle", "settings.theme", "editor.configure"} {
+	for _, id := range []string{"install", "card.logs", "settings.language", "key-hints.toggle", "settings.theme", "editor.configure"} {
 		if !hasAction(hits, id) {
 			t.Fatalf("uninstalled settings lost %s", id)
 		}
 	}
-	if len(hits) != 7 || !strings.Contains(ansi.Strip(body), o.Locale.T("settings.afterInstall")) {
+	if len(hits) != 6 || !strings.Contains(ansi.Strip(body), o.Locale.T("settings.afterInstall")) {
 		t.Fatal("uninstalled settings expose installed-core actions or omit their availability")
 	}
 	if hasAction(hits, "network") {
@@ -166,7 +170,7 @@ func TestSettingsUninstalledActionsAndHeaderOwnership(t *testing.T) {
 	o.Page = "settings"
 	o.Header = (&Model{page: "settings", locale: o.Locale}).pageHeader()
 	_, hits = settingsContent(o, 120)
-	if hasAction(hits, "network") || len(hits) != 7 {
+	if hasAction(hits, "network") || len(hits) != 6 {
 		t.Fatal("download settings are duplicated in the header and body")
 	}
 	_, hits, _ = renderDashboard(o)
@@ -225,9 +229,9 @@ func TestSettingsThemeExplainsLightPlaceholderAndAutoChoice(t *testing.T) {
 		} {
 			o.Theme, o.EffectiveTheme = tc.theme, tc.effective
 			row := settingsThemeRow(o)
-			if row.actions[0].label != themeLabel(tc.theme)+" ▾" ||
+			if row.actions[0].label != menuItemLabel(themeMenuItems, tc.theme)+" ▾" ||
 				strings.Contains(row.note, o.Locale.T("settings.themeLightPlaceholder")) != tc.placeholder ||
-				strings.Contains(row.note, o.Locale.T("settings.themeAuto", themeLabel(tc.effective))) != (tc.theme == app.ThemeAuto) {
+				strings.Contains(row.note, o.Locale.T("settings.themeAuto", menuItemLabel(themeMenuItems, tc.effective))) != (tc.theme == app.ThemeAuto) {
 				t.Fatalf("%s/%s/%s: unexpected theme setting %+v", language, tc.theme, tc.effective, row)
 			}
 		}

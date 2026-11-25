@@ -19,7 +19,6 @@
   "navigation.controls.disableTUN": "关闭 TUN",
   "navigation.controls.enableTerminal": "开启终端代理",
   "navigation.controls.disableTerminal": "关闭终端代理",
-  "navigation.controls.applyLanguage": "应用语言",
   "navigation.controls.applyMode": "应用模式",
   "navigation.profiles.inputEmpty": "Tab 控件 · Esc 结束输入",
   "navigation.profiles.importing": "Enter 导入 · Tab 控件 · Esc 结束输入",

@@ -1,8 +1,6 @@
 package tui
 
 import (
-	"strings"
-
 	tea "charm.land/bubbletea/v2"
 	"github.com/nelvko/lazyclash/internal/i18n"
 )
@@ -16,6 +14,9 @@ func (m *Model) changeLanguage(language string) tea.Cmd {
 		return nil
 	}
 	if language != i18n.English && language != i18n.Chinese {
+		return nil
+	}
+	if language == m.locale.Language() && language == m.savedLanguage {
 		return nil
 	}
 	ctx := m.newJob("language")
@@ -37,7 +38,7 @@ func (m *Model) refreshLocalizedInputs() {
 		m.input.Placeholder = m.tr("model.source_placeholder")
 	}
 	// Preserve current values, cursor, focus and task state when changing language.
-	if strings.HasPrefix(m.focus, "language.") {
+	if m.focus == "settings.language" {
 		m.scroll = 0
 	}
 }

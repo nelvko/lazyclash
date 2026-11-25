@@ -312,7 +312,7 @@ func (m *Model) enterContent() {
 			}
 		case "settings":
 			for _, target := range targets {
-				if strings.HasPrefix(target.ID, "language.") || target.ID == "key-hints.toggle" {
+				if target.ID == "settings.language" || target.ID == "key-hints.toggle" {
 					chosen = target.ID
 					break
 				}

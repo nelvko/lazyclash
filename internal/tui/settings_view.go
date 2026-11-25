@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/buildinfo"
+	"github.com/nelvko/lazyclash/internal/i18n"
 )
 
 // Settings reuses the dashboard's scrolling, focus and button components.
@@ -19,19 +20,30 @@ type settingsRow struct {
 	actions            []overviewControlButton
 }
 
+var languageMenuItems = []menuItem{
+	{ID: i18n.English, Label: "English"},
+	{ID: i18n.Chinese, Label: "简体中文"},
+}
+
 var themeMenuItems = []menuItem{
 	{ID: app.ThemeLight, Label: "Light"},
 	{ID: app.ThemeDark, Label: "Dark"},
 	{ID: app.ThemeAuto, Label: "Auto"},
 }
 
-func themeLabel(theme string) string {
-	for _, item := range themeMenuItems {
-		if item.ID == theme {
+func menuItemLabel(items []menuItem, id string) string {
+	for _, item := range items {
+		if item.ID == id {
 			return item.Label
 		}
 	}
-	return theme
+	return id
+}
+
+func settingsSelectRow(o dashboardOptions, id, label, current string, items []menuItem) settingsRow {
+	return settingsRow{label: label, actions: []overviewControlButton{
+		{id: id, label: menuItemLabel(items, current) + " ▾", enabled: !o.Busy},
+	}}
 }
 
 func settingsContent(o dashboardOptions, width int) (string, []hitRegion) {
@@ -61,10 +73,7 @@ func settingsInterface(o dashboardOptions, width int) dashboardBlock {
 		state = tr("dashboard.control.off")
 	}
 	return settingsSection(o, width, tr("settings.interface"), []settingsRow{
-		{label: tr("dashboard.language.title"), note: tr("settings.languageHint"), actions: []overviewControlButton{
-			{id: "language.en", label: "English", enabled: !o.Busy, selected: o.Locale.Language() == "en"},
-			{id: "language.zh-Hans", label: "简体中文", enabled: !o.Busy, selected: o.Locale.Language() == "zh-Hans"},
-		}},
+		settingsSelectRow(o, "settings.language", tr("dashboard.language.title"), o.Locale.Language(), languageMenuItems),
 		{label: tr("dashboard.interface.keyHints"), note: tr("settings.keyHintsHint"), actions: []overviewControlButton{
 			{id: "key-hints.toggle", label: state, enabled: true, selected: !o.HideKeyHints},
 		}},
@@ -75,16 +84,14 @@ func settingsInterface(o dashboardOptions, width int) dashboardBlock {
 
 func settingsThemeRow(o dashboardOptions) settingsRow {
 	theme := cmp.Or(o.Theme, app.ThemeDark)
-	var note string
+	row := settingsSelectRow(o, "settings.theme", o.Locale.T("settings.theme"), theme, themeMenuItems)
 	if theme == app.ThemeAuto {
-		note = o.Locale.T("settings.themeAuto", themeLabel(o.EffectiveTheme))
+		row.note = o.Locale.T("settings.themeAuto", menuItemLabel(themeMenuItems, o.EffectiveTheme))
 	}
 	if theme == app.ThemeLight || theme == app.ThemeAuto && o.EffectiveTheme == app.ThemeLight {
-		note = strings.TrimSpace(note + " " + o.Locale.T("settings.themeLightPlaceholder"))
+		row.note = strings.TrimSpace(row.note + " " + o.Locale.T("settings.themeLightPlaceholder"))
 	}
-	return settingsRow{label: o.Locale.T("settings.theme"), note: note, actions: []overviewControlButton{
-		{id: "settings.theme", label: themeLabel(theme) + " ▾", enabled: !o.Busy},
-	}}
+	return row
 }
 
 func settingsService(o dashboardOptions, width int) dashboardBlock {

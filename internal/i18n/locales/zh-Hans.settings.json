@@ -1,6 +1,6 @@
 {
   "settings.interface": "界面偏好",
-  "settings.languageHint": "自动保存，下次启动继续使用。",
+  "settings.chooseLanguage": "选择语言",
   "settings.keyHintsHint": "显示底部快捷键提示栏 · Ctrl+T",
   "settings.theme": "主题",
   "settings.chooseTheme": "选择主题",

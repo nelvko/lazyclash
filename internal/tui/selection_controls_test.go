@@ -49,7 +49,6 @@ func TestSelectionGroupsKeepEqualWidthsAndAdjacentFocusGutters(t *testing.T) {
 						assertCanvas(t, body, width, len(block.lines))
 					}
 					check(overviewModeCard(o, width), modeIDs)
-					check(settingsInterface(o, width), []string{"language.en", "language.zh-Hans"})
 					m, _ := proxiesModel(t, 160, 40)
 					m.locale, m.noColor = o.Locale, plain
 					check(m.proxyModes(width), modeIDs)

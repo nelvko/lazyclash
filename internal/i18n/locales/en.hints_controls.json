@@ -19,7 +19,6 @@
   "navigation.controls.disableTUN": "Disable TUN",
   "navigation.controls.enableTerminal": "Enable terminal proxy",
   "navigation.controls.disableTerminal": "Disable terminal proxy",
-  "navigation.controls.applyLanguage": "Apply language",
   "navigation.controls.applyMode": "Apply mode",
   "navigation.profiles.inputEmpty": "Tab Controls · Esc Leave input",
   "navigation.profiles.importing": "Enter Import · Tab Controls · Esc Leave input",

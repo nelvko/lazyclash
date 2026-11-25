@@ -17,7 +17,12 @@ func (m *Model) applyMenuResult(result menuResult) tea.Cmd {
 		if result.Closed {
 			m.hover = ""
 			if result.Action != "" && m.pageSelectionMenuAvailable("settings") {
-				return m.changeTheme(result.Action)
+				switch m.menu.anchor.ID {
+				case "settings.language":
+					return m.changeLanguage(result.Action)
+				case "settings.theme":
+					return m.changeTheme(result.Action)
+				}
 			}
 		}
 		return nil
@@ -68,7 +73,10 @@ func (m *Model) pageSelectionMenuAvailable(page string) bool {
 		!m.wizard.networkOpen && m.form == "" && !m.notification.panel.open
 }
 
-func (m *Model) openPageSelectionMenu(trigger, current string, items []menuItem) bool {
+func (m *Model) openPageSelectionMenu(page, trigger, current string, items []menuItem) bool {
+	if m.menu.open || !m.pageSelectionMenuAvailable(page) {
+		return false
+	}
 	m.focus, m.hover = trigger, ""
 	m.layout()
 	for _, target := range m.targets {

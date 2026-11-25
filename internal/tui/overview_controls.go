@@ -14,7 +14,7 @@ type overviewControlButton struct {
 }
 
 func (b overviewControlButton) selectable() bool {
-	return strings.HasPrefix(b.id, "mode.") || strings.HasPrefix(b.id, "language.") || b.id == "key-hints.toggle"
+	return strings.HasPrefix(b.id, "mode.") || b.id == "key-hints.toggle"
 }
 
 func overviewSelectionWidth(buttons []overviewControlButton) int {

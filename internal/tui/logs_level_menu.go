@@ -17,12 +17,11 @@ func (m *Model) logLevelMenuItems() []menuItem {
 }
 
 func (m *Model) openLogLevelMenu() {
-	if !m.pageSelectionMenuAvailable("logs") || m.menu.open {
-		return
+	if m.openPageSelectionMenu("logs", "logs.level", strconv.Itoa(m.logs.level), m.logLevelMenuItems()) {
+		m.logs.editing = false
+		m.logs.search.Blur()
+		m.logs.levelMenu = true
 	}
-	m.logs.editing = false
-	m.logs.search.Blur()
-	m.logs.levelMenu = m.openPageSelectionMenu("logs.level", strconv.Itoa(m.logs.level), m.logLevelMenuItems())
 }
 
 func (m *Model) reconcileLogsLevelMenu() {
