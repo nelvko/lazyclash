@@ -405,11 +405,7 @@ func (m *Model) profileFormKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 	switch k.String() {
 	case "esc":
 		m.closeProfileForm()
-		m.message = m.tr("profiles.input_canceled")
-		m.prepareNotification("input.cancel", m.tr("profiles.input_canceled"))
-		m.messageTransient = false
-		m.messageInformational = true
-		m.failure = ""
+		m.message, m.failure = "", ""
 		return true, nil
 	case "enter":
 		value := strings.TrimSpace(m.input.Value())

@@ -404,7 +404,7 @@ def main():
             terminal.wait("Subscription URL or local YAML path")
             terminal.key(b"\x1b")
             terminal.wait_absent("Import configuration")
-            terminal.wait("Input canceled")
+            terminal.wait_absent("Input canceled")
 
             # Download method is one choice. The acceleration prefix is visible
             # and does not permit embedded credentials; Esc discards the draft.

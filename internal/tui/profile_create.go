@@ -159,9 +159,7 @@ func (m *Model) profileCreateKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 		}
 	case "esc":
 		m.closeProfileCreate()
-		m.prepareNotification("input.cancel", m.tr("profiles.input_canceled"))
-		m.message = m.tr("profiles.input_canceled")
-		m.messageInformational = true
+		m.message = ""
 		return true, nil
 	case "tab", "shift+tab":
 		if k.String() == "tab" && m.profileCreate.field == profileCreateSource {

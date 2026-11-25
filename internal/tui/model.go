@@ -1204,11 +1204,7 @@ func (m *Model) formKey(k tea.KeyPressMsg) tea.Cmd {
 		m.form = ""
 		m.input.Reset()
 		m.input.Blur()
-		m.prepareNotification("input.cancel", m.tr("model.input_canceled"))
-		m.message = m.tr("model.input_canceled")
-		m.messageTransient = false
-		m.messageInformational = true
-		m.failure = ""
+		m.message, m.failure = "", ""
 		return nil
 	}
 	if key == "enter" {

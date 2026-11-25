@@ -12,7 +12,6 @@
   "model.source_placeholder": "HTTPS URL, ~/config.yaml or ./config.yaml",
   "model.refreshing": "Refreshing…",
   "model.canceling": "Cancelling / Cleaning up…",
-  "model.input_canceled": "Input canceled",
   "model.value_required": "A value is required",
   "model.fetch_config": "Fetching and validating configuration…",
   "model.config_saved": "Configuration saved; apply it from Profiles",

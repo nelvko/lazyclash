@@ -12,7 +12,6 @@
   "model.source_placeholder": "HTTPS 地址、~/config.yaml 或 ./config.yaml",
   "model.refreshing": "正在刷新…",
   "model.canceling": "正在取消并清理…",
-  "model.input_canceled": "已取消输入",
   "model.value_required": "请输入内容",
   "model.fetch_config": "正在获取并验证配置…",
   "model.config_saved": "配置已保存，可前往「订阅」页应用",

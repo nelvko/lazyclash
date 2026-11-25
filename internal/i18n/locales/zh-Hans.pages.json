@@ -15,7 +15,6 @@
   "profiles.display_name": "显示名称",
   "profiles.description": "描述",
   "profiles.overrides_path": "覆写 YAML 文件的绝对路径",
-  "profiles.input_canceled": "已取消输入",
   "profiles.value_required": "请输入内容",
   "profiles.importing_overrides": "正在导入配置覆写…",
   "profiles.overrides_saved": "覆写已保存",

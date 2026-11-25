@@ -15,7 +15,6 @@
   "profiles.display_name": "Display name",
   "profiles.description": "Description",
   "profiles.overrides_path": "Absolute path to overrides YAML",
-  "profiles.input_canceled": "Input canceled",
   "profiles.value_required": "A value is required",
   "profiles.importing_overrides": "Importing profile overrides…",
   "profiles.overrides_saved": "Overrides saved",

@@ -60,7 +60,7 @@ func TestNotificationHeadingsFollowLocaleAndOperationContext(t *testing.T) {
 	}
 }
 
-func TestNotificationRoutineRefreshIsSilentAndCancellationIsInformational(t *testing.T) {
+func TestNotificationRoutineRefreshAndUnsubmittedInputAreQuiet(t *testing.T) {
 	m := noticeModel()
 	m, _ = update(m, key("g"))
 	if len(m.notification.items) != 0 {
@@ -73,8 +73,8 @@ func TestNotificationRoutineRefreshIsSilentAndCancellationIsInformational(t *tes
 	m.locale = i18n.New(i18n.Chinese)
 	m.openForm()
 	m, _ = update(m, special(tea.KeyEscape))
-	if len(m.notification.items) != 1 || m.notification.items[0].Kind != "info" || m.notification.items[0].Message != m.tr("model.input_canceled") || m.notification.items[0].remaining != 4*time.Second {
-		t.Fatal("cancellation lost localized informational semantics")
+	if m.form != "" || len(m.notification.items) != 0 {
+		t.Fatal("closing an unsubmitted form generated a notification")
 	}
 }
 
@@ -170,7 +170,7 @@ func TestNotificationDialogsHidePreviousItemsWithoutReplayingValidation(t *testi
 		t.Fatal("dialog validation leaked into global notification collection")
 	}
 	m, _ = update(m, special(tea.KeyEscape))
-	if m.form != "" || len(m.notification.items) != 2 || noticeByID(t, m, id).Message != "previous failure" {
+	if m.form != "" || len(m.notification.items) != 1 || noticeByID(t, m, id).Message != "previous failure" {
 		t.Fatal("closing dialog removed earlier failure or replayed validation")
 	}
 	for _, item := range m.notification.items {

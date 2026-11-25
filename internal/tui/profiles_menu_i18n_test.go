@@ -10,18 +10,15 @@ import (
 	"github.com/nelvko/lazyclash/internal/i18n"
 )
 
-func TestProfileFormCancellationUsesInformationalNotificationInBothLanguages(t *testing.T) {
-	for _, sample := range []struct{ language, message string }{{i18n.English, "Input canceled"}, {i18n.Chinese, "已取消输入"}} {
+func TestProfileFormCancellationLeavesNoFeedback(t *testing.T) {
+	for _, language := range []string{i18n.English, i18n.Chinese} {
 		m, _ := profileClickModel(t, true, true, false, false)
-		m.locale = i18n.New(sample.language)
+		m.locale = i18n.New(language)
 		m.openProfileEdit("profile-overrides", "p-stable-profile-id")
 		m.failure = "old validation failure"
 		m, _ = update(m, special(tea.KeyEscape))
-		if m.form != "" || m.failure != "" || m.messageTransient || !m.messageInformational || m.message != sample.message {
-			t.Fatalf("%s: cancellation lost notification semantics", sample.language)
-		}
-		if len(m.notification.items) != 1 || !m.notification.items[0].Silent || strings.Contains(ansi.Strip(m.screen), sample.message) {
-			t.Fatalf("%s: ordinary cancellation interrupted the page with a toast", sample.language)
+		if m.form != "" || m.failure != "" || m.message != "" || len(m.notification.items) != 0 {
+			t.Fatalf("%s: closing an unsubmitted form kept feedback", language)
 		}
 	}
 }
