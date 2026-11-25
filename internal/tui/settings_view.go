@@ -18,6 +18,7 @@ type settingsRow struct {
 	label, value, note string
 	color              string
 	actions            []overviewControlButton
+	trailingControl    bool // Switches and dropdowns align to the card's right inset.
 }
 
 var languageMenuItems = []menuItem{
@@ -41,7 +42,7 @@ func menuItemLabel(items []menuItem, id string) string {
 }
 
 func settingsSelectRow(o dashboardOptions, id, label, current string, items []menuItem) settingsRow {
-	return settingsRow{label: label, actions: []overviewControlButton{
+	return settingsRow{label: label, trailingControl: true, actions: []overviewControlButton{
 		{id: id, label: menuItemLabel(items, current) + " ▾", enabled: !o.Busy},
 	}}
 }
@@ -74,7 +75,7 @@ func settingsInterface(o dashboardOptions, width int) dashboardBlock {
 	}
 	return settingsSection(o, width, tr("settings.interface"), "", []settingsRow{
 		settingsSelectRow(o, "settings.language", tr("dashboard.language.title"), o.Locale.Language(), languageMenuItems),
-		{label: tr("dashboard.interface.keyHints"), note: tr("settings.keyHintsHint"), actions: []overviewControlButton{
+		{label: tr("dashboard.interface.keyHints"), note: tr("settings.keyHintsHint"), trailingControl: true, actions: []overviewControlButton{
 			{id: "key-hints.toggle", label: state, enabled: true, selected: !o.HideKeyHints},
 		}},
 		settingsThemeRow(o),
@@ -96,7 +97,7 @@ func settingsThemeRow(o dashboardOptions) settingsRow {
 
 func settingsService(o dashboardOptions, width int) dashboardBlock {
 	tr, s := o.Locale.T, o.Snapshot
-	autostart := settingsRow{label: tr("settings.autostart"), value: tr("settings.afterInstall")}
+	autostart := settingsRow{label: tr("settings.autostart"), value: tr("settings.afterInstall"), trailingControl: true}
 	if s.Installed {
 		id, state := "autostart-enable", tr("dashboard.control.off")
 		if s.Service.Enabled {
@@ -169,6 +170,14 @@ func settingsSection(o dashboardOptions, width int, title, description string, r
 	if width < 4 {
 		inner, left, top = max(1, width), 0, 0
 	}
+	// panelFrame supplies one blank cell inside each border. Add the second
+	// when the card can still show at least one cell of content.
+	inset := ""
+	if width >= 7 {
+		inset = " "
+		inner -= 2
+		left++
+	}
 	style := func(s, color string) string { return themed(s, color, panel, o.Dim) }
 	var b dashboardBlock
 	addText := func(s, color string) {
@@ -194,6 +203,7 @@ func settingsSection(o dashboardOptions, width int, title, description string, r
 		}
 		label := style(row.label, text)
 		value := style(row.value, color)
+		rowStart := len(b.lines)
 		// A shared label column keeps values close to their names on wide cards.
 		// Long labels, values and action groups flow below instead of truncating.
 		if row.label != "" || row.value != "" {
@@ -224,14 +234,22 @@ func settingsSection(o dashboardOptions, width int, title, description string, r
 				total += ansi.StringWidth(value)
 			}
 			x := 0
-			if row.value != "" && row.label != "" && ansi.StringWidth(label) <= labelColumn && labelColumn+ansi.StringWidth(value)+3+total <= inner {
-				x = labelColumn + ansi.StringWidth(value) + 3
-				gap := labelColumn + 2 - ansi.StringWidth(label)
-				b.lines[len(b.lines)-1] = label + style(strings.Repeat(" ", gap), text) + value + style(" ", text)
-			} else if row.value == "" && row.label != "" && ansi.StringWidth(label) <= labelColumn && labelColumn+2+total <= inner {
-				x = labelColumn + 2
-				b.lines[len(b.lines)-1] = label + style(strings.Repeat(" ", x-ansi.StringWidth(label)), text)
-			} else {
+			if len(b.lines) == rowStart+1 {
+				used := ansi.StringWidth(b.lines[rowStart])
+				available := inner - used - total
+				gap := labelColumn + 2 - used
+				switch {
+				case row.trailingControl:
+					gap = max(2, available)
+				case row.value != "":
+					gap = 1
+				}
+				if gap > 0 && gap <= available {
+					b.lines[rowStart] += style(strings.Repeat(" ", gap), text)
+					x = used + gap
+				}
+			}
+			if x == 0 {
 				b.blank()
 			}
 			for i, action := range row.actions {
@@ -250,6 +268,9 @@ func settingsSection(o dashboardOptions, width int, title, description string, r
 		if row.note != "" {
 			addText(row.note, color)
 		}
+	}
+	for i := range b.lines {
+		b.lines[i] = inset + b.lines[i]
 	}
 	b.lines = panelFrame(b.lines, width, len(b.lines)+2, o)
 	return b

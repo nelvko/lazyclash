@@ -88,6 +88,38 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait("lazyclash doctor")
         preview.capture(terminal, output, "settings-wide", args)
 
+        for key in ("dashboard.language.title", "settings.theme", "settings.ipv6", "settings.unifiedDelay",
+                    "settings.logLevel", "dashboard.interface.keyHints", "settings.autostart"):
+            x, y = position(terminal, words[key])
+            row = terminal.screen.cells[y]
+            right = row.index("│", x)
+            assert row[x-3:x] == ["│", " ", " "] and row[right-2:right] == [" ", " "], key
+            if key in ("dashboard.interface.keyHints", "settings.autostart"):
+                if profile == "no-color":
+                    assert row[right-3] == ">", "toggle lacks its two-cell inset: " + key
+                else:
+                    colors = terminal.screen.styles[y]
+                    assert colors[right-3][1] != colors[right-2][1], "toggle lacks its two-cell inset: " + key
+            else:
+                assert row[right-4] == "▾", "dropdown lacks its two-cell inset: " + key
+
+        native = {"en": "English", "zh-Hans": "简体中文"}
+        current = native[language] + " ▾"
+        terminal.resize(28, 24)
+        terminal.settle()
+        terminal.wait(current)
+        label_x, label_y = position(terminal, words["dashboard.language.title"])
+        trigger = position(terminal, current)
+        # The button reserves two cells for its focus marker and one for face padding.
+        assert trigger == (label_x + 3, label_y + 1), "wrapped dropdown did not start below its label"
+        preview.capture(terminal, output, "settings-wrapped-28x24", args)
+        click(terminal, trigger)
+        terminal.wait("✓ " + native[language])
+        terminal.key(b"\x1b")
+        terminal.wait_absent("✓ " + native[language])
+        terminal.resize(160, 45)
+        terminal.settle()
+
         inherit = words["settings.followProfile"]
         for key, value in (("settings.ipv6", words["dashboard.control.on"]),
                            ("settings.unifiedDelay", words["dashboard.control.off"]),
@@ -153,8 +185,6 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait("Dark ▾")
 
         other = "zh-Hans" if language == "en" else "en"
-        native = {"en": "English", "zh-Hans": "简体中文"}
-        current = native[language] + " ▾"
         switched = native[other] + " ▾"
         assert native[other] not in terminal.screen.text(), "closed language dropdown shows both languages"
         assert position(terminal, words["dashboard.interface.keyHints"])[1] == position(terminal, current)[1] + 2, "unexpected text below the language control"

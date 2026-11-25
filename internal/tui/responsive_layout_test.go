@@ -60,28 +60,31 @@ func TestWideShortWindowKeepsEveryNavigationDestinationReachable(t *testing.T) {
 	}
 }
 
-func TestSettingsValuesAndActionsStayBesideAlignedLabels(t *testing.T) {
+func TestSettingsValuesNotesAndCommandActionsStayOnLeft(t *testing.T) {
 	for _, width := range []int{60, 100, 220} {
 		o := dashboardOptions{}
-		block := settingsSection(o, width, "Preferences", "", []settingsRow{
-			{label: "Language", value: "English"},
-			{label: "Shortcut hints", value: "Visible"},
-			{label: "Theme", actions: []overviewControlButton{{id: "theme", label: "Choose", enabled: true}}},
+		block := settingsSection(o, width, "Service", "", []settingsRow{
+			{label: "Version", value: "v1.2.3"},
+			{label: "Controller API", value: "127.0.0.1:9097"},
+			{label: "Ports", note: "HTTP/SOCKS5 port: 7897", actions: []overviewControlButton{{id: "runtime-settings", label: "Edit", enabled: true}}},
 		})
 		var values []int
 		for _, line := range block.lines {
 			plain := ansi.Strip(line)
-			for _, value := range []string{"English", "Visible"} {
+			for _, value := range []string{"v1.2.3", "127.0.0.1:9097"} {
 				if index := strings.Index(plain, value); index >= 0 {
 					values = append(values, ansi.StringWidth(plain[:index]))
 				}
 			}
 		}
-		if len(values) != 2 || values[0] != values[1] || values[0] != 18 {
+		if len(values) != 2 || values[0] != values[1] || values[0] != 19 {
 			t.Fatalf("width %d moved values away from their label column: %v", width, values)
 		}
 		if len(block.targets) != 1 || block.targets[0].X != values[0] {
 			t.Fatalf("width %d did not align the action with values: %+v", width, block.targets)
+		}
+		if note := ansi.Strip(block.lines[block.targets[0].Y+1]); !strings.HasPrefix(note, "│  HTTP/SOCKS5 port: 7897") {
+			t.Fatalf("width %d moved the port note away from the left inset: %q", width, note)
 		}
 		assertCanvas(t, strings.Join(block.lines, "\n"), width, len(block.lines))
 	}

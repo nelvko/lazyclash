@@ -158,6 +158,48 @@ func TestSettingsActionsKeepCompleteLabelsAndUniqueTargets(t *testing.T) {
 	}
 }
 
+func TestSettingsSwitchesAndDropdownsAlignAtCardEdges(t *testing.T) {
+	const inset = 3 // One border cell followed by two blank cells.
+	controls := []struct {
+		id, label string
+		card      func(dashboardOptions, int) dashboardBlock
+	}{
+		{"settings.language", "dashboard.language.title", settingsInterface},
+		{"settings.theme", "settings.theme", settingsInterface},
+		{"key-hints.toggle", "dashboard.interface.keyHints", settingsInterface},
+		{"autostart-enable", "settings.autostart", settingsService},
+		{"settings.ipv6", "settings.ipv6", settingsMihomo},
+		{"settings.unifiedDelay", "settings.unifiedDelay", settingsMihomo},
+		{"settings.logLevel", "settings.logLevel", settingsMihomo},
+	}
+	for _, language := range []string{i18n.English, i18n.Chinese} {
+		for _, c := range controls {
+			o := dashboardOptions{Locale: i18n.New(language), Snapshot: settingsTestSnapshot(), Focus: c.id, PlainButtons: true}
+			label := o.Locale.T(c.label)
+			render := func(width int) (dashboardBlock, hitRegion) {
+				block := c.card(o, width)
+				return block, findTarget(t, Model{targets: block.targets}, c.id)
+			}
+			_, wide := render(120)
+			exactFit := 2*inset + ansi.StringWidth(label) + 2 + wide.W
+			for _, width := range []int{exactFit - 1, exactFit, 120} {
+				block, hit := render(width)
+				labelY, wantX := hit.Y, width-inset-wide.W
+				if width < exactFit {
+					labelY, wantX = hit.Y-1, inset
+				}
+				if labelY < 0 || !strings.HasPrefix(ansi.Strip(block.lines[labelY]), "│  "+label) || hit.X != wantX || hit.W != wide.W {
+					t.Fatalf("%s/%s at %d: label and control misplaced, hit %+v, want X=%d\n%s", language, c.id, width, hit, wantX, ansi.Strip(strings.Join(block.lines, "\n")))
+				}
+				face := ansi.Strip(ansi.Cut(block.lines[hit.Y], hit.X, hit.X+hit.W))
+				if !strings.HasPrefix(face, " ›") || !strings.HasSuffix(face, "]") && !strings.HasSuffix(face, ">") {
+					t.Fatalf("%s/%s at %d: hit misses focused control: %q", language, c.id, width, face)
+				}
+			}
+		}
+	}
+}
+
 func TestSettingsMihomoMenuResetsOnlyChosenOverride(t *testing.T) {
 	b := &fakeBackend{snapshot: settingsTestSnapshot()}
 	b.snapshot.CoreSettings.IPv6, b.snapshot.CoreSettings.UnifiedDelay, b.snapshot.CoreSettings.LogLevel = "off", "on", "warning"
@@ -347,6 +389,11 @@ func TestSettingsAutostartAndCoreRestartGuards(t *testing.T) {
 		body := ansi.Strip(strings.Join(block.lines, "\n"))
 		if !strings.Contains(body, o.Locale.T("dashboard.status.unknown")) || !strings.Contains(settingsPaintedTarget(t, body, block.targets, "autostart-enable"), o.Locale.T("dashboard.settings.enableAutostart")) {
 			t.Fatalf("%s: unknown autostart was presented as an observed off state", language)
+		}
+		enable := findTarget(t, Model{targets: block.targets}, "autostart-enable")
+		left := ansi.Strip(ansi.Cut(block.lines[enable.Y], 0, 60))
+		if enable.X+enable.W != 200-3 || !strings.HasPrefix(left, "│  "+o.Locale.T("settings.autostart")) || !strings.Contains(left, o.Locale.T("dashboard.status.unknown")) {
+			t.Fatalf("%s: unknown autostart should keep its status left and action right: %q", language, ansi.Strip(block.lines[enable.Y]))
 		}
 		for _, state := range []string{"activating", "deactivating", "reloading"} {
 			o.Snapshot.Service.State = state
