@@ -2,6 +2,7 @@ package tui
 
 import (
 	"math"
+	"math/bits"
 	"strings"
 	"time"
 
@@ -116,7 +117,6 @@ func trafficChartRows(o dashboardOptions, g trafficChartGeometry, cells []traffi
 		labels[y/4] = tick.label
 		grid[y/4] |= trafficChartDotBits(y%4, 0) | trafficChartDotBits(y%4, 1)
 	}
-	colors := trafficCurveColors()
 	rows := make([]string, g.height+1)
 	for row := range g.height {
 		var line strings.Builder
@@ -138,13 +138,10 @@ func trafficChartRows(o dashboardOptions, g trafficChartGeometry, cells []traffi
 			}
 			if mask := cell.up | cell.down; mask != 0 {
 				glyph = rune(0x2800 + int(mask))
-				switch {
-				case cell.up != 0 && cell.down != 0:
-					foreground = colors.overlap
-				case cell.up != 0:
-					foreground = colors.upload
-				default:
-					foreground = colors.download
+				// A Braille glyph has one foreground. Count each direction's dots independently.
+				foreground = trafficUploadColor
+				if bits.OnesCount8(cell.down) > bits.OnesCount8(cell.up) {
+					foreground = trafficDownloadColor
 				}
 			}
 			if foreground != color {

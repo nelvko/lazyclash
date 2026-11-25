@@ -383,8 +383,7 @@ func TestTrafficChartRenderExperiments(t *testing.T) {
 			}
 			line(scenario.description, text)
 			line(fmt.Sprintf("Same data / 60s / %dx%d / shared Y 0-2 MiB/s", width, height), muted)
-			colors := trafficCurveColors()
-			line(themed("↑ 上传", colors.upload, panel, false)+"   "+themed("↓ 下载", colors.download, panel, false)+"   "+themed("共享字符格", colors.overlap, panel, false), text)
+			line(themed("↑ 上传", trafficUploadColor, panel, false)+"   "+themed("↓ 下载", trafficDownloadColor, panel, false), text)
 			for _, scheme := range schemes {
 				line(scheme.description, text)
 				rows := trafficChartRows(o, g, scheme.cells)
@@ -396,7 +395,7 @@ func TestTrafficChartRenderExperiments(t *testing.T) {
 				lines = append(lines, rows...)
 				line("", muted)
 				visible, shared := trafficExperimentOccupancy(scheme.cells)
-				statistics[scheme.name] = map[string]int{"visible_cells": visible, "mixed_cells": shared}
+				statistics[scheme.name] = map[string]int{"visible_cells": visible, "shared_cells": shared}
 			}
 			for _, profile := range []struct {
 				name  string

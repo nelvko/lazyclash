@@ -6,8 +6,7 @@ func overviewTrafficCard(o dashboardOptions, width int) dashboardBlock {
 	tr := o.Locale.T
 	s := o.Runtime
 	status := runtimeStatus(s, o.RuntimeReceived, o.RuntimePending, o.Snapshot.Installed, o.Locale)
-	colors := trafficCurveColors()
-	legend := themed(tr("dashboard.overview.upload"), colors.upload, panel, o.Dim) + themed("   ", text, panel, o.Dim) + themed(tr("dashboard.overview.download"), colors.download, panel, o.Dim)
+	legend := themed(tr("dashboard.overview.upload"), trafficUploadColor, panel, o.Dim) + themed("   ", text, panel, o.Dim) + themed(tr("dashboard.overview.download"), trafficDownloadColor, panel, o.Dim)
 	lines := []string{legend}
 	if !o.RuntimeReceived || s.State != "ready" || s.Traffic == nil || s.Connections == nil || s.Memory == nil {
 		lines = append(lines, themed(status, muted, panel, o.Dim))
@@ -39,8 +38,8 @@ func overviewTrafficCard(o dashboardOptions, width int) dashboardBlock {
 			columns = 2
 		}
 		fields := []overviewField{
-			{label: tr("dashboard.overview.upload"), value: up, detail: tr("dashboard.overview.totalUpload"), detailValue: totalUp, color: colors.upload},
-			{label: tr("dashboard.overview.download"), value: down, detail: tr("dashboard.overview.totalDownload"), detailValue: totalDown, color: colors.download},
+			{label: tr("dashboard.overview.upload"), value: up, detail: tr("dashboard.overview.totalUpload"), detailValue: totalUp, color: trafficUploadColor},
+			{label: tr("dashboard.overview.download"), value: down, detail: tr("dashboard.overview.totalDownload"), detailValue: totalDown, color: trafficDownloadColor},
 			{label: tr("dashboard.field.connections"), value: connections, detail: tr("dashboard.field.coreMemory"), detailValue: memory},
 		}
 		lines = append(lines, "")

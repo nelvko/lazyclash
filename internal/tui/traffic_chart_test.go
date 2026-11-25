@@ -162,8 +162,7 @@ func TestTrafficChartZeroRulesPreserveTransitionsAndSourceHistory(t *testing.T) 
 				}
 				if test.name == "all zero" {
 					rows := trafficChartRows(dashboardOptions{}, g, cells)
-					colors := trafficCurveColors()
-					for _, color := range []string{colors.upload, colors.download, colors.overlap} {
+					for _, color := range []string{trafficUploadColor, trafficDownloadColor} {
 						if strings.Contains(strings.Join(rows, "\n"), trafficChartColorPrefix(color)) {
 							t.Fatal("zero-only chart painted colored/overlapping data")
 						}
@@ -208,16 +207,20 @@ func TestTrafficChartInvalidAndLongGapsRemainDisconnected(t *testing.T) {
 	}
 }
 
-func TestTrafficChartColorsShareCharacterCellsAndNeverUseTextAsOverlap(t *testing.T) {
+func TestTrafficChartUsesDominantDotCountAndUploadWinsTies(t *testing.T) {
 	g := newTrafficChartGeometry(48, 6, trafficChartFixedScale(100), trafficChartTestNow())
-	colors := trafficCurveColors()
 	for _, test := range []struct {
 		name  string
 		cell  trafficChartCell
 		color string
 	}{
-		{"upload", trafficChartCell{up: 1}, colors.upload}, {"download", trafficChartCell{down: 1}, colors.download},
-		{"same subdot", trafficChartCell{up: 1, down: 1}, colors.overlap}, {"different subdots", trafficChartCell{up: 1, down: 8}, colors.overlap},
+		{"upload only", trafficChartCell{up: 1}, trafficUploadColor},
+		{"download only", trafficChartCell{down: 1}, trafficDownloadColor},
+		{"upload majority", trafficChartCell{up: 0x03, down: 0x80}, trafficUploadColor},
+		{"download majority", trafficChartCell{up: 0x80, down: 0x03}, trafficDownloadColor},
+		{"shared dots with extra download dot", trafficChartCell{up: 0x03, down: 0x07}, trafficDownloadColor},
+		{"identical masks", trafficChartCell{up: 0xff, down: 0xff}, trafficUploadColor},
+		{"equal counts on different dots", trafficChartCell{up: 0x03, down: 0xc0}, trafficUploadColor},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			cells := make([]trafficChartCell, g.columns*g.height)

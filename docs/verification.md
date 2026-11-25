@@ -1,5 +1,9 @@
 # 验证入口
 
+## 实时流量双色叠加（2026-11-25）
+
+字符格回归覆盖两方向各自占多数、等点数但位置不同、完全重合及全零。54 组终端预览中，18 组真彩输出的曲线子点仅使用上传橙和下载蓝。`make check build` 及专用 Linux/arm64 虚拟机的全包测试通过。[交叉预览](../.test-artifacts/traffic-two-colors/experiments/crossing-original.png) · [尖峰预览](../.test-artifacts/traffic-two-colors/experiments/spike-original.png)
+
 ## 节点卡片文字居中（2026-11-24）
 
 在 Kitty 真彩终端中，用六个示例节点检查了普通和选中卡片。原生截图中卡面高 90 像素，两行文字区域上下各留 15 像素。按可见笔画测量，「香港 01 / VLESS」上下留白为 17 和 20 像素，「日本 02 / Trojan」为 17 和 15 像素。8 像素宽的选中竖条与卡面等高。每排仍占四个终端行，相邻卡面的间隔为一行。[Kitty 原生截图局部](../.test-artifacts/proxy-centered-cards/kitty-selected-normal.png)
@@ -449,6 +453,8 @@ Mihomo `/connections` 仅返回活跃数组，无已关闭数量或历史查询�
 独立源码及 SHA-256 清单为 `.test-artifacts/proxy-providers-final/{source-path.txt,source-manifest.json}`；验证日志为 `isolated-{check-build,linux,race,real-core,python}.log`。最终 PTY 日志为 `pty/{provider-isolated-final2,rules-isolated,proxies-isolated}.log`，代理集合图像为 `pty/provider-isolated/20261109-095421-9237ab/zh-Hans/truecolor/`。先前脚本输入状态与视口等待失败的原始证据保留，最终修正未放宽更新、取消或服务边界断言。
 
 ## 流量图坐标、零值与量程优化（2026-11-08）
+
+本节的预览与测试记录使用当时的米色重合样式。2026-11-25 起，共享字符格的颜色按两方向各自占用的子点数决定，点数相同取上传橙色。详见[主题说明](theme-mariana.md#lazyclash-语义映射)。
 
 本轮保留单轨道双曲线、2×4 Braille、Bresenham、六行/四行高度及原卡片布局。代码检查确认旧曲线已按完整子点高度线性映射，并非离散点绘图；问题在于标签和 `┄` 网格另外按整字符行选位，与曲线的子点坐标不一致。零流量白线由两方向的有效零线段叠加后使用正文色产生；字体的点距与字符行留白属于终端限制。旧量程每次从窗口最大值重算，没有延迟收缩状态。
 

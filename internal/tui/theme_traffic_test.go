@@ -8,33 +8,8 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-func TestTrafficPaletteMixesEncodedSRGBChannelsEqually(t *testing.T) {
-	for _, sample := range []struct{ first, second, want string }{
-		{"#000000", "#ffffff", "#808080"},
-		{"#ff0000", "#0000ff", "#800080"},
-		{"#010305", "#020406", "#020406"},
-		{"#204060", "#204060", "#204060"},
-		{"#f9ae58", "#7baed0", "#BAAE94"},
-		{focus, accent, "#BFB19C"},
-	} {
-		t.Run(sample.first+"/"+sample.second, func(t *testing.T) {
-			palette := makeTrafficPalette(sample.first, sample.second)
-			if palette.upload != sample.first || palette.download != sample.second || palette.overlap != sample.want {
-				t.Fatalf("palette = %+v, want original series colors and overlap %s", palette, sample.want)
-			}
-			if swapped := blendSRGB50(sample.second, sample.first); swapped != sample.want {
-				t.Fatalf("swapping the two directions changed their equal mix: %s", swapped)
-			}
-		})
-	}
-}
-
 func TestTrafficPaletteUsesExistingTerminalColorAdaptation(t *testing.T) {
-	palette := trafficCurveColors()
-	if palette.upload != focus || palette.download != trafficDownloadColor || palette.overlap != "#BAAE94" {
-		t.Fatalf("Mariana traffic palette = %+v, want orange/blue with #BAAE94 overlap", palette)
-	}
-	for _, foreground := range []string{palette.upload, palette.download, palette.overlap} {
+	for _, foreground := range []string{trafficUploadColor, trafficDownloadColor} {
 		original := themed("⠿", foreground, panel, false)
 		for _, profile := range []colorprofile.Profile{colorprofile.TrueColor, colorprofile.ANSI256, colorprofile.ANSI, colorprofile.ASCII} {
 			t.Run(foreground+"/"+profile.String(), func(t *testing.T) {
