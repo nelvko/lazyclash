@@ -80,45 +80,32 @@ def focused_prefix(terminal):
     return cursor_shown and "".join(row[:screen.x]).endswith(PREFIX)
 
 
-def corner_boxes(screen):
-    for top, row in enumerate(screen.cells):
-        for right in range(max(0, screen.columns-5), screen.columns):
-            if row[right] != "╮" or "╭" not in row[:right]:
-                continue
-            left = max(i for i in range(right) if row[i] == "╭")
-            if screen.columns >= 100 and left < screen.columns // 2:
-                continue
-            for bottom in range(top+1, screen.rows-1):
-                below = screen.cells[bottom]
-                if below[left] == "╰" and below[right] == "╯":
-                    yield left, top, right, bottom
-                    break
-                if below[left] != "│" or below[right] != "│":
-                    break
-
-
-def list_cards(terminal, underlying, minimum=1, title="Notifications", collapse="Esc Collapse"):
-    terminal.wait(title)
+def list_cards(terminal, underlying, minimum=1):
+    """Locate controls in the current viewport, including on colorless terminals."""
+    terminal.wait("Notifications")
     terminal.wait(underlying)
-    terminal.wait(collapse)
+    terminal.wait("Esc Collapse")
     settle(terminal)
     screen = terminal.screen
     lines = screen.text().splitlines()
-    heading = next((y for y, line in enumerate(lines[:5]) if title in line), -1)
-    footer = next((y for y, line in enumerate(lines) if collapse in line), -1)
-    # Each complete card owns its controls. No enclosing frame swallows the
-    # page or groups multiple operations into one undifferentiated surface.
-    boxes = []
-    for left, top, right, bottom in corner_boxes(screen):
-        if top <= heading < bottom:
-            raise AssertionError("Notification list has an enclosing frame\n" + screen.text())
-        if 0 <= heading < top < bottom < footer:
-            text = "\n".join("".join(row[left+1:right]) for row in screen.cells[top+1:bottom])
-            if "×" in text:
-                boxes.append((left, top, right, bottom))
-    if len(boxes) < minimum:
-        raise AssertionError("Too few independent notification cards with controls\n" + screen.text())
-    return boxes
+    heading = next((y for y, line in enumerate(lines[:5]) if "Notifications" in line), -1)
+    footer = next((y for y, line in enumerate(lines) if "Esc Collapse" in line), -1)
+    if not 0 <= heading < footer < screen.rows - 1:
+        raise AssertionError("Missing anchored notification list\n" + screen.text())
+    left = SMOKE.cell_width(lines[heading].split("Notifications")[0])
+    cards = []
+    for y in range(heading + 1, footer):
+        row = screen.cells[y]
+        if "×" not in row[left:]:
+            continue
+        close = max(x for x in range(left, screen.columns) if row[x] == "×")
+        content = "".join(row[left:close])
+        if not any(mark in content for mark in ("!", "✓")):
+            raise AssertionError("Missing status marker on notification row\n" + screen.text())
+        cards.append((close, y))
+    if len(cards) < minimum or len({x for x, _ in cards}) != 1:
+        raise AssertionError("Expected independent right-aligned notification controls\n" + screen.text())
+    return cards
 
 
 def detail_corner(terminal, underlying, footer="Esc Collapse"):
@@ -126,24 +113,24 @@ def detail_corner(terminal, underlying, footer="Esc Collapse"):
     terminal.wait(underlying)
     settle(terminal)
     screen = terminal.screen
-    for left, top, right, bottom in corner_boxes(screen):
-        actions = "".join(screen.cells[bottom-1][left:right])
-        if top < 5 and footer in actions and "×" in actions:
-            if "Details" in "".join(screen.cells[top+1][left:right]):
-                raise AssertionError("Details opened with a redundant title row")
-            return left, top, right
-    raise AssertionError("Notification detail did not expand in the upper right\n" + screen.text())
+    for y, row in enumerate(screen.cells[:-1]):
+        line = "".join(row)
+        if footer not in line or "×" not in row:
+            continue
+        left = max(0, SMOKE.cell_width(line[:line.index(footer)]) - 4)
+        right = max(x for x in range(left, screen.columns) if row[x] == "×")
+        if right < screen.columns - 12 or (screen.columns >= 100 and left < screen.columns // 2):
+            break
+        content = ["".join(cells[left:right+1]).strip() for cells in screen.cells[:y]]
+        if "Details" in content:
+            raise AssertionError("Details opened with a redundant title row")
+        return left, right, y, content
+    raise AssertionError("Notification detail is missing its corner controls\n" + screen.text())
 
 
-def click_card_button(terminal, box, label):
-    left, top, right, bottom = box
-    for y in range(top+1, bottom):
-        text = "".join(terminal.screen.cells[y][left:right+1])
-        if label in text:
-            x = left + SMOKE.cell_width(text[:text.index(label)])
-            terminal.key(f"\x1b[<0;{x+1};{y+1}M\x1b[<0;{x+1};{y+1}m".encode())
-            return
-    raise AssertionError("Missing button in selected card: " + label)
+def click_close(terminal, point):
+    x, y = point
+    terminal.key(f"\x1b[<0;{x+1};{y+1}M\x1b[<0;{x+1};{y+1}m".encode())
 
 
 def empty_shortcut(terminal, underlying):
@@ -207,12 +194,13 @@ def exercise_notifications(terminal, output, profile):
         terminal.wait(context)
     save_screen(terminal, output, profile, "notification-list")
     cards = list_cards(terminal, "Interface preferences", minimum=3)
-    for box, context in zip(cards, ("Start service", "Restart service", "Stop service")):
-        left, top, right, bottom = box
-        body = "\n".join("".join(row[left+1:right]) for row in terminal.screen.cells[top+1:bottom])
-        if context + ": " + error not in body or "Details" in body or "Error ·" in body:
-            raise AssertionError("Unexpected controls or title in a readable error card\n" + body)
-    click_card_button(terminal, cards[0], "×")
+    for (_, y), context in zip(cards, ("Start service", "Restart service", "Stop service")):
+        row = "".join(terminal.screen.cells[y])
+        if context + ": " + error not in row:
+            raise AssertionError("Operation and close control must share the same card\n" + row)
+    if "Details" in terminal.screen.text() or "Error ·" in terminal.screen.text():
+        raise AssertionError("A readable error card has a redundant control or title")
+    click_close(terminal, cards[0])
     terminal.wait_absent("Start service:")
     terminal.wait("Restart service:")
     terminal.wait("Stop service:")
@@ -244,24 +232,22 @@ def exercise_notifications(terminal, output, profile):
     terminal.wait("Error · 3 more · Expand")
     terminal.key(b"\x0e")  # Ctrl+N opens the bounded collection from any page.
     list_cards(terminal, "Profiles")
-    terminal.resize(40, 18)  # Force part of the third card below the collection viewport.
+    terminal.resize(40, 13)  # Put the third card’s controls below the stack viewport.
     cards = list_cards(terminal, "Profiles")
     if len(cards) != 2:
-        raise AssertionError("Expected two complete cards before scrolling\n" + terminal.screen.text())
-    terminal.wait("Restart service")
-    left, top, right, bottom = cards[0]
-    terminal.key(f"\x1b[<65;{(left+right)//2+1};{(top+bottom)//2+1}M".encode())
+        raise AssertionError("Expected two visible error controls before scrolling\n" + terminal.screen.text())
+    terminal.wait("Restart ser")
+    x, y = cards[0]
+    terminal.key(f"\x1b[<65;{x+1};{y+1}M".encode())
     cards = list_cards(terminal, "Profiles")
-    last = cards[-1]
-    left, top, right, _ = last
-    if "Start service" not in "".join(terminal.screen.cells[top+1][left:right]):
+    if "Start service" not in "".join(terminal.screen.cells[cards[-1][1]]):
         raise AssertionError("Wheel did not reveal the final error card\n" + terminal.screen.text())
-    click_card_button(terminal, last, "×")
-    terminal.wait_absent("Start service:")
+    click_close(terminal, cards[-1])
+    terminal.wait_absent("Start servi")
     terminal.key(b"\x1b[H")
-    terminal.wait("Restart service")
+    terminal.wait("Restart ser")
     terminal.key(b"x")
-    terminal.wait_absent("Restart service:")
+    terminal.wait_absent("Restart ser")
     terminal.key(b"\x1b")
     terminal.wait_absent("Esc Collapse")
     terminal.resize(40, 24)
@@ -271,8 +257,8 @@ def exercise_notifications(terminal, output, profile):
     terminal.click_text("Details")
     terminal.wait("Esc Collapse")
     terminal.wait("Stop service")
-    left, top, right = detail_corner(terminal, "Profiles")
-    body = " ".join("".join(row[left+1:right]).strip() for row in terminal.screen.cells[top+1:top+3])
+    _, _, _, content = detail_corner(terminal, "Profiles")
+    body = " ".join(content)
     if "Stop service: " + error not in body:
         raise AssertionError("Detail lost part of the folded error: " + body)
     terminal.key(b"\x1b")
@@ -334,38 +320,50 @@ def exercise_profile_updates(terminal, output, profile, command, directory):
     terminal.wait("Update all")
     success = "Profiles updated: 18"
     for columns, rows in ((160, 45), (40, 24)):
+        start = len(terminal.raw)
         terminal.click_text("Update all")
         terminal.wait(success)
+        if profile == "truecolor":
+            paints = [match.group(1).replace(b":", b";") for match in SGR.finditer(terminal.raw[start:])]
+            for color in (b"48;2;78;99;119", b"38;2;239;244;248", b"38;2;197;232;185"):
+                if not any(color in paint for paint in paints):
+                    raise AssertionError("Missing success notification color: " + color.decode())
         terminal.resize(columns, rows)
+        terminal.wait("Overview" if columns >= 100 else "Menu")
         terminal.wait(success)
         settle(terminal)
         lines = terminal.screen.text().splitlines()
         summaries = [line for line in lines if success in line]
         corner = "\n".join(lines[:10])
-        if len(summaries) != 1 or "×" not in summaries[0] or "Details" in corner or "Done ·" in corner:
+        if len(summaries) != 1 or not re.search(r"✓\s+" + re.escape(success) + r"\s+×", summaries[0]) or "Details" in corner or "Done ·" in corner:
             raise AssertionError("Short success needs one message and its own close button\n" + terminal.screen.text())
         save_screen(terminal, output, profile, f"notification-success-{columns}x{rows}")
         if columns == 160:
             terminal.key(b"\x0e")
             card, = list_cards(terminal, "Profiles")
-            left, top, right, bottom = card
-            if bottom != top + 2 or success not in "".join(terminal.screen.cells[top+1][left:right]):
-                raise AssertionError("Plain success expanded with a title or an extra row\n" + terminal.screen.text())
+            _, y = card
+            if success not in "".join(terminal.screen.cells[y]) or "Details" in terminal.screen.text():
+                raise AssertionError("Plain success acquired another action in the stack\n" + terminal.screen.text())
             terminal.key(b"\r")  # The only action is Close.
         else:
             terminal.click_text("×")
         terminal.wait_absent(success)
         empty_shortcut(terminal, "Profiles")
     terminal.resize(160, 45)
+    # The VT starts with cells padded from its compact layout. Click only
+    # after the sidebar and the relocated header action have been repainted.
+    terminal.wait("Overview")
     settle(terminal)
     source.unlink()
     terminal.click_text("Update all")
-    terminal.wait("Profiles updated: 0. Failed: 18")
+    terminal.wait("Update all: Profiles updated:")
     terminal.key(b"7")
     terminal.wait("Interface preferences")
     terminal.click_text("Details")
     terminal.wait("Lab-01")
-    detail_corner(terminal, "Interface preferences")
+    _, _, _, content = detail_corner(terminal, "Interface preferences")
+    if "Profiles updated: 0. Failed: 18" not in " ".join(content):
+        raise AssertionError("Details lost the complete update result\n" + terminal.screen.text())
     save_screen(terminal, output, profile, "notification-detail-160x45")
     terminal.key(b"\x1b[F")  # End
     terminal.wait("Lab-18")
@@ -379,12 +377,12 @@ def exercise_profile_updates(terminal, output, profile, command, directory):
     save_screen(terminal, output, profile, "notification-list-40x24")
     terminal.key(b"\r")
     terminal.wait("Lab-01")
-    left, top, right = detail_corner(terminal, "Settings", "Esc Back")
+    left, right, footer, _ = detail_corner(terminal, "Settings", "Esc Back")
     save_screen(terminal, output, profile, "notification-detail-40x24")
     if "Lab-18" in terminal.screen.text():
         raise AssertionError("Long detail did not require scrolling at 40×24")
     for _ in range(40):
-        terminal.key(f"\x1b[<65;{(left + right)//2 + 1};{top + 4}M".encode())
+        terminal.key(f"\x1b[<65;{(left + right)//2 + 1};{footer}M".encode())
         if "Lab-18" in terminal.screen.text():
             break
     terminal.wait("Lab-18")
@@ -470,7 +468,7 @@ def exercise(binary, output, profile, notifications_only):
                     raise AssertionError("NO_COLOR run emitted SGR styling: " + repr(styled[:4]))
             if (home / "installation").exists() or (home / "preferences.json").exists():
                 raise AssertionError("read-only theme exercise installed a core or saved preferences")
-            return {"profile": profile, "status": "passed", "sizes": SIZES + [(40, 24), (40, 18)],
+            return {"profile": profile, "status": "passed", "sizes": SIZES + [(40, 24), (40, 13)],
                     "notifications_only": notifications_only,
                     "rgb": bool(RGB.search(raw)), "indexed": bool(INDEXED.search(raw))}
         finally:
