@@ -376,31 +376,32 @@ func TestTrafficChartRenderExperiments(t *testing.T) {
 				{"Smooth", "C  Smooth / shape-preserving PCHIP", trafficExperimentSmooth(scenario.points, g.start, g.now, g.columns, g.height, g.position)},
 			}
 			statistics := make(map[string]map[string]int)
-			var lines []string
-			line := func(value, foreground string) {
-				value = cellCrop(value, width)
-				lines = append(lines, themed(value+strings.Repeat(" ", max(0, width-ansi.StringWidth(value))), foreground, panel, false))
-			}
-			line(scenario.description, text)
-			line(fmt.Sprintf("Same data / 60s / %dx%d / shared Y 0-2 MiB/s", width, height), muted)
-			line(themed("↑ 上传", trafficUploadColor, panel, false)+"   "+themed("↓ 下载", trafficDownloadColor, panel, false), text)
-			for _, scheme := range schemes {
-				line(scheme.description, text)
-				rows := trafficChartRows(o, g, scheme.cells)
-				for _, row := range rows {
-					if ansi.StringWidth(row) != width {
-						t.Fatalf("%s/%s: row width %d, want %d", scenario.name, scheme.name, ansi.StringWidth(row), width)
-					}
-				}
-				lines = append(lines, rows...)
-				line("", muted)
-				visible, shared := trafficExperimentOccupancy(scheme.cells)
-				statistics[scheme.name] = map[string]int{"visible_cells": visible, "shared_cells": shared}
-			}
 			for _, profile := range []struct {
 				name  string
 				value colorprofile.Profile
 			}{{"truecolor", colorprofile.TrueColor}, {"256", colorprofile.ANSI256}, {"no-color", colorprofile.ASCII}} {
+				o.Monochrome = profile.value <= colorprofile.ASCII
+				var lines []string
+				line := func(value, foreground string) {
+					value = cellCrop(value, width)
+					lines = append(lines, themed(value+strings.Repeat(" ", max(0, width-ansi.StringWidth(value))), foreground, panel, false))
+				}
+				line(scenario.description, text)
+				line(fmt.Sprintf("Same data / 60s / %dx%d / shared Y 0-2 MiB/s", width, height), muted)
+				line(themed("↑ 上传", trafficUploadColor, panel, false)+"   "+themed("↓ 下载", trafficDownloadColor, panel, false), text)
+				for _, scheme := range schemes {
+					line(scheme.description, text)
+					rows := trafficChartRows(o, g, scheme.cells)
+					for _, row := range rows {
+						if ansi.StringWidth(row) != width {
+							t.Fatalf("%s/%s: row width %d, want %d", scenario.name, scheme.name, ansi.StringWidth(row), width)
+						}
+					}
+					lines = append(lines, rows...)
+					line("", muted)
+					visible, shared := trafficExperimentOccupancy(scheme.cells)
+					statistics[scheme.name] = map[string]int{"visible_cells": visible, "shared_cells": shared}
+				}
 				name := fmt.Sprintf("%s-%dx%d-%s", scenario.name, width, height, profile.name)
 				content := terminalTheme(strings.Join(lines, "\n"), profile.value)
 				if err := os.WriteFile(filepath.Join(output, name+".ansi"), []byte(content), 0600); err != nil {

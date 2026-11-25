@@ -1,22 +1,35 @@
 package tui
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+
+	"github.com/charmbracelet/x/ansi"
+)
 
 func overviewTrafficCard(o dashboardOptions, width int) dashboardBlock {
 	tr := o.Locale.T
 	s := o.Runtime
 	status := runtimeStatus(s, o.RuntimeReceived, o.RuntimePending, o.Snapshot.Installed, o.Locale)
 	legend := themed(tr("dashboard.overview.upload"), trafficUploadColor, panel, o.Dim) + themed("   ", text, panel, o.Dim) + themed(tr("dashboard.overview.download"), trafficDownloadColor, panel, o.Dim)
-	lines := []string{legend}
-	if !o.RuntimeReceived || s.State != "ready" || s.Traffic == nil || s.Connections == nil || s.Memory == nil {
-		lines = append(lines, themed(status, muted, panel, o.Dim))
-	}
 	plotHeight := 6
 	if width < 76 || o.Height < 24 {
 		plotHeight = 4
 	}
 	inner := max(1, width-4)
-	lines = append(lines, overviewTrafficChart(o, inner, plotHeight)...)
+	chart := overviewTrafficChart(o, inner, plotHeight)
+	// Explain the mark only when it has room to appear between the time labels.
+	if strings.Contains(chart[plotHeight], trafficChartGapMark) {
+		key := "   " + trafficChartGapMark + " " + tr("dashboard.overview.trafficGap")
+		if ansi.StringWidth(legend)+ansi.StringWidth(key) <= inner {
+			legend += themed(key, muted, panel, o.Dim)
+		}
+	}
+	lines := []string{legend}
+	if !o.RuntimeReceived || s.State != "ready" || s.Traffic == nil || s.Connections == nil || s.Memory == nil {
+		lines = append(lines, themed(status, muted, panel, o.Dim))
+	}
+	lines = append(lines, chart...)
 	ready := o.RuntimeReceived && s.State == "ready" && s.Error == ""
 	showMetrics := ready || o.Snapshot.Installed && o.Snapshot.Service.Active && s.State != "stopped" && s.State != "uninstalled"
 	if showMetrics {

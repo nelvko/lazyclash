@@ -21,7 +21,14 @@ func newTrafficChartGeometry(width, height int, scale trafficChartScale, now tim
 	if scale.maximum <= 0 || math.IsNaN(scale.maximum) || math.IsInf(scale.maximum, 0) {
 		scale = makeTrafficChartScale(0)
 	}
-	axis := max(12, max(ansi.StringWidth(scale.top), ansi.StringWidth(scale.mid))+1)
+	minAxis := 12
+	if width < 72 {
+		// The two ticks share a unit. Reserve room for "1.25MiB/s" and a gutter.
+		minAxis = 10
+		scale.top = strings.Replace(scale.top, " ", "", 1)
+		scale.mid, _, _ = strings.Cut(scale.mid, " ")
+	}
+	axis := max(minAxis, max(ansi.StringWidth(scale.top), ansi.StringWidth(scale.mid))+1)
 	if width-axis < 8 {
 		axis = 0
 	}
@@ -130,10 +137,17 @@ func trafficChartRows(o dashboardOptions, g trafficChartGeometry, cells []traffi
 				run.Reset()
 			}
 		}
+		gridStep := 1
+		if o.Monochrome {
+			gridStep = 4
+			if row == g.height-1 {
+				gridStep = 2
+			}
+		}
 		for column := range g.columns {
 			cell := cells[row*g.columns+column]
 			glyph, foreground := ' ', divider
-			if grid[row] != 0 {
+			if grid[row] != 0 && column%gridStep == 0 {
 				glyph = rune(0x2800 + int(grid[row]))
 			}
 			if mask := cell.up | cell.down; mask != 0 {
@@ -157,7 +171,8 @@ func trafficChartRows(o dashboardOptions, g trafficChartGeometry, cells []traffi
 	if nowLabel == "dashboard.overview.trafficNow" {
 		nowLabel = "Now"
 	}
-	rows[g.height] = themed(strings.Repeat(" ", g.axis)+trafficChartTicks(g.columns, nowLabel), muted, panel, o.Dim)
+	timeAxis := trafficChartTicks(g.columns, nowLabel, trafficChartGapColumns(g, o.TrafficHistory))
+	rows[g.height] = themed(strings.Repeat(" ", g.axis)+timeAxis, muted, panel, o.Dim)
 	return rows
 }
 
@@ -205,7 +220,7 @@ func trafficChartStroke(cells []trafficChartCell, columns, rows, x, y, endX, end
 	}
 }
 
-func trafficChartTicks(width int, now string) string {
+func trafficChartTicks(width int, now string, gaps []bool) string {
 	cells := make([]string, width)
 	occupied := make([]bool, width)
 	for i := range cells {
@@ -247,6 +262,11 @@ func trafficChartTicks(width int, now string) string {
 	if width >= 56 {
 		center(0.25, "-45s")
 		center(0.75, "-15s")
+	}
+	for x, gap := range gaps {
+		if gap && !occupied[x] && (x == 0 || !occupied[x-1]) && (x+1 == width || !occupied[x+1]) {
+			cells[x] = trafficChartGapMark
+		}
 	}
 	return strings.Join(cells, "")
 }

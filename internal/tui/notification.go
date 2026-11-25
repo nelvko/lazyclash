@@ -8,6 +8,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -340,6 +341,7 @@ func (m *Model) dashboardOptions() dashboardOptions {
 	o.Now = time.Now()
 	o.Theme, o.EffectiveTheme = m.theme, m.effectiveTheme()
 	o.TrafficHistory, o.TrafficNow = m.runtime.history.points, o.Now
+	o.Monochrome = m.noColor || m.colorProfile == colorprofile.ASCII || m.colorProfile == colorprofile.NoTTY
 	if m.busy && strings.HasPrefix(m.notification.operation.Key, "service.") {
 		o.CoreAction = strings.TrimPrefix(m.notification.operation.Key, "service.")
 	}

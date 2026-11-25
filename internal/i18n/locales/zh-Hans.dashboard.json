@@ -269,6 +269,7 @@
   "dashboard.overview.source": "来源：%s",
   "dashboard.overview.overrides": "包含覆写配置",
   "dashboard.overview.trafficNow": "现在",
+  "dashboard.overview.trafficGap": "缺测",
   "dashboard.overview.historyWindow": "最近 60 秒",
   "dashboard.overview.totalUpload": "累计上传",
   "dashboard.overview.totalDownload": "累计下载",

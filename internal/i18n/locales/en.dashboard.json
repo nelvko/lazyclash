@@ -269,6 +269,7 @@
   "dashboard.overview.source": "Source: %s",
   "dashboard.overview.overrides": "Includes overrides",
   "dashboard.overview.trafficNow": "Now",
+  "dashboard.overview.trafficGap": "Missing data",
   "dashboard.overview.historyWindow": "Last 60 seconds",
   "dashboard.overview.totalUpload": "Total upload",
   "dashboard.overview.totalDownload": "Total download",

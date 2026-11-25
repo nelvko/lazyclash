@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/i18n"
 )
@@ -27,6 +28,66 @@ func trafficChartDataDot(cells []trafficChartCell, g trafficChartGeometry, x, y 
 func trafficChartColorPrefix(color string) string {
 	prefix, _, _ := strings.Cut(themed("x", color, panel, false), "x")
 	return prefix
+}
+
+func TestTrafficChartMonochromeThinsOnlyEmptyGridCells(t *testing.T) {
+	g := newTrafficChartGeometry(48, 4, trafficChartFixedScale(100), trafficChartTestNow())
+	cells := make([]trafficChartCell, g.columns*g.height)
+	for i := range cells {
+		if i%3 == 1 {
+			cells[i] = trafficChartCell{up: 0x12, down: 0x04}
+		}
+	}
+	for _, tc := range []struct {
+		profile         colorprofile.Profile
+		noColor, sparse bool
+	}{
+		{colorprofile.TrueColor, false, false}, {colorprofile.ANSI256, false, false},
+		{colorprofile.ANSI, false, false}, {colorprofile.Unknown, false, false},
+		{colorprofile.ASCII, false, true}, {colorprofile.NoTTY, false, true},
+		{colorprofile.TrueColor, true, true},
+	} {
+		m := Model{colorProfile: tc.profile, noColor: tc.noColor}
+		rows := trafficChartRows(m.dashboardOptions(), g, cells)
+		for row := range g.height {
+			plot := []rune(ansi.Strip(rows[row]))[g.axis:]
+			for x, glyph := range plot {
+				want := ' '
+				switch {
+				case cells[row*g.columns+x].up != 0:
+					want = '⠖' // union of the two curve masks
+				case row == g.height-1 && (!tc.sparse || x%2 == 0):
+					want = '⣀'
+				case (row == 0 || row == g.rateY(50)/4) && (!tc.sparse || x%4 == 0):
+					want = '⠉'
+				}
+				if glyph != want {
+					t.Fatalf("profile=%v NO_COLOR=%t (%d,%d): got %q, want %q", tc.profile, tc.noColor, x, row, glyph, want)
+				}
+			}
+		}
+	}
+}
+
+func TestTrafficChartGapLegendUsesOnlyAvailableSpace(t *testing.T) {
+	now := trafficChartTestNow()
+	for _, lang := range []string{"en", "zh-Hans"} {
+		o := dashboardOptions{Locale: i18n.New(lang), Height: 45, TrafficNow: now}
+		key := trafficChartGapMark + " " + o.Locale.T("dashboard.overview.trafficGap")
+		render := func(width int) string {
+			return ansi.Strip(strings.Join(overviewTrafficCard(o, width).lines, "\n"))
+		}
+		for _, offset := range []time.Duration{-40 * time.Second, -39 * time.Second} {
+			o.TrafficHistory = append(o.TrafficHistory, trafficPoint{At: now.Add(offset), Valid: true})
+		}
+		if strings.Contains(render(100), key) {
+			t.Fatal("legend marked continuous zero or startup whitespace as missing")
+		}
+		o.TrafficHistory = append(o.TrafficHistory, trafficPoint{At: now.Add(-5 * time.Second), Valid: true})
+		if !strings.Contains(render(100), key) || strings.Contains(render(20), key) {
+			t.Fatalf("%s: missing data key should appear only when it fits", lang)
+		}
+	}
 }
 
 func TestTrafficChartSharesOneLinearDotPlaneForSamplesTicksAndGrid(t *testing.T) {

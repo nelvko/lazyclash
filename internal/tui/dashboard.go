@@ -57,6 +57,7 @@ type dashboardOptions struct {
 	CoreAction                      string
 	Now                             time.Time
 	PlainButtons                    bool
+	Monochrome                      bool
 	StateUnavailable                bool
 	Header                          pageHeader
 	Runtime                         app.RuntimeSnapshot

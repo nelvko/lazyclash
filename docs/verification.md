@@ -1,5 +1,11 @@
 # 验证入口
 
+## 实时流量缺测与窄屏刻度（2026-11-25）
+
+使用六组固定流量，在三种图表尺寸、真彩、256 色和无色终端中核验了 54 组输出。同一段零流量与缺测数据在 128 列图上显示两处缺测。40 列图保留时间标签旁的空格，较长缺口显示两格标记，较短缺口的标记让位于刻度文字。单元测试覆盖有效零值、失败采样、3 秒连线边界、不同量程下刻度区宽度，以及各色彩模式下曲线子点的保留。[128 列真彩](../.test-artifacts/traffic-axis-gaps/experiments/zero-gap-128x6-truecolor-original.png) · [40 列无色](../.test-artifacts/traffic-axis-gaps/experiments/zero-gap-40x4-no-color-original.png)
+
+完整概览使用隔离的模拟运行时，在中文真彩终端观测到三次缺测后恢复，出现「┄ 缺测」图例。英文无色终端持续收到零值，仅绘制稀疏参考线。两个场景都经过 160×45、120×32、80×24、60×20、40×16 及恢复尺寸的 PTY 验证。[中文概览](../.test-artifacts/traffic-axis-gaps/live/20261125-103740-b4434b/zh-Hans/truecolor/gap/traffic-wide.png) · [40×16 英文无色概览](../.test-artifacts/traffic-axis-gaps/live/20261125-103740-3daff6/en/no-color/zero/traffic-40x16.png)
+
 ## 实时流量双色叠加（2026-11-25）
 
 字符格回归覆盖两方向各自占多数、等点数但位置不同、完全重合及全零。54 组终端预览中，18 组真彩输出的曲线子点仅使用上传橙和下载蓝。`make check build` 及专用 Linux/arm64 虚拟机的全包测试通过。[交叉预览](../.test-artifacts/traffic-two-colors/experiments/crossing-original.png) · [尖峰预览](../.test-artifacts/traffic-two-colors/experiments/spike-original.png)
