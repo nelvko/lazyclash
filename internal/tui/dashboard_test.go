@@ -71,7 +71,7 @@ func TestOverviewUninitializedIsBrowsable(t *testing.T) {
 	body, bodyTargets := overviewContent(options, dashboardBodyWidth(options))
 	plain := ansi.Strip(value + "\n" + body)
 	allTargets := append(append([]hitRegion(nil), targets...), bodyTargets...)
-	for _, part := range []string{"Get started", "Install the Mihomo core", "Install Mihomo", "Set up later", "− Not installed"} {
+	for _, part := range []string{"Get Started", "Install the Mihomo Core", "Install Mihomo", "Set up later", "− Not installed"} {
 		if !strings.Contains(plain, part) {
 			t.Errorf("missing %q", part)
 		}
@@ -81,7 +81,7 @@ func TestOverviewUninitializedIsBrowsable(t *testing.T) {
 			t.Errorf("missing action %s", id)
 		}
 	}
-	for _, part := range []string{"sing-box", "Traffic statistics", "Routing mode", "1 / 3"} {
+	for _, part := range []string{"sing-box", options.Locale.T("dashboard.overview.traffic"), options.Locale.T("dashboard.overview.route"), "1 / 3"} {
 		if strings.Contains(plain, part) {
 			t.Errorf("unexpected placeholder navigation %q", part)
 		}
@@ -92,7 +92,7 @@ func TestOverviewUninitializedIsBrowsable(t *testing.T) {
 	// A dismissed guide leaves status cards and permanent navigation intact.
 	options.GuideDismissed = true
 	value, targets, _ = renderDashboard(options)
-	if strings.Contains(ansi.Strip(value), "Get started") || hasAction(targets, "dismiss") {
+	if strings.Contains(ansi.Strip(value), "Get Started") || hasAction(targets, "dismiss") {
 		t.Fatal("dismissed guide still visible")
 	}
 	if !hasAction(targets, "nav.settings") {
@@ -366,7 +366,7 @@ func TestInstalledCoreDoesNotRequireGuideOrSubscription(t *testing.T) {
 	o := dashboardOptions{Width: 160, Height: 45, Page: "overview", Snapshot: app.Snapshot{Installed: true, Service: service.Status{State: "inactive"}}}
 	value, targets, _ := renderDashboard(o)
 	plain := ansi.Strip(value)
-	if strings.Contains(plain, "Get started") || !strings.Contains(plain, "No profile selected") || strings.Contains(plain, "Not applied") {
+	if strings.Contains(plain, "Get Started") || !strings.Contains(plain, "No profile selected") || strings.Contains(plain, "Not applied") {
 		t.Fatal("an installed core with no selection should show the empty subscription card")
 	}
 	o.Snapshot.ConfigReady = true
@@ -376,13 +376,13 @@ func TestInstalledCoreDoesNotRequireGuideOrSubscription(t *testing.T) {
 	}
 	o.Snapshot.HasRun = true
 	value, targets, _ = renderDashboard(o)
-	if strings.Contains(ansi.Strip(value), "Get started") || hasAction(targets, "install") {
+	if strings.Contains(ansi.Strip(value), "Get Started") || hasAction(targets, "install") {
 		t.Fatal("normal stop reopened installation guide")
 	}
 	o.Snapshot.HasRun = false
 	o.Snapshot.Service.Active = true
 	value, _, _ = renderDashboard(o)
-	if strings.Contains(ansi.Strip(value), "Get started") {
+	if strings.Contains(ansi.Strip(value), "Get Started") {
 		t.Fatal("running core still shown in startup guide")
 	}
 }
@@ -518,7 +518,7 @@ func TestCellWrappingOverlayAndFocus(t *testing.T) {
 	}
 	o.Dim = true
 	dimmed, _, _ := renderDashboard(o)
-	if !strings.Contains(ansi.Strip(dimmed), "Get started") || !strings.Contains(ansi.Strip(dimmed), "Overview") {
+	if !strings.Contains(ansi.Strip(dimmed), "Get Started") || !strings.Contains(ansi.Strip(dimmed), "Overview") {
 		t.Fatal("dimmed backdrop lost underlying page")
 	}
 }

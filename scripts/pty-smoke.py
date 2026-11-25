@@ -322,7 +322,7 @@ class Terminal:
     def local_ready(self, source):
         # The initial footer may paint before the asynchronous state read ends.
         # Wait for the ready preparation view before sending its local shortcut.
-        self.wait("Install the Mihomo core")
+        self.wait("Install the Mihomo Core")
         self.key(b"1")  # Explicitly enter Overview content from navigation.
         self.key(b"b")
         self.wait("Local Mihomo executable")
@@ -399,7 +399,7 @@ def main():
         terminal.wait_absent("Loading state")
         terminal.wait("q Quit")
         if args.mode == "empty":
-            terminal.wait("Install the Mihomo core")
+            terminal.wait("Install the Mihomo Core")
             terminal.key(b"a")
             terminal.wait("Subscription URL or local YAML path")
             terminal.key(b"\x1b")
@@ -477,7 +477,7 @@ def main():
             slow.unlink()
             counter.unlink()
         elif args.mode == "download-network":
-            terminal.wait("Install the Mihomo core")
+            terminal.wait("Install the Mihomo Core")
             terminal.key(b"n")  # Cancel the automatic lookup and open its draft.
             terminal.wait("Download method")
             terminal.wait("Package connection: Not tested")
@@ -604,7 +604,7 @@ def main():
                     break
             terminal.wait("[TCP]")
             terminal.key(b"1")
-            terminal.wait("Live traffic")
+            terminal.wait("Live Traffic")
             terminal.wait("↑ Upload")
             terminal.wait("Since core start")
             terminal.wait("● Running")
@@ -758,7 +758,7 @@ def main():
                     raise AssertionError("Dedicated test CLI action failed: " + " ".join(arguments[:2]))
                 return completed.stdout
 
-            terminal.wait("Live traffic")
+            terminal.wait("Live Traffic")
             terminal.wait("↑ Upload")
             terminal.wait("Since core start")
             terminal.key(b"4")
@@ -789,7 +789,7 @@ def main():
             terminal.key(b"\x1b")
             terminal.wait_absent("Connection details")
             terminal.key(b"1")
-            terminal.wait("Live traffic")
+            terminal.wait("Live Traffic")
             cli("service", "stop")
             terminal.wait("Stopped")
             stopped = json.loads(cli("stats"))

@@ -57,7 +57,7 @@ def wait_sidebar_clock(terminal, lower, upper):
 
 def heading_action(terminal, label):
     for y, row in enumerate(terminal.screen.cells):
-        if 'Core status' not in ''.join(row):
+        if 'Core Status' not in ''.join(row):
             continue
         for x, cell in enumerate(row):
             if cell and ''.join(row[x:]).startswith(label):

@@ -48,7 +48,7 @@ func TestCoreCardShowsElapsedUptimeWithoutSeconds(t *testing.T) {
 			}
 			o.Now = now.Add(time.Hour + 2*time.Minute + 11*time.Second)
 			plain := render()
-			title, uptime := "Core status", "Up for 1h 2m"
+			title, uptime := "Core Status", "Up for 1h 2m"
 			if language == i18n.Chinese {
 				title, uptime = "内核状态", "已运行 1 小时 2 分钟"
 			}

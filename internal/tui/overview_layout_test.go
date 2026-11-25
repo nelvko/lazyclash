@@ -324,7 +324,7 @@ func TestOverviewAlignedVersionsAndModesCollapseOnlyConfirmedState(t *testing.T)
 }
 
 func TestOverviewSubscriptionShowsAppliedCardMetadata(t *testing.T) {
-	for _, lang := range []struct{ id, title string }{{i18n.English, "Current subscription"}, {i18n.Chinese, "当前订阅"}} {
+	for _, lang := range []struct{ id, title string }{{i18n.English, "Current Subscription"}, {i18n.Chinese, "当前订阅"}} {
 		t.Run(lang.id, func(t *testing.T) {
 			m := profilesPreview(false)
 			m.locale = i18n.New(lang.id)

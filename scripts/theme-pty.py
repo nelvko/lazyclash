@@ -147,8 +147,8 @@ def exercise_notifications(terminal, output, profile):
     # The uninstalled guards do not touch a service or query a release.
     # Settings accepts all three service shortcuts. Overview reserves r.
     terminal.key(b"7")
-    terminal.wait("Interface preferences")
-    empty_shortcut(terminal, "Interface preferences")
+    terminal.wait("Interface Preferences")
+    empty_shortcut(terminal, "Interface Preferences")
     error = "Mihomo is not installed"
     terminal.key(b"s")
     terminal.wait(error)
@@ -180,20 +180,20 @@ def exercise_notifications(terminal, output, profile):
     save_screen(terminal, output, profile, "notification-overflow")
 
     terminal.click_text("Expand")
-    list_cards(terminal, "Interface preferences", minimum=2)
+    list_cards(terminal, "Interface Preferences", minimum=2)
     terminal.click_text("Proxies")  # Outside click collapses without opening that page.
     terminal.wait_absent("Esc Collapse")
-    terminal.wait("Interface preferences")
+    terminal.wait("Interface Preferences")
     terminal.key(b"\x0e")
-    list_cards(terminal, "Interface preferences", minimum=2)
+    list_cards(terminal, "Interface Preferences", minimum=2)
     terminal.key(b"\x0e")
     terminal.wait_absent("Esc Collapse")
     terminal.click_text("Expand")
-    list_cards(terminal, "Interface preferences", minimum=2)
+    list_cards(terminal, "Interface Preferences", minimum=2)
     for context in ("Start service", "Restart service", "Stop service"):
         terminal.wait(context)
     save_screen(terminal, output, profile, "notification-list")
-    cards = list_cards(terminal, "Interface preferences", minimum=3)
+    cards = list_cards(terminal, "Interface Preferences", minimum=3)
     for (_, y), context in zip(cards, ("Start service", "Restart service", "Stop service")):
         row = "".join(terminal.screen.cells[y])
         if context + ": " + error not in row:
@@ -282,7 +282,7 @@ def exercise_notifications(terminal, output, profile):
     terminal.wait_absent(validation)
     terminal.key(b"\t")  # End editing before using a page shortcut.
     terminal.key(b"1")
-    terminal.wait("Traffic routing")
+    terminal.wait("Traffic Routing")
     terminal.wait_absent(validation)
     terminal.key(b"s")
     terminal.wait("Start service")  # The same failure can be shown again after closing.
@@ -290,7 +290,7 @@ def exercise_notifications(terminal, output, profile):
     terminal.wait("Notifications")
     terminal.key(b"x")
     terminal.wait_absent("Start service")
-    empty_shortcut(terminal, "Traffic routing")
+    empty_shortcut(terminal, "Traffic Routing")
 
     terminal.key(b"a")
     terminal.wait("Import configuration")
@@ -299,10 +299,10 @@ def exercise_notifications(terminal, output, profile):
     terminal.key(b"\x1b")
     terminal.wait_absent("Import configuration")
     terminal.wait_absent("A value is required")
-    empty_shortcut(terminal, "Traffic routing")
+    empty_shortcut(terminal, "Traffic Routing")
     save_screen(terminal, output, profile, "notification-canceled")
     terminal.resize(160, 45)
-    terminal.wait("Traffic routing")
+    terminal.wait("Traffic Routing")
 
 
 def exercise_profile_updates(terminal, output, profile, command, directory):
@@ -358,10 +358,10 @@ def exercise_profile_updates(terminal, output, profile, command, directory):
     terminal.click_text("Update all")
     terminal.wait("Update all: Profiles updated:")
     terminal.key(b"7")
-    terminal.wait("Interface preferences")
+    terminal.wait("Interface Preferences")
     terminal.click_text("Details")
     terminal.wait("Lab-01")
-    _, _, _, content = detail_corner(terminal, "Interface preferences")
+    _, _, _, content = detail_corner(terminal, "Interface Preferences")
     if "Profiles updated: 0. Failed: 18" not in " ".join(content):
         raise AssertionError("Details lost the complete update result\n" + terminal.screen.text())
     save_screen(terminal, output, profile, "notification-detail-160x45")
@@ -369,7 +369,7 @@ def exercise_profile_updates(terminal, output, profile, command, directory):
     terminal.wait("Lab-18")
     terminal.key(b"\x1b")
     terminal.wait_absent("Esc Collapse")
-    terminal.wait("Interface preferences")
+    terminal.wait("Interface Preferences")
 
     terminal.resize(40, 24)
     terminal.key(b"\x0e")
@@ -394,7 +394,7 @@ def exercise_profile_updates(terminal, output, profile, command, directory):
     empty_shortcut(terminal, "Settings")
     terminal.resize(160, 45)
     terminal.key(b"1")
-    terminal.wait("Traffic routing")
+    terminal.wait("Traffic Routing")
 
 
 def exercise_network(terminal, output, profile):
@@ -426,7 +426,7 @@ def exercise_network(terminal, output, profile):
     terminal.wait_absent(PREFIX)
     terminal.key(b"\x1b")
     terminal.wait_absent("Use environment proxy")
-    terminal.wait("Traffic routing")
+    terminal.wait("Traffic Routing")
 
 
 def exercise(binary, output, profile, notifications_only):
@@ -443,9 +443,9 @@ def exercise(binary, output, profile, notifications_only):
             terminal.wait("q Quit")
             mark = len(terminal.text())
             terminal.resize(160, 45)
-            terminal.wait("Install the Mihomo core", after=mark)
+            terminal.wait("Install the Mihomo Core", after=mark)
             terminal.click_text("Set up later")
-            terminal.wait("Traffic routing")
+            terminal.wait("Traffic Routing")
             save_screen(terminal, output, profile, "overview")
             exercise_notifications(terminal, output, profile)
             exercise_profile_updates(terminal, output, profile, product, Path(temporary))

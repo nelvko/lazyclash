@@ -83,7 +83,7 @@ def run(binary, output):
         terminal = Terminal(base + ["--lang", "en"])
         try:
             terminal.wait("Overview")
-            cancel_initial_lookup(terminal, "Install the Mihomo core", "Use environment proxy")
+            cancel_initial_lookup(terminal, "Install the Mihomo Core", "Use environment proxy")
             terminal.key(b"7")
             terminal.wait("Language")
             click(terminal, dropdown_trigger(terminal, "English"))
@@ -130,7 +130,7 @@ def run(binary, output):
             click(terminal, dropdown_trigger(terminal, "简体中文"))
             dropdown_option(terminal, "简体中文", checked=True)
             click(terminal, dropdown_option(terminal, "English"))
-            terminal.wait("Interface preferences")
+            terminal.wait("Interface Preferences")
             dropdown_trigger(terminal, "English")
             capture(terminal, output, "settings-en")
             terminal.exit()

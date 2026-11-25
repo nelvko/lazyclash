@@ -206,7 +206,7 @@ func TestDismissedGuideKeepsCardOperationsUsable(t *testing.T) {
 	m := ready(&fakeBackend{snapshot: app.Snapshot{GuideDismissed: true}, add: func(context.Context, string, string) error { added = true; return nil }})
 	m.width, m.height = 160, 45
 	m.layout()
-	if strings.Contains(ansi.Strip(m.screen), "Get started") {
+	if strings.Contains(ansi.Strip(m.screen), "Get Started") {
 		t.Fatal("layout reset a dismissed guide")
 	}
 	findTarget(t, m, "card.profiles")

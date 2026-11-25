@@ -291,9 +291,9 @@ def words(language):
              "choices": ("直连", "使用环境代理", "GitHub 加速"), "retry": "重试", "back": "返回概览",
              "start": "启动内核", "ready": "无需订阅即可启动内核", "apply": "应用"}
             if language == "zh-Hans" else
-            {"overview": "Overview", "title": "Install the Mihomo core", "later": "Set up later",
+            {"overview": "Overview", "title": "Install the Mihomo Core", "later": "Set up later",
              "install": "Download and install", "downloading": "Downloading", "cancelled": "Installation canceled; cleanup completed",
-             "core": "Core status", "profiles": "Profiles", "quit": "q Quit", "more": "More options", "details": "Show details",
+             "core": "Core Status", "profiles": "Profiles", "quit": "q Quit", "more": "More options", "details": "Show details",
              "method": "Download method", "network": "Download method", "prefix": "Acceleration URL",
              "choices": ("Direct", "Use environment proxy", "GitHub acceleration"), "retry": "Retry", "back": "Back to overview",
              "start": "Start core", "ready": "start the core without a subscription", "apply": "Apply"})

@@ -512,7 +512,7 @@ func TestInitialOverviewAndExplicitInstallFlow(t *testing.T) {
 	if m.page != "overview" || m.wizard.open || m.wizard.networkOpen {
 		t.Fatal("startup must leave the dashboard browsable")
 	}
-	for _, label := range []string{"Install the Mihomo core", "Latest stable version", "Download and install"} {
+	for _, label := range []string{"Install the Mihomo Core", "Latest stable version", "Download and install"} {
 		if !strings.Contains(ansi.Strip(m.View().Content), label) {
 			t.Fatalf("missing %s", label)
 		}
