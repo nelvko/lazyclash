@@ -6,6 +6,8 @@
 
 运行 `make build` 后，可用 `python3 scripts/theme-pty.py --notifications-only --binary "$PWD/bin/lazyclash" --output .test-artifacts/notification-refactor/pty` 复验通知交互。macOS 和 Linux 的产品二进制均在真彩、256 色和无色模式下覆盖六种尺寸，验证折叠摘要、关闭指定通知、跨页保留及取消未提交表单。Go 回归另覆盖跨安装阶段的进度替换、遮挡和溢出时暂停计时，以及批量更新的部分成功和回滚异常。[macOS PTY 结果](../.test-artifacts/notification-refactor/macos-theme-pty.json) · [Linux PTY 结果](../.test-artifacts/notification-refactor/linux-theme-pty.json)
 
+在专用 Debian/arm64 VM 中另用产品二进制、Mihomo v1.19.33、独立 systemd 服务和非默认端口，先后选用两个本地订阅。服务停止时，两次通知均提示下次启动生效，PID 保持 0，生成配置与清单一致。服务运行时，两次通知均显示“内核运行中”，随后从控制 API 读到各自订阅的规则。测试结束后已清理服务和临时目录。完整安装 E2E 通过了空实例与下载网络的 PTY 检查，在下载官方发布包时超时。[停止时验收](../.test-artifacts/notification-refactor/linux-stopped-profile-switch.json) · [运行时验收](../.test-artifacts/notification-refactor/linux-running-profile-switch.json)
+
 ## 统一下拉框（2026-11-25）
 
 设置页的语言、主题与 Mihomo 日志等级，日志页筛选、代理组排序以及删除当前配置时的替代配置，都经过真实 PTY 验证。终端截图按 PTY 字符格和颜色重绘。中文真彩用底色标出游标，英文无色用行首 `›`，两者都在当前值行尾显示 `✓`。[真彩语言菜单](../.test-artifacts/unified-dropdown/language-menu-pending.png) · [无色语言菜单](../.test-artifacts/unified-dropdown/language-menu-monochrome.png)
