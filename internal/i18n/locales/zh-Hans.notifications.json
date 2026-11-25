@@ -21,5 +21,12 @@
   "notification.service.restart": "重启服务",
   "notification.install": "安装或更新内核",
   "notification.ports": "应用运行端口",
-  "notification.cancel": "取消任务"
+  "notification.cancel": "取消任务",
+  "terminal.savedActivation": "终端代理请求已保存。请在概览查看激活命令，退出 TUI 后在同一终端执行。",
+  "tun.savedForStart": "主机 TUN 策略已保存，下次启动内核时使用。",
+  "tun.savedUnconfirmed": "主机 TUN 策略已保存，暂时无法确认实际状态。",
+  "tun.enabled": "主机 TUN 已启用。",
+  "tun.disabled": "主机 TUN 已关闭。",
+  "notification.modeUnconfirmed": "已请求切换模式，暂时无法确认所选模式。",
+  "notification.nodeUnconfirmed": "已请求切换节点，暂时无法确认所选节点。"
 }

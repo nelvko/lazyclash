@@ -21,5 +21,12 @@
   "notification.service.restart": "Restart service",
   "notification.install": "Install or update core",
   "notification.ports": "Apply runtime ports",
-  "notification.cancel": "Cancel"
+  "notification.cancel": "Cancel",
+  "terminal.savedActivation": "Terminal proxy request saved. Open Activation command in Overview, then run it in the same shell after leaving the TUI.",
+  "tun.savedForStart": "Host TUN policy saved for the next core start.",
+  "tun.savedUnconfirmed": "Host TUN policy saved. The live state could not be confirmed.",
+  "tun.enabled": "Host TUN is enabled.",
+  "tun.disabled": "Host TUN is disabled.",
+  "notification.modeUnconfirmed": "Mode change requested. The selected mode could not be confirmed.",
+  "notification.nodeUnconfirmed": "Node change requested. The selected node could not be confirmed."
 }

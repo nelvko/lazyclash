@@ -537,6 +537,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.busy = false
 		m.job = ""
+		if v.actionSucceeded && v.err == nil && v.hasSnapshot {
+			v.success, m.notification.warning = m.controlCompletion(v.snapshot, v.success)
+		}
 		m.proxies.pendingGroup, m.proxies.pendingNode = "", ""
 		if v.hasSnapshot {
 			m.adoptSnapshot(v.snapshot)

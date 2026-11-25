@@ -58,6 +58,7 @@ type notificationState struct {
 	visible               bool
 	details               string
 	critical              bool
+	warning               bool
 	retainDialog          bool
 	panel                 notificationPanel
 	restoreFocus          string
@@ -84,7 +85,7 @@ func (m *Model) startNotification(op notificationOperation) {
 	if m.wizard.inline && (key == "check-update" || key == "resolve" || key == "prepare" || key == "install") {
 		n.operation.Inline = true
 	}
-	n.details, n.critical = "", false
+	n.details, n.critical, n.warning = "", false, false
 	n.retainDialog = false
 	for _, item := range n.items {
 		if item.Key == key && item.Critical {
@@ -125,6 +126,8 @@ func (m *Model) syncNotification() {
 		kind = "working"
 	} else if source.failure != "" {
 		kind, message = "error", source.failure
+	} else if n.warning {
+		kind = "warning"
 	} else if source.informational {
 		kind = "info"
 	}
@@ -139,9 +142,7 @@ func (m *Model) syncNotification() {
 	if source.busy && n.retainDialog {
 		item.Critical = true
 	}
-	// Routine completion is already reflected by the page. Keep its short-lived
-	// record available in the notification list without covering the interface.
-	item.Silent = !item.Critical && (kind == "done" || kind == "info")
+	item.Silent = !item.Critical && (kind == "info" || kind == "done" && !op.announcesSuccess(m.page))
 	if kind == "working" && !item.Critical {
 		item.showAfter = time.Now().Add(500 * time.Millisecond)
 		if index >= 0 && n.items[index].Kind == "working" {
@@ -160,7 +161,7 @@ func (m *Model) syncNotification() {
 	switch kind {
 	case "done":
 		item.remaining = 3 * time.Second
-	case "info":
+	case "info", "warning":
 		item.remaining = 4 * time.Second
 	}
 	if index < 0 {
