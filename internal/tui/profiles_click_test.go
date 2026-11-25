@@ -56,19 +56,21 @@ func profileClickModel(t *testing.T, installed, active, current, pending bool) (
 }
 
 func TestProfileClickAppliesStableIDWithoutOpeningDetails(t *testing.T) {
-	for _, active := range []bool{false, true} {
-		name := "stopped"
-		if active {
-			name = "running"
-		}
-		t.Run(name, func(t *testing.T) {
+	for _, tt := range []struct {
+		language string
+		state    string
+		want     string
+	}{
+		{i18n.English, "inactive", "Selected subscription “Office display name”"},
+		{i18n.English, "active", "Selected subscription “Office display name”"},
+		{i18n.Chinese, "inactive", "已选用订阅「Office display name」"},
+		{i18n.Chinese, "active", "已选用订阅「Office display name」"},
+	} {
+		t.Run(tt.language+"/"+tt.state, func(t *testing.T) {
+			active := tt.state == "active"
 			m, b := profileClickModel(t, true, active, false, false)
-			b.snapshot.Service.State = "inactive"
-			wantRuntime := m.tr("feedback.next_start")
-			if active {
-				b.snapshot.Service.State = "active"
-				wantRuntime = m.tr("feedback.core_running")
-			}
+			m.locale = i18n.New(tt.language)
+			b.snapshot.Service.State = tt.state
 			controls := 0
 			b.control = func(context.Context, string) error { controls++; return nil }
 			m, cmd := click(m, findTarget(t, m, "profile.0"))
@@ -79,9 +81,12 @@ func TestProfileClickAppliesStableIDWithoutOpeningDetails(t *testing.T) {
 			if len(b.calls) != 1 || b.calls[0] != "p-stable-profile-id" || m.snapshot.Applied != b.calls[0] {
 				t.Fatalf("click did not apply the stable profile ID: calls=%v selected=%s", b.calls, m.snapshot.Applied)
 			}
-			if len(m.notification.items) != 1 || !strings.Contains(m.notification.items[0].Message, "Office display name") ||
-				!strings.Contains(m.notification.items[0].Message, wantRuntime) {
-				t.Fatal("switch result must identify the profile and observed core state", m.notification.items)
+			if len(m.notification.items) != 1 {
+				t.Fatalf("expected one notification, got %+v", m.notification.items)
+			}
+			item := m.notification.items[0]
+			if item.Kind != "done" || item.Message != tt.want || item.Details != "" {
+				t.Fatalf("expected only %q, got %+v", tt.want, item)
 			}
 			if controls != 0 || m.snapshot.Service.Active != active {
 				t.Fatal("card click performed lifecycle operations outside the shared Apply use case")
@@ -268,7 +273,7 @@ func TestProfileSwitchReportsOnlyConfirmedOutcome(t *testing.T) {
 		{"ordinary failure", errors.New("candidate rejected"), initial, "", "Old subscription", ""},
 		{"recovery failure", diagnostic.New("diagnostic.recovery.profileSwitch", "could not restore prior generation"), initial, "", "restore", "Old subscription"},
 		{"service read failed after commit", nil, "p-stable-profile-id", "inspect failed", "could not be confirmed", "Core is running"},
-		{"selection changed after commit", nil, initial, "", "Old subscription", "Selected “Office display name”"},
+		{"selection changed after commit", nil, initial, "", "Old subscription", "Office display name"},
 	} {
 		t.Run(tt.label, func(t *testing.T) {
 			m, b := profileClickModel(t, true, true, false, false)
@@ -297,20 +302,22 @@ func TestProfileSwitchReportsOnlyConfirmedOutcome(t *testing.T) {
 	}
 }
 
-func TestProfileChangeHeadingKeepsProgressInTheMessage(t *testing.T) {
-	for _, language := range []string{i18n.English, i18n.Chinese} {
-		m, b := profileClickModel(t, true, false, false, false)
-		b.snapshot.Service.State = "inactive"
-		m.locale = i18n.New(language)
-		m, cmd := click(m, findTarget(t, m, "profile.0"))
-		if len(m.notification.items) != 1 || m.notification.items[0].Message != m.tr("profiles.applying") {
-			t.Fatalf("missing working message: %+v", m.notification.items)
-		}
-		m = finishProfileJob(t, m, cmd)
-		item := m.notification.items[0]
-		heading := notificationHeading(item, m.locale, "")
-		if item.Kind != "done" || !strings.Contains(heading, m.tr("profiles.use")) || !strings.Contains(heading, "Office display name") || strings.Contains(heading, m.tr("profiles.applying")) {
-			t.Fatalf("completion heading still describes the operation as in progress: %s", heading)
-		}
+func TestProfileSwitchReplacesProgressWithObservedName(t *testing.T) {
+	m, b := profileClickModel(t, true, false, false, false)
+	b.snapshot.Service.State = "inactive"
+	m, cmd := click(m, findTarget(t, m, "profile.0"))
+	if len(m.notification.items) != 1 || m.notification.items[0].Message != m.tr("profiles.applying") {
+		t.Fatalf("missing working message: %+v", m.notification.items)
+	}
+	workingID := m.notification.items[0].ID
+	result := inlineOperationMsg(t, cmd).(resultMsg)
+	result.snapshot.ProfileDetails[1].Name = "Maruko"
+	m, _ = update(m, result)
+	if len(m.notification.items) != 1 {
+		t.Fatalf("expected one completed notification, got %+v", m.notification.items)
+	}
+	item := m.notification.items[0]
+	if item.ID != workingID || item.Kind != "done" || item.Message != m.tr("feedback.selected", "Maruko") {
+		t.Fatalf("progress was not replaced with the confirmed selection: %+v", item)
 	}
 }

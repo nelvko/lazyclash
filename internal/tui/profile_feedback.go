@@ -80,6 +80,7 @@ func (m *Model) finishProfileSelection(result resultMsg) {
 	}
 	if switching {
 		m.message = m.tr("feedback.selected", name)
+		return
 	}
 	if running {
 		m.message += "\n" + m.tr("feedback.core_running")

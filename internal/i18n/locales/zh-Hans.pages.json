@@ -4,7 +4,7 @@
   "feedback.selection_changed": "提交后读到的选择与请求不同。%s",
   "feedback.runtime_unconfirmed": "%s。暂时无法确认内核运行状态。",
   "feedback.refresh_failed": "%s。状态刷新失败。",
-  "feedback.selected": "已选用「%s」",
+  "feedback.selected": "已选用订阅「%s」",
   "feedback.deactivated": "已停用「%s」，当前未使用订阅",
   "feedback.deleted": "已删除「%s」",
   "feedback.refreshed": "已更新「%s」",
