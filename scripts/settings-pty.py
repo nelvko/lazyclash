@@ -42,11 +42,12 @@ def click(terminal, point):
     terminal.key(("\x1b[<0;%d;%dM\x1b[<0;%d;%dm" % (x + 1, y + 1, x + 1, y + 1)).encode())
 
 
-def focus(terminal, label):
+def focus(terminal, label, footer_hint=""):
     pattern = re.compile(r"›\s*(?:[<\[]\s*)?" + re.escape(label))
     for _ in range(36):
         terminal.settle()
-        if pattern.search(terminal.screen.text()):
+        screen = terminal.screen.text()
+        if pattern.search(screen) and footer_hint in screen.splitlines()[-1]:
             return
         terminal.key(b"\t")
     raise AssertionError("Tab did not reveal " + label + "\n" + terminal.screen.text())
@@ -77,6 +78,38 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait(words["dashboard.network.mixedPort"] % "7897")
         terminal.wait("lazyclash doctor")
         preview.capture(terminal, output, "settings-wide", args)
+
+        terminal.click_text("Dark ▾")
+        terminal.wait("✓ Dark")
+        _, checked_y = position(terminal, "✓ Dark")
+        assert position(terminal, "Light")[1] == checked_y - 1, "Light must precede Dark"
+        assert position(terminal, "Auto ")[1] == checked_y + 1, "Auto must follow Dark"
+        preview.capture(terminal, output, "theme-menu-wide", args)
+        terminal.key(b"\x1b[A")
+        terminal.key(b"\x1b")
+        terminal.wait_absent("✓ Dark")
+        terminal.wait("Dark ▾")
+
+        terminal.key(b"\r")  # Canceling the dropdown returns focus to its trigger.
+        terminal.wait("✓ Dark")
+        terminal.key(b"\x1b[A")
+        terminal.key(b"\r")
+        terminal.wait("Light ▾")
+        terminal.wait(words["settings.themeLightPlaceholder"])
+        terminal.click_text("Light ▾")
+        terminal.wait("✓ Light")
+        mark = len(terminal.raw)
+        terminal.click_text("    Auto ")
+        terminal.wait("Auto ▾")
+        terminal.wait(words["settings.themeAuto"] % "Dark")
+        terminal.settle()
+        assert b"\x1b]11;?" in terminal.raw[mark:], "Auto did not query the terminal background"
+        terminal.send(b"\x1b]11;rgb:ffff/ffff/ffff\x07")
+        terminal.wait(words["settings.themeAuto"] % "Light")
+        terminal.click_text("Auto ▾")
+        terminal.wait("✓ Auto")
+        terminal.click_text("    Dark")
+        terminal.wait("Dark ▾")
 
         # A second language click while the first save is pending must be inert.
         other = "zh-Hans" if language == "en" else "en"
@@ -141,9 +174,16 @@ def exercise(preview, binary, output, language, profile, args):
             if columns == 1:
                 assert before != terminal.screen.text(), "wheel did not scroll the narrow Settings body"
             preview.capture(terminal, output, "scrolled-%dx%d" % (width, height), args)
+            if width == 40:
+                focus(terminal, "Dark ▾")
+                terminal.key(b"\r")
+                terminal.wait("✓ Dark")
+                preview.capture(terminal, output, "theme-menu-compact", args)
+                terminal.key(b"\x1b")
+                terminal.wait_absent("✓ Dark")
             focus(terminal, words["settings.openLogs"])
             preview.capture(terminal, output, "tab-logs-%dx%d" % (width, height), args)
-            focus(terminal, words["settings.edit"])
+            focus(terminal, words["settings.edit"], words["navigation.controls.editPorts"])
             terminal.key(b"\r")
             terminal.wait(words["ports.title"])
             terminal.wait("7897")
@@ -172,6 +212,7 @@ def exercise(preview, binary, output, language, profile, args):
         calls = json.loads(report.read_text())
         assert calls["language_saves"] == 2 and calls["language"] == language, calls
         assert calls["hint_saves"] == 2 and not calls["hints_hidden"], calls
+        assert calls["theme_saves"] == 3 and calls["theme"] == "dark", calls
         assert calls["port_reads"] == len(SIZES), calls
         assert calls["log_streams"] == 1, calls
         assert calls["service_changes"] == calls["mode_changes"] == calls["port_applies"] == 0, calls
@@ -182,7 +223,7 @@ def exercise(preview, binary, output, language, profile, args):
         if profile == "no-color":
             assert not any(value not in (b"", b"0") for value in preview.SGR.findall(raw)), "NO_COLOR emitted styling"
         (output / "pty.raw").write_bytes(raw)
-        print("PASS %s/%s: language/busy, hints, adaptive width/columns, wheel, Tab, ports return and diagnostics Logs; %s" % (language, profile, json.dumps(calls)), flush=True)
+        print("PASS %s/%s: theme dropdown, language/busy, hints, adaptive width/columns, wheel, Tab, ports return and diagnostics Logs; %s" % (language, profile, json.dumps(calls)), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")
         (output / "failed.ansi").write_bytes(terminal.raw)

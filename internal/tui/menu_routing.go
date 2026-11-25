@@ -13,6 +13,14 @@ func (m *Model) applyMenuResult(result menuResult) tea.Cmd {
 		return nil
 	case m.logs.levelMenu:
 		return m.logsLevelMenuResult(result)
+	case m.page == "settings":
+		if result.Closed {
+			m.hover = ""
+			if result.Action != "" && m.pageSelectionMenuAvailable("settings") {
+				return m.changeTheme(result.Action)
+			}
+		}
+		return nil
 	case m.proxies.sortMenu:
 		return m.proxyMenuResult(result)
 	default:
@@ -28,6 +36,10 @@ func (m *Model) reconcileMenu() {
 		}
 	case m.logs.levelMenu:
 		m.reconcileLogsLevelMenu()
+	case m.page == "settings":
+		if m.menu.open && !m.pageSelectionMenuAvailable("settings") {
+			m.menu.dismiss()
+		}
 	case m.proxies.sortMenu:
 		if m.page != "proxies" || m.busy {
 			m.menu.dismiss()
@@ -39,7 +51,7 @@ func (m *Model) reconcileMenu() {
 }
 
 func (m *Model) dismissMenu() {
-	if m.form == "profile-delete" {
+	if m.form == "profile-delete" || m.page == "settings" {
 		m.menu.dismiss()
 		return
 	}
@@ -48,4 +60,36 @@ func (m *Model) dismissMenu() {
 		return
 	}
 	m.dismissProfileMenu()
+}
+
+func (m *Model) pageSelectionMenuAvailable(page string) bool {
+	return m.page == page && !m.busy && !m.quitting && !m.sidebarOpen &&
+		!m.providers.open && !m.helpOpen && !m.ports.open && !m.wizard.open &&
+		!m.wizard.networkOpen && m.form == "" && !m.notification.panel.open
+}
+
+func (m *Model) openPageSelectionMenu(trigger, current string, items []menuItem) bool {
+	m.focus, m.hover = trigger, ""
+	m.layout()
+	for _, target := range m.targets {
+		if target.ID == trigger {
+			m.menu.showSelection(items, current, target)
+			return true
+		}
+	}
+	return false
+}
+
+func (m *Model) anchorPageSelectionMenu(targets []hitRegion) {
+	if !m.menu.anchored {
+		return
+	}
+	for _, target := range targets {
+		if target.ID == m.menu.anchor.ID {
+			m.menu.setAnchor(target)
+			return
+		}
+	}
+	// A hidden trigger must not leave a floating, unreachable menu behind.
+	m.dismissMenu()
 }

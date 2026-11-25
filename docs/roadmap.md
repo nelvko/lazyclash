@@ -8,7 +8,7 @@
 
 已完成只读规则查看：按内核顺序展示、搜索和详情，独立异步刷新、取消与重试，CLI 共享读取用例。操作见 [规则查看](rules.md)。
 
-已完成七页导航与实时日志：Overview、Proxies、Profiles、Connections、Rules、Logs、Settings；紧凑分组侧栏、上下文帮助、可滚动帮助和独立焦点组。日志为容量有界、可取消和脱敏的当前会话实时观察，CLI/TUI 共享用例；不提供历史回放，不将原始日志落盘。默认 Mariana 主题已覆盖主要页面及终端颜色回退。
+已完成七页导航与实时日志：Overview、Proxies、Profiles、Connections、Rules、Logs、Settings；紧凑分组侧栏、上下文帮助、可滚动帮助和独立焦点组。日志为容量有界、可取消和脱敏的当前会话实时观察，CLI/TUI 共享用例；不提供历史回放，不将原始日志落盘。默认的 Dark 主题沿用 Mariana 配色，设置页支持保存 Light、Dark 或 Auto。
 
 已完成运行端口设置：Settings 内审阅并修改本机代理与控制 API 端口，检查 TCP/UDP 冲突，运行中明确确认重启，停止时保持停止；取消或失败恢复旧配置和服务状态，保留原始 profile 与 API 密钥。CLI 共享用例，操作见 [运行端口设置](runtime-settings.md)。
 
@@ -24,7 +24,7 @@ Linux 首发服务 scope 与权限实现及 Linux/arm64 双作用域、TUN 端�
 其余后续需求：
 
 1. 基于具体需求完善日志筛选与诊断，保持当前不落盘的敏感信息边界。
-2. 必要的主题偏好。
+2. 为已预留的 Light 主题补上浅色配色。
 3. 有具体需求后再评估其他内核或平台。
 
 普通用户提权、同一实例的 user/system 切换、TUN 自动交接、其他平台服务、独立系统 DNS 接管、系统代理自动设置、自动 enable/linger 和 Shell 启动文件修改均不在首发范围，也不是当前已承诺的后续实现。没有占位后端、插件框架或历史兼容层。

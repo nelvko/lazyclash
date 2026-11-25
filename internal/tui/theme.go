@@ -9,10 +9,8 @@ import (
 )
 
 const (
-	// Mariana is the sole built-in theme. Source expressions and the small
-	// readability adaptations are recorded in docs/theme-mariana.md.
-	themeID                 = "mariana"
-	themeName               = "Mariana"
+	// The dark palette also supplies the placeholder colors for light.
+	// Its Mariana source colors are documented in docs/theme-mariana.md.
 	bg                      = "#303841"
 	panel                   = "#2b323a"
 	raised                  = "#3a424a"

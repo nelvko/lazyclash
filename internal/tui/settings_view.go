@@ -1,10 +1,12 @@
 package tui
 
 import (
+	"cmp"
 	"strings"
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/buildinfo"
 )
 
@@ -15,6 +17,21 @@ type settingsRow struct {
 	label, value, note string
 	color              string
 	actions            []overviewControlButton
+}
+
+var themeMenuItems = []menuItem{
+	{ID: app.ThemeLight, Label: "Light"},
+	{ID: app.ThemeDark, Label: "Dark"},
+	{ID: app.ThemeAuto, Label: "Auto"},
+}
+
+func themeLabel(theme string) string {
+	for _, item := range themeMenuItems {
+		if item.ID == theme {
+			return item.Label
+		}
+	}
+	return theme
 }
 
 func settingsContent(o dashboardOptions, width int) (string, []hitRegion) {
@@ -51,9 +68,23 @@ func settingsInterface(o dashboardOptions, width int) dashboardBlock {
 		{label: tr("dashboard.interface.keyHints"), note: tr("settings.keyHintsHint"), actions: []overviewControlButton{
 			{id: "key-hints.toggle", label: state, enabled: true, selected: !o.HideKeyHints},
 		}},
-		{label: tr("settings.theme"), value: themeName},
+		settingsThemeRow(o),
 		{label: tr("settings.editor"), actions: []overviewControlButton{{id: "editor.configure", label: tr("settings.edit"), enabled: !o.Busy}}},
 	})
+}
+
+func settingsThemeRow(o dashboardOptions) settingsRow {
+	theme := cmp.Or(o.Theme, app.ThemeDark)
+	var note string
+	if theme == app.ThemeAuto {
+		note = o.Locale.T("settings.themeAuto", themeLabel(o.EffectiveTheme))
+	}
+	if theme == app.ThemeLight || theme == app.ThemeAuto && o.EffectiveTheme == app.ThemeLight {
+		note = strings.TrimSpace(note + " " + o.Locale.T("settings.themeLightPlaceholder"))
+	}
+	return settingsRow{label: o.Locale.T("settings.theme"), note: note, actions: []overviewControlButton{
+		{id: "settings.theme", label: themeLabel(theme) + " ▾", enabled: !o.Busy},
+	}}
 }
 
 func settingsService(o dashboardOptions, width int) dashboardBlock {

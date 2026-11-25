@@ -110,6 +110,7 @@ func TestSettingsActionsKeepCompleteLabelsAndUniqueTargets(t *testing.T) {
 				tr := o.Locale.T
 				labels := map[string]string{
 					"language.en": "English", "language.zh-Hans": "简体中文", "key-hints.toggle": tr("dashboard.control.on"),
+					"settings.theme":   "Dark ▾",
 					"editor.configure": tr("settings.edit"),
 					"install":          tr("settings.manage"), "runtime-settings": tr("settings.edit"),
 					"restart": tr("dashboard.action.restart"), "card.logs": tr("settings.openLogs"),
@@ -151,12 +152,12 @@ func TestSettingsActionsKeepCompleteLabelsAndUniqueTargets(t *testing.T) {
 func TestSettingsUninstalledActionsAndHeaderOwnership(t *testing.T) {
 	o := dashboardOptions{Locale: i18n.New(i18n.English), Width: 160, Height: 45}
 	body, hits := settingsContent(o, 120)
-	for _, id := range []string{"install", "card.logs", "language.en", "language.zh-Hans", "key-hints.toggle", "editor.configure"} {
+	for _, id := range []string{"install", "card.logs", "language.en", "language.zh-Hans", "key-hints.toggle", "settings.theme", "editor.configure"} {
 		if !hasAction(hits, id) {
 			t.Fatalf("uninstalled settings lost %s", id)
 		}
 	}
-	if len(hits) != 6 || !strings.Contains(ansi.Strip(body), o.Locale.T("settings.afterInstall")) {
+	if len(hits) != 7 || !strings.Contains(ansi.Strip(body), o.Locale.T("settings.afterInstall")) {
 		t.Fatal("uninstalled settings expose installed-core actions or omit their availability")
 	}
 	if hasAction(hits, "network") {
@@ -165,7 +166,7 @@ func TestSettingsUninstalledActionsAndHeaderOwnership(t *testing.T) {
 	o.Page = "settings"
 	o.Header = (&Model{page: "settings", locale: o.Locale}).pageHeader()
 	_, hits = settingsContent(o, 120)
-	if hasAction(hits, "network") || len(hits) != 6 {
+	if hasAction(hits, "network") || len(hits) != 7 {
 		t.Fatal("download settings are duplicated in the header and body")
 	}
 	_, hits, _ = renderDashboard(o)
@@ -177,6 +178,59 @@ func TestSettingsUninstalledActionsAndHeaderOwnership(t *testing.T) {
 	}
 	if networks != 1 {
 		t.Fatalf("expected one download-network header entry, got %d", networks)
+	}
+}
+
+func TestSettingsThemeMenuTracksTriggerAndKeepsChoicePending(t *testing.T) {
+	m := ready(&fakeBackend{snapshot: settingsTestSnapshot()})
+	directionCleanup(t, &m)
+	m.page, m.focus = "settings", "settings.theme"
+	m, _ = update(m, tea.WindowSizeMsg{Width: 160, Height: 45})
+	m, _ = update(m, special(tea.KeyEnter))
+	options := []menuItem{
+		{ID: app.ThemeLight, Label: "Light"},
+		{ID: app.ThemeDark, Label: "Dark", Checked: true},
+		{ID: app.ThemeAuto, Label: "Auto"},
+	}
+	if !m.menu.open || len(m.menu.items) != len(options) {
+		t.Fatalf("expected three theme options, got %+v", m.menu)
+	}
+	for i, want := range options {
+		item := m.menu.items[i]
+		if item != want {
+			t.Fatalf("unexpected theme option at %d: %+v", i, item)
+		}
+	}
+	m, _ = update(m, special(tea.KeyUp))
+	m, _ = update(m, tea.WindowSizeMsg{Width: 80, Height: 24})
+	trigger := findTarget(t, m, "settings.theme")
+	if !m.menu.open || m.menu.anchor != trigger || m.menu.selected != 0 || !m.menu.items[1].Checked {
+		t.Fatal("resizing lost the trigger, pending light choice, or saved dark check")
+	}
+	m, _ = update(m, special(tea.KeyEscape))
+	if m.menu.open || m.busy || m.theme != app.ThemeDark || m.focus != "settings.theme" {
+		t.Fatalf("cancelling changed the theme or focus: %s, %s", m.theme, m.focus)
+	}
+}
+
+func TestSettingsThemeExplainsLightPlaceholderAndAutoChoice(t *testing.T) {
+	for _, language := range []string{i18n.English, i18n.Chinese} {
+		o := dashboardOptions{Locale: i18n.New(language)}
+		for _, tc := range []struct {
+			theme, effective string
+			placeholder      bool
+		}{
+			{app.ThemeDark, app.ThemeDark, false}, {app.ThemeLight, app.ThemeLight, true},
+			{app.ThemeAuto, app.ThemeDark, false}, {app.ThemeAuto, app.ThemeLight, true},
+		} {
+			o.Theme, o.EffectiveTheme = tc.theme, tc.effective
+			row := settingsThemeRow(o)
+			if row.actions[0].label != themeLabel(tc.theme)+" ▾" ||
+				strings.Contains(row.note, o.Locale.T("settings.themeLightPlaceholder")) != tc.placeholder ||
+				strings.Contains(row.note, o.Locale.T("settings.themeAuto", themeLabel(tc.effective))) != (tc.theme == app.ThemeAuto) {
+				t.Fatalf("%s/%s/%s: unexpected theme setting %+v", language, tc.theme, tc.effective, row)
+			}
+		}
 	}
 }
 

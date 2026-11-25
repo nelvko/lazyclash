@@ -15,18 +15,25 @@ import (
 	"github.com/nelvko/lazyclash/internal/store"
 )
 
+const (
+	ThemeLight = "light"
+	ThemeDark  = "dark"
+	ThemeAuto  = "auto"
+)
+
 // Preferences never contains controller credentials or subscription URLs.
 type Preferences struct {
 	Network        downloadnet.Config
 	GuideDismissed bool
 	HasRun         bool
 	Language       string `json:",omitempty"`
+	Theme          string `json:",omitempty"`
 	Editor         string `json:",omitempty"`
 	HideKeyHints   bool   `json:",omitempty"`
 }
 
 func defaultPreferences() Preferences {
-	return Preferences{Network: downloadnet.Config{Method: downloadnet.MethodDirect}}
+	return Preferences{Network: downloadnet.Config{Method: downloadnet.MethodDirect}, Theme: ThemeDark}
 }
 
 func (a *App) loadPreferencesLocked() (Preferences, []byte, error) {
@@ -41,6 +48,9 @@ func (a *App) loadPreferencesLocked() (Preferences, []byte, error) {
 	var p Preferences
 	if json.Unmarshal(raw, &p) != nil {
 		return p, nil, diagnostic.New("diagnostic.preferences.invalid", "invalid preferences file; preserving it for inspection")
+	}
+	if !validTheme(p.Theme) {
+		p.Theme = ThemeDark
 	}
 	p.Network = p.Network.Normalized()
 	if err := rememberableNetwork(p.Network); err != nil {
@@ -147,6 +157,17 @@ func (a *App) SaveLanguagePreference(ctx context.Context, language string) error
 		return diagnostic.New("language.unsupported", "Language must be en or zh-Hans")
 	}
 	return a.editPreferences(ctx, func(p *Preferences) error { p.Language = language; return nil })
+}
+
+func validTheme(theme string) bool {
+	return theme == ThemeLight || theme == ThemeDark || theme == ThemeAuto
+}
+
+func (a *App) SaveThemePreference(ctx context.Context, theme string) error {
+	if !validTheme(theme) {
+		return diagnostic.New("theme.unsupported", "Theme must be Light, Dark or Auto")
+	}
+	return a.editPreferences(ctx, func(p *Preferences) error { p.Theme = theme; return nil })
 }
 
 // SaveKeyHintsPreference changes presentation without replacing other preferences.

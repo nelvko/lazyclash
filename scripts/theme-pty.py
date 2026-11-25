@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify Mariana rendering through an isolated, real controlling PTY.
+"""Verify Dark theme rendering through an isolated, real controlling PTY.
 
 Requires an already built --binary (absolute path). It does not build, create a
 VM, install a core/service or change system network settings. First-run
@@ -276,7 +276,7 @@ def main():
     results = [exercise(args.binary, args.output, profile) for profile in profiles]
     (args.output / "results.json").write_text(json.dumps(results, indent=2) + "\n")
     for result in results:
-        print("Mariana PTY %s: passed (%s sizes)" % (result["profile"], len(result["sizes"])))
+        print("Dark theme PTY %s: passed (%s sizes)" % (result["profile"], len(result["sizes"])))
 
 
 if __name__ == "__main__":

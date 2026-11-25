@@ -44,6 +44,7 @@ func TestSettingsPTYFixture(t *testing.T) {
 		"service_changes": b.controls.Load(), "mode_changes": b.modes.Load(), "port_applies": b.portApplies.Load(),
 		"log_streams": b.logStreams.Load(),
 		"language":    prefs.Language, "hints_hidden": prefs.HideKeyHints,
+		"theme_saves": b.themes.Load(), "theme": prefs.Theme,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -55,11 +56,11 @@ func TestSettingsPTYFixture(t *testing.T) {
 
 type settingsPTYBackend struct {
 	*fakeBackend
-	mu                                       sync.Mutex
-	preferences                              app.Preferences
-	languages, hints, portReads, portApplies atomic.Int64
-	controls, modes                          atomic.Int64
-	logStreams                               atomic.Int64
+	mu                                               sync.Mutex
+	preferences                                      app.Preferences
+	languages, hints, themes, portReads, portApplies atomic.Int64
+	controls, modes                                  atomic.Int64
+	logStreams                                       atomic.Int64
 }
 
 func (b *settingsPTYBackend) LoadPreferences(ctx context.Context) (app.Preferences, error) {
@@ -88,6 +89,14 @@ func (b *settingsPTYBackend) SaveKeyHintsPreference(ctx context.Context, hidden 
 	b.mu.Lock()
 	b.preferences.HideKeyHints = hidden
 	b.mu.Unlock()
+	return ctx.Err()
+}
+
+func (b *settingsPTYBackend) SaveThemePreference(ctx context.Context, theme string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.preferences.Theme = theme
+	b.themes.Add(1)
 	return ctx.Err()
 }
 

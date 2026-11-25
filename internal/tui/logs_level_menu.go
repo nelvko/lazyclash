@@ -8,12 +8,6 @@ import (
 
 var logLevelKeys = [...]string{"logs.level_all", "logs.level_info", "logs.level_warn", "logs.level_error"}
 
-func (m *Model) logLevelMenuAvailable() bool {
-	return m.page == "logs" && !m.busy && !m.quitting && !m.sidebarOpen &&
-		!m.providers.open && !m.helpOpen && !m.ports.open && !m.wizard.open &&
-		!m.wizard.networkOpen && m.form == "" && !m.notification.panel.open
-}
-
 func (m *Model) logLevelMenuItems() []menuItem {
 	items := make([]menuItem, len(logLevelKeys))
 	for level, key := range logLevelKeys {
@@ -23,24 +17,16 @@ func (m *Model) logLevelMenuItems() []menuItem {
 }
 
 func (m *Model) openLogLevelMenu() {
-	if !m.logLevelMenuAvailable() || m.menu.open {
+	if !m.pageSelectionMenuAvailable("logs") || m.menu.open {
 		return
 	}
 	m.logs.editing = false
 	m.logs.search.Blur()
-	m.focus, m.hover = "logs.level", ""
-	m.layout()
-	for _, target := range m.targets {
-		if target.ID == "logs.level" {
-			m.logs.levelMenu = true
-			m.menu.showSelection(m.logLevelMenuItems(), strconv.Itoa(m.logs.level), target)
-			return
-		}
-	}
+	m.logs.levelMenu = m.openPageSelectionMenu("logs.level", strconv.Itoa(m.logs.level), m.logLevelMenuItems())
 }
 
 func (m *Model) reconcileLogsLevelMenu() {
-	if !m.menu.open || !m.logLevelMenuAvailable() {
+	if !m.menu.open || !m.pageSelectionMenuAvailable("logs") {
 		m.logsLevelMenuResult(menuResult{Closed: true})
 		return
 	}
@@ -51,7 +37,7 @@ func (m *Model) logsLevelMenuResult(result menuResult) tea.Cmd {
 	if !result.Closed || !m.logs.levelMenu {
 		return nil
 	}
-	available := m.logLevelMenuAvailable()
+	available := m.pageSelectionMenuAvailable("logs")
 	m.menu.dismiss()
 	m.logs.levelMenu, m.hover = false, ""
 	if m.page == "logs" {
@@ -65,18 +51,4 @@ func (m *Model) logsLevelMenuResult(result menuResult) tea.Cmd {
 		}
 	}
 	return nil
-}
-
-func (m *Model) anchorLogsLevelMenu(targets []hitRegion) {
-	if !m.logs.levelMenu {
-		return
-	}
-	for _, target := range targets {
-		if target.ID == "logs.level" {
-			m.menu.setAnchor(target)
-			return
-		}
-	}
-	// A hidden trigger must not leave a floating, unreachable menu behind.
-	m.logsLevelMenuResult(menuResult{Closed: true})
 }

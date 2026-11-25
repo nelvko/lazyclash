@@ -29,6 +29,7 @@ type hitRegion struct {
 }
 type dashboardOptions struct {
 	Locale                          i18n.Localizer
+	Theme, EffectiveTheme           string
 	MessageTransient                bool
 	MessageInformational            bool
 	Width, Height                   int

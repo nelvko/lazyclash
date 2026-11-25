@@ -1,6 +1,6 @@
 # TUI Toggle 组件
 
-`internal/tui/toggle.go` 提供同包业务页面可复用的布尔状态控件。组件使用现有 Mariana 主题、ANSI 显示格宽度工具及 Bubbles key；不依赖 `internal/app` 或具体服务，也不启动命令、执行操作或产生动画。
+`internal/tui/toggle.go` 提供同包业务页面可复用的布尔状态控件。组件使用当前主题、ANSI 显示格宽度工具及 Bubbles key；不依赖 `internal/app` 或具体服务，也不启动命令、执行操作或产生动画。
 
 它沿用 `renderButton` 等组件的结构，不单独实现 `tea.Model`。父级 `Model.Update` 负责键盘路由、异步任务、错误通知和实际状态查询，现有业务页面尚未接入。
 

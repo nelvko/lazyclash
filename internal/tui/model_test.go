@@ -29,6 +29,7 @@ type fakeBackend struct {
 	prefs               app.Preferences
 	prefsErr            error
 	saveLanguage        func(context.Context, string) error
+	saveTheme           func(context.Context, string) error
 	resolve             func(context.Context, string, downloadnet.Config) (mihomo.Release, error)
 	testFile            func(context.Context, mihomo.Release, downloadnet.Config) error
 	prepare             func(context.Context, mihomo.Release, string, bool) (app.InstallPlan, error)
@@ -105,6 +106,13 @@ func (f *fakeBackend) SaveLanguagePreference(ctx context.Context, language strin
 		return f.saveLanguage(ctx, language)
 	}
 	f.prefs.Language = language
+	return ctx.Err()
+}
+func (f *fakeBackend) SaveThemePreference(ctx context.Context, theme string) error {
+	if f.saveTheme != nil {
+		return f.saveTheme(ctx, theme)
+	}
+	f.prefs.Theme = theme
 	return ctx.Err()
 }
 func (f *fakeBackend) SaveNetworkPreferences(ctx context.Context, cfg downloadnet.Config) error {

@@ -14,7 +14,7 @@ import (
 func TestPreferencesPersistSafeSettingsAndKeepCredentialsSessionOnly(t *testing.T) {
 	a, _ := testApp(t)
 	prefs, err := a.LoadPreferences(t.Context())
-	if err != nil || prefs.Network.Method != downloadnet.MethodDirect || prefs.HasRun || prefs.GuideDismissed {
+	if err != nil || prefs.Network.Method != downloadnet.MethodDirect || prefs.Theme != ThemeDark || prefs.HasRun || prefs.GuideDismissed {
 		t.Fatalf("defaults=%+v err=%v", prefs, err)
 	}
 	for _, cfg := range []downloadnet.Config{
@@ -52,6 +52,33 @@ func TestPreferencesPersistSafeSettingsAndKeepCredentialsSessionOnly(t *testing.
 	loaded, err := other.LoadPreferences(t.Context())
 	if err != nil || loaded.Network != good || !loaded.GuideDismissed {
 		t.Fatalf("loaded=%+v err=%v", loaded, err)
+	}
+}
+
+func TestThemePreferenceDefaultsAndPersists(t *testing.T) {
+	a, _ := testApp(t)
+	path := filepath.Join(a.Home, "preferences.json")
+	for _, raw := range []string{`{"Language":"zh-Hans"}`, `{"Language":"zh-Hans","Theme":"unknown"}`} {
+		write(t, path, []byte(raw))
+		prefs, err := a.ReadPreferences(t.Context())
+		if err != nil || prefs.Theme != ThemeDark || string(read(t, path)) != raw {
+			t.Fatalf("reading %s: prefs=%+v err=%v", raw, prefs, err)
+		}
+	}
+	for _, theme := range []string{ThemeLight, ThemeDark, ThemeAuto} {
+		if err := a.SaveThemePreference(t.Context(), theme); err != nil {
+			t.Fatal(err)
+		}
+		prefs, err := a.LoadPreferences(t.Context())
+		if err != nil || prefs.Theme != theme || prefs.Language != "zh-Hans" {
+			t.Fatalf("saved %s: prefs=%+v err=%v", theme, prefs, err)
+		}
+	}
+	before := string(read(t, path))
+	for _, invalid := range []string{"", "unknown"} {
+		if err := a.SaveThemePreference(t.Context(), invalid); err == nil || string(read(t, path)) != before {
+			t.Fatalf("invalid theme %q was saved", invalid)
+		}
 	}
 }
 

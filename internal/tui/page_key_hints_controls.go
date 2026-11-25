@@ -104,6 +104,8 @@ func (m *Model) overviewCardHasControls() bool {
 func (m *Model) settingsContextHelp() string {
 	var label string
 	switch m.focus {
+	case "settings.theme":
+		label = "settings.chooseTheme"
 	case "key-hints.toggle":
 		label = "navigation.controls.hideHints"
 		if m.keyHints.hidden {

@@ -28,6 +28,7 @@ type Backend interface {
 	SaveNetworkPreferences(context.Context, downloadnet.Config) error
 	SetGuideDismissed(context.Context, bool) error
 	SaveLanguagePreference(context.Context, string) error
+	SaveThemePreference(context.Context, string) error
 	SaveEditorPreference(context.Context, string) error
 	SaveKeyHintsPreference(context.Context, bool) error
 	SetAutostart(context.Context, bool) error
@@ -117,6 +118,8 @@ type Model struct {
 	locale                i18n.Localizer
 	languageOverride      string
 	editorPreference      string
+	theme                 string
+	terminalLight         bool
 	ctx                   context.Context
 	backend               Backend
 	snapshot              app.Snapshot
@@ -183,6 +186,7 @@ func New(ctx context.Context, backend Backend, languages ...string) Model {
 		m.languageOverride = languages[0]
 	}
 	m.locale = i18n.New(i18n.Resolve(m.languageOverride, "", os.Getenv))
+	m.theme = app.ThemeDark
 	m.profilesUI = newProfilesState(m.locale)
 	m.message = m.tr("model.loading")
 	m.connections.search = textinput.New()
@@ -352,6 +356,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case keyHintsSavedMsg:
 		cmd = m.acceptKeyHintsSaved(v)
+	case themeSavedMsg:
+		if v.id != m.id {
+			return m, nil
+		}
+		m.cancel()
+		m.busy, m.job = false, ""
+		if v.err != nil {
+			m.failure, m.message = m.localizeError(v.err), ""
+		} else {
+			cmd = m.applyThemePreference(v.theme)
+			m.message = m.tr("settings.themeSaved")
+		}
+		if m.quitting && !m.keyHints.pending {
+			return m, tea.Quit
+		}
 	case notificationExpiredMsg:
 		m.expireNotification(v)
 	case editorPreferenceSavedMsg:
@@ -414,6 +433,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.ColorProfileMsg:
 		m.colorProfile = v.Profile
 		m.logoIntro.colored = true
+	case tea.BackgroundColorMsg:
+		if v.Color != nil && m.theme == app.ThemeAuto {
+			m.terminalLight = !v.IsDark()
+		}
 	case providersResultMsg:
 		cmd = m.acceptProviders(v)
 	case providerUpdateResultMsg:
@@ -523,6 +546,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		if v.prefs != nil {
+			cmd = m.applyThemePreference(v.prefs.Theme)
 			m.loadKeyHintsPreference(v.prefs.HideKeyHints)
 			m.editorPreference = v.prefs.Editor
 			m.locale = i18n.New(i18n.Resolve(m.languageOverride, v.prefs.Language, os.Getenv))
@@ -1270,6 +1294,11 @@ func (m *Model) activate(id string) tea.Cmd {
 		return m.openPorts()
 	}
 	switch id {
+	case "settings.theme":
+		if m.pageSelectionMenuAvailable("settings") && !m.menu.open {
+			m.openPageSelectionMenu(id, m.theme, themeMenuItems)
+		}
+		return nil
 	case "editor.configure":
 		return m.openEditorPreference()
 	case "card.profiles":
@@ -1729,7 +1758,7 @@ func (m *Model) renderLayout() {
 	} else if m.page == "connections" && m.connections.confirming {
 		m.screen, m.targets = m.renderConnectionsCloseAll(base)
 	} else if m.menu.open {
-		m.anchorLogsLevelMenu(hits)
+		m.anchorPageSelectionMenu(hits)
 		m.screen = m.menu.render(base, m.width, m.height, dashboardContentBottom(o))
 	}
 }
