@@ -10,7 +10,7 @@ import (
 type keyHintsState struct {
 	hidden, changed, pending bool
 	generation               uint64
-	helpFocus                string
+	helpFocus, originPage    string
 }
 
 type keyHintsSavedMsg struct {
@@ -29,6 +29,7 @@ func (m *Model) loadKeyHintsPreference(hidden bool) {
 func (m *Model) toggleKeyHints() tea.Cmd {
 	m.keyHints.hidden = !m.keyHints.hidden
 	m.keyHints.changed = true
+	m.keyHints.originPage = m.page
 	m.revealContentFocus()
 	return m.saveKeyHints()
 }
@@ -62,7 +63,7 @@ func (m *Model) acceptKeyHintsSaved(msg keyHintsSavedMsg) tea.Cmd {
 		n.nextOperation++
 		n.generation++
 		n.items = append(n.items, notificationItem{
-			ID: n.nextID, Operation: n.nextOperation, Key: "key-hints.save", Page: m.page,
+			ID: n.nextID, Operation: n.nextOperation, Key: "key-hints.save", Page: m.keyHints.originPage,
 			Kind: "warning", Message: m.tr("keyHints.saveFailed", m.localizeError(msg.err)),
 			remaining: 4 * time.Second, generation: n.generation,
 		})

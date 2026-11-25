@@ -189,3 +189,20 @@ func TestHelpCanRestoreHintsWithMouseAfterKeyboardOpen(t *testing.T) {
 		})
 	}
 }
+
+func TestKeyHintsWarningFollowsLastToggleAcrossPageChanges(t *testing.T) {
+	m := ready(&fakeBackend{})
+	m.backend = &keyHintsBackend{fakeBackend: &fakeBackend{}, saveHints: func(context.Context, bool) error { return errors.New("disk full") }}
+	first := m.toggleKeyHints()
+	m.navigate("profiles")
+	m.toggleKeyHints()
+	m.navigate("logs")
+	last := m.acceptKeyHintsSaved(first().(keyHintsSavedMsg))
+	if last == nil {
+		t.Fatal("second toggle did not queue a save")
+	}
+	m.acceptKeyHintsSaved(last().(keyHintsSavedMsg))
+	if len(m.notification.items) != 1 || m.notification.items[0].Page != "profiles" || m.notification.items[0].Kind != "warning" {
+		t.Fatalf("warning lost the originating page of the saved choice: %+v", m.notification.items)
+	}
+}
