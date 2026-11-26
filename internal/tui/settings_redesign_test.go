@@ -265,7 +265,7 @@ func TestSettingsSwitchesAndDropdownsAlignAtCardEdges(t *testing.T) {
 				o.settingsTab = resourcesTab
 			}
 			label := o.Locale.T(c.label)
-			if c.id == "settings.unifiedDelay" || c.id == "settings.tcpConcurrent" {
+			if c.id == "key-hints.toggle" || c.id == "settings.unifiedDelay" || c.id == "settings.tcpConcurrent" {
 				label += " ⓘ"
 			}
 			render := func(width int) (dashboardBlock, hitRegion) {

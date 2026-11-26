@@ -153,7 +153,8 @@ def check_switch(terminal, words, key, enabled, profile):
     track_x = right - 8
     assert "".join(row[track_x:right]) == switch_track(enabled) + "  ", key
     before_track = "".join(row[label_x:track_x])
-    label = words[key] + (" ⓘ" if key in ("settings.unifiedDelay", "settings.tcpConcurrent", "settings.allowLAN") else "")
+    annotated = key in ("dashboard.interface.keyHints", "settings.unifiedDelay", "settings.tcpConcurrent", "settings.allowLAN")
+    label = words[key] + (" ⓘ" if annotated else "")
     assert before_track.startswith(label) and before_track[len(label):].strip(" ›") == "", (key, before_track)
     if profile != "no-color":
         styles = terminal.screen.styles[y]
@@ -281,17 +282,19 @@ def check_tab_strip(preview, terminal, words, profile, output, args):
         auth_x, auth_y = points[5]
         wraps = preview.SMOKE.cell_width(words["settings.proxyAuth"] + "  " + summary) > right-2-auth_x
         assert position(terminal, summary) == (right-2-preview.SMOKE.cell_width(summary), auth_y+int(wraps))
-        # On a short viewport the next heading can sit just under the footer.
-        scroll_to_heading = width == 40 and words["settings.core"] not in terminal.screen.text()
+        # In the single column, the General card's height affects how many
+        # wheel steps are needed to reveal Core Management.
         def next_card_position():
-            if scroll_to_heading:
+            steps = 0
+            while width == 40 and words["settings.core"] not in terminal.screen.text() and steps < height:
                 terminal.key(b"\x1b[<65;37;12M")
                 terminal.settle()
+                steps += 1
             row = position(terminal, words["settings.core"])[1]
-            if scroll_to_heading:
+            for _ in range(steps):
                 terminal.key(b"\x1b[<64;37;12M")
                 terminal.settle()
-            return row
+            return steps, row
 
         next_card_y = next_card_position()
         preview.capture(terminal, output, "ports-access-%dx%d" % (width, height), args)
@@ -812,14 +815,31 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait(words["settings.interface"])
         terminal.settle()
 
-        # Exercise the row's mouse target and the global recovery shortcut.
+        # The explanation is available from the icon and the focused switch,
+        # including when the footer itself is hidden.
         x, y = check_switch(terminal, words, "dashboard.interface.keyHints", True, profile)
+        label_x, _ = position(terminal, words["dashboard.interface.keyHints"])
+        icon_x = terminal.screen.cells[y].index("ⓘ", label_x, x)
+        tip_text = words["settings.keyHints.tooltip"][:8]
+        assert tip_text not in terminal.screen.text()
+        assert position(terminal, words["settings.theme"])[1] == y + 2
+        hover(terminal, icon_x, y)
+        terminal.wait(tip_text)
+        preview.capture(terminal, output, "footer-hints-tooltip", args)
+        hover(terminal, label_x, y)
+        terminal.wait_absent(tip_text)
+        focus(terminal, switch_track(True), words["dashboard.interface.keyHints"], words["navigation.controls.hideHints"])
         click(terminal, (x + 4, y))
         terminal.settle()
         check_switch(terminal, words, "dashboard.interface.keyHints", False, profile)
         preview.capture(terminal, output, "hints-hidden", args)
+        terminal.key(b"?")
+        terminal.wait(tip_text)
+        terminal.key(b"\x1b")
+        terminal.wait_absent(tip_text)
         terminal.key(b"\x14")  # Ctrl+T restores the hidden footer.
         terminal.settle()
+        check_switch(terminal, words, "dashboard.interface.keyHints", True, profile)
 
         # Completed preference Toasts can cover the right card's heading.
         # Close them through their real mouse targets before measuring layout.

@@ -153,7 +153,7 @@ func settingsContent(o dashboardOptions, width int) (string, []hitRegion) {
 func settingsInterface(o dashboardOptions, width int) dashboardBlock {
 	tr := o.Locale.T
 	hints := settingsSwitchRow("key-hints.toggle", tr("dashboard.interface.keyHints"), !o.HideKeyHints, true)
-	hints.note = tr("settings.keyHintsHint")
+	hints.tip = tooltipBinding{owner: "key-hints.toggle", text: tr("settings.keyHints.tooltip")}
 	return settingsSection(o, width, tr("settings.interface"), "", []settingsRow{
 		settingsSelectRow(o, "settings.language", tr("dashboard.language.title")),
 		hints,
