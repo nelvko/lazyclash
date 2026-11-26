@@ -3,29 +3,11 @@ package tui
 import (
 	"strconv"
 	"strings"
-	"time"
 
-	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 )
 
 const proxyTypeTarget = "proxies.type."
-
-// A motion event changes only hover styling. Existing clipped hit regions are
-// already current, so it needs neither data reconciliation nor focus repair.
-func (m *Model) updateProxyHover(event tea.MouseMotionMsg) (bool, tea.Cmd) {
-	if m.page != "proxies" || m.menu.open || m.ports.open || m.helpOpen || m.wizard.open || m.wizard.networkOpen || m.form != "" || m.notification.panel.open {
-		return false, nil
-	}
-	previous := m.hover
-	m.mouse(event)
-	if m.hover != previous {
-		m.renderLayout()
-		// This frame can reveal delayed progress and move a timed card to overflow.
-		return true, m.syncNotificationTimers(time.Now())
-	}
-	return true, nil
-}
 
 // Anchor the hint to the visible label. A clipped group or a notification
 // covering the label has no target in the finished layout.

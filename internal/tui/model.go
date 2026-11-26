@@ -134,6 +134,7 @@ type Model struct {
 	messageTransient      bool
 	messageInformational  bool
 	page, focus, hover    string
+	tooltip               tooltipState
 	tunFocus              string
 	guideSkipped          bool
 	scroll, total         int
@@ -355,13 +356,13 @@ func (m *Model) cancelTask(quit bool) {
 	}
 }
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if mouse, ok := msg.(tea.MouseMsg); ok && m.updateRulesMouse(mouse) {
-		return m, nil
-	}
 	if motion, ok := msg.(tea.MouseMotionMsg); ok {
-		if handled, cmd := m.updateProxyHover(motion); handled {
+		if handled, cmd := m.updateDashboardHover(motion); handled {
 			return m, cmd
 		}
+	}
+	if mouse, ok := msg.(tea.MouseMsg); ok && m.updateRulesMouse(mouse) {
+		return m, nil
 	}
 	if wheel, ok := msg.(tea.MouseWheelMsg); ok && m.updateProxyWheel(wheel) {
 		return m, nil
@@ -369,6 +370,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	previousPage := m.page
 	switch v := msg.(type) {
+	case tooltipDelayMsg:
+		if !m.tooltip.showAfterDelay(v) {
+			return m, nil
+		}
+		m.renderLayout()
+		return m, m.syncNotificationTimers(time.Now())
 	case profileEditorOpenedMsg:
 		cmd = m.acceptProfileEditor(v)
 	case profileEditorExitedMsg:
@@ -506,7 +513,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 	case tea.WindowSizeMsg:
-		if strings.HasPrefix(m.hover, proxyTypeTarget) {
+		if strings.HasPrefix(m.hover, proxyTypeTarget) || m.tooltip.pointer.ID != "" {
 			m.hover = ""
 		}
 		if m.page == "proxies" && !m.proxiesNarrow() && max(1, v.Width) < sidebarMinWidth {
@@ -774,7 +781,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.resetLogsView()
 		}
 	case tea.KeyPressMsg:
-		if strings.HasPrefix(m.hover, proxyTypeTarget) {
+		if strings.HasPrefix(m.hover, proxyTypeTarget) || m.tooltip.pointer.ID != "" {
 			m.hover = ""
 		}
 		key := v.String()
@@ -843,6 +850,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.page == "connections" && (m.connections.detail != nil || m.connections.confirming) {
 			_, cmd = m.connectionKey(v)
+			break
+		}
+		if m.tooltip.key(key, m.focus) {
+			if m.tooltip.open != "" && m.tooltip.open == m.tooltip.offscreen.ID {
+				m.revealBodyTarget(m.tooltip.offscreen)
+			}
 			break
 		}
 		if m.overviewModeNavigation(key) {
@@ -1157,6 +1170,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 	if m.page != previousPage {
 		m.stopLogoIntro()
+		m.tooltip.dismiss()
 	}
 	m.layout()
 	intro := m.syncLogoIntro()
@@ -1521,11 +1535,41 @@ func (m *Model) cycleFocus(delta int) {
 		}
 	}
 }
+
+// Proxy cards and tooltips use the current frame's hit regions for hover.
+// Repaint only when the pointer crosses into a different target.
+func (m *Model) updateDashboardHover(event tea.MouseMotionMsg) (bool, tea.Cmd) {
+	if m.page != "proxies" && len(m.tooltip.anchors) == 0 {
+		return false, nil
+	}
+	if m.menu.open || m.feedbackDialogOpen() || m.helpOpen || m.notification.panel.open {
+		return false, nil
+	}
+	previous := m.hover
+	m.mouse(event)
+	cmd := m.tooltip.motion(m.hover)
+	if m.hover != previous {
+		m.renderLayout()
+		// This frame can reveal delayed progress and move a timed card to overflow.
+		return true, tea.Batch(cmd, m.syncNotificationTimers(time.Now()))
+	}
+	return true, cmd
+}
+
 func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
+	k := event.Mouse()
+	covered := m.tooltip.bounds.W > 0 && regionsOverlap(hitRegion{X: k.X, Y: k.Y, W: 1, H: 1}, m.tooltip.bounds)
+	switch event.(type) {
+	case tea.MouseClickMsg, tea.MouseWheelMsg:
+		m.tooltip.dismiss()
+	}
+	if _, wheel := event.(tea.MouseWheelMsg); covered && !wheel {
+		m.hover = ""
+		return nil
+	}
 	if m.providers.open {
 		return m.providersMouse(event)
 	}
-	k := event.Mouse()
 	if m.notification.panel.open {
 		m.notificationAction(m.notification.panel.mouse(event))
 		return nil
@@ -1585,6 +1629,9 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 	for _, r := range m.targets {
 		if k.X >= r.X && k.X < r.X+r.W && k.Y >= r.Y && k.Y < r.Y+r.H {
 			m.hover = r.ID
+			if r.tip.text != "" {
+				return nil
+			}
 			if pressed && k.Button == tea.MouseLeft {
 				if handled, cmd := m.clearInputField(r.ID); handled {
 					return cmd
@@ -1747,6 +1794,7 @@ func (m *Model) renderLayout() {
 		m.focus = "menu"
 	}
 	o := m.dashboardOptions()
+	o.tooltips = &m.tooltip
 	o.Sidebar = &m.sidebar
 	o.Snapshot, o.Focus, o.Hover = m.snapshot, m.focus, m.hover
 	// Lay out the expanded controls before deriving their keyboard hints.
@@ -1770,7 +1818,14 @@ func (m *Model) renderLayout() {
 	if m.page == "connections" && o.BodyTopRows > 0 {
 		o.BodyTop = m.connectionsToolbar(g.width, o.BodyTopRows)
 	}
+	hoveredIcon := m.tooltip.pointer.ID
 	base, hits, total, notifications := drawDashboard(o)
+	if hoveredIcon != "" && m.hover == hoveredIcon && m.tooltip.pointer.ID == "" {
+		// A layout change moved the icon out from beneath a stationary pointer.
+		m.hover = ""
+		m.renderLayout()
+		return
+	}
 	m.notification.overlays = notifications
 	if o.Dim {
 		base = modalBackdrop(base)
@@ -1819,6 +1874,9 @@ func (m *Model) renderLayout() {
 	} else if m.menu.open {
 		m.anchorPageSelectionMenu(hits)
 		m.screen = m.renderMenu(base, dashboardContentBottom(o))
+	}
+	if hit := tooltipAnchor(m.tooltip.anchors, m.tooltip.open); hit.ID != "" {
+		m.screen, m.tooltip.bounds = m.renderTooltip(hit.tip.text, hit, dashboardContentBottom(o), notifications)
 	}
 }
 func (m Model) View() tea.View {

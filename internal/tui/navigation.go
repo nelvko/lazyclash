@@ -38,7 +38,7 @@ func (m *Model) focusTargets() []hitRegion {
 		controls = append(controls, hitRegion{ID: "menu"})
 	}
 	for _, target := range m.targets {
-		if target.ID != "menu" && target.ID != "logo" && !strings.HasPrefix(target.ID, "nav.") && (target.Y < g.y || strings.HasPrefix(target.ID, "notification.")) {
+		if target.tip.text == "" && target.ID != "menu" && target.ID != "logo" && !strings.HasPrefix(target.ID, "nav.") && (target.Y < g.y || strings.HasPrefix(target.ID, "notification.")) {
 			controls = append(controls, target)
 		}
 	}

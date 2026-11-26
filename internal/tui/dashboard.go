@@ -23,6 +23,7 @@ func sidebarVisible(width, height int) bool {
 type hitRegion struct {
 	ID         string
 	X, Y, W, H int
+	tip        tooltipBinding
 	// Nonzero only for a complete shared input frame. The editor starts two
 	// cells from its left edge and one row below its top edge.
 	InputWidth int
@@ -51,6 +52,7 @@ type dashboardOptions struct {
 	Help                            string
 	EditingInput                    bool
 	HelpAfterClose                  bool
+	tooltips                        *tooltipState
 	HideKeyHints                    bool
 	SidebarOpen                     bool
 	Sidebar                         *sidebarState
@@ -154,7 +156,12 @@ func dashboardHeaderTitle(o dashboardOptions, g dashboardLayout, page string) (i
 
 func drawDashboard(o dashboardOptions) (string, []hitRegion, int, []notificationOverlay) {
 	tr := o.Locale.T
+	if o.tooltips == nil {
+		o.tooltips = &tooltipState{}
+	}
+	o.tooltips.anchors, o.tooltips.offscreen = o.tooltips.anchors[:0], hitRegion{}
 	if o.Width <= 0 || o.Height <= 0 {
+		o.tooltips.dismiss()
 		return "", nil, 0, nil
 	}
 	if o.Page == "" {
@@ -167,7 +174,11 @@ func drawDashboard(o dashboardOptions) (string, []hitRegion, int, []notification
 	}
 	put := func(x, y int, s string) { putRows(rows, x, y, s, o.Width) }
 	var targets []hitRegion
+	tipsEnabled := !o.Dim && !o.SidebarOpen && !o.HelpAfterClose && !o.EditingInput
 	add := func(r hitRegion) {
+		if r.tip.text != "" && !tipsEnabled {
+			return
+		}
 		if r, ok := clipRegion(r, 0, 0, o.Width, o.Height); ok {
 			targets = append(targets, r)
 		}
@@ -175,6 +186,7 @@ func drawDashboard(o dashboardOptions) (string, []hitRegion, int, []notification
 	pageText := themed("▎ ", pageTitleMarker, bg, o.Dim) +
 		themed(lipgloss.NewStyle().Bold(true).Render(pageTitle(o.Page, o.Locale)), pageTitleForeground, bg, o.Dim)
 	if o.Height < 7 || o.Width < 20 {
+		o.tooltips.dismiss()
 		put(0, 0, dashboardTitle(o, logoText(bg, o.Dim)+" / "+pageText, pageText, o.Width))
 		if o.Height > 1 {
 			put(0, o.Height-1, themed(cellCrop(tr("dashboard.menuCompact"), o.Width), muted, bg, o.Dim))
@@ -275,10 +287,13 @@ func drawDashboard(o dashboardOptions) (string, []hitRegion, int, []notification
 		}
 	}
 	for _, r := range bodyTargets {
+		bodyHit := r
 		r.X += g.x
 		r.Y += g.y - scroll
 		if r, ok := clipRegion(r, g.x, g.y, g.width, g.height); ok {
 			add(r)
+		} else if tipsEnabled && bodyHit.tip.text != "" && bodyHit.tip.owner == o.Focus {
+			o.tooltips.offscreen = bodyHit
 		}
 	}
 	if total > g.height && g.height > 0 {
@@ -315,15 +330,6 @@ func drawDashboard(o dashboardOptions) (string, []hitRegion, int, []notification
 		}
 		targets = append(kept, drawSidebar(rows, o, true)...)
 	}
-	if !o.HideKeyHints {
-		footer, searchHint := dashboardKeyHints(o)
-		put(2, o.Height-1, footer)
-		if searchHint.ID != "" {
-			searchHint.X += 2
-			searchHint.Y = o.Height - 1
-			add(searchHint)
-		}
-	}
 	notifications := notificationLayout(o, headerTargets...)
 	for _, notification := range notifications {
 		bounds := notification.Bounds
@@ -342,6 +348,16 @@ func drawDashboard(o dashboardOptions) (string, []hitRegion, int, []notification
 		}
 	}
 
+	o.tooltips.sync(targets, o.Focus, o.Hover)
+	if !o.HideKeyHints {
+		footer, searchHint := dashboardKeyHints(o)
+		put(2, o.Height-1, footer)
+		if searchHint.ID != "" {
+			searchHint.X += 2
+			searchHint.Y = o.Height - 1
+			add(searchHint)
+		}
+	}
 	return strings.Join(rows, "\n"), targets, total, notifications
 }
 

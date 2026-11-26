@@ -14,6 +14,9 @@ import (
 func dashboardKeyHints(o dashboardOptions) (string, hitRegion) {
 	width := max(0, o.Width-4)
 	tail := o.Locale.T("dashboard.footer.help")
+	if o.tooltips != nil && o.tooltips.focused(o.Focus).ID != "" {
+		tail = o.Locale.T("tooltip.shortcut")
+	}
 	if o.HelpAfterClose {
 		tail = o.Locale.T("dashboard.footer.helpAfterClose")
 	} else if o.EditingInput {
@@ -29,6 +32,9 @@ func dashboardKeyHints(o dashboardOptions) (string, hitRegion) {
 		return helpText(cellCrop(fallback, width), bg, o.Dim), hitRegion{}
 	}
 	context := o.Help
+	if o.tooltips != nil && o.tooltips.open != "" {
+		context = o.Locale.T("tooltip.dismiss")
+	}
 	if context == "" {
 		context = o.Locale.T("dashboard.footer.default")
 	}
