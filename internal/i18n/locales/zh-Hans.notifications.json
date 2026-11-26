@@ -10,7 +10,6 @@
   "notification.collapse": "[Esc 收起]",
   "notification.back": "[Esc 返回]",
   "notification.warning": "警告",
-  "notification.failure_details": "操作失败，请打开详情查看原因及恢复信息。",
   "notification.state_unknown": "状态未知，请刷新或检查服务状态",
   "notification.service.start": "启动服务",
   "notification.service.stop": "停止服务",

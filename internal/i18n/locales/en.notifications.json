@@ -10,7 +10,6 @@
   "notification.collapse": "[Esc Collapse]",
   "notification.back": "[Esc Back]",
   "notification.warning": "Warning",
-  "notification.failure_details": "The operation failed. Open Details for the cause and recovery information.",
   "notification.state_unknown": "State unknown; refresh or check service status",
   "notification.service.start": "Start service",
   "notification.service.stop": "Stop service",

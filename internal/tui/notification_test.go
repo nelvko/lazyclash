@@ -113,7 +113,7 @@ func TestLongNotificationKeepsCommittedResultAlongsideDiagnostic(t *testing.T) {
 	m.notification.details = "Service inspection failed"
 	m.syncNotification()
 	item := m.notification.items[0]
-	if item.Message != m.tr("notification.failure_details") || !strings.Contains(item.Details, m.failure) || !strings.Contains(item.Details, m.notification.details) {
+	if item.Message != m.failure || item.Details != m.notification.details {
 		t.Fatalf("long notification lost the committed result or its diagnostic: %+v", item)
 	}
 }

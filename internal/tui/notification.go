@@ -11,7 +11,6 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/colorprofile"
-	"github.com/charmbracelet/x/ansi"
 )
 
 type notificationExpiredMsg struct{ id, generation uint64 }
@@ -146,15 +145,6 @@ func (m *Model) syncNotification() {
 	}
 	if kind == "error" {
 		item.Details = n.details
-		if item.Details == "" {
-			item.Details = message
-		}
-		if ansi.StringWidth(clean(message)) > 200 {
-			if clean(item.Details) != clean(message) {
-				item.Details = message + "\n\n" + item.Details
-			}
-			item.Message = m.tr("notification.failure_details")
-		}
 	}
 	n.publish(item, index)
 }
