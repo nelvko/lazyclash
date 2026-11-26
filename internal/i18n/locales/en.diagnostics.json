@@ -1,4 +1,5 @@
 {
+  "diagnostic.settings.proxyAuthConfig": "could not read proxy authentication settings",
   "diagnostic.shell.referenceConflict": "check the existing lazyclash startup reference in %s for edits or duplicates, then retry",
   "diagnostic.shell.scriptConflict": "the integration script %s has local changes; move it to a backup location and retry",
   "diagnostic.shell.startupMoved": "the recorded startup file %s is no longer selected by this shell; check the startup files before reinstalling",

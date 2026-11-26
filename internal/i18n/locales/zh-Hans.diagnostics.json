@@ -1,4 +1,5 @@
 {
+  "diagnostic.settings.proxyAuthConfig": "读取代理身份验证设置失败。",
   "diagnostic.shell.referenceConflict": "请检查 %s 中的 lazyclash 加载语句，处理改动或重复的引用后重试。",
   "diagnostic.shell.scriptConflict": "集成脚本 %s 有本地改动。请先将它移到备份位置，再重试。",
   "diagnostic.shell.startupMoved": "当前 Shell 使用的启动文件已改变。请核对原启动文件 %s 和当前启动配置后再安装。",
