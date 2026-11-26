@@ -23,7 +23,7 @@ func TestWideningWindowDoesNotDropPairedCardsAtSidebarBreakpoint(t *testing.T) {
 					paired = cards[0].Y == cards[1].Y
 				} else {
 					body, _ := settingsContent(o, g.width)
-					paired = strings.Count(strings.Split(ansi.Strip(body), "\n")[0], "┌") == 2
+					paired = strings.Contains(strings.Split(ansi.Strip(body), "\n")[1], o.Locale.T("settings.mihomo"))
 				}
 				if pairedBefore && !paired {
 					t.Fatalf("%s reverted to one column while widening to %dx%d (body %d)", page, width, height, g.width)
@@ -77,13 +77,13 @@ func TestSettingsValuesNotesAndCommandActionsStayOnLeft(t *testing.T) {
 				}
 			}
 		}
-		if len(values) != 2 || values[0] != values[1] || values[0] != 19 {
+		if len(values) != 2 || values[0] != values[1] || values[0] != 18 {
 			t.Fatalf("width %d moved values away from their label column: %v", width, values)
 		}
 		if len(block.targets) != 1 || block.targets[0].X != values[0] {
 			t.Fatalf("width %d did not align the action with values: %+v", width, block.targets)
 		}
-		if note := ansi.Strip(block.lines[block.targets[0].Y+1]); !strings.HasPrefix(note, "│  HTTP/SOCKS5 port: 7897") {
+		if note := ansi.Strip(block.lines[block.targets[0].Y+1]); !strings.HasPrefix(note, "  HTTP/SOCKS5 port: 7897") {
 			t.Fatalf("width %d moved the port note away from the left inset: %q", width, note)
 		}
 		assertCanvas(t, strings.Join(block.lines, "\n"), width, len(block.lines))

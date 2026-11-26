@@ -46,36 +46,41 @@ def switch_track(enabled):
     return "░░░░██" if enabled else "██░░░░"
 
 
+def card_bounds(screen, label_x):
+    sidebar = sidebar_visible(screen.columns, screen.rows)
+    left, end = (22, screen.columns - 3) if sidebar else (2, screen.columns - 2)
+    if end - left >= 80:
+        split = left + (end - left - 2) // 2
+        if label_x < split:
+            end = split
+        else:
+            left = split + 2
+    return left, end
+
+
 def check_card_stacks(terminal, words, columns):
-    """Check each card's actual terminal borders against its column and neighbors."""
-    cells = terminal.screen.cells
+    screen = terminal.screen
     stacks = []
     for column in columns:
-        bounds = []
+        titles = []
         for heading in column:
             x, y = position(terminal, words["settings." + heading])
-            left, top = x - 3, y - 1
-            assert cells[top][left] == "┌", heading
-            right = cells[top].index("┐", left)
-            bottom = next(y for y in range(top + 1, len(cells)) if cells[y][left] == "└")
-            assert cells[bottom][right] == "┘", heading
-            assert "".join(cells[bottom - 1][left + 1:right]).strip(), heading + " has trailing empty rows"
-            if bounds:
-                prev_left, prev_right, _, prev_bottom = bounds[-1]
-                assert (left, right, top) == (prev_left, prev_right, prev_bottom + 2), heading
-                assert not "".join(cells[top - 1][left:right + 1]).strip(), heading + " has no clear gap"
-            bounds.append((left, right, top, bottom))
-        stacks.append(bounds)
+            left, end = card_bounds(screen, x)
+            assert x == left + 2, heading
+            titles.append(y)
+            if len(titles) > 1:
+                # Bottom padding, inter-card gap and top padding.
+                assert all(not "".join(row[left:end]).strip() for row in screen.cells[y-3:y]), heading
+                assert "".join(screen.cells[y-4][left:end]).strip(), heading + " has trailing blank rows"
+        stacks.append(titles)
     if len(stacks) == 2:
-        left, right = stacks
-        assert left[0][1] + 3 == right[0][0] and left[0][2] == right[0][2]
-        assert left[1][2] < right[1][2], "the short interface card still waits for the core preferences card"
+        assert stacks[0][0] == stacks[1][0] and stacks[0][1] < stacks[1][1]
 
 
 def check_switch(terminal, words, key, enabled, profile):
     label_x, y = position(terminal, words[key])
     row = terminal.screen.cells[y]
-    right = row.index("│", label_x)
+    _, right = card_bounds(terminal.screen, label_x)
     track_x = right - 8
     assert "".join(row[track_x:right]) == switch_track(enabled) + "  ", key
     before_track = "".join(row[label_x:track_x])
@@ -89,12 +94,12 @@ def check_switch(terminal, words, key, enabled, profile):
     return track_x, y
 
 
-def focus(terminal, label, footer_hint=""):
+def focus(terminal, label, row_label, footer_hint=""):
     pattern = re.compile(r"›\s*(?:[<\[]\s*)?" + re.escape(label))
     for _ in range(36):
         terminal.settle()
         screen = terminal.screen.text()
-        if pattern.search(screen) and footer_hint in screen.splitlines()[-1]:
+        if (pattern.search(screen) or "› " + row_label.split()[0] in screen) and label in screen and footer_hint in screen.splitlines()[-1]:
             return
         terminal.key(b"\t")
     raise AssertionError("Tab did not reveal " + label + "\n" + terminal.screen.text())
@@ -151,8 +156,8 @@ def exercise(preview, binary, output, language, profile, args):
         for key in ("dashboard.language.title", "settings.theme", "settings.logLevel", "settings.findProcessMode", *switch_defaults):
             x, y = position(terminal, words[key])
             row = terminal.screen.cells[y]
-            right = row.index("│", x)
-            assert row[x-3:x] == ["│", " ", " "] and row[right-2:right] == [" ", " "], key
+            left, right = card_bounds(terminal.screen, x)
+            assert x == left + 2 and row[right-2:right] == [" ", " "], key
             if key in switch_defaults:
                 check_switch(terminal, words, key, switch_defaults[key], profile)
             else:
@@ -160,14 +165,14 @@ def exercise(preview, binary, output, language, profile, args):
 
         native = {"en": "English", "zh-Hans": "简体中文"}
         current = dropdown_trigger(terminal, native[language])
-        terminal.resize(28, 24)
+        terminal.resize(26, 24)
         terminal.settle()
         terminal.wait(current)
         label_x, label_y = position(terminal, words["dashboard.language.title"])
         trigger = position(terminal, current)
         # Two focus cells and two face-padding cells precede the value.
         assert trigger == (label_x + 4, label_y + 1), "wrapped dropdown did not start below its label"
-        preview.capture(terminal, output, "settings-wrapped-28x24", args)
+        preview.capture(terminal, output, "settings-wrapped-26x24", args)
         click(terminal, trigger)
         dropdown_option(terminal, native[language], checked=True)
         terminal.key(b"\x1b")
@@ -177,8 +182,12 @@ def exercise(preview, binary, output, language, profile, args):
         wrapped = position(terminal, switch_track(True))
         label = position(terminal, words["dashboard.interface.keyHints"].split()[0])
         assert wrapped[1] > label[1] and wrapped[0] == label[0] + 2, "switch did not wrap at the label inset"
-        assert terminal.screen.cells[wrapped[1]][label[0]:wrapped[0]] == ["›", " "]
-        preview.capture(terminal, output, "switch-wrapped-28x24", args)
+        if profile == "no-color":
+            assert terminal.screen.cells[label[1]][label[0]-2:label[0]] == ["›", " "]
+            assert terminal.screen.cells[wrapped[1]][label[0]:wrapped[0]] == [" ", " "]
+        else:
+            assert terminal.screen.cells[wrapped[1]][label[0]:wrapped[0]] == ["›", " "]
+        preview.capture(terminal, output, "switch-wrapped-26x24", args)
         click(terminal, wrapped)
         terminal.wait(switch_track(False))
         terminal.key(b"\x14")
@@ -196,7 +205,7 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.settle()
         check_switch(terminal, words, "settings.ipv6", True, profile)
         if profile != "no-color":
-            assert terminal.screen.styles[y][x + 5] != thumb_before, "hover did not highlight the thumb"
+            assert terminal.screen.styles[y][x + 5] == thumb_before, "hover changed the thumb"
             assert terminal.screen.styles[y][x] == rail_before, "hover changed the rail"
         click(terminal, (x + 5, y))
         dismiss_toasts(terminal)
@@ -316,7 +325,7 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.key(b"\x14")  # Ctrl+T restores the hidden footer.
         terminal.settle()
 
-        # Completed preference Toasts can cover the right card's top border.
+        # Completed preference Toasts can cover the right card's heading.
         # Close them through their real mouse targets before measuring layout.
         dismiss_toasts(terminal)
 
@@ -329,10 +338,12 @@ def exercise(preview, binary, output, language, profile, args):
             sidebar = sidebar_visible(width, height)
             left, right = (22, width - 4) if sidebar else (2, width - 3)
             columns = 2 if right - left + 1 >= 80 else 1
-            borders = [row for row in terminal.screen.cells if row[left] == "┌"]
-            assert borders, "Settings cards have no visible top border"
-            assert borders[0][right] == "┐", "Settings cards did not stretch to the available right edge"
-            assert borders[0].count("┌") == columns, "Settings column count did not follow the available width"
+            title_x, title_y = position(terminal, words["settings.interface"])
+            assert title_x == left + 2
+            headings = "".join(terminal.screen.cells[title_y][left:right+1])
+            assert (words["settings.mihomo"] in headings) == (columns == 2)
+            assert not any("┌" in row[left:right+1] or "─" in row[left:right+1]
+                           for row in terminal.screen.cells[title_y:-1]), "card decorations in settings body"
             preview.capture(terminal, output, "settings-%dx%d" % (width, height), args)
 
             # Scroll down and up in the body. The short view must reveal lower
@@ -345,19 +356,19 @@ def exercise(preview, binary, output, language, profile, args):
                 assert before != terminal.screen.text(), "wheel did not scroll the narrow Settings body"
             preview.capture(terminal, output, "scrolled-%dx%d" % (width, height), args)
             if width == 40:
-                focus(terminal, current)
+                focus(terminal, current, words["dashboard.language.title"])
                 terminal.key(b"\r")
                 dropdown_option(terminal, native[language], checked=True)
                 preview.capture(terminal, output, "language-menu-compact", args)
                 terminal.key(b"\x1b")
                 terminal.wait_absent(native[other])
-                focus(terminal, dark_trigger)
+                focus(terminal, dark_trigger, words["settings.theme"])
                 terminal.key(b"\r")
                 dropdown_option(terminal, "Dark", checked=True)
                 preview.capture(terminal, output, "theme-menu-compact", args)
                 terminal.key(b"\x1b")
                 terminal.wait_absent("✓")
-                focus(terminal, debug_trigger)
+                focus(terminal, debug_trigger, words["settings.logLevel"])
                 terminal.key(b"\r")
                 dropdown_option(terminal, "debug", checked=True)
                 preview.capture(terminal, output, "log-level-menu-compact", args)
@@ -370,15 +381,15 @@ def exercise(preview, binary, output, language, profile, args):
                 check_switch(terminal, words, "settings.ipv6", True, profile)
                 check_switch(terminal, words, "settings.unifiedDelay", False, profile)
                 preview.capture(terminal, output, "mihomo-switches-40x16", args)
-                focus(terminal, process_trigger)
+                focus(terminal, process_trigger, words["settings.findProcessMode"])
                 terminal.key(b"\r")
                 dropdown_option(terminal, words["settings.processAlways"], checked=True)
                 preview.capture(terminal, output, "process-menu-40x16", args)
                 terminal.key(b"\x1b")
                 terminal.wait_absent("✓")
-            focus(terminal, words["settings.openLogs"])
+            focus(terminal, words["settings.openLogs"], words["settings.logs"])
             preview.capture(terminal, output, "tab-logs-%dx%d" % (width, height), args)
-            focus(terminal, words["settings.edit"], words["navigation.controls.editPorts"])
+            focus(terminal, words["settings.edit"], words["settings.ports"], words["navigation.controls.editPorts"])
             terminal.key(b"\r")
             terminal.wait(words["ports.title"])
             terminal.wait("7897")
@@ -386,7 +397,7 @@ def exercise(preview, binary, output, language, profile, args):
             terminal.key(b"\x1b")
             terminal.wait_absent(words["ports.title"])
             terminal.settle()
-            assert re.search(r"›\s*(?:\[\s*)?" + re.escape(words["settings.edit"]), terminal.screen.text()), "port return lost its trigger focus"
+            assert words["navigation.controls.editPorts"] in terminal.screen.text().splitlines()[-1], "port return lost its trigger focus"
             for _ in range(8):
                 terminal.key(("\x1b[<64;%d;%dM" % (width - 3, height // 2)).encode())
             terminal.key(b"\x1b[H")
@@ -394,7 +405,7 @@ def exercise(preview, binary, output, language, profile, args):
 
         # The diagnostics action only opens the read-only Logs page. The
         # Settings shortcut restores the existing page after its stream stops.
-        focus(terminal, words["settings.openLogs"])
+        focus(terminal, words["settings.openLogs"], words["settings.logs"])
         click(terminal, position(terminal, words["settings.openLogs"]))
         terminal.wait("settings-pty readonly log")
         preview.capture(terminal, output, "diagnostics-open-logs", args)

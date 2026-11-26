@@ -62,7 +62,7 @@ func TestLanguageDropdownUsesCurrentNativeNameAndDisplayCellHit(t *testing.T) {
 			if !strings.Contains(strings.Join(strings.Fields(painted), " "), label) || ansi.StringWidth(painted) != hit.W {
 				t.Fatalf("%s/%d: language target misses label %q: %q", language, width, label, painted)
 			}
-			if !strings.Contains(ansi.Strip(block.lines[hit.Y+1]), "──") {
+			if strings.TrimSpace(ansi.Strip(block.lines[hit.Y+1])) != "" {
 				t.Fatalf("%s/%d: a hint occupies the row below the language control", language, width)
 			}
 			o.Busy = true

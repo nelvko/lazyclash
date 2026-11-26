@@ -56,9 +56,9 @@ func TestSettingsFillWindowWidthAcrossSidebarAndColumnBreakpoints(t *testing.T) 
 				screen, hits, _ := renderDashboard(o)
 				assertCanvas(t, screen, size.width, size.height)
 				assertRegions(t, hits, size.width, size.height)
-				top := ansi.Strip(strings.Split(screen, "\n")[g.y])
-				if strings.Count(top, "┌") != size.columns || ansi.Cut(top, g.x+size.bodyWidth-1, g.x+size.bodyWidth) != "┐" {
-					t.Fatalf("settings cards do not fill the available width with %d columns: %q", size.columns, top)
+				titles := ansi.Strip(strings.Split(screen, "\n")[g.y+1])
+				if !strings.HasPrefix(ansi.Cut(titles, g.x, g.x+g.width), "  "+o.Locale.T("settings.interface")) || strings.Contains(titles, o.Locale.T("settings.mihomo")) != (size.columns == 2) {
+					t.Fatalf("unexpected titles in %d-column settings: %q", size.columns, titles)
 				}
 			})
 		}
@@ -93,7 +93,7 @@ func TestSettingsCardsStackAtTheirNaturalHeights(t *testing.T) {
 				assertRegions(t, hits, tc.width, len(rows))
 
 				// Each column must reproduce its standalone cards, including their
-				// bottom borders and local hit rectangles, with one blank row between.
+				// padding and local hit rectangles, with one blank row between.
 				checkColumn := func(x, width int, cards ...func(dashboardOptions, int) dashboardBlock) int {
 					t.Helper()
 					var want []string
@@ -202,7 +202,7 @@ func TestSettingsActionsKeepCompleteLabelsAndUniqueTargets(t *testing.T) {
 }
 
 func TestSettingsSwitchesAndDropdownsAlignAtCardEdges(t *testing.T) {
-	const inset = 3 // One border cell followed by two blank cells.
+	const inset = 2
 	controls := []struct {
 		id, label string
 		card      func(dashboardOptions, int) dashboardBlock
@@ -221,7 +221,7 @@ func TestSettingsSwitchesAndDropdownsAlignAtCardEdges(t *testing.T) {
 	}
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		for _, c := range controls {
-			o := dashboardOptions{Locale: i18n.New(language), Snapshot: settingsTestSnapshot(), Focus: c.id, PlainButtons: true}
+			o := dashboardOptions{Locale: i18n.New(language), Snapshot: settingsTestSnapshot(), Focus: c.id, PlainButtons: true, Monochrome: true}
 			label := o.Locale.T(c.label)
 			render := func(width int) (dashboardBlock, hitRegion) {
 				block := c.card(o, width)
@@ -235,12 +235,12 @@ func TestSettingsSwitchesAndDropdownsAlignAtCardEdges(t *testing.T) {
 				if width < exactFit {
 					labelY, wantX = hit.Y-1, inset
 				}
-				if labelY < 0 || !strings.HasPrefix(ansi.Strip(block.lines[labelY]), "│  "+label) || hit.X != wantX || hit.W != wide.W {
+				if labelY < 0 || !strings.HasPrefix(ansi.Strip(block.lines[labelY]), "› "+label) || hit.X != wantX || hit.W != wide.W {
 					t.Fatalf("%s/%s at %d: label and control misplaced, hit %+v, want X=%d\n%s", language, c.id, width, hit, wantX, ansi.Strip(strings.Join(block.lines, "\n")))
 				}
 				face := ansi.Strip(ansi.Cut(block.lines[hit.Y], hit.X, hit.X+hit.W))
-				focusedSwitch := face == "› ░░░░██" || face == "› ██░░░░"
-				focusedDropdown := strings.HasPrefix(face, " ›[") && strings.HasSuffix(face, "]")
+				focusedSwitch := face == "  ░░░░██" || face == "  ██░░░░"
+				focusedDropdown := strings.HasPrefix(face, "  [") && strings.HasSuffix(face, "]")
 				if !focusedSwitch && !focusedDropdown {
 					t.Fatalf("%s/%s at %d: hit misses focused control: %q", language, c.id, width, face)
 				}
@@ -291,7 +291,7 @@ func TestSettingsMihomoSwitchWaitsForSavedValueAndAllowsRetry(t *testing.T) {
 	if calls != 2 || m.snapshot.CoreSettings.IPv6 != "on" || m.snapshot.CoreSettings.UnifiedDelay != "on" || m.snapshot.CoreSettings.LogLevel != "warning" {
 		t.Fatalf("unexpected saved Mihomo settings after toggle: %+v", m.snapshot.CoreSettings)
 	}
-	if settingsPaintedTarget(t, m.screen, m.targets, m.focus) != "› ░░░░██" {
+	if !strings.HasSuffix(settingsPaintedTarget(t, m.screen, m.targets, m.focus), "░░░░██") {
 		t.Fatal("the IPv6 switch did not display the confirmed value")
 	}
 }
@@ -369,11 +369,11 @@ func TestSettingsCoreSwitchesSaveMihomoValues(t *testing.T) {
 					t.Fatalf("saved %s=%s, want %s", tc.key, written, want)
 				}
 				on = !on
-				track := "› ██░░░░"
+				track := "██░░░░"
 				if on {
-					track = "› ░░░░██"
+					track = "░░░░██"
 				}
-				if got := settingsPaintedTarget(t, m.screen, m.targets, tc.id); got != track {
+				if got := settingsPaintedTarget(t, m.screen, m.targets, tc.id); !strings.HasSuffix(got, track) {
 					t.Fatalf("after saving %s=%s, switch = %q, want %q", tc.key, want, got, track)
 				}
 			}
@@ -568,7 +568,7 @@ func TestSettingsAutostartAndCoreRestartGuards(t *testing.T) {
 		}
 		enable := findTarget(t, Model{targets: block.targets}, "autostart-enable")
 		left := ansi.Strip(ansi.Cut(block.lines[enable.Y], 0, 60))
-		if enable.X+enable.W != 200-3 || !strings.HasPrefix(left, "│  "+o.Locale.T("settings.autostart")) || !strings.Contains(left, o.Locale.T("dashboard.status.unknown")) {
+		if enable.X+enable.W != 200-2 || !strings.HasPrefix(left, "  "+o.Locale.T("settings.autostart")) || !strings.Contains(left, o.Locale.T("dashboard.status.unknown")) {
 			t.Fatalf("%s: unknown autostart should keep its status left and action right: %q", language, ansi.Strip(block.lines[enable.Y]))
 		}
 		for _, state := range []string{"activating", "deactivating", "reloading"} {

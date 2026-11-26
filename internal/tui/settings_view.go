@@ -232,117 +232,142 @@ func settingsDiagnostics(o dashboardOptions, width int) dashboardBlock {
 	return settingsSection(o, width, tr("settings.diagnostics"), "", rows)
 }
 
+// Keep keyboard focus distinct from the card and the inactive rail in ANSI 256.
+const settingsRowHighlight = "#353d45"
+
 func settingsSection(o dashboardOptions, width int, title, description string, rows []settingsRow) dashboardBlock {
-	inner, left, top := max(1, width-4), 2, 1
-	if width < 4 {
-		inner, left, top = max(1, width), 0, 0
+	o.Hover = ""
+	inset := min(2, max(0, (width-1)/2))
+	inner := max(1, width-2*inset)
+	padding := strings.Repeat(" ", inset)
+	blank := themed(strings.Repeat(" ", width), text, panel, o.Dim)
+	b := dashboardBlock{lines: []string{blank}}
+	header := lipgloss.NewStyle().Bold(true).Render(title)
+	for _, line := range strings.Split(wrapText(header, inner), "\n") {
+		b.lines = append(b.lines, themed(padding+cellPad(line, inner)+padding, text, panel, o.Dim))
 	}
-	// panelFrame supplies one blank cell inside each border. Add the second
-	// when the card can still show at least one cell of content.
-	inset := ""
-	if width >= 7 {
-		inset = " "
-		inner -= 2
-		left++
-	}
-	style := func(s, color string) string { return themed(s, color, panel, o.Dim) }
-	var b dashboardBlock
-	addText := func(s, color string) {
-		b.lines = append(b.lines, strings.Split(wrapText(style(s, color), inner), "\n")...)
-	}
-	addText(lipgloss.NewStyle().Bold(true).Render(title), text)
 	if description != "" {
-		addText(description, muted)
+		for _, line := range strings.Split(wrapText(description, inner), "\n") {
+			b.lines = append(b.lines, themed(padding+cellPad(line, inner)+padding, muted, panel, o.Dim))
+		}
 	}
-	b.blank()
+
 	labelColumn := 0
 	for _, row := range rows {
 		labelColumn = max(labelColumn, ansi.StringWidth(row.label))
 	}
-	labelColumn = min(28, labelColumn)
-	for index, row := range rows {
-		if index > 0 {
-			b.lines = append(b.lines, style(strings.Repeat("─", inner), divider))
-		}
-		color := row.color
-		if color == "" {
-			color = muted
-		}
-		label := style(row.label, text)
-		value := style(row.value, color)
-		rowStart := len(b.lines)
-		// A shared label column keeps values close to their names on wide cards.
-		// Long labels, values and action groups flow below instead of truncating.
-		if row.label != "" || row.value != "" {
-			if row.label != "" && row.value != "" && ansi.StringWidth(label) <= labelColumn && labelColumn+2+ansi.StringWidth(value) <= inner {
-				b.lines = append(b.lines, label+style(strings.Repeat(" ", labelColumn+2-ansi.StringWidth(label)), text)+value)
-			} else {
-				if row.label != "" {
-					addText(row.label, text)
-				}
-				if row.value != "" {
-					addText(row.value, color)
-				}
+	for _, row := range rows {
+		b.lines = append(b.lines, blank)
+		surface, focused := panel, false
+		for _, action := range row.actions {
+			if action.enabled && o.Focus == action.id {
+				surface, focused = settingsRowHighlight, true
+				break
 			}
 		}
-		if len(row.actions) > 0 {
-			var values []string
-			total := 0
-			for _, action := range row.actions {
-				options := dashboardButtonOptions(action.id, o, action.primary, panel)
-				options.Disabled = !action.enabled
-				var face string
-				switch row.control {
-				case settingsSelect:
-					face, _ = o.settingsDropdown(action.id).render(action.id, options, o.OpenDropdown == action.id, inner)
-				case settingsSwitch:
-					face = renderSettingsSwitch(action, options)
-				default:
-					face = renderButton(action.label, options)
-				}
-				value := cellCrop(face, inner)
-				values = append(values, value)
-				total += ansi.StringWidth(value)
+		item := renderSettingsRow(o, row, inner, min(28, labelColumn), surface)
+		for y, line := range item.lines {
+			prefix := padding
+			if y == 0 && focused && o.Monochrome && inset > 0 {
+				prefix = "›" + padding[1:]
 			}
-			x := 0
-			if len(b.lines) == rowStart+1 {
-				used := ansi.StringWidth(b.lines[rowStart])
-				available := inner - used - total
-				gap := labelColumn + 2 - used
-				switch {
-				case row.control != settingsInline:
-					gap = max(2, available)
-				case row.value != "":
-					gap = 1
-				}
-				if gap > 0 && gap <= available {
-					b.lines[rowStart] += style(strings.Repeat(" ", gap), text)
-					x = used + gap
-				}
+			item.lines[y] = themed(prefix+cellPad(line, inner)+padding, text, surface, o.Dim)
+		}
+		for j := range item.targets {
+			item.targets[j].X += inset
+		}
+		b.append(item)
+	}
+	b.lines = append(b.lines, blank)
+	return b
+}
+
+func renderSettingsRow(o dashboardOptions, row settingsRow, inner, labelColumn int, surface string) dashboardBlock {
+	var b dashboardBlock
+	style := func(s, color string) string { return themed(s, color, surface, o.Dim) }
+	addText := func(s, color string) {
+		for _, line := range strings.Split(wrapText(s, inner), "\n") {
+			b.lines = append(b.lines, style(line, color))
+		}
+	}
+	color := row.color
+	if color == "" {
+		color = muted
+	}
+	label := style(row.label, text)
+	value := style(row.value, color)
+	// A shared label column keeps values close to their names on wide cards.
+	// Long labels, values and action groups flow below instead of truncating.
+	if row.label != "" || row.value != "" {
+		if row.label != "" && row.value != "" && ansi.StringWidth(label) <= labelColumn && labelColumn+2+ansi.StringWidth(value) <= inner {
+			b.lines = append(b.lines, label+style(strings.Repeat(" ", labelColumn+2-ansi.StringWidth(label)), text)+value)
+		} else {
+			if row.label != "" {
+				addText(row.label, text)
 			}
-			if x == 0 {
+			if row.value != "" {
+				addText(row.value, color)
+			}
+		}
+	}
+	if len(row.actions) > 0 {
+		var values []string
+		total := 0
+		for _, action := range row.actions {
+			options := dashboardButtonOptions(action.id, o, action.primary, surface)
+			options.Disabled = !action.enabled
+			// One row marker suffices for a single control. When actions share
+			// a row, mark the focused action as well.
+			if o.Monochrome && len(row.actions) == 1 {
+				options.Focused = false
+			}
+			var face string
+			switch row.control {
+			case settingsSelect:
+				face, _ = o.settingsDropdown(action.id).render(action.id, options, o.OpenDropdown == action.id, inner)
+			case settingsSwitch:
+				face = renderSettingsSwitch(action, options)
+			default:
+				face = renderButton(action.label, options)
+			}
+			value := cellCrop(face, inner)
+			values = append(values, value)
+			total += ansi.StringWidth(value)
+		}
+		x := 0
+		if len(b.lines) == 1 {
+			used := ansi.StringWidth(b.lines[0])
+			available := inner - used - total
+			gap := labelColumn + 2 - used
+			switch {
+			case row.control != settingsInline:
+				gap = max(2, available)
+			case row.value != "":
+				gap = 1
+			}
+			if gap > 0 && gap <= available {
+				b.lines[0] += style(strings.Repeat(" ", gap), text)
+				x = used + gap
+			}
+		}
+		if x == 0 {
+			b.blank()
+		}
+		for i, action := range row.actions {
+			w := ansi.StringWidth(values[i])
+			if x+w > inner {
 				b.blank()
+				x = 0
 			}
-			for i, action := range row.actions {
-				w := ansi.StringWidth(values[i])
-				if x+w > inner {
-					b.blank()
-					x = 0
-				}
-				if action.enabled {
-					b.targets = append(b.targets, hitRegion{ID: action.id, X: left + x, Y: top + len(b.lines) - 1, W: w, H: 1, DropdownRight: row.control == settingsSelect && x > 0})
-				}
-				b.lines[len(b.lines)-1] += values[i]
-				x += w
+			if action.enabled {
+				b.targets = append(b.targets, hitRegion{ID: action.id, X: x, Y: len(b.lines) - 1, W: w, H: 1, DropdownRight: row.control == settingsSelect && x > 0})
 			}
-		}
-		if row.note != "" {
-			addText(row.note, color)
+			b.lines[len(b.lines)-1] += values[i]
+			x += w
 		}
 	}
-	for i := range b.lines {
-		b.lines[i] = inset + b.lines[i]
+	if row.note != "" {
+		addText(row.note, color)
 	}
-	b.lines = panelFrame(b.lines, width, len(b.lines)+2, o)
 	return b
 }
