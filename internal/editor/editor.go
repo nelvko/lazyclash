@@ -53,5 +53,5 @@ func Command(ctx context.Context, preference, path string) (*exec.Cmd, error) {
 			}
 		}
 	}
-	return nil, diagnostic.New("editor.none", "No editor found. Choose an external editor in Settings.")
+	return nil, diagnostic.New("editor.none", "No editor found. Set an editor command in Settings → General → Editor.")
 }
