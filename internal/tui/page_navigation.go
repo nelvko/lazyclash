@@ -358,6 +358,14 @@ func (m *Model) revealContentFocus() {
 }
 
 func (m *Model) contentNavigationKey(k tea.KeyPressMsg) bool {
+	if m.page == "settings" {
+		switch k.String() {
+		case "up", "k":
+			return m.moveSettingsFocus(-1)
+		case "down", "j":
+			return m.moveSettingsFocus(1)
+		}
+	}
 	if m.overviewScrollKey(k) {
 		return true
 	}
@@ -417,6 +425,31 @@ func (m *Model) contentNavigationKey(k tea.KeyPressMsg) bool {
 					return true
 				}
 			}
+		}
+	}
+	return false
+}
+
+func (m *Model) moveSettingsFocus(step int) bool {
+	o := m.navigationOptions()
+	left, right, _ := settingsColumns(o, dashboardBodyWidth(o))
+	for _, column := range [][]hitRegion{left.targets, right.targets} {
+		for i, target := range column {
+			if target.ID != m.focus {
+				continue
+			}
+			// Targets follow visual order within each column, including rows
+			// outside the viewport. At either edge keep the current row.
+			for j := i + step; j >= 0 && j < len(column); j += step {
+				if column[j].Y != target.Y {
+					target = column[j]
+					break
+				}
+			}
+			m.settingsPointerFocus = false
+			m.focus = target.ID
+			m.revealBodyTarget(target)
+			return true
 		}
 	}
 	return false

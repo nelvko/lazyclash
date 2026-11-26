@@ -114,7 +114,9 @@ func renderSettingsSwitch(action overviewControlButton, o buttonOptions) string 
 	return themed(marker, focus, o.Surface, o.Dim) + track
 }
 
-func settingsContent(o dashboardOptions, width int) (string, []hitRegion) {
+const settingsColumnGap = 2
+
+func settingsColumns(o dashboardOptions, width int) (left, right dashboardBlock, leftWidth int) {
 	stack := func(cardWidth int, sections ...func(dashboardOptions, int) dashboardBlock) dashboardBlock {
 		var column dashboardBlock
 		for i, section := range sections {
@@ -126,18 +128,21 @@ func settingsContent(o dashboardOptions, width int) (string, []hitRegion) {
 		return column
 	}
 	if width < 80 {
-		column := stack(width, settingsInterface, settingsMihomo, settingsCore, settingsDiagnostics)
-		return strings.Join(column.lines, "\n"), column.targets
+		return stack(width, settingsInterface, settingsMihomo, settingsCore, settingsDiagnostics), dashboardBlock{}, width
 	}
+	leftWidth = (width - settingsColumnGap) / 2
+	left = stack(leftWidth, settingsInterface, settingsDiagnostics)
+	right = stack(width-leftWidth-settingsColumnGap, settingsMihomo, settingsCore)
+	return left, right, leftWidth
+}
 
-	const gap = 2
-	leftWidth := (width - gap) / 2
-	rightWidth := width - leftWidth - gap
-	left := stack(leftWidth, settingsInterface, settingsDiagnostics)
-	right := stack(rightWidth, settingsMihomo, settingsCore)
-
+func settingsContent(o dashboardOptions, width int) (string, []hitRegion) {
+	left, right, leftWidth := settingsColumns(o, width)
+	if leftWidth == width {
+		return strings.Join(left.lines, "\n"), left.targets
+	}
 	blank := func(cells int) string { return themed(strings.Repeat(" ", cells), text, bg, o.Dim) }
-	leftBlank, gutter, rightBlank := blank(leftWidth), blank(gap), blank(rightWidth)
+	leftBlank, gutter, rightBlank := blank(leftWidth), blank(settingsColumnGap), blank(width-leftWidth-settingsColumnGap)
 	lines := make([]string, max(len(left.lines), len(right.lines)))
 	for y := range lines {
 		l, r := leftBlank, rightBlank
@@ -151,7 +156,7 @@ func settingsContent(o dashboardOptions, width int) (string, []hitRegion) {
 	}
 	targets := left.targets
 	for _, hit := range right.targets {
-		hit.X += leftWidth + gap
+		hit.X += leftWidth + settingsColumnGap
 		targets = append(targets, hit)
 	}
 	return strings.Join(lines, "\n"), targets

@@ -3,6 +3,9 @@ package tui
 import "strings"
 
 func (m *Model) controlActionHelp(label string) string {
+	if m.page == "settings" {
+		return m.tr("settings.actionHelp", label)
+	}
 	return m.tr("navigation.controls.activate", label)
 }
 
@@ -142,6 +145,8 @@ func (m *Model) settingsContextHelp() string {
 		label = "settings.chooseStartPage"
 	case "settings.theme":
 		label = "settings.chooseTheme"
+	case "editor.configure":
+		label = "settings.editEditor"
 	case "settings.ipv6", "settings.unifiedDelay", "settings.tcpConcurrent", "settings.tcpKeepAlive", "settings.etagSupport":
 		return m.controlActionHelp(m.tr("settings.toggleCoreSetting", m.tr(m.focus)))
 	case "settings.logLevel", "settings.findProcessMode", "settings.geodataLoader":
