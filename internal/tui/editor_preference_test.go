@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -58,6 +59,10 @@ func TestEditorDialogKeepsFeedbackBelowInputAndSaveKeysVisible(t *testing.T) {
 				lines := strings.Split(ansi.Strip(view), "\n")
 				for i, line := range lines {
 					lines[i] = strings.TrimSpace(ansi.Cut(line, field.X, field.X+field.W))
+				}
+				headings := lines[:field.Y]
+				if !slices.Contains(headings, m.tr("settings.editorCommand")) || slices.Contains(headings, m.tr("settings.editor")) {
+					t.Fatalf("%s %v: expected a single editor command heading: %q", language, size, headings)
 				}
 				feedback := lines[field.Y+field.H]
 				message := m.tr("settings.editorHint")

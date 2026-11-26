@@ -51,25 +51,19 @@ func (m *Model) renderEditorPreference(base string) (string, []hitRegion) {
 	}
 	width := min(56, max(24, m.width-2*modalPaddingX))
 	inner := width - 2*modalPaddingX
-	title, label := m.tr("settings.editor"), m.tr("settings.editorCommand")
-	footer := strings.Split(wrapText(m.tr("settings.saveKeys"), inner), "\n")
-	bodyY := 3 // Top padding, title and divider.
-	var body dashboardBlock
-	// A full field needs the label, its three frame rows, one explanation
-	// row and bottom padding in addition to the header and key hints.
-	compact := m.height < bodyY+6+len(footer)
-	if compact {
-		title, bodyY = label, 2
-	} else {
-		body.lines = append(body.lines, label)
-	}
-	body.append(m.formInputField(inner, compact, ""))
-
 	message, color := m.tr("settings.editorHint"), muted
 	if m.failure != "" {
 		message, color = m.failure, errorColor
 	}
 	notes := strings.Split(wrapText(message, inner), "\n")
+	footer := strings.Split(wrapText(m.tr("settings.saveKeys"), inner), "\n")
+	bodyY := 3 // Top padding, title and divider.
+	// Use the single-line input when its frame would crowd out the explanation.
+	compact := m.height < bodyY+3+len(notes)+len(footer)+1
+	if compact {
+		bodyY = 2
+	}
+	body := m.formInputField(inner, compact, "")
 	room := m.height - bodyY - len(body.lines) - len(footer) - 1
 	for i, line := range notes[:min(len(notes), room)] {
 		if i == room-1 && len(notes) > room {
@@ -85,7 +79,8 @@ func (m *Model) renderEditorPreference(base string) (string, []hitRegion) {
 	}
 
 	surface := m.newModalSurface(width, bodyY+len(body.lines)+1)
-	surface.put(modalPaddingX, 1, themed(lipgloss.NewStyle().Bold(true).Render(title), pageTitleForeground, modalBackground, false))
+	title := lipgloss.NewStyle().Bold(true).Render(m.tr("settings.editorCommand"))
+	surface.put(modalPaddingX, 1, themed(title, pageTitleForeground, modalBackground, false))
 	if !compact {
 		surface.divider(2)
 	}
