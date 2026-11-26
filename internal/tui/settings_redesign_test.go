@@ -521,12 +521,13 @@ func TestSettingsProcessMenuUsesLocalizedLabelsAndNativeValues(t *testing.T) {
 func TestSettingsUninstalledActionsAndHeaderOwnership(t *testing.T) {
 	o := dashboardOptions{Locale: i18n.New(i18n.English), Width: 160, Height: 45}
 	body, hits := settingsContent(o, 120)
-	for _, id := range []string{"install", "card.logs", "settings.language", "key-hints.toggle", "settings.theme", "editor.configure"} {
+	actions := []string{"install", "card.logs", "settings.language", "settings.startPage", "key-hints.toggle", "settings.theme", "editor.configure", coreSettingsTabs[accessTab]}
+	for _, id := range actions {
 		if !hasAction(hits, id) {
 			t.Fatalf("uninstalled settings lost %s", id)
 		}
 	}
-	if len(hits) != 7 || !strings.Contains(ansi.Strip(body), o.Locale.T("settings.afterInstall")) {
+	if len(hits) != len(actions) || !strings.Contains(ansi.Strip(body), o.Locale.T("settings.afterInstall")) {
 		t.Fatal("uninstalled settings expose installed-core actions or omit their availability")
 	}
 	if hasAction(hits, "network") {
@@ -535,7 +536,7 @@ func TestSettingsUninstalledActionsAndHeaderOwnership(t *testing.T) {
 	o.Page = "settings"
 	o.Header = (&Model{page: "settings", locale: o.Locale}).pageHeader()
 	_, hits = settingsContent(o, 120)
-	if hasAction(hits, "network") || len(hits) != 7 {
+	if hasAction(hits, "network") || len(hits) != len(actions) {
 		t.Fatal("download settings are duplicated in the header and body")
 	}
 	_, hits, _ = renderDashboard(o)

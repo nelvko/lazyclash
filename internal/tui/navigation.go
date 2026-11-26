@@ -80,7 +80,7 @@ func (m *Model) focusTargets() []hitRegion {
 	tabPosition := func(r hitRegion) (int, int) {
 		// Keep this tab and the controls in its pane together in reading order,
 		// even when the neighboring column has controls at the same height.
-		if settingsStrip.W > 0 && (r.ID == "runtime-settings" || strings.HasPrefix(r.ID, "settings.") && r.ID != "settings.language" && r.ID != "settings.theme") {
+		if settingsStrip.W > 0 && (r.ID == "runtime-settings" || strings.HasPrefix(r.ID, "settings.") && r.ID != "settings.language" && r.ID != "settings.startPage" && r.ID != "settings.theme") {
 			return settingsStrip.Y, settingsStrip.X
 		}
 		// Treat the network card as one group in the page order. Its renderer

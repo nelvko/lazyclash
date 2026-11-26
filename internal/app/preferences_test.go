@@ -14,7 +14,7 @@ import (
 func TestPreferencesPersistSafeSettingsAndKeepCredentialsSessionOnly(t *testing.T) {
 	a, _ := testApp(t)
 	prefs, err := a.LoadPreferences(t.Context())
-	if err != nil || prefs.Network.Method != downloadnet.MethodDirect || prefs.Theme != ThemeDark || prefs.HasRun || prefs.GuideDismissed {
+	if err != nil || prefs.Network.Method != downloadnet.MethodDirect || prefs.Theme != ThemeDark || prefs.StartPage != StartPageOverview || prefs.HasRun || prefs.GuideDismissed {
 		t.Fatalf("defaults=%+v err=%v", prefs, err)
 	}
 	for _, cfg := range []downloadnet.Config{
@@ -79,6 +79,40 @@ func TestThemePreferenceDefaultsAndPersists(t *testing.T) {
 		if err := a.SaveThemePreference(t.Context(), invalid); err == nil || string(read(t, path)) != before {
 			t.Fatalf("invalid theme %q was saved", invalid)
 		}
+	}
+}
+
+func TestStartPagePreferenceDefaultsAndPersists(t *testing.T) {
+	a, _ := testApp(t)
+	path := filepath.Join(a.Home, "preferences.json")
+	for _, raw := range []string{`{"Language":"zh-Hans"}`, `{"Language":"zh-Hans","StartPage":"unknown"}`} {
+		write(t, path, []byte(raw))
+		prefs, err := a.ReadPreferences(t.Context())
+		if err != nil || prefs.StartPage != StartPageOverview || string(read(t, path)) != raw {
+			t.Fatalf("reading %s: prefs=%+v err=%v", raw, prefs, err)
+		}
+	}
+	for _, page := range []string{"overview", "proxies", "profiles", "connections", "rules", "logs", "settings"} {
+		if err := a.SaveStartPagePreference(t.Context(), page); err != nil {
+			t.Fatal(err)
+		}
+		prefs, err := a.LoadPreferences(t.Context())
+		if err != nil || prefs.StartPage != page || prefs.Language != "zh-Hans" {
+			t.Fatalf("saved %s: prefs=%+v err=%v", page, prefs, err)
+		}
+	}
+	before := string(read(t, path))
+	for _, invalid := range []string{"", "unknown"} {
+		if err := a.SaveStartPagePreference(t.Context(), invalid); err == nil || string(read(t, path)) != before {
+			t.Fatalf("invalid start page %q was saved", invalid)
+		}
+	}
+	if err := a.SaveLanguagePreference(t.Context(), "en"); err != nil {
+		t.Fatal(err)
+	}
+	prefs, err := a.LoadPreferences(t.Context())
+	if err != nil || prefs.StartPage != "settings" || prefs.Language != "en" {
+		t.Fatalf("language change lost startup page: prefs=%+v err=%v", prefs, err)
 	}
 }
 

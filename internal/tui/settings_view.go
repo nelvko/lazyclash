@@ -49,6 +49,13 @@ func (o dashboardOptions) settingsDropdown(id string) dropdown {
 	switch id {
 	case "settings.language":
 		return dropdown{Items: languageMenuItems, Value: o.Locale.Language()}
+	case "settings.startPage":
+		pages := navPages()
+		items := make([]menuItem, len(pages))
+		for i, page := range pages {
+			items[i] = menuItem{ID: page, Label: pageTitle(page, o.Locale)}
+		}
+		return dropdown{Items: items, Value: cmp.Or(o.StartPage, app.StartPageOverview)}
 	case "settings.theme":
 		return dropdown{Items: themeMenuItems, Value: cmp.Or(o.Theme, app.ThemeDark)}
 	case "settings.logLevel":
@@ -156,6 +163,7 @@ func settingsInterface(o dashboardOptions, width int) dashboardBlock {
 	hints.tip = tooltipBinding{owner: "key-hints.toggle", text: tr("settings.keyHints.tooltip")}
 	return settingsSection(o, width, tr("settings.interface"), "", []settingsRow{
 		settingsSelectRow(o, "settings.language", tr("dashboard.language.title")),
+		settingsSelectRow(o, "settings.startPage", tr("settings.startPage")),
 		hints,
 		settingsThemeRow(o),
 		{label: tr("settings.editor"), value: clean(o.EditorCommand), control: settingsLink, rightAlign: true,

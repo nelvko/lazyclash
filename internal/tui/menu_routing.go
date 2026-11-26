@@ -23,6 +23,8 @@ func (m *Model) applyMenuResult(result menuResult) tea.Cmd {
 				switch m.menu.anchor.ID {
 				case "settings.language":
 					return m.changeLanguage(result.Action)
+				case "settings.startPage":
+					return m.changeStartPage(result.Action)
 				case "settings.theme":
 					return m.changeTheme(result.Action)
 				case "settings.logLevel":

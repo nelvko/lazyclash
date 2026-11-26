@@ -29,6 +29,7 @@ type fakeBackend struct {
 	prefs               app.Preferences
 	prefsErr            error
 	saveLanguage        func(context.Context, string) error
+	saveStartPage       func(context.Context, string) error
 	saveTheme           func(context.Context, string) error
 	resolve             func(context.Context, string, downloadnet.Config) (mihomo.Release, error)
 	testFile            func(context.Context, mihomo.Release, downloadnet.Config) error
@@ -115,7 +116,7 @@ func (f *fakeBackend) StreamLogs(ctx context.Context, emit func(mihomo.LogEntry)
 func (f *fakeBackend) Snapshot(context.Context) (app.Snapshot, error) {
 	return f.snapshot, f.snapshotErr
 }
-func (f *fakeBackend) LoadPreferences(context.Context) (app.Preferences, error) {
+func (f *fakeBackend) ReadPreferences(context.Context) (app.Preferences, error) {
 	return f.prefs, f.prefsErr
 }
 func (f *fakeBackend) SaveKeyHintsPreference(_ context.Context, hidden bool) error {
@@ -138,6 +139,13 @@ func (f *fakeBackend) SaveThemePreference(ctx context.Context, theme string) err
 		return f.saveTheme(ctx, theme)
 	}
 	f.prefs.Theme = theme
+	return ctx.Err()
+}
+func (f *fakeBackend) SaveStartPagePreference(ctx context.Context, page string) error {
+	if f.saveStartPage != nil {
+		return f.saveStartPage(ctx, page)
+	}
+	f.prefs.StartPage = page
 	return ctx.Err()
 }
 func (f *fakeBackend) SaveNetworkPreferences(ctx context.Context, cfg downloadnet.Config) error {

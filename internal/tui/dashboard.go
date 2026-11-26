@@ -38,6 +38,7 @@ type dashboardOptions struct {
 
 	Locale                          i18n.Localizer
 	Theme, EffectiveTheme           string
+	StartPage                       string
 	EditorCommand                   string
 	MessageTransient                bool
 	MessageInformational            bool
@@ -371,9 +372,9 @@ func drawDashboard(o dashboardOptions) (string, []hitRegion, int, []notification
 	return strings.Join(rows, "\n"), targets, total, notifications
 }
 
-// navPages defines both visible order and the 1–7 page shortcuts.
+// The sidebar and the 1–7 shortcuts follow the start page options.
 func navPages() []string {
-	return []string{"overview", "proxies", "profiles", "connections", "rules", "logs", "settings"}
+	return app.StartPages()
 }
 
 func pageTitle(page string, locales ...i18n.Localizer) string {

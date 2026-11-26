@@ -174,6 +174,12 @@ def focus(terminal, label, row_label, footer_hint=""):
     for _ in range(36):
         terminal.settle()
         screen = terminal.screen.text()
+        if terminal.screen.columns <= 40 and footer_hint:
+            # A narrow footer may omit the focused action. Match the marker
+            # to the control on its own row to distinguish identical switches.
+            if any(row_label in row and label in row and (pattern.search(row) or row_marker.search(row))
+                   for row in screen.splitlines()[:-1]):
+                return
         if (pattern.search(screen) or row_marker.search(screen)) and label in screen and footer_hint in screen.splitlines()[-1]:
             return
         terminal.key(b"\t")
@@ -626,11 +632,11 @@ def exercise(preview, binary, output, language, profile, args):
             "settings.tcpConcurrent": False, "settings.tcpKeepAlive": True,
             "dashboard.interface.keyHints": True, "settings.autostart": True,
         }
-        for key in ("dashboard.language.title", "settings.theme", "settings.logLevel", "settings.findProcessMode", *switch_defaults):
+        for key in ("dashboard.language.title", "settings.startPage", "settings.theme", "settings.logLevel", "settings.findProcessMode", *switch_defaults):
             x, y = position(terminal, words[key])
             row = terminal.screen.cells[y]
             left, right = card_bounds(terminal.screen, x)
-            inset = 2 if key in {"dashboard.language.title", "settings.theme", "dashboard.interface.keyHints"} else 4
+            inset = 2 if key in {"dashboard.language.title", "settings.startPage", "settings.theme", "dashboard.interface.keyHints"} else 4
             assert x == left + inset and row[right-2:right] == [" ", " "], key
             if key in switch_defaults:
                 check_switch(terminal, words, key, switch_defaults[key], profile)
@@ -676,6 +682,11 @@ def exercise(preview, binary, output, language, profile, args):
         preview.capture(terminal, output, "settings-wrapped-26x24", args)
         click(terminal, trigger)
         dropdown_option(terminal, native[language], checked=True)
+        terminal.key(b"\x1b")
+        terminal.wait_absent("✓")
+        terminal.key(b"\t")
+        terminal.key(b"\r")
+        dropdown_option(terminal, words["dashboard.page.overview"], checked=True)
         terminal.key(b"\x1b")
         terminal.wait_absent("✓")
         terminal.key(b"\t")
@@ -779,7 +790,7 @@ def exercise(preview, binary, output, language, profile, args):
 
         other = "zh-Hans" if language == "en" else "en"
         assert native[other] not in terminal.screen.text(), "closed language dropdown shows both languages"
-        assert position(terminal, words["dashboard.interface.keyHints"])[1] == position(terminal, current)[1] + 2, "unexpected text below the language control"
+        assert position(terminal, words["settings.startPage"])[1] == position(terminal, current)[1] + 2, "unexpected text below the language control"
         current_point = position(terminal, current)
         click(terminal, current_point)
         expanded = dropdown_trigger(terminal, native[language], expanded=True)
@@ -927,7 +938,7 @@ def exercise(preview, binary, output, language, profile, args):
             terminal.key(b"\x1b")
             terminal.wait_absent(words["access.proxyTitle"])
             terminal.settle()
-            assert words["navigation.controls.editPorts"] in terminal.screen.text().splitlines()[-1], "port return lost its trigger focus"
+            assert re.search(r"› +" + re.escape(words["settings.proxyPorts"]), terminal.screen.text()), "port return lost its trigger focus"
             for _ in range(8):
                 terminal.key(("\x1b[<64;%d;%dM" % (width - 3, height // 2)).encode())
             terminal.key(b"\x1b[H")

@@ -103,7 +103,7 @@ func (b *settingsPTYBackend) SetCoreSetting(ctx context.Context, key, value stri
 	return nil
 }
 
-func (b *settingsPTYBackend) LoadPreferences(ctx context.Context) (app.Preferences, error) {
+func (b *settingsPTYBackend) ReadPreferences(ctx context.Context) (app.Preferences, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	return b.preferences, ctx.Err()
@@ -122,6 +122,16 @@ func (b *settingsPTYBackend) SaveLanguagePreference(ctx context.Context, languag
 	b.preferences.Language = language
 	b.mu.Unlock()
 	return ctx.Err()
+}
+
+func (b *settingsPTYBackend) SaveStartPagePreference(ctx context.Context, page string) error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	b.preferences.StartPage = page
+	return nil
 }
 
 func (b *settingsPTYBackend) SaveKeyHintsPreference(ctx context.Context, hidden bool) error {

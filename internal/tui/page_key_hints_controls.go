@@ -138,6 +138,8 @@ func (m *Model) settingsContextHelp() string {
 		return m.controlActionHelp(m.tr("settings.editValue", m.tr(m.focus)))
 	case "settings.language":
 		label = "settings.chooseLanguage"
+	case "settings.startPage":
+		label = "settings.chooseStartPage"
 	case "settings.theme":
 		label = "settings.chooseTheme"
 	case "settings.ipv6", "settings.unifiedDelay", "settings.tcpConcurrent", "settings.tcpKeepAlive", "settings.etagSupport":

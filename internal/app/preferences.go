@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/nelvko/lazyclash/internal/diagnostic"
@@ -21,6 +22,13 @@ const (
 	ThemeAuto  = "auto"
 )
 
+const StartPageOverview = "overview"
+
+// StartPages lists selectable startup pages in navigation order.
+func StartPages() []string {
+	return []string{StartPageOverview, "proxies", "profiles", "connections", "rules", "logs", "settings"}
+}
+
 // Preferences never contains controller credentials or subscription URLs.
 type Preferences struct {
 	Network        downloadnet.Config
@@ -28,12 +36,13 @@ type Preferences struct {
 	HasRun         bool
 	Language       string `json:",omitempty"`
 	Theme          string `json:",omitempty"`
+	StartPage      string `json:",omitempty"`
 	Editor         string `json:",omitempty"`
 	HideKeyHints   bool   `json:",omitempty"`
 }
 
 func defaultPreferences() Preferences {
-	return Preferences{Network: downloadnet.Config{Method: downloadnet.MethodDirect}, Theme: ThemeDark}
+	return Preferences{Network: downloadnet.Config{Method: downloadnet.MethodDirect}, Theme: ThemeDark, StartPage: StartPageOverview}
 }
 
 func (a *App) loadPreferencesLocked() (Preferences, []byte, error) {
@@ -51,6 +60,9 @@ func (a *App) loadPreferencesLocked() (Preferences, []byte, error) {
 	}
 	if !validTheme(p.Theme) {
 		p.Theme = ThemeDark
+	}
+	if !slices.Contains(StartPages(), p.StartPage) {
+		p.StartPage = StartPageOverview
 	}
 	p.Network = p.Network.Normalized()
 	if err := rememberableNetwork(p.Network); err != nil {
@@ -168,6 +180,13 @@ func (a *App) SaveThemePreference(ctx context.Context, theme string) error {
 		return diagnostic.New("theme.unsupported", "Theme must be Light, Dark or Auto")
 	}
 	return a.editPreferences(ctx, func(p *Preferences) error { p.Theme = theme; return nil })
+}
+
+func (a *App) SaveStartPagePreference(ctx context.Context, page string) error {
+	if !slices.Contains(StartPages(), page) {
+		return diagnostic.New("startPage.unsupported", "Unknown startup page")
+	}
+	return a.editPreferences(ctx, func(p *Preferences) error { p.StartPage = page; return nil })
 }
 
 // SaveKeyHintsPreference changes presentation without replacing other preferences.

@@ -2,6 +2,7 @@
 package tui
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -24,10 +25,11 @@ import (
 
 type Backend interface {
 	Snapshot(context.Context) (app.Snapshot, error)
-	LoadPreferences(context.Context) (app.Preferences, error)
+	ReadPreferences(context.Context) (app.Preferences, error)
 	SaveNetworkPreferences(context.Context, downloadnet.Config) error
 	SetGuideDismissed(context.Context, bool) error
 	SaveLanguagePreference(context.Context, string) error
+	SaveStartPagePreference(context.Context, string) error
 	SaveThemePreference(context.Context, string) error
 	SaveEditorPreference(context.Context, string) error
 	SaveKeyHintsPreference(context.Context, bool) error
@@ -80,7 +82,6 @@ type resultMsg struct {
 	// A refresh failure must not leave a committed creation ready to submit again.
 	actionSucceeded bool
 	previousProfile string
-	prefs           *app.Preferences
 	err             error
 	success         string
 	transient       bool
@@ -122,6 +123,8 @@ type Model struct {
 	locale                i18n.Localizer
 	languageOverride      string
 	savedLanguage         string
+	startPage             string
+	initialPreferencesErr error
 	editorPreference      string
 	theme                 string
 	terminalLight         bool
@@ -188,12 +191,29 @@ func New(ctx context.Context, backend Backend, languages ...string) Model {
 	spin := spinner.New()
 	spin.Spinner = spinner.Dot
 	opCtx, cancel := context.WithCancel(ctx)
-	m := Model{ctx: ctx, backend: backend, busy: true, id: 1, cancel: cancel, opCtx: opCtx, job: "refresh", message: "", page: "overview", focus: "install", input: input, spinner: spin, width: 80, height: 24, wizard: newWizard(), profilesUI: newProfilesState(), proxies: newProxiesState(), profileCreate: newProfileCreateState()}
+	m := Model{ctx: ctx, backend: backend, busy: true, id: 1, cancel: cancel, opCtx: opCtx, job: "refresh", input: input, spinner: spin, width: 80, height: 24, wizard: newWizard(), proxies: newProxiesState(), profileCreate: newProfileCreateState()}
 	if len(languages) > 0 {
 		m.languageOverride = languages[0]
 	}
-	m.locale = i18n.New(i18n.Resolve(m.languageOverride, "", os.Getenv))
-	m.theme = app.ThemeDark
+	// Read the small, atomically published preference file before rendering.
+	// The first frame can show the selected page while the service snapshot loads.
+	prefs, err := backend.ReadPreferences(ctx)
+	if err != nil {
+		m.initialPreferencesErr = err
+		prefs = app.Preferences{}
+	}
+	m.startPage = cmp.Or(prefs.StartPage, app.StartPageOverview)
+	m.page = m.startPage
+	if m.page == app.StartPageOverview {
+		m.focus = "install"
+	}
+	m.savedLanguage = prefs.Language
+	m.locale = i18n.New(i18n.Resolve(m.languageOverride, m.savedLanguage, os.Getenv))
+	m.theme = cmp.Or(prefs.Theme, app.ThemeDark)
+	m.editorPreference = prefs.Editor
+	m.loadKeyHintsPreference(prefs.HideKeyHints)
+	m.wizard.cfg = prefs.Network.Normalized()
+	m.wizard.draft = m.wizard.cfg
 	m.profilesUI = newProfilesState(m.locale)
 	m.message = m.tr("model.loading")
 	m.connections.search = textinput.New()
@@ -227,23 +247,22 @@ func Run(ctx context.Context, backend Backend, languages ...string) error {
 }
 func (m Model) Init() tea.Cmd {
 	ctx := m.ctx
-	return tea.Batch(m.snapshotCmd(m.id, m.opCtx, true), m.spinner.Tick, func() tea.Msg { <-ctx.Done(); return parentCanceledMsg{} })
+	var background tea.Cmd
+	if m.theme == app.ThemeAuto {
+		background = tea.RequestBackgroundColor
+	}
+	return tea.Batch(m.snapshotCmd(m.id, m.opCtx, true), background, m.spinner.Tick, func() tea.Msg { <-ctx.Done(); return parentCanceledMsg{} })
 }
 
 func (m *Model) snapshotCmd(id uint64, ctx context.Context, initial bool) tea.Cmd {
 	backend := m.backend
+	var preferencesErr error
+	if initial {
+		preferencesErr = m.initialPreferencesErr
+	}
 	return func() tea.Msg {
-		var p *app.Preferences
-		var pe error
-		if initial {
-			value, err := backend.LoadPreferences(ctx)
-			pe = err
-			if err == nil {
-				p = &value
-			}
-		}
 		s, err := backend.Snapshot(ctx)
-		return resultMsg{id: id, snapshot: s, hasSnapshot: err == nil, prefs: p, err: errors.Join(pe, err), success: "State refreshed", transient: true}
+		return resultMsg{id: id, snapshot: s, hasSnapshot: err == nil, err: errors.Join(preferencesErr, err), success: "State refreshed", transient: true}
 	}
 }
 func (m *Model) newJob(kind string, operations ...notificationOperation) context.Context {
@@ -396,6 +415,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case keyHintsSavedMsg:
 		cmd = m.acceptKeyHintsSaved(v)
+	case startPageSavedMsg:
+		if v.id != m.id {
+			return m, nil
+		}
+		m.cancel()
+		m.busy, m.job = false, ""
+		if v.err != nil {
+			m.failure, m.message = m.localizeError(v.err), ""
+		} else {
+			m.startPage = v.page
+			m.message = m.tr("settings.startPageSaved")
+		}
+		if m.quitting && !m.keyHints.pending {
+			return m, tea.Quit
+		}
 	case themeSavedMsg:
 		if v.id != m.id {
 			return m, nil
@@ -593,17 +627,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				}
 				m.closeProfileCreate()
 			}
-		}
-		if v.prefs != nil {
-			cmd = m.applyThemePreference(v.prefs.Theme)
-			m.loadKeyHintsPreference(v.prefs.HideKeyHints)
-			m.editorPreference = v.prefs.Editor
-			m.savedLanguage = v.prefs.Language
-			m.locale = i18n.New(i18n.Resolve(m.languageOverride, m.savedLanguage, os.Getenv))
-			m.refreshLocalizedInputs()
-			m.wizard.cfg = v.prefs.Network.Normalized()
-			m.wizard.draft = m.wizard.cfg
-			m.snapshot.GuideDismissed = v.prefs.GuideDismissed || m.snapshot.GuideDismissed
 		}
 		m.messageInformational = false
 		if v.err != nil {
@@ -1397,7 +1420,7 @@ func (m *Model) activate(id string) tea.Cmd {
 		return m.toggleCoreSetting(id, "geo-auto-update", m.snapshot.CoreSettings.GeoAutoUpdate)
 	case "settings.storeFakeIP":
 		return m.toggleCoreSetting(id, "profile.store-fake-ip", m.snapshot.CoreSettings.StoreFakeIP)
-	case "settings.language", "settings.theme", "settings.logLevel", "settings.findProcessMode", "settings.geodataLoader":
+	case "settings.language", "settings.startPage", "settings.theme", "settings.logLevel", "settings.findProcessMode", "settings.geodataLoader":
 		m.openPageSelectionMenu("settings", id, m.navigationOptions().settingsDropdown(id))
 		return nil
 	case "settings.ipv6":
