@@ -709,6 +709,13 @@ func TestProxiesWideGroupHeaderAlignsNameTypeAndSummary(t *testing.T) {
 						t.Fatalf("group %s lost the fixed right-aligned count: %q", g.Name, line)
 					}
 				}
+				if terminalWidth == 160 {
+					nameGap := firstTypeX - (2 + columns.name)
+					typeGap := firstNodeX - (firstTypeX + columns.kind)
+					if nameGap < 8 || typeGap < 3 {
+						t.Fatalf("wide directory crowds its columns: name-to-type gap=%d type-to-node gap=%d", nameGap, typeGap)
+					}
+				}
 				m.layout()
 				group, test := findTarget(t, m, "group.0"), findTarget(t, m, "proxies.test.0")
 				if test.Y < group.Y || test.Y >= group.Y+group.H || test.X <= group.X+firstNodeX {
@@ -788,7 +795,7 @@ func TestProxiesGroupSpacingPreservesCompactWhitespace(t *testing.T) {
 	for _, test := range []struct {
 		width, height, gap int
 		expanded           string
-	}{{200, 40, 0, ""}, {160, 40, 0, "PROXY"}, {100, 24, 0, ""}, {160, 23, 0, ""}, {120, 18, 1, "PROXY"}, {80, 40, 0, ""}, {40, 16, 0, ""}} {
+	}{{200, 40, 0, ""}, {160, 40, 0, "PROXY"}, {100, 24, 0, ""}, {160, 23, 0, ""}, {120, 18, 1, "PROXY"}, {80, 40, 1, ""}, {40, 16, 0, ""}} {
 		t.Run(fmt.Sprint(test.width, "/", test.height, "/", test.expanded), func(t *testing.T) {
 			m, _ := proxiesModel(t, test.width, test.height)
 			setProxyTestGroup(&m, test.expanded)
@@ -807,7 +814,7 @@ func TestProxiesGroupSpacingPreservesCompactWhitespace(t *testing.T) {
 					}
 				}
 				gap := test.gap
-				if !m.proxyGroupExpanded(m.snapshot.Groups[previous].Name) && !m.proxyGroupExpanded(m.snapshot.Groups[next].Name) {
+				if test.expanded != "" && m.snapshot.Groups[previous].Name != test.expanded {
 					gap = 0
 				}
 				if start-end != gap {

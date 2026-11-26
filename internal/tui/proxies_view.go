@@ -93,10 +93,11 @@ func (m *Model) layoutProxiesBody(width int) proxyBodyLayout {
 		return finishEmpty(state)
 	}
 	compactGroups := m.compactProxyCards()
+	spacedDirectory := m.proxiesNarrow() && m.proxies.activeGroup == "" && m.height > proxyCompactMaxHeight
 	columns := m.proxyHeaderColumns()
 	layout.memberGutter = layout.grid.rowGap
 	for i, gi := range groups {
-		if i > 0 && compactGroups && m.proxyGroupExpanded(m.snapshot.Groups[groups[i-1]].Name) {
+		if i > 0 && (spacedDirectory || compactGroups && m.proxyGroupExpanded(m.snapshot.Groups[groups[i-1]].Name)) {
 			b.blank()
 		}
 		g := m.snapshot.Groups[gi]
@@ -159,10 +160,11 @@ func (m *Model) proxyGroupHeader(gi, width int, cols proxyHeaderColumns) dashboa
 	}
 	// The wide columns depend only on the directory and available width, so
 	// opening a group or updating its test progress never shifts its identity.
-	nameWidth := min(cols.name, 24, width/5)
-	typeWidth := min(cols.kind, 16)
-	typeX, typeY := 2+nameWidth+2, 0
-	minTitle := typeX + typeWidth + 2 + 6 // keep some of the current node visible
+	const columnGap = "    "
+	nameWidth := min(max(cols.name, 18), 24, width/5)
+	typeWidth := min(max(cols.kind, 12), 16)
+	typeX, typeY := 2+nameWidth+len(columnGap), 0
+	minTitle := typeX + typeWidth + len(columnGap) + 6 // keep some of the current node visible
 	if m.proxiesNarrow() {
 		typeX, typeY = 2, 1
 		minTitle = min(12, 2+ansi.StringWidth(clean(g.Name)), max(4, width/5))
@@ -211,8 +213,8 @@ func (m *Model) proxyGroupHeader(gi, width int, cols proxyHeaderColumns) dashboa
 		meta := "  " + typeLabel
 		room := width - ansi.StringWidth(meta)
 		separator := " · "
-		if width < 24 {
-			separator = "·"
+		if width < 24 && room < ansi.StringWidth(summary)+3 {
+			separator = " "
 		}
 		if gap := ansi.StringWidth(separator); kind != "" && room > gap {
 			meta += themed(separator, muted, surface, false)
@@ -222,7 +224,7 @@ func (m *Model) proxyGroupHeader(gi, width int, cols proxyHeaderColumns) dashboa
 		}
 		b.lines = []string{cellPad(prefix+name, leftWidth) + right, meta + cellCrop(summary, room)}
 	} else {
-		left := prefix + cellPad(name, nameWidth) + "  " + cellPad(typeLabel, typeWidth) + "  "
+		left := prefix + cellPad(name, nameWidth) + columnGap + cellPad(typeLabel, typeWidth) + columnGap
 		b.lines = []string{cellPad(left+summary, leftWidth) + right}
 	}
 	// Reserve action rectangles even when disabled so clicking them never folds

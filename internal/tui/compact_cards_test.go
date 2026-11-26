@@ -48,19 +48,40 @@ func TestCompactProxyGridShowsMoreMembersWithoutLosingActions(t *testing.T) {
 	}
 }
 
-func TestCompactProxyDirectoryUsesOnlyContentRows(t *testing.T) {
-	for _, test := range []struct{ width, rows int }{{115, 1}, {114, 2}, {80, 2}, {60, 2}} {
-		m, _ := proxiesModel(t, test.width, 24)
+func TestProxyDirectorySeparatesGroupsWhenHeightAllows(t *testing.T) {
+	for _, test := range []struct{ width, height, rows, gap int }{
+		{115, 24, 1, 0}, {114, 24, 2, 0}, {80, 24, 2, 0}, {60, 18, 2, 0},
+		{114, 25, 2, 1}, {80, 40, 2, 1},
+	} {
+		m, _ := proxiesModel(t, test.width, test.height)
 		setProxyTestGroup(&m, "")
 		m.snapshot.Groups = nil
 		for i := range 12 {
 			m.snapshot.Groups = append(m.snapshot.Groups, mihomo.Group{Name: fmt.Sprintf("Group %02d", i), Type: "Selector", Now: "DIRECT", All: []string{"DIRECT"}})
 		}
-		body, hits := m.proxiesBody(dashboardBodyWidth(m.dashboardOptions()))
-		if got := len(strings.Split(body, "\n")); got != 12*test.rows {
-			t.Fatalf("%d-column directory retained padding: rows=%d want=%d", test.width, got, 12*test.rows)
+		width := dashboardBodyWidth(m.dashboardOptions())
+		body, hits := m.proxiesBody(width)
+		lines := strings.Split(body, "\n")
+		n := len(m.snapshot.Groups)
+		want := n*test.rows + (n-1)*test.gap
+		if len(lines) != want {
+			t.Fatalf("%dx%d directory has %d rows, want %d", test.width, test.height, len(lines), want)
 		}
-		assertRegions(t, hits, dashboardBodyWidth(m.dashboardOptions()), 12*test.rows)
+		if strings.TrimSpace(ansi.Strip(lines[want-1])) == "" {
+			t.Fatalf("%dx%d directory ends with a spacer", test.width, test.height)
+		}
+		assertRegions(t, hits, width, want)
+	}
+}
+
+func TestNarrowProxyHeaderKeepsTypeAndNodeVisuallySeparate(t *testing.T) {
+	m, _ := proxiesModel(t, 22, 24)
+	m.snapshot.Groups = []mihomo.Group{{Name: "Direct", Type: "Selector", Now: "DIRECT"}}
+	for width, want := range map[int]string{18: "Selector DIRECT", 19: "Selector · DIRECT"} {
+		header := m.proxyGroupHeader(0, width, m.proxyHeaderColumns())
+		if got := strings.TrimSpace(ansi.Strip(header.lines[1])); got != want {
+			t.Errorf("%d columns: metadata = %q, want %q", width, got, want)
+		}
 	}
 }
 

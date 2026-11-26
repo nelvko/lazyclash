@@ -583,11 +583,27 @@ def exercise(preview, binary, output, language, profile, args):
         assert terminal.screen.text() == before, "removed refresh shortcuts changed the proxy page"
         # Clicking expands candidates without moving the heading.
         assert_group_types(terminal, words, narrow=False)
+        name_x, type_x, summary_x, _, _ = group_fields(terminal, "Hong Kong", "Fallback", "HK 01", False)
+        assert type_x - name_x - len("Hong Kong") > 2, "the longest group name crowds the type column"
+        assert summary_x - type_x - len("LoadBalance") > 2, "the longest group type crowds the current node"
         preview.capture(terminal, output, "directory-wide-160x45", args)
         terminal.resize(80, 32)
         terminal.settle()
         assert_group_types(terminal, words, narrow=True)
+        name_x, first_y, _, _ = group_header(terminal, "PROXY")
+        assert group_header(terminal, "AUTO")[1] == first_y + 3, "tall narrow headers need a row between groups"
+        gap_y = first_y + 2
+        assert not "".join(terminal.screen.cells[gap_y]).strip(), "narrow group separator contains text"
+        click_cell(terminal, name_x, gap_y)
+        terminal.settle()
+        assert group_header(terminal, "PROXY")[3].rstrip().endswith("▸"), "clicking the gap expanded the previous group"
+        assert group_header(terminal, "AUTO")[3].rstrip().endswith("▸"), "clicking the gap expanded the next group"
         preview.capture(terminal, output, "directory-narrow-80x32", args)
+        terminal.resize(80, 20)
+        terminal.settle()
+        group_fields(terminal, "PROXY", "Selector", "HK 02", True)
+        assert group_header(terminal, "AUTO")[1] == group_header(terminal, "PROXY")[1] + 2, "short narrow headers need consecutive two-line groups"
+        preview.capture(terminal, output, "directory-short-80x20", args)
         terminal.resize(160, 45)
         terminal.settle()
         closed_fields = group_fields(terminal, "PROXY", "Selector", "HK 02", False)

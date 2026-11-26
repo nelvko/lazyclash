@@ -2,6 +2,8 @@
 
 ## 代理组头的宽窄布局与英文类型（2026-11-26）
 
+调整间距后，160×45 下同一批组的类型和当前节点分别从第 36、49 列移至第 47、63 列，右侧成员数和折叠箭头保持原位。80×32 的前三个组名分别位于第 4、7、10 行，点击组间空白不会展开任一组。80×20 下组名位于第 4、6、8 行。[160×45 宽屏](../.test-artifacts/proxy-responsive-spacing/pty/zh-Hans/truecolor/directory-wide-160x45.png) · [80×32 窄屏](../.test-artifacts/proxy-responsive-spacing/pty/zh-Hans/truecolor/directory-narrow-80x32.png) · [80×20 矮窗](../.test-artifacts/proxy-responsive-spacing/pty/zh-Hans/truecolor/directory-short-80x20.png)
+
 在中文和英文真彩终端中，160×45 的组名、英文类型和当前节点按列对齐，80×32 时首行显示组名和成员数，次行显示「类型 · 当前节点」，左缘与组名对齐。切换语言后，五种策略组的类型名一致，排序、测速和运行状态随语言显示。引用组卡片显示被引用组的类型和最终节点，例如 `URLTest · HK 02`。[160×45 中文截图](../.test-artifacts/proxy-responsive-types/pty/zh-Hans/truecolor/directory-wide-160x45.png) · [80×32 中文截图](../.test-artifacts/proxy-responsive-types/pty/zh-Hans/truecolor/directory-narrow-80x32.png)
 
 Go 用例覆盖 114 与 115 列的切换边界、极窄正文中节点名的显示，以及点击、悬停的命中范围。使用内存后端的真实 PTY 验证了展开组头后各列保持原位，并在两种语言下各从固定位置切换路由模式 24 次。[中文 PTY 记录](../.test-artifacts/proxy-responsive-types/pty/zh-Hans.log) · [英文 PTY 记录](../.test-artifacts/proxy-responsive-types/pty/en.log)
