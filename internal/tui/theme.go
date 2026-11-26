@@ -14,6 +14,7 @@ const (
 	bg                      = "#303841"
 	panel                   = "#2b323a"
 	raised                  = "#3a424a"
+	tooltipBackground       = "#536170"
 	sidebarBackground       = "#1d2227"
 	inputBackground         = "#282b2f"
 	text                    = "#d8dee9"

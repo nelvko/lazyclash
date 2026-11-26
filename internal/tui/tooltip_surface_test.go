@@ -4,12 +4,13 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/colorprofile"
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 )
 
 func TestTooltipSurfacePlacement(t *testing.T) {
-	m := Model{width: 20, height: 9}
+	m := Model{width: 20, height: 9, colorProfile: colorprofile.ANSI}
 	m.screen = strings.TrimSuffix(strings.Repeat(strings.Repeat(".", m.width)+"\n", m.height), "\n")
 	for _, tc := range []struct {
 		name   string
@@ -47,9 +48,60 @@ func TestTooltipSurfacePlacement(t *testing.T) {
 	}
 }
 
+func TestTooltipFrameMatchesTerminalPalette(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		profile colorprofile.Profile
+		noColor bool
+		framed  bool
+	}{
+		{"truecolor", colorprofile.TrueColor, false, false},
+		{"256", colorprofile.ANSI256, false, false},
+		{"16", colorprofile.ANSI, false, true},
+		{"monochrome", colorprofile.ASCII, false, true},
+		{"NO_COLOR", colorprofile.TrueColor, true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := Model{width: 12, height: 7, colorProfile: tc.profile, noColor: tc.noColor}
+			row := themed(strings.Repeat(".", m.width), text, raised, false)
+			m.screen = strings.TrimSuffix(strings.Repeat(row+"\n", m.height), "\n")
+			// One row remains below this icon before the footer.
+			anchor := hitRegion{X: 10, Y: 4, W: 1, H: 1}
+			var bounds hitRegion
+			m.screen, bounds = m.renderTooltip("说明", anchor, m.height-1, nil)
+			want := hitRegion{X: 6, Y: 5, W: 6, H: 1}
+			lines := []string{" 说明 "}
+			if tc.framed {
+				want = hitRegion{X: 4, Y: 1, W: 8, H: 3}
+				lines = []string{"┌──────┐", "│ 说明 │", "└──────┘"}
+			}
+			if bounds != want {
+				t.Fatalf("got bounds %+v, want %+v", bounds, want)
+			}
+			view := m.View().Content
+			rows := strings.Split(ansi.Strip(view), "\n")
+			for i, line := range lines {
+				if got := ansi.Cut(rows[bounds.Y+i], bounds.X, bounds.X+bounds.W); got != line {
+					t.Fatalf("row %d: got %q, want %q", i, got, line)
+				}
+			}
+			if !tc.framed {
+				cells := uv.NewScreenBuffer(m.width, m.height)
+				uv.NewStyledString(view).Draw(cells, cells.Bounds())
+				body := cells.CellAt(bounds.X+1, bounds.Y).Style
+				padding := cells.CellAt(bounds.X, bounds.Y).Style
+				base := cells.CellAt(anchor.X, anchor.Y).Style
+				if padding.Bg != body.Bg || terminalContrast(base.Bg, body.Bg) < 1.5 || terminalContrast(body.Fg, body.Bg) < 4.5 {
+					t.Fatalf("borderless surface lost its fill or contrast: text %v, fill %v, padding %v, base %v", body.Fg, body.Bg, padding.Bg, base.Bg)
+				}
+			}
+		})
+	}
+}
+
 func TestTooltipSurfaceRewrapsStyledGraphemesOnResize(t *testing.T) {
 	content := "\x1b[1m甲乙👩‍💻e\u0301丙丁\x1b[0m"
-	m := Model{height: 8}
+	m := Model{height: 8, colorProfile: colorprofile.TrueColor}
 	anchor := hitRegion{W: 1, H: 1}
 	for _, width := range []int{24, 10} {
 		m.width = width
@@ -59,8 +111,8 @@ func TestTooltipSurfaceRewrapsStyledGraphemesOnResize(t *testing.T) {
 		cells.Method = ansi.GraphemeWidth
 		uv.NewStyledString(screen).Draw(cells, cells.Bounds())
 		var body strings.Builder
-		for y := bounds.Y + 1; y < bounds.Y+bounds.H-1; y++ {
-			for x := bounds.X + 2; x < bounds.X+bounds.W-2; x++ {
+		for y := bounds.Y; y < bounds.Y+bounds.H; y++ {
+			for x := bounds.X + 1; x < bounds.X+bounds.W-1; x++ {
 				cell := cells.CellAt(x, y)
 				if cell.Content == "" || cell.Content == " " {
 					continue
@@ -76,10 +128,10 @@ func TestTooltipSurfaceRewrapsStyledGraphemesOnResize(t *testing.T) {
 		}
 	}
 
-	m.width, m.height = 10, 4
+	m.width, m.height = 10, 2
 	screen, bounds := m.renderTooltip(content, anchor, m.height, nil)
 	assertCanvas(t, screen, m.width, m.height)
-	if bounds.H != 3 || !strings.Contains(ansi.Strip(screen), "…") {
-		t.Fatalf("expected clipped text in a framed line:\n%s", ansi.Strip(screen))
+	if bounds.H != 1 || !strings.Contains(ansi.Strip(screen), "…") {
+		t.Fatalf("expected clipped text in a single row:\n%s", ansi.Strip(screen))
 	}
 }
