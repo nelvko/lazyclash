@@ -893,11 +893,14 @@ def exercise(preview, binary, output, language, profile, args):
         process_trigger = dropdown_trigger(terminal, words["settings.processAlways"])
         dismiss_toasts(terminal)
 
-        dark_trigger = dropdown_trigger(terminal, "Dark")
+        light = words["settings.theme.light"]
+        dark = words["settings.theme.dark"]
+        auto = words["settings.theme.auto"]
+        dark_trigger = dropdown_trigger(terminal, dark)
         terminal.click_text(dark_trigger)
-        _, checked_y = position(terminal, dropdown_option(terminal, "Dark", checked=True))
-        assert position(terminal, dropdown_option(terminal, "Light"))[1] == checked_y - 1, "Light must precede Dark"
-        assert position(terminal, dropdown_option(terminal, "Auto"))[1] == checked_y + 1, "Auto must follow Dark"
+        _, checked_y = position(terminal, dropdown_option(terminal, dark, checked=True))
+        assert position(terminal, dropdown_option(terminal, light))[1] == checked_y - 1, "Light must precede Dark"
+        assert position(terminal, dropdown_option(terminal, auto))[1] == checked_y + 1, "Auto must follow Dark"
         preview.capture(terminal, output, "theme-menu-wide", args)
         terminal.key(b"\x1b[A")
         terminal.key(b"\x1b")
@@ -905,24 +908,24 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait(dark_trigger)
 
         terminal.key(b"\r")  # Canceling the dropdown returns focus to its trigger.
-        dropdown_option(terminal, "Dark", checked=True)
+        dropdown_option(terminal, dark, checked=True)
         terminal.key(b"\x1b[A")
         terminal.key(b"\r")
-        light_trigger = dropdown_trigger(terminal, "Light")
+        light_trigger = dropdown_trigger(terminal, light)
         terminal.wait(words["settings.themeLightPlaceholder"])
         terminal.click_text(light_trigger)
-        dropdown_option(terminal, "Light", checked=True)
+        dropdown_option(terminal, light, checked=True)
         mark = len(terminal.raw)
-        terminal.click_text(dropdown_option(terminal, "Auto"))
-        auto_trigger = dropdown_trigger(terminal, "Auto")
-        terminal.wait(words["settings.themeAuto"] % "Dark")
+        terminal.click_text(dropdown_option(terminal, auto))
+        auto_trigger = dropdown_trigger(terminal, auto)
+        terminal.wait(words["settings.themeAuto"] % dark)
         terminal.settle()
         assert b"\x1b]11;?" in terminal.raw[mark:], "Auto did not query the terminal background"
         terminal.send(b"\x1b]11;rgb:ffff/ffff/ffff\x07")
-        terminal.wait(words["settings.themeAuto"] % "Light")
+        terminal.wait(words["settings.themeAuto"] % light)
         terminal.click_text(auto_trigger)
-        dropdown_option(terminal, "Auto", checked=True)
-        terminal.click_text(dropdown_option(terminal, "Dark"))
+        dropdown_option(terminal, auto, checked=True)
+        terminal.click_text(dropdown_option(terminal, dark))
         terminal.wait(dark_trigger)
 
         other = "zh-Hans" if language == "en" else "en"
@@ -1034,7 +1037,7 @@ def exercise(preview, binary, output, language, profile, args):
                 terminal.wait_absent(native[other])
                 focus(terminal, dark_trigger, words["settings.theme"])
                 terminal.key(b"\r")
-                dropdown_option(terminal, "Dark", checked=True)
+                dropdown_option(terminal, dark, checked=True)
                 preview.capture(terminal, output, "theme-menu-compact", args)
                 terminal.key(b"\x1b")
                 terminal.wait_absent("✓")

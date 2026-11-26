@@ -40,10 +40,12 @@ var languageMenuItems = []menuItem{
 	{ID: i18n.Chinese, Label: "简体中文"},
 }
 
-var themeMenuItems = []menuItem{
-	{ID: app.ThemeLight, Label: "Light"},
-	{ID: app.ThemeDark, Label: "Dark"},
-	{ID: app.ThemeAuto, Label: "Auto"},
+func themeMenuItems(locale i18n.Localizer) []menuItem {
+	return []menuItem{
+		{ID: app.ThemeLight, Label: locale.T("settings.theme.light")},
+		{ID: app.ThemeDark, Label: locale.T("settings.theme.dark")},
+		{ID: app.ThemeAuto, Label: locale.T("settings.theme.auto")},
+	}
 }
 
 func (o dashboardOptions) settingsDropdown(id string) dropdown {
@@ -58,7 +60,7 @@ func (o dashboardOptions) settingsDropdown(id string) dropdown {
 		}
 		return dropdown{Items: items, Value: cmp.Or(o.StartPage, app.StartPageOverview)}
 	case "settings.theme":
-		return dropdown{Items: themeMenuItems, Value: cmp.Or(o.Theme, app.ThemeDark)}
+		return dropdown{Items: themeMenuItems(o.Locale), Value: cmp.Or(o.Theme, app.ThemeDark)}
 	case "settings.logLevel":
 		return dropdown{Items: coreLogLevelItems, Value: o.Snapshot.CoreSettings.LogLevel}
 	case "settings.geodataLoader":
@@ -184,7 +186,8 @@ func settingsThemeRow(o dashboardOptions) settingsRow {
 	theme := cmp.Or(o.Theme, app.ThemeDark)
 	row := settingsSelectRow(o, "settings.theme", o.Locale.T("settings.theme"))
 	if theme == app.ThemeAuto {
-		row.note = o.Locale.T("settings.themeAuto", (dropdown{Items: themeMenuItems, Value: o.EffectiveTheme}).label())
+		effective := dropdown{Items: themeMenuItems(o.Locale), Value: o.EffectiveTheme}
+		row.note = o.Locale.T("settings.themeAuto", effective.label())
 	}
 	if theme == app.ThemeLight || theme == app.ThemeAuto && o.EffectiveTheme == app.ThemeLight {
 		row.note = strings.TrimSpace(row.note + " " + o.Locale.T("settings.themeLightPlaceholder"))

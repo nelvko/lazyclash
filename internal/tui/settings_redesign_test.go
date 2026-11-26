@@ -546,53 +546,71 @@ func TestSettingsUninstalledActionsAndHeaderOwnership(t *testing.T) {
 }
 
 func TestSettingsThemeMenuTracksTriggerAndKeepsChoicePending(t *testing.T) {
-	m := ready(&fakeBackend{snapshot: settingsTestSnapshot()})
-	directionCleanup(t, &m)
-	m.page, m.focus = "settings", "settings.theme"
-	m, _ = update(m, tea.WindowSizeMsg{Width: 160, Height: 45})
-	m, _ = update(m, special(tea.KeyEnter))
-	options := []menuItem{
-		{ID: app.ThemeLight, Label: "Light"},
-		{ID: app.ThemeDark, Label: "Dark", Checked: true},
-		{ID: app.ThemeAuto, Label: "Auto"},
-	}
-	if !m.menu.open || len(m.menu.items) != len(options) {
-		t.Fatalf("expected three theme options, got %+v", m.menu)
-	}
-	for i, want := range options {
-		item := m.menu.items[i]
-		if item != want {
-			t.Fatalf("unexpected theme option at %d: %+v", i, item)
-		}
-	}
-	m, _ = update(m, special(tea.KeyUp))
-	m, _ = update(m, tea.WindowSizeMsg{Width: 80, Height: 24})
-	trigger := findTarget(t, m, "settings.theme")
-	if !m.menu.open || m.menu.anchor != trigger || m.menu.selected != 0 || !m.menu.items[1].Checked {
-		t.Fatal("resizing lost the trigger, pending light choice, or saved dark check")
-	}
-	m, _ = update(m, special(tea.KeyEscape))
-	if m.menu.open || m.busy || m.theme != app.ThemeDark || m.focus != "settings.theme" {
-		t.Fatalf("cancelling changed the theme or focus: %s, %s", m.theme, m.focus)
+	const id = "settings.theme"
+	for _, tc := range []struct{ language, light, dark, auto string }{
+		{i18n.English, "Light", "Dark", "Auto"},
+		{i18n.Chinese, "浅色", "深色", "自动"},
+	} {
+		t.Run(tc.language, func(t *testing.T) {
+			m := ready(&fakeBackend{snapshot: settingsTestSnapshot()})
+			directionCleanup(t, &m)
+			m.locale, m.page, m.focus = i18n.New(tc.language), "settings", id
+			m, _ = update(m, tea.WindowSizeMsg{Width: 160, Height: 45})
+			checkTrigger := func(arrow string) {
+				t.Helper()
+				face := settingsPaintedTarget(t, m.screen, m.targets, id)
+				if !strings.Contains(face, tc.dark) || !strings.Contains(face, arrow) {
+					t.Fatalf("theme trigger %q should show %q and %s", face, tc.dark, arrow)
+				}
+			}
+			checkTrigger("▾")
+			m, _ = update(m, special(tea.KeyEnter))
+			checkTrigger("▴")
+			options := []menuItem{
+				{ID: app.ThemeLight, Label: tc.light},
+				{ID: app.ThemeDark, Label: tc.dark, Checked: true},
+				{ID: app.ThemeAuto, Label: tc.auto},
+			}
+			if !m.menu.open || len(m.menu.items) != len(options) {
+				t.Fatalf("expected three theme options, got %+v", m.menu)
+			}
+			for i, want := range options {
+				if got := m.menu.items[i]; got != want {
+					t.Fatalf("theme option %d = %+v, want %+v", i, got, want)
+				}
+			}
+			m, _ = update(m, special(tea.KeyUp))
+			m, _ = update(m, tea.WindowSizeMsg{Width: 80, Height: 24})
+			trigger := findTarget(t, m, id)
+			if !m.menu.open || m.menu.anchor != trigger || m.menu.selected != 0 || !m.menu.items[1].Checked {
+				t.Fatal("resizing lost the trigger, pending light choice, or saved dark check")
+			}
+			m, _ = update(m, special(tea.KeyEscape))
+			if m.menu.open || m.busy || m.theme != app.ThemeDark || m.focus != id {
+				t.Fatalf("cancelling changed the theme or focus: %s, %s", m.theme, m.focus)
+			}
+			checkTrigger("▾")
+		})
 	}
 }
 
 func TestSettingsThemeExplainsLightPlaceholderAndAutoChoice(t *testing.T) {
-	for _, language := range []string{i18n.English, i18n.Chinese} {
-		o := dashboardOptions{Locale: i18n.New(language)}
-		for _, tc := range []struct {
-			theme, effective string
-			placeholder      bool
-		}{
-			{app.ThemeDark, app.ThemeDark, false}, {app.ThemeLight, app.ThemeLight, true},
-			{app.ThemeAuto, app.ThemeDark, false}, {app.ThemeAuto, app.ThemeLight, true},
+	for _, tc := range []struct{ language, light, dark, auto, lightNote, autoDark, autoLight string }{
+		{i18n.English, "Light", "Dark", "Auto", "Light currently uses the Dark palette.", "Currently using Dark.", "Currently using Light."},
+		{i18n.Chinese, "浅色", "深色", "自动", "浅色主题暂用深色配色。", "当前使用深色。", "当前使用浅色。"},
+	} {
+		for _, want := range []struct{ theme, effective, label, note string }{
+			{app.ThemeDark, app.ThemeDark, tc.dark, ""},
+			{app.ThemeLight, app.ThemeLight, tc.light, tc.lightNote},
+			{app.ThemeAuto, app.ThemeDark, tc.auto, tc.autoDark},
+			{app.ThemeAuto, app.ThemeLight, tc.auto, tc.autoLight + " " + tc.lightNote},
 		} {
-			o.Theme, o.EffectiveTheme = tc.theme, tc.effective
+			o := dashboardOptions{Locale: i18n.New(tc.language), Theme: want.theme, EffectiveTheme: want.effective}
 			row := settingsThemeRow(o)
-			if o.settingsDropdown(row.actions[0].id).Value != tc.theme ||
-				strings.Contains(row.note, o.Locale.T("settings.themeLightPlaceholder")) != tc.placeholder ||
-				strings.Contains(row.note, o.Locale.T("settings.themeAuto", (dropdown{Items: themeMenuItems, Value: tc.effective}).label())) != (tc.theme == app.ThemeAuto) {
-				t.Fatalf("%s/%s/%s: unexpected theme setting %+v", language, tc.theme, tc.effective, row)
+			card := settingsInterface(o, 120)
+			face := settingsPaintedTarget(t, strings.Join(card.lines, "\n"), card.targets, "settings.theme")
+			if !strings.Contains(face, want.label) || row.note != want.note {
+				t.Errorf("%s/%s/%s: face %q, note %q; want %q and %q", tc.language, want.theme, want.effective, face, row.note, want.label, want.note)
 			}
 		}
 	}
