@@ -78,7 +78,7 @@ func TestSidebarCoreUptimeCentersAboveStatus(t *testing.T) {
 							continue
 						}
 						content := ansi.Strip(ansi.Cut(rows[row], 0, sidebarWidth))
-						if strings.Trim(content, " ─") != "" {
+						if strings.TrimSpace(content) != "" {
 							t.Fatalf("%s: footer contains extra data: %q", page, content)
 						}
 					}

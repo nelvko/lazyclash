@@ -222,12 +222,6 @@ func (g sidebarLayout) footer(o dashboardOptions) []string {
 	symbol, label, _ := strings.Cut(full, " ")
 	status := themed(symbol, color, sidebarBackground, o.Dim) + themed(" "+label, text, sidebarBackground, o.Dim)
 	var footer []string
-	if g.footerHeight >= 3 {
-		footer = append(footer, themed(strings.Repeat("─", g.width-4), divider, sidebarBackground, o.Dim))
-	}
-	if g.footerHeight >= 5 {
-		footer = append(footer, "")
-	}
 	if g.hasClockRow() {
 		if elapsed, ok := o.coreUptime(); ok {
 			clock := lipgloss.NewStyle().Bold(true).Render(formatCoreUptime(elapsed))
