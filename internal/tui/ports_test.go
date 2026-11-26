@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -11,6 +12,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 	"github.com/nelvko/lazyclash/internal/i18n"
 	"github.com/nelvko/lazyclash/internal/service"
 )
@@ -36,7 +38,7 @@ func portsModel(t *testing.T, backend *fakeBackend) Model {
 	return m
 }
 
-func TestSettingsOpensAddressDetailsWithoutApplying(t *testing.T) {
+func TestSettingsOpensProxyPortEditorWithoutApplying(t *testing.T) {
 	reads, writes := 0, 0
 	backend := &fakeBackend{snapshot: onboardingDefaultSnapshot()}
 	backend.snapshot.MixedPort = 17890
@@ -55,16 +57,16 @@ func TestSettingsOpensAddressDetailsWithoutApplying(t *testing.T) {
 		t.Fatal("settings action did not open the existing settings dialog with an asynchronous read")
 	}
 	m, _ = update(m, actionCmd(t, cmd)())
-	if m.busy || m.ports.step != "edit" || reads != 1 || writes != 0 || m.ports.mixed.Value() != "17890" || m.ports.controller.Value() != "19090" {
+	if m.busy || m.ports.step != "edit" || reads != 1 || writes != 0 || m.ports.mixed.Value() != "17890" || m.ports.current.ControllerPort != 19090 {
 		t.Fatal("settings action applied settings or failed to show the current configured ports")
 	}
 	plain := ansi.Strip(m.screen)
-	for _, address := range []string{"127.0.0.1:17890", "127.0.0.1:19090"} {
+	for _, address := range []string{"17890", m.tr("access.http"), m.tr("access.redir"), m.tr("access.tproxy")} {
 		if !strings.Contains(plain, address) {
 			t.Fatalf("network details omitted %s:\n%s", address, plain)
 		}
 	}
-	for _, secret := range []string{"private-user", "private-password", "private-path", "private-token", "private-fragment"} {
+	for _, secret := range []string{"19090", "private-user", "private-password", "private-path", "private-token", "private-fragment"} {
 		if strings.Contains(plain, secret) {
 			t.Fatalf("network details leaked %s", secret)
 		}
@@ -83,7 +85,7 @@ func TestSettingsOpensAddressDetailsWithoutApplying(t *testing.T) {
 func reviewPorts(t *testing.T, m Model) Model {
 	t.Helper()
 	m.ports.mixed.SetValue("18080")
-	m.ports.controller.SetValue("19090")
+	m.ports.field("ports.http").SetValue("19090")
 	m.ports.focus = "ports.review"
 	m, cmd := update(m, special(tea.KeyEnter))
 	if !m.busy || cmd == nil {
@@ -103,10 +105,11 @@ func TestRuntimePortsRequireReviewBeforeApplyAndRefreshDashboard(t *testing.T) {
 			b := &fakeBackend{snapshot: app.Snapshot{Installed: true, ConfigReady: true, Applied: "saved", Service: service.Status{Active: active}}}
 			b.applySettings = func(ctx context.Context, p app.RuntimeSettingsPlan) (app.RuntimeSettingsResult, error) {
 				applies++
-				if p.Proposed.MixedPort != 18080 || p.Proposed.ControllerPort != 19090 || p.Active != active {
+				if p.Proposed.MixedPort != 18080 || p.Proposed.HTTPPort != 19090 || p.Proposed.ControllerPort != 9097 || p.Active != active {
 					t.Fatal("application did not receive the reviewed settings")
 				}
-				b.snapshot.Controller = "127.0.0.1:19090"
+				b.snapshot.RuntimeSettings = p.Proposed
+				b.snapshot.Controller = "127.0.0.1:9097"
 				return app.RuntimeSettingsResult{Settings: p.Proposed, Controller: b.snapshot.Controller, Restarted: active, Changed: true}, nil
 			}
 			m := reviewPorts(t, portsModel(t, b))
@@ -114,11 +117,14 @@ func TestRuntimePortsRequireReviewBeforeApplyAndRefreshDashboard(t *testing.T) {
 				t.Fatal("preflight applied a change without a separate confirmation")
 			}
 			plain := ansi.Strip(m.screen)
-			if active && !strings.Contains(plain, "active connections will be interrupted") {
-				t.Fatal("active service change omitted its restart impact")
+			impact := m.tr("ports.stopped_boundary")
+			if active {
+				impact = m.tr("ports.restart_warning")
 			}
-			if !active && !strings.Contains(plain, "will remain stopped") {
-				t.Fatal("stopped service behavior was not explained")
+			for _, line := range strings.Split(wrapText(impact, m.ports.viewport.Width()), "\n") {
+				if !strings.Contains(plain, line) {
+					t.Fatalf("review omitted part of the service impact: %q", line)
+				}
 			}
 			m, cmd := click(m, findTarget(t, m, "ports.apply"))
 			m, duplicate := update(m, special(tea.KeyEnter))
@@ -126,7 +132,7 @@ func TestRuntimePortsRequireReviewBeforeApplyAndRefreshDashboard(t *testing.T) {
 				t.Fatal("duplicate Apply started a second task")
 			}
 			m, _ = update(m, actionCmd(t, cmd)())
-			if applies != 1 || m.busy || !m.ports.applied || m.ports.step != "result" || m.snapshot.Controller != "127.0.0.1:19090" {
+			if applies != 1 || m.busy || !m.ports.applied || m.ports.step != "result" || m.snapshot.RuntimeSettings.HTTPPort != 19090 || m.snapshot.Controller != "127.0.0.1:9097" {
 				t.Fatal("application result or dashboard snapshot was not refreshed")
 			}
 			m, _ = click(m, findTarget(t, m, "ports.done"))
@@ -147,21 +153,26 @@ func TestRuntimePortsInputOwnsDigitsPasteAndNormalCharacters(t *testing.T) {
 		t.Fatal("port input lost printable characters to global shortcuts")
 	}
 	m, _ = update(m, special(tea.KeyEnter))
-	if m.busy || m.ports.mixed.Err == nil || m.ports.err == "" {
+	if m.busy || m.ports.proxyFieldError("ports.mixed") == "" || hasAction(m.targets, "ports.review") {
 		t.Fatal("invalid port started a backend task without an input error")
 	}
 	m.ports.mixed.SetValue("")
+	m, _ = update(m, tea.PasteMsg{Content: "0000000000000001x"})
+	if m.ports.mixed.Value() != "0000000000000001x" || m.ports.proxyFieldError("ports.mixed") == "" {
+		t.Fatal("invalid pasted port was silently truncated to a valid number")
+	}
+	m.ports.mixed.SetValue("")
 	m, _ = update(m, tea.PasteMsg{Content: "18080"})
-	for steps := 0; m.ports.focus != "ports.controller" && steps < len(m.ports.controls); steps++ {
+	for steps := 0; m.ports.focus != "ports.http" && steps < len(m.ports.controls); steps++ {
 		m, _ = update(m, special(tea.KeyTab))
 	}
-	if m.ports.focus != "ports.controller" || m.ports.mixed.Value() != "18080" {
-		t.Fatal("Tab did not reach the controller editor while preserving the proxy port")
+	if m.ports.focus != "ports.http" || m.ports.mixed.Value() != "18080" {
+		t.Fatal("Tab did not reach the HTTP editor while preserving the proxy port")
 	}
-	m.ports.controller.SetValue("")
+	m.ports.field("ports.http").SetValue("")
 	m, _ = update(m, tea.PasteMsg{Content: "18080"})
 	m, _ = update(m, special(tea.KeyEnter))
-	if m.busy || m.ports.controller.Err == nil || !strings.Contains(m.ports.err, "must differ") {
+	if m.busy || !strings.Contains(m.ports.proxyFieldError("ports.http"), "must differ") || hasAction(m.targets, "ports.review") {
 		t.Fatal("duplicate listener ports were accepted")
 	}
 }
@@ -169,11 +180,11 @@ func TestRuntimePortsInputOwnsDigitsPasteAndNormalCharacters(t *testing.T) {
 func TestRuntimePortsResizePreservesDraftAndKeepsActionsAccessible(t *testing.T) {
 	m := portsModel(t, &fakeBackend{snapshot: app.Snapshot{Installed: true}})
 	m.ports.mixed.SetValue("18080")
-	m.ports.controller.SetValue("19090")
+	m.ports.field("ports.http").SetValue("19090")
 	id := m.id
 	for _, size := range [][2]int{{160, 45}, {120, 32}, {80, 24}, {60, 20}, {120, 18}, {20, 5}, {120, 32}} {
 		m, _ = update(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
-		if !m.ports.open || m.ports.mixed.Value() != "18080" || m.ports.controller.Value() != "19090" || m.ports.focus != "ports.mixed" || m.id != id {
+		if !m.ports.open || m.ports.mixed.Value() != "18080" || m.ports.field("ports.http").Value() != "19090" || m.ports.focus != "ports.mixed" || m.id != id {
 			t.Fatal("resize changed a draft, focus or task identity")
 		}
 		assertCanvas(t, m.View().Content, size[0], size[1])
@@ -254,7 +265,7 @@ func TestRuntimePortsModalKeepsSharedSessionAndDoesNotClickThrough(t *testing.T)
 		t.Fatal("modal interrupted shared monitoring or kept rules polling visible")
 	}
 	for _, hit := range m.targets {
-		if !strings.HasPrefix(hit.ID, "ports.") {
+		if !strings.HasPrefix(hit.ID, "ports.") && !strings.HasPrefix(hit.tip.owner, "ports.") {
 			t.Fatal("background mouse target remained active")
 		}
 	}
@@ -288,7 +299,7 @@ func TestRuntimePortsConflictPreservesDraftAndAllowsCorrectionBeforeReview(t *te
 	b.prepareSettings = func(_ context.Context, settings app.RuntimeSettings) (app.RuntimeSettingsPlan, error) {
 		checks++
 		if checks == 1 {
-			return app.RuntimeSettingsPlan{}, errors.New("local tcp port is unavailable")
+			return app.RuntimeSettingsPlan{}, diagnostic.New("diagnostic.settings.portUnavailable", "local %s port %s is unavailable", "tcp", "127.0.0.1:18080")
 		}
 		return app.RuntimeSettingsPlan{Proposed: settings, Active: true, Changed: true}, nil
 	}
@@ -298,11 +309,11 @@ func TestRuntimePortsConflictPreservesDraftAndAllowsCorrectionBeforeReview(t *te
 	}
 	m := portsModel(t, b)
 	m.ports.mixed.SetValue("18080")
-	m.ports.controller.SetValue("19090")
-	m.ports.focus = "ports.controller"
+	m.ports.field("ports.http").SetValue("19090")
+	m.ports.focus = "ports.http"
 	m, cmd := update(m, special(tea.KeyEnter))
 	m, _ = update(m, actionCmd(t, cmd)())
-	if m.busy || m.message != "" || m.ports.step != "edit" || m.ports.focus != "ports.mixed" || m.ports.mixed.Value() != "18080" || m.ports.controller.Value() != "19090" || !strings.Contains(m.ports.err, "unavailable") {
+	if m.busy || m.message != "" || m.ports.step != "edit" || m.ports.focus != "ports.mixed" || m.ports.mixed.Value() != "18080" || m.ports.field("ports.http").Value() != "19090" || !strings.Contains(m.ports.proxyFieldError("ports.mixed"), "18080") || hasAction(m.targets, "ports.review") {
 		t.Fatal("conflict discarded the editable draft or did not expose the error")
 	}
 	m, _ = update(m, tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
@@ -310,41 +321,75 @@ func TestRuntimePortsConflictPreservesDraftAndAllowsCorrectionBeforeReview(t *te
 	m, _ = update(m, tea.PasteMsg{Content: "18081"})
 	m, cmd = update(m, special(tea.KeyEnter))
 	m, _ = update(m, actionCmd(t, cmd)())
-	if checks != 2 || applies != 0 || m.ports.step != "review" || m.ports.err != "" || m.ports.plan.Proposed != (app.RuntimeSettings{MixedPort: 18081, ControllerPort: 19090}) {
+	if checks != 2 || applies != 0 || m.ports.step != "review" || m.ports.err != "" || (m.ports.plan.Proposed.MixedPort != 18081 || m.ports.plan.Proposed.HTTPPort != 19090 || m.ports.plan.Proposed.ControllerPort != 9097) {
 		t.Fatal("corrected ports were not reviewed independently before applying")
+	}
+}
+
+func TestProxyPortConflictDuringApplyReopensOffendingField(t *testing.T) {
+	backend := &fakeBackend{snapshot: app.Snapshot{Installed: true}}
+	backend.applySettings = func(context.Context, app.RuntimeSettingsPlan) (app.RuntimeSettingsResult, error) {
+		return app.RuntimeSettingsResult{}, diagnostic.New("diagnostic.settings.portUnavailable", "local %s port %s is unavailable", "tcp", "127.0.0.1:19090")
+	}
+	m := reviewPorts(t, portsModel(t, backend))
+	m, cmd := click(m, findTarget(t, m, "ports.apply"))
+	m, _ = update(m, actionCmd(t, cmd)())
+	if m.ports.step != "edit" || m.ports.focus != "ports.http" || m.ports.applied || !strings.Contains(m.ports.proxyFieldError("ports.http"), "19090") || hasAction(m.targets, "ports.review") {
+		t.Fatal("late bind conflict did not return to the failed input")
+	}
+	m, _ = click(m, findTarget(t, m, "ports.mixed.clear"))
+	if m.ports.proxyFieldError("ports.http") == "" || hasAction(m.targets, "ports.review") {
+		t.Fatal("editing an unrelated field cleared the failed port")
+	}
+	m, _ = click(m, findTarget(t, m, "ports.http.clear"))
+	if m.ports.proxyFieldError("ports.http") != "" || !hasAction(m.targets, "ports.review") {
+		t.Fatal("correcting the failed port did not restore review")
+	}
+}
+
+func TestProxyPortBindPermissionErrorAppearsAtTheField(t *testing.T) {
+	m := portsModel(t, &fakeBackend{snapshot: app.Snapshot{Installed: true}})
+	m.ports.field("ports.http").SetValue("80")
+	m.acceptPorts(portsMsg{id: m.id, kind: "prepare", err: diagnostic.New("diagnostic.settings.portPermission", "binding %s %s is not permitted", "tcp", "127.0.0.1:80")})
+	m.layout()
+	if m.ports.focus != "ports.http" || m.ports.proxyFieldError("ports.http") == "" || m.ports.err != "" || hasAction(m.targets, "ports.review") {
+		t.Fatal("OS permission error did not identify the low port involved")
 	}
 }
 
 func TestRuntimePortsShortWindowKeepsValidationAndFocusedFieldsVisible(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
-		for _, size := range [][2]int{{80, 24}, {60, 18}} {
+		for _, size := range [][2]int{{80, 24}, {60, 18}, {40, 16}} {
 			t.Run(fmt.Sprintf("%s/%dx%d", language, size[0], size[1]), func(t *testing.T) {
 				m := portsModel(t, &fakeBackend{snapshot: app.Snapshot{Installed: true}})
 				m.locale = i18n.New(language)
 				m, _ = update(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
 				m.ports.mixed.SetValue("18080")
-				m.ports.controller.SetValue("18080")
+				m.ports.field("ports.http").SetValue("18080")
 				m, _ = update(m, special(tea.KeyEnter))
-				if m.ports.focus != "ports.controller" || m.ports.err == "" || m.busy {
-					t.Fatal("duplicate ports did not focus the invalid controller field")
+				if m.ports.focus != "ports.mixed" || m.ports.proxyFieldError("ports.mixed") == "" || m.ports.proxyFieldError("ports.http") == "" || m.busy {
+					t.Fatal("duplicate ports did not mark both inputs without submitting")
 				}
-				for _, focused := range []string{"ports.controller", "ports.mixed", "ports.review", "ports.cancel"} {
+				for _, focused := range []string{"ports.http", "ports.tproxy", "ports.mixed", "ports.cancel"} {
 					for attempts := 0; m.ports.focus != focused && attempts <= len(m.ports.controls); attempts++ {
 						m, _ = update(m, special(tea.KeyTab))
 					}
 					hit := findTarget(t, m, focused)
-					if strings.HasPrefix(focused, "ports.mixed") || focused == "ports.controller" {
-						if hit.H != 3 {
-							t.Fatalf("focused input frame was clipped: %+v", hit)
-						}
+					if m.ports.field(focused) != nil && (hit.H != 1 || hit.InputWidth < 5) {
+						t.Fatalf("focused compact input was clipped: %+v", hit)
 					}
-					for _, line := range strings.Split(wrapText(m.ports.err, size[0]-6), "\n") {
-						if !strings.Contains(ansi.Strip(m.screen), line) {
-							t.Fatalf("validation is hidden with focus %s: %q", focused, line)
+					if message := m.ports.proxyFieldError(focused); message != "" {
+						lines := strings.Split(ansi.Strip(m.screen), "\n")
+						for offset, line := range strings.Split(wrapText(message, m.ports.viewport.Width()), "\n") {
+							if row := hit.Y + hit.H + offset; row >= len(lines) || !strings.Contains(lines[row], line) {
+								t.Fatalf("focused %s lacks adjacent validation %q:\n%s", focused, line, ansi.Strip(m.screen))
+							}
 						}
 					}
 					findTarget(t, m, "ports.cancel")
-					findTarget(t, m, "ports.review")
+					if hasAction(m.targets, "ports.review") || slices.Contains(m.ports.controls, "ports.review") {
+						t.Fatal("invalid draft kept an active review action")
+					}
 					assertCanvas(t, m.screen, size[0], size[1])
 					assertRegions(t, m.targets, size[0], size[1])
 				}
@@ -353,7 +398,7 @@ func TestRuntimePortsShortWindowKeepsValidationAndFocusedFieldsVisible(t *testin
 	}
 }
 
-func TestRuntimePortsHeightFitsContentAndShowsBothEditorsAt80Columns(t *testing.T) {
+func TestRuntimePortsHeightFitsContentAndShowsAllFiveEditorsAt80Columns(t *testing.T) {
 	m := portsModel(t, &fakeBackend{snapshot: app.Snapshot{Installed: true}})
 	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 60})
 	if m.ports.viewport.TotalLineCount() > m.ports.viewport.Height() {
@@ -362,8 +407,8 @@ func TestRuntimePortsHeightFitsContentAndShowsBothEditorsAt80Columns(t *testing.
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		m.locale = i18n.New(language)
 		m, _ = update(m, tea.WindowSizeMsg{Width: 80, Height: 24})
-		for _, id := range []string{"ports.mixed", "ports.controller"} {
-			if hit := findTarget(t, m, id); hit.H != 3 {
+		for _, id := range proxyFields {
+			if hit := findTarget(t, m, id); hit.H != 1 || hit.InputWidth < 5 {
 				t.Fatalf("%s %s field was clipped on the initial 80x24 form: %+v", language, id, hit)
 			}
 		}
@@ -372,6 +417,7 @@ func TestRuntimePortsHeightFitsContentAndShowsBothEditorsAt80Columns(t *testing.
 
 func TestRuntimePortsLongFailureCanBeScrolledWithoutHidingActions(t *testing.T) {
 	m := portsModel(t, &fakeBackend{snapshot: app.Snapshot{Installed: true}})
+	m.ports.mixed.SetValue("18080")
 	m, _ = update(m, tea.WindowSizeMsg{Width: 60, Height: 18})
 	m.acceptPorts(portsMsg{id: m.id, kind: "prepare", err: errors.New(strings.Repeat("port conflict detail ", 50) + "END-OF-DIAGNOSTIC")})
 	m.layout()
@@ -386,9 +432,9 @@ func TestRuntimePortsLongFailureCanBeScrolledWithoutHidingActions(t *testing.T) 
 	}
 	findTarget(t, m, "ports.cancel")
 	findTarget(t, m, "ports.review")
-	m.ports.focus, m.ports.reveal = "ports.controller", true
+	m.ports.focus, m.ports.reveal = "ports.http", true
 	m.layout()
-	if hit := findTarget(t, m, "ports.controller"); hit.H != 3 {
+	if hit := findTarget(t, m, "ports.http"); hit.H != 1 || hit.InputWidth < 5 {
 		t.Fatal("returning from the diagnostic failed to reveal the full input")
 	}
 }
@@ -470,12 +516,291 @@ func TestCommittedPortsSurfacePostApplyFailures(t *testing.T) {
 				if n.Kind != "error" || !n.Critical || !strings.Contains(n.Message, m.tr("ports.applied")) {
 					t.Fatalf("notification lost the committed outcome: %+v", n)
 				}
+				// Read the visible dialog columns so a wrapped error can span
+				// two lines without including the dashboard behind the dialog.
+				width := m.ports.viewport.Width()
+				left := (m.width - width) / 2
+				var visibleResult strings.Builder
+				for _, line := range strings.Split(screen, "\n") {
+					visibleResult.WriteString(strings.TrimSpace(ansi.Cut(line, left, left+width)))
+				}
 				for _, err := range []error{sample.endpointErr, sample.refreshErr} {
-					if err != nil && (!strings.Contains(screen, err.Error()) || !strings.Contains(n.Details, err.Error())) {
+					if err != nil && (!strings.Contains(visibleResult.String(), err.Error()) || !strings.Contains(n.Details, err.Error())) {
 						t.Fatalf("missing cause %v in result or notification: %s / %+v", err, screen, n)
 					}
 				}
 			})
 		}
 	}
+}
+
+func TestExternalControlEditsSectionsAndReviewsSecretWithoutDisclosure(t *testing.T) {
+	const replacement = "secret-value-must-never-appear"
+	current := app.RuntimeSettings{MixedPort: 7897, ControllerPort: 9097}
+	current.HTTPPort = 8080
+	b := &fakeBackend{snapshot: app.Snapshot{Installed: true, ConfigReady: true, RuntimeSettings: current}}
+	b.getSettings = func(context.Context) (app.RuntimeSettings, error) { return current, nil }
+	prepared, applied := 0, 0
+	b.prepareSettings = func(_ context.Context, next app.RuntimeSettings) (app.RuntimeSettingsPlan, error) {
+		prepared++
+		if next.NewSecret != replacement || next.ControllerPort != 9098 || next.HTTPSAddress != "[::1]:9443" || next.CertificatePath != "server.crt" || next.PrivateKeyPath != "server.key" || next.RoutingMark != 16 || next.UnixSocket != "/tmp/core.sock" || next.DoHPath != "/dns-query" || next.AllowedOrigins != "https://one.example\nhttps://two.example" || !next.AllowPrivateNetwork || next.HTTPPort != 8080 || next.MixedPort != 7897 {
+			t.Fatal("the control editor lost a setting or changed a proxy listener")
+		}
+		next.NewSecret = ""
+		return app.RuntimeSettingsPlan{Current: current, Proposed: next, Changed: true, SecretChanged: true}, nil
+	}
+	b.applySettings = func(_ context.Context, p app.RuntimeSettingsPlan) (app.RuntimeSettingsResult, error) {
+		applied++
+		if !p.SecretChanged || p.Proposed.NewSecret != "" || p.Proposed.ControllerPort != 9098 {
+			t.Fatal("apply did not receive the reviewed plan")
+		}
+		b.snapshot.RuntimeSettings = p.Proposed
+		return app.RuntimeSettingsResult{Settings: p.Proposed, Changed: true}, nil
+	}
+	m := focusedPortsEntry(b, 120, 60)
+	m.focus = "settings.externalControl"
+	m.layout()
+	m, cmd := click(m, findTarget(t, m, "settings.externalControl"))
+	m, _ = update(m, actionCmd(t, cmd)())
+	if m.ports.kind != "control" || m.ports.focus != "ports.address" || m.ports.field("ports.secret").Value() != "" || hasAction(m.targets, "ports.https") {
+		t.Fatal("external control did not open on its base fields")
+	}
+	m.ports.field("ports.address").SetValue("127.0.0.1:9098")
+	m, _ = click(m, findTarget(t, m, "ports.secret"))
+	m, _ = update(m, tea.PasteMsg{Content: replacement})
+	if strings.Contains(ansi.Strip(m.screen), replacement) || !strings.Contains(ansi.Strip(m.screen), "•••") {
+		t.Fatal("secret was not masked while editing")
+	}
+	m, _ = click(m, findTarget(t, m, "ports.tlsSection"))
+	m.ports.field("ports.https").SetValue("[::1]:9443")
+	m.ports.field("ports.cert").SetValue("server.crt")
+	m.ports.field("ports.key").SetValue("server.key")
+	m, _ = click(m, findTarget(t, m, "ports.corsSection"))
+	m, _ = click(m, findTarget(t, m, "ports.origins"))
+	m, _ = update(m, tea.PasteMsg{Content: "https://one.example"})
+	m, _ = update(m, special(tea.KeyEnter))
+	m, _ = update(m, tea.PasteMsg{Content: "https://two.example"})
+	m, _ = update(m, special(tea.KeyTab))
+	m, _ = update(m, special(tea.KeyEnter))
+	m, _ = update(m, special(tea.KeyTab))
+	m, _ = update(m, special(tea.KeyEnter))
+	m.ports.field("ports.mark").SetValue("0x10")
+	m.ports.field("ports.unix").SetValue("/tmp/core.sock")
+	m.ports.field("ports.doh").SetValue("/dns-query")
+	m, _ = update(m, tea.WindowSizeMsg{Width: 40, Height: 16})
+	m, cmd = click(m, findTarget(t, m, "ports.review"))
+	m, _ = update(m, actionCmd(t, cmd)())
+	if m.ports.step != "review" || prepared != 1 || applied != 0 {
+		t.Fatal("review did not stop before applying")
+	}
+	doc, _, _ := m.portsDocument(78)
+	plain := ansi.Strip(strings.Join(doc.lines, "\n"))
+	for _, want := range []string{"127.0.0.1:9097 → 127.0.0.1:9098", m.tr("access.secretChange"), "https://two.example", "[::1]:9443", "0 → 16"} {
+		if !strings.Contains(plain, want) {
+			t.Errorf("review omitted %q", want)
+		}
+	}
+	if strings.Contains(plain, replacement) || strings.Contains(plain, "8080") {
+		t.Fatal("review exposed raw credentials or an unrelated proxy field")
+	}
+	m, _ = click(m, findTarget(t, m, "ports.back"))
+	if m.ports.field("ports.secret").Value() != replacement || m.ports.access.origins.Value() != "https://one.example\nhttps://two.example" {
+		t.Fatal("back discarded the draft")
+	}
+	m, cmd = click(m, findTarget(t, m, "ports.review"))
+	m, _ = update(m, actionCmd(t, cmd)())
+	m, cmd = click(m, findTarget(t, m, "ports.apply"))
+	m, _ = update(m, actionCmd(t, cmd)())
+	if prepared != 2 || applied != 1 || !m.ports.applied || m.snapshot.RuntimeSettings.ControllerPort != 9098 || len(m.ports.access.inputs) != 0 || strings.Contains(ansi.Strip(m.screen), replacement) {
+		t.Fatal("application lost the reviewed result or retained the secret draft")
+	}
+	m, _ = click(m, findTarget(t, m, "ports.done"))
+	if m.ports.open || m.focus != "settings.externalControl" {
+		t.Fatal("did not return to the external control row")
+	}
+}
+
+func TestProxyPortEditorCanDisableMixedAndPreservesExternalControl(t *testing.T) {
+	s := app.RuntimeSettings{MixedPort: 7897, ControllerPort: 9097}
+	s.AllowLAN, s.UnixSocket = true, "/tmp/controller.sock"
+	b := &fakeBackend{snapshot: app.Snapshot{Installed: true}, getSettings: func(context.Context) (app.RuntimeSettings, error) { return s, nil }}
+	m := portsModel(t, b)
+	m.ports.mixed.SetValue("")
+	m.ports.field("ports.http").SetValue("8080")
+	m.ports.field("ports.socks").SetValue("1080")
+	m.ports.field("ports.redir").SetValue("7892")
+	m.ports.field("ports.tproxy").SetValue("7893")
+	m.layout()
+	m, cmd := click(m, findTarget(t, m, "ports.review"))
+	m, _ = update(m, actionCmd(t, cmd)())
+	p := m.ports.plan.Proposed
+	if m.ports.step != "review" || p.MixedPort != 0 || p.HTTPPort != 8080 || p.SOCKSPort != 1080 || p.RedirPort != 7892 || p.TProxyPort != 7893 || !p.AllowLAN || p.ControllerPort != 9097 || p.UnixSocket != "/tmp/controller.sock" {
+		t.Fatal("proxy port editing did not isolate its five settings")
+	}
+	m, _ = update(m, special(tea.KeyEscape))
+	if m.ports.open {
+		t.Fatal("Escape did not discard a reviewed draft")
+	}
+}
+
+func TestProxyPortReviewRequiresAnActualValidChange(t *testing.T) {
+	m := portsModel(t, &fakeBackend{snapshot: app.Snapshot{Installed: true}})
+	for _, test := range []struct {
+		value   string
+		port    int
+		invalid bool
+	}{
+		{"", 0, false}, {"0", 0, false}, {"000", 0, false}, {"1", 1, false}, {"80", 80, false},
+		{"65535", 65535, false}, {"65536", 0, true}, {"-1", 0, true}, {"+1", 0, true}, {"3.5", 0, true}, {"port", 0, true},
+	} {
+		m.ports.field("ports.http").SetValue(test.value)
+		m.layout()
+		settings, reviewable := m.proxyPortProposal()
+		wantReview := !test.invalid && test.port != 0
+		if reviewable != wantReview || hasAction(m.targets, "ports.review") != wantReview || slices.Contains(m.ports.controls, "ports.review") != wantReview {
+			t.Fatalf("input %q: reviewable=%v, controls=%v", test.value, reviewable, m.ports.controls)
+		}
+		if (m.ports.proxyFieldError("ports.http") != "") != test.invalid || (!test.invalid && settings.HTTPPort != test.port) {
+			t.Fatalf("input %q: port=%d, field error=%q", test.value, settings.HTTPPort, m.ports.proxyFieldError("ports.http"))
+		}
+		if !wantReview {
+			m, _ = update(m, special(tea.KeyEnter))
+			if m.busy || m.ports.step != "edit" {
+				t.Fatalf("input %q: disabled review submitted by keyboard", test.value)
+			}
+		}
+	}
+}
+
+func TestProxyPortZeroNormalizesOnKeyboardAndMouseBlur(t *testing.T) {
+	for _, mouse := range []bool{false, true} {
+		m := portsModel(t, &fakeBackend{snapshot: app.Snapshot{Installed: true}})
+		m, _ = click(m, findTarget(t, m, "ports.mixed.clear"))
+		m, _ = update(m, key("0"))
+		if m.ports.mixed.Value() != "0" || !hasAction(m.targets, "ports.review") {
+			t.Fatal("zero did not disable the enabled mixed port")
+		}
+		if mouse {
+			m, _ = click(m, findTarget(t, m, "ports.http"))
+		} else {
+			m, _ = update(m, special(tea.KeyTab))
+		}
+		if m.ports.focus != "ports.http" || m.ports.mixed.Value() != "" || hasAction(m.targets, "ports.mixed.clear") {
+			t.Fatalf("mouse=%v: zero field failed to normalize on blur", mouse)
+		}
+		m, cmd := click(m, findTarget(t, m, "ports.review"))
+		m, _ = update(m, actionCmd(t, cmd)())
+		if m.ports.step != "review" || m.ports.plan.Proposed.MixedPort != 0 {
+			t.Fatal("disabled port did not reach review as 0")
+		}
+	}
+}
+
+func TestProxyPortDetectsControllerAddressConflicts(t *testing.T) {
+	current := app.RuntimeSettings{MixedPort: 7897, ControllerPort: 9097}
+	current.HTTPSAddress = "192.0.2.10:9443"
+	for _, lan := range []bool{false, true} {
+		current.AllowLAN = lan
+		m := portsModel(t, &fakeBackend{snapshot: app.Snapshot{Installed: true}, getSettings: func(context.Context) (app.RuntimeSettings, error) { return current, nil }})
+		for _, tc := range []struct {
+			value    string
+			conflict bool
+		}{{"9097", true}, {"9443", lan}} {
+			m.ports.field("ports.socks").SetValue(tc.value)
+			m.layout()
+			if got := m.ports.proxyFieldError("ports.socks"); (got != "") != tc.conflict || hasAction(m.targets, "ports.review") == tc.conflict {
+				t.Fatalf("LAN=%v SOCKS=%s: error=%q", lan, tc.value, got)
+			}
+		}
+		if !lan {
+			m.acceptPorts(portsMsg{id: m.id, kind: "prepare", err: diagnostic.New("diagnostic.settings.portUnavailable", "local %s port %s is unavailable", "tcp", current.HTTPSAddress)})
+			m.layout()
+			if m.ports.err == "" || m.ports.proxyFieldError("ports.socks") != "" {
+				t.Fatal("an unavailable controller on another address incorrectly marked the SOCKS port")
+			}
+		}
+	}
+}
+
+func TestProxyPortPlatformControlsEditingAndReview(t *testing.T) {
+	for _, test := range []struct {
+		os      string
+		visible int
+	}{{"windows", 3}, {"darwin", 4}, {"linux", 5}, {"android", 5}, {"", 5}} {
+		t.Run(test.os, func(t *testing.T) {
+			current := app.RuntimeSettings{MixedPort: 7897, ControllerPort: 9097}
+			current.CoreOS = test.os
+			// Inaccessible stored values must not participate in conflict validation.
+			if test.visible < 5 {
+				current.TProxyPort = 80
+			}
+			if test.visible < 4 {
+				current.RedirPort = 80
+			}
+			m := portsModel(t, &fakeBackend{snapshot: app.Snapshot{Installed: true}, getSettings: func(context.Context) (app.RuntimeSettings, error) { return current, nil }})
+			for i, id := range proxyFields {
+				visible := i < test.visible
+				if (m.ports.field(id) != nil) != visible || slices.Contains(m.ports.controls, id) != visible || hasAction(m.targets, id) != visible {
+					t.Fatalf("platform %q incorrectly exposed %s; controls=%v", test.os, id, m.ports.controls)
+				}
+			}
+			m.ports.field("ports.http").SetValue("80")
+			m.layout()
+			m, cmd := click(m, findTarget(t, m, "ports.review"))
+			m, _ = update(m, actionCmd(t, cmd)())
+			want := current
+			want.HTTPPort = 80
+			if m.ports.step != "review" || m.ports.plan.Proposed != want {
+				t.Fatal("changing HTTP modified an unrelated runtime setting")
+			}
+			doc := wizardDocument{locale: m.locale, width: 60}
+			m.accessReview(&doc)
+			body := ansi.Strip(strings.Join(doc.lines, "\n"))
+			for _, id := range proxyFields {
+				if strings.Contains(body, m.tr(accessKey(id))) != (id == "ports.http") {
+					t.Fatalf("review should contain only the changed HTTP listener: %s", body)
+				}
+			}
+		})
+	}
+}
+
+func TestAllowLANUpdatesOnlyThatSettingFromTheCurrentInstance(t *testing.T) {
+	b := &fakeBackend{snapshot: app.Snapshot{Installed: true, ConfigReady: true}}
+	current := app.RuntimeSettings{MixedPort: 7897, ControllerPort: 19097}
+	current.HTTPPort, current.UnixSocket = 8081, "/tmp/controller.sock"
+	b.getSettings = func(context.Context) (app.RuntimeSettings, error) { return current, nil }
+	writes := 0
+	b.applySettings = func(_ context.Context, p app.RuntimeSettingsPlan) (app.RuntimeSettingsResult, error) {
+		want := current
+		want.AllowLAN = true
+		if p.Proposed != want || p.Current != current {
+			t.Fatal("LAN switch overwrote settings changed after the dashboard snapshot")
+		}
+		b.snapshot.RuntimeSettings = p.Proposed
+		writes++
+		return app.RuntimeSettingsResult{Settings: p.Proposed, Changed: true}, nil
+	}
+	m := focusedPortsEntry(b, 120, 60)
+	m, cmd := click(m, findTarget(t, m, "settings.allowLAN"))
+	if m.ports.open || !m.busy {
+		t.Fatal("LAN switch did not start its inline change")
+	}
+	m, _ = update(m, actionCmd(t, cmd)())
+	if writes != 1 || !m.snapshot.RuntimeSettings.AllowLAN || m.busy {
+		t.Fatal("LAN switch did not persist and refresh")
+	}
+}
+
+func TestControlErrorsRestoreCollapsedSectionAndDraft(t *testing.T) {
+	m := focusedPortsEntry(&fakeBackend{snapshot: app.Snapshot{Installed: true}}, 120, 60)
+	m, cmd := click(m, findTarget(t, m, "settings.externalControl"))
+	m, _ = update(m, actionCmd(t, cmd)())
+	m.ports.access.origins.SetValue("malformed")
+	m.acceptPorts(portsMsg{id: m.id, kind: "prepare", err: diagnostic.New("diagnostic.settings.corsOrigin", "CORS requires one valid origin per line")})
+	m.layout()
+	if !m.ports.access.sections["ports.corsSection"] || m.ports.focus != "ports.origins" || m.ports.access.origins.Value() != "malformed" || m.ports.err == "" {
+		t.Fatal("backend error did not reveal the invalid CORS draft")
+	}
+	findTarget(t, m, "ports.origins")
 }

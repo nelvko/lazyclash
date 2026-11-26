@@ -20,10 +20,11 @@ func settingsTestSnapshot() app.Snapshot {
 	return app.Snapshot{
 		Installed: true, ConfigReady: true, HasRun: true,
 		Version: "v1.19.33", RunningVersion: "v1.19.32", Controller: "127.0.0.1:9097",
-		Service:      service.Status{State: "inactive", Linger: true, LingerKnown: true},
-		Mode:         app.ModeStatus{Desired: "rule", Actual: "global"},
-		CoreSettings: mihomo.DefaultGeneralSettings(),
-		Capabilities: app.Capabilities{Scope: "system", Runtime: app.Capability{Supported: true}, TUN: app.Capability{Supported: true}},
+		Service:         service.Status{State: "inactive", Linger: true, LingerKnown: true},
+		Mode:            app.ModeStatus{Desired: "rule", Actual: "global"},
+		CoreSettings:    mihomo.DefaultGeneralSettings(),
+		RuntimeSettings: app.RuntimeSettings{MixedPort: 7897, ControllerPort: 9097},
+		Capabilities:    app.Capabilities{Scope: "system", Runtime: app.Capability{Supported: true}, TUN: app.Capability{Supported: true}},
 	}
 }
 
@@ -125,10 +126,10 @@ func TestSettingsCardsStackAtTheirNaturalHeights(t *testing.T) {
 				}
 				var height int
 				if tc.width < 80 {
-					height = checkColumn(0, tc.width, settingsInterface, settingsMihomo, settingsService, settingsCore, settingsDiagnostics)
+					height = checkColumn(0, tc.width, settingsInterface, settingsMihomo, settingsCore, settingsDiagnostics)
 				} else {
 					left := (tc.width - 2) / 2
-					leftHeight := checkColumn(0, left, settingsInterface, settingsService, settingsDiagnostics)
+					leftHeight := checkColumn(0, left, settingsInterface, settingsDiagnostics)
 					rightHeight := checkColumn(left+2, tc.width-left-2, settingsMihomo, settingsCore)
 					height = max(leftHeight, rightHeight)
 				}
@@ -140,64 +141,101 @@ func TestSettingsCardsStackAtTheirNaturalHeights(t *testing.T) {
 	}
 }
 
-func TestSettingsActionsKeepCompleteLabelsAndUniqueTargets(t *testing.T) {
+func TestCoreSettingsTabsHaveEqualHeightAndExposeOnlyTheirControls(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
-		languageLabel := "English ▾"
-		if language == i18n.Chinese {
-			languageLabel = "简体中文 ▾"
-		}
-		for _, width := range []int{40, 60, 80, 120, 160} {
-			for _, active := range []bool{false, true} {
-				o := dashboardOptions{Locale: i18n.New(language), Height: 32, Snapshot: settingsTestSnapshot()}
-				o.Snapshot.Service.Active = active
-				o.Snapshot.Service.Enabled = active
-				o.Snapshot.TUN = active
-				tr := o.Locale.T
-				const on, off = "░░░░██", "██░░░░"
-				labels := map[string]string{
-					"settings.language": languageLabel, "key-hints.toggle": on,
-					"settings.theme": "Dark ▾",
-					"settings.ipv6":  on, "settings.unifiedDelay": off, "settings.logLevel": "info ▾",
-					"settings.tcpConcurrent": off, "settings.tcpKeepAlive": on, "settings.etagSupport": on,
-					"settings.findProcessMode": tr("settings.processAsNeeded") + " ▾",
-					"editor.configure":         tr("settings.edit"),
-					"install":                  tr("settings.manage"), "runtime-settings": tr("settings.edit"),
-					"restart": tr("dashboard.action.restart"), "card.logs": tr("settings.openLogs"),
+		for _, size := range []struct{ cardWidth, terminalHeight int }{
+			{23, 16}, {35, 24}, {40, 46}, {60, 24}, {60, 36}, {80, 46}, {120, 46},
+		} {
+			width := size.cardWidth
+			o := dashboardOptions{Locale: i18n.New(language), Height: size.terminalHeight, Snapshot: settingsTestSnapshot()}
+			want := [][]string{
+				{"runtime-settings", "settings.allowLAN", "settings.proxyAuth", "settings.externalControl"},
+				{"settings.ipv6", "settings.tcpConcurrent", "settings.tcpKeepAlive", "settings.keepAliveIdle", "settings.keepAliveInterval", "settings.unifiedDelay", "settings.logLevel", "settings.findProcessMode"},
+				{"settings.geoAutoUpdate", "settings.geodataLoader", "settings.etagSupport", "settings.storeFakeIP"},
+			}
+			height := 0
+			for tab, id := range coreSettingsTabs {
+				o.settingsTab = coreSettingsTab(tab)
+				card := settingsMihomo(o, width)
+				if tab > 0 && len(card.lines) != height {
+					t.Fatalf("%s/card=%d,terminalHeight=%d: tab %s changed height from %d to %d", language, width, size.terminalHeight, id, height, len(card.lines))
 				}
-				if active {
-					labels["autostart-disable"] = on
-				} else {
-					labels["autostart-enable"] = off
+				height = len(card.lines)
+				if len(card.targets) != 1+len(want[tab]) || card.targets[0].ID != id {
+					t.Fatalf("%s: unexpected controls %+v", id, card.targets)
 				}
-				body, hits := settingsContent(o, width)
-				seen := map[string]bool{}
-				for _, hit := range hits {
-					if seen[hit.ID] {
-						t.Fatalf("%s/%d: duplicate target %s", language, width, hit.ID)
-					}
-					seen[hit.ID] = true
-					label, ok := labels[hit.ID]
-					if !ok {
-						t.Fatalf("unexpected action %q", hit.ID)
-					}
-					painted := settingsPaintedTarget(t, body, hits, hit.ID)
-					if (label == on || label == off) && painted != "  "+label {
-						t.Fatalf("%s/%d: switch %s should only contain its focus gutter and rail: %q", language, width, hit.ID, painted)
-					}
-					if !strings.Contains(strings.Join(strings.Fields(painted), " "), label) || ansi.StringWidth(painted) != hit.W {
-						t.Fatalf("%s/%d: %s target misses complete label %q: %q", language, width, hit.ID, label, painted)
+				for i, target := range card.targets[1:] {
+					if target.ID != want[tab][i] {
+						t.Fatalf("%s: target %d = %s", id, i, target.ID)
 					}
 				}
-				if len(seen) != len(labels) {
-					t.Fatalf("%s/%d: got actions %v; want %v", language, width, seen, labels)
-				}
-				o.Busy = true
-				_, hits = settingsContent(o, width)
-				if len(hits) != 1 || hits[0].ID != "key-hints.toggle" {
-					t.Fatalf("busy settings expose write actions: %v", hits)
+				assertCanvas(t, strings.Join(card.lines, "\n"), width, height)
+				assertRegions(t, card.targets, width, height)
+				if tab == int(accessTab) {
+					for _, action := range []string{"runtime-settings", "settings.proxyAuth", "settings.externalControl"} {
+						target := findTarget(t, Model{targets: card.targets}, action)
+						if target.X != 0 || target.W != width {
+							t.Fatalf("%s only clickable at %+v", action, target)
+						}
+					}
 				}
 			}
+			o.settingsTab = networkTab
+			o.Snapshot.CoreSettings.DisableKeepAlive = "on"
+			if hits := settingsMihomo(o, width).targets; hasAction(hits, "settings.keepAliveInterval") || hasAction(hits, "settings.keepAliveIdle") {
+				t.Fatal("keepalive disabled while its fields remain editable")
+			}
+			o.settingsTab = resourcesTab
+			o.Snapshot.CoreSettings.GeoAutoUpdate = "on"
+			if !hasAction(settingsMihomo(o, width).targets, "settings.geoUpdateInterval") {
+				t.Fatal("enabled GEO schedule lacks editable interval")
+			}
 		}
+	}
+}
+
+func TestSettingsProxyAuthSummary(t *testing.T) {
+	for _, tc := range []struct {
+		language string
+		values   []string
+	}{
+		{i18n.Chinese, []string{"未配置 ›", "1 个用户 ›", "2 个用户 ›"}},
+		{i18n.English, []string{"Not configured ›", "1 user ›", "2 users ›"}},
+	} {
+		o := dashboardOptions{Locale: i18n.New(tc.language), Snapshot: settingsTestSnapshot()}
+		for count, value := range tc.values {
+			o.Snapshot.RuntimeSettings.ProxyUserCount = count
+			body, hits := settingsContent(o, 160)
+			row := settingsPaintedTarget(t, body, hits, "settings.proxyAuth")
+			want := o.Locale.T("settings.proxyAuth") + " " + value
+			if got := strings.Join(strings.Fields(row), " "); got != want {
+				t.Errorf("%s, %d users: got %q, want %q", tc.language, count, got, want)
+			}
+		}
+	}
+}
+
+func TestCoreSettingsTabKeyboardAndMouseNavigation(t *testing.T) {
+	m := ready(&fakeBackend{snapshot: settingsTestSnapshot()})
+	directionCleanup(t, &m)
+	m.page, m.focus, m.width, m.height = "settings", coreSettingsTabs[0], 160, 45
+	m.layout()
+	m, _ = update(m, special(tea.KeyRight))
+	if m.settingsTab != networkTab || m.focus != coreSettingsTabs[networkTab] {
+		t.Fatal("right arrow did not select the next tab")
+	}
+	m, _ = update(m, special(tea.KeyTab))
+	if m.focus != "settings.ipv6" {
+		t.Fatalf("Tab selected %s outside the current pane", m.focus)
+	}
+	target := findTarget(t, m, coreSettingsTabs[resourcesTab])
+	m, _ = update(m, tea.MouseClickMsg{X: target.X + target.W - 1, Y: target.Y, Button: tea.MouseLeft})
+	if m.settingsTab != resourcesTab || m.focus != target.ID || hasAction(m.targets, "settings.ipv6") {
+		t.Fatal("clicking the tab padding should select and focus the resources pane")
+	}
+	m, _ = update(m, special(tea.KeyRight))
+	if m.settingsTab != accessTab || m.hover != "" {
+		t.Fatal("keyboard navigation should switch tabs and clear mouse hover")
 	}
 }
 
@@ -210,7 +248,7 @@ func TestSettingsSwitchesAndDropdownsAlignAtCardEdges(t *testing.T) {
 		{"settings.language", "dashboard.language.title", settingsInterface},
 		{"settings.theme", "settings.theme", settingsInterface},
 		{"key-hints.toggle", "dashboard.interface.keyHints", settingsInterface},
-		{"autostart-enable", "settings.autostart", settingsService},
+		{"autostart-enable", "settings.autostart", settingsCore},
 		{"settings.ipv6", "settings.ipv6", settingsMihomo},
 		{"settings.unifiedDelay", "settings.unifiedDelay", settingsMihomo},
 		{"settings.logLevel", "settings.logLevel", settingsMihomo},
@@ -222,6 +260,10 @@ func TestSettingsSwitchesAndDropdownsAlignAtCardEdges(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		for _, c := range controls {
 			o := dashboardOptions{Locale: i18n.New(language), Snapshot: settingsTestSnapshot(), Focus: c.id, PlainButtons: true, Monochrome: true}
+			o.settingsTab = networkTab
+			if c.id == "settings.etagSupport" {
+				o.settingsTab = resourcesTab
+			}
 			label := o.Locale.T(c.label)
 			render := func(width int) (dashboardBlock, hitRegion) {
 				block := c.card(o, width)
@@ -233,7 +275,10 @@ func TestSettingsSwitchesAndDropdownsAlignAtCardEdges(t *testing.T) {
 				block, hit := render(width)
 				labelY, wantX := hit.Y, width-inset-wide.W
 				if width < exactFit {
-					labelY, wantX = hit.Y-1, inset
+					labelY = hit.Y - 1
+					if c.id == "settings.language" || c.id == "settings.theme" || c.id == "key-hints.toggle" || c.id == "autostart-enable" {
+						wantX = inset
+					}
 				}
 				if labelY < 0 || !strings.HasPrefix(ansi.Strip(block.lines[labelY]), "› "+label) || hit.X != wantX || hit.W != wide.W {
 					t.Fatalf("%s/%s at %d: label and control misplaced, hit %+v, want X=%d\n%s", language, c.id, width, hit, wantX, ansi.Strip(strings.Join(block.lines, "\n")))
@@ -267,9 +312,10 @@ func TestSettingsMihomoSwitchWaitsForSavedValueAndAllowsRetry(t *testing.T) {
 	}
 	m := ready(b)
 	directionCleanup(t, &m)
+	m.settingsTab = networkTab
 	m.page, m.focus, m.width, m.height = "settings", "settings.ipv6", 160, 45
 	m.layout()
-	if !strings.Contains(ansi.Strip(m.screen), m.tr("settings.tunIPv6")) {
+	if !strings.Contains(m.settingsContextHelp(), m.tr("settings.tunIPv6")) {
 		t.Fatal("saved IPv6 preference lacks the host TUN override explanation")
 	}
 	for attempt := 1; attempt <= 2; attempt++ {
@@ -307,6 +353,7 @@ func TestSettingsMihomoLogMenuOffersOnlyFixedLevels(t *testing.T) {
 	}
 	m := ready(b)
 	directionCleanup(t, &m)
+	m.settingsTab = networkTab
 	m.page, m.focus, m.width, m.height = "settings", "settings.logLevel", 160, 45
 	m.layout()
 	m, _ = update(m, special(tea.KeyEnter))
@@ -324,9 +371,15 @@ func TestSettingsMihomoLogMenuOffersOnlyFixedLevels(t *testing.T) {
 		t.Fatal("selecting the current log level started a save")
 	}
 	m, _ = click(m, findTarget(t, m, m.focus))
-	m, _ = update(m, special(tea.KeyEnd))
+	bounds := m.menu.bounds
+	last := tea.Mouse{X: bounds.X + 2, Y: bounds.Y + bounds.H - 2, Button: tea.MouseLeft}
+	before := strings.Split(m.screen, "\n")[last.Y]
+	m, _ = update(m, tea.MouseMotionMsg{X: last.X, Y: last.Y})
+	if m.menu.selected != 1 || strings.Split(m.screen, "\n")[last.Y] != before {
+		t.Fatal("moving over silent changed the dropdown highlight or keyboard choice")
+	}
 	var cmd tea.Cmd
-	m, cmd = update(m, special(tea.KeyEnter))
+	m, cmd = update(m, tea.MouseClickMsg(last))
 	m = finishProfileJob(t, m, cmd)
 	if !strings.Contains(strings.Join(strings.Fields(settingsPaintedTarget(t, m.screen, m.targets, m.focus)), " "), "silent ▾") {
 		t.Fatal("the dropdown did not display the saved log level")
@@ -341,6 +394,8 @@ func TestSettingsCoreSwitchesSaveMihomoValues(t *testing.T) {
 		{"settings.tcpConcurrent", "tcp-concurrent", "on", "off", false},
 		{"settings.tcpKeepAlive", "disable-keep-alive", "on", "off", true},
 		{"settings.etagSupport", "etag-support", "off", "on", true},
+		{"settings.geoAutoUpdate", "geo-auto-update", "on", "off", false},
+		{"settings.storeFakeIP", "profile.store-fake-ip", "on", "off", false},
 	} {
 		t.Run(tc.id, func(t *testing.T) {
 			b := &fakeBackend{snapshot: settingsTestSnapshot()}
@@ -358,6 +413,10 @@ func TestSettingsCoreSwitchesSaveMihomoValues(t *testing.T) {
 			}
 			m := ready(b)
 			directionCleanup(t, &m)
+			m.settingsTab = networkTab
+			if tc.id == "settings.etagSupport" || tc.id == "settings.geoAutoUpdate" || tc.id == "settings.storeFakeIP" {
+				m.settingsTab = resourcesTab
+			}
 			m.page, m.focus, m.width, m.height = "settings", tc.id, 160, 45
 			m.layout()
 			on := tc.startsOn
@@ -395,6 +454,7 @@ func TestSettingsProcessMenuUsesLocalizedLabelsAndNativeValues(t *testing.T) {
 			m := ready(b)
 			directionCleanup(t, &m)
 			m.locale = i18n.New(lang)
+			m.settingsTab = networkTab
 			m.page, m.focus, m.width, m.height = "settings", "settings.findProcessMode", 160, 45
 			m.layout()
 			m, _ = click(m, findTarget(t, m, m.focus))
@@ -431,7 +491,7 @@ func TestSettingsUninstalledActionsAndHeaderOwnership(t *testing.T) {
 			t.Fatalf("uninstalled settings lost %s", id)
 		}
 	}
-	if len(hits) != 6 || !strings.Contains(ansi.Strip(body), o.Locale.T("settings.afterInstall")) {
+	if len(hits) != 7 || !strings.Contains(ansi.Strip(body), o.Locale.T("settings.afterInstall")) {
 		t.Fatal("uninstalled settings expose installed-core actions or omit their availability")
 	}
 	if hasAction(hits, "network") {
@@ -440,7 +500,7 @@ func TestSettingsUninstalledActionsAndHeaderOwnership(t *testing.T) {
 	o.Page = "settings"
 	o.Header = (&Model{page: "settings", locale: o.Locale}).pageHeader()
 	_, hits = settingsContent(o, 120)
-	if hasAction(hits, "network") || len(hits) != 6 {
+	if hasAction(hits, "network") || len(hits) != 7 {
 		t.Fatal("download settings are duplicated in the header and body")
 	}
 	_, hits, _ = renderDashboard(o)
@@ -535,7 +595,7 @@ func TestSettingsDiagnosticsContainOnlyRelevantObservedIssues(t *testing.T) {
 		if !hasAction(block.targets, "card.logs") {
 			t.Fatal("service diagnosis disabled the independent Logs entry")
 		}
-		for name, render := range map[string]func(dashboardOptions, int) dashboardBlock{"interface": settingsInterface, "service": settingsService, "core": settingsCore} {
+		for name, render := range map[string]func(dashboardOptions, int) dashboardBlock{"interface": settingsInterface, "settings": settingsMihomo, "core": settingsCore} {
 			plain := ansi.Strip(strings.Join(render(o, 200).lines, "\n"))
 			for _, issue := range []string{o.Snapshot.ServiceError, o.Snapshot.Drift, "exit-code"} {
 				if strings.Contains(plain, issue) {
@@ -555,13 +615,13 @@ func TestSettingsDiagnosticsContainOnlyRelevantObservedIssues(t *testing.T) {
 func TestSettingsAutostartAndCoreRestartGuards(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		o := dashboardOptions{Locale: i18n.New(language), Snapshot: settingsTestSnapshot()}
-		block := settingsService(o, 200)
+		block := settingsMihomo(o, 200)
 		core := settingsCore(o, 200)
 		if !hasAction(core.targets, "restart") || hasAction(block.targets, "restart") || !hasAction(block.targets, "runtime-settings") || hasAction(core.targets, "runtime-settings") {
 			t.Fatal("core restart or service port editor lost its owning group")
 		}
 		o.Snapshot.Service.EnableState = "unknown"
-		block = settingsService(o, 200)
+		block = settingsCore(o, 200)
 		body := ansi.Strip(strings.Join(block.lines, "\n"))
 		if !strings.Contains(body, o.Locale.T("dashboard.status.unknown")) || !strings.Contains(settingsPaintedTarget(t, body, block.targets, "autostart-enable"), o.Locale.T("dashboard.settings.enableAutostart")) {
 			t.Fatalf("%s: unknown autostart was presented as an observed off state", language)
@@ -584,7 +644,7 @@ func TestSettingsAutostartAndCoreRestartGuards(t *testing.T) {
 		o.Snapshot.ServiceError = ""
 		o.Snapshot.Capabilities.Scope = "user"
 		o.Snapshot.Service.Linger, o.Snapshot.Service.LingerKnown = false, false
-		body = ansi.Strip(strings.Join(settingsService(o, 200).lines, "\n"))
+		body = ansi.Strip(strings.Join(settingsCore(o, 200).lines, "\n"))
 		if !strings.Contains(body, o.Locale.T("dashboard.settings.lingerUnknown")) {
 			t.Fatal("user service lost its unknown linger explanation")
 		}
@@ -663,5 +723,38 @@ func TestSettingsRepeatedResizePreservesFocusAndTabRevealsEveryAction(t *testing
 		if len(seen) != len(wanted) || m.busy || m.ports.open || m.wizard.open {
 			t.Fatalf("Tab lost or activated a setting: seen=%v wanted=%v trace=%v", seen, wanted, trace)
 		}
+	}
+}
+
+func TestSettingsPointerMotionPreservesAppearanceAndFocus(t *testing.T) {
+	m := ready(&fakeBackend{snapshot: settingsTestSnapshot()})
+	directionCleanup(t, &m)
+	m.width, m.height, m.page, m.focus = 160, 45, "settings", "settings.language"
+	m.layout()
+	before := strings.Split(m.screen, "\n")
+	checkMotion := func(name string, x, y int) {
+		t.Helper()
+		m, _ = update(m, tea.MouseMotionMsg{X: x, Y: y})
+		if strings.Split(m.screen, "\n")[y] != before[y] || m.focus != "settings.language" || m.settingsTab != accessTab {
+			t.Errorf("pointer over %s changed the row appearance, keyboard focus or active tab", name)
+		}
+	}
+	for _, id := range []string{
+		coreSettingsTabs[accessTab], coreSettingsTabs[resourcesTab], "settings.allowLAN",
+		"runtime-settings", "settings.language", "settings.theme", "editor.configure", "install", "card.logs", "network",
+	} {
+		hit := findTarget(t, m, id)
+		checkMotion(id, hit.X+hit.W/2, hit.Y)
+	}
+	switchHit := findTarget(t, m, "settings.allowLAN")
+	checkMotion("space beside switch", switchHit.X-2, switchHit.Y)
+	m, _ = update(m, tea.MouseClickMsg{X: switchHit.X - 2, Y: switchHit.Y, Button: tea.MouseLeft})
+	if m.focus != "settings.language" || m.busy || m.ports.open {
+		t.Fatal("clicking beside the switch activated it or moved keyboard focus")
+	}
+	m, _ = update(m, special(tea.KeyTab))
+	focused := findTarget(t, m, m.focus)
+	if m.focus == "settings.language" || strings.Split(m.screen, "\n")[focused.Y] == before[focused.Y] {
+		t.Fatalf("Tab should visibly focus the next control, got %s", m.focus)
 	}
 }

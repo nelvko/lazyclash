@@ -3,7 +3,7 @@
   "help.rules.search": "Alt+C 区分大小写 · Alt+W 整词匹配 · Alt+R 正则表达式。",
   "help.rules.proxy": "点击代理组名，或聚焦该规则后按 →，在代理页定位到对应组。按 5 返回规则列表。",
   "help.search.input": "搜索中 Enter / Esc 结束输入并保留筛选；Tab / Shift+Tab 移动到其他控件。",
-  "help.settings.keys": "Tab / Shift+Tab 切换控件，Enter / Space 执行当前操作。Esc / ← / h 返回导航。",
+  "help.settings.keys": "Tab / Shift+Tab 移动焦点。在内核设置的标签栏用 ←/→ 切换分类，按 Enter / Space 操作设置项，Esc 返回导航。",
   "help.overview.keys": "↑↓ / j/k 浏览卡片，Enter / 空格进入卡片中的可用控件。Tab / Shift+Tab 切换控件，Enter / 空格执行当前操作。在路由模式选项上，←→ / h/l 移动焦点。Esc 返回导航，其他控件也可按 ← / h 返回。",
   "help.core.proxies": "浏览内容时：x 停止内核。",
   "help.core.overview": "浏览内容时：s 启动 · x 停止内核。",

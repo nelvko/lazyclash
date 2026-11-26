@@ -113,7 +113,12 @@ func TestNotificationHintsFollowTheFocusedAction(t *testing.T) {
 
 func TestPortsHintsDistinguishCancelReviewAndApply(t *testing.T) {
 	m := portsModel(t, &fakeBackend{snapshot: app.Snapshot{Installed: true}})
-	for _, id := range []string{"ports.mixed", "ports.controller", "ports.review", "ports.cancel"} {
+	if strings.Contains(m.contextHelp(), "Enter") {
+		t.Fatal("unchanged port fields should not advertise review")
+	}
+	m.ports.mixed.SetValue("8888")
+	m.layout()
+	for _, id := range []string{"ports.mixed", "ports.http", "ports.review", "ports.cancel"} {
 		m.ports.focus = id
 		label := m.tr("ports.review")
 		if id == "ports.cancel" {

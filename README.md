@@ -113,7 +113,7 @@ CLI 使用同一日志用例，例如 `lazyclash logs --lines 50 --duration 5s`�
 
 ## 运行端口设置
 
-已安装 Mihomo 后，在 **Settings → Runtime settings / Ports** 修改本机 HTTP/SOCKS 代理端口和控制 API 端口。先检查并审阅，再确认应用；运行中显示 **Apply & restart** 并说明连接中断，停止状态提交后仍保持停止。两个端口必须不同，范围为 1024–65535；检查代理 TCP/UDP 与控制 API TCP 冲突，不停止占用端口的其他进程。
+安装 Mihomo 后，在 **设置 → 内核设置 → 端口与访问** 可管理代理端口、代理身份验证、局域网访问和外部控制。「代理身份验证」支持为 HTTP(S)、SOCKS 和 Mixed 端口添加多个账号。点击「代理端口」「代理身份验证」或「外部控制」可在弹窗中编辑和审阅变更。运行中应用会重启内核，已停止的实例保留停止状态。其余两个标签管理连接、运行与资源缓存偏好，选择会随实例保存。[设置页](docs/settings.md)
 
 CLI 使用同一事务用例：`lazyclash settings show` 查看，`lazyclash settings ports --mixed-port 17897 --controller-port 19097 --dry-run` 预检查；运行中应用需显式加 `--restart`。失败或取消执行回滚；恢复失败则保留恢复记录并报告。API 密钥、原始 profile 和其他配置保留。父 Shell 已导出的代理变量需重新求值 `lazyclash env`。详细操作与恢复边界见 [运行端口设置](docs/runtime-settings.md)。
 

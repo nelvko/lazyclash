@@ -42,6 +42,74 @@ def click(terminal, point):
     terminal.key(("\x1b[<0;%d;%dM\x1b[<0;%d;%dm" % (x + 1, y + 1, x + 1, y + 1)).encode())
 
 
+def check_dialog_heading(terminal, words, title, body):
+    # The account editor and its settings row have the same title. Match it
+    # above the dialog body, at the body's left inset.
+    x, body_y = position(terminal, words[body])
+    matches = [y for y, row in enumerate(terminal.screen.cells[:body_y])
+               if "".join(row[x:]).startswith(words[title])]
+    assert matches, (title, x, body_y)
+    y = matches[-1]
+    # At a two-cell inset the no-color modal outline occupies the outer cell.
+    assert "".join(terminal.screen.cells[y][x-2:x]) in ("  ", "│ "), "unexpected title marker"
+    assert terminal.screen.cells[y+1][x] == "─", "missing divider below title"
+
+
+def check_port_row(terminal, words, key):
+    x, y = position(terminal, words["access." + key])
+    row = terminal.screen.cells[y]
+    left = row.index("│", x)
+    right = row.index("│", left + 1)
+    value = "7897" if key == "mixed" else words["access.disabled"]
+    assert "".join(row[left+1:right]).strip().startswith(value), (key, y, row[left:right+1])
+    caption = "".join(row[x:left]).strip()
+    expected = words["access." + key] + ("" if key == "http" else " ⓘ")
+    assert caption == expected, (key, caption)
+    if key == "mixed":
+        assert "×" in row[left:right], "clear action must use ×"
+    return left, right, y
+
+
+def check_port_frames(terminal, fields, *, framed):
+    rows = terminal.screen.cells
+    for left, right, y in fields:
+        corners = (rows[y-1][left], rows[y-1][right], rows[y+1][left], rows[y+1][right])
+        if framed:
+            assert corners == ("╭", "╮", "╰", "╯"), ("field frame", y, corners)
+        else:
+            assert corners[0] != "╭" and corners[2] != "╰", ("compact field", y, corners)
+
+
+def check_wide_port_spacing(terminal, words, fields):
+    check_port_frames(terminal, fields, framed=True)
+    rows = terminal.screen.cells
+    start, standard_y = position(terminal, words["access.standard"])
+    _, transparent_y = position(terminal, words["access.transparent"])
+    right = fields[0][1]
+    # Only check cells inside the modal. The dashboard is still visible outside.
+    def blank(y):
+        assert not "".join(rows[y][start:right+1]).strip(), ("expected blank row", y)
+
+    for heading, group in ((standard_y, fields[:3]), (transparent_y, fields[3:])):
+        first_y = group[0][2]
+        blank(heading + 1)
+        assert first_y - 1 == heading + 2, ("heading to input", heading, first_y)
+        for previous, current in zip(group, group[1:]):
+            assert current[2] - previous[2] == 3, ("within group", previous, current)
+    socks_bottom = fields[2][2] + 1
+    blank(socks_bottom + 1)
+    blank(socks_bottom + 2)
+    assert transparent_y == socks_bottom + 3, ("between groups", socks_bottom, transparent_y)
+    last_bottom = fields[-1][2] + 1
+    blank(last_bottom + 1)
+    assert rows[last_bottom+2][start] == "─", "missing footer separator after bottom margin"
+
+
+def hover(terminal, x, y):
+    terminal.key(("\x1b[<35;%d;%dM" % (x + 1, y + 1)).encode())
+    terminal.settle()
+
+
 def switch_track(enabled):
     return "░░░░██" if enabled else "██░░░░"
 
@@ -71,10 +139,11 @@ def check_card_stacks(terminal, words, columns):
             if len(titles) > 1:
                 # Bottom padding, inter-card gap and top padding.
                 assert all(not "".join(row[left:end]).strip() for row in screen.cells[y-3:y]), heading
-                assert "".join(screen.cells[y-4][left:end]).strip(), heading + " has trailing blank rows"
+                if heading != "core":
+                    assert "".join(screen.cells[y-4][left:end]).strip(), heading + " has trailing blank rows"
         stacks.append(titles)
     if len(stacks) == 2:
-        assert stacks[0][0] == stacks[1][0] and stacks[0][1] < stacks[1][1]
+        assert stacks[0][0] == stacks[1][0]
 
 
 def check_switch(terminal, words, key, enabled, profile):
@@ -84,7 +153,8 @@ def check_switch(terminal, words, key, enabled, profile):
     track_x = right - 8
     assert "".join(row[track_x:right]) == switch_track(enabled) + "  ", key
     before_track = "".join(row[label_x:track_x])
-    assert before_track[len(words[key]):].strip(" ›") == "", (key, before_track)
+    label = words[key] + (" ⓘ" if key in ("settings.unifiedDelay", "settings.tcpConcurrent") else "")
+    assert before_track.startswith(label) and before_track[len(label):].strip(" ›") == "", (key, before_track)
     if profile != "no-color":
         styles = terminal.screen.styles[y]
         rail_x, thumb_x = (track_x, track_x + 4) if enabled else (track_x + 2, track_x)
@@ -96,10 +166,11 @@ def check_switch(terminal, words, key, enabled, profile):
 
 def focus(terminal, label, row_label, footer_hint=""):
     pattern = re.compile(r"›\s*(?:[<\[]\s*)?" + re.escape(label))
+    row_marker = re.compile(r"› +" + re.escape(row_label.split()[0]))
     for _ in range(36):
         terminal.settle()
         screen = terminal.screen.text()
-        if (pattern.search(screen) or "› " + row_label.split()[0] in screen) and label in screen and footer_hint in screen.splitlines()[-1]:
+        if (pattern.search(screen) or row_marker.search(screen)) and label in screen and footer_hint in screen.splitlines()[-1]:
             return
         terminal.key(b"\t")
     raise AssertionError("Tab did not reveal " + label + "\n" + terminal.screen.text())
@@ -108,6 +179,11 @@ def focus(terminal, label, row_label, footer_hint=""):
 def dismiss_toasts(terminal):
     for _ in range(8):
         terminal.settle()
+        # A save can publish its new snapshot before its busy footer closes.
+        # Wait for the next action to be enabled before returning to the caller.
+        if "Ctrl+C" in terminal.screen.text().splitlines()[-1]:
+            terminal.wait_absent("Ctrl+C")
+            continue
         if "×" not in terminal.screen.text():
             return
         click(terminal, position(terminal, "×"))
@@ -124,6 +200,222 @@ def fixture_terminal(preview, binary, report, language, profile):
     return terminal
 
 
+def check_stable_hover(terminal, y, left, right, points):
+    screen = terminal.screen
+    cells, styles = screen.cells[y][left:right], screen.styles[y][left:right]
+    for x in points:
+        hover(terminal, x, y)
+        assert screen.cells[y][left:right] == cells, ("hover changed row text", x, y)
+        assert screen.styles[y][left:right] == styles, ("hover changed row style", x, y)
+
+
+def check_tab_hover(preview, terminal, names, starts, left, right, profile, output, args):
+    screen = terminal.screen
+    x, y = position(terminal, names[0])
+    selected = starts[2]
+    widths = [preview.SMOKE.cell_width(name) for name in names]
+    rail = ["─"] * (selected-x) + ["━"] * widths[2] + ["─"] * (right-2-selected-widths[2])
+    hover(terminal, left, y)
+    panel = screen.styles[y][left][1]
+    labels = screen.cells[y][left:right]
+    idle = screen.styles[y][left:right]
+    rule = screen.styles[y+1][left:right]
+    accent = screen.styles[y][selected][0]
+    if profile != "no-color":
+        assert all(style[1] == panel for style in idle + rule), "pointer-away left a highlighted cell"
+        assert accent == screen.styles[y+1][selected][0] and accent[2] > accent[0]
+        assert screen.styles[y][selected][2] and not screen.styles[y][x][2]
+
+    for tab, state in ((0, "access-hover"), (2, "current-hover"), (None, "pointer-away")):
+        if tab is None:
+            points = [left]
+        else:
+            start, end = starts[tab]-1, starts[tab]+widths[tab]
+            points = [start, end, starts[tab]]
+        for target in points:
+            hover(terminal, target, y)
+            assert screen.cells[y][left:right] == labels, ("hover changed tab text", state, target)
+            assert screen.cells[y+1][x:right-2] == rail, "hover moved the active underline"
+            assert screen.styles[y+1][left:right] == rule, "hover recolored the underline"
+            assert screen.styles[y][left:right] == idle, ("hover recolored a tab", state, target)
+        preview.capture(terminal, output, "resources-focused-%s-%dx%d" % (state, screen.columns, screen.rows), args)
+
+
+def check_tab_strip(preview, terminal, words, profile, output, args):
+    terminal.resize(200, 46)
+    terminal.settle()
+    click(terminal, position(terminal, words["settings.tab.access"]))
+    for width, height in ((200, 46), (40, 24)):
+        terminal.resize(width, height)
+        terminal.settle()
+        names = [words["settings.tab." + tab] for tab in ("access", "network", "resources")]
+        if names[0] not in terminal.screen.text():
+            names = [words["settings.tab." + tab + ".compact"] for tab in ("access", "network", "resources")]
+        # Reveal the complete Access pane in the single-column viewport.
+        if width == 40:
+            for _ in range(8):
+                if position(terminal, names[0])[1] <= 6:
+                    break
+                terminal.key(b"\x1b[<65;37;12M")
+                terminal.settle()
+        x, y = position(terminal, names[0])
+        left, right = card_bounds(terminal.screen, x)
+        assert x == left + 2, "the first tab should start at the card inset"
+        strip = "".join(terminal.screen.cells[y][x:right])
+        starts = []
+        for name in names:
+            prefix, found, _ = strip.partition(name)
+            assert found, name
+            starts.append(x + preview.SMOKE.cell_width(prefix))
+        gaps = [b - a - preview.SMOKE.cell_width(name) for a, b, name in zip(starts, starts[1:], names)]
+        assert gaps[0] == gaps[1] and min(gaps) >= (4 if width == 200 else 1), gaps
+        items = ["proxyInbound", "proxyPorts", "listenAddress", "allowLAN", "proxyAuth", "controlAPI", "externalControl"]
+        points = [position(terminal, words["settings." + item]) for item in items]
+        offsets = [b[1]-a[1] for a, b in zip(points, points[1:])]
+        if width == 200:
+            assert offsets == [2, 2, 2, 2, 3, 2] and points[1][0] > points[0][0], (points, offsets)
+        else:
+            summary = words["settings.authNotConfigured"] + " ›"
+            auth_x, auth_y = points[4]
+            wraps = preview.SMOKE.cell_width(words["settings.proxyAuth"] + "  " + summary) > right-2-auth_x
+            assert position(terminal, summary) == (right-2-preview.SMOKE.cell_width(summary), auth_y+int(wraps))
+            assert offsets == [1, 1, 1, 1, 2+int(wraps), 1], offsets
+        # On a short viewport the next heading can sit just under the footer.
+        scroll_to_heading = width == 40 and words["settings.core"] not in terminal.screen.text()
+        def next_card_position():
+            if scroll_to_heading:
+                terminal.key(b"\x1b[<65;37;12M")
+                terminal.settle()
+            row = position(terminal, words["settings.core"])[1]
+            if scroll_to_heading:
+                terminal.key(b"\x1b[<64;37;12M")
+                terminal.settle()
+            return row
+
+        next_card_y = next_card_position()
+        preview.capture(terminal, output, "ports-access-%dx%d" % (width, height), args)
+        row_x, row_y = points[1]
+        check_stable_hover(terminal, row_y, left, right, (row_x, right-3))
+        switch_x, switch_y = check_switch(terminal, words, "settings.allowLAN", False, profile)
+        check_stable_hover(terminal, switch_y, left, right, (switch_x, switch_x+5))
+        # Keyboard focus stays on the selected tab as the mouse moves.
+        for key in ("settings.ipv6", "settings.geoGroup"):
+            terminal.key(b"\x1b[C")
+            terminal.wait(words[key])
+            terminal.settle()
+            assert next_card_position() == next_card_y, "tab switch moved the next card"
+        x, y = position(terminal, names[0])
+        check_tab_hover(preview, terminal, names, starts, left, right, profile, output, args)
+        click(terminal, (x, y))
+        terminal.settle()
+    terminal.resize(160, 45)
+    terminal.settle()
+    click(terminal, position(terminal, words["settings.tab.access"]))
+    terminal.wait(words["settings.proxyPorts"])
+
+
+def check_proxy_auth(preview, terminal, words, output, args):
+    usernames = ("desktop", "tablet")
+    passwords = [uuid.uuid4().hex[:14] for _ in usernames]
+
+    def check_redaction():
+        screen, stream = terminal.screen.text(), bytes(terminal.raw)
+        assert all(secret not in screen and secret.encode() not in stream for secret in passwords), "proxy password displayed"
+
+    def check_count(count):
+        if count == 0:
+            label = words["settings.authNotConfigured"]
+        elif count == 1:
+            label = words["settings.authOneUser"]
+        else:
+            label = words["settings.authUserCount"] % count
+        terminal.wait(label + " ›")
+        title = words["settings.proxyAuth"]
+        x, y = position(terminal, title)
+        _, end = card_bounds(terminal.screen, x)
+        row = "".join(terminal.screen.cells[y][x:end])
+        assert row[len(title):].strip() == label + " ›", row
+        assert all(name not in row for name in usernames), "settings row exposed account details"
+
+    def open_editor():
+        terminal.click_text(words["settings.proxyAuth"])
+        terminal.wait(words["access.authTitle"])
+        terminal.wait(words["access.authAdd"])
+        check_dialog_heading(terminal, words, "access.authTitle", "access.authHint")
+
+    def review():
+        terminal.click_text(words["ports.review"])
+        terminal.wait(words["ports.reviewed"])
+        terminal.settle()
+        check_redaction()
+
+    def apply_count(count):
+        terminal.click_text(words["ports.apply_restart"])
+        terminal.wait(words["ports.done"])
+        terminal.click_text(words["ports.done"])
+        terminal.wait_absent(words["ports.done"])
+        dismiss_toasts(terminal)
+        check_count(count)
+
+    check_count(0)
+    preview.capture(terminal, output, "proxy-auth-not-configured", args)
+    open_editor()
+    for username, password in zip(usernames, passwords):
+        terminal.click_text(words["access.authAdd"])
+        terminal.key(username.encode())
+        terminal.wait(username)
+        terminal.key(b"\t" + password.encode())
+        terminal.settle()
+        check_redaction()
+        account_row = next(row for row in terminal.screen.cells if username in "".join(row))
+        assert "•" * len(password) in "".join(account_row), "wide account fields should share a row and mask the password"
+    preview.capture(terminal, output, "proxy-auth-edit", args)
+    review()
+    for username in usernames:
+        terminal.wait(username)
+    preview.capture(terminal, output, "proxy-auth-review", args)
+    apply_count(2)
+    preview.capture(terminal, output, "proxy-auth-count", args)
+    open_editor()
+    for username in usernames:
+        terminal.wait(username)
+    terminal.wait(words["access.authKeepPassword"])
+    assert "•" * len(passwords[0]) not in terminal.screen.text(), "stored password was prefilled"
+    terminal.resize(40, 16)
+    terminal.settle()
+    terminal.wait(words["access.authTitle"])
+    check_redaction()
+    preview.capture(terminal, output, "proxy-auth-40x16", args)
+    for _ in range(6):
+        if usernames[1] in terminal.screen.text():
+            break
+        terminal.key(b"\t")
+        terminal.settle()
+    assert usernames[1] in terminal.screen.text(), "compact viewport did not reveal the second account"
+    terminal.resize(160, 45)
+    terminal.settle()
+    terminal.click_text(words["access.authRemove"])
+    terminal.wait_absent(usernames[0])
+    review()
+    terminal.click_text(words["ports.cancel"])
+    terminal.wait_absent(words["ports.reviewed"])
+    check_count(2)
+    open_editor()
+    for username in usernames:
+        terminal.wait(username)
+    for remaining, removed in ((1, usernames[0]), (0, usernames[1])):
+        terminal.click_text(words["access.authRemove"])
+        terminal.wait_absent(removed)
+        review()
+        if remaining == 0:
+            terminal.wait(words["access.authDisabled"])
+        apply_count(remaining)
+        if remaining:
+            open_editor()
+            terminal.wait(usernames[1])
+    check_redaction()
+
+
 def exercise(preview, binary, output, language, profile, args):
     output.mkdir(parents=True)
     words = labels(language)
@@ -134,37 +426,213 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.key(b"7")
         terminal.wait(words["settings.interface"])
         terminal.settle()
-        for heading in ("settings.interface", "settings.mihomo", "settings.serviceGroup", "settings.core", "settings.diagnostics"):
+        for heading in ("settings.interface", "settings.mihomo", "settings.core", "settings.diagnostics"):
             terminal.wait(words[heading])
-        terminal.wait(words["dashboard.network.mixedPort"] % "7897")
+        terminal.wait("7897 ›")
         terminal.wait("lazyclash doctor")
-        check_card_stacks(terminal, words, (("interface", "serviceGroup", "diagnostics"), ("mihomo", "core")))
+        if not args.modals_only:
+            check_tab_strip(preview, terminal, words, profile, output, args)
+        if args.tabs_only:
+            terminal.exit()
+            print("PASS %s/%s: row spacing, tab spacing, keyboard selection and pointer hover at 200x46 and 40x24" % (language, profile), flush=True)
+            return
+        check_proxy_auth(preview, terminal, words, output, args)
+        if args.auth_only:
+            terminal.exit()
+            assert json.loads(report.read_text())["auth_changes"] == [2, 1, 0]
+            print("PASS %s/%s: proxy users, masked passwords, review, persistence, cancel, removal and compact viewport" % (language, profile), flush=True)
+            return
+        check_card_stacks(terminal, words, (("interface", "diagnostics"), ("mihomo", "core")))
         preview.capture(terminal, output, "settings-wide", args)
         # A tall single column lets the same terminal frame expose the entire reading order.
         terminal.resize(80, 80)
         terminal.settle()
-        check_card_stacks(terminal, words, (("interface", "mihomo", "serviceGroup", "core", "diagnostics"),))
+        check_card_stacks(terminal, words, (("interface", "mihomo", "core", "diagnostics"),))
         preview.capture(terminal, output, "settings-single-column", args)
         terminal.resize(160, 45)
         terminal.settle()
 
+        tab_y = position(terminal, words["settings.core"])[1]
+
+        def select_tab(tab):
+            # On a 160-cell canvas each tab has room for its first word.
+            click(terminal, position(terminal, words["settings.tab." + tab].split()[0]))
+            terminal.settle()
+            assert position(terminal, words["settings.core"])[1] == tab_y, "tab switch moved the next card"
+
+        click(terminal, position(terminal, words["settings.externalControl"]))
+        terminal.wait(words["access.controlTitle"])
+        terminal.wait("127.0.0.1:9097")
+        check_dialog_heading(terminal, words, "access.controlTitle", "access.baseSection")
+        preview.capture(terminal, output, "external-control-wide", args)
+        terminal.click_text(words["access.tlsSection"])
+        terminal.wait(words["access.cert"])
+        preview.capture(terminal, output, "external-control-tls", args)
+        terminal.resize(40, 24)
+        terminal.settle()
+        terminal.wait(words["ports.review"])
+        preview.capture(terminal, output, "external-control-40x24", args)
+        terminal.resize(160, 45)
+        terminal.settle()
+        terminal.click_text("127.0.0.1:9097")
+        terminal.key(b"\x05\x15127.0.0.1:9098")
+        terminal.key(b"\r")
+        terminal.wait(words["ports.reviewed"])
+        terminal.wait("127.0.0.1:9098")
+        preview.capture(terminal, output, "external-control-review", args)
+        terminal.click_text(words["ports.apply_restart"])
+        terminal.wait(words["ports.done"])
+        terminal.click_text(words["ports.done"])
+        terminal.wait_absent(words["access.controlTitle"])
+        dismiss_toasts(terminal)
+        click(terminal, position(terminal, words["settings.proxyPorts"]))
+        terminal.wait(words["access.proxyTitle"])
+        terminal.wait(words["access.tproxy"])
+        terminal.settle()
+        keys = ("mixed", "http", "socks", "redir", "tproxy")
+        check_dialog_heading(terminal, words, "access.proxyTitle", "access.standard")
+        fields = [check_port_row(terminal, words, key) for key in keys]
+        assert len({(left, right) for left, right, _ in fields}) == 1, fields
+        ys = [y for _, _, y in fields]
+        assert ys == sorted(set(ys)), fields
+        assert position(terminal, words["access.standard"])[1] < ys[0]
+        assert ys[2] < position(terminal, words["access.transparent"])[1] < ys[3]
+        check_wide_port_spacing(terminal, words, fields)
+        preview.capture(terminal, output, "proxy-ports-wide", args)
+        tip_text = words["access.mixed.tooltip"][:12]
+        label_x, label_y = position(terminal, words["access.mixed"])
+        icon_x = terminal.screen.cells[label_y].index("ⓘ", label_x)
+        hover(terminal, icon_x, label_y)
+        terminal.wait(tip_text)
+        preview.capture(terminal, output, "proxy-ports-tooltip", args)
+        hover(terminal, label_x, label_y)
+        terminal.wait_absent(tip_text)
+        terminal.key(b"?")
+        terminal.wait(tip_text)
+        terminal.key(b"\x1b")
+        terminal.wait_absent(tip_text)
+        terminal.wait(words["access.proxyTitle"])
+        terminal.resize(200, 46)
+        terminal.settle()
+        wider = [check_port_row(terminal, words, key) for key in keys]
+        assert len({(left, right) for left, right, _ in wider}) == 1, wider
+        check_wide_port_spacing(terminal, words, wider)
+        preview.capture(terminal, output, "proxy-ports-200x46", args)
+        terminal.resize(40, 24)
+        terminal.settle()
+        mixed = check_port_row(terminal, words, "mixed")
+        check_port_frames(terminal, [mixed], framed=False)
+        left, right, _ = mixed
+        terminal.wait(words["ports.review"])
+        preview.capture(terminal, output, "proxy-ports-40x24", args)
+        for key in keys[1:]:
+            terminal.key(b"\t")
+            terminal.settle()
+            field = check_port_row(terminal, words, key)
+            check_port_frames(terminal, [field], framed=False)
+            assert field[:2] == (left, right), (key, field)
+        terminal.resize(40, 16)
+        terminal.settle()
+        check_port_frames(terminal, [check_port_row(terminal, words, "tproxy")], framed=False)
+        terminal.wait(words["ports.review"])
+        preview.capture(terminal, output, "proxy-ports-40x16", args)
+        terminal.resize(160, 45)
+        terminal.settle()
+        http_left, http_right, http_y = fields[1]
+        click(terminal, ((http_left+http_right)//2, http_y))
+        terminal.key(b"65536\r")
+        terminal.wait(words["access.portRange"])
+        _, error_y = position(terminal, words["access.portRange"])
+        # A full-height field has a bottom border below the label/value row.
+        assert error_y == position(terminal, words["access.http"])[1] + 2
+        preview.capture(terminal, output, "proxy-ports-invalid", args)
+        # Zero normalizes to the disabled placeholder when a field loses focus.
+        terminal.key(b"\x05\x150")
+        terminal.wait_absent(words["access.portRange"])
+        mixed_left, _, mixed_y = check_port_row(terminal, words, "mixed")
+        click(terminal, (mixed_left + 2, mixed_y))
+        terminal.settle()
+        check_port_row(terminal, words, "http")
+        click(terminal, ((http_left+http_right)//2, http_y))
+        terminal.key(b"8880\r")
+        terminal.wait(words["ports.reviewed"])
+        terminal.wait("8880")
+        _, change_y = position(terminal, "8880")
+        assert words["access.http"] in "".join(terminal.screen.cells[change_y])
+        preview.capture(terminal, output, "proxy-ports-review", args)
+        terminal.click_text(words["ports.cancel"])
+        terminal.wait_absent(words["access.proxyTitle"])
+        terminal.wait_absent(words["ports.reviewed"])
+        terminal.settle()
+        terminal.wait("7897 ›")
+        if args.modals_only:
+            terminal.exit()
+            calls = json.loads(report.read_text())
+            assert calls["auth_changes"] == [2, 1, 0] and calls["port_applies"] == 1, calls
+            print("PASS %s/%s: three access dialogs, TLS disclosure, responsive field layout, review, apply and cancel" % (language, profile), flush=True)
+            return
+        for enabled in (False, True):
+            click(terminal, check_switch(terminal, words, "settings.allowLAN", enabled, profile))
+            if not enabled:
+                terminal.wait("192.168.1.20:7897")
+            dismiss_toasts(terminal)
+            check_switch(terminal, words, "settings.allowLAN", not enabled, profile)
+        select_tab("network")
+        terminal.wait(words["settings.keepAliveIdle"])
+        preview.capture(terminal, output, "settings-connections", args)
+        def set_number(key, value, formatted):
+            click(terminal, position(terminal, words[key]))
+            terminal.key(b"\x05\x15" + value.encode() + b"\r")
+            terminal.wait(formatted)
+            dismiss_toasts(terminal)
+
+        set_number("settings.keepAliveIdle", "57", words["settings.seconds"] % "57")
+        set_number("settings.keepAliveInterval", "9", words["settings.seconds"] % "9")
         switch_defaults = {
             "settings.ipv6": True, "settings.unifiedDelay": False,
-            "settings.tcpConcurrent": False, "settings.tcpKeepAlive": True, "settings.etagSupport": True,
+            "settings.tcpConcurrent": False, "settings.tcpKeepAlive": True,
             "dashboard.interface.keyHints": True, "settings.autostart": True,
         }
         for key in ("dashboard.language.title", "settings.theme", "settings.logLevel", "settings.findProcessMode", *switch_defaults):
             x, y = position(terminal, words[key])
             row = terminal.screen.cells[y]
             left, right = card_bounds(terminal.screen, x)
-            assert x == left + 2 and row[right-2:right] == [" ", " "], key
+            inset = 2 if key in {"dashboard.language.title", "settings.theme", "dashboard.interface.keyHints", "settings.autostart"} else 4
+            assert x == left + inset and row[right-2:right] == [" ", " "], key
             if key in switch_defaults:
                 check_switch(terminal, words, key, switch_defaults[key], profile)
             else:
                 assert row[right-5] == "▾", "dropdown lacks its two-cell face and card insets: " + key
 
+        select_tab("resources")
+        terminal.wait(words["settings.geodataLoader"])
+        preview.capture(terminal, output, "settings-resources", args)
+        click(terminal, check_switch(terminal, words, "settings.geoAutoUpdate", False, profile))
+        dismiss_toasts(terminal)
+        set_number("settings.geoUpdateInterval", "48", words["settings.hours"] % "48")
+        terminal.click_text(dropdown_trigger(terminal, words["settings.loaderMemory"]))
+        terminal.click_text(dropdown_option(terminal, words["settings.loaderStandard"]))
+        dismiss_toasts(terminal)
+        click(terminal, check_switch(terminal, words, "settings.storeFakeIP", False, profile))
+        dismiss_toasts(terminal)
+        assert words["settings.etagHint"] not in terminal.screen.text()
+        label_x, label_y = position(terminal, words["settings.etagSupport"])
+        left, end = card_bounds(terminal.screen, label_x)
+        check_stable_hover(terminal, label_y, left, end, (label_x, end-1))
+        preview.capture(terminal, output, "settings-row-hover", args)
+        click(terminal, (label_x, label_y))
+        check_switch(terminal, words, "settings.etagSupport", True, profile)
+        select_tab("network")
+
         native = {"en": "English", "zh-Hans": "简体中文"}
         current = dropdown_trigger(terminal, native[language])
+        trigger_x, trigger_y = position(terminal, current)
+        left, right = card_bounds(terminal.screen, trigger_x)
+        check_stable_hover(terminal, trigger_y, left, right, (trigger_x,))
+        terminal.click_text(current)
+        dropdown_option(terminal, native[language], checked=True)
+        terminal.key(b"\x1b")
+        terminal.wait_absent("✓")
         terminal.resize(26, 24)
         terminal.settle()
         terminal.wait(current)
@@ -199,14 +667,9 @@ def exercise(preview, binary, output, language, profile, args):
         # The current IPv6 thumb, unified-delay rail and keyboard all activate
         # their own switch through the same controls users see in the cards.
         x, y = check_switch(terminal, words, "settings.ipv6", True, profile)
-        thumb_before = terminal.screen.styles[y][x + 5]
-        rail_before = terminal.screen.styles[y][x]
-        terminal.key(("\x1b[<35;%d;%dM" % (x + 6, y + 1)).encode())
-        terminal.settle()
+        left, right = card_bounds(terminal.screen, x)
+        check_stable_hover(terminal, y, left, right, (x+5,))
         check_switch(terminal, words, "settings.ipv6", True, profile)
-        if profile != "no-color":
-            assert terminal.screen.styles[y][x + 5] == thumb_before, "hover changed the thumb"
-            assert terminal.screen.styles[y][x] == rail_before, "hover changed the rail"
         click(terminal, (x + 5, y))
         dismiss_toasts(terminal)
         check_switch(terminal, words, "settings.ipv6", False, profile)
@@ -229,11 +692,17 @@ def exercise(preview, binary, output, language, profile, args):
         debug_trigger = dropdown_trigger(terminal, "debug")
         dismiss_toasts(terminal)
 
-        for key in ("settings.tcpConcurrent", "settings.tcpKeepAlive", "settings.etagSupport"):
+        for key in ("settings.tcpConcurrent", "settings.tcpKeepAlive"):
             point = check_switch(terminal, words, key, switch_defaults[key], profile)
             click(terminal, point)
             dismiss_toasts(terminal)
             check_switch(terminal, words, key, not switch_defaults[key], profile)
+
+        select_tab("resources")
+        click(terminal, check_switch(terminal, words, "settings.etagSupport", True, profile))
+        dismiss_toasts(terminal)
+        check_switch(terminal, words, "settings.etagSupport", False, profile)
+        select_tab("network")
 
         process_trigger = dropdown_trigger(terminal, words["settings.processAsNeeded"])
         terminal.click_text(process_trigger)
@@ -329,6 +798,7 @@ def exercise(preview, binary, output, language, profile, args):
         # Close them through their real mouse targets before measuring layout.
         dismiss_toasts(terminal)
 
+        select_tab("access")
         for width, height in SIZES:
             terminal.resize(width, height)
             terminal.settle()
@@ -342,8 +812,10 @@ def exercise(preview, binary, output, language, profile, args):
             assert title_x == left + 2
             headings = "".join(terminal.screen.cells[title_y][left:right+1])
             assert (words["settings.mihomo"] in headings) == (columns == 2)
-            assert not any("┌" in row[left:right+1] or "─" in row[left:right+1]
-                           for row in terminal.screen.cells[title_y:-1]), "card decorations in settings body"
+            for row in terminal.screen.cells[title_y:-1]:
+                cells = row[left:right+1]
+                assert "┌" not in cells and "┐" not in cells, "card decorations in settings body"
+                assert "─" not in cells or "━" in cells, "unexpected separator outside the tab strip"
             preview.capture(terminal, output, "settings-%dx%d" % (width, height), args)
 
             # Scroll down and up in the body. The short view must reveal lower
@@ -368,6 +840,9 @@ def exercise(preview, binary, output, language, profile, args):
                 preview.capture(terminal, output, "theme-menu-compact", args)
                 terminal.key(b"\x1b")
                 terminal.wait_absent("✓")
+                focus(terminal, "7897 ›", words["settings.proxyPorts"], words["navigation.controls.editPorts"])
+                terminal.key(b"\x1b[Z")  # The active tab precedes its pane.
+                terminal.key(b"\x1b[C")
                 focus(terminal, debug_trigger, words["settings.logLevel"])
                 terminal.key(b"\r")
                 dropdown_option(terminal, "debug", checked=True)
@@ -387,15 +862,20 @@ def exercise(preview, binary, output, language, profile, args):
                 preview.capture(terminal, output, "process-menu-40x16", args)
                 terminal.key(b"\x1b")
                 terminal.wait_absent("✓")
+                focus(terminal, switch_track(True), words["settings.ipv6"], "IPv6")
+                terminal.key(b"\x1b[Z")
+                terminal.settle()
+                terminal.key(b"\x1b[D")
+                terminal.wait("7897 ›")
             focus(terminal, words["settings.openLogs"], words["settings.logs"])
             preview.capture(terminal, output, "tab-logs-%dx%d" % (width, height), args)
-            focus(terminal, words["settings.edit"], words["settings.ports"], words["navigation.controls.editPorts"])
+            focus(terminal, "7897 ›", words["settings.proxyPorts"], words["navigation.controls.editPorts"])
             terminal.key(b"\r")
-            terminal.wait(words["ports.title"])
+            terminal.wait(words["access.proxyTitle"])
             terminal.wait("7897")
             preview.capture(terminal, output, "ports-%dx%d" % (width, height), args)
             terminal.key(b"\x1b")
-            terminal.wait_absent(words["ports.title"])
+            terminal.wait_absent(words["access.proxyTitle"])
             terminal.settle()
             assert words["navigation.controls.editPorts"] in terminal.screen.text().splitlines()[-1], "port return lost its trigger focus"
             for _ in range(8):
@@ -419,14 +899,18 @@ def exercise(preview, binary, output, language, profile, args):
         assert calls["language_saves"] == 2 and calls["language"] == language, calls
         assert calls["hint_saves"] == 4 and not calls["hints_hidden"], calls
         assert calls["theme_saves"] == 3 and calls["theme"] == "dark", calls
-        assert calls["core_changes"] == [["ipv6", "off"], ["unified-delay", "on"],
+        assert calls["core_changes"] == [["keep-alive-idle", "57"], ["keep-alive-interval", "9"],
+                                         ["geo-auto-update", "on"], ["geo-update-interval", "48"],
+                                         ["geodata-loader", "standard"], ["profile.store-fake-ip", "on"],
+                                         ["ipv6", "off"], ["unified-delay", "on"],
                                          ["unified-delay", "off"], ["log-level", "debug"],
                                          ["tcp-concurrent", "on"], ["disable-keep-alive", "on"],
                                          ["etag-support", "off"], ["find-process-mode", "always"],
                                          ["ipv6", "on"]], calls
-        assert calls["port_reads"] == len(SIZES), calls
+        assert calls["port_reads"] == len(SIZES) + 4, calls
+        assert calls["auth_changes"] == [2, 1, 0], calls
         assert calls["log_streams"] == 1, calls
-        assert calls["service_changes"] == calls["mode_changes"] == calls["port_applies"] == 0, calls
+        assert calls["service_changes"] == calls["mode_changes"] == 0 and calls["port_applies"] == 3, calls
         raw = bytes(terminal.raw)
         assert not preview.OSC_SET.search(raw), "application changed the terminal palette"
         if profile == "256":
@@ -434,7 +918,7 @@ def exercise(preview, binary, output, language, profile, args):
         if profile == "no-color":
             assert not any(value not in (b"", b"0") for value in preview.SGR.findall(raw)), "NO_COLOR emitted styling"
         (output / "pty.raw").write_bytes(raw)
-        print("PASS %s/%s: core switches and log level, theme and language dropdowns, busy guard, hints, adaptive width/columns, wheel, Tab, ports return and diagnostics Logs; %s" % (language, profile, json.dumps(calls)), flush=True)
+        print("PASS %s/%s: equal-height tabs, proxy review, controller apply, LAN access, numeric values, resource controls, preferences, resize, focus and logs; %s" % (language, profile, json.dumps(calls)), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")
         (output / "failed.ansi").write_bytes(terminal.raw)
@@ -447,6 +931,10 @@ def exercise(preview, binary, output, language, profile, args):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
+    scenario = parser.add_mutually_exclusive_group()
+    scenario.add_argument("--tabs-only", action="store_true", help="Verify and capture tab spacing, row spacing, focus and hover")
+    scenario.add_argument("--auth-only", action="store_true", help="Verify and capture the proxy authentication editor")
+    scenario.add_argument("--modals-only", action="store_true", help="Verify and capture all three port and access dialogs")
     parser.add_argument("--binary", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--lang", choices=["en", "zh-Hans"], action="append")

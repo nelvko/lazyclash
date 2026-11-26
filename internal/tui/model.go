@@ -59,7 +59,9 @@ type Backend interface {
 	CloseAllConnections(context.Context) error
 	Rules(context.Context) (app.RuleSnapshot, error)
 	GetRuntimeSettings(context.Context) (app.RuntimeSettings, error)
-	PrepareRuntimeSettings(context.Context, app.RuntimeSettings) (app.RuntimeSettingsPlan, error)
+	GetProxyAuth(context.Context) (app.ProxyAuthSettings, error)
+	PrepareProxyAuth(context.Context, app.ProxyAuthSettings, []app.ProxyAuthUser) (app.RuntimeSettingsPlan, error)
+	PrepareRuntimeSettingsEdit(context.Context, app.RuntimeSettings, app.RuntimeSettings) (app.RuntimeSettingsPlan, error)
 	ApplyRuntimeSettings(context.Context, app.RuntimeSettingsPlan) (app.RuntimeSettingsResult, error)
 }
 
@@ -115,6 +117,7 @@ type networkMsg struct {
 // Bubble Tea receives a Model value at each update boundary. Internal helpers
 // use pointer receivers to avoid copying all the page and input states again.
 type Model struct {
+	coreNumber            coreNumberEditor
 	locale                i18n.Localizer
 	languageOverride      string
 	savedLanguage         string
@@ -135,6 +138,7 @@ type Model struct {
 	messageInformational  bool
 	page, focus, hover    string
 	tooltip               tooltipState
+	settingsTab           coreSettingsTab
 	tunFocus              string
 	guideSkipped          bool
 	scroll, total         int
@@ -513,7 +517,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 	case tea.WindowSizeMsg:
-		if strings.HasPrefix(m.hover, proxyTypeTarget) || m.tooltip.pointer.ID != "" {
+		if m.page == "settings" || strings.HasPrefix(m.hover, proxyTypeTarget) || m.tooltip.pointer.ID != "" {
 			m.hover = ""
 		}
 		if m.page == "proxies" && !m.proxiesNarrow() && max(1, v.Width) < sidebarMinWidth {
@@ -724,6 +728,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.PasteMsg:
 		// Bracketed paste is text input, never a global command. In particular a
 		// pasted q or digit cannot quit or navigate out of a form.
+		if m.coreNumber.id != "" {
+			cmd = m.updateCoreNumber(v)
+			break
+		}
 		if m.notification.panel.open {
 			break
 		} else if m.menu.open {
@@ -781,7 +789,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.resetLogsView()
 		}
 	case tea.KeyPressMsg:
-		if strings.HasPrefix(m.hover, proxyTypeTarget) || m.tooltip.pointer.ID != "" {
+		if m.page == "settings" || strings.HasPrefix(m.hover, proxyTypeTarget) || m.tooltip.pointer.ID != "" {
 			m.hover = ""
 		}
 		key := v.String()
@@ -790,6 +798,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if cmd != nil {
 				return m, cmd
 			}
+			break
+		}
+		if m.coreNumber.id != "" {
+			cmd = m.updateCoreNumber(v)
 			break
 		}
 		if m.providers.open {
@@ -858,7 +870,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			break
 		}
-		if m.overviewModeNavigation(key) {
+		if m.settingsTabNavigation(key) || m.overviewModeNavigation(key) {
 			break
 		}
 		if key == "left" || key == "h" {
@@ -1106,7 +1118,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	default:
 		// Forward cursor/clipboard messages to the focused Bubbles input. The
 		// child model ignores messages it does not own, including key releases.
-		if m.providers.open {
+		if m.coreNumber.id != "" {
+			cmd = m.updateCoreNumber(msg)
+		} else if m.providers.open {
 			if m.providers.editing {
 				m.providers.search, cmd = m.providers.search.Update(msg)
 			}
@@ -1351,11 +1365,27 @@ func (m *Model) activate(id string) tea.Cmd {
 	if handled, cmd := m.profileAction(id); handled {
 		return cmd
 	}
-	if id == "runtime-settings" {
-		return m.openPorts()
+	switch id {
+	case "runtime-settings":
+		return m.openNetworkConfig("proxy")
+	case "settings.externalControl":
+		return m.openNetworkConfig("control")
+	case "settings.proxyAuth":
+		return m.openNetworkConfig("auth")
+	case "settings.allowLAN":
+		return m.toggleAccessLAN()
 	}
 	switch id {
-	case "settings.language", "settings.theme", "settings.logLevel", "settings.findProcessMode":
+	case "settings.tab.access", "settings.tab.network", "settings.tab.resources":
+		m.selectSettingsTab(id)
+		return nil
+	case "settings.keepAliveIdle", "settings.keepAliveInterval", "settings.geoUpdateInterval":
+		return m.openCoreNumber(id)
+	case "settings.geoAutoUpdate":
+		return m.toggleCoreSetting(id, "geo-auto-update", m.snapshot.CoreSettings.GeoAutoUpdate)
+	case "settings.storeFakeIP":
+		return m.toggleCoreSetting(id, "profile.store-fake-ip", m.snapshot.CoreSettings.StoreFakeIP)
+	case "settings.language", "settings.theme", "settings.logLevel", "settings.findProcessMode", "settings.geodataLoader":
 		m.openPageSelectionMenu("settings", id, m.navigationOptions().settingsDropdown(id))
 		return nil
 	case "settings.ipv6":
@@ -1542,7 +1572,7 @@ func (m *Model) updateDashboardHover(event tea.MouseMotionMsg) (bool, tea.Cmd) {
 	if m.page != "proxies" && len(m.tooltip.anchors) == 0 {
 		return false, nil
 	}
-	if m.menu.open || m.feedbackDialogOpen() || m.helpOpen || m.notification.panel.open {
+	if m.menu.open || (m.feedbackDialogOpen() && !m.ports.editingProxyPorts()) || m.helpOpen || m.notification.panel.open {
 		return false, nil
 	}
 	previous := m.hover
@@ -1567,6 +1597,31 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 		m.hover = ""
 		return nil
 	}
+	if m.coreNumber.id != "" {
+		if click, ok := event.(tea.MouseClickMsg); ok && click.Button == tea.MouseLeft {
+			var tab string
+			for _, target := range m.targets {
+				if click.X < target.X || click.X >= target.X+target.W || click.Y < target.Y || click.Y >= target.Y+target.H {
+					continue
+				}
+				if target.ID == m.coreNumber.id {
+					return nil
+				}
+				if strings.HasPrefix(target.ID, "settings.tab.") {
+					tab = target.ID
+				}
+			}
+			if cmd := m.saveCoreNumber(); cmd != nil || m.coreNumber.id != "" {
+				if tab != "" && m.coreNumber.id == "" {
+					m.hover = tab
+					m.selectSettingsTab(tab)
+				}
+				return cmd
+			}
+		} else {
+			return nil
+		}
+	}
 	if m.providers.open {
 		return m.providersMouse(event)
 	}
@@ -1575,6 +1630,9 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 		return nil
 	}
 	if m.menu.open {
+		if _, motion := event.(tea.MouseMotionMsg); motion && m.page == "settings" && m.menu.dropdown != nil {
+			return nil
+		}
 		return m.applyMenuResult(m.menu.mouse(event))
 	}
 	if m.ports.open {
@@ -1603,7 +1661,7 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 		return nil
 	}
 	if _, wheel := event.(tea.MouseWheelMsg); wheel {
-		if strings.HasPrefix(m.hover, proxyTypeTarget) {
+		if m.page == "settings" || strings.HasPrefix(m.hover, proxyTypeTarget) {
 			m.hover = ""
 		}
 		if k.Button != tea.MouseWheelUp && k.Button != tea.MouseWheelDown {
@@ -1673,6 +1731,10 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 				if strings.HasPrefix(r.ID, "setup.") {
 					m.focus = r.ID
 					return m.inlineInstallActivate(r.ID)
+				}
+				if m.page == "settings" && strings.HasPrefix(r.ID, "settings.tab.") {
+					m.selectSettingsTab(r.ID)
+					return nil
 				}
 				if !m.busy {
 					if r.ID == "logo" {
@@ -1819,13 +1881,12 @@ func (m *Model) renderLayout() {
 		o.BodyTop = m.connectionsToolbar(g.width, o.BodyTopRows)
 	}
 	hoveredIcon := m.tooltip.pointer.ID
-	base, hits, total, notifications := drawDashboard(o)
-	if hoveredIcon != "" && m.hover == hoveredIcon && m.tooltip.pointer.ID == "" {
-		// A layout change moved the icon out from beneath a stationary pointer.
-		m.hover = ""
-		m.renderLayout()
-		return
+	modalTips := m.ports.editingProxyPorts()
+	if modalTips {
+		// The active dialog owns the anchors. Paint its backdrop independently.
+		o.tooltips = nil
 	}
+	base, hits, total, notifications := drawDashboard(o)
 	m.notification.overlays = notifications
 	if o.Dim {
 		base = modalBackdrop(base)
@@ -1850,7 +1911,18 @@ func (m *Model) renderLayout() {
 		}
 	}
 	if m.ports.open {
+		if modalTips {
+			m.tooltip.anchors, m.tooltip.offscreen = m.tooltip.anchors[:0], hitRegion{}
+		}
 		m.screen, m.targets = m.renderPorts(base)
+		if modalTips {
+			m.tooltip.sync(m.targets, m.ports.focus, m.hover)
+			if !o.HideKeyHints && o.Width >= 20 && o.Height >= 7 {
+				o.tooltips, o.Focus, o.Help = &m.tooltip, m.ports.focus, m.portsContextHelp()
+				footer, _ := dashboardKeyHints(o)
+				m.screen = overlay(m.screen, modalBackdrop(footer), 2, o.Height-1, o.Width, o.Height)
+			}
+		}
 	} else if m.helpOpen {
 		m.screen, m.targets = m.renderHelp(base)
 	} else if m.wizard.open || m.wizard.networkOpen {
@@ -1874,6 +1946,12 @@ func (m *Model) renderLayout() {
 	} else if m.menu.open {
 		m.anchorPageSelectionMenu(hits)
 		m.screen = m.renderMenu(base, dashboardContentBottom(o))
+	}
+	if hoveredIcon != "" && m.hover == hoveredIcon && m.tooltip.pointer.ID == "" {
+		// A layout change moved the icon out from beneath a stationary pointer.
+		m.hover = ""
+		m.renderLayout()
+		return
 	}
 	if hit := tooltipAnchor(m.tooltip.anchors, m.tooltip.open); hit.ID != "" {
 		m.screen, m.tooltip.bounds = m.renderTooltip(hit.tip.text, hit, dashboardContentBottom(o), notifications)

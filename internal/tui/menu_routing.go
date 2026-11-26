@@ -27,6 +27,8 @@ func (m *Model) applyMenuResult(result menuResult) tea.Cmd {
 					return m.changeTheme(result.Action)
 				case "settings.logLevel":
 					return m.saveCoreSetting(m.menu.anchor.ID, "log-level", m.snapshot.CoreSettings.LogLevel, result.Action)
+				case "settings.geodataLoader":
+					return m.saveCoreSetting(m.menu.anchor.ID, "geodata-loader", m.snapshot.CoreSettings.GeodataLoader, result.Action)
 				case "settings.findProcessMode":
 					return m.saveCoreSetting(m.menu.anchor.ID, "find-process-mode", m.snapshot.CoreSettings.FindProcessMode, result.Action)
 				}

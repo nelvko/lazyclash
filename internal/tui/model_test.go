@@ -56,6 +56,8 @@ type fakeBackend struct {
 	closeConnection     func(context.Context, string, time.Time) error
 	closeAllConnections func(context.Context) error
 	getSettings         func(context.Context) (app.RuntimeSettings, error)
+	getProxyAuth        func(context.Context) (app.ProxyAuthSettings, error)
+	prepareProxyAuth    func(context.Context, app.ProxyAuthSettings, []app.ProxyAuthUser) (app.RuntimeSettingsPlan, error)
 	prepareSettings     func(context.Context, app.RuntimeSettings) (app.RuntimeSettingsPlan, error)
 	applySettings       func(context.Context, app.RuntimeSettingsPlan) (app.RuntimeSettingsResult, error)
 }
@@ -66,11 +68,25 @@ func (f *fakeBackend) GetRuntimeSettings(ctx context.Context) (app.RuntimeSettin
 	}
 	return app.RuntimeSettings{MixedPort: 7897, ControllerPort: 9097}, ctx.Err()
 }
-func (f *fakeBackend) PrepareRuntimeSettings(ctx context.Context, settings app.RuntimeSettings) (app.RuntimeSettingsPlan, error) {
+func (f *fakeBackend) GetProxyAuth(ctx context.Context) (app.ProxyAuthSettings, error) {
+	if f.getProxyAuth != nil {
+		return f.getProxyAuth(ctx)
+	}
+	return app.ProxyAuthSettings{}, ctx.Err()
+}
+func (f *fakeBackend) PrepareProxyAuth(ctx context.Context, original app.ProxyAuthSettings, users []app.ProxyAuthUser) (app.RuntimeSettingsPlan, error) {
+	if f.prepareProxyAuth != nil {
+		return f.prepareProxyAuth(ctx, original, users)
+	}
+	current := f.snapshot.RuntimeSettings
+	next := current
+	next.ProxyUserCount = len(users)
+	return app.RuntimeSettingsPlan{Current: current, Proposed: next, Changed: true, Active: f.snapshot.Service.Active}, ctx.Err()
+}
+func (f *fakeBackend) PrepareRuntimeSettingsEdit(ctx context.Context, current, settings app.RuntimeSettings) (app.RuntimeSettingsPlan, error) {
 	if f.prepareSettings != nil {
 		return f.prepareSettings(ctx, settings)
 	}
-	current := app.RuntimeSettings{MixedPort: 7897, ControllerPort: 9097}
 	return app.RuntimeSettingsPlan{Current: current, Proposed: settings, ControllerHost: "127.0.0.1", Active: f.snapshot.Service.Active, Changed: current != settings, AppliedProfile: f.snapshot.Applied}, ctx.Err()
 }
 func (f *fakeBackend) ApplyRuntimeSettings(ctx context.Context, plan app.RuntimeSettingsPlan) (app.RuntimeSettingsResult, error) {

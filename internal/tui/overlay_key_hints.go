@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/nelvko/lazyclash/internal/i18n"
@@ -41,11 +42,14 @@ func (m *Model) portsContextHelp() string {
 	if m.busy {
 		return m.tr("ports.busy_help")
 	}
+	if m.ports.editingProxyPorts() && (m.ports.field(m.ports.focus) != nil || m.ports.focus == "ports.review") && !slices.Contains(m.ports.controls, "ports.review") {
+		return m.tr("navigation.hints.browse")
+	}
 	label := ""
 	switch m.ports.focus {
 	case "terminal.copyActivation":
 		label = m.tr("terminal.activationCopy")
-	case "ports.mixed", "ports.controller", "ports.review":
+	case "ports.mixed", "ports.review":
 		label = m.tr("ports.review")
 		if m.ports.kind == "terminal" {
 			label = m.tr("network.terminalConfig.save")
@@ -55,8 +59,17 @@ func (m *Model) portsContextHelp() string {
 		if m.ports.kind == "activation" || m.ports.kind == "tun" && !m.canConfigureHostTUN() {
 			label = m.tr("profiles.close")
 		}
-	case "tun.policy":
+	case "tun.policy", "ports.private":
 		label = m.tr("network.tunConfig.toggle")
+	case "ports.origins":
+		label = m.tr("access.newLine")
+	case "ports.auth.add":
+		label = m.tr("access.authAdd")
+	case "ports.tlsSection", "ports.corsSection", "ports.advancedSection":
+		label = m.tr("access.expand")
+		if m.ports.access.sections[m.ports.focus] {
+			label = m.tr("access.collapse")
+		}
 	case "tun.save":
 		label = m.tr("profile_settings.save")
 	case "ports.apply":
@@ -72,6 +85,12 @@ func (m *Model) portsContextHelp() string {
 			label = m.tr("ports.retry")
 		}
 	default:
+		if strings.HasPrefix(m.ports.focus, "ports.auth.remove.") {
+			label = m.tr("access.authRemove")
+		}
+		if m.ports.field(m.ports.focus) != nil {
+			label = m.tr("ports.review")
+		}
 		if strings.HasSuffix(m.ports.focus, ".clear") {
 			label = m.tr("navigation.hints.clear")
 		}

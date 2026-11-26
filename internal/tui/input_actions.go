@@ -21,17 +21,14 @@ func (m *Model) clearInputField(id string) (bool, tea.Cmd) {
 		input.CursorEnd()
 	}
 	if m.ports.open {
-		if field != "ports.mixed" && field != "ports.controller" {
+		input := m.ports.field(field)
+		if input == nil {
 			return false, nil
 		}
 		if m.busy || m.quitting || m.ports.step != "edit" {
 			return true, nil
 		}
 		m.ports.focus = field
-		input := &m.ports.mixed
-		if field == "ports.controller" {
-			input = &m.ports.controller
-		}
 		prepare(input)
 		return true, m.updatePortsInput(clearKey)
 	}

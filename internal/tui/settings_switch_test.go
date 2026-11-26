@@ -10,8 +10,8 @@ func TestSettingsSwitchStateColorsAndFocus(t *testing.T) {
 	}{
 		{"on", true, true, false, buttonSelectedBackground, "#a8cff2"},
 		{"off", false, true, false, divider, muted},
-		{"hover on", true, true, true, buttonSelectedBackground, "#c5e3ff"},
-		{"hover off", false, true, true, divider, "#c1c8d1"},
+		{"hover on", true, true, true, buttonSelectedBackground, "#a8cff2"},
+		{"hover off", false, true, true, divider, muted},
 		{"disabled on", true, false, true, divider, disabled},
 		{"disabled off", false, false, true, divider, disabled},
 	} {

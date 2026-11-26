@@ -25,15 +25,15 @@ func terminalConfigModel(t *testing.T, backend *fakeBackend) Model {
 
 func TestTerminalConfigReviewsOnlySharedPort(t *testing.T) {
 	m := terminalConfigModel(t, &fakeBackend{snapshot: app.Snapshot{Installed: true}})
-	m.ports.mixed.SetValue(m.ports.controller.Value())
+	m.ports.mixed.SetValue("9097")
 	m, _ = update(m, special(tea.KeyEnter))
 	if m.busy || m.ports.focus != "ports.mixed" || m.ports.mixed.Err == nil {
 		t.Fatal("port conflict did not focus the visible mixed-port input")
 	}
-	m.ports.mixed.SetValue("18080")
+	m.ports.mixed.SetValue("443")
 	m, cmd := update(m, special(tea.KeyEnter))
 	m, _ = update(m, actionCmd(t, cmd)())
-	if m.ports.step != "review" || m.ports.plan.Proposed != (app.RuntimeSettings{ControllerPort: 9097, MixedPort: 18080}) {
+	if m.ports.step != "review" || m.ports.plan.Proposed != (app.RuntimeSettings{ControllerPort: 9097, MixedPort: 443}) {
 		t.Fatalf("wrong port proposal: %+v", m.ports.plan)
 	}
 	if strings.Contains(ansi.Strip(m.screen), "9097") {

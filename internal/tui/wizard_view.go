@@ -24,6 +24,9 @@ type wizardDocument struct {
 	plain    bool
 	busy     bool
 	disabled func(string) bool
+
+	// End of the focused row, including any caption below its input.
+	focusedRowEnd int
 }
 
 func (d *wizardDocument) tr(id string, args ...any) string { return d.locale.T(id, args...) }

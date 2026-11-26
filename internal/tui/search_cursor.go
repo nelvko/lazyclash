@@ -36,14 +36,14 @@ func (m *Model) activeInputField() (textinput.Model, string, bool) {
 	}
 	if m.ports.open {
 		if m.ports.step == "edit" {
-			switch m.ports.focus {
-			case "ports.mixed":
-				return m.ports.mixed, m.ports.focus, true
-			case "ports.controller":
-				return m.ports.controller, m.ports.focus, true
+			if input := m.ports.field(m.ports.focus); input != nil {
+				return *input, m.ports.focus, true
 			}
 		}
 		return textinput.Model{}, "", false
+	}
+	if m.coreNumber.id != "" {
+		return m.coreNumber.input, m.coreNumber.id, true
 	}
 	if m.wizard.open || m.wizard.networkOpen {
 		if input := m.wizardInput(); input != nil {
@@ -106,7 +106,8 @@ func (m *Model) inputCursor() *tea.Cursor {
 			textRow = 1
 		}
 		cursor.Position.X, cursor.Position.Y = field.X+2+column, field.Y+textRow
-		if cursor.Position.X < 0 || cursor.Position.X >= m.width || cursor.Position.Y < 0 || cursor.Position.Y >= m.height {
+		if cursor.Position.X < 0 || cursor.Position.X >= m.width || cursor.Position.Y < 0 || cursor.Position.Y >= m.height ||
+			regionsOverlap(m.tooltip.bounds, hitRegion{X: cursor.Position.X, Y: cursor.Position.Y, W: 1, H: 1}) {
 			return nil
 		}
 		profile := m.colorProfile

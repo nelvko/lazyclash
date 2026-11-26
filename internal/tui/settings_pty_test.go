@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -22,7 +23,8 @@ func TestSettingsPTYFixture(t *testing.T) {
 		t.Skip("explicit Settings PTY report path required")
 	}
 	b := &settingsPTYBackend{
-		coreSettings: mihomo.DefaultGeneralSettings(),
+		coreSettings:    mihomo.DefaultGeneralSettings(),
+		runtimeSettings: app.RuntimeSettings{MixedPort: 7897, ControllerPort: 9097},
 		fakeBackend: &fakeBackend{snapshot: app.Snapshot{
 			Installed: true, ConfigReady: true, HasRun: true,
 			Version: "v1.19.33", RunningVersion: "v1.19.33", MixedPort: 7897, Controller: "127.0.0.1:9097",
@@ -42,6 +44,7 @@ func TestSettingsPTYFixture(t *testing.T) {
 	b.mu.Lock()
 	prefs := b.preferences
 	coreChanges := b.coreChanges
+	authCounts := b.authCounts
 	b.mu.Unlock()
 	raw, err := json.Marshal(map[string]any{
 		"language_saves": b.languages.Load(), "hint_saves": b.hints.Load(), "port_reads": b.portReads.Load(),
@@ -50,6 +53,7 @@ func TestSettingsPTYFixture(t *testing.T) {
 		"language":    prefs.Language, "hints_hidden": prefs.HideKeyHints,
 		"theme_saves": b.themes.Load(), "theme": prefs.Theme,
 		"core_changes": coreChanges,
+		"auth_changes": authCounts,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -64,7 +68,10 @@ type settingsPTYBackend struct {
 	mu                                               sync.Mutex
 	preferences                                      app.Preferences
 	coreSettings                                     mihomo.GeneralSettings
+	runtimeSettings                                  app.RuntimeSettings
 	coreChanges                                      [][2]string
+	authNames, pendingAuthNames                      []string
+	authCounts                                       []int
 	languages, hints, themes, portReads, portApplies atomic.Int64
 	controls, modes                                  atomic.Int64
 	logStreams                                       atomic.Int64
@@ -75,6 +82,7 @@ func (b *settingsPTYBackend) Snapshot(ctx context.Context) (app.Snapshot, error)
 	defer b.mu.Unlock()
 	snapshot, err := b.fakeBackend.Snapshot(ctx)
 	snapshot.CoreSettings = b.coreSettings
+	snapshot.RuntimeSettings = b.runtimeSettings
 	return snapshot, err
 }
 
@@ -136,12 +144,58 @@ func (b *settingsPTYBackend) Runtime(ctx context.Context) (app.RuntimeSnapshot, 
 
 func (b *settingsPTYBackend) GetRuntimeSettings(ctx context.Context) (app.RuntimeSettings, error) {
 	b.portReads.Add(1)
-	return app.RuntimeSettings{MixedPort: 7897, ControllerPort: 9097}, ctx.Err()
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.runtimeSettings, ctx.Err()
 }
 
-func (b *settingsPTYBackend) ApplyRuntimeSettings(ctx context.Context, _ app.RuntimeSettingsPlan) (app.RuntimeSettingsResult, error) {
-	b.portApplies.Add(1)
-	return app.RuntimeSettingsResult{}, ctx.Err()
+func (b *settingsPTYBackend) GetProxyAuth(ctx context.Context) (app.ProxyAuthSettings, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return app.ProxyAuthSettings{Usernames: slices.Clone(b.authNames)}, ctx.Err()
+}
+
+func (b *settingsPTYBackend) PrepareProxyAuth(ctx context.Context, original app.ProxyAuthSettings, users []app.ProxyAuthUser) (app.RuntimeSettingsPlan, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	names := make([]string, len(users))
+	hasPassword := false
+	for i, user := range users {
+		names[i] = user.Username
+		hasPassword = hasPassword || user.Password != ""
+	}
+	next := b.runtimeSettings
+	next.ProxyUserCount = len(names)
+	plan, err := b.fakeBackend.PrepareRuntimeSettingsEdit(ctx, b.runtimeSettings, next)
+	if err == nil {
+		plan.Changed = hasPassword || !slices.Equal(original.Usernames, names)
+		b.pendingAuthNames = names
+	}
+	return plan, err
+}
+
+func (b *settingsPTYBackend) PrepareRuntimeSettingsEdit(ctx context.Context, current, settings app.RuntimeSettings) (app.RuntimeSettingsPlan, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.pendingAuthNames = nil
+	return b.fakeBackend.PrepareRuntimeSettingsEdit(ctx, current, settings)
+}
+
+func (b *settingsPTYBackend) ApplyRuntimeSettings(ctx context.Context, plan app.RuntimeSettingsPlan) (app.RuntimeSettingsResult, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	result, err := b.fakeBackend.ApplyRuntimeSettings(ctx, plan)
+	if err == nil {
+		b.runtimeSettings = result.Settings
+		b.snapshot.Controller, b.snapshot.MixedPort = result.Controller, result.Settings.MixedPort
+		if b.pendingAuthNames != nil {
+			b.authNames, b.pendingAuthNames = b.pendingAuthNames, nil
+			b.authCounts = append(b.authCounts, len(b.authNames))
+		} else {
+			b.portApplies.Add(1)
+		}
+	}
+	return result, err
 }
 
 func (b *settingsPTYBackend) Control(ctx context.Context, _ string) error {

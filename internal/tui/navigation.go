@@ -43,10 +43,13 @@ func (m *Model) focusTargets() []hitRegion {
 		}
 	}
 	body := m.contentTargets()
-	var networkCard hitRegion
+	var networkCard, settingsStrip hitRegion
 	for _, target := range body {
 		target.X += g.x
 		target.Y += g.y
+		if strings.HasPrefix(target.ID, "settings.tab.") {
+			settingsStrip = target
+		}
 		if target.ID == "overview.card.dashboard.overview.network" {
 			networkCard = target
 		}
@@ -75,6 +78,11 @@ func (m *Model) focusTargets() []hitRegion {
 		controls = append(controls, hitRegion{ID: "content", X: g.x, Y: g.y, W: g.width, H: 1})
 	}
 	tabPosition := func(r hitRegion) (int, int) {
+		// Keep this tab and the controls in its pane together in reading order,
+		// even when the neighboring column has controls at the same height.
+		if settingsStrip.W > 0 && (r.ID == "runtime-settings" || strings.HasPrefix(r.ID, "settings.") && r.ID != "settings.language" && r.ID != "settings.theme") {
+			return settingsStrip.Y, settingsStrip.X
+		}
 		// Treat the network card as one group in the page order. Its renderer
 		// supplies the controls of each section together at either width.
 		if networkCard.W > 0 && r.ID != networkCard.ID && !strings.HasPrefix(r.ID, "notification.") && regionsOverlap(r, networkCard) {
@@ -162,6 +170,12 @@ func (m *Model) revealBodyTarget(hit hitRegion) {
 }
 
 func (m *Model) contextHelp() string {
+	if m.coreNumber.id != "" {
+		if m.coreNumber.invalid {
+			return m.tr("settings.numberInvalid")
+		}
+		return m.tr("settings.numberKeys")
+	}
 	if m.notification.panel.open {
 		return m.notification.panel.contextHelp(m.locale)
 	}

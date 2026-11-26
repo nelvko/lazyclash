@@ -176,17 +176,17 @@ func TestPortsBilingualValidationReviewAndApply(t *testing.T) {
 			m := portsModel(t, b)
 			m.locale = i18n.New(sample.language)
 			m.ports.mixed.SetValue("not-a-port")
-			if cmd := m.preparePorts(); cmd != nil || !strings.Contains(m.ports.err, sample.rangeError) || m.ports.mixed.Err == nil {
+			if cmd := m.preparePorts(); cmd != nil || !strings.Contains(m.ports.proxyFieldError("ports.mixed"), sample.rangeError) {
 				t.Fatal("invalid range did not get a localized field error")
 			}
 			m.ports.mixed.SetValue("18080")
-			m.ports.controller.SetValue("18080")
-			if cmd := m.preparePorts(); cmd != nil || !strings.Contains(m.ports.err, sample.sameError) {
+			m.ports.field("ports.http").SetValue("18080")
+			if cmd := m.preparePorts(); cmd != nil || !strings.Contains(m.ports.proxyFieldError("ports.http"), sample.sameError) {
 				t.Fatal("duplicate ports did not get a localized error")
 			}
 			m = reviewPorts(t, m)
 			_, buttons, _ := m.portsDocument(80)
-			if len(buttons) != 2 || buttons[1].ID != "ports.apply" || buttons[1].Label != sample.restart || m.ports.plan.Proposed.MixedPort != 18080 {
+			if len(buttons) != 3 || buttons[2].ID != "ports.apply" || buttons[2].Label != sample.restart || m.ports.plan.Proposed.MixedPort != 18080 {
 				t.Fatal("review translation changed apply semantics")
 			}
 			for _, size := range [][2]int{{120, 32}, {80, 24}, {60, 20}, {40, 12}, {20, 5}} {

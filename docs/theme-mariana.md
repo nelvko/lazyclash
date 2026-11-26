@@ -86,8 +86,6 @@ Mariana 的背景变量 `blue3 = hsl(210, 15%, 22%)` 未取整 RGB 为 `(47.685,
 | `buttonDangerForeground` | `#f5a3a8` | C，危险按钮文字，在中性按钮背景上对比约 5.19:1 |
 | `buttonDangerHoverBackground` | `#493940` | C，危险入口专用暗红悬停背景 |
 | `settingsSwitchOnThumb` | `#a8cff2` | C，设置页开启开关的浅蓝色滑块 |
-| `settingsSwitchOnHoverThumb` | `#c5e3ff` | C，悬停时提亮开启开关的滑块 |
-| `settingsSwitchOffHoverThumb` | `#c1c8d1` | C，悬停时提亮关闭开关的灰色滑块 |
 | `success` | `#99c794` | A 颜色 / C 语义，Mariana `green=hsl(114,31%,68%)` |
 | `warning` | `#f9ae58` | A 颜色 / C 语义，Mariana `orange`；通过警告文字与焦点符号区分用途 |
 | `errorColor` | `#f28d92` | C，Mariana `red=hsl(357,79%,65%)` 亮度提高到 75%，保证错误原因在 raised 上可读 |
@@ -270,8 +268,6 @@ Bubble Tea v2 在启动时通过当前输出终端、环境变量、terminfo 及
 | `buttonDangerForeground` | 217 | 9 |
 | `buttonDangerHoverBackground` | 238 | 0 |
 | `settingsSwitchOnThumb` | 117 | 6（青） |
-| `settingsSwitchOnHoverThumb` | 153 | 14 |
-| `settingsSwitchOffHoverThumb` | 252 | 15 |
 | `success` | 114 | 10（亮绿） |
 | `errorColor` | 210 | 9（亮红） |
 

@@ -323,14 +323,12 @@ func TestPortsDetailsShowFreshAddressesAndKeepControllerCredentialsPrivate(t *te
 				Installed: true, MixedPort: 17890,
 				Controller: "http://private-user:private-password@[::1]:19191/private-path?token=private-token#private-fragment",
 			}}
-			m.ports.step = "edit"
-			m.ports.current = app.RuntimeSettings{MixedPort: 18080, ControllerPort: 19090}
-			// Editing a draft must not turn its proposed ports into active addresses.
-			m.ports.mixed.SetValue("18888")
-			m.ports.controller.SetValue("19999")
+			m.ports.kind, m.ports.step = "control", "edit"
+			m.ports.current = app.RuntimeSettings{MixedPort: 18080, ControllerPort: 19090, ControllerHost: "::1"}
+			m.initAccessDraft()
 			doc, _, _ := m.portsDocument(80)
 			plain := ansi.Strip(strings.Join(doc.lines, "\n"))
-			for _, want := range []string{"127.0.0.1:18080", "[::1]:19090"} {
+			for _, want := range []string{"[::1]:19090", m.tr("access.secretPlaceholder")} {
 				if !strings.Contains(plain, want) {
 					t.Fatalf("freshly loaded endpoint %q missing from settings: %s", want, plain)
 				}

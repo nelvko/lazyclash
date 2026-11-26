@@ -13,7 +13,7 @@ import (
 func TestOnlySettingsSummarizesSavedMixedPort(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		m := Model{locale: i18n.New(language), ports: newPortsState(), snapshot: app.Snapshot{
-			Installed: true, MixedPort: 7897,
+			Installed: true, MixedPort: 7897, RuntimeSettings: app.RuntimeSettings{MixedPort: 7897},
 			Controller: "http://private-user:private-password@127.0.0.1:9097/private-path?token=private-token#private-fragment",
 		}}
 		m.ports.current = app.RuntimeSettings{MixedPort: 18080, ControllerPort: 19090}
@@ -22,12 +22,12 @@ func TestOnlySettingsSummarizesSavedMixedPort(t *testing.T) {
 			o := m.dashboardOptions()
 			o.Snapshot = m.snapshot
 			for name, render := range map[string]func(dashboardOptions, int) dashboardBlock{
-				"overview": overviewNetworkCard, "settings": settingsService,
+				"overview": overviewNetworkCard, "settings": settingsMihomo,
 			} {
 				t.Run(fmt.Sprintf("%s/%s/%d", language, name, width), func(t *testing.T) {
 					card := render(o, width)
 					plain := ansi.Strip(strings.Join(card.lines, "\n"))
-					label := m.tr("dashboard.network.mixedPort", "7897")
+					label := "7897 ›"
 					if name == "settings" && strings.Count(plain, label) != 1 {
 						t.Fatalf("saved mixed port must occupy one summary row: %s", plain)
 					}
@@ -39,8 +39,8 @@ func TestOnlySettingsSummarizesSavedMixedPort(t *testing.T) {
 					if name == "overview" && (strings.Contains(plain, "7897") || hasAction(card.targets, "runtime-settings")) {
 						t.Fatal("overview exposed a standalone port setting")
 					}
-					if name == "settings" && (!hasAction(card.targets, "runtime-settings") || !strings.Contains(plain, "127.0.0.1:9097")) {
-						t.Fatal("settings lost its existing edit action or sanitized control address")
+					if name == "settings" && (!hasAction(card.targets, "runtime-settings") || !hasAction(card.targets, "settings.externalControl") || strings.Contains(plain, "9097")) {
+						t.Fatal("settings lost its dedicated modal entries or exposed the control address")
 					}
 					assertCanvas(t, strings.Join(card.lines, "\n"), width, len(card.lines))
 					assertRegions(t, card.targets, width, len(card.lines))
@@ -50,15 +50,19 @@ func TestOnlySettingsSummarizesSavedMixedPort(t *testing.T) {
 	}
 }
 
-func TestSavedMixedPortSummaryRejectsMissingAndInvalidValues(t *testing.T) {
-	for _, test := range []struct {
-		installed bool
-		port      int
-		want      string
-	}{{true, 1, "1"}, {true, 65535, "65535"}, {true, 0, "--"}, {true, -1, "--"}, {true, 65536, "--"}, {false, 7897, "--"}} {
-		o := dashboardOptions{Locale: i18n.New(i18n.English), Snapshot: app.Snapshot{Installed: test.installed, MixedPort: test.port}}
-		if got := savedMixedPortLabel(o); got != o.Locale.T("dashboard.network.mixedPort", test.want) {
-			t.Fatalf("installed=%v port=%d: %q", test.installed, test.port, got)
+func TestProxyPortSummaryCountsEnabledListeners(t *testing.T) {
+	o := dashboardOptions{Locale: i18n.New(i18n.Chinese), Snapshot: settingsTestSnapshot()}
+	for _, tc := range []struct {
+		mixed, socks, http int
+		summary            string
+	}{
+		{0, 0, 0, "已停用 ›"}, {-1, 0, 65536, "已停用 ›"}, {7897, 0, 0, "7897 ›"}, {0, 8080, 0, "8080 ›"}, {7897, 8080, 8081, "3 项启用 ›"},
+	} {
+		settings := &o.Snapshot.RuntimeSettings
+		settings.MixedPort, settings.SOCKSPort, settings.HTTPPort = tc.mixed, tc.socks, tc.http
+		card := settingsMihomo(o, 60)
+		if !strings.Contains(settingsPaintedTarget(t, strings.Join(card.lines, "\n"), card.targets, "runtime-settings"), tc.summary) {
+			t.Fatalf("missing %q", tc.summary)
 		}
 	}
 }

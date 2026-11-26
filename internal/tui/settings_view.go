@@ -18,6 +18,10 @@ const (
 	settingsTrailing
 	settingsSelect
 	settingsSwitch
+	settingsLink
+	settingsReadOnly
+	settingsGroup
+	settingsTabStrip
 )
 
 type settingsRow struct {
@@ -25,6 +29,8 @@ type settingsRow struct {
 	color              string
 	actions            []overviewControlButton
 	control            settingsControl
+	tip                tooltipBinding
+	rightAlign         bool // Keep the current value at the trailing edge when the label wraps.
 }
 
 var languageMenuItems = []menuItem{
@@ -46,6 +52,11 @@ func (o dashboardOptions) settingsDropdown(id string) dropdown {
 		return dropdown{Items: themeMenuItems, Value: cmp.Or(o.Theme, app.ThemeDark)}
 	case "settings.logLevel":
 		return dropdown{Items: coreLogLevelItems, Value: o.Snapshot.CoreSettings.LogLevel}
+	case "settings.geodataLoader":
+		return dropdown{Value: o.Snapshot.CoreSettings.GeodataLoader, Items: []menuItem{
+			{ID: "memconservative", Label: o.Locale.T("settings.loaderMemory")},
+			{ID: "standard", Label: o.Locale.T("settings.loaderStandard")},
+		}}
 	case "settings.findProcessMode":
 		return dropdown{Value: o.Snapshot.CoreSettings.FindProcessMode, Items: []menuItem{
 			{ID: "strict", Label: o.Locale.T("settings.processAsNeeded")},
@@ -71,9 +82,9 @@ func settingsSwitchRow(id, label string, on, enabled bool) settingsRow {
 // Use the same six terminal cells in all color modes. Shading the rail glyph
 // and its background identically makes a solid track in full color.
 func renderSettingsSwitch(action overviewControlButton, o buttonOptions) string {
-	railColor, thumbColor, hoverThumb := divider, muted, settingsSwitchOffHoverThumb
+	railColor, thumbColor := divider, muted
 	if action.selected {
-		railColor, thumbColor, hoverThumb = buttonSelectedBackground, settingsSwitchOnThumb, settingsSwitchOnHoverThumb
+		railColor, thumbColor = buttonSelectedBackground, settingsSwitchOnThumb
 	}
 	marker := "  "
 	if o.Focused && action.enabled {
@@ -81,8 +92,6 @@ func renderSettingsSwitch(action overviewControlButton, o buttonOptions) string 
 	}
 	if !action.enabled {
 		railColor, thumbColor = divider, disabled
-	} else if o.Hovered {
-		thumbColor = hoverThumb
 	}
 	railBG, thumbBG := railColor, thumbColor
 	if o.Plain {
@@ -109,14 +118,14 @@ func settingsContent(o dashboardOptions, width int) (string, []hitRegion) {
 		return column
 	}
 	if width < 80 {
-		column := stack(width, settingsInterface, settingsMihomo, settingsService, settingsCore, settingsDiagnostics)
+		column := stack(width, settingsInterface, settingsMihomo, settingsCore, settingsDiagnostics)
 		return strings.Join(column.lines, "\n"), column.targets
 	}
 
 	const gap = 2
 	leftWidth := (width - gap) / 2
 	rightWidth := width - leftWidth - gap
-	left := stack(leftWidth, settingsInterface, settingsService, settingsDiagnostics)
+	left := stack(leftWidth, settingsInterface, settingsDiagnostics)
 	right := stack(rightWidth, settingsMihomo, settingsCore)
 
 	blank := func(cells int) string { return themed(strings.Repeat(" ", cells), text, bg, o.Dim) }
@@ -164,7 +173,7 @@ func settingsThemeRow(o dashboardOptions) settingsRow {
 	return row
 }
 
-func settingsService(o dashboardOptions, width int) dashboardBlock {
+func settingsAutostart(o dashboardOptions) settingsRow {
 	tr, s := o.Locale.T, o.Snapshot
 	autostart := settingsRow{label: tr("settings.autostart"), value: tr("settings.afterInstall")}
 	if s.Installed {
@@ -186,13 +195,7 @@ func settingsService(o dashboardOptions, width int) dashboardBlock {
 			}
 		}
 	}
-	ports := settingsRow{label: tr("settings.ports"), value: tr("settings.afterInstall")}
-	if s.Installed {
-		ports.value = ""
-		ports.note = savedMixedPortLabel(o) + "\n" + overviewControllerAddress(s.Controller)
-		ports.actions = []overviewControlButton{{id: "runtime-settings", label: tr("settings.edit"), enabled: !o.Busy}}
-	}
-	return settingsSection(o, width, tr("settings.serviceGroup"), "", []settingsRow{autostart, ports})
+	return autostart
 }
 
 func settingsCore(o dashboardOptions, width int) dashboardBlock {
@@ -205,7 +208,10 @@ func settingsCore(o dashboardOptions, width int) dashboardBlock {
 		}
 	}
 	core := settingsRow{label: "Mihomo", value: version, actions: []overviewControlButton{{id: "install", label: action, enabled: !o.Busy, primary: !s.Installed}}}
-	rows := []settingsRow{core}
+	rows := []settingsRow{core, settingsAutostart(o)}
+	if s.GeoRestartPending {
+		rows[0].note = tr("settings.geoRestart")
+	}
 	if s.Installed {
 		rows[0].actions = append(rows[0].actions, overviewControlButton{id: "restart", label: tr("dashboard.action.restart"), enabled: !o.Busy && runtimeControlIssue(s, o.Locale) == ""})
 		rows = append(rows, settingsRow{label: tr("settings.remove"), note: tr("settings.removeHint")})
@@ -232,10 +238,12 @@ func settingsDiagnostics(o dashboardOptions, width int) dashboardBlock {
 	return settingsSection(o, width, tr("settings.diagnostics"), "", rows)
 }
 
-// Keep keyboard focus distinct from the card and the inactive rail in ANSI 256.
+// Keep keyboard focus distinct from both the card and the inactive rail in ANSI 256.
 const settingsRowHighlight = "#353d45"
 
 func settingsSection(o dashboardOptions, width int, title, description string, rows []settingsRow) dashboardBlock {
+	// The dashboard still tracks the pointer for delayed tooltips. Only
+	// keyboard focus and selection change the appearance of settings controls.
 	o.Hover = ""
 	inset := min(2, max(0, (width-1)/2))
 	inner := max(1, width-2*inset)
@@ -256,8 +264,29 @@ func settingsSection(o dashboardOptions, width int, title, description string, r
 	for _, row := range rows {
 		labelColumn = max(labelColumn, ansi.StringWidth(row.label))
 	}
-	for _, row := range rows {
-		b.lines = append(b.lines, blank)
+	tabbed := len(rows) > 0 && rows[0].control == settingsTabStrip
+	spacious := tabbed && width >= 48 && o.Height >= 36
+	rowIndent := 0
+	if spacious {
+		rowIndent = 2
+	}
+	for i, row := range rows {
+		if !tabbed || spacious || row.control == settingsGroup || row.control == settingsTabStrip {
+			b.lines = append(b.lines, blank)
+		}
+		if spacious && row.control == settingsGroup && i > 0 && rows[i-1].control != settingsTabStrip {
+			b.lines = append(b.lines, blank)
+		}
+		if row.control == settingsTabStrip {
+			b.append(settingsTabs(o, width, inset))
+			continue
+		}
+		if row.control == settingsGroup {
+			for _, line := range strings.Split(wrapText(row.label, inner), "\n") {
+				b.lines = append(b.lines, themed(padding+cellPad(line, inner)+padding, accent, panel, o.Dim))
+			}
+			continue
+		}
 		surface, focused := panel, false
 		for _, action := range row.actions {
 			if action.enabled && o.Focus == action.id {
@@ -265,16 +294,19 @@ func settingsSection(o dashboardOptions, width int, title, description string, r
 				break
 			}
 		}
-		item := renderSettingsRow(o, row, inner, min(28, labelColumn), surface)
+		item := renderSettingsRow(o, row, inner-rowIndent, min(28, labelColumn), surface)
 		for y, line := range item.lines {
 			prefix := padding
-			if y == 0 && focused && o.Monochrome && inset > 0 {
+			if y == 0 && focused && (o.Monochrome || row.control == settingsLink) && inset > 0 {
 				prefix = "›" + padding[1:]
 			}
-			item.lines[y] = themed(prefix+cellPad(line, inner)+padding, text, surface, o.Dim)
+			item.lines[y] = themed(prefix+cellPad(strings.Repeat(" ", rowIndent)+line, inner)+padding, text, surface, o.Dim)
 		}
 		for j := range item.targets {
-			item.targets[j].X += inset
+			item.targets[j].X += inset + rowIndent
+		}
+		if row.control == settingsLink && len(item.targets) == 1 && item.targets[0].InputWidth == 0 {
+			item.targets[0] = hitRegion{ID: item.targets[0].ID, W: width, H: len(item.lines)}
 		}
 		b.append(item)
 	}
@@ -283,6 +315,9 @@ func settingsSection(o dashboardOptions, width int, title, description string, r
 }
 
 func renderSettingsRow(o dashboardOptions, row settingsRow, inner, labelColumn int, surface string) dashboardBlock {
+	if o.coreNumber != nil && len(row.actions) == 1 && row.actions[0].id == o.coreNumber.id {
+		return o.coreNumber.row(o, row.label, inner, surface)
+	}
 	var b dashboardBlock
 	style := func(s, color string) string { return themed(s, color, surface, o.Dim) }
 	addText := func(s, color string) {
@@ -294,20 +329,28 @@ func renderSettingsRow(o dashboardOptions, row settingsRow, inner, labelColumn i
 	if color == "" {
 		color = muted
 	}
-	label := style(row.label, text)
-	value := style(row.value, color)
+	if row.tip.text != "" {
+		b = row.tip.label(row.label, o, surface, inner)
+	} else if row.label != "" {
+		addText(row.label, text)
+	}
 	// A shared label column keeps values close to their names on wide cards.
 	// Long labels, values and action groups flow below instead of truncating.
-	if row.label != "" || row.value != "" {
-		if row.label != "" && row.value != "" && ansi.StringWidth(label) <= labelColumn && labelColumn+2+ansi.StringWidth(value) <= inner {
-			b.lines = append(b.lines, label+style(strings.Repeat(" ", labelColumn+2-ansi.StringWidth(label)), text)+value)
+	if row.value != "" {
+		valueWidth := ansi.StringWidth(row.value)
+		column := labelColumn + 2
+		if row.control == settingsReadOnly {
+			column = inner - valueWidth
+		}
+		if len(b.lines) == 1 && ansi.StringWidth(b.lines[0])+2 <= column && column+valueWidth <= inner {
+			gap := column - ansi.StringWidth(b.lines[0])
+			b.lines[0] += style(strings.Repeat(" ", gap), text) + style(row.value, color)
+		} else if row.rightAlign {
+			for _, line := range strings.Split(wrapText(row.value, inner), "\n") {
+				b.lines = append(b.lines, style(strings.Repeat(" ", inner-ansi.StringWidth(line))+line, color))
+			}
 		} else {
-			if row.label != "" {
-				addText(row.label, text)
-			}
-			if row.value != "" {
-				addText(row.value, color)
-			}
+			addText(row.value, color)
 		}
 	}
 	if len(row.actions) > 0 {
@@ -325,6 +368,12 @@ func renderSettingsRow(o dashboardOptions, row settingsRow, inner, labelColumn i
 			switch row.control {
 			case settingsSelect:
 				face, _ = o.settingsDropdown(action.id).render(action.id, options, o.OpenDropdown == action.id, inner)
+			case settingsLink:
+				ink := focus
+				if !action.enabled {
+					ink = disabled
+				}
+				face = style(action.label, ink)
 			case settingsSwitch:
 				face = renderSettingsSwitch(action, options)
 			default:
@@ -352,6 +401,10 @@ func renderSettingsRow(o dashboardOptions, row settingsRow, inner, labelColumn i
 		}
 		if x == 0 {
 			b.blank()
+			if row.rightAlign && total < inner {
+				x = inner - total
+				b.lines[len(b.lines)-1] = style(strings.Repeat(" ", x), text)
+			}
 		}
 		for i, action := range row.actions {
 			w := ansi.StringWidth(values[i])

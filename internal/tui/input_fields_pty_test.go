@@ -108,8 +108,11 @@ func inputFieldsScenario(t *testing.T, scenario, language string) (Model, string
 		m.ports.open, m.ports.step = true, "edit"
 		m.ports.current = app.RuntimeSettings{MixedPort: 7897, ControllerPort: 9097}
 		m.ports.mixed.SetValue("7897")
-		m.ports.controller.SetValue("9097")
-		id = "ports." + strings.TrimPrefix(scenario, "ports-")
+		m.ports.kind, id = "proxy", "ports.mixed"
+		if scenario == "ports-controller" {
+			m.ports.kind, id = "control", "ports.address"
+		}
+		m.initAccessDraft()
 		m.ports.focus, m.ports.reveal = id, true
 	case "wizard-local", "wizard-version", "wizard-prefix":
 		m.openManagementWizard(true)
@@ -188,7 +191,7 @@ func (m *inputFieldsPTY) input() *textinput.Model {
 	case "ports-mixed":
 		return &m.model.ports.mixed
 	case "ports-controller":
-		return &m.model.ports.controller
+		return m.model.ports.field("ports.address")
 	case "wizard-local", "inline-local":
 		return &m.model.wizard.local
 	case "wizard-version", "inline-version":

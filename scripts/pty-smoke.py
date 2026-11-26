@@ -525,69 +525,72 @@ def main():
             initial_status = json.loads(cli("status"))
             initial_pointer = os.readlink(home / "installation" / "current")
 
-            def open_ports():
-                terminal.key(b"7")
-                terminal.wait("Runtime settings / Ports")
-                terminal.click_text("Runtime settings / Ports")
-                terminal.wait("Edit ports")
-                terminal.wait("Proxy port")
+            def open_editor(row, title, first_field):
+                terminal.click_text(row)
+                terminal.wait(title)
+                terminal.wait(first_field)
+                terminal.settle()
 
             def replace_input(value):
                 terminal.key(b"\x05\x15" + str(value).encode("ascii"))
 
-            open_ports()
+            def review_then_apply(before):
+                terminal.key(b"\r")
+                terminal.wait("Apply & restart")
+                terminal.wait("active connections will be interrupted")
+                if json.loads(cli("settings", "show")) != before:
+                    raise AssertionError("Review applied the draft before confirmation")
+                terminal.key(b"\r")
+                terminal.wait("Runtime settings applied")
+                terminal.key(b"\r")
+                terminal.wait_absent("Back to Settings")
+
+            terminal.key(b"7")
+            terminal.wait(str(initial["mixed_port"]) + " ›")
+            terminal.settle()
+            open_editor("Proxy ports", "Edit proxy ports", "Mixed port")
             replace_input("123q7")
             terminal.wait("123q7")
-            terminal.wait("Edit ports")
             terminal.key(b"\x1b")
-            terminal.wait_absent("Edit ports")
+            terminal.wait_absent("Edit proxy ports")
             if json.loads(cli("settings", "show")) != initial or os.readlink(home / "installation" / "current") != initial_pointer:
-                raise AssertionError("Canceling the runtime settings draft changed the installation")
+                raise AssertionError("Canceling a proxy draft changed the installation")
 
-            open_ports()
+            open_editor("Proxy ports", "Edit proxy ports", "Mixed port")
             replace_input(args.conflict_port)
-            terminal.key(b"\t")  # controller input
-            replace_input(args.controller_port)
-            terminal.key(b"\r")  # asynchronous review from the input
+            terminal.key(b"\r")
             terminal.wait("unavailable")
             if json.loads(cli("status"))["Service"]["PID"] != initial_status["Service"]["PID"]:
-                raise AssertionError("TUI conflict precheck stopped the running core")
+                raise AssertionError("Checking an occupied port stopped the running core")
             if json.loads(cli("settings", "show")) != initial:
-                raise AssertionError("TUI conflict precheck changed runtime settings")
-            # Failed preflight returns focus to the first editable field.
-            # Do not assume the controller retains the focus it had at submit.
+                raise AssertionError("Checking an occupied port changed the configuration")
             replace_input(args.mixed_port)
             terminal.wait(str(args.mixed_port))
             terminal.wait_absent("unavailable")
-            terminal.key(b"\t")
             for columns, rows in ((120, 32), (80, 24), (60, 20), (120, 18), (120, 40)):
-                mark = len(terminal.text())
                 terminal.resize(columns, rows)
-                terminal.wait("Control API port", after=mark)
-                terminal.wait(str(args.controller_port))
-            terminal.key(b"\r")
-            terminal.wait("Review changes")
-            terminal.wait("Apply & restart")
-            terminal.wait("active connections will be interrupted")
-            if json.loads(cli("settings", "show")) != initial:
-                raise AssertionError("Reviewing runtime settings applied them before confirmation")
-            terminal.key(b"\r")
-            terminal.wait("Runtime settings applied")
-            terminal.wait(str(args.controller_port))
-            terminal.key(b"\r")
-            terminal.wait_absent("Back to Settings")
-            expected = {"mixed_port": args.mixed_port, "controller_port": args.controller_port}
+                terminal.wait("Mixed port")
+                terminal.wait(str(args.mixed_port))
+            review_then_apply(initial)
+            proxy_applied = dict(initial, mixed_port=args.mixed_port)
+            if json.loads(cli("settings", "show")) != proxy_applied:
+                raise AssertionError("Applying proxy ports also changed the controller")
+
+            open_editor("External control", "Edit external control", "HTTP listen address")
+            replace_input("127.0.0.1:%d" % args.controller_port)
+            review_then_apply(proxy_applied)
+            expected = dict(proxy_applied, controller_port=args.controller_port)
             if json.loads(cli("settings", "show")) != expected:
-                raise AssertionError("TUI did not commit the reviewed runtime ports")
+                raise AssertionError("External control did not commit the reviewed address")
 
             # Every major API consumer must use the new authenticated endpoint.
             terminal.key(b"2")
-            terminal.wait("Search groups or nodes")
+            terminal.wait("Proxy providers")
             terminal.wait("PROXY")
             terminal.key(b"5")
-            terminal.wait("Rules loaded")
+            terminal.wait("All remaining traffic")
             terminal.key(b"6")
-            terminal.wait("live events")
+            terminal.wait("Search logs")
             from http.client import HTTPConnection
             for _ in range(10):
                 connection = HTTPConnection("127.0.0.1", args.mixed_port, timeout=5)
@@ -820,17 +823,22 @@ def main():
             proxies_row = next(row for row, line in enumerate(terminal.screen.text().splitlines(), 1)
                                if re.match(r"^[ ›]*Proxies\b", line))
             terminal.key(f"\x1b[<0;5;{proxies_row}M\x1b[<0;5;{proxies_row}m".encode("ascii"))
-            terminal.wait("Search groups or nodes")
+            terminal.wait("Proxy providers")
             terminal.wait("PROXY")
-            terminal.key(b"\x1b[C")  # sidebar -> PROXY; GLOBAL is reserved for Global mode
-            terminal.key(b"\r")
+            # The initial group snapshot may already expand PROXY. Open its
+            # header only once the actual group row and disclosure are visible.
+            terminal.wait("Select")
+            terminal.settle()
+            group_row = next(line for line in terminal.screen.text().splitlines() if "PROXY" in line and "Select" in line)
+            if "▸" in group_row:
+                terminal.click_text("PROXY")
             terminal.wait_selected_proxy("DIRECT")
             terminal.wait("REJECT")
             terminal.settle()
             for name in ("DIRECT", "REJECT"):
                 unmeasured = re.compile(r"(?<!\S)" + re.escape(name) + r"[ \t]+—(?:[ \t]|$)")
                 if not any(unmeasured.search(line) for line in terminal.screen.text().splitlines()):
-                    raise AssertionError("Built-in proxy displayed a fabricated latency: " + name)
+                    raise AssertionError("Missing unmeasured latency for " + name + "\n" + terminal.screen.text())
             terminal.key(b"\x1b[B")  # DIRECT
             terminal.key(b"\x1b[C")  # REJECT in the second column
             terminal.key(b"\r")

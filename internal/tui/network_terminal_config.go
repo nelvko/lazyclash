@@ -63,7 +63,11 @@ func (m *Model) terminalConfigFields(d *wizardDocument) {
 		d.line(clean(command))
 	}
 	p := &m.ports
-	d.pair(m.tr("ports.proxy_address"), net.JoinHostPort("127.0.0.1", strconv.Itoa(p.current.MixedPort)))
+	address := m.tr("access.disabled")
+	if p.current.MixedPort > 0 {
+		address = net.JoinHostPort("127.0.0.1", strconv.Itoa(p.current.MixedPort))
+	}
+	d.pair(m.tr("ports.proxy_address"), address)
 	d.field("ports.mixed", m.tr("network.terminalConfig.port"), &p.mixed, p.focus)
 	d.line(m.tr("network.terminalConfig.shared"))
 }

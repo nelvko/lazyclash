@@ -171,7 +171,7 @@
   "help.connections.confirm": "「关闭全部」会断开所有活跃连接，包括筛选或暂停时未显示的连接。默认选中取消，Tab 切换按钮，Enter 或空格执行，y 确认，Esc 取消。",
   "help.rules.keys": "/ 搜索 · g / Ctrl+R 重新读取规则。聚焦规则时，仅有隐藏内容才可按 Enter 查看完整内容；展开后 Enter 或 Esc 收起。",
   "help.rules.readOnly": "生效规则列表只读。展开仅补全当前规则，不展开规则集合文件；页头「规则集合」可查看和更新集合。",
-  "help.settings.ports": "在「服务与端口」中修改本地代理和控制 API 端口。",
+  "help.settings.ports": "在内核设置的「端口与访问」中修改代理端口和外部控制。",
   "help.settings.review": "应用前审阅监听端口变化及重启影响；已有 API 凭据保持私密。",
   "help.settings.persistence": "自动启动与 CLI 共用持久设置，可以独立于内核当前的运行状态修改。",
   "help.settings.tun": "在概览或代理页切换路由模式。系统实例在概览管理整机 TUN。",

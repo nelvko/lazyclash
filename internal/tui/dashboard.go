@@ -31,6 +31,10 @@ type hitRegion struct {
 	DropdownRight bool
 }
 type dashboardOptions struct {
+	coreNumber        *coreNumberEditor
+	settingsTab       coreSettingsTab
+	settingsMouseTabs bool // All tabs are clickable. Only the active tab is a keyboard stop.
+
 	Locale                          i18n.Localizer
 	Theme, EffectiveTheme           string
 	MessageTransient                bool
@@ -250,6 +254,7 @@ func drawDashboard(o dashboardOptions) (string, []hitRegion, int, []notification
 			body, bodyTargets = overviewContent(o, g.width)
 		}
 	case "settings":
+		o.settingsMouseTabs = true
 		body, bodyTargets = settingsContent(o, g.width)
 	default:
 		body, bodyTargets = o.Body, o.BodyTargets

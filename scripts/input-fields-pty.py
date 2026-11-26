@@ -66,6 +66,10 @@ def target(state, identity):
     return next((item for item in state["targets"] or [] if item["ID"] == identity), None)
 
 
+def clear_glyph(state):
+    return "×" if state["scenario"] == "ports-mixed" else "x"
+
+
 def hover_clear(terminal, report, state):
     value_hash, matching = state["value_hash"], state.get("matching")
     clear_id = state["clear_id"]
@@ -75,7 +79,7 @@ def hover_clear(terminal, report, state):
     state = wait_state(terminal, report, lambda s: s["hover"] == clear_id, "mouse motion did not hover the clear symbol")
     assert state["value_hash"] == value_hash and state.get("matching") == matching, "clear hover changed the query or matching selection"
     y = region["Y"]
-    x = next(x for x in range(region["X"], region["X"] + region["W"]) if terminal.screen.cells[y][x] == "x")
+    x = next(x for x in range(region["X"], region["X"] + region["W"]) if terminal.screen.cells[y][x] == clear_glyph(state))
     assert not terminal.screen.styles[y][x][2], "clear symbol became bold on hover"
     assert not terminal.screen.styles[y][x][3], "clear symbol gained an underline on hover"
     assert_clear_layout(terminal, state)
@@ -87,13 +91,13 @@ def assert_clear_layout(terminal, state):
     if not field or field.get("InputWidth", 0) == 0:
         return
     clear = target(state, state["clear_id"])
-    y = field["Y"] + 1
+    y = field["Y"] + field["H"] // 2
     clear_x = field["X"] + 2 + field["InputWidth"] + 1
     right = clear_x + 1
     inline = clear_x + 2 < field["X"] + field["W"] - 2
     if clear:
         assert clear["Y"] == y and clear["X"] == clear_x and clear["W"] == 2, "clear hit region does not follow the editor"
-        assert terminal.screen.cells[y][right] == "x", "clear symbol does not follow the input text"
+        assert terminal.screen.cells[y][right] == clear_glyph(state), "clear symbol does not follow the input text"
     if inline:
         assert terminal.screen.cells[y][clear_x + 2:clear_x + 4] == ([" ", "│"] if clear else [" ", " "]), "clear separator does not follow the nonempty-input state"
     else:
@@ -122,16 +126,19 @@ def assert_geometry(terminal, state, allow_hidden=False):
         assert cursor is None, "a clipped input exposed its terminal cursor"
         assert allow_hidden, "input is not visible at %sx%s" % (width, height)
         return False
-    assert field["H"] == 3, field
+    assert field["H"] in (1, 3), field
     assert cursor, "focused visible input has no native cursor"
     assert cursor["shape"] == 2, cursor  # Bubble Tea's CursorBar.
-    assert cursor["y"] == field["Y"] + 1, (field, cursor)
+    assert cursor["y"] == field["Y"] + field["H"] // 2, (field, cursor)
     assert field["X"] + 2 <= cursor["x"] <= field["X"] + 2 + field["InputWidth"], (field, cursor)
     assert 0 <= cursor["x"] < width and 0 <= cursor["y"] < height, cursor
     rows = terminal.screen.cells
-    assert rows[field["Y"]][field["X"]] == "╭", "shared rounded frame is absent"
-    assert rows[field["Y"] + 2][field["X"]] == "╰", "shared rounded frame bottom is clipped"
-    y, x = field["Y"] + 1, field["X"]
+    if field["H"] == 3:
+        assert rows[field["Y"]][field["X"]] == "╭", "shared rounded frame is absent"
+        assert rows[field["Y"] + 2][field["X"]] == "╰", "shared rounded frame bottom is clipped"
+    else:
+        assert rows[field["Y"]][field["X"]] == "│", "compact frame is absent"
+    y, x = field["Y"] + field["H"] // 2, field["X"]
     assert terminal.screen.styles[y][x + 2][1] == terminal.screen.styles[y][x - 1][1], "input interior does not match its surrounding surface"
     assert_clear_layout(terminal, state)
     return True
@@ -225,7 +232,7 @@ def exercise(preview, args, output, language, profile, scenario):
                     fg, bg, bold, underline = terminal.screen.styles[y][x]
                     assert bold, "selected matching option is not emphasized"
                     field = state["field"]
-                    assert bg == terminal.screen.styles[field["Y"] + 1][field["X"] + 2][1], "selected matching option added a fill"
+                    assert bg == terminal.screen.styles[field["Y"] + field["H"] // 2][field["X"] + 2][1], "selected matching option added a fill"
                     if label == "ab":
                         assert underline, "whole-word icon has no underline"
             selection, value_hash = state["matching"], state["value_hash"]

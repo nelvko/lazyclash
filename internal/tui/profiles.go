@@ -516,8 +516,12 @@ func (m *Model) renderProfileForm(base string) (string, []hitRegion) {
 		inputRow = 3
 	}
 	m.input = prepareInputField(m.input, inputFieldTextWidth(inner, 0, true), modalBackground, m.failure != "")
-	field := renderInputField(m.input, inputFieldOptions{ID: "import-input", ClearID: "import-input.clear", ClearHovered: m.hover == "import-input.clear", ClearFocused: m.focus == "import-input.clear", Width: inner, Surface: modalBackground,
-		Focused: m.input.Focused(), Hovered: m.hover == "import-input", Invalid: m.failure != "",
+	hover := m.hover
+	if m.form == "editor-preference" {
+		hover = ""
+	}
+	field := renderInputField(m.input, inputFieldOptions{ID: "import-input", ClearID: "import-input.clear", ClearHovered: hover == "import-input.clear", ClearFocused: m.focus == "import-input.clear", Width: inner, Surface: modalBackground,
+		Focused: m.input.Focused(), Hovered: hover == "import-input", Invalid: m.failure != "",
 		Disabled: m.busy || m.quitting})
 	for row, line := range field.lines {
 		put(inputRow+row, line)

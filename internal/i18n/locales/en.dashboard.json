@@ -171,7 +171,7 @@
   "help.connections.confirm": "Close all affects every live connection, including those hidden by a filter or pause. Cancel is selected by default. Use Tab to choose, Enter or Space to activate, y to confirm, or Esc to cancel.",
   "help.rules.keys": "/ searches · g / Ctrl+R reloads rules. On a focused rule, Enter shows hidden content, if any, or collapses it; Esc also collapses it.",
   "help.rules.readOnly": "Effective rules are read only. Expansion reveals the full rule text, not the contents of a rule collection. Open Rule collections in the header to inspect or update providers.",
-  "help.settings.ports": "Service and Ports: edit local proxy and control API ports.",
+  "help.settings.ports": "Use Ports & access in Core Settings to edit proxy listeners and external control.",
   "help.settings.review": "Review changed listeners and restart impact before applying; existing API credentials remain private.",
   "help.settings.persistence": "Autostart is shared with the CLI. Set it independently of whether the core is running.",
   "help.settings.tun": "Change routing mode in Overview or Proxies. The system instance manages host TUN from Overview.",

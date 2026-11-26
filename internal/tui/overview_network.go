@@ -262,14 +262,6 @@ func (m *Model) syncNetworkActionFocus() {
 	m.focus = fallback
 }
 
-func savedMixedPortLabel(o dashboardOptions) string {
-	port := "--"
-	if o.Snapshot.Installed && o.Snapshot.MixedPort > 0 && o.Snapshot.MixedPort <= 65535 {
-		port = strconv.Itoa(o.Snapshot.MixedPort)
-	}
-	return o.Locale.T("dashboard.network.mixedPort", port)
-}
-
 // Controller metadata contains a local address; display only its host and port,
 // excluding any user info, path or query even in an incomplete observation.
 func overviewControllerAddress(value string) string {

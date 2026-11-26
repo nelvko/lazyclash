@@ -106,14 +106,41 @@ func (m *Model) overviewCardHasControls() bool {
 
 func (m *Model) settingsContextHelp() string {
 	var label string
+	if strings.HasPrefix(m.focus, "settings.tab.") {
+		return m.tr("settings.tabHelp")
+	}
+	if m.page == "settings" {
+		hint := ""
+		switch m.focus {
+		case "settings.ipv6":
+			if m.snapshot.TUN {
+				hint = "settings.tunIPv6"
+			}
+		case "settings.geoAutoUpdate", "settings.geoUpdateInterval":
+			hint = "settings.geoRestart"
+		case "settings.storeFakeIP":
+			hint = "settings.fakeIPHint"
+		case "settings.allowLAN":
+			hint = "settings.allowLANHint"
+		case "settings.etagSupport":
+			hint = "settings.etagHint"
+		case "settings.findProcessMode":
+			hint = "settings.processHint"
+		}
+		if hint != "" {
+			return m.controlActionHelp(m.tr(m.focus)) + " · " + m.tr(hint)
+		}
+	}
 	switch m.focus {
+	case "settings.externalControl", "settings.proxyAuth", "settings.keepAliveIdle", "settings.keepAliveInterval", "settings.geoUpdateInterval":
+		return m.controlActionHelp(m.tr("settings.editValue", m.tr(m.focus)))
 	case "settings.language":
 		label = "settings.chooseLanguage"
 	case "settings.theme":
 		label = "settings.chooseTheme"
 	case "settings.ipv6", "settings.unifiedDelay", "settings.tcpConcurrent", "settings.tcpKeepAlive", "settings.etagSupport":
 		return m.controlActionHelp(m.tr("settings.toggleCoreSetting", m.tr(m.focus)))
-	case "settings.logLevel", "settings.findProcessMode":
+	case "settings.logLevel", "settings.findProcessMode", "settings.geodataLoader":
 		return m.controlActionHelp(m.tr("settings.chooseCoreSetting", m.tr(m.focus)))
 	case "key-hints.toggle":
 		label = "navigation.controls.hideHints"

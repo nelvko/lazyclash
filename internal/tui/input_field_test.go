@@ -236,7 +236,7 @@ func TestInputFieldCursorAcrossAllEditorsAndResize(t *testing.T) {
 				m, _ = update(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
 				field := findTarget(t, m, id)
 				cursor := m.View().Cursor
-				if field.InputWidth <= 0 || cursor == nil || cursor.Y != field.Y+1 || cursor.X < field.X+2 || cursor.X > field.X+2+field.InputWidth {
+				if field.InputWidth <= 0 || cursor == nil || cursor.Y != field.Y+field.H/2 || cursor.X < field.X+2 || cursor.X > field.X+2+field.InputWidth {
 					t.Fatalf("cursor outside editor at %v: field=%+v cursor=%+v", size, field, cursor)
 				}
 				if scenario != "masked-form" {

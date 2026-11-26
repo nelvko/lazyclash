@@ -75,8 +75,8 @@ func inputForClearTest(m *Model, id string) *textinput.Model {
 		return &m.profileCreate.userAgent
 	case "ports.mixed":
 		return &m.ports.mixed
-	case "ports.controller":
-		return &m.ports.controller
+	case "ports.address":
+		return m.ports.field("ports.address")
 	case "local", "setup.local":
 		return &m.wizard.local
 	case "version-input", "setup.version-input":
@@ -122,9 +122,9 @@ func TestInputClearInvalidatesErrorsCompletionAndPlans(t *testing.T) {
 	t.Run("ports", func(t *testing.T) {
 		m, id, _ := inputFieldsScenario(t, "ports-controller", "en")
 		m.ports.plan = app.RuntimeSettingsPlan{Changed: true}
-		m.ports.controller.Err, m.ports.err = errors.New("invalid port"), "invalid port"
+		m.ports.field(id).Err, m.ports.err = errors.New("invalid port"), "invalid port"
 		m.clearInputField(id + ".clear")
-		if m.ports.plan.Changed || m.ports.err != "" || m.ports.controller.Err != nil || !m.ports.reveal || m.ports.mixed.Value() != "7897" {
+		if m.ports.plan.Changed || m.ports.err != "" || m.ports.field(id).Err != nil || !m.ports.reveal || m.ports.mixed.Value() != "7897" {
 			t.Fatal("clear retained reviewed ports or altered the other port")
 		}
 	})

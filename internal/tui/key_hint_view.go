@@ -14,11 +14,14 @@ import (
 func dashboardKeyHints(o dashboardOptions) (string, hitRegion) {
 	width := max(0, o.Width-4)
 	tail := o.Locale.T("dashboard.footer.help")
-	if o.tooltips != nil && o.tooltips.focused(o.Focus).ID != "" {
+	hasTip := o.tooltips != nil && o.tooltips.focused(o.Focus).ID != ""
+	if hasTip {
 		tail = o.Locale.T("tooltip.shortcut")
 	}
 	if o.HelpAfterClose {
-		tail = o.Locale.T("dashboard.footer.helpAfterClose")
+		if !hasTip {
+			tail = o.Locale.T("dashboard.footer.helpAfterClose")
+		}
 	} else if o.EditingInput {
 		tail = "Esc → " + tail
 	} else if width >= 36 {

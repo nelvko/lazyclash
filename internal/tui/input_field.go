@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"cmp"
 	"strings"
 
 	"charm.land/bubbles/v2/textinput"
@@ -18,6 +19,7 @@ const (
 // geometry, frame, optional clear action and trailing search controls.
 type inputFieldOptions struct {
 	ID, ClearID, Surface       string
+	ClearGlyph                 string // Defaults to x.
 	Width                      int
 	Focused, Hovered, Invalid  bool
 	Disabled                   bool
@@ -104,9 +106,10 @@ func renderInputField(input textinput.Model, o inputFieldOptions) dashboardBlock
 	if clearWidth > 0 {
 		clear := strings.Repeat(" ", clearWidth)
 		if input.Value() != "" && !o.Disabled {
-			label, color := " x", muted
+			glyph := cmp.Or(o.ClearGlyph, "x")
+			label, color := " "+glyph, muted
 			if o.ClearFocused {
-				label, color = "›x", focus
+				label, color = "›"+glyph, focus
 			} else if o.ClearHovered {
 				color = text
 			}

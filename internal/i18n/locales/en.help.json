@@ -3,7 +3,7 @@
   "help.rules.search": "Alt+C toggles case sensitivity · Alt+W whole-word matching · Alt+R regular expressions.",
   "help.rules.proxy": "Click a proxy group name or press → on its rule to open the group in Proxies. Press 5 to return to the rules list.",
   "help.search.input": "While searching, Enter / Esc leaves the input and keeps the filter; Tab / Shift+Tab moves to another control.",
-  "help.settings.keys": "Tab / Shift+Tab visits setting controls. Enter / Space activates the focused control. Esc / ← / h returns to navigation.",
+  "help.settings.keys": "Tab / Shift+Tab moves between controls. On the core tabs, ←/→ switches tabs. Enter / Space activates a control. Esc returns to navigation.",
   "help.overview.keys": "Use ↑↓ / j/k to browse cards and Enter / Space to focus an available control. Tab / Shift+Tab moves between controls. Enter / Space activates the focused control. On a routing mode, ←→ / h/l moves between options. Esc returns to navigation. Other controls also accept ← / h to go back.",
   "help.core.proxies": "While browsing content: x stops the core.",
   "help.core.overview": "While browsing content: s starts · x stops the core.",

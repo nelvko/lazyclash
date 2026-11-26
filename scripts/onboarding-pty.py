@@ -187,6 +187,9 @@ def png(screen, path, font_path, cjk_path, size):
     cell_w = round(font.getlength("M"))
     ascent, descent = font.getmetrics()
     cell_h = ascent + descent + 3
+    # Terminals fall back to a symbol font for the one-cell information icon.
+    # Menlo has no circled i; its CJK fallback contains the glyph at full width.
+    info_font = cjk.font_variant(size=cell_w)
     image = Image.new("RGB", (screen.columns * cell_w, screen.rows * cell_h), DEFAULT_STYLE[1])
     draw = ImageDraw.Draw(image)
     for y, row in enumerate(screen.cells):
@@ -216,6 +219,10 @@ def png(screen, path, font_path, cjk_path, size):
                     draw.line((left, center_y, center_x, center_y), fill=fg)
                 if text in "─┌└├┬┴┼":
                     draw.line((center_x, center_y, left + cell_w - 1, center_y), fill=fg)
+            elif text == "ⓘ" and cjk_path:
+                x0, y0, x1, y1 = info_font.getbbox(text)
+                draw.text((left + (cell_w - x1 - x0) // 2, top + (cell_h - y1 - y0) // 2),
+                          text, font=info_font, fill=fg)
             elif text == "💤" and emoji:
                 draw.text((left + max(0, (cells * cell_w - 20) // 2), top + max(0, (cell_h - 20) // 2)),
                           text, font=emoji, embedded_color=True)

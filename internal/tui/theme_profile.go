@@ -142,8 +142,6 @@ func terminalColor(c color.Color, profile colorprofile.Profile) color.Color {
 		{routingSelectedHoverBackground, 25, 4},
 		{routingFocus, 222, 11},
 		{settingsSwitchOnThumb, 117, 6},
-		{settingsSwitchOnHoverThumb, 153, 14},
-		{settingsSwitchOffHoverThumb, 252, 15},
 		{success, 114, 10},
 		{errorColor, 210, 9},
 		{noticeSlate, 24, 4},

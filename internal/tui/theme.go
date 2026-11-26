@@ -52,9 +52,7 @@ const (
 	routingSelectedHoverBackground = "#57738f"
 	routingFocus                   = "#ffcc83"
 
-	settingsSwitchOnThumb       = "#a8cff2"
-	settingsSwitchOnHoverThumb  = "#c5e3ff"
-	settingsSwitchOffHoverThumb = "#c1c8d1"
+	settingsSwitchOnThumb = "#a8cff2"
 )
 
 func themed(s, foreground, background string, dimmed bool) string {

@@ -3,52 +3,74 @@
 设置页集中管理界面偏好、持久服务设置和维护操作。卡片左侧列出设置名称，右侧显示开关和下拉框。
 
 - **界面偏好**包含语言、快捷键提示栏、主题和外部编辑器。
-- **内核偏好**决定本机 Mihomo 如何建连、测量延迟、匹配进程、记录日志和下载资源。每个实例独立保存这些选择。
-- **服务与端口**包含自动启动、注销后运行条件和本地端口编辑。端口摘要显示已保存的 HTTP/SOCKS5 mixed 端口与脱敏控制 API 地址。
-- **内核管理**包含 Mihomo 安装版本、安装或管理和更新入口、重启与卸载说明。
+- **内核设置**按「端口与访问」「连接与运行」「资源与缓存」三个标签组织。每个实例独立保存这些设置。
+- **内核管理**包含内核安装、更新、重启、自动启动和注销后运行条件。
+
 - **故障排查**包含客户端版本、日志页入口和终端命令 `lazyclash doctor`。服务错误、异常退出结果和配置漂移仅在出现时展示。
 
 下载设置位于固定页头。日常启停和 TUN 在概览，路由模式在概览和代理页，配置导入在订阅页。
-点概览「终端代理」下的「配置」可在弹窗中修改混合端口。控制 API 端口在设置页的「服务与端口」中修改。两处的端口变更都需审阅后应用。
+概览「终端代理」的「配置」也可修改同一个混合端口。
 
-## 内核偏好
+## 内核设置
 
-安装内核后即可修改。点击滑轨或滑块，或用 Tab 聚焦后按 Enter，即可切换。日志等级和进程匹配从下拉框选择。
+### 端口与访问
+
+「代理端口」默认显示 `7897 ›`。点击整行可设置混合、HTTP(S) 和 SOCKS 端口，可用范围为 1–65535。留空或填 0 即停用该监听。Linux（含 Android）内核另有 Redirect 和 TProxy 端口，macOS 内核另有 Redirect 端口。平台取自已校验的内核可执行文件；无法识别时展示全部端口，并在说明中列出平台限制。打开「允许局域网访问」后，代理端口监听所有接口，控制 API 使用自己的监听地址。[Mihomo 代理端口](https://wiki.metacubex.one/config/inbound/port/)
+
+「代理身份验证」右侧在没有用户时显示 `未配置 ›`，有用户时显示 `N 个用户 ›`。点击整行，可以在同一弹窗添加用户、更改用户名或密码、移除用户，审阅后一次应用。已有用户的密码留空即沿用。HTTP(S)、SOCKS 和 Mixed 端口共用这份名单。启用验证后，本机和局域网客户端都需提供账号密码。移除全部用户并应用即可关闭验证。[Mihomo 用户验证](https://wiki.metacubex.one/config/general/#_3)
+
+首次保存前沿用当前实例的有效配置。保存后，名单由当前实例管理，切换或刷新订阅时继续生效。此时订阅中的 `skip-auth-prefixes` 也不会为客户端跳过验证。使用终端代理时，请在客户端配置代理凭据，Shell 集成发布的代理地址只包含主机和端口。
+
+「外部控制」右侧显示 `›`。点击整行可设置 HTTP 监听地址和 API 密钥，展开分组可配置 HTTPS 监听和证书、CORS、本地 Unix 套接字、Linux 路由标记及 DoH 路径。HTTP 控制地址用于管理当前实例，默认是 `127.0.0.1:9097`。密钥留空沿用现值，审阅时仅显示是否替换。Unix 套接字和 DoH 请求绕过 API 密钥验证。Unix 套接字的父目录须由内核运行账户独占，例如在实例的私有运行目录中使用相对路径 `control.sock`。HTTPS 证书和私钥也可放在该运行目录中。[Mihomo 外部控制](https://wiki.metacubex.one/config/general/#api)
+
+在同一个弹窗内审阅变更，再选择应用或返回修改。端口输入有效且有变更时可进入审阅，仅列出改动的端口。应用到运行中的服务会重启内核并中断活动连接，随后从控制 API 读取变更端口的实际值。已停止的服务会在下次启动时使用新值。
+
+### 连接与运行
 
 | 设置项 | 新实例默认值 | 用途 |
 | --- | --- | --- |
 | IPv6 | 开 | 控制 Mihomo 的 IPv6 支持。启用主机 TUN 时内核临时开启 IPv6，关闭 TUN 后恢复保存的选择。 |
-| 统一延迟 | 关 | 调整节点延迟测试的计算方式，减少不同代理协议握手时间对结果的影响。 |
+| 统一延迟 | 关 | 测试节点延迟时再发一次请求。若成功，采用这次请求的耗时，减少初次握手对结果的影响。 |
 | 日志等级 | `info` | 控制内核输出的详细程度，可选 `debug`、`info`、`warning`、`error`、`silent`。 |
 | TCP 并发连接 | 关 | 同一域名解析出多个 IP 时并发尝试 TCP 连接，采用最先连通的地址。对应 `tcp-concurrent`。 |
-| TCP 保活 | 开 | 允许内核为 TCP 连接启用保活探测。开启对应 `disable-keep-alive: false`。空闲时长和探测间隔仍取自配置。 |
+| TCP 保活 | 开 | 允许内核为 TCP 连接启用保活探测。开启对应 `disable-keep-alive: false`。首次探测前的空闲时间和探测间隔按秒设置，留空使用内核默认值。 |
 | 进程匹配 | 按需（`strict`） | 按需在规则用到进程信息时查询。也可选始终查询（`always`）或关闭查询（`off`）。对应 `find-process-mode`。 |
-| 资源下载 ETag | 开 | Mihomo 更新远程代理集和规则集时，可用服务器返回的 ETag 检查资源是否变化，节省重复下载。对应 `etag-support`。 |
 
-这些偏好优先于订阅原文和该订阅的覆写。刷新或切换订阅、重新打开 TUI 和重启内核都会保留选择。已有实例继续使用已经保存的偏好。首次出现的选项从当前已部署的配置读取，缺省时使用上表默认值。[Mihomo v1.19.33 默认配置](https://github.com/MetaCubeX/mihomo/blob/v1.19.33/config/config.go#L454-L476)
+### 资源与缓存
+
+| 设置项 | 新实例默认值 | 用途 |
+| --- | --- | --- |
+| 自动更新 GEO 数据 | 关 | 开启后可设置更新间隔，默认为 24 小时。运行中调整计划后，内核管理会提示在下次启动时生效。 |
+| GEO 加载模式 | 节省内存 | 可选择 `memconservative` 或 `standard`。 |
+| 资源下载 ETag | 开 | 使用服务器的 ETag 检查远程资源是否变化。 |
+| 记住 Fake-IP 映射 | 关 | 将 `profile.store-fake-ip` 应用到当前实例。使用 Fake-IP 的订阅可跨重启复用映射，DNS 模式仍由订阅决定。 |
+
+这些偏好优先于订阅原文和该订阅的覆写。刷新或切换订阅、重新打开 TUI 和重启内核都会保留选择。已有实例继续使用已经保存的偏好。首次出现的选项从当前已部署的配置读取，缺省时使用上表默认值。[Mihomo v1.19.33 默认配置](https://github.com/MetaCubeX/mihomo/blob/v1.19.33/config/config.go#L454-L500)
 
 保存时会校验生成的配置。运行中的内核按需热重载，停止的内核在下次启动时读取新配置。订阅源文件保持原样。[Mihomo 通用配置文档](https://wiki.metacubex.one/config/general/)
 
 ## 布局与交互
 
 正文填满侧栏和外侧留白之外的可用宽度，不设最大列宽。
-正文宽度达到 80 个字符格时使用双列。左列从上到下是界面偏好、服务与端口、故障排查，右列是内核偏好、内核管理。每张卡片的高度由内容决定，同列相邻卡片之间留一行。说明换行或出现诊断信息时，只会推移同列下方的卡片。
-正文窄于 80 格时改为单列，依次显示界面偏好、内核偏好、服务与端口、内核管理、故障排查。窗口高度影响可见内容和滚动范围。[160×45 双列预览](../.test-artifacts/settings-borderless/final/20261125-212239-6aee7a/zh-Hans/truecolor/settings-wide.png) · [80×80 单列预览](../.test-artifacts/settings-borderless/final/20261125-212239-6aee7a/zh-Hans/truecolor/settings-single-column.png)
-卡片用底色分组，左右各留两个字符格。开关和下拉框按右边缘对齐。放不下名称、两个字符格的间隔和完整控件时，控件移到名称下一行，从左侧开始。
-版本号、端口地址和说明靠左显示。「编辑」「查看」「重启」等操作跟在名称或版本号后面，空间不足时换行。
-相邻设置项之间留一行空白，说明紧跟对应项。键盘聚焦时提亮整项，无色终端在名称前显示 `›`。一行有多个按钮时，按钮旁另有标记指出当前操作。开关开启时滑块为浅蓝色，靠蓝灰色滑轨右侧。关闭时滑块为亮灰色，靠灰色滑轨左侧。暂时禁用时滑块呈暗灰色，位置仍表示开或关。键盘焦点以橙色 `›` 标出。无色终端用 `░░░░██` 表示开，用 `██░░░░` 表示关。[26×24 无色焦点预览](../.test-artifacts/settings-borderless/final/20261125-212239-154bfa/zh-Hans/no-color/switch-wrapped-26x24.png)
+正文宽度达到 80 格时分两列：左侧是界面偏好与故障排查，右侧是内核设置与内核管理。窄屏按界面偏好、内核设置、内核管理、故障排查的顺序纵向排列。在同一终端宽度下，三个内核标签按最高页的内容预留空间，切换时下方卡片保持原位。
+
+标签从左向右按文字宽度排列。蓝色文字和短下划线标出当前页。鼠标经过标签、设置行或控件时保留原有配色，键盘焦点仍有独立标记。宽屏会拉开标签间距，窄屏会收紧间距，并在需要时使用短标签。窗口空间充足时，同组的设置项缩进两格，项目之间空一行，两组之间空两行。较矮或较窄的窗口使用紧凑布局。
+
+点击标签或在标签上使用左右方向键切换。当前值靠右显示。点击「代理端口」「代理身份验证」或「外部控制」整行可打开对应弹窗。数值行可直接输入，Enter 保存、Esc 取消。TCP 保活关闭时暂时禁用它的两个时间输入，保留原值。聚焦控件后可在底部快捷键提示栏查看操作提示。
+
+三个弹窗的标题与正文左侧对齐，标题下方用细线分隔。代理端口分为「常规代理」和「透明代理」两组。每个端口独占一行，短输入框在右侧对齐。空间充足时，端口名称相对分组标题缩进两格，与输入框中的数值垂直居中。窄屏或矮屏使用单行输入框，底部保留操作按钮。悬停名称旁的 `ⓘ`，或在对应输入框按 `?`，即可查看协议说明。宽屏下，每个代理账号的用户名、密码和移除操作位于同一行。外部控制优先显示监听地址和 API 密钥，其余选项可按组展开。三个弹窗内的输入框和按钮也仅在聚焦或操作时改变样式。窄屏下，字段随可用宽度换行，滚动区域会跟随键盘焦点。底部操作按钮固定，审阅时可返回继续编辑。
+
+将鼠标停在配置项名称后的 `ⓘ` 上约 300 毫秒可查看说明，移开即关闭。键盘聚焦该配置项时，底栏显示 `? 说明`，按 `?` 打开，再按 `?` 或 Esc 关闭。切换焦点或离开页面也会关闭说明。图标沿用配置项的焦点。在其余支持全局帮助的位置，`?` 仍打开快捷键帮助。
 
 Tab/Shift+Tab 按可见阅读顺序遍历操作，现有滚动机制自动揭示焦点；滚轮和 PgUp/PgDn 浏览页面。
 底栏按聚焦控件显示实际操作，例如选择语言、编辑端口或查看日志。通过 Tab 聚焦选项后按 Enter 执行，← / Esc 返回导航。
 改变窗口尺寸会重新计算布局与命中区域。语言、提示栏和主题选择会保存到下次启动。
 
-语言、主题、日志等级和进程匹配使用相同的下拉框。语言可选 English 和简体中文，主题按 Light、Dark、Auto 排列。每个控件按本组选项的最长显示宽度排版，切换选项时箭头保持原位。点击控件，或用 Tab 聚焦后按 Enter 打开，箭头由 `▾` 变为 `▴`。行尾 `✓` 标出当前值。用 ↑/↓ 移动高亮行，无色终端用行首 `›` 表示游标。按 Enter 或点击选项保存，Esc 取消本次选择。
+语言、主题、日志等级和进程匹配使用相同的下拉框。语言可选 English 和简体中文，主题按 Light、Dark、Auto 排列。每个控件按本组选项的最长显示宽度排版，切换选项时箭头保持原位。点击控件，或用 Tab 聚焦后按 Enter 打开，箭头由 `▾` 变为 `▴`。行尾 `✓` 标出当前值。用 ↑/↓ 或滚轮移动高亮行，鼠标经过其他选项时游标留在原位。无色终端用行首 `›` 表示游标。按 Enter 或点击选项保存，Esc 取消本次选择。
 
 默认的 Dark 沿用 Mariana 配色。Light 是可保存的浅色主题占位，目前与 Dark 外观相同。Auto 根据终端报告的背景明暗选择主题，终端未报告背景色时使用 Dark。
 
-设置展示实现独立放在 `internal/tui/settings_view.go`，新增文案放在独立的 `*.settings.json`。
-复用现有按钮、面板和页面滚动组件；[Charm Bubbles](https://github.com/charmbracelet/bubbles)
-没有对应的设置表单或开关组件，端口编辑仍使用其 textinput。
+设置卡片布局见 `internal/tui/settings_view.go` 与 `settings_mihomo.go`。三个访问设置弹窗共用 `ports.go` 的审阅与应用流程。数值和端口字段复用 Charm Bubbles 的单行输入组件，CORS 来源使用多行输入组件。[Charm Bubbles](https://github.com/charmbracelet/bubbles)
 
 设计借鉴用户提供的 Clash Verge、CFW 及工具设置截图中的分组、行对齐和当前值展示，
 并参考 [Lazygit 配置](https://github.com/jesseduffield/lazygit/blob/master/docs/Config.md)
@@ -57,7 +79,7 @@ Tab/Shift+Tab 按可见阅读顺序遍历操作，现有滚动机制自动揭示
 ## 验证入口
 
 ```sh
-go test ./internal/tui -run 'TestSettings|TestLanguage|TestRuntimePorts|TestKeyHints|TestTun' -count=1
+go test ./internal/tui -run 'TestSettings|TestCoreSettings|TestCoreNumber|TestRuntimePorts|TestAccess|TestProxyAuth' -count=1
 go test -c ./internal/tui -o bin/settings-tui.test
 python3 scripts/settings-pty.py --binary bin/settings-tui.test \
   --output .test-artifacts/settings-redesign/pty \
@@ -66,6 +88,12 @@ python3 scripts/settings-pty.py --binary bin/settings-tui.test \
 
 PTY 使用隔离的内存后端，不访问真实 Mihomo、订阅或系统服务。PNG 从实际 PTY 字符格与颜色重绘，
 用于检查排版和命中，不代表真实代理网络或系统服务生命周期验证。
+
+用 `--modals-only` 可单独验证三个访问设置弹窗。宽屏下检查输入框边框、标签对齐和分组留白，40×16 下检查 Tab 滚动和说明图标。[160×45 弹窗](../.test-artifacts/proxy-port-spacing/ports-160x45.png) · [40×24 弹窗](../.test-artifacts/proxy-port-spacing/ports-40x24.png) · [40×16 聚焦 TProxy](../.test-artifacts/proxy-port-spacing/ports-40x16.png)
+
+给上面的 PTY 命令加上 `--tabs-only` 可单独检查鼠标移入标签、端口行和开关前后的字符与颜色，并验证键盘切页。[200×46 实际终端](../.test-artifacts/settings-no-hover/20261126-124244-741106/zh-Hans/truecolor/resources-focused-access-hover-200x46.png) · [40×24 实际终端](../.test-artifacts/settings-no-hover/20261126-124244-741106/zh-Hans/truecolor/resources-focused-access-hover-40x24.png)
+
+三个内核设置标签已在中英文、宽屏和窄屏的 TUI 中验证。Linux/arm64 上另用真实 Mihomo v1.19.33 和独立 systemd 用户服务验证了新增 HTTP 代理端口、控制地址与密钥轮换、局域网开关、行内保活编辑，以及 GEO 更新计划在重启前后的提示。切换和刷新含相反设置的订阅后，再次读取了实例配置。[200×46 设置页](../.test-artifacts/settings-spacing/20261126-113645-a57553/zh-Hans/truecolor/ports-access-200x46.png) · [外部控制审阅](../.test-artifacts/settings-tab-style/20261126-112838-c53317/zh-Hans/truecolor/external-control-review.png) · [真实内核验证结果](../.test-artifacts/core-settings-runtime/verified.json)
 
 2026-11-05 验证通过：`make check build`、八项 Python 终端解析测试，以及
 `./scripts/verify-linux.sh lazyclash-e2e` 的 Linux/arm64 实际测试。

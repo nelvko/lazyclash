@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"net"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -19,11 +19,12 @@ import (
 
 type portsState struct {
 	open, cancelling, applied bool
-	kind                      string // Empty for Settings → Ports; otherwise an overview network dialog.
+	kind                      string
+	access                    accessDraft
 	tunOriginal, tunEnabled   bool
 	step, focus, returnFocus  string
 	controls                  []string
-	mixed, controller         textinput.Model
+	mixed                     textinput.Model
 	current                   app.RuntimeSettings
 	plan                      app.RuntimeSettingsPlan
 	result                    app.RuntimeSettingsResult
@@ -36,6 +37,7 @@ type portsMsg struct {
 	id           uint64
 	kind         string
 	settings     app.RuntimeSettings
+	auth         app.ProxyAuthSettings
 	plan         app.RuntimeSettingsPlan
 	result       app.RuntimeSettingsResult
 	snapshot     app.Snapshot
@@ -45,20 +47,13 @@ type portsMsg struct {
 }
 
 func newPortsState() portsState {
-	input := func() textinput.Model {
-		v := textinput.New()
-		v.SetVirtualCursor(false)
-		v.CharLimit = 16
-		styleInput(&v, inputBackground, false)
-		return v
-	}
+	input := textinput.New()
+	input.SetVirtualCursor(false)
+	input.CharLimit = 16
+	styleInput(&input, inputBackground, false)
 	view := viewport.New()
 	view.SoftWrap = false
-	return portsState{mixed: input(), controller: input(), focus: "ports.mixed", viewport: view}
-}
-
-func (m *Model) openPorts() tea.Cmd {
-	return m.openNetworkConfig("")
+	return portsState{mixed: input, focus: "ports.mixed", viewport: view}
 }
 
 func (m *Model) openNetworkConfig(kind string) tea.Cmd {
@@ -83,64 +78,85 @@ func (m *Model) openNetworkConfig(kind string) tea.Cmd {
 
 func (m *Model) loadPorts() tea.Cmd {
 	ctx := m.newJob("ports-load")
-	id, backend := m.id, m.backend
+	id, backend, kind := m.id, m.backend, m.ports.kind
 	m.ports.step, m.ports.err, m.ports.cancelling = "loading", "", false
 	m.message = m.tr("ports.loading_message")
 	return tea.Batch(func() tea.Msg {
+		if kind == "auth" {
+			users, err := backend.GetProxyAuth(ctx)
+			return portsMsg{id: id, kind: "load", auth: users, err: err}
+		}
 		s, err := backend.GetRuntimeSettings(ctx)
 		return portsMsg{id: id, kind: "load", settings: s, err: err}
 	}, m.spinner.Tick)
 }
 
+func (m *Model) terminalPortProposal() (app.RuntimeSettings, bool) {
+	p := &m.ports
+	mixed, err := strconv.Atoi(strings.TrimSpace(p.mixed.Value()))
+	if err != nil || mixed < 1 || mixed > 65535 {
+		return m.invalidPortField("ports.mixed", m.tr("ports.validation.range", m.tr("ports.proxy_port")))
+	}
+	s := p.current
+	s.MixedPort = mixed
+	endpoints := s.Endpoints(accessControllerAddress(s), mixed)
+	for i, ep := range endpoints {
+		for _, other := range endpoints[:i] {
+			if ep.Conflicts(other) {
+				return m.invalidPortField("ports.mixed", m.tr("ports.validation.distinct"))
+			}
+		}
+	}
+	p.mixed.Err = nil
+	return s, true
+}
+
 func (m *Model) preparePorts() tea.Cmd {
 	p := &m.ports
-	parse := func(input *textinput.Model, label string) (int, error) {
-		port, err := strconv.Atoi(strings.TrimSpace(input.Value()))
-		if err != nil || port < 1024 || port > 65535 {
-			err = errors.New(m.tr("ports.validation.range", label))
-			input.Err = err
-			return 0, err
+	backend := m.backend
+	if p.kind == "auth" {
+		users, valid := m.proxyAuthUsers()
+		if !valid {
+			return nil
 		}
-		input.Err = nil
-		return port, nil
+		original := p.access.auth.current
+		return m.checkPorts(func(ctx context.Context) (app.RuntimeSettingsPlan, error) {
+			return backend.PrepareProxyAuth(ctx, original, users)
+		})
 	}
-	mixed, mixedErr := parse(&p.mixed, m.tr("ports.proxy_port"))
-	controller, controllerErr := parse(&p.controller, m.tr("ports.controller_port"))
-	if mixedErr != nil || controllerErr != nil {
-		p.err = errors.Join(mixedErr, controllerErr).Error()
-		if mixedErr != nil {
-			p.focus = "ports.mixed"
-		} else {
-			p.focus = "ports.controller"
-		}
-		p.reveal = true
+	var settings app.RuntimeSettings
+	var valid bool
+	if p.accessEditor() {
+		settings, valid = m.accessProposal()
+	} else {
+		settings, valid = m.terminalPortProposal()
+	}
+	if !valid {
 		return nil
 	}
-	if mixed == controller {
-		p.err = m.tr("ports.validation.distinct")
-		if p.kind == "terminal" {
-			p.mixed.Err, p.focus = errors.New(p.err), "ports.mixed"
-		} else {
-			p.controller.Err, p.focus = errors.New(p.err), "ports.controller"
-		}
-		p.reveal = true
-		return nil
-	}
-	ctx := m.newJob("ports-prepare")
-	id, backend := m.id, m.backend
-	settings := app.RuntimeSettings{MixedPort: mixed, ControllerPort: controller}
+	p.normalizeProxyZero()
+	original := p.current
 	terminalOnly, locale := p.kind == "terminal", m.locale
-	p.err, p.cancelling = "", false
-	p.step, p.focus = "preparing", "ports.cancel"
-	p.viewport.GotoTop()
-	m.message = m.tr("ports.checking_message")
-	return tea.Batch(func() tea.Msg {
-		plan, err := backend.PrepareRuntimeSettings(ctx, settings)
+	return m.checkPorts(func(ctx context.Context) (app.RuntimeSettingsPlan, error) {
+		plan, err := backend.PrepareRuntimeSettingsEdit(ctx, original, settings)
 		// The terminal editor owns only the mixed port. Never let a concurrent
 		// controller-port change turn the hidden, loaded value into a proposal.
 		if err == nil && terminalOnly && plan.Current.ControllerPort != plan.Proposed.ControllerPort {
 			err = errors.New(locale.T("network.terminalConfig.changed"))
 		}
+		return plan, err
+	})
+}
+
+func (m *Model) checkPorts(prepare func(context.Context) (app.RuntimeSettingsPlan, error)) tea.Cmd {
+	ctx := m.newJob("ports-prepare")
+	id, p := m.id, &m.ports
+	p.err, p.cancelling = "", false
+	p.step, p.focus = "preparing", "ports.cancel"
+	p.viewport.GotoTop()
+	m.message = m.tr("ports.checking_message")
+	return tea.Batch(func() tea.Msg {
+		plan, err := prepare(ctx)
 		return portsMsg{id: id, kind: "prepare", plan: plan, err: err}
 	}, m.spinner.Tick)
 }
@@ -184,17 +200,27 @@ func (m *Model) acceptPorts(msg portsMsg) {
 	}
 	switch msg.kind {
 	case "load":
-		p.step, p.focus = "edit", "ports.mixed"
-		if msg.err == nil {
+		p.step, p.focus = "edit", p.firstField()
+		if msg.err == nil && p.kind == "auth" {
+			m.initProxyAuthDraft(msg.auth)
+		} else if msg.err == nil {
 			p.current = msg.settings
 			p.mixed.SetValue(strconv.Itoa(msg.settings.MixedPort))
-			p.controller.SetValue(strconv.Itoa(msg.settings.ControllerPort))
+			if p.accessEditor() {
+				m.initAccessDraft()
+			}
 		} else {
 			p.step, p.focus = "load-error", "ports.retry"
 		}
 	case "prepare":
-		p.step, p.focus = "edit", "ports.mixed"
-		if msg.err == nil {
+		p.step, p.focus = "edit", p.firstField()
+		if msg.err != nil {
+			m.revealControlError(msg.err)
+			m.revealProxyBindError(msg.err)
+		}
+		if msg.err == nil && p.accessEditor() && !msg.plan.Changed {
+			p.err = m.tr("access.unchanged")
+		} else if msg.err == nil {
 			p.plan, p.step, p.focus = msg.plan, "review", "ports.apply"
 			p.viewport.GotoTop()
 		}
@@ -205,6 +231,10 @@ func (m *Model) acceptPorts(msg portsMsg) {
 		p.applied = msg.err == nil || msg.result.Changed
 		if p.applied {
 			p.current = msg.result.Settings
+			if p.accessEditor() {
+				p.access = accessDraft{}
+				p.plan = app.RuntimeSettingsPlan{}
+			}
 			m.message = m.tr("ports.applied")
 		} else {
 			m.message = m.tr("ports.finished")
@@ -216,6 +246,9 @@ func (m *Model) acceptPorts(msg portsMsg) {
 			m.markOperationStateUnknown()
 		}
 		m.notification.operation.Context = m.tr("notification.ports")
+		if p.kind == "auth" {
+			m.notification.operation.Context = m.tr("settings.proxyAuth")
+		}
 		m.notification.critical = diagnostic.RequiresAttention(msg.err) || msg.refreshError != nil || msg.result.Changed && msg.err != nil
 		if (m.notification.critical || m.notification.retainDialog) && (msg.err != nil || msg.refreshError != nil) {
 			var summary []string
@@ -235,6 +268,9 @@ func (m *Model) acceptPorts(msg portsMsg) {
 			m.failure = strings.Join(summary, " · ")
 			m.notification.details = m.locale.Error(errors.Join(msg.err, msg.refreshError))
 		}
+		if !p.applied && !m.notification.critical {
+			m.revealProxyBindError(msg.err)
+		}
 	}
 }
 
@@ -244,6 +280,8 @@ func (m *Model) closePorts() {
 		return
 	}
 	m.ports.open = false
+	m.ports.access = accessDraft{}
+	m.ports.plan = app.RuntimeSettingsPlan{}
 	m.focus = m.ports.returnFocus
 	if !m.snapshot.Installed {
 		m.focus = "install"
@@ -271,6 +309,29 @@ func (m *Model) portsActivate(id string) tea.Cmd {
 	if m.ports.kind == "tun" && strings.HasPrefix(id, "tun.") {
 		return m.networkTUNActivate(id)
 	}
+	if m.ports.accessEditor() && m.ports.step == "edit" {
+		p := &m.ports
+		if p.kind == "auth" && m.activateProxyAuth(id) {
+			return nil
+		}
+		switch id {
+		case "ports.tlsSection", "ports.corsSection", "ports.advancedSection":
+			p.access.sections[id] = !p.access.sections[id]
+			p.focus, p.reveal = id, true
+			return nil
+		case "ports.private":
+			p.access.private = !p.access.private
+			p.focus, p.reveal, p.err = id, true, ""
+			return nil
+		case "ports.origins":
+			p.focus, p.reveal = id, true
+			return p.access.origins.Focus()
+		}
+		if p.field(id) != nil {
+			p.focus, p.reveal = id, true
+			return textinput.Blink
+		}
+	}
 	switch id {
 	case "terminal.copyActivation":
 		if command := pendingActivationCommand(m.snapshot.TerminalProxy); m.ports.kind == "activation" && command != "" {
@@ -284,7 +345,7 @@ func (m *Model) portsActivate(id string) tea.Cmd {
 	case "ports.apply":
 		return m.applyPorts()
 	case "ports.back":
-		m.ports.step, m.ports.focus, m.ports.reveal = "edit", "ports.mixed", true
+		m.ports.step, m.ports.focus, m.ports.reveal = "edit", m.ports.firstField(), true
 		m.ports.viewport.GotoTop()
 	case "ports.retry":
 		if m.ports.step == "load-error" {
@@ -292,7 +353,7 @@ func (m *Model) portsActivate(id string) tea.Cmd {
 		}
 		m.ports.step = "edit"
 		return m.preparePorts()
-	case "ports.mixed", "ports.controller":
+	case "ports.mixed":
 		m.ports.focus, m.ports.reveal = id, true
 		return textinput.Blink
 	}
@@ -303,13 +364,18 @@ func (m *Model) updatePortsInput(msg tea.Msg) tea.Cmd {
 	if m.busy || m.ports.step != "edit" {
 		return nil
 	}
-	var input *textinput.Model
-	switch m.ports.focus {
-	case "ports.mixed":
-		input = &m.ports.mixed
-	case "ports.controller":
-		input = &m.ports.controller
-	default:
+	if m.ports.focus == "ports.origins" && m.ports.kind == "control" {
+		p := &m.ports
+		before := p.access.origins.Value()
+		var cmd tea.Cmd
+		p.access.origins, cmd = p.access.origins.Update(msg)
+		if p.access.origins.Value() != before {
+			p.err, p.reveal = "", true
+		}
+		return cmd
+	}
+	input := m.ports.field(m.ports.focus)
+	if input == nil {
 		return nil
 	}
 	before := input.Value()
@@ -317,12 +383,30 @@ func (m *Model) updatePortsInput(msg tea.Msg) tea.Cmd {
 	*input, cmd = input.Update(msg)
 	if input.Value() != before {
 		input.Err, m.ports.err, m.ports.plan = nil, "", app.RuntimeSettingsPlan{}
+		if m.ports.focus == m.ports.access.bindField {
+			m.ports.access.bindField, m.ports.access.bindMessage = "", ""
+		}
 		m.ports.reveal = true
 	}
 	return cmd
 }
 
+func (p *portsState) editingProxyPorts() bool {
+	return p.open && p.kind == "proxy" && p.step == "edit"
+}
+
 func (m *Model) portsKey(k tea.KeyPressMsg) tea.Cmd {
+	if m.ports.editingProxyPorts() {
+		if m.tooltip.key(k.String(), m.ports.focus) {
+			if m.tooltip.open != "" && m.tooltip.open == m.tooltip.offscreen.ID {
+				m.ports.reveal = true
+			}
+			return nil
+		}
+		if k.String() == "?" {
+			return nil
+		}
+	}
 	p := &m.ports
 	if m.busy {
 		if k.String() == "esc" {
@@ -334,6 +418,9 @@ func (m *Model) portsKey(k tea.KeyPressMsg) tea.Cmd {
 	if p.kind != "" && key != "esc" && len(p.controls) == 0 {
 		return nil
 	}
+	if p.focus == "ports.origins" && p.step == "edit" && (key == "enter" || key == "up" || key == "down") {
+		return m.updatePortsInput(k)
+	}
 	if p.kind != "" {
 		switch key {
 		case "down":
@@ -341,18 +428,19 @@ func (m *Model) portsKey(k tea.KeyPressMsg) tea.Cmd {
 		case "up":
 			key = "shift+tab"
 		case "space", " ", "left", "right":
-			if p.focus == "tun.policy" {
+			if p.focus == "tun.policy" || p.focus == "ports.private" || strings.HasSuffix(p.focus, "Section") {
 				return m.portsActivate(p.focus)
 			}
 		}
 	}
 	switch key {
 	case "esc":
-		if p.step == "review" {
+		if p.step == "review" && !p.accessEditor() {
 			return m.portsActivate("ports.back")
 		}
 		m.closePorts()
 	case "tab", "shift+tab":
+		p.normalizeProxyZero()
 		index := 0
 		for i, id := range p.controls {
 			if id == p.focus {
@@ -368,7 +456,7 @@ func (m *Model) portsKey(k tea.KeyPressMsg) tea.Cmd {
 			p.reveal = true
 		}
 	case "enter":
-		if p.step == "edit" && (p.focus == "ports.mixed" || p.focus == "ports.controller") {
+		if p.step == "edit" && p.field(p.focus) != nil {
 			return m.preparePorts()
 		}
 		return m.portsActivate(p.focus)
@@ -392,7 +480,13 @@ func (m *Model) portsMouse(event tea.MouseMsg) tea.Cmd {
 			continue
 		}
 		m.hover = hit.ID
+		if hit.tip.text != "" {
+			return nil
+		}
 		if _, clicked := event.(tea.MouseClickMsg); clicked && k.Button == tea.MouseLeft {
+			if hit.ID != m.ports.focus {
+				m.ports.normalizeProxyZero()
+			}
 			if handled, cmd := m.clearInputField(hit.ID); handled {
 				return cmd
 			}
@@ -423,45 +517,34 @@ func (m *Model) portsDocument(width int) (wizardDocument, []wizardButton, string
 	case "preparing":
 		subtitle = m.tr("ports.checking")
 		d.label(m.tr("ports.checking_title"))
-		d.pair(m.tr("ports.proxy_port"), p.mixed.Value())
-		if p.kind == "" {
-			d.pair(m.tr("ports.controller_port"), p.controller.Value())
+		if p.accessEditor() {
+			d.line(m.spinner.View() + m.tr("ports.checking_detail"))
+			break
 		}
+		d.pair(m.tr("ports.proxy_port"), p.mixed.Value())
 		d.line(m.spinner.View() + m.tr("ports.checking_detail"))
 		d.line(m.tr("ports.review_boundary"))
 	case "edit":
-		if p.kind == "terminal" {
-			m.terminalConfigFields(&d)
-			buttons = append(buttons, wizardButton{"ports.review", m.tr("network.terminalConfig.save")})
+		if p.accessEditor() {
+			d.hover = ""
+			if p.kind == "proxy" {
+				_, reviewable := m.proxyPortProposal()
+				d.disabled = func(id string) bool { return id == "ports.review" && !reviewable }
+			}
+			m.accessEdit(&d)
+			buttons = append(buttons, wizardButton{"ports.review", m.tr("ports.review")})
 			break
 		}
-		d.label(m.tr("ports.listeners"))
-		proxy, controller := "--", "--"
-		if p.current.MixedPort > 0 && p.current.MixedPort <= 65535 {
-			proxy = net.JoinHostPort("127.0.0.1", strconv.Itoa(p.current.MixedPort))
-		}
-		if host, _, err := net.SplitHostPort(overviewControllerAddress(m.snapshot.Controller)); err == nil && p.current.ControllerPort > 0 && p.current.ControllerPort <= 65535 {
-			controller = net.JoinHostPort(host, strconv.Itoa(p.current.ControllerPort))
-		}
-		d.pair(m.tr("ports.proxy_address"), proxy)
-		d.pair(m.tr("ports.controller"), controller)
-		d.line(m.tr("ports.edit_boundary"))
-		d.space()
-		d.field("ports.mixed", m.tr("ports.proxy_field"), &p.mixed, p.focus)
-		d.space()
-		d.field("ports.controller", m.tr("ports.controller_port"), &p.controller, p.focus)
-		d.space()
-		d.line(m.tr("ports.range_hint"))
-		buttons = append(buttons, wizardButton{"ports.review", m.tr("ports.review")})
+		m.terminalConfigFields(&d)
+		buttons = append(buttons, wizardButton{"ports.review", m.tr("network.terminalConfig.save")})
 	case "review":
 		subtitle = m.tr("ports.review")
-		d.label(m.tr("ports.reviewed"))
-		d.pair(m.tr("ports.proxy_port"), fmt.Sprintf("%d → %d", p.plan.Current.MixedPort, p.plan.Proposed.MixedPort))
-		if p.kind == "" {
-			d.pair(m.tr("ports.controller_port"), fmt.Sprintf("%d → %d", p.plan.Current.ControllerPort, p.plan.Proposed.ControllerPort))
-			d.pair(m.tr("ports.listen_address"), m.tr("ports.loopback", p.plan.ControllerHost))
-			d.pair(m.tr("ports.profile"), snapshotProfileName(m.snapshot, p.plan.AppliedProfile, m.locale))
-			d.pair(m.tr("ports.api_key"), m.tr("ports.key_retained"))
+		if p.accessEditor() {
+			d.line(themed(m.tr("ports.reviewed"), accent, modalBackground, false))
+			m.accessReview(&d)
+		} else {
+			d.label(m.tr("ports.reviewed"))
+			d.pair(m.tr("ports.proxy_port"), fmt.Sprintf("%d → %d", p.plan.Current.MixedPort, p.plan.Proposed.MixedPort))
 		}
 		d.space()
 		label := m.tr("ports.apply")
@@ -476,8 +559,13 @@ func (m *Model) portsDocument(width int) (wizardDocument, []wizardButton, string
 			d.line(m.tr("ports.stopped_boundary"))
 		}
 		d.space()
-		d.line(m.tr("ports.preserved"))
-		buttons = []wizardButton{{"ports.back", m.tr("ports.back")}, {"ports.apply", label}}
+		buttons = []wizardButton{{"ports.back", m.tr("ports.back")}}
+		if p.accessEditor() {
+			buttons = append(buttons, wizardButton{"ports.cancel", m.tr("ports.cancel")})
+		} else {
+			d.line(m.tr("ports.preserved"))
+		}
+		buttons = append(buttons, wizardButton{"ports.apply", label})
 	case "applying":
 		subtitle = m.tr("ports.applying")
 		d.label(m.tr("ports.applying_title"))
@@ -492,9 +580,8 @@ func (m *Model) portsDocument(width int) (wizardDocument, []wizardButton, string
 		buttons = []wizardButton{{"ports.done", m.tr("ports.done")}}
 		if p.applied {
 			d.line(themed(m.tr("ports.applied"), success, modalBackground, false))
-			d.pair(m.tr("ports.proxy_port"), strconv.Itoa(p.result.Settings.MixedPort))
-			if p.kind == "" {
-				d.pair(m.tr("ports.controller"), p.result.Controller)
+			if !p.accessEditor() {
+				d.pair(m.tr("ports.proxy_port"), strconv.Itoa(p.result.Settings.MixedPort))
 			}
 			if p.result.Restarted {
 				d.line(m.tr("ports.restarted"))
@@ -522,15 +609,37 @@ func (m *Model) portsDocument(width int) (wizardDocument, []wizardButton, string
 	return d, buttons, subtitle
 }
 
+// If Tab would have reached the zero's clear button, that control disappears
+// along with the value. Skip it in this same navigation event.
+func (p *portsState) normalizeProxyZero() {
+	if p.kind != "proxy" || p.step != "edit" {
+		return
+	}
+	if input := p.field(p.focus); input != nil {
+		raw := strings.TrimSpace(input.Value())
+		if raw != "" && strings.Trim(raw, "0") == "" {
+			input.SetValue("")
+			p.controls = slices.DeleteFunc(p.controls, func(id string) bool { return id == p.focus+".clear" })
+		}
+	}
+}
+
 func (m *Model) renderPorts(base string) (string, []hitRegion) {
 	p := &m.ports
 	w, h := m.width, m.height
 	modal := m.canFloatDocument()
+	access := p.accessEditor()
 	if p.kind != "" {
 		// Network configurations float over the entire dashboard, including
 		// the sidebar. Even the narrow layout keeps a visible gutter.
 		modal = true
 		preferredWidth := min(66, max(34, w*3/5))
+		if access {
+			preferredWidth = 78
+			if p.kind == "proxy" {
+				preferredWidth = 66
+			}
+		}
 		if p.kind == "activation" {
 			command := pendingActivationCommand(m.snapshot.TerminalProxy)
 			preferredWidth = max(preferredWidth, min(80, ansi.StringWidth(clean(command))+2*modalBodyInset))
@@ -554,20 +663,27 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 		surface.put(0, 0, label)
 		return surface.render(base), nil
 	}
-	inner := w - 2*modalBodyInset
+	inset := modalBodyInset
+	if p.kind == "proxy" && w < 54 {
+		inset = modalPaddingX
+	}
+	inner := w - 2*inset
 	doc, buttons, subtitle := m.portsDocument(inner)
 	if (p.kind == "tun" || p.kind == "activation") && len(buttons) == 1 {
 		p.focus = buttons[0].ID
 	}
 	p.controls = nil
 	for _, hit := range doc.targets {
-		p.controls = append(p.controls, hit.ID)
+		if hit.tip.text == "" {
+			p.controls = append(p.controls, hit.ID)
+		}
 	}
 	var footer []string
 	var footerHits []hitRegion
+	backWidth := 0
 	line := ""
 	for _, button := range buttons {
-		blocked := m.busy && button.ID != "ports.cancel" || p.cancelling && button.ID == "ports.cancel"
+		blocked := m.busy && button.ID != "ports.cancel" || p.cancelling && button.ID == "ports.cancel" || doc.disabled != nil && doc.disabled(button.ID)
 		if !blocked {
 			p.controls = append(p.controls, button.ID)
 		}
@@ -575,15 +691,20 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 		kind := buttonSecondary
 		if primary {
 			kind = buttonPrimary
+		} else if access && button.ID == "ports.back" {
+			kind = buttonText
 		}
 		minWidth := 0
 		if button.ID == "terminal.copyActivation" {
 			minWidth = max(ansi.StringWidth(m.tr("terminal.activationCopy")), ansi.StringWidth(m.tr("terminal.activationCopyRequested")))
 		}
 		value := renderButton(button.Label, buttonOptions{Kind: kind, Surface: modalBackground, Width: minWidth,
-			Focused: p.focus == button.ID, Hovered: m.hover == button.ID,
+			Focused: p.focus == button.ID, Hovered: !access && m.hover == button.ID,
 			Disabled: blocked && !m.busy, Busy: blocked && m.busy, Plain: m.buttonPlain()})
 		width := min(inner, ansi.StringWidth(value))
+		if access && button.ID == "ports.back" {
+			backWidth = width
+		}
 		if line != "" && ansi.StringWidth(line)+width > inner {
 			footer = append(footer, line)
 			line = ""
@@ -597,16 +718,25 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 	if p.kind != "" {
 		for row, value := range footer {
 			offset := max(0, inner-ansi.StringWidth(value))
-			footer[row] = strings.Repeat(" ", offset) + value
+			if row == 0 && backWidth > 0 {
+				footer[row] = ansi.Cut(value, 0, backWidth) + strings.Repeat(" ", offset) + ansi.Cut(value, backWidth, inner)
+			} else {
+				footer[row] = strings.Repeat(" ", offset) + value
+			}
 			for i := range footerHits {
-				if footerHits[i].Y == row {
+				if footerHits[i].Y == row && !(backWidth > 0 && footerHits[i].ID == "ports.back") {
 					footerHits[i].X += offset
 				}
 			}
 		}
 	}
 	bodyY := 5
-	if p.kind == "activation" {
+	if access {
+		bodyY = 4
+		if h < 24 {
+			bodyY = 3
+		}
+	} else if p.kind == "activation" {
 		bodyY = 3
 	} else if h < 30 {
 		bodyY = 2
@@ -615,10 +745,9 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 	if p.err != "" {
 		errors = strings.Split(wrapText(p.err, inner), "\n")
 	}
-	// The activation dialog uses the dashboard's key hints. Its fixed footer
-	// needs one row of padding after the buttons.
+	// These dialogs share the dashboard's contextual key hints.
 	footerInset := 3
-	if p.kind == "activation" {
+	if p.kind == "activation" || access {
 		footerInset = 1
 	}
 	if modal {
@@ -643,8 +772,9 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 	if p.reveal {
 		for _, hit := range doc.targets {
 			if hit.ID == strings.TrimSuffix(p.focus, ".clear") {
-				// Include the field label as well as its entire three-row frame.
+				// Keep the field and any wrapped feedback visible together.
 				top, bottom := max(0, hit.Y-1), hit.Y+hit.H
+				bottom = max(bottom, min(doc.focusedRowEnd, hit.Y+bodyH))
 				if top < p.viewport.YOffset() {
 					p.viewport.SetYOffset(top)
 				}
@@ -660,43 +790,55 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 	title := "ports.title"
 	if p.kind == "activation" {
 		title = "terminal.activationTitle"
+	} else if access {
+		title = "access." + p.kind + "Title"
 	} else if p.kind != "" {
 		title = "network." + p.kind + "Config.title"
 	}
-	surface.put(modalBodyInset, 1, cellCrop(m.tr(title), inner))
-	if bodyY == 5 {
-		surface.put(modalBodyInset, 2, themed(subtitle, muted, modalBackground, false))
-		surface.divider(3)
+	if access {
+		if p.step == "edit" {
+			subtitle = ""
+		}
+		surface.accessHeader(m.tr(title), subtitle, inset)
+	} else {
+		surface.put(inset, 1, cellCrop(m.tr(title), inner))
+		if bodyY == 5 {
+			surface.put(inset, 2, themed(subtitle, muted, modalBackground, false))
+			surface.divider(3)
+		}
 	}
 	var hits []hitRegion
 	for i, line := range strings.Split(p.viewport.View(), "\n") {
 		if i >= bodyH {
 			break
 		}
-		surface.put(modalBodyInset, i+bodyY, cellPad(line, inner))
+		surface.put(inset, i+bodyY, cellPad(line, inner))
 	}
 	for _, hit := range doc.targets {
-		hit.X, hit.Y = hit.X+modalBodyInset, bodyY+hit.Y-p.viewport.YOffset()
-		if clipped, ok := clipRegion(hit, modalBodyInset, bodyY, inner, bodyH); ok {
+		bodyHit := hit
+		hit.X, hit.Y = hit.X+inset, bodyY+hit.Y-p.viewport.YOffset()
+		if clipped, ok := clipRegion(hit, inset, bodyY, inner, bodyH); ok {
 			hits = append(hits, surface.screen(clipped))
+		} else if bodyHit.tip.text != "" && bodyHit.tip.owner == p.focus {
+			m.tooltip.offscreen = bodyHit
 		}
 	}
 	for i, line := range errors {
-		surface.put(modalBodyInset, errorY+i, themed(cellPad(line, inner), errorColor, modalBackground, false))
+		surface.put(inset, errorY+i, themed(cellPad(line, inner), errorColor, modalBackground, false))
 	}
 	surface.divider(footerY - 1)
 	for i, value := range footer {
-		surface.put(modalBodyInset, footerY+i, value)
+		surface.put(inset, footerY+i, value)
 	}
 	for _, hit := range footerHits {
-		hit.X, hit.Y = hit.X+modalBodyInset, hit.Y+footerY
+		hit.X, hit.Y = hit.X+inset, hit.Y+footerY
 		hits = append(hits, surface.screen(hit))
 	}
-	if p.kind != "activation" {
-		surface.put(modalBodyInset, h-2, helpText(cellCrop(m.portsContextHelp(), inner), modalBackground, false))
+	if p.kind != "activation" && !access {
+		surface.put(inset, h-2, helpText(cellCrop(m.portsContextHelp(), inner), modalBackground, false))
 	}
 	if len(doc.lines) > bodyH {
-		surface.put(w-modalBodyInset, bodyY+bodyH-1, themed("↕", info, modalBackground, false))
+		surface.put(w-inset, bodyY+bodyH-1, themed("↕", info, modalBackground, false))
 	}
 	return surface.render(base), hits
 }
