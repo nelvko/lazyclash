@@ -111,6 +111,37 @@ func trafficChartOriginalCells(history []trafficPoint, g trafficChartGeometry) [
 	return cells
 }
 
+func trafficChartEmptyLabel(o dashboardOptions, g trafficChartGeometry) string {
+	s := o.Runtime
+	if o.StateUnavailable || !o.Snapshot.Installed || !o.Snapshot.Service.Active || o.Snapshot.ServiceError != "" ||
+		s.Error != "" || s.TrafficError != "" || (o.RuntimeReceived && s.State != "ready") ||
+		(!o.RuntimeReceived && o.Snapshot.APIError != "") {
+		return ""
+	}
+	if len(o.TrafficHistory) == 0 && s.Traffic == nil {
+		return o.Locale.T("dashboard.overview.trafficWaiting")
+	}
+	if !o.RuntimeReceived || s.Traffic == nil || s.Traffic.Up != 0 || s.Traffic.Down != 0 {
+		return ""
+	}
+	// Use observation times even when a narrow terminal cannot show a gap mark.
+	// A status or memory refresh does not make an old zero-traffic frame fresh.
+	var last time.Time
+	for _, point := range o.TrafficHistory {
+		if point.At.Before(g.start) || point.At.After(g.now) {
+			continue
+		}
+		if !g.valid(point) || point.Up != 0 || point.Down != 0 || (!last.IsZero() && point.At.Sub(last) > trafficHistoryMaxGap) {
+			return ""
+		}
+		last = point.At
+	}
+	if !last.IsZero() && g.now.Sub(last) <= trafficHistoryMaxGap {
+		return o.Locale.T("dashboard.overview.trafficIdle")
+	}
+	return ""
+}
+
 func trafficChartRows(o dashboardOptions, g trafficChartGeometry, cells []trafficChartCell) []string {
 	labels := make([]string, g.height)
 	grid := make([]uint8, g.height)
@@ -125,6 +156,7 @@ func trafficChartRows(o dashboardOptions, g trafficChartGeometry, cells []traffi
 		grid[y/4] |= trafficChartDotBits(y%4, 0) | trafficChartDotBits(y%4, 1)
 	}
 	rows := make([]string, g.height+1)
+	hasCurve := false
 	for row := range g.height {
 		var line strings.Builder
 		if g.axis > 0 {
@@ -151,6 +183,7 @@ func trafficChartRows(o dashboardOptions, g trafficChartGeometry, cells []traffi
 				glyph = rune(0x2800 + int(grid[row]))
 			}
 			if mask := cell.up | cell.down; mask != 0 {
+				hasCurve = true
 				glyph = rune(0x2800 + int(mask))
 				// A Braille glyph has one foreground. Count each direction's dots independently.
 				foreground = trafficUploadColor
@@ -166,6 +199,14 @@ func trafficChartRows(o dashboardOptions, g trafficChartGeometry, cells []traffi
 		}
 		flush()
 		rows[row] = line.String()
+	}
+	// Use the blank row just above the middle grid line, leaving all ticks intact.
+	if row := g.rateY(g.scale.maximum/2)/4 - 1; !hasCurve && row > 0 {
+		label := trafficChartEmptyLabel(o, g)
+		if width := ansi.StringWidth(label); width > 0 && width <= g.columns {
+			left := g.axis + (g.columns-width)/2
+			rows[row] = themed(cellPad(strings.Repeat(" ", left)+label, g.axis+g.columns), muted, panel, o.Dim)
+		}
 	}
 	nowLabel := o.Locale.T("dashboard.overview.trafficNow")
 	if nowLabel == "dashboard.overview.trafficNow" {
