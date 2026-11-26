@@ -80,21 +80,26 @@ def focused_prefix(terminal):
     return cursor_shown and "".join(row[:screen.x]).endswith(PREFIX)
 
 
+def check_card_hints(terminal):
+    # Keyboard help belongs to the final terminal row, outside the cards.
+    if any("Esc Collapse" in row or "Esc Back" in row for row in terminal.screen.text().splitlines()[:-1]):
+        raise AssertionError("An Escape hint still occupies a card row\n" + terminal.screen.text())
+
+
 def list_cards(terminal, underlying, minimum=1):
     """Locate controls in the current viewport, including on colorless terminals."""
     terminal.wait("Notifications")
     terminal.wait(underlying)
-    terminal.wait("Esc Collapse")
     settle(terminal)
+    check_card_hints(terminal)
     screen = terminal.screen
     lines = screen.text().splitlines()
     heading = next((y for y, line in enumerate(lines[:5]) if "Notifications" in line), -1)
-    footer = next((y for y, line in enumerate(lines) if "Esc Collapse" in line), -1)
-    if not 0 <= heading < footer < screen.rows - 1:
+    if heading < 0:
         raise AssertionError("Missing anchored notification list\n" + screen.text())
     left = SMOKE.cell_width(lines[heading].split("Notifications")[0])
     cards = []
-    for y in range(heading + 1, footer):
+    for y in range(heading + 1, screen.rows - 1):
         row = screen.cells[y]
         if "×" not in row[left:]:
             continue
@@ -108,30 +113,22 @@ def list_cards(terminal, underlying, minimum=1):
     return cards
 
 
-def detail_corner(terminal, underlying, footer="Esc Collapse"):
-    terminal.wait(footer)
-    terminal.wait(underlying)
+def error_corner(terminal):
+    """Read wrapped lines from the marked error, excluding the underlying page and close icon."""
     settle(terminal)
+    check_card_hints(terminal)
     screen = terminal.screen
-    for footer_y, row in enumerate(screen.cells[:-1]):
-        line = "".join(row)
-        if footer not in line:
+    for y, row in enumerate(screen.cells[:8]):
+        if "!" not in row or "×" not in row[-12:]:
             continue
-        left = max(0, SMOKE.cell_width(line[:line.index(footer)]) - 4)
-        if "×" in row[left:] or (screen.columns >= 100 and left < screen.columns // 2):
-            break
-        for y, cells in enumerate(screen.cells[:footer_y]):
-            if not "".join(cells[left:]).lstrip().startswith("! "):
-                continue
-            if "×" not in cells[-12:]:
-                raise AssertionError("Close must be at the right of the first detail line\n" + screen.text())
-            close_x = max(x for x in range(left, screen.columns) if cells[x] == "×")
-            body = ["".join(cells[left:close_x]).strip()]
-            body.extend("".join(r[left:]).strip() for r in screen.cells[y+1:footer_y])
-            if any("".join(r[left:]).strip() == "Details" for r in screen.cells[:y]):
-                raise AssertionError("Details opened with a redundant title row")
-            return (close_x, y), body
-    raise AssertionError("Notification detail is missing its corner controls\n" + screen.text())
+        x = row.index("!")
+        if screen.columns >= 100 and x < screen.columns // 2:
+            continue
+        close = max(i for i in range(x, screen.columns) if row[i] == "×")
+        lines = ["".join(row[x + 2:close]).strip()]
+        lines.extend("".join(cells[x:close+1]).strip() for cells in screen.cells[y+1:-1])
+        return (close, y), lines
+    raise AssertionError("Expected an upper-right error with Close on its first line\n" + screen.text())
 
 
 def click_close(terminal, point):
@@ -144,7 +141,7 @@ def empty_shortcut(terminal, underlying):
     terminal.key(b"\x0e")
     settle(terminal)
     screen = terminal.screen.text()
-    if underlying not in screen or "No notifications" in screen or "Esc Collapse" in screen:
+    if underlying not in screen or "No notifications" in screen or "Notifications" in "\n".join(screen.splitlines()[:5]):
         raise AssertionError("Ctrl+N opened an empty surface or left the original page\n" + screen)
 
 
@@ -188,12 +185,12 @@ def exercise_notifications(terminal, output, profile):
     terminal.click_text("Expand")
     list_cards(terminal, "Interface Preferences", minimum=2)
     terminal.click_text("Proxies")  # Outside click collapses without opening that page.
-    terminal.wait_absent("Esc Collapse")
+    terminal.wait_absent("Notifications")
     terminal.wait("Interface Preferences")
     terminal.key(b"\x0e")
     list_cards(terminal, "Interface Preferences", minimum=2)
     terminal.key(b"\x0e")
-    terminal.wait_absent("Esc Collapse")
+    terminal.wait_absent("Notifications")
     terminal.click_text("Expand")
     list_cards(terminal, "Interface Preferences", minimum=2)
     for context in ("Start service", "Restart service", "Stop service"):
@@ -211,7 +208,7 @@ def exercise_notifications(terminal, output, profile):
     terminal.wait("Restart service:")
     terminal.wait("Stop service:")
     terminal.key(b"\x1b")
-    terminal.wait_absent("Esc Collapse")
+    terminal.wait_absent("Notifications")
     for columns, rows in SIZES:
         terminal.resize(columns, rows)
         # A resized emulator initially contains cropped cells from the old
@@ -235,18 +232,21 @@ def exercise_notifications(terminal, output, profile):
     terminal.wait("Start service")
     terminal.resize(40, 24)
     terminal.key(b"3")
-    terminal.wait("Error · 3 more · Expand")
+    terminal.wait("Expand")
     terminal.key(b"\x0e")  # Ctrl+N opens the bounded collection from any page.
     list_cards(terminal, "Profiles")
     terminal.resize(40, 13)  # Put the third card’s controls below the stack viewport.
     cards = list_cards(terminal, "Profiles")
-    if len(cards) != 2:
-        raise AssertionError("Expected two visible error controls before scrolling\n" + terminal.screen.text())
+    if len(cards) >= 3:
+        raise AssertionError("Expected the final card below the stack viewport\n" + terminal.screen.text())
     terminal.wait("Restart ser")
     x, y = cards[0]
-    terminal.key(f"\x1b[<65;{x+1};{y+1}M".encode())
-    cards = list_cards(terminal, "Profiles")
-    if "Start service" not in "".join(terminal.screen.cells[cards[-1][1]]):
+    for _ in range(8):
+        terminal.key(f"\x1b[<65;{x+1};{y+1}M".encode())
+        cards = list_cards(terminal, "Profiles")
+        if "Start service" in "".join(terminal.screen.cells[cards[-1][1]]):
+            break
+    else:
         raise AssertionError("Wheel did not reveal the final error card\n" + terminal.screen.text())
     click_close(terminal, cards[-1])
     terminal.wait_absent("Start servi")
@@ -255,25 +255,22 @@ def exercise_notifications(terminal, output, profile):
     terminal.key(b"x")
     terminal.wait_absent("Restart ser")
     terminal.key(b"\x1b")
-    terminal.wait_absent("Esc Collapse")
+    terminal.wait_absent("Notifications")
     terminal.resize(40, 24)
-    # The single folded error needs details because its cause was truncated.
+    # The input may leave just a single row above the Profiles page. On
+    # Settings the same message has room to wrap and must be readable at once.
+    terminal.key(b"7")
+    terminal.wait("Settings")
     terminal.wait("Stop service")
-    save_screen(terminal, output, profile, "notification-single-summary-40x24")
-    terminal.click_text("Details")
-    terminal.wait("Esc Collapse")
-    terminal.wait("Stop service")
-    _, content = detail_corner(terminal, "Profiles")
-    body = " ".join(content)
-    if "Stop service: " + error not in body:
-        raise AssertionError("Detail lost part of the folded error: " + body)
-    terminal.key(b"\x1b")
-    terminal.wait_absent("Esc Collapse")
-    terminal.click_text("Details")
-    terminal.wait("Esc Collapse")
-    terminal.key(b"x")
+    close, lines = error_corner(terminal)
+    if "Stop service: " + error not in " ".join(" ".join(lines).split()) or "Details" in terminal.screen.text():
+        raise AssertionError("Short error should wrap in place without Details\n" + terminal.screen.text())
+    save_screen(terminal, output, profile, "notification-wrapped-40x24")
+    click_close(terminal, close)
     terminal.wait_absent("Stop service")
-    empty_shortcut(terminal, "Profiles")
+    empty_shortcut(terminal, "Settings")
+    terminal.key(b"3")
+    terminal.wait("Profiles")
 
     terminal.resize(120, 32)
     terminal.key(b"a")
@@ -315,9 +312,12 @@ def exercise_profile_updates(terminal, output, profile, command, directory):
     # Refresh the same local subscriptions before and after removing their source
     # to exercise both an ordinary success and a scrollable multiline diagnostic.
     source = directory / "notice-source.yaml"
-    source.write_text('rules: ["MATCH,DIRECT"]\n')
+    few = directory / "first-three.yaml"
+    for path in (few, source):
+        path.write_text('rules: ["MATCH,DIRECT"]\n')
     for i in range(1, 19):
-        subprocess.run([*command, "profile", "add", str(source), "--remember-source", "--name", f"Lab-{i:02d}"],
+        path = few if i <= 3 else source
+        subprocess.run([*command, "profile", "add", str(path), "--remember-source", "--name", f"Lab-{i:02d}"],
                        check=True, capture_output=True, timeout=10)
     terminal.key(b"g")
     terminal.key(b"3")
@@ -360,15 +360,32 @@ def exercise_profile_updates(terminal, output, profile, command, directory):
     # after the sidebar and the relocated header action have been repainted.
     terminal.wait("Overview")
     settle(terminal)
+    few.unlink()
+    terminal.click_text("Update all")
+    terminal.wait("Update all:")
+    terminal.key(b"7")
+    terminal.wait("Interface Preferences")
+    terminal.wait("Lab-03")
+    close, lines = error_corner(terminal)
+    full = " ".join(" ".join(lines).split())
+    if ("Profiles updated: 15. Failed: 3" not in full or "Lab-03: cannot read subscription file" not in full
+            or "Details" in terminal.screen.text() or not any("Lab-03" in line for line in lines[3:])):
+        raise AssertionError("A diagnostic that fits beyond three lines should be readable in full\n" + terminal.screen.text())
+    save_screen(terminal, output, profile, "notification-wrapped-160x45")
+    click_close(terminal, close)
+    terminal.wait_absent("Lab-03")
+
+    terminal.key(b"3")
+    terminal.wait("Update all")
     source.unlink()
     terminal.click_text("Update all")
-    terminal.wait("Update all: Profiles updated:")
+    terminal.wait("Update all:")
     terminal.key(b"7")
     terminal.wait("Interface Preferences")
     terminal.click_text("Details")
-    terminal.wait("Lab-01")
-    close, content = detail_corner(terminal, "Interface Preferences")
-    if "Profiles updated: 0. Failed: 18" not in " ".join(content):
+    terminal.wait_absent("Details")
+    close, content = error_corner(terminal)
+    if "Profiles updated: 0. Failed: 18" not in " ".join(" ".join(content).split()):
         raise AssertionError("Details lost the complete update result\n" + terminal.screen.text())
     save_screen(terminal, output, profile, "notification-detail-160x45")
     terminal.key(b"\x1b[F")  # End
@@ -376,20 +393,23 @@ def exercise_profile_updates(terminal, output, profile, command, directory):
     if terminal.screen.cells[close[1]][close[0]] != "×":
         raise AssertionError("Scrolling the wide detail displaced its close button")
     terminal.key(b"\x1b")
-    terminal.wait_absent("Esc Collapse")
+    terminal.wait("Details")
     terminal.wait("Interface Preferences")
 
     terminal.resize(40, 24)
+    terminal.wait("Menu")  # Open the stack only after the narrower viewport is active.
     terminal.key(b"\x0e")
     list_cards(terminal, "Settings")
     save_screen(terminal, output, profile, "notification-list-40x24")
     terminal.key(b"\r")
+    terminal.wait_absent("Notifications")
     terminal.wait("Lab-01")
     terminal.key(b"\x1b")
     list_cards(terminal, "Settings")
     terminal.key(b"\r")
     terminal.wait("Lab-01")
-    close, _ = detail_corner(terminal, "Settings", "Esc Back")
+    terminal.wait_absent("Notifications")
+    close, _ = error_corner(terminal)
     save_screen(terminal, output, profile, "notification-detail-40x24")
     if "Lab-18" in terminal.screen.text():
         raise AssertionError("Long detail did not require scrolling at 40×24")
