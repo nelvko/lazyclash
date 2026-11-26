@@ -20,7 +20,7 @@ func settingsTestSnapshot() app.Snapshot {
 	return app.Snapshot{
 		Installed: true, ConfigReady: true, HasRun: true,
 		Version: "v1.19.33", RunningVersion: "v1.19.32", Controller: "127.0.0.1:9097",
-		Service:         service.Status{State: "inactive", Linger: true, LingerKnown: true},
+		Service:         service.Status{State: "inactive", EnableState: "disabled", Linger: true, LingerKnown: true},
 		Mode:            app.ModeStatus{Desired: "rule", Actual: "global"},
 		CoreSettings:    mihomo.DefaultGeneralSettings(),
 		RuntimeSettings: app.RuntimeSettings{MixedPort: 7897, ControllerPort: 9097},

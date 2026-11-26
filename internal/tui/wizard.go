@@ -37,6 +37,7 @@ const (
 
 type checkState struct{ Status, Detail string }
 type wizardState struct {
+	directUpdate                    bool // The settings card opened the update check directly.
 	updateMode, upgrading           bool
 	updateCheck                     app.CoreUpdateCheck
 	upgradeResult                   app.CoreUpgradeResult
@@ -496,36 +497,7 @@ func (m *Model) wizardKey(k tea.KeyPressMsg) tea.Cmd {
 			m.cancelTask(false)
 			return nil
 		}
-		if w.networkOpen {
-			m.closeNetwork()
-			return nil
-		}
-		if m.busy {
-			m.abortLookup()
-		}
-		if w.step == stepInstalling {
-			return nil
-		}
-		if w.step == stepCore || w.step == stepResult || w.step == stepVersion && !m.snapshot.Installed {
-			w.open = false
-
-			return nil
-		}
-		if w.step == stepUpdate {
-			w.step = stepCore
-			w.updateMode = false
-		} else if w.step == stepConfirm {
-			w.step = stepVersion
-		} else {
-			w.step = stepCore
-		}
-		w.focus = "install"
-		if w.step == stepCore {
-			w.focus = "check-update"
-		}
-		w.scroll = 0
-		w.reveal = true
-		return nil
+		return m.wizardActivate("back")
 	}
 	if key == "tab" || key == "shift+tab" {
 		delta := 1
@@ -714,27 +686,27 @@ func (m *Model) wizardActivate(id string) tea.Cmd {
 		}
 	case "network":
 		m.openNetwork(w.err != "")
-	case "cancel":
+	case "back", "cancel":
 		w.installRequested = false
 		if m.busy {
 			m.abortLookup()
 		}
-		w.open = false
-
-	case "back":
-		w.installRequested = false
-		if m.busy {
-			m.abortLookup()
-		}
-		if w.step == stepUpdate {
-			w.step = stepCore
+		switch {
+		case w.step == stepUpdate && !w.directUpdate:
 			w.updateMode = false
-		} else if w.step == stepConfirm {
-			w.step = stepVersion
-		} else if w.step == stepVersion && m.snapshot.Installed {
 			w.step = stepCore
-		} else {
+		case id == "back" && w.step == stepConfirm:
+			w.step = stepVersion
+		case id == "back" && w.step == stepVersion && m.snapshot.Installed:
+			w.step = stepCore
+		case id == "back" && w.step == stepInstalling:
+			return nil
+		default:
 			w.open = false
+			if w.directUpdate {
+				m.revealContentFocus()
+			}
+			return nil
 		}
 		w.scroll = 0
 		w.focus = "install"
@@ -817,7 +789,11 @@ func (m *Model) wizardActivate(id string) tea.Cmd {
 		w.details = !w.details
 	case "done":
 		w.open = false
-		m.navigate("overview")
+		if w.directUpdate {
+			m.revealContentFocus()
+		} else {
+			m.navigate("overview")
+		}
 
 	case "import":
 		w.open = false

@@ -167,6 +167,9 @@ def check_switch(terminal, words, key, enabled, profile):
 
 def focus(terminal, label, row_label, footer_hint=""):
     pattern = re.compile(r"›\s*(?:[<\[]\s*)?" + re.escape(label))
+    if label in (switch_track(True), switch_track(False)):
+        # Several settings share the same rail. Match the focused rail on its own row.
+        pattern = re.compile(re.escape(row_label) + r"[^\n]*› *" + re.escape(label))
     row_marker = re.compile(r"› +" + re.escape(row_label.split()[0]))
     for _ in range(36):
         terminal.settle()
@@ -627,7 +630,7 @@ def exercise(preview, binary, output, language, profile, args):
             x, y = position(terminal, words[key])
             row = terminal.screen.cells[y]
             left, right = card_bounds(terminal.screen, x)
-            inset = 2 if key in {"dashboard.language.title", "settings.theme", "dashboard.interface.keyHints", "settings.autostart"} else 4
+            inset = 2 if key in {"dashboard.language.title", "settings.theme", "dashboard.interface.keyHints"} else 4
             assert x == left + inset and row[right-2:right] == [" ", " "], key
             if key in switch_defaults:
                 check_switch(terminal, words, key, switch_defaults[key], profile)
@@ -909,7 +912,7 @@ def exercise(preview, binary, output, language, profile, args):
                 preview.capture(terminal, output, "process-menu-40x16", args)
                 terminal.key(b"\x1b")
                 terminal.wait_absent("✓")
-                focus(terminal, switch_track(True), words["settings.ipv6"], "IPv6")
+                focus(terminal, switch_track(True), words["settings.ipv6"])
                 terminal.key(b"\x1b[Z")
                 terminal.settle()
                 terminal.key(b"\x1b[D")

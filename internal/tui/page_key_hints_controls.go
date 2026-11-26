@@ -151,6 +151,8 @@ func (m *Model) settingsContextHelp() string {
 		}
 	case "runtime-settings":
 		label = "navigation.controls.editPorts"
+	case "core.checkUpdate":
+		label = "core_update.check"
 	case "network.primaryConfig", "network.tunConfig":
 		label = "dashboard.network.configure"
 	case "card.profiles":

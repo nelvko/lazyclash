@@ -135,6 +135,82 @@ func TestCoreUpdateCancellationWaitsForRecoveryAndIgnoresLateChecks(t *testing.T
 	}
 }
 
+func TestSettingsCoreUpdateReturnsToItsTrigger(t *testing.T) {
+	const trigger = "core.checkUpdate"
+	for _, tc := range []struct {
+		name    string
+		pending bool
+		escape  bool
+	}{
+		{"back", false, false}, {"escape", false, true},
+		{"cancel", true, false}, {"escape while checking", true, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := ready(&fakeBackend{snapshot: settingsTestSnapshot()})
+			directionCleanup(t, &m)
+			m.page, m.focus, m.width, m.height = "settings", trigger, 80, 24
+			m.revealContentFocus()
+			m.layout()
+			if !strings.Contains(m.contextHelp(), m.tr("core_update.check")) {
+				t.Fatal("card does not explain the focused update action")
+			}
+			m, cmd := click(m, findTarget(t, m, trigger))
+			if !m.wizard.open || m.wizard.step != stepUpdate || m.job != "check-update" {
+				t.Fatal("click did not go directly to the read-only update check")
+			}
+			result := actionCmd(t, cmd)()
+			button := "cancel"
+			if !tc.pending {
+				m, _ = update(m, result)
+				if m.wizard.focus != "upgrade" || m.busy {
+					t.Fatal("available update did not wait for confirmation")
+				}
+				button = "back"
+			}
+			m, _ = update(m, tea.WindowSizeMsg{Width: 40, Height: 16})
+			if tc.escape {
+				m, _ = update(m, special(tea.KeyEscape))
+			} else {
+				m, _ = click(m, findTarget(t, m, button))
+			}
+			if tc.pending {
+				m, _ = update(m, result)
+				if m.wizard.updateCheck.LatestVersion != "" {
+					t.Fatal("cancelled check published a late result")
+				}
+			}
+			if m.wizard.open || m.busy || m.page != "settings" || m.focus != trigger || !hasAction(m.targets, trigger) {
+				t.Fatal("return did not restore the visible update action in Settings")
+			}
+			// The management shortcut may start while the card action still has focus.
+			m, _ = update(m, key("i"))
+			if !m.wizard.open || m.wizard.step != stepCore || m.busy {
+				t.Fatal("opening management started another check")
+			}
+			m, _ = activateWizard(m, "check-update")
+			m, _ = click(m, findTarget(t, m, "cancel"))
+			if !m.wizard.open || m.wizard.step != stepCore || m.busy {
+				t.Fatal("cancelling a check from management did not return to its wizard")
+			}
+		})
+	}
+}
+
+func TestSettingsCoreUpdateRequiresReadyInstalledCore(t *testing.T) {
+	for _, state := range []string{"unknown", "uninstalled", "busy", "quitting"} {
+		t.Run(state, func(t *testing.T) {
+			m := ready(&fakeBackend{snapshot: settingsTestSnapshot()})
+			m.snapshotReady = state != "unknown"
+			m.snapshot.Installed = state != "uninstalled"
+			m.busy, m.quitting = state == "busy", state == "quitting"
+			id := m.id
+			if cmd := m.activate("core.checkUpdate"); cmd != nil || m.id != id || m.wizard.open {
+				t.Fatal("unavailable settings action opened or started an update check")
+			}
+		})
+	}
+}
+
 func TestCoreUpgradeSuccessRemainsSuccessWhenStatusRefreshFails(t *testing.T) {
 	b := &fakeBackend{snapshot: app.Snapshot{Installed: true, Version: "v1.19.32"}}
 	m := ready(b)

@@ -1211,6 +1211,7 @@ func (m *Model) openManagementWizard(local bool) tea.Cmd {
 	m.wizard.installRequested = false
 	m.wizard.release = mihomo.Release{}
 	m.wizard.plan = app.InstallPlan{}
+	m.wizard.directUpdate = false
 	m.wizard.updateMode, m.wizard.upgrading = false, false
 	m.wizard.updateCheck = app.CoreUpdateCheck{}
 	m.wizard.refreshError = ""
@@ -1366,6 +1367,13 @@ func (m *Model) activate(id string) tea.Cmd {
 		return m.toggleKeyHints()
 	case "runtime-settings":
 		return m.openNetworkConfig("proxy")
+	case "core.checkUpdate":
+		if !m.snapshotReady || !m.snapshot.Installed || m.busy || m.quitting {
+			return nil
+		}
+		m.openManagementWizard(false)
+		m.wizard.directUpdate = true
+		return m.checkCoreUpdate()
 	case "settings.bindAddress":
 		return m.openNetworkConfig("bind")
 	case "settings.accessRules":

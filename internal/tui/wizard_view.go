@@ -307,7 +307,7 @@ func (m *Model) wizardDocument(width int) (wizardDocument, []wizardButton, strin
 		title = m.tr("wizard.manage.title")
 		existing := m.snapshot.Version
 		if existing == "" {
-			existing = m.tr("wizard.not_installed")
+			existing = m.tr("wizard.unknown")
 		}
 		d.pair(m.tr("wizard.installed_version"), existing)
 		if m.snapshot.Service.Active {
@@ -326,6 +326,9 @@ func (m *Model) wizardDocument(width int) (wizardDocument, []wizardButton, strin
 		d.space()
 		d.control("network", m.tr("wizard.network.title"), w.focus)
 		d.control("manual-install", m.tr("wizard.manual_install"), w.focus)
+		d.space()
+		d.label(m.tr("settings.remove"))
+		d.line(m.tr("settings.removeHint"))
 		return d, []wizardButton{{"cancel", m.tr("wizard.back")}, {"check-update", m.tr("core_update.check")}}, title
 	case stepVersion:
 		existing := m.snapshot.Version

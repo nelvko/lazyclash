@@ -175,57 +175,6 @@ func settingsThemeRow(o dashboardOptions) settingsRow {
 	return row
 }
 
-const autostartToggleTarget = "autostart.toggle"
-
-func autostartActionLabel(enabled bool) string {
-	if enabled {
-		return "dashboard.settings.disableAutostart"
-	}
-	return "dashboard.settings.enableAutostart"
-}
-
-func settingsAutostart(o dashboardOptions) settingsRow {
-	tr, s := o.Locale.T, o.Snapshot
-	autostart := settingsRow{label: tr("settings.autostart"), value: tr("settings.afterInstall")}
-	if s.Installed {
-		if s.ServiceError != "" || s.Service.EnableState != "" && s.Service.EnableState != "enabled" && s.Service.EnableState != "disabled" {
-			autostart.control = settingsTrailing
-			autostart.value = tr("dashboard.status.unknown")
-			autostart.actions = []overviewControlButton{{id: autostartToggleTarget, label: tr(autostartActionLabel(s.Service.Enabled)), enabled: !o.Busy}}
-		} else {
-			autostart = settingsSwitchRow(autostartToggleTarget, autostart.label, s.Service.Enabled, !o.Busy)
-		}
-		if !s.Service.Linger && s.Capabilities.Scope != "system" {
-			autostart.note = tr("dashboard.settings.lingerDisabled")
-			if !s.Service.LingerKnown {
-				autostart.note = tr("dashboard.settings.lingerUnknown")
-			}
-		}
-	}
-	return autostart
-}
-
-func settingsCore(o dashboardOptions, width int) dashboardBlock {
-	tr, s := o.Locale.T, o.Snapshot
-	version, action := tr("dashboard.status.notInstalled"), tr("dashboard.action.install")
-	if s.Installed {
-		version, action = clean(s.Version), tr("settings.manage")
-		if version == "" {
-			version = tr("dashboard.status.unknown")
-		}
-	}
-	core := settingsRow{label: "Mihomo", value: version, actions: []overviewControlButton{{id: "install", label: action, enabled: !o.Busy, primary: !s.Installed}}}
-	rows := []settingsRow{core, settingsAutostart(o)}
-	if s.GeoRestartPending {
-		rows[0].note = tr("settings.geoRestart")
-	}
-	if s.Installed {
-		rows[0].actions = append(rows[0].actions, overviewControlButton{id: "restart", label: tr("dashboard.action.restart"), enabled: !o.Busy && runtimeControlIssue(s, o.Locale) == ""})
-		rows = append(rows, settingsRow{label: tr("settings.remove"), note: tr("settings.removeHint")})
-	}
-	return settingsSection(o, width, tr("settings.core"), "", rows)
-}
-
 func settingsDiagnostics(o dashboardOptions, width int) dashboardBlock {
 	tr, s := o.Locale.T, o.Snapshot
 	rows := []settingsRow{
@@ -280,16 +229,17 @@ func settingsSection(o dashboardOptions, width int, title, description string, r
 		labelColumn = max(labelColumn, ansi.StringWidth(row.label))
 	}
 	tabbed := len(rows) > 0 && rows[0].control == settingsTabStrip
-	spacious := tabbed && width >= 48 && o.Height >= 36
+	grouped := tabbed || len(rows) > 0 && rows[0].control == settingsGroup
+	spacious := grouped && width >= 48 && o.Height >= 36
 	rowIndent := 0
 	if spacious {
 		rowIndent = 2
 	}
 	for i, row := range rows {
-		if !tabbed || spacious || row.control == settingsGroup || row.control == settingsTabStrip {
+		if !grouped || tabbed && spacious || row.control == settingsGroup || row.control == settingsTabStrip {
 			b.lines = append(b.lines, blank)
 		}
-		if spacious && row.control == settingsGroup && i > 0 && rows[i-1].control != settingsTabStrip {
+		if tabbed && spacious && row.control == settingsGroup && i > 0 && rows[i-1].control != settingsTabStrip {
 			b.lines = append(b.lines, blank)
 		}
 		if row.control == settingsTabStrip {
@@ -368,7 +318,8 @@ func renderSettingsRow(o dashboardOptions, row settingsRow, inner, labelColumn i
 	}
 	// A shared label column keeps values close to their names on wide cards.
 	// Long labels, values and action groups flow below instead of truncating.
-	if row.value != "" && row.control != settingsLink {
+	valueWithAction := row.control == settingsTrailing && row.rightAlign && row.value != ""
+	if row.value != "" && row.control != settingsLink && !valueWithAction {
 		valueWidth := ansi.StringWidth(row.value)
 		column := labelColumn + 2
 		if row.control == settingsReadOnly {
@@ -433,6 +384,16 @@ func renderSettingsRow(o dashboardOptions, row settingsRow, inner, labelColumn i
 			values = append(values, value)
 			total += ansi.StringWidth(value)
 		}
+		// Keep the observed status beside its action when the pair fits.
+		prefix := ""
+		if valueWithAction {
+			if w := ansi.StringWidth(row.value) + 1; w+total <= inner {
+				prefix = style(row.value+" ", color)
+				total += w
+			} else {
+				addTrailingValue(row.value, color)
+			}
+		}
 		x := 0
 		if len(b.lines) == 1 {
 			used := ansi.StringWidth(b.lines[0])
@@ -456,6 +417,8 @@ func renderSettingsRow(o dashboardOptions, row settingsRow, inner, labelColumn i
 				b.lines[len(b.lines)-1] = style(strings.Repeat(" ", x), text)
 			}
 		}
+		b.lines[len(b.lines)-1] += prefix
+		x += ansi.StringWidth(prefix)
 		for i, action := range row.actions {
 			w := ansi.StringWidth(values[i])
 			if x+w > inner {
