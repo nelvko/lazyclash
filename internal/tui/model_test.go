@@ -57,7 +57,8 @@ type fakeBackend struct {
 	closeAllConnections func(context.Context) error
 	getSettings         func(context.Context) (app.RuntimeSettings, error)
 	getProxyAuth        func(context.Context) (app.ProxyAuthSettings, error)
-	prepareProxyAuth    func(context.Context, app.ProxyAuthSettings, []app.ProxyAuthUser) (app.RuntimeSettingsPlan, error)
+	getProxyAddress     func(context.Context, app.ProxyAuthSettings, string) (string, error)
+	prepareProxyAuth    func(context.Context, app.ProxyAuthSettings, []app.ProxyAuthUser, string) (app.RuntimeSettingsPlan, error)
 	prepareSettings     func(context.Context, app.RuntimeSettings) (app.RuntimeSettingsPlan, error)
 	applySettings       func(context.Context, app.RuntimeSettingsPlan) (app.RuntimeSettingsResult, error)
 }
@@ -74,13 +75,20 @@ func (f *fakeBackend) GetProxyAuth(ctx context.Context) (app.ProxyAuthSettings, 
 	}
 	return app.ProxyAuthSettings{}, ctx.Err()
 }
-func (f *fakeBackend) PrepareProxyAuth(ctx context.Context, original app.ProxyAuthSettings, users []app.ProxyAuthUser) (app.RuntimeSettingsPlan, error) {
+func (f *fakeBackend) GetProxyAddress(ctx context.Context, original app.ProxyAuthSettings, username string) (string, error) {
+	if f.getProxyAddress != nil {
+		return f.getProxyAddress(ctx, original, username)
+	}
+	return "", errors.New("missing proxy address fixture")
+}
+func (f *fakeBackend) PrepareProxyAuthRules(ctx context.Context, original app.ProxyAuthSettings, users []app.ProxyAuthUser, prefixes string) (app.RuntimeSettingsPlan, error) {
 	if f.prepareProxyAuth != nil {
-		return f.prepareProxyAuth(ctx, original, users)
+		return f.prepareProxyAuth(ctx, original, users, prefixes)
 	}
 	current := f.snapshot.RuntimeSettings
 	next := current
 	next.ProxyUserCount = len(users)
+	next.SkipAuthPrefixes = prefixes
 	return app.RuntimeSettingsPlan{Current: current, Proposed: next, Changed: true, Active: f.snapshot.Service.Active}, ctx.Err()
 }
 func (f *fakeBackend) PrepareRuntimeSettingsEdit(ctx context.Context, current, settings app.RuntimeSettings) (app.RuntimeSettingsPlan, error) {

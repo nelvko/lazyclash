@@ -22,7 +22,7 @@ var controllerFields = []string{"ports.address", "ports.secret", "ports.https", 
 type accessDraft struct {
 	inputs                 map[string]*textinput.Model
 	sections               map[string]bool
-	origins                textarea.Model
+	areas                  map[string]*textarea.Model
 	private                bool
 	auth                   proxyAuthDraft
 	bindField, bindMessage string // Last socket probe failure, cleared when its field changes.
@@ -47,10 +47,16 @@ func (p *portsState) proxyPortPlatformKnown() bool {
 }
 
 func (p *portsState) accessEditor() bool {
-	return p.kind == "proxy" || p.kind == "control" || p.kind == "auth"
+	return p.kind == "proxy" || p.kind == "control" || p.kind == "auth" || p.kind == "bind" || p.kind == "rules"
 }
 
 func (p *portsState) firstField() string {
+	if p.kind == "rules" {
+		return allowedNetworksID
+	}
+	if p.kind == "bind" {
+		return bindAddressID
+	}
 	if p.kind == "auth" {
 		return p.access.auth.firstField()
 	}
@@ -105,6 +111,10 @@ func (m *Model) initAccessDraft() {
 		fields = controllerFields
 	}
 	p.access = accessDraft{inputs: make(map[string]*textinput.Model), sections: make(map[string]bool), private: p.current.AllowPrivateNetwork}
+	if p.kind == "bind" || p.kind == "rules" {
+		m.initNetworkAccess()
+		return
+	}
 	values := accessValues(p.current)
 	for _, id := range fields {
 		if id == "ports.private" || id == "ports.origins" {
@@ -128,13 +138,7 @@ func (m *Model) initAccessDraft() {
 		}
 	}
 	if p.kind == "control" {
-		v := textarea.New()
-		v.ShowLineNumbers, v.Prompt, v.MaxHeight, v.MaxWidth = false, "", 0, 0
-		v.Placeholder = m.tr("access.originHint")
-		v.SetHeight(3)
-		v.SetValue(p.current.AllowedOrigins)
-		v.SetVirtualCursor(true)
-		p.access.origins = v
+		p.access.areas = map[string]*textarea.Model{"ports.origins": newAccessTextarea(p.current.AllowedOrigins, m.tr("access.originHint"), 3)}
 	}
 	p.focus = p.firstField()
 }
@@ -188,6 +192,10 @@ func (m *Model) revealControlError(err error) {
 
 func (m *Model) accessProposal() (app.RuntimeSettings, bool) {
 	p := &m.ports
+	if p.kind == "rules" || p.kind == "bind" {
+		next, issues := m.networkAccessProposal()
+		return next, len(issues) == 0 && next != p.current
+	}
 	if p.kind == "proxy" {
 		return m.proxyPortProposal()
 	}
@@ -204,7 +212,7 @@ func (m *Model) accessProposal() (app.RuntimeSettings, bool) {
 	s.ControllerHost, s.ControllerPort = host, int(number)
 	s.NewSecret = p.field("ports.secret").Value()
 	s.HTTPSAddress, s.CertificatePath, s.PrivateKeyPath = value("ports.https"), value("ports.cert"), value("ports.key")
-	s.AllowedOrigins, s.AllowPrivateNetwork = p.access.origins.Value(), p.access.private
+	s.AllowedOrigins, s.AllowPrivateNetwork = p.textarea("ports.origins").Value(), p.access.private
 	s.UnixSocket, s.DoHPath = value("ports.unix"), value("ports.doh")
 	mark := value("ports.mark")
 	base := 10
@@ -298,6 +306,10 @@ func (m *Model) revealProxyBindError(err error) {
 }
 
 func (m *Model) accessReview(d *wizardDocument) {
+	if m.ports.kind == "rules" || m.ports.kind == "bind" {
+		m.reviewNetworkAccess(d)
+		return
+	}
 	if m.ports.kind == "auth" {
 		m.proxyAuthReview(d)
 		return

@@ -604,7 +604,7 @@ func TestExternalControlEditsSectionsAndReviewsSecretWithoutDisclosure(t *testin
 		t.Fatal("review exposed raw credentials or an unrelated proxy field")
 	}
 	m, _ = click(m, findTarget(t, m, "ports.back"))
-	if m.ports.field("ports.secret").Value() != replacement || m.ports.access.origins.Value() != "https://one.example\nhttps://two.example" {
+	if m.ports.field("ports.secret").Value() != replacement || m.ports.textarea("ports.origins").Value() != "https://one.example\nhttps://two.example" {
 		t.Fatal("back discarded the draft")
 	}
 	m, cmd = click(m, findTarget(t, m, "ports.review"))
@@ -796,10 +796,10 @@ func TestControlErrorsRestoreCollapsedSectionAndDraft(t *testing.T) {
 	m := focusedPortsEntry(&fakeBackend{snapshot: app.Snapshot{Installed: true}}, 120, 60)
 	m, cmd := click(m, findTarget(t, m, "settings.externalControl"))
 	m, _ = update(m, actionCmd(t, cmd)())
-	m.ports.access.origins.SetValue("malformed")
+	m.ports.textarea("ports.origins").SetValue("malformed")
 	m.acceptPorts(portsMsg{id: m.id, kind: "prepare", err: diagnostic.New("diagnostic.settings.corsOrigin", "CORS requires one valid origin per line")})
 	m.layout()
-	if !m.ports.access.sections["ports.corsSection"] || m.ports.focus != "ports.origins" || m.ports.access.origins.Value() != "malformed" || m.ports.err == "" {
+	if !m.ports.access.sections["ports.corsSection"] || m.ports.focus != "ports.origins" || m.ports.textarea("ports.origins").Value() != "malformed" || m.ports.err == "" {
 		t.Fatal("backend error did not reveal the invalid CORS draft")
 	}
 	findTarget(t, m, "ports.origins")

@@ -20,6 +20,7 @@ const (
 	settingsSwitch
 	settingsLink
 	settingsReadOnly
+	settingsAddress
 	settingsGroup
 	settingsTabStrip
 )
@@ -325,6 +326,12 @@ func renderSettingsRow(o dashboardOptions, row settingsRow, inner, labelColumn i
 			b.lines = append(b.lines, style(line, color))
 		}
 	}
+	addTrailingValue := func(value, ink string) {
+		for _, line := range strings.Split(ansi.Hardwrap(value, inner, true), "\n") {
+			line = cellCrop(line, inner)
+			b.lines = append(b.lines, style(strings.Repeat(" ", max(0, inner-ansi.StringWidth(line)))+line, ink))
+		}
+	}
 	color := row.color
 	if color == "" {
 		color = muted
@@ -334,6 +341,17 @@ func renderSettingsRow(o dashboardOptions, row settingsRow, inner, labelColumn i
 	} else if row.label != "" {
 		addText(row.label, text)
 	}
+	if row.control == settingsLink && len(row.actions) == 1 && ansi.StringWidth(row.actions[0].label) > inner {
+		action := row.actions[0]
+		ink := text
+		if action.enabled {
+			b.targets = append(b.targets, hitRegion{ID: action.id, W: inner, H: 1})
+		} else {
+			ink = disabled
+		}
+		addTrailingValue(action.label, ink)
+		return b
+	}
 	// A shared label column keeps values close to their names on wide cards.
 	// Long labels, values and action groups flow below instead of truncating.
 	if row.value != "" {
@@ -341,14 +359,14 @@ func renderSettingsRow(o dashboardOptions, row settingsRow, inner, labelColumn i
 		column := labelColumn + 2
 		if row.control == settingsReadOnly {
 			column = inner - valueWidth
+		} else if row.control == settingsAddress {
+			column = inner - valueWidth - 2 - ansi.StringWidth(row.actions[0].label)
 		}
 		if len(b.lines) == 1 && ansi.StringWidth(b.lines[0])+2 <= column && column+valueWidth <= inner {
 			gap := column - ansi.StringWidth(b.lines[0])
 			b.lines[0] += style(strings.Repeat(" ", gap), text) + style(row.value, color)
 		} else if row.rightAlign {
-			for _, line := range strings.Split(wrapText(row.value, inner), "\n") {
-				b.lines = append(b.lines, style(strings.Repeat(" ", inner-ansi.StringWidth(line))+line, color))
-			}
+			addTrailingValue(row.value, color)
 		} else {
 			addText(row.value, color)
 		}
@@ -369,7 +387,13 @@ func renderSettingsRow(o dashboardOptions, row settingsRow, inner, labelColumn i
 			case settingsSelect:
 				face, _ = o.settingsDropdown(action.id).render(action.id, options, o.OpenDropdown == action.id, inner)
 			case settingsLink:
-				ink := focus
+				ink := text
+				if !action.enabled {
+					ink = disabled
+				}
+				face = style(action.label, ink)
+			case settingsAddress:
+				ink := accent
 				if !action.enabled {
 					ink = disabled
 				}
@@ -413,7 +437,11 @@ func renderSettingsRow(o dashboardOptions, row settingsRow, inner, labelColumn i
 				x = 0
 			}
 			if action.enabled {
-				b.targets = append(b.targets, hitRegion{ID: action.id, X: x, Y: len(b.lines) - 1, W: w, H: 1, DropdownRight: row.control == settingsSelect && x > 0})
+				hit := hitRegion{ID: action.id, X: x, Y: len(b.lines) - 1, W: w, H: 1, DropdownRight: row.control == settingsSelect && x > 0}
+				if action.id == "settings.copyProxyAddress" && o.tooltips != nil {
+					hit.tip = tooltipBinding{owner: action.id, text: o.Locale.T(action.id)}
+				}
+				b.targets = append(b.targets, hit)
 			}
 			b.lines[len(b.lines)-1] += values[i]
 			x += w

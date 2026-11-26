@@ -60,7 +60,8 @@ type Backend interface {
 	Rules(context.Context) (app.RuleSnapshot, error)
 	GetRuntimeSettings(context.Context) (app.RuntimeSettings, error)
 	GetProxyAuth(context.Context) (app.ProxyAuthSettings, error)
-	PrepareProxyAuth(context.Context, app.ProxyAuthSettings, []app.ProxyAuthUser) (app.RuntimeSettingsPlan, error)
+	PrepareProxyAuthRules(context.Context, app.ProxyAuthSettings, []app.ProxyAuthUser, string) (app.RuntimeSettingsPlan, error)
+	GetProxyAddress(context.Context, app.ProxyAuthSettings, string) (string, error)
 	PrepareRuntimeSettingsEdit(context.Context, app.RuntimeSettings, app.RuntimeSettings) (app.RuntimeSettingsPlan, error)
 	ApplyRuntimeSettings(context.Context, app.RuntimeSettingsPlan) (app.RuntimeSettingsResult, error)
 }
@@ -460,6 +461,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.quitting && !m.busy && !m.keyHints.pending {
 			return m, tea.Quit
 		}
+	case proxyCopyMsg:
+		cmd = m.acceptProxyCopy(v)
 	case coreStatusMsg:
 		if v.generation == m.statusGeneration {
 			if m.statusCancel != nil {
@@ -1368,6 +1371,12 @@ func (m *Model) activate(id string) tea.Cmd {
 	switch id {
 	case "runtime-settings":
 		return m.openNetworkConfig("proxy")
+	case "settings.bindAddress":
+		return m.openNetworkConfig("bind")
+	case "settings.accessRules":
+		return m.openNetworkConfig("rules")
+	case "settings.copyProxyAddress":
+		return m.copyProxyAddress()
 	case "settings.externalControl":
 		return m.openNetworkConfig("control")
 	case "settings.proxyAuth":
@@ -1687,7 +1696,7 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 	for _, r := range m.targets {
 		if k.X >= r.X && k.X < r.X+r.W && k.Y >= r.Y && k.Y < r.Y+r.H {
 			m.hover = r.ID
-			if r.tip.text != "" {
+			if r.tip.text != "" && r.tip.owner != r.ID {
 				return nil
 			}
 			if pressed && k.Button == tea.MouseLeft {

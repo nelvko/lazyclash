@@ -14,7 +14,7 @@ const (
 	tooltipPrefix = "tooltip:"
 )
 
-// The owner is the existing control's focus ID. Only the icon is a pointer target.
+// The owner is the control's focus ID. The anchor can be its icon or the action itself.
 type tooltipBinding struct {
 	owner, text string
 }
@@ -70,7 +70,12 @@ func (t *tooltipState) focused(focus string) hitRegion {
 	if t.offscreen.ID != "" && t.offscreen.tip.owner == focus {
 		return t.offscreen
 	}
-	return tooltipAnchor(t.anchors, tooltipPrefix+focus)
+	for _, hit := range t.anchors {
+		if hit.tip.owner == focus {
+			return hit
+		}
+	}
+	return hitRegion{}
 }
 
 func (t *tooltipState) dismiss() {

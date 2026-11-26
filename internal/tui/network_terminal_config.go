@@ -64,8 +64,8 @@ func (m *Model) terminalConfigFields(d *wizardDocument) {
 	}
 	p := &m.ports
 	address := m.tr("access.disabled")
-	if p.current.MixedPort > 0 {
-		address = net.JoinHostPort("127.0.0.1", strconv.Itoa(p.current.MixedPort))
+	if port := p.current.TerminalProxyPort(); port > 0 {
+		address = net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
 	}
 	d.pair(m.tr("ports.proxy_address"), address)
 	d.field("ports.mixed", m.tr("network.terminalConfig.port"), &p.mixed, p.focus)

@@ -149,7 +149,7 @@ func TestCoreSettingsTabsHaveEqualHeightAndExposeOnlyTheirControls(t *testing.T)
 			width := size.cardWidth
 			o := dashboardOptions{Locale: i18n.New(language), Height: size.terminalHeight, Snapshot: settingsTestSnapshot()}
 			want := [][]string{
-				{"runtime-settings", "settings.allowLAN", "settings.proxyAuth", "settings.externalControl"},
+				{"runtime-settings", "settings.allowLAN", "settings.bindAddress", "settings.accessRules", "settings.proxyAuth", "settings.externalControl"},
 				{"settings.ipv6", "settings.tcpConcurrent", "settings.tcpKeepAlive", "settings.keepAliveIdle", "settings.keepAliveInterval", "settings.unifiedDelay", "settings.logLevel", "settings.findProcessMode"},
 				{"settings.geoAutoUpdate", "settings.geodataLoader", "settings.etagSupport", "settings.storeFakeIP"},
 			}
@@ -172,7 +172,7 @@ func TestCoreSettingsTabsHaveEqualHeightAndExposeOnlyTheirControls(t *testing.T)
 				assertCanvas(t, strings.Join(card.lines, "\n"), width, height)
 				assertRegions(t, card.targets, width, height)
 				if tab == int(accessTab) {
-					for _, action := range []string{"runtime-settings", "settings.proxyAuth", "settings.externalControl"} {
+					for _, action := range []string{"runtime-settings", "settings.bindAddress", "settings.accessRules", "settings.proxyAuth", "settings.externalControl"} {
 						target := findTarget(t, Model{targets: card.targets}, action)
 						if target.X != 0 || target.W != width {
 							t.Fatalf("%s only clickable at %+v", action, target)
@@ -759,5 +759,33 @@ func TestSettingsPointerMotionPreservesAppearanceAndFocus(t *testing.T) {
 	focused := findTarget(t, m, m.focus)
 	if m.focus == "settings.language" || strings.Split(m.screen, "\n")[focused.Y] == before[focused.Y] {
 		t.Fatalf("Tab should visibly focus the next control, got %s", m.focus)
+	}
+}
+
+func TestAccessSettingsKeepLongIPv6AddressVisibleWithAndWithoutAccounts(t *testing.T) {
+	const host = "[2001:db8:1234:5678:90ab:cdef:1234:5678]"
+	for _, width := range []int{26, 40, 80} {
+		for _, accounts := range []int{0, 2} {
+			o := dashboardOptions{Locale: i18n.New(i18n.Chinese), Height: 24, Snapshot: settingsTestSnapshot()}
+			runtime := &o.Snapshot.RuntimeSettings
+			runtime.AllowLAN, runtime.BindAddress, runtime.ProxyUserCount = true, host, accounts
+			b := settingsMihomo(o, width)
+			var joined string
+			for _, line := range b.lines {
+				joined += strings.TrimSpace(ansi.Strip(line))
+			}
+			// Both the editable binding and the derived connection URI should
+			// survive wrapping in the single-column settings card.
+			userInfo := ""
+			if accounts > 0 {
+				userInfo = o.Locale.T("settings.proxyUserinfo")
+			}
+			if strings.Count(joined, host) != 2 || !strings.Contains(joined, runtime.ProxyAddress(userInfo)) {
+				t.Fatalf("address truncated at %d columns with %d accounts: %s", width, accounts, joined)
+			}
+			if hasAction(b.targets, "settings.copyProxyAddress") != (accounts > 0) {
+				t.Fatal("copy control did not match saved accounts")
+			}
+		}
 	}
 }

@@ -6,13 +6,17 @@ import (
 	"strconv"
 	"strings"
 
+	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/textinput"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/diagnostic"
+	"github.com/nelvko/lazyclash/internal/mihomo"
 )
 
 const proxyAuthAdd = "ports.auth.add"
+const proxyAuthBypass = "ports.auth.bypassSection"
+const proxyAuthPrefixes = "ports.skipAuthPrefixes"
 
 type proxyAuthDraft struct {
 	current app.ProxyAuthSettings
@@ -22,6 +26,10 @@ type proxyAuthDraft struct {
 type proxyAuthRow struct {
 	original           string
 	username, password textinput.Model
+}
+
+func (r *proxyAuthRow) empty() bool {
+	return r.original == "" && r.username.Value() == "" && r.password.Value() == ""
 }
 
 func authRowID(control string, index int) string {
@@ -73,8 +81,13 @@ func (m *Model) appendProxyAuthRow(original string) {
 func (m *Model) initProxyAuthDraft(saved app.ProxyAuthSettings) {
 	draft := &m.ports.access.auth
 	*draft = proxyAuthDraft{current: saved}
+	m.ports.access.sections = make(map[string]bool)
+	m.ports.access.areas = map[string]*textarea.Model{proxyAuthPrefixes: newAccessTextarea(saved.SkipAuthPrefixes, "192.168.1.0/24", 3)}
 	for _, name := range saved.Usernames {
 		m.appendProxyAuthRow(name)
+	}
+	if len(saved.Usernames) == 0 {
+		m.appendProxyAuthRow("")
 	}
 	m.ports.focus = draft.firstField()
 }
@@ -82,6 +95,11 @@ func (m *Model) initProxyAuthDraft(saved app.ProxyAuthSettings) {
 func (m *Model) activateProxyAuth(id string) bool {
 	p := &m.ports
 	draft := &p.access.auth
+	if id == proxyAuthBypass {
+		p.access.sections[id] = !p.access.sections[id]
+		p.focus, p.reveal = id, true
+		return true
+	}
 	if id == proxyAuthAdd {
 		m.appendProxyAuthRow("")
 		p.focus = authRowID("username", len(draft.rows)-1)
@@ -111,6 +129,50 @@ func (m *Model) proxyAuthEdit(d *wizardDocument) {
 		d.space()
 	}
 	d.control(proxyAuthAdd, "+ "+m.tr("access.authAdd"), p.focus)
+	d.space()
+	prefixes, err := m.proxyAuthPrefixes()
+	reviewable := err == nil && m.proxyAuthChanged(prefixes)
+	d.disabled = func(id string) bool { return id == "ports.review" && !reviewable }
+	summary := m.tr("access.authNoBypass")
+	if err != nil {
+		summary = m.tr("access.authInvalidPrefixes")
+	} else if prefixes != "" {
+		count := strings.Count(prefixes, "\n") + 1
+		summary = m.tr("access.authOnePrefix")
+		if count > 1 {
+			summary = m.tr("access.authPrefixCount", count)
+		}
+	}
+	if m.accessSection(d, m.tr("access.authBypass")+" · "+summary, proxyAuthBypass) {
+		d.line(themed("skip-auth-prefixes", muted, modalBackground, false))
+		d.line(m.tr("access.authBypassHint"))
+		m.accessTextarea(d, proxyAuthPrefixes, err != nil)
+		if err != nil {
+			d.line(themed(m.localizeError(err), errorColor, modalBackground, false))
+		}
+	}
+}
+
+func (m *Model) proxyAuthPrefixes() (string, error) {
+	return mihomo.NormalizePrefixes(m.ports.access.areas[proxyAuthPrefixes].Value())
+}
+
+func (m *Model) proxyAuthChanged(prefixes string) bool {
+	draft := &m.ports.access.auth
+	if prefixes != draft.current.SkipAuthPrefixes {
+		return true
+	}
+	count := 0
+	for _, row := range draft.rows {
+		if row.empty() {
+			continue
+		}
+		if row.original == "" || row.username.Value() != row.original || row.password.Value() != "" {
+			return true
+		}
+		count++
+	}
+	return count != len(draft.current.Usernames)
 }
 
 func (m *Model) proxyAuthAccount(d *wizardDocument, i int) {
@@ -152,6 +214,9 @@ func (m *Model) proxyAuthUsers() ([]app.ProxyAuthUser, bool) {
 	for i := range p.access.auth.rows {
 		row := &p.access.auth.rows[i]
 		row.username.Err, row.password.Err = nil, nil
+		if row.empty() {
+			continue
+		}
 		user := app.ProxyAuthUser{OriginalUsername: row.original, Username: row.username.Value(), Password: row.password.Value()}
 		err := user.Validate()
 		field, message := "username", ""
@@ -182,9 +247,13 @@ func (m *Model) proxyAuthUsers() ([]app.ProxyAuthUser, bool) {
 
 func (m *Model) proxyAuthReview(d *wizardDocument) {
 	draft := &m.ports.access.auth
-	start := len(d.lines)
 	retained := make(map[string]bool)
+	count := 0
 	for _, row := range draft.rows {
+		if row.empty() {
+			continue
+		}
+		count++
 		name := clean(row.username.Value())
 		retained[row.original] = true
 		if row.original == "" {
@@ -203,12 +272,26 @@ func (m *Model) proxyAuthReview(d *wizardDocument) {
 			d.accessReviewRow(m.tr("access.authRemoved"), clean(name))
 		}
 	}
-	if len(draft.rows) == 0 {
+	if count == 0 && len(draft.current.Usernames) != 0 {
 		d.line(m.tr("access.authDisabled"))
-	} else if len(d.lines) == start {
-		// Adopting the current profile's list can itself be the only change.
-		for _, row := range draft.rows {
-			d.accessReviewRow(m.tr("access.authUsername"), row.username.Value())
+	}
+	current := strings.Fields(draft.current.SkipAuthPrefixes)
+	next, _ := m.proxyAuthPrefixes()
+	proposed := strings.Fields(next)
+	for _, change := range []struct {
+		label       string
+		from, other []string
+	}{
+		{"access.authPrefixAdded", proposed, current}, {"access.authPrefixRemoved", current, proposed},
+	} {
+		var diff []string
+		for _, prefix := range change.from {
+			if _, present := slices.BinarySearch(change.other, prefix); !present {
+				diff = append(diff, prefix)
+			}
+		}
+		if len(diff) != 0 {
+			d.accessReviewRow(m.tr(change.label), strings.Join(diff, ", "))
 		}
 	}
 	d.space()

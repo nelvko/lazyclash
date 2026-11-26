@@ -12,7 +12,7 @@ func (op notificationOperation) announcesSuccess(page string) bool {
 	action, _, _ := strings.Cut(op.Key, ":")
 	switch action {
 	case "profile.apply", "profile.deactivate", "profile.add", "profile.create",
-		"profile.delete", "profile.refresh", "profile.refresh-all", "service.restart", "terminal-proxy":
+		"profile.delete", "profile.refresh", "profile.refresh-all", "service.restart", "terminal-proxy", "settings.copyProxyAddress":
 		return true
 	case "service.start", "service.stop", "tun":
 		return page != "overview"

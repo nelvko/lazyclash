@@ -1,0 +1,21 @@
+{
+  "settings.bindAddress": "绑定地址",
+  "settings.accessRules": "访问规则",
+  "access.bindTitle": "编辑绑定地址",
+  "access.rulesTitle": "访问规则",
+  "access.allowCount": "允许 %d",
+  "access.denyCount": "禁止 %d",
+  "access.allowAll": "允许全部",
+  "access.denyAll": "禁止全部",
+  "access.bindHint": "填入 * 绑定所有接口，也可指定内核主机的 IPv4 或 IPv6 地址。",
+  "access.allowedNetworks": "允许网段",
+  "access.deniedNetworks": "禁止网段",
+  "access.rulesHint": "按客户端来源 IP 匹配，禁止优先。每行填写一个 IP 或网段。",
+  "access.emptyAllowWarning": "允许网段为空，所有来源都将被拒绝，包括本机。",
+  "access.bindSamples": "填入示例",
+  "access.defaultAllowHint": "默认允许全部 IPv4 和 IPv6 来源。",
+  "access.rulesApplyHint": "运行中的内核将按新规则检查后续的代理连接。",
+  "access.bindApplyHint": "局域网访问已关闭，常规代理使用 127.0.0.1。开启局域网访问后将使用新地址。",
+  "access.rulesReset": "恢复默认",
+  "access.listTooLong": "列表超过编辑器容量，请在配置文件中编辑。"
+}

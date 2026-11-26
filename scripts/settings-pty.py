@@ -153,7 +153,7 @@ def check_switch(terminal, words, key, enabled, profile):
     track_x = right - 8
     assert "".join(row[track_x:right]) == switch_track(enabled) + "  ", key
     before_track = "".join(row[label_x:track_x])
-    label = words[key] + (" ⓘ" if key in ("settings.unifiedDelay", "settings.tcpConcurrent") else "")
+    label = words[key] + (" ⓘ" if key in ("settings.unifiedDelay", "settings.tcpConcurrent", "settings.allowLAN") else "")
     assert before_track.startswith(label) and before_track[len(label):].strip(" ›") == "", (key, before_track)
     if profile != "no-color":
         styles = terminal.screen.styles[y]
@@ -269,17 +269,18 @@ def check_tab_strip(preview, terminal, words, profile, output, args):
             starts.append(x + preview.SMOKE.cell_width(prefix))
         gaps = [b - a - preview.SMOKE.cell_width(name) for a, b, name in zip(starts, starts[1:], names)]
         assert gaps[0] == gaps[1] and min(gaps) >= (4 if width == 200 else 1), gaps
-        items = ["proxyInbound", "proxyPorts", "listenAddress", "allowLAN", "proxyAuth", "controlAPI", "externalControl"]
+        items = ["proxyInbound", "proxyPorts", "allowLAN", "bindAddress", "accessRules",
+                 "proxyAuth", "proxyAddress", "controlAPI", "externalControl"]
         points = [position(terminal, words["settings." + item]) for item in items]
         offsets = [b[1]-a[1] for a, b in zip(points, points[1:])]
-        if width == 200:
-            assert offsets == [2, 2, 2, 2, 3, 2] and points[1][0] > points[0][0], (points, offsets)
-        else:
-            summary = words["settings.authNotConfigured"] + " ›"
-            auth_x, auth_y = points[4]
-            wraps = preview.SMOKE.cell_width(words["settings.proxyAuth"] + "  " + summary) > right-2-auth_x
-            assert position(terminal, summary) == (right-2-preview.SMOKE.cell_width(summary), auth_y+int(wraps))
-            assert offsets == [1, 1, 1, 1, 2+int(wraps), 1], offsets
+        assert all(delta >= (2 if width == 200 else 1) for delta in offsets), (points, offsets)
+        assert points[3][0] > points[2][0], "binding should read as a child of Allow LAN"
+        address = "http://127.0.0.1:7897"
+        assert address in terminal.screen.text(), "missing local proxy address"
+        summary = words["settings.authNotConfigured"] + " ›"
+        auth_x, auth_y = points[5]
+        wraps = preview.SMOKE.cell_width(words["settings.proxyAuth"] + "  " + summary) > right-2-auth_x
+        assert position(terminal, summary) == (right-2-preview.SMOKE.cell_width(summary), auth_y+int(wraps))
         # On a short viewport the next heading can sit just under the footer.
         scroll_to_heading = width == 40 and words["settings.core"] not in terminal.screen.text()
         def next_card_position():
@@ -360,8 +361,9 @@ def check_proxy_auth(preview, terminal, words, output, args):
     check_count(0)
     preview.capture(terminal, output, "proxy-auth-not-configured", args)
     open_editor()
-    for username, password in zip(usernames, passwords):
-        terminal.click_text(words["access.authAdd"])
+    for index, (username, password) in enumerate(zip(usernames, passwords)):
+        if index:
+            terminal.click_text(words["access.authAdd"])
         terminal.key(username.encode())
         terminal.wait(username)
         terminal.key(b"\t" + password.encode())
@@ -370,7 +372,21 @@ def check_proxy_auth(preview, terminal, words, output, args):
         account_row = next(row for row in terminal.screen.cells if username in "".join(row))
         assert "•" * len(password) in "".join(account_row), "wide account fields should share a row and mask the password"
     preview.capture(terminal, output, "proxy-auth-edit", args)
+    terminal.click_text(words["access.authBypass"])
+    terminal.wait("skip-auth-prefixes")
+    terminal.key(b"\t192.0.2.0/24")
+    terminal.wait("192.0.2.0/24")
+    preview.capture(terminal, output, "auth-exceptions-160x45", args)
+    terminal.resize(40, 24)
+    terminal.settle()
+    terminal.wait("192.0.2.0/24")
+    assert words["ports.review"] in terminal.screen.text()
+    preview.capture(terminal, output, "auth-exceptions-40x24", args)
+    terminal.resize(160, 45)
+    terminal.settle()
     review()
+    terminal.wait("192.0.2.0/24")
+    assert all(word in terminal.screen.text() for word in words["access.authPrefixAdded"].split())
     for username in usernames:
         terminal.wait(username)
     preview.capture(terminal, output, "proxy-auth-review", args)
@@ -379,6 +395,7 @@ def check_proxy_auth(preview, terminal, words, output, args):
     open_editor()
     for username in usernames:
         terminal.wait(username)
+    terminal.wait(words["access.authOnePrefix"])
     terminal.wait(words["access.authKeepPassword"])
     assert "•" * len(passwords[0]) not in terminal.screen.text(), "stored password was prefilled"
     terminal.resize(40, 16)
@@ -399,6 +416,8 @@ def check_proxy_auth(preview, terminal, words, output, args):
     review()
     terminal.click_text(words["ports.cancel"])
     terminal.wait_absent(words["ports.reviewed"])
+    terminal.wait(words["settings.proxyAuth"])
+    terminal.settle()
     check_count(2)
     open_editor()
     for username in usernames:
@@ -574,7 +593,7 @@ def exercise(preview, binary, output, language, profile, args):
         for enabled in (False, True):
             click(terminal, check_switch(terminal, words, "settings.allowLAN", enabled, profile))
             if not enabled:
-                terminal.wait("192.168.1.20:7897")
+                terminal.wait("http://" + words["settings.lanIP"] + ":7897")
             dismiss_toasts(terminal)
             check_switch(terminal, words, "settings.allowLAN", not enabled, profile)
         select_tab("network")

@@ -115,13 +115,22 @@ func (m *Model) preparePorts() tea.Cmd {
 	p := &m.ports
 	backend := m.backend
 	if p.kind == "auth" {
+		prefixes, err := m.proxyAuthPrefixes()
+		if err != nil {
+			p.access.sections[proxyAuthBypass] = true
+			p.focus, p.reveal = proxyAuthPrefixes, true
+			return nil
+		}
+		if !m.proxyAuthChanged(prefixes) {
+			return nil
+		}
 		users, valid := m.proxyAuthUsers()
 		if !valid {
 			return nil
 		}
 		original := p.access.auth.current
 		return m.checkPorts(func(ctx context.Context) (app.RuntimeSettingsPlan, error) {
-			return backend.PrepareProxyAuth(ctx, original, users)
+			return backend.PrepareProxyAuthRules(ctx, original, users, prefixes)
 		})
 	}
 	var settings app.RuntimeSettings
@@ -212,6 +221,11 @@ func (m *Model) acceptPorts(msg portsMsg) {
 		} else {
 			p.step, p.focus = "load-error", "ports.retry"
 		}
+		for _, area := range p.access.areas {
+			if area.Err != nil {
+				p.step, p.focus, p.err = "load-error", "ports.retry", m.tr("access.listTooLong")
+			}
+		}
 	case "prepare":
 		p.step, p.focus = "edit", p.firstField()
 		if msg.err != nil {
@@ -246,8 +260,11 @@ func (m *Model) acceptPorts(msg portsMsg) {
 			m.markOperationStateUnknown()
 		}
 		m.notification.operation.Context = m.tr("notification.ports")
-		if p.kind == "auth" {
+		switch p.kind {
+		case "auth":
 			m.notification.operation.Context = m.tr("settings.proxyAuth")
+		case "bind", "rules":
+			m.notification.operation.Context = m.tr("access." + p.kind + "Title")
 		}
 		m.notification.critical = diagnostic.RequiresAttention(msg.err) || msg.refreshError != nil || msg.result.Changed && msg.err != nil
 		if (m.notification.critical || m.notification.retainDialog) && (msg.err != nil || msg.refreshError != nil) {
@@ -306,6 +323,9 @@ func (m *Model) portsActivate(id string) tea.Cmd {
 		}
 		return nil
 	}
+	if m.ports.kind == "copyProxy" && strings.HasPrefix(id, "ports.copyUser.") {
+		return m.chooseProxyCopyAccount(id)
+	}
 	if m.ports.kind == "tun" && strings.HasPrefix(id, "tun.") {
 		return m.networkTUNActivate(id)
 	}
@@ -313,6 +333,11 @@ func (m *Model) portsActivate(id string) tea.Cmd {
 		p := &m.ports
 		if p.kind == "auth" && m.activateProxyAuth(id) {
 			return nil
+		}
+		if address, ok := strings.CutPrefix(id, "ports.bindSample."); ok && p.kind == "bind" {
+			p.field(bindAddressID).SetValue(address)
+			p.focus, p.reveal, p.err = bindAddressID, true, ""
+			return textinput.Blink
 		}
 		switch id {
 		case "ports.tlsSection", "ports.corsSection", "ports.advancedSection":
@@ -323,9 +348,13 @@ func (m *Model) portsActivate(id string) tea.Cmd {
 			p.access.private = !p.access.private
 			p.focus, p.reveal, p.err = id, true, ""
 			return nil
-		case "ports.origins":
+		case "ports.rulesReset":
+			m.resetNetworkRules()
+			return nil
+		}
+		if area := p.textarea(id); area != nil {
 			p.focus, p.reveal = id, true
-			return p.access.origins.Focus()
+			return area.Focus()
 		}
 		if p.field(id) != nil {
 			p.focus, p.reveal = id, true
@@ -364,12 +393,18 @@ func (m *Model) updatePortsInput(msg tea.Msg) tea.Cmd {
 	if m.busy || m.ports.step != "edit" {
 		return nil
 	}
-	if m.ports.focus == "ports.origins" && m.ports.kind == "control" {
+	if area := m.ports.textarea(m.ports.focus); area != nil {
 		p := &m.ports
-		before := p.access.origins.Value()
+		// Bubbles clamps pasted text to 10,000 lines. Decline the whole
+		// paste instead of applying a silently truncated access policy.
+		if paste, ok := msg.(tea.PasteMsg); ok && area.LineCount()-strings.Count(area.SelectedText(), "\n")+strings.Count(paste.Content, "\n") > 10000 {
+			p.err = m.tr("access.listTooLong")
+			return nil
+		}
+		before := area.Value()
 		var cmd tea.Cmd
-		p.access.origins, cmd = p.access.origins.Update(msg)
-		if p.access.origins.Value() != before {
+		*area, cmd = area.Update(msg)
+		if area.Value() != before {
 			p.err, p.reveal = "", true
 		}
 		return cmd
@@ -418,7 +453,7 @@ func (m *Model) portsKey(k tea.KeyPressMsg) tea.Cmd {
 	if p.kind != "" && key != "esc" && len(p.controls) == 0 {
 		return nil
 	}
-	if p.focus == "ports.origins" && p.step == "edit" && (key == "enter" || key == "up" || key == "down") {
+	if p.textarea(p.focus) != nil && p.step == "edit" && (key == "enter" || key == "up" || key == "down") {
 		return m.updatePortsInput(k)
 	}
 	if p.kind != "" {
@@ -509,6 +544,10 @@ func (m *Model) portsDocument(width int) (wizardDocument, []wizardButton, string
 		return d, buttons, ""
 	}
 	buttons := []wizardButton{{"ports.cancel", m.tr("ports.cancel")}}
+	if p.kind == "copyProxy" {
+		m.proxyCopyAccounts(&d)
+		return d, buttons, ""
+	}
 	subtitle := m.tr("ports.edit")
 	switch p.step {
 	case "loading":
@@ -532,6 +571,9 @@ func (m *Model) portsDocument(width int) (wizardDocument, []wizardButton, string
 				d.disabled = func(id string) bool { return id == "ports.review" && !reviewable }
 			}
 			m.accessEdit(&d)
+			if p.kind == "rules" {
+				buttons = append([]wizardButton{{"ports.rulesReset", m.tr("access.rulesReset")}}, buttons...)
+			}
 			buttons = append(buttons, wizardButton{"ports.review", m.tr("ports.review")})
 			break
 		}
@@ -628,7 +670,7 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 	p := &m.ports
 	w, h := m.width, m.height
 	modal := m.canFloatDocument()
-	access := p.accessEditor()
+	access := p.accessEditor() || p.kind == "copyProxy"
 	if p.kind != "" {
 		// Network configurations float over the entire dashboard, including
 		// the sidebar. Even the narrow layout keeps a visible gutter.
@@ -636,8 +678,14 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 		preferredWidth := min(66, max(34, w*3/5))
 		if access {
 			preferredWidth = 78
-			if p.kind == "proxy" {
+			if p.kind == "copyProxy" {
+				preferredWidth = 48
+			}
+			if p.kind == "proxy" || p.kind == "rules" {
 				preferredWidth = 66
+			}
+			if p.kind == "bind" {
+				preferredWidth = 52
 			}
 		}
 		if p.kind == "activation" {
@@ -680,7 +728,11 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 	}
 	var footer []string
 	var footerHits []hitRegion
-	backWidth := 0
+	leadingWidth := 0
+	leadingID := "ports.back"
+	if p.kind == "rules" && p.step == "edit" {
+		leadingID = "ports.rulesReset"
+	}
 	line := ""
 	for _, button := range buttons {
 		blocked := m.busy && button.ID != "ports.cancel" || p.cancelling && button.ID == "ports.cancel" || doc.disabled != nil && doc.disabled(button.ID)
@@ -691,7 +743,7 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 		kind := buttonSecondary
 		if primary {
 			kind = buttonPrimary
-		} else if access && button.ID == "ports.back" {
+		} else if access && button.ID == leadingID {
 			kind = buttonText
 		}
 		minWidth := 0
@@ -699,11 +751,12 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 			minWidth = max(ansi.StringWidth(m.tr("terminal.activationCopy")), ansi.StringWidth(m.tr("terminal.activationCopyRequested")))
 		}
 		value := renderButton(button.Label, buttonOptions{Kind: kind, Surface: modalBackground, Width: minWidth,
+			Compact: p.kind == "rules" && inner < 40,
 			Focused: p.focus == button.ID, Hovered: !access && m.hover == button.ID,
 			Disabled: blocked && !m.busy, Busy: blocked && m.busy, Plain: m.buttonPlain()})
 		width := min(inner, ansi.StringWidth(value))
-		if access && button.ID == "ports.back" {
-			backWidth = width
+		if access && button.ID == leadingID {
+			leadingWidth = width
 		}
 		if line != "" && ansi.StringWidth(line)+width > inner {
 			footer = append(footer, line)
@@ -718,13 +771,13 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 	if p.kind != "" {
 		for row, value := range footer {
 			offset := max(0, inner-ansi.StringWidth(value))
-			if row == 0 && backWidth > 0 {
-				footer[row] = ansi.Cut(value, 0, backWidth) + strings.Repeat(" ", offset) + ansi.Cut(value, backWidth, inner)
+			if row == 0 && leadingWidth > 0 {
+				footer[row] = ansi.Cut(value, 0, leadingWidth) + strings.Repeat(" ", offset) + ansi.Cut(value, leadingWidth, inner)
 			} else {
 				footer[row] = strings.Repeat(" ", offset) + value
 			}
 			for i := range footerHits {
-				if footerHits[i].Y == row && !(backWidth > 0 && footerHits[i].ID == "ports.back") {
+				if footerHits[i].Y == row && !(leadingWidth > 0 && footerHits[i].ID == leadingID) {
 					footerHits[i].X += offset
 				}
 			}

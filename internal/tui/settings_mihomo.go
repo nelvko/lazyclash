@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nelvko/lazyclash/internal/i18n"
 )
 
 var coreLogLevelItems = []menuItem{
@@ -178,12 +179,9 @@ func coreSettingsRows(o dashboardOptions, tab coreSettingsTab) []settingsRow {
 	switch tab {
 	case accessTab:
 		runtime := s.RuntimeSettings
-		listen := "127.0.0.1"
-		if runtime.AllowLAN {
-			listen = tr("settings.allAddresses")
-		}
+		listeners := runtime.SupportedListeners()
 		port, count := 0, 0
-		for _, p := range []int{runtime.MixedPort, runtime.HTTPPort, runtime.SOCKSPort, runtime.RedirPort, runtime.TProxyPort} {
+		for _, p := range []int{runtime.MixedPort, listeners.HTTPPort, listeners.SOCKSPort, listeners.RedirPort, listeners.TProxyPort} {
 			if p > 0 && p <= 65535 {
 				port, count = p, count+1
 			}
@@ -197,16 +195,9 @@ func coreSettingsRows(o dashboardOptions, tab coreSettingsTab) []settingsRow {
 		}
 		rows = append(rows, group("settings.proxyInbound"),
 			link("runtime-settings", tr("settings.proxyPorts"), summary+" ›", true),
-			settingsRow{label: tr("settings.listenAddress"), value: listen, control: settingsReadOnly},
-			toggle("settings.allowLAN", runtime.AllowLAN))
-		if runtime.AllowLAN {
-			for _, port := range []int{runtime.MixedPort, runtime.HTTPPort, runtime.SOCKSPort} {
-				if port > 0 && port <= 65535 {
-					rows = append(rows, settingsRow{label: tr("settings.lanExample"), value: "192.168.1.20:" + strconv.Itoa(port), control: settingsReadOnly})
-					break
-				}
-			}
-		}
+			toggleWithTip("settings.allowLAN", runtime.AllowLAN),
+			link("settings.bindAddress", "  "+tr("settings.bindAddress"), bindAddressSummary(runtime, o.Locale)+" ›", true),
+			link("settings.accessRules", tr("settings.accessRules"), accessRulesSummary(runtime, o.Locale)+" ›", true))
 		var users string
 		switch runtime.ProxyUserCount {
 		case 0:
@@ -216,8 +207,20 @@ func coreSettingsRows(o dashboardOptions, tab coreSettingsTab) []settingsRow {
 		default:
 			users = tr("settings.authUserCount", runtime.ProxyUserCount)
 		}
-		rows = append(rows, link("settings.proxyAuth", tr("settings.proxyAuth"), users+" ›", true),
-			group("settings.controlAPI"), link("settings.externalControl", tr("settings.externalControl"), "›", true))
+		rows = append(rows, link("settings.proxyAuth", tr("settings.proxyAuth"), users+" ›", true))
+		userinfo := ""
+		if runtime.ProxyUserCount > 0 {
+			userinfo = tr("settings.proxyUserinfo")
+		}
+		if address := runtime.ProxyAddress(userinfo); address != "" {
+			row := settingsRow{label: tr("settings.proxyAddress"), value: localizedProxyAddress(address, o.Locale), control: settingsReadOnly}
+			if runtime.ProxyUserCount > 0 {
+				row.control = settingsAddress
+				row.actions = []overviewControlButton{{id: "settings.copyProxyAddress", label: tr("access.copyAddress"), enabled: enabled}}
+			}
+			rows = append(rows, row)
+		}
+		rows = append(rows, group("settings.controlAPI"), link("settings.externalControl", tr("settings.externalControl"), "›", true))
 	case networkTab:
 		keepAlive := p.DisableKeepAlive == "off"
 		rows = append(rows, group("settings.networkGroup"), toggle("settings.ipv6", p.IPv6 == "on"),
@@ -239,6 +242,10 @@ func coreSettingsRows(o dashboardOptions, tab coreSettingsTab) []settingsRow {
 		rows[i].rightAlign = true
 	}
 	return rows
+}
+
+func localizedProxyAddress(address string, locale i18n.Localizer) string {
+	return strings.NewReplacer("<LAN IP>", locale.T("settings.lanIP"), "<LAN IPv4>", locale.T("settings.lanIPv4"), "<LAN IPv6>", locale.T("settings.lanIPv6")).Replace(address)
 }
 
 func (m *Model) toggleCoreSetting(id, key, current string) tea.Cmd {

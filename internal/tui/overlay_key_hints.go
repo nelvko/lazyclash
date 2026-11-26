@@ -42,7 +42,10 @@ func (m *Model) portsContextHelp() string {
 	if m.busy {
 		return m.tr("ports.busy_help")
 	}
-	if m.ports.editingProxyPorts() && (m.ports.field(m.ports.focus) != nil || m.ports.focus == "ports.review") && !slices.Contains(m.ports.controls, "ports.review") {
+	if m.ports.step == "edit" && m.ports.textarea(m.ports.focus) != nil {
+		return m.tr("navigation.hints.control", m.tr("access.newLine"))
+	}
+	if m.ports.accessEditor() && m.ports.step == "edit" && (m.ports.field(m.ports.focus) != nil || m.ports.focus == "ports.review") && !slices.Contains(m.ports.controls, "ports.review") {
 		return m.tr("navigation.hints.browse")
 	}
 	label := ""
@@ -61,11 +64,11 @@ func (m *Model) portsContextHelp() string {
 		}
 	case "tun.policy", "ports.private":
 		label = m.tr("network.tunConfig.toggle")
-	case "ports.origins":
-		label = m.tr("access.newLine")
+	case "ports.rulesReset":
+		label = m.tr("access.rulesReset")
 	case "ports.auth.add":
 		label = m.tr("access.authAdd")
-	case "ports.tlsSection", "ports.corsSection", "ports.advancedSection":
+	case "ports.tlsSection", "ports.corsSection", "ports.advancedSection", proxyAuthBypass:
 		label = m.tr("access.expand")
 		if m.ports.access.sections[m.ports.focus] {
 			label = m.tr("access.collapse")
@@ -85,6 +88,12 @@ func (m *Model) portsContextHelp() string {
 			label = m.tr("ports.retry")
 		}
 	default:
+		if strings.HasPrefix(m.ports.focus, "ports.bindSample.") {
+			label = m.tr("access.bindSamples")
+		}
+		if strings.HasPrefix(m.ports.focus, "ports.copyUser.") {
+			label = m.tr("access.copyAddress")
+		}
 		if strings.HasPrefix(m.ports.focus, "ports.auth.remove.") {
 			label = m.tr("access.authRemove")
 		}

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"strings"
 
 	"charm.land/bubbles/v2/textarea"
@@ -57,6 +58,8 @@ func appendAccessFields(d *wizardDocument, gap int, fields ...dashboardBlock) {
 
 func (m *Model) accessEdit(d *wizardDocument) {
 	switch m.ports.kind {
+	case "bind", "rules":
+		m.drawNetworkAccess(d)
 	case "auth":
 		m.proxyAuthEdit(d)
 	case "proxy":
@@ -190,22 +193,7 @@ func (m *Model) accessControlFields(d *wizardDocument) {
 	}
 	if section("ports.corsSection") {
 		d.label(m.tr("access.origins"))
-		v := &p.access.origins
-		edge := border
-		if p.focus == "ports.origins" {
-			v.Focus()
-			edge = accent
-		} else {
-			v.Blur()
-		}
-		v.EndOfBufferCharacter = ' '
-		base := lipgloss.NewStyle().Foreground(lipgloss.Color(text)).Background(lipgloss.Color(modalBackground))
-		state := textarea.StyleState{Base: base, Text: base, CursorLine: base, Placeholder: base.Foreground(lipgloss.Color(muted))}
-		v.SetStyles(textarea.Styles{Focused: state, Blurred: state, Cursor: textarea.CursorStyle{Color: lipgloss.Color(focus)}})
-		v.SetWidth(d.width - 4)
-		lines := inputFrame(strings.Split(v.View(), "\n"), d.width, edge, modalBackground)
-		d.targets = append(d.targets, hitRegion{ID: "ports.origins", Y: len(d.lines), W: d.width, H: len(lines)})
-		d.lines = append(d.lines, lines...)
+		m.accessTextarea(d, "ports.origins", false)
 		check := "[ ] "
 		if p.access.private {
 			check = "[x] "
@@ -218,4 +206,44 @@ func (m *Model) accessControlFields(d *wizardDocument) {
 		pair("ports.mark", "ports.doh")
 		d.line(themed(m.tr("access.localHint"), muted, modalBackground, false))
 	}
+}
+
+func newAccessTextarea(value, placeholder string, height int) *textarea.Model {
+	v := textarea.New()
+	v.ShowLineNumbers, v.Prompt, v.MaxHeight, v.MaxWidth = false, "", 0, 0
+	v.CharLimit = 0
+	v.EndOfBufferCharacter, v.Placeholder = ' ', placeholder
+	v.SetHeight(height)
+	v.SetValue(value)
+	if v.Value() != value {
+		v.Err = errors.New("textarea could not load the full list")
+	}
+	v.SetVirtualCursor(true)
+	return &v
+}
+
+func (p *portsState) textarea(id string) *textarea.Model {
+	return p.access.areas[id]
+}
+
+func (m *Model) accessTextarea(d *wizardDocument, id string, invalid bool) {
+	p := &m.ports
+	v := p.textarea(id)
+	edge := border
+	if p.focus == id {
+		v.Focus()
+		edge = accent
+	} else {
+		v.Blur()
+	}
+	if invalid {
+		edge = errorColor
+	}
+	base := lipgloss.NewStyle().Foreground(lipgloss.Color(text)).Background(lipgloss.Color(modalBackground))
+	state := textarea.StyleState{Base: base, Text: base, CursorLine: base, Placeholder: base.Foreground(lipgloss.Color(muted))}
+	v.SetStyles(textarea.Styles{Focused: state, Blurred: state, Cursor: textarea.CursorStyle{Color: lipgloss.Color(focus)}})
+	v.SetWidth(d.width - 4)
+	lines := inputFrame(strings.Split(v.View(), "\n"), d.width, edge, modalBackground)
+	d.targets = append(d.targets, hitRegion{ID: id, Y: len(d.lines), W: d.width, H: len(lines)})
+	d.lines = append(d.lines, lines...)
 }

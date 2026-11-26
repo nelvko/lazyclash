@@ -3,6 +3,8 @@ package tui
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"net/url"
 	"os"
 	"slices"
 	"sync"
@@ -24,7 +26,7 @@ func TestSettingsPTYFixture(t *testing.T) {
 	}
 	b := &settingsPTYBackend{
 		coreSettings:    mihomo.DefaultGeneralSettings(),
-		runtimeSettings: app.RuntimeSettings{MixedPort: 7897, ControllerPort: 9097},
+		runtimeSettings: app.RuntimeSettings{MixedPort: 7897, ControllerPort: 9097, AccessRules: mihomo.AccessRules{LANAllowedIPs: mihomo.DefaultLANAllowedIPs}},
 		fakeBackend: &fakeBackend{snapshot: app.Snapshot{
 			Installed: true, ConfigReady: true, HasRun: true,
 			Version: "v1.19.33", RunningVersion: "v1.19.33", MixedPort: 7897, Controller: "127.0.0.1:9097",
@@ -70,7 +72,7 @@ type settingsPTYBackend struct {
 	coreSettings                                     mihomo.GeneralSettings
 	runtimeSettings                                  app.RuntimeSettings
 	coreChanges                                      [][2]string
-	authNames, pendingAuthNames                      []string
+	authUsers, pendingAuthUsers                      []app.ProxyAuthUser
 	authCounts                                       []int
 	languages, hints, themes, portReads, portApplies atomic.Int64
 	controls, modes                                  atomic.Int64
@@ -152,24 +154,50 @@ func (b *settingsPTYBackend) GetRuntimeSettings(ctx context.Context) (app.Runtim
 func (b *settingsPTYBackend) GetProxyAuth(ctx context.Context) (app.ProxyAuthSettings, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	return app.ProxyAuthSettings{Usernames: slices.Clone(b.authNames)}, ctx.Err()
+	saved := app.ProxyAuthSettings{SkipAuthPrefixes: b.runtimeSettings.SkipAuthPrefixes}
+	for _, user := range b.authUsers {
+		saved.Usernames = append(saved.Usernames, user.Username)
+	}
+	return saved, ctx.Err()
 }
 
-func (b *settingsPTYBackend) PrepareProxyAuth(ctx context.Context, original app.ProxyAuthSettings, users []app.ProxyAuthUser) (app.RuntimeSettingsPlan, error) {
+func (b *settingsPTYBackend) GetProxyAddress(ctx context.Context, original app.ProxyAuthSettings, username string) (string, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	for _, user := range b.authUsers {
+		if username == user.Username && slices.Contains(original.Usernames, username) {
+			return b.runtimeSettings.ProxyAddress(url.UserPassword(username, user.Password).String()), ctx.Err()
+		}
+	}
+	return "", errors.New("account is no longer available")
+}
+
+func (b *settingsPTYBackend) PrepareProxyAuthRules(ctx context.Context, original app.ProxyAuthSettings, users []app.ProxyAuthUser, prefixes string) (app.RuntimeSettingsPlan, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	proposed := make([]app.ProxyAuthUser, len(users))
 	names := make([]string, len(users))
 	hasPassword := false
 	for i, user := range users {
 		names[i] = user.Username
 		hasPassword = hasPassword || user.Password != ""
+		if user.Password == "" {
+			for _, saved := range b.authUsers {
+				if user.OriginalUsername == saved.Username {
+					user.Password = saved.Password
+					break
+				}
+			}
+		}
+		proposed[i] = user
 	}
 	next := b.runtimeSettings
 	next.ProxyUserCount = len(names)
+	next.SkipAuthPrefixes = prefixes
 	plan, err := b.fakeBackend.PrepareRuntimeSettingsEdit(ctx, b.runtimeSettings, next)
 	if err == nil {
-		plan.Changed = hasPassword || !slices.Equal(original.Usernames, names)
-		b.pendingAuthNames = names
+		plan.Changed = hasPassword || !slices.Equal(original.Usernames, names) || prefixes != original.SkipAuthPrefixes
+		b.pendingAuthUsers = proposed
 	}
 	return plan, err
 }
@@ -177,7 +205,7 @@ func (b *settingsPTYBackend) PrepareProxyAuth(ctx context.Context, original app.
 func (b *settingsPTYBackend) PrepareRuntimeSettingsEdit(ctx context.Context, current, settings app.RuntimeSettings) (app.RuntimeSettingsPlan, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	b.pendingAuthNames = nil
+	b.pendingAuthUsers = nil
 	return b.fakeBackend.PrepareRuntimeSettingsEdit(ctx, current, settings)
 }
 
@@ -188,9 +216,9 @@ func (b *settingsPTYBackend) ApplyRuntimeSettings(ctx context.Context, plan app.
 	if err == nil {
 		b.runtimeSettings = result.Settings
 		b.snapshot.Controller, b.snapshot.MixedPort = result.Controller, result.Settings.MixedPort
-		if b.pendingAuthNames != nil {
-			b.authNames, b.pendingAuthNames = b.pendingAuthNames, nil
-			b.authCounts = append(b.authCounts, len(b.authNames))
+		if b.pendingAuthUsers != nil {
+			b.authUsers, b.pendingAuthUsers = b.pendingAuthUsers, nil
+			b.authCounts = append(b.authCounts, len(b.authUsers))
 		} else {
 			b.portApplies.Add(1)
 		}

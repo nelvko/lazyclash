@@ -132,7 +132,9 @@ func (m *Model) settingsContextHelp() string {
 		}
 	}
 	switch m.focus {
-	case "settings.externalControl", "settings.proxyAuth", "settings.keepAliveIdle", "settings.keepAliveInterval", "settings.geoUpdateInterval":
+	case "settings.copyProxyAddress":
+		return m.controlActionHelp(m.tr("settings.copyProxyAddress"))
+	case "settings.bindAddress", "settings.accessRules", "settings.externalControl", "settings.proxyAuth", "settings.keepAliveIdle", "settings.keepAliveInterval", "settings.geoUpdateInterval":
 		return m.controlActionHelp(m.tr("settings.editValue", m.tr(m.focus)))
 	case "settings.language":
 		label = "settings.chooseLanguage"

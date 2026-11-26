@@ -1,0 +1,21 @@
+{
+  "settings.bindAddress": "Bind address",
+  "settings.accessRules": "Access rules",
+  "access.bindTitle": "Edit bind address",
+  "access.rulesTitle": "Access rules",
+  "access.allowCount": "Allow %d",
+  "access.denyCount": "Deny %d",
+  "access.allowAll": "Allow all",
+  "access.denyAll": "Deny all",
+  "access.bindHint": "Use * for all interfaces, or enter an IPv4 or IPv6 address on the core host.",
+  "access.allowedNetworks": "Allowed networks",
+  "access.deniedNetworks": "Denied networks",
+  "access.rulesHint": "Match the client’s source IP. Deny rules take precedence. Enter one IP or CIDR per line.",
+  "access.emptyAllowWarning": "An empty allow list denies all clients, including localhost.",
+  "access.bindSamples": "Use example",
+  "access.defaultAllowHint": "All IPv4 and IPv6 sources are allowed by default.",
+  "access.rulesApplyHint": "The running core will check new proxy connections against these rules.",
+  "access.bindApplyHint": "Regular proxies listen on 127.0.0.1 while LAN access is off. Enabling LAN access will use this address.",
+  "access.rulesReset": "Reset to defaults",
+  "access.listTooLong": "This list exceeds the editor’s capacity. Edit it in the configuration file."
+}

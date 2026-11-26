@@ -181,7 +181,10 @@ func drawDashboard(o dashboardOptions) (string, []hitRegion, int, []notification
 	tipsEnabled := !o.Dim && !o.SidebarOpen && !o.HelpAfterClose && !o.EditingInput
 	add := func(r hitRegion) {
 		if r.tip.text != "" && !tipsEnabled {
-			return
+			if r.tip.owner != r.ID {
+				return
+			}
+			r.tip = tooltipBinding{}
 		}
 		if r, ok := clipRegion(r, 0, 0, o.Width, o.Height); ok {
 			targets = append(targets, r)
