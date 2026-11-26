@@ -113,18 +113,24 @@ def detail_corner(terminal, underlying, footer="Esc Collapse"):
     terminal.wait(underlying)
     settle(terminal)
     screen = terminal.screen
-    for y, row in enumerate(screen.cells[:-1]):
+    for footer_y, row in enumerate(screen.cells[:-1]):
         line = "".join(row)
-        if footer not in line or "×" not in row:
+        if footer not in line:
             continue
         left = max(0, SMOKE.cell_width(line[:line.index(footer)]) - 4)
-        right = max(x for x in range(left, screen.columns) if row[x] == "×")
-        if right < screen.columns - 12 or (screen.columns >= 100 and left < screen.columns // 2):
+        if "×" in row[left:] or (screen.columns >= 100 and left < screen.columns // 2):
             break
-        content = ["".join(cells[left:right+1]).strip() for cells in screen.cells[:y]]
-        if "Details" in content:
-            raise AssertionError("Details opened with a redundant title row")
-        return left, right, y, content
+        for y, cells in enumerate(screen.cells[:footer_y]):
+            if not "".join(cells[left:]).lstrip().startswith("! "):
+                continue
+            if "×" not in cells[-12:]:
+                raise AssertionError("Close must be at the right of the first detail line\n" + screen.text())
+            close_x = max(x for x in range(left, screen.columns) if cells[x] == "×")
+            body = ["".join(cells[left:close_x]).strip()]
+            body.extend("".join(r[left:]).strip() for r in screen.cells[y+1:footer_y])
+            if any("".join(r[left:]).strip() == "Details" for r in screen.cells[:y]):
+                raise AssertionError("Details opened with a redundant title row")
+            return (close_x, y), body
     raise AssertionError("Notification detail is missing its corner controls\n" + screen.text())
 
 
@@ -257,7 +263,7 @@ def exercise_notifications(terminal, output, profile):
     terminal.click_text("Details")
     terminal.wait("Esc Collapse")
     terminal.wait("Stop service")
-    _, _, _, content = detail_corner(terminal, "Profiles")
+    _, content = detail_corner(terminal, "Profiles")
     body = " ".join(content)
     if "Stop service: " + error not in body:
         raise AssertionError("Detail lost part of the folded error: " + body)
@@ -361,12 +367,14 @@ def exercise_profile_updates(terminal, output, profile, command, directory):
     terminal.wait("Interface Preferences")
     terminal.click_text("Details")
     terminal.wait("Lab-01")
-    _, _, _, content = detail_corner(terminal, "Interface Preferences")
+    close, content = detail_corner(terminal, "Interface Preferences")
     if "Profiles updated: 0. Failed: 18" not in " ".join(content):
         raise AssertionError("Details lost the complete update result\n" + terminal.screen.text())
     save_screen(terminal, output, profile, "notification-detail-160x45")
     terminal.key(b"\x1b[F")  # End
     terminal.wait("Lab-18")
+    if terminal.screen.cells[close[1]][close[0]] != "×":
+        raise AssertionError("Scrolling the wide detail displaced its close button")
     terminal.key(b"\x1b")
     terminal.wait_absent("Esc Collapse")
     terminal.wait("Interface Preferences")
@@ -377,20 +385,24 @@ def exercise_profile_updates(terminal, output, profile, command, directory):
     save_screen(terminal, output, profile, "notification-list-40x24")
     terminal.key(b"\r")
     terminal.wait("Lab-01")
-    left, right, footer, _ = detail_corner(terminal, "Settings", "Esc Back")
+    terminal.key(b"\x1b")
+    list_cards(terminal, "Settings")
+    terminal.key(b"\r")
+    terminal.wait("Lab-01")
+    close, _ = detail_corner(terminal, "Settings", "Esc Back")
     save_screen(terminal, output, profile, "notification-detail-40x24")
     if "Lab-18" in terminal.screen.text():
         raise AssertionError("Long detail did not require scrolling at 40×24")
     for _ in range(40):
-        terminal.key(f"\x1b[<65;{(left + right)//2 + 1};{footer}M".encode())
+        terminal.key(f"\x1b[<65;{close[0]+1};{close[1]+2}M".encode())
         if "Lab-18" in terminal.screen.text():
             break
     terminal.wait("Lab-18")
-    terminal.key(b"\x1b")
+    if terminal.screen.cells[close[1]][close[0]] != "×":
+        raise AssertionError("Scrolling the narrow detail displaced its close button")
+    click_close(terminal, close)
     terminal.wait_absent("Lab-18")
-    list_cards(terminal, "Settings")
-    terminal.key(b"x")
-    terminal.wait_absent("Esc Collapse")
+    terminal.wait_absent("×")
     empty_shortcut(terminal, "Settings")
     terminal.resize(160, 45)
     terminal.key(b"1")

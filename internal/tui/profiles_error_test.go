@@ -30,7 +30,7 @@ func TestInitialProfileReadFailureDoesNotPresentAnEmptyLibrary(t *testing.T) {
 	// The compact summary clips the cause. The complete diagnostic remains
 	// readable from the page before the user retries.
 	m, _ = click(m, findTarget(t, m, "notification.details.1"))
-	detail := strings.Join(strings.Fields(ansi.Strip(m.View().Content)), " ")
+	detail := strings.Join(strings.Fields(ansi.Strip(m.notification.panel.viewport.View())), " ")
 	if !m.notification.panel.open || !strings.Contains(detail, b.snapshotErr.Error()) {
 		t.Fatalf("missing complete profile read error in Details: %s", detail)
 	}

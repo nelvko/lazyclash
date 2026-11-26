@@ -366,11 +366,14 @@ func (p *notificationPanel) renderDetail(item notificationItem, locale i18n.Loca
 		prefix = themed(paint.marker+" ", paint.signal, paint.background, false)
 	}
 	prefixWidth := ansi.StringWidth(prefix)
-	w := min(p.bounds.W, max(minNotificationWidth, 4+prefixWidth+max(lipgloss.Width(body), lipgloss.Width(extra))))
+	id := fmt.Sprintf("notification.panel.dismiss.%d", item.ID)
+	close := paint.button(id, "×", p.bounds.W, options)
+	closeWidth := ansi.StringWidth(close)
+	w := min(p.bounds.W, max(minNotificationWidth, 4+prefixWidth+max(lipgloss.Width(body), lipgloss.Width(extra))+closeWidth))
 	p.bounds.X += p.bounds.W - w
 	p.bounds.W = w
 	inner := w - 4
-	readingWidth := inner - prefixWidth
+	readingWidth := inner - closeWidth - prefixWidth
 	lines := strings.Split(wrapText(body, readingWidth), "\n")
 	if extra != "" {
 		lines = append(lines, "")
@@ -385,17 +388,14 @@ func (p *notificationPanel) renderDetail(item notificationItem, locale i18n.Loca
 	}
 	p.bounds.H = min(p.bounds.H, max(5, 3+len(lines)))
 	p.contentY = p.bounds.Y + 1
-	p.viewport.SetWidth(inner)
+	p.viewport.SetWidth(inner - closeWidth)
 	p.viewport.SetHeight(p.bounds.H - 3)
 	p.viewport.SetContentLines(lines)
 
 	rows := strings.Split(p.viewport.View(), "\n")
-	id := fmt.Sprintf("notification.panel.dismiss.%d", item.ID)
-	close := paint.button(id, "×", inner, options)
-	closeWidth := ansi.StringWidth(close)
-	footer := p.footer(locale, options, inner-closeWidth, 2, paint)
-	p.targets = append(p.targets, hitRegion{ID: id, X: p.bounds.X + w - 2 - closeWidth, Y: p.contentY + p.viewport.Height(), W: closeWidth, H: 1})
-	rows = append(rows, footer+close)
+	rows[0] = cellPad(rows[0], p.viewport.Width()) + close
+	p.targets = append(p.targets, hitRegion{ID: id, X: p.bounds.X + 2 + p.viewport.Width(), Y: p.contentY, W: closeWidth, H: 1})
+	rows = append(rows, p.footer(locale, options, inner, 2, paint))
 	blank := themed(strings.Repeat(" ", w), paint.foreground, paint.background, false)
 	for i, row := range rows {
 		rows[i] = themed("  "+cellPad(row, inner)+"  ", paint.foreground, paint.background, false)

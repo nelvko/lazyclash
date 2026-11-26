@@ -245,14 +245,32 @@ func TestNotificationPanelReflowsControlsAndCollapsesOnOutsideClick(t *testing.T
 
 func TestExpandedNotificationsShareToastEdgeAndFitTheirContents(t *testing.T) {
 	locale := i18n.New(i18n.English)
+	assertCloseInCorner := func(p *notificationPanel, box string) {
+		t.Helper()
+		plain := ansi.Strip(box)
+		rows := strings.Split(plain, "\n")
+		before, after, found := strings.Cut(rows[1], "×")
+		if !found || strings.Count(plain, "×") != 1 || strings.TrimSpace(after) != "" || ansi.StringWidth(after) > 3 {
+			t.Fatalf("expected a single close icon at the right end of the first content row:\n%s", plain)
+		}
+		click := tea.MouseClickMsg{X: p.bounds.X + ansi.StringWidth(before), Y: p.bounds.Y + 1, Button: tea.MouseLeft}
+		if action := p.mouse(click); action != "notification.panel.dismiss.1" {
+			t.Fatalf("clicking the visible close icon returned %q", action)
+		}
+		click.Y = p.bounds.Y + p.bounds.H - 2
+		if action := p.mouse(click); action == "notification.panel.dismiss.1" {
+			t.Fatal("clicking the former close position in the footer still dismisses the notification")
+		}
+	}
 	for _, size := range [][2]int{{160, 45}, {120, 32}, {80, 24}, {40, 24}, {32, 12}, {20, 7}} {
 		width, height := size[0], size[1]
-		short := notificationItem{ID: 1, Kind: "error", Message: "Failed"}
+		short := notificationItem{ID: 1, Kind: "error", Message: "启动超时"}
 		var p notificationPanel
 		p.show(1)
 		box, _ := p.render([]notificationItem{short}, width, height, locale)
 		shortBounds := p.bounds
 		assertCanvas(t, box, shortBounds.W, shortBounds.H)
+		assertCloseInCorner(&p, box)
 		right := 2
 		if sidebarVisible(width, height) {
 			right = 3
@@ -273,7 +291,9 @@ func TestExpandedNotificationsShareToastEdgeAndFitTheirContents(t *testing.T) {
 		}
 		p.key(special(tea.KeyEnd))
 		box, _ = p.render([]notificationItem{short}, width, height, locale)
-		if !strings.Contains(ansi.Strip(box), "Final cause") {
+		assertCloseInCorner(&p, box)
+		visible := strings.Join(strings.Fields(strings.ReplaceAll(ansi.Strip(box), "×", "")), " ")
+		if !strings.Contains(visible, "Final cause") {
 			t.Fatalf("%v: the end of a long diagnostic was unreachable", size)
 		}
 	}
