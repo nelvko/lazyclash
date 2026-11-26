@@ -163,7 +163,10 @@ func (b *overviewPTYBackend) SetTerminalProxy(ctx context.Context, _ bool) error
 
 func (b *overviewPTYBackend) GetRuntimeSettings(ctx context.Context) (app.RuntimeSettings, error) {
 	b.settingsReads.Add(1)
-	return app.RuntimeSettings{MixedPort: b.snapshot.MixedPort, ControllerPort: 19097}, ctx.Err()
+	return app.RuntimeSettings{
+		MixedPort: b.snapshot.MixedPort, ControllerPort: 19097,
+		AccessRules: mihomo.AccessRules{LANAllowedIPs: mihomo.DefaultLANAllowedIPs},
+	}, ctx.Err()
 }
 
 func (b *overviewPTYBackend) ApplyRuntimeSettings(ctx context.Context, _ app.RuntimeSettingsPlan) (app.RuntimeSettingsResult, error) {
