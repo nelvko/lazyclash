@@ -131,7 +131,7 @@ CLI 使用同一事务用例：`lazyclash settings show` 查看，`lazyclash set
 
 安装显示真实下载字节、已知总量/百分比、速率，以及解压、可执行文件检查和部署阶段。总量来自 HTTP 响应，未知时使用不确定状态；详情可展开。失败保留选择，可重试或修改网络；修改网络只重新检查，仍须主动点击安装。取消、改选版本或本地文件会清除待安装意图，迟到结果不会继续安装。
 
-普通 `install`、手动换版和显式重装均**不会自动启动或重启服务、修改系统代理、启用 TUN 或设置自启动**。同版本默认 Use existing，只有明确选择 Reinstall 才替换。这些流程先暂存并验证，再原子替换路径；正在运行的进程继续持有旧 inode。配置、API secret 与 unit 不因换版而覆盖。结果和首页分别显示已安装版本与实际运行版本，普通安装后切换运行版本需要显式重启。
+普通 `install`、手动换版和显式重装均**不会自动启动或重启服务、修改系统代理、启用 TUN 或更改开机自启设置**。同版本默认 Use existing，只有明确选择 Reinstall 才替换。这些流程先暂存并验证，再原子替换路径；正在运行的进程继续持有旧 inode。配置、API secret 与 unit 不因换版而覆盖。结果和首页分别显示已安装版本与实际运行版本，普通安装后切换运行版本需要显式重启。
 
 在「设置 → 内核管理」中点击**检查更新**，会读取本机安装版本并查询官方 `version.txt`。结果区分已最新、有更新、本地版本更高和无法比较。确认升级后会安装本次检查的目标版本。服务正在运行时会重启并验证，停止时保持停止，失败时恢复旧文件和原运行状态。Alpha 版本支持识别与检查，一键升级仅适用于正式版。[内核版本管理](docs/core-updates.md)
 
@@ -159,7 +159,7 @@ CLI 使用同一事务用例：`lazyclash settings show` 查看，`lazyclash set
 
 ## 持久运行与权限
 
-普通用户通过 systemd user service 运行，Start/Restart/Enable 要求已明确启用 linger；root 通过 systemd system service 运行，不依赖登录会话或 linger。安装不启动、不 enable、不修改 linger，TUI 退出或终端挂断不发送 Stop。运行意图、模式、TUN 策略、节点缓存和显式订阅来源持久保存。`service enable/disable` 独立控制自启动；多步管理事务中断后，遗留 journal 在下一次应用调用时恢复，没有后台 daemon 或独立事务执行器代跑。详细行为见 [持久运行](docs/runtime-lifecycle.md)。
+普通用户通过 systemd user service 运行，Start/Restart/Enable 要求已明确启用 linger；root 通过 systemd system service 运行，不依赖登录会话或 linger。安装不启动、不 enable、不修改 linger，TUI 退出或终端挂断不发送 Stop。运行意图、模式、TUN 策略、节点缓存和显式订阅来源持久保存。`service enable/disable` 独立控制开机自启；多步管理事务中断后，遗留 journal 在下一次应用调用时恢复，没有后台 daemon 或独立事务执行器代跑。详细行为见 [持久运行](docs/runtime-lifecycle.md)。
 
 system Mihomo 使用专用非 root 账号；普通代理无额外 capabilities，明确开启 TUN 才授予 `CAP_NET_ADMIN CAP_NET_RAW`。TUI 默认取消的弹窗和 CLI `tun on --scope host --confirm-host` 均说明整台主机、其他用户和服务的流量及 DNS 影响。停止时开启仅保存策略；运行时切换会重启内核。启动及退出由同一受保护 lazyclash 程序的有限 unit 钩子检查冲突、记录并清理自有接口/路由，不自动抢占其他实例或 VPN。TUN 的 DNS 劫持不修改系统 resolver；系统代理自动设置、普通用户 TUN 和 UID 筛选不在首发范围。权限细节与限制见 [权限管理](docs/permissions.md)。
 
