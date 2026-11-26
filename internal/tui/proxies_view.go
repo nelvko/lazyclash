@@ -152,6 +152,9 @@ func (m *Model) proxyGroupHeader(gi, width int, cols proxyHeaderColumns) dashboa
 	surface := bg
 	if m.hover == id || m.hover == testID || m.hover == sortID || m.hover == typeID {
 		surface = hoverBackground
+		if m.effectiveTheme() == app.ThemeDark {
+			surface = raised
+		}
 	}
 	summary := clean(m.proxyGroupSummary(g))
 	count := fmt.Sprintf("%*d", cols.count, len(g.All))
