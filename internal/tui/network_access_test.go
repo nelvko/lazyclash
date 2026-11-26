@@ -68,17 +68,38 @@ func TestAccessRulesReviewOnlyChangedNetworksAndKeepDraftOnResize(t *testing.T) 
 	}
 }
 
+func TestAccessRulesSummary(t *testing.T) {
+	for _, tc := range []struct{ config, zh, en string }{
+		{"{}", "❯", "❯"},
+		{"lan-allowed-ips: ['::/0', '0.0.0.0/0', '::/0']", "❯", "❯"},
+		{"skip-auth-prefixes: ['192.0.2.1']", "❯", "❯"},
+		{"lan-allowed-ips: []", "自定义 ❯", "Custom ❯"},
+		{"lan-allowed-ips: ['0.0.0.0/0']", "自定义 ❯", "Custom ❯"},
+		{"lan-disallowed-ips: ['192.0.2.1']", "自定义 ❯", "Custom ❯"},
+	} {
+		_, rules, err := mihomo.ConfigProxyAccess([]byte(tc.config))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for lang, value := range map[string]string{i18n.Chinese: tc.zh, i18n.English: tc.en} {
+			o := dashboardOptions{Locale: i18n.New(lang), Snapshot: settingsTestSnapshot()}
+			o.Snapshot.RuntimeSettings.AccessRules = rules
+			want := o.Locale.T("settings.accessRules") + " " + value
+			for _, width := range []int{40, 160} {
+				body, hits := settingsContent(o, width)
+				row := settingsPaintedTarget(t, body, hits, "settings.accessRules")
+				if got := strings.Join(strings.Fields(row), " "); got != want {
+					t.Errorf("%s/%d columns, %s: got %q, want %q", lang, width, tc.config, got, want)
+				}
+			}
+		}
+	}
+}
+
 func TestAccessRulesDistinguishDenyAllFromDefaultAndPreserveLongLists(t *testing.T) {
 	s := app.RuntimeSettings{MixedPort: 7897}
-	locale := i18n.New(i18n.Chinese)
-	if got := accessRulesSummary(s, locale); got != "禁止全部" {
-		t.Fatalf("empty allow list summary: %q", got)
-	}
 	s.LANAllowedIPs = mihomo.DefaultLANAllowedIPs
 	s.LANDisallowedIPs = "192.168.1.7/32"
-	if got := accessRulesSummary(s, locale); got != "允许全部 · 禁止 1" {
-		t.Fatalf("default plus exception summary: %q", got)
-	}
 	m := openNetworkAccessForm(t, "settings.accessRules", s)
 	m.ports.textarea(allowedNetworksID).SetValue("::/0\n0.0.0.0/0\n::/0")
 	m.layout()

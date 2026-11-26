@@ -468,12 +468,19 @@ def check_bind_address(preview, binary, output, language, profile, args, no_ips)
         terminal.click_text(words["ports.done"])
         dismiss_toasts(terminal)
 
-    def reveal_address():
+    def reveal_rules():
         for _ in range(terminal.screen.rows):
-            if words["settings.bindAddress"] in terminal.screen.text():
+            if words["settings.accessRules"] in terminal.screen.text():
                 return
             terminal.key(b"\x1b[<65;37;12M")
             terminal.settle()
+
+    def check_summary(summary):
+        label = words["settings.accessRules"]
+        x, y = position(terminal, label)
+        right = card_bounds(terminal.screen, x)[1]
+        actual = "".join(terminal.screen.cells[y][x:right]).removeprefix(label).strip()
+        assert actual == summary, (actual, summary)
 
     def ipv6_hit_point():
         x, first = position(terminal, "[2001:")
@@ -503,7 +510,8 @@ def check_bind_address(preview, binary, output, language, profile, args, no_ips)
             terminal.click_text(words["settings.tab.access"])
             terminal.resize(width, height)
             terminal.settle()
-            reveal_address()
+            reveal_rules()
+            check_summary("❯")
             terminal.click_text(words["settings.bindAddress"])
             terminal.wait(words["access.bindTitle"])
             if no_ips:
@@ -533,9 +541,27 @@ def check_bind_address(preview, binary, output, language, profile, args, no_ips)
             if no_ips or width == 160:
                 value = ("192.0.2.71" if width == 160 else "[fd00::71]") if no_ips else "192.0.2.20"
                 terminal.wait(value + " ❯")
+            if not no_ips:
+                reveal_rules()
+                terminal.click_text(words["settings.accessRules"])
+                terminal.wait("0.0.0.0/0")
+                terminal.key(b"\t")
+                terminal.wait("192.168.1.50/32")
+                terminal.click_text("192.168.1.50/32")
+                terminal.key(b"192.0.2.90/32")
+                terminal.settle()
+                commit_edit()
+                check_summary(words["access.customRules"] + " ❯")
+                preview.capture(terminal, output, f"custom-{width}x{height}", args)
+                terminal.click_text(words["settings.accessRules"])
+                terminal.wait(words["access.rulesReset"])
+                terminal.click_text(words["access.rulesReset"])
+                terminal.settle()
+                commit_edit()
+                check_summary("❯")
         terminal.exit()
         saved = json.loads(report.read_text())
-        assert saved["port_applies"] == 2
+        assert saved["port_applies"] == (2 if no_ips else 6)
         assert saved["bind_address"] == ("[fd00::71]" if no_ips else ipv6)
     finally:
         terminal.cleanup()
@@ -546,7 +572,7 @@ def exercise(preview, binary, output, language, profile, args):
         for no_ips in (False, True):
             check_bind_address(preview, binary, output / ("manual" if no_ips else "options"),
                                language, profile, args, no_ips)
-        print(f"PASS {language}/{profile}: bind address selection and manual fallback, 160x45 and 40x24", flush=True)
+        print(f"PASS {language}/{profile}: bind address selection and manual fallback, access rules, 160x45 and 40x24", flush=True)
         return
     output.mkdir(parents=True)
     words = labels(language)
@@ -1111,7 +1137,7 @@ def main():
     scenario = parser.add_mutually_exclusive_group()
     scenario.add_argument("--tabs-only", action="store_true", help="Verify and capture tab spacing, row spacing, focus and hover")
     scenario.add_argument("--auth-only", action="store_true", help="Verify and capture the proxy authentication editor")
-    scenario.add_argument("--bind-only", action="store_true", help="Verify bind address choices and manual fallback")
+    scenario.add_argument("--bind-only", action="store_true", help="Verify bind address choices, manual fallback and access rule summaries")
     scenario.add_argument("--modals-only", action="store_true", help="Verify and capture all three port and access dialogs")
     parser.add_argument("--binary", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)

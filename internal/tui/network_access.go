@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"slices"
 	"strings"
 
 	"charm.land/bubbles/v2/textarea"
@@ -26,18 +25,10 @@ func bindAddressSummary(s app.RuntimeSettings, locale i18n.Localizer) string {
 }
 
 func accessRulesSummary(s app.RuntimeSettings, locale i18n.Localizer) string {
-	allowed, denied := strings.Fields(s.LANAllowedIPs), strings.Fields(s.LANDisallowedIPs)
-	if len(allowed) == 0 {
-		return locale.T("access.denyAll")
+	if s.LANAllowedIPs == mihomo.DefaultLANAllowedIPs && s.LANDisallowedIPs == "" {
+		return settingsDetailChevron
 	}
-	summary := locale.T("access.allowCount", len(allowed))
-	if slices.Contains(allowed, "0.0.0.0/0") && slices.Contains(allowed, "::/0") {
-		summary = locale.T("access.allowAll")
-	}
-	if len(denied) > 0 {
-		summary += " · " + locale.T("access.denyCount", len(denied))
-	}
-	return summary
+	return locale.T("access.customRules") + " " + settingsDetailChevron
 }
 
 func (m *Model) initNetworkAccess() {
