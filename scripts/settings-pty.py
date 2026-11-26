@@ -275,7 +275,7 @@ def check_tab_strip(preview, terminal, words, profile, output, args):
         points = [position(terminal, words["settings." + item]) for item in items]
         offsets = [b[1]-a[1] for a, b in zip(points, points[1:])]
         assert all(delta >= (2 if width == 200 else 1) for delta in offsets), (points, offsets)
-        assert points[3][0] > points[2][0], "binding should read as a child of Allow LAN"
+        assert points[2][0] == points[3][0] == points[4][0], "Allow LAN, bind address and access rules should align"
         address = "http://127.0.0.1:7897"
         assert address in terminal.screen.text(), "missing local proxy address"
         summary = words["settings.authNotConfigured"] + " ›"

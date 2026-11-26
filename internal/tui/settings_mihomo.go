@@ -196,7 +196,7 @@ func coreSettingsRows(o dashboardOptions, tab coreSettingsTab) []settingsRow {
 		rows = append(rows, group("settings.proxyInbound"),
 			link("runtime-settings", tr("settings.proxyPorts"), summary+" ›", true),
 			toggleWithTip("settings.allowLAN", runtime.AllowLAN),
-			link("settings.bindAddress", "  "+tr("settings.bindAddress"), bindAddressSummary(runtime, o.Locale)+" ›", true),
+			link("settings.bindAddress", tr("settings.bindAddress"), bindAddressSummary(runtime, o.Locale)+" ›", true),
 			link("settings.accessRules", tr("settings.accessRules"), accessRulesSummary(runtime, o.Locale)+" ›", true))
 		var users string
 		switch runtime.ProxyUserCount {
