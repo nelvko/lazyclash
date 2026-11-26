@@ -11,6 +11,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/colorprofile"
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/i18n"
@@ -183,7 +184,7 @@ func TestMarianaSidebarCurrentHoverAndFocusAreIndependent(t *testing.T) {
 		t.Fatal("keyboard focus lost its separate orange marker")
 	}
 	currentLabel := lipgloss.NewStyle().Bold(true).Render("Overview")
-	if !strings.Contains(screen, strings.TrimSuffix(themed(currentLabel, selectionForeground, shellBackground, false), "\x1b[m")) {
+	if !strings.Contains(screen, strings.TrimSuffix(themed(currentLabel, selectionForeground, bg, false), "\x1b[m")) {
 		t.Fatal("current page lost its sidebar highlight or bold label")
 	}
 	labelTail := func(label string) string {
@@ -208,6 +209,25 @@ func TestMarianaSidebarCurrentHoverAndFocusAreIndependent(t *testing.T) {
 	popup, _, _ := renderDashboard(o)
 	if !strings.Contains(popup, themed(labelTail("Rules"), text, hoverBackground, false)) {
 		t.Fatal("compact menu lost its hover surface")
+	}
+}
+
+func TestCurrentSidebarRowJoinsContentBackground(t *testing.T) {
+	m := themeSample("sidebar-connected")
+	m, _ = update(m, tea.WindowSizeMsg{Width: 160, Height: 45})
+	hit := findTarget(t, m, "nav.proxies")
+	screen := uv.NewScreenBuffer(m.width, m.height)
+	uv.NewStyledString(m.View().Content).Draw(screen, screen.Bounds())
+	for y := hit.Y; y < hit.Y+hit.H; y++ {
+		// Include the adjacent content gutter so both sides of the seam are checked.
+		for x := hit.X; x <= hit.X+hit.W; x++ {
+			cell := screen.CellAt(x, y)
+			want := cell.Style
+			want.Bg = lipgloss.Color(bg)
+			if !cell.Style.Equal(&want) {
+				t.Fatalf("background at (%d,%d) = %v, want %s", x, y, cell.Style.Bg, bg)
+			}
+		}
 	}
 }
 
