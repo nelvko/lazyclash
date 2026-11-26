@@ -237,8 +237,11 @@ func (m *Model) proxyPath(name string) []string {
 	return path
 }
 func (m *Model) proxyPathKey(name string) string { return strings.Join(m.proxyPath(name), "\x00") }
-func (m *Model) proxySummary(name string) string {
-	path := m.proxyPath(name)
+func (m *Model) proxyGroupSummary(g mihomo.Group) string {
+	if g.Type == "LoadBalance" || g.Type == "Relay" {
+		return m.tr("proxies.distributed")
+	}
+	path := m.proxyPath(g.Now)
 	if len(path) == 0 {
 		return m.tr("proxies.no_selection")
 	}
@@ -246,20 +249,7 @@ func (m *Model) proxySummary(name string) string {
 }
 func (m *Model) proxyNodeMeta(name string) string {
 	if _, g, ok := m.proxyGroup(name); ok {
-		summary := m.proxySummary(g.Now)
-		if g.Type == "LoadBalance" || g.Type == "Relay" {
-			summary = m.tr("proxies.distributed")
-		}
-		return m.tr("proxies.group_reference", summary)
-	}
-	return m.proxyMeta(name)
-}
-func (m *Model) proxyMeta(name string) string {
-	if _, g, ok := m.proxyGroup(name); ok {
-		if g.Type == "LoadBalance" || g.Type == "Relay" {
-			return g.Type + " · " + m.tr("proxies.distributed")
-		}
-		return g.Type + " · " + strings.Join(m.proxyPath(g.Now), " → ")
+		return m.proxyGroupTypeLabel(g.Type) + " · " + m.proxyGroupSummary(g)
 	}
 	p, ok := m.snapshot.Proxies[name]
 	if !ok {

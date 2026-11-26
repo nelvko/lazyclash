@@ -121,11 +121,12 @@ func (m *Model) layoutProxiesBody(width int) proxyBodyLayout {
 	return finish()
 }
 
-type proxyHeaderColumns struct{ count, kind int }
+type proxyHeaderColumns struct{ name, kind, count int }
 
 func (m *Model) proxyHeaderColumns() proxyHeaderColumns {
 	var cols proxyHeaderColumns
 	for _, g := range m.snapshot.Groups {
+		cols.name = max(cols.name, ansi.StringWidth(clean(g.Name)))
 		cols.count = max(cols.count, len(strconv.Itoa(len(g.All))))
 		cols.kind = max(cols.kind, ansi.StringWidth(m.proxyGroupTypeLabel(g.Type)))
 	}
@@ -150,24 +151,27 @@ func (m *Model) proxyGroupHeader(gi, width int, cols proxyHeaderColumns) dashboa
 	if m.hover == id || m.hover == testID || m.hover == sortID || m.hover == typeID {
 		surface = hoverBackground
 	}
-	summary := m.proxySummary(g.Now)
-	if g.Type == "LoadBalance" || g.Type == "Relay" {
-		summary = m.tr("proxies.distributed")
-	}
+	summary := clean(m.proxyGroupSummary(g))
 	count := fmt.Sprintf("%*d", cols.count, len(g.All))
 	trailing := "  " + count + "  " + arrow + " "
 	if width < 32 {
 		trailing = " " + count + " " + arrow
 	}
-	// Leave room for the focus marker and a short group name before the type.
-	trailingWidth := ansi.StringWidth(trailing)
-	typeWidth := max(0, min(cols.kind, 16, width-8-trailingWidth))
-	kind := cellCrop(m.proxyGroupTypeLabel(g.Type), typeWidth)
-	kindWidth := ansi.StringWidth(kind)
-	type headerAction struct {
-		id, value string
+	// The wide columns depend only on the directory and available width, so
+	// opening a group or updating its test progress never shifts its identity.
+	nameWidth := min(cols.name, 24, width/5)
+	typeWidth := min(cols.kind, 16)
+	typeX, typeY := 2+nameWidth+2, 0
+	minTitle := typeX + typeWidth + 2 + 6 // keep some of the current node visible
+	if m.proxiesNarrow() {
+		typeX, typeY = 2, 1
+		minTitle = min(12, 2+ansi.StringWidth(clean(g.Name)), max(4, width/5))
 	}
-	var actions []headerAction
+	kind := cellCrop(m.proxyGroupTypeLabel(g.Type), min(typeWidth, width-typeX))
+	rightWidth := ansi.StringWidth(trailing)
+	actionBudget := max(0, width-rightWidth-minTitle)
+	sortable := expanded && m.proxySortable(g)
+	sortValue := ""
 	testValue := ""
 	testing := m.proxies.testGroup == g.Name && m.proxies.testing
 	showResult := m.proxies.testGroup == g.Name && m.proxies.testStatusVisible
@@ -182,84 +186,65 @@ func (m *Model) proxyGroupHeader(gi, width int, cols proxyHeaderColumns) dashboa
 		o := dashboardButtonOptions(testID, m.navigationOptions(), false, surface)
 		o.Kind, o.Compact, o.Disabled = buttonText, width < 52, m.busy || m.quitting
 		testValue = renderButton(label, o)
+		testBudget := actionBudget
+		if sortable {
+			testBudget-- // even the smallest sort trigger can show its disclosure arrow
+		}
+		if (testing || showResult) && ansi.StringWidth(testValue) > testBudget {
+			testValue = renderButton(fmt.Sprintf("%d/%d", m.proxies.completed, m.proxies.total), o)
+		}
+		testValue = cellCrop(testValue, testBudget)
 	}
-	if expanded && m.proxySortable(g) {
+	if available := actionBudget - ansi.StringWidth(testValue); sortable && available > 0 {
 		o := dashboardButtonOptions(sortID, m.navigationOptions(), false, surface)
 		o.Disabled = m.busy || m.quitting
-		// Keep the adjacent test progress visible when the tools share a short row.
-		available := max(1, width-1-ansi.StringWidth(testValue))
-		value, _ := m.proxySortDropdown(g.Name).render(sortID, o, m.menu.dropdownOpen(sortID), available)
-		actions = append(actions, headerAction{sortID, value})
+		sortValue, _ = m.proxySortDropdown(g.Name).render(sortID, o, m.menu.dropdownOpen(sortID), available)
 	}
-	if testValue != "" {
-		actions = append(actions, headerAction{testID, testValue})
-	}
-	var actionValues []string
-	for _, action := range actions {
-		actionValues = append(actionValues, action.value)
-	}
-	actionText := strings.Join(actionValues, "")
-	actionWidth := ansi.StringWidth(actionText)
-	right := themed(" "+strings.Repeat(" ", typeWidth-kindWidth)+kind+trailing, muted, surface, false)
-	suffixWidth := ansi.StringWidth(right)
-	// Share the summary row with the tools on narrow screens. Progress updates
-	// can change a label's width, but never insert a row before the members.
-	inlineActions := len(actions) > 0 && width >= 52 && width-suffixWidth-actionWidth >= 10
-	if inlineActions {
-		right = " " + actionText + right
-	}
-	leftWidth := max(1, width-ansi.StringWidth(right))
+	sortWidth, testWidth := ansi.StringWidth(sortValue), ansi.StringWidth(testValue)
+	leftWidth := max(0, width-rightWidth-sortWidth-testWidth)
 	name := themed(lipgloss.NewStyle().Bold(true).Render(clean(g.Name)), color, surface, false)
 	prefix := themed(marker, focus, surface, false)
-	b := dashboardBlock{}
-	if (m.proxiesNarrow() || width < 72) && (expanded || width < 60) || len(actions) > 0 && !inlineActions {
-		b.lines = []string{cellPad(prefix+name, leftWidth) + right, themed(cellPad("  "+clean(summary), width), muted, surface, false)}
+	typeLabel := themed(kind, muted, surface, false)
+	right := sortValue + testValue + themed(trailing, muted, surface, false)
+	var b dashboardBlock
+	if m.proxiesNarrow() {
+		meta := "  " + typeLabel
+		room := width - ansi.StringWidth(meta)
+		separator := " · "
+		if width < 24 {
+			separator = "·"
+		}
+		if gap := ansi.StringWidth(separator); kind != "" && room > gap {
+			meta += themed(separator, muted, surface, false)
+			room -= gap
+		} else if kind != "" {
+			room = 0
+		}
+		b.lines = []string{cellPad(prefix+name, leftWidth) + right, meta + cellCrop(summary, room)}
 	} else {
-		nameWidth := min(24, max(12, width/4))
-		left := prefix + cellPad(name, nameWidth) + "  "
-		room := max(0, leftWidth-ansi.StringWidth(left))
-		b.lines = []string{cellPad(left+themed(cellCrop(clean(summary), room), muted, surface, false), leftWidth) + right}
+		left := prefix + cellPad(name, nameWidth) + "  " + cellPad(typeLabel, typeWidth) + "  "
+		b.lines = []string{cellPad(left+summary, leftWidth) + right}
 	}
 	// Reserve action rectangles even when disabled so clicking them never folds
 	// the group. The remaining header surface belongs to the folding target.
 	var actionRegions []hitRegion
-	appendAction := func(action headerAction, x, y, w int) {
-		hit := hitRegion{ID: action.id, X: x, Y: y, W: w, H: 1, DropdownRight: action.id == sortID}
+	reserve := func(action string, x, y, w int, enabled bool) {
+		if w <= 0 {
+			return
+		}
+		hit := hitRegion{ID: action, X: x, Y: y, W: w, H: 1, DropdownRight: action == sortID}
 		actionRegions = append(actionRegions, hit)
-		if !m.busy && !m.quitting {
+		if enabled {
 			b.targets = append(b.targets, hit)
 		}
 	}
-	if inlineActions {
-		x := width - suffixWidth - actionWidth
-		for _, action := range actions {
-			w := ansi.StringWidth(action.value)
-			appendAction(action, x, 0, w)
-			x += w
-		}
-	} else if len(actions) > 0 {
-		y := len(b.lines) - 1
-		x := max(1, width-actionWidth)
-		b.lines[y] = themed(cellPad("  "+clean(summary), x), muted, surface, false)
-		for _, action := range actions {
-			w := min(width-x, ansi.StringWidth(action.value))
-			if w <= 0 {
-				break
-			}
-			b.lines[y] += cellCrop(action.value, w)
-			appendAction(action, x, y, w)
-			x += w
-		}
-	}
-	if kindWidth > 0 && proxyGroupConfigType(g.Type) != "" {
+	if proxyGroupConfigType(g.Type) != "" {
 		// The type is a hover target, including when actions are disabled.
-		x := width - trailingWidth - kindWidth
-		if x >= 0 {
-			hit := hitRegion{ID: typeID, X: x, Y: 0, W: kindWidth, H: 1}
-			actionRegions = append(actionRegions, hit)
-			b.targets = append(b.targets, hit)
-		}
+		reserve(typeID, typeX, typeY, ansi.StringWidth(kind), true)
 	}
+	enabled := !m.busy && !m.quitting
+	reserve(sortID, leftWidth, 0, sortWidth, enabled)
+	reserve(testID, leftWidth+sortWidth, 0, testWidth, enabled)
 	if !m.compactProxyCards() {
 		b.lines = append([]string{""}, b.lines...)
 		b.blank()

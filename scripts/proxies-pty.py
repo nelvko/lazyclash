@@ -19,7 +19,7 @@ from tui_layout import SIDEBAR_MIN_WIDTH, sidebar_visible
 
 MEMBERS = ("AUTO", "HK 01", "HK 02", "JP 01", "SG 01", "US 01", "DIRECT", "REJECT")
 MODES = ("rule", "global", "direct")
-CARD_META = re.compile(r"Shadowsocks|Trojan|VLESS|Hysteria2|VMess|Proxy group|策略组|\bDirect\b|\bReject\b")
+CARD_META = re.compile(r"Shadowsocks|Trojan|VLESS|Hysteria2|VMess|(?:Selector|URLTest|Fallback|LoadBalance|Relay) · |\bDirect\b|\bReject\b")
 
 
 def wait_until(terminal, predicate, label, timeout=12):
@@ -193,7 +193,7 @@ def candidate_position(terminal, name, start_row=0):
     for y in range(start_row, len(rows) - 1):
         row = rows[y]
         following = "".join(rows[y + 1])
-        if not CARD_META.search(following):
+        if not CARD_META.search(following) or re.search(r"[▸▾]\s*$", "".join(row)):
             continue
         for x, cell in enumerate(row):
             if cell and "".join(row[x:]).startswith(name):
@@ -376,26 +376,44 @@ def assert_header_hover(terminal, name, words, profile):
         assert terminal.screen.styles[y + 2][first_x][1] == normal, "card edge shares header hover"
 
 
-def assert_group_types(terminal, words):
-    type_ends, count_ends, disclosure = set(), set(), set()
-    for name, kind in (("PROXY", "select"), ("AUTO", "url-test"), ("Hong Kong", "fallback"),
-                       ("BALANCE", "load-balance"), ("CHAIN", "relay")):
-        _, y, arrow, line = group_header(terminal, name)
-        type_label = words["proxies.type." + kind]
-        match = re.search(re.escape(type_label) + r"\s+(\d+)\s+▸\s*$", line)
-        assert match, "missing type before the count for %s: %s" % (name, line)
-        cells = terminal.screen.cells[y]
-        type_ends.add(cell_offset(cells, match.start() + len(type_label)))
-        count_ends.add(cell_offset(cells, match.end(1)))
-        disclosure.add(arrow)
-        type_x = cell_offset(cells, match.start())
-        count_x = cell_offset(cells, match.start(1))
-        assert terminal.screen.styles[y][count_x][1] == terminal.screen.styles[y][type_x][1], "count has a separate panel: " + name
+def group_fields(terminal, name, label, summary, narrow):
+    name_x, y, arrow_x, line = group_header(terminal, name)
+    count = re.search(r"(\d+)\s+[▸▾]\s*$", line)
+    assert count, "missing member count: " + line
+    type_y = y + int(narrow)
+    cells = terminal.screen.cells[type_y]
+    text = "".join(cells)
+    pattern = re.escape(label) + (r"\s+·\s+" if narrow else r"\s+") + re.escape(summary)
+    match = re.search(pattern, text)
+    assert match, "missing group type and current node for %s: %s" % (name, text)
+    type_x = cell_offset(cells, match.start())
+    summary_x = cell_offset(cells, match.end() - len(summary))
+    count_end = cell_offset(terminal.screen.cells[y], count.end(1))
+    assert terminal.screen.styles[y][count_end - 1][1] == terminal.screen.styles[type_y][type_x][1], "count has a separate panel: " + name
+    if narrow:
+        assert label not in line and type_x == name_x, "narrow type must start on its own line: " + name
+    else:
+        assert name_x < type_x < summary_x < count_end, "wide fields are out of order: " + name
+    return name_x, type_x, summary_x, count_end, arrow_x
+
+
+def assert_group_types(terminal, words, narrow):
+    columns = []
+    distributed = words["proxies.distributed"]
+    for name, kind, label, summary in (("PROXY", "select", "Selector", "HK 02"),
+                                       ("AUTO", "url-test", "URLTest", "HK 02"),
+                                       ("Hong Kong", "fallback", "Fallback", "HK 01"),
+                                       ("BALANCE", "load-balance", "LoadBalance", distributed),
+                                       ("CHAIN", "relay", "Relay", distributed)):
+        fields = group_fields(terminal, name, label, summary, narrow)
+        # In two-line headers the summary immediately follows its variable-width type.
+        columns.append(fields[:2] + fields[3:] if narrow else fields)
+        y = group_header(terminal, name)[1] + int(narrow)
+        type_x = fields[1]
         hover_cell(terminal, type_x, y)
-        terminal.wait("type: " + kind)
-        if kind == "relay":
-            terminal.wait("已弃用" if type_label == "链式代理" else "deprecated")
-    assert len(type_ends) == len(count_ends) == len(disclosure) == 1, "group suffix columns do not align"
+        terminal.wait(words["proxies.type.deprecated"] % kind if kind == "relay" else "type: " + kind)
+        hover_cell(terminal, 0, 0)
+    assert len(set(columns)) == 1, "group columns do not align: " + repr(columns)
 
 
 def click_candidate(terminal, name):
@@ -564,9 +582,15 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.settle()
         assert terminal.screen.text() == before, "removed refresh shortcuts changed the proxy page"
         # Clicking expands candidates without moving the heading.
-        assert_group_types(terminal, words)
-        preview.capture(terminal, output, "directory-relay-type", args)
-        hover_cell(terminal, 0, 0)
+        assert_group_types(terminal, words, narrow=False)
+        preview.capture(terminal, output, "directory-wide-160x45", args)
+        terminal.resize(80, 32)
+        terminal.settle()
+        assert_group_types(terminal, words, narrow=True)
+        preview.capture(terminal, output, "directory-narrow-80x32", args)
+        terminal.resize(160, 45)
+        terminal.settle()
+        closed_fields = group_fields(terminal, "PROXY", "Selector", "HK 02", False)
         open_group(terminal, "PROXY")
         terminal.wait("Shadowsocks")
         terminal.wait("Hysteria2")
@@ -578,6 +602,9 @@ def exercise(preview, binary, output, language, profile, args):
         title, _, _, _ = proxy_header_positions(terminal, words)
         assert words["proxies.collapse_all"] in "".join(terminal.screen.cells[title[1]]), "collapse all is not on the title row"
         assert words["proxies.sort.default"] in heading, "expanded group does not expose default sorting"
+        assert group_fields(terminal, "PROXY", "Selector", "HK 02", False) == closed_fields, "expansion moved the group columns"
+        ref_x, ref_y = candidate_position(terminal, "AUTO")
+        assert "".join(terminal.screen.cells[ref_y + 1][ref_x:]).startswith("URLTest · HK 02"), "reference metadata lost the target group type"
         assert not re.search(r"\d+–\d+ / 8", terminal.screen.text()), "all members fit, but the page shows a visible range"
         assert "0/0" not in terminal.screen.text(), "idle measurement progress is visible"
         preview.capture(terminal, output, "groups-wide", args)
@@ -627,7 +654,7 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.key(b"\x1b[H")
         terminal.key(b"\x1b[C")
         enter_reference(terminal, "AUTO", words["proxies.enter"])
-        terminal.wait(words["proxies.type.url-test"])
+        terminal.wait("URLTest")
         terminal.settle()
         auto_row = group_header(terminal, "AUTO")[1]
         jp_x, jp_y = candidate_position(terminal, "JP 01", auto_row + 1)

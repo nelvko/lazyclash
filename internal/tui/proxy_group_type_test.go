@@ -9,6 +9,27 @@ import (
 	"github.com/nelvko/lazyclash/internal/i18n"
 )
 
+func TestProxyReferenceCardUsesAPITypeInBothLanguages(t *testing.T) {
+	for _, tc := range []struct{ language, distributed string }{
+		{"en", "No fixed single node"},
+		{"zh-Hans", "无固定单一节点"},
+	} {
+		m, _ := proxiesModel(t, 160, 40)
+		m.locale = i18n.New(tc.language)
+		group := &m.snapshot.Groups[1]
+		for _, kind := range []string{"Selector", "URLTest", "Fallback", "LoadBalance", "Relay", "FutureGroup"} {
+			group.Type = kind
+			summary := "HK 02"
+			if kind == "LoadBalance" || kind == "Relay" {
+				summary = tc.distributed
+			}
+			if got, want := m.proxyNodeMeta(group.Name), kind+" · "+summary; got != want {
+				t.Errorf("%s reference metadata = %q, want %q", tc.language, got, want)
+			}
+		}
+	}
+}
+
 func TestProxySearchByGroupType(t *testing.T) {
 	m, _ := proxiesModel(t, 160, 40)
 	m.locale = i18n.New("zh-Hans")

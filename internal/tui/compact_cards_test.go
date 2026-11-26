@@ -14,7 +14,7 @@ func TestCompactProxyGridShowsMoreMembersWithoutLosingActions(t *testing.T) {
 		t.Run(fmt.Sprint(size), func(t *testing.T) {
 			m, _ := proxiesModel(t, size[0], size[1])
 			card := m.proxyNode(0, 0, 50)
-			if len(card.lines) != 2 || !strings.Contains(ansi.Strip(card.lines[0]), "AUTO") || !strings.Contains(ansi.Strip(card.lines[1]), "Proxy group") {
+			if len(card.lines) != 2 || !strings.Contains(ansi.Strip(card.lines[0]), "AUTO") || !strings.Contains(ansi.Strip(card.lines[1]), "URLTest · HK 02") {
 				t.Fatalf("compact node lost its two content rows: %q", ansi.Strip(strings.Join(card.lines, "\n")))
 			}
 			for _, hit := range card.targets {
@@ -49,7 +49,7 @@ func TestCompactProxyGridShowsMoreMembersWithoutLosingActions(t *testing.T) {
 }
 
 func TestCompactProxyDirectoryUsesOnlyContentRows(t *testing.T) {
-	for _, test := range []struct{ width, rows int }{{80, 1}, {60, 2}} {
+	for _, test := range []struct{ width, rows int }{{115, 1}, {114, 2}, {80, 2}, {60, 2}} {
 		m, _ := proxiesModel(t, test.width, 24)
 		setProxyTestGroup(&m, "")
 		m.snapshot.Groups = nil

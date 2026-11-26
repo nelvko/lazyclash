@@ -1,5 +1,11 @@
 # 验证入口
 
+## 代理组头的宽窄布局与英文类型（2026-11-26）
+
+在中文和英文真彩终端中，160×45 的组名、英文类型和当前节点按列对齐，80×32 时首行显示组名和成员数，次行显示「类型 · 当前节点」，左缘与组名对齐。切换语言后，五种策略组的类型名一致，排序、测速和运行状态随语言显示。引用组卡片显示被引用组的类型和最终节点，例如 `URLTest · HK 02`。[160×45 中文截图](../.test-artifacts/proxy-responsive-types/pty/zh-Hans/truecolor/directory-wide-160x45.png) · [80×32 中文截图](../.test-artifacts/proxy-responsive-types/pty/zh-Hans/truecolor/directory-narrow-80x32.png)
+
+Go 用例覆盖 114 与 115 列的切换边界、极窄正文中节点名的显示，以及点击、悬停的命中范围。使用内存后端的真实 PTY 验证了展开组头后各列保持原位，并在两种语言下各从固定位置切换路由模式 24 次。[中文 PTY 记录](../.test-artifacts/proxy-responsive-types/pty/zh-Hans.log) · [英文 PTY 记录](../.test-artifacts/proxy-responsive-types/pty/en.log)
+
 ## 问号键切换底部提示栏（2026-11-26）
 
 在 macOS 的 160×45、80×24 中文终端中，设置页按 `?` 隐藏底栏，按 `？` 恢复。焦点停在同一控件，隐藏时正文多显示一行。聚焦带 `ⓘ` 的控件后，`F1` 可打开说明。规则搜索框能输入 `a?？b`。[80×24 显示底栏](../.test-artifacts/question-key/screens/shown-80x24.png) · [80×24 隐藏底栏](../.test-artifacts/question-key/screens/hidden-80x24.png) · [160×45 控件说明](../.test-artifacts/question-key/screens/f1-tooltip-160x45.png)

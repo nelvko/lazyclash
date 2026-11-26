@@ -22,7 +22,7 @@ func (m *Model) proxySearchMatchesGroup(query string, group mihomo.Group) bool {
 		return true
 	}
 	kind := proxyGroupConfigType(group.Type)
-	return kind != "" && (strings.Contains(kind, query) || strings.Contains(strings.ToLower(m.tr("proxies.type."+kind)), query))
+	return kind != "" && (strings.Contains(kind, query) || strings.Contains(strings.ToLower(m.tr("proxies.search_type."+kind)), query))
 }
 
 func (m *Model) proxySearchMatchesNode(query, node string) bool {

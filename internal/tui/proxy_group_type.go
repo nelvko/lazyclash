@@ -18,9 +18,6 @@ func proxyGroupConfigType(apiType string) string {
 }
 
 func (m *Model) proxyGroupTypeLabel(apiType string) string {
-	if kind := proxyGroupConfigType(apiType); kind != "" {
-		return m.tr("proxies.type." + kind)
-	}
 	if name := clean(apiType); name != "" {
 		return name
 	}

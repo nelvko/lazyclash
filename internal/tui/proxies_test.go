@@ -424,7 +424,7 @@ func TestProxiesCardKeepsItsReferenceActionIndependent(t *testing.T) {
 			t.Fatalf("card row %d lost its rail or padding: %q", y, line)
 		}
 	}
-	if !strings.HasPrefix(ansi.Strip(card.lines[1]), "▌›AUTO") || !strings.HasPrefix(ansi.Strip(card.lines[2]), "▌ Proxy group") {
+	if !strings.HasPrefix(ansi.Strip(card.lines[1]), "▌›AUTO") || !strings.HasPrefix(ansi.Strip(card.lines[2]), "▌ URLTest") {
 		t.Fatalf("name and metadata lost their shared left padding: %+v", card.lines)
 	}
 	assertRegions(t, card.targets, width, 4)
@@ -665,80 +665,122 @@ func TestProxiesModesAndCollapseActionRemainReachableAcrossWidths(t *testing.T) 
 	}
 }
 
-func TestProxiesGroupHeaderAlignsTypeAndCountBesideActions(t *testing.T) {
+func TestProxiesWideGroupHeaderAlignsNameTypeAndSummary(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
-		t.Run(language, func(t *testing.T) {
-			m, _ := proxiesModel(t, 160, 40)
-			m.locale = i18n.New(language)
-			m.snapshot.Groups[1].All = make([]string, 100)
-			width := dashboardBodyWidth(m.dashboardOptions())
-			for gi := range m.snapshot.Groups {
-				header := m.proxyGroupHeader(gi, width, m.proxyHeaderColumns())
-				line := ""
-				for _, candidate := range header.lines {
-					if strings.TrimSpace(ansi.Strip(candidate)) != "" {
-						line = ansi.Strip(candidate)
-						break
+		for _, terminalWidth := range []int{sidebarMinWidth, 160} {
+			t.Run(fmt.Sprint(language, "/", terminalWidth), func(t *testing.T) {
+				m, _ := proxiesModel(t, terminalWidth, 40)
+				m.locale = i18n.New(language)
+				m.snapshot.Groups[1].All = make([]string, 100)
+				width := dashboardBodyWidth(m.dashboardOptions())
+				columns := m.proxyHeaderColumns()
+				firstTypeX, firstNodeX := -1, -1
+				for gi, g := range m.snapshot.Groups {
+					header := m.proxyGroupHeader(gi, width, columns)
+					typeHit := listSearchTarget(t, header.targets, fmt.Sprintf("proxies.type.%d", gi))
+					line := ansi.Strip(header.lines[typeHit.Y])
+					if strings.Contains(strings.TrimSpace(ansi.Strip(strings.Join(header.lines, "\n"))), "\n") {
+						t.Fatalf("group %s did not fit on one content row: %q", g.Name, header.lines)
 					}
-				}
-				count := fmt.Sprint(len(m.snapshot.Groups[gi].All))
-				index := strings.LastIndex(line, count)
-				if ansi.StringWidth(line) != width || index < 0 {
-					t.Fatalf("group %d count was not aligned to the fixed right column: %q", gi, line)
-				}
-				end := ansi.StringWidth(line[:index+len(count)])
-				if end != width-4 {
-					t.Fatalf("group %d count ended at %d, want shared right column %d: %q", gi, end, width-4, line)
-				}
-				typeHit := listSearchTarget(t, header.targets, fmt.Sprintf("proxies.type.%d", gi))
-				typeText := ansi.Strip(ansi.Cut(header.lines[typeHit.Y], typeHit.X, typeHit.X+typeHit.W))
-				if typeText != m.proxyGroupTypeLabel(m.snapshot.Groups[gi].Type) || typeHit.X+typeHit.W != width-4-3-2 {
-					t.Fatalf("group %d type target at %+v does not match the right-aligned label %q", gi, typeHit, typeText)
-				}
-				for i, hit := range header.targets {
-					for _, other := range header.targets[i+1:] {
-						if regionsOverlap(hit, other) {
-							t.Fatalf("header controls overlap: %+v / %+v", hit, other)
+					name := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(ansi.Cut(line, 0, typeHit.X)), "›"))
+					if name != g.Name || ansi.Cut(line, typeHit.X, typeHit.X+typeHit.W) != g.Type {
+						t.Fatalf("group %s lost its name or English type: %q, type target=%+v", g.Name, line, typeHit)
+					}
+					if gi == 0 {
+						firstTypeX = typeHit.X
+					} else if typeHit.X != firstTypeX {
+						t.Fatalf("group %s has type at column %d, want %d", g.Name, typeHit.X, firstTypeX)
+					}
+					// PROXY is open and AUTO is folded. Both resolve to the same leaf.
+					if gi < 2 {
+						i := strings.Index(line, "HK 02")
+						if i < 0 {
+							t.Fatalf("missing resolved node: %q", line)
 						}
+						nodeX := ansi.StringWidth(line[:i])
+						if nodeX <= typeHit.X+typeHit.W || gi == 1 && nodeX != firstNodeX {
+							t.Fatalf("summary column changed with group tools or type length: %q", line)
+						}
+						firstNodeX = nodeX
+					}
+					count := fmt.Sprint(len(g.All))
+					index := strings.LastIndex(line, count)
+					if index < 0 || ansi.StringWidth(line[:index+len(count)]) != width-4 {
+						t.Fatalf("group %s lost the fixed right-aligned count: %q", g.Name, line)
 					}
 				}
-			}
-			m.layout()
-			group, test := findTarget(t, m, "group.0"), findTarget(t, m, "proxies.test.0")
-			if test.Y < group.Y || test.Y >= group.Y+group.H || test.X <= group.X {
-				t.Fatalf("wide test action left the group heading: group=%+v test=%+v", group, test)
-			}
-			m, _ = click(m, test)
-			defer m.stopProxyTests()
-			if !m.proxies.testing || m.proxies.activeGroup != "PROXY" {
-				t.Fatalf("group test action folded or switched the group: expanded=%s testing=%t", m.proxies.activeGroup, m.proxies.testing)
-			}
-		})
+				m.layout()
+				group, test := findTarget(t, m, "group.0"), findTarget(t, m, "proxies.test.0")
+				if test.Y < group.Y || test.Y >= group.Y+group.H || test.X <= group.X+firstNodeX {
+					t.Fatalf("test action should follow the current node: group=%+v test=%+v", group, test)
+				}
+				m, _ = click(m, test)
+				defer m.stopProxyTests()
+				if !m.proxies.testing || m.proxies.activeGroup != "PROXY" {
+					t.Fatal("clicking the group test action did not test its group")
+				}
+			})
+		}
 	}
 }
 
-func TestProxiesNarrowGroupHeaderKeepsBuiltInLabelsReadable(t *testing.T) {
+func TestProxiesNarrowGroupHeaderShowsTypeAndSummaryOnSecondRow(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
-		m, _ := proxiesModel(t, 32, 24)
-		m.locale = i18n.New(language)
-		m.snapshot.Groups = append(m.snapshot.Groups, mihomo.Group{Name: "New", Type: strings.Repeat("X", 100)})
-		columns := m.proxyHeaderColumns()
-		width := dashboardBodyWidth(m.dashboardOptions())
-		for gi, g := range m.snapshot.Groups {
-			header := m.proxyGroupHeader(gi, width, columns)
-			assertRegions(t, header.targets, width, len(header.lines))
-			if g.Name == "New" {
-				if !strings.Contains(ansi.Strip(header.lines[0]), g.Name) || hasAction(header.targets, fmt.Sprintf("proxies.type.%d", gi)) {
-					t.Fatalf("unknown type obscured the group or offered a configuration hint: %q", header.lines[0])
+		for _, terminalWidth := range []int{32, 80, sidebarMinWidth - 1} {
+			t.Run(fmt.Sprint(language, "/", terminalWidth), func(t *testing.T) {
+				m, _ := proxiesModel(t, terminalWidth, 24)
+				m.locale = i18n.New(language)
+				m.snapshot.Groups = append(m.snapshot.Groups, mihomo.Group{Name: "New", Type: strings.Repeat("X", 100)})
+				columns := m.proxyHeaderColumns()
+				width := dashboardBodyWidth(m.dashboardOptions())
+				for gi, g := range m.snapshot.Groups {
+					header := m.proxyGroupHeader(gi, width, columns)
+					if len(header.lines) != 2 {
+						t.Fatalf("%s rendered %d rows, want two", g.Name, len(header.lines))
+					}
+					assertRegions(t, header.targets, width, len(header.lines))
+					id := fmt.Sprintf("proxies.type.%d", gi)
+					if g.Name == "New" {
+						if !strings.Contains(ansi.Strip(header.lines[0]), g.Name) || hasAction(header.targets, id) {
+							t.Fatalf("unknown type obscured its group or offered a configuration hint: %q", header.lines)
+						}
+						continue
+					}
+					hit := listSearchTarget(t, header.targets, id)
+					second := ansi.Strip(header.lines[1])
+					if hit.Y != 1 || ansi.Cut(second, hit.X, hit.X+hit.W) != g.Type {
+						t.Fatalf("%s lost its complete English type in the second row: %q, hit=%+v", g.Name, second, hit)
+					}
+					if gi < 2 && !strings.Contains(second, g.Type+" · HK 02") {
+						t.Fatalf("%s separated type from its current node: %q", g.Name, second)
+					}
+					first := ansi.Strip(header.lines[0])
+					if (terminalWidth >= 80 && !strings.Contains(first, g.Name)) ||
+						!strings.Contains(first, fmt.Sprint(len(g.All))) || !strings.ContainsAny(first, "▸▾") {
+						t.Fatalf("group, count and disclosure should share the top row: %q", first)
+					}
 				}
-				continue
-			}
-			hit := listSearchTarget(t, header.targets, fmt.Sprintf("proxies.type.%d", gi))
-			kind := ansi.Strip(ansi.Cut(header.lines[hit.Y], hit.X, hit.X+hit.W))
-			if kind != m.proxyGroupTypeLabel(g.Type) {
-				t.Fatalf("%s/%s: type truncated to %q at width %d", language, g.Type, kind, width)
-			}
+			})
 		}
+	}
+}
+
+func TestProxiesNarrowTypeLabelOpensItsGroupFromDirectory(t *testing.T) {
+	m, backend := proxiesModel(t, 80, 24)
+	setProxyTestGroup(&m, "")
+	m.layout()
+	label := findTarget(t, m, "proxies.type.1")
+	group := findTarget(t, m, "group.1")
+	if label.Y != group.Y+1 {
+		t.Fatalf("type label should be below its group: label=%+v group=%+v", label, group)
+	}
+	m, _ = update(m, tea.MouseMotionMsg{X: label.X, Y: label.Y})
+	if m.hover != label.ID || !strings.Contains(ansi.Strip(m.screen), "type: url-test") {
+		t.Fatal("hovering the type on the second row did not show its config key")
+	}
+	m, _ = click(m, label)
+	if m.proxies.activeGroup != "AUTO" || !hasAction(m.targets, "node.1.0") || backend.selections != 0 {
+		t.Fatal("clicking the type label did not open that group's members")
 	}
 }
 
@@ -841,9 +883,12 @@ func TestProxiesReferenceSummaryShowsFinalNode(t *testing.T) {
 	header := ansi.Strip(strings.Join(m.proxyGroupHeader(3, 120, m.proxyHeaderColumns()).lines, "\n"))
 	card := ansi.Strip(strings.Join(m.proxyNode(3, 0, 60).lines, "\n"))
 	for _, value := range []string{header, card} {
-		if !strings.Contains(value, "HK 02") || strings.Contains(value, "PROXY →") || strings.Contains(value, "AUTO →") || strings.Contains(value, "Selector") {
+		if !strings.Contains(value, "HK 02") || strings.Contains(value, "PROXY →") || strings.Contains(value, "AUTO →") {
 			t.Fatalf("reference summary did not reduce to its leaf: %q", value)
 		}
+	}
+	if !strings.Contains(card, "Selector · HK 02") {
+		t.Fatalf("reference card lost its group type or selected leaf: %q", card)
 	}
 }
 
