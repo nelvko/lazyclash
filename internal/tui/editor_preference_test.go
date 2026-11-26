@@ -43,6 +43,60 @@ func TestEditorPreferenceCanBeSetAndReturnedToAutomatic(t *testing.T) {
 	}
 }
 
+func TestEditorRowFocusAfterMouseAndKeyboardActivation(t *testing.T) {
+	const editor = "editor.configure"
+	m := ready(&fakeBackend{})
+	directionCleanup(t, &m)
+	m.page, m.focus = "settings", "settings.language"
+	m.layout()
+	row := func() string {
+		hit := findTarget(t, m, editor)
+		return ansi.Cut(strings.Split(m.screen, "\n")[hit.Y], hit.X, hit.X+hit.W)
+	}
+	normal := row()
+	cancel := func() {
+		t.Helper()
+		if m.form != "editor-preference" {
+			t.Fatal("editor dialog did not open")
+		}
+		m, _ = update(m, special(tea.KeyEscape))
+		if m.form != "" || m.focus != editor {
+			t.Fatalf("cancel should return to the editor row, got form %q, focus %q", m.form, m.focus)
+		}
+	}
+	m, _ = click(m, findTarget(t, m, editor))
+	m, _ = update(m, key("x"))
+	cancel()
+	if row() != normal {
+		t.Fatal("mouse-opened editor left a visible focus marker or background after cancel")
+	}
+
+	m, _ = update(m, special(tea.KeyTab))
+	if m.focus == editor {
+		t.Fatal("Tab did not advance from the editor row")
+	}
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
+	focused := row()
+	if m.focus != editor || !strings.HasPrefix(ansi.Strip(focused), "›") {
+		t.Fatal("tabbing back did not visibly focus the editor row")
+	}
+	m, _ = update(m, special(tea.KeyEnter))
+	cancel()
+	if row() != focused {
+		t.Fatal("keyboard-opened editor lost its visible focus after cancel")
+	}
+	m, _ = click(m, findTarget(t, m, editor))
+	cancel()
+	if row() != normal {
+		t.Fatal("clicking the keyboard-focused editor should return it to its normal appearance")
+	}
+	m, _ = update(m, special(tea.KeyEnter))
+	cancel()
+	if row() != focused {
+		t.Fatal("reopening with Enter should restore visible keyboard focus")
+	}
+}
+
 func TestEditorDialogKeepsFeedbackBelowInputAndSaveKeysVisible(t *testing.T) {
 	for _, language := range []string{i18n.Chinese, i18n.English} {
 		m := ready(&fakeBackend{})

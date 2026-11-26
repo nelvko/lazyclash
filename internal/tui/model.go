@@ -123,6 +123,7 @@ type Model struct {
 	languageOverride      string
 	savedLanguage         string
 	editorPreference      string
+	editorFocusedByMouse  bool
 	theme                 string
 	terminalLight         bool
 	ctx                   context.Context
@@ -1083,6 +1084,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.focus == "core.toggle" && m.page == "overview" {
 				cmd = m.coreToggleKey(v)
 			} else {
+				m.editorFocusedByMouse = false
 				cmd = m.activate(m.focus)
 			}
 		case "down", "j":
@@ -1739,6 +1741,7 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 						m.hover = r.ID
 					}
 					m.focus = r.ID
+					m.editorFocusedByMouse = r.ID == "editor.configure"
 					if handled, cmd := m.profileCardClick(r.ID); handled {
 						return cmd
 					}
@@ -1826,6 +1829,9 @@ func (m *Model) populatePageBody(o *dashboardOptions) {
 }
 func (m *Model) layout() {
 	m.repairPageFocus()
+	if m.focus != "editor.configure" {
+		m.editorFocusedByMouse = false
+	}
 	m.renderLayout()
 }
 
@@ -1850,6 +1856,10 @@ func (m *Model) renderLayout() {
 	o.tooltips = &m.tooltip
 	o.Sidebar = &m.sidebar
 	o.Snapshot, o.Focus, o.Hover = m.snapshot, m.focus, m.hover
+	if m.editorFocusedByMouse {
+		// Keep the editor as the Tab anchor without painting a keyboard highlight.
+		o.Focus = ""
+	}
 	// Lay out the expanded controls before deriving their keyboard hints.
 	p := &m.notification.panel
 	var expanded string
