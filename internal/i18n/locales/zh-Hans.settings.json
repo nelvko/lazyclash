@@ -85,6 +85,8 @@
   "settings.allowLANHint": "局域网设备可以通过本机地址和代理端口连接。",
   "settings.fakeIPHint": "使用 Fake-IP 的配置可在重启后复用域名映射。",
   "settings.processHint": "按需模式仅在规则用到进程信息时查询。",
+  "settings.unifiedDelay.tooltip": "测试节点延迟时会再发一次请求。若成功，采用这次请求的耗时，减少初次握手对结果的影响。",
+  "settings.tcpConcurrent.tooltip": "域名解析出多个 IP 地址时，并行尝试建立 TCP 连接，使用最先连通的地址。",
   "settings.tab.access.compact": "端口",
   "settings.tab.network.compact": "连接",
   "settings.tab.resources.compact": "资源"

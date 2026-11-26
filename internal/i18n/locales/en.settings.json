@@ -85,6 +85,8 @@
   "settings.allowLANHint": "LAN devices can connect using this host’s address and proxy port.",
   "settings.fakeIPHint": "Profiles using Fake-IP can reuse domain mappings after restart.",
   "settings.processHint": "As needed looks up processes only when a rule requires it.",
+  "settings.unifiedDelay.tooltip": "Tests node latency with a second request. If it succeeds, its round-trip time excludes the initial handshake.",
+  "settings.tcpConcurrent.tooltip": "When a hostname resolves to multiple IP addresses, Mihomo tries them in parallel and uses the first successful TCP connection.",
   "settings.tab.access.compact": "Port",
   "settings.tab.network.compact": "Run",
   "settings.tab.resources.compact": "Data"

@@ -36,6 +36,8 @@
 | TCP 保活 | 开 | 允许内核为 TCP 连接启用保活探测。开启对应 `disable-keep-alive: false`。首次探测前的空闲时间和探测间隔按秒设置，留空使用内核默认值。 |
 | 进程匹配 | 按需（`strict`） | 按需在规则用到进程信息时查询。也可选始终查询（`always`）或关闭查询（`off`）。对应 `find-process-mode`。 |
 
+统一延迟和 TCP 并发连接的说明已对照 Mihomo 官方文档与 v1.19.33 的实现。[全局配置](https://wiki.metacubex.one/config/general/) · [节点测速源码](https://github.com/MetaCubeX/mihomo/blob/v1.19.33/adapter/adapter.go#L237-L262) · [并发拨号源码](https://github.com/MetaCubeX/mihomo/blob/v1.19.33/component/dialer/dialer.go#L296-L327)
+
 ### 资源与缓存
 
 | 设置项 | 新实例默认值 | 用途 |

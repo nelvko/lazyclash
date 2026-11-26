@@ -580,6 +580,14 @@ def exercise(preview, binary, output, language, profile, args):
         select_tab("network")
         terminal.wait(words["settings.keepAliveIdle"])
         preview.capture(terminal, output, "settings-connections", args)
+        tip_x, tip_y = position(terminal, words["settings.tcpConcurrent"])
+        icon_x = terminal.screen.cells[tip_y].index("ⓘ", tip_x)
+        tip_text = words["settings.tcpConcurrent.tooltip"][:8]
+        hover(terminal, icon_x, tip_y)
+        terminal.wait(tip_text)
+        hover(terminal, tip_x, tip_y)
+        terminal.wait_absent(tip_text)
+
         def set_number(key, value, formatted):
             click(terminal, position(terminal, words[key]))
             terminal.key(b"\x05\x15" + value.encode() + b"\r")

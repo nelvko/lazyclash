@@ -153,6 +153,11 @@ func coreSettingsRows(o dashboardOptions, tab coreSettingsTab) []settingsRow {
 	toggle := func(id string, on bool) settingsRow {
 		return settingsSwitchRow(id, tr(id), on, enabled)
 	}
+	toggleWithTip := func(id string, on bool) settingsRow {
+		row := toggle(id, on)
+		row.tip = tooltipBinding{owner: id, text: tr(id + ".tooltip")}
+		return row
+	}
 	selectRow := func(id string) settingsRow {
 		row := settingsSelectRow(o, id, tr(id))
 		row.actions[0].enabled = enabled
@@ -216,10 +221,10 @@ func coreSettingsRows(o dashboardOptions, tab coreSettingsTab) []settingsRow {
 	case networkTab:
 		keepAlive := p.DisableKeepAlive == "off"
 		rows = append(rows, group("settings.networkGroup"), toggle("settings.ipv6", p.IPv6 == "on"),
-			toggle("settings.tcpConcurrent", p.TCPConcurrent == "on"), toggle("settings.tcpKeepAlive", keepAlive),
+			toggleWithTip("settings.tcpConcurrent", p.TCPConcurrent == "on"), toggle("settings.tcpKeepAlive", keepAlive),
 			number("settings.keepAliveIdle", p.KeepAliveIdle, "settings.seconds", keepAlive),
 			number("settings.keepAliveInterval", p.KeepAliveInterval, "settings.seconds", keepAlive),
-			toggle("settings.unifiedDelay", p.UnifiedDelay == "on"), group("settings.runtimeGroup"),
+			toggleWithTip("settings.unifiedDelay", p.UnifiedDelay == "on"), group("settings.runtimeGroup"),
 			selectRow("settings.logLevel"), selectRow("settings.findProcessMode"))
 	case resourcesTab:
 		rows = append(rows, group("settings.geoGroup"), toggle("settings.geoAutoUpdate", p.GeoAutoUpdate == "on"),
