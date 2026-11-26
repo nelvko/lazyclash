@@ -19,11 +19,23 @@ func settingsCore(o dashboardOptions, width int) dashboardBlock {
 
 	version := cmp.Or(clean(s.Version), tr("dashboard.status.unknown"))
 	rows := []settingsRow{
-		{label: "Mihomo", control: settingsGroup},
 		{label: tr("wizard.installed_version"), control: settingsLink, rightAlign: true,
 			actions: []overviewControlButton{{id: "install", label: version + " ›", enabled: !o.Busy}}},
 		{label: tr("core_update.check"), control: settingsLink,
 			actions: []overviewControlButton{{id: "core.checkUpdate", label: "›", enabled: !o.Busy}}},
+	}
+
+	if runtimeStopIssue(s, o.Locale) == "" {
+		autostart := settingsAutostart(o)
+		if s.Capabilities.Scope == "user" {
+			switch {
+			case s.ServiceError != "" || !s.Service.LingerKnown:
+				autostart.note = tr("dashboard.settings.lingerUnknown")
+			case !s.Service.Linger:
+				autostart.note = tr("dashboard.settings.lingerDisabled")
+			}
+		}
+		rows = append(rows, autostart)
 	}
 
 	serviceTitle := tr("dashboard.overview.serviceLabel")
@@ -33,30 +45,12 @@ func settingsCore(o dashboardOptions, width int) dashboardBlock {
 	case "system":
 		serviceTitle = tr("settings.systemService")
 	}
-	status, _, color := headerCoreState(o)
-	rows = append(rows,
-		settingsRow{label: serviceTitle, control: settingsGroup},
-		settingsRow{label: tr("settings.serviceStatus"), value: status, color: color, control: settingsTrailing, rightAlign: true,
-			actions: []overviewControlButton{{id: "restart", label: tr("dashboard.action.restart"), enabled: !o.Busy && runtimeControlIssue(s, o.Locale) == ""}}},
-	)
+	restart := settingsRow{label: serviceTitle, control: settingsTrailing, rightAlign: true,
+		actions: []overviewControlButton{{id: "restart", label: tr("dashboard.action.restart"), enabled: !o.Busy && runtimeControlIssue(s, o.Locale) == ""}}}
 	if s.GeoRestartPending {
-		rows = append(rows, settingsRow{note: tr("settings.geoRestart"), color: warning})
+		restart.note, restart.color = tr("settings.geoRestart"), warning
 	}
-	if runtimeStopIssue(s, o.Locale) == "" {
-		rows = append(rows, settingsAutostart(o))
-		if s.Capabilities.Scope == "user" {
-			linger := settingsRow{label: tr("dashboard.overview.linger"), control: settingsReadOnly}
-			switch {
-			case s.ServiceError != "" || !s.Service.LingerKnown:
-				linger.value, linger.note = tr("dashboard.status.unknown"), tr("dashboard.settings.lingerUnknown")
-			case !s.Service.Linger:
-				linger.value, linger.note = tr("dashboard.status.disabled"), tr("dashboard.settings.lingerDisabled")
-			default:
-				linger.value = tr("dashboard.status.enabled")
-			}
-			rows = append(rows, linger)
-		}
-	}
+	rows = append(rows, restart)
 	return settingsSection(o, width, title, "", rows)
 }
 

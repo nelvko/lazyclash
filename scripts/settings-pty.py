@@ -636,7 +636,7 @@ def exercise(preview, binary, output, language, profile, args):
             x, y = position(terminal, words[key])
             row = terminal.screen.cells[y]
             left, right = card_bounds(terminal.screen, x)
-            inset = 2 if key in {"dashboard.language.title", "settings.startPage", "settings.theme", "dashboard.interface.keyHints"} else 4
+            inset = 2 if key in {"dashboard.language.title", "settings.startPage", "settings.theme", "dashboard.interface.keyHints", "settings.autostart"} else 4
             assert x == left + inset and row[right-2:right] == [" ", " "], key
             if key in switch_defaults:
                 check_switch(terminal, words, key, switch_defaults[key], profile)

@@ -237,17 +237,16 @@ func settingsSection(o dashboardOptions, width int, title, description string, r
 		labelColumn = max(labelColumn, ansi.StringWidth(row.label))
 	}
 	tabbed := len(rows) > 0 && rows[0].control == settingsTabStrip
-	grouped := tabbed || len(rows) > 0 && rows[0].control == settingsGroup
-	spacious := grouped && width >= 48 && o.Height >= 36
+	spacious := tabbed && width >= 48 && o.Height >= 36
 	rowIndent := 0
 	if spacious {
 		rowIndent = 2
 	}
 	for i, row := range rows {
-		if !grouped || tabbed && spacious || row.control == settingsGroup || row.control == settingsTabStrip {
+		if !tabbed || spacious || row.control == settingsGroup || row.control == settingsTabStrip {
 			b.lines = append(b.lines, blank)
 		}
-		if tabbed && spacious && row.control == settingsGroup && i > 0 && rows[i-1].control != settingsTabStrip {
+		if spacious && row.control == settingsGroup && i > 0 && rows[i-1].control != settingsTabStrip {
 			b.lines = append(b.lines, blank)
 		}
 		if row.control == settingsTabStrip {
