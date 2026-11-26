@@ -4,6 +4,10 @@ import "strings"
 
 func (m *Model) controlActionHelp(label string) string {
 	if m.page == "settings" {
+		width := dashboardBodyWidth(m.dashboardOptions())
+		if width >= settingsColumnsMinWidth {
+			return m.tr("settings.columnsActionHelp", label)
+		}
 		return m.tr("settings.actionHelp", label)
 	}
 	return m.tr("navigation.controls.activate", label)

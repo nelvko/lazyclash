@@ -87,6 +87,7 @@
   "settings.geoRestart": "The GEO update schedule takes effect on the next core start.",
   "settings.tabHelp": "←→ Switch tab · ↑↓ Move · Tab Next",
   "settings.actionHelp": "Enter %s · ↑↓ Move · Tab Next · Esc Back",
+  "settings.columnsActionHelp": "Enter %s · ↑↓ Rows · ←→ Columns · Tab Next · Esc Back",
   "settings.editEditor": "Edit editor command",
   "settings.editValue": "Edit %s",
   "settings.allowLANHint": "Uses the saved bind address when enabled.",

@@ -358,14 +358,6 @@ func (m *Model) revealContentFocus() {
 }
 
 func (m *Model) contentNavigationKey(k tea.KeyPressMsg) bool {
-	if m.page == "settings" {
-		switch k.String() {
-		case "up", "k":
-			return m.moveSettingsFocus(-1)
-		case "down", "j":
-			return m.moveSettingsFocus(1)
-		}
-	}
 	if m.overviewScrollKey(k) {
 		return true
 	}
@@ -430,29 +422,75 @@ func (m *Model) contentNavigationKey(k tea.KeyPressMsg) bool {
 	return false
 }
 
-func (m *Model) moveSettingsFocus(step int) bool {
+func (m *Model) settingsDirectionKey(key string) bool {
+	if m.page != "settings" || m.sidebarOpen || m.focus == "menu" || m.focus == "nav.settings" {
+		return false
+	}
+	var dx, dy int
+	switch key {
+	case "left", "h":
+		dx = -1
+	case "right", "l":
+		dx = 1
+	case "up", "k":
+		dy = -1
+	case "down", "j":
+		dy = 1
+	default:
+		return false
+	}
 	o := m.navigationOptions()
-	left, right, _ := settingsColumns(o, dashboardBodyWidth(o))
-	for _, column := range [][]hitRegion{left.targets, right.targets} {
+	width := dashboardBodyWidth(o)
+	left, right, leftWidth := settingsColumns(o, width)
+	if dx != 0 && leftWidth == width {
+		return false
+	}
+	columns := [...][]hitRegion{left.targets, right.targets}
+	origins := columns
+	if dx != 0 && o.Busy {
+		// A save can temporarily disable the focused control. Locate its row
+		// in the idle layout, while keeping destinations limited to enabled controls.
+		o.Busy = false
+		left, right, _ := settingsColumns(o, width)
+		origins = [2][]hitRegion{left.targets, right.targets}
+	}
+	for c, column := range origins {
 		for i, target := range column {
 			if target.ID != m.focus {
 				continue
 			}
-			// Targets follow visual order within each column, including rows
-			// outside the viewport. At either edge keep the current row.
-			for j := i + step; j >= 0 && j < len(column); j += step {
-				if column[j].Y != target.Y {
-					target = column[j]
-					break
+			switch {
+			case dy != 0:
+				for j := i + dy; j >= 0 && j < len(column); j += dy {
+					if column[j].Y != target.Y {
+						target = column[j]
+						break
+					}
 				}
+			case c+dx < 0:
+				m.returnToNavigation()
+				return true
+			case c+dx < len(columns):
+				target = nearestSettingsRow(target, columns[c+dx])
 			}
-			m.settingsPointerFocus = false
 			m.focus = target.ID
 			m.revealBodyTarget(target)
 			return true
 		}
 	}
 	return false
+}
+
+func nearestSettingsRow(source hitRegion, candidates []hitRegion) hitRegion {
+	nearest, bestDistance := source, 0
+	for i, target := range candidates {
+		// Overlapping rows have distance zero. Visual order breaks ties upwards.
+		distance := max(0, target.Y-(source.Y+source.H-1), source.Y-(target.Y+target.H-1))
+		if i == 0 || distance < bestDistance {
+			nearest, bestDistance = target, distance
+		}
+	}
+	return nearest
 }
 
 func overviewCardRegionsFromModel(m Model) []hitRegion {

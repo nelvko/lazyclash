@@ -895,7 +895,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "tab", "shift+tab", "enter", "space", " ":
 			m.settingsPointerFocus = false
 		}
-		if m.settingsTabNavigation(key) || m.overviewModeNavigation(key) {
+		if m.settingsTabNavigation(key) || m.settingsDirectionKey(key) || m.overviewModeNavigation(key) {
 			m.settingsPointerFocus = false
 			break
 		}

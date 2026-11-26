@@ -87,6 +87,7 @@
   "settings.geoRestart": "GEO 更新计划将在下次启动时生效。",
   "settings.tabHelp": "←→ 切换分类 · ↑↓ 移动 · Tab 下一项",
   "settings.actionHelp": "Enter %s · ↑↓ 移动 · Tab 下一项 · Esc 返回",
+  "settings.columnsActionHelp": "Enter %s · ↑↓ 移动 · ←→ 换栏 · Tab 下一项 · Esc 返回",
   "settings.editEditor": "修改编辑器命令",
   "settings.editValue": "修改%s",
   "settings.allowLANHint": "开启后使用保存的绑定地址。",

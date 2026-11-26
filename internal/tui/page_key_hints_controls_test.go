@@ -102,7 +102,7 @@ func TestSettingsHintsNameTheFocusedControl(t *testing.T) {
 			{"install", "navigation.controls.manageCore"}, {autostartToggleTarget, "dashboard.settings.enableAutostart"},
 		} {
 			m.focus = test.focus
-			if m.contextHelp() != m.tr("settings.actionHelp", m.tr(test.label)) {
+			if m.contextHelp() != m.tr("settings.columnsActionHelp", m.tr(test.label)) {
 				t.Fatalf("%s hint does not describe its action and navigation: %s", test.focus, m.contextHelp())
 			}
 		}
@@ -112,6 +112,11 @@ func TestSettingsHintsNameTheFocusedControl(t *testing.T) {
 			t.Fatal("key-hint switch did not describe the reverse action")
 		}
 		m.focus = "settings.language"
+		m.width = 80
+		if m.contextHelp() != m.tr("settings.actionHelp", m.tr("settings.chooseLanguage")) {
+			t.Fatal("single-column settings advertised a column switch")
+		}
+		m.width = 160
 		m, _ = update(m, special(tea.KeyLeft))
 		if m.focus != "nav.settings" {
 			t.Fatal("settings Back hint disagrees with horizontal-key navigation")

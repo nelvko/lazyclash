@@ -113,7 +113,10 @@ func renderSettingsSwitch(action overviewControlButton, o buttonOptions) string 
 	return themed(marker, focus, o.Surface, o.Dim) + track
 }
 
-const settingsColumnGap = 2
+const (
+	settingsColumnGap       = 2
+	settingsColumnsMinWidth = 80
+)
 
 func settingsColumns(o dashboardOptions, width int) (left, right dashboardBlock, leftWidth int) {
 	stack := func(cardWidth int, sections ...func(dashboardOptions, int) dashboardBlock) dashboardBlock {
@@ -126,7 +129,7 @@ func settingsColumns(o dashboardOptions, width int) (left, right dashboardBlock,
 		}
 		return column
 	}
-	if width < 80 {
+	if width < settingsColumnsMinWidth {
 		return stack(width, settingsInterface, settingsMihomo, settingsCore), dashboardBlock{}, width
 	}
 	leftWidth = (width - settingsColumnGap) / 2
