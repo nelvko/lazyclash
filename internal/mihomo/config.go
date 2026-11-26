@@ -30,6 +30,9 @@ rules: ["MATCH,PROXY"]
 
 // Default needs no subscription or geodata files and still exposes a useful group.
 func Default(controller, secret string, mixedPort int) ([]byte, error) {
+	if err := loopbackAddress(controller); err != nil {
+		return nil, err
+	}
 	return Build(BuildOptions{Base: []byte(DefaultProfile), Controller: controller, Secret: secret, MixedPort: mixedPort})
 }
 
@@ -46,33 +49,32 @@ func ValidateEndpoints(controller, secret string, mixedPort int) error {
 	}
 	_, apiPort, _ := net.SplitHostPort(controller)
 	if apiPort == strconv.Itoa(mixedPort) {
-		return diagnostic.New("diagnostic.config.portConflict", "controller and proxy ports must differ")
+		return diagnostic.New("diagnostic.config.portConflict", "two managed listeners use the same address and port")
 	}
 	return nil
 }
 
-// Effective owns the local listeners and credentials. Subscription routing and
-// outbound definitions survive, but cannot enable privileged or public inbounds.
+// Effective builds the default, loopback-only listener policy.
 func Effective(raw []byte, controller, secret string, mixedPort int) ([]byte, error) {
+	if err := loopbackAddress(controller); err != nil {
+		return nil, err
+	}
+	return EffectiveListeners(raw, controller, secret, mixedPort, ListenerOptions{}, nil)
+}
+
+// EffectiveListeners reapplies the instance's reviewed settings to routing inputs.
+func EffectiveListeners(raw []byte, controller, secret string, mixedPort int, listeners ListenerOptions, proxyUsers []string) ([]byte, error) {
 	if len(bytes.TrimSpace(raw)) == 0 || len(raw) > MaxConfigSize {
 		return nil, diagnostic.New("diagnostic.config.yamlSize", "Mihomo YAML must be nonempty and at most 8 MiB")
 	}
-	if err := ValidateEndpoints(controller, secret, mixedPort); err != nil {
+	if err := listeners.Validate(controller, secret, mixedPort); err != nil {
 		return nil, err
 	}
 	cfg, err := decodeConfig(raw)
 	if err != nil {
 		return nil, err
 	}
-	cfg["external-controller"], cfg["secret"] = controller, secret
-	cfg["mixed-port"], cfg["allow-lan"], cfg["bind-address"] = mixedPort, false, "127.0.0.1"
-	cfg["authentication"] = []string{}
-	for _, k := range []string{"port", "socks-port", "redir-port", "tproxy-port", "routing-mark", "external-controller-routing-mark"} {
-		cfg[k] = 0
-	}
-	for _, k := range []string{"external-controller-tls", "external-controller-unix", "external-controller-pipe", "external-doh-server", "external-ui", "external-ui-url", "external-ui-name", "ss-config", "vmess-config", "interface-name"} {
-		cfg[k] = ""
-	}
+	listeners.apply(cfg, controller, secret, mixedPort, proxyUsers)
 	for _, k := range []string{"listeners", "tunnels"} {
 		if k == "listeners" {
 			if listeners, ok := cfg[k].([]any); ok {
@@ -100,7 +102,7 @@ func Effective(raw []byte, controller, secret string, mixedPort int) ([]byte, er
 	}
 	dns["listen"] = ""
 	cfg["dns"] = dns
-	cfg["external-controller-cors"] = map[string]any{"allow-origins": []string{}, "allow-private-network": false}
+
 	// Mihomo owns this cache in its stable -d directory. API selections then
 	// survive both configuration generations and systemd crash recovery.
 	profile, _ := cfg["profile"].(map[string]any)
@@ -112,6 +114,9 @@ func Effective(raw []byte, controller, secret string, mixedPort int) ([]byte, er
 	out, err := yaml.Marshal(cfg)
 	if err != nil {
 		return nil, diagnostic.New("diagnostic.config.encode", "cannot encode Mihomo YAML")
+	}
+	if len(out) > MaxConfigSize {
+		return nil, diagnostic.New("diagnostic.config.yamlSize", "Mihomo YAML must be nonempty and at most 8 MiB")
 	}
 	return out, nil
 }

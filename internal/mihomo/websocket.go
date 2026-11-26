@@ -23,7 +23,8 @@ func (c Client) streamJSON(ctx context.Context, path string, limit int64, frameT
 	if err != nil || (base.Scheme != "http" && base.Scheme != "https") || base.User != nil || base.RawQuery != "" || base.Fragment != "" || (base.Path != "" && base.Path != "/") {
 		return diagnostic.New("diagnostic.api.controllerURL", "invalid local controller URL")
 	}
-	if err := loopbackAddress(base.Host); err != nil {
+	base.Host, err = ControllerTarget(base.Host)
+	if err != nil {
 		return err
 	}
 	client := &http.Client{}
@@ -50,7 +51,7 @@ func (c Client) streamJSON(ctx context.Context, path string, limit int64, frameT
 	client.Transport = transport
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	dialCtx, cancelDial := context.WithTimeout(ctx, 5*time.Second)
-	conn, response, err := websocket.Dial(dialCtx, strings.TrimRight(c.BaseURL, "/")+path, &websocket.DialOptions{
+	conn, response, err := websocket.Dial(dialCtx, strings.TrimRight(base.String(), "/")+path, &websocket.DialOptions{
 		HTTPClient:      client,
 		HTTPHeader:      http.Header{"Authorization": {"Bearer " + c.Secret}},
 		CompressionMode: websocket.CompressionDisabled,

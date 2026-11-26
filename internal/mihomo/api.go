@@ -32,13 +32,14 @@ type Group struct {
 }
 
 // open keeps buffered requests and streaming samples on the same authenticated,
-// loopback-only transport. The returned body owns the private transport cleanup.
+// local-only transport. The returned body owns the private transport cleanup.
 func (c Client) open(ctx context.Context, method, path string, body []byte) (io.ReadCloser, error) {
 	base, err := url.Parse(c.BaseURL)
 	if err != nil || (base.Scheme != "http" && base.Scheme != "https") || base.User != nil || base.RawQuery != "" || base.Fragment != "" || (base.Path != "" && base.Path != "/") {
 		return nil, diagnostic.New("diagnostic.api.controllerURL", "invalid local controller URL")
 	}
-	if err := loopbackAddress(base.Host); err != nil {
+	base.Host, err = ControllerTarget(base.Host)
+	if err != nil {
 		return nil, err
 	}
 	cl := &http.Client{Timeout: 5 * time.Second}
@@ -62,7 +63,7 @@ func (c Client) open(ctx context.Context, method, path string, body []byte) (io.
 	cl.Transport = transport
 	// Never follow redirects: the bearer token belongs to this local listener.
 	cl.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
-	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(c.BaseURL, "/")+path, bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, method, strings.TrimRight(base.String(), "/")+path, bytes.NewReader(body))
 	if err != nil {
 		closeIdle()
 		return nil, diagnostic.New("diagnostic.api.request", "cannot construct local controller request")
@@ -201,6 +202,29 @@ type Configuration struct {
 	Mode      string
 	TUN       bool
 	MixedPort *int
+}
+
+// ConfirmProxyPorts reads the core's bound listener ports. A disabled port
+// must be reported explicitly as zero; a missing field cannot confirm it.
+func (c Client) ConfirmProxyPorts(ctx context.Context, changes map[string]int) error {
+	if len(changes) == 0 {
+		return nil
+	}
+	raw, err := c.request(ctx, http.MethodGet, "/configs", nil)
+	if err != nil {
+		return err
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return diagnostic.New("diagnostic.api.configResponse", "invalid Mihomo runtime configuration response")
+	}
+	for key, want := range changes {
+		var got *int
+		if json.Unmarshal(fields[key], &got) != nil || got == nil || *got != want {
+			return diagnostic.New("diagnostic.settings.portUnconfirmed", "Mihomo did not confirm %s = %d", key, want)
+		}
+	}
+	return nil
 }
 
 // Configuration returns observed engine settings, never an optimistic copy of

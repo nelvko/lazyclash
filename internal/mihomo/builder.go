@@ -16,6 +16,8 @@ type BuildOptions struct {
 	Overrides          []byte
 	Controller, Secret string
 	MixedPort          int
+	Listeners          ListenerOptions
+	ProxyUsers         []string // nil keeps the default listener policy; an empty list explicitly disables authentication.
 	Mode               string
 	General            GeneralSettings
 	TUN                bool
@@ -53,7 +55,7 @@ func Build(opts BuildOptions) ([]byte, error) {
 	if err != nil {
 		return nil, diagnostic.New("diagnostic.config.buildEncoding", "cannot encode Mihomo build inputs")
 	}
-	out, err := Effective(raw, opts.Controller, opts.Secret, opts.MixedPort)
+	out, err := EffectiveListeners(raw, opts.Controller, opts.Secret, opts.MixedPort, opts.Listeners, opts.ProxyUsers)
 	if err != nil {
 		return nil, err
 	}
@@ -220,6 +222,17 @@ func applyOverrides(cfg map[string]any, raw []byte) error {
 		for key, value := range fields {
 			if managedOverrideFields[key] {
 				return diagnostic.New("diagnostic.config.managedField", "override set contains an application-managed field; change application settings instead")
+			}
+			if key == "tls" {
+				fields, ok := value.(map[string]any)
+				if !ok {
+					return diagnostic.New("diagnostic.config.tlsMapping", "tls must be a mapping")
+				}
+				for _, name := range controllerTLSFields {
+					if _, exists := fields[name]; exists {
+						return diagnostic.New("diagnostic.config.managedField", "override set contains an application-managed field; change application settings instead")
+					}
+				}
 			}
 			if key == "profile" {
 				profile, ok := value.(map[string]any)
