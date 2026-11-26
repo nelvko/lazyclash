@@ -567,9 +567,9 @@ func TestSettingsThemeMenuTracksTriggerAndKeepsChoicePending(t *testing.T) {
 			m, _ = update(m, special(tea.KeyEnter))
 			checkTrigger("▴")
 			options := []menuItem{
+				{ID: app.ThemeAuto, Label: tc.auto},
 				{ID: app.ThemeLight, Label: tc.light},
 				{ID: app.ThemeDark, Label: tc.dark, Checked: true},
-				{ID: app.ThemeAuto, Label: tc.auto},
 			}
 			if !m.menu.open || len(m.menu.items) != len(options) {
 				t.Fatalf("expected three theme options, got %+v", m.menu)
@@ -582,7 +582,7 @@ func TestSettingsThemeMenuTracksTriggerAndKeepsChoicePending(t *testing.T) {
 			m, _ = update(m, special(tea.KeyUp))
 			m, _ = update(m, tea.WindowSizeMsg{Width: 80, Height: 24})
 			trigger := findTarget(t, m, id)
-			if !m.menu.open || m.menu.anchor != trigger || m.menu.selected != 0 || !m.menu.items[1].Checked {
+			if !m.menu.open || m.menu.anchor != trigger || m.menu.selected != 1 || !m.menu.items[2].Checked {
 				t.Fatal("resizing lost the trigger, pending light choice, or saved dark check")
 			}
 			m, _ = update(m, special(tea.KeyEscape))

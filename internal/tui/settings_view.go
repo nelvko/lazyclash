@@ -42,9 +42,9 @@ var languageMenuItems = []menuItem{
 
 func themeMenuItems(locale i18n.Localizer) []menuItem {
 	return []menuItem{
+		{ID: app.ThemeAuto, Label: locale.T("settings.theme.auto")},
 		{ID: app.ThemeLight, Label: locale.T("settings.theme.light")},
 		{ID: app.ThemeDark, Label: locale.T("settings.theme.dark")},
-		{ID: app.ThemeAuto, Label: locale.T("settings.theme.auto")},
 	}
 }
 

@@ -900,7 +900,7 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.click_text(dark_trigger)
         _, checked_y = position(terminal, dropdown_option(terminal, dark, checked=True))
         assert position(terminal, dropdown_option(terminal, light))[1] == checked_y - 1, "Light must precede Dark"
-        assert position(terminal, dropdown_option(terminal, auto))[1] == checked_y + 1, "Auto must follow Dark"
+        assert position(terminal, dropdown_option(terminal, auto))[1] == checked_y - 2, "Auto must precede Light"
         preview.capture(terminal, output, "theme-menu-wide", args)
         terminal.key(b"\x1b[A")
         terminal.key(b"\x1b")
@@ -917,13 +917,12 @@ def exercise(preview, binary, output, language, profile, args):
         dropdown_option(terminal, light, checked=True)
         mark = len(terminal.raw)
         terminal.click_text(dropdown_option(terminal, auto))
-        auto_trigger = dropdown_trigger(terminal, auto)
         terminal.wait(words["settings.themeAuto"] % dark)
         terminal.settle()
         assert b"\x1b]11;?" in terminal.raw[mark:], "Auto did not query the terminal background"
         terminal.send(b"\x1b]11;rgb:ffff/ffff/ffff\x07")
         terminal.wait(words["settings.themeAuto"] % light)
-        terminal.click_text(auto_trigger)
+        terminal.key(b"\r")  # Reopen the theme control even when the language also reads Auto.
         dropdown_option(terminal, auto, checked=True)
         terminal.click_text(dropdown_option(terminal, dark))
         terminal.wait(dark_trigger)
