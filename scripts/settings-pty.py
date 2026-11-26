@@ -893,6 +893,11 @@ def exercise(preview, binary, output, language, profile, args):
         process_trigger = dropdown_trigger(terminal, words["settings.processAlways"])
         dismiss_toasts(terminal)
 
+        def check_canvas(rgb):
+            if profile == "truecolor":
+                color = tuple(bytes.fromhex(rgb))
+                assert any(cell[1] == color for row in terminal.screen.styles for cell in row), rgb
+
         light = words["settings.theme.light"]
         dark = words["settings.theme.dark"]
         auto = words["settings.theme.auto"]
@@ -912,16 +917,18 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.key(b"\x1b[A")
         terminal.key(b"\r")
         light_trigger = dropdown_trigger(terminal, light)
-        terminal.wait(words["settings.themeLightPlaceholder"])
+        check_canvas("eef2f5")
         terminal.click_text(light_trigger)
         dropdown_option(terminal, light, checked=True)
         mark = len(terminal.raw)
         terminal.click_text(dropdown_option(terminal, auto))
         terminal.wait(words["settings.themeAuto"] % dark)
         terminal.settle()
+        check_canvas("2e3842")
         assert b"\x1b]11;?" in terminal.raw[mark:], "Auto did not query the terminal background"
         terminal.send(b"\x1b]11;rgb:ffff/ffff/ffff\x07")
         terminal.wait(words["settings.themeAuto"] % light)
+        check_canvas("eef2f5")
         terminal.key(b"\r")  # Reopen the theme control even when the language also reads Auto.
         dropdown_option(terminal, auto, checked=True)
         terminal.click_text(dropdown_option(terminal, dark))

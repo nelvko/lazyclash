@@ -1,5 +1,11 @@
 # 验证入口
 
+## 雾蓝灰浅色主题（2026-11-27）
+
+用正式程序在独立配置目录中保存主题并重启。手动「浅色」在深色终端也显示雾蓝灰。「自动」收到浅色、深色报告时切换配色，等待首次报告时使用 Mariana，延迟回复后随即更新。另在 120×32 终端验证了 256 色、16 色和无色输出。[自动浅色](../.test-artifacts/mist-blue-release/auto-light.png) · [自动深色](../.test-artifacts/mist-blue-release/auto-dark.png)
+
+七页使用内存示例数据走正式 TUI 渲染，在中文 144×42 终端逐页检查，并验证缩到 80×24 后恢复。 [概览](../.test-artifacts/mist-blue-release/overview.png) · [代理](../.test-artifacts/mist-blue-release/proxies.png) · [订阅](../.test-artifacts/mist-blue-release/profiles.png) · [连接](../.test-artifacts/mist-blue-release/connections.png) · [规则](../.test-artifacts/mist-blue-release/rules.png) · [日志](../.test-artifacts/mist-blue-release/logs.png) · [设置](../.test-artifacts/mist-blue-release/settings.png)
+
 ## 代理组头的宽窄布局与英文类型（2026-11-26）
 
 调整间距后，160×45 下同一批组的类型和当前节点分别从第 36、49 列移至第 47、63 列，右侧成员数和折叠箭头保持原位。80×32 的前三个组名分别位于第 4、7、10 行，点击组间空白不会展开任一组。80×20 下组名位于第 4、6、8 行。[160×45 宽屏](../.test-artifacts/proxy-responsive-spacing/pty/zh-Hans/truecolor/directory-wide-160x45.png) · [80×32 窄屏](../.test-artifacts/proxy-responsive-spacing/pty/zh-Hans/truecolor/directory-narrow-80x32.png) · [80×20 矮窗](../.test-artifacts/proxy-responsive-spacing/pty/zh-Hans/truecolor/directory-short-80x20.png)

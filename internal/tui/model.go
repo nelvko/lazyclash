@@ -1990,10 +1990,14 @@ func (m Model) View() tea.View {
 	}
 	// Style the canvas cells only. View's foreground/background properties emit
 	// OSC 10/11 and change the terminal's default palette, which we do not own.
-	view := tea.NewView(terminalTheme(themed(m.screen, text, m.canvasBackground(), false), profile))
+	light := m.effectiveTheme() == app.ThemeLight
+	view := tea.NewView(paintTerminalTheme(themed(m.screen, text, m.canvasBackground(), false), profile, light))
 	view.AltScreen = true
 	view.MouseMode = tea.MouseModeAllMotion
 	view.Cursor = m.inputCursor()
+	if view.Cursor != nil {
+		view.Cursor.Color = terminalForeground(view.Cursor.Color, profile, light)
+	}
 	return view
 }
 func clean(s string) string {

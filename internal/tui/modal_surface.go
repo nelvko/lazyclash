@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nelvko/lazyclash/internal/app"
 )
 
 const (
@@ -51,7 +52,7 @@ func (m *Model) canFloatDocument() bool {
 func (m *Model) newModalSurface(width, height int) modalSurface {
 	width, height = max(0, min(width, m.width)), max(0, min(height, m.height))
 	bounds := hitRegion{X: (m.width - width) / 2, Y: (m.height - height) / 2, W: width, H: height}
-	outline := m.lowColor() && (width < m.width || height < m.height)
+	outline := (m.lowColor() || m.effectiveTheme() == app.ThemeLight) && (width < m.width || height < m.height)
 	return m.modalSurfaceAt(bounds, modalBackground, outline)
 }
 

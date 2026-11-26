@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"image/color"
 	"math"
 	"strings"
 	"time"
@@ -109,12 +110,16 @@ func logoIntroCenter(frame int) string {
 
 func logoGradientColor(column, intro int) string {
 	column = max(0, min(column, len(logoGradient)-1))
+	return blendedLogoColor(logoGradient[column], logoIntroGradient[column], intro)
+}
+
+func blendedLogoColor(base, peak color.Color, intro int) string {
 	var amount float64
 	if intro > 0 && intro < logoIntroFrames {
 		amount = math.Pow(math.Sin(math.Pi*float64(intro)/logoIntroFrames), 2)
 	}
-	r, g, b, _ := logoGradient[column].RGBA()
-	pr, pg, pb, _ := logoIntroGradient[column].RGBA()
+	r, g, b, _ := base.RGBA()
+	pr, pg, pb, _ := peak.RGBA()
 	mix := func(base, peak uint32) uint8 {
 		return uint8(math.Round((float64(base) + (float64(peak)-float64(base))*amount) / 257))
 	}

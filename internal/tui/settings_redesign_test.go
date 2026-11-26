@@ -594,16 +594,16 @@ func TestSettingsThemeMenuTracksTriggerAndKeepsChoicePending(t *testing.T) {
 	}
 }
 
-func TestSettingsThemeExplainsLightPlaceholderAndAutoChoice(t *testing.T) {
-	for _, tc := range []struct{ language, light, dark, auto, lightNote, autoDark, autoLight string }{
-		{i18n.English, "Light", "Dark", "Auto", "Light currently uses the Dark palette.", "Currently using Dark.", "Currently using Light."},
-		{i18n.Chinese, "浅色", "深色", "自动", "浅色主题暂用深色配色。", "当前使用深色。", "当前使用浅色。"},
+func TestSettingsThemeExplainsAutoChoice(t *testing.T) {
+	for _, tc := range []struct{ language, light, dark, auto, autoDark, autoLight string }{
+		{i18n.English, "Light", "Dark", "Auto", "Currently using Dark.", "Currently using Light."},
+		{i18n.Chinese, "浅色", "深色", "自动", "当前使用深色。", "当前使用浅色。"},
 	} {
 		for _, want := range []struct{ theme, effective, label, note string }{
 			{app.ThemeDark, app.ThemeDark, tc.dark, ""},
-			{app.ThemeLight, app.ThemeLight, tc.light, tc.lightNote},
+			{app.ThemeLight, app.ThemeLight, tc.light, ""},
 			{app.ThemeAuto, app.ThemeDark, tc.auto, tc.autoDark},
-			{app.ThemeAuto, app.ThemeLight, tc.auto, tc.autoLight + " " + tc.lightNote},
+			{app.ThemeAuto, app.ThemeLight, tc.auto, tc.autoLight},
 		} {
 			o := dashboardOptions{Locale: i18n.New(tc.language), Theme: want.theme, EffectiveTheme: want.effective}
 			row := settingsThemeRow(o)

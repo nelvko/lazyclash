@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	// The dark palette also supplies the placeholder colors for light.
-	// Its Mariana source colors are documented in docs/theme-mariana.md.
+	// Components use Mariana colors. The renderer maps them to the active
+	// terminal palette. See docs/theme-mariana.md for the color roles.
 	bg                      = "#2e3842"
 	shellBackground         = "#303841"
 	panel                   = "#262d34"

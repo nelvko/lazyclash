@@ -4,8 +4,8 @@ import (
 	"image/color"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
-	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -26,35 +26,62 @@ func themeProfile(environ []string, detected colorprofile.Profile) colorprofile.
 	return detected
 }
 
-// terminalTheme adapts the completed view, including third-party text inputs.
-// Layout and focus remain independent of color capability. Explicit fallbacks
-// avoid automatic RGB approximation turning muted surfaces into saturated blue.
+// terminalTheme is the Mariana profile adapter used by standalone components.
 func terminalTheme(screen string, profile colorprofile.Profile) string {
-	if profile == colorprofile.TrueColor || profile == colorprofile.Unknown {
+	return paintTerminalTheme(screen, profile, false)
+}
+
+// Apply the selected palette and terminal capability to the final composed screen,
+// including nested Bubbles controls. Only control sequences require decoding.
+func paintTerminalTheme(screen string, profile colorprofile.Profile, light bool) string {
+	if !light && (profile == colorprofile.TrueColor || profile == colorprofile.Unknown) {
 		return screen
 	}
-	if profile <= colorprofile.ASCII {
+	if profile != colorprofile.Unknown && profile <= colorprofile.ASCII {
 		return ansi.Strip(screen)
 	}
+	colors := framePalette{profile, light}
 	var out strings.Builder
 	out.Grow(len(screen))
+	styles := make(map[string]string)
 	parser := ansi.GetParser()
 	defer ansi.PutParser(parser)
-	var state byte
 	for len(screen) > 0 {
-		parser.Reset()
-		seq, _, n, next := ansi.DecodeSequence(screen, state, parser)
-		if ansi.HasCsiPrefix(seq) && parser.Command() == 'm' {
-			out.WriteString(terminalStyle(parser.Params(), profile))
-		} else {
-			out.WriteString(seq)
+		// In a UTF-8 string raw C1 control bytes (CSI, OSC, etc.) decode as
+		// RuneError. Copy regular text in runs without splitting CJK or emoji.
+		start := strings.IndexFunc(screen, func(r rune) bool { return r == ansi.ESC || r == utf8.RuneError })
+		if start < 0 {
+			out.WriteString(screen)
+			break
 		}
-		screen, state = screen[n:], next
+		out.WriteString(screen[:start])
+		seq, _, n, _ := ansi.DecodeSequence(screen[start:], ansi.NormalState, nil)
+		screen = screen[start+n:]
+		if !ansi.HasCsiPrefix(seq) || seq[len(seq)-1] != 'm' {
+			out.WriteString(seq)
+			continue
+		}
+		value, ok := styles[seq]
+		if !ok {
+			value = seq
+			parser.Reset()
+			ansi.DecodeSequence(seq, ansi.NormalState, parser)
+			if parser.Command() == 'm' {
+				value = colors.style(parser.Params())
+			}
+			styles[seq] = value
+		}
+		out.WriteString(value)
 	}
 	return out.String()
 }
 
-func terminalStyle(params ansi.Params, profile colorprofile.Profile) string {
+type framePalette struct {
+	profile colorprofile.Profile
+	light   bool
+}
+
+func (p framePalette) style(params ansi.Params) string {
 	var style ansi.Style
 	for i := 0; i < len(params); i++ {
 		param := params[i].Param(0)
@@ -63,11 +90,11 @@ func terminalStyle(params ansi.Params, profile colorprofile.Profile) string {
 			if n := ansi.ReadStyleColor(params[i:], &c); n > 0 {
 				switch param {
 				case 38:
-					style = style.ForegroundColor(terminalColor(c, profile))
+					style = style.ForegroundColor(p.color(c, param))
 				case 48:
-					style = style.BackgroundColor(terminalColor(c, profile))
+					style = style.BackgroundColor(p.color(c, param))
 				case 58:
-					style = style.UnderlineColor(terminalColor(c, profile))
+					style = style.UnderlineColor(p.color(c, param))
 				}
 				i += n - 1
 				continue
@@ -85,83 +112,10 @@ func terminalStyle(params ansi.Params, profile colorprofile.Profile) string {
 	return style.String()
 }
 
-// terminalColor deliberately groups low-capability surfaces into neutral grays.
-// ANSI's small user-defined palette cannot retain every surface distinction;
-// borders and textual selection/focus markers remain essential there.
 func terminalColor(c color.Color, profile colorprofile.Profile) color.Color {
-	if c == nil {
-		return nil
-	}
-	if profile == colorprofile.TrueColor || profile == colorprofile.Unknown {
-		return c
-	}
-	if profile <= colorprofile.ASCII {
-		return nil
-	}
-	if _, ok := c.(ansi.BasicColor); ok {
-		return profile.Convert(c)
-	}
-	if _, ok := c.(ansi.IndexedColor); ok {
-		return profile.Convert(c)
-	}
-	// This is the sole terminal fallback table for the semantic Mariana palette.
-	// ANSI256 indices >=16 use the standardized palette, independent of a user's
-	// customized base sixteen colors. ANSI16 necessarily uses that base palette.
-	fallbacks := [...]struct {
-		value           string
-		ansi256, ansi16 uint8
-	}{
-		{bg, 236, 0},
-		{shellBackground, 236, 0},
-		{panel, 235, 0},
-		{raised, 237, 0},
-		{tooltipBackground, 233, 0},
-		{sidebarBackground, 234, 0},
-		{inputBackground, 235, 0},
-		{text, 253, 15},
-		{pageTitleForeground, 255, 15},
-		{pageTitleMarker, 67, 8},
-		{muted, 249, 7},
-		{disabled, 245, 8},
-		{selectionBackground, 240, 4},
-		{hoverBackground, 238, 0},
-		{border, 244, 8},
-		{divider, 238, 8},
-		{accent, 110, 14},
-		{focus, 215, 11},
-		{primaryButtonBackground, 68, 14},
-		{buttonHoverBackground, 239, 0},
-		{buttonSelectedBackground, 24, 4},
-		{buttonSelectedHoverBackground, 25, 4},
-		{buttonPrimaryHoverBackground, 75, 14},
-		{buttonDangerForeground, 217, 9},
-		{buttonDangerHoverBackground, 238, 0},
-		{routingIdleText, 252, 7},
-		{routingIdleBackground, 237, 0},
-		{routingSelectedText, 231, 15},
-		{routingSelectedBackground, 60, 4},
-		{routingSelectedHoverBackground, 25, 4},
-		{routingFocus, 222, 11},
-		{settingsSwitchOnThumb, 117, 6},
-		{success, 114, 10},
-		{errorColor, 210, 9},
-		{noticeSlate, 24, 4},
-		{noticeText, 255, 15},
-		{noticeCheck, 194, 10},
-		{noticeWarning, 223, 11},
-		{noticeErrorFill, 95, 1},
-		{noticeErrorText, 255, 15},
-		{noticeErrorMark, 255, 15},
-	}
-	r, g, b, _ := c.RGBA()
-	for _, fallback := range fallbacks {
-		fr, fg, fb, _ := lipgloss.Color(fallback.value).RGBA()
-		if r == fr && g == fg && b == fb {
-			if profile == colorprofile.ANSI {
-				return ansi.BasicColor(fallback.ansi16)
-			}
-			return ansi.IndexedColor(fallback.ansi256)
-		}
-	}
-	return profile.Convert(c)
+	return terminalForeground(c, profile, false)
+}
+
+func terminalForeground(c color.Color, profile colorprofile.Profile, light bool) color.Color {
+	return (framePalette{profile, light}).color(c, 38)
 }

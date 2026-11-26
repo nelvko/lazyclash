@@ -15,7 +15,6 @@
   "settings.theme.auto": "自动",
   "settings.chooseTheme": "选择主题",
   "settings.themeAuto": "当前使用%s。",
-  "settings.themeLightPlaceholder": "浅色主题暂用深色配色。",
   "settings.themeSaving": "正在保存主题…",
   "settings.themeSaved": "主题已保存",
   "theme.unsupported": "主题必须为浅色、深色或自动",

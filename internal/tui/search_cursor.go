@@ -6,7 +6,6 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -110,11 +109,6 @@ func (m *Model) inputCursor() *tea.Cursor {
 			regionsOverlap(m.tooltip.bounds, hitRegion{X: cursor.Position.X, Y: cursor.Position.Y, W: 1, H: 1}) {
 			return nil
 		}
-		profile := m.colorProfile
-		if m.noColor {
-			profile = colorprofile.ASCII
-		}
-		cursor.Color = terminalColor(cursor.Color, profile)
 		return cursor
 	}
 	return nil

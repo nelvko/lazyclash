@@ -183,14 +183,10 @@ func settingsInterface(o dashboardOptions, width int) dashboardBlock {
 }
 
 func settingsThemeRow(o dashboardOptions) settingsRow {
-	theme := cmp.Or(o.Theme, app.ThemeDark)
 	row := settingsSelectRow(o, "settings.theme", o.Locale.T("settings.theme"))
-	if theme == app.ThemeAuto {
+	if o.Theme == app.ThemeAuto {
 		effective := dropdown{Items: themeMenuItems(o.Locale), Value: o.EffectiveTheme}
 		row.note = o.Locale.T("settings.themeAuto", effective.label())
-	}
-	if theme == app.ThemeLight || theme == app.ThemeAuto && o.EffectiveTheme == app.ThemeLight {
-		row.note = strings.TrimSpace(row.note + " " + o.Locale.T("settings.themeLightPlaceholder"))
 	}
 	return row
 }
