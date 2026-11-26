@@ -123,7 +123,6 @@ type Model struct {
 	languageOverride      string
 	savedLanguage         string
 	editorPreference      string
-	editorFocusedByMouse  bool
 	theme                 string
 	terminalLight         bool
 	ctx                   context.Context
@@ -141,6 +140,7 @@ type Model struct {
 	page, focus, hover    string
 	tooltip               tooltipState
 	settingsTab           coreSettingsTab
+	settingsPointerFocus  bool
 	tunFocus              string
 	guideSkipped          bool
 	scroll, total         int
@@ -866,7 +866,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			break
 		}
+		// Editors and overlays above own their keys. Only page navigation or
+		// activation makes a mouse-focused settings control visibly focused.
+		switch key {
+		case "tab", "shift+tab", "enter", "space", " ":
+			m.settingsPointerFocus = false
+		}
 		if m.settingsTabNavigation(key) || m.overviewModeNavigation(key) {
+			m.settingsPointerFocus = false
 			break
 		}
 		if key == "left" || key == "h" {
@@ -926,6 +933,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			break
 		}
 		if m.navigationKey(v) {
+			m.settingsPointerFocus = false
 			break
 		}
 		if m.sidebarOpen {
@@ -941,6 +949,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		if key >= "1" && key <= "7" && len(key) == 1 {
+			m.settingsPointerFocus = false
 			m.navigate(navPages()[int(key[0]-'1')])
 			break
 		}
@@ -1084,7 +1093,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.focus == "core.toggle" && m.page == "overview" {
 				cmd = m.coreToggleKey(v)
 			} else {
-				m.editorFocusedByMouse = false
 				cmd = m.activate(m.focus)
 			}
 		case "down", "j":
@@ -1610,6 +1618,7 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 			if cmd := m.saveCoreNumber(); cmd != nil || m.coreNumber.id != "" {
 				if tab != "" && m.coreNumber.id == "" {
 					m.hover = tab
+					m.settingsPointerFocus = true
 					m.selectSettingsTab(tab)
 				}
 				return cmd
@@ -1707,13 +1716,11 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 					m.input.Focus()
 					return textinput.Blink
 				}
-				if r.ID == "key-hints.toggle" {
-					return m.toggleKeyHints()
-				}
 				if strings.HasPrefix(r.ID, "nav.") {
 					popup := m.sidebarOpen
 					m.browsePage(strings.TrimPrefix(r.ID, "nav."))
 					if popup {
+						m.settingsPointerFocus = m.page == "settings"
 						m.enterContent()
 					}
 					return nil
@@ -1725,11 +1732,8 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 					m.focus = r.ID
 					return m.inlineInstallActivate(r.ID)
 				}
-				if m.page == "settings" && strings.HasPrefix(r.ID, "settings.tab.") {
-					m.selectSettingsTab(r.ID)
-					return nil
-				}
-				if !m.busy {
+				// The hint switch and tab strip stay interactive during background jobs.
+				if !m.busy || r.ID == "key-hints.toggle" || strings.HasPrefix(r.ID, "settings.tab.") {
 					if r.ID == "logo" {
 						return m.startLogoPulse()
 					}
@@ -1741,7 +1745,7 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 						m.hover = r.ID
 					}
 					m.focus = r.ID
-					m.editorFocusedByMouse = r.ID == "editor.configure"
+					m.settingsPointerFocus = m.page == "settings"
 					if handled, cmd := m.profileCardClick(r.ID); handled {
 						return cmd
 					}
@@ -1829,9 +1833,6 @@ func (m *Model) populatePageBody(o *dashboardOptions) {
 }
 func (m *Model) layout() {
 	m.repairPageFocus()
-	if m.focus != "editor.configure" {
-		m.editorFocusedByMouse = false
-	}
 	m.renderLayout()
 }
 
@@ -1856,10 +1857,7 @@ func (m *Model) renderLayout() {
 	o.tooltips = &m.tooltip
 	o.Sidebar = &m.sidebar
 	o.Snapshot, o.Focus, o.Hover = m.snapshot, m.focus, m.hover
-	if m.editorFocusedByMouse {
-		// Keep the editor as the Tab anchor without painting a keyboard highlight.
-		o.Focus = ""
-	}
+	o.settingsPointerFocus = m.settingsPointerFocus
 	// Lay out the expanded controls before deriving their keyboard hints.
 	p := &m.notification.panel
 	var expanded string

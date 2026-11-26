@@ -248,10 +248,18 @@ func settingsDiagnostics(o dashboardOptions, width int) dashboardBlock {
 // Keep keyboard focus distinct from both the card and the inactive rail in ANSI 256.
 const settingsRowHighlight = "#353d45"
 
-func settingsSection(o dashboardOptions, width int, title, description string, rows []settingsRow) dashboardBlock {
-	// The dashboard still tracks the pointer for delayed tooltips. Only
-	// keyboard focus and selection change the appearance of settings controls.
+// Navigation, hints and tooltips use the logical focus even when the settings
+// control itself has no visible focus indicator.
+func (o dashboardOptions) settingsControlAppearance() dashboardOptions {
 	o.Hover = ""
+	if o.settingsPointerFocus {
+		o.Focus = ""
+	}
+	return o
+}
+
+func settingsSection(o dashboardOptions, width int, title, description string, rows []settingsRow) dashboardBlock {
+	o = o.settingsControlAppearance()
 	inset := min(2, max(0, (width-1)/2))
 	inner := max(1, width-2*inset)
 	padding := strings.Repeat(" ", inset)

@@ -123,10 +123,10 @@ func renderPageTitleAction(o dashboardOptions) string {
 }
 
 func renderHeaderButton(o dashboardOptions, action headerAction, label string) string {
-	options := dashboardButtonOptions(action.id, o, false, bg)
 	if o.Page == "settings" {
-		options.Hovered = false
+		o = o.settingsControlAppearance()
 	}
+	options := dashboardButtonOptions(action.id, o, false, bg)
 	options.Disabled = !action.enabled || o.Busy
 	if action.id == "conn.close-all" {
 		options.Kind = buttonDanger

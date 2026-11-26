@@ -31,9 +31,10 @@ type hitRegion struct {
 	DropdownRight bool
 }
 type dashboardOptions struct {
-	coreNumber        *coreNumberEditor
-	settingsTab       coreSettingsTab
-	settingsMouseTabs bool // All tabs are clickable. Only the active tab is a keyboard stop.
+	coreNumber           *coreNumberEditor
+	settingsTab          coreSettingsTab
+	settingsMouseTabs    bool // All tabs are clickable. Only the active tab is a keyboard stop.
+	settingsPointerFocus bool
 
 	Locale                          i18n.Localizer
 	Theme, EffectiveTheme           string
