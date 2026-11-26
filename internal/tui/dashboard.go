@@ -202,7 +202,7 @@ func drawDashboard(o dashboardOptions) (string, []hitRegion, int, []notification
 		o.tooltips.dismiss()
 		put(0, 0, dashboardTitle(o, logoText(bg, o.Dim)+" / "+pageText, pageText, o.Width))
 		if o.Height > 1 {
-			put(0, o.Height-1, themed(cellCrop(tr("dashboard.menuCompact"), o.Width), muted, bg, o.Dim))
+			put(0, o.Height-1, themed(cellPad(tr("dashboard.menuCompact"), o.Width), muted, shellBackground, o.Dim))
 			add(hitRegion{ID: "menu", X: 0, Y: o.Height - 1, W: min(ansi.StringWidth(tr("dashboard.menu")), o.Width), H: 1})
 		}
 		return strings.Join(rows, "\n"), targets, 0, nil
@@ -365,7 +365,7 @@ func drawDashboard(o dashboardOptions) (string, []hitRegion, int, []notification
 	o.tooltips.sync(targets, o.Focus, o.Hover)
 	if !o.HideKeyHints {
 		footer, searchHint := dashboardKeyHints(o)
-		put(2, o.Height-1, footer)
+		put(0, o.Height-1, themed(cellPad("  "+footer, o.Width), text, shellBackground, o.Dim))
 		if searchHint.ID != "" {
 			searchHint.X += 2
 			searchHint.Y = o.Height - 1

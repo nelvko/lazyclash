@@ -138,7 +138,7 @@ func drawSidebar(rows []string, o dashboardOptions, popup bool) []hitRegion {
 		current := ""
 		background, foreground := sidebarBackground, muted
 		if page == o.Page {
-			background, foreground = bg, selectionForeground
+			background, foreground = shellBackground, selectionForeground
 			if popup {
 				background = selectionBackground
 			}

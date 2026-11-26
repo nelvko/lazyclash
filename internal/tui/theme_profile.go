@@ -112,6 +112,7 @@ func terminalColor(c color.Color, profile colorprofile.Profile) color.Color {
 		ansi256, ansi16 uint8
 	}{
 		{bg, 236, 0},
+		{shellBackground, 236, 0},
 		{panel, 235, 0},
 		{raised, 237, 0},
 		{tooltipBackground, 233, 0},

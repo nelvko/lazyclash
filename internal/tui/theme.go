@@ -11,7 +11,8 @@ import (
 const (
 	// The dark palette also supplies the placeholder colors for light.
 	// Its Mariana source colors are documented in docs/theme-mariana.md.
-	bg                      = "#303841"
+	bg                      = "#2e3842"
+	shellBackground         = "#303841"
 	panel                   = "#2b323a"
 	raised                  = "#3a424a"
 	tooltipBackground       = "#171d24"

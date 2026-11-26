@@ -30,7 +30,7 @@ func dashboardKeyHints(o dashboardOptions) (string, hitRegion) {
 		if o.EditingInput || o.OverlayOwnsKeys {
 			fallback = "Esc"
 		}
-		return helpText(cellCrop(fallback, width), bg, o.Dim), hitRegion{}
+		return helpText(cellCrop(fallback, width), shellBackground, o.Dim), hitRegion{}
 	}
 	context := o.Help
 	if o.tooltips != nil && o.tooltips.open != "" {
@@ -72,13 +72,13 @@ func dashboardKeyHints(o dashboardOptions) (string, hitRegion) {
 	}
 	left := strings.TrimSpace(view.ShortHelpView(selected))
 	leftWidth := ansi.StringWidth(left)
-	contextHints := helpText(left, bg, o.Dim)
+	contextHints := helpText(left, shellBackground, o.Dim)
 	if searchHint.ID != "" && o.Hover == searchHint.ID {
 		start, end := searchHint.X, searchHint.X+searchHint.W
-		contextHints = ansi.Cut(contextHints, 0, start) + themed(ansi.Cut(left, start, end), text, bg, false) + ansi.Cut(contextHints, end, leftWidth)
+		contextHints = ansi.Cut(contextHints, 0, start) + themed(ansi.Cut(left, start, end), text, shellBackground, false) + ansi.Cut(contextHints, end, leftWidth)
 	}
 	gap := width - leftWidth - ansi.StringWidth(tail)
-	return contextHints + themed(strings.Repeat(" ", gap), muted, bg, o.Dim) + helpText(tail, bg, o.Dim), searchHint
+	return contextHints + themed(strings.Repeat(" ", gap), muted, shellBackground, o.Dim) + helpText(tail, shellBackground, o.Dim), searchHint
 }
 
 func keyHintPriority(label string) int {
