@@ -13,7 +13,6 @@
   "navigation.controls.openProfiles": "打开订阅页",
   "navigation.controls.openProxies": "打开代理页",
   "navigation.controls.viewGroup": "查看策略组",
-  "navigation.controls.openLogs": "打开日志页",
   "navigation.controls.manageCore": "管理内核",
   "navigation.controls.importProfile": "导入配置",
   "navigation.controls.reviewTUN": "审阅开启 TUN",

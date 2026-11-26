@@ -147,7 +147,7 @@ func TestCoreStatusKeepsFailuresTransitionsAndMissingTimingExplicit(t *testing.T
 				if tc.noPID {
 					o.Snapshot.Service.PID = 0
 				}
-				if tc.state == "failed" {
+				if tc.state == "failed" || tc.requestedRunning {
 					o.Snapshot.Service.Result, o.Snapshot.Service.ExitCode = "start-limit-hit", 1
 				}
 				if tc.requestedRunning {
@@ -180,8 +180,11 @@ func TestCoreStatusKeepsFailuresTransitionsAndMissingTimingExplicit(t *testing.T
 				if tc.state == "reloading" && face != "◌ "+o.Locale.T("dashboard.status.reloading") {
 					t.Fatalf("reload labeled as another operation: %q", face)
 				}
-				if tc.state == "failed" && !strings.Contains(plain, o.Locale.T("dashboard.core.failureReason", "start-limit-hit", 1)) {
+				if (tc.state == "failed" || tc.requestedRunning) && !strings.Contains(plain, o.Locale.T("dashboard.core.serviceResult", "start-limit-hit", 1)) {
 					t.Fatal("failed service lost its exit reason")
+				}
+				if strings.Contains(plain, "lazyclash doctor") != (tc.state == "failed" || tc.requestedRunning || tc.serviceError != "") {
+					t.Fatal("service diagnostics hint did not match the observed failure")
 				}
 				if tc.requestedRunning && !strings.Contains(plain, o.Locale.T("dashboard.core.exitHint")) {
 					t.Fatal("unexpected exit lost its recovery hint")

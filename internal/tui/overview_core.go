@@ -17,13 +17,25 @@ func overviewCoreCard(o dashboardOptions, width int) dashboardBlock {
 	state, _, color := headerCoreState(o)
 	inner := overviewInnerWidth(width)
 	lines := []string{overviewHeading(o, "Mihomo"), style(cellCrop(state, inner), color)}
+	control := overviewCoreToggle(o)
+	transition := control.state == togglePending
+	if !o.StateUnavailable && !transition {
+		failedResult := s.Service.Result != "" && s.Service.Result != "success"
+		if failedResult {
+			lines = append(lines, style(tr("dashboard.core.serviceResult", clean(s.Service.Result), s.Service.ExitCode), warning))
+		}
+		if s.ServiceError != "" {
+			lines = append(lines, style(o.Locale.Diagnostic(s.ServiceError, s.ServiceDiagnostic), warning))
+		}
+		if failedResult || s.Service.State == "failed" || s.ServiceError != "" {
+			lines = append(lines, style(tr("dashboard.core.doctorHint"), muted))
+		}
+	}
 	if !s.Installed && !o.StateUnavailable {
 		return overviewControlPanel(o, width, tr("dashboard.overview.service"), lines, []overviewControlButton{
 			{id: "core.install", label: tr("dashboard.action.install"), enabled: !o.Busy},
 		})
 	}
-	control := overviewCoreToggle(o)
-	transition := control.state == togglePending
 	running := !o.StateUnavailable && s.Service.Active && s.ServiceError == ""
 	showCardUptime := !sidebarGeometry(o, false).hasClockRow()
 	if showCardUptime {
@@ -35,18 +47,10 @@ func overviewCoreCard(o dashboardOptions, width int) dashboardBlock {
 		lines = append(lines, style(tr("dashboard.kernel.running", clean(s.RunningVersion)), warning),
 			style(tr("dashboard.kernel.installed", clean(s.Version)), warning), style(tr("dashboard.core.restartVersion"), warning))
 	}
-	if running && s.Desired.Known && !s.Desired.Running && !transition {
+	if !o.StateUnavailable && s.ServiceError == "" && (s.Service.Active || s.Service.PID != 0) && s.Desired.Known && !s.Desired.Running && !transition {
 		lines = append(lines, style(tr("dashboard.core.stopRequested"), warning))
 	}
-	stopped := s.Service.State == "inactive" || s.Service.State == "failed"
-	unexpectedExit := stopped && s.Service.State != "failed" && s.Desired.Known && s.Desired.Running
-	if s.Service.State == "failed" && !transition {
-		reason := tr("dashboard.core.failedHint")
-		if s.Service.Result != "" && s.Service.Result != "success" {
-			reason = tr("dashboard.core.failureReason", clean(s.Service.Result), s.Service.ExitCode)
-		}
-		lines = append(lines, style(reason, errorColor))
-	} else if unexpectedExit && !transition {
+	if s.Service.State == "inactive" && s.Desired.Known && s.Desired.Running && !transition {
 		lines = append(lines, style(tr("dashboard.core.exitHint"), warning))
 	}
 	monitorUnavailable := s.APIError != ""
@@ -56,9 +60,7 @@ func overviewCoreCard(o dashboardOptions, width int) dashboardBlock {
 		}
 		monitorUnavailable = monitorUnavailable || o.Runtime.Error != "" || o.Runtime.TrafficError != "" || o.Runtime.MemoryError != "" || o.Runtime.ConnectionsError != ""
 	}
-	if s.ServiceError != "" {
-		lines = append(lines, style(cellCrop(o.Locale.Diagnostic(s.ServiceError, s.ServiceDiagnostic), inner), warning))
-	} else if running && monitorUnavailable {
+	if running && monitorUnavailable {
 		lines = append(lines, style(tr("dashboard.core.monitorUnavailable"), warning))
 	} else if control.state == toggleUnknown {
 		lines = append(lines, style(tr("dashboard.core.unknownHint"), muted))

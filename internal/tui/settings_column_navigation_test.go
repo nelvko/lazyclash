@@ -35,8 +35,9 @@ func TestSettingsColumnNavigation(t *testing.T) {
 		if row := settingsPaintedTarget(t, m.screen, m.targets, m.focus); !strings.HasPrefix(row, "›") {
 			t.Fatalf("keyboard navigation did not restore the editor row's focus arrow: %q", row)
 		}
-		m = move(t, m, special(tea.KeyDown), "card.logs")
-		m = move(t, m, key("j"), "card.logs")
+		m = move(t, m, special(tea.KeyDown), "install")
+		m = move(t, m, key("j"), "core.checkUpdate")
+		m = move(t, m, key("k"), "install")
 		move(t, m, key("k"), "editor.configure")
 	})
 	t.Run("wide top boundaries and global Tab", func(t *testing.T) {
@@ -55,10 +56,9 @@ func TestSettingsColumnNavigation(t *testing.T) {
 		m = move(t, m, key("j"), "settings.unifiedDelay")
 		move(t, m, key("k"), "settings.tcpKeepAlive")
 	})
-	t.Run("wide right column crosses cards", func(t *testing.T) {
+	t.Run("wide right column stops at its boundary", func(t *testing.T) {
 		m := model(t, 160, 45, "settings.externalControl")
-		m = move(t, m, special(tea.KeyDown), "install")
-		move(t, m, key("k"), "settings.externalControl")
+		move(t, m, special(tea.KeyDown), "settings.externalControl")
 	})
 	t.Run("narrow crosses cards and reveals focus", func(t *testing.T) {
 		m := model(t, 40, 10, "editor.configure")

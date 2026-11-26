@@ -306,7 +306,7 @@ func TestOverviewAlignedVersionsAndModesCollapseOnlyConfirmedState(t *testing.T)
 				t.Fatalf("confirmed aligned mode retained duplicate state lines: %s", value)
 			}
 			o.Snapshot.Mode.Actual = "global"
-			if value := mode(); !strings.Contains(value, locale.T("dashboard.control.savedMode", rule)) || !strings.Contains(value, locale.T("dashboard.control.runningMode", locale.T("dashboard.mode.global"))) {
+			if value := mode(); !strings.Contains(value, locale.T("dashboard.control.savedMode", rule)) || !strings.Contains(value, locale.T("dashboard.control.runningMode", locale.T("dashboard.mode.global"))) || !strings.Contains(value, locale.T("diagnostic.snapshot.modeDrift")) {
 				t.Fatalf("mode mismatch lost explicit saved/running distinction: %s", value)
 			}
 			o.Snapshot.Mode.Actual = ""

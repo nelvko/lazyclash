@@ -106,8 +106,6 @@ func (m *Model) pageHeader() pageHeader {
 				h.actions = append(h.actions, headerAction{id, label, "", true})
 			}
 		}
-	case "settings":
-		h.actions = []headerAction{{"network", tr("header.network"), tr("header.networkCompact"), true}}
 	}
 	return h
 }
@@ -123,9 +121,6 @@ func renderPageTitleAction(o dashboardOptions) string {
 }
 
 func renderHeaderButton(o dashboardOptions, action headerAction, label string) string {
-	if o.Page == "settings" {
-		o = o.settingsControlAppearance()
-	}
 	options := dashboardButtonOptions(action.id, o, false, bg)
 	options.Disabled = !action.enabled || o.Busy
 	if action.id == "conn.close-all" {

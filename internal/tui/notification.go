@@ -390,6 +390,7 @@ func (m *Model) dashboardOptions() dashboardOptions {
 	o.Theme, o.EffectiveTheme = m.theme, m.effectiveTheme()
 	o.StartPage = m.startPage
 	o.EditorCommand = m.editorPreference
+	o.DownloadMethod = m.wizard.cfg.Method
 	o.TrafficHistory, o.TrafficNow = m.runtime.history.points, o.Now
 	o.Monochrome = m.monochrome()
 	if m.menu.open && m.menu.dropdown != nil {

@@ -51,6 +51,9 @@ func overviewModeCard(o dashboardOptions, width int) dashboardBlock {
 		if s.Service.Active {
 			add(tr("dashboard.control.runningMode", actual), warning)
 		}
+		if known && mihomo.ValidMode(s.Mode.Desired) {
+			add(tr("diagnostic.snapshot.modeDrift"), warning)
+		}
 	}
 	if issue != "" {
 		add(issue, warning)

@@ -40,6 +40,7 @@ type dashboardOptions struct {
 	Theme, EffectiveTheme           string
 	StartPage                       string
 	EditorCommand                   string
+	DownloadMethod                  string
 	MessageTransient                bool
 	MessageInformational            bool
 	Width, Height                   int
@@ -123,7 +124,9 @@ func dashboardGeometry(o dashboardOptions) dashboardLayout {
 	if o.Height >= 24 {
 		headerY, headerHeight = 1, 3
 	}
-	if (o.Width < 70 || o.Page == "proxies" && o.Width < sidebarMinWidth) && o.Height < 24 && o.Page != "" && o.Page != "overview" {
+	hasHeaderActions := o.Page != "" && o.Page != "overview" && o.Page != "settings"
+	narrowHeader := o.Width < 70 || o.Page == "proxies" && o.Width < sidebarMinWidth
+	if o.Height < 24 && hasHeaderActions && narrowHeader {
 		headerHeight++
 	}
 	contentY := headerHeight

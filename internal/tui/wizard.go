@@ -448,10 +448,7 @@ func (m *Model) applyNetwork() tea.Cmd {
 	changed := w.cfg != w.draft.Normalized()
 	w.installRequested = false
 	w.cfg = w.draft.Normalized()
-	w.networkOpen = false
-	w.focus = w.returnFocus
-	w.scroll = 0
-	w.reveal = true
+	m.returnFromNetwork()
 	m.message = m.tr("wizard.network.applied")
 	retry := w.returnFailed
 	w.err = ""
@@ -482,11 +479,18 @@ func (m *Model) closeNetwork() {
 		m.abortLookup()
 	}
 	w := &m.wizard
+	w.err, w.failedKind = w.returnErr, w.returnFailed
+	m.returnFromNetwork()
+}
+func (m *Model) returnFromNetwork() {
+	w := &m.wizard
 	w.networkOpen = false
 	w.focus = w.returnFocus
 	w.scroll = 0
 	w.reveal = true
-	w.err, w.failedKind = w.returnErr, w.returnFailed
+	if m.page == "settings" && m.focus == "network" {
+		m.revealContentFocus()
+	}
 }
 func (m *Model) wizardKey(k tea.KeyPressMsg) tea.Cmd {
 	key := k.String()

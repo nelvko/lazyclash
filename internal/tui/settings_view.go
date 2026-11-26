@@ -7,7 +7,6 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
-	"github.com/nelvko/lazyclash/internal/buildinfo"
 	"github.com/nelvko/lazyclash/internal/i18n"
 )
 
@@ -128,11 +127,11 @@ func settingsColumns(o dashboardOptions, width int) (left, right dashboardBlock,
 		return column
 	}
 	if width < 80 {
-		return stack(width, settingsInterface, settingsMihomo, settingsCore, settingsDiagnostics), dashboardBlock{}, width
+		return stack(width, settingsInterface, settingsMihomo, settingsCore), dashboardBlock{}, width
 	}
 	leftWidth = (width - settingsColumnGap) / 2
-	left = stack(leftWidth, settingsInterface, settingsDiagnostics)
-	right = stack(width-leftWidth-settingsColumnGap, settingsMihomo, settingsCore)
+	left = stack(leftWidth, settingsInterface, settingsCore)
+	right = settingsMihomo(o, width-leftWidth-settingsColumnGap)
 	return left, right, leftWidth
 }
 
@@ -186,25 +185,6 @@ func settingsThemeRow(o dashboardOptions) settingsRow {
 		row.note = strings.TrimSpace(row.note + " " + o.Locale.T("settings.themeLightPlaceholder"))
 	}
 	return row
-}
-
-func settingsDiagnostics(o dashboardOptions, width int) dashboardBlock {
-	tr, s := o.Locale.T, o.Snapshot
-	rows := []settingsRow{
-		{label: tr("settings.clientVersion"), value: buildinfo.Version},
-		{label: tr("settings.logs"), actions: []overviewControlButton{{id: "card.logs", label: tr("settings.openLogs"), enabled: !o.Busy}}},
-		{label: tr("settings.doctor"), value: "lazyclash doctor"},
-	}
-	if s.Service.Result != "" && s.Service.Result != "success" {
-		rows = append(rows, settingsRow{note: tr("dashboard.settings.serviceResult", clean(s.Service.Result), s.Service.ExitCode), color: warning})
-	}
-	if s.ServiceError != "" {
-		rows = append(rows, settingsRow{note: clean(o.Locale.Diagnostic(s.ServiceError, s.ServiceDiagnostic)), color: errorColor})
-	}
-	if s.Drift != "" {
-		rows = append(rows, settingsRow{note: clean(o.Locale.Detail(s.Drift)), color: warning})
-	}
-	return settingsSection(o, width, tr("settings.diagnostics"), "", rows)
 }
 
 // Keep keyboard focus distinct from both the card and the inactive rail in ANSI 256.

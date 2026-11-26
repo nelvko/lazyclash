@@ -128,22 +128,26 @@ def card_bounds(screen, label_x):
 
 def check_card_stacks(terminal, words, columns):
     screen = terminal.screen
-    stacks = []
+    starts = []
     for column in columns:
-        titles = []
+        previous = None
         for heading in column:
             x, y = position(terminal, words["settings." + heading])
             left, end = card_bounds(screen, x)
             assert x == left + 2, heading
-            titles.append(y)
-            if len(titles) > 1:
+            if previous is None:
+                starts.append((x, y))
+            else:
+                prev_heading, prev_x, prev_y = previous
+                assert x == prev_x and y > prev_y, heading + " is out of order"
                 # Bottom padding, inter-card gap and top padding.
                 assert all(not "".join(row[left:end]).strip() for row in screen.cells[y-3:y]), heading
-                if heading != "core":
+                if prev_heading != "mihomo":
                     assert "".join(screen.cells[y-4][left:end]).strip(), heading + " has trailing blank rows"
-        stacks.append(titles)
-    if len(stacks) == 2:
-        assert stacks[0][0] == stacks[1][0]
+            previous = heading, x, y
+    if len(starts) == 2:
+        (left_x, left_y), (right_x, right_y) = starts
+        assert left_x < right_x and left_y == right_y
 
 
 def check_switch(terminal, words, key, enabled, profile):
@@ -457,10 +461,23 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.key(b"7")
         terminal.wait(words["settings.interface"])
         terminal.settle()
-        for heading in ("settings.interface", "settings.mihomo", "settings.core", "settings.diagnostics"):
+        for heading in ("settings.interface", "settings.mihomo", "settings.core"):
             terminal.wait(words[heading])
         terminal.wait("7897 ›")
-        terminal.wait("lazyclash doctor")
+        download = words["settings.downloadSettings"]
+        method = words["wizard.method.direct"] + " ›"
+        check_x, check_y = position(terminal, words["core_update.check"])
+        download_x, download_y = position(terminal, download)
+        assert download_x == check_x and download_y > check_y
+        assert position(terminal, method)[1] == download_y
+        assert "lazyclash doctor" not in terminal.screen.text()
+        check_card_stacks(terminal, words, (("interface", "core"), ("mihomo",)))
+        preview.capture(terminal, output, "settings-wide", args)
+        click(terminal, (download_x, download_y))
+        terminal.wait(words["wizard.method.environment"])
+        preview.capture(terminal, output, "download-settings", args)
+        terminal.key(b"\x1b")
+        terminal.wait_absent(words["wizard.method.environment"])
         if not args.modals_only:
             check_tab_strip(preview, terminal, words, profile, output, args)
         if args.tabs_only:
@@ -473,12 +490,10 @@ def exercise(preview, binary, output, language, profile, args):
             assert json.loads(report.read_text())["auth_changes"] == [2, 1, 0]
             print("PASS %s/%s: proxy users, masked passwords, review, persistence, cancel, removal and compact viewport" % (language, profile), flush=True)
             return
-        check_card_stacks(terminal, words, (("interface", "diagnostics"), ("mihomo", "core")))
-        preview.capture(terminal, output, "settings-wide", args)
         # A tall single column lets the same terminal frame expose the entire reading order.
         terminal.resize(80, 80)
         terminal.settle()
-        check_card_stacks(terminal, words, (("interface", "mihomo", "core", "diagnostics"),))
+        check_card_stacks(terminal, words, (("interface", "mihomo", "core"),))
         preview.capture(terminal, output, "settings-single-column", args)
         terminal.resize(160, 45)
         terminal.settle()
@@ -928,8 +943,15 @@ def exercise(preview, binary, output, language, profile, args):
                 terminal.settle()
                 terminal.key(b"\x1b[D")
                 terminal.wait("7897 ›")
-            focus(terminal, words["settings.openLogs"], words["settings.logs"])
-            preview.capture(terminal, output, "tab-logs-%dx%d" % (width, height), args)
+            focus(terminal, method, download)
+            preview.capture(terminal, output, "tab-download-%dx%d" % (width, height), args)
+            if width == 40:
+                # Reopening immediately verifies the trigger kept keyboard focus.
+                for _ in range(2):
+                    terminal.key(b"\r")
+                    terminal.wait(words["wizard.method.environment"])
+                    terminal.key(b"\x1b")
+                    terminal.wait_absent(words["wizard.method.environment"])
             focus(terminal, "7897 ›", words["settings.proxyPorts"], words["navigation.controls.editPorts"])
             terminal.key(b"\r")
             terminal.wait(words["access.proxyTitle"])
@@ -944,12 +966,10 @@ def exercise(preview, binary, output, language, profile, args):
             terminal.key(b"\x1b[H")
             terminal.settle()
 
-        # The diagnostics action only opens the read-only Logs page. The
-        # Settings shortcut restores the existing page after its stream stops.
-        focus(terminal, words["settings.openLogs"], words["settings.logs"])
-        click(terminal, position(terminal, words["settings.openLogs"]))
+        # Logs remains reachable directly from the main navigation.
+        terminal.key(b"6")
         terminal.wait("settings-pty readonly log")
-        preview.capture(terminal, output, "diagnostics-open-logs", args)
+        preview.capture(terminal, output, "navigation-open-logs", args)
         terminal.key(b"7")
         terminal.wait(words["settings.interface"])
         terminal.settle()

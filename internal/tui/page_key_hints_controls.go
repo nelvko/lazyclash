@@ -168,10 +168,8 @@ func (m *Model) settingsContextHelp() string {
 		label = "navigation.controls.openProxies"
 	case overviewRouteGroupTarget:
 		label = "navigation.controls.viewGroup"
-	case "card.logs":
-		label = "navigation.controls.openLogs"
 	case "network":
-		return m.tr("navigation.network")
+		label = "settings.downloadSettings"
 	case "install", "core.install", "card.install":
 		label = "dashboard.action.install"
 		if m.snapshot.Installed {

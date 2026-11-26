@@ -10,7 +10,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
-	"github.com/nelvko/lazyclash/internal/buildinfo"
 	"github.com/nelvko/lazyclash/internal/i18n"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 	"github.com/nelvko/lazyclash/internal/service"
@@ -70,7 +69,6 @@ func TestSettingsCardsStackAtTheirNaturalHeights(t *testing.T) {
 	installed := settingsTestSnapshot()
 	running := installed
 	running.Service.Active, running.Service.State = true, "active"
-	running.Drift = strings.Repeat("Configuration differs from the service. ", 20)
 
 	for _, tc := range []struct {
 		name          string
@@ -78,7 +76,7 @@ func TestSettingsCardsStackAtTheirNaturalHeights(t *testing.T) {
 		snapshot      app.Snapshot
 	}{
 		{"installed", 160, 45, installed},
-		{"odd width with long diagnostic", 121, 18, running},
+		{"odd width with running service", 121, 18, running},
 		{"two columns before installation", 80, 24, app.Snapshot{}},
 		{"single column", 79, 24, installed},
 		{"narrow", 40, 16, running},
@@ -126,11 +124,11 @@ func TestSettingsCardsStackAtTheirNaturalHeights(t *testing.T) {
 				}
 				var height int
 				if tc.width < 80 {
-					height = checkColumn(0, tc.width, settingsInterface, settingsMihomo, settingsCore, settingsDiagnostics)
+					height = checkColumn(0, tc.width, settingsInterface, settingsMihomo, settingsCore)
 				} else {
 					left := (tc.width - 2) / 2
-					leftHeight := checkColumn(0, left, settingsInterface, settingsDiagnostics)
-					rightHeight := checkColumn(left+2, tc.width-left-2, settingsMihomo, settingsCore)
+					leftHeight := checkColumn(0, left, settingsInterface, settingsCore)
+					rightHeight := checkColumn(left+2, tc.width-left-2, settingsMihomo)
 					height = max(leftHeight, rightHeight)
 				}
 				if len(rows) != height {
@@ -521,7 +519,7 @@ func TestSettingsProcessMenuUsesLocalizedLabelsAndNativeValues(t *testing.T) {
 func TestSettingsUninstalledActionsAndHeaderOwnership(t *testing.T) {
 	o := dashboardOptions{Locale: i18n.New(i18n.English), Width: 160, Height: 45}
 	body, hits := settingsContent(o, 120)
-	actions := []string{"install", "card.logs", "settings.language", "settings.startPage", "key-hints.toggle", "settings.theme", "editor.configure", coreSettingsTabs[accessTab]}
+	actions := []string{"install", "network", "settings.language", "settings.startPage", "key-hints.toggle", "settings.theme", "editor.configure", coreSettingsTabs[accessTab]}
 	for _, id := range actions {
 		if !hasAction(hits, id) {
 			t.Fatalf("uninstalled settings lost %s", id)
@@ -530,14 +528,10 @@ func TestSettingsUninstalledActionsAndHeaderOwnership(t *testing.T) {
 	if len(hits) != len(actions) || !strings.Contains(ansi.Strip(body), o.Locale.T("settings.afterInstall")) {
 		t.Fatal("uninstalled settings expose installed-core actions or omit their availability")
 	}
-	if hasAction(hits, "network") {
-		t.Fatal("download settings gained a fallback action in the body")
-	}
 	o.Page = "settings"
 	o.Header = (&Model{page: "settings", locale: o.Locale}).pageHeader()
-	_, hits = settingsContent(o, 120)
-	if hasAction(hits, "network") || len(hits) != len(actions) {
-		t.Fatal("download settings are duplicated in the header and body")
+	if o.Header.owns("network") {
+		t.Fatal("download settings still has a header action")
 	}
 	_, hits, _ = renderDashboard(o)
 	networks := 0
@@ -547,7 +541,7 @@ func TestSettingsUninstalledActionsAndHeaderOwnership(t *testing.T) {
 		}
 	}
 	if networks != 1 {
-		t.Fatalf("expected one download-network header entry, got %d", networks)
+		t.Fatalf("expected one download settings row, got %d", networks)
 	}
 }
 
@@ -604,50 +598,6 @@ func TestSettingsThemeExplainsLightPlaceholderAndAutoChoice(t *testing.T) {
 	}
 }
 
-func TestSettingsDiagnosticsContainOnlyRelevantObservedIssues(t *testing.T) {
-	for _, language := range []string{i18n.English, i18n.Chinese} {
-		o := dashboardOptions{Locale: i18n.New(language), Height: 32, Snapshot: settingsTestSnapshot(), PlainButtons: true}
-		healthy := ansi.Strip(strings.Join(settingsDiagnostics(o, 200).lines, "\n"))
-		for _, want := range []string{buildinfo.Version, "lazyclash doctor", o.Locale.T("settings.openLogs")} {
-			if !strings.Contains(healthy, want) {
-				t.Fatalf("%s: diagnostics omitted its independent entry or client version %q", language, want)
-			}
-		}
-		o.Snapshot.Service.Result, o.Snapshot.Service.ExitCode = "exit-code", 17
-		o.Snapshot.ServiceError, o.Snapshot.Drift = "service fixture diagnostic", "saved state differs from service"
-		block := settingsDiagnostics(o, 200)
-		plain := ansi.Strip(strings.Join(block.lines, "\n"))
-		for _, want := range []string{
-			o.Snapshot.ServiceError, o.Snapshot.Drift,
-			o.Locale.T("dashboard.settings.serviceResult", o.Snapshot.Service.Result, o.Snapshot.Service.ExitCode),
-		} {
-			if !strings.Contains(plain, want) {
-				t.Fatalf("%s: missing setting diagnostic %q", language, want)
-			}
-			if strings.Contains(healthy, want) {
-				t.Fatalf("%s: healthy diagnostics displayed an unrelated issue %q", language, want)
-			}
-		}
-		if !hasAction(block.targets, "card.logs") {
-			t.Fatal("service diagnosis disabled the independent Logs entry")
-		}
-		for name, render := range map[string]func(dashboardOptions, int) dashboardBlock{"interface": settingsInterface, "settings": settingsMihomo, "core": settingsCore} {
-			plain := ansi.Strip(strings.Join(render(o, 200).lines, "\n"))
-			for _, issue := range []string{o.Snapshot.ServiceError, o.Snapshot.Drift, "exit-code"} {
-				if strings.Contains(plain, issue) {
-					t.Fatalf("%s: %s repeated the diagnostic %q", language, name, issue)
-				}
-			}
-		}
-		o.Snapshot.ServiceError, o.Snapshot.Drift = "", ""
-		o.Snapshot.Service.Result, o.Snapshot.Service.ExitCode = "success", 0
-		plain = ansi.Strip(strings.Join(settingsDiagnostics(o, 200).lines, "\n"))
-		if strings.Contains(plain, o.Locale.T("dashboard.settings.serviceResult", "success", 0)) {
-			t.Fatal("successful service result was displayed as a diagnostic")
-		}
-	}
-}
-
 func TestSettingsAutostartAndCoreRestartGuards(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		o := dashboardOptions{Locale: i18n.New(language), Snapshot: settingsTestSnapshot()}
@@ -693,7 +643,7 @@ func TestSettingsDoesNotRepeatRuntimeAndProfileActions(t *testing.T) {
 		o.Snapshot.Mode.Error, o.Snapshot.TUNError = "mode fixture diagnostic", "TUN fixture diagnostic"
 		body, hits := settingsContent(o, 160)
 		for _, hit := range hits {
-			if strings.HasPrefix(hit.ID, "mode.") || strings.HasPrefix(hit.ID, "tun.") || hit.ID == "start" || hit.ID == "stop" || hit.ID == "import" || hit.ID == "network" {
+			if strings.HasPrefix(hit.ID, "mode.") || strings.HasPrefix(hit.ID, "tun.") || hit.ID == "start" || hit.ID == "stop" || hit.ID == "import" {
 				t.Fatalf("settings repeated the page-owned action %s", hit.ID)
 			}
 		}
@@ -707,19 +657,6 @@ func TestSettingsDoesNotRepeatRuntimeAndProfileActions(t *testing.T) {
 		if !strings.Contains(core, o.Snapshot.Version) || strings.Contains(core, o.Snapshot.RunningVersion) {
 			t.Fatal("core management does not show the installed version independently of the running version")
 		}
-	}
-}
-
-func TestSettingsLogsEntryNavigatesWithoutChangingRuntime(t *testing.T) {
-	m := ready(&fakeBackend{snapshot: settingsTestSnapshot()})
-	directionCleanup(t, &m)
-	m.width, m.height, m.page, m.focus = 80, 24, "settings", "card.logs"
-	m.revealContentFocus()
-	m.layout()
-	id := m.id
-	m, _ = click(m, findTarget(t, m, "card.logs"))
-	if m.page != "logs" || m.busy || m.id != id || m.ports.open || m.wizard.open {
-		t.Fatal("Logs entry failed to navigate independently or changed runtime settings")
 	}
 }
 
@@ -777,7 +714,7 @@ func TestSettingsPointerMotionPreservesAppearanceAndFocus(t *testing.T) {
 	}
 	for _, id := range []string{
 		coreSettingsTabs[accessTab], coreSettingsTabs[resourcesTab], "settings.allowLAN",
-		"runtime-settings", "settings.language", "settings.theme", "editor.configure", "install", "card.logs", "network",
+		"runtime-settings", "settings.language", "settings.theme", "editor.configure", "install", "network",
 	} {
 		hit := findTarget(t, m, id)
 		checkMotion(id, hit.X+hit.W/2, hit.Y)

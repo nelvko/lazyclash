@@ -25,13 +25,14 @@ func TestCoreManagementCardShowsMaintenanceActions(t *testing.T) {
 			}
 			want := []string{
 				tr("settings.core"), tr("wizard.installed_version") + " " + o.Snapshot.Version + " ›",
-				tr("core_update.check") + " ›", tr("settings.autostart") + " ██░░░░",
+				tr("core_update.check") + " ›", tr("settings.downloadSettings") + " " + tr("wizard.method.direct") + " ›",
+				tr("settings.autostart") + " ██░░░░",
 				tr("settings.userService") + " [" + tr("dashboard.action.restart") + "]",
 			}
 			if !slices.Equal(rows, want) {
 				t.Fatalf("%s/%d: unexpected maintenance rows: %q", language, width, rows)
 			}
-			for _, id := range []string{"install", "core.checkUpdate"} {
+			for _, id := range []string{"install", "core.checkUpdate", "network"} {
 				link := findTarget(t, Model{targets: card.targets}, id)
 				if link.X != 0 || link.W != width || link.H != 1 {
 					t.Fatalf("%s/%d: %s is not a full row: %+v", language, width, id, link)
@@ -59,7 +60,16 @@ func TestCoreManagementCardShowsMaintenanceActions(t *testing.T) {
 			}
 		}
 		o.Snapshot.Capabilities.Scope = "system"
+		o.Snapshot.Desired.Known, o.Snapshot.Desired.Autostart = true, true
 		card := settingsCore(o, 120)
+		toggle := findTarget(t, Model{targets: card.targets}, autostartToggleTarget)
+		if !strings.Contains(ansi.Strip(card.lines[toggle.Y+1]), tr("diagnostic.snapshot.autostartDrift")) {
+			t.Fatalf("%s: missing drift guidance under autostart", language)
+		}
+		o.Snapshot.Service.EnableState = "unknown"
+		if strings.Contains(settingsAutostart(o).note, tr("diagnostic.snapshot.autostartDrift")) {
+			t.Fatalf("%s: reported autostart drift without an observed enable state", language)
+		}
 		restart := findTarget(t, Model{targets: card.targets}, "restart")
 		if !strings.Contains(ansi.Strip(card.lines[restart.Y]), tr("settings.systemService")) ||
 			!strings.Contains(ansi.Strip(card.lines[restart.Y+1]), tr("settings.geoRestart")) ||
@@ -76,11 +86,11 @@ func TestCoreManagementCardUnavailableActions(t *testing.T) {
 	}
 	o.Busy, o.Snapshot.Installed = false, false
 	card := settingsCore(o, 36)
-	if len(card.targets) != 1 || card.targets[0].ID != "install" {
-		t.Fatal("first install should be the only action before installation")
+	if len(card.targets) != 2 || card.targets[0].ID != "install" || card.targets[1].ID != "network" {
+		t.Fatal("first install should be followed by download settings")
 	}
 	o.StateUnavailable = true
-	if len(settingsCore(o, 36).targets) != 0 {
-		t.Fatal("unavailable snapshot offered an installation")
+	if targets := settingsCore(o, 36).targets; len(targets) != 1 || targets[0].ID != "network" {
+		t.Fatal("an unavailable snapshot should only allow editing download settings")
 	}
 }

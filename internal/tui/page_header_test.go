@@ -52,7 +52,7 @@ func TestPageHeadersUsePageActionsAcrossSizesAndFocus(t *testing.T) {
 		"proxies":     {"proxies.providers"},
 		"profiles":    {"profiles.update-all"},
 		"connections": {"conn.close-all"},
-		"logs":        {"logs.clear", "logs.follow"}, "settings": {"network"},
+		"logs":        {"logs.clear", "logs.follow"},
 	} {
 		for _, size := range [][2]int{{20, 7}, {30, 12}, {60, 20}, {70, 20}, {80, 24}, {120, 32}, {160, 45}, {216, 55}} {
 			for _, focused := range actions {

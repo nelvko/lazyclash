@@ -1477,9 +1477,6 @@ func (m *Model) activate(id string) tea.Cmd {
 			m.openPageSelectionMenu("overview", id, d)
 		}
 		return nil
-	case "card.logs":
-		m.navigate("logs")
-		return nil
 	case "network.primaryConfig":
 		return m.openNetworkConfig("terminal")
 	case "network.tunConfig":

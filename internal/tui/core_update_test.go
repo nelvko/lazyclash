@@ -45,16 +45,20 @@ func TestCoreManagementShowsVersionsAndConfirmedUptime(t *testing.T) {
 
 func TestCoreUpdateRequiresManualCheckAndConfirmation(t *testing.T) {
 	checks, upgrades := 0, 0
+	download := downloadnet.Config{Method: downloadnet.MethodAccelerated, Prefix: "https://accelerator.example.invalid/"}
 	b := &fakeBackend{
 		checkUpdate: func(ctx context.Context, channel mihomo.Channel, cfg downloadnet.Config) (app.CoreUpdateCheck, error) {
 			checks++
-			if channel != "" || cfg.Normalized().Method != "direct" {
+			if channel != "" || cfg != download {
 				t.Fatal("check did not use automatic channel and existing network settings")
 			}
 			return app.CoreUpdateCheck{InstalledVersion: "v1.19.32", LatestVersion: "v1.19.33", Channel: mihomo.ChannelStable, Status: mihomo.UpdateAvailable, CheckedAt: time.Now()}, ctx.Err()
 		},
 		upgradeCore: func(ctx context.Context, check app.CoreUpdateCheck, cfg downloadnet.Config, report func(mihomo.Progress)) (app.CoreUpgradeResult, error) {
 			upgrades++
+			if cfg != download {
+				t.Fatalf("upgrade used download settings %+v, want %+v", cfg, download)
+			}
 			if check.InstalledVersion != "v1.19.32" || check.LatestVersion != "v1.19.33" {
 				t.Fatal("reviewed target changed")
 			}
@@ -64,6 +68,23 @@ func TestCoreUpdateRequiresManualCheckAndConfirmation(t *testing.T) {
 	}
 	b.snapshot = app.Snapshot{Installed: true, Version: "v1.19.32"}
 	m := ready(b)
+	directionCleanup(t, &m)
+	m.page, m.focus, m.width, m.height = "settings", "network", 160, 45
+	m.layout()
+	m, _ = update(m, special(tea.KeyEnter))
+	if !m.wizard.networkOpen {
+		t.Fatal("download settings row did not open the network editor")
+	}
+	m, _ = update(m, special(tea.KeyLeft))
+	m, _ = update(m, special(tea.KeyTab))
+	m, _ = update(m, tea.PasteMsg{Content: download.Prefix})
+	m, _ = update(m, tea.WindowSizeMsg{Width: 60, Height: 16})
+	m, _ = activateWizard(m, "apply-network")
+	if m.wizard.networkOpen || m.page != "settings" || m.focus != "network" ||
+		!strings.Contains(settingsPaintedTarget(t, m.screen, m.targets, m.focus), m.tr("wizard.method.accelerated")) {
+		t.Fatalf("after applying download settings: page %q, focus %q, modal open %t, method %q, error %q",
+			m.page, m.focus, m.wizard.networkOpen, m.wizard.cfg.Method, m.wizard.err)
+	}
 	m.openWizard(false)
 	if checks != 0 || upgrades != 0 {
 		t.Fatal("opening management queried or upgraded the core")

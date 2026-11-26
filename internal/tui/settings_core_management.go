@@ -1,19 +1,31 @@
 package tui
 
-import "cmp"
+import (
+	"cmp"
+	"strings"
+
+	"github.com/nelvko/lazyclash/internal/downloadnet"
+)
 
 func settingsCore(o dashboardOptions, width int) dashboardBlock {
 	tr, s := o.Locale.T, o.Snapshot
 	title := tr("settings.core")
+	download := settingsRow{
+		label: tr("settings.downloadSettings"), value: tr("wizard.method." + cmp.Or(o.DownloadMethod, downloadnet.MethodDirect)),
+		control: settingsLink, rightAlign: true,
+		actions: []overviewControlButton{{id: "network", label: "›", enabled: !o.Busy}},
+	}
 	if o.StateUnavailable {
 		return settingsSection(o, width, title, "", []settingsRow{
 			{label: "Mihomo", value: tr("dashboard.status.unknown"), control: settingsReadOnly},
+			download,
 		})
 	}
 	if !s.Installed {
 		return settingsSection(o, width, title, "", []settingsRow{
 			{label: "Mihomo", value: tr("dashboard.status.notInstalled"), control: settingsTrailing, rightAlign: true,
 				actions: []overviewControlButton{{id: "install", label: tr("dashboard.action.install"), enabled: !o.Busy, primary: true}}},
+			download,
 		})
 	}
 
@@ -23,19 +35,11 @@ func settingsCore(o dashboardOptions, width int) dashboardBlock {
 			actions: []overviewControlButton{{id: "install", label: version + " ›", enabled: !o.Busy}}},
 		{label: tr("core_update.check"), control: settingsLink,
 			actions: []overviewControlButton{{id: "core.checkUpdate", label: "›", enabled: !o.Busy}}},
+		download,
 	}
 
 	if runtimeStopIssue(s, o.Locale) == "" {
-		autostart := settingsAutostart(o)
-		if s.Capabilities.Scope == "user" {
-			switch {
-			case s.ServiceError != "" || !s.Service.LingerKnown:
-				autostart.note = tr("dashboard.settings.lingerUnknown")
-			case !s.Service.Linger:
-				autostart.note = tr("dashboard.settings.lingerDisabled")
-			}
-		}
-		rows = append(rows, autostart)
+		rows = append(rows, settingsAutostart(o))
 	}
 
 	serviceTitle := tr("dashboard.overview.serviceLabel")
@@ -66,9 +70,24 @@ func autostartActionLabel(enabled bool) string {
 func settingsAutostart(o dashboardOptions) settingsRow {
 	tr, s := o.Locale.T, o.Snapshot
 	label := tr("settings.autostart")
-	if s.ServiceError == "" && (s.Service.EnableState == "enabled" || s.Service.EnableState == "disabled") {
-		return settingsSwitchRow(autostartToggleTarget, label, s.Service.Enabled, !o.Busy)
+	note := ""
+	if s.Capabilities.Scope == "user" {
+		switch {
+		case s.ServiceError != "" || !s.Service.LingerKnown:
+			note = tr("dashboard.settings.lingerUnknown")
+		case !s.Service.Linger:
+			note = tr("dashboard.settings.lingerDisabled")
+		}
 	}
-	return settingsRow{label: label, value: tr("dashboard.status.unknown"), control: settingsTrailing,
+	if s.ServiceError == "" && (s.Service.EnableState == "enabled" || s.Service.EnableState == "disabled") {
+		row := settingsSwitchRow(autostartToggleTarget, label, s.Service.Enabled, !o.Busy)
+		row.note = note
+		if s.Desired.Known && s.Desired.Autostart != s.Service.Enabled {
+			row.note = strings.TrimSpace(note + "\n" + tr("diagnostic.snapshot.autostartDrift"))
+			row.color = warning
+		}
+		return row
+	}
+	return settingsRow{label: label, note: note, value: tr("dashboard.status.unknown"), control: settingsTrailing,
 		actions: []overviewControlButton{{id: autostartToggleTarget, label: tr(autostartActionLabel(s.Service.Enabled)), enabled: !o.Busy}}}
 }
