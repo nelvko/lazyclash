@@ -139,7 +139,6 @@ func (m *Model) proxyGroupHeader(gi, width int, cols proxyHeaderColumns) dashboa
 	g := m.snapshot.Groups[gi]
 	id := fmt.Sprintf("group.%d", gi)
 	testID, sortID := fmt.Sprintf("proxies.test.%d", gi), fmt.Sprintf("proxies.sort.%d", gi)
-	typeID := proxyTypeTarget + strconv.Itoa(gi)
 	expanded := m.proxyGroupExpanded(g.Name)
 	marker, arrow := "  ", "▸"
 	if m.focus == id && !m.menu.dropdownOpen(id) {
@@ -150,7 +149,7 @@ func (m *Model) proxyGroupHeader(gi, width int, cols proxyHeaderColumns) dashboa
 		arrow, color = "▾", accent
 	}
 	surface := bg
-	if m.hover == id || m.hover == testID || m.hover == sortID || m.hover == typeID {
+	if m.hover == id || m.hover == testID || m.hover == sortID {
 		surface = hoverBackground
 		if m.effectiveTheme() == app.ThemeDark {
 			surface = raised
@@ -167,10 +166,10 @@ func (m *Model) proxyGroupHeader(gi, width int, cols proxyHeaderColumns) dashboa
 	const columnGap = "    "
 	nameWidth := min(max(cols.name, 18), 24, width/5)
 	typeWidth := min(max(cols.kind, 12), 16)
-	typeX, typeY := 2+nameWidth+len(columnGap), 0
+	typeX := 2 + nameWidth + len(columnGap)
 	minTitle := typeX + typeWidth + len(columnGap) + 6 // keep some of the current node visible
 	if m.proxiesNarrow() {
-		typeX, typeY = 2, 1
+		typeX = 2
 		minTitle = min(12, 2+ansi.StringWidth(clean(g.Name)), max(4, width/5))
 	}
 	kind := cellCrop(m.proxyGroupTypeLabel(g.Type), min(typeWidth, width-typeX))
@@ -231,60 +230,39 @@ func (m *Model) proxyGroupHeader(gi, width int, cols proxyHeaderColumns) dashboa
 		left := prefix + cellPad(name, nameWidth) + columnGap + cellPad(typeLabel, typeWidth) + columnGap
 		b.lines = []string{cellPad(left+summary, leftWidth) + right}
 	}
-	// Reserve action rectangles even when disabled so clicking them never folds
-	// the group. The remaining header surface belongs to the folding target.
-	var actionRegions []hitRegion
-	reserve := func(action string, x, y, w int, enabled bool) {
-		if w <= 0 {
-			return
-		}
-		hit := hitRegion{ID: action, X: x, Y: y, W: w, H: 1, DropdownRight: action == sortID}
-		actionRegions = append(actionRegions, hit)
-		if enabled {
-			b.targets = append(b.targets, hit)
-		}
-	}
-	if proxyGroupConfigType(g.Type) != "" {
-		// The type is a hover target, including when actions are disabled.
-		reserve(typeID, typeX, typeY, ansi.StringWidth(kind), true)
-	}
-	enabled := !m.busy && !m.quitting
-	reserve(sortID, leftWidth, 0, sortWidth, enabled)
-	reserve(testID, leftWidth+sortWidth, 0, testWidth, enabled)
+	actionY := 0
 	if !m.compactProxyCards() {
 		b.lines = append([]string{""}, b.lines...)
 		b.blank()
-		for i := range actionRegions {
-			actionRegions[i].Y++
-		}
-		for i := range b.targets {
-			b.targets[i].Y++
-		}
+		actionY = 1
 	}
 	for i, line := range b.lines {
 		b.lines[i] = themed(cellPad(line, width), text, surface, false)
 	}
-	// The first, full-height region lets keyboard focus reveal the whole header.
-	groupWidth := width
-	for _, hit := range actionRegions {
-		groupWidth = min(groupWidth, hit.X)
+
+	actionWidth := sortWidth + testWidth
+	if actionWidth == 0 {
+		b.targets = []hitRegion{{ID: id, W: width, H: len(b.lines)}}
+		return b
 	}
-	b.targets = append(b.targets, hitRegion{ID: id, W: groupWidth, H: len(b.lines)})
-	if groupWidth < width {
-		for y := range b.lines {
-			x := groupWidth
-			for _, hit := range actionRegions {
-				if hit.Y != y {
-					continue
-				}
-				if hit.X > x {
-					b.targets = append(b.targets, hitRegion{ID: id, X: x, Y: y, W: hit.X - x, H: 1})
-				}
-				x = hit.X + hit.W
-			}
-			if x < width {
-				b.targets = append(b.targets, hitRegion{ID: id, X: x, Y: y, W: width - x, H: 1})
-			}
+	if !m.busy && !m.quitting {
+		if sortWidth > 0 {
+			b.targets = append(b.targets, hitRegion{ID: sortID, X: leftWidth, Y: actionY, W: sortWidth, H: 1, DropdownRight: true})
+		}
+		if testWidth > 0 {
+			b.targets = append(b.targets, hitRegion{ID: testID, X: leftWidth + sortWidth, Y: actionY, W: testWidth, H: 1})
+		}
+	}
+	// Keep the primary group target full-height for keyboard navigation.
+	// Disabled actions reserve their cells so a click there cannot fold the group.
+	b.targets = append(b.targets, hitRegion{ID: id, W: leftWidth, H: len(b.lines)})
+	for y := range b.lines {
+		x := leftWidth
+		if y == actionY {
+			x += actionWidth
+		}
+		if x < width {
+			b.targets = append(b.targets, hitRegion{ID: id, X: x, Y: y, W: width - x, H: 1})
 		}
 	}
 	return b

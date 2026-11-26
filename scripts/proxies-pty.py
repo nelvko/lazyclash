@@ -397,22 +397,29 @@ def group_fields(terminal, name, label, summary, narrow):
     return name_x, type_x, summary_x, count_end, arrow_x
 
 
-def assert_group_types(terminal, words, narrow):
+def assert_group_types(terminal, words, narrow, profile):
     columns = []
     distributed = words["proxies.distributed"]
-    for name, kind, label, summary in (("PROXY", "select", "Selector", "HK 02"),
-                                       ("AUTO", "url-test", "URLTest", "HK 02"),
-                                       ("Hong Kong", "fallback", "Fallback", "HK 01"),
-                                       ("BALANCE", "load-balance", "LoadBalance", distributed),
-                                       ("CHAIN", "relay", "Relay", distributed)):
+    for name, label, summary in (("PROXY", "Selector", "HK 02"), ("Hong Kong", "Fallback", "HK 01"),
+                                 ("BALANCE", "LoadBalance", distributed), ("CHAIN", "Relay", distributed),
+                                 ("AUTO", "URLTest", "HK 02")):
+        name_x, y, arrow, _ = group_header(terminal, name)
         fields = group_fields(terminal, name, label, summary, narrow)
         # In two-line headers the summary immediately follows its variable-width type.
         columns.append(fields[:2] + fields[3:] if narrow else fields)
-        y = group_header(terminal, name)[1] + int(narrow)
-        type_x = fields[1]
-        hover_cell(terminal, type_x, y)
-        terminal.wait(words["proxies.type.deprecated"] % kind if kind == "relay" else "type: " + kind)
-        hover_cell(terminal, 0, 0)
+        left, right = name_x - 2, arrow + 2
+        top, bottom = y if narrow else y - 1, y + 2
+        normal = terminal.screen.styles[top][left][1]
+        # The first column of the group includes its keyboard focus marker.
+        before = [row[left:right] for row in terminal.screen.cells[top - 1:bottom + 1]]
+        hover_cell(terminal, fields[1], y + int(narrow))
+        after = [row[left:right] for row in terminal.screen.cells[top - 1:bottom + 1]]
+        assert before == after, "hovering %s changed the visible text or keyboard focus" % label
+        if profile != "no-color":
+            hover = terminal.screen.styles[top][left][1]
+            assert hover != normal, "hovering %s did not highlight its group" % label
+            for row in terminal.screen.styles[top:bottom]:
+                assert all(style[1] == hover for style in row[left:right]), "incomplete group highlight for " + label
     assert len(set(columns)) == 1, "group columns do not align: " + repr(columns)
 
 
@@ -582,14 +589,18 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.settle()
         assert terminal.screen.text() == before, "removed refresh shortcuts changed the proxy page"
         # Clicking expands candidates without moving the heading.
-        assert_group_types(terminal, words, narrow=False)
+        assert_group_types(terminal, words, narrow=False, profile=profile)
+        preview.capture(terminal, output, "group-type-hover-160x45", args)
+        hover_cell(terminal, 0, 0)
         name_x, type_x, summary_x, _, _ = group_fields(terminal, "Hong Kong", "Fallback", "HK 01", False)
         assert type_x - name_x - len("Hong Kong") > 2, "the longest group name crowds the type column"
         assert summary_x - type_x - len("LoadBalance") > 2, "the longest group type crowds the current node"
         preview.capture(terminal, output, "directory-wide-160x45", args)
         terminal.resize(80, 32)
         terminal.settle()
-        assert_group_types(terminal, words, narrow=True)
+        assert_group_types(terminal, words, narrow=True, profile=profile)
+        preview.capture(terminal, output, "group-type-hover-80x32", args)
+        hover_cell(terminal, 0, 0)
         name_x, first_y, _, _ = group_header(terminal, "PROXY")
         assert group_header(terminal, "AUTO")[1] == first_y + 3, "tall narrow headers need a row between groups"
         gap_y = first_y + 2

@@ -74,9 +74,6 @@ func (m *Model) proxyTargets(width int, listOnly bool) []hitRegion {
 	for _, part := range layout.parts {
 		if len(part.members) == 0 {
 			for _, target := range part.block.targets {
-				if strings.HasPrefix(target.ID, proxyTypeTarget) {
-					continue
-				}
 				if !listOnly || strings.HasPrefix(target.ID, "group.") {
 					target.Y += part.y
 					targets = append(targets, target)

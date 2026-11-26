@@ -555,7 +555,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 	case tea.WindowSizeMsg:
-		if m.page == "settings" || strings.HasPrefix(m.hover, proxyTypeTarget) || m.tooltip.pointer.ID != "" {
+		if m.page == "settings" || m.tooltip.pointer.ID != "" {
 			m.hover = ""
 		}
 		if m.page == "proxies" && !m.proxiesNarrow() && max(1, v.Width) < sidebarMinWidth {
@@ -814,7 +814,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.resetLogsView()
 		}
 	case tea.KeyPressMsg:
-		if m.page == "settings" || strings.HasPrefix(m.hover, proxyTypeTarget) || m.tooltip.pointer.ID != "" {
+		if m.page == "settings" || m.tooltip.pointer.ID != "" {
 			m.hover = ""
 		}
 		key := v.String()
@@ -1693,7 +1693,7 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 		return nil
 	}
 	if _, wheel := event.(tea.MouseWheelMsg); wheel {
-		if m.page == "settings" || strings.HasPrefix(m.hover, proxyTypeTarget) {
+		if m.page == "settings" {
 			m.hover = ""
 		}
 		if k.Button != tea.MouseWheelUp && k.Button != tea.MouseWheelDown {
@@ -1769,10 +1769,6 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 					}
 					if m.page == "proxies" && (r.ID == "proxies.search" || r.ID == "proxies.search-hint") {
 						return m.focusProxySearch()
-					}
-					if index, ok := strings.CutPrefix(r.ID, proxyTypeTarget); ok {
-						r.ID = "group." + index
-						m.hover = r.ID
 					}
 					m.focus = r.ID
 					m.settingsPointerFocus = m.page == "settings"
@@ -1925,7 +1921,6 @@ func (m *Model) renderLayout() {
 	m.screen, m.targets = base, hits
 	if !o.Dim && !m.sidebarOpen && !m.menu.open {
 		m.decorateContentFocus(g, notifications)
-		m.showProxyTypeHint(g, notifications)
 		m.rememberPageView()
 	}
 	if strings.HasPrefix(m.focus, "notification.") && !m.notification.panel.open && !o.Dim && !m.sidebarOpen {

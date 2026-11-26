@@ -18,7 +18,6 @@
   "proxies.search_type.fallback": "自动回退",
   "proxies.search_type.load-balance": "负载均衡",
   "proxies.search_type.relay": "链式代理",
-  "proxies.type.deprecated": "type: %s（已弃用）",
   "proxies.distributed": "无固定单一节点",
   "proxies.cycle": "引用循环",
   "proxies.unknown_type": "类型不可用",

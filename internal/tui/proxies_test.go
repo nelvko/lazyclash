@@ -677,19 +677,19 @@ func TestProxiesWideGroupHeaderAlignsNameTypeAndSummary(t *testing.T) {
 				firstTypeX, firstNodeX := -1, -1
 				for gi, g := range m.snapshot.Groups {
 					header := m.proxyGroupHeader(gi, width, columns)
-					typeHit := listSearchTarget(t, header.targets, fmt.Sprintf("proxies.type.%d", gi))
-					line := ansi.Strip(header.lines[typeHit.Y])
+					line := ansi.Strip(header.lines[len(header.lines)/2])
+					typeX := proxyLabelColumn(t, line, g.Type)
 					if strings.Contains(strings.TrimSpace(ansi.Strip(strings.Join(header.lines, "\n"))), "\n") {
 						t.Fatalf("group %s did not fit on one content row: %q", g.Name, header.lines)
 					}
-					name := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(ansi.Cut(line, 0, typeHit.X)), "›"))
-					if name != g.Name || ansi.Cut(line, typeHit.X, typeHit.X+typeHit.W) != g.Type {
-						t.Fatalf("group %s lost its name or English type: %q, type target=%+v", g.Name, line, typeHit)
+					name := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(ansi.Cut(line, 0, typeX)), "›"))
+					if name != g.Name {
+						t.Fatalf("group %s lost its name before the type: %q", g.Name, line)
 					}
 					if gi == 0 {
-						firstTypeX = typeHit.X
-					} else if typeHit.X != firstTypeX {
-						t.Fatalf("group %s has type at column %d, want %d", g.Name, typeHit.X, firstTypeX)
+						firstTypeX = typeX
+					} else if typeX != firstTypeX {
+						t.Fatalf("group %s has type at column %d, want %d", g.Name, typeX, firstTypeX)
 					}
 					// PROXY is open and AUTO is folded. Both resolve to the same leaf.
 					if gi < 2 {
@@ -698,7 +698,7 @@ func TestProxiesWideGroupHeaderAlignsNameTypeAndSummary(t *testing.T) {
 							t.Fatalf("missing resolved node: %q", line)
 						}
 						nodeX := ansi.StringWidth(line[:i])
-						if nodeX <= typeHit.X+typeHit.W || gi == 1 && nodeX != firstNodeX {
+						if nodeX <= typeX+ansi.StringWidth(g.Type) || gi == 1 && nodeX != firstNodeX {
 							t.Fatalf("summary column changed with group tools or type length: %q", line)
 						}
 						firstNodeX = nodeX
@@ -746,17 +746,15 @@ func TestProxiesNarrowGroupHeaderShowsTypeAndSummaryOnSecondRow(t *testing.T) {
 						t.Fatalf("%s rendered %d rows, want two", g.Name, len(header.lines))
 					}
 					assertRegions(t, header.targets, width, len(header.lines))
-					id := fmt.Sprintf("proxies.type.%d", gi)
+					second := ansi.Strip(header.lines[1])
 					if g.Name == "New" {
-						if !strings.Contains(ansi.Strip(header.lines[0]), g.Name) || hasAction(header.targets, id) {
-							t.Fatalf("unknown type obscured its group or offered a configuration hint: %q", header.lines)
+						if !strings.Contains(ansi.Strip(header.lines[0]), g.Name) || !strings.HasPrefix(strings.TrimSpace(second), "XXX") {
+							t.Fatalf("long unknown type obscured its group or lost its label: %q", header.lines)
 						}
 						continue
 					}
-					hit := listSearchTarget(t, header.targets, id)
-					second := ansi.Strip(header.lines[1])
-					if hit.Y != 1 || ansi.Cut(second, hit.X, hit.X+hit.W) != g.Type {
-						t.Fatalf("%s lost its complete English type in the second row: %q, hit=%+v", g.Name, second, hit)
+					if !strings.HasPrefix(strings.TrimSpace(second), g.Type+" ") {
+						t.Fatalf("%s lost its complete English type in the second row: %q", g.Name, second)
 					}
 					if gi < 2 && !strings.Contains(second, g.Type+" · HK 02") {
 						t.Fatalf("%s separated type from its current node: %q", g.Name, second)
@@ -769,25 +767,6 @@ func TestProxiesNarrowGroupHeaderShowsTypeAndSummaryOnSecondRow(t *testing.T) {
 				}
 			})
 		}
-	}
-}
-
-func TestProxiesNarrowTypeLabelOpensItsGroupFromDirectory(t *testing.T) {
-	m, backend := proxiesModel(t, 80, 24)
-	setProxyTestGroup(&m, "")
-	m.layout()
-	label := findTarget(t, m, "proxies.type.1")
-	group := findTarget(t, m, "group.1")
-	if label.Y != group.Y+1 {
-		t.Fatalf("type label should be below its group: label=%+v group=%+v", label, group)
-	}
-	m, _ = update(m, tea.MouseMotionMsg{X: label.X, Y: label.Y})
-	if m.hover != label.ID || !strings.Contains(ansi.Strip(m.screen), "type: url-test") {
-		t.Fatal("hovering the type on the second row did not show its config key")
-	}
-	m, _ = click(m, label)
-	if m.proxies.activeGroup != "AUTO" || !hasAction(m.targets, "node.1.0") || backend.selections != 0 {
-		t.Fatal("clicking the type label did not open that group's members")
 	}
 }
 

@@ -1,5 +1,9 @@
 # 验证入口
 
+## 策略组类型的悬停反馈（2026-11-27）
+
+在 160×45 和 80×32 的真实 PTY 中，将鼠标依次移到五种英文类型名上。逐格比较悬停前后的文字和底色，只有当前组头的背景提亮。截图中鼠标停在 AUTO 的 URLTest 上，键盘焦点仍在 PROXY。另用鼠标点击类型所在的字符格，验证宽屏可折叠已展开的组，窄屏可打开该组成员。[160×45 宽屏](../.test-artifacts/proxy-hover-type-removal/pty/zh-Hans/truecolor/group-type-hover-160x45.png) · [80×32 窄屏](../.test-artifacts/proxy-hover-type-removal/pty/zh-Hans/truecolor/group-type-hover-80x32.png)
+
 ## Termius 真彩色（2026-11-27）
 
 在 Termius 10.3.0 的 189×47 本地标签中进入 Debian/arm64 虚拟机，以隔离数据目录运行产品二进制。会话自然提供 `TERM=xterm-256color` 和 `TERM_PROGRAM=Termius`，`COLORTERM` 为空；实测概览背景为 `#2e3842`。

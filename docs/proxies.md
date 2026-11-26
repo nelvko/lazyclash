@@ -30,7 +30,7 @@ TUI 中按 `2` 或选择 Proxies，浏览当前 Mihomo 控制 API 返回的代�
 
 ## 组语义与路由模式
 
-组头和引用卡片始终显示 Mihomo 控制 API 返回的英文类型名。按钮、状态和提示跟随界面语言，组名和节点名沿用配置。鼠标悬停在组头类型上可查看对应的 YAML `type` 值。链式代理的悬停提示同时说明该类型已弃用。见 [Mihomo 代理组配置](https://wiki.metacubex.one/config/proxy-groups/) 和 [链式代理说明](https://wiki.metacubex.one/config/proxy-groups/relay/)。
+组头和引用卡片始终显示 Mihomo 控制 API 返回的英文类型名。按钮、状态和提示跟随界面语言，组名和节点名沿用配置。鼠标移到类型文字上会轻微高亮整行，点击可展开或收起该组。下表列出各类型对应的 YAML `type` 值。见 [Mihomo 代理组配置](https://wiki.metacubex.one/config/proxy-groups/) 和 [链式代理说明](https://wiki.metacubex.one/config/proxy-groups/relay/)。
 
 | 组头类型 | YAML `type` | 成员选择 |
 | --- | --- | --- |
@@ -38,7 +38,7 @@ TUI 中按 `2` 或选择 Proxies，浏览当前 Mihomo 控制 API 返回的代�
 | `URLTest` | `url-test` | 卡片标记内核选中的成员 |
 | `Fallback` | `fallback` | 卡片标记内核选中的成员 |
 | `LoadBalance` | `load-balance` | 由内核分配流量 |
-| `Relay` | `relay` | 由内核沿代理链转发 |
+| `Relay` | `relay` | 由内核沿代理链转发，此类型已弃用 |
 
 DIRECT、REJECT 是普通有效候选项，REJECT 不作为界面操作错误标红。
 

@@ -18,7 +18,6 @@
   "proxies.search_type.fallback": "Fallback",
   "proxies.search_type.load-balance": "Load Balance",
   "proxies.search_type.relay": "Relay",
-  "proxies.type.deprecated": "type: %s (deprecated)",
   "proxies.distributed": "No fixed single node",
   "proxies.cycle": "Reference cycle",
   "proxies.unknown_type": "Type unavailable",

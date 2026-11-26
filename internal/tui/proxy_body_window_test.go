@@ -107,9 +107,6 @@ func TestProxyKeyboardTargetsMatchMouseGeometry(t *testing.T) {
 			seen := make(map[string]bool)
 			var want []hitRegion
 			for _, target := range all {
-				if strings.HasPrefix(target.ID, proxyTypeTarget) {
-					continue // Type labels only annotate the parent group for the mouse.
-				}
 				if !seen[target.ID] {
 					seen[target.ID] = true
 					want = append(want, target)
