@@ -407,7 +407,7 @@ func (m *Model) proxyNode(gi, ni, width int) dashboardBlock {
 	selected := g.Now == node && g.Type != "LoadBalance" && g.Type != "Relay"
 	hovered := m.hover == id || m.hover == referenceID || m.hover == delayID
 	dark := m.effectiveTheme() == app.ThemeDark
-	surface := panel
+	surface := gridCardBackground
 	if selected {
 		surface = proxyNodeSelectedBackground
 	} else if hovered {

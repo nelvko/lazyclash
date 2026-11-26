@@ -97,14 +97,14 @@ func TestProxiesDelayInteractionStylePreservesStateAndGeometry(t *testing.T) {
 							if strings.Contains(line, "\x1b[4m") {
 								t.Fatalf("delay state gained an underline: %q", line)
 							}
-							surface := panel
+							surface := gridCardBackground
 							if selected {
 								surface = proxyNodeSelectedBackground
 							} else if interaction == "card-hover" || interaction == "delay-hover" {
 								surface = raised
 							}
 							metaColor, delayColor, valueSurface := muted, foreground, surface
-							if surface != panel {
+							if surface != gridCardBackground {
 								metaColor, delayColor = proxyNodeEmphasizedMeta, state.emphasized
 							}
 							if (interaction == "delay-hover" || interaction == "delay-focus") && state.name != "testing" && state.name != "queued" {

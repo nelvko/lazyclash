@@ -656,7 +656,7 @@ def exercise(preview, binary, output, language, profile, args):
             other_x, other_y = candidate_position(terminal, "JP 01")
             assert terminal.screen.styles[y][x][1] == terminal_color(preview, profile, "3d546b", 24), "selected surface lost its blue tint"
             assert terminal.screen.styles[y][rail][1] == terminal_color(preview, profile, "85b3e0", 110), "selection rail lost its accent"
-            assert terminal.screen.styles[other_y][other_x][1] == terminal_color(preview, profile, "262d34", 235), "normal node lost its card background"
+            assert terminal.screen.styles[other_y][other_x][1] == terminal_color(preview, profile, "29323a", 235), "normal node lost its card background"
             assert terminal.screen.styles[y + 1][x][0] == terminal_color(preview, profile, "cfd5df", 188), "selected metadata lost its contrast"
             hover_cell(terminal, other_x, other_y)
             assert terminal.screen.styles[other_y][other_x][1] == terminal_color(preview, profile, "3a424a", 237), "hovered surface did not brighten"

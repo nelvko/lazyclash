@@ -61,6 +61,7 @@ Mariana 的背景变量 `blue3 = hsl(210, 15%, 22%)` 未取整 RGB 为 `(47.685,
 | `bg` | `#2e3842` | C，右侧内容区及其页头的蓝灰底色 |
 | `shellBackground` | `#303841` | A，Mariana `background=var(blue3)`，用于底部提示栏 |
 | `panel` | `#262d34` | B 计算 / C 用途，采用 Adaptive 的 `medium_bg` 作为卡片底色 |
+| `gridCardBackground` | `#29323a` | C，订阅页和代理页的普通卡片底色 |
 | `raised` | `#3a424a` | B 计算 / C 用途，Adaptive white alpha .05 覆盖正文背景，用于弹窗 |
 | `tooltipBackground` | `#171d24` | C，真彩和 256 色的说明浮层使用深墨灰底色，左右各留一格。256 色映射到 233（`#121212`），与焦点行的底色 237 有 1.65∶1 的对比度。16 色和无色使用单线边框。 |
 | `sidebarBackground` | `#1d2227` | B，Adaptive `medium_dark_bg` |
@@ -248,7 +249,7 @@ Termius 会话如果报告 `TERM_PROGRAM=Termius` 和 `TERM=xterm-256color`，�
 | 语义角色 | ANSI256 | ANSI16 |
 | --- | --- | --- |
 | `bg`、`shellBackground` | 236 | 0（黑） |
-| `panel` | 235 | 0 |
+| `panel`、`gridCardBackground` | 235 | 0 |
 | `raised` | 237 | 0 |
 | `sidebarBackground`、`primaryButtonForeground` | 234 | 0 |
 | `inputBackground` | 235 | 0 |

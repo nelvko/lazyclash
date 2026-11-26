@@ -68,6 +68,7 @@ var interfaceSwatches = func() map[color.RGBA]themeSwatches {
 	add(bg, 236, 0, mistCanvas, 255, 15)
 	add(shellBackground, 236, 0, mistCanvas, 255, 15)
 	add(panel, 235, 0, mistCard, 254, 7)
+	add(gridCardBackground, 235, 0, mistCard, 254, 7)
 	add(raised, 237, 0, mistCard, 254, 7)
 	add(tooltipBackground, 233, 0, "#cfdae3", 252, 7)
 	add(sidebarBackground, 234, 0, mistSidebar, 253, 7)

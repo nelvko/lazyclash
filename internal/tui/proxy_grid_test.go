@@ -151,7 +151,7 @@ func TestProxyCardsCenterBothTextRowsAndAlignTheSelectedRail(t *testing.T) {
 		name, surface, meta string
 		selected, hover     bool
 	}{
-		{"normal", panel, muted, false, false},
+		{"normal", gridCardBackground, muted, false, false},
 		{"hover", raised, proxyNodeEmphasizedMeta, false, true},
 		{"selected", proxyNodeSelectedBackground, proxyNodeEmphasizedMeta, true, false},
 		{"hover on selected", proxyNodeSelectedBackground, proxyNodeEmphasizedMeta, true, true},

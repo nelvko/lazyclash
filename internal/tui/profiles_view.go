@@ -189,7 +189,7 @@ func (m *Model) paintProfileCard(name string, index, width int, compact bool) da
 	refreshID := fmt.Sprintf("profiles.refresh.%d", index)
 	menuID := fmt.Sprintf("profiles.menu.%d", index)
 	selected := name == m.snapshot.Applied
-	surface := panel
+	surface := gridCardBackground
 	if m.hover == id || m.hover == refreshID || m.hover == menuID || m.focus == id || m.focus == refreshID || m.focus == menuID {
 		surface = raised
 	}

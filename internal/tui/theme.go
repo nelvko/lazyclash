@@ -14,6 +14,7 @@ const (
 	bg                      = "#2e3842"
 	shellBackground         = "#303841"
 	panel                   = "#262d34"
+	gridCardBackground      = "#29323a"
 	raised                  = "#3a424a"
 	tooltipBackground       = "#171d24"
 	sidebarBackground       = "#1d2227"
