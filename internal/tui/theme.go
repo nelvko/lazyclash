@@ -13,7 +13,7 @@ const (
 	// Its Mariana source colors are documented in docs/theme-mariana.md.
 	bg                      = "#2e3842"
 	shellBackground         = "#303841"
-	panel                   = "#2b323a"
+	panel                   = "#262d34"
 	raised                  = "#3a424a"
 	tooltipBackground       = "#171d24"
 	sidebarBackground       = "#1d2227"

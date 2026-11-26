@@ -41,7 +41,7 @@ func TestMarianaTerminalProfilesPreserveContentAndAttributes(t *testing.T) {
 }
 
 func TestMarianaTerminalProfilePreservesSubparametersAndUnderlineColor(t *testing.T) {
-	screen := "\x1b[4:3;58:2::133:179:224;48:2::43:50:58mFocused\x1b[m"
+	screen := "\x1b[4:3;58:2::133:179:224;48:2::38:45:52mFocused\x1b[m"
 	actual := terminalTheme(screen, colorprofile.ANSI256)
 	if !strings.Contains(actual, "4:3;58;5;110;48;5;235m") || ansi.Strip(actual) != "Focused" {
 		t.Fatalf("lost SGR meaning: %q", actual)

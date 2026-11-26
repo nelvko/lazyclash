@@ -47,6 +47,7 @@ Mariana 的背景变量 `blue3 = hsl(210, 15%, 22%)` 未取整 RGB 为 `(47.685,
 | 弹出列表选中 | white，layer opacity 0.15 | 参考透明叠加关系；LazyClash 统一使用文本选区角色，避免每种列表另设颜色 |
 | 输入控件 modifier | `l(- 5%) s(* 50%)` | 若作用于 Mariana 背景：HSL `(210, 7.5%, 17%)` → `#282b2f` |
 | Adaptive 浅层底色 | `light_bg = color(var(--background) blend(black 90%))` | `#2b323a` |
+| Adaptive 中间层底色 | `medium_bg = color(var(--background) blend(black 80%))` | `#262d34` |
 | auto-complete 暗色表面 tint | white `a(0.05)` | 覆盖正文背景得到 `#3a424a` |
 
 输入 modifier 在原主题中受 inactive sheet 规则约束；其计算值作为输入初始样式保留，最终输入框统一继承所在页面或弹窗的表面色。`light_bg` 是原资源变量名，并不表示 LazyClash 新增浅色主题。卡片、弹窗等角色的复用见下表；没有声称它们与 Sublime 每个控件完全相同。
@@ -59,7 +60,7 @@ Mariana 的背景变量 `blue3 = hsl(210, 15%, 22%)` 未取整 RGB 为 `(47.685,
 | --- | --- | --- |
 | `bg` | `#2e3842` | C，右侧内容区及其页头的蓝灰底色 |
 | `shellBackground` | `#303841` | A，Mariana `background=var(blue3)`，用于底部提示栏 |
-| `panel` | `#2b323a` | B 计算 / C 用途，Adaptive `light_bg`，用于克制的卡片底色 |
+| `panel` | `#262d34` | B 计算 / C 用途，采用 Adaptive 的 `medium_bg` 作为卡片底色 |
 | `raised` | `#3a424a` | B 计算 / C 用途，Adaptive white alpha .05 覆盖正文背景，用于弹窗 |
 | `tooltipBackground` | `#171d24` | C，真彩和 256 色的说明浮层使用深墨灰底色，左右各留一格。256 色映射到 233（`#121212`），与焦点行的底色 237 有 1.65∶1 的对比度。16 色和无色使用单线边框。 |
 | `sidebarBackground` | `#1d2227` | B，Adaptive `medium_dark_bg` |
@@ -191,7 +192,7 @@ Original、Thick、Smooth 对比仅存在于测试二进制：Original 保留原
 | 配对 | 对比度（约） |
 | --- | --- |
 | 正文 `#d8dee9` / 背景 `#2e3842` | 8.83:1 |
-| 说明 `#a9afbc` / 卡片 `#2b323a` | 5.89:1 |
+| 说明 `#a9afbc` / 卡片 `#262d34` | 6.33:1 |
 | 说明 `#a9afbc` / raised `#3a424a` | 4.64:1 |
 | 选中文字 `#d8dee9` / 选区 `#4c5864` | 5.38:1 |
 | 主按钮字 `#1d2227` / 按钮 `#5c99d6` | 5.33:1 |
