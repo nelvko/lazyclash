@@ -81,12 +81,12 @@ func TestNotificationDetailsRequireAdditionalText(t *testing.T) {
 func TestNotificationListResizeKeepsFocusOnItsOwnCard(t *testing.T) {
 	items := []notificationItem{
 		{ID: 10, Kind: "done", Message: "Selected subscription “Office”"},
-		{ID: 20, Kind: "done", Message: "Selected subscription “Home”"},
+		{ID: 20, Kind: "done", Message: "Selected subscription “" + strings.Repeat("Office network ", 10) + "Home”"},
 	}
 	var p notificationPanel
 	p.show(0)
 	locale := i18n.New(i18n.English)
-	p.render(items, 32, 24, locale)
+	p.render(items, 32, 12, locale)
 	for p.actions[p.focus].ID != "notification.panel.details.20" {
 		if p.focus == len(p.actions)-1 {
 			t.Fatal("narrow stack did not offer details for the clipped name")
@@ -100,7 +100,7 @@ func TestNotificationListResizeKeepsFocusOnItsOwnCard(t *testing.T) {
 	if hasAction(hits, "notification.panel.details.20") || p.key(special(tea.KeyEnter)) != "notification.panel.dismiss.20" {
 		t.Fatalf("widening the stack retained empty details or changed the selected card: %+v", hits)
 	}
-	p.render(items, 32, 24, locale)
+	p.render(items, 32, 12, locale)
 	if p.key(special(tea.KeyEnter)) != "notification.panel.dismiss.20" {
 		t.Fatal("newly visible Details stole focus from Close")
 	}

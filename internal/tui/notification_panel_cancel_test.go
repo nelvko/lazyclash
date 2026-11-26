@@ -110,10 +110,15 @@ func TestNotificationPanelCloseStillLeavesWorkingTaskRunning(t *testing.T) {
 			m.syncNotification()
 			id := m.notification.items[0].ID
 			m, _ = update(m, tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl})
-			m, _ = update(m, special(tea.KeyTab))
 			dismissID := fmt.Sprintf("notification.panel.dismiss.%d", id)
+			for range len(m.notification.panel.actions) {
+				if p := &m.notification.panel; p.actions[p.focus].ID == dismissID {
+					break
+				}
+				m, _ = update(m, special(tea.KeyTab))
+			}
 			if p := &m.notification.panel; p.actions[p.focus].ID != dismissID {
-				t.Fatal("Close is no longer the second notification action")
+				t.Fatal("Close is unreachable for the working notification")
 			}
 			if mouse {
 				m, _ = click(m, findTarget(t, m, dismissID))

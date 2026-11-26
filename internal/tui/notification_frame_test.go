@@ -21,8 +21,12 @@ func TestActionableWarningPersistsAfterItsCardBecomesVisible(t *testing.T) {
 		m, _ = update(m, keyHintsSavedMsg{generation: 1, hidden: m.keyHints.hidden,
 			err: errors.New("preference file could not be written and the setting could not be saved")})
 		warning := m.notification.items[0]
-		if !hasAction(m.targets, fmt.Sprintf("notification.details.%d", warning.ID)) || !hasAction(m.targets, fmt.Sprintf("notification.close.%d", warning.ID)) {
+		if !hasAction(m.targets, fmt.Sprintf("notification.close.%d", warning.ID)) {
 			t.Fatalf("%v: expected the warning and its controls above the fixed search", size)
+		}
+		clipped := !strings.Contains(ansi.Strip(m.notification.overlays[0].Content), "could not be saved")
+		if hasAction(m.targets, fmt.Sprintf("notification.details.%d", warning.ID)) != clipped {
+			t.Fatalf("%v: Details must appear only when the cause is clipped", size)
 		}
 		if !strings.Contains(ansi.Strip(m.screen), m.tr("notification.warning")) || !warning.started.IsZero() {
 			t.Fatalf("%v: folded warning lost severity or consumed its remaining time", size)

@@ -33,7 +33,7 @@ func TestNotificationShortcutPreservesPageOnEmptyAndTogglesWithItems(t *testing.
 func TestNotificationDirectDetailsCollapseAndOutsideClickIsConsumed(t *testing.T) {
 	m := noticeModel()
 	id := publishNotice(&m, "profile.refresh", "error", "Unavailable")
-	m.notification.items[0].Details = "The source returned HTTP 503."
+	m.notification.items[0].Details = strings.Repeat("Source returned HTTP 503.\n", 30)
 	m.layout()
 	focus := m.focus
 	details := fmt.Sprintf("notification.details.%d", id)
@@ -97,7 +97,7 @@ func TestNotificationListReturnsToScrolledItemAndClosesWhenEmpty(t *testing.T) {
 	m, _ = update(m, tea.WindowSizeMsg{Width: 60, Height: 20})
 	for i := range 7 {
 		publishNotice(&m, fmt.Sprintf("item-%d", i), "error", fmt.Sprintf("Refresh failed %d", i))
-		m.notification.items[i].Details = fmt.Sprintf("Diagnostic %d", i)
+		m.notification.items[i].Details = strings.Repeat(fmt.Sprintf("Diagnostic %d\n", i), 30)
 	}
 	focus := m.focus
 	m, _ = update(m, tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl})

@@ -71,7 +71,7 @@ func TestActionButtonGroupsKeepOneCellBeforeFocusAndNoneAfter(t *testing.T) {
 				{"notification", "notification.details.1", "notification.close.1", func(m *Model) (string, []hitRegion) {
 					item := notificationItem{ID: 1, Kind: "done", Message: "Saved", Details: "Saved to the local profile library."}
 					o := dashboardOptions{Locale: m.locale, PlainButtons: m.noColor, Focus: "notification.close.1"}
-					card := notificationCard(item, o, 54, true)
+					card := notificationCard(item, o, 54, 1, true)
 					return card.Content, card.Targets
 				}},
 				{"get-started", "install", "guide.later", func(m *Model) (string, []hitRegion) {

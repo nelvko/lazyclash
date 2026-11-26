@@ -16,7 +16,7 @@ func TestNotificationSuccessPaintsOneSurfaceThroughItsControls(t *testing.T) {
 	for _, compact := range []bool{false, true} {
 		item := notificationItem{ID: 7, Kind: "done", Message: "Saved"}
 		o := dashboardOptions{Locale: i18n.New(i18n.English), Focus: "notification.close.7"}
-		card := notificationCard(item, o, 34, compact)
+		card := notificationCard(item, o, 34, 4, compact)
 		screen := uv.NewScreenBuffer(card.Bounds.W, card.Bounds.H)
 		uv.NewStyledString(card.Content).Draw(screen, screen.Bounds())
 		for y := range card.Bounds.H {
@@ -52,10 +52,10 @@ func TestNotificationButtonsKeepTheirBoundsAndMessageWhenFocused(t *testing.T) {
 				t.Run(fmt.Sprintf("%s/%d/plain=%v", language, width, plain), func(t *testing.T) {
 					o := dashboardOptions{Locale: i18n.New(language), Busy: true, PlainButtons: plain}
 					item := notificationItem{ID: 7, Kind: "working", Message: "Saved.", Details: "Full details"}
-					before := notificationCard(item, o, width, width < 54)
+					before := notificationCard(item, o, width, 5, width < 54)
 					for _, target := range before.Targets {
 						o.Focus, o.Hover = target.ID, target.ID
-						after := notificationCard(item, o, width, width < 54)
+						after := notificationCard(item, o, width, 5, width < 54)
 						if after.Bounds != before.Bounds || len(after.Targets) != len(before.Targets) {
 							t.Fatal("focusing a toast action changed its geometry")
 						}
@@ -94,7 +94,7 @@ func TestNotificationPanelTabMovesMarkerWithoutMovingButtons(t *testing.T) {
 		for _, size := range [][2]int{{80, 24}, {32, 12}} {
 			for _, plain := range []bool{false, true} {
 				t.Run(fmt.Sprintf("%s/%dx%d/plain=%v", language, size[0], size[1], plain), func(t *testing.T) {
-					items := []notificationItem{{ID: 1, Kind: "done", Message: "Saved.", Details: "Saved to the local profile library."}}
+					items := []notificationItem{{ID: 1, Kind: "done", Message: "Saved.", Details: strings.Repeat("Diagnostic line.\n", 24)}}
 					var panel notificationPanel
 					panel.show(0)
 					_, before := panel.render(items, size[0], size[1], i18n.New(language), plain)

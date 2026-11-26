@@ -5,8 +5,10 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/i18n"
+	"github.com/rivo/uniseg"
 )
 
 const (
@@ -90,7 +92,7 @@ func notificationLayout(o dashboardOptions, headerActions ...hitRegion) []notifi
 		y, capacity = g.headerY+1, 1
 	}
 	x := rightEdge - width
-	bottom := min(dashboardContentBottom(o), max(g.y, min(15, o.Height/2)))
+	bottom := min(dashboardContentBottom(o), max(g.y, o.Height/2))
 	inputTargets := notificationInputs(o, g)
 	if modeFeedback {
 		// Route changes can be retried from the fixed controls, including
@@ -122,6 +124,10 @@ func notificationLayout(o dashboardOptions, headerActions ...hitRegion) []notifi
 		width = cornerWidth
 		if singleResult {
 			width = min(maxNotificationWidth, rightEdge)
+			if width > cornerWidth {
+				// This full-width card can only use the padding above the title.
+				bottom = g.headerY
+			}
 		}
 		x, y, capacity, compact = rightEdge-width, 0, 1, true
 	}
@@ -146,8 +152,7 @@ func notificationLayout(o dashboardOptions, headerActions ...hitRegion) []notifi
 		if start > 0 {
 			limit--
 		}
-		for _, item := range o.Notifications[start:] {
-			card := notificationCard(item, o, width, compact)
+		for _, card := range notificationStack(items[start:], o, width, limit-y, compact) {
 			card.position(rightEdge-card.Bounds.W, cursor)
 			if cursor+card.Bounds.H > limit {
 				fits = false
@@ -187,7 +192,7 @@ func notificationLayout(o dashboardOptions, headerActions ...hitRegion) []notifi
 		}
 		var overflow notificationOverlay
 		if singleResult {
-			overflow = notificationCard(items[0], o, width, true)
+			overflow = notificationCard(items[0], o, width, 1, true)
 		} else {
 			const action = "notification.expand"
 			label := notificationButton(action, notificationOverflowCaption(items[:remaining], width, o), width, o)
@@ -201,6 +206,24 @@ func notificationLayout(o dashboardOptions, headerActions ...hitRegion) []notifi
 		chosen = append(chosen, overflow)
 	}
 	return chosen
+}
+
+func notificationStack(items []notificationItem, o dashboardOptions, width, height int, compact bool) []notificationOverlay {
+	room := height - (len(items) - 1) // Keep a separator between cards.
+	cards := make([]notificationOverlay, len(items))
+	for i, item := range items {
+		cards[i] = notificationCard(item, o, width, room, compact)
+	}
+	if len(cards) == 2 && cards[0].Bounds.H+cards[1].Bounds.H > room {
+		// The first action shares the first body row, after any top padding.
+		// Give both bodies room before spending spare rows on vertical padding.
+		firstRows := cards[0].Bounds.H - 2*cards[0].Targets[0].Y
+		secondRows := cards[1].Bounds.H - 2*cards[1].Targets[0].Y
+		firstBudget := max(room-secondRows, min(firstRows, room/2))
+		cards[0] = notificationCard(items[0], o, width, firstBudget, compact)
+		cards[1] = notificationCard(items[1], o, width, room-cards[0].Bounds.H, compact)
+	}
+	return cards
 }
 
 // Surface the most important unresolved result alongside the overflow count.
@@ -261,21 +284,59 @@ func notificationButton(id, label string, width int, o dashboardOptions) string 
 	return noticePaint{background: raised, foreground: accent}.button(id, label, width, o)
 }
 
-func notificationCard(item notificationItem, o dashboardOptions, maxWidth int, compact bool) notificationOverlay {
-	return notificationCardWithControls(item, o, maxWidth, compact,
+func notificationCard(item notificationItem, o dashboardOptions, maxWidth, maxHeight int, compact bool) notificationOverlay {
+	return notificationCardWithControls(item, o, maxWidth, maxHeight, compact,
 		fmt.Sprintf("notification.close.%d", item.ID), fmt.Sprintf("notification.details.%d", item.ID))
 }
 
-func notificationCardWithControls(item notificationItem, o dashboardOptions, maxWidth int, compact bool, closeID, detailsID string) notificationOverlay {
+// Wrap at Unicode line breaks (including breaks between CJK characters).
+// Only the first row shares its width with the controls.
+func notificationLines(body string, firstWidth, width int) []string {
+	var lines []string
+	limit := firstWidth
+	for paragraph := range strings.SplitSeq(body, "\n") {
+		for {
+			cut, cells, lastBreak := len(paragraph), 0, 0
+			graphemes := uniseg.NewGraphemes(paragraph)
+			for graphemes.Next() {
+				start, end := graphemes.Positions()
+				cluster := graphemes.Str()
+				cells += ansi.StringWidth(cluster)
+				if cells > limit {
+					cut = start // A word or identifier may need a hard wrap.
+					if lastBreak > 0 && cluster != " " {
+						cut = lastBreak
+					}
+					if cut == 0 && limit == width {
+						cut = end // Always advance, even at a single-cell width.
+					}
+					break
+				}
+				if graphemes.LineBreak() != uniseg.LineDontBreak {
+					lastBreak = end
+				}
+			}
+			lines = append(lines, strings.TrimRight(paragraph[:cut], " "))
+			paragraph = strings.TrimLeft(paragraph[cut:], " ")
+			limit = width
+			if paragraph == "" {
+				break
+			}
+		}
+	}
+	return lines
+}
+
+func notificationCardWithControls(item notificationItem, o dashboardOptions, maxWidth, maxHeight int, compact bool, closeID, detailsID string) notificationOverlay {
 	maxWidth = min(maxNotificationWidth, maxWidth)
 	paint := notificationPaint(item.Kind)
 	leading, trailing := 2, 2
 	if compact {
 		// The close button already includes one cell of trailing padding.
 		leading, trailing = 1, 0
-		if maxWidth < minNotificationWidth {
-			leading = 0
-		}
+	}
+	if maxWidth < minNotificationWidth {
+		leading, trailing = 0, 0
 	}
 	prefix := ""
 	if paint.marker != "" {
@@ -284,48 +345,75 @@ func notificationCardWithControls(item notificationItem, o dashboardOptions, max
 	beforeBody := leading + ansi.StringWidth(prefix)
 	close := paint.button(closeID, "×", maxWidth, o)
 	closeWidth := ansi.StringWidth(close)
-	room := maxWidth - beforeBody - closeWidth - trailing
-	first, _, more := strings.Cut(notificationBody(item, o.Locale, o.Spinner), "\n")
-	bodyWidth := ansi.StringWidth(first)
-	details := ""
-	if more || bodyWidth > room || notificationExtra(item) != "" {
-		details = paint.button(detailsID, o.Locale.T("notification.details"), maxWidth, o)
-		if ansi.StringWidth(details) > room/2 {
-			details = paint.button(detailsID, "⋯", maxWidth, o)
-		}
+	body := notificationBody(item, o.Locale, o.Spinner)
+	if extra := notificationExtra(item); extra != "" {
+		body += "\n" + extra
 	}
-	detailsWidth := ansi.StringWidth(details)
 	cancelID := fmt.Sprintf("notification.cancel.%d", item.ID)
 	cancel := ""
+	bodyRows := maxHeight
 	if item.Kind == "working" && o.Busy {
 		cancel = paint.button(cancelID, o.Locale.T("notification.cancel"), maxWidth-leading-trailing, o)
+		bodyRows--
 	}
-	width := min(maxWidth, max(minNotificationWidth, beforeBody+bodyWidth+detailsWidth+closeWidth+trailing, leading+ansi.StringWidth(cancel)+trailing))
-	available := width - beforeBody - detailsWidth - closeWidth - trailing
-	truncated := more || bodyWidth > available
+	bodyRows = max(1, bodyRows)
+	first, _, _ := strings.Cut(body, "\n")
+	desiredFirst := beforeBody + ansi.StringWidth(first) + closeWidth + trailing
+	width := min(maxWidth, max(minNotificationWidth, desiredFirst, beforeBody+lipgloss.Width(body)+trailing, leading+ansi.StringWidth(cancel)+trailing))
+	bodyWidth := width - beforeBody - trailing
+	firstWidth := bodyWidth - closeWidth
+	// Decide whether to fold at the full available width, before reserving
+	// cells for Details. A shorter card already fits every explicit line.
+	maxBodyWidth := maxWidth - beforeBody - trailing
+	preview := notificationLines(body, maxBodyWidth-closeWidth, maxBodyWidth)
+	truncated := len(preview) > bodyRows
+	details := ""
 	if truncated {
-		first = cellCrop(first+"…", available)
+		details = paint.button(detailsID, o.Locale.T("notification.details"), maxWidth, o)
+		if ansi.StringWidth(details) > (maxBodyWidth-closeWidth)/2 {
+			details = paint.button(detailsID, "⋯", maxWidth, o)
+		}
+		width = min(maxWidth, max(width, desiredFirst+ansi.StringWidth(details)))
+		bodyWidth = width - beforeBody - trailing
+		firstWidth = bodyWidth - closeWidth - ansi.StringWidth(details)
+		preview = notificationLines(body, firstWidth, bodyWidth)
+		truncated = len(preview) > bodyRows
+		if truncated {
+			preview = preview[:bodyRows]
+			lastWidth := bodyWidth
+			if bodyRows == 1 {
+				lastWidth = firstWidth
+			}
+			preview[bodyRows-1] = cellCrop(strings.TrimRight(preview[bodyRows-1], " ")+"…", lastWidth)
+		} else {
+			details = ""
+			firstWidth = bodyWidth - closeWidth
+		}
 	}
 	var lines []string
 	var targets []hitRegion
 	fill := func(row string) string {
 		return themed(cellPad(row, width), paint.foreground, paint.background, false)
 	}
-	if !compact {
+	padded := !compact && len(preview)+2 <= bodyRows
+	if padded {
 		lines = append(lines, fill(""))
 	}
-	row := strings.Repeat(" ", leading) + prefix + cellPad(first, available)
+	row := strings.Repeat(" ", leading) + prefix + cellPad(preview[0], firstWidth)
 	if details != "" {
-		targets = append(targets, hitRegion{ID: detailsID, X: beforeBody + available, Y: len(lines), W: detailsWidth, H: 1})
+		targets = append(targets, hitRegion{ID: detailsID, X: beforeBody + firstWidth, Y: len(lines), W: ansi.StringWidth(details), H: 1})
 		row += details
 	}
 	targets = append(targets, hitRegion{ID: closeID, X: width - trailing - closeWidth, Y: len(lines), W: closeWidth, H: 1})
 	lines = append(lines, fill(row+close))
+	for _, line := range preview[1:] {
+		lines = append(lines, fill(strings.Repeat(" ", beforeBody)+line))
+	}
 	if cancel != "" {
 		targets = append(targets, hitRegion{ID: cancelID, X: leading, Y: len(lines), W: ansi.StringWidth(cancel), H: 1})
 		lines = append(lines, fill(strings.Repeat(" ", leading)+cancel))
 	}
-	if !compact {
+	if padded {
 		lines = append(lines, fill(""))
 	}
 	card := notificationOverlay{

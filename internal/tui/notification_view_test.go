@@ -85,12 +85,12 @@ func TestNotificationDetailsMatchWhatTheCardCanDisplay(t *testing.T) {
 		}{
 			{"已选用订阅「工作」", "", false, false},
 			{"已选用订阅「工作」", " 已选用订阅「工作」 ", false, false},
-			{"已选用订阅「工作」", "详细说明", true, false},
-			{strings.Repeat("长订阅名", 20), "", true, true},
-			{"一行\n二行", "", true, true},
+			{"已选用订阅「工作」", "详细说明", false, false},
+			{strings.Repeat("长订阅名", 100), "", true, true},
+			{"一行\n二行", "", false, false},
 		} {
 			item := notificationItem{ID: 5, Page: "profiles", Context: "使用配置", Message: tt.message, Details: tt.extra, Kind: "done"}
-			card := notificationCard(item, o, shape.width, shape.compact)
+			card := notificationCard(item, o, shape.width, 6, shape.compact)
 			assertCanvas(t, card.Content, card.Bounds.W, card.Bounds.H)
 			assertRegions(t, card.Targets, card.Bounds.W, card.Bounds.H)
 			plain := ansi.Strip(card.Content)
@@ -202,7 +202,9 @@ func TestNotificationPanelKeepsFullMessagesAndScrollableTechnicalDetails(t *test
 	var panel notificationPanel
 	panel.show(0)
 	screen, targets := panel.render(items, 80, 24, i18n.New(i18n.English))
-	if !strings.Contains(ansi.Strip(screen), items[0].Message) || !strings.Contains(ansi.Strip(screen), items[1].Message) {
+	body := strings.NewReplacer("Details", "", "›", "", "×", "").Replace(ansi.Strip(screen))
+	body = strings.Join(strings.Fields(body), " ")
+	if !strings.Contains(body, items[0].Message) || !strings.Contains(body, items[1].Message) {
 		t.Fatal("notification collection lost an explanation", ansi.Strip(screen))
 	}
 	assertRegions(t, targets, 80, 24)
@@ -257,9 +259,9 @@ func TestExpandedNotificationsShareToastEdgeAndFitTheirContents(t *testing.T) {
 		if action := p.mouse(click); action != "notification.panel.dismiss.1" {
 			t.Fatalf("clicking the visible close icon returned %q", action)
 		}
-		click.Y = p.bounds.Y + p.bounds.H - 2
+		click.Y = p.bounds.Y + p.bounds.H - 1
 		if action := p.mouse(click); action == "notification.panel.dismiss.1" {
-			t.Fatal("clicking the former close position in the footer still dismisses the notification")
+			t.Fatal("clicking the lower edge of the card dismissed the notification")
 		}
 	}
 	for _, size := range [][2]int{{160, 45}, {120, 32}, {80, 24}, {40, 24}, {32, 12}, {20, 7}} {
@@ -286,7 +288,7 @@ func TestExpandedNotificationsShareToastEdgeAndFitTheirContents(t *testing.T) {
 		}
 		short.Details = strings.Repeat("Diagnostic line\n", 80) + "Final cause"
 		p.render([]notificationItem{short}, width, height, locale)
-		if p.bounds.X != shortBounds.X || p.bounds.Y != shortBounds.Y || p.bounds.W != shortBounds.W || p.bounds.H > 18 || p.viewport.AtBottom() {
+		if p.bounds.X != shortBounds.X || p.bounds.Y != shortBounds.Y || p.bounds.W != shortBounds.W || p.bounds.H > max(8, height/2) || p.viewport.AtBottom() {
 			t.Fatalf("%v: long details displaced the anchor or lost their scrollable region", size)
 		}
 		p.key(special(tea.KeyEnd))
@@ -331,7 +333,7 @@ func TestExpandedNotificationsPreservePageOutsideTheirBounds(t *testing.T) {
 
 func TestNotificationListKeepsLongEntryActionsAndNextResultInView(t *testing.T) {
 	items := []notificationItem{
-		{ID: 1, Kind: "error", Context: strings.Repeat("长订阅名", 20), Message: strings.Repeat("很长的说明", 20) + "\n具体原因"},
+		{ID: 1, Kind: "error", Context: "更新订阅", Message: strings.Repeat("很长的说明", 100) + "\n具体原因"},
 		{ID: 2, Kind: "done", Message: "已选用订阅「工作」"},
 	}
 	var p notificationPanel
@@ -383,7 +385,7 @@ func TestExpandedStackSeparatesBorderlessCardsAndTheirOwnControls(t *testing.T) 
 					inside := slices.ContainsFunc(targets, func(hit hitRegion) bool {
 						return hit.ID == id && hit.Y == p.bounds.Y+row
 					})
-					want := action == "dismiss" || item.Details != ""
+					want := action == "dismiss"
 					if inside != want {
 						t.Fatalf("%v: %s on the message row = %v, want %v", size, id, inside, want)
 					}

@@ -27,14 +27,14 @@ func TestInitialProfileReadFailureDoesNotPresentAnEmptyLibrary(t *testing.T) {
 		}
 	}
 	findTarget(t, m, "page.refresh")
-	// The compact summary clips the cause. The complete diagnostic remains
-	// readable from the page before the user retries.
-	m, _ = click(m, findTarget(t, m, "notification.details.1"))
-	detail := strings.Join(strings.Fields(ansi.Strip(m.notification.panel.viewport.View())), " ")
-	if !m.notification.panel.open || !strings.Contains(detail, b.snapshotErr.Error()) {
-		t.Fatalf("missing complete profile read error in Details: %s", detail)
+	if len(m.notification.overlays) != 1 || hasAction(m.targets, "notification.details.1") {
+		t.Fatal("expected the short read error to fit on the page before retrying")
 	}
-	m, _ = update(m, special(tea.KeyEscape))
+	toast := ansi.Strip(m.notification.overlays[0].Content)
+	body := strings.Join(strings.Fields(strings.ReplaceAll(toast, "×", "")), " ")
+	if !strings.Contains(body, b.snapshotErr.Error()) {
+		t.Fatalf("incomplete profile read error: %s", toast)
+	}
 
 	cmd := m.activate("page.refresh")
 	m.layout()

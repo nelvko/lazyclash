@@ -38,7 +38,7 @@ require (
 	github.com/muesli/mango-cobra v1.3.0
 	github.com/muesli/mango-pflag v0.2.0 // indirect
 	github.com/muesli/roff v0.1.0
-	github.com/rivo/uniseg v0.4.8-0.20261110175422-3a370411ca06 // indirect
+	github.com/rivo/uniseg v0.4.8-0.20261110175422-3a370411ca06
 	github.com/spf13/pflag v1.1.0
 	github.com/xo/terminfo v1.3.1 // indirect
 	golang.org/x/sync v0.25.0 // indirect
