@@ -9,18 +9,16 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-// Keep help discoverable while whole context hints compete for the remaining
+// Keep the footer toggle visible while whole context hints compete for the remaining
 // cells. Bubbles renders the selected bindings; the shell owns the pinned tail.
 func dashboardKeyHints(o dashboardOptions) (string, hitRegion) {
 	width := max(0, o.Width-4)
-	tail := o.Locale.T("dashboard.footer.help")
+	tail := o.Locale.T("dashboard.footer.hideHints")
 	hasTip := o.tooltips != nil && o.tooltips.focused(o.Focus).ID != ""
-	if hasTip {
-		tail = o.Locale.T("tooltip.shortcut")
-	}
-	if o.HelpAfterClose {
-		if !hasTip {
-			tail = o.Locale.T("dashboard.footer.helpAfterClose")
+	if o.OverlayOwnsKeys {
+		tail = o.Locale.T("dashboard.footer.hideHintsAfterClose")
+		if hasTip {
+			tail = o.Locale.T("tooltip.shortcut")
 		}
 	} else if o.EditingInput {
 		tail = "Esc → " + tail
@@ -29,7 +27,7 @@ func dashboardKeyHints(o dashboardOptions) (string, hitRegion) {
 	}
 	if ansi.StringWidth(tail) > width {
 		fallback := "?"
-		if o.EditingInput || o.HelpAfterClose {
+		if o.EditingInput || o.OverlayOwnsKeys {
 			fallback = "Esc"
 		}
 		return helpText(cellCrop(fallback, width), bg, o.Dim), hitRegion{}
@@ -40,6 +38,9 @@ func dashboardKeyHints(o dashboardOptions) (string, hitRegion) {
 	}
 	if context == "" {
 		context = o.Locale.T("dashboard.footer.default")
+	}
+	if hasTip && !o.OverlayOwnsKeys {
+		context += " · " + o.Locale.T("tooltip.shortcut")
 	}
 	var bindings []bubbleskey.Binding
 	for _, item := range strings.Split(context, " · ") {
@@ -56,7 +57,7 @@ func dashboardKeyHints(o dashboardOptions) (string, hitRegion) {
 	available := max(0, width-ansi.StringWidth(tail)-2)
 	var selected []bubbleskey.Binding
 	var searchHint hitRegion
-	searchEnabled := o.Page == "proxies" && !o.Busy && !o.Dim && !o.SidebarOpen && !o.EditingInput && !o.HelpAfterClose
+	searchEnabled := o.Page == "proxies" && !o.Busy && !o.Dim && !o.SidebarOpen && !o.EditingInput && !o.OverlayOwnsKeys
 	for _, binding := range bindings {
 		candidate := append(append([]bubbleskey.Binding(nil), selected...), binding)
 		lineWidth := ansi.StringWidth(strings.TrimSpace(view.ShortHelpView(candidate)))

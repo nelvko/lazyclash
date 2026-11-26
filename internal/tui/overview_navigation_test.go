@@ -51,10 +51,11 @@ func TestOverviewModeArrowsBrowseAndActivationAppliesOnce(t *testing.T) {
 				t.Fatalf("Tab skipped the next mode, focus=%q", m.focus)
 			}
 			m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
-			m, _ = update(m, key("?"))
+			m.openNetwork(false)
+			m.layout()
 			m, _ = update(m, special(tea.KeyLeft))
-			if !m.helpOpen || m.focus != "mode.global" {
-				t.Fatal("Left moved mode focus behind the help overlay")
+			if !m.wizard.networkOpen || m.focus != "mode.global" {
+				t.Fatal("Left moved mode focus behind network settings")
 			}
 			m, _ = update(m, special(tea.KeyEscape))
 			m, cmd := update(m, tc.activate)

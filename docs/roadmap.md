@@ -8,7 +8,7 @@
 
 已完成只读规则查看：按内核顺序展示、搜索和详情，独立异步刷新、取消与重试，CLI 共享读取用例。操作见 [规则查看](rules.md)。
 
-已完成七页导航与实时日志：Overview、Proxies、Profiles、Connections、Rules、Logs、Settings；紧凑分组侧栏、上下文帮助、可滚动帮助和独立焦点组。日志为容量有界、可取消和脱敏的当前会话实时观察，CLI/TUI 共享用例；不提供历史回放，不将原始日志落盘。默认的 Dark 主题沿用 Mariana 配色，设置页支持保存 Light、Dark 或 Auto。
+已完成七页导航与实时日志：Overview、Proxies、Profiles、Connections、Rules、Logs、Settings；紧凑分组侧栏、随焦点变化的底部提示栏和独立焦点组。日志为容量有界、可取消和脱敏的当前会话实时观察，CLI/TUI 共享用例；不提供历史回放，不将原始日志落盘。默认的 Dark 主题沿用 Mariana 配色，设置页支持保存 Light、Dark 或 Auto。
 
 已完成运行端口设置：Settings 内审阅并修改本机代理与控制 API 端口，检查 TCP/UDP 冲突，运行中明确确认重启，停止时保持停止；取消或失败恢复旧配置和服务状态，保留原始 profile 与 API 密钥。CLI 共享用例，操作见 [运行端口设置](runtime-settings.md)。
 

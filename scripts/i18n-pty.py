@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Verify language switching in a real PTY with an isolated, uninstalled home.
 
-Build lazyclash first and pass the binary path. This only opens settings, help
+Build lazyclash first and pass the binary path. This only opens settings
 and the initial installation/network forms; it never starts an installation.
 """
 import argparse
@@ -100,11 +100,16 @@ def run(binary, output):
             mark = len(terminal.text())
             terminal.resize(120, 40)
             terminal.wait("设置", after=mark)
+            terminal.wait("q 退出")
+            terminal.key(b"?")
+            terminal.wait_absent("q 退出")
+            terminal.wait("常规")
+            capture(terminal, output, "settings-zh-hints-hidden")
             terminal.exit()
         finally:
             terminal.cleanup()
 
-        # An ordinary new invocation must pick up the saved choice.
+        # An ordinary new invocation must pick up both saved preferences.
         terminal = Terminal(base)
         try:
             terminal.wait("概览")
@@ -112,11 +117,11 @@ def run(binary, output):
             terminal.key(b"7")
             terminal.wait("语言")
             dropdown_trigger(terminal, "简体中文")
-            terminal.key(b"?")
-            terminal.wait("帮助 / 设置")
-            capture(terminal, output, "help-zh")
-            terminal.key(b"\x1b")
-            terminal.wait_absent("帮助 / 设置")
+            terminal.wait_absent("q 退出")
+            terminal.key("？".encode())
+            terminal.wait("q 退出")
+            terminal.wait("常规")
+            capture(terminal, output, "settings-zh-hints-shown")
             terminal.key(b"1")
             terminal.wait("安装 Mihomo 内核")
             terminal.key(b"n")
@@ -138,7 +143,7 @@ def run(binary, output):
             terminal.cleanup()
         assert json.loads((Path(home) / "preferences.json").read_text())["Language"] == "en"
         assert not (Path(home) / "installation").exists(), "smoke test installed a core"
-    print("PASS: language switching, persistence, CJK mouse targets, help, network form and resize")
+    print("PASS: language switching, CJK mouse targets, footer toggle and persistence, network form and resize")
 
 
 def main():

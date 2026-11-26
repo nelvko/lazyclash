@@ -225,8 +225,8 @@ func TestProxyAddressClipboardSelectsOnlyOnExplicitRequest(t *testing.T) {
 				t.Fatal("hover must explain that credentials will be copied before accessing them")
 			}
 			m, _ = update(m, special(tea.KeyEscape))
-			m, _ = update(m, key("?"))
-			if m.tooltip.open != copyButton.ID || m.helpOpen || reads != 0 {
+			m, _ = update(m, special(tea.KeyF1))
+			if m.tooltip.open != copyButton.ID || m.keyHints.changed || reads != 0 {
 				t.Fatal("focused copy control lost its contextual help")
 			}
 			m, _ = update(m, special(tea.KeyEscape))

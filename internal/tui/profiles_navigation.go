@@ -11,7 +11,7 @@ import (
 func (m *Model) profileGridKey(k tea.KeyPressMsg) bool {
 	if m.page != "profiles" || m.form != "" || m.profilesUI.editing ||
 		m.sidebarOpen || strings.HasPrefix(m.focus, "nav.") || m.quitting ||
-		m.helpOpen || m.ports.open || m.wizard.open || m.wizard.networkOpen {
+		m.ports.open || m.wizard.open || m.wizard.networkOpen {
 		return false
 	}
 	key := k.String()

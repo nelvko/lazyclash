@@ -1,5 +1,5 @@
 {
-  "dashboard.footer.helpAfterClose": "After closing: ? Help",
+  "dashboard.footer.hideHintsAfterClose": "After closing: ? Hide hints",
   "navigation.hints.browse": "Tab Controls · Esc Back",
   "navigation.hints.control": "Enter %s · Tab Controls · Esc Back",
   "navigation.hints.clear": "Clear input",
@@ -14,6 +14,5 @@
   "notification.hints.controls": "Tab Controls · Esc Dismiss notice",
   "notification.hints.listControls": "↑↓ Controls · Esc Collapse · x Dismiss",
   "notification.hints.detail": "↑↓ Scroll · Esc Back · PgUp/PgDn Page · x Dismiss",
-  "notification.hints.empty": "Esc Close",
-  "help.hints.connectionsCore": "While browsing content: r restarts the core. Connection data updates automatically."
+  "notification.hints.empty": "Esc Close"
 }

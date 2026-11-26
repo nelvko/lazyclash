@@ -162,7 +162,7 @@ func newProviderPanelState(locale i18n.Localizer) providerPanelState {
 }
 
 func (m *Model) providersVisible() bool {
-	return m.page == string(m.providers.kind) && m.providers.open && !m.busy && !m.quitting && !m.sidebarOpen && !m.helpOpen && !m.ports.open && !m.wizard.open && !m.wizard.networkOpen && m.form == "" && !m.notification.panel.open && m.ctx.Err() == nil
+	return m.page == string(m.providers.kind) && m.providers.open && !m.busy && !m.quitting && !m.sidebarOpen && !m.ports.open && !m.wizard.open && !m.wizard.networkOpen && m.form == "" && !m.notification.panel.open && m.ctx.Err() == nil
 }
 
 func (m *Model) openProviders(kind providerKind) tea.Cmd {

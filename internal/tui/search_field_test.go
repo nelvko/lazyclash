@@ -296,8 +296,8 @@ func TestSearchFieldPageFooterKeepsSearchShortcut(t *testing.T) {
 						want = "/ 搜索"
 					}
 					footer := ansi.Strip(strings.Split(m.View().Content, "\n")[size[1]-1])
-					if !strings.Contains(footer, m.tr("dashboard.footer.help")) || strings.Contains(footer, "…") {
-						t.Fatalf("footer lost help or cut a shortcut mid-item: %q", footer)
+					if !strings.Contains(footer, m.tr("dashboard.footer.hideHints")) || strings.Contains(footer, "…") {
+						t.Fatalf("footer lost its toggle or cut a shortcut mid-item: %q", footer)
 					}
 					if size[0] >= 60 && !strings.Contains(footer, want) {
 						t.Fatal("removing the input prefix hid the page's search shortcut")

@@ -29,6 +29,6 @@
   "providers.stopped": "Start Mihomo to browse loaded providers.",
   "providers.unavailable": "Current providers are unavailable.",
   "providers.readonly": "Read only · no updateable external source",
-  "providers.mode_hint": "Enter Apply mode · Tab Next control · ? Help",
-  "providers.open_hint": "Enter Open providers · Tab Content · ? Help"
+  "providers.mode_hint": "Enter Apply mode · Tab Next control",
+  "providers.open_hint": "Enter Open providers · Tab Content"
 }

@@ -1,8 +1,3 @@
 {
-  "help.profiles.click": "单击卡片使用该配置。",
-  "help.profiles.menu": "右键点击卡片、点击 ⋯ 按钮，或聚焦卡片后按 m / Shift+F10 打开操作菜单。",
-  "help.profiles.menuControls": "菜单：↑↓ / j/k 选择，Home / End 首末项，Enter 执行；Esc / Tab / Shift+Tab 或点击外部关闭。",
-  "help.messages.toast": "订阅变更、内核重启和错误在右上角显示。点击通知可就地展开详情；有通知时，浏览页面按 Ctrl+N 可展开列表。",
-  "help.messages.dismiss": "错误通知保留到手动关闭。关闭进度通知后任务继续运行，选择「取消任务」可停止任务。后台任务运行时仍可浏览页面，对话框内的任务按框内提示取消。",
   "navigation.actionMenu": "↑↓ 选择 · Enter 确定 · Esc 关闭"
 }

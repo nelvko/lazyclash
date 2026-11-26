@@ -115,7 +115,7 @@ func (t *tooltipState) key(key, focus string) bool {
 		if t.open == "" {
 			return false
 		}
-	case "?":
+	case "f1":
 		hit := t.focused(focus)
 		if hit.ID == "" {
 			return false

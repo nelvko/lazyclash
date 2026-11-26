@@ -44,7 +44,7 @@ func TestRuntimeSharedSessionSurvivesPagesResizeOverlaysAndForegroundJobs(t *tes
 		m.browsePage(page)
 		for _, size := range [][2]int{{160, 45}, {80, 24}, {40, 16}} {
 			m.width, m.height = size[0], size[1]
-			m.helpOpen, m.ports.open, m.wizard.open, m.wizard.networkOpen = true, true, true, true
+			m.ports.open, m.wizard.open, m.wizard.networkOpen = true, true, true
 			if m.syncRuntime() != nil || m.runtime.generation != generation || m.runtime.ctx != ctx || ctx.Err() != nil {
 				t.Fatal("page/size/modal replaced shared sources")
 			}

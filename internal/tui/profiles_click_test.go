@@ -231,7 +231,7 @@ func TestProfileClickIgnoresRightButtonAndMotion(t *testing.T) {
 }
 
 func TestProfileClickCannotEscapeBusyOrOverlayState(t *testing.T) {
-	for _, state := range []string{"busy", "quitting", "form", "help", "ports", "wizard", "sidebar"} {
+	for _, state := range []string{"busy", "quitting", "form", "ports", "wizard", "sidebar"} {
 		t.Run(state, func(t *testing.T) {
 			m, b := profileClickModel(t, true, true, false, false)
 			card := findTarget(t, m, "profile.0")
@@ -242,8 +242,6 @@ func TestProfileClickCannotEscapeBusyOrOverlayState(t *testing.T) {
 				m.quitting = true
 			case "form":
 				m.openForm()
-			case "help":
-				m.helpOpen = true
 			case "ports":
 				m.ports.open = true
 			case "wizard":

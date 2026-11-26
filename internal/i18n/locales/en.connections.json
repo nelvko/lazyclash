@@ -23,7 +23,7 @@
   "connections.closing_all": "Closing all connections…",
   "connections.close_all_requested": "All connections close requested",
   "connections.close_all_unavailable": "Connections are unavailable or already closed",
-  "connections.close_all_hint": "Enter Review closing all connections · Tab Content · ? Help",
+  "connections.close_all_hint": "Enter Review closing all connections · Tab Content",
   "connections.summary_download": "Downloaded",
   "connections.summary_upload": "Uploaded",
   "connections.tab_active": "Active %s",

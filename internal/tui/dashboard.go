@@ -55,7 +55,7 @@ type dashboardOptions struct {
 	Spinner                         string
 	Help                            string
 	EditingInput                    bool
-	HelpAfterClose                  bool
+	OverlayOwnsKeys                 bool
 	tooltips                        *tooltipState
 	HideKeyHints                    bool
 	SidebarOpen                     bool
@@ -178,7 +178,7 @@ func drawDashboard(o dashboardOptions) (string, []hitRegion, int, []notification
 	}
 	put := func(x, y int, s string) { putRows(rows, x, y, s, o.Width) }
 	var targets []hitRegion
-	tipsEnabled := !o.Dim && !o.SidebarOpen && !o.HelpAfterClose && !o.EditingInput
+	tipsEnabled := !o.Dim && !o.SidebarOpen && !o.OverlayOwnsKeys && !o.EditingInput
 	add := func(r hitRegion) {
 		if r.tip.text != "" && !tipsEnabled {
 			if r.tip.owner != r.ID {

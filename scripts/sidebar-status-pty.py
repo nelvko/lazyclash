@@ -145,17 +145,17 @@ def exercise_overview(preview, overview, binary, output, language, profile, args
                 overview.return_navigation(terminal, words)
                 terminal.key(b"6")
 
-        terminal.key(b"\x14")  # Ctrl+T: status must survive hidden key hints.
+        terminal.key(b"?")  # Status must survive hidden key hints.
         terminal.settle()
         assert_status(terminal, words)
         assert words["dashboard.footer.quit"] not in terminal.screen.text().splitlines()[-1], \
-            "Ctrl+T did not hide key hints"
+            "? did not hide key hints"
         preview.capture(terminal, output, "hints-hidden", args)
         terminal.resize(80, 24)
         terminal.settle()
         assert_status(terminal, words)
         preview.capture(terminal, output, "compact-hints-hidden", args)
-        terminal.key(b"\x14")
+        terminal.key(b"?")
         terminal.exit()
         calls = json.loads(report.read_text())
         assert all(calls[key] == 0 for key in ("service_changes", "modes", "selections", "tun_changes", "settings_writes")), calls

@@ -239,19 +239,13 @@ func TestNotificationDialogsHidePreviousItemsWithoutReplayingValidation(t *testi
 	}
 }
 
-func TestNotificationEscapeRespectsSearchMenuAndHelp(t *testing.T) {
+func TestNotificationEscapeRespectsSearchAndMenu(t *testing.T) {
 	m := connectionsModel(t, &fakeBackend{})
 	id := publishNotice(&m, "close.connection", "error", "close failed")
 	m, _ = update(m, key("/"))
 	m, _ = update(m, special(tea.KeyEscape))
 	if m.connections.editing {
 		t.Fatal("Esc did not leave search")
-	}
-	noticeByID(t, m, id)
-	m, _ = update(m, key("?"))
-	m, _ = update(m, special(tea.KeyEscape))
-	if m.helpOpen {
-		t.Fatal("Esc did not leave help")
 	}
 	noticeByID(t, m, id)
 	m.width, m.height, m.sidebarOpen, m.focus = 60, 20, true, "nav.connections"

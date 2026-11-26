@@ -9,7 +9,7 @@ import (
 
 func (m *Model) profileMenuAvailable() bool {
 	return m.page == "profiles" && m.snapshotReady && !m.busy && !m.quitting &&
-		!m.sidebarOpen && !m.helpOpen && !m.ports.open && !m.wizard.open && !m.wizard.networkOpen && m.form == ""
+		!m.sidebarOpen && !m.ports.open && !m.wizard.open && !m.wizard.networkOpen && m.form == ""
 }
 
 func (m *Model) profileMenuItems(id string) []menuItem {

@@ -42,6 +42,5 @@
   "proxies.test_failed": "Failed",
   "proxies.switching": "Switching",
   "proxies.test.done": "Tested %d/%d",
-  "proxies.test.canceled": "Canceled %d/%d",
-  "help.proxies.tools": "Press / or click / Search in the footer to find groups and nodes. Enter focuses the first result. Esc closes search and returns to your previous position. s sorts. t tests the current group or cancels its running test."
+  "proxies.test.canceled": "Canceled %d/%d"
 }

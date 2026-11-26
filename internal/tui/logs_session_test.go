@@ -145,7 +145,6 @@ func TestLogsSessionKeepsCollectingAcrossNavigationOverlaysAndOrdinaryJobs(t *te
 		act  func()
 	}{
 		{"navigation", func() { m.browsePage("profiles") }},
-		{"help", func() { m.helpOpen = true }},
 		{"ports", func() { m.ports.open = true }},
 		{"form", func() { m.form = "fixture" }},
 		{"wizard", func() { m.wizard.open = true }},

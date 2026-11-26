@@ -3,7 +3,7 @@
   "settings.numberInvalid": "Enter a positive whole number · Esc cancel",
   "settings.interface": "General",
   "settings.chooseLanguage": "Choose language",
-  "settings.keyHints.tooltip": "Lists available keys and what they do. Press Ctrl+T while browsing or viewing Help to show or hide the bar.",
+  "settings.keyHints.tooltip": "Shows the shortcuts for the focused control. Press ? while browsing to hide or show the footer hints.",
   "settings.theme": "Theme",
   "settings.chooseTheme": "Choose theme",
   "settings.themeAuto": "Currently using %s.",

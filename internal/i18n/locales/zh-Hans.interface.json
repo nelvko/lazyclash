@@ -1,14 +1,10 @@
 {
-  "header.help": "帮助",
   "dashboard.interface.title": "界面",
   "dashboard.interface.keyHints": "底部提示栏",
   "dashboard.interface.keyHintsOn": "开启",
   "dashboard.interface.keyHintsOff": "关闭",
-  "help.keyHints.show": "显示底部提示栏 · Ctrl+T",
-  "help.keyHints.hide": "隐藏底部提示栏 · Ctrl+T",
-  "help.keyHints.shortcut": "浏览页面或查看帮助时，按 Ctrl+T 可显示或隐藏底部提示栏。",
   "keyHints.saveFailed": "无法保存底部提示栏设置：%s",
-  "navigation.drawer": "↑↓ 切页 · → 内容 · ← 关闭 · ? 帮助",
-  "navigation.content": "↑↓ 滚动 · Tab 控件 · ← / Esc 返回 · ? 帮助",
+  "navigation.drawer": "↑↓ 切页 · → 内容 · ← 关闭",
+  "navigation.content": "↑↓ 滚动 · Tab 控件 · ← / Esc 返回",
   "overview.cardHint": "Enter 控件 · ↑↓ 卡片 · Tab 下一项 · ← / Esc 返回"
 }

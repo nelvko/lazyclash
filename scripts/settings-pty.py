@@ -529,7 +529,7 @@ def exercise(preview, binary, output, language, profile, args):
         preview.capture(terminal, output, "proxy-ports-tooltip", args)
         hover(terminal, label_x, label_y)
         terminal.wait_absent(tip_text)
-        terminal.key(b"?")
+        terminal.key(b"\x1bOP")  # F1 shows the focused field's explanation.
         terminal.wait(tip_text)
         terminal.key(b"\x1b")
         terminal.wait_absent(tip_text)
@@ -688,7 +688,7 @@ def exercise(preview, binary, output, language, profile, args):
         preview.capture(terminal, output, "switch-wrapped-26x24", args)
         click(terminal, wrapped)
         terminal.wait(switch_track(False))
-        terminal.key(b"\x14")
+        terminal.key(b"?")
         terminal.wait(switch_track(True))
         dismiss_toasts(terminal)
         terminal.resize(160, 45)
@@ -833,11 +833,11 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.settle()
         check_switch(terminal, words, "dashboard.interface.keyHints", False, profile)
         preview.capture(terminal, output, "hints-hidden", args)
-        terminal.key(b"?")
+        terminal.key(b"\x1bOP")
         terminal.wait(tip_text)
         terminal.key(b"\x1b")
         terminal.wait_absent(tip_text)
-        terminal.key(b"\x14")  # Ctrl+T restores the hidden footer.
+        terminal.key(b"?")
         terminal.settle()
         check_switch(terminal, words, "dashboard.interface.keyHints", True, profile)
 

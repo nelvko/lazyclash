@@ -166,8 +166,6 @@ type Model struct {
 	screen                string
 	colorProfile          colorprofile.Profile
 	noColor               bool
-	helpOpen              bool
-	helpScroll            int
 	statusGeneration      uint64
 	statusCancel          context.CancelFunc
 	wizard                wizardState
@@ -747,8 +745,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		} else if m.ports.open {
 			cmd = m.updatePortsInput(v)
-		} else if m.helpOpen {
-			break
 		} else if m.wizard.open || m.wizard.networkOpen {
 			cmd = m.updateWizardInput(v)
 		} else if m.inlineInputActive() {
@@ -811,20 +807,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			_, cmd = m.providersKey(v)
 			break
 		}
-		if handled, next := m.keyHintsShortcut(v); handled {
-			cmd = next
-			break
-		}
 		if m.menu.open {
 			cmd = m.applyMenuResult(m.menu.key(v))
 			break
 		}
 		if m.ports.open {
 			cmd = m.portsKey(v)
-			break
-		}
-		if m.helpOpen {
-			cmd = m.helpKey(v)
 			break
 		}
 		if m.wizard.open || m.wizard.networkOpen {
@@ -865,6 +853,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.page == "connections" && (m.connections.detail != nil || m.connections.confirming) {
 			_, cmd = m.connectionKey(v)
+			break
+		}
+		if key == "?" || key == "？" {
+			cmd = m.toggleKeyHints()
 			break
 		}
 		if m.tooltip.key(key, m.focus) {
@@ -940,7 +932,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// it is dismissed. Page searches must not activate behind the menu.
 			allowed := false
 			switch key {
-			case "1", "2", "3", "4", "5", "6", "7", "enter", "space", " ", "esc", "tab", "shift+tab", "?":
+			case "1", "2", "3", "4", "5", "6", "7", "enter", "space", " ", "esc", "tab", "shift+tab":
 				allowed = true
 			}
 			if !allowed {
@@ -949,10 +941,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if key >= "1" && key <= "7" && len(key) == 1 {
 			m.navigate(navPages()[int(key[0]-'1')])
-			break
-		}
-		if key == "?" {
-			_, cmd = m.keyHintsAction("help.open")
 			break
 		}
 		if strings.HasPrefix(m.focus, "nav.") {
@@ -982,7 +970,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if m.busy {
 			if (key == "enter" || key == "space" || key == " ") && m.focus == "key-hints.toggle" {
-				_, cmd = m.keyHintsAction(m.focus)
+				cmd = m.toggleKeyHints()
 				break
 			}
 			switch key {
@@ -1129,8 +1117,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		} else if m.ports.open {
 			cmd = m.updatePortsInput(msg)
-		} else if m.helpOpen {
-			break
 		} else if m.wizard.open || m.wizard.networkOpen {
 			cmd = m.updateWizardInput(msg)
 		} else if m.inlineInputActive() {
@@ -1352,9 +1338,6 @@ func (m *Model) activate(id string) tea.Cmd {
 	if strings.HasPrefix(id, "setup.") {
 		return m.inlineInstallActivate(id)
 	}
-	if handled, cmd := m.keyHintsAction(id); handled {
-		return cmd
-	}
 	if id == "content" {
 		return nil
 	}
@@ -1369,6 +1352,8 @@ func (m *Model) activate(id string) tea.Cmd {
 		return cmd
 	}
 	switch id {
+	case "key-hints.toggle":
+		return m.toggleKeyHints()
 	case "runtime-settings":
 		return m.openNetworkConfig("proxy")
 	case "settings.bindAddress":
@@ -1581,7 +1566,7 @@ func (m *Model) updateDashboardHover(event tea.MouseMotionMsg) (bool, tea.Cmd) {
 	if m.page != "proxies" && len(m.tooltip.anchors) == 0 {
 		return false, nil
 	}
-	if m.menu.open || (m.feedbackDialogOpen() && !m.ports.editingProxyPorts()) || m.helpOpen || m.notification.panel.open {
+	if m.menu.open || (m.feedbackDialogOpen() && !m.ports.editingProxyPorts()) || m.notification.panel.open {
 		return false, nil
 	}
 	previous := m.hover
@@ -1646,9 +1631,6 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 	}
 	if m.ports.open {
 		return m.portsMouse(event)
-	}
-	if m.helpOpen {
-		return m.helpMouse(event)
 	}
 	if m.page == "connections" && (m.connections.detail != nil || m.connections.confirming) {
 		return m.connectionDialogMouse(event)
@@ -1723,8 +1705,8 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 					m.input.Focus()
 					return textinput.Blink
 				}
-				if handled, cmd := m.keyHintsAction(r.ID); handled {
-					return cmd
+				if r.ID == "key-hints.toggle" {
+					return m.toggleKeyHints()
 				}
 				if strings.HasPrefix(r.ID, "nav.") {
 					popup := m.sidebarOpen
@@ -1876,7 +1858,7 @@ func (m *Model) renderLayout() {
 	}
 	o.Help, o.GuideDismissed, o.Scroll, o.SidebarOpen = m.contextHelp(), m.snapshot.GuideDismissed, m.scroll, m.sidebarOpen
 	_, _, o.EditingInput = m.activeInputField()
-	o.HelpAfterClose = p.open || m.menu.open || m.providers.open || m.ports.open || m.form != "" || m.connections.confirming || m.connections.detail != nil
+	o.OverlayOwnsKeys = p.open || m.menu.open || m.providers.open || m.ports.open || m.form != "" || m.connections.confirming || m.connections.detail != nil
 	o.Runtime, o.RuntimeReceived, o.RuntimePending = m.runtime.snapshot, m.runtime.received, m.runtime.pending
 	o.StateUnavailable = !m.snapshotReady
 	g := dashboardGeometry(o)
@@ -1932,8 +1914,6 @@ func (m *Model) renderLayout() {
 				m.screen = overlay(m.screen, modalBackdrop(footer), 2, o.Height-1, o.Width, o.Height)
 			}
 		}
-	} else if m.helpOpen {
-		m.screen, m.targets = m.renderHelp(base)
 	} else if m.wizard.open || m.wizard.networkOpen {
 		m.screen, m.targets = m.renderWizard(base)
 	} else if m.form == "tun-confirm" {

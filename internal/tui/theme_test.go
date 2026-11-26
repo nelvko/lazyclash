@@ -49,8 +49,8 @@ func themeSample(name string) Model {
 	case "overview-dismissed":
 		m.snapshot.GuideDismissed = true
 		m.focus = "nav.overview"
-	case "help":
-		m.helpOpen = true
+	case "hints-hidden":
+		m.keyHints.hidden = true
 	case "notification-success":
 		m.message = "Routing mode saved"
 	case "notification-error":
@@ -276,7 +276,7 @@ func TestExportMarianaViews(t *testing.T) {
 		{"overview-dismissed", 120, 32, colorprofile.TrueColor},
 		{"overview-dismissed", 80, 24, colorprofile.TrueColor},
 		{"logs", 120, 32, colorprofile.TrueColor},
-		{"help", 80, 24, colorprofile.TrueColor},
+		{"hints-hidden", 80, 24, colorprofile.TrueColor},
 		{"core", 120, 32, colorprofile.TrueColor},
 		{"version-input", 80, 24, colorprofile.TrueColor},
 		{"input-error", 80, 24, colorprofile.TrueColor},

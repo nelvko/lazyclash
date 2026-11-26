@@ -431,16 +431,11 @@ func (p *portsState) editingProxyPorts() bool {
 }
 
 func (m *Model) portsKey(k tea.KeyPressMsg) tea.Cmd {
-	if m.ports.editingProxyPorts() {
-		if m.tooltip.key(k.String(), m.ports.focus) {
-			if m.tooltip.open != "" && m.tooltip.open == m.tooltip.offscreen.ID {
-				m.ports.reveal = true
-			}
-			return nil
+	if m.ports.editingProxyPorts() && m.tooltip.key(k.String(), m.ports.focus) {
+		if m.tooltip.open != "" && m.tooltip.open == m.tooltip.offscreen.ID {
+			m.ports.reveal = true
 		}
-		if k.String() == "?" {
-			return nil
-		}
+		return nil
 	}
 	p := &m.ports
 	if m.busy {

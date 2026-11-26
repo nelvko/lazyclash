@@ -1,5 +1,11 @@
 # 验证入口
 
+## 问号键切换底部提示栏（2026-11-26）
+
+在 macOS 的 160×45、80×24 中文终端中，设置页按 `?` 隐藏底栏，按 `？` 恢复。焦点停在同一控件，隐藏时正文多显示一行。聚焦带 `ⓘ` 的控件后，`F1` 可打开说明。规则搜索框能输入 `a?？b`。[80×24 显示底栏](../.test-artifacts/question-key/screens/shown-80x24.png) · [80×24 隐藏底栏](../.test-artifacts/question-key/screens/hidden-80x24.png) · [160×45 控件说明](../.test-artifacts/question-key/screens/f1-tooltip-160x45.png)
+
+在 macOS 和 Debian/arm64 的 120×40 终端中，用 `python3 scripts/i18n-pty.py bin/lazyclash` 验证了关闭程序后重新启动仍沿用底栏选择，再按问号可以恢复。[Linux PTY 记录](../.test-artifacts/footer-toggle/linux-pty/result.log)
+
 ## 通知正文与按需详情（2026-11-25）
 
 在 Debian/arm64 专用 VM 中使用 Mihomo v1.19.33、两个独立的 systemd 用户服务和临时端口验证订阅切换。160×45 下，内核运行和停止时均只显示“已选用订阅「Maruko」”和关闭按钮。40×24 下，长订阅名截断时出现详情，点击可读到名字末尾，按 Esc 返回订阅页。运行态从控制 API 读回规则，停止态确认 PID 保持为零，验收后已卸载两个服务。[运行时](../.test-artifacts/concise-notifications/zh-Hans-running-wide-160x45.png) · [停止时](../.test-artifacts/concise-notifications/zh-Hans-stopped-wide-160x45.png) · [窄屏预览](../.test-artifacts/concise-notifications/zh-Hans-stopped-narrow-40x24.png) · [窄屏全文](../.test-artifacts/concise-notifications/zh-Hans-stopped-detail-40x24.png)

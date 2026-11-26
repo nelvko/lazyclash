@@ -42,46 +42,33 @@ func TestNavigationShellConnectionConfirmationOwnsPageShortcuts(t *testing.T) {
 			t.Fatalf("%s escaped the connection confirmation", digit)
 		}
 	}
-	m, _ = update(m, tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl})
+	m, _ = update(m, key("?"))
 	if m.keyHints.hidden || m.keyHints.changed || m.keyHints.pending || !m.connections.confirming {
-		t.Fatal("connection confirmation leaked Ctrl+T to the global display shortcut")
-	}
-	// Once help owns the interface, its own display control remains available.
-	m.keyHintsAction("help.open")
-	m, _ = update(m, tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl})
-	if !m.helpOpen || !m.keyHints.hidden || !m.connections.confirming {
-		t.Fatal("help could not own its shortcut above a connection confirmation")
+		t.Fatal("connection confirmation leaked ? to the global display shortcut")
 	}
 }
 
-func TestNavigationShellTextInputsOwnCtrlT(t *testing.T) {
+func TestNavigationShellTextInputsOwnQuestionMarks(t *testing.T) {
 	for _, page := range []string{"profiles", "connections", "rules", "logs"} {
 		t.Run(page, func(t *testing.T) {
 			m := ready(&fakeBackend{})
-			m.page, m.focus = page, "content"
-			switch page {
-			case "profiles":
-				m.focus, m.profilesUI.editing = "profiles.url", true
-				m.profilesUI.url.Focus()
-			case "connections":
-				m.connections.editing = true
-				m.connections.search.Focus()
-			case "rules":
-				m.rules.editing = true
-				m.rules.search.Focus()
-			case "logs":
-				m.logs.editing = true
-				m.logs.search.Focus()
+			m.page = page
+			if page == "profiles" {
+				m.focus = "profiles.url"
+			} else {
+				m, _ = update(m, key("/"))
 			}
-			m, _ = update(m, tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl})
-			if m.keyHints.hidden || m.keyHints.changed || m.keyHints.pending || m.page != page {
-				t.Fatal("text input leaked Ctrl+T to the global display shortcut")
+			m, _ = update(m, key("?"))
+			m, _ = update(m, key("？"))
+			input, _, editing := m.activeInputField()
+			if !editing || input.Value() != "?？" || m.keyHints.changed || m.page != page {
+				t.Fatalf("question marks escaped the editor: value=%q editing=%t changed=%t", input.Value(), editing, m.keyHints.changed)
 			}
 		})
 	}
 }
 
-func TestNavigationShellBusyHelpShortcutAndQuitRespectCleanup(t *testing.T) {
+func TestNavigationShellBusyHintToggleAndQuitRespectCleanup(t *testing.T) {
 	m := ready(&fakeBackend{})
 	m.width, m.height = 120, 32
 	ctx := m.newJob("action")
@@ -89,18 +76,14 @@ func TestNavigationShellBusyHelpShortcutAndQuitRespectCleanup(t *testing.T) {
 	m.syncNotification()
 	m.focus = "content"
 	m.layout()
-	m, _ = update(m, key("?"))
-	if !m.helpOpen || !m.busy || ctx.Err() != nil {
-		t.Fatal("keyboard could not open help during an operation")
+	m, save := update(m, key("?"))
+	if !m.keyHints.hidden || m.focus != "content" || !m.busy || ctx.Err() != nil {
+		t.Fatal("hiding the footer disturbed the underlying focus or operation")
 	}
-	m, _ = update(m, special(tea.KeyEscape))
-	if m.helpOpen || m.focus != "content" || !m.busy || ctx.Err() != nil {
-		t.Fatal("closing help disturbed the underlying focus or operation")
-	}
-	m, _ = update(m, key("?"))
+	m, _ = update(m, save())
 	m, cmd := update(m, key("q"))
 	if cmd != nil || !m.quitting || !m.busy || ctx.Err() == nil {
-		t.Fatal("quitting from busy help did not wait for safe operation cleanup")
+		t.Fatal("quitting after a display change did not wait for safe operation cleanup")
 	}
 	m, cmd = update(m, resultMsg{id: m.id})
 	if m.busy {
@@ -149,7 +132,7 @@ func TestNavigationShellHintResizeKeepsFocusedListRowVisible(t *testing.T) {
 	if !hasAction(m.targets, m.focus) {
 		t.Fatal("fixture did not position the focused row in the visible viewport")
 	}
-	m, _ = update(m, tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl})
+	m, _ = update(m, key("?"))
 	if m.keyHints.hidden || !hasAction(m.targets, m.focus) {
 		t.Fatal("restoring the hint bar hid the focused row")
 	}

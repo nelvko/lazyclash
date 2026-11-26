@@ -124,7 +124,7 @@ func TestOverviewContentFillsAreaBesideNavigationAndReservesUsableRows(t *testin
 func TestDashboardContentReachesRowBeforeFooter(t *testing.T) {
 	for _, size := range [][2]int{{160, 45}, {120, 32}, {100, 20}, {80, 24}, {60, 20}, {120, 18}, {30, 12}, {20, 7}} {
 		t.Run(fmt.Sprintf("%dx%d", size[0], size[1]), func(t *testing.T) {
-			o := dashboardOptions{Width: size[0], Height: size[1], Page: "proxies", Help: "Keys"}
+			o := dashboardOptions{Width: size[0], Height: size[1], Page: "proxies"}
 			g := dashboardGeometry(o)
 			var body []string
 			for i := 0; i < g.height+3; i++ {
@@ -144,7 +144,7 @@ func TestDashboardContentReachesRowBeforeFooter(t *testing.T) {
 				if !strings.Contains(ansi.Strip(rows[o.Height-2]), label) {
 					t.Fatalf("last content row was reserved instead of showing %s", label)
 				}
-				if !strings.Contains(ansi.Strip(rows[o.Height-2]), marker) || !strings.Contains(ansi.Strip(rows[o.Height-1]), "Keys") {
+				if !strings.Contains(ansi.Strip(rows[o.Height-2]), marker) || !strings.Contains(ansi.Strip(rows[o.Height-1]), o.Locale.T("dashboard.footer.hideHints")) {
 					t.Fatal("scroll marker or footer moved away from its final row")
 				}
 				found := false
@@ -167,7 +167,7 @@ func TestDashboardContentReachesRowBeforeFooter(t *testing.T) {
 func TestSidebarExtendsToContentBottomAndShieldsMouseTargets(t *testing.T) {
 	for _, size := range [][2]int{{160, 45}, {120, 25}, {100, 20}, {80, 24}, {60, 20}, {120, 18}, {30, 12}, {20, 7}} {
 		t.Run(fmt.Sprintf("%dx%d", size[0], size[1]), func(t *testing.T) {
-			o := dashboardOptions{Width: size[0], Height: size[1], Page: "proxies", SidebarOpen: true, Focus: "nav.settings", Help: "Keys"}
+			o := dashboardOptions{Width: size[0], Height: size[1], Page: "proxies", SidebarOpen: true, Focus: "nav.settings"}
 			g := dashboardGeometry(o)
 			rows := make([]string, o.Height)
 			for i := range rows {
@@ -195,7 +195,7 @@ func TestSidebarExtendsToContentBottomAndShieldsMouseTargets(t *testing.T) {
 			if hasAction(targets, "underlay") {
 				t.Fatal("compact navigation allows clicks through its final row")
 			}
-			if !strings.Contains(ansi.Strip(strings.Split(screen, "\n")[o.Height-1]), "Keys") {
+			if !strings.Contains(ansi.Strip(strings.Split(screen, "\n")[o.Height-1]), o.Locale.T("dashboard.footer.hideHints")) {
 				t.Fatal("compact navigation obscured the footer")
 			}
 		})

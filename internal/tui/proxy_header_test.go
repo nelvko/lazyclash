@@ -48,7 +48,7 @@ func TestProxiesHeaderOmitsGroupTotalAndManualRefresh(t *testing.T) {
 				if hasAction(m.targets, "page.refresh") || hasAction(m.focusTargets(), "page.refresh") {
 					t.Fatal("manual refresh retained a mouse target or Tab stop")
 				}
-				if strings.Contains(strings.Join(m.helpLines(200), "\n"), m.tr("help.core.refresh")) || strings.Contains(m.contextHelp(), "r Refresh") {
+				if strings.Contains(m.contextHelp(), "r Refresh") {
 					t.Fatal("proxy help retained manual refresh instructions")
 				}
 				assertCanvas(t, m.screen, size[0], size[1])

@@ -181,7 +181,7 @@ func TestProxiesSearchClickMatchesPaintedFooterHint(t *testing.T) {
 func TestProxiesSearchShortcutWorksWithHiddenHints(t *testing.T) {
 	m, _ := proxiesModel(t, 160, 40)
 	hint := findTarget(t, m, "proxies.search-hint")
-	m, _ = update(m, tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl})
+	m, _ = update(m, key("?"))
 	if !m.keyHints.hidden || hasAction(m.targets, hint.ID) {
 		t.Fatal("hiding the footer retained its mouse shortcut")
 	}

@@ -158,16 +158,16 @@ func TestProxyPortTooltipUsesModalFocusAndPointer(t *testing.T) {
 	if m.tooltip.open != "" || m.ports.focus != id {
 		t.Fatal("leaving or clicking an icon changed form focus or left the explanation open")
 	}
-	m, _ = update(m, key("?"))
+	m, _ = update(m, special(tea.KeyF1))
 	if m.tooltip.bounds.W == 0 || !m.tooltip.keyboard {
-		t.Fatal("question mark did not show the focused port's tooltip")
+		t.Fatal("F1 did not show the focused port's tooltip")
 	}
 	m, _ = update(m, special(tea.KeyEscape))
 	if m.tooltip.open != "" || !m.ports.editingProxyPorts() {
 		t.Fatal("Escape should close only the explanation")
 	}
 	m, _ = click(m, findTarget(t, m, "ports.http"))
-	m, _ = update(m, key("?"))
+	m, _ = update(m, special(tea.KeyF1))
 	if m.tooltip.open != "" || m.ports.field("ports.http").Value() != "" {
 		t.Fatal("HTTP has no explanation and should not receive the shortcut as input")
 	}
@@ -225,7 +225,7 @@ func TestProxyPortTooltipRevealsFieldAfterScrolling(t *testing.T) {
 	if m.tooltip.offscreen.tip.owner != m.ports.focus {
 		t.Fatal("fixture should have scrolled the focused port out of view")
 	}
-	m, _ = update(m, key("?"))
+	m, _ = update(m, special(tea.KeyF1))
 	if m.tooltip.bounds.W == 0 || m.tooltip.offscreen.ID != "" {
 		t.Fatal("keyboard explanation did not reveal its focused field")
 	}

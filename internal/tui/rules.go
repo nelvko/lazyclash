@@ -65,7 +65,7 @@ func (m *Model) stopRules() {
 	m.rules.active, m.rules.pending = false, false
 }
 func (m *Model) rulesVisible() bool {
-	return m.page == "rules" && !m.providers.open && !m.busy && !m.quitting && !m.helpOpen && !m.ports.open && !m.wizard.open && !m.wizard.networkOpen && m.form == "" && m.ctx.Err() == nil
+	return m.page == "rules" && !m.providers.open && !m.busy && !m.quitting && !m.ports.open && !m.wizard.open && !m.wizard.networkOpen && m.form == "" && m.ctx.Err() == nil
 }
 func (m *Model) syncRules() tea.Cmd {
 	if !m.rulesVisible() {

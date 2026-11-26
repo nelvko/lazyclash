@@ -1,14 +1,10 @@
 {
-  "header.help": "Help",
   "dashboard.interface.title": "Interface",
   "dashboard.interface.keyHints": "Footer hints",
   "dashboard.interface.keyHintsOn": "On",
   "dashboard.interface.keyHintsOff": "Off",
-  "help.keyHints.show": "Show footer hints · Ctrl+T",
-  "help.keyHints.hide": "Hide footer hints · Ctrl+T",
-  "help.keyHints.shortcut": "Press Ctrl+T while browsing or viewing Help to show or hide footer hints.",
   "keyHints.saveFailed": "Could not save the footer hints setting: %s",
-  "navigation.drawer": "↑↓ Pages · → Content · ← Close · ? Help",
-  "navigation.content": "↑↓ Scroll · Tab Controls · ← / Esc Back · ? Help",
+  "navigation.drawer": "↑↓ Pages · → Content · ← Close",
+  "navigation.content": "↑↓ Scroll · Tab Controls · ← / Esc Back",
   "overview.cardHint": "Enter Controls · ↑↓ Cards · Tab Next · ← / Esc Back"
 }

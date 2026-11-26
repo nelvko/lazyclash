@@ -49,11 +49,11 @@ func TestConnectionDetailOverlayKeepsListInPlaceAndOwnsInput(t *testing.T) {
 	if !strings.Contains(ansi.Cut(line, 0, box.X), "host-12.example") || !strings.Contains(m.screen, m.tr("connections.details")) {
 		t.Fatal("opening details replaced or displaced the connection list")
 	}
-	for _, msg := range []tea.Msg{key("1"), key("v"), key("p"), key("s"), key("/"), key("?"), tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl}, tea.PasteMsg{Content: "other"}} {
+	for _, msg := range []tea.Msg{key("1"), key("v"), key("p"), key("s"), key("/"), key("?"), key("？"), tea.PasteMsg{Content: "other"}} {
 		m, _ = update(m, msg)
 	}
 	m, _ = update(m, tea.MouseWheelMsg{Button: tea.MouseWheelDown, X: 0, Y: 0})
-	if m.focus != "conn.back" || m.connections.detail == nil || m.connections.closedView || m.connections.paused || m.helpOpen || m.scroll != scroll || m.connections.editing || m.connections.search.Value() != "host-" {
+	if m.focus != "conn.back" || m.connections.detail == nil || m.connections.closedView || m.connections.paused || m.keyHints.changed || m.scroll != scroll || m.connections.editing || m.connections.search.Value() != "host-" {
 		t.Fatal("detail window leaked a shortcut, paste or wheel to the list")
 	}
 	m, _ = update(m, tea.MouseClickMsg{Button: tea.MouseLeft, X: 0, Y: 0})

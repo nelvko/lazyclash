@@ -205,7 +205,7 @@ func TestProxyCardsCenterBothTextRowsAndAlignTheSelectedRail(t *testing.T) {
 	}
 }
 
-func TestProxyHelpClearsCardEdgesWithoutReflow(t *testing.T) {
+func TestProxyNetworkDialogClearsCardEdgesWithoutReflow(t *testing.T) {
 	m, _ := proxiesModel(t, 160, 40)
 	width := dashboardBodyWidth(m.dashboardOptions())
 	grid := m.proxyGrid(width)
@@ -215,13 +215,14 @@ func TestProxyHelpClearsCardEdgesWithoutReflow(t *testing.T) {
 		t.Fatal("rich grid fixture lost its visible card edges")
 	}
 
-	m, _ = update(m, key("?"))
+	m.openNetwork(false)
+	m.layout()
 	card := m.proxyNode(0, 0, grid.cardWidth)
-	if !m.helpOpen || strings.ContainsAny(m.screen, "▄▀▗▝") {
-		t.Fatal("opening help left block glyphs in the backdrop")
+	if !m.wizard.networkOpen || strings.ContainsAny(m.screen, "▄▀▗▝") {
+		t.Fatal("opening network settings left block glyphs in the backdrop")
 	}
 	if m.total != total || len(card.lines) != len(before.lines) || m.proxyGrid(width) != grid {
-		t.Fatal("opening help changed the grid geometry")
+		t.Fatal("opening network settings changed the grid geometry")
 	}
 	for _, y := range []int{0, 3} {
 		if ansi.Strip(card.lines[y]) != strings.Repeat(" ", grid.cardWidth) {
@@ -229,8 +230,8 @@ func TestProxyHelpClearsCardEdgesWithoutReflow(t *testing.T) {
 		}
 	}
 	m, _ = update(m, special(tea.KeyEscape))
-	if m.helpOpen || !strings.Contains(m.screen, "▄") || !strings.Contains(m.screen, "▗") || m.total != total {
-		t.Fatal("closing help did not restore the card edges in place")
+	if m.wizard.networkOpen || !strings.Contains(m.screen, "▄") || !strings.Contains(m.screen, "▗") || m.total != total {
+		t.Fatal("closing network settings did not restore the card edges in place")
 	}
 }
 

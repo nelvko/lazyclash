@@ -65,9 +65,6 @@ func TestPageHeadersUsePageActionsAcrossSizesAndFocus(t *testing.T) {
 					if page == "logs" && (hasAction(m.targets, "logs.retry") || hasAction(m.focusTargets(), "logs.retry")) {
 						t.Fatal("logs retained a visible or tabbable reconnect button")
 					}
-					if hasAction(m.targets, "help.open") || hasAction(m.focusTargets(), "help.open") {
-						t.Fatal("header retained a help button or Tab stop")
-					}
 					g := dashboardGeometry(dashboardOptions{Width: m.width, Height: m.height, Page: page})
 					lines := strings.Split(m.screen, "\n")
 					if strings.Contains(ansi.Strip(strings.Join(lines[:g.y], "\n")), "Mihomo ·") {
@@ -103,9 +100,6 @@ func TestPageHeadersUsePageActionsAcrossSizesAndFocus(t *testing.T) {
 		}
 	}
 	m := headerModel("overview", 120, 32)
-	if hasAction(m.targets, "help.open") || hasAction(m.focusTargets(), "help.open") {
-		t.Fatal("Overview retained a help button or Tab stop")
-	}
 	if strings.Contains(headerText(m), "Mihomo ·") || strings.Contains(headerText(m), "Running") {
 		t.Fatal("Overview header retained the global core state")
 	}

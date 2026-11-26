@@ -84,15 +84,15 @@ def collapsed_directory(terminal, proxy, preview, output, words, args):
     proxy.assert_proxy_header(terminal, words)
     preview.capture(terminal, output, "directory-idle", args)
 
-    terminal.key(b"\x14")  # Ctrl+T hides the footer.
+    terminal.key(b"?")
     terminal.settle()
     before = view_context(terminal, proxy, words)
-    assert words["dashboard.footer.help"] not in terminal.screen.text(), "footer is still visible"
+    assert words["dashboard.footer.hideHints"] not in terminal.screen.text(), "footer is still visible"
     open_search(terminal, proxy, words, "slash")
     paste_query(terminal, "YouTube")
     escape_restores(terminal, proxy, words, before, "YouTube without footer")
-    terminal.key(b"\x14")
-    terminal.wait(words["dashboard.footer.help"])
+    terminal.key(b"?")
+    terminal.wait(words["dashboard.footer.hideHints"])
 
 
 def expanded_restoration(terminal, proxy, preview, output, words, args):

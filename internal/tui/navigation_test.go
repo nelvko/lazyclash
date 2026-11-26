@@ -11,7 +11,7 @@ import (
 	"github.com/nelvko/lazyclash/internal/app"
 )
 
-func TestSevenPageKeysDoNotEscapeInputsOrHelp(t *testing.T) {
+func TestSevenPageKeysDoNotEscapeInputs(t *testing.T) {
 	m := ready(&fakeBackend{})
 	for i, page := range navPages() {
 		m, _ = update(m, key(string(rune('1'+i))))
@@ -19,7 +19,7 @@ func TestSevenPageKeysDoNotEscapeInputsOrHelp(t *testing.T) {
 			t.Fatalf("shortcut %d opened %s, expected %s", i+1, m.page, page)
 		}
 	}
-	for _, state := range []string{"form", "wizard", "connection-search", "rule-search", "log-search", "help"} {
+	for _, state := range []string{"form", "wizard", "connection-search", "rule-search", "log-search"} {
 		t.Run(state, func(t *testing.T) {
 			m := ready(&fakeBackend{})
 			switch state {
@@ -36,14 +36,12 @@ func TestSevenPageKeysDoNotEscapeInputsOrHelp(t *testing.T) {
 			case "log-search":
 				m.page = "logs"
 				m.logsActivate("logs.search")
-			case "help":
-				m.helpOpen = true
 			}
 			page := m.page
-			for _, digit := range "1234567" {
-				m, _ = update(m, key(string(digit)))
-				if m.page != page {
-					t.Fatal("printable digit escaped the active input/modal")
+			for _, character := range "1234567?？" {
+				m, _ = update(m, key(string(character)))
+				if m.page != page || m.keyHints.changed {
+					t.Fatal("printable shortcut escaped the active input")
 				}
 			}
 			var value string
@@ -58,11 +56,9 @@ func TestSevenPageKeysDoNotEscapeInputsOrHelp(t *testing.T) {
 				value = m.rules.search.Value()
 			case "log-search":
 				value = m.logs.search.Value()
-			case "help":
-				return
 			}
-			if value != "1234567" {
-				t.Fatalf("digits did not edit the input: %q", value)
+			if value != "1234567?？" {
+				t.Fatalf("typed shortcuts did not edit the input: %q", value)
 			}
 		})
 	}
@@ -148,32 +144,6 @@ func TestSidebarResizePreservesContentAndExplicitDrawer(t *testing.T) {
 	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 32})
 	if m.sidebarOpen || m.focus != "nav.settings" || !hasAction(m.targets, m.focus) {
 		t.Fatal("expanding left the compact drawer over the persistent sidebar")
-	}
-}
-
-func TestHelpIsScrollableCapturesInputAndRestoresFocus(t *testing.T) {
-	m := ready(&fakeBackend{})
-	m.width, m.height = 80, 24
-	m.focus = "setup.install"
-	m, _ = update(m, key("?"))
-	if !m.helpOpen || !strings.Contains(ansi.Strip(m.screen), "Help / Overview") {
-		t.Fatal("help did not open")
-	}
-	for _, hit := range m.targets {
-		if hit.ID != "help.close" && hit.ID != "key-hints.toggle" {
-			t.Fatal("background retained mouse targets under Help")
-		}
-	}
-	m, _ = update(m, special(tea.KeyEnd))
-	if m.helpScroll == 0 || !strings.Contains(ansi.Strip(m.screen), "Messages") {
-		t.Fatal("help content cannot be scrolled to the end")
-	}
-	m, _ = update(m, tea.WindowSizeMsg{Width: 20, Height: 5})
-	assertCanvas(t, m.View().Content, 20, 5)
-	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 32})
-	m, _ = update(m, special(tea.KeyEscape))
-	if m.helpOpen || m.focus != "setup.install" || m.page != "overview" {
-		t.Fatal("closing help did not restore the previous page and focus")
 	}
 }
 

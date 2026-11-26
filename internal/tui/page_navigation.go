@@ -343,7 +343,7 @@ func (m *Model) enterContent() {
 }
 
 func (m *Model) revealContentFocus() {
-	if m.providers.open || m.helpOpen || m.form != "" || m.wizard.open || m.wizard.networkOpen || m.ports.open || m.notification.panel.open || m.sidebarOpen {
+	if m.providers.open || m.form != "" || m.wizard.open || m.wizard.networkOpen || m.ports.open || m.notification.panel.open || m.sidebarOpen {
 		return
 	}
 	if m.menu.open && !m.menu.dropdownOpen(overviewRouteGroupTarget) {
@@ -534,7 +534,7 @@ func (m *Model) requestQuit() tea.Cmd {
 }
 
 func (m *Model) repairPageFocus() {
-	if m.page == "connections" && (m.connections.detail != nil || m.connections.confirming) || m.providers.open || m.helpOpen || m.form != "" || m.wizard.open || m.wizard.networkOpen || m.ports.open || m.notification.panel.open || m.menu.open {
+	if m.page == "connections" && (m.connections.detail != nil || m.connections.confirming) || m.providers.open || m.form != "" || m.wizard.open || m.wizard.networkOpen || m.ports.open || m.notification.panel.open || m.menu.open {
 		return
 	}
 	state := m.pageViews[m.page]

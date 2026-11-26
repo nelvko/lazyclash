@@ -103,10 +103,10 @@ func TestSidebarLogoIntroDelayAndNaturalCompletionDoNotReplay(t *testing.T) {
 		case "resize":
 			m, _ = update(m, tea.WindowSizeMsg{Width: 121, Height: 25})
 		case "overlay":
-			m.helpOpen = true
+			m.ports.open = true
 			m, _ = update(m, struct{}{})
 		case "restore":
-			m.helpOpen = false
+			m.ports.open = false
 			m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 24})
 		}
 		m, _ = update(m, msg)
@@ -142,7 +142,7 @@ func TestSidebarLogoIntroCancelsWhileWaitingOrPlaying(t *testing.T) {
 						t.Fatal("test did not change the page")
 					}
 				case "overlay":
-					m.helpOpen = true
+					m.ports.open = true
 					m, _ = update(m, struct{}{})
 				case "busy":
 					m.busy = true
@@ -158,7 +158,7 @@ func TestSidebarLogoIntroCancelsWhileWaitingOrPlaying(t *testing.T) {
 				if m.logoIntro.frame != 0 || m.logoFrame != pulse {
 					t.Fatal("old intro tick changed the canceled or clicked animation")
 				}
-				m.helpOpen, m.busy = false, false
+				m.ports.open, m.busy = false, false
 				m, _ = update(m, tea.ColorProfileMsg{Profile: colorprofile.TrueColor})
 				m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 24})
 				if m.logoIntro.waiting || m.logoIntro.frame != 0 || m.syncLogoIntro() != nil {
@@ -190,14 +190,14 @@ func TestSidebarLogoIntroSkipsIneligibleStartupWithoutCatchingUp(t *testing.T) {
 			case "short":
 				size.Height = sidebarMinHeight - 1
 			case "overlay":
-				m.helpOpen = true
+				m.ports.open = true
 			}
 			m, _ = update(m, size)
 			m, _ = update(m, tea.ColorProfileMsg{Profile: profile})
 			if !m.logoIntro.used || m.logoIntro.waiting || m.logoIntro.frame != 0 {
 				t.Fatalf("ineligible startup did not skip the intro: %+v", m.logoIntro)
 			}
-			m.helpOpen, m.noColor = false, false
+			m.ports.open, m.noColor = false, false
 			m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 24})
 			m, _ = update(m, tea.ColorProfileMsg{Profile: colorprofile.TrueColor})
 			m, _ = update(m, logoIntroMsg{generation: m.logoGeneration})

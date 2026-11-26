@@ -175,7 +175,7 @@ func TestProfileGridIgnoresGlobalKeysInputsAndModals(t *testing.T) {
 			t.Fatalf("grid captured unrelated shortcut %q", message.String())
 		}
 	}
-	for _, state := range []string{"other-page", "navigation", "sidebar", "form", "inline-input", "help", "ports", "wizard", "network", "quitting"} {
+	for _, state := range []string{"other-page", "navigation", "sidebar", "form", "inline-input", "ports", "wizard", "network", "quitting"} {
 		t.Run(state, func(t *testing.T) {
 			m := profileNavigationModel(160, 32)
 			switch state {
@@ -189,8 +189,6 @@ func TestProfileGridIgnoresGlobalKeysInputsAndModals(t *testing.T) {
 				m.form = "source"
 			case "inline-input":
 				m.profilesUI.editing = true
-			case "help":
-				m.helpOpen = true
 			case "ports":
 				m.ports.open = true
 			case "wizard":

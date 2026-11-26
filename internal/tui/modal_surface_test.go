@@ -77,7 +77,7 @@ func TestModalSurfaceRestoresBackgroundBetweenControls(t *testing.T) {
 }
 
 func TestModalBackdropFillsPartialWideCellsAtBothEdges(t *testing.T) {
-	m := Model{width: 10, height: 3, helpOpen: true, colorProfile: colorprofile.TrueColor}
+	m := Model{width: 10, height: 3, form: "source", colorProfile: colorprofile.TrueColor}
 	base := modalBackdrop(strings.Repeat("中文中文中\n", 2) + "中文中文中")
 	m.screen = m.newModalSurface(4, 1).render(base) // Starts and ends halfway through a wide glyph.
 	screen := uv.NewScreenBuffer(m.width, m.height)

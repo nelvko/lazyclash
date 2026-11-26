@@ -3,7 +3,7 @@
   "settings.numberInvalid": "请输入有效的正整数 · Esc 取消",
   "settings.interface": "常规",
   "settings.chooseLanguage": "选择语言",
-  "settings.keyHints.tooltip": "列出当前可用的按键及其作用。浏览页面或查看帮助时，按 Ctrl+T 可切换提示栏。",
+  "settings.keyHints.tooltip": "显示当前控件可用的快捷键。浏览页面时按 ? 隐藏或显示底部提示栏。",
   "settings.theme": "主题",
   "settings.chooseTheme": "选择主题",
   "settings.themeAuto": "当前使用 %s。",

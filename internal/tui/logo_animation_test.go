@@ -158,7 +158,7 @@ func TestSidebarLogoPulseLastsOnePointSixSecondsAndRestartsOnClick(t *testing.T)
 }
 
 func TestSidebarLogoPulseStopsWhenHiddenOrBlocked(t *testing.T) {
-	for _, name := range []string{"compact", "short", "busy", "quitting", "help", "ports", "wizard", "network", "form", "notifications", "menu", "canceled"} {
+	for _, name := range []string{"compact", "short", "busy", "quitting", "ports", "wizard", "network", "form", "notifications", "menu", "canceled"} {
 		t.Run(name, func(t *testing.T) {
 			m := ready(&fakeBackend{})
 			m.width, m.height = 120, 24
@@ -176,8 +176,6 @@ func TestSidebarLogoPulseStopsWhenHiddenOrBlocked(t *testing.T) {
 				m.busy = true
 			case "quitting":
 				m.quitting = true
-			case "help":
-				m.helpOpen = true
 			case "ports":
 				m.ports.open = true
 			case "wizard":
@@ -219,13 +217,13 @@ func TestSidebarLogoPulseCancelsOnResizeAndOverlayBeforeItsNextTick(t *testing.T
 			if name == "resize" {
 				m, _ = update(m, tea.WindowSizeMsg{Width: 80, Height: 24})
 			} else {
-				m.helpOpen = true
+				m.ports.open = true
 				m, _ = update(m, struct{}{})
 			}
 			if m.logoFrame != 0 || m.logoGeneration == generation {
 				t.Fatal("hidden logo kept its pending playback")
 			}
-			m.helpOpen = false
+			m.ports.open = false
 			m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 24})
 			m, _ = update(m, logoPulseMsg{generation: generation})
 			if m.logoFrame != 0 {

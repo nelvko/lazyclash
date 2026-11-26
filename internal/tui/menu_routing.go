@@ -84,7 +84,7 @@ func (m *Model) dismissMenu() {
 
 func (m *Model) pageSelectionMenuAvailable(page string) bool {
 	return m.page == page && !m.busy && !m.quitting && !m.sidebarOpen &&
-		!m.providers.open && !m.helpOpen && !m.ports.open && !m.wizard.open &&
+		!m.providers.open && !m.ports.open && !m.wizard.open &&
 		!m.wizard.networkOpen && m.form == "" && !m.notification.panel.open
 }
 

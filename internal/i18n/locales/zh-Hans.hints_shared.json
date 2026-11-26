@@ -1,5 +1,5 @@
 {
-  "dashboard.footer.helpAfterClose": "关闭后 ? 帮助",
+  "dashboard.footer.hideHintsAfterClose": "关闭后 ? 隐藏提示",
   "navigation.hints.browse": "Tab 控件 · Esc 返回",
   "navigation.hints.control": "Enter %s · Tab 控件 · Esc 返回",
   "navigation.hints.clear": "清空输入",
@@ -14,6 +14,5 @@
   "notification.hints.controls": "Tab 控件 · Esc 关闭通知",
   "notification.hints.listControls": "↑↓ 选择操作 · Esc 收起 · x 关闭此条",
   "notification.hints.detail": "↑↓ 滚动 · Esc 返回 · PgUp/PgDn 翻页 · x 关闭此条",
-  "notification.hints.empty": "Esc 关闭面板",
-  "help.hints.connectionsCore": "浏览内容时：r 重启内核；连接数据自动更新。"
+  "notification.hints.empty": "Esc 关闭面板"
 }

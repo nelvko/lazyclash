@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/i18n"
@@ -68,31 +67,6 @@ func TestLanguageDropdownUsesCurrentNativeNameAndDisplayCellHit(t *testing.T) {
 			o.Busy = true
 			if hasAction(settingsInterface(o, width).targets, "settings.language") {
 				t.Fatal("language switching remains clickable during an operation")
-			}
-		}
-	}
-}
-
-func TestLocalizedHelpCloseHitMatchesPaintedButton(t *testing.T) {
-	for _, language := range []string{"en", "zh-Hans"} {
-		for _, size := range [][2]int{{120, 32}, {80, 24}, {60, 20}, {30, 12}, {26, 8}} {
-			m := Model{locale: i18n.New(language), page: "settings", width: size[0], height: size[1], helpOpen: true}
-			screen, hits := m.renderHelp("")
-			assertCanvas(t, screen, size[0], size[1])
-			assertRegions(t, hits, size[0], size[1])
-			if len(hits) == 0 || hits[0].ID != "help.close" {
-				t.Fatal("help close action missing")
-			}
-			hit := hits[0]
-			painted := ansi.Strip(ansi.Cut(strings.Split(screen, "\n")[hit.Y], hit.X, hit.X+hit.W))
-			label := strings.Trim(m.tr("help.close"), "[] ")
-			if strings.Trim(painted, "› ") != label || hit.W != ansi.StringWidth(label)+4 || !strings.HasPrefix(painted, " › ") || !strings.HasSuffix(painted, " ") {
-				t.Fatalf("%s: close hit includes adjacent hint or misses translated label: %q", language, painted)
-			}
-			m.targets = hits
-			m.helpMouse(tea.MouseClickMsg{X: hit.X + hit.W - 1, Y: hit.Y, Button: tea.MouseLeft})
-			if m.helpOpen {
-				t.Fatal("clicking translated close button's final cell did not close help")
 			}
 		}
 	}

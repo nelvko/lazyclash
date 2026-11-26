@@ -54,7 +54,7 @@ func TestTooltipHoverDelayAndKeyboardOwnership(t *testing.T) {
 	if tip.open != "" {
 		t.Fatal("leaving the icon kept a mouse tooltip open")
 	}
-	tip.key("?", first.owner)
+	tip.key("f1", first.owner)
 	tip.motion(second.id())
 	stale = tip.generation
 	tip.motion(first.id())
@@ -68,7 +68,7 @@ func TestTooltipHoverDelayAndKeyboardOwnership(t *testing.T) {
 	if tip.keyboard || tip.open != second.id() {
 		t.Fatal("dwelling on another icon did not switch to its explanation")
 	}
-	tip.key("?", first.owner)
+	tip.key("f1", first.owner)
 	if !tip.keyboard || tip.open != first.id() {
 		t.Fatal("keyboard did not take ownership of the focused control's tooltip")
 	}

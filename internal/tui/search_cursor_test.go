@@ -123,7 +123,6 @@ func TestSearchCursorHidesBehindOverlaysAndClippedFields(t *testing.T) {
 		set  func(*Model)
 	}{
 		{"busy", func(m *Model) { m.busy = true }},
-		{"help", func(m *Model) { m.helpOpen = true }},
 		{"menu", func(m *Model) { m.menu.open = true }},
 		{"sidebar", func(m *Model) { m.sidebarOpen = true }},
 		{"ports", func(m *Model) { m.ports.open = true }},
@@ -209,16 +208,9 @@ func TestProxySearchCursorAndClearAcrossResize(t *testing.T) {
 			if got := findTarget(t, m, "proxies.search"); got != field {
 				t.Fatalf("clearing search changed its geometry: before=%+v after=%+v", field, got)
 			}
-			for _, overlay := range []string{"help", "notifications"} {
-				covered := m
-				if overlay == "help" {
-					covered.helpOpen = true
-				} else {
-					covered.notification.panel.open = true
-				}
-				if cursor := covered.View().Cursor; cursor != nil {
-					t.Fatalf("%s overlay retained the search cursor: %+v", overlay, cursor)
-				}
+			m.notification.panel.open = true
+			if cursor := m.View().Cursor; cursor != nil {
+				t.Fatalf("notification panel retained the search cursor: %+v", cursor)
 			}
 		})
 	}

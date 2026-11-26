@@ -260,12 +260,10 @@ func TestDirectionalNavigationInputsOwnCursorAndPrintableKeys(t *testing.T) {
 }
 
 func TestDirectionalNavigationOverlaysOwnTheirKeys(t *testing.T) {
-	for _, owner := range []string{"help", "notifications", "profile menu", "connection confirmation", "wizard choice"} {
+	for _, owner := range []string{"notifications", "profile menu", "connection confirmation", "wizard choice"} {
 		t.Run(owner, func(t *testing.T) {
 			m := profileNavigationModel(120, 32)
 			switch owner {
-			case "help":
-				m.keyHintsAction("help.open")
 			case "notifications":
 				publishNotice(&m, "profile.refresh", "error", "Update failed")
 				m.notificationAction("notification.expand")
@@ -287,10 +285,6 @@ func TestDirectionalNavigationOverlaysOwnTheirKeys(t *testing.T) {
 					t.Fatalf("%s escaped %s to page navigation", button, owner)
 				}
 				switch owner {
-				case "help":
-					if !m.helpOpen {
-						t.Fatal("direction key closed help")
-					}
 				case "notifications":
 					if !m.notification.panel.open {
 						t.Fatal("direction key closed notifications")

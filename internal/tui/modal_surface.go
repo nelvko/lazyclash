@@ -22,7 +22,7 @@ func modalBackdrop(screen string) string {
 }
 
 func (m *Model) dashboardDimmed() bool {
-	return m.feedbackDialogOpen() || m.helpOpen || m.providers.open || (m.page == "connections" && m.connections.confirming)
+	return m.feedbackDialogOpen() || m.providers.open || (m.page == "connections" && m.connections.confirming)
 }
 
 // Clipping half of a wide character leaves a plain space. Give it the same

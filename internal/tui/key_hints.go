@@ -10,7 +10,7 @@ import (
 type keyHintsState struct {
 	hidden, changed, pending bool
 	generation               uint64
-	helpFocus, originPage    string
+	originPage               string
 }
 
 type keyHintsSavedMsg struct {
@@ -72,34 +72,4 @@ func (m *Model) acceptKeyHintsSaved(msg keyHintsSavedMsg) tea.Cmd {
 		return tea.Quit
 	}
 	return nil
-}
-
-func (m *Model) keyHintsShortcut(k tea.KeyPressMsg) (bool, tea.Cmd) {
-	if k.String() != "ctrl+t" || m.providers.open || m.menu.open || m.ports.open || m.wizard.open || m.wizard.networkOpen || m.form != "" || m.notification.panel.open {
-		return false, nil
-	}
-	if !m.helpOpen && (m.inlineInputActive() || (m.page == "profiles" && m.focus == "profiles.url" && !m.sidebarOpen) ||
-		(m.page == "proxies" && m.proxies.editing) ||
-		(m.page == "connections" && (m.connections.editing || m.connections.confirming || m.connections.detail != nil)) ||
-		(m.page == "rules" && (m.rules.editing || m.providers.editing)) || (m.page == "logs" && m.logs.editing)) {
-		return false, nil
-	}
-	return true, m.toggleKeyHints()
-}
-
-func (m *Model) keyHintsAction(id string) (bool, tea.Cmd) {
-	switch id {
-	case "help.open":
-		m.helpOpen, m.helpScroll = true, 0
-		m.keyHints.helpFocus = "help.close"
-		return true, nil
-	case "help.close":
-		m.helpOpen = false
-		m.revealContentFocus()
-		return true, nil
-	case "key-hints.toggle":
-		return true, m.toggleKeyHints()
-	default:
-		return false, nil
-	}
 }

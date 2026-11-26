@@ -83,7 +83,7 @@ func TestKeyHintsQuitWaitsForFinalPreferenceSave(t *testing.T) {
 	m := ready(&fakeBackend{})
 	b := &keyHintsBackend{fakeBackend: &fakeBackend{}}
 	m.backend = b
-	m, save := update(m, tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl})
+	m, save := update(m, key("?"))
 	m, quit := update(m, key("q"))
 	if quit != nil || !m.quitting || !m.keyHints.pending {
 		t.Fatal("quit discarded an outstanding display preference save")
@@ -94,36 +94,15 @@ func TestKeyHintsQuitWaitsForFinalPreferenceSave(t *testing.T) {
 	}
 }
 
-func TestKeyHintsShortcutBelongsToPagesDrawerAndHelpButNotInputs(t *testing.T) {
-	ctrlT := tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl}
-	for _, state := range []string{"page", "drawer", "help", "profile-input", "search", "form", "wizard", "menu"} {
-		t.Run(state, func(t *testing.T) {
-			m := ready(&fakeBackend{})
-			m.backend = &keyHintsBackend{fakeBackend: &fakeBackend{}}
-			want := false
-			switch state {
-			case "page":
-				want = true
-			case "drawer":
-				m.sidebarOpen, want = true, true
-			case "help":
-				m.helpOpen, want = true, true
-			case "profile-input":
-				m.page, m.focus = "profiles", "profiles.url"
-			case "search":
-				m.page, m.connections.editing = "connections", true
-			case "form":
-				m.form = "source"
-			case "wizard":
-				m.wizard.open = true
-			case "menu":
-				m.menu.open = true
-			}
-			handled, _ := m.keyHintsShortcut(ctrlT)
-			if handled != want || m.keyHints.hidden != want {
-				t.Fatalf("shortcut handling=%v hidden=%v, want %v", handled, m.keyHints.hidden, want)
-			}
-		})
+func TestKeyHintsShortcutInDrawerKeepsNavigationFocus(t *testing.T) {
+	m := ready(&fakeBackend{})
+	m.width, m.height, m.sidebarOpen, m.focus = 60, 20, true, "nav.overview"
+	m.layout()
+	for _, button := range []string{"?", "？"} {
+		m, _ = update(m, key(button))
+		if m.keyHints.hidden != (button == "?") || !m.sidebarOpen || m.focus != "nav.overview" {
+			t.Fatalf("%s changed drawer focus or failed to toggle hints", button)
+		}
 	}
 }
 
@@ -143,9 +122,6 @@ func TestHiddenKeyHintsReleaseLastRowAndProtectPopupTargets(t *testing.T) {
 			if !strings.Contains(ansi.Strip(strings.Split(screen, "\n")[size[1]-1]), "Last row") || strings.Contains(ansi.Strip(screen), "Shortcut bar") || !hasAction(targets, "last-row") {
 				t.Fatal("released row was not usable")
 			}
-			if hasAction(targets, "help.open") {
-				t.Fatal("hiding the footer restored a header help button")
-			}
 			assertCanvas(t, screen, o.Width, o.Height)
 			assertRegions(t, targets, o.Width, o.Height)
 			if !hidden.sidebar {
@@ -161,31 +137,26 @@ func TestHiddenKeyHintsReleaseLastRowAndProtectPopupTargets(t *testing.T) {
 	}
 }
 
-func TestHelpCanRestoreHintsWithMouseAfterKeyboardOpen(t *testing.T) {
+func TestQuestionMarkTogglesAndPersistsKeyHintsInPlace(t *testing.T) {
 	for _, size := range [][2]int{{120, 32}, {60, 20}, {20, 7}, {10, 4}, {1, 1}} {
 		t.Run(fmt.Sprintf("%dx%d", size[0], size[1]), func(t *testing.T) {
-			m := ready(&fakeBackend{})
-			m.backend = &keyHintsBackend{fakeBackend: &fakeBackend{}}
-			m.width, m.height, m.busy, m.keyHints.hidden = size[0], size[1], true, true
-			focus := m.focus
-			m, _ = update(m, key("?"))
-			if !m.helpOpen {
-				t.Fatal("keyboard shortcut could not open help with hints hidden")
-			}
-			if size[1] >= 3 {
-				toggle := findTarget(t, m, "key-hints.toggle")
-				m.helpMouse(tea.MouseClickMsg{X: toggle.X, Y: toggle.Y, Button: tea.MouseLeft})
-				if m.keyHints.hidden || !m.helpOpen || !m.busy {
-					t.Fatal("mouse recovery did not apply without closing help or disturbing the task")
+			b := &fakeBackend{}
+			m := ready(b)
+			m, _ = update(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
+			page, focus := m.page, m.focus
+			for _, button := range []string{"?", "？"} {
+				var save tea.Cmd
+				m, save = update(m, key(button))
+				if m.page != page || m.focus != focus || m.keyHints.hidden != (button == "?") || save == nil {
+					t.Fatalf("%s: page=%s focus=%s hidden=%t", button, m.page, m.focus, m.keyHints.hidden)
 				}
+				m, _ = update(m, save())
+				if b.prefs.HideKeyHints != m.keyHints.hidden || m.keyHints.pending {
+					t.Fatalf("%s did not finish saving footer visibility", button)
+				}
+				assertCanvas(t, m.screen, m.width, m.height)
+				assertRegions(t, m.targets, m.width, m.height)
 			}
-			close := findTarget(t, m, "help.close")
-			m.helpMouse(tea.MouseClickMsg{X: close.X, Y: close.Y, Button: tea.MouseLeft})
-			if m.helpOpen || m.focus != focus {
-				t.Fatal("mouse could not close help or previous focus was lost")
-			}
-			assertCanvas(t, m.screen, m.width, m.height)
-			assertRegions(t, m.targets, m.width, m.height)
 		})
 	}
 }

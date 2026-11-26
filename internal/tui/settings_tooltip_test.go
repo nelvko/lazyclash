@@ -23,8 +23,14 @@ func TestTooltipKeyboardNavigationAndOverlays(t *testing.T) {
 	owner := m.focus
 	info := m.tr("tooltip.shortcut")
 	footer := func() string { return ansi.Strip(strings.Split(m.screen, "\n")[m.height-1]) }
-	if !strings.Contains(footer(), info) || strings.Contains(footer(), m.tr("dashboard.footer.help")) {
-		t.Fatalf("ambiguous question-mark shortcut: %s", footer())
+	if !strings.Contains(footer(), info) || !strings.Contains(footer(), m.tr("dashboard.footer.hideHints")) {
+		t.Fatalf("missing tooltip or footer shortcut: %s", footer())
+	}
+	for _, button := range []string{"?", "？"} {
+		m, _ = update(m, key(button))
+		if m.focus != owner || m.tooltip.open != "" || m.keyHints.hidden != (button == "?") {
+			t.Fatalf("%s on an annotated setting changed tooltip or focus, or failed to toggle the footer", button)
+		}
 	}
 	for _, target := range m.focusTargets() {
 		if target.tip.text != "" {
@@ -36,28 +42,23 @@ func TestTooltipKeyboardNavigationAndOverlays(t *testing.T) {
 	if m.focus != owner || m.busy {
 		t.Fatal("clicking the icon activated a control")
 	}
-	for _, close := range []tea.KeyPressMsg{key("?"), special(tea.KeyEscape)} {
-		m, _ = update(m, key("?"))
-		if m.tooltip.bounds.W == 0 || m.helpOpen || !strings.Contains(footer(), m.tr("tooltip.dismiss")) {
+	for _, close := range []tea.KeyPressMsg{special(tea.KeyF1), special(tea.KeyEscape)} {
+		m, _ = update(m, special(tea.KeyF1))
+		if m.tooltip.bounds.W == 0 || m.keyHints.hidden || !strings.Contains(footer(), m.tr("tooltip.dismiss")) {
 			t.Fatal("keyboard should show the focused explanation")
 		}
 		m, _ = update(m, close)
-		if m.tooltip.open != "" || m.focus != owner || m.helpOpen {
+		if m.tooltip.open != "" || m.focus != owner || m.keyHints.hidden {
 			t.Fatalf("%s did not dismiss just the tooltip", close)
 		}
 	}
-	m, _ = update(m, key("?"))
+	m, _ = update(m, special(tea.KeyF1))
 	m, _ = update(m, special(tea.KeyTab))
 	if m.focus != "settings.tcpKeepAlive" || m.tooltip.open != "" || strings.Contains(footer(), info) {
 		t.Fatal("Tab did not advance directly to the next control")
 	}
-	m, _ = update(m, key("?"))
-	if !m.helpOpen || len(m.tooltip.anchors) != 0 {
-		t.Fatal("global help lost ownership outside an annotated control")
-	}
-	m, _ = update(m, special(tea.KeyEscape))
 	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
-	m, _ = update(m, key("?"))
+	m, _ = update(m, special(tea.KeyF1))
 	m, _ = update(m, tea.WindowSizeMsg{Width: 40, Height: 16})
 	if m.tooltip.bounds.W == 0 || m.focus != owner {
 		t.Fatal("resizing lost a visible keyboard tooltip")
@@ -78,9 +79,9 @@ func TestTooltipRevealsFocusedSettingAfterScrolling(t *testing.T) {
 	if m.tooltip.offscreen.tip.owner != m.focus {
 		t.Fatal("expected to have scrolled the focused control out of view")
 	}
-	m, _ = update(m, key("?"))
-	if m.helpOpen || m.tooltip.bounds.W == 0 || m.tooltip.offscreen.ID != "" {
-		t.Fatal("question mark did not reveal the off-screen focused explanation")
+	m, _ = update(m, special(tea.KeyF1))
+	if m.keyHints.changed || m.tooltip.bounds.W == 0 || m.tooltip.offscreen.ID != "" {
+		t.Fatal("F1 did not reveal the off-screen focused explanation")
 	}
 }
 

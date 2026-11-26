@@ -49,9 +49,9 @@ func TestProxiesSearchFiltersNamesAndTypesWithoutChangingExpansion(t *testing.T)
 func TestProxiesSearchOwnsTypingAndShowsNoMatches(t *testing.T) {
 	m, backend := proxiesModel(t, 80, 24)
 	m, _ = update(m, key("/"))
-	m, _ = update(m, tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl})
+	m, _ = update(m, key("?"))
 	if m.keyHints.hidden {
-		t.Fatal("Ctrl+T leaked from the editor to the global hints shortcut")
+		t.Fatal("? leaked from the editor to the global hints shortcut")
 	}
 	for _, value := range []string{"q", "1", "s", "t", "i"} {
 		m, _ = update(m, key(value))
@@ -59,7 +59,7 @@ func TestProxiesSearchOwnsTypingAndShowsNoMatches(t *testing.T) {
 	if m.page != "proxies" || m.quitting || m.menu.open || m.wizard.open || m.proxies.testing || backend.selections != 0 {
 		t.Fatal("search input leaked through to page or service shortcuts")
 	}
-	if m.proxies.search.Value() != "q1sti" || !strings.Contains(ansi.Strip(m.screen), m.tr("proxies.search_no_match")) {
+	if m.proxies.search.Value() != "?q1sti" || !strings.Contains(ansi.Strip(m.screen), m.tr("proxies.search_no_match")) {
 		t.Fatalf("search text or no-match state missing: query=%q screen=%s", m.proxies.search.Value(), ansi.Strip(m.screen))
 	}
 	if cursor := m.inputCursor(); cursor == nil {

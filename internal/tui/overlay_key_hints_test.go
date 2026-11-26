@@ -10,7 +10,7 @@ import (
 	"github.com/nelvko/lazyclash/internal/i18n"
 )
 
-func TestExclusiveKeyHintsExplainHelpRequiresEscape(t *testing.T) {
+func TestExclusiveKeyHintsExplainToggleRequiresEscape(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		for _, kind := range []string{"menu", "confirmation"} {
 			m, _ := profileClickModel(t, true, true, false, false)
@@ -23,18 +23,18 @@ func TestExclusiveKeyHintsExplainHelpRequiresEscape(t *testing.T) {
 			m.locale = i18n.New(language)
 			m.layout()
 			footer := ansi.Strip(strings.Split(m.screen, "\n")[m.height-1])
-			if !strings.Contains(footer, m.tr("dashboard.footer.helpAfterClose")) || strings.Contains(footer, m.tr("dashboard.footer.quit")) {
+			if !strings.Contains(footer, m.tr("dashboard.footer.hideHintsAfterClose")) || strings.Contains(footer, m.tr("dashboard.footer.quit")) {
 				t.Fatalf("%s advertised unavailable global shortcuts: %s", kind, footer)
 			}
 			m, _ = update(m, key("?"))
 			m, _ = update(m, key("q"))
-			if m.helpOpen || m.quitting || kind == "menu" && !m.menu.open || kind == "confirmation" && !m.connections.confirming {
+			if m.keyHints.hidden || m.quitting || kind == "menu" && !m.menu.open || kind == "confirmation" && !m.connections.confirming {
 				t.Fatal("exclusive input did not retain ? and q")
 			}
 			m, _ = update(m, special(tea.KeyEscape))
 			m, _ = update(m, key("?"))
-			if !m.helpOpen {
-				t.Fatal("Esc then ? did not open help")
+			if !m.keyHints.hidden {
+				t.Fatal("Esc then ? did not hide hints")
 			}
 		}
 	}
@@ -48,14 +48,14 @@ func TestMenusWithoutEnabledActionsDoNotAdvertiseEnter(t *testing.T) {
 	}
 }
 
-func TestNarrowExclusiveKeyHintsDoNotAdvertiseBareHelp(t *testing.T) {
+func TestNarrowExclusiveKeyHintsDoNotAdvertiseGlobalToggle(t *testing.T) {
 	for _, o := range []dashboardOptions{
 		{Width: 12, EditingInput: true},
-		{Width: 12, HelpAfterClose: true},
+		{Width: 12, OverlayOwnsKeys: true},
 	} {
 		line, _ := dashboardKeyHints(o)
 		if got := ansi.Strip(line); got != "Esc" {
-			t.Fatalf("narrow exclusive input advertised unavailable help: %q", got)
+			t.Fatalf("narrow exclusive input advertised unavailable toggle: %q", got)
 		}
 	}
 }
@@ -140,33 +140,5 @@ func TestPortsHintsDistinguishCancelReviewAndApply(t *testing.T) {
 	m, _ = update(m, special(tea.KeyEnter))
 	if m.ports.step != "edit" || m.busy {
 		t.Fatal("back button applied instead of returning to edit")
-	}
-}
-
-func TestHelpCoreShortcutsMatchTheCurrentPage(t *testing.T) {
-	for _, language := range []string{i18n.English, i18n.Chinese} {
-		for _, test := range []struct {
-			page, actions string
-			refresh       bool
-		}{
-			{"overview", "help.core.overview", true},
-			{"proxies", "help.core.proxies", false},
-			{"profiles", "help.core.actions", true},
-			{"connections", "help.hints.connectionsCore", false},
-			{"rules", "help.core.actions", false},
-			{"logs", "help.core.actions", false},
-			{"settings", "help.core.actions", true},
-		} {
-			m := Model{locale: i18n.New(language), page: test.page}
-			body := strings.Join(m.helpLines(1000), "\n")
-			for _, actions := range []string{"help.core.actions", "help.core.overview", "help.core.proxies", "help.hints.connectionsCore"} {
-				if strings.Contains(body, m.tr(actions)) != (actions == test.actions) {
-					t.Fatalf("%s %s included the wrong core shortcut set: %s", language, test.page, actions)
-				}
-			}
-			if strings.Contains(body, m.tr("help.core.refresh")) != test.refresh {
-				t.Fatalf("%s %s advertised the wrong refresh behavior", language, test.page)
-			}
-		}
 	}
 }

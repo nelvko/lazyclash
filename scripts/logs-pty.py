@@ -249,7 +249,7 @@ def exercise(preview, binary, output, language, profile, args):
         wait_log_footer(terminal, words, "logs.capturing")
         assert max(event_numbers(terminal)) > max(retained), "clicking Latest did not leave the historical entries"
 
-        # Navigation, a read-only busy refresh, help and a canceled form keep
+        # Navigation, a read-only busy refresh, hidden hints and a canceled form keep
         # the session's collector alive instead of replacing its HTTP request.
         terminal.key(b"1")
         terminal.settle()
@@ -262,12 +262,12 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.key(b"\x1b[F")
         terminal.settle()
         terminal.key(b"?")
-        terminal.wait(words["help.currentPage"].split("%s")[0])
+        terminal.wait_absent(words["dashboard.footer.quit"])
+        terminal.wait(words["logs.capturing"])
         assert_continuing(terminal, report)
-        preview.capture(terminal, output, "help-continuing-stream", args)
-        terminal.key(b"1234567")
+        preview.capture(terminal, output, "hints-hidden-continuing-stream", args)
         terminal.key(b"?")
-        wait_until(terminal, lambda: words["help.currentPage"].split("%s")[0] not in terminal.screen.text(), "help did not close")
+        terminal.wait(words["dashboard.footer.quit"])
         terminal.settle()
         terminal.key(b"n")
         terminal.wait(words["wizard.network.title"])
@@ -282,7 +282,7 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.key(b"/")
         terminal.key(b"\x05")
         terminal.key(b"\x15")
-        terminal.key(b"q1234567-no-such-log")
+        terminal.key(b"?q1234567-no-such-log")
         terminal.key(b"\r")
         terminal.settle()
         terminal.wait(words["logs.no_matches"])
@@ -495,7 +495,7 @@ def exercise(preview, binary, output, language, profile, args):
         if profile == "no-color":
             assert not any(value not in (b"", b"0") for value in preview.SGR.findall(raw)), "NO_COLOR emitted styling"
         (output / "pty.raw").write_bytes(raw)
-        print("PASS %s/%s: default word wrap and v toggle, conditional outside count, shared level dropdown, local case/whole-word/regex search, session capture across navigation/help/form, frozen display with 200-entry live cache, fixed toolbar at five sizes, clear/manual reconnect/automatic recovery without GAP entries; %s" %
+        print("PASS %s/%s: default word wrap and v toggle, conditional outside count, shared level dropdown, local case/whole-word/regex search, session capture across navigation/hidden hints/form, frozen display with 200-entry live cache, fixed toolbar at five sizes, clear/manual reconnect/automatic recovery without GAP entries; %s" %
               (language, profile, json.dumps(final)), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")

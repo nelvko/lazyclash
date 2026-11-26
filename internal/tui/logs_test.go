@@ -145,7 +145,7 @@ func TestLogsFailureKeepsSharedSessionAndOtherSourcesAvailable(t *testing.T) {
 	}
 }
 
-func TestLogsResizeHelpAndDepartureKeepTheSharedSessionAndHistory(t *testing.T) {
+func TestLogsResizeAndDepartureKeepTheSharedSessionAndHistory(t *testing.T) {
 	m := sessionLogsModel(t, &fakeBackend{})
 	m.appendLogs([]mihomo.LogEntry{{Level: "info", Message: "kept"}})
 	m.syncRuntime()
@@ -159,11 +159,6 @@ func TestLogsResizeHelpAndDepartureKeepTheSharedSessionAndHistory(t *testing.T) 
 		assertCanvas(t, m.screen, size[0], size[1])
 		assertRegions(t, m.targets, size[0], size[1])
 	}
-	m.helpOpen = true
-	if m.syncRuntime() != nil || ctx.Err() != nil || !m.logs.active {
-		t.Fatal("help interrupted the shared session")
-	}
-	m.helpOpen = false
 	m.browsePage("overview")
 	if m.syncRuntime() != nil || ctx.Err() != nil || m.runtime.generation != id {
 		t.Fatal("page departure interrupted the shared session")

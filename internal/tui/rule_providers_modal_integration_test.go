@@ -30,12 +30,12 @@ func TestRulesProviderModalOwnsInputAndRestoresUnderlyingList(t *testing.T) {
 	if !m.providers.open || !m.dashboardOptions().Dim || m.scroll != scroll {
 		t.Fatal("opening modal moved or failed to dim its underlying list")
 	}
-	for _, input := range []tea.KeyPressMsg{key("1"), key("2"), key("r"), key("?"), special(tea.KeyLeft), {Code: 't', Mod: tea.ModCtrl}} {
+	for _, input := range []tea.KeyPressMsg{key("1"), key("2"), key("r"), key("?"), key("？"), special(tea.KeyLeft)} {
 		m, _ = update(m, input)
 	}
 	m, _ = click(m, backgroundNavigation)
 	m, _ = update(m, tea.MouseWheelMsg{X: 0, Y: 0, Button: tea.MouseWheelDown})
-	if !m.providers.open || m.page != "rules" || m.helpOpen || m.sidebarOpen || m.scroll != scroll {
+	if !m.providers.open || m.page != "rules" || m.keyHints.changed || m.sidebarOpen || m.scroll != scroll {
 		t.Fatal("modal let navigation, keyboard shortcuts or background wheel events escape")
 	}
 	if !reflect.DeepEqual(m.pageViews["rules"], view) {

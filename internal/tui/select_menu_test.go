@@ -90,7 +90,7 @@ func TestSelectMenuCancellationAndPointerMovementDoNotCommit(t *testing.T) {
 
 func TestSelectMenuAnchorsBelowOrAboveWithoutMovingPage(t *testing.T) {
 	const width, height = 80, 24
-	footer := cellPad("? Help · q Quit", width)
+	footer := cellPad("? Hide hints · q Quit", width)
 	base := strings.Repeat(strings.Repeat(" ", width)+"\n", height-1) + footer
 	for _, anchor := range []hitRegion{{X: 10, Y: 4, W: 8, H: 1}, {X: 72, Y: 20, W: 8, H: 1}} {
 		var menu actionMenu

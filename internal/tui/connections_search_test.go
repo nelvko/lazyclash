@@ -206,7 +206,7 @@ func TestConnectionsSearchClearKeepsModesAndResetFiltersClearsThem(t *testing.T)
 }
 
 func TestConnectionsMatchingShortcutsDoNotLeakThroughDetailsOrConfirmation(t *testing.T) {
-	for _, modal := range []string{"details", "confirmation", "help", "busy"} {
+	for _, modal := range []string{"details", "confirmation", "network", "busy"} {
 		t.Run(modal, func(t *testing.T) {
 			m := connectionsModel(t, &fakeBackend{})
 			m.connections.search.SetValue("one")
@@ -216,8 +216,8 @@ func TestConnectionsMatchingShortcutsDoNotLeakThroughDetailsOrConfirmation(t *te
 				m.connectionActivate("connection.first")
 			case "confirmation":
 				m, _ = click(m, findTarget(t, m, "conn.close-all"))
-			case "help":
-				m, _ = update(m, key("?"))
+			case "network":
+				m.openNetwork(false)
 			case "busy":
 				m.busy = true
 			}

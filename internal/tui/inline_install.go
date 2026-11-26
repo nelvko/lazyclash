@@ -22,7 +22,7 @@ func (m *Model) inlineInstallVisible() bool {
 }
 
 func (m *Model) syncInlineInstall() tea.Cmd {
-	if m.wizard.inline || m.busy || m.quitting || m.page != "overview" || m.feedbackDialogOpen() || m.helpOpen || !overviewSetupVisible(m.navigationOptions()) {
+	if m.wizard.inline || m.busy || m.quitting || m.page != "overview" || m.feedbackDialogOpen() || !overviewSetupVisible(m.navigationOptions()) {
 		return nil
 	}
 	return m.beginInlineInstall(false, false)
@@ -190,7 +190,7 @@ func (m *Model) inlineInstallKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 			return true, nil
 		}
 		switch key {
-		case "q", "?", "ctrl+n", "tab", "shift+tab", "1", "2", "3", "4", "5", "6", "7":
+		case "q", "?", "？", "ctrl+n", "tab", "shift+tab", "1", "2", "3", "4", "5", "6", "7":
 			return false, nil
 		default:
 			return true, nil

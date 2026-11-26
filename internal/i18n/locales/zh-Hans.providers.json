@@ -29,6 +29,6 @@
   "providers.stopped": "启动 Mihomo 后即可浏览已加载的集合。",
   "providers.unavailable": "当前集合不可用。",
   "providers.readonly": "只读 · 无可更新的外部来源",
-  "providers.mode_hint": "Enter 应用模式 · Tab 下个控件 · ? 帮助",
-  "providers.open_hint": "Enter 打开集合 · Tab 内容 · ? 帮助"
+  "providers.mode_hint": "Enter 应用模式 · Tab 下个控件",
+  "providers.open_hint": "Enter 打开集合 · Tab 内容"
 }

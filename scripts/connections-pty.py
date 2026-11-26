@@ -770,7 +770,7 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait(action_hint)
         terminal.settle()
         footer = terminal.screen.text().splitlines()[-1]
-        assert action_hint in footer and words["dashboard.footer.help"] in footer, "header focus lost its action hint or pinned help"
+        assert action_hint in footer and words["dashboard.footer.hideHints"] in footer, "header focus lost its action hint or footer toggle"
         assert words["header.refresh"] not in footer, "close-all header still advertises refresh"
         preview.capture(terminal, output, "focused-close-all", args)
         terminal.click_text(words["connections.close_all"])
@@ -825,7 +825,7 @@ def exercise(preview, binary, output, language, profile, args):
                 terminal.settle()
             footer = terminal.screen.text().splitlines()[-1]
             if width >= 160:
-                for hint_key in ("navigation.connections.action.details", "navigation.connections.search", "navigation.connections.active", "navigation.connections.browse", "navigation.connections.sort", "dashboard.footer.help"):
+                for hint_key in ("navigation.connections.action.details", "navigation.connections.search", "navigation.connections.active", "navigation.connections.browse", "navigation.connections.sort", "dashboard.footer.hideHints"):
                     assert words[hint_key] in footer, "closed list lost its available action hint: " + hint_key
             assert not re.search(r"(?:^| · )x\s", footer), "closed list still advertises closing connections"
             preview.capture(terminal, output, "closed-%dx%d" % (width, height), args)

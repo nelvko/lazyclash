@@ -105,7 +105,7 @@ func inputFrame(lines []string, width int, edge, surface string) []string {
 func helpText(s, background string, dimmed bool) string {
 	// Keep key names brighter than explanations without changing cell geometry.
 	parts := strings.Fields(s)
-	keys := map[string]bool{"Tab": true, "Enter": true, "Esc": true, "Ctrl+C": true, "↑↓": true, "?": true, "q": true}
+	keys := map[string]bool{"Tab": true, "Enter": true, "Esc": true, "F1": true, "Ctrl+C": true, "↑↓": true, "?": true, "q": true}
 	for i, word := range parts {
 		color := muted
 		// Translations can attach punctuation directly to a key name.

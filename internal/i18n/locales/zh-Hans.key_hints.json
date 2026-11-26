@@ -1,5 +1,5 @@
 {
-  "dashboard.footer.help": "? 帮助",
+  "dashboard.footer.hideHints": "? 隐藏提示",
   "navigation.rules.expand": "Enter 查看完整内容",
   "navigation.rules.collapse": "Enter 收起",
   "navigation.rules.open_proxy": "→ 查看代理组",

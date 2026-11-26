@@ -175,7 +175,7 @@ func TestActionMenuEmptyAndZeroSizedWindows(t *testing.T) {
 func TestActionMenuPreservesFooterWhenAnchoredAtBottom(t *testing.T) {
 	for _, height := range []int{18, 24, 40} {
 		const width = 80
-		footer := cellPad("? Help · q Quit", width)
+		footer := cellPad("? Hide hints · q Quit", width)
 		base := strings.Repeat(strings.Repeat(" ", width)+"\n", height-1) + footer
 		var menu actionMenu
 		menu.show(testMenuItems(), width-1, height-1)

@@ -1,14 +1,11 @@
 package tui
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 	"time"
 
-	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/nelvko/lazyclash/internal/mihomo"
 )
 
 func TestPageNavigationCardFocusPreservesOverlappingTaskNotice(t *testing.T) {
@@ -76,37 +73,5 @@ func TestPageNavigationCardFocusPreservesOverlappingTaskNotice(t *testing.T) {
 	}
 	if !intersects {
 		t.Fatal("fixture did not overlap the focused card and task notice")
-	}
-}
-
-func TestPageNavigationClosingHelpRevealsFocusAfterRestoringHints(t *testing.T) {
-	for _, closeWithMouse := range []bool{false, true} {
-		t.Run(fmt.Sprintf("mouse=%v", closeWithMouse), func(t *testing.T) {
-			m := pageNavigationModel()
-			m.page, m.keyHints.hidden = "proxies", true
-			m.snapshot.Installed, m.snapshot.Service.Active = true, true
-			for i := 0; i < 40; i++ {
-				m.snapshot.Groups = append(m.snapshot.Groups, mihomo.Group{Name: fmt.Sprintf("Group %02d", i), Type: "Selector", Now: "DIRECT"})
-			}
-			m.focus = "group.30"
-			m.revealContentFocus()
-			m.layout()
-			if !hasAction(m.targets, m.focus) {
-				t.Fatal("fixture did not reveal the focused row")
-			}
-			m, _ = update(m, key("?"))
-			m, _ = click(m, findTarget(t, m, "key-hints.toggle"))
-			if !m.helpOpen || m.keyHints.hidden {
-				t.Fatal("help did not restore the footer")
-			}
-			if closeWithMouse {
-				m, _ = click(m, findTarget(t, m, "help.close"))
-			} else {
-				m, _ = update(m, special(tea.KeyEscape))
-			}
-			if m.helpOpen || m.focus != "group.30" || !hasAction(m.targets, m.focus) {
-				t.Fatal("closing help left the restored content focus behind the footer")
-			}
-		})
 	}
 }
