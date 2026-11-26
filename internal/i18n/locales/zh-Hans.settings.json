@@ -1,7 +1,7 @@
 {
   "settings.numberKeys": "Enter 保存 · Esc 取消",
   "settings.numberInvalid": "请输入有效的正整数 · Esc 取消",
-  "settings.interface": "界面偏好",
+  "settings.interface": "常规",
   "settings.chooseLanguage": "选择语言",
   "settings.keyHintsHint": "显示底部快捷键提示栏 · Ctrl+T",
   "settings.theme": "主题",

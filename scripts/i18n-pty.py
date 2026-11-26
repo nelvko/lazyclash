@@ -89,7 +89,7 @@ def run(binary, output):
             click(terminal, dropdown_trigger(terminal, "English"))
             dropdown_option(terminal, "English", checked=True)
             click(terminal, dropdown_option(terminal, "简体中文"))
-            terminal.wait("界面偏好")
+            terminal.wait("常规")
             dropdown_trigger(terminal, "简体中文")
             capture(terminal, output, "settings-zh-120x40")
             assert json.loads((Path(home) / "preferences.json").read_text())["Language"] == "zh-Hans"
@@ -130,7 +130,7 @@ def run(binary, output):
             click(terminal, dropdown_trigger(terminal, "简体中文"))
             dropdown_option(terminal, "简体中文", checked=True)
             click(terminal, dropdown_option(terminal, "English"))
-            terminal.wait("Interface Preferences")
+            terminal.wait("General")
             dropdown_trigger(terminal, "English")
             capture(terminal, output, "settings-en")
             terminal.exit()

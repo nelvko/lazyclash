@@ -150,8 +150,8 @@ def exercise_notifications(terminal, output, profile):
     # The uninstalled guards do not touch a service or query a release.
     # Settings accepts all three service shortcuts. Overview reserves r.
     terminal.key(b"7")
-    terminal.wait("Interface Preferences")
-    empty_shortcut(terminal, "Interface Preferences")
+    terminal.wait("General")
+    empty_shortcut(terminal, "General")
     error = "Mihomo is not installed"
     terminal.key(b"s")
     terminal.wait(error)
@@ -183,20 +183,20 @@ def exercise_notifications(terminal, output, profile):
     save_screen(terminal, output, profile, "notification-overflow")
 
     terminal.click_text("Expand")
-    list_cards(terminal, "Interface Preferences", minimum=2)
+    list_cards(terminal, "General", minimum=2)
     terminal.click_text("Proxies")  # Outside click collapses without opening that page.
     terminal.wait_absent("Notifications")
-    terminal.wait("Interface Preferences")
+    terminal.wait("General")
     terminal.key(b"\x0e")
-    list_cards(terminal, "Interface Preferences", minimum=2)
+    list_cards(terminal, "General", minimum=2)
     terminal.key(b"\x0e")
     terminal.wait_absent("Notifications")
     terminal.click_text("Expand")
-    list_cards(terminal, "Interface Preferences", minimum=2)
+    list_cards(terminal, "General", minimum=2)
     for context in ("Start service", "Restart service", "Stop service"):
         terminal.wait(context)
     save_screen(terminal, output, profile, "notification-list")
-    cards = list_cards(terminal, "Interface Preferences", minimum=3)
+    cards = list_cards(terminal, "General", minimum=3)
     for (_, y), context in zip(cards, ("Start service", "Restart service", "Stop service")):
         row = "".join(terminal.screen.cells[y])
         if context + ": " + error not in row:
@@ -364,7 +364,7 @@ def exercise_profile_updates(terminal, output, profile, command, directory):
     terminal.click_text("Update all")
     terminal.wait("Update all:")
     terminal.key(b"7")
-    terminal.wait("Interface Preferences")
+    terminal.wait("General")
     terminal.wait("Lab-03")
     close, lines = error_corner(terminal)
     full = " ".join(" ".join(lines).split())
@@ -381,7 +381,7 @@ def exercise_profile_updates(terminal, output, profile, command, directory):
     terminal.click_text("Update all")
     terminal.wait("Update all:")
     terminal.key(b"7")
-    terminal.wait("Interface Preferences")
+    terminal.wait("General")
     terminal.click_text("Details")
     terminal.wait_absent("Details")
     close, content = error_corner(terminal)
@@ -394,7 +394,7 @@ def exercise_profile_updates(terminal, output, profile, command, directory):
         raise AssertionError("Scrolling the wide detail displaced its close button")
     terminal.key(b"\x1b")
     terminal.wait("Details")
-    terminal.wait("Interface Preferences")
+    terminal.wait("General")
 
     terminal.resize(40, 24)
     terminal.wait("Menu")  # Open the stack only after the narrower viewport is active.

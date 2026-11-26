@@ -1,7 +1,7 @@
 {
   "settings.numberKeys": "Enter save · Esc cancel",
   "settings.numberInvalid": "Enter a positive whole number · Esc cancel",
-  "settings.interface": "Interface Preferences",
+  "settings.interface": "General",
   "settings.chooseLanguage": "Choose language",
   "settings.keyHintsHint": "Show the bottom shortcut bar · Ctrl+T",
   "settings.theme": "Theme",
