@@ -158,7 +158,8 @@ func settingsInterface(o dashboardOptions, width int) dashboardBlock {
 		settingsSelectRow(o, "settings.language", tr("dashboard.language.title")),
 		hints,
 		settingsThemeRow(o),
-		{label: tr("settings.editor"), actions: []overviewControlButton{{id: "editor.configure", label: tr("settings.edit"), enabled: !o.Busy}}},
+		{label: tr("settings.editor"), value: clean(o.EditorCommand), control: settingsLink, rightAlign: true,
+			actions: []overviewControlButton{{id: "editor.configure", label: "›", enabled: !o.Busy}}},
 	})
 }
 
@@ -354,7 +355,7 @@ func renderSettingsRow(o dashboardOptions, row settingsRow, inner, labelColumn i
 	}
 	// A shared label column keeps values close to their names on wide cards.
 	// Long labels, values and action groups flow below instead of truncating.
-	if row.value != "" {
+	if row.value != "" && row.control != settingsLink {
 		valueWidth := ansi.StringWidth(row.value)
 		column := labelColumn + 2
 		if row.control == settingsReadOnly {
@@ -391,7 +392,19 @@ func renderSettingsRow(o dashboardOptions, row settingsRow, inner, labelColumn i
 				if !action.enabled {
 					ink = disabled
 				}
-				face = style(action.label, ink)
+				caption := action.label
+				if row.value != "" {
+					// Keep the arrow visible when a command is too long for the row.
+					suffixWidth := 1 + ansi.StringWidth(caption)
+					room := inner - ansi.StringWidth(row.label) - 2
+					if room <= suffixWidth {
+						room = inner
+					}
+					if preview := cellCrop(row.value, room-suffixWidth); preview != "" {
+						caption = preview + " " + caption
+					}
+				}
+				face = style(caption, ink)
 			case settingsAddress:
 				ink := accent
 				if !action.enabled {

@@ -388,6 +388,7 @@ func (m *Model) dashboardOptions() dashboardOptions {
 	}
 	o.SelectedGroup = cmp.Or(m.overviewGroup, m.proxies.activeGroup)
 	o.Theme, o.EffectiveTheme = m.theme, m.effectiveTheme()
+	o.EditorCommand = m.editorPreference
 	o.TrafficHistory, o.TrafficNow = m.runtime.history.points, o.Now
 	o.Monochrome = m.monochrome()
 	if m.menu.open && m.menu.dropdown != nil {

@@ -37,6 +37,7 @@ type dashboardOptions struct {
 
 	Locale                          i18n.Localizer
 	Theme, EffectiveTheme           string
+	EditorCommand                   string
 	MessageTransient                bool
 	MessageInformational            bool
 	Width, Height                   int

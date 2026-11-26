@@ -215,6 +215,38 @@ func TestSettingsProxyAuthSummary(t *testing.T) {
 	}
 }
 
+func TestSettingsEditorRowShowsSavedCommandAndOpensFullValue(t *testing.T) {
+	const width = 40
+	for _, tc := range []struct {
+		command, suffix string
+	}{
+		{"", "›"},
+		{"nvim -f", "nvim -f ›"},
+		{"nvim --cmd 'echo " + strings.Repeat("编辑", 15) + "'", "… ›"},
+	} {
+		m := ready(&fakeBackend{prefs: app.Preferences{Editor: tc.command}})
+		m.page, m.focus, m.width, m.height = "settings", "settings.language", width, 24
+		m.locale = i18n.New(i18n.Chinese)
+		m.layout()
+		row := findTarget(t, m, "editor.configure")
+		if row.W != dashboardBodyWidth(m.navigationOptions()) || row.H != 1 {
+			t.Fatalf("command %q should have one full-width row: %+v", tc.command, row)
+		}
+		line := strings.TrimSpace(settingsPaintedTarget(t, m.screen, m.targets, row.ID))
+		label := m.tr("settings.editor")
+		if !strings.HasPrefix(line, label) || !strings.HasSuffix(line, tc.suffix) {
+			t.Fatalf("command %q rendered as %q", tc.command, line)
+		}
+		if tc.command == "" && strings.TrimSpace(strings.TrimPrefix(line, label)) != "›" {
+			t.Fatalf("automatic editor should show just an arrow: %q", line)
+		}
+		m, _ = click(m, row)
+		if m.form != "editor-preference" || m.input.Value() != tc.command {
+			t.Fatalf("editor row did not open complete command %q", tc.command)
+		}
+	}
+}
+
 func TestCoreSettingsTabKeyboardAndMouseNavigation(t *testing.T) {
 	m := ready(&fakeBackend{snapshot: settingsTestSnapshot()})
 	directionCleanup(t, &m)

@@ -30,7 +30,6 @@
   "settings.coreSaved": "已保存%s",
   "settings.autostart": "自动启动",
   "settings.afterInstall": "安装内核后可用",
-  "settings.edit": "编辑 ›",
   "settings.core": "内核管理",
   "settings.manage": "管理 / 更新 ›",
   "settings.remove": "卸载内核",
