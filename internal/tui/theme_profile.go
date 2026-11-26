@@ -114,7 +114,7 @@ func terminalColor(c color.Color, profile colorprofile.Profile) color.Color {
 		{bg, 236, 0},
 		{panel, 235, 0},
 		{raised, 237, 0},
-		{tooltipBackground, 59, 0},
+		{tooltipBackground, 233, 0},
 		{sidebarBackground, 234, 0},
 		{inputBackground, 235, 0},
 		{text, 253, 15},

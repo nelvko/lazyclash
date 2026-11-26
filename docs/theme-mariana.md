@@ -60,7 +60,7 @@ Mariana 的背景变量 `blue3 = hsl(210, 15%, 22%)` 未取整 RGB 为 `(47.685,
 | `bg` | `#303841` | A，Mariana `background=var(blue3)` |
 | `panel` | `#2b323a` | B 计算 / C 用途，Adaptive `light_bg`，用于克制的卡片底色 |
 | `raised` | `#3a424a` | B 计算 / C 用途，Adaptive white alpha .05 覆盖正文背景，用于弹窗 |
-| `tooltipBackground` | `#536170` | C，真彩和 256 色的说明浮层使用较亮底色，左右各留一格。256 色映射到 59（`#5f5f5f`）。16 色和无色使用单线边框。 |
+| `tooltipBackground` | `#171d24` | C，真彩和 256 色的说明浮层使用深墨灰底色，左右各留一格。256 色映射到 233（`#121212`），与焦点行的底色 237 有 1.65∶1 的对比度。16 色和无色使用单线边框。 |
 | `sidebarBackground` | `#1d2227` | B，Adaptive `medium_dark_bg` |
 | `inputBackground` | `#282b2f` | B 计算 / C 用途，Adaptive 输入 modifier 作用于 Mariana 背景 |
 | `text` | `#d8dee9` | A，Mariana `foreground=var(white3)=hsl(219,28%,88%)` |
