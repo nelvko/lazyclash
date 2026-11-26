@@ -463,14 +463,14 @@ func TestSettingsOnlyOffersAvailableActions(t *testing.T) {
 			t.Errorf("missing %s", id)
 		}
 	}
-	for _, id := range []string{"runtime-settings", "autostart-enable", "restart"} {
+	for _, id := range []string{"runtime-settings", autostartToggleTarget, "restart"} {
 		if hasAction(regions, id) {
 			t.Errorf("uninstalled core offers %s", id)
 		}
 	}
 	o.Snapshot.Installed = true
 	_, regions, _ = renderDashboard(o)
-	for _, id := range []string{"install", "runtime-settings", "autostart-enable", "restart"} {
+	for _, id := range []string{"install", "runtime-settings", autostartToggleTarget, "restart"} {
 		if !hasAction(regions, id) {
 			t.Errorf("installed settings missing %s", id)
 		}

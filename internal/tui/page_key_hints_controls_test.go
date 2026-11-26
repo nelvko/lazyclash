@@ -98,7 +98,7 @@ func TestSettingsHintsNameTheFocusedControl(t *testing.T) {
 		for _, test := range []struct{ focus, label string }{
 			{"settings.language", "settings.chooseLanguage"}, {"mode.direct", "navigation.controls.applyMode"},
 			{"runtime-settings", "navigation.controls.editPorts"}, {"key-hints.toggle", "navigation.controls.hideHints"},
-			{"install", "navigation.controls.manageCore"}, {"autostart-enable", "dashboard.settings.enableAutostart"},
+			{"install", "navigation.controls.manageCore"}, {autostartToggleTarget, "dashboard.settings.enableAutostart"},
 		} {
 			m.focus = test.focus
 			if !strings.HasPrefix(m.contextHelp(), "Enter "+m.tr(test.label)+" · ") {

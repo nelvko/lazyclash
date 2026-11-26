@@ -175,20 +175,25 @@ func settingsThemeRow(o dashboardOptions) settingsRow {
 	return row
 }
 
+const autostartToggleTarget = "autostart.toggle"
+
+func autostartActionLabel(enabled bool) string {
+	if enabled {
+		return "dashboard.settings.disableAutostart"
+	}
+	return "dashboard.settings.enableAutostart"
+}
+
 func settingsAutostart(o dashboardOptions) settingsRow {
 	tr, s := o.Locale.T, o.Snapshot
 	autostart := settingsRow{label: tr("settings.autostart"), value: tr("settings.afterInstall")}
 	if s.Installed {
-		id, command := "autostart-enable", "dashboard.settings.enableAutostart"
-		if s.Service.Enabled {
-			id, command = "autostart-disable", "dashboard.settings.disableAutostart"
-		}
 		if s.ServiceError != "" || s.Service.EnableState != "" && s.Service.EnableState != "enabled" && s.Service.EnableState != "disabled" {
 			autostart.control = settingsTrailing
 			autostart.value = tr("dashboard.status.unknown")
-			autostart.actions = []overviewControlButton{{id: id, label: tr(command), enabled: !o.Busy}}
+			autostart.actions = []overviewControlButton{{id: autostartToggleTarget, label: tr(autostartActionLabel(s.Service.Enabled)), enabled: !o.Busy}}
 		} else {
-			autostart = settingsSwitchRow(id, autostart.label, s.Service.Enabled, !o.Busy)
+			autostart = settingsSwitchRow(autostartToggleTarget, autostart.label, s.Service.Enabled, !o.Busy)
 		}
 		if !s.Service.Linger && s.Capabilities.Scope != "system" {
 			autostart.note = tr("dashboard.settings.lingerDisabled")

@@ -280,7 +280,7 @@ func TestSettingsSwitchesAndDropdownsAlignAtCardEdges(t *testing.T) {
 		{"settings.language", "dashboard.language.title", settingsInterface},
 		{"settings.theme", "settings.theme", settingsInterface},
 		{"key-hints.toggle", "dashboard.interface.keyHints", settingsInterface},
-		{"autostart-enable", "settings.autostart", settingsCore},
+		{autostartToggleTarget, "settings.autostart", settingsCore},
 		{"settings.ipv6", "settings.ipv6", settingsMihomo},
 		{"settings.unifiedDelay", "settings.unifiedDelay", settingsMihomo},
 		{"settings.logLevel", "settings.logLevel", settingsMihomo},
@@ -311,7 +311,7 @@ func TestSettingsSwitchesAndDropdownsAlignAtCardEdges(t *testing.T) {
 				labelY, wantX := hit.Y, width-inset-wide.W
 				if width < exactFit {
 					labelY = hit.Y - 1
-					if c.id == "settings.language" || c.id == "settings.theme" || c.id == "key-hints.toggle" || c.id == "autostart-enable" {
+					if c.id == "settings.language" || c.id == "settings.theme" || c.id == "key-hints.toggle" || c.id == autostartToggleTarget {
 						wantX = inset
 					}
 				}
@@ -658,10 +658,10 @@ func TestSettingsAutostartAndCoreRestartGuards(t *testing.T) {
 		o.Snapshot.Service.EnableState = "unknown"
 		block = settingsCore(o, 200)
 		body := ansi.Strip(strings.Join(block.lines, "\n"))
-		if !strings.Contains(body, o.Locale.T("dashboard.status.unknown")) || !strings.Contains(settingsPaintedTarget(t, body, block.targets, "autostart-enable"), o.Locale.T("dashboard.settings.enableAutostart")) {
+		if !strings.Contains(body, o.Locale.T("dashboard.status.unknown")) || !strings.Contains(settingsPaintedTarget(t, body, block.targets, autostartToggleTarget), o.Locale.T("dashboard.settings.enableAutostart")) {
 			t.Fatalf("%s: unknown autostart was presented as an observed off state", language)
 		}
-		enable := findTarget(t, Model{targets: block.targets}, "autostart-enable")
+		enable := findTarget(t, Model{targets: block.targets}, autostartToggleTarget)
 		left := ansi.Strip(ansi.Cut(block.lines[enable.Y], 0, 60))
 		if enable.X+enable.W != 200-2 || !strings.HasPrefix(left, "  "+o.Locale.T("settings.autostart")) || !strings.Contains(left, o.Locale.T("dashboard.status.unknown")) {
 			t.Fatalf("%s: unknown autostart should keep its status left and action right: %q", language, ansi.Strip(block.lines[enable.Y]))

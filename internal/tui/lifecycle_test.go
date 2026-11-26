@@ -59,27 +59,37 @@ func TestQuitDuringStartCancelsOnlyTheInteractiveWait(t *testing.T) {
 }
 
 func TestPersistentSettingsUseAsyncApplicationActionsAndShowErrors(t *testing.T) {
-	for _, id := range []string{"autostart-enable", "autostart-disable", "mode.rule", "mode.global", "mode.direct"} {
-		t.Run(id, func(t *testing.T) {
+	for _, tc := range []struct {
+		id               string
+		autostartEnabled bool
+	}{
+		{autostartToggleTarget, false},
+		{autostartToggleTarget, true},
+		{id: "mode.rule"},
+		{id: "mode.global"},
+		{id: "mode.direct"},
+	} {
+		t.Run(tc.id, func(t *testing.T) {
 			calls := 0
 			expected := errors.New("persistent update failed")
 			b := &fakeBackend{snapshot: app.Snapshot{Installed: true}}
+			b.snapshot.Service.Enabled = tc.autostartEnabled
 			b.autostart = func(_ context.Context, enabled bool) error {
 				calls++
-				if enabled != (id == "autostart-enable") {
+				if enabled == tc.autostartEnabled {
 					t.Fatal("wrong autostart preference")
 				}
 				return expected
 			}
 			b.mode = func(_ context.Context, mode string) error {
 				calls++
-				if mode != strings.TrimPrefix(id, "mode.") {
+				if mode != strings.TrimPrefix(tc.id, "mode.") {
 					t.Fatal("wrong routing mode")
 				}
 				return expected
 			}
 			m := ready(b)
-			cmd := m.activate(id)
+			cmd := m.activate(tc.id)
 			if calls != 0 || !m.busy || cmd == nil {
 				t.Fatal("persistent operation blocked the event loop")
 			}
@@ -88,6 +98,28 @@ func TestPersistentSettingsUseAsyncApplicationActionsAndShowErrors(t *testing.T)
 				t.Fatal("application failure became a successful UI operation")
 			}
 		})
+	}
+}
+
+func TestAutostartToggleRetainsFocusAfterRefresh(t *testing.T) {
+	b := &fakeBackend{snapshot: settingsTestSnapshot()}
+	b.autostart = func(_ context.Context, enabled bool) error {
+		b.snapshot.Service.Enabled = enabled
+		return nil
+	}
+	m := ready(b)
+	directionCleanup(t, &m)
+	m.page, m.focus, m.width, m.height = "settings", "settings.language", 160, 45
+	m.layout()
+	m, cmd := click(m, findTarget(t, m, autostartToggleTarget))
+	m = finishProfileJob(t, m, cmd)
+	if !m.snapshot.Service.Enabled || m.focus != autostartToggleTarget || !strings.Contains(m.contextHelp(), m.tr("dashboard.settings.disableAutostart")) {
+		t.Fatalf("enabling autostart should leave its disable action focused, got %q", m.focus)
+	}
+	m, cmd = update(m, special(tea.KeyEnter))
+	m = finishProfileJob(t, m, cmd)
+	if m.snapshot.Service.Enabled || m.focus != autostartToggleTarget || !strings.Contains(m.contextHelp(), m.tr("dashboard.settings.enableAutostart")) {
+		t.Fatalf("disabling autostart should leave its enable action focused, got %q", m.focus)
 	}
 }
 

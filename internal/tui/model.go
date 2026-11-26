@@ -1479,8 +1479,8 @@ func (m *Model) activate(id string) tea.Cmd {
 		return m.begin(m.tr("model.saving_guide"), m.tr("model.guide_dismissed"), func(ctx context.Context) error { return m.backend.SetGuideDismissed(ctx, true) }, notificationOperation{Key: "guide.dismiss", Context: m.tr("dashboard.guide.later")})
 	case id == "start" || id == "stop" || id == "restart":
 		return m.serviceAction(id)
-	case id == "autostart-enable" || id == "autostart-disable":
-		enabled := id == "autostart-enable"
+	case id == autostartToggleTarget:
+		enabled := !m.snapshot.Service.Enabled
 		return m.begin(m.tr("model.updating_autostart"), m.tr("model.autostart_saved"), func(ctx context.Context) error { return m.backend.SetAutostart(ctx, enabled) }, notificationOperation{Key: id, Context: m.tr("settings.autostart")})
 	case strings.HasPrefix(id, "mode."):
 		if m.busy || m.quitting {

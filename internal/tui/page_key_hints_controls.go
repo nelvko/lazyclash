@@ -176,10 +176,8 @@ func (m *Model) settingsContextHelp() string {
 		label = "dashboard.settings.stop"
 	case "restart", "core.restart":
 		label = "dashboard.action.restart"
-	case "autostart-enable":
-		label = "dashboard.settings.enableAutostart"
-	case "autostart-disable":
-		label = "dashboard.settings.disableAutostart"
+	case autostartToggleTarget:
+		label = autostartActionLabel(m.snapshot.Service.Enabled)
 	case "tun.enable":
 		label = "navigation.controls.reviewTUN"
 	case "tun.disable":
