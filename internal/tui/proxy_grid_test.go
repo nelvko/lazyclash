@@ -148,13 +148,13 @@ func TestProxyGridFitsItsCardEdgesToTerminalSizeAndColors(t *testing.T) {
 
 func TestProxyCardsCenterBothTextRowsAndAlignTheSelectedRail(t *testing.T) {
 	for _, tc := range []struct {
-		name, surface   string
-		selected, hover bool
+		name, surface, meta string
+		selected, hover     bool
 	}{
-		{"normal", raised, false, false},
-		{"hover", buttonHoverBackground, false, true},
-		{"selected", buttonSelectedBackground, true, false},
-		{"hover on selected", buttonSelectedBackground, true, true},
+		{"normal", panel, muted, false, false},
+		{"hover", raised, proxyNodeEmphasizedMeta, false, true},
+		{"selected", proxyNodeSelectedBackground, proxyNodeEmphasizedMeta, true, false},
+		{"hover on selected", proxyNodeSelectedBackground, proxyNodeEmphasizedMeta, true, true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			m, _ := proxiesModel(t, 150, 40)
@@ -173,7 +173,7 @@ func TestProxyCardsCenterBothTextRowsAndAlignTheSelectedRail(t *testing.T) {
 				attrs                         uint8
 			}{
 				{1, 0, "▄", tc.surface, bg, 0},
-				{2, 1, "H", text, tc.surface, uv.AttrBold}, {2, 2, "S", muted, tc.surface, 0},
+				{2, 1, "H", text, tc.surface, uv.AttrBold}, {2, 2, "S", tc.meta, tc.surface, 0},
 				{1, 3, "▀", tc.surface, bg, 0},
 			} {
 				got := screen.CellAt(pixel.x, pixel.y)

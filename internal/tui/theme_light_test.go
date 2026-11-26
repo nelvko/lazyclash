@@ -58,6 +58,32 @@ func TestLightThemePaintsEveryPageWithoutMovingControls(t *testing.T) {
 	}
 }
 
+func TestLightThemeProxyCardsKeepMetadataAndDelayColors(t *testing.T) {
+	m, _ := proxiesModel(t, 160, 40)
+	m.theme = app.ThemeLight
+	m.snapshot.Groups[0].Now = "HK 01"
+	m.snapshot.Proxies["HK 02"].History[0].Delay = 250
+	m.hover = "node.0.2"
+	m.layout()
+	screen := themeViewCells(m)
+	for _, tc := range []struct{ index, protocol, delayColor, background string }{
+		{"0.1", "S", mistGreen, mistSelection},
+		{"0.2", "T", mistAmber, "#d9e3eb"},
+		{"0.3", "V", mistGreen, mistCard},
+	} {
+		card := findTarget(t, m, "node."+tc.index)
+		delay := findTarget(t, m, "proxies.delay."+tc.index)
+		meta := screen.CellAt(card.X+2, delay.Y+1)
+		value := screen.CellAt(delay.X+delay.W-1, delay.Y)
+		if meta.Content != tc.protocol || value.Content != "s" {
+			t.Fatalf("node %s: expected protocol and latency cells, got %q and %q", tc.index, meta.Content, value.Content)
+		}
+		expectThemeColor(t, "protocol", meta.Style.Fg, mistMuted)
+		expectThemeColor(t, "delay", value.Style.Fg, tc.delayColor)
+		expectThemeColor(t, "card surface", value.Style.Bg, tc.background)
+	}
+}
+
 func TestLightThemeRolesAndTerminalProfiles(t *testing.T) {
 	// Each pair represents a component style sent through the same View as a page.
 	pairs := []struct{ fg, bg, wantFg, wantBg string }{
@@ -65,6 +91,7 @@ func TestLightThemeRolesAndTerminalProfiles(t *testing.T) {
 		{muted, sidebarBackground, "#5e6d7c", "#e0e6eb"},
 		{divider, panel, "#ccd5dd", "#e2e8ee"},
 		{accent, buttonSelectedBackground, "#306a9e", "#d0e1ed"},
+		{routingFocus, routingSelectedBackground, mistBlue, mistSelection},
 		{success, panel, "#3d713e", "#e2e8ee"},
 		{warning, panel, "#8d641a", "#e2e8ee"},
 		{errorColor, panel, "#a84a4a", "#e2e8ee"},

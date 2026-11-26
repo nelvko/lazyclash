@@ -654,11 +654,13 @@ def exercise(preview, binary, output, language, profile, args):
         assert terminal.screen.cells[bottom + 1][rail] != "▌", "selection rail extends below the card"
         if profile != "no-color":
             other_x, other_y = candidate_position(terminal, "JP 01")
-            assert terminal.screen.styles[y][x][1] == terminal_color(preview, profile, "425d78", 24), "selected surface lost its blue tint"
+            assert terminal.screen.styles[y][x][1] == terminal_color(preview, profile, "3d546b", 24), "selected surface lost its blue tint"
             assert terminal.screen.styles[y][rail][1] == terminal_color(preview, profile, "85b3e0", 110), "selection rail lost its accent"
-            assert terminal.screen.styles[other_y][other_x][1] == terminal_color(preview, profile, "3a424a", 237), "normal surface lost its raised shade"
+            assert terminal.screen.styles[other_y][other_x][1] == terminal_color(preview, profile, "262d34", 235), "normal node lost its card background"
+            assert terminal.screen.styles[y + 1][x][0] == terminal_color(preview, profile, "cfd5df", 188), "selected metadata lost its contrast"
             hover_cell(terminal, other_x, other_y)
-            assert terminal.screen.styles[other_y][other_x][1] == terminal_color(preview, profile, "46515c", 239), "hovered surface did not brighten"
+            assert terminal.screen.styles[other_y][other_x][1] == terminal_color(preview, profile, "3a424a", 237), "hovered surface did not brighten"
+            assert terminal.screen.styles[other_y + 1][other_x][0] == terminal_color(preview, profile, "cfd5df", 188), "hovered metadata lost its contrast"
             hover_cell(terminal, 0, 0)
         preview.capture(terminal, output, "selected", args)
         before = terminal.screen.text()
@@ -749,7 +751,7 @@ def exercise(preview, binary, output, language, profile, args):
                 delay_x, _, width = delay_slot(terminal, name)
                 value_color = terminal.screen.styles[y][delay_x + width - 1][0]
                 if name == "HK 01":
-                    assert value_color == terminal_color(preview, profile, "99c794", 114), "45 ms is not green"
+                    assert value_color == terminal_color(preview, profile, "b8dfb3", 157), "selected 45 ms value lost its light green"
                 elif name == "US 01":
                     assert value_color == terminal_color(preview, profile, "f9ae58", 215), "211 ms is not amber"
                 else:

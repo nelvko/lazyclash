@@ -53,6 +53,11 @@ const (
 	routingSelectedHoverBackground = "#57738f"
 	routingFocus                   = "#ffcc83"
 
+	proxyNodeSelectedBackground = "#3d546b"
+	proxyNodeEmphasizedMeta     = "#cfd5df"
+	proxyNodeEmphasizedFast     = "#b8dfb3"
+	proxyNodeEmphasizedSlow     = routingFocus
+
 	settingsSwitchOnThumb = "#a8cff2"
 )
 

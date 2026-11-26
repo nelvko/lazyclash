@@ -8,6 +8,7 @@ import (
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/i18n"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
@@ -379,6 +380,21 @@ func (m *Model) proxyDelayLabel(group, node string) (string, string) {
 		return m.tr("proxies.not_tested"), muted
 	}
 }
+
+func proxyNodeForeground(foreground string, emphasized bool) string {
+	if emphasized {
+		switch foreground {
+		case muted:
+			return proxyNodeEmphasizedMeta
+		case success:
+			return proxyNodeEmphasizedFast
+		case warning:
+			return proxyNodeEmphasizedSlow
+		}
+	}
+	return foreground
+}
+
 func (m *Model) proxyNode(gi, ni, width int) dashboardBlock {
 	g := m.snapshot.Groups[gi]
 	node := g.All[ni]
@@ -386,12 +402,18 @@ func (m *Model) proxyNode(gi, ni, width int) dashboardBlock {
 	referenceID := fmt.Sprintf("proxies.reference.%d.%d", gi, ni)
 	delayID := fmt.Sprintf("proxies.delay.%d.%d", gi, ni)
 	selected := g.Now == node && g.Type != "LoadBalance" && g.Type != "Relay"
-	surface := raised
+	hovered := m.hover == id || m.hover == referenceID || m.hover == delayID
+	dark := m.effectiveTheme() == app.ThemeDark
+	surface := panel
 	if selected {
-		surface = buttonSelectedBackground
-	} else if m.hover == id || m.hover == referenceID || m.hover == delayID {
-		surface = buttonHoverBackground
+		surface = proxyNodeSelectedBackground
+	} else if hovered {
+		surface = raised
+		if !dark {
+			surface = buttonHoverBackground
+		}
 	}
+	emphasized := dark && (selected || hovered)
 	prefix := " "
 	if m.focus == id || m.focus == delayID {
 		prefix = "›"
@@ -422,6 +444,7 @@ func (m *Model) proxyNode(gi, ni, width int) dashboardBlock {
 	if delayEnabled && !delayPending && (m.hover == delayID || m.focus == delayID) {
 		delaySurface = inputBackground
 	}
+	color = proxyNodeForeground(color, emphasized && delaySurface == surface)
 	value = cellCrop(value, valueWidth)
 	value = strings.Repeat(" ", valueWidth-ansi.StringWidth(value)) + value
 	trailing := themed(strings.Repeat(" ", rightPadding), text, surface, false)
@@ -432,7 +455,7 @@ func (m *Model) proxyNode(gi, ni, width int) dashboardBlock {
 	if reference {
 		metaWidth = nameWidth
 	}
-	meta := edge + themed(" "+cellPad(clean(m.proxyNodeMeta(node)), metaWidth), muted, surface, false)
+	meta := edge + themed(" "+cellPad(clean(m.proxyNodeMeta(node)), metaWidth), proxyNodeForeground(muted, emphasized), surface, false)
 	var actions []hitRegion
 	actionX := width - rightPadding - valueWidth
 	if valueWidth > 0 {
