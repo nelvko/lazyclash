@@ -4,7 +4,7 @@
 - [ ] 语义化 Icon 系统 + 多套图标集 + 自动降级
 - [ ] 设置界面新增展示版本号，并可检测更新
 - [ ] switch 开关 ，折线图统计
-- [ ] termius 主题会降级，export COLORTERM=truecolor 后恢复
+- [x] Termius 会话提供 `TERM_PROGRAM=Termius` 时自动使用真彩色。
 - 默认使用 Lip Gloss 的终端能力自动检测。
 
   支持用户手动指定 `truecolor`。

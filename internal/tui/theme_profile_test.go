@@ -48,6 +48,29 @@ func TestMarianaTerminalProfilePreservesSubparametersAndUnderlineColor(t *testin
 	}
 }
 
+func TestTermiusColorHint(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		env  []string
+		want string
+	}{
+		{"Termius", []string{"TERM=xterm-256color", "TERM_PROGRAM=Termius"}, "truecolor"},
+		{"empty hint", []string{"TERM=xterm-256color", "TERM_PROGRAM=Termius", "COLORTERM="}, "truecolor"},
+		{"anonymous xterm", []string{"TERM=xterm-256color"}, ""},
+		{"existing hint", []string{"TERM=xterm-256color", "TERM_PROGRAM=Termius", "COLORTERM=256color"}, "256color"},
+		{"no color", []string{"TERM=xterm-256color", "TERM_PROGRAM=Termius", "NO_COLOR=1"}, ""},
+		{"dumb", []string{"TERM=dumb", "TERM_PROGRAM=Termius"}, ""},
+		{"inside tmux", []string{"TERM=xterm-256color", "TERM_PROGRAM=Termius", "TMUX=/tmp/tmux/default,1,0"}, ""},
+		{"inside screen", []string{"TERM=xterm-256color", "TERM_PROGRAM=Termius", "STY=123.session"}, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := terminalColorEnvironment(tc.env).Getenv("COLORTERM"); got != tc.want {
+				t.Errorf("COLORTERM = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestNoColorCannotBeOverriddenByCapabilityResponse(t *testing.T) {
 	for _, value := range []string{"1", "true", "yes", "false", "0", "please"} {
 		profile := themeProfile([]string{"TERM=xterm-256color", "NO_COLOR=" + value}, colorprofile.TrueColor)

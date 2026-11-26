@@ -1,5 +1,11 @@
 # 验证入口
 
+## Termius 真彩色（2026-11-27）
+
+在 Termius 10.3.0 的 189×47 本地标签中进入 Debian/arm64 虚拟机，以隔离数据目录运行产品二进制。会话自然提供 `TERM=xterm-256color` 和 `TERM_PROGRAM=Termius`，`COLORTERM` 为空；实测概览背景为 `#2e3842`。
+
+用 `scripts/theme-pty.py --colors-only` 在 macOS 和 Linux 核对了 160×45 概览。Termius 与显式真彩色的主背景和卡片底色一致；匿名 256 色会话使用灰阶备用色，`NO_COLOR` 会话也通过。[Termius 配色](../.test-artifacts/termius-colors/linux/termius-overview-160x45.png) · [256 色配色](../.test-artifacts/termius-colors/linux/256-overview-160x45.png)
+
 ## 雾蓝灰浅色主题（2026-11-27）
 
 用正式程序在独立配置目录中保存主题并重启。手动「浅色」在深色终端也显示雾蓝灰。「自动」收到浅色、深色报告时切换配色，等待首次报告时使用 Mariana，延迟回复后随即更新。另在 120×32 终端验证了 256 色、16 色和无色输出。[自动浅色](../.test-artifacts/mist-blue-release/auto-light.png) · [自动深色](../.test-artifacts/mist-blue-release/auto-dark.png)

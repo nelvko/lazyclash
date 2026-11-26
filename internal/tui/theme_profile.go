@@ -7,8 +7,20 @@ import (
 	"unicode/utf8"
 
 	"github.com/charmbracelet/colorprofile"
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 )
+
+// Termius can identify itself while advertising only xterm-256color. Supply
+// the missing hint to the TUI, leaving multiplexers to advertise their own capabilities.
+func terminalColorEnvironment(env uv.Environ) uv.Environ {
+	if env.Getenv("TERM") == "xterm-256color" && strings.EqualFold(env.Getenv("TERM_PROGRAM"), "Termius") &&
+		env.Getenv("COLORTERM") == "" && env.Getenv("NO_COLOR") == "" &&
+		env.Getenv("TMUX") == "" && env.Getenv("STY") == "" {
+		return append(env, "COLORTERM=truecolor")
+	}
+	return env
+}
 
 func (m *Model) lowColor() bool {
 	return m.noColor || m.colorProfile != colorprofile.Unknown && m.colorProfile <= colorprofile.ANSI

@@ -239,7 +239,9 @@ python3 scripts/theme-preview.py .test-artifacts/mariana --font /path/to/monospa
 
 Bubble Tea v2 在启动时通过当前输出终端、环境变量、terminfo 及适用时的 tmux 信息检测色彩能力，并发送 `ColorProfileMsg`。LazyClash 在该消息到达前用当前环境给出初值，随后按检测结果重绘；操作步骤、焦点、输入和安装任务均不重置。没有按操作系统选择色彩模式，也没有无条件强制真彩色。
 
-本次不主动发送 RGB/Tc 能力查询：固定版本 Bubble Tea 的 `termcap.go` 明确提示，部分终端（例如 Apple Terminal）可能错误响应该查询并破坏输出。真正支持真彩色但连接链路只声明 256 色的终端，会使用下表中的明确备用配色；用户仍可在确知终端支持时为单次进程声明 `COLORTERM=truecolor`。
+Termius 会话如果报告 `TERM_PROGRAM=Termius` 和 `TERM=xterm-256color`，即使缺少 `COLORTERM`，直接运行 `lazyclash` 也会使用真彩色。这项识别只在当前 TUI 内生效，并尊重已有的 `COLORTERM`、`NO_COLOR` 以及 tmux 和 GNU Screen 的能力检测。
+
+如果 SSH 等连接没有传递终端标识，LazyClash 会按检测到的能力选择配色。只声明 256 色时使用下表中的备用配色；已知终端支持真彩色时，也可为单次进程声明 `COLORTERM=truecolor`。程序不会主动发送 RGB/Tc 查询，部分终端可能错误处理该查询并破坏输出。
 
 下面的数字分别是标准 xterm 256 色索引和 ANSI 16 色索引，属于 C 类终端适配。256 色表使用 16 以上的固定索引，避免依赖用户自定义的前十六色；16 色表不可避免地受终端主题影响。低色模式合并部分背景层次，继续依靠边框、文字和非颜色的当前项/焦点标记区分状态。
 

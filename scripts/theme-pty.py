@@ -6,6 +6,7 @@ VM, install a core/service or change system network settings. First-run
 guidance may perform its automatic read-only stable-version check.
 --output stores per-profile raw PTY captures and current-screen text snapshots.
 Pass --notifications-only to exercise feedback, compact layouts and cancellation.
+Pass --colors-only to check the startup palette on the Overview screen.
 """
 import argparse
 import importlib.util
@@ -21,9 +22,10 @@ import uuid
 
 
 HERE = Path(__file__).resolve().parent
-SPEC = importlib.util.spec_from_file_location("lazyclash_pty_smoke", HERE / "pty-smoke.py")
-SMOKE = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(SMOKE)
+SPEC = importlib.util.spec_from_file_location("lazyclash_pty_preview", HERE / "onboarding-pty.py")
+PREVIEW = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(PREVIEW)
+SMOKE = PREVIEW.SMOKE
 
 # Terminal deliberately defaults to NO_COLOR for the lifecycle test suite. This
 # child-only wrapper selects each color capability without changing that suite,
@@ -31,11 +33,13 @@ SPEC.loader.exec_module(SMOKE)
 WRAPPER = """
 import os, sys
 profile = sys.argv[1]
-for name in ('NO_COLOR', 'COLORTERM', 'CLICOLOR', 'CLICOLOR_FORCE', 'TERM_PROGRAM', 'TMUX', 'TMUX_PANE'):
+for name in ('NO_COLOR', 'COLORTERM', 'CLICOLOR', 'CLICOLOR_FORCE', 'TERM_PROGRAM', 'TMUX', 'TMUX_PANE', 'STY'):
     os.environ.pop(name, None)
 os.environ['TERM'] = 'xterm-256color'
 if profile == 'truecolor':
     os.environ['COLORTERM'] = 'truecolor'
+elif profile == 'termius':
+    os.environ['TERM_PROGRAM'] = 'Termius'
 elif profile == 'no-color':
     os.environ['NO_COLOR'] = '1'
 os.execv(sys.argv[2], sys.argv[2:])
@@ -51,6 +55,21 @@ OSC_SET = re.compile(rb"\x1b\](?:10|11);(?!\?)")
 def save_screen(terminal, output, profile, name):
     settle(terminal)
     (output / (profile + "-" + name + ".txt")).write_text(terminal.screen.text() + "\n")
+
+
+def check_overview_colors(screen, profile):
+    if profile == "no-color":
+        return  # The raw output check also rejects styled cells outside this page.
+    canvas, card = ((48, 48, 48), (38, 38, 38)) if profile == "256" else ((46, 56, 66), (38, 45, 52))
+    for label, expected in (("▎ Overview", canvas), ("Core Status", card)):
+        for y, row in enumerate(screen.text().splitlines()):
+            if label in row:
+                x = SMOKE.cell_width(row[:row.index(label)])
+                background = screen.styles[y][x][1]
+                assert background == expected, (profile, label, background, expected)
+                break
+        else:
+            raise AssertionError("Missing overview label: " + label)
 
 
 def settle(terminal):
@@ -461,7 +480,7 @@ def exercise_network(terminal, output, profile):
     terminal.wait("Routing Mode")
 
 
-def exercise(binary, output, profile, notifications_only):
+def exercise(binary, output, profile, notifications_only, colors_only):
     terminal = None
     with tempfile.TemporaryDirectory(prefix="lazyclash-theme-pty-") as temporary:
         home = Path(temporary) / "home"
@@ -470,6 +489,8 @@ def exercise(binary, output, profile, notifications_only):
         command = [sys.executable, "-c", WRAPPER, profile, *product]
         try:
             terminal = SMOKE.Terminal(command)
+            if colors_only:
+                terminal.screen = PREVIEW.StyledScreen(terminal.screen.columns, terminal.screen.rows)
             terminal.wait("Overview")
             terminal.wait_absent("Loading state")
             terminal.wait("q Quit")
@@ -479,17 +500,20 @@ def exercise(binary, output, profile, notifications_only):
             terminal.click_text("Set up later")
             terminal.wait("Routing Mode")
             save_screen(terminal, output, profile, "overview")
-            exercise_notifications(terminal, output, profile)
-            exercise_profile_updates(terminal, output, profile, product, Path(temporary))
-            if not notifications_only:
-                exercise_network(terminal, output, profile)
+            if colors_only:
+                check_overview_colors(terminal.screen, profile)
+            else:
+                exercise_notifications(terminal, output, profile)
+                exercise_profile_updates(terminal, output, profile, product, Path(temporary))
+                if not notifications_only:
+                    exercise_network(terminal, output, profile)
             terminal.exit()
 
             raw = bytes(terminal.raw)
             if OSC_SET.search(raw):
                 raise AssertionError("TUI set the terminal's global foreground/background")
-            if profile == "truecolor" and not RGB.search(raw):
-                raise AssertionError("True Color run emitted no RGB styling")
+            if profile in ("truecolor", "termius") and not RGB.search(raw):
+                raise AssertionError(profile + " run emitted no RGB styling")
             if profile == "256" and (RGB.search(raw) or not INDEXED.search(raw)):
                 raise AssertionError("256-color run did not exclusively use its supported color representation")
             if profile == "no-color":
@@ -500,7 +524,7 @@ def exercise(binary, output, profile, notifications_only):
                     raise AssertionError("NO_COLOR run emitted SGR styling: " + repr(styled[:4]))
             if (home / "installation").exists() or (home / "preferences.json").exists():
                 raise AssertionError("read-only theme exercise installed a core or saved preferences")
-            return {"profile": profile, "status": "passed", "sizes": SIZES + [(40, 24), (40, 13)],
+            return {"profile": profile, "status": "passed", "sizes": [(160, 45)] if colors_only else SIZES + [(40, 24), (40, 13)],
                     "notifications_only": notifications_only,
                     "rgb": bool(RGB.search(raw)), "indexed": bool(INDEXED.search(raw))}
         finally:
@@ -513,14 +537,16 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, required=True, help="Absolute path to an already built lazyclash")
     parser.add_argument("--output", type=Path, required=True, help="Directory for isolated PTY evidence")
-    parser.add_argument("--profile", choices=("all", "truecolor", "256", "no-color"), default="all")
-    parser.add_argument("--notifications-only", action="store_true", help="Run just the notification checks through the product TUI")
+    parser.add_argument("--profile", choices=("all", "truecolor", "termius", "256", "no-color"), default="all")
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--notifications-only", action="store_true", help="Run just the notification checks through the product TUI")
+    group.add_argument("--colors-only", action="store_true", help="Check the startup palette without exercising notification or network controls")
     args = parser.parse_args()
     if not args.binary.is_absolute() or not args.binary.is_file() or not os.access(args.binary, os.X_OK):
         parser.error("--binary must be an absolute path to an executable file")
     args.output.mkdir(parents=True, exist_ok=True)
-    profiles = ("truecolor", "256", "no-color") if args.profile == "all" else (args.profile,)
-    results = [exercise(args.binary, args.output, profile, args.notifications_only) for profile in profiles]
+    profiles = ("truecolor", "termius", "256", "no-color") if args.profile == "all" else (args.profile,)
+    results = [exercise(args.binary, args.output, profile, args.notifications_only, args.colors_only) for profile in profiles]
     (args.output / "results.json").write_text(json.dumps(results, indent=2) + "\n")
     for result in results:
         print("Dark theme PTY %s: passed (%s sizes)" % (result["profile"], len(result["sizes"])))

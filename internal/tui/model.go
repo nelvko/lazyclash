@@ -229,9 +229,9 @@ func New(ctx context.Context, backend Backend, languages ...string) Model {
 	m.logs = newLogsState(m.locale)
 	styleInput(&m.connections.search, bg, false)
 	styleInput(&m.rules.search, inputBackground, false)
-	m.colorProfile = colorprofile.Env(os.Environ())
-	m.noColor = os.Getenv("NO_COLOR") != ""
-	m.colorProfile = themeProfile(os.Environ(), m.colorProfile)
+	env := terminalColorEnvironment(os.Environ())
+	m.colorProfile = themeProfile(env, colorprofile.Env(env))
+	m.noColor = env.Getenv("NO_COLOR") != ""
 	m.prepareNotification("refresh", "")
 	m.syncNotification()
 	m.layout()
@@ -240,7 +240,8 @@ func New(ctx context.Context, backend Backend, languages ...string) Model {
 func Run(ctx context.Context, backend Backend, languages ...string) error {
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	last, err := tea.NewProgram(New(runCtx, backend, languages...), tea.WithoutSignalHandler()).Run()
+	last, err := tea.NewProgram(New(runCtx, backend, languages...),
+		tea.WithEnvironment(terminalColorEnvironment(os.Environ())), tea.WithoutSignalHandler()).Run()
 	if m, ok := last.(Model); ok && m.profileEditor.tempDir != "" {
 		fmt.Fprintln(os.Stderr, m.tr("profile_editor.recovery_file", clean(m.profileEditor.path)))
 	}
