@@ -16,7 +16,7 @@ func TestSidebarLogoIsClickableWithoutBecomingATabStop(t *testing.T) {
 	m.width, m.height = 120, 24
 	m.layout()
 	logoHit := findTarget(t, m, "logo")
-	if logoHit.Y != dashboardGeometry(m.dashboardOptions()).headerY || logoHit.W != sidebarWidth-1 {
+	if logoHit.X != 0 || logoHit.Y != dashboardGeometry(m.dashboardOptions()).headerY || logoHit.W != sidebarWidth {
 		t.Fatalf("unexpected logo target: %+v", logoHit)
 	}
 	for _, target := range m.focusTargets() {
@@ -24,7 +24,7 @@ func TestSidebarLogoIsClickableWithoutBecomingATabStop(t *testing.T) {
 			t.Fatal("logo should be mouse-only and not a tab stop")
 		}
 	}
-	if !strings.Contains(ansi.Strip(m.screen), logo) {
+	if !strings.Contains(ansi.Strip(m.screen), "lazyClash") {
 		t.Fatal("static logo missing from sidebar")
 	}
 }
@@ -60,7 +60,7 @@ func TestSidebarLogoPulseAdvancesAndIgnoresStaleTicks(t *testing.T) {
 	if m.logoFrame != 0 {
 		t.Fatalf("pulse did not settle: frame=%d", m.logoFrame)
 	}
-	if !strings.Contains(ansi.Strip(m.screen), logo) || strings.TrimSpace(ansi.Strip(ansi.Cut(strings.Split(m.screen, "\n")[0], 0, sidebarWidth))) != "" {
+	if !strings.Contains(ansi.Strip(m.screen), "lazyClash") || strings.TrimSpace(ansi.Strip(ansi.Cut(strings.Split(m.screen, "\n")[0], 0, sidebarWidth))) != "" {
 		t.Fatal("settled logo retained a wake frame or dream bubble")
 	}
 	if cmd := m.advanceLogoPulse(logoPulseMsg{generation: generation}); cmd != nil || m.logoFrame != 0 {
@@ -68,8 +68,21 @@ func TestSidebarLogoPulseAdvancesAndIgnoresStaleTicks(t *testing.T) {
 	}
 }
 
-func TestSidebarLogoFramesKeepTheWordmarkAndNavigationFixed(t *testing.T) {
-	centers := []string{"💤", "!!", "..", "z ", " Z", "💤", "💤", "💤", "💤", "💤", "💤", "💤", "💤"}
+// The extra cell in the resting frame belongs on the left. This keeps yClash
+// at the same screen position when the animation replaces z with two cells.
+func assertCenteredSidebarLogo(t *testing.T, row, wordmark string) int {
+	t.Helper()
+	space := sidebarWidth - ansi.StringWidth(wordmark)
+	left := (space + 1) / 2
+	want := strings.Repeat(" ", left) + wordmark + strings.Repeat(" ", space-left)
+	if got := ansi.Cut(row, 0, sidebarWidth); got != want {
+		t.Fatalf("sidebar logo row = %q, want %q", got, want)
+	}
+	return left
+}
+
+func TestSidebarLogoFramesStayCenteredAboveNavigation(t *testing.T) {
+	centers := []string{"z", "!!", "..", "z ", " Z", "💤", "💤", "💤", "💤", "💤", "💤", "💤", "💤"}
 	bubbles := []string{"", "", "", "", "", "", "z", "Z", "Z", "", "z", "Z", ""}
 	offsets := []int{0, 0, 0, 0, 0, 0, 0, 1, 2, 0, 0, 1, 0}
 	for _, size := range [][2]int{{115, 9}, {115, 20}, {120, 24}, {160, 45}} {
@@ -78,24 +91,17 @@ func TestSidebarLogoFramesKeepTheWordmarkAndNavigationFixed(t *testing.T) {
 			baseline, _, _ := renderDashboard(o)
 			baseRows := strings.Split(ansi.Strip(baseline), "\n")
 			headerY := dashboardGeometry(o).headerY
-			logoX := strings.Index(baseRows[headerY], "la")
-			if logoX < 0 {
-				t.Fatal("baseline sidebar logo is missing")
-			}
 			for index, center := range centers {
 				o.LogoFrame = index
 				screen, hits, _ := renderDashboard(o)
 				assertCanvas(t, screen, o.Width, o.Height)
 				assertRegions(t, hits, o.Width, o.Height)
 				rows := strings.Split(ansi.Strip(screen), "\n")
-				wordmark := ansi.Cut(rows[headerY], logoX, logoX+10)
-				if want := "la" + center + "yClash"; wordmark != want {
-					t.Fatalf("frame %d moved or widened the logo: got %q want %q", index, wordmark, want)
-				}
+				logoX := assertCenteredSidebarLogo(t, rows[headerY], "la"+center+"yClash")
 				for row := range rows {
 					if row == headerY {
-						if ansi.Cut(rows[row], 0, logoX) != ansi.Cut(baseRows[row], 0, logoX) || ansi.Cut(rows[row], logoX+10, o.Width) != ansi.Cut(baseRows[row], logoX+10, o.Width) {
-							t.Fatalf("frame %d altered cells outside the fixed logo", index)
+						if ansi.Cut(rows[row], sidebarWidth, o.Width) != ansi.Cut(baseRows[row], sidebarWidth, o.Width) {
+							t.Fatalf("frame %d altered the page header", index)
 						}
 						continue
 					}

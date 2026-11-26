@@ -75,8 +75,8 @@ func TestSidebarLogoIntroDelayAndNaturalCompletionDoNotReplay(t *testing.T) {
 	if cmd == nil || !m.logoIntro.waiting || m.logoIntro.frame != 0 || m.screen != before {
 		t.Fatal("intro did not schedule a static initial delay")
 	}
-	if logoIntroDelay != 200*time.Millisecond || time.Duration(logoIntroFrames)*logoIntroInterval != 800*time.Millisecond {
-		t.Fatal("intro timing changed from a 200ms pause and 800ms breath")
+	if logoIntroDelay != 200*time.Millisecond || logoIntroFrames != 20 || logoIntroInterval != 50*time.Millisecond {
+		t.Fatalf("intro delay %s, %d frames at %s; want 200ms then 20 frames at 50ms", logoIntroDelay, logoIntroFrames, logoIntroInterval)
 	}
 	generation := m.logoGeneration
 	msg, ok := cmd().(logoIntroMsg)
@@ -93,6 +93,9 @@ func TestSidebarLogoIntroDelayAndNaturalCompletionDoNotReplay(t *testing.T) {
 		t.Fatal("completed intro retained a timer or replay opportunity")
 	}
 	m.layout()
+	if !strings.Contains(ansi.Strip(m.screen), "lazyClash") {
+		t.Fatal("completed intro did not restore the resting z")
+	}
 	for _, event := range []string{"page", "resize", "overlay", "restore"} {
 		switch event {
 		case "page":
@@ -220,21 +223,10 @@ func TestSidebarLogoIntroInitialFailureDoesNotReplayAfterRefresh(t *testing.T) {
 	}
 }
 
-func TestSidebarLogoIntroKeepsWordmarkFixedWhileGrowingSleepyCenter(t *testing.T) {
-	centers := []string{
-		"💤",
-		"z ", "z ", "z ", "z ", "z ", "z ",
-		" Z", " Z", " Z", " Z", " Z", " Z", " Z",
-		"💤", "💤", "💤", "💤", "💤", "💤", "💤",
-	}
-	for frame, center := range centers {
-		if got := logoIntroCenter(frame); got != center || ansi.StringWidth(got) != 2 {
-			t.Fatalf("intro frame %d center = %q, want two cells %q", frame, got, center)
-		}
-	}
+func TestSidebarLogoIntroBrieflyReplacesZWithSleepEmoji(t *testing.T) {
 	for _, frame := range []int{-10, -1, logoIntroFrames + 1, 100} {
-		if got := logoIntroCenter(frame); got != "💤" {
-			t.Fatalf("invalid intro frame %d center = %q, want the resting emoji", frame, got)
+		if got := logoIntroCenter(frame); got != "z" {
+			t.Fatalf("invalid intro frame %d center = %q, want the resting z", frame, got)
 		}
 	}
 	if logoGradientColor(0, 0) != logoGradientStart || logoGradientColor(0, logoIntroFrames) != logoGradientStart || logoGradientColor(0, logoIntroFrames/2) != "#c5efff" {
@@ -259,21 +251,19 @@ func TestSidebarLogoIntroKeepsWordmarkFixedWhileGrowingSleepyCenter(t *testing.T
 		baseRows := strings.Split(baseline, "\n")
 		basePlain := strings.Split(ansi.Strip(baseline), "\n")
 		headerY := dashboardGeometry(o).headerY
-		logoX := strings.Index(basePlain[headerY], "la")
-		if logoX < 0 {
-			t.Fatal("baseline sidebar wordmark is missing")
-		}
-		for frame, center := range centers {
+		for frame := 0; frame <= logoIntroFrames; frame++ {
 			o.LogoIntroFrame = frame
 			screen, hits, _ := renderDashboard(o)
 			assertCanvas(t, screen, o.Width, o.Height)
 			assertRegions(t, hits, o.Width, o.Height)
 			rows := strings.Split(ansi.Strip(screen), "\n")
-			if want := "la" + center + "yClash"; ansi.Cut(rows[headerY], logoX, logoX+10) != want {
-				t.Fatalf("%dx%d frame %d moved or widened the wordmark: %q", size[0], size[1], frame, rows[headerY])
+			want := "lazyClash"
+			if frame >= 7 && frame <= 14 {
+				want = "la💤yClash"
 			}
-			if ansi.Cut(rows[headerY], 0, logoX) != ansi.Cut(basePlain[headerY], 0, logoX) || ansi.Cut(rows[headerY], logoX+10, o.Width) != ansi.Cut(basePlain[headerY], logoX+10, o.Width) {
-				t.Fatalf("frame %d changed cells outside the fixed wordmark", frame)
+			assertCenteredSidebarLogo(t, rows[headerY], want)
+			if ansi.Cut(rows[headerY], sidebarWidth, o.Width) != ansi.Cut(basePlain[headerY], sidebarWidth, o.Width) {
+				t.Fatalf("frame %d changed the page header", frame)
 			}
 			for row, value := range strings.Split(screen, "\n") {
 				if row != headerY && value != baseRows[row] {

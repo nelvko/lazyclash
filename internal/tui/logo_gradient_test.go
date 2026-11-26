@@ -2,6 +2,7 @@ package tui
 
 import (
 	"image/color"
+	"slices"
 	"strings"
 	"testing"
 
@@ -10,13 +11,13 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-func TestSidebarLogoGradientUsesFixedColumnsAcrossClickFrames(t *testing.T) {
+func TestSidebarLogoGradientKeepsLetterColorsAcrossClickFrames(t *testing.T) {
 	baseline := logoText(sidebarBackground, false)
 	colors := logoForegroundCells(baseline)
-	if ansi.Strip(baseline) != logo || len(colors) != 10 {
+	if ansi.Strip(baseline) != "lazyClash" || len(colors) != 9 {
 		t.Fatal("gradient changed the wordmark or its width")
 	}
-	if colors[0] != logoRGB(lipgloss.Color(logoGradientStart)) || colors[9] != logoRGB(lipgloss.Color(logoGradientEnd)) {
+	if colors[0] != logoRGB(lipgloss.Color(logoGradientStart)) || colors[len(colors)-1] != logoRGB(lipgloss.Color(logoGradientEnd)) {
 		t.Fatal("wordmark did not begin in blue and end in purple")
 	}
 	seen := map[[3]uint32]bool{}
@@ -29,30 +30,32 @@ func TestSidebarLogoGradientUsesFixedColumnsAcrossClickFrames(t *testing.T) {
 	if len(seen) < 4 {
 		t.Fatal("wordmark did not render a gradual gradient")
 	}
+	letters := logoOuterLetterColors(colors)
 	for index := 1; index < len(logoFrames); index++ {
 		frame := logoTextFrame(index, 0, sidebarBackground, false)
-		actual := logoForegroundCells(frame)
-		if len(actual) != len(colors) {
-			t.Fatalf("click frame %d changed the wordmark width", index)
-		}
-		for _, column := range []int{0, 1, 4, 5, 6, 7, 8, 9} {
-			want := colors[column]
+		actual := logoOuterLetterColors(logoForegroundCells(frame))
+		for letter, want := range letters {
 			if logoFrameAt(index).wake {
 				want = logoRGB(lipgloss.Color(focus))
 			}
-			if actual[column] != want {
-				t.Fatalf("click frame %d moved the color at fixed wordmark column %d", index, column)
+			if actual[letter] != want {
+				t.Fatalf("click frame %d changed the color of letter %d", index, letter)
 			}
 		}
 	}
 }
 
-func TestSidebarLogoGradientIntroBrightensAndRestoresEachColumn(t *testing.T) {
-	baseline := logoForegroundCells(logoText(sidebarBackground, false))
+// Match the letters on either side of the animated one- or two-cell center.
+func logoOuterLetterColors(cells [][3]uint32) [][3]uint32 {
+	return slices.Concat(cells[:2], cells[len(cells)-len("yClash"):])
+}
+
+func TestSidebarLogoGradientIntroBrightensAndRestoresEachLetter(t *testing.T) {
+	baseline := logoOuterLetterColors(logoForegroundCells(logoText(sidebarBackground, false)))
 	previous := baseline
 	for frame := 1; frame <= logoIntroFrames; frame++ {
-		current := logoForegroundCells(logoTextFrame(0, frame, sidebarBackground, false))
-		for _, column := range []int{0, 1, 4, 5, 6, 7, 8, 9} {
+		current := logoOuterLetterColors(logoForegroundCells(logoTextFrame(0, frame, sidebarBackground, false)))
+		for column := range baseline {
 			brightness := func(c [3]uint32) uint32 { return c[0] + c[1] + c[2] }
 			before, after := brightness(previous[column]), brightness(current[column])
 			if frame <= logoIntroFrames/2 && after < before || frame > logoIntroFrames/2 && after > before {
@@ -65,7 +68,7 @@ func TestSidebarLogoGradientIntroBrightensAndRestoresEachColumn(t *testing.T) {
 				t.Fatalf("intro did not restore column %d", column)
 			}
 		}
-		if current[0] == current[9] {
+		if current[0] == current[len(current)-1] {
 			t.Fatalf("intro frame %d lost the gradient", frame)
 		}
 		previous = current
@@ -77,7 +80,7 @@ func TestSidebarLogoGradientRespectsTerminalColorsAndDimmedBackdrop(t *testing.T
 		t.Run(profile.String(), func(t *testing.T) {
 			for _, dimmed := range []bool{false, true} {
 				actual := terminalTheme(logoText(sidebarBackground, dimmed), profile)
-				if ansi.Strip(actual) != logo || ansi.StringWidth(actual) != 10 {
+				if ansi.Strip(actual) != "lazyClash" || ansi.StringWidth(actual) != 9 {
 					t.Fatal("terminal color conversion changed the wordmark")
 				}
 				if profile == colorprofile.ASCII {
@@ -97,7 +100,7 @@ func TestSidebarLogoGradientRespectsTerminalColorsAndDimmedBackdrop(t *testing.T
 							t.Fatal("gradient escaped the opaque modal backdrop")
 						}
 					}
-				} else if profile >= colorprofile.ANSI256 && colors[0] == colors[9] {
+				} else if profile >= colorprofile.ANSI256 && colors[0] == colors[len(colors)-1] {
 					t.Fatal("terminal quantization collapsed the blue and purple endpoints")
 				}
 			}

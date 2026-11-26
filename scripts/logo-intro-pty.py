@@ -132,6 +132,14 @@ def spawn(binary, size, home, profile):
     return terminal
 
 
+def letter_colors(terminal, origin, center):
+    """Follow the two prefix letters and the six fixed suffix letters."""
+    x, y = origin
+    left = x if center == "z" else x - 1
+    columns = (left, left + 1, *range(x + 3, x + len(LOGO)))
+    return tuple(terminal.screen.colors[y][column] for column in columns)
+
+
 def snapshot(terminal, origin, sidebar=True, entrance=False):
     if terminal.screen.synchronized or terminal.screen.state != "text":
         return None
@@ -141,15 +149,14 @@ def snapshot(terminal, origin, sidebar=True, entrance=False):
         if state is None:
             return None
         center, bubble, offset = state
-        allowed = ("💤", "z ", " Z") if entrance else ("💤",)
+        allowed = ("z", "💤") if entrance else ("z",)
         if center not in allowed or bubble or offset:
             raise AssertionError("entrance or idle replay changed the fixed wordmark or added a dream bubble")
-    elif "".join(terminal.screen.cells[y][x:x + 10]) != LOGO:
+    elif "".join(terminal.screen.cells[y][x:x + len(LOGO)]) != LOGO:
         raise AssertionError("compact title changed its logo characters")
     else:
-        center = "💤"
-    # Emoji glyph colors belong to the terminal; inspect the eight ASCII cells.
-    colors = tuple(terminal.screen.colors[y][x + offset] for offset in (0, 1, 4, 5, 6, 7, 8, 9))
+        center = "z"
+    colors = letter_colors(terminal, origin, center)
     if None in colors and terminal.logo_profile != "no-color":
         return None  # Startup capability negotiation or an incomplete repaint.
     return colors, center
@@ -183,7 +190,7 @@ def ready(terminal, size, page="Overview"):
         lines = terminal.screen.text().splitlines()
         header_y = 1 if rows >= 24 else 0
         return (len(lines) == rows and lines[-1].find("q Quit") == columns - 8
-                and lines[header_y][DEMO.SIDEBAR_WIDTH:].lstrip().startswith(page)
+                and "".join(terminal.screen.cells[header_y][DEMO.SIDEBAR_WIDTH:]).lstrip().startswith("▎ " + page)
                 and LOGO in lines[header_y])
     DEMO.wait_until(terminal, painted, "sidebar did not finish painting")
 
@@ -198,7 +205,7 @@ def click_story(terminal, size, output, baseline):
         DEMO.wait_until(terminal, lambda: DEMO.logo_state(terminal, origin) == (center, bubble, offset),
                         "click story missed " + phase, timeout=2)
         (output / ("click-%02d.txt" % index)).write_text(terminal.screen.text() + "\n")
-        colors = tuple(terminal.screen.colors[y][x + column] for column in (0, 1, 4, 5, 6, 7, 8, 9))
+        colors = letter_colors(terminal, origin, center)
         warm = {"truecolor": (2, 249, 174, 88), "ansi256": (5, 215), "no-color": None}[terminal.logo_profile]
         expected = (warm,) * 8 if phase == "wake" else baseline
         if colors != expected:
@@ -207,7 +214,7 @@ def click_story(terminal, size, output, baseline):
                        "foreground": colors})
     while time.monotonic() - started < 1.9:
         terminal.read(0.01)
-    if DEMO.logo_state(terminal, origin) != ("💤", "", 0):
+    if DEMO.logo_state(terminal, origin) != ("z", "", 0):
         raise AssertionError("click story did not settle")
     return frames
 
@@ -243,26 +250,17 @@ def assert_gradient(colors, profile):
         raise AssertionError("wordmark did not move from blue toward purple")
 
 
-def png_logo(screen, origin, path):
+def png_logo(screen, y, path):
     """Redraw the actual PTY wordmark cells; this is not a native screenshot."""
     from PIL import Image, ImageDraw, ImageFont
     font = ImageFont.truetype("/System/Library/Fonts/Menlo.ttc", 28, index=1)
-    emoji = ImageFont.truetype("/System/Library/Fonts/Apple Color Emoji.ttc", 32)
     cell_width = round(font.getlength("M"))
     cell_height = sum(font.getmetrics()) + 6
-    image = Image.new("RGB", (16 * cell_width, 3 * cell_height), "#1d2227")
+    image = Image.new("RGB", (DEMO.SIDEBAR_WIDTH * cell_width, 3 * cell_height), "#1d2227")
     draw = ImageDraw.Draw(image)
-    x, y = origin
-    for column in range(10):
-        char = screen.cells[y][x + column]
-        if not char:
-            continue
-        left = (column + 3) * cell_width
-        top = cell_height
-        if char == "💤":
-            draw.text((left, top), char, font=emoji, embedded_color=True)
-        else:
-            draw.text((left, top), char, font=font, fill=color_rgb(screen.colors[y][x + column]))
+    for column, char in enumerate(screen.cells[y][:DEMO.SIDEBAR_WIDTH]):
+        if char.strip():
+            draw.text((column * cell_width, cell_height), char, font=font, fill=color_rgb(screen.colors[y][column]))
     image.save(path)
 
 
@@ -274,7 +272,7 @@ def verify(binary, output, size, profile, png):
         terminal = spawn(binary, size, Path(temporary) / "home", profile)
         try:
             ready(terminal, size)
-            baseline = observe(terminal, size, 1.5, "entrance", records)
+            baseline = observe(terminal, size, 1.9, "entrance", records)
             entrance = [record for record in records if record["phase"] == "entrance"]
             vectors = [tuple(tuple(color) if color is not None else None for color in record["foreground"])
                        for record in entrance]
@@ -282,7 +280,7 @@ def verify(binary, output, size, profile, png):
             for record in entrance:
                 if not centers or centers[-1]["center"] != record["center"]:
                     centers.append({"center": record["center"], "elapsed_ms": record["elapsed_ms"]})
-            expected_centers = ["💤"] if profile == "no-color" else ["💤", "z ", " Z", "💤"]
+            expected_centers = ["z"] if profile == "no-color" else ["z", "💤", "z"]
             if [record["center"] for record in centers] != expected_centers:
                 raise AssertionError("entrance center did not follow its profile's one-time sequence")
             assert_gradient(baseline, profile)
@@ -308,11 +306,23 @@ def verify(binary, output, size, profile, png):
                     if (2, 197, 239, 255) not in [vector[0] for vector in vectors] or (2, 234, 215, 255) not in [vector[-1] for vector in vectors]:
                         raise AssertionError("entrance did not reach both approved gradient highlights")
                 first_change = entrance[1]["elapsed_ms"]
+                asleep, awake = (record["elapsed_ms"] for record in centers[1:])
                 settled = entrance[-1]["elapsed_ms"]
-                if not 100 <= first_change <= 700 or not 600 <= settled <= 1400:
-                    raise AssertionError("entrance timing did not match the startup delay and brief breath")
+                if not 100 <= first_change <= 700:
+                    raise AssertionError(f"unexpected startup delay: {first_change} ms")
+                if not 330 <= awake - asleep <= 480:
+                    raise AssertionError(f"expected about 400 ms displaying 💤, observed {awake - asleep} ms")
+                # True Color reveals each gradient change. The final 50 ms
+                # already uses the resting color, and ANSI256 merges more frames.
+                if profile == "truecolor":
+                    visible = settled - first_change
+                    if not 860 <= visible <= 1150:
+                        raise AssertionError(f"expected a one-second entrance, observed {visible} ms of changes")
+                    if abs((asleep - first_change) - (settled - awake)) > 140:
+                        raise AssertionError("the sleep emoji was not centered within the entrance")
             if png:
-                png_logo(terminal.screen, DEMO.locate_logo(terminal, size[1]), output / "logo-gradient.png")
+                _, y = DEMO.locate_logo(terminal, size[1])
+                png_logo(terminal.screen, y, output / "logo-gradient.png")
             (output / "entrance-settled.txt").write_text(terminal.screen.text() + "\n")
             for key, page in ((b"2", "Proxies"), (b"1", "Overview")):
                 terminal.send(key)
@@ -355,8 +365,8 @@ def verify_compact_start(binary, output, baseline, profile):
             # Compact layouts retain a static wordmark in the page title.
             # Its suffix is " / Overview", so sidebar-only tail checks do not apply.
             origin = next((x, y) for y, row in enumerate(terminal.screen.cells[:2])
-                          for x in range(terminal.screen.columns - 10)
-                          if "".join(row[x:x + 10]) == LOGO)
+                          for x in range(terminal.screen.columns - len(LOGO) + 1)
+                          if "".join(row[x:x + len(LOGO)]) == LOGO)
             observe(terminal, (80, 24), 1.3, "compact-start", records, baseline, origin, False)
             terminal.resize(160, 45)
             ready(terminal, (160, 45))
@@ -387,7 +397,7 @@ def main():
         profile_output = output / profile
         profile_output.mkdir()
         baseline = None
-        for size in args.size or [(160, 45), (120, 24), (100, 20)]:
+        for size in args.size or [(160, 45), (120, 24), (115, 20)]:
             baseline = verify(binary, profile_output / ("%dx%d" % size), size, profile, args.png)
             print("verified %s %dx%d gradient, entrance, no replay, and click story" % (profile, *size), flush=True)
         verify_compact_start(binary, profile_output / "80x24-start", baseline, profile)

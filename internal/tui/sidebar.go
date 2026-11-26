@@ -112,18 +112,21 @@ func drawSidebar(rows []string, o dashboardOptions, popup bool) []hitRegion {
 		}
 	}
 	if !popup {
-		logoLine := lipgloss.NewStyle().Width(g.width - 1).Align(lipgloss.Center).Render(logoTextFrame(o.LogoFrame, o.LogoIntroFrame, sidebarBackground, o.Dim))
-		putRows(rows, 0, header.headerY, themed(logoLine, accent, sidebarBackground, o.Dim), o.Width)
+		wordmark := logoTextFrame(o.LogoFrame, o.LogoIntroFrame, sidebarBackground, o.Dim)
+		// Round right for the nine-cell wordmark so yClash stays put in wider frames.
+		logoX := (g.width - ansi.StringWidth(wordmark) + 1) / 2
+		putRows(rows, logoX, header.headerY, wordmark, o.Width)
 		frame := logoFrameAt(o.LogoFrame)
 		if header.headerY > 0 && frame.bubble != "" {
-			x := (g.width-1-ansi.StringWidth(logo))/2 + ansi.StringWidth("la") + frame.offset
-			color := logoGradientColor(ansi.StringWidth("la")+frame.offset, 0)
+			column := len(logoPrefix) + frame.offset
+			x := logoX + column
+			color := logoGradientColor(column, 0)
 			if frame.dim {
 				color = disabled
 			}
 			putRows(rows, x, header.headerY-1, themed(frame.bubble, color, sidebarBackground, o.Dim), o.Width)
 		}
-		hit := hitRegion{ID: "logo", X: 0, Y: header.headerY, W: g.width - 1, H: 1}
+		hit := hitRegion{ID: "logo", X: 0, Y: header.headerY, W: g.width, H: 1}
 		logoTarget = &hit
 	}
 	pages := navPages()

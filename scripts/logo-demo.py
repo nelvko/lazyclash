@@ -25,7 +25,7 @@ SPEC.loader.exec_module(SMOKE)
 
 # Locale and terminal capability changes belong only to the disposable child.
 WRAPPER = "import os, sys; os.environ['LAZYCLASH_LANG'] = 'en'; os.execv(sys.argv[1], sys.argv[1:])"
-LOGO = "la💤yClash"
+LOGO = "lazyClash"
 SIDEBAR_WIDTH = 20
 # (phase, central two cells, character above the center, column offset).
 FRAMES = [
@@ -62,27 +62,31 @@ def wait_until(terminal, predicate, label, timeout=10):
 
 
 def locate_logo(terminal, height):
-    """Return cell coordinates rather than Python character indexes."""
+    """The odd-width resting logo rounds right so yClash stays put during the animation."""
     y = 1 if height >= 24 else 0
-    row = terminal.screen.cells[y]
-    for x in range(SIDEBAR_WIDTH - 10):
-        if "".join(row[x:x + 10]) == LOGO:
-            return x, y
-    raise AssertionError("complete static logo is missing from sidebar header")
+    x = (SIDEBAR_WIDTH - len(LOGO) + 1) // 2
+    if "".join(terminal.screen.cells[y][x:x + len(LOGO)]) != LOGO:
+        raise AssertionError("complete static logo is missing or off-center in the sidebar")
+    return x, y
 
 
 def logo_state(terminal, origin):
     x, y = origin
     row = terminal.screen.cells[y]
-    if "".join(row[x:x + 2]) != "la" or "".join(row[x + 4:x + 10]) != "yClash":
+    if "".join(row[x + 3:x + len(LOGO)]) != "yClash":
+        return None
+    if "".join(row[x:x + 3]) == "laz":
+        left, center = x, "z"
+    elif "".join(row[x - 1:x + 1]) == "la":
+        left, center = x - 1, "".join(row[x + 1:x + 3])
+    else:
         return None  # A partial repaint must never pass an animation assertion.
-    if any(cell.strip() for cell in row[x + 10:SIDEBAR_WIDTH - 1]):
-        raise AssertionError("logo grew a trailing suffix or shifted its wordmark")
-    center = "".join(row[x + 2:x + 4])
+    if any(cell.strip() for cell in row[:left] + row[x + len(LOGO):SIDEBAR_WIDTH]):
+        raise AssertionError("extra content flanks the centered logo")
     if not y:
         return center, "", 0
     top = terminal.screen.cells[y - 1]
-    marks = [(column - x - 2, cell) for column, cell in enumerate(top[:SIDEBAR_WIDTH - 1]) if cell.strip()]
+    marks = [(column - left - 2, cell) for column, cell in enumerate(top[:SIDEBAR_WIDTH]) if cell.strip()]
     if not marks:
         return center, "", 0
     if len(marks) != 1:
@@ -116,7 +120,7 @@ def capture(binary, output, size, frames=None):
 
             wait_until(terminal, ready, "startup or resize did not finish")
             origin = locate_logo(terminal, rows)
-            if logo_state(terminal, origin) != ("💤", "", 0):
+            if logo_state(terminal, origin) != ("z", "", 0):
                 raise AssertionError("initial logo is already animated")
             (output / "frame-00.txt").write_text(terminal.screen.text() + "\n")
             manifest = [{"file": "frame-00.txt", "phase": "idle", "elapsed_ms": 0}]
@@ -140,7 +144,7 @@ def capture(binary, output, size, frames=None):
                 # the PTY through its end and ensure no bubble or suffix remains.
                 while time.monotonic() - started < 1.9:
                     terminal.read(0.02)
-                if logo_state(terminal, origin) != ("💤", "", 0):
+                if logo_state(terminal, origin) != ("z", "", 0):
                     raise AssertionError("logo did not settle after its animation")
                 filename = "frame-%02d.txt" % len(manifest)
                 (output / filename).write_text(terminal.screen.text() + "\n")

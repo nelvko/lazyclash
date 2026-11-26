@@ -12,19 +12,22 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-const logo = "la💤yClash"
-
 const (
+	logoPrefix        = "la"
+	logoSuffix        = "yClash"
+	logo              = logoPrefix + "z" + logoSuffix
+	logoCenterColumns = 2 // The animated center can occupy two terminal cells.
+	logoColumns       = len(logoPrefix) + logoCenterColumns + len(logoSuffix)
 	logoGradientStart = "#8fc9ef"
 	logoGradientEnd   = "#c4a7e7"
 	logoIntroDelay    = 200 * time.Millisecond
-	logoIntroInterval = 40 * time.Millisecond
+	logoIntroInterval = 50 * time.Millisecond
 	logoIntroFrames   = 20
 )
 
 var (
-	logoGradient      = lipgloss.Blend1D(ansi.StringWidth(logo), lipgloss.Color(logoGradientStart), lipgloss.Color(logoGradientEnd))
-	logoIntroGradient = lipgloss.Blend1D(ansi.StringWidth(logo), lipgloss.Color("#c5efff"), lipgloss.Color("#ead7ff"))
+	logoGradient      = lipgloss.Blend1D(logoColumns, lipgloss.Color(logoGradientStart), lipgloss.Color(logoGradientEnd))
+	logoIntroGradient = lipgloss.Blend1D(logoColumns, lipgloss.Color("#c5efff"), lipgloss.Color("#ead7ff"))
 )
 
 type logoIntroState struct {
@@ -40,10 +43,8 @@ type logoAnimationFrame struct {
 	duration       time.Duration
 }
 
-// Every center occupies the emoji's two cells, keeping both halves of the
-// wordmark fixed. The two dream bubbles follow after it has fallen asleep.
 var logoFrames = [...]logoAnimationFrame{
-	{center: "💤"},
+	{center: "z"},
 	{center: "!!", wake: true, duration: 120 * time.Millisecond},
 	{center: "..", duration: 240 * time.Millisecond},
 	{center: "z ", duration: 110 * time.Millisecond},
@@ -79,32 +80,31 @@ func logoTextFrame(index, intro int, background string, dimmed bool) string {
 	} else {
 		intro = 0
 	}
-	wordmark := "la" + frame.center + "yClash"
 	style := lipgloss.NewStyle().Bold(true)
 	if dimmed || frame.wake {
-		return themed(style.Render(wordmark), focus, background, dimmed)
+		return themed(style.Render(logoPrefix+frame.center+logoSuffix), focus, background, dimmed)
 	}
 	var out strings.Builder
-	column := 0
-	for _, char := range wordmark {
-		glyph := string(char)
-		out.WriteString(themed(style.Render(glyph), logoGradientColor(column, intro), background, false))
-		// The emoji occupies two cells; all following letters keep their colors
-		// when the center switches between the emoji and two ASCII characters.
-		column += ansi.StringWidth(glyph)
+	writePart := func(part string, column int) {
+		for _, char := range part {
+			glyph := string(char)
+			out.WriteString(themed(style.Render(glyph), logoGradientColor(column, intro), background, false))
+			column += ansi.StringWidth(glyph)
+		}
 	}
+	// Anchor each part to its gradient colors as z expands into a two-cell emoji.
+	writePart(logoPrefix, 0)
+	writePart(frame.center, len(logoPrefix))
+	writePart(logoSuffix, len(logoPrefix)+logoCenterColumns)
 	return out.String()
 }
 
 func logoIntroCenter(frame int) string {
-	switch {
-	case frame >= 1 && frame <= 6:
-		return "z "
-	case frame >= 7 && frame <= 13:
-		return " Z"
-	default:
+	// The middle eight frames hold the emoji for 400 ms.
+	if frame >= 7 && frame <= 14 {
 		return "💤"
 	}
+	return "z"
 }
 
 func logoGradientColor(column, intro int) string {
