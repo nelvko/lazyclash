@@ -6,9 +6,38 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net/netip"
+	"strings"
+
+	"github.com/nelvko/lazyclash/internal/diagnostic"
 
 	"github.com/nelvko/lazyclash/internal/shellintegration"
 )
+
+// TerminalProxyPort checks the IPv4 loopback binding and source rules for the
+// managed shell endpoint. Clients supply credentials separately when required.
+func (s RuntimeSettings) TerminalProxyPort() int {
+	if s.ProxyDialHost() != "127.0.0.1" {
+		return 0
+	}
+	loopback := netip.AddrFrom4([4]byte{127, 0, 0, 1})
+	contains := func(networks string) bool {
+		for _, network := range strings.Fields(networks) {
+			if prefix, err := netip.ParsePrefix(network); err == nil && prefix.Contains(loopback) {
+				return true
+			}
+		}
+		return false
+	}
+	if !contains(s.LANAllowedIPs) || contains(s.LANDisallowedIPs) {
+		return 0
+	}
+	return s.MixedPort
+}
+
+func terminalLoopbackUnavailable() error {
+	return diagnostic.New("diagnostic.settings.terminalLoopback", "the mixed proxy binding or access rules exclude 127.0.0.1")
+}
 
 func (a *App) terminalEndpoint(port int) shellintegration.Endpoint {
 	hash := sha256.Sum256([]byte(a.Home + "\x00" + a.Name))
@@ -98,6 +127,11 @@ func (a *App) terminalEndpointLocked(ctx context.Context) (shellintegration.Endp
 	}
 	if cfg.MixedPort == nil || *cfg.MixedPort == 0 {
 		return endpoint, fmt.Errorf("Mihomo did not confirm an active mixed proxy port")
+	}
+	runtime := manifestSettings(manifest)
+	runtime.MixedPort = *cfg.MixedPort
+	if runtime.TerminalProxyPort() == 0 {
+		return endpoint, terminalLoopbackUnavailable()
 	}
 	endpoint = a.terminalEndpoint(*cfg.MixedPort)
 	return endpoint, a.probeProxy(ctx, endpoint.Port)

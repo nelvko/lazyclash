@@ -138,7 +138,7 @@ func (a *App) readControllerPEM(name string) ([]byte, error) {
 func (a *App) listenersReady(ctx context.Context, m manifest, pid int) bool {
 	m.Listeners = m.Listeners.SupportedListeners()
 	for _, port := range []int{m.Port, m.Listeners.HTTPPort, m.Listeners.SOCKSPort, m.Listeners.RedirPort, m.Listeners.TProxyPort} {
-		if port != 0 && a.probeProxy(ctx, port) != nil {
+		if port != 0 && a.probeProxyHost(ctx, m.Listeners.ProxyDialHost(), port) != nil {
 			return false
 		}
 	}

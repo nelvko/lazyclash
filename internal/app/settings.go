@@ -19,6 +19,7 @@ import (
 // RuntimeSettings owns the listeners independently of the applied profile.
 type RuntimeSettings struct {
 	mihomo.ListenerOptions
+	mihomo.AccessRules
 	secretRevision string // Detect concurrent rotations without exposing credentials.
 	ControllerHost string `json:"controller_host,omitempty"` // Empty selects 127.0.0.1.
 	NewSecret      string `json:"-"`                         // Write-only. Empty preserves the existing credential.
@@ -53,7 +54,7 @@ func manifestSettings(m manifest) RuntimeSettings {
 		host = ""
 	}
 	controllerPort, _ := strconv.Atoi(port)
-	return RuntimeSettings{secretRevision: m.SecretRevision, ListenerOptions: m.Listeners, ControllerHost: host, MixedPort: m.Port, ControllerPort: controllerPort, ProxyUserCount: len(m.proxyUsers)}
+	return RuntimeSettings{secretRevision: m.SecretRevision, ListenerOptions: m.Listeners, AccessRules: m.accessRules, ControllerHost: host, MixedPort: m.Port, ControllerPort: controllerPort, ProxyUserCount: len(m.proxyUsers)}
 }
 
 func (a *App) GetRuntimeSettings(ctx context.Context) (RuntimeSettings, error) {
@@ -124,14 +125,52 @@ func (a *App) prepareRuntimeSettingsLocked(ctx context.Context, original *Runtim
 		return plan, m, target, nil, diagnostic.New("diagnostic.settings.editChanged", "listener settings changed while editing; reopen the editor")
 	}
 	users := m.managedProxyUsers()
+	rules := m.AccessOverrides
 	authChanged := false
 	if auth != nil {
 		proposed = manifestSettings(m)
-		users, err = auth.resolve(m.proxyUsers, target)
+		draft, err := auth.resolve(m.proxyUsers, target)
 		if err != nil {
 			return plan, m, target, nil, err
 		}
-		authChanged = !m.ManagedProxyAuth || !slices.Equal(users, m.proxyUsers)
+		authChanged = !slices.Equal(draft, m.proxyUsers)
+		if authChanged {
+			users = draft
+		}
+		proposed.SkipAuthPrefixes, err = mihomo.NormalizePrefixes(auth.prefixes)
+		if err != nil {
+			return plan, m, target, nil, err
+		}
+		if proposed.SkipAuthPrefixes != m.accessRules.SkipAuthPrefixes {
+			rules.SkipAuthPrefixes = &proposed.SkipAuthPrefixes
+		}
+	} else {
+		if original == nil {
+			// Existing callers of PrepareRuntimeSettings replace listeners without editing source access.
+			proposed.AccessRules = m.accessRules
+		}
+		proposed.SkipAuthPrefixes = m.accessRules.SkipAuthPrefixes
+		proposed.LANAllowedIPs, err = mihomo.NormalizePrefixes(proposed.LANAllowedIPs)
+		if err != nil {
+			return plan, m, target, nil, err
+		}
+		proposed.LANDisallowedIPs, err = mihomo.NormalizePrefixes(proposed.LANDisallowedIPs)
+		if err != nil {
+			return plan, m, target, nil, err
+		}
+		if proposed.LANAllowedIPs != m.accessRules.LANAllowedIPs {
+			rules.LANAllowedIPs = &proposed.LANAllowedIPs
+		}
+		if proposed.LANDisallowedIPs != m.accessRules.LANDisallowedIPs {
+			rules.LANDisallowedIPs = &proposed.LANDisallowedIPs
+		}
+	}
+	proposed.BindAddress, err = mihomo.NormalizeBindAddress(proposed.ConfiguredBindAddress())
+	if err != nil {
+		return plan, m, target, nil, err
+	}
+	if proposed.BindAddress == "*" {
+		proposed.BindAddress = ""
 	}
 	proposed.ProxyUserCount = len(m.proxyUsers)
 	proposed.preserveHiddenPorts(m.Listeners)
@@ -179,34 +218,18 @@ func (a *App) prepareRuntimeSettingsLocked(ctx context.Context, original *Runtim
 	if err != nil {
 		return plan, m, target, nil, err
 	}
-	effective, err := mihomo.EffectiveListeners(raw, controller, secret, proposed.MixedPort, proposed.ListenerOptions, users)
+	effective, err := mihomo.EffectiveListeners(raw, controller, secret, proposed.MixedPort, proposed.ListenerOptions, users, rules)
 	if err != nil {
 		return plan, m, target, nil, err
 	}
-	if users == nil && proposed.AllowLAN && !m.Listeners.AllowLAN {
-		// A loopback generation omits inherited proxy accounts. Restore them
-		// from the applied immutable recipe, even if a newer download exists.
-		next := m
-		next.Controller, next.Secret, next.Port, next.Listeners = controller, secret, proposed.MixedPort, proposed.ListenerOptions
-		effective, err = a.buildAppliedRecipe(next)
-		if err != nil {
-			return plan, m, target, nil, err
-		}
-	} else if m.TUN {
+	if m.TUN {
 		effective, err = mihomo.WithTUN(effective, true, a.Name)
 		if err != nil {
 			return plan, m, target, nil, err
 		}
 	}
-	switch {
-	case users != nil:
+	if authChanged {
 		plan.Proposed.ProxyUserCount = len(users)
-	case proposed.AllowLAN != m.Listeners.AllowLAN:
-		effectiveUsers, err := mihomo.ConfigProxyUsers(effective)
-		if err != nil {
-			return plan, m, target, nil, err
-		}
-		plan.Proposed.ProxyUserCount = len(effectiveUsers)
 	}
 	if plan.Changed {
 		if err := a.checkListenerFiles(ctx, m, proposed); err != nil {
@@ -226,6 +249,11 @@ func (a *App) prepareRuntimeSettingsLocked(ctx context.Context, original *Runtim
 	identity, _ := json.Marshal([]any{a.Home, a.Name, target, guard, m.BinarySHA, status.Active, status.State, status.PID})
 	plan.guard = digest(identity)
 	plan.seal = runtimeSettingsSeal(plan)
+	m.AccessOverrides = rules
+	m.accessRules = proposed.AccessRules
+	if authChanged {
+		m.ManagedProxyAuth = true
+	}
 	return plan, m, target, effective, ctx.Err()
 }
 
@@ -233,7 +261,24 @@ func (a *App) prepareRuntimeSettingsLocked(ctx context.Context, original *Runtim
 // the full check after stopping, including when widening a loopback binding.
 func checkRuntimePorts(ctx context.Context, current manifest, next RuntimeSettings, active bool) error {
 	owned := current.Listeners.Endpoints(current.Controller, current.Port)
-	for _, endpoint := range next.Endpoints(next.controller(), next.MixedPort) {
+	endpoints := next.Endpoints(next.controller(), next.MixedPort)
+	if active && next.AllowLAN && current.Listeners.ProxyListenHost() != next.ProxyListenHost() {
+		// A previous wildcard socket can overlap a nonexistent local IP. Verify
+		// the new address separately before skipping occupied, owned ports.
+		host := next.ProxyListenHost()
+		if ip := net.ParseIP(host); ip != nil && !ip.IsUnspecified() && slices.ContainsFunc(endpoints, func(ep mihomo.ListenerEndpoint) bool {
+			return ep.Address != next.controller() && ep.Address != next.HTTPSAddress
+		}) {
+			probe, err := net.Listen("tcp", net.JoinHostPort(host, "0"))
+			if err != nil {
+				return diagnostic.New("diagnostic.settings.proxyBindLocal", "cannot bind the proxy to this local address")
+			}
+			if err := probe.Close(); err != nil {
+				return err
+			}
+		}
+	}
+	for _, endpoint := range endpoints {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
@@ -271,7 +316,7 @@ func (a *App) ApplyRuntimeSettings(ctx context.Context, plan RuntimeSettingsPlan
 		}
 		proposed := plan.Proposed
 		proposed.NewSecret = plan.replacementSecret()
-		fresh, m, old, config, err := a.prepareRuntimeSettingsLocked(ctx, nil, proposed, plan.proxyAuth)
+		fresh, m, old, config, err := a.prepareRuntimeSettingsLocked(ctx, &plan.Current, proposed, plan.proxyAuth)
 		if err != nil {
 			return err
 		}
@@ -285,9 +330,6 @@ func (a *App) ApplyRuntimeSettings(ctx context.Context, plan RuntimeSettingsPlan
 		}
 		oldManifest := m
 		m.Controller, m.Port, m.Listeners = controller, fresh.Proposed.MixedPort, fresh.Proposed.ListenerOptions
-		if fresh.proxyAuth != nil {
-			m.ManagedProxyAuth = true
-		}
 		if fresh.SecretChanged {
 			m.Secret = fresh.replacementSecret()
 			m.SecretRevision = randomID()
@@ -373,7 +415,7 @@ func (a *App) ApplyRuntimeSettings(ctx context.Context, plan RuntimeSettingsPlan
 		}
 		keep = true
 		result = RuntimeSettingsResult{Settings: fresh.Proposed, Controller: controller, Restarted: fresh.Active, Changed: true}
-		if publishErr := a.publishTerminalEndpoint(result.Settings.MixedPort); publishErr != nil {
+		if publishErr := a.publishTerminalEndpoint(result.Settings.TerminalProxyPort()); publishErr != nil {
 			return diagnostic.New("diagnostic.settings.endpointPublish", "ports were saved, but terminal proxy endpoint could not be published: %w", publishErr)
 		}
 		return nil

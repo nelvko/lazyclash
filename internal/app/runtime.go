@@ -52,11 +52,15 @@ func (a *App) checkPorts(m manifest) error {
 }
 
 func (a *App) probeProxy(ctx context.Context, port int) error {
+	return a.probeProxyHost(ctx, "127.0.0.1", port)
+}
+
+func (a *App) probeProxyHost(ctx context.Context, host string, port int) error {
 	if a.ProbeProxy != nil {
 		return a.ProbeProxy(ctx, port)
 	}
 	dialer := net.Dialer{Timeout: 200 * time.Millisecond}
-	conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
+	conn, err := dialer.DialContext(ctx, "tcp", net.JoinHostPort(host, strconv.Itoa(port)))
 	if err != nil {
 		return diagnostic.New("diagnostic.runtime.listenerNotReady", "Mihomo mixed proxy listener is not ready")
 	}
@@ -249,7 +253,17 @@ func (a *App) Select(ctx context.Context, group, node string) error {
 }
 func (a *App) Port(ctx context.Context) (int, error) {
 	var port int
-	err := a.locked(ctx, func() error { m, _, err := a.load(); port = m.Port; return err })
+	err := a.locked(ctx, func() error {
+		m, _, err := a.load()
+		if err != nil {
+			return err
+		}
+		port = manifestSettings(m).TerminalProxyPort()
+		if port == 0 && m.Port != 0 {
+			return terminalLoopbackUnavailable()
+		}
+		return nil
+	})
 	if err == nil && port == 0 {
 		return 0, diagnostic.New("diagnostic.settings.mixedDisabled", "enable a mixed proxy port before exporting shell proxy settings")
 	}

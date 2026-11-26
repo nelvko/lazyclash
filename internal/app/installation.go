@@ -33,6 +33,8 @@ type manifest struct {
 	SecretRevision     string                 `json:"secret_revision,omitempty"`
 	Listeners          mihomo.ListenerOptions `json:"listeners"`
 	ManagedProxyAuth   bool                   `json:"managed_proxy_auth,omitempty"`
+	AccessOverrides    mihomo.AccessOverrides `json:"access_overrides,omitzero"`
+	accessRules        mihomo.AccessRules     // Effective lists, including inherited subscription values.
 	proxyUsers         []string               // Read from the verified config; never duplicate passwords in the manifest.
 	CoreSettings       mihomo.GeneralSettings `json:"core_settings"`
 	GeoScheduleAtStart *runningGeoSchedule    `json:"geo_schedule_at_start,omitempty"`
@@ -130,11 +132,9 @@ func (a *App) load() (manifest, string, error) {
 	if err != nil {
 		return m, "", err
 	}
-	if m.ManagedProxyAuth || m.Listeners.AllowLAN {
-		m.proxyUsers, err = mihomo.ConfigProxyUsers(cfg)
-		if err != nil {
-			return m, "", err
-		}
+	m.proxyUsers, m.accessRules, err = mihomo.ConfigProxyAccess(cfg)
+	if err != nil {
+		return m, "", err
 	}
 	m.CoreSettings, err = m.CoreSettings.ResolveApplied(cfg)
 	if err != nil {

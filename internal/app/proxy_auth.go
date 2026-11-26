@@ -10,11 +10,12 @@ import (
 	"github.com/nelvko/lazyclash/internal/diagnostic"
 )
 
-// ProxyAuthSettings exposes only account names to the editor. The generation
-// identifies the exact credentials the user opened, including inherited ones.
+// ProxyAuthSettings exposes account names and source exemptions to the editor.
+// The generation identifies the exact credentials opened, including inherited ones.
 type ProxyAuthSettings struct {
-	Usernames []string
-	revision  string
+	Usernames        []string
+	SkipAuthPrefixes string
+	revision         string
 }
 
 // OriginalUsername identifies the saved password to preserve when Password is
@@ -28,6 +29,7 @@ type ProxyAuthUser struct {
 type proxyAuthEdit struct {
 	revision string
 	users    []ProxyAuthUser
+	prefixes string
 }
 
 func (m manifest) managedProxyUsers() []string {
@@ -45,6 +47,7 @@ func (a *App) GetProxyAuth(ctx context.Context) (ProxyAuthSettings, error) {
 			return err
 		}
 		settings.revision = target
+		settings.SkipAuthPrefixes = m.accessRules.SkipAuthPrefixes
 		for _, entry := range m.proxyUsers {
 			name, _, _ := strings.Cut(entry, ":")
 			settings.Usernames = append(settings.Usernames, name)
@@ -55,7 +58,12 @@ func (a *App) GetProxyAuth(ctx context.Context) (ProxyAuthSettings, error) {
 }
 
 func (a *App) PrepareProxyAuth(ctx context.Context, original ProxyAuthSettings, users []ProxyAuthUser) (RuntimeSettingsPlan, error) {
-	edit := &proxyAuthEdit{revision: original.revision, users: slices.Clone(users)}
+	return a.PrepareProxyAuthRules(ctx, original, users, original.SkipAuthPrefixes)
+}
+
+// PrepareProxyAuthRules reviews the accounts and source-network exemptions together.
+func (a *App) PrepareProxyAuthRules(ctx context.Context, original ProxyAuthSettings, users []ProxyAuthUser, skipAuthPrefixes string) (RuntimeSettingsPlan, error) {
+	edit := &proxyAuthEdit{revision: original.revision, users: slices.Clone(users), prefixes: skipAuthPrefixes}
 	return a.prepareRuntimeSettings(ctx, nil, RuntimeSettings{}, edit)
 }
 

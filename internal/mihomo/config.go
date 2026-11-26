@@ -40,11 +40,11 @@ func Effective(raw []byte, controller, secret string, mixedPort int) ([]byte, er
 	if err := loopbackAddress(controller); err != nil {
 		return nil, err
 	}
-	return EffectiveListeners(raw, controller, secret, mixedPort, ListenerOptions{}, nil)
+	return EffectiveListeners(raw, controller, secret, mixedPort, ListenerOptions{}, nil, AccessOverrides{})
 }
 
 // EffectiveListeners reapplies the instance's reviewed settings to routing inputs.
-func EffectiveListeners(raw []byte, controller, secret string, mixedPort int, listeners ListenerOptions, proxyUsers []string) ([]byte, error) {
+func EffectiveListeners(raw []byte, controller, secret string, mixedPort int, listeners ListenerOptions, proxyUsers []string, rules AccessOverrides) ([]byte, error) {
 	if len(bytes.TrimSpace(raw)) == 0 || len(raw) > MaxConfigSize {
 		return nil, diagnostic.New("diagnostic.config.yamlSize", "Mihomo YAML must be nonempty and at most 8 MiB")
 	}
@@ -55,7 +55,9 @@ func EffectiveListeners(raw []byte, controller, secret string, mixedPort int, li
 	if err != nil {
 		return nil, err
 	}
+	listeners.BindAddress, _ = NormalizeBindAddress(listeners.ConfiguredBindAddress()) // Validated above.
 	listeners.apply(cfg, controller, secret, mixedPort, proxyUsers)
+	rules.apply(cfg)
 	for _, k := range []string{"listeners", "tunnels"} {
 		if k == "listeners" {
 			if listeners, ok := cfg[k].([]any); ok {

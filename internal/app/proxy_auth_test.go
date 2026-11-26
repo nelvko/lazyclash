@@ -44,7 +44,7 @@ func TestProxyAuthAccountsReviewedAgainstAppliedGeneration(t *testing.T) {
 		t.Fatal("missing current inherited account")
 	}
 	draft := []ProxyAuthUser{{OriginalUsername: "source", Username: "renamed"}, {Username: "second", Password: "new:fixture"}}
-	plan, err = a.PrepareProxyAuth(ctx, current, draft)
+	plan, err = a.PrepareProxyAuthRules(ctx, current, draft, "")
 	if err != nil || !plan.Changed || plan.Current.ProxyUserCount != 1 || plan.Proposed.ProxyUserCount != 2 {
 		t.Fatal("invalid proxy authentication review", err)
 	}

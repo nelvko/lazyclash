@@ -49,7 +49,7 @@ func availableSettings(t *testing.T) RuntimeSettings {
 		t.Fatal(err)
 	}
 	defer controller.Close()
-	return RuntimeSettings{MixedPort: mixed.Addr().(*net.TCPAddr).Port, ControllerPort: controller.Addr().(*net.TCPAddr).Port}
+	return RuntimeSettings{AccessRules: mihomo.AccessRules{LANAllowedIPs: mihomo.DefaultLANAllowedIPs}, MixedPort: mixed.Addr().(*net.TCPAddr).Port, ControllerPort: controller.Addr().(*net.TCPAddr).Port}
 }
 
 func TestRuntimeSettingsPreserveAppliedConfigurationAndSources(t *testing.T) {
@@ -258,7 +258,8 @@ func TestActiveRuntimeSettingsSwapOwnedPortsWithoutStoppingForeignUDP(t *testing
 			}
 			defer controllerTCP.Close()
 			svc.active = true
-			next := RuntimeSettings{MixedPort: initial.ControllerPort, ControllerPort: initial.MixedPort}
+			next := initial
+			next.MixedPort, next.ControllerPort = initial.ControllerPort, initial.MixedPort
 			serveConfigReadback(a, fmt.Sprintf(`{"mixed-port":%d}`, next.MixedPort))
 			if conflict {
 				foreign, err := net.ListenPacket("udp", fmt.Sprintf("127.0.0.1:%d", initial.ControllerPort))
@@ -476,7 +477,7 @@ func TestSettingsKeepHiddenPortsOutOfChangesAndPreserveTheirValues(t *testing.T)
 			if changes["port"] != 80 || redirChanged != (tc.wantRedir == 0) || tproxyChanged != (tc.wantTProxy == 0) {
 				t.Fatalf("incorrect port changes: %v", changes)
 			}
-			raw, err := mihomo.EffectiveListeners([]byte(mihomo.DefaultProfile), "127.0.0.1:9097", "fixture", 0, draft.ListenerOptions, nil)
+			raw, err := mihomo.EffectiveListeners([]byte(mihomo.DefaultProfile), "127.0.0.1:9097", "fixture", 0, draft.ListenerOptions, nil, mihomo.AccessOverrides{})
 			var cfg map[string]any
 			if err != nil || yaml.Unmarshal(raw, &cfg) != nil || cfg["redir-port"] != tc.wantRedir || cfg["tproxy-port"] != tc.wantTProxy {
 				t.Fatal("generated YAML lost hidden port values or omitted explicit zero", err)

@@ -2,12 +2,15 @@ package mihomo
 
 import (
 	"context"
+	"encoding/json"
 	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -34,9 +37,11 @@ func TestMihomoProxyAuthIntegration(t *testing.T) {
 		return ln.Addr().(*net.TCPAddr)
 	}
 	controller, mixed, httpPort, socks := reserve(), reserve(), reserve(), reserve()
+	noBypass := ""
 	opts := BuildOptions{
-		Base:       []byte("rules: ['MATCH,DIRECT']\nauthentication: ['inherited:discarded']\nskip-auth-prefixes: ['127.0.0.0/8']\n"),
-		Controller: controller.String(), Secret: "test-controller", MixedPort: mixed.Port,
+		AccessOverrides: AccessOverrides{SkipAuthPrefixes: &noBypass},
+		Base:            []byte("rules: ['MATCH,DIRECT']\nauthentication: ['inherited:discarded']\nskip-auth-prefixes: ['127.0.0.0/8']\n"),
+		Controller:      controller.String(), Secret: "test-controller", MixedPort: mixed.Port,
 		Listeners:  ListenerOptions{HTTPPort: httpPort.Port, SOCKSPort: socks.Port},
 		ProxyUsers: []string{"test-one:first:password", "test-two:second-password"},
 	}
@@ -52,7 +57,8 @@ func TestMihomoProxyAuthIntegration(t *testing.T) {
 	for _, ln := range listeners {
 		_ = ln.Close()
 	}
-	stop := startIntegrationCore(t, ctx, bin, home, config, Client{BaseURL: "http://" + controller.String(), Secret: opts.Secret})
+	client := Client{BaseURL: "http://" + controller.String(), Secret: opts.Secret}
+	stop := startIntegrationCore(t, ctx, bin, home, config, client)
 	defer stop()
 	request := func(proxy *url.URL, address string) int {
 		tr := &http.Transport{Proxy: http.ProxyURL(proxy), DisableKeepAlives: true, TLSClientConfig: secureOrigin.Client().Transport.(*http.Transport).TLSClientConfig}
@@ -88,5 +94,87 @@ func TestMihomoProxyAuthIntegration(t *testing.T) {
 				}
 			}
 		}
+	}
+
+	readConfig := func() map[string]json.RawMessage {
+		t.Helper()
+		raw, err := client.request(ctx, http.MethodGet, "/configs", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var config map[string]json.RawMessage
+		if err := json.Unmarshal(raw, &config); err != nil {
+			t.Fatal(err)
+		}
+		return config
+	}
+
+	// Verify the runtime PATCH semantics against real connections, including
+	// loopback clients when allow-lan remains disabled.
+	patch := func(fields map[string][]string) {
+		t.Helper()
+		body, err := json.Marshal(fields)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := client.request(ctx, http.MethodPatch, "/configs", body); err != nil {
+			t.Fatal(err)
+		}
+		config := readConfig()
+		for key, want := range fields {
+			var got []string
+			if err := json.Unmarshal(config[key], &got); err != nil {
+				t.Fatalf("invalid runtime %s list", key)
+			}
+			prefixes, err := NormalizePrefixes(strings.Join(got, "\n"))
+			if err != nil || prefixes != strings.Join(want, "\n") {
+				t.Fatalf("runtime %s differs from applied access rules", key)
+			}
+		}
+	}
+	anonymous := &url.URL{Scheme: "http", Host: httpPort.String()}
+	patch(map[string][]string{"skip-auth-prefixes": {"127.0.0.0/8"}, "lan-allowed-ips": {"127.0.0.0/8"}})
+	if status := request(anonymous, origin.URL); status != http.StatusNoContent {
+		t.Fatalf("matching exemption did not bypass authentication, status %d", status)
+	}
+	patch(map[string][]string{"lan-disallowed-ips": {"127.0.0.1/32"}})
+	if status := request(readyProxy, origin.URL); status == http.StatusNoContent {
+		t.Fatal("deny did not take priority over allow and exemption")
+	}
+	patch(map[string][]string{"lan-disallowed-ips": {}, "lan-allowed-ips": {}})
+	if status := request(readyProxy, origin.URL); status == http.StatusNoContent {
+		t.Fatal("an explicitly empty allow list admitted a client")
+	}
+	patch(map[string][]string{"lan-allowed-ips": {"0.0.0.0/0", "::/0"}, "skip-auth-prefixes": {}})
+	if status := request(readyProxy, origin.URL); status != http.StatusNoContent {
+		t.Fatalf("restoring all source networks did not admit an authenticated client, status %d", status)
+	}
+	if status := request(anonymous, origin.URL); status == http.StatusNoContent {
+		t.Fatal("an explicitly empty skip list bypassed required credentials")
+	}
+
+	// Apply a subscription with its own accounts while LAN is disabled.
+	opts.ProxyUsers = nil
+	raw, err = Build(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(config, raw, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := client.Reload(ctx); err != nil {
+		t.Fatal(err)
+	}
+	current := readConfig()
+	var names []string
+	if string(current["allow-lan"]) != "false" || json.Unmarshal(current["authentication"], &names) != nil || !slices.Equal(names, []string{"inherited"}) {
+		t.Fatal("runtime did not apply the subscription account with LAN disabled")
+	}
+	inherited := &url.URL{Scheme: "http", Host: httpPort.String(), User: url.UserPassword("inherited", "discarded")}
+	if status := request(inherited, origin.URL); status != http.StatusNoContent {
+		t.Fatalf("loopback subscription credentials did not authenticate: HTTP %d", status)
+	}
+	if status := request(anonymous, origin.URL); status == http.StatusNoContent {
+		t.Fatal("loopback subscription credentials were optional")
 	}
 }

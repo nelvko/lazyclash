@@ -17,7 +17,8 @@ type BuildOptions struct {
 	Controller, Secret string
 	MixedPort          int
 	Listeners          ListenerOptions
-	ProxyUsers         []string // nil keeps the default listener policy; an empty list explicitly disables authentication.
+	ProxyUsers         []string // nil inherits the profile accounts; an empty list explicitly disables authentication.
+	AccessOverrides    AccessOverrides
 	Mode               string
 	General            GeneralSettings
 	TUN                bool
@@ -55,7 +56,7 @@ func Build(opts BuildOptions) ([]byte, error) {
 	if err != nil {
 		return nil, diagnostic.New("diagnostic.config.buildEncoding", "cannot encode Mihomo build inputs")
 	}
-	out, err := EffectiveListeners(raw, opts.Controller, opts.Secret, opts.MixedPort, opts.Listeners, opts.ProxyUsers)
+	out, err := EffectiveListeners(raw, opts.Controller, opts.Secret, opts.MixedPort, opts.Listeners, opts.ProxyUsers, opts.AccessOverrides)
 	if err != nil {
 		return nil, err
 	}

@@ -29,6 +29,7 @@ func TestReviewedListenersPersistWithPinnedProfileACLAndWriteOnlySecret(t *testi
 		t.Fatal(err)
 	}
 	next := availableSettings(t)
+	next.AccessRules = original.AccessRules
 	next.HTTPPort, next.MixedPort = next.MixedPort, 0
 	next.AllowLAN = true
 	next.NewSecret = "rotated-private-test-value"

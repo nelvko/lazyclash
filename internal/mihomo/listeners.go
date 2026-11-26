@@ -3,6 +3,7 @@ package mihomo
 import (
 	"context"
 	"net"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"strings"
@@ -20,6 +21,7 @@ type ListenerOptions struct {
 	RedirPort           int    `json:"redir_port,omitempty"`
 	TProxyPort          int    `json:"tproxy_port,omitempty"`
 	AllowLAN            bool   `json:"allow_lan,omitempty"`
+	BindAddress         string `json:"bind_address,omitempty"` // Empty selects Mihomo's "*" default.
 	HTTPSAddress        string `json:"https_address,omitempty"`
 	CertificatePath     string `json:"certificate_path,omitempty"`
 	PrivateKeyPath      string `json:"private_key_path,omitempty"`
@@ -52,17 +54,10 @@ func (o ListenerOptions) apply(cfg map[string]any, controller, secret string, mi
 	cfg["external-controller-tls"], cfg["external-controller-unix"] = o.HTTPSAddress, o.UnixSocket
 	cfg["external-controller-routing-mark"], cfg["external-doh-server"] = o.RoutingMark, o.DoHPath
 	cfg["mixed-port"], cfg["port"], cfg["socks-port"], cfg["redir-port"], cfg["tproxy-port"] = mixedPort, o.HTTPPort, o.SOCKSPort, o.RedirPort, o.TProxyPort
-	cfg["allow-lan"], cfg["bind-address"] = o.AllowLAN, "127.0.0.1"
-	if o.AllowLAN {
-		cfg["bind-address"] = "*"
-	}
-	// An explicitly managed list applies to every client of the HTTP(S),
-	// SOCKS and mixed listeners, including loopback clients.
+	cfg["allow-lan"], cfg["bind-address"] = o.AllowLAN, o.ConfiguredBindAddress()
+	// Account ownership is independent of source-network exemptions.
 	if proxyUsers != nil {
 		cfg["authentication"] = proxyUsers
-		cfg["skip-auth-prefixes"] = []string{}
-	} else if !o.AllowLAN {
-		cfg["authentication"] = []string{}
 	}
 	cfg["routing-mark"] = 0
 	for _, key := range []string{"external-controller-pipe", "external-ui", "external-ui-name", "external-ui-url", "ss-config", "vmess-config", "interface-name"} {
@@ -159,12 +154,55 @@ func ControllerTarget(address string) (string, error) {
 
 type ListenerEndpoint struct{ Network, Address string }
 
-func (o ListenerOptions) ProxyListenAddress(port int) string {
-	host := "127.0.0.1"
-	if o.AllowLAN {
-		host = ""
+func NormalizeBindAddress(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "*" {
+		return value, nil
 	}
-	return net.JoinHostPort(host, strconv.Itoa(port))
+	bracketed := strings.HasPrefix(value, "[") && strings.HasSuffix(value, "]")
+	if bracketed {
+		value = value[1 : len(value)-1]
+	}
+	ip, err := netip.ParseAddr(value)
+	if err != nil || ip.Zone() != "" || bracketed && !ip.Is6() {
+		return "", diagnostic.New("diagnostic.settings.bindAddress", "enter *, an IPv4 address, or an IPv6 address")
+	}
+	if ip.Is6() {
+		return "[" + ip.String() + "]", nil
+	}
+	return ip.String(), nil
+}
+
+func (o ListenerOptions) ConfiguredBindAddress() string {
+	if o.BindAddress == "" {
+		return "*"
+	}
+	return o.BindAddress
+}
+
+func (o ListenerOptions) ProxyListenHost() string {
+	if !o.AllowLAN {
+		return "127.0.0.1"
+	}
+	if host := o.ConfiguredBindAddress(); host != "*" {
+		return strings.Trim(host, "[]")
+	}
+	return ""
+}
+
+func (o ListenerOptions) ProxyDialHost() string {
+	switch host := o.ProxyListenHost(); host {
+	case "", "0.0.0.0":
+		return "127.0.0.1"
+	case "::":
+		return "::1"
+	default:
+		return host
+	}
+}
+
+func (o ListenerOptions) ProxyListenAddress(port int) string {
+	return net.JoinHostPort(o.ProxyListenHost(), strconv.Itoa(port))
 }
 
 // Endpoints lists the sockets Mihomo opens, including datagram listeners.
@@ -196,10 +234,14 @@ func (ep ListenerEndpoint) Conflicts(other ListenerEndpoint) bool {
 	}
 	a, ap, _ := net.SplitHostPort(ep.Address)
 	b, bp, _ := net.SplitHostPort(other.Address)
-	return ap == bp && (a == b || a == "" || b == "" || net.ParseIP(a).IsUnspecified() || net.ParseIP(b).IsUnspecified())
+	ipA, ipB := net.ParseIP(a), net.ParseIP(b)
+	return ap == bp && (a == b || a == "" || b == "" || (ipA != nil && ipA.Equal(ipB)) || ipA.IsUnspecified() || ipB.IsUnspecified())
 }
 
 func (o ListenerOptions) Validate(controller, secret string, mixedPort int) error {
+	if _, err := NormalizeBindAddress(o.ConfiguredBindAddress()); err != nil {
+		return err
+	}
 	if secret == "" || strings.IndexFunc(secret, unicode.IsControl) >= 0 {
 		return diagnostic.New("diagnostic.config.controllerSecret", "controller secret must be nonempty and contain no control characters")
 	}

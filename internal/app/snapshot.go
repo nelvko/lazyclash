@@ -191,7 +191,9 @@ func (a *App) Snapshot(ctx context.Context) (Snapshot, error) {
 			out.Drift = "The running mode differs from the saved configuration; apply the desired mode again"
 		}
 		if observedMixedPort != nil {
-			terminalPublicationError = a.publishTerminalEndpoint(*observedMixedPort)
+			terminal := out.RuntimeSettings
+			terminal.MixedPort = *observedMixedPort
+			terminalPublicationError = a.publishTerminalEndpoint(terminal.TerminalProxyPort())
 		}
 		return ctx.Err()
 	})
