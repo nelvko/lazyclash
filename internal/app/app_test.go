@@ -10,6 +10,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -20,6 +21,23 @@ import (
 )
 
 const testMihomoVersion = "v1.19.33"
+
+func TestInstalledCoreOSReadsExecutableBuildInfo(t *testing.T) {
+	binary, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := installedCoreOS(binary); got != runtime.GOOS {
+		t.Fatalf("test executable GOOS = %q, want %q", got, runtime.GOOS)
+	}
+	unknown := filepath.Join(t.TempDir(), "mihomo")
+	if err := os.WriteFile(unknown, []byte("no build information"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if got := installedCoreOS(unknown); got != "" {
+		t.Fatalf("executable without metadata reported GOOS %q", got)
+	}
+}
 
 type fakeService struct {
 	active                           bool
@@ -90,6 +108,7 @@ func testApp(t *testing.T) (*App, *fakeService) {
 	a.PlatformError = nil
 	a.CheckPorts = func(string, int) error { return nil }
 	a.ProbeProxy = func(context.Context, int) error { return nil }
+	a.ProbeUDP = func(int, []int) bool { return true }
 	a.Download = func(ctx context.Context, dest string, progress func(string)) error {
 		if err := ctx.Err(); err != nil {
 			return err

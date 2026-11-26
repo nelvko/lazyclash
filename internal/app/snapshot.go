@@ -31,7 +31,9 @@ type Snapshot struct {
 	ServiceDiagnostic   error `json:"-"`
 	Controller          string
 	MixedPort           int
+	RuntimeSettings     RuntimeSettings
 	CoreSettings        mihomo.GeneralSettings
+	GeoRestartPending   bool
 	TerminalProxy       shellintegration.Status
 	ProfilePending      bool
 	Generation          string
@@ -52,7 +54,7 @@ type Snapshot struct {
 
 func (a *App) Snapshot(ctx context.Context) (Snapshot, error) {
 	var out Snapshot
-	observedMixedPort := 0
+	var observedMixedPort *int
 	var terminalPublicationError error
 	err := a.locked(ctx, func() error {
 		out.Capabilities = a.Capabilities()
@@ -73,6 +75,7 @@ func (a *App) Snapshot(ctx context.Context) (Snapshot, error) {
 			out.Version = m.Version
 			out.Controller = m.Controller
 			out.MixedPort = m.Port
+			out.RuntimeSettings = manifestSettings(m)
 			out.CoreSettings = m.CoreSettings
 			out.Applied = m.selectedProfile()
 			out.Generation = generation
@@ -112,6 +115,7 @@ func (a *App) Snapshot(ctx context.Context) (Snapshot, error) {
 			}
 		}
 		out.ServiceObservedAt = time.Now()
+		out.GeoRestartPending = m.GeoScheduleAtStart.pending(out.Service, m.CoreSettings)
 		if out.Installed && a.Service != nil && out.ServiceError == "" {
 			bin, config, data := a.paths()
 			if err := a.Service.Verify(ctx, bin, config, data); err != nil {
@@ -173,9 +177,7 @@ func (a *App) Snapshot(ctx context.Context) (Snapshot, error) {
 				out.Mode.ErrorDiagnostic = err
 			} else {
 				out.Mode.Actual = cfg.Mode
-				if cfg.MixedPort != nil && *cfg.MixedPort > 0 {
-					observedMixedPort = *cfg.MixedPort
-				}
+				observedMixedPort = cfg.MixedPort
 				out.TUNActual = &cfg.TUN
 				if cfg.TUN != out.TUN {
 					out.TUNError = "Running TUN differs from the saved policy; restart the service"
@@ -188,8 +190,8 @@ func (a *App) Snapshot(ctx context.Context) (Snapshot, error) {
 		if out.Drift == "" && out.Mode.Actual != "" && out.Mode.Desired != out.Mode.Actual {
 			out.Drift = "The running mode differs from the saved configuration; apply the desired mode again"
 		}
-		if observedMixedPort > 0 {
-			terminalPublicationError = a.publishTerminalEndpoint(observedMixedPort)
+		if observedMixedPort != nil {
+			terminalPublicationError = a.publishTerminalEndpoint(*observedMixedPort)
 		}
 		return ctx.Err()
 	})

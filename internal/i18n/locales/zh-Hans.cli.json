@@ -88,7 +88,7 @@
   "cli.flag.env.unset": "即使未安装或配置损坏，也输出清理变量的命令",
   "cli.flag.logs.lines": "最多采集的新日志条数（1–500）",
   "cli.flag.logs.duration": "采集时间窗口（大于零，最多 1m）",
-  "cli.flag.settings.ports.mixed-port": "本机 HTTP/SOCKS 代理端口（1024–65535）",
+  "cli.flag.settings.ports.mixed-port": "本机 HTTP/SOCKS 代理端口（1–65535，0 停用）",
   "cli.flag.settings.ports.controller-port": "本机控制 API 端口（1024–65535）",
   "cli.flag.settings.ports.dry-run": "验证并输出拟议更改",
   "cli.flag.settings.ports.restart": "确认重启正在运行的内核并中断其连接",

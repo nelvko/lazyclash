@@ -88,7 +88,7 @@
   "cli.flag.env.unset": "Print unset commands even when uninstalled or configuration is damaged",
   "cli.flag.logs.lines": "Maximum new entries to collect (1–500)",
   "cli.flag.logs.duration": "Observation window (greater than zero, at most 1m)",
-  "cli.flag.settings.ports.mixed-port": "Local HTTP/SOCKS proxy port (1024–65535)",
+  "cli.flag.settings.ports.mixed-port": "Local HTTP/SOCKS proxy port (1–65535, 0 to disable)",
   "cli.flag.settings.ports.controller-port": "Local control API port (1024–65535)",
   "cli.flag.settings.ports.dry-run": "Validate and print the proposed change without applying",
   "cli.flag.settings.ports.restart": "Acknowledge restarting an active core and interrupting its connections",

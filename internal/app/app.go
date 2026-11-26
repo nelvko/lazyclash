@@ -40,6 +40,7 @@ type App struct {
 	HTTP            *http.Client
 	CheckPorts      func(controller string, mixedPort int) error
 	ProbeProxy      func(context.Context, int) error
+	ProbeUDP        func(int, []int) bool
 	Resolve         func(context.Context, string, downloadnet.Config) (mihomo.Release, error)
 	QueryLatest     func(context.Context, mihomo.Channel, downloadnet.Config) (string, error)
 	DownloadRelease func(context.Context, string, mihomo.Release, downloadnet.Config, func(mihomo.Progress)) error

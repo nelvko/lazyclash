@@ -82,8 +82,9 @@ func (a *App) buildAppliedRecipe(m manifest) ([]byte, error) {
 
 func (a *App) buildRecipe(record buildRecord, m manifest) ([]byte, error) {
 	opts := mihomo.BuildOptions{
-		Controller: m.Controller, Secret: m.Secret, MixedPort: m.Port,
-		General: m.CoreSettings, Mode: m.Mode, TUN: m.TUN, ServiceName: a.Name,
+		Controller: m.Controller, Secret: m.Secret, MixedPort: m.Port, Listeners: m.Listeners,
+		ProxyUsers: m.managedProxyUsers(),
+		General:    m.CoreSettings, Mode: m.Mode, TUN: m.TUN, ServiceName: a.Name,
 	}
 	if record.Profile == "default" {
 		opts.Base = []byte(mihomo.DefaultProfile)

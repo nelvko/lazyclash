@@ -42,6 +42,9 @@ func (a *App) client(m manifest) mihomo.Client {
 }
 
 func (a *App) checkPorts(m manifest) error {
+	if err := a.checkListenerFiles(context.Background(), m, manifestSettings(m)); err != nil {
+		return err
+	}
 	if a.CheckPorts != nil {
 		return a.CheckPorts(m.Controller, m.Port)
 	}
@@ -65,9 +68,16 @@ func (a *App) waitReady(ctx context.Context, m manifest) error {
 	defer cancel()
 	tick := time.NewTicker(100 * time.Millisecond)
 	defer tick.Stop()
+	waitingForListeners := false
+	timeout := func(err error) error {
+		if waitingForListeners {
+			return diagnostic.New("diagnostic.runtime.listenersNotReady", "Mihomo did not open all configured listeners; check ports, TLS files and service permissions: %w", err)
+		}
+		return diagnostic.New("diagnostic.runtime.apiNotReady", "Mihomo API did not become ready: %w", err)
+	}
 	for {
 		if err := ctx.Err(); err != nil {
-			return diagnostic.New("diagnostic.runtime.apiNotReady", "Mihomo API did not become ready: %w", err)
+			return timeout(err)
 		}
 		status, err := a.Service.Inspect(ctx)
 		if err != nil {
@@ -76,7 +86,9 @@ func (a *App) waitReady(ctx context.Context, m manifest) error {
 		if status.State == "failed" {
 			return diagnostic.New("diagnostic.runtime.serviceFailed", "Mihomo service failed (result=%s, exit=%d); inspect status before retrying", status.Result, status.ExitCode)
 		}
-		if status.Active && a.client(m).Ping(ctx) == nil && a.probeProxy(ctx, m.Port) == nil {
+		apiReady := status.Active && a.client(m).Ping(ctx) == nil
+		waitingForListeners = apiReady && !a.listenersReady(ctx, m, status.PID)
+		if apiReady && !waitingForListeners {
 			if !m.TUN {
 				return nil
 			}
@@ -87,12 +99,15 @@ func (a *App) waitReady(ctx context.Context, m manifest) error {
 		}
 		select {
 		case <-ctx.Done():
-			return diagnostic.New("diagnostic.runtime.apiNotReady", "Mihomo API did not become ready: %w", ctx.Err())
+			return timeout(ctx.Err())
 		case <-tick.C:
 		}
 	}
 }
 func (a *App) restartReady(ctx context.Context, m manifest) error {
+	if err := a.checkListenerFiles(ctx, m, manifestSettings(m)); err != nil {
+		return err
+	}
 	bin, config, data := a.paths()
 	if err := a.Service.Verify(ctx, bin, config, data); err != nil {
 		return err
@@ -171,6 +186,8 @@ func (a *App) Control(ctx context.Context, action string) error {
 		if err := a.checkPorts(m); err != nil {
 			return err
 		}
+	} else if err := a.checkListenerFiles(ctx, m, manifestSettings(m)); err != nil {
+		return err
 	}
 	r, old, err := a.loadRuntimeRecord(m)
 	if err != nil {
@@ -233,5 +250,8 @@ func (a *App) Select(ctx context.Context, group, node string) error {
 func (a *App) Port(ctx context.Context) (int, error) {
 	var port int
 	err := a.locked(ctx, func() error { m, _, err := a.load(); port = m.Port; return err })
+	if err == nil && port == 0 {
+		return 0, diagnostic.New("diagnostic.settings.mixedDisabled", "enable a mixed proxy port before exporting shell proxy settings")
+	}
 	return port, err
 }

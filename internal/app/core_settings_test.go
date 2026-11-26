@@ -5,15 +5,18 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/nelvko/lazyclash/internal/mihomo"
+	"github.com/nelvko/lazyclash/internal/service"
 	"gopkg.in/yaml.v3"
 )
 
@@ -38,6 +41,12 @@ tcp-concurrent: true
 disable-keep-alive: true
 find-process-mode: always
 etag-support: false
+keep-alive-idle: 34
+keep-alive-interval: 9
+geo-auto-update: true
+geo-update-interval: 4
+geodata-loader: standard
+profile: {store-fake-ip: true}
 rules: ['MATCH,DIRECT']
 `)
 	write(t, first, source)
@@ -48,10 +57,7 @@ rules: ['MATCH,DIRECT']
 	if err := a.AddSubscription(ctx, "two", second); err != nil {
 		t.Fatal(err)
 	}
-	wantDefaults := mihomo.GeneralSettings{
-		IPv6: "on", UnifiedDelay: "off", LogLevel: "info",
-		TCPConcurrent: "off", DisableKeepAlive: "off", FindProcessMode: "strict", ETagSupport: "on",
-	}
+	wantDefaults := mihomo.DefaultGeneralSettings()
 	assertInstanceSettings(t, a, wantDefaults)
 	if err := a.Apply(ctx, "one"); err != nil {
 		t.Fatal(err)
@@ -60,6 +66,7 @@ rules: ['MATCH,DIRECT']
 	for key, value := range map[string]string{
 		"ipv6": "off", "unified-delay": "on", "log-level": "debug",
 		"tcp-concurrent": "on", "disable-keep-alive": "on", "find-process-mode": "off", "etag-support": "off",
+		"keep-alive-idle": "45", "keep-alive-interval": "15", "geo-auto-update": "on", "geo-update-interval": "8", "geodata-loader": "standard", "profile.store-fake-ip": "on",
 	} {
 		if err := a.SetCoreSetting(ctx, key, value); err != nil {
 			t.Fatal(err)
@@ -68,6 +75,7 @@ rules: ['MATCH,DIRECT']
 	want := mihomo.GeneralSettings{
 		IPv6: "off", UnifiedDelay: "on", LogLevel: "debug",
 		TCPConcurrent: "on", DisableKeepAlive: "on", FindProcessMode: "off", ETagSupport: "off",
+		KeepAliveIdle: "45", KeepAliveInterval: "15", GeoAutoUpdate: "on", GeoUpdateInterval: "8", GeodataLoader: "standard", StoreFakeIP: "on",
 	}
 	assertInstanceSettings(t, a, want)
 	otherInstance, _ := installedApp(t)
@@ -193,7 +201,18 @@ func assertInstanceSettings(t *testing.T, a *App, want mihomo.GeneralSettings) {
 		t.Fatalf("stored settings = %+v, want %+v", m.CoreSettings, want)
 	}
 	cfg := appliedConfigFields(t, a)
+	for key, value := range map[string]string{"keep-alive-idle": want.KeepAliveIdle, "keep-alive-interval": want.KeepAliveInterval} {
+		if value == "default" && cfg[key] != nil || value != "default" && fmt.Sprint(cfg[key]) != value {
+			t.Fatalf("applied %s = %v, want %v", key, cfg[key], value)
+		}
+	}
+	profile, _ := cfg["profile"].(map[string]any)
+	if profile["store-fake-ip"] != (want.StoreFakeIP == "on") || profile["store-selected"] != true {
+		t.Fatal("unexpected profile cache settings", profile)
+	}
+	interval, _ := strconv.Atoi(want.GeoUpdateInterval)
 	for key, value := range map[string]any{
+		"geo-auto-update": want.GeoAutoUpdate == "on", "geo-update-interval": interval, "geodata-loader": want.GeodataLoader,
 		"ipv6": m.TUN || want.IPv6 == "on", "unified-delay": want.UnifiedDelay == "on", "log-level": want.LogLevel,
 		"tcp-concurrent": want.TCPConcurrent == "on", "disable-keep-alive": want.DisableKeepAlive == "on",
 		"find-process-mode": want.FindProcessMode, "etag-support": want.ETagSupport == "on",
@@ -210,10 +229,12 @@ func TestUnsetCoreSettingsUseDeployedGenerationUntilNextWrite(t *testing.T) {
 	pinned := mihomo.GeneralSettings{
 		IPv6: "off", UnifiedDelay: "on", LogLevel: "debug",
 		TCPConcurrent: "on", DisableKeepAlive: "on", FindProcessMode: "always", ETagSupport: "off",
+		KeepAliveIdle: "55", KeepAliveInterval: "18", GeoAutoUpdate: "on", GeoUpdateInterval: "48", GeodataLoader: "standard", StoreFakeIP: "on",
 	}
 	applied := map[string]any{
 		"ipv6": false, "unified-delay": true, "log-level": "debug",
 		"tcp-concurrent": true, "disable-keep-alive": true, "find-process-mode": "always", "etag-support": false,
+		"keep-alive-idle": 55, "keep-alive-interval": 18, "geo-auto-update": true, "geo-update-interval": 48, "geodata-loader": "standard", "profile": map[string]any{"store-selected": true, "store-fake-ip": true},
 	}
 	for _, tc := range []struct {
 		name    string
@@ -222,6 +243,7 @@ func TestUnsetCoreSettingsUseDeployedGenerationUntilNextWrite(t *testing.T) {
 		want    mihomo.GeneralSettings
 	}{
 		{"omitted fields", nil, map[string]any{"log-level": "warning"}, omitted},
+		{"applied loader alias and inactive schedule", nil, map[string]any{"log-level": "warning", "geodata-loader": "memc", "geo-auto-update": true, "geo-update-interval": 0}, omitted},
 		{"partly pinned", map[string]string{"log_level": "debug"}, applied, pinned},
 		{"three saved fields", map[string]string{"ipv6": "off", "unified_delay": "on", "log_level": "debug"}, applied, pinned},
 	} {
@@ -235,7 +257,7 @@ func TestUnsetCoreSettingsUseDeployedGenerationUntilNextWrite(t *testing.T) {
 			dir := filepath.Join(a.Home, "installation", current)
 			manifestPath := filepath.Join(dir, "manifest.json")
 			cfg := appliedConfigFields(t, a)
-			for _, key := range []string{"ipv6", "unified-delay", "log-level", "tcp-concurrent", "disable-keep-alive", "find-process-mode", "etag-support"} {
+			for _, key := range []string{"ipv6", "unified-delay", "log-level", "tcp-concurrent", "disable-keep-alive", "find-process-mode", "etag-support", "keep-alive-idle", "keep-alive-interval", "geo-auto-update", "geo-update-interval", "geodata-loader", "profile"} {
 				delete(cfg, key)
 				if value, ok := tc.applied[key]; ok {
 					cfg[key] = value
@@ -285,6 +307,7 @@ func TestCoreSettingsValidationAndNoopPreserveGeneration(t *testing.T) {
 	for key, value := range map[string]string{
 		"log-level": "verbose", "ipv6": "auto", "allow-lan": "on", "unified-delay": "inherit",
 		"tcp-concurrent": "true", "disable-keep-alive": "auto", "find-process-mode": "on", "etag-support": "true",
+		"keep-alive-idle": "0", "keep-alive-interval": "-2", "geo-update-interval": "999999999999999999", "geo-auto-update": "auto", "geodata-loader": "fast", "profile.store-fake-ip": "yes",
 	} {
 		if err := a.SetCoreSetting(t.Context(), key, value); err == nil {
 			t.Fatalf("accepted %s=%s", key, value)
@@ -367,4 +390,37 @@ func TestTUNCanBeDisabledWithoutPinnedInputs(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGeoScheduleTracksRunningProcessAndRevertedEdits(t *testing.T) {
+	a, svc := installedApp(t)
+	manager := &profileLifecycleService{Services: svc, status: service.Status{Active: true, State: "active", PID: 1711, StartTimestampMonotonic: 100}}
+	a.Service = manager
+	a.HTTP = &http.Client{Transport: fixtureTransport(func(r *http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: 200, Header: make(http.Header), Request: r, Body: io.NopCloser(strings.NewReader(`{"version":"v1.19.33","mode":"rule"}`))}, nil
+	})}
+	check := func(key, value string, pending bool) {
+		t.Helper()
+		if key != "" {
+			if err := a.SetCoreSetting(t.Context(), key, value); err != nil {
+				t.Fatal(err)
+			}
+		}
+		snap, err := a.Snapshot(t.Context())
+		if err != nil || snap.GeoRestartPending != pending {
+			t.Fatalf("%s=%s pending=%t, want %t: %v", key, value, snap.GeoRestartPending, pending, err)
+		}
+	}
+	check("geo-update-interval", "3", false)
+	check("geo-auto-update", "on", true)
+	check("geo-update-interval", "4", true)
+	check("geo-auto-update", "off", false)
+	check("geo-auto-update", "on", true)
+	manager.status.StartTimestampMonotonic++
+	check("", "", false)
+	check("geo-update-interval", "6", true)
+	check("geo-update-interval", "4", false)
+	check("geo-auto-update", "off", true)
+	manager.status.Active, manager.status.State = false, "inactive"
+	check("", "", false)
 }

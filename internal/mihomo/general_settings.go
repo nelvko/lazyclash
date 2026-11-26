@@ -2,7 +2,10 @@ package mihomo
 
 import (
 	"cmp"
+	"math"
+	"strconv"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 
@@ -11,19 +14,27 @@ import (
 
 // GeneralSettings belongs to one managed instance and applies to every profile.
 type GeneralSettings struct {
-	IPv6             string `json:"ipv6"`
-	UnifiedDelay     string `json:"unified_delay"`
-	LogLevel         string `json:"log_level"`
-	TCPConcurrent    string `json:"tcp_concurrent"`
-	DisableKeepAlive string `json:"disable_keep_alive"`
-	FindProcessMode  string `json:"find_process_mode"`
-	ETagSupport      string `json:"etag_support"`
+	IPv6              string `json:"ipv6"`
+	UnifiedDelay      string `json:"unified_delay"`
+	LogLevel          string `json:"log_level"`
+	TCPConcurrent     string `json:"tcp_concurrent"`
+	DisableKeepAlive  string `json:"disable_keep_alive"`
+	KeepAliveIdle     string `json:"keep_alive_idle"`
+	KeepAliveInterval string `json:"keep_alive_interval"`
+	FindProcessMode   string `json:"find_process_mode"`
+	ETagSupport       string `json:"etag_support"`
+	GeoAutoUpdate     string `json:"geo_auto_update"`
+	GeoUpdateInterval string `json:"geo_update_interval"`
+	GeodataLoader     string `json:"geodata_loader"`
+	StoreFakeIP       string `json:"store_fake_ip"`
 }
 
 func DefaultGeneralSettings() GeneralSettings {
 	return GeneralSettings{
 		IPv6: "on", UnifiedDelay: "off", LogLevel: "info",
 		TCPConcurrent: "off", DisableKeepAlive: "off", FindProcessMode: "strict", ETagSupport: "on",
+		KeepAliveIdle: "default", KeepAliveInterval: "default",
+		GeoAutoUpdate: "off", GeoUpdateInterval: "24", GeodataLoader: "memconservative", StoreFakeIP: "off",
 	}
 }
 
@@ -35,20 +46,38 @@ func (s GeneralSettings) ResolveApplied(raw []byte) (GeneralSettings, error) {
 	}
 	defaults := DefaultGeneralSettings()
 	applied := struct {
-		IPv6             bool   `yaml:"ipv6"`
-		UnifiedDelay     bool   `yaml:"unified-delay"`
-		LogLevel         string `yaml:"log-level"`
-		TCPConcurrent    bool   `yaml:"tcp-concurrent"`
-		DisableKeepAlive bool   `yaml:"disable-keep-alive"`
-		FindProcessMode  string `yaml:"find-process-mode"`
-		ETagSupport      bool   `yaml:"etag-support"`
+		IPv6              bool   `yaml:"ipv6"`
+		UnifiedDelay      bool   `yaml:"unified-delay"`
+		LogLevel          string `yaml:"log-level"`
+		TCPConcurrent     bool   `yaml:"tcp-concurrent"`
+		DisableKeepAlive  bool   `yaml:"disable-keep-alive"`
+		FindProcessMode   string `yaml:"find-process-mode"`
+		ETagSupport       bool   `yaml:"etag-support"`
+		KeepAliveIdle     int    `yaml:"keep-alive-idle"`
+		KeepAliveInterval int    `yaml:"keep-alive-interval"`
+		GeoAutoUpdate     bool   `yaml:"geo-auto-update"`
+		GeoUpdateInterval int    `yaml:"geo-update-interval"`
+		GeodataLoader     string `yaml:"geodata-loader"`
+		Profile           struct {
+			StoreFakeIP bool `yaml:"store-fake-ip"`
+		} `yaml:"profile"`
 	}{
 		IPv6: defaults.IPv6 == "on", UnifiedDelay: defaults.UnifiedDelay == "on", LogLevel: defaults.LogLevel,
 		TCPConcurrent: defaults.TCPConcurrent == "on", DisableKeepAlive: defaults.DisableKeepAlive == "on",
 		FindProcessMode: defaults.FindProcessMode, ETagSupport: defaults.ETagSupport == "on",
+		GeoUpdateInterval: 24, GeodataLoader: defaults.GeodataLoader,
 	}
 	if err := yaml.Unmarshal(raw, &applied); err != nil {
 		return s, invalidGeneralSetting()
+	}
+	// Mihomo accepts memc as an alias. With a nonpositive interval its
+	// startup code does not register an updater, even if the switch is on.
+	if applied.GeodataLoader == "memc" {
+		applied.GeodataLoader = "memconservative"
+	}
+	if applied.GeoUpdateInterval <= 0 {
+		applied.GeoAutoUpdate = false
+		applied.GeoUpdateInterval = 24
 	}
 	s.IPv6 = cmp.Or(s.IPv6, toggleValue(applied.IPv6))
 	s.UnifiedDelay = cmp.Or(s.UnifiedDelay, toggleValue(applied.UnifiedDelay))
@@ -57,7 +86,20 @@ func (s GeneralSettings) ResolveApplied(raw []byte) (GeneralSettings, error) {
 	s.DisableKeepAlive = cmp.Or(s.DisableKeepAlive, toggleValue(applied.DisableKeepAlive))
 	s.FindProcessMode = cmp.Or(s.FindProcessMode, strings.ToLower(applied.FindProcessMode))
 	s.ETagSupport = cmp.Or(s.ETagSupport, toggleValue(applied.ETagSupport))
+	s.KeepAliveIdle = cmp.Or(s.KeepAliveIdle, appliedKeepAlive(applied.KeepAliveIdle))
+	s.KeepAliveInterval = cmp.Or(s.KeepAliveInterval, appliedKeepAlive(applied.KeepAliveInterval))
+	s.GeoAutoUpdate = cmp.Or(s.GeoAutoUpdate, toggleValue(applied.GeoAutoUpdate))
+	s.GeoUpdateInterval = cmp.Or(s.GeoUpdateInterval, strconv.Itoa(applied.GeoUpdateInterval))
+	s.GeodataLoader = cmp.Or(s.GeodataLoader, strings.ToLower(applied.GeodataLoader))
+	s.StoreFakeIP = cmp.Or(s.StoreFakeIP, toggleValue(applied.Profile.StoreFakeIP))
 	return s, s.validate()
+}
+
+func appliedKeepAlive(seconds int) string {
+	if seconds <= 0 {
+		return "default"
+	}
+	return strconv.Itoa(seconds)
 }
 
 func toggleValue(enabled bool) string {
@@ -81,10 +123,22 @@ func (s GeneralSettings) With(key, value string) (GeneralSettings, error) {
 		next.TCPConcurrent = value
 	case "disable-keep-alive":
 		next.DisableKeepAlive = value
+	case "keep-alive-idle":
+		next.KeepAliveIdle = canonicalInterval(cmp.Or(value, "default"))
+	case "keep-alive-interval":
+		next.KeepAliveInterval = canonicalInterval(cmp.Or(value, "default"))
 	case "find-process-mode":
 		next.FindProcessMode = value
 	case "etag-support":
 		next.ETagSupport = value
+	case "geo-auto-update":
+		next.GeoAutoUpdate = value
+	case "geo-update-interval":
+		next.GeoUpdateInterval = canonicalInterval(value)
+	case "geodata-loader":
+		next.GeodataLoader = value
+	case "profile.store-fake-ip":
+		next.StoreFakeIP = value
 	default:
 		return s, invalidGeneralSetting()
 	}
@@ -99,10 +153,18 @@ func invalidGeneralSetting() error {
 }
 
 func (s GeneralSettings) validate() error {
-	for _, value := range [...]string{s.IPv6, s.UnifiedDelay, s.TCPConcurrent, s.DisableKeepAlive, s.ETagSupport} {
+	for _, value := range [...]string{s.IPv6, s.UnifiedDelay, s.TCPConcurrent, s.DisableKeepAlive, s.ETagSupport, s.GeoAutoUpdate, s.StoreFakeIP} {
 		if value != "on" && value != "off" {
 			return invalidGeneralSetting()
 		}
+	}
+	for _, v := range [...]string{s.KeepAliveIdle, s.KeepAliveInterval} {
+		if v != "default" && !positiveDuration(v, time.Second) {
+			return invalidGeneralSetting()
+		}
+	}
+	if !positiveDuration(s.GeoUpdateInterval, time.Hour) || s.GeodataLoader != "memconservative" && s.GeodataLoader != "standard" {
+		return invalidGeneralSetting()
 	}
 	switch s.FindProcessMode {
 	case "always", "strict", "off":
@@ -115,6 +177,20 @@ func (s GeneralSettings) validate() error {
 	default:
 		return invalidGeneralSetting()
 	}
+}
+
+func positiveDuration(value string, unit time.Duration) bool {
+	n, err := strconv.ParseUint(value, 10, 63)
+	return err == nil && n > 0 && n <= uint64(math.MaxInt64/unit)
+}
+
+// Go's decimal parser and Mihomo's integer settings treat leading zeros as
+// insignificant. Keep one representation so repeating an edit is a no-op.
+func canonicalInterval(value string) string {
+	if n, err := strconv.ParseUint(value, 10, 63); err == nil {
+		return strconv.FormatUint(n, 10)
+	}
+	return value
 }
 
 // WithGeneralSettings updates the deployed YAML even when its original inputs
@@ -141,5 +217,24 @@ func (s GeneralSettings) apply(cfg map[string]any, tun bool) error {
 	cfg["disable-keep-alive"] = s.DisableKeepAlive == "on"
 	cfg["find-process-mode"] = s.FindProcessMode
 	cfg["etag-support"] = s.ETagSupport == "on"
+	for key, value := range map[string]string{"keep-alive-idle": s.KeepAliveIdle, "keep-alive-interval": s.KeepAliveInterval} {
+		if value == "default" {
+			delete(cfg, key)
+		} else {
+			cfg[key], _ = strconv.Atoi(value)
+		}
+	}
+	cfg["geo-auto-update"] = s.GeoAutoUpdate == "on"
+	cfg["geo-update-interval"], _ = strconv.Atoi(s.GeoUpdateInterval)
+	cfg["geodata-loader"] = s.GeodataLoader
+	profile, ok := cfg["profile"].(map[string]any)
+	if !ok {
+		if cfg["profile"] != nil {
+			return invalidGeneralSetting()
+		}
+		profile = make(map[string]any)
+		cfg["profile"] = profile
+	}
+	profile["store-fake-ip"] = s.StoreFakeIP == "on"
 	return nil
 }

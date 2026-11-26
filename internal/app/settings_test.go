@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -14,10 +16,21 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/nelvko/lazyclash/internal/mihomo"
 	"github.com/nelvko/lazyclash/internal/service"
 	"github.com/nelvko/lazyclash/internal/store"
 	"gopkg.in/yaml.v3"
 )
+
+func serveConfigReadback(a *App, body string) {
+	previous := a.HTTP.Transport
+	a.HTTP = &http.Client{Transport: fixtureTransport(func(r *http.Request) (*http.Response, error) {
+		if r.Method == http.MethodGet && r.URL.Path == "/configs" {
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Request: r}, nil
+		}
+		return previous.RoundTrip(r)
+	})}
+}
 
 func availableSettings(t *testing.T) RuntimeSettings {
 	t.Helper()
@@ -140,7 +153,7 @@ func TestRuntimeSettingsValidationConflictsAndOwnershipDoNotMutate(t *testing.T)
 			next := availableSettings(t)
 			switch mode {
 			case "range":
-				next.MixedPort = 1023
+				next.MixedPort = 65536
 			case "same":
 				next.ControllerPort = next.MixedPort
 			case "tcp-mixed", "tcp-controller":
@@ -246,6 +259,7 @@ func TestActiveRuntimeSettingsSwapOwnedPortsWithoutStoppingForeignUDP(t *testing
 			defer controllerTCP.Close()
 			svc.active = true
 			next := RuntimeSettings{MixedPort: initial.ControllerPort, ControllerPort: initial.MixedPort}
+			serveConfigReadback(a, fmt.Sprintf(`{"mixed-port":%d}`, next.MixedPort))
 			if conflict {
 				foreign, err := net.ListenPacket("udp", fmt.Sprintf("127.0.0.1:%d", initial.ControllerPort))
 				if err != nil {
@@ -319,6 +333,7 @@ func TestActiveRuntimeSettingsRestartAndFailureRecovery(t *testing.T) {
 			svc.active = true
 			before, old, _ := a.load()
 			proposed := availableSettings(t)
+			serveConfigReadback(a, fmt.Sprintf(`{"mixed-port":%d}`, proposed.MixedPort))
 			plan, err := a.PrepareRuntimeSettings(t.Context(), proposed)
 			if err != nil {
 				t.Fatal(err)
@@ -393,12 +408,89 @@ func TestActiveRuntimeSettingsRestartAndFailureRecovery(t *testing.T) {
 	}
 }
 
+func TestDisablingProxyPortRequiresExplicitZeroFromRunningCore(t *testing.T) {
+	for _, tc := range []struct {
+		body    string
+		applied bool
+	}{
+		{`{"mixed-port":0}`, true}, {`{"mixed-port":7897}`, false},
+		{`{}`, false}, {`{"mixed-port":null}`, false}, {`{"mixed-port":"0"}`, false},
+	} {
+		t.Run(tc.body, func(t *testing.T) {
+			a, svc := installedApp(t)
+			initial, err := a.PrepareRuntimeSettings(t.Context(), availableSettings(t))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := a.ApplyRuntimeSettings(t.Context(), initial); err != nil {
+				t.Fatal(err)
+			}
+			svc.active = true
+			before, old, err := a.load()
+			if err != nil || before.Port == 0 {
+				t.Fatal("expected enabled mixed listener", err)
+			}
+			serveConfigReadback(a, tc.body)
+			next := manifestSettings(before)
+			next.MixedPort = 0
+			plan, err := a.PrepareRuntimeSettingsEdit(t.Context(), manifestSettings(before), next)
+			if err != nil {
+				t.Fatal(err)
+			}
+			_, err = a.ApplyRuntimeSettings(t.Context(), plan)
+			after, current, loadErr := a.load()
+			if loadErr != nil || !svc.active || (err == nil) != tc.applied {
+				t.Fatalf("apply: %v, load: %v, active: %v", err, loadErr, svc.active)
+			}
+			if !tc.applied {
+				if current != old || after.Port != before.Port || !strings.Contains(err.Error(), "did not confirm mixed-port = 0") {
+					t.Fatal("expected rollback for unconfirmed core response", err)
+				}
+				return
+			}
+			var cfg map[string]any
+			if current == old || after.Port != 0 || yaml.Unmarshal(read(t, filepath.Join(a.Home, "installation", current, "config.yaml")), &cfg) != nil || cfg["mixed-port"] != 0 {
+				t.Fatal("new effective configuration did not explicitly disable the mixed listener")
+			}
+		})
+	}
+}
+
+func TestSettingsKeepHiddenPortsOutOfChangesAndPreserveTheirValues(t *testing.T) {
+	for _, tc := range []struct {
+		platform              string
+		wantRedir, wantTProxy int
+	}{
+		{"windows", 8210, 8211}, {"darwin", 0, 8211}, {"linux", 0, 0}, {"", 0, 0},
+	} {
+		t.Run(tc.platform, func(t *testing.T) {
+			installed := mihomo.ListenerOptions{CoreOS: tc.platform, RedirPort: 8210, TProxyPort: 8211}
+			draft := RuntimeSettings{ListenerOptions: mihomo.ListenerOptions{CoreOS: "linux", HTTPPort: 80}}
+			draft.preserveHiddenPorts(installed)
+			if draft.CoreOS != tc.platform || draft.RedirPort != tc.wantRedir || draft.TProxyPort != tc.wantTProxy {
+				t.Fatalf("draft changed hidden ports: %+v", draft.ListenerOptions)
+			}
+			changes := changedProxyPorts(manifest{Listeners: installed}, manifest{Listeners: draft.ListenerOptions})
+			_, redirChanged := changes["redir-port"]
+			_, tproxyChanged := changes["tproxy-port"]
+			if changes["port"] != 80 || redirChanged != (tc.wantRedir == 0) || tproxyChanged != (tc.wantTProxy == 0) {
+				t.Fatalf("incorrect port changes: %v", changes)
+			}
+			raw, err := mihomo.EffectiveListeners([]byte(mihomo.DefaultProfile), "127.0.0.1:9097", "fixture", 0, draft.ListenerOptions, nil)
+			var cfg map[string]any
+			if err != nil || yaml.Unmarshal(raw, &cfg) != nil || cfg["redir-port"] != tc.wantRedir || cfg["tproxy-port"] != tc.wantTProxy {
+				t.Fatal("generated YAML lost hidden port values or omitted explicit zero", err)
+			}
+		})
+	}
+}
+
 func TestGuardedSettingsRecoveryPreservesLaterUserChanges(t *testing.T) {
 	for _, changed := range []string{"none", "old-config", "new-config", "new-manifest", "new-file", "binary", "unit"} {
 		t.Run(changed, func(t *testing.T) {
 			a, svc := installedApp(t)
 			m, old, _ := a.load()
-			plan, _, _, cfg, err := a.prepareRuntimeSettingsLocked(t.Context(), availableSettings(t))
+			plan, _, _, cfg, err := a.prepareRuntimeSettingsLocked(t.Context(), nil, availableSettings(t), nil)
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -3,6 +3,7 @@ package app
 import (
 	"crypto/rand"
 	"crypto/sha256"
+	"debug/buildinfo"
 	"encoding/hex"
 	"encoding/json"
 	"io"
@@ -18,20 +19,25 @@ import (
 )
 
 type manifest struct {
-	TUN          bool                   `json:"tun"`
-	LifecycleSHA string                 `json:"lifecycle_sha256,omitempty"`
-	Build        *buildRecord           `json:"build,omitempty"`
-	ID           string                 `json:"id"`
-	Service      string                 `json:"service"`
-	Version      string                 `json:"version"`
-	Controller   string                 `json:"controller"`
-	Secret       string                 `json:"secret"`
-	Port         int                    `json:"mixed_port"`
-	Applied      string                 `json:"applied"`
-	Mode         string                 `json:"mode,omitempty"`
-	CoreSettings mihomo.GeneralSettings `json:"core_settings"`
-	SHA          string                 `json:"config_sha256"`
-	BinarySHA    string                 `json:"binary_sha256"`
+	TUN                bool                   `json:"tun"`
+	LifecycleSHA       string                 `json:"lifecycle_sha256,omitempty"`
+	Build              *buildRecord           `json:"build,omitempty"`
+	ID                 string                 `json:"id"`
+	Service            string                 `json:"service"`
+	Version            string                 `json:"version"`
+	Controller         string                 `json:"controller"`
+	Secret             string                 `json:"secret"`
+	Port               int                    `json:"mixed_port"`
+	Applied            string                 `json:"applied"`
+	Mode               string                 `json:"mode,omitempty"`
+	SecretRevision     string                 `json:"secret_revision,omitempty"`
+	Listeners          mihomo.ListenerOptions `json:"listeners"`
+	ManagedProxyAuth   bool                   `json:"managed_proxy_auth,omitempty"`
+	proxyUsers         []string               // Read from the verified config; never duplicate passwords in the manifest.
+	CoreSettings       mihomo.GeneralSettings `json:"core_settings"`
+	GeoScheduleAtStart *runningGeoSchedule    `json:"geo_schedule_at_start,omitempty"`
+	SHA                string                 `json:"config_sha256"`
+	BinarySHA          string                 `json:"binary_sha256"`
 }
 
 func (m manifest) selectedProfile() string {
@@ -63,6 +69,20 @@ func fileDigest(path string) (string, error) {
 	h := sha256.New()
 	_, err = io.Copy(h, f)
 	return hex.EncodeToString(h.Sum(nil)), err
+}
+
+// The managed unit runs this local binary. Mihomo's /version endpoint
+// reports a version but no operating system, and a stopped core has no API.
+func installedCoreOS(binary string) string {
+	info, err := buildinfo.ReadFile(binary)
+	if err == nil {
+		for _, setting := range info.Settings {
+			if setting.Key == "GOOS" {
+				return setting.Value
+			}
+		}
+	}
+	return ""
 }
 
 func (a *App) load() (manifest, string, error) {
@@ -110,6 +130,12 @@ func (a *App) load() (manifest, string, error) {
 	if err != nil {
 		return m, "", err
 	}
+	if m.ManagedProxyAuth || m.Listeners.AllowLAN {
+		m.proxyUsers, err = mihomo.ConfigProxyUsers(cfg)
+		if err != nil {
+			return m, "", err
+		}
+	}
 	m.CoreSettings, err = m.CoreSettings.ResolveApplied(cfg)
 	if err != nil {
 		return m, "", err
@@ -129,11 +155,12 @@ func (a *App) load() (manifest, string, error) {
 	if hash != m.BinarySHA {
 		return m, "", diagnostic.New("diagnostic.installation.binaryModified", "installed binary was modified; refusing to operate")
 	}
+	m.Listeners.CoreOS = installedCoreOS(bin)
 	if err := a.verifyLifecycle(m); err != nil {
 		return m, "", err
 	}
 	// Validate stored connection settings without exposing credentials.
-	if err := mihomo.ValidateEndpoints(m.Controller, m.Secret, m.Port); err != nil {
+	if err := m.Listeners.Validate(m.Controller, m.Secret, m.Port); err != nil {
 		return m, "", diagnostic.New("diagnostic.installation.controllerSettings", "invalid managed controller settings")
 	}
 	if err := a.bindTUN(m, cfg); err != nil {

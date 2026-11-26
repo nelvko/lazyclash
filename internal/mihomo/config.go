@@ -9,7 +9,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"unicode"
 
 	"gopkg.in/yaml.v3"
 
@@ -34,24 +33,6 @@ func Default(controller, secret string, mixedPort int) ([]byte, error) {
 		return nil, err
 	}
 	return Build(BuildOptions{Base: []byte(DefaultProfile), Controller: controller, Secret: secret, MixedPort: mixedPort})
-}
-
-// ValidateEndpoints checks the instance's managed listeners and API secret.
-func ValidateEndpoints(controller, secret string, mixedPort int) error {
-	if err := loopbackAddress(controller); err != nil {
-		return err
-	}
-	if secret == "" || strings.IndexFunc(secret, unicode.IsControl) >= 0 {
-		return diagnostic.New("diagnostic.config.controllerSecret", "controller secret must be nonempty and contain no control characters")
-	}
-	if mixedPort < 1024 || mixedPort > 65535 {
-		return diagnostic.New("diagnostic.config.mixedPort", "mixed port must be between 1024 and 65535")
-	}
-	_, apiPort, _ := net.SplitHostPort(controller)
-	if apiPort == strconv.Itoa(mixedPort) {
-		return diagnostic.New("diagnostic.config.portConflict", "two managed listeners use the same address and port")
-	}
-	return nil
 }
 
 // Effective builds the default, loopback-only listener policy.

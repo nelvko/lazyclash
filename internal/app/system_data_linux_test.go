@@ -3,6 +3,7 @@
 package app
 
 import (
+	"net"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -147,5 +148,21 @@ func TestSystemHomeRejectsSandboxHiddenLocations(t *testing.T) {
 	}
 	if err := systemHomeVisible("/var/lib/lazyclash/example"); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestUDPReadinessRequiresTheManagedProcessSocket(t *testing.T) {
+	udp, err := net.ListenPacket("udp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer udp.Close()
+	ports := []int{0, udp.LocalAddr().(*net.UDPAddr).Port}
+	if !processHasUDPListeners(os.Getpid(), ports) || processHasUDPListeners(os.Getppid(), ports) {
+		t.Fatal("readiness did not distinguish UDP socket owners")
+	}
+	_ = udp.Close()
+	if processHasUDPListeners(os.Getpid(), ports) {
+		t.Fatal("closed UDP listener reported ready")
 	}
 }
