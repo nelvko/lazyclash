@@ -471,6 +471,9 @@ func readProfileOverrides(path string) ([]byte, error) {
 }
 
 func (m *Model) renderProfileForm(base string) (string, []hitRegion) {
+	if m.form == "editor-preference" {
+		return m.renderEditorPreference(base)
+	}
 	if m.form == "profile-document" {
 		return m.renderProfileEditor(base)
 	}
@@ -495,10 +498,7 @@ func (m *Model) renderProfileForm(base string) (string, []hitRegion) {
 	if m.form == "source" && !m.rememberSource {
 		title, hint = m.tr("profiles.import_title"), m.tr("profiles.import_hint")
 	}
-	switch m.form {
-	case "editor-preference":
-		title, label, hint = m.tr("settings.editor"), m.tr("settings.editorCommand"), m.tr("settings.editorHint")
-	case "profile-overrides":
+	if m.form == "profile-overrides" {
 		title, label = m.tr("profiles.overrides_title", clean(m.profileInfo(m.name).Name)), m.tr("profiles.overrides_path")
 		hint = m.tr("profiles.overrides_hint")
 	}
@@ -515,14 +515,7 @@ func (m *Model) renderProfileForm(base string) (string, []hitRegion) {
 		put(2, themed(cellCrop(label, inner), muted, modalBackground, false))
 		inputRow = 3
 	}
-	m.input = prepareInputField(m.input, inputFieldTextWidth(inner, 0, true), modalBackground, m.failure != "")
-	hover := m.hover
-	if m.form == "editor-preference" {
-		hover = ""
-	}
-	field := renderInputField(m.input, inputFieldOptions{ID: "import-input", ClearID: "import-input.clear", ClearHovered: hover == "import-input.clear", ClearFocused: m.focus == "import-input.clear", Width: inner, Surface: modalBackground,
-		Focused: m.input.Focused(), Hovered: hover == "import-input", Invalid: m.failure != "",
-		Disabled: m.busy || m.quitting})
+	field := m.formInputField(inner, false, m.hover)
 	for row, line := range field.lines {
 		put(inputRow+row, line)
 	}
@@ -551,4 +544,13 @@ func (m *Model) renderProfileForm(base string) (string, []hitRegion) {
 		field.targets[i] = surface.screen(hit)
 	}
 	return surface.render(base), field.targets
+}
+
+func (m *Model) formInputField(width int, compact bool, hover string) dashboardBlock {
+	m.input = prepareInputField(m.input, inputFieldTextWidth(width, 0, true), modalBackground, m.failure != "")
+	return renderInputField(m.input, inputFieldOptions{
+		ID: "import-input", ClearID: "import-input.clear", Width: width, Surface: modalBackground, Compact: compact,
+		ClearHovered: hover == "import-input.clear", ClearFocused: m.focus == "import-input.clear",
+		Focused: m.input.Focused(), Hovered: hover == "import-input", Invalid: m.failure != "", Disabled: m.busy || m.quitting,
+	})
 }

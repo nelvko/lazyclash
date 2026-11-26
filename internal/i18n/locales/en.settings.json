@@ -1,5 +1,5 @@
 {
-  "settings.numberKeys": "Enter save · Esc cancel",
+  "settings.saveKeys": "Enter save · Esc cancel",
   "settings.numberInvalid": "Enter a positive whole number · Esc cancel",
   "settings.interface": "General",
   "settings.chooseLanguage": "Choose language",

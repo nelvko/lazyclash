@@ -174,7 +174,7 @@ func (m *Model) contextHelp() string {
 		if m.coreNumber.invalid {
 			return m.tr("settings.numberInvalid")
 		}
-		return m.tr("settings.numberKeys")
+		return m.tr("settings.saveKeys")
 	}
 	if m.notification.panel.open {
 		return m.notification.panel.contextHelp(m.locale)

@@ -1,5 +1,5 @@
 {
-  "settings.numberKeys": "Enter 保存 · Esc 取消",
+  "settings.saveKeys": "Enter 保存 · Esc 取消",
   "settings.numberInvalid": "请输入有效的正整数 · Esc 取消",
   "settings.interface": "常规",
   "settings.chooseLanguage": "选择语言",
