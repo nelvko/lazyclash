@@ -113,21 +113,22 @@ func (d dropdown) popupGeometry(anchor hitRegion, screenWidth int) (x, width int
 	return max(0, min(x, screenWidth-width)), width
 }
 
-func (d dropdown) row(item menuItem, width int, active, monochrome bool) string {
+// Wrapped options share one highlight, with cursor and checkmark on their first line.
+func (d dropdown) row(item menuItem, width int, active, monochrome bool, line int) string {
 	foreground, background := text, raised
 	cursor := " "
 	if item.DisabledReason != "" {
 		foreground = disabled
 	} else if active {
 		background = selectionBackground
-		if d.ShowCursor {
+		if line == 0 && d.ShowCursor {
 			cursor = themed("›", focus, background, false)
-		} else if monochrome {
+		} else if line == 0 && monochrome {
 			cursor = "›"
 		}
 	}
 	check := " "
-	if item.Checked {
+	if item.Checked && line == 0 {
 		check = "✓"
 	}
 	// Drop optional padding first when the terminal cannot fit a framed row.

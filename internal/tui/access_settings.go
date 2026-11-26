@@ -25,6 +25,7 @@ type accessDraft struct {
 	areas                  map[string]*textarea.Model
 	private                bool
 	auth                   proxyAuthDraft
+	bindMenu               actionMenu
 	bindField, bindMessage string // Last socket probe failure, cleared when its field changes.
 }
 

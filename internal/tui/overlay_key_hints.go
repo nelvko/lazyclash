@@ -42,6 +42,9 @@ func (m *Model) portsContextHelp() string {
 	if m.busy {
 		return m.tr("ports.busy_help")
 	}
+	if m.ports.access.bindMenu.open && m.ports.step == "edit" {
+		return m.tr("access.bindMenuKeys")
+	}
 	if m.ports.step == "edit" && m.ports.textarea(m.ports.focus) != nil {
 		return m.tr("navigation.hints.control", m.tr("access.newLine"))
 	}
@@ -66,6 +69,10 @@ func (m *Model) portsContextHelp() string {
 		label = m.tr("network.tunConfig.toggle")
 	case "ports.rulesReset":
 		label = m.tr("access.rulesReset")
+	case bindAllID:
+		label = m.tr("access.allInterfaces")
+	case bindMenuID:
+		label = m.tr("access.bindChoose")
 	case "ports.auth.add":
 		label = m.tr("access.authAdd")
 	case "ports.tlsSection", "ports.corsSection", "ports.advancedSection", proxyAuthBypass:
@@ -88,9 +95,6 @@ func (m *Model) portsContextHelp() string {
 			label = m.tr("ports.retry")
 		}
 	default:
-		if strings.HasPrefix(m.ports.focus, "ports.bindSample.") {
-			label = m.tr("access.bindSamples")
-		}
 		if strings.HasPrefix(m.ports.focus, "ports.copyUser.") {
 			label = m.tr("access.copyAddress")
 		}

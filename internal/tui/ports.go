@@ -37,6 +37,7 @@ type portsMsg struct {
 	id           uint64
 	kind         string
 	settings     app.RuntimeSettings
+	addresses    []app.BindAddressOption
 	auth         app.ProxyAuthSettings
 	plan         app.RuntimeSettingsPlan
 	result       app.RuntimeSettingsResult
@@ -87,7 +88,11 @@ func (m *Model) loadPorts() tea.Cmd {
 			return portsMsg{id: id, kind: "load", auth: users, err: err}
 		}
 		s, err := backend.GetRuntimeSettings(ctx)
-		return portsMsg{id: id, kind: "load", settings: s, err: err}
+		result := portsMsg{id: id, kind: "load", settings: s, err: err}
+		if kind == "bind" && err == nil {
+			result.addresses = backend.BindAddressOptions(ctx)
+		}
+		return result
 	}, m.spinner.Tick)
 }
 
@@ -218,6 +223,9 @@ func (m *Model) acceptPorts(msg portsMsg) {
 			if p.accessEditor() {
 				m.initAccessDraft()
 			}
+			if p.kind == "bind" {
+				m.initBindMenu(msg.addresses)
+			}
 		} else {
 			p.step, p.focus = "load-error", "ports.retry"
 		}
@@ -334,9 +342,7 @@ func (m *Model) portsActivate(id string) tea.Cmd {
 		if p.kind == "auth" && m.activateProxyAuth(id) {
 			return nil
 		}
-		if address, ok := strings.CutPrefix(id, "ports.bindSample."); ok && p.kind == "bind" {
-			p.field(bindAddressID).SetValue(address)
-			p.focus, p.reveal, p.err = bindAddressID, true, ""
+		if p.kind == "bind" && m.activateBindControl(id) {
 			return textinput.Blink
 		}
 		switch id {
@@ -414,9 +420,23 @@ func (m *Model) updatePortsInput(msg tea.Msg) tea.Cmd {
 		return nil
 	}
 	before := input.Value()
+	position := input.Position()
 	var cmd tea.Cmd
 	*input, cmd = input.Update(msg)
+	// The wildcard is a complete address. Typing or pasting into it starts
+	// a new address, including when Bubbles delivers a clipboard paste.
+	if m.ports.focus == bindAddressID && before == "*" && len(input.Value()) > 1 {
+		if position == 0 {
+			input.SetValue(strings.TrimSuffix(input.Value(), "*"))
+		} else {
+			input.SetValue(strings.TrimPrefix(input.Value(), "*"))
+		}
+		input.CursorEnd()
+	}
 	if input.Value() != before {
+		if m.ports.focus == bindAddressID {
+			m.ports.access.bindMenu.dismiss()
+		}
 		input.Err, m.ports.err, m.ports.plan = nil, "", app.RuntimeSettingsPlan{}
 		if m.ports.focus == m.ports.access.bindField {
 			m.ports.access.bindField, m.ports.access.bindMessage = "", ""
@@ -446,6 +466,9 @@ func (m *Model) portsKey(k tea.KeyPressMsg) tea.Cmd {
 	}
 	key := k.String()
 	if p.kind != "" && key != "esc" && len(p.controls) == 0 {
+		return nil
+	}
+	if p.kind == "bind" && p.step == "edit" && m.bindMenuKey(key) {
 		return nil
 	}
 	if p.textarea(p.focus) != nil && p.step == "edit" && (key == "enter" || key == "up" || key == "down") {
@@ -501,6 +524,15 @@ func (m *Model) portsKey(k tea.KeyPressMsg) tea.Cmd {
 func (m *Model) portsMouse(event tea.MouseMsg) tea.Cmd {
 	k := event.Mouse()
 	if _, wheel := event.(tea.MouseWheelMsg); wheel {
+		if menu := &m.ports.access.bindMenu; menu.open && (k.Button == tea.MouseWheelUp || k.Button == tea.MouseWheelDown) {
+			if k.Button == tea.MouseWheelUp {
+				menu.move(-1)
+			} else {
+				menu.move(1)
+			}
+			m.ports.reveal = true
+			return nil
+		}
 		m.ports.viewport, _ = m.ports.viewport.Update(event)
 		return nil
 	}
@@ -514,6 +546,9 @@ func (m *Model) portsMouse(event tea.MouseMsg) tea.Cmd {
 			return nil
 		}
 		if _, clicked := event.(tea.MouseClickMsg); clicked && k.Button == tea.MouseLeft {
+			if m.ports.access.bindMenu.open && hit.ID != bindAddressID && hit.ID != bindMenuID && !strings.HasPrefix(hit.ID, bindOptionPrefix) {
+				m.ports.access.bindMenu.dismiss()
+			}
 			if hit.ID != m.ports.focus {
 				m.ports.normalizeProxyZero()
 			}
@@ -680,7 +715,7 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 				preferredWidth = 66
 			}
 			if p.kind == "bind" {
-				preferredWidth = 52
+				preferredWidth = p.bindDialogWidth()
 			}
 		}
 		if p.kind == "activation" {
@@ -717,7 +752,7 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 	}
 	p.controls = nil
 	for _, hit := range doc.targets {
-		if hit.tip.text == "" {
+		if hit.tip.text == "" && !strings.HasPrefix(hit.ID, bindOptionPrefix) {
 			p.controls = append(p.controls, hit.ID)
 		}
 	}
@@ -823,6 +858,10 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 				// Keep the field and any wrapped feedback visible together.
 				top, bottom := max(0, hit.Y-1), hit.Y+hit.H
 				bottom = max(bottom, min(doc.focusedRowEnd, hit.Y+bodyH))
+				if hit.ID == bindAddressID && p.access.bindMenu.open {
+					// On very short screens prioritize the whole highlighted option.
+					bottom = max(bottom, doc.focusedRowEnd)
+				}
 				if top < p.viewport.YOffset() {
 					p.viewport.SetYOffset(top)
 				}

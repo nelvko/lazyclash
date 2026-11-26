@@ -57,11 +57,16 @@ type fakeBackend struct {
 	closeConnection     func(context.Context, string, time.Time) error
 	closeAllConnections func(context.Context) error
 	getSettings         func(context.Context) (app.RuntimeSettings, error)
+	bindAddresses       []app.BindAddressOption
 	getProxyAuth        func(context.Context) (app.ProxyAuthSettings, error)
 	getProxyAddress     func(context.Context, app.ProxyAuthSettings, string) (string, error)
 	prepareProxyAuth    func(context.Context, app.ProxyAuthSettings, []app.ProxyAuthUser, string) (app.RuntimeSettingsPlan, error)
 	prepareSettings     func(context.Context, app.RuntimeSettings) (app.RuntimeSettingsPlan, error)
 	applySettings       func(context.Context, app.RuntimeSettingsPlan) (app.RuntimeSettingsResult, error)
+}
+
+func (f *fakeBackend) BindAddressOptions(context.Context) []app.BindAddressOption {
+	return f.bindAddresses
 }
 
 func (f *fakeBackend) GetRuntimeSettings(ctx context.Context) (app.RuntimeSettings, error) {

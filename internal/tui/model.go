@@ -61,6 +61,7 @@ type Backend interface {
 	CloseAllConnections(context.Context) error
 	Rules(context.Context) (app.RuleSnapshot, error)
 	GetRuntimeSettings(context.Context) (app.RuntimeSettings, error)
+	BindAddressOptions(context.Context) []app.BindAddressOption
 	GetProxyAuth(context.Context) (app.ProxyAuthSettings, error)
 	PrepareProxyAuthRules(context.Context, app.ProxyAuthSettings, []app.ProxyAuthUser, string) (app.RuntimeSettingsPlan, error)
 	GetProxyAddress(context.Context, app.ProxyAuthSettings, string) (string, error)

@@ -6,7 +6,6 @@ import (
 
 	"charm.land/bubbles/v2/textarea"
 	"charm.land/bubbles/v2/textinput"
-	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/i18n"
 	"github.com/nelvko/lazyclash/internal/mihomo"
@@ -104,27 +103,17 @@ func (m *Model) drawNetworkAccess(d *wizardDocument) {
 		d.label(m.tr("settings.bindAddress") + "  " + themed("bind-address", muted, modalBackground, false))
 		input := p.field(bindAddressID)
 		input.Err = issues[bindAddressID]
-		appendAccessFields(d, 0, m.accessInputBlock(bindAddressID, d.width, false))
+		appendAccessFields(d, 0, m.accessInputBlock(bindAddressID, d.width, m.height < 22))
+		m.drawBindChoices(d)
 		if input.Err != nil {
 			d.line(themed(m.localizeError(input.Err), errorColor, modalBackground, false))
 		}
 		d.space()
-		d.line(themed(m.tr("access.bindHint"), muted, modalBackground, false))
-		d.space()
-		d.line(themed(m.tr("access.bindSamples"), muted, modalBackground, false))
-		line := ""
-		for _, address := range []string{"*", "192.168.31.31", "[fd00::20]"} {
-			id := "ports.bindSample." + address
-			button := renderButton(address, buttonOptions{Kind: buttonSecondary, Surface: modalBackground, Focused: p.focus == id, Plain: d.plain})
-			w := ansi.StringWidth(button)
-			if ansi.StringWidth(line)+w > d.width {
-				d.lines = append(d.lines, line)
-				line = ""
-			}
-			d.targets = append(d.targets, hitRegion{ID: id, X: ansi.StringWidth(line), Y: len(d.lines), W: w, H: 1})
-			line += button
+		hint := "access.bindHint"
+		if len(p.access.bindMenu.items) == 0 {
+			hint = "access.bindManualHint"
 		}
-		d.lines = append(d.lines, line)
+		d.line(themed(m.tr(hint), muted, modalBackground, false))
 		return
 	}
 	d.line(themed(m.tr("access.rulesHint"), muted, modalBackground, false))

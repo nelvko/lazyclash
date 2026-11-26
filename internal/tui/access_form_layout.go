@@ -17,7 +17,6 @@ func (m *Model) accessInputBlock(id string, width int, compact bool) dashboardBl
 	} else {
 		input.Blur()
 	}
-	*input = prepareInputField(*input, inputFieldTextWidth(width, 0, true), modalBackground, input.Err != nil)
 	options := inputFieldOptions{
 		ID: id, ClearID: id + ".clear", Width: width, Compact: compact, Surface: modalBackground,
 		Focused: p.focus == id, Invalid: input.Err != nil, ClearFocused: p.focus == id+".clear",
@@ -25,6 +24,20 @@ func (m *Model) accessInputBlock(id string, width int, compact bool) dashboardBl
 	if p.kind == "proxy" {
 		options.ClearGlyph = "×"
 	}
+	trailingWidth := 0
+	if id == bindAddressID && len(p.access.bindMenu.items) > 0 {
+		arrow := "▾"
+		if p.access.bindMenu.open {
+			arrow = "▴"
+		}
+		trigger := renderButton(arrow, buttonOptions{Kind: buttonText, Compact: true, Focused: p.focus == bindMenuID, Surface: modalBackground, Plain: m.buttonPlain()})
+		trailingWidth = ansi.StringWidth(trigger)
+		options.Trailing = dashboardBlock{
+			lines:   []string{trigger},
+			targets: []hitRegion{{ID: bindMenuID, W: trailingWidth, H: 1}},
+		}
+	}
+	*input = prepareInputField(*input, inputFieldTextWidth(width, trailingWidth, true), modalBackground, input.Err != nil)
 	return renderInputField(*input, options)
 }
 

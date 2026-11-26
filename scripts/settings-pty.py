@@ -204,8 +204,10 @@ def dismiss_toasts(terminal):
     raise AssertionError("Toasts still cover the Settings cards")
 
 
-def fixture_terminal(preview, binary, report, language, profile):
+def fixture_terminal(preview, binary, report, language, profile, *, no_bind_ips=False):
     environment = {"LAZYCLASH_SETTINGS_PTY_REPORT": str(report), "LAZYCLASH_SETTINGS_PTY_LANGUAGE": language}
+    if no_bind_ips:
+        environment["LAZYCLASH_SETTINGS_PTY_NO_BIND_IPS"] = "1"
     wrapper = preview.WRAPPER.replace("os.execv(sys.argv[5], sys.argv[5:])",
         "os.environ.update(" + repr(environment) + "); os.execv(sys.argv[5], sys.argv[5:])")
     terminal = preview.SMOKE.Terminal([sys.executable, "-c", wrapper, "160", "45", profile,
@@ -451,7 +453,101 @@ def check_proxy_auth(preview, terminal, words, output, args):
     check_redaction()
 
 
+def check_bind_address(preview, binary, output, language, profile, args, no_ips):
+    output.mkdir(parents=True)
+    words = labels(language)
+    report = output / "calls.json"
+    terminal = fixture_terminal(preview, binary, report, language, profile, no_bind_ips=no_ips)
+    ipv6 = "[2001:db8:1234:5678:abcd:1234:5678:1979]"
+
+    def commit_edit():
+        terminal.click_text(words["ports.review"])
+        terminal.wait(words["ports.reviewed"])
+        terminal.click_text(words["ports.apply_restart"])
+        terminal.wait(words["ports.done"])
+        terminal.click_text(words["ports.done"])
+        dismiss_toasts(terminal)
+
+    def reveal_address():
+        for _ in range(terminal.screen.rows):
+            if words["settings.bindAddress"] in terminal.screen.text():
+                return
+            terminal.key(b"\x1b[<65;37;12M")
+            terminal.settle()
+
+    def ipv6_hit_point():
+        x, first = position(terminal, "[2001:")
+        rows = terminal.screen.cells
+        left = max(i for i in range(x) if rows[first][i] == "│") + 1
+        right = rows[first].index("│", x)
+        label = ""
+        for y in range(first, len(rows)):
+            if rows[y][left-1] != "│" or rows[y][right] != "│":
+                break
+            cells = rows[y][left:right]
+            label += "".join(cells).replace(" ", "").strip("›✓")
+            if label.endswith("eth0"):
+                break
+        assert label == ipv6 + "eth0", (label, terminal.screen.text())
+        if terminal.screen.columns == 40:
+            assert y > first, "The long IPv6 option should wrap at 40 columns"
+        return left + next(i for i, cell in enumerate(cells) if cell.strip()), y
+
+    try:
+        terminal.wait("Settings preview")
+        terminal.key(b"7")
+        terminal.wait(words["settings.bindAddress"])
+        for width, height in ((160, 45), (40, 24)):
+            terminal.resize(160, 45)
+            terminal.settle()
+            terminal.click_text(words["settings.tab.access"])
+            terminal.resize(width, height)
+            terminal.settle()
+            reveal_address()
+            terminal.click_text(words["settings.bindAddress"])
+            terminal.wait(words["access.bindTitle"])
+            if no_ips:
+                terminal.wait(words["access.allInterfaces"])
+                assert "192.0.2.20" not in terminal.screen.text()
+                preview.capture(terminal, output, f"manual-{width}x{height}", args)
+                terminal.key(b"\x05\x15invalid")
+                terminal.wait(words["diagnostic.settings.bindAddress"][:9])
+                terminal.key(b"\x05\x15" + (b"192.0.2.71" if width == 160 else b"fd00::71"))
+                terminal.settle()
+                terminal.click_text(words["access.allInterfaces"])
+                terminal.settle()
+                assert "invalid" not in terminal.screen.text()
+                terminal.key(b"\x05\x15" + (b"192.0.2.71" if width == 160 else b"fd00::71"))
+            else:
+                terminal.wait("192.0.2.20")
+                terminal.wait("[2001:")
+                terminal.settle()
+                last_line = ipv6_hit_point()
+                preview.capture(terminal, output, f"dropdown-{width}x{height}", args)
+                if width == 160:
+                    terminal.key(b"\x1b[B\r")
+                else:
+                    click(terminal, last_line)
+            terminal.settle()
+            commit_edit()
+            if no_ips or width == 160:
+                value = ("192.0.2.71" if width == 160 else "[fd00::71]") if no_ips else "192.0.2.20"
+                terminal.wait(value + " ❯")
+        terminal.exit()
+        saved = json.loads(report.read_text())
+        assert saved["port_applies"] == 2
+        assert saved["bind_address"] == ("[fd00::71]" if no_ips else ipv6)
+    finally:
+        terminal.cleanup()
+
+
 def exercise(preview, binary, output, language, profile, args):
+    if args.bind_only:
+        for no_ips in (False, True):
+            check_bind_address(preview, binary, output / ("manual" if no_ips else "options"),
+                               language, profile, args, no_ips)
+        print(f"PASS {language}/{profile}: bind address selection and manual fallback, 160x45 and 40x24", flush=True)
+        return
     output.mkdir(parents=True)
     words = labels(language)
     report = output / "calls.json"
@@ -1015,6 +1111,7 @@ def main():
     scenario = parser.add_mutually_exclusive_group()
     scenario.add_argument("--tabs-only", action="store_true", help="Verify and capture tab spacing, row spacing, focus and hover")
     scenario.add_argument("--auth-only", action="store_true", help="Verify and capture the proxy authentication editor")
+    scenario.add_argument("--bind-only", action="store_true", help="Verify bind address choices and manual fallback")
     scenario.add_argument("--modals-only", action="store_true", help="Verify and capture all three port and access dialogs")
     parser.add_argument("--binary", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)

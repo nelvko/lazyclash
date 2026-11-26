@@ -47,6 +47,7 @@ func TestSettingsPTYFixture(t *testing.T) {
 	prefs := b.preferences
 	coreChanges := b.coreChanges
 	authCounts := b.authCounts
+	bindAddress := b.runtimeSettings.BindAddress
 	b.mu.Unlock()
 	raw, err := json.Marshal(map[string]any{
 		"language_saves": b.languages.Load(), "hint_saves": b.hints.Load(), "port_reads": b.portReads.Load(),
@@ -56,6 +57,7 @@ func TestSettingsPTYFixture(t *testing.T) {
 		"theme_saves": b.themes.Load(), "theme": prefs.Theme,
 		"core_changes": coreChanges,
 		"auth_changes": authCounts,
+		"bind_address": bindAddress,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -152,6 +154,16 @@ func (b *settingsPTYBackend) SaveThemePreference(ctx context.Context, theme stri
 
 func (b *settingsPTYBackend) Runtime(ctx context.Context) (app.RuntimeSnapshot, error) {
 	return app.RuntimeSnapshot{State: "ready", Service: b.snapshot.Service, RunningVersion: b.snapshot.RunningVersion}, ctx.Err()
+}
+
+func (b *settingsPTYBackend) BindAddressOptions(context.Context) []app.BindAddressOption {
+	if os.Getenv("LAZYCLASH_SETTINGS_PTY_NO_BIND_IPS") == "1" {
+		return nil
+	}
+	return []app.BindAddressOption{
+		{Address: "192.0.2.20", Interface: "eth0"},
+		{Address: "[2001:db8:1234:5678:abcd:1234:5678:1979]", Interface: "eth0"},
+	}
 }
 
 func (b *settingsPTYBackend) GetRuntimeSettings(ctx context.Context) (app.RuntimeSettings, error) {
