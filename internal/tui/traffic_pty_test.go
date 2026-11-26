@@ -111,5 +111,12 @@ func (b *trafficPTYBackend) writeReport(path, phase string) error {
 }
 
 func (b *trafficPTYBackend) StreamRuntime(ctx context.Context, emit func(app.RuntimeEvent)) error {
+	if b.scenario == "waiting" {
+		// A running core can be observed before its first traffic frame arrives.
+		status := app.RuntimeSnapshot{State: "ready", Service: b.fakeBackend.snapshot.Service}
+		emit(app.RuntimeEvent{Source: app.RuntimeStatus, Instance: 1, ObservedAt: time.Now(), Snapshot: status})
+		<-ctx.Done()
+		return ctx.Err()
+	}
 	return streamRuntimeFixture(ctx, b, emit)
 }

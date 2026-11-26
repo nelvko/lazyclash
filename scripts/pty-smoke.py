@@ -604,9 +604,11 @@ def main():
                     break
             terminal.wait("[TCP]")
             terminal.key(b"1")
+            # The traffic readings follow the core, profile and network cards.
+            terminal.resize(160, 60)
             terminal.wait("Live Traffic")
             terminal.wait("↑ Upload")
-            terminal.wait("Since core start")
+            terminal.wait("Session upload")
             terminal.wait("● Running")
             terminal.exit()
         elif args.mode == "rules":
@@ -760,7 +762,7 @@ def main():
 
             terminal.wait("Live Traffic")
             terminal.wait("↑ Upload")
-            terminal.wait("Since core start")
+            terminal.wait("Session upload")
             terminal.key(b"4")
             terminal.wait("Close all")
             terminal.key(b"/")
@@ -798,7 +800,7 @@ def main():
             cli("service", "start")
             terminal.wait("● Running")
             terminal.wait("↑ Upload")
-            terminal.wait("Since core start")
+            terminal.wait("Session upload")
             terminal.exit()
         else:
             def cli(*arguments):

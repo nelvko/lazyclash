@@ -269,7 +269,7 @@ func TestOverviewRowsSizeIndependentlyAndEmptyMetricsStayClear(t *testing.T) {
 	o := dashboardOptions{Width: 160, Height: 45, Page: "overview", GuideDismissed: true}
 	body, _, _ := renderDashboard(o)
 	plain := ansi.Strip(body)
-	if strings.Contains(plain, "Connections         --") || strings.Contains(plain, "You can explore") {
+	if strings.Contains(plain, o.Locale.T("dashboard.field.connections")) || strings.Contains(plain, "You can explore") {
 		t.Fatal("empty cards retained unavailable metric rows or setup filler")
 	}
 	// Traffic diagnostics enlarge only the full-width card and move the
@@ -319,7 +319,7 @@ func TestOverviewLayoutPreservesDetailsAndActionTargets(t *testing.T) {
 			for _, word := range strings.Fields(strings.ReplaceAll(ansi.Strip(body), "│", " ")) {
 				words[word]++
 			}
-			for _, value := range []string{"Connections", "↑ Upload", "↓ Download", "1.0 MiB", "2.0 MiB", "2.0 KiB/s", "4.0 KiB/s", "16.0 MiB", "Unsupported", "Installed version: v1.20.0", "Running version: v1.19.33", "Restart to use the installed version", "Stop was requested; the process is still running"} {
+			for _, value := range []string{o.Locale.T("dashboard.field.connections"), "↑ Upload", "↓ Download", "1.0 MiB", "2.0 MiB", "2.0 KiB/s", "4.0 KiB/s", "16.0 MiB", "Unsupported", "Installed version: v1.20.0", "Running version: v1.19.33", "Restart to use the installed version", "Stop was requested; the process is still running"} {
 				for _, word := range strings.Fields(value) {
 					if words[word] == 0 {
 						t.Errorf("overview lost word %q from detail %q", word, value)

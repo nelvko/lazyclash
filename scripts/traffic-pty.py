@@ -2,13 +2,14 @@
 """Verify the real traffic chart through an isolated controlling PTY.
 
 Build `go test -c ./internal/tui -o bin/traffic-tui.test` first. The opt-in
-fixture returns changing memory observations at real wall-clock times; chart
-history is never prefilled or accelerated. PNGs redraw captured VT cells.
+fixture observes traffic at wall-clock times. The waiting scenario keeps the
+first frame pending. PNGs redraw captured VT cells.
 """
 import argparse
 import importlib.util
 import json
 from pathlib import Path
+import re
 import sys
 import time
 import uuid
@@ -16,7 +17,9 @@ import uuid
 from tui_layout import sidebar_visible
 
 
-SIZES = ((160, 45), (120, 32), (80, 24), (60, 20), (40, 16), (160, 45))
+SIZES = ((160, 45), (125, 32), (120, 32), (80, 24), (60, 20), (40, 16), (160, 45))
+LIVE_KEYS = ("dashboard.overview.upload", "dashboard.overview.download", "dashboard.field.connections")
+SUMMARY_KEYS = ("dashboard.overview.totalUpload", "dashboard.overview.totalDownload", "dashboard.field.coreMemory")
 
 
 def labels(language):
@@ -104,14 +107,55 @@ def rgb(value):
     return tuple(value)
 
 
-def assert_plot(terminal, words, profile, colors=True, zero=False):
+def locate(screen, label):
+    for y, row in enumerate(screen.cells):
+        for x, char in enumerate(row):
+            if char == label[0] and "".join(row[x:]).startswith(label):
+                return x, y
+    raise AssertionError("missing label: " + label + "\n" + screen.text())
+
+
+def reading_pattern(words, key, scenario):
+    if scenario == "waiting":
+        value = "--"
+    elif key in LIVE_KEYS[:2]:
+        value = "0 B/s" if scenario == "zero" else r"[\d.]+ (?:[KMGTPE]i)?B/s"
+    elif key == "dashboard.field.connections":
+        value = r"\d+"
+    else:
+        value = r"[\d.]+ (?:[KMGTPE]i)?B"
+    return re.escape(words[key]) + " +" + value + r"(?:\s|$)"
+
+
+def assert_plot(terminal, words, profile, scenario, colors=True):
+    geometry = assert_fullwidth(terminal)
     cells = braille_cells(terminal)
     assert cells, "plot omitted its Braille reference grid"
     text = terminal.screen.text()
-    assert words["dashboard.overview.upload"] in text, "upload legend/readout missing"
-    assert words["dashboard.overview.download"] in text, "download legend/readout missing"
+    rows = text.splitlines()
+    plot_top = min(cell[1] for cell in cells)
+    plot_bottom = max(cell[1] for cell in cells)
+    screen = terminal.screen
+    now_label = words["dashboard.overview.trafficNow"]
+    _, axis_y = locate(screen, now_label)
+    axis = "".join(screen.cells[axis_y][:geometry["right"] - 1])
+    assert axis.endswith(now_label) and axis_y > plot_bottom, "the chart does not span the full card"
+    before_axis = "\n".join(rows[:axis_y + 1])
+    assert all(words[key] not in before_axis for key in LIVE_KEYS), "live readings appeared above or beside the chart"
+    if screen.columns >= 120 and screen.rows >= 32:
+        positions = [locate(screen, words[key]) for key in LIVE_KEYS]
+        for i, (x, y) in enumerate(positions):
+            label = words[LIVE_KEYS[i]]
+            assert re.match(reading_pattern(words, LIVE_KEYS[i], scenario), "".join(screen.cells[y][x:])), "missing reading: " + label
+            detail_x, detail_y = locate(screen, words[SUMMARY_KEYS[i]])
+            assert axis_y < y < detail_y and detail_x == x, "grouped fields misaligned below plot: " + label
+        if geometry["width"] >= 100:
+            assert len({y for _, y in positions}) == 1 and positions == sorted(positions), "wide readings are not in three columns"
+    for state, key in (("waiting", "dashboard.overview.trafficWaiting"), ("zero", "dashboard.overview.trafficIdle")):
+        present = words[key] in "\n".join(rows[plot_top:plot_bottom + 1])
+        assert present == (scenario == state), "unexpected plot status for " + scenario + ": " + words[key]
     assert "60" in text, "plot omitted its 60-second time window"
-    if zero:
+    if scenario in ("zero", "waiting"):
         # The three reference lines occupy their actual subdot rows: top/half
         # at subrow 0, bottom at subrow 3 for both four- and six-row plots.
         assert all(cell[2] in ("⠉", "⣀") for cell in cells), "zero samples drew a data curve"
@@ -123,7 +167,7 @@ def assert_plot(terminal, words, profile, colors=True, zero=False):
         hues = [rgb(cell[3]) for cell in cells]
         assert any(r > 190 and r >= g > b and g >= 110 for r, g, b in hues), "upload curve lost its orange dots"
         assert any(b > 190 and r < 180 and b > r + 40 and g > 120 for r, g, b in hues), "download curve lost its blue dots"
-    return len(cells)
+    return geometry
 
 
 def assert_fullwidth(terminal):
@@ -159,12 +203,13 @@ def exercise(preview, binary, output, language, profile, scenario, args):
             wait_until(terminal, lambda: progress(report).get("phase") == "gap", "fixture did not omit its traffic sample")
             preview.capture(terminal, output, "traffic-missing-samples", args)
             wait_until(terminal, lambda: progress(report).get("phase") == "recovered", "traffic did not recover after its missing samples")
+        elif scenario == "waiting":
+            terminal.wait(words["dashboard.overview.trafficWaiting"])
         else:
             wait_until(terminal, lambda: progress(report).get("runtime_queries", 0) >= args.samples,
                        "fixture did not collect enough real-time traffic samples", timeout=max(20, args.samples * 2))
         wait_until(terminal, lambda: bool(braille_cells(terminal)), "Braille traffic history was not visible")
-        assert_plot(terminal, words, profile, zero=scenario == "zero")
-        geometry = {"initial": assert_fullwidth(terminal)}
+        geometry = {"initial": assert_plot(terminal, words, profile, scenario)}
         preview.capture(terminal, output, "traffic-wide-focus", args)
         return_navigation(terminal, words)
         assert not any(value in terminal.screen.text() for value in "┌┐└┘"), "traffic outline persisted after returning to navigation"
@@ -180,17 +225,30 @@ def exercise(preview, binary, output, language, profile, scenario, args):
             terminal.settle()
             show_traffic(terminal, words)
             wait_until(terminal, lambda: bool(braille_cells(terminal)), "resize hid all collected traffic history")
-            assert_plot(terminal, words, profile, colors=width >= 60, zero=scenario == "zero")
-            geometry["%dx%d" % (width, height)] = assert_fullwidth(terminal)
+            geometry["%dx%d" % (width, height)] = assert_plot(terminal, words, profile, scenario, colors=width >= 60)
             preview.capture(terminal, output, "traffic-focus-%dx%d" % (width, height), args)
             return_navigation(terminal, words)
             assert not any(value in terminal.screen.text() for value in "┌┐└┘"), "card outline persisted after focus changed"
             preview.capture(terminal, output, "traffic-%dx%d" % (width, height), args)
             assert words["dashboard.footer.quit"] in terminal.screen.text().splitlines()[-1], "Quit hint left the footer"
+            if (width, height) == (40, 16):
+                needed = set(LIVE_KEYS + SUMMARY_KEYS)
+                for _ in range(10):
+                    visible = terminal.screen.text()
+                    needed = {key for key in needed if not re.search(reading_pattern(words, key, scenario), visible)}
+                    if not needed:
+                        break
+                    terminal.key(f"\x1b[<65;{width-3};{height//2}M".encode())
+                    terminal.settle()
+                assert not needed, f"40x16 could not reach these readings: {sorted(needed)}\n" + terminal.screen.text()
+                preview.capture(terminal, output, "traffic-summary-40x16", args)
         terminal.exit()
         calls = json.loads(report.read_text())
         assert calls["service_changes"] == calls["modes"] == calls["selections"] == calls["tun_changes"] == 0, calls
-        assert calls["runtime_queries"] >= args.samples, calls
+        if scenario == "waiting":
+            assert calls["runtime_queries"] == 0, calls
+        else:
+            assert calls["runtime_queries"] >= args.samples, calls
         if scenario == "gap":
             assert calls["missing_samples"] == 3, calls
         if scenario == "restart":
@@ -200,7 +258,7 @@ def exercise(preview, binary, output, language, profile, scenario, args):
         check_profile(preview, terminal, profile)
         (output / "geometry.json").write_text(json.dumps(geometry, indent=2) + "\n")
         (output / "pty.raw").write_bytes(terminal.raw)
-        print("PASS %s/%s/%s: actual-time Braille history, fullwidth card, five sizes and restore; %s" %
+        print("PASS %s/%s/%s: actual-time Braille history, grouped bottom readouts, resize and restore; %s" %
               (language, profile, scenario, json.dumps(calls)), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")
@@ -218,7 +276,7 @@ def main():
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--lang", choices=["en", "zh-Hans"], action="append")
     parser.add_argument("--profile", choices=["truecolor", "256", "no-color"], action="append")
-    parser.add_argument("--scenario", choices=["steady", "gap", "restart", "zero"], action="append")
+    parser.add_argument("--scenario", choices=["steady", "gap", "restart", "zero", "waiting"], action="append")
     parser.add_argument("--samples", type=int, default=5, help="Minimum actual one-second observations before the first capture")
     sys.dont_write_bytecode = True
     spec = importlib.util.spec_from_file_location("traffic_pty_preview", Path(__file__).with_name("onboarding-pty.py"))

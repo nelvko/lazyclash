@@ -220,8 +220,12 @@ func TestRuntimeTransitionRefreshesPersistentIntentAndActiveProfile(t *testing.T
 func TestRuntimeCardDistinguishesMissingValuesFromZero(t *testing.T) {
 	o := dashboardOptions{Snapshot: app.Snapshot{Installed: true}, Runtime: liveRuntime(), RuntimeReceived: true}
 	card := func() string { return ansi.Strip(strings.Join(overviewTrafficCard(o, 72).lines, "\n")) }
-	if value := card(); !strings.Contains(value, "Since core start") || !strings.Contains(value, "1.0 MiB") || !strings.Contains(value, "2.0 KiB/s") || !strings.Contains(value, "16.0 MiB") {
+	if value := card(); !strings.Contains(value, o.Locale.T("dashboard.overview.totalUpload")) || !strings.Contains(value, "1.0 MiB") || !strings.Contains(value, "2.0 KiB/s") || !strings.Contains(value, "16.0 MiB") {
 		t.Fatalf("actual runtime metrics missing: %s", value)
+	}
+	o.Runtime.Traffic.Up, o.Runtime.Traffic.Down = 0, 0
+	if value := card(); strings.Count(value, "0 B/s") != 2 {
+		t.Fatalf("valid zero rates missing from the card: %s", value)
 	}
 	o.Runtime.Traffic, o.Runtime.Memory = nil, nil
 	if value := card(); !strings.Contains(value, "Partially available") || strings.Contains(value, "0 B/s") || strings.Contains(value, "16.0 MiB") {

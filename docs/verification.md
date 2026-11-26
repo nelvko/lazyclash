@@ -56,6 +56,12 @@
 
 `service-scopes-e2e.sh --ui-tun-only` 在 120×36 和 80×24 下验证主机 TUN 确认默认取消。120×36 下显式确认后读回已启用的运行状态，通过 CLI 关闭并检查网络资源释放。脚本核对已恢复的 OrbStack 全局 service drop-in 和生成器摘要，并清理专用单元、账号和数据。[真实 TUN 验收日志](../.test-artifacts/network-config-modals/linux/host-tun-acceptance.log)
 
+## 实时流量底部读数与空图提示（2026-11-26）
+
+通栏曲线下方按方向配对显示速率和本次内核的累计量，活跃连接和内存占第三组。Go 用例逐行比较通栏曲线，检查中英文数值起始列、完整单位，以及终端在 23 行与 24 行之间切换时的组内和组间留白。160×45 的前后对比使用相同的零流量数据，80×24 验证分组换行，40×16 可滚动读完六项指标。[底部行距前后对比](../.test-artifacts/traffic-card-spacing/wide-bottom-comparison.png) · [宽屏活动流量](../.test-artifacts/traffic-card-spacing/wide-live.png) · [窄屏活动流量](../.test-artifacts/traffic-card-spacing/narrow-live.png)
+
+隔离的 PTY 模拟流量源可停在首个流量帧之前，此时速率显示 `--`。收到连续有效零值时显示 `0 B/s`，图中出现「暂无流量」。另有数据间断和恢复场景，40×16 下通过滚动读取全部三组指标。[等待采样](../.test-artifacts/traffic-card-bottom/wide-waiting.png) · [暂无流量](../.test-artifacts/traffic-card-bottom/wide-idle.png)
+
 ## 实时流量缺测与窄屏刻度（2026-11-25）
 
 使用六组固定流量，在三种图表尺寸、真彩、256 色和无色终端中核验了 54 组输出。同一段零流量与缺测数据在 128 列图上显示两处缺测。40 列图保留时间标签旁的空格，较长缺口显示两格标记，较短缺口的标记让位于刻度文字。单元测试覆盖有效零值、失败采样、3 秒连线边界、不同量程下刻度区宽度，以及各色彩模式下曲线子点的保留。[128 列真彩](../.test-artifacts/traffic-axis-gaps/experiments/zero-gap-128x6-truecolor-original.png) · [40 列无色](../.test-artifacts/traffic-axis-gaps/experiments/zero-gap-40x4-no-color-original.png)
