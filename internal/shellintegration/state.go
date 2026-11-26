@@ -480,9 +480,9 @@ func (m *Manager) TakeNotice() (string, error) {
 }
 
 // PublishEndpoint changes port information for existing sessions in this scope;
-// it never changes a session's enabled intent or creates a new namespace.
+// disabling the mixed listener restores those shells at their next prompt.
 func (m *Manager) PublishEndpoint(endpoint Endpoint) error {
-	if err := validEndpoint(endpoint, true); err != nil {
+	if err := validEndpoint(endpoint, false); err != nil {
 		return err
 	}
 	if _, err := os.Lstat(filepath.Join(m.StateDir, "sessions")); os.IsNotExist(err) {
@@ -509,6 +509,19 @@ func (m *Manager) PublishEndpoint(endpoint Endpoint) error {
 		}
 		if owner.Namespace != endpoint.Namespace || !m.isOwnerAlive(owner.Owner) {
 			continue
+		}
+		if endpoint.Port == 0 {
+			req, err := m.readRequest(entry.Name())
+			if err != nil {
+				return err
+			}
+			if req.Enabled {
+				req.Enabled, req.Port = false, 0
+				req.Revision++
+				if err := atomicFile(filepath.Join(m.sessionDir(entry.Name()), "request"), requestBytes(req)); err != nil {
+					return err
+				}
+			}
 		}
 		if raw, err := privateRead(filepath.Join(m.sessionDir(entry.Name()), "endpoint")); err == nil {
 			if previous, err := parseEndpoint(raw); err == nil && previous.Host == endpoint.Host && previous.Port == endpoint.Port {
@@ -538,6 +551,9 @@ func (m *Manager) PublishEndpoint(endpoint Endpoint) error {
 				continue
 			}
 			p.Endpoint = endpoint
+			if endpoint.Port == 0 {
+				p.Enabled = false
+			}
 			p.Revision++
 			if err := jsonFile(path, p); err != nil {
 				return err

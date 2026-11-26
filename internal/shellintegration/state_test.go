@@ -594,3 +594,38 @@ func TestGCRemovesInterruptedSessionTemporariesAndPreservesUnknownFiles(t *testi
 		t.Fatalf("generated orphan retained: %v", err)
 	}
 }
+
+func TestDisablingMixedListenerRestoresOnlyItsTerminalSessions(t *testing.T) {
+	owner := testOwner(100)
+	m := stateManager(t, owner)
+	if err := m.Install("bash"); err != nil {
+		t.Fatal(err)
+	}
+	endpoint := Endpoint{Namespace: "instance", Host: "127.0.0.1", Port: 17897}
+	if err := m.Set(true, endpoint); err != nil {
+		t.Fatal(err)
+	}
+	id, err := m.Attach("bash", owner.PID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, err := m.readRequest(id.SessionID)
+	if err != nil || !request.Enabled {
+		t.Fatal("session was not enabled", err)
+	}
+	if err := m.PublishEndpoint(Endpoint{Namespace: "other", Host: endpoint.Host}); err != nil {
+		t.Fatal(err)
+	}
+	current, err := m.readRequest(id.SessionID)
+	if err != nil || current != request {
+		t.Fatal("another instance disabled the shell", err)
+	}
+	endpoint.Port = 0
+	if err := m.PublishEndpoint(endpoint); err != nil {
+		t.Fatal(err)
+	}
+	current, err = m.readRequest(id.SessionID)
+	if err != nil || current.Enabled || current.Port != 0 || current.Revision <= request.Revision {
+		t.Fatal("disabling the listener did not request shell restoration", err)
+	}
+}
