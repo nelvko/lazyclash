@@ -291,7 +291,7 @@ def check_tab_strip(preview, terminal, words, profile, output, args):
         assert points[2][0] == points[3][0] == points[4][0], "Allow LAN, bind address and access rules should align"
         address = "http://127.0.0.1:7897"
         assert address in terminal.screen.text(), "missing local proxy address"
-        summary = words["settings.authNotConfigured"] + " ›"
+        summary = words["settings.authNotConfigured"] + " ❯"
         auth_x, auth_y = points[5]
         wraps = preview.SMOKE.cell_width(words["settings.proxyAuth"] + "  " + summary) > right-2-auth_x
         assert position(terminal, summary) == (right-2-preview.SMOKE.cell_width(summary), auth_y+int(wraps))
@@ -346,12 +346,12 @@ def check_proxy_auth(preview, terminal, words, output, args):
             label = words["settings.authOneUser"]
         else:
             label = words["settings.authUserCount"] % count
-        terminal.wait(label + " ›")
+        terminal.wait(label + " ❯")
         title = words["settings.proxyAuth"]
         x, y = position(terminal, title)
         _, end = card_bounds(terminal.screen, x)
         row = "".join(terminal.screen.cells[y][x:end])
-        assert row[len(title):].strip() == label + " ›", row
+        assert row[len(title):].strip() == label + " ❯", row
         assert all(name not in row for name in usernames), "settings row exposed account details"
 
     def open_editor():
@@ -463,9 +463,9 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.settle()
         for heading in ("settings.interface", "settings.mihomo", "settings.core"):
             terminal.wait(words[heading])
-        terminal.wait("7897 ›")
+        terminal.wait("7897 ❯")
         download = words["settings.downloadSettings"]
-        method = words["wizard.method.direct"] + " ›"
+        method = words["wizard.method.direct"] + " ❯"
         check_x, check_y = position(terminal, words["core_update.check"])
         download_x, download_y = position(terminal, download)
         assert download_x == check_x and download_y > check_y
@@ -610,7 +610,7 @@ def exercise(preview, binary, output, language, profile, args):
         terminal.wait_absent(words["access.proxyTitle"])
         terminal.wait_absent(words["ports.reviewed"])
         terminal.settle()
-        terminal.wait("7897 ›")
+        terminal.wait("7897 ❯")
         if args.modals_only:
             terminal.exit()
             calls = json.loads(report.read_text())
@@ -916,7 +916,7 @@ def exercise(preview, binary, output, language, profile, args):
                 preview.capture(terminal, output, "theme-menu-compact", args)
                 terminal.key(b"\x1b")
                 terminal.wait_absent("✓")
-                focus(terminal, "7897 ›", words["settings.proxyPorts"], words["navigation.controls.editPorts"])
+                focus(terminal, "7897 ❯", words["settings.proxyPorts"], words["navigation.controls.editPorts"])
                 terminal.key(b"\x1b[Z")  # The active tab precedes its pane.
                 terminal.key(b"\x1b[C")
                 focus(terminal, debug_trigger, words["settings.logLevel"])
@@ -942,7 +942,7 @@ def exercise(preview, binary, output, language, profile, args):
                 terminal.key(b"\x1b[Z")
                 terminal.settle()
                 terminal.key(b"\x1b[D")
-                terminal.wait("7897 ›")
+                terminal.wait("7897 ❯")
             focus(terminal, method, download)
             preview.capture(terminal, output, "tab-download-%dx%d" % (width, height), args)
             if width == 40:
@@ -952,7 +952,7 @@ def exercise(preview, binary, output, language, profile, args):
                     terminal.wait(words["wizard.method.environment"])
                     terminal.key(b"\x1b")
                     terminal.wait_absent(words["wizard.method.environment"])
-            focus(terminal, "7897 ›", words["settings.proxyPorts"], words["navigation.controls.editPorts"])
+            focus(terminal, "7897 ❯", words["settings.proxyPorts"], words["navigation.controls.editPorts"])
             terminal.key(b"\r")
             terminal.wait(words["access.proxyTitle"])
             terminal.wait("7897")

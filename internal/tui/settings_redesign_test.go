@@ -197,8 +197,8 @@ func TestSettingsProxyAuthSummary(t *testing.T) {
 		language string
 		values   []string
 	}{
-		{i18n.Chinese, []string{"未配置 ›", "1 个用户 ›", "2 个用户 ›"}},
-		{i18n.English, []string{"Not configured ›", "1 user ›", "2 users ›"}},
+		{i18n.Chinese, []string{"未配置 ❯", "1 个用户 ❯", "2 个用户 ❯"}},
+		{i18n.English, []string{"Not configured ❯", "1 user ❯", "2 users ❯"}},
 	} {
 		o := dashboardOptions{Locale: i18n.New(tc.language), Snapshot: settingsTestSnapshot()}
 		for count, value := range tc.values {
@@ -218,9 +218,9 @@ func TestSettingsEditorRowShowsSavedCommandAndOpensFullValue(t *testing.T) {
 	for _, tc := range []struct {
 		command, suffix string
 	}{
-		{"", "›"},
-		{"nvim -f", "nvim -f ›"},
-		{"nvim --cmd 'echo " + strings.Repeat("编辑", 15) + "'", "… ›"},
+		{"", "❯"},
+		{"nvim -f", "nvim -f ❯"},
+		{"nvim --cmd 'echo " + strings.Repeat("编辑", 15) + "'", "… ❯"},
 	} {
 		m := ready(&fakeBackend{prefs: app.Preferences{Editor: tc.command}})
 		m.page, m.focus, m.width, m.height = "settings", "settings.language", width, 24
@@ -235,7 +235,7 @@ func TestSettingsEditorRowShowsSavedCommandAndOpensFullValue(t *testing.T) {
 		if !strings.HasPrefix(line, label) || !strings.HasSuffix(line, tc.suffix) {
 			t.Fatalf("command %q rendered as %q", tc.command, line)
 		}
-		if tc.command == "" && strings.TrimSpace(strings.TrimPrefix(line, label)) != "›" {
+		if tc.command == "" && strings.TrimSpace(strings.TrimPrefix(line, label)) != "❯" {
 			t.Fatalf("automatic editor should show just an arrow: %q", line)
 		}
 		m, _ = click(m, row)

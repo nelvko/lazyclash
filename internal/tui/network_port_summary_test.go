@@ -27,7 +27,7 @@ func TestOnlySettingsSummarizesSavedMixedPort(t *testing.T) {
 				t.Run(fmt.Sprintf("%s/%s/%d", language, name, width), func(t *testing.T) {
 					card := render(o, width)
 					plain := ansi.Strip(strings.Join(card.lines, "\n"))
-					label := "7897 ›"
+					label := "7897 ❯"
 					if name == "settings" && strings.Count(plain, label) != 1 {
 						t.Fatalf("saved mixed port must occupy one summary row: %s", plain)
 					}
@@ -56,7 +56,7 @@ func TestProxyPortSummaryCountsEnabledListeners(t *testing.T) {
 		mixed, socks, http int
 		summary            string
 	}{
-		{0, 0, 0, "已停用 ›"}, {-1, 0, 65536, "已停用 ›"}, {7897, 0, 0, "7897 ›"}, {0, 8080, 0, "8080 ›"}, {7897, 8080, 8081, "3 项启用 ›"},
+		{0, 0, 0, "已停用 ❯"}, {-1, 0, 65536, "已停用 ❯"}, {7897, 0, 0, "7897 ❯"}, {0, 8080, 0, "8080 ❯"}, {7897, 8080, 8081, "3 项启用 ❯"},
 	} {
 		settings := &o.Snapshot.RuntimeSettings
 		settings.MixedPort, settings.SOCKSPort, settings.HTTPPort = tc.mixed, tc.socks, tc.http

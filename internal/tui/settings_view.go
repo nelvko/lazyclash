@@ -10,6 +10,8 @@ import (
 	"github.com/nelvko/lazyclash/internal/i18n"
 )
 
+const settingsDetailChevron = "❯"
+
 type settingsControl uint8
 
 const (
@@ -174,7 +176,7 @@ func settingsInterface(o dashboardOptions, width int) dashboardBlock {
 		hints,
 		settingsThemeRow(o),
 		{label: tr("settings.editor"), value: clean(o.EditorCommand), control: settingsLink, rightAlign: true,
-			actions: []overviewControlButton{{id: "editor.configure", label: "›", enabled: !o.Busy}}},
+			actions: []overviewControlButton{{id: "editor.configure", label: settingsDetailChevron, enabled: !o.Busy}}},
 	})
 }
 

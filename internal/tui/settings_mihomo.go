@@ -194,10 +194,10 @@ func coreSettingsRows(o dashboardOptions, tab coreSettingsTab) []settingsRow {
 			summary = tr("settings.portCount", count)
 		}
 		rows = append(rows, group("settings.proxyInbound"),
-			link("runtime-settings", tr("settings.proxyPorts"), summary+" ›", true),
+			link("runtime-settings", tr("settings.proxyPorts"), summary+" "+settingsDetailChevron, true),
 			toggleWithTip("settings.allowLAN", runtime.AllowLAN),
-			link("settings.bindAddress", tr("settings.bindAddress"), bindAddressSummary(runtime, o.Locale)+" ›", true),
-			link("settings.accessRules", tr("settings.accessRules"), accessRulesSummary(runtime, o.Locale)+" ›", true))
+			link("settings.bindAddress", tr("settings.bindAddress"), bindAddressSummary(runtime, o.Locale)+" "+settingsDetailChevron, true),
+			link("settings.accessRules", tr("settings.accessRules"), accessRulesSummary(runtime, o.Locale)+" "+settingsDetailChevron, true))
 		var users string
 		switch runtime.ProxyUserCount {
 		case 0:
@@ -207,7 +207,7 @@ func coreSettingsRows(o dashboardOptions, tab coreSettingsTab) []settingsRow {
 		default:
 			users = tr("settings.authUserCount", runtime.ProxyUserCount)
 		}
-		rows = append(rows, link("settings.proxyAuth", tr("settings.proxyAuth"), users+" ›", true))
+		rows = append(rows, link("settings.proxyAuth", tr("settings.proxyAuth"), users+" "+settingsDetailChevron, true))
 		userinfo := ""
 		if runtime.ProxyUserCount > 0 {
 			userinfo = tr("settings.proxyUserinfo")
@@ -220,7 +220,7 @@ func coreSettingsRows(o dashboardOptions, tab coreSettingsTab) []settingsRow {
 			}
 			rows = append(rows, row)
 		}
-		rows = append(rows, group("settings.controlAPI"), link("settings.externalControl", tr("settings.externalControl"), "›", true))
+		rows = append(rows, group("settings.controlAPI"), link("settings.externalControl", tr("settings.externalControl"), settingsDetailChevron, true))
 	case networkTab:
 		keepAlive := p.DisableKeepAlive == "off"
 		rows = append(rows, group("settings.networkGroup"), toggle("settings.ipv6", p.IPv6 == "on"),

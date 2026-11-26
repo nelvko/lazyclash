@@ -13,7 +13,7 @@ func settingsCore(o dashboardOptions, width int) dashboardBlock {
 	download := settingsRow{
 		label: tr("settings.downloadSettings"), value: tr("wizard.method." + cmp.Or(o.DownloadMethod, downloadnet.MethodDirect)),
 		control: settingsLink, rightAlign: true,
-		actions: []overviewControlButton{{id: "network", label: "›", enabled: !o.Busy}},
+		actions: []overviewControlButton{{id: "network", label: settingsDetailChevron, enabled: !o.Busy}},
 	}
 	if o.StateUnavailable {
 		return settingsSection(o, width, title, "", []settingsRow{
@@ -32,9 +32,9 @@ func settingsCore(o dashboardOptions, width int) dashboardBlock {
 	version := cmp.Or(clean(s.Version), tr("dashboard.status.unknown"))
 	rows := []settingsRow{
 		{label: tr("wizard.installed_version"), control: settingsLink, rightAlign: true,
-			actions: []overviewControlButton{{id: "install", label: version + " ›", enabled: !o.Busy}}},
+			actions: []overviewControlButton{{id: "install", label: version + " " + settingsDetailChevron, enabled: !o.Busy}}},
 		{label: tr("core_update.check"), control: settingsLink,
-			actions: []overviewControlButton{{id: "core.checkUpdate", label: "›", enabled: !o.Busy}}},
+			actions: []overviewControlButton{{id: "core.checkUpdate", label: settingsDetailChevron, enabled: !o.Busy}}},
 		download,
 	}
 

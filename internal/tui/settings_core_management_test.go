@@ -24,8 +24,8 @@ func TestCoreManagementCardShowsMaintenanceActions(t *testing.T) {
 				}
 			}
 			want := []string{
-				tr("settings.core"), tr("wizard.installed_version") + " " + o.Snapshot.Version + " ›",
-				tr("core_update.check") + " ›", tr("settings.downloadSettings") + " " + tr("wizard.method.direct") + " ›",
+				tr("settings.core"), tr("wizard.installed_version") + " " + o.Snapshot.Version + " ❯",
+				tr("core_update.check") + " ❯", tr("settings.downloadSettings") + " " + tr("wizard.method.direct") + " ❯",
 				tr("settings.autostart") + " ██░░░░",
 				tr("settings.userService") + " [" + tr("dashboard.action.restart") + "]",
 			}
