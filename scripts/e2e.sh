@@ -480,7 +480,7 @@ assert [(r["index"], r["type"], r["payload"], r["proxy"]) for r in rules] == [
     (2, "Match", "", "PROXY"),
 ], "effective rules lost matching order, original indexes or empty MATCH payload"
 assert all(r["size"] == -1 for r in rules), "non-group rule size was changed"
-print("Actual ordered rules and MATCH payload verified through CLI")
+print("Real rule snapshot preserved matching order and MATCH payload")
 PY
 rules_config_hash=$(python3 - "$e2e_home/installation/current/config.yaml" <<'PY'
 import hashlib, sys
@@ -621,7 +621,7 @@ python3 - "$work/connections-after-close.json" "${connection_ids[0]}" "${connect
 import json, sys
 ids = {c["id"] for c in json.load(open(sys.argv[1]))["connections"]}
 assert sys.argv[2] not in ids and sys.argv[3] in ids, "shared use case did not close exactly the selected connection"
-print("CLI closed exactly one requested connection")
+print("The shared application use case closed exactly the requested connection")
 PY
 python3 "$work/pty-smoke.py" --binary "$app" --home "$e2e_home" --service-name "$service_name" --mode runtime --connection-id "${connection_ids[1]}" --output "$work/pty-runtime.txt"
 wait "$traffic_pid"

@@ -441,7 +441,7 @@ def main():
 
             terminal.key(b"i")
             terminal.resize(24, 8)
-            terminal.wait("Please enlarge terminal")
+            terminal.wait("[Menu]")
             terminal.resize(80, 24)
             terminal.wait("Download and install")
             terminal.key(b"\x1b")
@@ -625,35 +625,37 @@ def main():
                 completed = subprocess.run(instance.command(*arguments), stdout=subprocess.PIPE,
                                            stderr=subprocess.PIPE, timeout=20)
                 if (completed.returncode == 0) != success:
-                    raise AssertionError("Dedicated rule-test CLI action returned unexpected status: " + " ".join(arguments[:2]))
+                    raise AssertionError("Dedicated rule test invocation returned unexpected status: " + " ".join(arguments[:2]))
                 return completed.stdout
 
             terminal.key(b"5")
-            terminal.wait("Effective rules")
-            terminal.wait("Rules loaded")
+            terminal.wait("needle.example.invalid")
+            terminal.wait("All remaining traffic")
             terminal.key(b"/")
-            terminal.wait("Search rules")
-            terminal.key(b"needle.example.invalid")
+            terminal.key(b"needle")
+            terminal.key(b"\r")  # Commit the filter and focus its first match.
+            terminal.wait("1 / 3")
+            terminal.wait("REJECT")
+            terminal.wait_absent("All remaining traffic")
+            # The current viewer expands a truncated value in its own row.
+            terminal.resize(24, 25)
+            terminal.wait("needle.exampl…")
             terminal.key(b"\r")
-            terminal.key(b"\r")
-            terminal.wait("Rule details")
+            terminal.wait(".invalid")
+            terminal.key(b"\x1b")
+            terminal.wait_absent(".invalid")
+            terminal.resize(60, 20)
             terminal.wait("needle.example.invalid")
             terminal.wait("REJECT")
-            terminal.resize(60, 20)
-            terminal.wait("Rule details")
             terminal.resize(120, 40)
-            terminal.key(b"\x1b")
-            terminal.wait_absent("Rule details")
             terminal.key(b"g")
-            terminal.wait("Rules loaded")
+            terminal.wait("1 / 3")
 
-            # Clear the query before checking that unavailable data is hidden:
-            # a remembered search value is not a stale effective-rule row.
+            # Clear the query before checking that unavailable data is hidden.
             terminal.key(b"/")
-            terminal.wait("Search rules")
-            terminal.key(b"\x05\x15")  # Ctrl+E, Ctrl+U
+            terminal.key(b"\x05\x15")
             terminal.key(b"\r")
-            terminal.wait("needle.example.invalid")
+            terminal.wait("All remaining traffic")
             cli("stop")
             cli("rules", success=False)
             terminal.key(b"g")
@@ -661,8 +663,8 @@ def main():
             terminal.wait_absent("needle.example.invalid")
             cli("start")
             terminal.key(b"g")
-            terminal.wait("Rules loaded")
             terminal.wait("needle.example.invalid")
+            terminal.wait("All remaining traffic")
             terminal.exit()
         elif args.mode == "logs":
             if not args.fixture_port or not 1024 <= args.fixture_port <= 65535:
@@ -672,7 +674,7 @@ def main():
                 completed = subprocess.run(instance.command(*arguments), stdout=subprocess.PIPE,
                                            stderr=subprocess.PIPE, timeout=20)
                 if (completed.returncode == 0) != success:
-                    raise AssertionError("Dedicated log-test CLI action returned unexpected status: " + " ".join(arguments[:2]))
+                    raise AssertionError("Dedicated log test invocation returned unexpected status: " + " ".join(arguments[:2]))
                 return completed.stdout
 
             def log_event():
@@ -693,8 +695,8 @@ def main():
                     connection.close()
 
             terminal.key(b"6")
-            terminal.wait("Mihomo logs")
-            terminal.wait("live events")
+            terminal.wait("Search logs")
+            terminal.wait("[Pause]")
             # Establishment is asynchronous; repeat only our local fixture event
             # until it has actually been observed through the API log stream.
             for _ in range(10):
@@ -712,18 +714,18 @@ def main():
                 raise AssertionError("Paused display showed a newly collected log")
             mark = len(terminal.text())
             terminal.resize(60, 20)
-            terminal.wait("Mihomo logs", after=mark)
+            terminal.wait("Search logs", after=mark)
             mark = len(terminal.text())
             terminal.resize(120, 40)
             terminal.wait("Resume", after=mark)
 
             terminal.key(b"/")
-            terminal.wait("Search retained entries · Enter / Esc finish")
+            terminal.wait("Search logs")
             terminal.key(b"123?q7")
             terminal.wait("123?q7")
             terminal.key(b"\x05\x15")
             terminal.key(b"\r")
-            terminal.wait_absent("Search retained entries · Enter / Esc finish")
+            terminal.wait("Search logs")
             terminal.wait("[TCP]")
             terminal.key(b"?")
             terminal.wait_absent("q Quit")
@@ -738,7 +740,7 @@ def main():
 
             cli("stop")
             cli("logs", "--lines", "1", "--duration", "1s", success=False)
-            terminal.wait("Capture unavailable")
+            terminal.wait("Core stopped")
             stopped = json.loads(cli("status", "--json"))["Service"]
             if stopped["Active"] or stopped["State"] != "inactive":
                 raise AssertionError("Log capture ended without the dedicated service stopping")
@@ -765,9 +767,10 @@ def main():
                 completed = subprocess.run(instance.command(*arguments), stdout=subprocess.PIPE,
                                            stderr=subprocess.PIPE, timeout=20)
                 if completed.returncode:
-                    raise AssertionError("Dedicated test CLI action failed: " + " ".join(arguments[:2]))
+                    raise AssertionError("Dedicated test invocation failed: " + " ".join(arguments[:2]))
                 return completed.stdout
 
+            terminal.resize(160, 60)
             terminal.wait("Live Traffic")
             terminal.wait("↑ Upload")
             terminal.wait("Session upload")
@@ -799,6 +802,7 @@ def main():
             terminal.key(b"\x1b")
             terminal.wait_absent("Connection details")
             terminal.key(b"1")
+            terminal.resize(160, 60)
             terminal.wait("Live Traffic")
             cli("stop")
             terminal.wait("Stopped")
