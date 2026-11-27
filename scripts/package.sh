@@ -10,7 +10,9 @@ trap 'rm -rf -- "$stage"' EXIT
 for arch in amd64 arm64; do
   name="lazyclash_${version}_linux_${arch}"
   mkdir "$stage/$name"
-  CGO_ENABLED=0 GOOS=linux GOARCH="$arch" GOAMD64=v1 GOARM64=v8.0 go build -buildvcs=false -trimpath -o "$stage/$name/lazyclash" .
+  CGO_ENABLED=0 GOOS=linux GOARCH="$arch" GOAMD64=v1 GOARM64=v8.0 go build -buildvcs=false -trimpath \
+    -ldflags "-X github.com/nelvko/lazyclash/internal/buildinfo.Version=$version" \
+    -o "$stage/$name/lazyclash" .
   cp README.md scripts/install.sh "$stage/$name/"
   COPYFILE_DISABLE=1 tar -czf "bin/packages/$name.tar.gz" -C "$stage/$name" lazyclash install.sh README.md
 done
