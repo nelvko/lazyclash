@@ -27,6 +27,8 @@ type wizardDocument struct {
 
 	// End of the focused row, including any caption below its input.
 	focusedRowEnd int
+	// Framed option list in document coordinates, before viewport clipping.
+	optionList hitRegion
 }
 
 func (d *wizardDocument) tr(id string, args ...any) string { return d.locale.T(id, args...) }

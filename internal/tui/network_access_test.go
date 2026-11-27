@@ -222,3 +222,48 @@ func TestBindPickerWrapsCompleteIPv6Neighbors(t *testing.T) {
 		t.Fatalf("clicking the continuation line of the second option filled %q", got)
 	}
 }
+
+func TestBindPickerWheelUsesVisibleListBounds(t *testing.T) {
+	const ipv6 = "[2001:db8:1234:5678:abcd:1234:5678:1979]"
+	m := openNetworkAccessForm(t, "settings.bindAddress", app.RuntimeSettings{MixedPort: 7897},
+		app.BindAddressOption{Address: ipv6, Interface: "eth0"}, app.BindAddressOption{Address: "192.0.2.9", Interface: "eth0"})
+	wheel := func(x, y int, button tea.MouseButton) {
+		t.Helper()
+		m, _ = update(m, tea.MouseWheelMsg{X: x, Y: y, Button: button})
+	}
+	wheel(0, 0, tea.MouseWheelDown)
+	m, _ = update(m, special(tea.KeyEnter))
+	if got := m.ports.field(bindAddressID).Value(); got != "*" {
+		t.Fatalf("scrolling outside the dialog changed the choice confirmed by Enter to %q", got)
+	}
+
+	m, _ = click(m, findTarget(t, m, bindMenuID))
+	first := findTarget(t, m, bindOptionPrefix+"*")
+	wheel(first.X, first.Y-1, tea.MouseWheelDown) // The list's upper border.
+	if m.ports.access.bindMenu.selected != 1 {
+		t.Fatal("wheel over the upper border did not select the IPv6 option")
+	}
+	m, _ = update(m, tea.WindowSizeMsg{Width: 40, Height: 12})
+	hit := findTarget(t, m, bindOptionPrefix+ipv6)
+	if hit.H < 2 {
+		t.Fatalf("expected a wrapped option, got %+v", hit)
+	}
+	wheel(hit.X+hit.W-1, hit.Y+1, tea.MouseWheelDown)
+	if m.ports.access.bindMenu.selected != 2 {
+		t.Fatal("wheel over the IPv6 continuation row did not move to the next address")
+	}
+	oldList := m.ports.access.bindMenu.bounds
+	offset := m.ports.viewport.YOffset()
+	wheel(0, 0, tea.MouseWheelDown)
+	if m.ports.viewport.YOffset() <= offset || m.ports.access.bindMenu.selected != 2 {
+		t.Fatalf("wheel outside the list should scroll the dialog without moving the option: offset %d -> %d, selected %d", offset, m.ports.viewport.YOffset(), m.ports.access.bindMenu.selected)
+	}
+	wheel(oldList.X, oldList.Y+oldList.H-1, tea.MouseWheelUp)
+	if m.ports.access.bindMenu.selected != 2 {
+		t.Fatal("the old, scrolled-away list position still moved the selection")
+	}
+	m, _ = update(m, special(tea.KeyEnter))
+	if got := m.ports.field(bindAddressID).Value(); got != "192.0.2.9" || m.ports.step != "edit" {
+		t.Fatalf("Enter did not fill just the browsed address: got %q, step %q", got, m.ports.step)
+	}
+}

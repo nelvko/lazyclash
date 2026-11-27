@@ -535,8 +535,28 @@ def check_bind_address(preview, binary, output, language, profile, args, no_ips)
                 last_line = ipv6_hit_point()
                 preview.capture(terminal, output, f"dropdown-{width}x{height}", args)
                 if width == 160:
-                    terminal.key(b"\x1b[B\r")
+                    terminal.key(b"\x1b[<65;1;1M")  # Outside the centered dialog.
+                    terminal.key(b"\r")
+                    terminal.wait_absent("192.0.2.20")
+                    terminal.wait_absent("[2001:")
+                    assert "│ *" in terminal.screen.text()
+                    preview.capture(terminal, output, "outside-wheel-enter", args)
+                    terminal.key(b"\x1b[B")  # Reopen on the retained wildcard.
+                    terminal.wait("192.0.2.20")
+                    x, y = position(terminal, "192.0.2.20")
                 else:
+                    x, y = last_line  # The last line of the wrapped IPv6 option.
+                terminal.key(("\x1b[<65;%d;%dM" % (x+1, y+1)).encode())
+                terminal.key(b"\r")
+                terminal.settle()
+                if width == 160:
+                    terminal.wait("192.0.2.20")
+                    terminal.wait_absent("[2001:")
+                else:
+                    terminal.wait_absent("eth0")
+                    terminal.wait("2001:db8:")
+                    terminal.key(b"\x1b[B")
+                    terminal.wait("eth0")
                     click(terminal, last_line)
             terminal.settle()
             commit_edit()

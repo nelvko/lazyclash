@@ -524,12 +524,10 @@ func (m *Model) portsKey(k tea.KeyPressMsg) tea.Cmd {
 func (m *Model) portsMouse(event tea.MouseMsg) tea.Cmd {
 	k := event.Mouse()
 	if _, wheel := event.(tea.MouseWheelMsg); wheel {
-		if menu := &m.ports.access.bindMenu; menu.open && (k.Button == tea.MouseWheelUp || k.Button == tea.MouseWheelDown) {
-			if k.Button == tea.MouseWheelUp {
-				menu.move(-1)
-			} else {
-				menu.move(1)
-			}
+		pointer := hitRegion{X: k.X, Y: k.Y, W: 1, H: 1}
+		vertical := k.Button == tea.MouseWheelUp || k.Button == tea.MouseWheelDown
+		if menu := &m.ports.access.bindMenu; menu.open && vertical && regionsOverlap(pointer, menu.bounds) {
+			menu.mouse(event)
 			m.ports.reveal = true
 			return nil
 		}
@@ -698,6 +696,7 @@ func (p *portsState) normalizeProxyZero() {
 
 func (m *Model) renderPorts(base string) (string, []hitRegion) {
 	p := &m.ports
+	p.access.bindMenu.bounds = hitRegion{}
 	w, h := m.width, m.height
 	modal := m.canFloatDocument()
 	access := p.accessEditor() || p.kind == "copyProxy"
@@ -901,13 +900,19 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 		}
 		surface.put(inset, i+bodyY, cellPad(line, inner))
 	}
-	for _, hit := range doc.targets {
-		bodyHit := hit
+	screenBodyHit := func(hit hitRegion) (hitRegion, bool) {
 		hit.X, hit.Y = hit.X+inset, bodyY+hit.Y-p.viewport.YOffset()
 		if clipped, ok := clipRegion(hit, inset, bodyY, inner, bodyH); ok {
-			hits = append(hits, surface.screen(clipped))
-		} else if bodyHit.tip.text != "" && bodyHit.tip.owner == p.focus {
-			m.tooltip.offscreen = bodyHit
+			return surface.screen(clipped), true
+		}
+		return hitRegion{}, false
+	}
+	p.access.bindMenu.bounds, _ = screenBodyHit(doc.optionList)
+	for _, hit := range doc.targets {
+		if clipped, ok := screenBodyHit(hit); ok {
+			hits = append(hits, clipped)
+		} else if hit.tip.text != "" && hit.tip.owner == p.focus {
+			m.tooltip.offscreen = hit
 		}
 	}
 	for i, line := range errors {

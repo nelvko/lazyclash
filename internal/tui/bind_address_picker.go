@@ -124,6 +124,7 @@ func (m *Model) drawBindChoices(d *wizardDocument) {
 		labels[i] = strings.Split(ansi.Wrap(item.label(), d.width-bindChoiceGutter, ":"), "\n")
 	}
 	end := menu.fitBindChoices(labels, max(2, min(5, m.height-14)))
+	top := len(d.lines)
 	d.lines = append(d.lines, menu.edge(d.width, true, menu.offset > 0))
 	edge := themed("│", border, raised, false)
 	for i := menu.offset; i < end; i++ {
@@ -139,6 +140,7 @@ func (m *Model) drawBindChoices(d *wizardDocument) {
 		}
 	}
 	d.lines = append(d.lines, menu.edge(d.width, false, end < len(menu.items)))
+	d.optionList = hitRegion{Y: top, W: d.width, H: len(d.lines) - top}
 }
 
 // Scroll by whole options, counting wrapped lines against the available height.
