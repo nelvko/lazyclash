@@ -5,9 +5,14 @@ import (
 	"slices"
 	"strings"
 
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
 )
+
+const overviewWebsiteDragPrefix = "website.drag."
+
+func overviewWebsiteDragID(site app.Website) string { return overviewWebsiteDragPrefix + site.URL }
 
 func overviewWebsiteCard(o dashboardOptions, width int) dashboardBlock {
 	tr := o.Locale.T
@@ -45,20 +50,20 @@ func overviewWebsiteCard(o dashboardOptions, width int) dashboardBlock {
 
 func overviewWebsiteHeading(o dashboardOptions, width int) dashboardBlock {
 	title := overviewHeading(o, o.Locale.T("dashboard.website.title"))
-	manage := overviewControlButton{id: "website.manage", label: o.Locale.T("dashboard.website.manageShort"), enabled: !o.Busy}
+	add := overviewControlButton{id: "website.add", label: "＋", enabled: !o.Busy}
 	all := overviewControlButton{id: "website.all", label: "⚡︎"}
 	all.enabled = o.websiteTestsAvailable() && len(o.websites) > 0 && (o.websiteTests.canTestAll(o.websites) || o.Focus == all.id)
-	left, right := overviewButton(o, manage, buttonText), overviewButton(o, all, buttonIcon)
+	left, right := overviewButton(o, add, buttonIcon), overviewButton(o, all, buttonIcon)
 	leftW, rightW := ansi.StringWidth(left), ansi.StringWidth(right)
 	if leftW+rightW > width {
-		b := overviewLabelControl(o, width, title, manage, buttonText)
+		b := overviewLabelControl(o, width, title, add, buttonIcon)
 		b.append(overviewLabelControl(o, width, "", all, buttonIcon))
 		return b
 	}
 	b := overviewLabelSlot(o, width, title, left+right, "", true)
 	y := len(b.lines) - 1
-	if manage.enabled {
-		b.targets = append(b.targets, hitRegion{ID: manage.id, X: width - leftW - rightW, Y: y, W: leftW, H: 1})
+	if add.enabled {
+		b.targets = append(b.targets, hitRegion{ID: add.id, X: width - leftW - rightW, Y: y, W: leftW, H: 1})
 	}
 	if all.enabled {
 		b.targets = append(b.targets, hitRegion{ID: all.id, X: width - rightW, Y: y, W: rightW, H: 1})
@@ -71,42 +76,60 @@ func (o dashboardOptions) websiteTestsAvailable() bool {
 }
 
 func (o dashboardOptions) websiteCell(site app.Website, width int) dashboardBlock {
+	dragID := overviewWebsiteDragID(site)
+	surface, style := panel, lipgloss.NewStyle()
+	switch {
+	case o.websiteDrag.source == site:
+		surface, style = selectionBackground, style.Bold(true)
+	case o.websiteDrag.neighbor == site:
+		surface, style = hoverBackground, style.Underline(true)
+	case o.Hover == dragID:
+		surface = hoverBackground
+	}
+	// The two rows share the compact button's focus gutter and left padding.
+	inset := min(2, max(0, width-1))
+	name := ansi.Truncate(clean(site.Name), max(1, width-inset), "…")
+	face := strings.Repeat(" ", inset) + themed(style.Render(name), text, surface, o.Dim)
+	b := dashboardBlock{lines: []string{cellPad(face, width)}}
+	if !o.Busy && ansi.StringWidth(name) > 0 {
+		b.targets = append(b.targets, hitRegion{ID: dragID, X: inset, W: ansi.StringWidth(name), H: 1})
+	}
+
 	id := websiteActionID(site)
 	opts := dashboardButtonOptions(id, o, false, panel)
 	opts.Kind, opts.Compact = buttonText, true
 	opts.Busy = o.websiteTests.rows[site.URL].pending()
-	opts.Disabled = !o.websiteTestsAvailable() || opts.Busy && o.Focus != id
-	// A compact text button reserves a focus marker and one space on each side.
-	name := ansi.Truncate(clean(site.Name), max(1, width-3), "…")
-	face := cellCrop(renderButton(name, opts), width)
-	b := dashboardBlock{lines: []string{cellPad(face, width)}}
-	hitWidth := ansi.StringWidth(face)
-	indent := min(2, max(0, width-12))
-	for _, line := range o.websiteTestLines(site.URL, max(1, width-indent)) {
-		b.lines = append(b.lines, strings.Repeat(" ", indent)+line)
-		hitWidth = max(hitWidth, indent+ansi.StringWidth(line))
-	}
-	if !opts.Disabled {
-		b.targets = []hitRegion{{ID: id, W: hitWidth, H: len(b.lines)}}
+	canTest := o.websiteTestsAvailable() && !opts.Busy
+	opts.Hovered = opts.Hovered && canTest
+	opts.Disabled = !canTest && !opts.Focused
+	status, color := o.websiteTestStatus(site.URL)
+	opts.TextColor = color
+	for _, line := range strings.Split(wrapText(status, max(1, width-2)), "\n") {
+		// At the narrowest width only the button's trailing padding is clipped.
+		value := ansi.Truncate(renderButton(line, opts), width, "")
+		if !o.Busy {
+			b.targets = append(b.targets, hitRegion{ID: id, Y: len(b.lines), W: ansi.StringWidth(value), H: 1})
+		}
+		b.lines = append(b.lines, value)
 	}
 	return b
 }
 
-func (o dashboardOptions) websiteTestLines(site string, width int) []string {
+func (o dashboardOptions) websiteTestStatus(site string) (string, string) {
 	tr := o.Locale.T
 	row := o.websiteTests.rows[site]
-	color, status := muted, tr("dashboard.website.untested")
 	switch {
 	case o.StateUnavailable || !overviewProxyAvailable(o.Snapshot):
-		status = tr("dashboard.status.unavailable")
+		return tr("dashboard.status.unavailable"), muted
 	case row.queued:
-		status = tr("dashboard.website.queued")
+		return tr("dashboard.website.queued"), muted
 	case row.pending():
-		color, status = accent, tr("dashboard.website.running")
+		return tr("dashboard.website.running"), accent
 	case row.result.StatusCode > 0:
-		color, status = success, fmt.Sprintf("%d ms", max(1, row.result.Duration.Milliseconds()))
+		return fmt.Sprintf("%d ms", max(1, row.result.Duration.Milliseconds())), success
 	case row.err != nil:
-		color, status = warning, tr("dashboard.website.timeout")
+		return tr("dashboard.website.timeout"), warning
+	default:
+		return tr("dashboard.website.test"), accent
 	}
-	return overviewTextBlock([]string{themed(status, color, panel, o.Dim)}, width).lines
 }

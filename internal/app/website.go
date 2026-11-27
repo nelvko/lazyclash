@@ -15,7 +15,7 @@ type WebsiteTestResult struct {
 // TestWebsite measures the time to receive the first site's response headers
 // using the current routing rules. Redirects are returned to the caller.
 func (a *App) TestWebsite(ctx context.Context, site Website) (WebsiteTestResult, error) {
-	site, err := site.normalized()
+	site, err := site.Normalized()
 	if err != nil {
 		return WebsiteTestResult{}, err
 	}

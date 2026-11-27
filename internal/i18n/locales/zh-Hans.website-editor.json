@@ -1,7 +1,6 @@
 {
   "websiteEditor.add": "添加网站",
   "websiteEditor.edit": "编辑网站",
-  "websiteEditor.remove": "移除",
   "websiteEditor.removeTitle": "移除网站",
   "websiteEditor.address": "网址",
   "websiteEditor.name": "名称（选填）",

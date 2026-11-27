@@ -1,9 +1,0 @@
-{
-  "websiteManager.add": "添加",
-  "websiteManager.edit": "编辑",
-  "websiteManager.up": "上移 %s",
-  "websiteManager.down": "下移 %s",
-  "websiteManager.close": "关闭",
-  "websiteManager.keys": "拖动 ⠿ 或 Shift+↑↓ 排序 · ↑↓ 选择 · Tab 切换操作 · Enter 确认 · Esc 关闭",
-  "websiteManager.dragKeys": "松开移至目标位置 · Esc 取消"
-}

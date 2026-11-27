@@ -34,7 +34,8 @@ func (p Preferences) WebsitesForTesting() []Website {
 	return slices.Clone(p.Websites)
 }
 
-func (s Website) normalized() (Website, error) {
+// Normalized returns the name and URL used to identify the saved website.
+func (s Website) Normalized() (Website, error) {
 	raw := strings.TrimSpace(s.URL)
 	if !strings.Contains(raw, "://") {
 		raw = "https://" + raw
@@ -107,7 +108,7 @@ func uniqueWebsite(sites []Website, site Website) error {
 }
 
 func (a *App) AddWebsite(ctx context.Context, site Website) ([]Website, error) {
-	site, err := site.normalized()
+	site, err := site.Normalized()
 	if err != nil {
 		return nil, err
 	}
@@ -129,7 +130,7 @@ func (a *App) AddWebsite(ctx context.Context, site Website) ([]Website, error) {
 
 func (a *App) UpdateWebsite(ctx context.Context, original, replacement Website) ([]Website, error) {
 	return a.editWebsiteAt(ctx, original, func(sites []Website, i int) ([]Website, error) {
-		site, err := replacement.normalized()
+		site, err := replacement.Normalized()
 		if err != nil {
 			return nil, err
 		}

@@ -1,9 +1,0 @@
-{
-  "websiteManager.add": "Add",
-  "websiteManager.edit": "Edit",
-  "websiteManager.up": "Move %s up",
-  "websiteManager.down": "Move %s down",
-  "websiteManager.close": "Close",
-  "websiteManager.keys": "Drag ⠿ or Shift+↑↓ to move · ↑↓ Select · Tab Actions · Enter Confirm · Esc Close",
-  "websiteManager.dragKeys": "Release to move · Esc Cancel"
-}

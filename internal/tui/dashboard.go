@@ -83,6 +83,7 @@ type dashboardOptions struct {
 	TrafficScale                    trafficChartScale
 	ipInfo                          overviewIPState
 	websiteTests                    websiteTestState
+	websiteDrag                     overviewWebsiteDragState
 	websites                        []app.Website
 	websiteOffset                   int
 	// Body and its targets are relative to the first content row beneath the

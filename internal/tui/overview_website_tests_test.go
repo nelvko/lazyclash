@@ -218,7 +218,7 @@ func TestWebsiteBatchBoundsRequestsAcrossPages(t *testing.T) {
 	}
 	m.acceptWebsiteTest(single().(websiteTestMsg))
 	m.setWebsites([]app.Website{})
-	if m.activate("website.all") != nil || !hasAction(m.contentTargets(), "website.manage") {
+	if m.activate("website.all") != nil || !hasAction(m.contentTargets(), "website.add") {
 		t.Fatal("empty list must only offer management")
 	}
 }
@@ -249,5 +249,23 @@ func TestWebsitePaginationPreservesFocusedSiteAcrossResize(t *testing.T) {
 	m.setWebsites(sites[:2])
 	if m.websiteOffset >= 2 || !hasAction(m.contentTargets(), websiteActionID(sites[1])) || hasAction(m.contentTargets(), "website.prev") {
 		t.Fatal("deletion left stale pagination")
+	}
+}
+
+func TestWebsiteResultsFollowURLAcrossEditsAndReordering(t *testing.T) {
+	sites := app.DefaultWebsites()
+	m := Model{websites: sites}
+	result := app.WebsiteTestResult{StatusCode: 200, Duration: 42 * time.Millisecond}
+	m.websiteTests.rows = map[string]websiteTestRow{sites[0].URL: {result: result}}
+	moved := []app.Website{sites[1], {Name: "New name", URL: sites[0].URL}, sites[2]}
+	m.setWebsites(moved)
+	if m.websiteTests.rows[moved[1].URL].result != result {
+		t.Fatal("renaming or moving a site lost the result for its URL")
+	}
+	changed := slices.Clone(moved)
+	changed[1].URL = "https://example.org/"
+	m.setWebsites(changed)
+	if len(m.websiteTests.rows) != 0 {
+		t.Fatal("editing the URL retained the old result")
 	}
 }

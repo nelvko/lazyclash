@@ -31,9 +31,6 @@ func (m *Model) renderWebsiteEditor(base string) (string, []hitRegion) {
 				ClearHovered: m.hover == field.id+".clear", Disabled: m.busy, Compact: m.height < 17}))
 		}
 		buttons = append([]profileButton{{id: "websiteEditor.save", label: m.tr("websiteEditor.save"), primary: true}}, buttons...)
-		if e.original.URL != "" {
-			buttons = append(buttons, profileButton{id: "websiteEditor.remove", label: m.tr("websiteEditor.remove")})
-		}
 	} else {
 		title = m.tr("websiteEditor.removeTitle")
 		body.lines = append(body.lines, themed(cellCrop(clean(e.original.Name), inner), text, modalBackground, false))

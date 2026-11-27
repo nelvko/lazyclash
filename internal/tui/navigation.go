@@ -175,25 +175,7 @@ func (m *Model) revealBodyTarget(hit hitRegion) {
 	}
 }
 
-func (m *Model) siteManagerHelp() string {
-	if m.siteManager.drag.active() {
-		return m.tr("websiteManager.dragKeys")
-	}
-	selected := m.siteManager.selected
-	if !m.busy && !m.quitting && selected >= 0 && selected < len(m.websites) {
-		for _, id := range []string{m.hover, m.focus} {
-			if id == "websiteManager.up" && selected > 0 || id == "websiteManager.down" && selected+1 < len(m.websites) {
-				return m.tr(id, clean(m.websites[selected].Name))
-			}
-		}
-	}
-	return m.tr("websiteManager.keys")
-}
-
 func (m *Model) contextHelp() string {
-	if m.form == "website-manager" {
-		return m.siteManagerHelp()
-	}
 	if m.form == "website-editor" {
 		if m.busy {
 			if m.opCtx.Err() != nil {

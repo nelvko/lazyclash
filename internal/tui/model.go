@@ -129,7 +129,7 @@ type networkMsg struct {
 // Bubble Tea receives a Model value at each update boundary. Internal helpers
 // use pointer receivers to avoid copying all the page and input states again.
 type Model struct {
-	siteManager           siteManagerState
+	websiteMenu           app.Website
 	websiteEditor         websiteEditorState
 	coreNumber            coreNumberEditor
 	locale                i18n.Localizer
@@ -190,6 +190,7 @@ type Model struct {
 	ipInfo                overviewIPState
 	overviewRoute         overviewProxyRoute
 	websiteTests          websiteTestState
+	websiteDrag           overviewWebsiteDragState
 	websites              []app.Website
 	websiteOffset         int
 	connections           connectionsState
@@ -399,12 +400,10 @@ func (m *Model) cancelTask(quit bool) {
 	}
 }
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if m.form == "website-manager" {
-		if mouse, ok := msg.(tea.MouseMsg); ok {
-			if handled, cmd := m.siteDragMouse(mouse); handled {
-				m.layout()
-				return m, cmd
-			}
+	if mouse, ok := msg.(tea.MouseMsg); ok && m.page == "overview" && m.form == "" {
+		if handled, cmd := m.overviewWebsiteDragMouse(mouse); handled {
+			m.layout()
+			return m, cmd
 		}
 	}
 	if motion, ok := msg.(tea.MouseMotionMsg); ok {
@@ -431,8 +430,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmd = m.acceptWebsiteList(v)
 	case websiteMoveMsg:
 		cmd = m.acceptWebsiteMove(v)
-	case *siteDragScrollMsg:
-		cmd = m.scrollSiteDrag(v)
 	case profileEditorOpenedMsg:
 		cmd = m.acceptProfileEditor(v)
 	case profileEditorExitedMsg:
@@ -593,7 +590,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 	case tea.WindowSizeMsg:
-		m.cancelSiteDrag()
+		m.cancelOverviewWebsiteDrag()
 		if m.page == "settings" || m.tooltip.pointer.ID != "" {
 			m.hover = ""
 		}
@@ -824,8 +821,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.updateInlineInput(v)
 		} else if m.form == "website-editor" {
 			cmd = m.updateWebsiteEditorInput(v)
-		} else if m.form == "website-manager" {
-			break
 		} else if m.form == "tun-confirm" || m.form == "profile-delete" || m.form == "profile-document" || m.form == "profile-overrides" && m.busy {
 			break
 		} else if m.form != "" {
@@ -866,10 +861,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.resetLogsView()
 		}
 	case tea.KeyPressMsg:
-		if m.page == "settings" || m.form == "website-manager" || m.tooltip.pointer.ID != "" {
+		if m.page == "settings" || m.page == "overview" || m.tooltip.pointer.ID != "" {
 			m.hover = ""
 		}
 		key := v.String()
+		if m.websiteDrag.active() {
+			m.cancelOverviewWebsiteDrag()
+			if key == "esc" {
+				break
+			}
+		}
 		if key == "ctrl+c" {
 			cmd = m.requestQuit()
 			if cmd != nil {
@@ -950,6 +951,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch key {
 		case "tab", "shift+tab", "enter", "space", " ":
 			m.settingsPointerFocus = false
+		}
+		if m.websiteMenuKey(key) {
+			break
 		}
 		if m.settingsTabNavigation(key) || m.settingsDirectionKey(key) || m.overviewModeNavigation(key) {
 			m.settingsPointerFocus = false
@@ -1216,8 +1220,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.updateInlineInput(msg)
 		} else if m.form == "website-editor" {
 			cmd = m.updateWebsiteEditorInput(msg)
-		} else if m.form == "website-manager" {
-			break
 		} else if m.form == "tun-confirm" || m.form == "profile-delete" || m.form == "profile-document" || m.form == "profile-overrides" && m.busy {
 			break
 		} else if m.form != "" {
@@ -1337,9 +1339,6 @@ func (m *Model) openForm() tea.Cmd {
 	return textinput.Blink
 }
 func (m *Model) formKey(k tea.KeyPressMsg) tea.Cmd {
-	if m.form == "website-manager" {
-		return m.siteManagerKey(k)
-	}
 	if m.form == "website-editor" {
 		return m.websiteEditorKey(k)
 	}
@@ -1462,10 +1461,9 @@ func (m *Model) activateControl(id string, key *tea.KeyPressMsg) tea.Cmd {
 		return cmd
 	}
 	switch id {
-	case "website.manage":
+	case "website.add":
 		if m.pageSelectionMenuAvailable("overview") {
-			m.siteManager = siteManagerState{}
-			m.returnToSiteManager()
+			return m.beginWebsiteEdit(app.Website{})
 		}
 		return nil
 	case "website.prev", "website.next":
@@ -1759,14 +1757,14 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 		}
 	}
 	if _, clicked := event.(tea.MouseClickMsg); clicked && k.Button == tea.MouseRight {
+		if m.page == "overview" {
+			m.openWebsiteMenuAt(k.X, k.Y)
+			return nil
+		}
 		m.openProfileMenuAt(k.X, k.Y)
 		return nil
 	}
 	if _, wheel := event.(tea.MouseWheelMsg); wheel {
-		if m.form == "website-manager" {
-			m.siteManagerWheel(k)
-			return nil
-		}
 		if m.page == "settings" {
 			m.hover = ""
 		}
@@ -1805,9 +1803,6 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 					return m.wizardActivate(r.ID)
 				}
 				if m.form != "" {
-					if m.form == "website-manager" {
-						return m.siteManagerAction(r.ID)
-					}
 					if m.form == "website-editor" {
 						return m.websiteEditorAction(r.ID)
 					}
@@ -2031,8 +2026,6 @@ func (m *Model) renderLayout() {
 		m.screen, m.targets = m.renderWizard(base)
 	} else if m.form == "website-editor" {
 		m.screen, m.targets = m.renderWebsiteEditor(base)
-	} else if m.form == "website-manager" {
-		m.screen, m.targets = m.renderSiteManager(base)
 	} else if m.form == "tun-confirm" {
 		m.screen, m.targets = m.renderTUNConfirmation(base)
 	} else if m.form != "" {

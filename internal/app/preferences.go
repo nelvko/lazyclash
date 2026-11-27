@@ -70,7 +70,7 @@ func (a *App) loadPreferencesLocked() (Preferences, []byte, error) {
 		return p, nil, diagnostic.New("diagnostic.preferences.networkInvalid", "stored download settings are invalid or contain credentials; file preserved")
 	}
 	for i, site := range p.Websites {
-		normalized, err := site.normalized()
+		normalized, err := site.Normalized()
 		if err != nil {
 			return Preferences{}, nil, err
 		}

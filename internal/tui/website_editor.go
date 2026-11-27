@@ -31,13 +31,23 @@ func (m *Model) beginWebsiteEdit(original app.Website) tea.Cmd {
 	e.name.Placeholder = m.tr("websiteEditor.hostname")
 	e.address.SetValue(original.URL)
 	e.name.SetValue(original.Name)
-	m.websiteEditor, m.form = e, "website-editor"
+	m.websiteEditor, m.form, m.hover = e, "website-editor", ""
 	return m.focusWebsiteEditor("websiteEditor.address")
 }
 
-func (m *Model) closeWebsiteEditor() {
-	m.websiteEditor = websiteEditorState{}
-	m.returnToSiteManager()
+func (m *Model) beginWebsiteRemoval(site app.Website) tea.Cmd {
+	m.websiteEditor = websiteEditorState{original: site, confirmRemove: true}
+	m.form, m.focus, m.hover = "website-editor", "websiteEditor.cancel", ""
+	return nil
+}
+
+func (m *Model) closeWebsiteEditor(index int) {
+	m.websiteEditor, m.form, m.hover = websiteEditorState{}, "", ""
+	m.focusWebsiteAt(index)
+}
+
+func (e *websiteEditorState) draft() app.Website {
+	return app.Website{Name: strings.TrimSpace(e.name.Value()), URL: strings.TrimSpace(e.address.Value())}
 }
 
 func (m *Model) websiteEditorInput() *textinput.Model {
@@ -95,9 +105,6 @@ func (m *Model) websiteEditorKey(key tea.KeyPressMsg) tea.Cmd {
 		controls := []string{"websiteEditor.cancel", "websiteEditor.confirm"}
 		if !m.websiteEditor.confirmRemove {
 			controls = []string{"websiteEditor.address", "websiteEditor.name", "websiteEditor.save", "websiteEditor.cancel"}
-			if m.websiteEditor.original.URL != "" {
-				controls = append(controls, "websiteEditor.remove")
-			}
 		}
 		i := slices.Index(controls, m.focus)
 		delta := 1
@@ -122,7 +129,7 @@ func (m *Model) websiteEditorKey(key tea.KeyPressMsg) tea.Cmd {
 }
 
 func (m *Model) websiteEditorAction(id string) tea.Cmd {
-	if m.busy || m.quitting {
+	if m.form != "website-editor" || m.busy || m.quitting {
 		return nil
 	}
 	if field, ok := strings.CutSuffix(id, ".clear"); ok {
@@ -138,17 +145,7 @@ func (m *Model) websiteEditorAction(id string) tea.Cmd {
 	case "websiteEditor.address", "websiteEditor.name":
 		return m.focusWebsiteEditor(id)
 	case "websiteEditor.cancel":
-		if e.confirmRemove {
-			e.confirmRemove, e.err, e.canceled = false, "", false
-			return m.focusWebsiteEditor("websiteEditor.remove")
-		}
-		m.closeWebsiteEditor()
-		return nil
-	case "websiteEditor.remove":
-		if e.original.URL != "" && !e.confirmRemove {
-			m.focusWebsiteEditor("websiteEditor.cancel")
-			e.confirmRemove, e.err, e.canceled = true, "", false
-		}
+		m.closeWebsiteEditor(slices.Index(m.websites, e.original))
 		return nil
 	case "websiteEditor.save", "websiteEditor.confirm":
 		original := e.original
@@ -158,7 +155,7 @@ func (m *Model) websiteEditorAction(id string) tea.Cmd {
 		}
 		var site app.Website
 		if !remove {
-			site = app.Website{Name: strings.TrimSpace(e.name.Value()), URL: strings.TrimSpace(e.address.Value())}
+			site = e.draft()
 			if site.URL == "" {
 				e.err = m.tr("websiteEditor.required")
 				return m.focusWebsiteEditor("websiteEditor.address")
@@ -190,18 +187,26 @@ func (m *Model) acceptWebsiteList(msg websiteListSavedMsg) tea.Cmd {
 	}
 	m.abortLookup()
 	switch {
-	case msg.err == nil:
-		// The store can finish publishing just before cancellation arrives.
-		m.setWebsites(msg.sites)
-		if m.websiteEditor.original.URL == "" {
-			m.siteManager.selected = len(msg.sites) - 1
+	case msg.err == nil || msg.sites != nil:
+		e := &m.websiteEditor
+		index := slices.Index(m.websites, e.original)
+		if msg.err == nil && !e.confirmRemove {
+			// Editing a canonical address or moving the site in another session
+			// can change both its identity and position while the form is open.
+			if saved, err := e.draft().Normalized(); err == nil {
+				index = slices.Index(msg.sites, saved)
+			}
+		} else if msg.err != nil {
+			if current := slices.IndexFunc(msg.sites, func(s app.Website) bool { return s.URL == e.original.URL }); current >= 0 {
+				index = current
+			}
 		}
-		m.closeWebsiteEditor()
-	case msg.sites != nil:
-		// A concurrent edit or removal returns the current list from the store.
 		m.setWebsites(msg.sites)
-		m.closeWebsiteEditor()
-		m.siteManager.err = m.localizeError(msg.err)
+		m.closeWebsiteEditor(index)
+		if msg.err != nil {
+			m.prepareNotification("website-editor", m.tr("dashboard.website.title"))
+			m.message, m.notification.warning = m.localizeError(msg.err), true
+		}
 	case errors.Is(msg.err, context.Canceled):
 		m.websiteEditor.canceled = true
 	default:

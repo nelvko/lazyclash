@@ -399,6 +399,7 @@ func (m *Model) dashboardOptions() dashboardOptions {
 	o.TrafficHistory, o.TrafficNow = m.runtime.history.points, o.Now
 	o.ipInfo = m.ipInfo
 	o.websiteTests, o.websites, o.websiteOffset = m.websiteTests, m.websites, m.websiteOffset
+	o.websiteDrag = m.websiteDrag
 	o.Monochrome = m.monochrome()
 	if m.menu.open && m.menu.dropdown != nil {
 		o.OpenDropdown = m.menu.anchor.ID

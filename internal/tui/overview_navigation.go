@@ -11,6 +11,9 @@ import (
 func (b dashboardBlock) overviewFocusRegions() []hitRegion {
 	stops := b.cards
 	for _, hit := range b.targets {
+		if strings.HasPrefix(hit.ID, overviewWebsiteDragPrefix) {
+			continue
+		}
 		if n := len(stops); n > 0 && stops[n-1].ID == hit.ID {
 			stop := &stops[n-1]
 			stop.W = max(stop.W, hit.W)

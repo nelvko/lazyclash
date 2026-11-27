@@ -50,9 +50,6 @@ func (m *Model) activeInputField() (textinput.Model, string, bool) {
 		}
 		return textinput.Model{}, "", false
 	}
-	if m.form == "website-manager" {
-		return textinput.Model{}, "", false
-	}
 	if m.form == "website-editor" {
 		if input := m.websiteEditorInput(); input != nil {
 			return *input, m.focus, true

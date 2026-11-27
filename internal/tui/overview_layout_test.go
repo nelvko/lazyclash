@@ -31,9 +31,10 @@ func TestOverviewPairedLayoutAlignsBothEdgesAndKeepsActionOwnership(t *testing.T
 		"mode.rule": "dashboard.control.routingMode", "mode.global": "dashboard.control.routingMode", "mode.direct": "dashboard.control.routingMode", "card.proxies": "dashboard.control.routingMode",
 		"card.profiles": "dashboard.profile.title", "tun.toggle": "dashboard.overview.network", "network.primaryConfig": "dashboard.overview.network",
 		"ip.refresh":  "dashboard.overview.ipInfo",
-		"website.all": "dashboard.website.title", "website.manage": "dashboard.website.title",
+		"website.all": "dashboard.website.title", "website.add": "dashboard.website.title",
 	}
 	for _, site := range app.DefaultWebsites() {
+		owners[overviewWebsiteDragID(site)] = "dashboard.website.title"
 		owners[websiteActionID(site)] = "dashboard.website.title"
 	}
 	renders := map[string]func(dashboardOptions, int) dashboardBlock{

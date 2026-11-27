@@ -60,23 +60,52 @@ func (m *Model) profilesContextHelp() string {
 	return "Enter " + action + " · " + base
 }
 
-func (m *Model) overviewContextHelp() string {
-	if strings.HasPrefix(m.focus, "website.") {
-		switch m.focus {
-		case "website.manage", "website.prev", "website.next":
-			return m.controlActionHelp(m.tr("dashboard." + m.focus))
+func (m *Model) overviewWebsiteHelp() string {
+	if d := m.websiteDrag; d.active() {
+		if d.neighbor.URL != "" && d.neighbor != d.source {
+			key := "dashboard.website.dropBefore"
+			if d.after {
+				key = "dashboard.website.dropAfter"
+			}
+			return m.tr(key, clean(d.neighbor.Name))
 		}
-		if m.navigationOptions().websiteTestsAvailable() {
-			if m.focus == "website.all" && m.websiteTests.canTestAll(m.websites) {
+		return m.tr("dashboard.website.dragging")
+	}
+	for _, id := range []string{m.hover, m.focus} {
+		switch id {
+		case "website.add", "website.prev", "website.next":
+			return m.controlActionHelp(m.tr("dashboard." + id))
+		case "website.all":
+			if m.navigationOptions().websiteTestsAvailable() && m.websiteTests.canTestAll(m.websites) {
 				return m.controlActionHelp(m.tr("dashboard.website.all"))
 			}
-			for _, site := range m.websites {
-				if m.focus == websiteActionID(site) && !m.websiteTests.rows[site.URL].pending() {
-					return m.controlActionHelp(m.tr("dashboard.website.testSite", clean(site.Name)))
-				}
-			}
+			return m.tr("navigation.controls.browse")
 		}
-		return m.tr("navigation.controls.browse")
+		if i := m.overviewWebsiteIndex(id); i >= 0 {
+			site := m.websites[i]
+			if id == overviewWebsiteDragID(site) {
+				if len(m.websites) > 1 {
+					return m.tr("dashboard.website.dragName") + " · " + m.tr("dashboard.website.contextMenu")
+				}
+				return m.tr("dashboard.website.contextMenu")
+			}
+			menu := m.tr("dashboard.website.menuKey")
+			if m.navigationOptions().websiteTestsAvailable() && !m.websiteTests.rows[site.URL].pending() {
+				action := "Enter " + m.tr("dashboard.website.testSite", clean(site.Name))
+				if id == m.hover {
+					action = m.tr("dashboard.website.clickTest", clean(site.Name))
+				}
+				return action + " · " + menu
+			}
+			return menu
+		}
+	}
+	return ""
+}
+
+func (m *Model) overviewContextHelp() string {
+	if hint := m.overviewWebsiteHelp(); hint != "" {
+		return hint
 	}
 	if m.focus == "ip.refresh" {
 		if m.busy || m.ipInfo.loading || !m.snapshotReady || !overviewProxyAvailable(m.snapshot) {

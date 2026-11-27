@@ -67,7 +67,7 @@ func TestWebsiteAddressValidation(t *testing.T) {
 		{"https://[::1]:443", "https://[::1]/"},
 		{"http://127.0.0.1:8080", "http://127.0.0.1:8080/"},
 	} {
-		got, err := (Website{Name: " 自定义 ", URL: pair[0]}).normalized()
+		got, err := (Website{Name: " 自定义 ", URL: pair[0]}).Normalized()
 		if err != nil || got.URL != pair[1] || got.Name != "自定义" {
 			t.Fatal(pair, got, err)
 		}

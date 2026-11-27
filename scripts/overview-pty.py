@@ -199,6 +199,11 @@ def click_point(terminal, point):
     terminal.key(f"\x1b[<0;{x+1};{y+1}M\x1b[<0;{x+1};{y+1}m".encode())
 
 
+def mouse_event(terminal, button, point, final):
+    x, y = point
+    terminal.key(f"\x1b[<{button};{x+1};{y+1}{final}".encode())
+
+
 def check_network_modal(terminal, title, profile):
     cells = terminal.screen.cells
     if profile == "no-color":
@@ -515,13 +520,24 @@ def exercise_ip_route(preview, terminal, output, words, report, args):
     print("PASS IP route changes: one initial lookup, deferred off Overview, latest selection displayed", flush=True)
 
 
+def website_status_point(terminal, name, status):
+    name_x, name_y = text_point(terminal, name)
+    for x, y in text_points(terminal, status):
+        if y == name_y + 1 and abs(x - name_x) <= 4:
+            return x, y
+    raise AssertionError(f"{name} did not display {status!r}\n" + terminal.screen.text())
+
+
 def exercise_websites(preview, terminal, output, words, report, args):
     title = words["dashboard.website.title"]
     test_all = "⚡︎"
-    untested = words["dashboard.website.untested"]
+    test = words["dashboard.website.test"]
     terminal.wait("203.0.113.17")
     terminal.wait(title)
-    assert terminal.screen.text().count(untested) == 3
+    terminal.settle()
+    assert "⠿" not in terminal.screen.text(), terminal.screen.text()
+    for name in ("GitHub", "Google", "YouTube"):
+        website_status_point(terminal, name, test)
     sites = [text_point(terminal, name) for name in ("GitHub", "Google", "YouTube")]
     assert sites[0][1] == sites[1][1] == sites[2][1] and sites[0][0] < sites[1][0] < sites[2][0], sites
     heading, icon = text_point(terminal, title), text_point(terminal, test_all)
@@ -533,7 +549,7 @@ def exercise_websites(preview, terminal, output, words, report, args):
         terminal.key(b"\x1b[B")
     terminal.key(b"\r")
     terminal.settle()
-    assert focused(terminal, words["dashboard.website.manageShort"]), terminal.screen.text()
+    assert focused(terminal, "＋"), terminal.screen.text()
     terminal.key(b"\t")
     terminal.settle()
     assert focused(terminal, test_all), terminal.screen.text()
@@ -546,25 +562,24 @@ def exercise_websites(preview, terminal, output, words, report, args):
         raise AssertionError("Tab did not reach the GitHub test\n" + terminal.screen.text())
     terminal.key(b"\r")
     terminal.wait("173 ms")
-    assert terminal.screen.text().count(untested) == 2, terminal.screen.text()
+    website_status_point(terminal, "Google", test)
+    website_status_point(terminal, "YouTube", test)
     terminal.click_text("173 ms")
     terminal.settle()
-    assert words["dashboard.website.testSite"] % "GitHub" in terminal.screen.text().splitlines()[-1]
-    assert terminal.screen.text().count(untested) == 2, terminal.screen.text()
+    assert words["dashboard.website.clickTest"] % "GitHub" in terminal.screen.text().splitlines()[-1]
+    website_status_point(terminal, "Google", test)
+    website_status_point(terminal, "YouTube", test)
 
     terminal.click_text(test_all)
     terminal.wait("212 ms")  # Google fixture returns HTTP 403 with a measured response time.
-    google_x, google_y = sites[1]
-    google_result = "".join(terminal.screen.cells[google_y + 1][google_x:sites[2][0] - 2]).strip()
-    assert google_result == "212 ms", google_result
+    website_status_point(terminal, "Google", "212 ms")
     terminal.wait(words["dashboard.website.timeout"])
-    assert untested not in terminal.screen.text()
     terminal.click_text(words["dashboard.website.timeout"])
     terminal.settle()
-    assert words["dashboard.website.testSite"] % "YouTube" in terminal.screen.text().splitlines()[-1]
+    assert words["dashboard.website.clickTest"] % "YouTube" in terminal.screen.text().splitlines()[-1]
     terminal.click_text("YouTube")
     terminal.settle()
-    assert words["dashboard.website.testSite"] % "YouTube" in terminal.screen.text().splitlines()[-1]
+    website_status_point(terminal, "YouTube", words["dashboard.website.timeout"])
     preview.capture(terminal, output, "website-tests-160x45", args)
     terminal.resize(80, 24)
     terminal.settle()
@@ -582,128 +597,100 @@ def exercise_websites(preview, terminal, output, words, report, args):
     terminal.exit()
     calls = json.loads(report.read_text())
     # Two batches include Google. Only GitHub and YouTube receive additional single-site tests.
-    assert (calls["website_github"], calls["website_google"], calls["website_youtube"]) == (4, 2, 5), calls
-    print("PASS website tests: keyboard, site name, latency, timeout, and all-sites actions", flush=True)
+    assert (calls["website_github"], calls["website_google"], calls["website_youtube"]) == (4, 2, 4), calls
+    print("PASS website tests: keyboard, latency, timeout, and all-sites actions; clicking a name leaves probes idle", flush=True)
 
 
-def open_website_manager(terminal, words):
-    x, y = text_point(terminal, words["dashboard.website.title"])
-    points = text_points(terminal, words["dashboard.website.manageShort"])
-    click_point(terminal, next(point for point in points if point[1] == y and point[0] > x))
-    terminal.wait(words["dashboard.website.manage"])
-    terminal.settle()
-
-
-def manager_heading(terminal, words):
-    terminal.settle()
-    return next((x, y) for x, y in text_points(terminal, words["dashboard.website.manage"])
-                if y + 1 < terminal.screen.rows and terminal.screen.cells[y + 1][x] == "─")
-
-
-def manager_button_point(terminal, words, action):
-    x, y = manager_heading(terminal, words)
-    # The modal footer can wrap. Its Add and Close buttons bracket the arrows;
-    # the same arrow glyphs also occur in row markers and terminal key hints.
-    def positions(label):
-        return ((cx, cy) for cx, cy in text_points(terminal, label)
-                if y < cy < terminal.screen.rows - 1 and x <= cx < terminal.screen.columns - x)
-
-    top = next(positions(words["websiteManager.add"]))[1]
-    bottom = next(cy for _, cy in positions(words["websiteManager.close"]) if cy >= top)
-    label = {"up": "↑", "down": "↓"}.get(action, words["websiteManager." + action])
-    return next((cx, cy) for cx, cy in positions(label) if top <= cy <= bottom)
-
-
-def click_manager_button(terminal, words, action):
-    click_point(terminal, manager_button_point(terminal, words, action))
-
-
-def manager_rows(terminal, words, names):
-    # Site names also occur in the Overview behind the modal. Locate rows relative
-    # to its title and divider so the click and order checks use the actual list.
-    x, y = manager_heading(terminal, words)
-    points = []
-    for i, name in enumerate(names):
-        row = y + 2 + i
-        assert terminal.screen.cells[row][x] == "⠿", terminal.screen.text()
-        line = "".join(terminal.screen.cells[row][x+4:])
-        assert line.startswith(name + " "), (names, name, line, terminal.screen.text())
-        points.append((x + 4, row))
-    return points
-
-
-def select_manager_site(terminal, words, names, name):
-    point = manager_rows(terminal, words, names)[names.index(name)]
-    click_point(terminal, point)
-    terminal.settle()
-    x, y = point
-    assert terminal.screen.cells[y][x - 2] == "›", terminal.screen.text()
-
-
-def open_site_editor(terminal, words, names, name, keyboard=False):
-    select_manager_site(terminal, words, names, name)
+def open_website_menu(terminal, words, name, keyboard=False):
+    point = text_point(terminal, name)
     if keyboard:
-        terminal.key(b"\r")
+        click_point(terminal, point)  # Focus this site without testing it.
+        terminal.key(b"m")
     else:
-        click_manager_button(terminal, words, "edit")
-    terminal.wait(words["websiteEditor.name"])
+        mouse_event(terminal, 2, point, "M")
+        mouse_event(terminal, 2, point, "m")
+    terminal.wait(words["websiteEditor.confirm"])
     terminal.settle()
+    # Other overview cards may also have an Edit link; actions are consecutive
+    # in the menu and its last entry (Remove) uniquely locates the column.
+    x, y = text_point(terminal, words["websiteEditor.confirm"])
+    edit = words["dashboard.website.edit"]
+    for row in range(max(0, y-3), y):
+        if "".join(terminal.screen.cells[row][x:]).startswith(edit):
+            return x, row, y
+    raise AssertionError("Missing site menu edit action\n" + terminal.screen.text())
+
+
+def choose_website_action(terminal, words, name, action, keyboard=False):
+    x, top, bottom = open_website_menu(terminal, words, name, keyboard)
+    label = words[action]
+    for cx, cy in text_points(terminal, label):
+        if top <= cy <= bottom and x <= cx <= x+4:
+            click_point(terminal, (cx, cy))
+            return
+    raise AssertionError("Missing site menu action " + label + "\n" + terminal.screen.text())
 
 
 def add_custom_website(terminal, words, address):
-    click_manager_button(terminal, words, "add")
+    terminal.click_text("＋")
     terminal.wait(words["websiteEditor.address"])
     terminal.key(address.encode() + b"\r\r")
     terminal.wait_absent(words["websiteEditor.address"])
-    terminal.wait(words["dashboard.website.manage"])
+    terminal.settle()
 
 
-def confirm_website_removal(terminal, words):
-    terminal.wait(words["websiteEditor.removeTitle"])
-    terminal.key(b"\t\r")
-    terminal.wait_absent(words["websiteEditor.removeTitle"])
-    terminal.wait(words["dashboard.website.manage"])
+def website_order(terminal, names):
+    terminal.settle()
+    return sorted(names, key=lambda name: text_point(terminal, name)[::-1])
 
 
-def exercise_manager_drag(preview, terminal, output, words, names, args):
-    def mouse(button, point, final):
-        x, y = point
-        terminal.key(f"\x1b[<{button};{x+1};{y+1}{final}".encode())
+def exercise_overview_drag(preview, terminal, output, words, names, args):
+    test = words["dashboard.website.test"]
+    points = [text_point(terminal, name) for name in names]
+    assert points[0][1] == points[1][1] == points[2][1] < points[3][1], points
+    assert points[0][0] < points[1][0] < points[2][0], points
+    terminal.click_text("Status API")
+    terminal.settle()
+    for name in names:
+        website_status_point(terminal, name, test)
+    click_point(terminal, website_status_point(terminal, "Status API", test))
+    terminal.wait("91 ms")
 
-    # Move Status API across two rows to the top, then cancel a drag back to the bottom.
-    for target, marker, cancel in ((0, "↑", False), (len(names)-1, "↓", True)):
-        rows = manager_rows(terminal, words, names)
-        source = names.index("Status API")
-        x, y = rows[source]
-        mouse(0, (x - 4, y), "M")  # Press the grip, away from the clickable name.
-        step = 1 if target > source else -1
-        for i in range(source + step, target + step, step):
-            mouse(32, rows[i], "M")  # SGR left-button motion over a site name.
-        manager_rows(terminal, words, names)
-        x, y = rows[target]
-        assert terminal.screen.cells[y][x - 2] == marker, terminal.screen.text()
-        if cancel:
-            terminal.key(b"\x1b")
-            terminal.settle()
-        else:
-            preview.capture(terminal, output, "website-manager-drag-160x45", args)
-        mouse(0, rows[target], "m")
-        if not cancel:
-            names.insert(target, names.pop(source))
-        x, y = manager_rows(terminal, words, names)[names.index("Status API")]
-        assert terminal.screen.cells[y][x - 2] == "›", terminal.screen.text()
+    # First drag the measured site left onto Google's name, then drag from the
+    # lower row onto that measured site's latency. Neither drop starts a probe.
+    for source, target in (("Status API", "Google"), ("YouTube", "Status API")):
+        start = text_point(terminal, source)
+        end = text_point(terminal, target) if source == "Status API" else website_status_point(terminal, target, "91 ms")
+        mouse_event(terminal, 0, start, "M")
+        mouse_event(terminal, 32, end, "M")
+        terminal.settle()
+        assert "⠿" not in terminal.screen.text(), terminal.screen.text()
+        if source == "YouTube":
+            preview.capture(terminal, output, "website-overview-drag-160x45", args)
+        mouse_event(terminal, 0, end, "m")
+        names.insert(names.index(target), names.pop(names.index(source)))
+        assert website_order(terminal, names) == names, terminal.screen.text()
+        for name in names:
+            website_status_point(terminal, name, "91 ms" if name == "Status API" else test)
 
 
-def prepare_custom_website(preview, terminal, output, words, args):
+def prepare_custom_website(preview, terminal, output, words, report, args):
     terminal.wait("203.0.113.17")
-    open_website_manager(terminal, words)
+    choose_website_action(terminal, words, "GitHub", "dashboard.website.edit")
+    terminal.wait(words["websiteEditor.name"])
+    terminal.wait("https://github.com/")
+    terminal.key(b"\x1b")
+    terminal.wait_absent(words["websiteEditor.address"])
+
     add_custom_website(terminal, words, "status.example/health")
     add_custom_website(terminal, words, "tail.example")
     names = ["GitHub", "Google", "YouTube", "status.example", "tail.example"]
     for address, name, save in (("status.example/discard", "Unsent", False),
                                 ("status.example/ready", "Status API", True)):
-        open_site_editor(terminal, words, names, "status.example", keyboard=save)
+        choose_website_action(terminal, words, "status.example", "dashboard.website.edit", keyboard=save)
+        terminal.wait(words["websiteEditor.name"])
         terminal.wait("https://status.example/health")
+        terminal.settle()
         x, y = text_point(terminal, words["websiteEditor.name"])
         assert "status.example" in "".join(terminal.screen.cells[y + 2][x:x + 50]), "name field did not contain the saved hostname"
         terminal.key(b"\x05\x15" + address.encode() + b"\r")
@@ -716,48 +703,38 @@ def prepare_custom_website(preview, terminal, output, words, args):
         else:
             terminal.key(b"\x1b")
         terminal.wait_absent(words["websiteEditor.address"])
-        terminal.wait(words["dashboard.website.manage"])
 
     # A fifth site after the edited entry makes a delete-and-append implementation observable.
     names[3] = "Status API"
-    open_site_editor(terminal, words, names, "tail.example")
-    terminal.click_text(words["websiteEditor.remove"])
-    confirm_website_removal(terminal, words)
+    assert website_order(terminal, names) == names, terminal.screen.text()
+    choose_website_action(terminal, words, "tail.example", "websiteEditor.confirm")
+    terminal.wait(words["websiteEditor.removeTitle"])
+    terminal.key(b"\t\r")
+    terminal.wait_absent("tail.example")
     names.pop()
 
-    # Boundary buttons leave the first/last site in place; successful moves keep it selected.
-    for name, button in ((names[0], "up"), (names[-1], "down")):
-        select_manager_site(terminal, words, names, name)
-        click_manager_button(terminal, words, button)
-        manager_rows(terminal, words, names)
-    for button in ("up", "down", "up"):
-        x, y = manager_button_point(terminal, words, button)
-        terminal.key(f"\x1b[<35;{x+1};{y+1}M".encode())
-        terminal.settle()
-        assert words["websiteManager." + button] % "Status API" in terminal.screen.text().splitlines()[-1]
-        click_point(terminal, (x, y))
-        names[2], names[3] = names[3], names[2]
-        selected_x, selected_y = manager_rows(terminal, words, names)[names.index("Status API")]
-        assert terminal.screen.cells[selected_y][selected_x - 2] == "›", terminal.screen.text()
-    exercise_manager_drag(preview, terminal, output, words, names, args)
-    preview.capture(terminal, output, "website-manager-160x45", args)
-    click_manager_button(terminal, words, "close")
+    # The same menu offers keyboard-accessible ordering.
+    open_website_menu(terminal, words, "Status API", keyboard=True)
+    preview.capture(terminal, output, "website-menu-160x45", args)
+    terminal.key(b"\x1b[B\r")  # Move up follows Edit. Move down is unavailable at the end.
+    terminal.wait_absent(words["websiteEditor.confirm"])
+    names[2], names[3] = names[3], names[2]
+    assert website_order(terminal, names) == names, terminal.screen.text()
+    exercise_overview_drag(preview, terminal, output, words, names, args)
     terminal.exit()
+    calls = json.loads(report.read_text())
+    assert [calls[key] for key in ("website_github", "website_google", "website_youtube", "website_custom")] == [0, 0, 0, 1], calls
 
 
 def verify_custom_website(preview, terminal, output, words, report, args):
-    names = ["Status API", "GitHub", "Google", "YouTube"]
+    names = ["GitHub", "YouTube", "Status API", "Google"]
     terminal.wait("203.0.113.17")
-    open_website_manager(terminal, words)
-    manager_rows(terminal, words, names)
-    terminal.key(b"\x1b")
-    terminal.wait_absent("⠿")
-    terminal.settle()
-    assert text_point(terminal, "Status API")[1] == text_point(terminal, "GitHub")[1]
-    assert text_point(terminal, "YouTube")[1] > text_point(terminal, "Status API")[1]
-    terminal.click_text("Status API")
+    assert website_order(terminal, names) == names, terminal.screen.text()
+    test = words["dashboard.website.test"]
+    click_point(terminal, website_status_point(terminal, "Status API", test))
     terminal.wait("91 ms")  # Only the saved https://status.example/ready returns this value.
-    assert terminal.screen.text().count(words["dashboard.website.untested"]) == 3, terminal.screen.text()
+    for name in ("GitHub", "YouTube", "Google"):
+        website_status_point(terminal, name, test)
     terminal.click_text("⚡︎")
     terminal.wait("173 ms")
     terminal.wait(words["dashboard.website.timeout"])
@@ -767,33 +744,32 @@ def verify_custom_website(preview, terminal, output, words, report, args):
     terminal.settle()
     focus_control(terminal, words["dashboard.website.next"])
     terminal.key(b"\r")
-    terminal.wait("YouTube")
-    terminal.wait(words["dashboard.website.timeout"])
+    terminal.wait("Google")
+    terminal.wait("212 ms")
     preview.capture(terminal, output, "website-custom-second-page", args)
-    open_website_manager(terminal, words)
-    manager_rows(terminal, words, names)
-    preview.capture(terminal, output, "website-manager-40x16", args)
+    open_website_menu(terminal, words, "Google")
+    preview.capture(terminal, output, "website-menu-40x16", args)
+    terminal.key(b"\x1b")
+    terminal.wait_absent(words["websiteEditor.confirm"])
     terminal.resize(160, 45)
     terminal.settle()
 
-    open_site_editor(terminal, words, names, "Status API")
-    terminal.wait("https://status.example/ready")
-    terminal.click_text(words["websiteEditor.remove"])
+    choose_website_action(terminal, words, "Status API", "websiteEditor.confirm")
     terminal.wait(words["websiteEditor.removeTitle"])
-    terminal.key(b"\r")  # Cancel is focused by default.
-    terminal.wait(words["websiteEditor.address"])
     terminal.wait("https://status.example/ready")
-    terminal.key(b"\r")  # The edit form restores focus to Remove.
-    confirm_website_removal(terminal, words)
-    manager_rows(terminal, words, ["GitHub", "Google", "YouTube"])
-    click_manager_button(terminal, words, "close")
+    terminal.key(b"\r")  # Cancel is focused by default.
+    terminal.wait_absent(words["websiteEditor.removeTitle"])
+    assert website_order(terminal, names) == names, terminal.screen.text()
+    choose_website_action(terminal, words, "Status API", "websiteEditor.confirm", keyboard=True)
+    terminal.wait(words["websiteEditor.removeTitle"])
+    terminal.key(b"\t\r")
     terminal.wait_absent("Status API")
     terminal.exit()
     calls = json.loads(report.read_text())
     assert [calls[key] for key in ("website_github", "website_google", "website_youtube", "website_custom")] == [1, 1, 1, 2], calls
     prefs = json.loads((output / "settings" / "preferences.json").read_text())
-    assert [site["Name"] for site in prefs["Websites"]] == ["GitHub", "Google", "YouTube"], prefs
-    print("PASS custom websites: edit, arrow and drag sorting, cancel a drag, restart, test the saved URL, remove", flush=True)
+    assert [site["Name"] for site in prefs["Websites"]] == ["GitHub", "YouTube", "Google"], prefs
+    print("PASS custom websites: add, right-click and keyboard menus, edit, sort across columns and rows, restart, test, remove", flush=True)
 
 
 def exercise(preview, binary, output, language, profile, scenario, args):
@@ -803,7 +779,7 @@ def exercise(preview, binary, output, language, profile, scenario, args):
     terminal = fixture_terminal(preview, binary, report, language, profile, scenario)
     try:
         if scenario == "manage-websites":
-            prepare_custom_website(preview, terminal, output, words, args)
+            prepare_custom_website(preview, terminal, output, words, report, args)
             terminal.cleanup()
             terminal = fixture_terminal(preview, binary, report, language, profile, scenario)
             verify_custom_website(preview, terminal, output, words, report, args)

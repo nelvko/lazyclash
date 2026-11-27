@@ -1,11 +1,17 @@
 package tui
 
-import tea "charm.land/bubbletea/v2"
+import (
+	"slices"
+
+	tea "charm.land/bubbletea/v2"
+)
 
 // Each menu shares presentation and input; its owner validates the result
 // against current page state before applying an action or selection.
 func (m *Model) applyMenuResult(result menuResult) tea.Cmd {
 	switch {
+	case m.websiteMenu.URL != "":
+		return m.websiteMenuResult(result)
 	case m.form == "profile-delete":
 		if result.Closed && result.Action != "" && !m.busy && !m.quitting {
 			m.profilesUI.deleteReplacement = result.Action
@@ -46,6 +52,16 @@ func (m *Model) applyMenuResult(result menuResult) tea.Cmd {
 
 func (m *Model) reconcileMenu() {
 	switch {
+	case m.websiteMenu.URL != "":
+		i := slices.Index(m.websites, m.websiteMenu)
+		if !m.menu.open || i < 0 || !m.pageSelectionMenuAvailable("overview") {
+			m.dismissWebsiteMenu()
+		} else {
+			m.websiteMenuItems(i).sync(&m.menu)
+			if !m.menu.open {
+				m.dismissWebsiteMenu()
+			}
+		}
 	case m.form == "profile-delete":
 		if m.menu.open {
 			m.profileReplacementDropdown().sync(&m.menu)
@@ -73,6 +89,10 @@ func (m *Model) reconcileMenu() {
 }
 
 func (m *Model) dismissMenu() {
+	if m.websiteMenu.URL != "" {
+		m.dismissWebsiteMenu()
+		return
+	}
 	if m.form == "profile-delete" || m.page == "settings" || m.menu.dropdownOpen(overviewRouteGroupTarget) {
 		m.menu.dismiss()
 		return
