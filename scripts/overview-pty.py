@@ -135,6 +135,7 @@ def inspect_core_management(preview, terminal, output, words, scenario, args, mo
         terminal.wait(words["core_update.check"])
         terminal.key(b"\x1b")
         terminal.wait_absent(words["wizard.manage.title"])
+        terminal.settle()
         assert focused(terminal, installed), "Closing version details did not return to the installed version"
     terminal.key(b"\x1b")
     terminal.wait(manage)
