@@ -55,20 +55,20 @@ class Screen:
         self.x, self.y = min(self.x, columns - 1), min(self.y, rows - 1)
         self.top, self.bottom = 0, rows - 1
 
-    def point_below(self, heading, row_offset, label):
-        """Locate a control centered beneath its own heading, in display cells."""
-        offset = (cell_width(heading) - cell_width(label)) // 2
+    def setting_control(self, heading, label):
+        """Find a setting's control on its heading row or its compact continuation."""
         for y, row in enumerate(self.cells):
-            if y + row_offset >= self.rows or heading not in "".join(row):
+            if heading not in "".join(row):
                 continue
-            for x, cell in enumerate(row):
-                if cell and "".join(row[x:]).startswith(heading):
-                    below = self.cells[y + row_offset]
-                    # Different width parities can round the two centers a cell apart.
-                    expected = x + offset
-                    for col in range(max(0, expected - 1), min(self.columns, expected + 2)):
-                        if below[col] and "".join(below[col:]).startswith(label):
-                            return col, y + row_offset
+            start = next(x for x, cell in enumerate(row) if cell and "".join(row[x:]).startswith(heading))
+            end = next((x for x in range(start, self.columns) if row[x] == "│"), self.columns)
+            for line in range(y, min(self.rows, y + 3)):
+                cells = self.cells[line]
+                if line > y and (cells[start] != " " or not "".join(cells[start:end]).strip()):
+                    break
+                for x in range(start, end):
+                    if cells[x] and "".join(cells[x:]).startswith(label):
+                        return x, line
         return None
 
     def scroll(self, top, bottom, count):

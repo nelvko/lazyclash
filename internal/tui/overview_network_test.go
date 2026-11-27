@@ -38,11 +38,6 @@ func TestOverviewNetworkKeepsUnavailableControlsDisabledAndAddressesInDetails(t 
 				if width >= 40 && strings.Count(plain, o.Locale.T("dashboard.network.unsupported")) != 2 {
 					t.Fatalf("expected one unavailable state per group: %s", plain)
 				}
-				if width == 40 {
-					for _, edit := range card.targets {
-						assertNetworkLabelCentered(t, card.lines[edit.Y-2], 2, width-2, o.Locale.T("dashboard.network.unsupported"))
-					}
-				}
 			}
 			o.Snapshot.Installed = false
 			if card := overviewNetworkCard(o, 100); len(card.targets) != 0 {
@@ -92,25 +87,82 @@ func TestOverviewNetworkHostTUNKeepsObservedStateAndActionGuards(t *testing.T) {
 	}
 }
 
-func TestNetworkCardGroupsSwitchAndConfigurationAtEachWidth(t *testing.T) {
+func TestNetworkCardAlignsReadOnlyAndInteractiveStatus(t *testing.T) {
+	for _, language := range []string{i18n.English, i18n.Chinese} {
+		o := dashboardOptions{Snapshot: hostTUNBackend().snapshot, Locale: i18n.New(language)}
+		o.Snapshot.Service = service.Status{Active: true, State: "active"}
+		o.Snapshot.TerminalProxy.State = "incomplete"
+		o.Snapshot.Capabilities.TUN.Supported = false
+		card := overviewNetworkCard(o, 46)
+		if len(card.targets) != 3 || card.targets[0].ID != "terminal.enable" || card.targets[2].ID != "network.tunConfig" {
+			t.Fatalf("unexpected actions for repairable terminal and read-only TUN: %+v", card.targets)
+		}
+		var statusX int
+		for i, row := range []struct{ title, state string }{
+			{o.Locale.T("terminal.title"), "○ " + o.Locale.T("dashboard.network.incomplete")},
+			{o.Locale.T("dashboard.network.tun"), o.Locale.T("dashboard.network.unsupported")},
+		} {
+			line := ansi.Strip(card.lines[card.targets[i+1].Y])
+			before, _, ok := strings.Cut(line, row.state)
+			if !ok || i == 1 && ansi.StringWidth(before) != statusX {
+				t.Fatalf("statuses must share a visible start column:\n%s", ansi.Strip(strings.Join(card.lines, "\n")))
+			}
+			statusX = ansi.StringWidth(before)
+			// Both translated settings fit on one line in Chinese. The longer
+			// English repair status moves both headings above their controls.
+			if strings.Contains(line, row.title) != (language == i18n.Chinese) {
+				t.Fatalf("%s heading layout disagrees with translated control widths: %q", language, line)
+			}
+		}
+	}
+}
+
+func TestNetworkCardAlignsSettingsAndWrapsControlsAtEachWidth(t *testing.T) {
 	snapshot := hostTUNBackend().snapshot
 	snapshot.Service = service.Status{Active: true, State: "active"}
 	actual := snapshot.TUN
 	snapshot.TUNActual = &actual
 	snapshot.TerminalProxy.State = "off"
+	ids := []string{"terminal.enable", "network.primaryConfig", "tun.enable", "network.tunConfig"}
 	for _, language := range []string{i18n.English, i18n.Chinese} {
-		for _, width := range []int{36, 43, 44, 46, 47, 76} {
+		for _, width := range []int{19, 29, 76} {
 			t.Run(fmt.Sprintf("%s/%d", language, width), func(t *testing.T) {
 				o := dashboardOptions{Snapshot: snapshot, Locale: i18n.New(language)}
 				for _, plain := range []bool{false, true} {
 					o.PlainButtons, o.Focus = plain, ""
 					idle := overviewNetworkCard(o, width)
-					assertCanvas(t, strings.Join(idle.lines, "\n"), width, len(idle.lines))
+					view := ansi.Strip(strings.Join(idle.lines, "\n"))
+					assertCanvas(t, view, width, len(idle.lines))
 					assertRegions(t, idle.targets, width, len(idle.lines))
-					if len(idle.targets) != 4 {
-						t.Fatalf("expected two controls per group: %+v", idle.targets)
+					if len(idle.targets) != len(ids) {
+						t.Fatalf("expected two controls per setting: %+v", idle.targets)
 					}
-					ids := []string{"terminal.enable", "network.primaryConfig", "tun.enable", "network.tunConfig"}
+					terminal, editTerminal, tun, editTUN := idle.targets[0], idle.targets[1], idle.targets[2], idle.targets[3]
+					if terminal.X != tun.X || editTerminal.X != editTUN.X || editTerminal.Y >= tun.Y {
+						t.Fatalf("settings lost their aligned controls or reading order:\n%s", view)
+					}
+					for i, heading := range []string{"terminal.title", "dashboard.network.tun"} {
+						toggle, edit := idle.targets[2*i], idle.targets[2*i+1]
+						titleY := toggle.Y
+						if width < 76 {
+							titleY--
+						}
+						title := o.Locale.T(heading)
+						if titleY < 0 || !strings.HasPrefix(ansi.Strip(idle.lines[titleY]), "  "+title) {
+							t.Fatalf("heading %q missing from the left edge of its setting:\n%s", title, view)
+						}
+						if i == 1 && (titleY != editTerminal.Y+editTerminal.H+1 ||
+							strings.TrimSpace(ansi.Strip(idle.lines[titleY-1])) != "") {
+							t.Fatalf("expected one blank row between settings:\n%s", view)
+						}
+						if width == 19 {
+							if edit.Y != toggle.Y+toggle.H {
+								t.Fatalf("narrow setting should stack controls:\n%s", view)
+							}
+						} else if toggle.Y != edit.Y || toggle.X+toggle.W > edit.X || edit.X+edit.W != width-2 {
+							t.Fatalf("expected the switch and its trailing editor on the same row:\n%s", view)
+						}
+					}
 					for _, focus := range append([]string{""}, ids...) {
 						o.Focus = focus
 						card := overviewNetworkCard(o, width)
@@ -119,43 +171,17 @@ func TestNetworkCardGroupsSwitchAndConfigurationAtEachWidth(t *testing.T) {
 						}
 						for i, id := range ids {
 							h := card.targets[i]
-							if h.ID != id {
-								t.Fatalf("unexpected reading order: %+v", card.targets)
-							}
-							start, end := 2, width-2
-							if width >= 44 {
-								leftEnd := start + (end-start-3)/2
-								if i < 2 {
-									end = leftEnd
-								} else {
-									start = leftEnd + 3
-								}
-							}
 							label := o.Locale.T("dashboard.network.configure")
 							if i%2 == 0 {
 								label = "○ " + o.Locale.T("dashboard.network.off")
-								heading := "terminal.title"
-								if i == 2 {
-									heading = "dashboard.network.tun"
-								}
-								assertNetworkLabelCentered(t, card.lines[h.Y-1], start, end, o.Locale.T(heading))
 							}
-							assertNetworkLabelCentered(t, card.lines[h.Y], start, end, label)
+							if plain {
+								label = "[" + label + "]"
+							}
 							face := ansi.Strip(ansi.Cut(card.lines[h.Y], h.X, h.X+h.W))
-							if !strings.Contains(face, label) || strings.Contains(face, "›") != (id == focus) ||
-								h.X < start || h.X+h.W > end {
-								t.Fatalf("%s target misses its face or crosses its group: %+v, %q", id, h, face)
+							if h.ID != id || !strings.Contains(face, label) || strings.Contains(face, "›") != (id == focus) {
+								t.Fatalf("%s target misses its label or focus marker: %+v, %q", id, h, face)
 							}
-							if i%2 == 1 {
-								toggle := card.targets[i-1]
-								if h.Y != toggle.Y+toggle.H+1 || strings.TrimSpace(ansi.Strip(ansi.Cut(card.lines[h.Y-1], start, end))) != "" {
-									t.Fatalf("%s must have one blank row above it: %+v", id, card.targets)
-								}
-							}
-						}
-						if width < 44 && card.targets[2].Y-1 <= card.targets[1].Y ||
-							width >= 44 && card.targets[0].Y != card.targets[2].Y {
-							t.Fatalf("incorrect group arrangement at width %d: %+v", width, card.targets)
 						}
 					}
 				}
@@ -164,60 +190,38 @@ func TestNetworkCardGroupsSwitchAndConfigurationAtEachWidth(t *testing.T) {
 	}
 }
 
-// Measure the label itself, excluding brackets and the reserved focus gutter.
-func assertNetworkLabelCentered(t *testing.T, line string, start, end int, label string) {
-	t.Helper()
-	section := ansi.Strip(ansi.Cut(line, start, end))
-	before, after, ok := strings.Cut(section, label)
-	if !ok {
-		t.Fatalf("section %q does not contain %q", section, label)
-	}
-	left, right := ansi.StringWidth(before), ansi.StringWidth(after)
-	if max(left-right, right-left) > 1 {
-		t.Fatalf("%q is off-center in %q: %d left, %d right", label, section, left, right)
-	}
-}
-
-func TestOverviewNetworkKeepsExtraActionsAndObservationsInTheirColumns(t *testing.T) {
+func TestOverviewNetworkKeepsExtraActionsAndObservationsWithTheirSettings(t *testing.T) {
 	o := dashboardOptions{Snapshot: hostTUNBackend().snapshot, PlainButtons: true}
 	o.Snapshot.Service = service.Status{Active: true, State: "active"}
 	terminal := &o.Snapshot.TerminalProxy
 	terminal.State, terminal.Pending, terminal.Desired, terminal.ActivationCommand = "pending", true, true, "source shell-hook"
 	actual := false
 	o.Snapshot.TUN, o.Snapshot.TUNActual, o.Snapshot.TUNError = true, &actual, "Mihomo route unavailable"
-	card := overviewNetworkCard(o, 46)
-	var left, right []string
-	for _, row := range card.lines {
-		left = append(left, strings.TrimSpace(ansi.Strip(ansi.Cut(row, 0, 22))))
-		part := strings.TrimSpace(ansi.Strip(ansi.Cut(row, 24, 44)))
-		right = append(right, part)
-		if part != "" && strings.Contains(o.Snapshot.TUNError, part) {
-			assertNetworkLabelCentered(t, row, 24, 44, part)
-		}
-	}
-	rightText := strings.Join(strings.Fields(strings.Join(right, " ")), " ")
-	leftText := strings.Join(strings.Fields(strings.Join(left, " ")), " ")
-	if !strings.Contains(rightText, o.Snapshot.TUNError) || !strings.Contains(rightText, "Running TUN: Off") || strings.Contains(leftText, "Mihomo") {
-		t.Fatalf("TUN diagnostic missing from its column: %s", ansi.Strip(strings.Join(card.lines, "\n")))
-	}
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		o.Locale = i18n.New(language)
-		for _, width := range []int{16, 36, 44, 46, 76} {
+		for _, width := range []int{16, 36, 46, 76} {
 			card := overviewNetworkCard(o, width)
-			config, command := card.targets[1], card.targets[2]
-			if config.ID != "network.primaryConfig" || command.ID != "terminal.activation" {
-				t.Fatalf("unexpected action order: %+v", card.targets)
+			view := ansi.Strip(strings.Join(card.lines, "\n"))
+			assertCanvas(t, view, width, len(card.lines))
+			assertRegions(t, card.targets, width, len(card.lines))
+			if len(card.targets) != 5 {
+				t.Fatalf("missing a setting action at width %d: %+v", width, card.targets)
 			}
-			if width == 16 {
-				if command.Y != config.Y+config.H {
-					t.Fatalf("expected stacked actions: %+v", card.targets)
-				}
-			} else if config.Y != command.Y || config.X+config.W > command.X {
-				t.Fatalf("expected two separate actions on one row: %+v", card.targets)
+			config, command, tun, tunConfig := card.targets[1], card.targets[2], card.targets[3], card.targets[4]
+			if config.ID != "network.primaryConfig" || command.ID != "terminal.activation" ||
+				command.Y < config.Y+config.H || command.Y+command.H >= tun.Y {
+				t.Fatalf("expected the activation command under its terminal setting:\n%s", view)
 			}
 			face := ansi.Strip(ansi.Cut(card.lines[command.Y], command.X, command.X+command.W))
 			if !strings.Contains(face, o.Locale.T("dashboard.network.activationCommand")) {
 				t.Fatalf("command target misses its label: %+v, %q", command, face)
+			}
+			notes := ansi.Strip(strings.Join(card.lines[tunConfig.Y+tunConfig.H:], ""))
+			notes = strings.Join(strings.Fields(notes), "")
+			for _, detail := range []string{o.Locale.T("dashboard.overview.tunActual", o.Locale.T("dashboard.control.off")), o.Snapshot.TUNError} {
+				if !strings.Contains(notes, strings.Join(strings.Fields(detail), "")) {
+					t.Fatalf("TUN detail %q missing below its setting:\n%s", detail, view)
+				}
 			}
 		}
 	}
@@ -250,8 +254,7 @@ func TestNetworkCardTabVisitsEachGroupBeforeTheNext(t *testing.T) {
 				}
 				h := findTarget(t, m, step.id)
 				if step.key.String() == "tab" && (step.id == "network.primaryConfig" || step.id == "network.tunConfig") {
-					// Click the displayed label, whose location is also checked against
-					// the section center above, and return to the same keyboard stop.
+					// Click the displayed label and return to the same keyboard stop.
 					row := strings.Split(m.screen, "\n")[h.Y]
 					before, _, found := strings.Cut(ansi.Strip(ansi.Cut(row, h.X, h.X+h.W)), m.tr("dashboard.network.configure"))
 					if !found {

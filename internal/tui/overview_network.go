@@ -9,38 +9,90 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+type networkControl struct {
+	face, id string
+}
+
+type overviewNetworkSetting struct {
+	title   string
+	status  networkControl
+	config  networkControl
+	command networkControl
+	notes   []string
+}
+
 func overviewNetworkCard(o dashboardOptions, width int) dashboardBlock {
 	inner := overviewInnerWidth(width)
+	settings := []overviewNetworkSetting{overviewTerminalSetting(o), overviewTUNSetting(o)}
+	nameWidth, controlsWidth := 0, 0
+	for _, setting := range settings {
+		nameWidth = max(nameWidth, ansi.StringWidth(setting.title))
+		controlsWidth = max(controlsWidth, ansi.StringWidth(setting.status.face)+2+ansi.StringWidth(setting.config.face))
+	}
+	statusX := nameWidth + 2
+	if statusX+controlsWidth > inner {
+		statusX = 0
+	}
 	var content dashboardBlock
-	// At 40 content cells the divider leaves 18–19 cells per group.
-	const gapWidth = 3
-	if inner >= 40 {
-		leftWidth := (inner - gapWidth) / 2
-		left := overviewTerminalSection(o, leftWidth)
-		right := overviewTUNSection(o, inner-leftWidth-gapWidth)
-		gap := themed(" │ ", divider, panel, o.Dim)
-		for y := 0; y < max(len(left.lines), len(right.lines)); y++ {
-			l, r := "", ""
-			if y < len(left.lines) {
-				l = left.lines[y]
-			}
-			if y < len(right.lines) {
-				r = right.lines[y]
-			}
-			content.lines = append(content.lines, cellPad(l, leftWidth)+gap+r)
+	for i, setting := range settings {
+		if i > 0 {
+			content.blank()
 		}
-		content.targets = append(content.targets, left.targets...)
-		for _, hit := range right.targets {
-			hit.X += leftWidth + gapWidth
-			content.targets = append(content.targets, hit)
-		}
-	} else {
-		content = overviewTerminalSection(o, inner)
-		content.lines = append(content.lines, themed(strings.Repeat("─", inner), divider, panel, o.Dim))
-		content.append(overviewTUNSection(o, inner))
+		content.append(setting.render(inner, statusX))
 	}
 	title := overviewTextBlock([]string{overviewHeading(o, o.Locale.T("dashboard.overview.network"))}, inner)
 	return overviewPanel(o, width, title, content, nil)
+}
+
+func (s overviewNetworkSetting) render(width, statusX int) dashboardBlock {
+	b := overviewTextBlock([]string{s.title}, width)
+	y := 0
+	if statusX == 0 {
+		y = len(b.lines)
+	}
+	s.status.place(&b, statusX, y, width)
+	configX := max(0, width-ansi.StringWidth(s.config.face))
+	if statusX+ansi.StringWidth(s.status.face)+2 > configX {
+		y = len(b.lines)
+	}
+	s.config.place(&b, configX, y, width)
+	if s.command.face != "" {
+		s.command.place(&b, statusX, len(b.lines), width)
+	}
+	// Put observations under the visible state, past its focus gutter and padding.
+	if len(s.notes) > 0 {
+		indent := min(statusX+3, max(0, width-2))
+		for _, line := range overviewTextBlock(s.notes, width-indent).lines {
+			b.lines = append(b.lines, strings.Repeat(" ", indent)+line)
+		}
+	}
+	return b
+}
+
+// Place a face and its hit region together. Very narrow cards wrap the label
+// independently of the two-cell focus marker, so tabbing never reflows a row.
+func (c networkControl) place(b *dashboardBlock, x, y, width int) {
+	w := ansi.StringWidth(c.face)
+	lines := []string{c.face}
+	if w > width-x {
+		w = width - x
+		gutter := min(2, max(0, w-2))
+		marker := ansi.Cut(c.face, 2-gutter, 2)
+		lines = overviewTextBlock([]string{ansi.Cut(c.face, 2, ansi.StringWidth(c.face))}, w-gutter).lines
+		for i, line := range lines {
+			lines[i] = marker + line
+			marker = strings.Repeat(" ", gutter)
+		}
+	}
+	for i, line := range lines {
+		if y+i == len(b.lines) {
+			b.blank()
+		}
+		b.lines[y+i] = cellPad(b.lines[y+i], x) + line
+	}
+	if c.id != "" {
+		b.targets = append(b.targets, hitRegion{ID: c.id, X: x, Y: y, W: w, H: len(lines)})
+	}
 }
 
 func networkToggleLabels(o dashboardOptions) toggleLabels {
@@ -50,95 +102,41 @@ func networkToggleLabels(o dashboardOptions) toggleLabels {
 		Unknown: tr("dashboard.status.unknown")}
 }
 
-// Wrap the face separately from its focus gutter so a focus change cannot
-// reflow a label. A wrapped action still has a single tab stop and hit box.
-func centeredNetworkBlock(face string, width, gutter int, id string) dashboardBlock {
-	marker := ansi.Cut(face, 0, gutter)
-	if gutter > 0 {
-		face = ansi.Cut(face, gutter, ansi.StringWidth(face))
-	}
-	b := overviewTextBlock([]string{face}, max(1, width-gutter))
-	left, right := width, 0
-	for i, line := range b.lines {
-		plain := ansi.Strip(line)
-		indent := len(plain) - len(strings.TrimLeft(plain, " "))
-		visible := ansi.StringWidth(strings.Trim(plain, " "))
-		lineWidth := ansi.StringWidth(plain)
-		x := max(0, min(width-lineWidth, (width-visible)/2-indent))
-		right = max(right, x+lineWidth)
-		if i == 0 && gutter > 0 {
-			n := min(x, gutter)
-			line = ansi.Cut(marker, gutter-n, gutter) + line
-			x -= n
-		}
-		left = min(left, x)
-		b.lines[i] = strings.Repeat(" ", x) + line
-	}
-	if id != "" {
-		b.targets = []hitRegion{{ID: id, X: left, W: right - left, H: len(b.lines)}}
-	}
-	return b
-}
-
-func overviewNetworkSection(o dashboardOptions, width int, title, toggleID string, state toggleState, labels toggleLabels) dashboardBlock {
-	b := centeredNetworkBlock(overviewHeading(o, title), width, 0, "")
+func networkStatus(o dashboardOptions, id string, state toggleState, labels toggleLabels) networkControl {
 	label, _ := labels.resolved().face(state)
-	focused := toggleID != "" && o.Focus == toggleID
-	face := renderToggle(toggleModel{state: state}, toggleOptions{Labels: labels, Width: ansi.StringWidth(label), Surface: panel, Focused: focused || toggleID != "" && o.Hover == toggleID, Dim: o.Dim})
-	gutter := 0
-	if toggleID != "" {
-		marker := "  "
-		gutter = 2
-		if focused {
-			marker = " ›"
-		}
-		left, right := " ", " "
-		if o.PlainButtons {
-			left, right = "[", "]"
-		}
-		face = themed(marker+left, focus, panel, o.Dim) + face + themed(right, muted, panel, o.Dim)
+	focused := id != "" && o.Focus == id
+	face := renderToggle(toggleModel{state: state}, toggleOptions{Labels: labels, Width: ansi.StringWidth(label), Surface: panel, Focused: focused || id != "" && o.Hover == id, Dim: o.Dim})
+	marker, left, right := "  ", " ", " "
+	if focused {
+		marker = " ›"
 	}
-	b.append(centeredNetworkBlock(face, width, gutter, toggleID))
-	b.blank()
-	return b
+	if id != "" && o.PlainButtons {
+		left, right = "[", "]"
+	}
+	return networkControl{id: id, face: themed(marker+left, focus, panel, o.Dim) + face + themed(right, muted, panel, o.Dim)}
 }
 
-func networkConfigActions(o dashboardOptions, width int, configID string, showCommand bool) dashboardBlock {
-	button := func(id, label string, enabled bool) (string, string) {
-		opts := dashboardButtonOptions(id, o, false, panel)
-		opts.Disabled, opts.Compact = !enabled, showCommand
-		if !o.PlainButtons {
-			opts.Kind = buttonText
-		}
-		if !enabled {
-			id = ""
-		}
-		return renderButton(o.Locale.T(label), opts), id
+func networkAction(o dashboardOptions, id, label string, enabled bool) networkControl {
+	opts := dashboardButtonOptions(id, o, false, panel)
+	opts.Disabled = !enabled
+	if !o.PlainButtons {
+		opts.Kind = buttonText
 	}
-	config, configID := button(configID, "dashboard.network.configure", o.Snapshot.Installed && !o.Busy && !o.StateUnavailable)
-	if !showCommand {
-		return centeredNetworkBlock(config, width, 2, configID)
+	if !enabled {
+		id = ""
 	}
-	command, commandID := button("terminal.activation", "dashboard.network.activationCommand", !o.Busy)
-	configWidth, commandWidth := ansi.StringWidth(config), ansi.StringWidth(command)
-	free := width - configWidth - commandWidth
-	if free < 0 {
-		stacked := centeredNetworkBlock(config, width, 1, configID)
-		stacked.append(centeredNetworkBlock(command, width, 1, commandID))
-		return stacked
-	}
-	left := free / 2
-	row := dashboardBlock{lines: []string{strings.Repeat(" ", left) + config + command}}
-	if configID != "" {
-		row.targets = append(row.targets, hitRegion{ID: configID, X: left, W: configWidth, H: 1})
-	}
-	if commandID != "" {
-		row.targets = append(row.targets, hitRegion{ID: commandID, X: left + configWidth, W: commandWidth, H: 1})
-	}
-	return row
+	return networkControl{id: id, face: renderButton(o.Locale.T(label), opts)}
 }
 
-func overviewTerminalSection(o dashboardOptions, width int) dashboardBlock {
+func networkSetting(o dashboardOptions, title, configID, toggleID string, state toggleState, labels toggleLabels) overviewNetworkSetting {
+	return overviewNetworkSetting{
+		title:  overviewHeading(o, o.Locale.T(title)),
+		status: networkStatus(o, toggleID, state, labels),
+		config: networkAction(o, configID, "dashboard.network.configure", o.Snapshot.Installed && !o.Busy && !o.StateUnavailable),
+	}
+}
+
+func overviewTerminalSetting(o dashboardOptions) overviewNetworkSetting {
 	tr, s := o.Locale.T, o.Snapshot
 	t := s.TerminalProxy
 	labels := networkToggleLabels(o)
@@ -175,15 +173,17 @@ func overviewTerminalSection(o dashboardOptions, width int) dashboardBlock {
 			id = "terminal.enable"
 		}
 	}
-	section := overviewNetworkSection(o, width, tr("terminal.title"), id, state, labels)
-	section.append(networkConfigActions(o, width, "network.primaryConfig", !o.StateUnavailable && pendingActivationCommand(t) != ""))
-	if !o.StateUnavailable && t.State == "error" {
-		section.append(centeredNetworkBlock(themed(tr("terminal.state.error"), warning, panel, o.Dim), width, 0, ""))
+	setting := networkSetting(o, "terminal.title", "network.primaryConfig", id, state, labels)
+	if !o.StateUnavailable && pendingActivationCommand(t) != "" {
+		setting.command = networkAction(o, "terminal.activation", "dashboard.network.activationCommand", !o.Busy)
 	}
-	return section
+	if !o.StateUnavailable && t.State == "error" {
+		setting.notes = append(setting.notes, themed(tr("terminal.state.error"), warning, panel, o.Dim))
+	}
+	return setting
 }
 
-func overviewTUNSection(o dashboardOptions, width int) dashboardBlock {
+func overviewTUNSetting(o dashboardOptions) overviewNetworkSetting {
 	tr, s := o.Locale.T, o.Snapshot
 	labels := networkToggleLabels(o)
 	state, id, observed := toggleUnsupported, "", ""
@@ -221,15 +221,14 @@ func overviewTUNSection(o dashboardOptions, width int) dashboardBlock {
 			}
 		}
 	}
-	section := overviewNetworkSection(o, width, tr("dashboard.network.tun"), id, state, labels)
-	section.append(networkConfigActions(o, width, "network.tunConfig", false))
+	setting := networkSetting(o, "dashboard.network.tun", "network.tunConfig", id, state, labels)
 	if observed != "" {
-		section.append(centeredNetworkBlock(themed(observed, warning, panel, o.Dim), width, 0, ""))
+		setting.notes = append(setting.notes, themed(observed, warning, panel, o.Dim))
 	}
 	if s.TUNError != "" {
-		section.append(centeredNetworkBlock(themed(clean(o.Locale.Detail(s.TUNError)), warning, panel, o.Dim), width, 0, ""))
+		setting.notes = append(setting.notes, themed(clean(o.Locale.Detail(s.TUNError)), warning, panel, o.Dim))
 	}
-	return section
+	return setting
 }
 
 // The target names carry explicit enable/disable intent. After a refreshed

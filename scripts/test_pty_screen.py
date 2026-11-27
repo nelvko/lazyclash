@@ -51,6 +51,13 @@ class ScreenTests(unittest.TestCase):
         screen.feed(b"X")
         self.assertEqual(screen.text(), "Up for <1X")
 
+    def test_setting_control_finds_wrapped_action_without_selecting_an_adjacent_setting(self):
+        screen = Screen(48, 4)
+        screen.feed("  终端代理    ○ 关闭      配置\r\n\r\n  虚拟网卡\r\n     ● 开启               配置".encode())
+        self.assertEqual(screen.setting_control("终端代理", "配置"), (26, 0))
+        self.assertEqual(screen.setting_control("虚拟网卡", "配置"), (26, 3))
+        self.assertIsNone(screen.setting_control("终端代理", "● 开启"))
+
     def test_insert_mode_moves_styles_with_cells_for_wide_text(self):
         spec = importlib.util.spec_from_file_location("onboarding_pty", Path(__file__).with_name("onboarding-pty.py"))
         preview = importlib.util.module_from_spec(spec)

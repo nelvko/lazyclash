@@ -71,7 +71,7 @@ class Terminal(HOOKS.Shell):
         deadline = time.monotonic() + 20
         while time.monotonic() < deadline:
             self.read_for(.05)
-            point = self.screen.point_below('Terminal proxy', 1, state)
+            point = self.screen.setting_control('Terminal proxy', state)
             if not self.screen.synchronized and point is not None:
                 return point
         raise AssertionError('Terminal proxy did not show '+state+'\n'+self.screen.text())
