@@ -26,6 +26,28 @@ func builtConfig(t *testing.T, opts BuildOptions) map[string]any {
 	return cfg
 }
 
+func TestBuildPreservesNativeSelectionCaching(t *testing.T) {
+	for _, tc := range []struct {
+		name, base, override string
+		present, enabled     bool
+	}{
+		{name: "omitted", base: "mode: rule"},
+		{name: "disabled", base: "profile: {store-selected: false}", present: true},
+		{name: "enabled", base: "profile: {store-selected: true}", present: true, enabled: true},
+		{name: "disabled by override", base: "profile: {store-selected: true}", override: "set: {profile: {store-selected: false}}", present: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			opts := buildOptions(tc.base)
+			opts.Overrides = []byte(tc.override)
+			profile := builtConfig(t, opts)["profile"].(map[string]any)
+			value, present := profile["store-selected"]
+			if present != tc.present || (present && value != tc.enabled) {
+				t.Fatalf("store-selected = %v (present %v), want %v (present %v)", value, present, tc.enabled, tc.present)
+			}
+		})
+	}
+}
+
 func TestGeoDefaultsFillOnlyMissingProfileFields(t *testing.T) {
 	opts := buildOptions("geox-url: {geosite: https://rules.invalid/private}\nrules: ['MATCH,DIRECT']")
 	cfg := builtConfig(t, opts)
@@ -108,7 +130,7 @@ func TestBuildOverridesReplaceListsAndRejectHiddenDeletionOrOwnedFields(t *testi
 		"set: {mixed-port: 19999}", "set: {secret: private-token}",
 		"set: {tun: {enable: true}}", "set: {listeners: []}",
 		"set: {dns: {listen: '0.0.0.0:53'}}",
-		"set: {profile: {store-selected: false}}", "set: {sniffer: null}",
+		"set: {profile: not-a-mapping}", "set: {sniffer: null}",
 		"set: {sniffer: {enable: null}}", "set: {rules: [null]}",
 		"set: null", "append-rules: null", "merge: {mode: rule}",
 		"set: {proxy-groups: []}", // Leaves a dangling MATCH target.

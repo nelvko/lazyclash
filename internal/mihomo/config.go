@@ -79,14 +79,6 @@ func EffectiveListeners(raw []byte, controller, secret string, mixedPort int, li
 	dns["listen"] = ""
 	cfg["dns"] = dns
 
-	// Mihomo owns this cache in its stable -d directory. API selections then
-	// survive both configuration generations and systemd crash recovery.
-	profile, _ := cfg["profile"].(map[string]any)
-	if profile == nil {
-		profile = make(map[string]any)
-	}
-	profile["store-selected"] = true
-	cfg["profile"] = profile
 	out, err := yaml.Marshal(cfg)
 	if err != nil {
 		return nil, diagnostic.New("diagnostic.config.encode", "cannot encode Mihomo YAML")
@@ -158,25 +150,6 @@ func ConfigTUN(raw []byte) (bool, error) {
 	enabled, ok := tun["enable"].(bool)
 	if !ok && tun["enable"] != nil {
 		return false, diagnostic.New("diagnostic.config.tunEnable", "invalid Mihomo TUN enable setting")
-	}
-	return enabled, nil
-}
-
-func ConfigSelectionPersistence(raw []byte) (bool, error) {
-	cfg, err := decodeConfig(raw)
-	if err != nil {
-		return false, err
-	}
-	profile, ok := cfg["profile"].(map[string]any)
-	if !ok && cfg["profile"] != nil {
-		return false, diagnostic.New("diagnostic.config.profileCache", "invalid Mihomo profile cache configuration")
-	}
-	if profile["store-selected"] == nil {
-		return true, nil // Mihomo's native default.
-	}
-	enabled, ok := profile["store-selected"].(bool)
-	if !ok {
-		return false, diagnostic.New("diagnostic.config.selectionCache", "invalid Mihomo selection cache setting")
 	}
 	return enabled, nil
 }

@@ -261,12 +261,8 @@ func applyOverrides(cfg map[string]any, raw []byte) error {
 				}
 			}
 			if key == "profile" {
-				profile, ok := value.(map[string]any)
-				if !ok {
+				if _, ok := value.(map[string]any); !ok {
 					return diagnostic.New("diagnostic.config.profileMapping", "override profile must be a mapping")
-				}
-				if _, exists := profile["store-selected"]; exists {
-					return diagnostic.New("diagnostic.config.selectionManaged", "profile.store-selected is managed by lazyclash")
 				}
 			}
 			if key == "dns" {

@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -13,7 +14,6 @@ import (
 	"testing"
 
 	"github.com/nelvko/lazyclash/internal/mihomo"
-	"github.com/nelvko/lazyclash/internal/store"
 )
 
 func TestStoppedModePersistsAcrossAppAndProfileChanges(t *testing.T) {
@@ -44,8 +44,11 @@ func TestStoppedModePersistsAcrossAppAndProfileChanges(t *testing.T) {
 		t.Fatalf("mode was not preserved across entry points: %+v %v", actual, err)
 	}
 	_, config, _ := a.paths()
-	if !strings.Contains(string(read(t, config)), "store-selected: true") || string(read(t, cache)) != "engine-owned-persistent-cache" {
-		t.Fatal("profile switch disabled or removed the selection cache")
+	if strings.Contains(string(read(t, config)), "store-selected:") {
+		t.Fatal("profile switch injected an unspecified selection cache policy")
+	}
+	if string(read(t, cache)) != "engine-owned-persistent-cache" {
+		t.Fatal("profile switch modified the engine-owned cache")
 	}
 }
 
@@ -170,34 +173,50 @@ func TestTUNOffConfirmsActualState(t *testing.T) {
 	}
 }
 
-func TestLegacySelectionPersistenceMustBeEnabledBeforeSelection(t *testing.T) {
+func TestSelectWithSubscriptionSelectionCacheDisabled(t *testing.T) {
 	a, svc := installedApp(t)
-	m, old, _ := a.load()
+	path := filepath.Join(t.TempDir(), "subscription.yaml")
+	write(t, path, []byte("profile: {store-selected: false}\nproxy-groups: [{name: Choice, type: select, proxies: [DIRECT, REJECT]}]\nrules: ['MATCH,Choice']\n"))
+	if err := a.AddSubscription(t.Context(), "saved", path); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Apply(t.Context(), "saved"); err != nil {
+		t.Fatal(err)
+	}
 	_, config, _ := a.paths()
-	raw := strings.Replace(string(read(t, config)), "store-selected: true", "store-selected: false", 1)
-	next, err := a.writeGeneration(filepath.Join(a.Home, "installation"), m, []byte(raw))
-	if err != nil {
-		t.Fatal(err)
+	before := read(t, config)
+	if !bytes.Contains(before, []byte("store-selected: false")) {
+		t.Fatal("applied configuration lost the subscription's explicit cache policy")
 	}
-	if err := store.Switch(filepath.Join(a.Home, "installation", "current"), next, old); err != nil {
-		t.Fatal(err)
-	}
+
 	svc.active = true
-	requests := 0
+	selected := "DIRECT"
+	var requests []string
 	a.HTTP = &http.Client{Transport: fixtureTransport(func(r *http.Request) (*http.Response, error) {
-		requests++
-		return nil, errors.New("unexpected API call")
+		operation := r.Method + " " + r.URL.Path
+		requests = append(requests, operation)
+		switch operation {
+		case "GET /proxies":
+			return proxyTestResponse(r, `{"proxies":{"Choice":{"type":"Selector","now":"`+selected+`","all":["DIRECT","REJECT"]}}}`), nil
+		case "PUT /proxies/Choice":
+			var payload struct{ Name string }
+			if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+				t.Fatal(err)
+			}
+			selected = payload.Name
+			return proxyTestResponse(r, ""), nil
+		default:
+			t.Fatalf("unexpected controller request %s", operation)
+			return nil, nil
+		}
 	})}
-	if err := a.Select(t.Context(), "PROXY", "REJECT"); err == nil || !strings.Contains(err.Error(), "reapply") || requests != 0 {
-		t.Fatal("nonpersistent legacy node selection was reported as successful", err)
-	}
-	svc.active = false
-	addFixtureProfile(t, a, "test")
-	if err := a.Apply(t.Context(), "test"); err != nil {
+	if err := a.Select(t.Context(), "Choice", "REJECT"); err != nil {
 		t.Fatal(err)
 	}
-	persistent, err := mihomo.ConfigSelectionPersistence(read(t, config))
-	if err != nil || !persistent {
-		t.Fatal("explicit profile application did not upgrade legacy cache setting", err)
+	if selected != "REJECT" || !reflect.DeepEqual(requests, []string{"GET /proxies", "PUT /proxies/Choice", "GET /proxies"}) {
+		t.Fatalf("selection = %q, controller requests = %v", selected, requests)
+	}
+	if !bytes.Equal(before, read(t, config)) {
+		t.Fatal("selecting a node changed the applied subscription configuration")
 	}
 }

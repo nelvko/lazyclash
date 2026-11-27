@@ -316,7 +316,7 @@ func assertInstanceSettings(t *testing.T, a *App, want mihomo.GeneralSettings) {
 		}
 	}
 	profile, _ := cfg["profile"].(map[string]any)
-	if profile["store-fake-ip"] != (want.StoreFakeIP == "on") || profile["store-selected"] != true {
+	if _, selected := profile["store-selected"]; selected || profile["store-fake-ip"] != (want.StoreFakeIP == "on") {
 		t.Fatal("unexpected profile cache settings", profile)
 	}
 	if want.GeodataLoader != "inherit" && cfg["geodata-loader"] != want.GeodataLoader {

@@ -252,17 +252,6 @@ func (a *App) Select(ctx context.Context, group, node string) error {
 		if !status.Active {
 			return diagnostic.New("diagnostic.runtime.selectStopped", "start the managed service before selecting a node")
 		}
-		raw, err := store.Read(config)
-		if err != nil {
-			return err
-		}
-		persistent, err := mihomo.ConfigSelectionPersistence(raw)
-		if err != nil {
-			return err
-		}
-		if !persistent {
-			return diagnostic.New("diagnostic.runtime.selectionPersistence", "this legacy configuration disables selection persistence; reapply the current profile before selecting a node")
-		}
 		return a.client(m).Select(ctx, group, node)
 	})
 }

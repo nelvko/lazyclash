@@ -44,7 +44,7 @@ HOME/
       config.yaml                # 最终运行配置
       manifest.json              # 设置、Profile ID、revision、覆写及文件摘要
     current -> generations/g-<id>
-    runtime/                     # 稳定 Mihomo -d：选择缓存、Provider 缓存、本地资产
+    runtime/                     # 实例内所有订阅共用的 Mihomo -d，存放内核缓存与本地资源
   apply-pending.json             # 带两代 guard 的未完成配置事务
   profile-edit-pending.json      # 当前项编辑事务恢复所需的资料库记录和配方指纹
   runtime-state.json             # 用户运行意图与操作状态
@@ -112,9 +112,9 @@ TUI 使用稳定 ID 绑定卡片、详情和动作。改名后，卡片上会显
 | 监听/API | 最后强制回环 API、密钥、mixed-port，关闭其他入站、LAN、UI、DoH listener 等 |
 | DNS | 保留 resolver，强制清空 dns.listen |
 | TUN | 常规 `tun` 字段由实例策略整体接管；独立 TUN listener 仍报错。开启主机 TUN 的权限边界见 [服务范围](service-scopes.md) |
-| 节点选择 | 强制 profile.store-selected=true，稳定 -d 保留缓存 |
+| 节点选择 | 保留订阅或 `overrides.set.profile` 显式指定的 `store-selected` 值（包括 `false`）。省略时由 Mihomo 使用内核默认值 |
 
-用户 set 指定受管字段时拒绝，不让其误以为已生效；mode 通过独立设置用例修改。null 不作为自定义删除语法，清空使用空 list/map；原生空节点/规则容器允许 null。
+用户通过 `set` 指定受保护的字段时，构建会返回错误。`profile.store-selected` 可由用户覆写，`profile.store-fake-ip` 仍由实例的「记住 Fake-IP 映射」设置决定。mode 通过独立设置用例修改。null 不作为自定义删除语法，清空使用空 list/map；原生空节点/规则容器允许 null。
 
 未安装内核时可通过结构/引用检查保存，validated=false。历史内核校验标记不代表网络可用，Apply/Start 仍校验。远程 Provider 内容可由 Mihomo 自行刷新，顶层摘要不能证明所有远程资源版本相同。
 

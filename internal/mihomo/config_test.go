@@ -77,8 +77,8 @@ iptables: {enable: true}
 		t.Fatal("SS inbound remains enabled")
 	}
 	profile := cfg["profile"].(map[string]any)
-	if profile["store-selected"] != true || profile["store-fake-ip"] != true {
-		t.Fatal("selection persistence disabled or other cache settings lost")
+	if profile["store-selected"] != false || profile["store-fake-ip"] != true {
+		t.Fatal("effective configuration changed the profile cache settings")
 	}
 }
 
@@ -123,7 +123,7 @@ func TestConfigModePreservesOtherSettings(t *testing.T) {
 			t.Fatal(err)
 		}
 		actual, err := ConfigMode(next)
-		if err != nil || actual != mode || !strings.Contains(string(next), "DOMAIN,example.invalid,REJECT") || !strings.Contains(string(next), "store-selected: true") {
+		if err != nil || actual != mode || !strings.Contains(string(next), "DOMAIN,example.invalid,REJECT") || strings.Contains(string(next), "store-selected:") {
 			t.Fatalf("mode mutation changed unrelated settings: %s %v", next, err)
 		}
 	}

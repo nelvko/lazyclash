@@ -47,7 +47,11 @@ system unit 的 `ExecStartPre`、`ExecStartPost`、`ExecStopPost` 调用受保�
 
 ## 模式、Profile 与缓存
 
-代理页的路由模式切换在运行时 PATCH 并读回，配置代际同时保存；停止时仅保存。显式模式和 TUN 策略在 Profile 应用后保留。节点选择检查目标并读回，生成配置启用 `profile.store-selected: true`，稳定的 `installation/runtime` 承载 Mihomo 原生缓存。读回只确认当前运行值，不等于所有断电场景均已刷盘。[Mihomo cache](https://wiki.metacubex.one/en/config/general/#cache)
+代理页的路由模式切换在运行时 PATCH 并读回，配置代际同时保存；停止时仅保存。显式模式和 TUN 策略在 Profile 应用后保留。
+
+选择节点后，lazyclash 从控制 API 确认当前运行值。订阅或用户覆写中的 `profile.store-selected` 决定 Mihomo 是否在重启或重新加载配置时恢复所选节点。省略该字段时沿用内核默认行为。显式设为 `false` 时仍可切换当前节点。
+
+同一实例的所有订阅共用 Mihomo 的运行目录 `installation/runtime`。启用选择缓存时，如果另一份订阅中有同名策略组，而且组内仍有已保存的节点，Mihomo 可能恢复这个选择。[Mihomo 缓存配置](https://wiki.metacubex.one/en/config/general/#cache)
 
 在订阅页导入、更新或选用 Profile。更新当前订阅时，有效配置发生变化会自动重载，失败会保留原有内容和运行配置。卸载前在内核管理中关闭开机自启，再运行 `lazyclash stop` 和 `lazyclash uninstall`。卸载会保留用户订阅和偏好。
 

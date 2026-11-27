@@ -159,7 +159,7 @@ Logs 通过当前 Mihomo 的认证本机控制 API 获取实时事件，默认�
 
 ## 持久运行与权限
 
-普通用户通过 systemd user service 运行，Start/Restart/Enable 要求已明确启用 linger；root 通过 systemd system service 运行，不依赖登录会话或 linger。安装不启动、不 enable、不修改 linger，TUI 退出或终端挂断不发送 Stop。运行意图、模式、TUN 策略、节点缓存和显式订阅来源持久保存。在「设置 → 内核管理」独立控制开机自启；多步管理事务中断后，遗留 journal 在下一次应用调用时恢复，没有后台 daemon 或独立事务执行器代跑。详细行为见 [持久运行](docs/runtime-lifecycle.md)。
+普通用户通过 systemd user service 运行，Start/Restart/Enable 要求已明确启用 linger；root 通过 systemd system service 运行，不依赖登录会话或 linger。安装不启动、不 enable、不修改 linger，TUI 退出或终端挂断不发送 Stop。运行意图、模式、TUN 策略和订阅来源持久保存。节点选择是否在重启后恢复，取决于订阅或覆写中的 `profile.store-selected`。省略该字段时沿用 Mihomo 默认行为。在「设置 → 内核管理」独立控制开机自启；多步管理事务中断后，遗留 journal 在下一次应用调用时恢复，没有后台 daemon 或独立事务执行器代跑。详细行为见 [持久运行](docs/runtime-lifecycle.md)。
 
 system Mihomo 使用专用非 root 账号；普通代理无额外 capabilities，明确开启 TUN 才授予 `CAP_NET_ADMIN CAP_NET_RAW`。TUI 确认弹窗默认选中取消，并说明整台主机、其他用户和服务的流量及 DNS 影响。停止时开启仅保存策略；运行时切换会重启内核。启动及退出由同一受保护 lazyclash 程序的有限 unit 钩子检查冲突、记录并清理自有接口/路由，不自动抢占其他实例或 VPN。TUN 的 DNS 劫持不修改系统 resolver；系统代理自动设置、普通用户 TUN 和 UID 筛选不在首发范围。权限细节与限制见 [权限管理](docs/permissions.md)。
 
