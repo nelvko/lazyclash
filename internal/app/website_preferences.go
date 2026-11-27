@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"net/netip"
 	"net/url"
 	"slices"
@@ -126,16 +127,54 @@ func (a *App) AddWebsite(ctx context.Context, site Website) ([]Website, error) {
 	return updated, nil
 }
 
+func (a *App) UpdateWebsite(ctx context.Context, original, replacement Website) ([]Website, error) {
+	return a.editWebsiteAt(ctx, original, func(sites []Website, i int) ([]Website, error) {
+		site, err := replacement.normalized()
+		if err != nil {
+			return nil, err
+		}
+		others := slices.Delete(sites, i, i+1)
+		if err := uniqueWebsite(others, site); err != nil {
+			return nil, err
+		}
+		return slices.Insert(others, i, site), nil
+	})
+}
+
 func (a *App) RemoveWebsite(ctx context.Context, site Website) ([]Website, error) {
+	return a.editWebsiteAt(ctx, site, func(sites []Website, i int) ([]Website, error) {
+		return slices.Delete(sites, i, i+1), nil
+	})
+}
+
+// MoveWebsite swaps the site with its current neighbor in the locked list.
+func (a *App) MoveWebsite(ctx context.Context, original Website, direction int) ([]Website, error) {
+	if direction != -1 && direction != 1 {
+		return nil, errors.New("website move direction must be -1 or 1")
+	}
+	return a.editWebsiteAt(ctx, original, func(sites []Website, i int) ([]Website, error) {
+		j := i + direction
+		if j >= 0 && j < len(sites) {
+			sites[i], sites[j] = sites[j], sites[i]
+		}
+		return sites, nil
+	})
+}
+
+func (a *App) editWebsiteAt(ctx context.Context, original Website, edit func([]Website, int) ([]Website, error)) ([]Website, error) {
 	var updated, currentOnConflict []Website
 	err := a.editPreferences(ctx, func(p *Preferences) error {
 		sites := p.WebsitesForTesting()
-		i := slices.Index(sites, site)
+		i := slices.Index(sites, original)
 		if i < 0 {
 			currentOnConflict = sites
 			return diagnostic.New("diagnostic.website.missing", "This website has changed or was removed")
 		}
-		updated = slices.Delete(sites, i, i+1)
+		var err error
+		updated, err = edit(sites, i)
+		if err != nil {
+			return err
+		}
 		p.Websites = updated
 		return nil
 	})

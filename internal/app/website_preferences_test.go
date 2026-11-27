@@ -94,6 +94,104 @@ func TestWebsiteAddressValidation(t *testing.T) {
 	}
 }
 
+func TestUpdateWebsitePreservesPositionAndOtherSessionEdits(t *testing.T) {
+	a, _ := testApp(t)
+	b, err := New(a.Home, a.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	current, err := b.AddWebsite(t.Context(), Website{URL: "status.example"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := current[1]
+	want := slices.Clone(current)
+	want[1] = Website{Name: original.Name, URL: "https://google.example/check"}
+	changed, err := a.UpdateWebsite(t.Context(), original, Website{Name: original.Name, URL: "GOOGLE.example:443/check"})
+	if err != nil || !slices.Equal(changed, want) {
+		t.Fatal(changed, err)
+	}
+	// A rename can keep the address, including after normalization.
+	renamed := Website{Name: "Search", URL: want[1].URL}
+	changed, err = b.UpdateWebsite(t.Context(), want[1], renamed)
+	want[1] = renamed
+	if err != nil || !slices.Equal(changed, want) {
+		t.Fatal(changed, err)
+	}
+	for _, invalid := range []Website{
+		{Name: "github", URL: "other.example"}, {Name: "Other", URL: "GITHUB.COM:443"},
+		{Name: "Private", URL: "https://user:token@example.org"},
+	} {
+		if result, err := a.UpdateWebsite(t.Context(), renamed, invalid); err == nil || result != nil {
+			t.Fatal("invalid update accepted", result, err)
+		}
+	}
+	if result, err := a.UpdateWebsite(t.Context(), original, Website{URL: "old.example"}); err == nil || !slices.Equal(result, want) {
+		t.Fatal("stale update did not return the current list", result, err)
+	}
+	prefs, err := b.ReadPreferences(t.Context())
+	if err != nil || !slices.Equal(prefs.WebsitesForTesting(), want) {
+		t.Fatal(prefs.Websites, err)
+	}
+	left, err := b.RemoveWebsite(t.Context(), renamed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result, err := a.UpdateWebsite(t.Context(), renamed, Website{URL: "old.example"}); err == nil || !slices.Equal(result, left) {
+		t.Fatal("stale update after deletion did not return the current list", result, err)
+	}
+}
+
+func TestMoveWebsiteSwapsCurrentNeighborsAndPreservesOtherSessionEdits(t *testing.T) {
+	a, _ := testApp(t)
+	b, err := New(a.Home, a.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	initial := DefaultWebsites()
+	first, middle, last := initial[0], initial[1], initial[2]
+	custom := Website{Name: "Status", URL: "https://status.example/"}
+	if _, err := b.AddWebsite(t.Context(), custom); err != nil {
+		t.Fatal(err)
+	}
+	// A separate session shifts the target to a new position before the move.
+	if _, err := b.MoveWebsite(t.Context(), first, 1); err != nil {
+		t.Fatal(err)
+	}
+	for _, step := range []struct {
+		site      Website
+		direction int
+		want      []Website
+	}{
+		{middle, -1, []Website{middle, first, last, custom}},
+		{middle, 1, []Website{first, middle, last, custom}},
+		{last, 1, []Website{first, middle, custom, last}},
+		{last, 1, []Website{first, middle, custom, last}},
+		{last, -1, []Website{first, middle, last, custom}},
+	} {
+		got, err := a.MoveWebsite(t.Context(), step.site, step.direction)
+		if err != nil || !slices.Equal(got, step.want) {
+			t.Fatal(step, got, err)
+		}
+		prefs, err := b.ReadPreferences(t.Context())
+		if err != nil || !slices.Equal(prefs.WebsitesForTesting(), step.want) {
+			t.Fatal("order not persisted", prefs.Websites, err)
+		}
+	}
+	for _, direction := range []int{-2, 0, 2} {
+		if got, err := a.MoveWebsite(t.Context(), last, direction); err == nil || got != nil {
+			t.Fatal("invalid direction accepted", direction, got, err)
+		}
+	}
+	remaining, err := b.RemoveWebsite(t.Context(), middle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := a.MoveWebsite(t.Context(), middle, -1); err == nil || !slices.Equal(got, remaining) {
+		t.Fatal("stale move failed to return the current list", got, err)
+	}
+}
+
 func TestConcurrentWebsiteEditsPreserveOtherSessions(t *testing.T) {
 	a, _ := testApp(t)
 	b, err := New(a.Home, a.Name)
