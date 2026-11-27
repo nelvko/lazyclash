@@ -1,7 +1,9 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
+	"path/filepath"
 
 	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/diagnostic"
@@ -10,20 +12,31 @@ import (
 )
 
 func newInstallCommand(backend func() *app.App) *cobra.Command {
-	cmd := &cobra.Command{Use: "install", Short: "Install, update, or explicitly reinstall Mihomo without restarting its service", Args: noArgs}
+	cmd := &cobra.Command{Use: "install", Short: "Install, update, or explicitly reinstall Mihomo without restarting its service"}
 	var bin, version string
 	overrides := addDownloadFlags(cmd)
-	var reinstall, remember, dryRun bool
+	var reinstall, dryRun bool
 	flags := cmd.Flags()
 	flags.StringVar(&bin, "bin", "", "Use an absolute local Mihomo executable path")
 	flags.StringVar(&version, "core-version", "latest", "Official stable release: latest or vX.Y.Z")
 	flags.BoolVar(&reinstall, "reinstall", false, "Replace the binary even when the same version is installed")
 	flags.BoolVar(&dryRun, "dry-run", false, "Resolve the version and show installation preflight without installing")
-	flags.BoolVar(&remember, "remember-download-settings", false, "Remember safe download settings; credentials and private URL paths are never saved")
+	cmd.Args = func(cmd *cobra.Command, args []string) error {
+		if err := noArgs(cmd, args); err != nil {
+			return err
+		}
+		if flags.Changed("bin") && !filepath.IsAbs(bin) {
+			return usageError{diagnostic.New("diagnostic.install.localAbsolute", "local Mihomo path must be absolute")}
+		}
+		if bin != "" && flags.Changed("core-version") {
+			return usageError{diagnostic.New("diagnostic.cli.bin_version_conflict", "--bin and --core-version cannot be combined")}
+		}
+		return nil
+	}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
 		locale := commandLocale(cmd)
 		a := backend()
-		prefs, err := a.LoadPreferences(cmd.Context())
+		prefs, err := a.ReadPreferences(cmd.Context())
 		if err != nil {
 			return err
 		}
@@ -31,19 +44,15 @@ func newInstallCommand(backend func() *app.App) *cobra.Command {
 		if err != nil {
 			return err
 		}
-		if bin != "" && flags.Changed("core-version") {
-			return diagnostic.New("diagnostic.cli.bin_version_conflict", "--bin and --core-version cannot be combined")
-		}
-		if remember {
-			if err := a.SaveNetworkPreferences(cmd.Context(), cfg); err != nil {
-				return err
-			}
-		}
 		var release mihomo.Release
 		if bin == "" {
 			fmt.Fprintln(cmd.ErrOrStderr(), locale.T("cli.install.query"))
 			release, err = a.ResolveRelease(cmd.Context(), version, cfg)
 			if err != nil {
+				var d *diagnostic.Error
+				if flags.Changed("core-version") && errors.As(err, &d) && d.Code == "diagnostic.release.versionChoice" && version != "latest" && version != "" {
+					return usageError{err}
+				}
 				return err
 			}
 		}
@@ -85,6 +94,5 @@ func newInstallCommand(backend func() *app.App) *cobra.Command {
 		}
 		return writeJSON(cmd, result)
 	}
-	cmd.AddCommand(newCoreUpdateCommand(backend, false), newCoreUpdateCommand(backend, true))
 	return cmd
 }

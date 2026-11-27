@@ -1,32 +1,41 @@
 package cli
 
 import (
+	"bufio"
+	"context"
 	"fmt"
+	"io"
+	"strings"
 
+	"github.com/muesli/cancelreader"
 	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/diagnostic"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 	"github.com/spf13/cobra"
 )
 
-func newCoreUpdateCommand(backend func() *app.App, upgrade bool) *cobra.Command {
-	name, description := "check", "Check the installed Mihomo version against official version.txt without changing files or services"
-	if upgrade {
-		name, description = "upgrade", "Upgrade Mihomo and restart an active owned service, rolling back on failure"
-	}
-	cmd := &cobra.Command{Use: name, Short: description, Args: noArgs}
+func newUpgradeCommand(backend func() *app.App) *cobra.Command {
+	cmd := &cobra.Command{Use: "upgrade", Short: "Check for a Mihomo update or upgrade to the reviewed stable version"}
 	var channel string
-	var yes bool
+	var checkOnly, yes bool
 	overrides := addDownloadFlags(cmd)
 	flags := cmd.Flags()
 	flags.StringVar(&channel, "channel", "auto", "Release channel: auto, stable or alpha")
-	if upgrade {
-		flags.BoolVar(&yes, "yes", false, "Confirm upgrading and restarting an active service")
+	flags.BoolVar(&checkOnly, "check", false, "Only check the installed and available versions")
+	flags.BoolVar(&yes, "yes", false, "Confirm upgrading and restarting an active service")
+	cmd.Args = func(cmd *cobra.Command, args []string) error {
+		if err := noArgs(cmd, args); err != nil {
+			return err
+		}
+		if flags.Changed("check") && flags.Changed("yes") {
+			return usageError{diagnostic.New("diagnostic.cli.upgradeFlags", "--check and --yes cannot be combined")}
+		}
+		if !checkOnly && !yes && !interactive(cmd) {
+			return usageError{diagnostic.New("diagnostic.cli.upgradeConfirmation", "non-interactive upgrade requires --check or --yes")}
+		}
+		return nil
 	}
 	cmd.RunE = func(cmd *cobra.Command, _ []string) error {
-		if upgrade && !yes {
-			return diagnostic.New("diagnostic.cli.upgradeConfirmation", "review the target with lazyclash install check, then run lazyclash install upgrade --yes to confirm replacement and restart")
-		}
 		var selected mihomo.Channel
 		switch channel {
 		case "auto":
@@ -35,7 +44,7 @@ func newCoreUpdateCommand(backend func() *app.App, upgrade bool) *cobra.Command 
 		case "alpha":
 			selected = mihomo.ChannelAlpha
 		default:
-			return diagnostic.New("diagnostic.cli.updateChannel", "channel must be auto, stable or alpha")
+			return usageError{diagnostic.New("diagnostic.cli.updateChannel", "channel must be auto, stable or alpha")}
 		}
 		a := backend()
 		prefs, err := a.ReadPreferences(cmd.Context())
@@ -50,11 +59,21 @@ func newCoreUpdateCommand(backend func() *app.App, upgrade bool) *cobra.Command 
 		if err != nil {
 			return err
 		}
-		if !upgrade {
+		if checkOnly {
 			return writeJSON(cmd, check)
 		}
 		locale := commandLocale(cmd)
 		fmt.Fprintln(cmd.ErrOrStderr(), locale.T("cli.core_update.target", safe(check.InstalledVersion), safe(check.LatestVersion), safe(string(check.Status))))
+		if !yes && check.Status == mihomo.UpdateAvailable && check.Channel == mihomo.ChannelStable {
+			fmt.Fprint(cmd.ErrOrStderr(), locale.T("cli.core_update.prompt"))
+			confirmed, err := confirmUpgrade(cmd.Context(), cmd.InOrStdin())
+			if err != nil {
+				return err
+			}
+			if !confirmed {
+				return diagnostic.New("diagnostic.cli.upgradeDeclined", "upgrade canceled")
+			}
+		}
 		result, err := a.UpgradeCore(cmd.Context(), check, cfg, func(p mihomo.Progress) {
 			if p.Total > 0 {
 				fmt.Fprint(cmd.ErrOrStderr(), locale.T("cli.install.progress", safe(p.Stage), p.Downloaded, p.Total, p.BytesPerSecond, locale.Detail(safe(p.Detail))))
@@ -68,4 +87,33 @@ func newCoreUpdateCommand(backend func() *app.App, upgrade bool) *cobra.Command 
 		return writeJSON(cmd, result)
 	}
 	return cmd
+}
+
+func confirmUpgrade(ctx context.Context, in io.Reader) (bool, error) {
+	reader, err := cancelreader.NewReader(in)
+	if err != nil {
+		return false, err
+	}
+	defer reader.Close()
+	// Interrupt a blocked terminal read and finish cancellation before Close.
+	done := make(chan struct{})
+	stop := context.AfterFunc(ctx, func() {
+		reader.Cancel()
+		close(done)
+	})
+	defer func() {
+		if !stop() {
+			<-done
+		}
+	}()
+	scanner := bufio.NewScanner(reader)
+	read := scanner.Scan()
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	if !read {
+		return false, scanner.Err()
+	}
+	answer := strings.ToLower(strings.TrimSpace(scanner.Text()))
+	return answer == "y" || answer == "yes", nil
 }

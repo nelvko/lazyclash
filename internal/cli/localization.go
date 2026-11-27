@@ -31,7 +31,7 @@ func Execute(ctx context.Context, args []string) error {
 		if _, valid := i18n.Normalize(language); !valid {
 			err := diagnostic.New("diagnostic.cli.language", "Language must be en, zh-Hans or auto")
 			fmt.Fprintln(root.ErrOrStderr(), commandLocale(root).Error(err))
-			return err
+			return usageError{err}
 		}
 	}
 	err := root.ExecuteContext(ctx)
@@ -43,7 +43,8 @@ func Execute(ctx context.Context, args []string) error {
 
 // A read-only scan selects presentation before Cobra handles --help or rejects
 // arguments. Known value flags consume their next token, and -- ends scanning.
-func bootstrapPresentation(root *cobra.Command, args []string) (home, language, serviceName string) {
+func bootstrapLanguage(root *cobra.Command, args []string) string {
+	var language string
 	flags := map[string]*pflag.Flag{}
 	var collect func(*cobra.Command)
 	collect = func(cmd *cobra.Command) {
@@ -74,28 +75,24 @@ func bootstrapPresentation(root *cobra.Command, args []string) (home, language, 
 			index++
 			value = args[index]
 		}
-		switch name {
-		case "home":
-			home = value
-		case "lang":
+		if name == "lang" {
 			language = value
-		case "service-name":
-			serviceName = value
 		}
 	}
-	return home, language, serviceName
+	return language
 }
 
 // Reading a language preference never creates directories, locks or services.
-// A missing/damaged preference must not prevent help or env --unset from working.
-func preferredLanguage(home, name string) string {
-	if name == "" && !(runtime.GOOS == "linux" && os.Geteuid() == 0) {
+// A missing/damaged preference must not prevent help or shell env --unset from working.
+func preferredLanguage() string {
+	var name string
+	if !(runtime.GOOS == "linux" && os.Geteuid() == 0) {
 		name = os.Getenv("LAZYCLASH_SERVICE")
 	}
 	if name == "" {
 		name = app.DefaultService
 	}
-	path, err := store.HomeForService(home, name)
+	path, err := store.HomeForService("", name)
 	if err != nil {
 		return ""
 	}
@@ -113,18 +110,10 @@ func preferredLanguage(home, name string) string {
 func commandLocale(cmd *cobra.Command) i18n.Localizer {
 	root := cmd.Root()
 	language, _ := root.PersistentFlags().GetString("lang")
-	home, _ := root.PersistentFlags().GetString("home")
-	name, _ := root.PersistentFlags().GetString("service-name")
 	if language == "" {
 		language = root.Annotations["i18n.explicit"]
 	}
-	if home == "" {
-		home = root.Annotations["i18n.home"]
-	}
-	if name == "" {
-		name = root.Annotations["i18n.service-name"]
-	}
-	return i18n.New(i18n.Resolve(language, preferredLanguage(home, name), os.Getenv))
+	return i18n.New(i18n.Resolve(language, preferredLanguage(), os.Getenv))
 }
 
 func invocationError(locale i18n.Localizer, err error) string {
@@ -161,6 +150,10 @@ func invocationError(locale i18n.Localizer, err error) string {
 		}
 		return locale.T("cli.error.unknown_command", err.Error())
 	}
+	var usage usageError
+	if errors.As(err, &usage) {
+		return locale.Error(usage.error)
+	}
 	return locale.Error(err)
 }
 
@@ -177,11 +170,13 @@ func configurePresentation(root *cobra.Command, args []string) {
 				return err
 			}
 			if len(rest) != 0 {
-				return diagnostic.New("diagnostic.cli.help_topic", "Unknown help topic: %s", strings.Join(args, " "))
+				return usageError{diagnostic.New("diagnostic.cli.help_topic", "Unknown help topic: %s", strings.Join(args, " "))}
 			}
 			return target.Help()
 		},
 	})
+	root.SetHelpCommandGroupID("help")
+	root.SetCompletionCommandGroupID("help")
 	root.InitDefaultHelpCmd()
 	root.InitDefaultCompletionCmd()
 	// Cobra captures the output writer when adding its default commands. Resolve
@@ -191,6 +186,7 @@ func configurePresentation(root *cobra.Command, args []string) {
 			continue
 		}
 		command.Args = noArgs
+		command.RunE = groupHelp
 		for _, shell := range command.Commands() {
 			shell.Args = noArgs
 			shell.RunE = func(cmd *cobra.Command, _ []string) error {
@@ -229,8 +225,7 @@ func configurePresentation(root *cobra.Command, args []string) {
 			return err
 		},
 	})
-	home, language, name := bootstrapPresentation(root, args)
-	root.Annotations = map[string]string{"i18n.home": home, "i18n.explicit": language, "i18n.service-name": name}
+	root.Annotations = map[string]string{"i18n.explicit": bootstrapLanguage(root, args)}
 	root.SetHelpFunc(func(cmd *cobra.Command, _ []string) { renderHelp(cmd, commandLocale(cmd)) })
 	root.SetUsageFunc(func(cmd *cobra.Command) error { renderHelp(cmd, commandLocale(cmd)); return nil })
 	localizeCommandTree(root, commandLocale(root))
@@ -279,9 +274,27 @@ func localizeCommandTree(root *cobra.Command, locale i18n.Localizer) {
 	visit(root)
 }
 
+// Runnable groups show help on their own and let Cobra validate unknown children.
+func groupHelp(cmd *cobra.Command, _ []string) error { return cmd.Help() }
+
+type usageError struct{ error }
+
+func (e usageError) Unwrap() error { return e.error }
+
+func ExitCode(err error) int {
+	if err == nil {
+		return 0
+	}
+	var usage usageError
+	if errors.As(err, &usage) {
+		return 2
+	}
+	return 1
+}
+
 func noArgs(cmd *cobra.Command, args []string) error {
 	if len(args) > 0 {
-		return diagnostic.New("diagnostic.cli.unknown_command", "unknown command %q for %q", args[0], cmd.CommandPath())
+		return usageError{diagnostic.New("diagnostic.cli.unknown_command", "unknown command %q for %q", args[0], cmd.CommandPath())}
 	}
 	return nil
 }
@@ -289,16 +302,7 @@ func noArgs(cmd *cobra.Command, args []string) error {
 func exactArgs(count int) cobra.PositionalArgs {
 	return func(_ *cobra.Command, args []string) error {
 		if len(args) != count {
-			return diagnostic.New("diagnostic.cli.exact_args", "accepts %d arg(s), received %d", count, len(args))
-		}
-		return nil
-	}
-}
-
-func maximumArgs(count int) cobra.PositionalArgs {
-	return func(_ *cobra.Command, args []string) error {
-		if len(args) > count {
-			return diagnostic.New("diagnostic.cli.maximum_args", "accepts at most %d arg(s), received %d", count, len(args))
+			return usageError{diagnostic.New("diagnostic.cli.exact_args", "accepts %d arg(s), received %d", count, len(args))}
 		}
 		return nil
 	}
@@ -314,7 +318,7 @@ func onlyValidArgs(cmd *cobra.Command, args []string) error {
 			}
 		}
 		if !valid {
-			return diagnostic.New("diagnostic.cli.invalid_argument", "invalid argument %q for %q", value, cmd.CommandPath())
+			return usageError{diagnostic.New("diagnostic.cli.invalid_argument", "invalid argument %q for %q", value, cmd.CommandPath())}
 		}
 	}
 	return nil

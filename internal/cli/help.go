@@ -21,6 +21,10 @@ func renderHelp(cmd *cobra.Command, locale i18n.Localizer) {
 		fmt.Fprintln(w, cmd.Short)
 	}
 	fmt.Fprintf(w, "\n%s\n  %s\n", locale.T("cli.help.usage"), cmd.UseLine())
+	if cmd == cmd.Root() {
+		fmt.Fprintf(w, "  %s <command> [flags]\n", cmd.CommandPath())
+		fmt.Fprintln(w, locale.T("cli.help.tui"))
+	}
 	if cmd.Example != "" {
 		fmt.Fprintf(w, "\n%s\n%s\n", locale.T("cli.help.examples"), cmd.Example)
 	}
@@ -38,13 +42,19 @@ func renderHelp(cmd *cobra.Command, locale i18n.Localizer) {
 			fmt.Fprintf(w, "  %s%s  %s\n", item.name, strings.Repeat(" ", width-ansi.StringWidth(item.name)), item.description)
 		}
 	}
-	var commands []row
-	for _, child := range cmd.Commands() {
-		if child.IsAvailableCommand() || child.Name() == "help" {
-			commands = append(commands, row{child.Name(), child.Short})
+	commandRows := func(group string) []row {
+		var rows []row
+		for _, child := range cmd.Commands() {
+			if child.GroupID == group && (child.IsAvailableCommand() || child.Name() == "help") {
+				rows = append(rows, row{child.Name(), child.Short})
+			}
 		}
+		return rows
 	}
-	printRows(locale.T("cli.help.commands"), commands)
+	for _, group := range cmd.Groups() {
+		printRows(locale.T("cli.help.group."+group.ID), commandRows(group.ID))
+	}
+	printRows(locale.T("cli.help.commands"), commandRows(""))
 	flagRows := func(flags *pflag.FlagSet) []row {
 		var rows []row
 		flags.VisitAll(func(flag *pflag.Flag) {
@@ -68,7 +78,7 @@ func renderHelp(cmd *cobra.Command, locale i18n.Localizer) {
 	}
 	printRows(locale.T("cli.help.flags"), flagRows(cmd.LocalFlags()))
 	printRows(locale.T("cli.help.global_flags"), flagRows(cmd.InheritedFlags()))
-	if len(commands) > 0 {
+	if cmd.HasAvailableSubCommands() {
 		fmt.Fprintf(w, "\n%s\n", locale.T("cli.help.more", cmd.CommandPath()))
 	}
 }

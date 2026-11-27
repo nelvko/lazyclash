@@ -21,7 +21,7 @@ func (a *App) Capabilities() Capabilities {
 		Scope:       "user",
 		Runtime:     Capability{Supported: a.Service != nil},
 		TUN:         Capability{Reason: "TUN controls host traffic and requires a root-managed system service; the user service supports ordinary HTTP/SOCKS proxying"},
-		SystemProxy: Capability{Reason: "automatic system proxy changes are not implemented; lazyclash env explicitly prints shell proxy variables"},
+		SystemProxy: Capability{Reason: "automatic system proxy changes are not implemented; lazyclash shell env explicitly prints shell proxy variables"},
 	}
 	if s, ok := a.Service.(interface{ ServiceScope() service.Scope }); ok && s.ServiceScope() == service.System {
 		c.Scope = "system"

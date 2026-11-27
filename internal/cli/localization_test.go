@@ -3,9 +3,9 @@ package cli
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -35,7 +35,9 @@ func TestCLIHelpUsesSelectedLanguageBeforeBackendInitialization(t *testing.T) {
 	} {
 		t.Run(test.language, func(t *testing.T) {
 			home := filepath.Join(t.TempDir(), "not-created")
-			out, stderr, err := localizedCLI(t, "--lang", test.language, "--home", home, "--service-name", "invalid/service", "--help")
+			t.Setenv("LAZYCLASH_HOME", home)
+			t.Setenv("LAZYCLASH_SERVICE", "invalid/service")
+			out, stderr, err := localizedCLI(t, "--lang", test.language, "--help")
 			if err != nil || stderr != "" || !strings.Contains(out, test.usage) || !strings.Contains(out, test.description) || !strings.Contains(out, "--lang") {
 				t.Fatalf("out=%s stderr=%s err=%v", out, stderr, err)
 			}
@@ -49,21 +51,23 @@ func TestCLIHelpUsesSelectedLanguageBeforeBackendInitialization(t *testing.T) {
 func TestCLIHelpRestoresSavedLanguageAndSupportsExplicitOverride(t *testing.T) {
 	t.Setenv("LAZYCLASH_LANG", "")
 	t.Setenv("LC_ALL", "C")
+	if runtime.GOOS == "linux" && os.Geteuid() == 0 {
+		t.Skip("the root system instance deliberately ignores the user data environment")
+	}
 	home := t.TempDir()
+	t.Setenv("LAZYCLASH_HOME", home)
 	if err := os.WriteFile(filepath.Join(home, "preferences.json"), []byte(`{"Language":"zh-Hans"}`), 0600); err != nil {
 		t.Fatal(err)
 	}
-	out, _, err := localizedCLI(t, "--home", home, "help", "install")
+	out, _, err := localizedCLI(t, "help", "install")
 	if err != nil || !strings.Contains(out, "用法：") || !strings.Contains(out, "下载方式") {
 		t.Fatalf("out=%s err=%v", out, err)
 	}
-	for _, action := range []string{"check", "upgrade"} {
-		out, _, err = localizedCLI(t, "--home", home, "install", action, "--help")
-		if err != nil || !strings.Contains(out, "下载方式") || !strings.Contains(out, "加速模式") {
-			t.Fatalf("%s help lost shared network translations: out=%s err=%v", action, out, err)
-		}
+	out, _, err = localizedCLI(t, "upgrade", "--help")
+	if err != nil || !strings.Contains(out, "下载方式") || !strings.Contains(out, "加速模式") {
+		t.Fatalf("upgrade help lost shared network translations: out=%s err=%v", out, err)
 	}
-	out, _, err = localizedCLI(t, "--home", home, "--lang", "en", "install", "--help")
+	out, _, err = localizedCLI(t, "--lang", "en", "install", "--help")
 	if err != nil || !strings.Contains(out, "Usage:") || strings.Contains(out, "用法：") {
 		t.Fatalf("out=%s err=%v", out, err)
 	}
@@ -77,9 +81,9 @@ func TestCLIParseFailuresAreLocalizedAndDoNotWriteStdout(t *testing.T) {
 		want string
 	}{
 		{[]string{"--bad-option", "--lang", "zh-Hans"}, "未知选项"},
-		{[]string{"--lang", "zh-Hans", "--home"}, "需要参数值"},
-		{[]string{"--lang", "zh-Hans", "logs", "--lines", "bad-number"}, "值无效"},
-		{[]string{"--lang", "zh-Hans", "select", "only-one"}, "需要 2 个参数"},
+		{[]string{"--lang", "zh-Hans", "install", "--bin"}, "需要参数值"},
+		{[]string{"--lang", "zh-Hans", "status", "--json=bad-bool"}, "值无效"},
+		{[]string{"--lang", "zh-Hans", "__service", "prepare", "extra"}, "需要 1 个参数"},
 		{[]string{"--lang", "zh-Hans", "missing-command"}, "未知命令"},
 	} {
 		out, stderr, err := localizedCLI(t, test.args...)
@@ -89,50 +93,37 @@ func TestCLIParseFailuresAreLocalizedAndDoNotWriteStdout(t *testing.T) {
 	}
 }
 
-func TestCLIUnsettingAndJSONRemainIndependentOfLanguage(t *testing.T) {
+func TestCLIUnsettingRemainsIndependentOfLanguage(t *testing.T) {
 	t.Setenv("LAZYCLASH_LANG", "")
 	t.Setenv("LC_ALL", "C")
 	home := t.TempDir()
 	if err := os.WriteFile(filepath.Join(home, "preferences.json"), []byte("damaged"), 0600); err != nil {
 		t.Fatal(err)
 	}
+	t.Setenv("LAZYCLASH_HOME", home)
+	t.Setenv("LAZYCLASH_SERVICE", "invalid/service")
 	for _, lang := range []string{"en", "zh-Hans"} {
-		out, stderr, err := localizedCLI(t, "--lang", lang, "--home", home, "--service-name", "invalid/service", "env", "--unset")
+		out, stderr, err := localizedCLI(t, "--lang", lang, "shell", "env", "--unset")
 		if err != nil || stderr != "" || out != Unset+"\n" {
 			t.Fatalf("lang=%s out=%q stderr=%q err=%v", lang, out, stderr, err)
 		}
 	}
-	var outputs []string
-	for _, lang := range []string{"en", "zh-Hans"} {
-		out, stderr, err := localizedCLI(t, "--lang", lang, "--home", t.TempDir(), "profile", "list")
-		if err != nil || stderr != "" {
-			t.Fatalf("lang=%s stderr=%q err=%v", lang, stderr, err)
-		}
-		var value any
-		if err := json.Unmarshal([]byte(out), &value); err != nil {
-			t.Fatal(err)
-		}
-		outputs = append(outputs, out)
-	}
-	if outputs[0] != outputs[1] {
-		t.Fatal("JSON changed with interface language")
-	}
+
 }
 
 func TestCLIBootstrapHonorsTerminatorAndValues(t *testing.T) {
 	root := New()
 	for _, test := range []struct {
-		args             []string
-		home, lang, name string
+		args []string
+		want string
 	}{
-		{[]string{"--lang=zh-CN", "--home", "/tmp/example"}, "/tmp/example", "zh-CN", ""},
-		{[]string{"profile", "add", "--", "--lang", "zh-Hans"}, "", "", ""},
-		{[]string{"install", "--acceleration-prefix", "--lang", "en"}, "", "", ""},
-		{[]string{"--service-name", "lazyclash-other", "--lang", "en"}, "", "en", "lazyclash-other"},
+		{[]string{"--lang=zh-CN"}, "zh-CN"},
+		{[]string{"install", "--", "--lang", "zh-Hans"}, ""},
+		{[]string{"upgrade", "--acceleration-prefix", "--lang", "en"}, ""},
+		{[]string{"shell", "status", "--lang", "en"}, "en"},
 	} {
-		home, lang, name := bootstrapPresentation(root, test.args)
-		if home != test.home || lang != test.lang || name != test.name {
-			t.Fatalf("args=%q home=%q lang=%q service=%q", test.args, home, lang, name)
+		if got := bootstrapLanguage(root, test.args); got != test.want {
+			t.Fatalf("args=%q lang=%q", test.args, got)
 		}
 	}
 }

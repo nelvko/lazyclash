@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/downloadnet"
@@ -34,11 +35,11 @@ func TestCoreCheckCLIIsReadOnlyAndUsesSessionNetworkSettings(t *testing.T) {
 		t.Fatal("version check downloaded a core")
 		return nil
 	}
-	cmd := newInstallCommand(func() *app.App { return a })
+	cmd := newUpgradeCommand(func() *app.App { return a })
 	var out, stderr bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&stderr)
-	cmd.SetArgs([]string{"check", "--channel", "alpha", "--download-method", "environment"})
+	cmd.SetArgs([]string{"--check", "--channel", "alpha", "--download-method", "environment"})
 	if err := cmd.ExecuteContext(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -55,11 +56,11 @@ func TestCoreCheckCLIIsReadOnlyAndUsesSessionNetworkSettings(t *testing.T) {
 }
 
 func TestCoreUpgradeCLIRequiresConfirmationBeforeBackendAccess(t *testing.T) {
-	cmd := newInstallCommand(func() *app.App {
+	cmd := newUpgradeCommand(func() *app.App {
 		t.Fatal("unconfirmed upgrade accessed backend")
 		return nil
 	})
-	cmd.SetArgs([]string{"upgrade"})
+	cmd.SetArgs([]string{})
 	var out bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&out)
@@ -82,12 +83,12 @@ func TestCoreCheckCLIReportsNetworkAndPreferenceFailures(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		cmd := newInstallCommand(func() *app.App { return a })
+		cmd := newUpgradeCommand(func() *app.App { return a })
 		cmd.SilenceUsage = true
 		var out, stderr bytes.Buffer
 		cmd.SetOut(&out)
 		cmd.SetErr(&stderr)
-		cmd.SetArgs([]string{"check"})
+		cmd.SetArgs([]string{"--check"})
 		if err := cmd.ExecuteContext(t.Context()); err == nil || out.Len() != 0 {
 			t.Fatal("failed query produced a successful check", err)
 		}
@@ -132,11 +133,24 @@ func TestCoreUpgradeCLIUsesReviewedVersionAndSharedUpdater(t *testing.T) {
 		}
 		return "v1.20.0", ctx.Err()
 	}
-	cmd := newInstallCommand(func() *app.App { return a })
+	// Exercise the interactive path after the terminal requirement is satisfied.
+	for _, answer := range []string{"n\n", "\n", ""} {
+		cmd := newUpgradeCommand(func() *app.App { return a })
+		cmd.SetIn(strings.NewReader(answer))
+		cmd.SetContext(t.Context())
+		var out, stderr bytes.Buffer
+		cmd.SetOut(&out)
+		cmd.SetErr(&stderr)
+		err := cmd.RunE(cmd, nil)
+		if ExitCode(err) != 1 || out.Len() != 0 || !strings.Contains(stderr.String(), "v1.20.0 → v1.21.0") || !strings.Contains(stderr.String(), "[y/N]") {
+			t.Fatalf("answer=%q err=%v progress=%q", answer, err, stderr.String())
+		}
+	}
+	cmd := newUpgradeCommand(func() *app.App { return a })
 	var out, stderr bytes.Buffer
 	cmd.SetOut(&out)
 	cmd.SetErr(&stderr)
-	cmd.SetArgs([]string{"upgrade", "--yes"})
+	cmd.SetArgs([]string{"--yes"})
 	if err := cmd.ExecuteContext(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -146,5 +160,34 @@ func TestCoreUpgradeCLIUsesReviewedVersionAndSharedUpdater(t *testing.T) {
 	}
 	if svc.actions != 0 || !strings.Contains(stderr.String(), "fixture download") {
 		t.Fatal("inactive service was restarted or progress was not emitted")
+	}
+}
+
+func TestUpgradeConfirmationAcceptsOnlyAffirmativeResponsesAndCanBeInterrupted(t *testing.T) {
+	for _, answer := range []string{"y\n", "YES\n"} {
+		if yes, err := confirmUpgrade(t.Context(), strings.NewReader(answer)); err != nil || !yes {
+			t.Fatalf("answer=%q confirmed=%v err=%v", answer, yes, err)
+		}
+	}
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reader.Close()
+	defer writer.Close()
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() {
+		_, err := confirmUpgrade(ctx, reader)
+		done <- err
+	}()
+	cancel()
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatal(err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("confirmation kept waiting for input after cancellation")
 	}
 }

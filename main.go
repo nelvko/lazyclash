@@ -9,10 +9,23 @@ import (
 	"github.com/nelvko/lazyclash/internal/cli"
 )
 
-func main() {
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+func main() { os.Exit(run(os.Args[1:])) }
+
+func run(args []string) int {
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	if err := cli.Execute(ctx, os.Args[1:]); err != nil {
-		os.Exit(1)
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(signals)
+
+	done := make(chan error, 1)
+	go func() { done <- cli.Execute(ctx, args) }()
+	select {
+	case err := <-done:
+		return cli.ExitCode(err)
+	case sig := <-signals:
+		cancel()
+		<-done // Allow commands to finish rollback and restore the terminal.
+		return 128 + int(sig.(syscall.Signal))
 	}
 }

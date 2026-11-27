@@ -43,7 +43,7 @@ func (a *App) RemoveCore(ctx context.Context) error {
 			return diagnostic.New("diagnostic.removal.stopFirst", "stop the managed core before uninstalling; the service is running or changing state")
 		}
 		if status.Enabled || strings.HasPrefix(status.EnableState, "enabled") {
-			return diagnostic.New("diagnostic.removal.disableFirst", "disable service autostart before uninstalling with lazyclash service disable")
+			return diagnostic.New("diagnostic.removal.disableFirst", "open lazyclash and disable service autostart in Settings before uninstalling")
 		}
 		base := filepath.Join(a.Home, "installation")
 		tree, err := a.removalTree(m)

@@ -20,9 +20,12 @@ func configuredDownload(cmd *cobra.Command, cfg, overrides downloadnet.Config) (
 	if cmd.Flags().Changed("acceleration-prefix") {
 		cfg.Prefix = overrides.Prefix
 		if cfg.Method != downloadnet.MethodAccelerated {
-			return downloadnet.Config{}, diagnostic.New("diagnostic.cli.accelerationMethod", "--acceleration-prefix requires --download-method accelerated or saved accelerated settings")
+			return downloadnet.Config{}, usageError{diagnostic.New("diagnostic.cli.accelerationMethod", "--acceleration-prefix requires --download-method accelerated or saved accelerated settings")}
 		}
 	}
 	cfg = cfg.Normalized()
-	return cfg, cfg.Validate()
+	if err := cfg.Validate(); err != nil {
+		return downloadnet.Config{}, usageError{err}
+	}
+	return cfg, nil
 }

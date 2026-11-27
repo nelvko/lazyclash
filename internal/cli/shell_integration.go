@@ -12,7 +12,7 @@ import (
 )
 
 func newShellCommand() *cobra.Command {
-	cmd := &cobra.Command{Use: "shell", Short: "Manage per-terminal Shell Integration", Args: noArgs}
+	cmd := &cobra.Command{Use: "shell", Short: "Manage per-terminal Shell Integration", Args: noArgs, RunE: groupHelp}
 	install := &cobra.Command{Use: "install", Short: "Install the calling shell's startup hook", Args: noArgs, RunE: func(cmd *cobra.Command, _ []string) error {
 		m, err := shellintegration.New()
 		if err != nil {
