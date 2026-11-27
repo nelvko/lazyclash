@@ -3,9 +3,11 @@ package cli
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"unicode"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/spf13/cobra"
 )
 
@@ -23,10 +25,18 @@ func reportedError(text string, cause error) error {
 }
 
 func safe(s string) string {
+	return strings.ReplaceAll(diagnosticText(s), "\n", "")
+}
+
+func diagnosticText(s string) string {
 	return strings.Map(func(r rune) rune {
-		if unicode.IsControl(r) {
+		if r != '\n' && unicode.IsControl(r) {
 			return -1
 		}
 		return r
-	}, s)
+	}, ansi.Strip(s))
+}
+
+func printCommandError(cmd *cobra.Command, err error) {
+	fmt.Fprintln(cmd.ErrOrStderr(), diagnosticText(invocationError(commandLocale(cmd), err)))
 }

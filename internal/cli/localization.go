@@ -30,13 +30,13 @@ func Execute(ctx context.Context, args []string) error {
 	if language := root.Annotations["i18n.explicit"]; language != "" {
 		if _, valid := i18n.Normalize(language); !valid {
 			err := diagnostic.New("diagnostic.cli.language", "Language must be en, zh-Hans or auto")
-			fmt.Fprintln(root.ErrOrStderr(), commandLocale(root).Error(err))
+			printCommandError(root, err)
 			return usageError{err}
 		}
 	}
 	err := root.ExecuteContext(ctx)
 	if err != nil {
-		fmt.Fprintln(root.ErrOrStderr(), invocationError(commandLocale(root), err))
+		printCommandError(root, err)
 	}
 	return err
 }

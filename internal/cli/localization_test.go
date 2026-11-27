@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -21,7 +22,7 @@ func localizedCLI(t *testing.T, args ...string) (string, string, error) {
 	root.SetErr(&stderr)
 	err := root.ExecuteContext(context.Background())
 	if err != nil {
-		stderr.WriteString(invocationError(commandLocale(root), err))
+		printCommandError(root, err)
 	}
 	return out.String(), stderr.String(), err
 }
@@ -89,6 +90,25 @@ func TestCLIParseFailuresAreLocalizedAndDoNotWriteStdout(t *testing.T) {
 		out, stderr, err := localizedCLI(t, test.args...)
 		if err == nil || out != "" || !strings.Contains(stderr, test.want) {
 			t.Fatalf("args=%q out=%q stderr=%q err=%v", test.args, out, stderr, err)
+		}
+	}
+}
+
+func TestCLIErrorOutputStripsTerminalFormattingAndPreservesLines(t *testing.T) {
+	const label = "\x1b[32mexample\x1b[0m"
+	for _, lang := range []string{"en", "zh-Hans"} {
+		for _, args := range [][]string{{"help", label}, {"--" + label}} {
+			out, stderr, err := localizedCLI(t, append([]string{"--lang", lang}, args...)...)
+			if ExitCode(err) != 2 || out != "" || !strings.Contains(stderr, "example") || strings.Contains(stderr, "\x1b") || strings.Contains(stderr, "[32m") {
+				t.Fatalf("language=%s args=%q stdout=%q stderr=%q err=%v", lang, args, out, stderr, err)
+			}
+		}
+		cmd := New("--lang", lang)
+		var stderr bytes.Buffer
+		cmd.SetErr(&stderr)
+		printCommandError(cmd, errors.Join(errors.New(label), errors.New("second\r line")))
+		if got := stderr.String(); got != "example\nsecond line\n" {
+			t.Fatalf("language=%s diagnostics=%q", lang, got)
 		}
 	}
 }

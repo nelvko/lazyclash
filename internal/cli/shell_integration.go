@@ -36,7 +36,7 @@ func newShellCommand() *cobra.Command {
 		tr := commandLocale(cmd).T
 		_, err = fmt.Fprintln(cmd.OutOrStdout(), tr("cli.shell.status", s.Shell, s.Installed, s.Loaded, s.HookConfirmed, s.State, s.Pending))
 		if s.Detail != "" {
-			fmt.Fprintln(cmd.OutOrStdout(), commandLocale(cmd).Diagnostic(s.Detail, s.Diagnostic))
+			fmt.Fprintln(cmd.OutOrStdout(), diagnosticText(commandLocale(cmd).Diagnostic(s.Detail, s.Diagnostic)))
 		}
 		if s.Pending && s.ActivationCommand != "" {
 			fmt.Fprintln(cmd.OutOrStdout(), s.ActivationCommand)
