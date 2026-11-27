@@ -101,7 +101,7 @@ func (m *Model) adoptSnapshot(snapshot app.Snapshot) {
 		}
 	}
 	m.ipInfo.observeRoute(snapshot)
-	m.snapshot, m.snapshotReady = snapshot, true
+	m.snapshot, m.snapshotReady, m.snapshotStale = snapshot, true, false
 	m.syncNetworkActionFocus()
 	if !m.runtime.active || !snapshot.ServiceObservedAt.IsZero() {
 		m.runtime.history.observeSnapshot(snapshot)

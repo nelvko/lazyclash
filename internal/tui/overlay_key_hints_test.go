@@ -32,7 +32,8 @@ func TestExclusiveKeyHintsExplainToggleRequiresEscape(t *testing.T) {
 				t.Fatal("exclusive input did not retain ? and q")
 			}
 			m, _ = update(m, special(tea.KeyEscape))
-			m, _ = update(m, key("?"))
+			m, save := update(m, key("?"))
+			m = finishKeyHintsSave(t, m, save)
 			if !m.keyHints.hidden {
 				t.Fatal("Esc then ? did not hide hints")
 			}

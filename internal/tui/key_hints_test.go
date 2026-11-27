@@ -24,58 +24,83 @@ func (b *keyHintsBackend) SaveKeyHintsPreference(ctx context.Context, hidden boo
 	return ctx.Err()
 }
 
-func TestKeyHintsSaveCoalescesRapidChoicesWithoutBlockingNavigation(t *testing.T) {
-	m := ready(&fakeBackend{})
+func finishKeyHintsSave(t *testing.T, m Model, cmd tea.Cmd) Model {
+	t.Helper()
+	if cmd == nil {
+		t.Fatal("expected a preference save")
+	}
+	msg := cmd()
+	for {
+		batch, ok := msg.(tea.BatchMsg)
+		if !ok {
+			break
+		}
+		msg = batch[0]()
+	}
+	saved, ok := msg.(keyHintsSavedMsg)
+	if !ok {
+		t.Fatalf("expected the preference result, got %T", msg)
+	}
+	m, _ = update(m, saved)
+	return m
+}
+
+func TestKeyHintsSwitchWaitsForSaveAndRejectsRepeatedInputs(t *testing.T) {
 	b := &keyHintsBackend{fakeBackend: &fakeBackend{}}
-	var saved []bool
-	b.saveHints = func(_ context.Context, hidden bool) error {
-		saved = append(saved, hidden)
-		return nil
-	}
+	m := ready(b.fakeBackend)
 	m.backend = b
-	first := m.toggleKeyHints()
-	if !m.keyHints.hidden || m.busy || first == nil {
-		t.Fatal("toggle did not immediately apply independently of the busy task")
+	m.page, m.focus, m.width, m.height = "settings", "key-hints.toggle", 160, 45
+	m.layout()
+	hit := findTarget(t, m, m.focus)
+	m, first := click(m, hit)
+	if m.keyHints.hidden || !m.keyHints.pending || m.busy || hasAction(m.targets, hit.ID) {
+		t.Fatal("the pending switch must retain the visible footer and prevent another click")
 	}
-	if m.toggleKeyHints() != nil || m.toggleKeyHints() != nil || m.toggleKeyHints() != nil {
-		t.Fatal("parallel saves were started while one was pending")
+	m, _ = update(m, key("?"))
+	m, _ = update(m, special(tea.KeyEnter))
+	m, _ = click(m, hit)
+	if m.keyHints.generation != 1 || !m.keyHints.pending || m.keyHints.hidden {
+		t.Fatal("pending save accepted another input")
 	}
-	if m.keyHints.hidden {
-		t.Fatal("last requested choice did not win immediately")
+	m, _ = update(m, keyHintsSavedMsg{generation: 0, hidden: true})
+	if m.keyHints.hidden || !m.keyHints.pending {
+		t.Fatal("stale completion changed a pending switch")
 	}
-	last := m.acceptKeyHintsSaved(first().(keyHintsSavedMsg))
-	if last == nil || len(saved) != 1 || !saved[0] {
-		t.Fatal("first completion did not enqueue the final choice")
-	}
-	if m.acceptKeyHintsSaved(last().(keyHintsSavedMsg)) != nil || len(saved) != 2 || saved[1] || m.keyHints.pending || m.busy {
-		t.Fatal("coalesced persistence did not finish with the latest choice")
+	m = finishKeyHintsSave(t, m, first)
+	if m.keyHints.pending || !m.keyHints.hidden || !b.prefs.HideKeyHints {
+		t.Fatal("the switch did not adopt the persisted preference")
 	}
 }
 
-func TestKeyHintsStartupAndFailureKeepSessionChoiceAndExistingOperation(t *testing.T) {
-	m := ready(&fakeBackend{})
-	m.loadKeyHintsPreference(true)
-	if !m.keyHints.hidden {
-		t.Fatal("saved choice did not load")
-	}
-	m.backend = &keyHintsBackend{fakeBackend: &fakeBackend{}, saveHints: func(context.Context, bool) error { return errors.New("disk full") }}
-	m.busy, m.job, m.message, m.failure = true, "action", "Updating configuration", ""
-	operation := m.notification.operation
-	cmd := m.toggleKeyHints()
-	m.loadKeyHintsPreference(true)
-	if m.keyHints.hidden {
-		t.Fatal("late startup preference replaced the user's newer choice")
-	}
-	m.acceptKeyHintsSaved(cmd().(keyHintsSavedMsg))
-	if m.keyHints.hidden || !m.busy || m.job != "action" || m.message != "Updating configuration" || m.failure != "" || m.notification.operation != operation {
-		t.Fatal("preference failure disturbed the current operation or display choice")
-	}
-	found := false
-	for _, item := range m.notification.items {
-		found = found || (item.Key == "key-hints.save" && strings.Contains(item.Message, "disk full"))
-	}
-	if !found {
-		t.Fatal("preference persistence failure was silent")
+func TestKeyHintsSaveFailureReadsBackPreferenceAndPreservesOtherOperation(t *testing.T) {
+	for _, published := range []bool{false, true} {
+		b := &keyHintsBackend{fakeBackend: &fakeBackend{}}
+		b.prefs.HideKeyHints = true
+		m := ready(b.fakeBackend)
+		m.backend = b
+		b.saveHints = func(_ context.Context, hidden bool) error {
+			if published {
+				b.prefs.HideKeyHints = hidden
+			}
+			return errors.New("disk full")
+		}
+		m.busy, m.job, m.message = true, "action", "Updating configuration"
+		operation := m.notification.operation
+		cmd := m.saveKeyHints(false)
+		if !m.keyHints.hidden || !m.keyHints.pending {
+			t.Fatal("unconfirmed preference changed the footer")
+		}
+		m.acceptKeyHintsSaved(cmd().(keyHintsSavedMsg))
+		if m.keyHints.hidden != b.prefs.HideKeyHints || m.keyHints.pending || !m.busy || m.job != "action" || m.message != "Updating configuration" || m.failure != "" || m.notification.operation != operation {
+			t.Fatal("failed preference did not reflect storage or disturbed the foreground operation")
+		}
+		found := false
+		for _, item := range m.notification.items {
+			found = found || (item.Key == "key-hints.save" && strings.Contains(item.Message, "disk full"))
+		}
+		if !found {
+			t.Fatal("preference persistence failure was silent")
+		}
 	}
 }
 
@@ -99,7 +124,9 @@ func TestKeyHintsShortcutInDrawerKeepsNavigationFocus(t *testing.T) {
 	m.width, m.height, m.sidebarOpen, m.focus = 60, 20, true, "nav.overview"
 	m.layout()
 	for _, button := range []string{"?", "？"} {
-		m, _ = update(m, key(button))
+		var save tea.Cmd
+		m, save = update(m, key(button))
+		m = finishKeyHintsSave(t, m, save)
 		if m.keyHints.hidden != (button == "?") || !m.sidebarOpen || m.focus != "nav.overview" {
 			t.Fatalf("%s changed drawer focus or failed to toggle hints", button)
 		}
@@ -147,11 +174,11 @@ func TestQuestionMarkTogglesAndPersistsKeyHintsInPlace(t *testing.T) {
 			for _, button := range []string{"?", "？"} {
 				var save tea.Cmd
 				m, save = update(m, key(button))
-				if m.page != page || m.focus != focus || m.keyHints.hidden != (button == "?") || save == nil {
+				if m.page != page || m.focus != focus || m.keyHints.hidden == (button == "?") || !m.keyHints.pending || save == nil {
 					t.Fatalf("%s: page=%s focus=%s hidden=%t", button, m.page, m.focus, m.keyHints.hidden)
 				}
 				m, _ = update(m, save())
-				if b.prefs.HideKeyHints != m.keyHints.hidden || m.keyHints.pending {
+				if m.keyHints.hidden != (button == "?") || b.prefs.HideKeyHints != m.keyHints.hidden || m.keyHints.pending {
 					t.Fatalf("%s did not finish saving footer visibility", button)
 				}
 				assertCanvas(t, m.screen, m.width, m.height)
@@ -161,20 +188,15 @@ func TestQuestionMarkTogglesAndPersistsKeyHintsInPlace(t *testing.T) {
 	}
 }
 
-func TestKeyHintsWarningFollowsLastToggleAcrossPageChanges(t *testing.T) {
+func TestKeyHintsWarningKeepsOriginAcrossPageChanges(t *testing.T) {
 	m := ready(&fakeBackend{})
 	m.backend = &keyHintsBackend{fakeBackend: &fakeBackend{}, saveHints: func(context.Context, bool) error { return errors.New("disk full") }}
-	first := m.toggleKeyHints()
+	first := m.saveKeyHints(true)
 	m.navigate("profiles")
-	m.toggleKeyHints()
-	m.navigate("logs")
-	last := m.acceptKeyHintsSaved(first().(keyHintsSavedMsg))
-	if last == nil {
-		t.Fatal("second toggle did not queue a save")
-	}
-	m.acceptKeyHintsSaved(last().(keyHintsSavedMsg))
-	if len(m.notification.items) != 1 || m.notification.items[0].Page != "profiles" || m.notification.items[0].Kind != "warning" {
-		t.Fatalf("warning lost the originating page of the saved choice: %+v", m.notification.items)
+	m.saveKeyHints(true)
+	m.acceptKeyHintsSaved(first().(keyHintsSavedMsg))
+	if len(m.notification.items) != 1 || m.notification.items[0].Page != "overview" || m.notification.items[0].Kind != "warning" {
+		t.Fatalf("warning lost the page originating the save: %+v", m.notification.items)
 	}
 }
 
@@ -184,7 +206,7 @@ func TestRepeatedKeyHintsSaveFailureResolvesOnSuccess(t *testing.T) {
 	m.backend = &keyHintsBackend{fakeBackend: &fakeBackend{}, saveHints: func(context.Context, bool) error { return saveErr }}
 	m.begin("Other task", "Finished", func(context.Context) error { return nil })
 	op := m.notification.operation
-	toggle := func() { m.acceptKeyHintsSaved(m.toggleKeyHints()().(keyHintsSavedMsg)) }
+	toggle := func() { m.acceptKeyHintsSaved(m.saveKeyHints(!m.keyHints.hidden)().(keyHintsSavedMsg)) }
 	toggle()
 	first := m.notification.items[0]
 	m.navigate("logs")

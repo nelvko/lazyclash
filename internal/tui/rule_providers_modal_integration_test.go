@@ -35,7 +35,7 @@ func TestRulesProviderModalOwnsInputAndRestoresUnderlyingList(t *testing.T) {
 	}
 	m, _ = click(m, backgroundNavigation)
 	m, _ = update(m, tea.MouseWheelMsg{X: 0, Y: 0, Button: tea.MouseWheelDown})
-	if !m.providers.open || m.page != "rules" || m.keyHints.changed || m.sidebarOpen || m.scroll != scroll {
+	if !m.providers.open || m.page != "rules" || m.keyHints.generation != 0 || m.sidebarOpen || m.scroll != scroll {
 		t.Fatal("modal let navigation, keyboard shortcuts or background wheel events escape")
 	}
 	if !reflect.DeepEqual(m.pageViews["rules"], view) {

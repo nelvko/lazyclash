@@ -149,13 +149,13 @@ func settingsMihomo(o dashboardOptions, width int) dashboardBlock {
 func coreSettingsRows(o dashboardOptions, tab coreSettingsTab) []settingsRow {
 	tr, s := o.Locale.T, o.Snapshot
 	p := s.CoreSettings
-	enabled := s.Installed && !o.Busy
+	enabled := s.Installed && !o.Busy && !o.StateUnavailable
 	group := func(id string) settingsRow { return settingsRow{label: tr(id), control: settingsGroup} }
-	toggle := func(id string, on bool) settingsRow {
-		return settingsSwitchRow(id, tr(id), on, enabled)
+	toggle := func(id string) settingsRow {
+		return o.switchRow(id, tr(id))
 	}
-	toggleWithTip := func(id string, on bool) settingsRow {
-		row := toggle(id, on)
+	toggleWithTip := func(id string) settingsRow {
+		row := toggle(id)
 		row.tip = tooltipBinding{owner: id, text: tr(id + ".tooltip")}
 		return row
 	}
@@ -195,7 +195,7 @@ func coreSettingsRows(o dashboardOptions, tab coreSettingsTab) []settingsRow {
 		}
 		rows = append(rows, group("settings.proxyInbound"),
 			link("runtime-settings", tr("settings.proxyPorts"), summary+" "+settingsDetailChevron, true),
-			toggleWithTip("settings.allowLAN", runtime.AllowLAN),
+			toggleWithTip("settings.allowLAN"),
 			link("settings.bindAddress", tr("settings.bindAddress"), bindAddressSummary(runtime, o.Locale)+" "+settingsDetailChevron, true),
 			link("settings.accessRules", tr("settings.accessRules"), accessRulesSummary(runtime, o.Locale), true))
 		var users string
@@ -223,21 +223,21 @@ func coreSettingsRows(o dashboardOptions, tab coreSettingsTab) []settingsRow {
 		rows = append(rows, group("settings.controlAPI"), link("settings.externalControl", tr("settings.externalControl"), settingsDetailChevron, true))
 	case networkTab:
 		keepAlive := p.DisableKeepAlive == "off"
-		rows = append(rows, group("settings.networkGroup"), toggle("settings.ipv6", p.IPv6 == "on"),
-			toggleWithTip("settings.tcpConcurrent", p.TCPConcurrent == "on"), toggle("settings.tcpKeepAlive", keepAlive),
+		rows = append(rows, group("settings.networkGroup"), toggle("settings.ipv6"),
+			toggleWithTip("settings.tcpConcurrent"), toggle("settings.tcpKeepAlive"),
 			number("settings.keepAliveIdle", p.KeepAliveIdle, "settings.seconds", keepAlive),
 			number("settings.keepAliveInterval", p.KeepAliveInterval, "settings.seconds", keepAlive),
-			toggleWithTip("settings.unifiedDelay", p.UnifiedDelay == "on"), group("settings.runtimeGroup"),
+			toggleWithTip("settings.unifiedDelay"), group("settings.runtimeGroup"),
 			selectRow("settings.logLevel"), selectRow("settings.findProcessMode"))
 	case resourcesTab:
-		rows = append(rows, group("settings.geoGroup"), toggle("settings.geoAutoUpdate", p.GeoAutoUpdate == "on"),
+		rows = append(rows, group("settings.geoGroup"), toggle("settings.geoAutoUpdate"),
 			number("settings.geoUpdateInterval", p.GeoUpdateInterval, "settings.hours", p.GeoAutoUpdate == "on"),
 			selectRow("settings.geodataLoader"), geoMaintenanceRow(o),
-			group("settings.downloadGroup"), toggle("settings.etagSupport", p.ETagSupport == "on"),
-			toggle("settings.storeFakeIP", p.StoreFakeIP == "on"))
+			group("settings.downloadGroup"), toggle("settings.etagSupport"),
+			toggle("settings.storeFakeIP"))
 	}
 	for i, row := range rows {
-		if !s.Installed && row.control != settingsTabStrip && row.control != settingsGroup {
+		if (!s.Installed || o.StateUnavailable) && row.control != settingsTabStrip && row.control != settingsGroup {
 			rows[i] = settingsRow{label: row.label, tip: row.tip, value: "—", control: settingsReadOnly}
 		}
 		rows[i].rightAlign = true
@@ -247,16 +247,6 @@ func coreSettingsRows(o dashboardOptions, tab coreSettingsTab) []settingsRow {
 
 func localizedProxyAddress(address string, locale i18n.Localizer) string {
 	return strings.NewReplacer("<LAN IP>", locale.T("settings.lanIP"), "<LAN IPv4>", locale.T("settings.lanIPv4"), "<LAN IPv6>", locale.T("settings.lanIPv6")).Replace(address)
-}
-
-func (m *Model) toggleCoreSetting(id, key, current string) tea.Cmd {
-	switch current {
-	case "on":
-		return m.saveCoreSetting(id, key, current, "off")
-	case "off":
-		return m.saveCoreSetting(id, key, current, "on")
-	}
-	return nil
 }
 
 func (m *Model) saveCoreSetting(id, key, current, value string) tea.Cmd {

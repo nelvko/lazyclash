@@ -31,7 +31,7 @@ func TestOverviewPairedLayoutAlignsBothEdgesAndKeepsActionOwnership(t *testing.T
 	owners := map[string]string{
 		"core.manage": "dashboard.control.core", "core.toggle": "dashboard.control.core",
 		"mode.rule": "dashboard.control.routingMode", "mode.global": "dashboard.control.routingMode", "mode.direct": "dashboard.control.routingMode", "card.proxies": "dashboard.control.routingMode",
-		"card.profiles": "dashboard.profile.title", "tun.enable": "dashboard.overview.network", "network.primaryConfig": "dashboard.overview.network",
+		"card.profiles": "dashboard.profile.title", "tun.toggle": "dashboard.overview.network", "network.primaryConfig": "dashboard.overview.network",
 		"ip.refresh": "dashboard.overview.ipInfo",
 	}
 	renders := map[string]func(dashboardOptions, int) dashboardBlock{
@@ -509,7 +509,7 @@ func TestOverviewNetworkSeparatesSavedAndObservedHostTUN(t *testing.T) {
 				Capabilities: app.Capabilities{Scope: "system", Runtime: app.Capability{Supported: true}, TUN: app.Capability{Supported: true}},
 			}}
 			card := func() string { return ansi.Strip(strings.Join(overviewNetworkCard(o, 100).lines, "\n")) }
-			if value := card(); !strings.Contains(value, locale.T("tun.saved_state", locale.T("dashboard.control.on"))) || !strings.Contains(value, locale.T("dashboard.overview.tunActual", locale.T("dashboard.control.off"))) || !strings.Contains(value, o.Snapshot.TUNError) || !hasAction(overviewNetworkCard(o, 100).targets, "tun.disable") {
+			if value := card(); !strings.Contains(value, locale.T("tun.saved_state", locale.T("dashboard.control.on"))) || !strings.Contains(value, locale.T("dashboard.overview.tunActual", locale.T("dashboard.control.off"))) || !strings.Contains(value, o.Snapshot.TUNError) || !hasAction(overviewNetworkCard(o, 100).targets, "tun.toggle") {
 				t.Fatalf("host TUN mismatch lost saved/observed distinction, scope or recovery action: %s", value)
 			}
 			for _, missing := range []string{"no observation", "service error", "API error"} {

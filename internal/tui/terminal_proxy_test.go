@@ -31,12 +31,13 @@ func (b *terminalBackend) SetTerminalProxy(_ context.Context, enabled bool) erro
 
 func TestFirstTerminalProxyEnableInstallsWithoutConfirmationAndAwaitsActivation(t *testing.T) {
 	b := &terminalBackend{fakeBackend: hostTUNBackend()}
+	b.snapshot.Service.State, b.snapshot.Service.Active = "active", true
 	b.snapshot.TerminalProxy = shellintegration.Status{Shell: "bash", State: "uninstalled"}
 	m := ready(b.fakeBackend)
 	m.backend = b
 	defer m.stopRuntime()
 	m.width, m.height = 120, 32
-	cmd := m.activate("terminal.enable")
+	cmd := m.activate("terminal.toggle")
 	if m.form != "" || b.calls != 0 || !m.busy || cmd == nil {
 		t.Fatal("first enable must directly start the asynchronous operation")
 	}
@@ -44,7 +45,7 @@ func TestFirstTerminalProxyEnableInstallsWithoutConfirmationAndAwaitsActivation(
 	if b.calls != 1 || !m.snapshot.TerminalProxy.Installed || m.snapshot.TerminalProxy.Applied || m.snapshot.TerminalProxy.State != "pending" {
 		t.Fatal("saved request was confused with applied environment")
 	}
-	cmd = m.activate("terminal.disable")
+	cmd = m.activate("terminal.toggle")
 	m, _ = update(m, actionCmd(t, cmd)())
 	if b.calls != 2 || m.snapshot.TerminalProxy.Desired {
 		t.Fatal("disable reinstalled or lost request")
@@ -53,12 +54,13 @@ func TestFirstTerminalProxyEnableInstallsWithoutConfirmationAndAwaitsActivation(
 
 func TestTerminalProxyInstallationFailureDoesNotSaveSuccess(t *testing.T) {
 	b := &terminalBackend{fakeBackend: hostTUNBackend(), fail: true}
+	b.snapshot.Service.State, b.snapshot.Service.Active = "active", true
 	b.snapshot.TerminalProxy = shellintegration.Status{Shell: "zsh", State: "uninstalled"}
 	m := ready(b.fakeBackend)
 	m.backend = b
 	defer m.stopRuntime()
 	m.width, m.height = 120, 32
-	cmd := m.activate("terminal.enable")
+	cmd := m.activate("terminal.toggle")
 	m, _ = update(m, actionCmd(t, cmd)())
 	if b.calls != 1 || m.snapshot.TerminalProxy.Desired || m.snapshot.TerminalProxy.Installed || m.failure == "" {
 		t.Fatal("failed install claimed success")
@@ -85,16 +87,32 @@ func TestOverviewTerminalProxyShowsDesiredAndAppliedSeparately(t *testing.T) {
 
 func TestLoadedTerminalCanToggleAfterAnotherTerminalUninstallsFiles(t *testing.T) {
 	b := &terminalBackend{fakeBackend: hostTUNBackend()}
+	b.snapshot.Service.State, b.snapshot.Service.Active = "active", true
 	b.snapshot.TerminalProxy = shellintegration.Status{Shell: "bash", State: "off", Loaded: true}
 	m := ready(b.fakeBackend)
 	m.backend = b
 	defer m.stopRuntime()
-	cmd := m.activate("terminal.enable")
+	cmd := m.activate("terminal.toggle")
 	if m.form != "" || !m.busy || cmd == nil {
 		t.Fatal("loaded terminal requested another install")
 	}
 	m, _ = update(m, actionCmd(t, cmd)())
 	if b.calls != 1 || m.snapshot.TerminalProxy.Installed {
 		t.Fatal("loaded hook was not reused")
+	}
+}
+
+func TestTerminalSwitchNeedsAnObservedRequestToRecoverFromShellErrors(t *testing.T) {
+	o := dashboardOptions{Snapshot: hostTUNBackend().snapshot}
+	o.Snapshot.Service.State, o.Snapshot.Service.Active = "active", true
+	for _, state := range []string{"", "conflict", "error"} {
+		o.Snapshot.TerminalProxy = shellintegration.Status{State: state}
+		if _, actionable := o.terminalSwitch().Intent(); actionable {
+			t.Fatalf("offered to invert an unread request in state %q", state)
+		}
+	}
+	o.Snapshot.TerminalProxy = shellintegration.Status{State: "error", Loaded: true, Revision: 7, Desired: true}
+	if target, ok := o.terminalSwitch().Intent(); !ok || target {
+		t.Fatal("a failed shell acknowledgment should still allow cancelling a known request")
 	}
 }

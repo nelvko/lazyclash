@@ -85,7 +85,7 @@ func TestDirectionalNavigationDrawerEnterAndBackKeepBrowsedPage(t *testing.T) {
 			if button == "left" || button == "h" {
 				want = "menu"
 			}
-			if m.sidebarOpen || m.page != "settings" || m.focus != want || m.keyHints.changed {
+			if m.sidebarOpen || m.page != "settings" || m.focus != want || m.keyHints.generation != 0 {
 				t.Fatalf("drawer %s did not close at the current page without activation: page=%s focus=%s", button, m.page, m.focus)
 			}
 		})

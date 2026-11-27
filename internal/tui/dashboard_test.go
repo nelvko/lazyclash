@@ -455,6 +455,7 @@ func TestSettingsOnlyOffersAvailableActions(t *testing.T) {
 		}
 	}
 	o.Snapshot.Installed = true
+	o.Snapshot.Service.EnableState = "disabled"
 	_, regions, _ = renderDashboard(o)
 	for _, id := range []string{"install", "runtime-settings", autostartToggleTarget, "restart"} {
 		if !hasAction(regions, id) {

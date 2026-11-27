@@ -204,8 +204,10 @@ def dismiss_toasts(terminal):
     raise AssertionError("Toasts still cover the Settings cards")
 
 
-def fixture_terminal(preview, binary, report, language, profile, *, no_bind_ips=False):
+def fixture_terminal(preview, binary, report, language, profile, *, no_bind_ips=False, switches=False):
     environment = {"LAZYCLASH_SETTINGS_PTY_REPORT": str(report), "LAZYCLASH_SETTINGS_PTY_LANGUAGE": language}
+    if switches:
+        environment["LAZYCLASH_SETTINGS_PTY_SWITCHES"] = "1"
     if no_bind_ips:
         environment["LAZYCLASH_SETTINGS_PTY_NO_BIND_IPS"] = "1"
     wrapper = preview.WRAPPER.replace("os.execv(sys.argv[5], sys.argv[5:])",
@@ -567,6 +569,49 @@ def check_bind_address(preview, binary, output, language, profile, args, no_ips)
         terminal.cleanup()
 
 
+def check_switch_interactions(preview, terminal, words, profile, output, args):
+    hints = "dashboard.interface.keyHints"
+    point = check_switch(terminal, words, hints, True, profile)
+    click(terminal, point)
+    terminal.wait("░░░░◌")
+    terminal.key(b" ?\r")
+    # The footer remains visible and the waiting marker stays on the confirmed side.
+    assert words["dashboard.footer.quit"] in terminal.screen.text().splitlines()[-1]
+    preview.capture(terminal, output, "preference-save-pending", args)
+    terminal.wait("write failed")
+    preview.capture(terminal, output, "failed-write-restored", args)
+    dismiss_toasts(terminal)
+    check_switch(terminal, words, hints, True, profile)
+    terminal.key(b"?")
+    terminal.settle()
+    check_switch(terminal, words, hints, False, profile)
+    click(terminal, check_switch(terminal, words, hints, False, profile))
+    terminal.settle()
+    check_switch(terminal, words, hints, True, profile)
+
+    click(terminal, check_switch(terminal, words, "settings.allowLAN", False, profile))
+    terminal.wait("http://" + words["settings.lanIP"] + ":7897")
+    dismiss_toasts(terminal)
+    check_switch(terminal, words, "settings.allowLAN", True, profile)
+    click(terminal, position(terminal, words["settings.tab.network"].split()[0]))
+    terminal.wait(words["settings.keepAliveIdle"])
+    click(terminal, check_switch(terminal, words, "settings.ipv6", True, profile))
+    dismiss_toasts(terminal)
+    check_switch(terminal, words, "settings.ipv6", False, profile)
+    terminal.key(b" ")
+    dismiss_toasts(terminal)
+    check_switch(terminal, words, "settings.ipv6", True, profile)
+    preview.capture(terminal, output, "settings-switches-160x45", args)
+
+    terminal.resize(80, 24)
+    terminal.settle()
+    terminal.key(b"\x1b[H")
+    terminal.settle()
+    terminal.wait(words[hints])
+    check_switch(terminal, words, hints, True, profile)
+    preview.capture(terminal, output, "settings-switches-80x24", args)
+
+
 def exercise(preview, binary, output, language, profile, args):
     if args.bind_only:
         for no_ips in (False, True):
@@ -577,12 +622,20 @@ def exercise(preview, binary, output, language, profile, args):
     output.mkdir(parents=True)
     words = labels(language)
     report = output / "calls.json"
-    terminal = fixture_terminal(preview, binary, report, language, profile)
+    terminal = fixture_terminal(preview, binary, report, language, profile, switches=args.switches_only)
     try:
         terminal.wait("Settings preview")
         terminal.key(b"7")
         terminal.wait(words["settings.interface"])
         terminal.settle()
+        if args.switches_only:
+            check_switch_interactions(preview, terminal, words, profile, output, args)
+            terminal.exit()
+            calls = json.loads(report.read_text())
+            assert calls["hint_saves"] == 3 and not calls["hints_hidden"], calls
+            assert calls["core_changes"] == [["ipv6", "off"], ["ipv6", "on"]], calls
+            print(f"PASS {language}/{profile}: preference failure and retry, LAN and IPv6 actions at 160x45 and 80x24", flush=True)
+            return
         for heading in ("settings.interface", "settings.mihomo", "settings.core"):
             terminal.wait(words[heading])
         terminal.wait("7897 ❯")
@@ -786,7 +839,7 @@ def exercise(preview, binary, output, language, profile, args):
         click(terminal, check_switch(terminal, words, "settings.geoAutoUpdate", False, profile))
         dismiss_toasts(terminal)
         set_number("settings.geoUpdateInterval", "48", words["settings.hours"] % "48")
-        terminal.click_text(dropdown_trigger(terminal, words["settings.loaderMemory"]))
+        terminal.click_text(dropdown_trigger(terminal, words["geo.loader.inherit"]))
         terminal.click_text(dropdown_option(terminal, words["settings.loaderStandard"]))
         dismiss_toasts(terminal)
         click(terminal, check_switch(terminal, words, "settings.storeFakeIP", False, profile))
@@ -1144,6 +1197,7 @@ def exercise(preview, binary, output, language, profile, args):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     scenario = parser.add_mutually_exclusive_group()
+    scenario.add_argument("--switches-only", action="store_true", help="Verify pending, failed and confirmed slider actions")
     scenario.add_argument("--tabs-only", action="store_true", help="Verify and capture tab spacing, row spacing, focus and hover")
     scenario.add_argument("--auth-only", action="store_true", help="Verify and capture the proxy authentication editor")
     scenario.add_argument("--bind-only", action="store_true", help="Verify bind address choices, manual fallback and access rule summaries")

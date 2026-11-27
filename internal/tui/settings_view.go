@@ -31,6 +31,7 @@ type settingsRow struct {
 	color              string
 	actions            []overviewControlButton
 	control            settingsControl
+	switchValue        Switch
 	tip                tooltipBinding
 	rightAlign         bool // Keep the current value at the trailing edge when the label wraps.
 }
@@ -85,37 +86,10 @@ func settingsSelectRow(o dashboardOptions, id, label string) settingsRow {
 	}}
 }
 
-func settingsSwitchRow(id, label string, on, enabled bool) settingsRow {
-	return settingsRow{label: label, control: settingsSwitch, actions: []overviewControlButton{
-		{id: id, selected: on, enabled: enabled},
-	}}
-}
-
-// Use the same six terminal cells in all color modes. Shading the rail glyph
-// and its background identically makes a solid track in full color.
-func renderSettingsSwitch(action overviewControlButton, o buttonOptions) string {
-	railColor, thumbColor := divider, muted
-	if action.selected {
-		railColor, thumbColor = buttonSelectedBackground, settingsSwitchOnThumb
-	}
-	marker := "  "
-	if o.Focused && action.enabled {
-		marker = "› "
-	}
-	if !action.enabled {
-		railColor, thumbColor = divider, disabled
-	}
-	railBG, thumbBG := railColor, thumbColor
-	if o.Plain {
-		railBG, thumbBG = o.Surface, o.Surface
-	}
-	rail := themed("░░░░", railColor, railBG, o.Dim)
-	thumb := themed("██", thumbColor, thumbBG, o.Dim)
-	track := thumb + rail
-	if action.selected {
-		track = rail + thumb
-	}
-	return themed(marker, focus, o.Surface, o.Dim) + track
+func (o dashboardOptions) switchRow(id, label string) settingsRow {
+	control, _ := o.settingsSwitch(id)
+	return settingsRow{label: label, control: settingsSwitch, switchValue: control,
+		actions: []overviewControlButton{{id: id, enabled: control.Enabled()}}}
 }
 
 const (
@@ -171,7 +145,7 @@ func settingsContent(o dashboardOptions, width int) (string, []hitRegion) {
 
 func settingsInterface(o dashboardOptions, width int) dashboardBlock {
 	tr := o.Locale.T
-	hints := settingsSwitchRow("key-hints.toggle", tr("dashboard.interface.keyHints"), !o.HideKeyHints, true)
+	hints := o.switchRow("key-hints.toggle", tr("dashboard.interface.keyHints"))
 	hints.tip = tooltipBinding{owner: "key-hints.toggle", text: tr("settings.keyHints.tooltip")}
 	return settingsSection(o, width, tr("settings.interface"), "", []settingsRow{
 		settingsSelectRow(o, "settings.language", tr("dashboard.language.title")),
@@ -373,7 +347,9 @@ func renderSettingsRow(o dashboardOptions, row settingsRow, inner, labelColumn i
 				}
 				face = style(action.label, ink)
 			case settingsSwitch:
-				face = renderSettingsSwitch(action, options)
+				switchStyle := o.switchOptions(action.id, surface)
+				switchStyle.Focused = options.Focused
+				face = row.switchValue.View(switchStyle)
 			default:
 				face = renderButton(action.label, options)
 			}

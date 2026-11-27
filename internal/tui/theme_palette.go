@@ -106,7 +106,7 @@ var interfaceSwatches = func() map[color.RGBA]themeSwatches {
 	add(proxyNodeSelectedLink, 153, 14, mistBlue, 24, 4)
 	add(proxyNodeEmphasizedMeta, 188, 7, mistMuted, 240, 8)
 	add(proxyNodeEmphasizedFast, 157, 10, mistGreen, 22, 2)
-	add(settingsSwitchOnThumb, 117, 6, mistBlue, 24, 4)
+	add(switchOnThumb, 117, 6, mistBlue, 24, 4)
 	add(noticeSlate, 24, 4, "#d0dce5", 252, 7)
 	add(noticeText, 255, 15, mistBody, 237, 0)
 	add(noticeCheck, 194, 10, mistGreen, 22, 2)

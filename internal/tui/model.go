@@ -136,6 +136,7 @@ type Model struct {
 	backend               Backend
 	snapshot              app.Snapshot
 	snapshotReady         bool
+	snapshotStale         bool // A mutation finished without a new full observation.
 	busy, quitting        bool
 	id                    uint64
 	cancel                context.CancelFunc
@@ -216,7 +217,7 @@ func New(ctx context.Context, backend Backend, languages ...string) Model {
 	m.locale = i18n.New(i18n.Resolve(m.languageOverride, m.savedLanguage, os.Getenv))
 	m.theme = cmp.Or(prefs.Theme, app.ThemeDark)
 	m.editorPreference = prefs.Editor
-	m.loadKeyHintsPreference(prefs.HideKeyHints)
+	m.keyHints.hidden = prefs.HideKeyHints
 	m.wizard.cfg = prefs.Network.Normalized()
 	m.wizard.draft = m.wizard.cfg
 	m.profilesUI = newProfilesState(m.locale)
@@ -890,7 +891,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			break
 		}
 		if key == "?" || key == "？" {
-			cmd = m.toggleKeyHints()
+			if !v.IsRepeat {
+				cmd = m.activate("key-hints.toggle")
+			}
 			break
 		}
 		if m.tooltip.key(key, m.focus) {
@@ -1021,7 +1024,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				break
 			}
 			if (key == "enter" || key == "space" || key == " ") && m.focus == "key-hints.toggle" {
-				cmd = m.toggleKeyHints()
+				cmd = m.activateControl(m.focus, &v)
 				break
 			}
 			switch key {
@@ -1131,11 +1134,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "shift+tab":
 			m.cycleFocus(-1)
 		case "enter", "space", " ":
-			if m.focus == "core.toggle" && m.page == "overview" {
-				cmd = m.coreToggleKey(v)
-			} else {
-				cmd = m.activate(m.focus)
-			}
+			cmd = m.activateControl(m.focus, &v)
 		case "down", "j":
 			m.scroll++
 		case "up", "k":
@@ -1380,6 +1379,13 @@ func (m *Model) serviceAction(action string) tea.Cmd {
 	return m.begin(m.tr("model.service_"+action), m.tr("model.service_"+action+"_done"), func(ctx context.Context) error { return m.backend.Control(ctx, action) }, notificationOperation{Key: "service." + action, Context: m.tr("notification.service." + action)})
 }
 func (m *Model) activate(id string) tea.Cmd {
+	return m.activateControl(id, nil)
+}
+
+func (m *Model) activateControl(id string, key *tea.KeyPressMsg) tea.Cmd {
+	if handled, cmd := m.activateSwitch(id, key); handled {
+		return cmd
+	}
 	if handled, cmd := m.clearInputField(id); handled {
 		return cmd
 	}
@@ -1405,8 +1411,6 @@ func (m *Model) activate(id string) tea.Cmd {
 	switch id {
 	case "ip.refresh":
 		return m.syncIPInfo(true)
-	case "key-hints.toggle":
-		return m.toggleKeyHints()
 	case "runtime-settings":
 		return m.openNetworkConfig("proxy")
 	case "core.manage":
@@ -1431,8 +1435,6 @@ func (m *Model) activate(id string) tea.Cmd {
 		return m.openNetworkConfig("control")
 	case "settings.proxyAuth":
 		return m.openNetworkConfig("auth")
-	case "settings.allowLAN":
-		return m.toggleAccessLAN()
 	}
 	switch id {
 	case "settings.tab.access", "settings.tab.network", "settings.tab.resources":
@@ -1440,25 +1442,11 @@ func (m *Model) activate(id string) tea.Cmd {
 		return nil
 	case "settings.keepAliveIdle", "settings.keepAliveInterval", "settings.geoUpdateInterval":
 		return m.openCoreNumber(id)
-	case "settings.geoAutoUpdate":
-		return m.toggleCoreSetting(id, "geo-auto-update", m.snapshot.CoreSettings.GeoAutoUpdate)
 	case geoMaintenanceID:
 		return m.manageGeo()
-	case "settings.storeFakeIP":
-		return m.toggleCoreSetting(id, "profile.store-fake-ip", m.snapshot.CoreSettings.StoreFakeIP)
 	case "settings.language", "settings.startPage", "settings.theme", "settings.logLevel", "settings.findProcessMode", "settings.geodataLoader":
 		m.openPageSelectionMenu("settings", id, m.navigationOptions().settingsDropdown(id))
 		return nil
-	case "settings.ipv6":
-		return m.toggleCoreSetting(id, "ipv6", m.snapshot.CoreSettings.IPv6)
-	case "settings.unifiedDelay":
-		return m.toggleCoreSetting(id, "unified-delay", m.snapshot.CoreSettings.UnifiedDelay)
-	case "settings.tcpConcurrent":
-		return m.toggleCoreSetting(id, "tcp-concurrent", m.snapshot.CoreSettings.TCPConcurrent)
-	case "settings.tcpKeepAlive":
-		return m.toggleCoreSetting(id, "disable-keep-alive", m.snapshot.CoreSettings.DisableKeepAlive)
-	case "settings.etagSupport":
-		return m.toggleCoreSetting(id, "etag-support", m.snapshot.CoreSettings.ETagSupport)
 	case "editor.configure":
 		return m.openEditorPreference()
 	case "card.profiles":
@@ -1478,8 +1466,6 @@ func (m *Model) activate(id string) tea.Cmd {
 		return m.openWizard(false)
 	case "card.start":
 		return m.serviceAction("start")
-	case "core.toggle":
-		return m.coreToggleAction()
 	case "core.start", "core.stop", "core.restart":
 		// Other pages retain their existing recovery/start actions. Overview
 		// exposes only its observed-state toggle.
@@ -1487,13 +1473,9 @@ func (m *Model) activate(id string) tea.Cmd {
 			return m.serviceAction(strings.TrimPrefix(id, "core."))
 		}
 		return nil
-	case "terminal.enable", "terminal.disable":
-		return m.terminalProxyAction(id == "terminal.enable")
 	case "terminal.activation":
 		m.openTerminalActivation()
 		return nil
-	case "tun.enable", "tun.disable":
-		return m.tunAction(id == "tun.enable")
 	case "card.proxies":
 		m.navigate("proxies")
 		return nil
@@ -1541,9 +1523,6 @@ func (m *Model) activate(id string) tea.Cmd {
 		return m.begin(m.tr("model.saving_guide"), m.tr("model.guide_dismissed"), func(ctx context.Context) error { return m.backend.SetGuideDismissed(ctx, true) }, notificationOperation{Key: "guide.dismiss", Context: m.tr("dashboard.guide.later")})
 	case id == "start" || id == "stop" || id == "restart":
 		return m.serviceAction(id)
-	case id == autostartToggleTarget:
-		enabled := !m.snapshot.Service.Enabled
-		return m.begin(m.tr("model.updating_autostart"), m.tr("model.autostart_saved"), func(ctx context.Context) error { return m.backend.SetAutostart(ctx, enabled) }, notificationOperation{Key: id, Context: m.tr("settings.autostart")})
 	case strings.HasPrefix(id, "mode."):
 		if m.busy || m.quitting {
 			return nil
@@ -1906,10 +1885,9 @@ func (m *Model) renderLayout() {
 		// action opens the compact drawer.
 		m.focus = "menu"
 	}
-	o := m.dashboardOptions()
+	o := m.navigationOptions()
 	o.tooltips = &m.tooltip
 	o.Sidebar = &m.sidebar
-	o.Snapshot, o.Focus, o.Hover = m.snapshot, m.focus, m.hover
 	o.settingsPointerFocus = m.settingsPointerFocus
 	// Lay out the expanded controls before deriving their keyboard hints.
 	p := &m.notification.panel
@@ -1917,11 +1895,9 @@ func (m *Model) renderLayout() {
 	if p.open {
 		expanded, _ = p.render(m.notification.items, m.width, m.height, m.locale, m.buttonPlain())
 	}
-	o.Help, o.GuideDismissed, o.Scroll, o.SidebarOpen = m.contextHelp(), m.snapshot.GuideDismissed, m.scroll, m.sidebarOpen
+	o.Help, o.Scroll = m.contextHelp(), m.scroll
 	_, _, o.EditingInput = m.activeInputField()
 	o.OverlayOwnsKeys = p.open || m.menu.open || m.providers.open || m.ports.open || m.form != "" || m.connections.confirming || m.connections.detail != nil
-	o.Runtime, o.RuntimeReceived, o.RuntimePending = m.runtime.snapshot, m.runtime.received, m.runtime.pending
-	o.StateUnavailable = !m.snapshotReady
 	g := dashboardGeometry(o)
 	o.Header = m.pageHeader()
 	resizeSearchInput(&m.connections.search, m.connectionSearchWidth(g.width))

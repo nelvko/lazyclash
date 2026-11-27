@@ -31,14 +31,14 @@ func TestHostTUNRequiresExplicitConfirmationAndRefreshesObservedState(t *testing
 	m := ready(b)
 	defer m.stopRuntime()
 	m.width, m.height = 120, 32
-	if cmd := m.activate("tun.enable"); cmd != nil || m.form != "tun-confirm" || m.tunFocus != "tun.cancel" || calls != 0 || m.busy {
+	if cmd := m.activate("tun.toggle"); cmd != nil || m.form != "tun-confirm" || m.tunFocus != "tun.cancel" || calls != 0 || m.busy {
 		t.Fatal("opening host TUN did not wait at the default cancellation")
 	}
 	m, _ = update(m, key("enter"))
 	if m.form != "" || calls != 0 {
 		t.Fatal("default confirmation accepted host TUN")
 	}
-	m.activate("tun.enable")
+	m.activate("tun.toggle")
 	m.layout()
 	plain := ansi.Strip(m.screen)
 	if !strings.Contains(plain, "entire host") || !strings.Contains(plain, "other users and services") {
@@ -57,7 +57,7 @@ func TestHostTUNRequiresExplicitConfirmationAndRefreshesObservedState(t *testing
 	if calls != 1 || m.busy || !m.snapshot.TUN {
 		t.Fatal("host TUN did not use the shared operation and refreshed snapshot")
 	}
-	cmd = m.activate("tun.disable")
+	cmd = m.activate("tun.toggle")
 	if !m.busy || calls != 1 || !m.snapshot.TUN {
 		t.Fatal("TUN disable did not remain asynchronous")
 	}
@@ -78,7 +78,7 @@ func TestHostTUNConfirmationOwnsMouseAndFitsBothLanguages(t *testing.T) {
 				defer m.stopRuntime()
 				m.locale = i18n.New(language)
 				m.width, m.height = size[0], size[1]
-				m.activate("tun.enable")
+				m.activate("tun.toggle")
 				m.layout()
 				assertCanvas(t, m.screen, size[0], size[1])
 				assertRegions(t, m.targets, size[0], size[1])
@@ -117,12 +117,12 @@ func TestSystemEnvironmentShowsScopeAndHostTUNWhileUserControlsStayUnavailable(t
 	}
 	block = overviewNetworkCard(o, 64)
 	plain = ansi.Strip(strings.Join(block.lines, "\n"))
-	if !strings.Contains(plain, "Host TUN") || !hasAction(block.targets, "tun.enable") {
+	if !strings.Contains(plain, "Host TUN") || !hasAction(block.targets, "tun.toggle") {
 		t.Fatal("access card omitted host TUN scope or control")
 	}
 	b.snapshot.Capabilities = app.Capabilities{Scope: "user", Runtime: app.Capability{Supported: true}}
 	m := ready(b)
-	if cmd := m.activate("tun.enable"); cmd != nil || m.form != "" || m.busy || m.failure == "" {
+	if cmd := m.activate("tun.toggle"); cmd != nil || m.form != "" || m.busy {
 		t.Fatal("user TUN opened privileged controls")
 	}
 }
@@ -136,7 +136,7 @@ func TestHostTUNRechecksAvailabilityAtConfirmation(t *testing.T) {
 			m := ready(b)
 			defer m.stopRuntime()
 			m.width, m.height = 120, 32
-			m.activate("tun.enable")
+			m.activate("tun.toggle")
 			if changed == "scope" {
 				m.snapshot.Capabilities.TUN.Supported = false
 			} else {

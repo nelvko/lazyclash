@@ -627,13 +627,8 @@ func TestSettingsAutostartAndCoreRestartGuards(t *testing.T) {
 		o.Snapshot.Service.EnableState = "unknown"
 		block = settingsCore(o, 200)
 		body := ansi.Strip(strings.Join(block.lines, "\n"))
-		if !strings.Contains(body, o.Locale.T("dashboard.status.unknown")) || !strings.Contains(settingsPaintedTarget(t, body, block.targets, autostartToggleTarget), o.Locale.T("dashboard.settings.enableAutostart")) {
-			t.Fatalf("%s: unknown autostart was presented as an observed off state", language)
-		}
-		enable := findTarget(t, Model{targets: block.targets}, autostartToggleTarget)
-		left := ansi.Strip(ansi.Cut(block.lines[enable.Y], 0, 60))
-		if enable.X+enable.W != 200-2 || !strings.HasPrefix(left, "  "+o.Locale.T("settings.autostart")) || !strings.Contains(left, o.Locale.T("dashboard.status.unknown")) {
-			t.Fatalf("%s: unknown autostart should keep its status left and action right: %q", language, ansi.Strip(block.lines[enable.Y]))
+		if !strings.Contains(body, o.Locale.T("dashboard.status.unknown")) || hasAction(block.targets, autostartToggleTarget) {
+			t.Fatalf("%s: unknown autostart was presented as an actionable observation", language)
 		}
 		for _, state := range []string{"activating", "deactivating", "reloading"} {
 			o.Snapshot.Service.State = state

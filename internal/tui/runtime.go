@@ -246,7 +246,9 @@ func (m *Model) acceptRuntimeEvent(event app.RuntimeEvent) bool {
 		return false
 	}
 	if event.Source == app.RuntimeStatus {
-		if event.Instance < m.runtime.instance {
+		// The foreground action can finish its service read while an older
+		// heartbeat is still queued in the runtime stream.
+		if event.Instance < m.runtime.instance || at.Before(m.snapshot.ServiceObservedAt) {
 			return false
 		}
 	} else if event.Instance != m.runtime.instance {

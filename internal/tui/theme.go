@@ -63,7 +63,7 @@ const (
 	proxyNodeEmphasizedFast     = "#b8dfb3"
 	proxyNodeEmphasizedSlow     = routingFocus
 
-	settingsSwitchOnThumb = "#a8cff2"
+	switchOnThumb = "#a8cff2"
 )
 
 func themed(s, foreground, background string, dimmed bool) string {

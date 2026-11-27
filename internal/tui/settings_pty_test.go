@@ -137,7 +137,15 @@ func (b *settingsPTYBackend) SaveStartPagePreference(ctx context.Context, page s
 }
 
 func (b *settingsPTYBackend) SaveKeyHintsPreference(ctx context.Context, hidden bool) error {
-	b.hints.Add(1)
+	attempt := b.hints.Add(1)
+	if os.Getenv("LAZYCLASH_SETTINGS_PTY_SWITCHES") == "1" && attempt == 1 {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(time.Second):
+			return errors.New("fixture preference write failed")
+		}
+	}
 	b.mu.Lock()
 	b.preferences.HideKeyHints = hidden
 	b.mu.Unlock()

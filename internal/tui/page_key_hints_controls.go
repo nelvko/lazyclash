@@ -82,16 +82,23 @@ func (m *Model) overviewContextHelp() string {
 		}
 		return m.controlActionHelp(m.tr("navigation.controls.manageCore"))
 	}
-	if m.focus == "core.toggle" {
-		control := overviewCoreToggle(m.navigationOptions())
-		if m.busy || !control.canToggle() {
+	if control, ok := m.navigationOptions().overviewSwitch(m.focus); ok {
+		if !control.Enabled() {
 			return m.tr("navigation.controls.browse")
 		}
-		action := "dashboard.settings.start"
-		if control.state == toggleOn {
-			action = "dashboard.settings.stop"
+		var off, on string
+		switch m.focus {
+		case "core.toggle":
+			off, on = "dashboard.settings.stop", "dashboard.settings.start"
+		case "terminal.toggle":
+			off, on = "navigation.controls.disableTerminal", "navigation.controls.enableTerminal"
+		case "tun.toggle":
+			off, on = "navigation.controls.disableTUN", "navigation.controls.reviewTUN"
 		}
-		return m.controlActionHelp(m.tr(action))
+		if control.On {
+			return m.controlActionHelp(m.tr(off))
+		}
+		return m.controlActionHelp(m.tr(on))
 	}
 	return m.settingsContextHelp()
 }
@@ -170,6 +177,9 @@ func (m *Model) settingsContextHelp() string {
 	case "settings.logLevel", "settings.findProcessMode", "settings.geodataLoader":
 		return m.controlActionHelp(m.tr("settings.chooseCoreSetting", m.tr(m.focus)))
 	case "key-hints.toggle":
+		if m.keyHints.pending {
+			return m.tr("settings.coreSaving", m.tr("dashboard.interface.keyHints"))
+		}
 		label = "navigation.controls.hideHints"
 		if m.keyHints.hidden {
 			label = "navigation.controls.showHints"
@@ -203,14 +213,6 @@ func (m *Model) settingsContextHelp() string {
 		label = "dashboard.action.restart"
 	case autostartToggleTarget:
 		label = autostartActionLabel(m.snapshot.Service.Enabled)
-	case "tun.enable":
-		label = "navigation.controls.reviewTUN"
-	case "tun.disable":
-		label = "navigation.controls.disableTUN"
-	case "terminal.enable":
-		label = "navigation.controls.enableTerminal"
-	case "terminal.disable":
-		label = "navigation.controls.disableTerminal"
 	case "terminal.activation":
 		label = "terminal.activationAction"
 	}

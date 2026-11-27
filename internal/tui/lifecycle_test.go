@@ -74,6 +74,10 @@ func TestPersistentSettingsUseAsyncApplicationActionsAndShowErrors(t *testing.T)
 			expected := errors.New("persistent update failed")
 			b := &fakeBackend{snapshot: app.Snapshot{Installed: true}}
 			b.snapshot.Service.Enabled = tc.autostartEnabled
+			b.snapshot.Service.EnableState = "disabled"
+			if tc.autostartEnabled {
+				b.snapshot.Service.EnableState = "enabled"
+			}
 			b.autostart = func(_ context.Context, enabled bool) error {
 				calls++
 				if enabled == tc.autostartEnabled {
@@ -89,6 +93,9 @@ func TestPersistentSettingsUseAsyncApplicationActionsAndShowErrors(t *testing.T)
 				return expected
 			}
 			m := ready(b)
+			if tc.id == autostartToggleTarget {
+				m.page = "settings"
+			}
 			cmd := m.activate(tc.id)
 			if calls != 0 || !m.busy || cmd == nil {
 				t.Fatal("persistent operation blocked the event loop")

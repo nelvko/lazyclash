@@ -43,7 +43,7 @@ func TestNavigationShellConnectionConfirmationOwnsPageShortcuts(t *testing.T) {
 		}
 	}
 	m, _ = update(m, key("?"))
-	if m.keyHints.hidden || m.keyHints.changed || m.keyHints.pending || !m.connections.confirming {
+	if m.keyHints.hidden || m.keyHints.generation != 0 || m.keyHints.pending || !m.connections.confirming {
 		t.Fatal("connection confirmation leaked ? to the global display shortcut")
 	}
 }
@@ -61,8 +61,8 @@ func TestNavigationShellTextInputsOwnQuestionMarks(t *testing.T) {
 			m, _ = update(m, key("?"))
 			m, _ = update(m, key("？"))
 			input, _, editing := m.activeInputField()
-			if !editing || input.Value() != "?？" || m.keyHints.changed || m.page != page {
-				t.Fatalf("question marks escaped the editor: value=%q editing=%t changed=%t", input.Value(), editing, m.keyHints.changed)
+			if !editing || input.Value() != "?？" || m.keyHints.generation != 0 || m.page != page {
+				t.Fatalf("question marks escaped the editor: value=%q editing=%t changed=%t", input.Value(), editing, m.keyHints.generation != 0)
 			}
 		})
 	}
@@ -77,10 +77,10 @@ func TestNavigationShellBusyHintToggleAndQuitRespectCleanup(t *testing.T) {
 	m.focus = "content"
 	m.layout()
 	m, save := update(m, key("?"))
+	m = finishKeyHintsSave(t, m, save)
 	if !m.keyHints.hidden || m.focus != "content" || !m.busy || ctx.Err() != nil {
 		t.Fatal("hiding the footer disturbed the underlying focus or operation")
 	}
-	m, _ = update(m, save())
 	m, cmd := update(m, key("q"))
 	if cmd != nil || !m.quitting || !m.busy || ctx.Err() == nil {
 		t.Fatal("quitting after a display change did not wait for safe operation cleanup")
@@ -102,7 +102,7 @@ func TestNavigationShellDrawerTabRestoresContentWithoutActivation(t *testing.T) 
 			m.sidebarOpen = true
 			m.layout()
 			m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyTab, Mod: modifiers})
-			if m.sidebarOpen || m.focus != "key-hints.toggle" || m.keyHints.changed || m.keyHints.hidden {
+			if m.sidebarOpen || m.focus != "key-hints.toggle" || m.keyHints.generation != 0 || m.keyHints.hidden {
 				t.Fatal("drawer Tab did not restore content without activating it")
 			}
 			m, _ = update(m, special(tea.KeyEscape))
@@ -132,7 +132,8 @@ func TestNavigationShellHintResizeKeepsFocusedListRowVisible(t *testing.T) {
 	if !hasAction(m.targets, m.focus) {
 		t.Fatal("fixture did not position the focused row in the visible viewport")
 	}
-	m, _ = update(m, key("?"))
+	m, save := update(m, key("?"))
+	m = finishKeyHintsSave(t, m, save)
 	if m.keyHints.hidden || !hasAction(m.targets, m.focus) {
 		t.Fatal("restoring the hint bar hid the focused row")
 	}

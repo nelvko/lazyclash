@@ -14,12 +14,11 @@ func overviewCoreCard(o dashboardOptions, width int) dashboardBlock {
 	tr := o.Locale.T
 	s := o.Snapshot
 	style := func(value, color string) string { return themed(clean(value), color, panel, o.Dim) }
-	state, _, color := headerCoreState(o)
+	control, compact := o.coreStatus()
 	inner := overviewInnerWidth(width)
-	name, status := overviewHeading(o, "Mihomo"), style(cellCrop(state, inner), color)
+	name := overviewHeading(o, "Mihomo")
 	var diagnostics []string
-	control := overviewCoreToggle(o)
-	transition := control.state == togglePending
+	transition := control.Pending
 	if !o.StateUnavailable && !transition {
 		failedResult := s.Service.Result != "" && s.Service.Result != "success"
 		if failedResult {
@@ -33,7 +32,8 @@ func overviewCoreCard(o dashboardOptions, width int) dashboardBlock {
 		}
 	}
 	if !s.Installed && !o.StateUnavailable {
-		lines := append([]string{name, status}, diagnostics...)
+		state, color := control.statusFace()
+		lines := append([]string{name, style(state, color)}, diagnostics...)
 		return overviewControlPanel(o, width, tr("dashboard.overview.service"), lines, []overviewControlButton{
 			{id: "core.install", label: tr("dashboard.action.install"), enabled: !o.Busy},
 		})
@@ -58,18 +58,15 @@ func overviewCoreCard(o dashboardOptions, width int) dashboardBlock {
 	}
 	if running && monitorUnavailable {
 		diagnostics = append(diagnostics, style(tr("dashboard.core.monitorUnavailable"), warning))
-	} else if control.state == toggleUnknown {
+	} else if compact == "?" && !o.StateUnavailable {
 		diagnostics = append(diagnostics, style(tr("dashboard.core.unknownHint"), muted))
 	}
 	if issue := runtimeStopIssue(s, o.Locale); !o.StateUnavailable && issue != "" {
 		diagnostics = append(diagnostics, style(issue, muted))
 	}
 	content := overviewTextBlock([]string{name}, inner)
-	// Choose the row using the pending label too, so a click cannot move the
-	// same button onto a second line while systemd is starting or stopping.
-	pendingWidth := 2 + max(ansi.StringWidth(tr("dashboard.status.starting")), ansi.StringWidth(tr("dashboard.status.stopping")))
-	status = cellPad(status, min(inner, max(ansi.StringWidth(status), pendingWidth)))
-	statusRow := overviewLabelSlot(o, inner, status, coreActionFace(o, control), "core.toggle", true)
+	var statusRow dashboardBlock
+	o.switchControl("core.toggle", control).place(&statusRow, 0, 0, inner)
 	details := overviewTextBlock(diagnostics, inner)
 	if sidebarGeometry(o, false).hasClockRow() {
 		content.append(details)
@@ -101,25 +98,9 @@ func coreManagementHeading(o dashboardOptions, inner int) dashboardBlock {
 		id = ""
 	}
 	face := renderButton(o.Locale.T("dashboard.core.manageAction"), manage)
-	// End the link at its chevron so it lines up with the gray button's edge.
+	// End the link at its chevron at the right edge of the card.
 	face = ansi.Cut(face, 0, ansi.StringWidth(face)-1)
 	return overviewLabelSlot(o, inner, overviewHeading(o, o.Locale.T("dashboard.overview.service")), face, id, true)
-}
-
-func coreActionFace(o dashboardOptions, control toggleModel) string {
-	start, stop := o.Locale.T("dashboard.settings.start"), o.Locale.T("dashboard.settings.stop")
-	options := dashboardButtonOptions("core.toggle", o, false, panel)
-	options.Width = max(ansi.StringWidth(start), ansi.StringWidth(stop))
-	if o.Busy || !control.canToggle() {
-		// Keep keyboard focus visible during a transition. A plain dash occupies
-		// the same slot as the button, without advertising a service action.
-		options.Kind, options.Busy = buttonText, true
-		return renderButton("—", options)
-	}
-	if control.state == toggleOn {
-		return renderButton(stop, options)
-	}
-	return renderButton(start, options)
 }
 
 func (o dashboardOptions) coreUptime() (time.Duration, bool) {

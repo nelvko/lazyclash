@@ -1,6 +1,10 @@
 package tui
 
-import "github.com/charmbracelet/x/ansi"
+import (
+	"strings"
+
+	"github.com/charmbracelet/x/ansi"
+)
 
 // The sidebar owns the global core state. Compact layouts keep it in the title
 // without taking space from page actions, shedding the repeated logo first.
@@ -30,52 +34,77 @@ func dashboardTitle(o dashboardOptions, title, page string, width int) string {
 }
 
 func headerCoreState(o dashboardOptions) (full, compact, color string) {
-	tr := o.Locale.T
-	label, color := coreSummary(o.Snapshot, o.Locale)
-	symbol, plain := "?", "?"
-	s := o.Snapshot
+	control, compact := o.coreStatus()
+	full, color = control.statusFace()
+	if !o.PlainButtons {
+		compact, _, _ = strings.Cut(full, " ")
+	}
+	return full, compact, color
+}
+
+// Both the read-only global badge and the interactive card use this service
+// observation. A foreground operation can report progress but never a result.
+func (o dashboardOptions) coreStatus() (Switch, string) {
+	s, tr := o.Snapshot, o.Locale.T
+	control := Switch{
+		Variant: Status, OnLabel: tr("dashboard.status.running"), OffLabel: tr("dashboard.status.stopped"),
+		Disabled: true,
+	}
 	switch {
 	case o.StateUnavailable:
-		label, color = tr("dashboard.status.unknown"), muted
+		control.Message, control.Color = "? "+tr("dashboard.status.unknown"), muted
+		return control, "?"
 	case !s.Installed:
-		symbol, plain = "−", "N/A"
-	case o.CoreAction == "start" || o.CoreAction == "stop" || o.CoreAction == "restart":
-		symbol, plain, color = "◌", "WAIT", warning
-		switch o.CoreAction {
-		case "start":
-			label = tr("dashboard.status.starting")
-		case "stop":
-			label = tr("dashboard.status.stopping")
-		case "restart":
-			label = tr("dashboard.status.restarting")
-		}
-	case s.ServiceError != "":
-		symbol, plain = "!", "ERR"
-	case s.Service.State == "activating" || s.Service.State == "deactivating" || s.Service.State == "reloading":
-		symbol, plain, color = "◌", "WAIT", warning
+		control.Message, control.Color = "− "+tr("dashboard.status.notInstalled"), muted
+		return control, "N/A"
+	}
+
+	var transition string
+	switch o.CoreAction {
+	case "start":
+		transition = "starting"
+	case "stop":
+		transition = "stopping"
+	case "restart":
+		transition = "restarting"
+	}
+	if transition == "" && s.ServiceError == "" {
 		switch s.Service.State {
 		case "activating":
-			label = tr("dashboard.status.starting")
+			transition = "starting"
 		case "deactivating":
-			label = tr("dashboard.status.stopping")
+			transition = "stopping"
 		case "reloading":
-			label = tr("dashboard.status.reloading")
+			transition = "reloading"
 		}
+	}
+	if transition != "" {
+		control.Pending, control.Message, control.Color = true, tr("dashboard.status."+transition), warning
+		return control, "WAIT"
+	}
+	if s.ServiceError != "" {
+		label, color := coreSummary(s, o.Locale)
+		control.Message, control.Color = "! "+label, color
+		return control, "ERR"
+	}
+
+	control.Disabled = o.Busy || runtimeStopIssue(s, o.Locale) != ""
+	switch {
 	case s.Service.State == "failed":
-		symbol, plain, color = "!", "ERR", errorColor
-		label = tr("dashboard.status.failed")
+		control.Disabled = control.Disabled || s.Service.Active
+		control.Message, control.Color = "! "+tr("dashboard.status.failed"), errorColor
+		return control, "ERR"
 	case s.Service.State == "active" && s.Service.Active:
-		symbol, plain = "●", "ON"
+		control.On, control.Color = true, success
+		return control, "ON"
 	case s.Service.State == "inactive" && !s.Service.Active:
-		symbol, plain = "○", "OFF"
+		control.Color = muted
+		return control, "OFF"
 	case s.Service.State == "unsupported":
-		symbol, plain = "!", "N/A"
+		control.Disabled, control.Message, control.Color = true, "! "+tr("dashboard.status.unavailable"), errorColor
+		return control, "N/A"
 	default:
-		label, color = tr("dashboard.status.unknown"), muted
+		control.Disabled, control.Message, control.Color = true, "? "+tr("dashboard.status.unknown"), muted
+		return control, "?"
 	}
-	compact = symbol
-	if o.PlainButtons {
-		compact = plain
-	}
-	return symbol + " " + label, compact, color
 }

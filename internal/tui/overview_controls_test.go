@@ -101,13 +101,13 @@ func TestOverviewControlStatesRemainExplicit(t *testing.T) {
 	}}
 	block := overviewNetworkCard(o, 56)
 	plain := ansi.Strip(strings.Join(block.lines, "\n"))
-	if hasAction(block.targets, "tun.enable") || hasAction(block.targets, "tun.disable") || !strings.Contains(plain, "TUN") || !strings.Contains(plain, "Unsupported") || strings.Contains(plain, "System proxy") || !hasAction(block.targets, "network.tunConfig") {
+	if hasAction(block.targets, "tun.toggle") || !strings.Contains(plain, "TUN") || !strings.Contains(plain, "Unsupported") || strings.Contains(plain, "System proxy") || !hasAction(block.targets, "network.tunConfig") {
 		t.Fatal("network card hid capability information, mixed in desktop controls, or made unavailable TUN actionable")
 	}
 	o.Busy = true
 	core := overviewCoreCard(o, 56)
-	if !hasAction(core.targets, "core.toggle") {
-		t.Fatal("busy core toggle lost its stable focus target")
+	if hasAction(core.targets, "core.toggle") {
+		t.Fatal("busy core exposed its status switch as actionable")
 	}
 	if block := overviewModeCard(o, 56); len(block.targets) != 0 {
 		t.Fatal("busy mode control retained an actionable target")

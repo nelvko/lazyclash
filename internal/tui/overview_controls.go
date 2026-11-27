@@ -14,7 +14,7 @@ type overviewControlButton struct {
 }
 
 func (b overviewControlButton) selectable() bool {
-	return strings.HasPrefix(b.id, "mode.") || b.id == "key-hints.toggle"
+	return strings.HasPrefix(b.id, "mode.")
 }
 
 func overviewSelectionWidth(buttons []overviewControlButton) int {
@@ -166,4 +166,41 @@ func overviewPanel(o dashboardOptions, width int, b, content dashboardBlock, but
 	}
 	b.targets = visible
 	return b
+}
+
+type overviewControl struct {
+	face, id string
+}
+
+// Place a face and its per-line hit regions together. Very narrow cards wrap the label
+// independently of the two-cell focus marker, so tabbing never reflows a row.
+func (c overviewControl) place(b *dashboardBlock, x, y, width int) {
+	available := width - x
+	lines := []string{c.face}
+	if cells := ansi.StringWidth(c.face); cells > available {
+		gutter := min(2, max(0, available-2))
+		marker := ansi.Cut(c.face, 2-gutter, 2)
+		lines = overviewTextBlock([]string{ansi.Cut(c.face, 2, cells)}, available-gutter).lines
+		for i, line := range lines {
+			lines[i] = marker + line
+			marker = strings.Repeat(" ", gutter)
+		}
+	}
+	for i, line := range lines {
+		if y+i == len(b.lines) {
+			b.blank()
+		}
+		b.lines[y+i] = cellPad(b.lines[y+i], x) + line
+		if cells := ansi.StringWidth(line); c.id != "" && cells > 0 {
+			b.targets = append(b.targets, hitRegion{ID: c.id, X: x, Y: y + i, W: cells, H: 1})
+		}
+	}
+}
+
+func (o dashboardOptions) switchControl(id string, control Switch) overviewControl {
+	face := control.View(o.switchOptions(id, panel))
+	if !control.Enabled() {
+		id = ""
+	}
+	return overviewControl{id: id, face: face}
 }

@@ -50,10 +50,12 @@ func (a *App) terminalProxyStatus() shellintegration.Status {
 		return shellintegration.Status{State: "unsupported", Detail: err.Error()}
 	}
 	s, err := m.Current()
-
 	if err != nil {
 		s.Detail = err.Error()
 		s.State = "error"
+		if errors.Is(err, shellintegration.ErrInstallPending) {
+			s.State = "incomplete" // Enabling can resume this interrupted installation.
+		}
 	}
 	return s
 }

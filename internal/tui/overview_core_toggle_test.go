@@ -45,8 +45,18 @@ func coreToggleTestModel(t *testing.T, active bool) (Model, *coreToggleTestBacke
 	m.layout()
 	return m, b
 }
-func coreToggleStateOf(m Model) toggleState {
-	return overviewCoreToggle(m.navigationOptions()).state
+func coreSwitchPhase(o dashboardOptions) string {
+	s, _ := o.coreStatus()
+	switch {
+	case s.Pending:
+		return "pending"
+	case !s.Enabled():
+		return "disabled"
+	case s.On:
+		return "on"
+	default:
+		return "off"
+	}
 }
 
 func TestOverviewCoreToggleStartsAndStopsOnlyAfterObservedCompletion(t *testing.T) {
@@ -57,9 +67,9 @@ func TestOverviewCoreToggleStartsAndStopsOnlyAfterObservedCompletion(t *testing.
 				defer m.stopRuntime()
 				before := m.snapshot.Service
 				action := "start"
-				want := toggleOn
+				want := "on"
 				if active {
-					action, want = "stop", toggleOff
+					action, want = "stop", "off"
 				}
 				calls := 0
 				b.control = func(_ context.Context, got string) error {
@@ -78,7 +88,7 @@ func TestOverviewCoreToggleStartsAndStopsOnlyAfterObservedCompletion(t *testing.
 					return nil
 				}
 				m, cmd := update(m, activation)
-				if cmd == nil || calls != 0 || b.reads != 0 || !m.busy || m.snapshot.Service != before || coreToggleStateOf(m) != togglePending {
+				if cmd == nil || calls != 0 || b.reads != 0 || !m.busy || m.snapshot.Service != before || coreSwitchPhase(m.navigationOptions()) != "pending" {
 					t.Fatal("activation ran inline or optimistically confirmed state")
 				}
 				for _, repeat := range []tea.KeyPressMsg{special(tea.KeyEnter), {Code: ' ', Text: " "}} {
@@ -90,11 +100,11 @@ func TestOverviewCoreToggleStartsAndStopsOnlyAfterObservedCompletion(t *testing.
 					}
 				}
 				result := actionCmd(t, cmd)()
-				if calls != 1 || b.reads != 2 || m.snapshot.Service != before || coreToggleStateOf(m) != togglePending {
+				if calls != 1 || b.reads != 2 || m.snapshot.Service != before || coreSwitchPhase(m.navigationOptions()) != "pending" {
 					t.Fatalf("observation bypassed async delivery: calls=%d reads=%d", calls, b.reads)
 				}
 				m, _ = update(m, result)
-				if m.busy || coreToggleStateOf(m) != want || m.snapshot.Service != b.snapshot.Service {
+				if m.busy || coreSwitchPhase(m.navigationOptions()) != want || m.snapshot.Service != b.snapshot.Service {
 					t.Fatal("toggle did not adopt confirmed actual state")
 				}
 				// A held activation key must not reverse a just-completed operation.
@@ -114,11 +124,11 @@ func TestOverviewCoreToggleRechecksExternalChangesBeforeControl(t *testing.T) {
 	for _, tc := range []struct {
 		name, state string
 		active      bool
-		want        toggleState
+		want        string
 	}{
-		{"already started externally", "active", true, toggleOn},
-		{"external transition", "activating", false, togglePending},
-		{"unknown observation", "unknown", false, toggleUnknown},
+		{"already started externally", "active", true, "on"},
+		{"external transition", "activating", false, "pending"},
+		{"unknown observation", "unknown", false, "disabled"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			m, b := coreToggleTestModel(t, false)
@@ -127,13 +137,13 @@ func TestOverviewCoreToggleRechecksExternalChangesBeforeControl(t *testing.T) {
 			b.control = func(context.Context, string) error { calls++; return nil }
 			b.snapshot.Service = service.Status{State: tc.state, Active: tc.active, PID: 43}
 			b.snapshot.ServiceObservedAt = time.Now()
-			cmd := m.coreToggleAction()
+			cmd := m.activate("core.toggle")
 			if cmd == nil {
 				t.Fatal("initial known stopped observation did not create command")
 			}
 			m, _ = update(m, actionCmd(t, cmd)())
-			if calls != 0 || m.busy || coreToggleStateOf(m) != tc.want {
-				t.Fatalf("preflight inverted or blindly changed external state: calls=%d state=%d", calls, coreToggleStateOf(m))
+			if calls != 0 || m.busy || coreSwitchPhase(m.navigationOptions()) != tc.want {
+				t.Fatalf("preflight inverted or blindly changed external state: calls=%d state=%s", calls, coreSwitchPhase(m.navigationOptions()))
 			}
 		})
 	}
@@ -156,14 +166,14 @@ func TestOverviewCoreToggleFailureRereadsActualState(t *testing.T) {
 				b.snapshot.ServiceObservedAt = time.Now()
 				return errors.New("fixture lifecycle failure")
 			}
-			cmd := m.coreToggleAction()
+			cmd := m.activate("core.toggle")
 			m, _ = update(m, actionCmd(t, cmd)())
-			want := toggleOff
+			want := "off"
 			if active {
-				want = toggleOn
+				want = "on"
 			}
-			if calls != 1 || b.reads != 2 || m.busy || m.failure == "" || coreToggleStateOf(m) != want {
-				t.Fatalf("failure did not report refreshed real state: calls=%d reads=%d state=%d failure=%q", calls, b.reads, coreToggleStateOf(m), m.failure)
+			if calls != 1 || b.reads != 2 || m.busy || m.failure == "" || coreSwitchPhase(m.navigationOptions()) != want {
+				t.Fatalf("failure did not report refreshed real state: calls=%d reads=%d state=%s failure=%q", calls, b.reads, coreSwitchPhase(m.navigationOptions()), m.failure)
 			}
 		})
 	}
@@ -176,12 +186,12 @@ func TestOverviewCoreToggleFailedObservationNeverClaimsSuccess(t *testing.T) {
 		b.snapshotErr = errors.New("status unavailable after start")
 		return nil
 	}
-	cmd := m.coreToggleAction()
+	cmd := m.activate("core.toggle")
 	m, _ = update(m, actionCmd(t, cmd)())
-	if m.busy || m.failure == "" || coreToggleStateOf(m) == toggleOn || coreToggleStateOf(m) == toggleOff {
+	if m.busy || m.failure == "" || coreSwitchPhase(m.navigationOptions()) == "on" || coreSwitchPhase(m.navigationOptions()) == "off" {
 		t.Fatal("failed postread was presented as confirmed state")
 	}
-	if next := m.coreToggleAction(); next != nil {
+	if next := m.activate("core.toggle"); next != nil {
 		t.Fatal("unknown state allowed blind toggle")
 	}
 }
@@ -192,7 +202,7 @@ func TestOverviewCoreToggleReadFailureRejectsControl(t *testing.T) {
 	calls := 0
 	b.control = func(context.Context, string) error { calls++; return nil }
 	b.snapshotErr = errors.New("fixture preflight unavailable")
-	cmd := m.coreToggleAction()
+	cmd := m.activate("core.toggle")
 	m, _ = update(m, actionCmd(t, cmd)())
 	if calls != 0 || m.failure == "" || m.busy {
 		t.Fatal("failed preflight still changed the service")
@@ -205,8 +215,8 @@ func TestOverviewCoreToggleExternalStatusAndLateSnapshotsKeepOrdering(t *testing
 	base := time.Now().Add(-time.Minute)
 	m.snapshot.ServiceObservedAt = base
 	generation := m.statusGeneration
-	cmd := m.coreToggleAction()
-	if cmd == nil || coreToggleStateOf(m) != togglePending {
+	cmd := m.activate("core.toggle")
+	if cmd == nil || coreSwitchPhase(m.navigationOptions()) != "pending" {
 		t.Fatal("start did not become pending")
 	}
 	actionID := m.id
@@ -215,29 +225,50 @@ func TestOverviewCoreToggleExternalStatusAndLateSnapshotsKeepOrdering(t *testing
 	stale.ServiceObservedAt = base.Add(time.Second)
 	m, _ = update(m, resultMsg{id: actionID - 1, snapshot: stale, hasSnapshot: true})
 	m, _ = update(m, coreStatusMsg{generation: generation, snapshot: stale})
-	if !m.busy || m.snapshot.Service.Active || coreToggleStateOf(m) != togglePending {
+	if !m.busy || m.snapshot.Service.Active || coreSwitchPhase(m.navigationOptions()) != "pending" {
 		t.Fatal("old job/status result overwrote pending toggle")
 	}
 	observed := base.Add(20 * time.Second)
 	current := service.Status{State: "active", Active: true, PID: 101, StartedAt: observed.Add(-10 * time.Second)}
 	m.acceptRuntimeEvent(app.RuntimeEvent{Source: app.RuntimeStatus, Instance: 1, ObservedAt: observed, Snapshot: app.RuntimeSnapshot{State: "ready", Service: current, RunningVersion: "v1.19.33"}})
-	if coreToggleStateOf(m) != togglePending {
+	if coreSwitchPhase(m.navigationOptions()) != "pending" {
 		t.Fatal("heartbeat bypassed pending operation confirmation")
 	}
 	old := m.snapshot
 	old.Service = service.Status{State: "inactive"}
 	old.ServiceObservedAt = base.Add(10 * time.Second)
 	m, _ = update(m, resultMsg{id: actionID, snapshot: old, hasSnapshot: true, actionSucceeded: true})
-	if m.busy || m.snapshot.Service != current || coreToggleStateOf(m) != toggleOn {
+	if m.busy || m.snapshot.Service != current || coreSwitchPhase(m.navigationOptions()) != "on" {
 		t.Fatal("late postread overwrote newer external service observation")
 	}
 	m.acceptRuntimeEvent(app.RuntimeEvent{Source: app.RuntimeStatus, Instance: 2, ObservedAt: observed.Add(time.Second), Snapshot: app.RuntimeSnapshot{State: "stopped", Service: service.Status{State: "inactive"}}})
-	if coreToggleStateOf(m) != toggleOff {
+	if coreSwitchPhase(m.navigationOptions()) != "off" {
 		t.Fatal("external stop did not synchronize toggle")
 	}
 	m.acceptRuntimeEvent(app.RuntimeEvent{Source: app.RuntimeStatus, Instance: 1, ObservedAt: observed.Add(2 * time.Second), Snapshot: app.RuntimeSnapshot{State: "ready", Service: current}})
-	if coreToggleStateOf(m) != toggleOff {
+	if coreSwitchPhase(m.navigationOptions()) != "off" {
 		t.Fatal("old instance restarted current toggle")
+	}
+}
+
+func TestOverviewCoreSwitchRejectsHeartbeatSampledBeforeConfirmedSnapshot(t *testing.T) {
+	m, _ := coreToggleTestModel(t, true)
+	defer m.stopRuntime()
+	confirmed := m.snapshot
+	confirmed.ServiceObservedAt = time.Now().Add(-time.Minute)
+	m.adoptSnapshot(confirmed)
+
+	stopped := app.RuntimeEvent{Source: app.RuntimeStatus, Instance: 1, ObservedAt: confirmed.ServiceObservedAt.Add(-time.Second),
+		Snapshot: app.RuntimeSnapshot{State: "stopped", Service: service.Status{State: "inactive"}}}
+	deliver := func(event app.RuntimeEvent) tea.Cmd {
+		return m.acceptRuntime(runtimeResultMsg{generation: m.runtime.generation, events: []app.RuntimeEvent{event}})
+	}
+	if deliver(stopped) == nil || m.snapshot.Service != confirmed.Service || coreSwitchPhase(m.navigationOptions()) != "on" {
+		t.Fatal("late heartbeat displaced the confirmed running state or interrupted the listener")
+	}
+	stopped.ObservedAt = confirmed.ServiceObservedAt.Add(time.Second)
+	if deliver(stopped) == nil || coreSwitchPhase(m.navigationOptions()) != "off" {
+		t.Fatal("listener did not accept the subsequent observed stop")
 	}
 }
 
@@ -246,7 +277,7 @@ func TestOverviewCoreToggleCardHasStableCompactLayoutAcrossLifecycle(t *testing.
 		for _, width := range []int{4, 10, 20, 40, 72, 100} {
 			t.Run(fmt.Sprintf("%s/%d", language, width), func(t *testing.T) {
 				o := dashboardOptions{Locale: i18n.New(language), Now: time.Now(), Snapshot: app.Snapshot{Installed: true, Version: "v1.19.33", RunningVersion: "v1.19.33", Service: service.Status{State: "active", Active: true, PID: 10, StartedAt: time.Now().Add(-time.Hour)}}}
-				height, y := -1, -1
+				height := -1
 				for _, tc := range []struct {
 					state, action string
 					active        bool
@@ -265,12 +296,11 @@ func TestOverviewCoreToggleCardHasStableCompactLayoutAcrossLifecycle(t *testing.
 						}
 					}
 					if width >= 40 {
-						hit, _ := coreCardTarget(t, card, "core.toggle")
 						if height < 0 {
-							height, y = len(card.lines), hit.Y
+							height = len(card.lines)
 						}
-						if len(card.lines) != height || hit.Y != y {
-							t.Fatalf("lifecycle changed card geometry: %s/%s h=%d/y=%d want %d/%d", tc.state, tc.action, len(card.lines), hit.Y, height, y)
+						if len(card.lines) != height {
+							t.Fatalf("lifecycle changed card height: %s/%s h=%d want %d", tc.state, tc.action, len(card.lines), height)
 						}
 					}
 				}
@@ -303,8 +333,8 @@ func TestOverviewCoreToggleUnknownUnavailableAndTransitionsStayInert(t *testing.
 			m.busy = tc.busy
 			m.focus = "core.toggle"
 			m.layout()
-			if !hasAction(m.targets, "core.toggle") || m.focus != "core.toggle" {
-				t.Fatal("nonactionable observation lost toggle focus")
+			if hasAction(m.targets, "core.toggle") {
+				t.Fatal("nonactionable observation exposed a switch target")
 			}
 			calls := 0
 			b.control = func(context.Context, string) error { calls++; return nil }
@@ -332,8 +362,7 @@ func TestOverviewCoreUptimeKeepsActionInPlace(t *testing.T) {
 					Installed: true, Version: "v1.19.33", RunningVersion: "v1.19.33",
 					Service: service.Status{State: "active", Active: true, PID: 10},
 				}}
-				height := -1
-				var target hitRegion
+				height, row := -1, -1
 				longest := time.Duration(1<<63 - 1)
 				for _, sample := range []struct {
 					elapsed time.Duration
@@ -359,12 +388,23 @@ func TestOverviewCoreUptimeKeepsActionInPlace(t *testing.T) {
 						card := overviewCoreCard(o, width)
 						assertCanvas(t, strings.Join(card.lines, "\n"), width, len(card.lines))
 						assertRegions(t, card.targets, width, len(card.lines))
-						hit, _ := coreCardTarget(t, card, "core.toggle")
 						if height < 0 {
-							height, target = len(card.lines), hit
+							height = len(card.lines)
 						}
-						if (width >= 30 && len(card.lines) != height) || hit != target {
-							t.Fatalf("%s/%s moved core toggle: height=%d target=%+v, want height=%d target=%+v", sample.elapsed, phase, len(card.lines), hit, height, target)
+						if width >= 30 && len(card.lines) != height {
+							t.Fatalf("%s/%s changed the card height: %d, want %d", sample.elapsed, phase, len(card.lines), height)
+						}
+						if phase != "pending" {
+							if !hasAction(card.targets, "core.toggle") {
+								t.Fatal("confirmed service status lost its switch")
+							}
+							hit := findTarget(t, Model{targets: card.targets}, "core.toggle")
+							if row < 0 {
+								row = hit.Y
+							}
+							if hit.X != 2 || hit.Y != row {
+								t.Fatalf("uptime moved the status switch: %+v, want x=2 y=%d", hit, row)
+							}
 						}
 						if phase == "on" && width >= 30 && !strings.Contains(strings.Join(card.lines, "\n"), sample.want) {
 							t.Fatalf("uptime was dropped or truncated: %s", sample.elapsed)

@@ -27,7 +27,9 @@ func TestTooltipKeyboardNavigationAndOverlays(t *testing.T) {
 		t.Fatalf("missing tooltip or footer shortcut: %s", footer())
 	}
 	for _, button := range []string{"?", "？"} {
-		m, _ = update(m, key(button))
+		var save tea.Cmd
+		m, save = update(m, key(button))
+		m = finishKeyHintsSave(t, m, save)
 		if m.focus != owner || m.tooltip.open != "" || m.keyHints.hidden != (button == "?") {
 			t.Fatalf("%s on an annotated setting changed tooltip or focus, or failed to toggle the footer", button)
 		}
@@ -80,7 +82,7 @@ func TestTooltipRevealsFocusedSettingAfterScrolling(t *testing.T) {
 		t.Fatal("expected to have scrolled the focused control out of view")
 	}
 	m, _ = update(m, special(tea.KeyF1))
-	if m.keyHints.changed || m.tooltip.bounds.W == 0 || m.tooltip.offscreen.ID != "" {
+	if m.keyHints.generation != 0 || m.tooltip.bounds.W == 0 || m.tooltip.offscreen.ID != "" {
 		t.Fatal("F1 did not reveal the off-screen focused explanation")
 	}
 }

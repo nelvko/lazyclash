@@ -28,7 +28,7 @@ func coreCardTarget(t *testing.T, block dashboardBlock, id string) (hitRegion, s
 	return hitRegion{}, ""
 }
 
-func TestCoreCardSeparatesManagementFromRightAlignedLifecycleButton(t *testing.T) {
+func TestCoreCardKeepsManagementAndStatusAsSeparateTargets(t *testing.T) {
 	now := time.Now()
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		for _, width := range []int{16, 36, 72} {
@@ -42,38 +42,28 @@ func TestCoreCardSeparatesManagementFromRightAlignedLifecycleButton(t *testing.T
 					assertCanvas(t, strings.Join(block.lines, "\n"), width, len(block.lines))
 					assertRegions(t, block.targets, width, len(block.lines))
 					manage, link := coreCardTarget(t, block, "core.manage")
-					hit, face := coreCardTarget(t, block, "core.toggle")
-					label := o.Locale.T("dashboard.settings.stop")
-					if len(block.targets) != 2 || strings.TrimLeft(link, " ") != o.Locale.T("dashboard.core.manageAction") || strings.Trim(face, " []") != label || hit.X+hit.W != width-2 {
-						t.Fatalf("expected management link and right-aligned stop button: %+v %q %q", block.targets, link, face)
+					stops := block.overviewFocusRegions()
+					if len(stops) != 2 {
+						t.Fatalf("expected management and status controls: %+v", stops)
 					}
-					if plain && !strings.Contains(face, "[") {
-						t.Fatalf("monochrome stop lost button boundary: %q", face)
+					hit := stops[1]
+					if hit.ID != "core.toggle" || strings.TrimSpace(link) != o.Locale.T("dashboard.core.manageAction") ||
+						hit.X != 2 || manage.X+manage.W != width-2 || hit.Y <= manage.Y {
+						t.Fatalf("missing left-aligned status under the management heading: %+v", block.targets)
 					}
-					if !plain {
-						painted := ansi.Cut(block.lines[hit.Y], hit.X+2, hit.X+hit.W)
-						if !strings.Contains(painted, themed(ansi.Strip(painted), text, buttonSecondaryBackground, false)) {
-							t.Fatalf("stop lost its neutral action background: %q", painted)
+					body := ansi.Strip(strings.Join(block.lines[manage.Y+1:hit.Y], "\n"))
+					if !strings.Contains(body, "Mihomo") {
+						t.Fatal("Mihomo identity missing above status")
+					}
+					if width >= 36 {
+						_, face := coreCardTarget(t, block, "core.toggle")
+						want := "● " + o.Locale.T("dashboard.status.running")
+						if plain {
+							want = "[" + want + "]"
 						}
-					}
-					title := o.Locale.T("dashboard.overview.service")
-					state, _, _ := headerCoreState(o)
-					if width == 16 {
-						if manage.X+manage.W != width-2 || hit.Y <= manage.Y || strings.Contains(ansi.Strip(block.lines[hit.Y]), state) ||
-							!strings.Contains(ansi.Strip(strings.Join(block.lines[manage.Y+1:hit.Y], "\n")), state) {
-							t.Fatalf("wrapped button is not below the complete state:\n%s", ansi.Strip(strings.Join(block.lines, "\n")))
+						if strings.TrimSpace(face) != want || !strings.Contains(block.lines[hit.Y+1], o.Locale.T("dashboard.core.uptimeHours", 1)) {
+							t.Fatalf("expected actionable state above uptime: %q", face)
 						}
-						return
-					}
-					if !strings.Contains(ansi.Strip(block.lines[manage.Y]), title) || manage.X+manage.W != hit.X+hit.W {
-						t.Fatalf("right action edges differ: management=%+v stop=%+v", manage, hit)
-					}
-					if !strings.Contains(ansi.Strip(strings.Join(block.lines[manage.Y+1:hit.Y], "\n")), "Mihomo") ||
-						strings.TrimSpace(ansi.Strip(ansi.Cut(block.lines[hit.Y], 0, hit.X))) != state {
-						t.Fatalf("missing identity or state to the left of Stop:\n%s", ansi.Strip(strings.Join(block.lines, "\n")))
-					}
-					if got := strings.TrimSpace(ansi.Strip(block.lines[hit.Y+1])); got != o.Locale.T("dashboard.core.uptimeHours", 1) {
-						t.Fatalf("fallback uptime is not below the state: %q", got)
 					}
 				})
 			}
@@ -81,63 +71,34 @@ func TestCoreCardSeparatesManagementFromRightAlignedLifecycleButton(t *testing.T
 	}
 }
 
-func TestCoreCardActionsKeepTheirSizeAndFocusAcrossLifecycle(t *testing.T) {
-	for _, language := range []string{i18n.English, i18n.Chinese} {
-		for _, plain := range []bool{false, true} {
-			t.Run(fmt.Sprintf("%s/plain=%t", language, plain), func(t *testing.T) {
-				var slot hitRegion
-				for _, tc := range []struct {
-					state, problem, action, want string
-					active, busy                 bool
-				}{
-					{state: "active", active: true, want: "stop"},
-					{state: "inactive", want: "start"},
-					{state: "failed", want: "start"},
-					{state: "active", active: true, busy: true},
-					{state: "activating"},
-					{state: "deactivating", active: true},
-					{state: "active", active: true, busy: true, action: "restart"},
-					{state: "active", active: true, problem: "fixture service unavailable"},
-					{state: "unknown"},
-				} {
-					o := dashboardOptions{Locale: i18n.New(language), Busy: tc.busy, CoreAction: tc.action, PlainButtons: plain,
-						Snapshot: app.Snapshot{Installed: true, Service: service.Status{Active: tc.active, State: tc.state}, ServiceError: tc.problem}}
-					value := "—"
-					if tc.want != "" {
-						value = o.Locale.T("dashboard.settings." + tc.want)
-					}
-					idle := overviewCoreCard(o, 72)
-					hit, face := coreCardTarget(t, idle, "core.toggle")
-					if strings.Trim(face, " []") != value {
-						t.Fatalf("%s action = %q, want %q", tc.state, face, value)
-					}
-					if slot.ID == "" {
-						slot = hit
-					} else if hit.X != slot.X || hit.W != slot.W {
-						t.Fatalf("%s moved the action: %+v, want %+v", tc.state, hit, slot)
-					}
-					o.Focus = "core.toggle"
-					focusedHit, focused := coreCardTarget(t, overviewCoreCard(o, 72), "core.toggle")
-					if focusedHit != hit || !strings.Contains(focused, "›") || strings.Trim(focused, " []›") != value {
-						t.Fatalf("%s lost its visible focus or action: %q / %+v", tc.state, focused, focusedHit)
-					}
-
-					o.Focus, o.Hover = "", "core.toggle"
-					hover := overviewCoreCard(o, 72)
-					hoverHit, hoverFace := coreCardTarget(t, hover, "core.toggle")
-					if hoverHit != hit || hoverFace != face {
-						t.Fatalf("%s hover changed action text or target", tc.state)
-					}
-					if styled := idle.lines[hit.Y] != hover.lines[hit.Y]; styled != (tc.want != "") {
-						t.Fatalf("%s hover feedback=%t for action %q", tc.state, styled, tc.want)
-					}
-				}
-			})
+func TestCoreStatusOnlyOffersAnActionForConfirmedServiceStates(t *testing.T) {
+	for _, tc := range []struct {
+		state                    string
+		active, busy, actionable bool
+	}{
+		{state: "active", active: true, actionable: true}, {state: "inactive", actionable: true}, {state: "failed", actionable: true},
+		{state: "active", active: true, busy: true}, {state: "activating"}, {state: "deactivating", active: true}, {state: "unknown"},
+	} {
+		o := dashboardOptions{Busy: tc.busy, Focus: "core.toggle", Snapshot: app.Snapshot{
+			Installed: true, Service: service.Status{Active: tc.active, State: tc.state},
+		}}
+		card := overviewCoreCard(o, 72)
+		label, _, _ := headerCoreState(o)
+		if got := hasAction(card.targets, "core.toggle"); got != tc.actionable || !strings.Contains(ansi.Strip(strings.Join(card.lines, "\n")), label) {
+			t.Fatalf("%s: action=%t, label=%q", tc.state, got, label)
+		}
+		if tc.actionable {
+			hit, focused := coreCardTarget(t, card, "core.toggle")
+			o.Focus, o.Hover = "", "core.toggle"
+			hover, face := coreCardTarget(t, overviewCoreCard(o, 72), "core.toggle")
+			if hover != hit || !strings.Contains(focused, "›") || strings.Contains(face, "›") {
+				t.Fatalf("%s: focus/hover moved the status", tc.state)
+			}
 		}
 	}
 }
 
-func TestCoreCardMouseOnlyActivatesTheStartStopButton(t *testing.T) {
+func TestCoreCardMouseOnlyActivatesTheStatusSwitch(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		for _, active := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/active=%t", language, active), func(t *testing.T) {
@@ -161,8 +122,7 @@ func TestCoreCardMouseOnlyActivatesTheStartStopButton(t *testing.T) {
 					return nil
 				}
 
-				state, _, _ := headerCoreState(m.navigationOptions())
-				fields := []string{"Mihomo", state}
+				fields := []string{"Mihomo"}
 				if active {
 					fields = append(fields, m.tr("dashboard.core.uptimeHours", 1))
 				}
@@ -170,7 +130,7 @@ func TestCoreCardMouseOnlyActivatesTheStartStopButton(t *testing.T) {
 				for _, field := range fields {
 					found := false
 					for y, row := range strings.Split(m.screen, "\n") {
-						body := ansi.Strip(ansi.Cut(row, g.x, hit.X))
+						body := ansi.Strip(ansi.Cut(row, g.x, g.x+g.width))
 						prefix, _, ok := strings.Cut(body, field)
 						if !ok {
 							continue
@@ -196,5 +156,47 @@ func TestCoreCardMouseOnlyActivatesTheStartStopButton(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func TestWrappedCoreSwitchHitRegionsMatchPaintedLines(t *testing.T) {
+	m, _ := coreToggleTestModel(t, true)
+	defer m.stopRuntime()
+	m.noColor, m.width, m.height = true, 20, 40
+	m.layout()
+	var rows []hitRegion
+	for _, h := range m.targets {
+		if h.ID == "core.toggle" {
+			rows = append(rows, h)
+		}
+	}
+	if len(rows) != 2 {
+		t.Fatalf("expected a wrapped core switch at 20 columns: %+v", rows)
+	}
+	want := []string{"›[●", m.tr("dashboard.status.running") + "]"}
+	lines := strings.Split(m.screen, "\n")
+	for i, h := range rows {
+		line := ansi.Strip(lines[h.Y])
+		face := ansi.Cut(line, h.X, h.X+h.W)
+		if strings.TrimSpace(face) != want[i] || !strings.HasSuffix(face, want[i]) {
+			t.Fatalf("row %d hit region extends beyond its painted face: %q", i, face)
+		}
+		after := h.X + h.W
+		if ansi.Cut(line, after, after+1) != " " {
+			t.Fatalf("row %d has no adjacent blank cell", i)
+		}
+		outside, _ := update(m, tea.MouseClickMsg{X: after, Y: h.Y, Button: tea.MouseLeft})
+		if outside.busy {
+			t.Fatalf("clicking the blank cell after row %d activated the switch", i)
+		}
+		inside, _ := update(m, tea.MouseClickMsg{X: after - 1, Y: h.Y, Button: tea.MouseLeft})
+		if !inside.busy {
+			t.Fatalf("clicking the last painted cell of row %d missed the switch", i)
+		}
+	}
+	next, _ := update(m, special(tea.KeyTab))
+	back, _ := update(next, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
+	if next.focus == "core.toggle" || back.focus != "core.toggle" {
+		t.Fatalf("wrapped switch should occupy one Tab stop, got %q then %q", next.focus, back.focus)
 	}
 }

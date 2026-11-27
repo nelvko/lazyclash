@@ -57,28 +57,16 @@ def assert_core_affordance(terminal, words, scenario, profile, expect_focus=Fals
     expected = (r"›\s+" if expect_focus else "") + re.escape(manage)
     assert re.fullmatch(expected, heading), "incorrect heading: " + repr(heading)
     if scenario == "unavailable":
-        action = "—"
         status = "! " + words["dashboard.status.unknown"]
     elif scenario == "stopped":
-        action = words["dashboard.settings.start"]
         status = "○ " + words["dashboard.status.stopped"]
     else:
-        action = words["dashboard.settings.stop"]
         status = "● " + words["dashboard.status.running"]
 
     assert "".join(cells[y + 2][x:right]).strip() == "Mihomo", "missing core identity below heading"
-    status_y = next((r for r in range(y + 3, len(cells)) if "".join(cells[r][x:right]).startswith(status)), None)
-    assert status_y is not None, "missing core state: " + status
-    action_text = "".join(cells[status_y][x:right]).removeprefix(status).strip()
-    if profile == "no-color" and scenario != "unavailable":
-        assert re.fullmatch(r"\[\s*" + re.escape(action) + r"\s*\]", action_text), action_text
-        assert cells[status_y][right - 1] == "]", "button edge and Manage chevron are misaligned"
-    else:
-        assert action_text == action, (action_text, action)
-        if scenario != "unavailable":
-            backgrounds = [style[1] for style in terminal.screen.styles[status_y]]
-            assert backgrounds[right - 1] != backgrounds[right] and backgrounds[right] == backgrounds[x], \
-                "button background and Manage chevron are misaligned"
+    expected = "[" + status + "]" if profile == "no-color" and scenario != "unavailable" else status
+    status_y = next((r for r in range(y + 3, len(cells)) if "".join(cells[r][x:right]).strip() == expected), None)
+    assert status_y is not None, "missing standalone core switch: " + expected
 
     size = (terminal.screen.columns, terminal.screen.rows)
     # With key hints shown the sidebar needs eleven rows for its menu and clock.
@@ -106,7 +94,7 @@ def assert_core_affordance(terminal, words, scenario, profile, expect_focus=Fals
         assert body[-1] in (uptime % (2, 18), uptime % (2, 19)), "incorrect fallback uptime: " + repr(body)
     if scenario != "drift":
         assert all("v1.19.33" not in line for line in body), "core card exposed a version without a mismatch"
-    return action
+    return status
 
 
 def inspect_core_management(preview, terminal, output, words, scenario, args, mouse):
@@ -590,8 +578,9 @@ def exercise(preview, binary, output, language, profile, scenario, args):
 
         inspect_core_management(preview, terminal, output, words, scenario, args, mouse=False)
 
-        expected = [words["dashboard.core.manageAction"], lifecycle, words["dashboard.overview.profilesAction"], words["dashboard.network.configure"], words["dashboard.overview.proxiesAction"]]
+        expected = [words["dashboard.core.manageAction"], words["dashboard.overview.profilesAction"], words["dashboard.network.configure"], words["dashboard.overview.proxiesAction"]]
         if scenario != "unavailable":
+            expected.append(lifecycle)
             expected.extend([words["dashboard.mode." + mode] for mode in ("rule", "global", "direct")])
 
         for width, height in SIZES:
@@ -640,7 +629,8 @@ def exercise(preview, binary, output, language, profile, scenario, args):
                 inspect_core_management(preview, terminal, output, words, scenario, args, mouse=True)
             terminal.key(b"\t")
             terminal.settle()
-            assert focused(terminal, lifecycle), "Tab from Manage did not focus the lifecycle action"
+            if scenario != "unavailable":
+                assert focused(terminal, lifecycle), "Tab from Manage did not focus the core switch"
             tab_controls(terminal, expected)
             preview.capture(terminal, output, "tab-revealed-%dx%d" % (width, height), args)
             assert words["dashboard.footer.quit"] in terminal.screen.text().splitlines()[-1], "Quit hint left the footer"

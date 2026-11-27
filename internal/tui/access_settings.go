@@ -349,12 +349,11 @@ func (m *Model) accessReview(d *wizardDocument) {
 	}
 }
 
-func (m *Model) toggleAccessLAN() tea.Cmd {
+func (m *Model) setAccessLAN(on bool) tea.Cmd {
 	if !m.pageSelectionMenuAvailable("settings") || !m.snapshot.Installed {
 		return nil
 	}
 	backend := m.backend
-	on := !m.snapshot.RuntimeSettings.AllowLAN
 	label := m.tr("settings.allowLAN")
 	return m.begin(m.tr("settings.coreSaving", label), m.tr("settings.coreSaved", label), func(ctx context.Context) error {
 		current, err := backend.GetRuntimeSettings(ctx)

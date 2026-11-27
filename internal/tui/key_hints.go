@@ -2,15 +2,16 @@ package tui
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 )
 
 type keyHintsState struct {
-	hidden, changed, pending bool
-	generation               uint64
-	originPage               string
+	hidden, pending bool
+	generation      uint64
+	originPage      string
 }
 
 type keyHintsSavedMsg struct {
@@ -19,32 +20,34 @@ type keyHintsSavedMsg struct {
 	err        error
 }
 
-func (m *Model) loadKeyHintsPreference(hidden bool) {
-	// Startup reads can finish after the user has already toggled the bar.
-	if !m.keyHints.changed {
-		m.keyHints.hidden = hidden
-	}
-}
-
-func (m *Model) toggleKeyHints() tea.Cmd {
-	m.keyHints.hidden = !m.keyHints.hidden
-	m.keyHints.changed = true
-	m.keyHints.originPage = m.page
-	m.revealContentFocus()
-	return m.saveKeyHints()
-}
-
-func (m *Model) saveKeyHints() tea.Cmd {
-	if m.keyHints.pending {
+func (m *Model) saveKeyHints(hidden bool) tea.Cmd {
+	if m.keyHints.pending || m.quitting || m.keyHints.hidden == hidden {
 		return nil
 	}
 	m.keyHints.pending = true
+	m.keyHints.originPage = m.page
 	m.keyHints.generation++
-	id, hidden, backend, ctx := m.keyHints.generation, m.keyHints.hidden, m.backend, m.ctx
+	id, previous := m.keyHints.generation, m.keyHints.hidden
+	backend, parent := m.backend, m.ctx
 	return func() tea.Msg {
-		ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		ctx, cancel := context.WithTimeout(parent, 3*time.Second)
 		defer cancel()
-		return keyHintsSavedMsg{generation: id, hidden: hidden, err: backend.SaveKeyHintsPreference(ctx, hidden)}
+		observed := hidden
+		err := backend.SaveKeyHintsPreference(ctx, hidden)
+		if err != nil {
+			// The write may have published the preference before returning an
+			// error. Read it back, keeping the last observation if that also fails.
+			readCtx, stop := context.WithTimeout(parent, 3*time.Second)
+			defer stop()
+			prefs, readErr := backend.ReadPreferences(readCtx)
+			if readErr == nil {
+				observed = prefs.HideKeyHints
+			} else {
+				observed = previous
+				err = errors.Join(err, readErr)
+			}
+		}
+		return keyHintsSavedMsg{generation: id, hidden: observed, err: err}
 	}
 }
 
@@ -53,9 +56,9 @@ func (m *Model) acceptKeyHintsSaved(msg keyHintsSavedMsg) tea.Cmd {
 		return nil
 	}
 	m.keyHints.pending = false
-	// Serialize saves and coalesce intermediate toggles so the final choice wins.
-	if msg.hidden != m.keyHints.hidden {
-		return m.saveKeyHints()
+	if m.keyHints.hidden != msg.hidden {
+		m.keyHints.hidden = msg.hidden
+		m.revealContentFocus()
 	}
 	const key = "key-hints.save"
 	if msg.err == nil {

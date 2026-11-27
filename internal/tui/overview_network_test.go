@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -22,6 +23,7 @@ func TestOverviewNetworkKeepsUnavailableControlsDisabledAndAddressesInDetails(t 
 				Service:      service.Status{Active: true, State: "active"},
 				Capabilities: app.Capabilities{Scope: "user", Runtime: app.Capability{Supported: true}},
 			}}
+			o.Snapshot.TerminalProxy.State = "unsupported"
 			for _, width := range []int{16, 40, 100} {
 				card := overviewNetworkCard(o, width)
 				plain := ansi.Strip(strings.Join(card.lines, "\n"))
@@ -61,13 +63,13 @@ func TestOverviewNetworkHostTUNKeepsObservedStateAndActionGuards(t *testing.T) {
 	}}
 	card := overviewNetworkCard(o, 100)
 	plain := ansi.Strip(strings.Join(card.lines, "\n"))
-	if !hasAction(card.targets, "tun.disable") || strings.Contains(plain, "Saved:") || strings.Contains(plain, "Running TUN:") || !strings.Contains(plain, "Host TUN") {
+	if !hasAction(card.targets, "tun.toggle") || strings.Contains(plain, "Saved:") || strings.Contains(plain, "Running TUN:") || !strings.Contains(plain, "Host TUN") {
 		t.Fatalf("confirmed host TUN state lost its scope or retained duplicate observations: %s", plain)
 	}
 	actual = false
 	card = overviewNetworkCard(o, 100)
 	plain = ansi.Strip(strings.Join(card.lines, "\n"))
-	if !hasAction(card.targets, "tun.disable") || !strings.Contains(plain, "Saved: On") || !strings.Contains(plain, "Running TUN: Off") {
+	if !hasAction(card.targets, "tun.toggle") || !strings.Contains(plain, "Saved: On") || !strings.Contains(plain, "Running TUN: Off") {
 		t.Fatalf("saved/runtime drift lost distinction or recovery control: %s", plain)
 	}
 	for _, kind := range []string{"service error", "transition", "busy"} {
@@ -81,7 +83,7 @@ func TestOverviewNetworkHostTUNKeepsObservedStateAndActionGuards(t *testing.T) {
 			candidate.Busy = true
 		}
 		card = overviewNetworkCard(candidate, 100)
-		if hasAction(card.targets, "tun.disable") || hasAction(card.targets, "tun.enable") {
+		if hasAction(card.targets, "tun.toggle") {
 			t.Fatalf("%s retained an actionable TUN operation", kind)
 		}
 	}
@@ -94,7 +96,7 @@ func TestNetworkCardAlignsReadOnlyAndInteractiveStatus(t *testing.T) {
 		o.Snapshot.TerminalProxy.State = "incomplete"
 		o.Snapshot.Capabilities.TUN.Supported = false
 		card := overviewNetworkCard(o, 46)
-		if len(card.targets) != 3 || card.targets[0].ID != "terminal.enable" || card.targets[2].ID != "network.tunConfig" {
+		if len(card.targets) != 3 || card.targets[0].ID != "terminal.toggle" || card.targets[2].ID != "network.tunConfig" {
 			t.Fatalf("unexpected actions for repairable terminal and read-only TUN: %+v", card.targets)
 		}
 		var statusX int
@@ -123,7 +125,7 @@ func TestNetworkCardAlignsSettingsAndWrapsControlsAtEachWidth(t *testing.T) {
 	actual := snapshot.TUN
 	snapshot.TUNActual = &actual
 	snapshot.TerminalProxy.State = "off"
-	ids := []string{"terminal.enable", "network.primaryConfig", "tun.enable", "network.tunConfig"}
+	ids := []string{"terminal.toggle", "network.primaryConfig", "tun.toggle", "network.tunConfig"}
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		for _, width := range []int{19, 29, 76} {
 			t.Run(fmt.Sprintf("%s/%d", language, width), func(t *testing.T) {
@@ -204,10 +206,11 @@ func TestOverviewNetworkKeepsExtraActionsAndObservationsWithTheirSettings(t *tes
 			view := ansi.Strip(strings.Join(card.lines, "\n"))
 			assertCanvas(t, view, width, len(card.lines))
 			assertRegions(t, card.targets, width, len(card.lines))
-			if len(card.targets) != 5 {
-				t.Fatalf("missing a setting action at width %d: %+v", width, card.targets)
+			stops := card.overviewFocusRegions()
+			if len(stops) != 5 {
+				t.Fatalf("missing a setting action at width %d: %+v", width, stops)
 			}
-			config, command, tun, tunConfig := card.targets[1], card.targets[2], card.targets[3], card.targets[4]
+			config, command, tun, tunConfig := stops[1], stops[2], stops[3], stops[4]
 			if config.ID != "network.primaryConfig" || command.ID != "terminal.activation" ||
 				command.Y < config.Y+config.H || command.Y+command.H >= tun.Y {
 				t.Fatalf("expected the activation command under its terminal setting:\n%s", view)
@@ -244,9 +247,9 @@ func TestNetworkCardTabVisitsEachGroupBeforeTheNext(t *testing.T) {
 				key tea.KeyPressMsg
 				id  string
 			}{
-				{special(tea.KeyEnter), "terminal.enable"},
-				{tab, "network.primaryConfig"}, {tab, "tun.enable"}, {tab, "network.tunConfig"},
-				{back, "tun.enable"}, {back, "network.primaryConfig"}, {back, "terminal.enable"},
+				{special(tea.KeyEnter), "terminal.toggle"},
+				{tab, "network.primaryConfig"}, {tab, "tun.toggle"}, {tab, "network.tunConfig"},
+				{back, "tun.toggle"}, {back, "network.primaryConfig"}, {back, "terminal.toggle"},
 			} {
 				m, _ = update(m, step.key)
 				if m.focus != step.id || m.ports.open || m.form != "" || m.busy {
@@ -286,15 +289,15 @@ func TestNetworkToggleFocusFollowsNewObservation(t *testing.T) {
 	snapshot := hostTUNBackend().snapshot
 	snapshot.TerminalProxy.State = "on"
 	snapshot.TerminalProxy.Desired = true
-	m := Model{page: "overview", width: 120, height: 32, focus: "terminal.enable"}
+	m := Model{page: "overview", width: 120, height: 32, focus: "terminal.toggle"}
 	m.adoptSnapshot(snapshot)
-	if m.focus != "terminal.disable" {
+	if m.focus != "terminal.toggle" {
 		t.Fatalf("updated terminal switch lost focus: %s", m.focus)
 	}
-	m.focus = "tun.enable"
+	m.focus = "tun.toggle"
 	snapshot.TUN = true
 	m.adoptSnapshot(snapshot)
-	if m.focus != "tun.disable" {
+	if m.focus != "tun.toggle" {
 		t.Fatalf("updated host TUN switch lost focus: %s", m.focus)
 	}
 	snapshot.Capabilities.TUN.Supported = false
@@ -310,7 +313,7 @@ func TestNetworkSwitchCanReversePendingShellRequest(t *testing.T) {
 	terminal := &o.Snapshot.TerminalProxy
 	terminal.State, terminal.Applied = "disabling", true
 	card := overviewNetworkCard(o, 46)
-	if !hasAction(card.targets, "terminal.enable") || hasAction(card.targets, "terminal.disable") {
+	if !hasAction(card.targets, "terminal.toggle") || o.terminalSwitch().On {
 		t.Fatal("a pending off request must allow the user to request on again")
 	}
 	terminal.State, terminal.Applied, terminal.Pending, terminal.ActivationCommand = "off", false, true, "source shell-hook"
@@ -340,6 +343,71 @@ func TestPortsDetailsShowFreshAddressesAndKeepControllerCredentialsPrivate(t *te
 				if strings.Contains(plain, hidden) {
 					t.Fatalf("settings showed stale/proposed endpoint or leaked %q: %s", hidden, plain)
 				}
+			}
+		})
+	}
+}
+
+// A saved shell request and the foreground command producing it are distinct.
+// While the command runs the switch cannot be reversed, including by mouse.
+func TestOverviewTerminalSwitchWaitsForReadbackAndRejectsRepeatedInput(t *testing.T) {
+	b := &terminalBackend{fakeBackend: hostTUNBackend()}
+	b.snapshot.Service = service.Status{State: "active", Active: true}
+	b.snapshot.TerminalProxy.State = "off"
+	m := ready(b.fakeBackend)
+	m.backend = b
+	defer m.stopRuntime()
+	m.focus, m.width, m.height = "terminal.toggle", 160, 45
+	m.layout()
+	initial := findTarget(t, m, m.focus)
+	m, cmd := update(m, tea.MouseClickMsg{X: initial.X, Y: initial.Y, Button: tea.MouseLeft})
+	s := m.navigationOptions().terminalSwitch()
+	if !m.busy || s.Enabled() || !s.Pending || s.On || b.calls != 0 || hasAction(m.targets, "terminal.toggle") {
+		t.Fatal("in-flight switch advertised an applied value or remained clickable")
+	}
+	repeat := special(tea.KeyEnter)
+	repeat.IsRepeat = true
+	id := m.id
+	m, _ = update(m, repeat)
+	if m.id != id || m.activate("terminal.toggle") != nil {
+		t.Fatal("in-flight switch accepted another activation")
+	}
+	m, _ = update(m, actionCmd(t, cmd)())
+	s = m.navigationOptions().terminalSwitch()
+	if b.calls != 1 || m.busy || !s.Enabled() || !s.On || s.Pending || s.Message != "◌ "+m.tr("dashboard.network.pending") {
+		t.Fatal("observed shell activation requirement was lost or presented as applied")
+	}
+	m, _ = update(m, repeat)
+	if m.busy || m.id != id {
+		t.Fatal("held key reversed the saved request after completion")
+	}
+}
+
+func TestNetworkSwitchesShowUnknownAfterActionReadbackFails(t *testing.T) {
+	for _, id := range []string{"terminal.toggle", "tun.toggle"} {
+		t.Run(id, func(t *testing.T) {
+			b := &terminalBackend{fakeBackend: hostTUNBackend()}
+			b.snapshot.Service = service.Status{State: "active", Active: true}
+			b.snapshot.TerminalProxy.State = "off"
+			b.snapshot.TUN = true
+			m := ready(b.fakeBackend)
+			defer m.stopRuntime()
+			m.backend = b
+			m.focus = id
+			m.width, m.height = 120, 32
+			m.layout()
+			cmd := m.activate(id)
+			b.snapshotErr = errors.New("fixture readback unavailable")
+			m, _ = update(m, actionCmd(t, cmd)())
+			s, _ := m.navigationOptions().overviewSwitch(id)
+			if s.Enabled() || s.Message != m.tr("dashboard.status.unknown") || m.failure == "" || m.activate(id) != nil {
+				t.Fatal("failed readback presented the earlier value as confirmed")
+			}
+			b.snapshotErr = nil
+			m.adoptSnapshot(b.snapshot)
+			s, _ = m.navigationOptions().overviewSwitch(id)
+			if !s.Enabled() {
+				t.Fatal("successful observation did not restore the switch")
 			}
 		})
 	}

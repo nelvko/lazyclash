@@ -66,8 +66,8 @@ func TestOverviewHintsHideActionsOnReadOnlyCardsAndUnavailableToggle(t *testing.
 			if m.focus != "card.profiles" || !strings.Contains(m.contextHelp(), m.tr("navigation.controls.openProfiles")) {
 				t.Fatal("entering profile card did not expose its page action")
 			}
-			m.focus = "core.toggle"
 			for _, state := range []string{"activating", "deactivating", "unknown"} {
+				m.focus = "core.toggle"
 				m.snapshot.Service = service.Status{State: state}
 				if strings.Contains(m.contextHelp(), "Enter") {
 					t.Fatalf("%s toggle advertised activation", state)
@@ -78,6 +78,7 @@ func TestOverviewHintsHideActionsOnReadOnlyCardsAndUnavailableToggle(t *testing.
 				}
 			}
 			for _, active := range []bool{false, true} {
+				m.focus = "core.toggle"
 				state, label := "inactive", "dashboard.settings.start"
 				if active {
 					state, label = "active", "dashboard.settings.stop"
@@ -107,7 +108,8 @@ func TestSettingsHintsNameTheFocusedControl(t *testing.T) {
 			}
 		}
 		m.focus = "key-hints.toggle"
-		m, _ = update(m, special(tea.KeyEnter))
+		m, save := update(m, special(tea.KeyEnter))
+		m = finishKeyHintsSave(t, m, save)
 		if !m.keyHints.hidden || !strings.HasPrefix(m.contextHelp(), "Enter "+m.tr("navigation.controls.showHints")+" · ") {
 			t.Fatal("key-hint switch did not describe the reverse action")
 		}

@@ -57,16 +57,19 @@ def wait_sidebar_clock(terminal, lower, upper):
     raise AssertionError('sidebar clock did not reach the expected process age\n' + terminal.screen.text())
 
 
-def state_action(terminal, label):
-    state = "○ Stopped" if label == "Start" else "● Running"
-    button = re.compile(re.escape(label) + r'(?=\s|\]|$)')
-    for y, row in enumerate(terminal.screen.cells):
-        if state not in ''.join(row):
-            continue
-        for x, cell in enumerate(row):
-            # Match the button in the status row, including its plain-text brackets.
-            if cell and button.match(''.join(row[x:])):
-                return x, y
+def core_switch(terminal, label):
+    # The sidebar and compact page title also display the current state.
+    # Only the state inside the core card (below its title) is interactive.
+    start = next(((x, y) for y, row in enumerate(terminal.screen.cells)
+                  for x, cell in enumerate(row) if cell == "C" and "".join(row[x:]).startswith("Core Status")), None)
+    if start:
+        left, top = start
+        for y, row in enumerate(terminal.screen.cells[top + 1:], top + 1):
+            if "Current Subscription" in "".join(row[left:left + 22]):
+                break
+            for x in range(left, min(left + 8, len(row))):
+                if row[x] and "".join(row[x:]).startswith(label):
+                    return x, y
     return None
 
 
@@ -107,7 +110,7 @@ def main():
             terminal=SMOKE.Terminal([sys.executable,'-c',wrapper,json.dumps(env),*argv])
             terminal.wait('○ Stopped');terminal.settle()
             assert not status()['Active']
-            assert state_action(terminal, 'Start') is not None
+            assert core_switch(terminal, '○ Stopped') is not None
             assert 'Up for ' not in terminal.screen.text()
             assert sidebar_seconds(terminal) is None
             capture(terminal,output,'stopped')
@@ -115,12 +118,12 @@ def main():
 
             # All queued repeats arrive while the first lifecycle operation is
             # pending. Their state changes must not create a second operation.
-            x, y = state_action(terminal, 'Start')
+            x, y = core_switch(terminal, '○ Stopped')
             terminal.send(f'\x1b[<0;{x+1};{y+1}M\x1b[<0;{x+1};{y+1}m'.encode()+b'\r \r')
             terminal.wait('● Running');wait_sidebar_clock(terminal, 0, 60);terminal.settle()
             active=status();assert active['Active'] and active['PID']>0,active
             first_pid=active['PID']
-            assert state_action(terminal, 'Stop') is not None
+            assert core_switch(terminal, '● Running') is not None
             capture(terminal,output,'toggle-started')
             results['toggle_start_and_pending_dedup']=True
 
@@ -135,6 +138,8 @@ def main():
             # A real occupied port causes the existing application start path
             # to fail before systemd starts. The core must stay stopped.
             with socket.socket() as blocker:
+                # Connections from the stopped listener can still be in TIME_WAIT.
+                blocker.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
                 blocker.bind(('127.0.0.1',mixed));blocker.listen()
                 terminal.send(b' ')
                 terminal.wait(f'127.0.0.1:{mixed}');terminal.settle()
@@ -145,7 +150,7 @@ def main():
                     if '×' not in terminal.screen.text(): break
                     terminal.click_text('×');terminal.settle()
                 terminal.wait('○ Stopped')
-                assert state_action(terminal, 'Start') is not None
+                assert core_switch(terminal, '○ Stopped') is not None
                 assert not status()['Active']
                 capture(terminal,output,'failed-start-actual-off')
             results['start_failure_rereads_off']=True
@@ -183,7 +188,7 @@ def main():
             for columns,rows in ((80,24),(60,20),(40,16),(120,40)):
                 terminal.resize(columns,rows);terminal.settle()
                 terminal.wait('○ Stopped')
-                assert state_action(terminal, 'Start') is not None
+                assert core_switch(terminal, '○ Stopped') is not None
                 capture(terminal,output,f'stopped-{columns}x{rows}')
             results['narrow_layout_and_recovery']=True
             results['saw_starting_frame']='◌ Starting' in terminal.text()

@@ -110,27 +110,27 @@ func TestCoreStatusKeepsFailuresTransitionsAndMissingTimingExplicit(t *testing.T
 			name, state, serviceError, apiError, action                      string
 			requestedRunning, active, missingTime, futureTime, noPID, uptime bool
 			unsupported, stateUnavailable                                    bool
-			toggle                                                           toggleState
+			toggle                                                           string
 		}{
-			{name: "stopped", state: "inactive", toggle: toggleOff},
-			{name: "failed", state: "failed", toggle: toggleOff},
-			{name: "unexpected exit", state: "inactive", requestedRunning: true, toggle: toggleOff},
-			{name: "starting", state: "activating", toggle: togglePending},
-			{name: "stopping", state: "deactivating", toggle: togglePending},
-			{name: "reloading", state: "reloading", toggle: togglePending},
-			{name: "unknown", state: "unknown", toggle: toggleUnknown},
-			{name: "empty state", toggle: toggleUnknown},
-			{name: "unrecognized state", state: "new-state", toggle: toggleUnknown},
-			{name: "service unavailable", state: "unknown", serviceError: "fixture manager unavailable", toggle: toggleUnavailable},
-			{name: "monitor unavailable", state: "active", active: true, apiError: "fixture controller unavailable", toggle: toggleOn, uptime: true},
-			{name: "read-only running process", state: "active", active: true, unsupported: true, toggle: toggleUnavailable, uptime: true},
-			{name: "stale running snapshot", state: "active", active: true, stateUnavailable: true, toggle: toggleUnavailable},
-			{name: "missing time", state: "active", active: true, missingTime: true, toggle: toggleOn},
-			{name: "future time", state: "active", active: true, futureTime: true, toggle: toggleOn},
-			{name: "missing process", state: "active", active: true, noPID: true, toggle: toggleOn},
-			{name: "local start", state: "inactive", action: "start", toggle: togglePending},
-			{name: "local stop", state: "active", active: true, action: "stop", toggle: togglePending},
-			{name: "local restart", state: "active", active: true, action: "restart", toggle: togglePending},
+			{name: "stopped", state: "inactive", toggle: "off"},
+			{name: "failed", state: "failed", toggle: "off"},
+			{name: "unexpected exit", state: "inactive", requestedRunning: true, toggle: "off"},
+			{name: "starting", state: "activating", toggle: "pending"},
+			{name: "stopping", state: "deactivating", toggle: "pending"},
+			{name: "reloading", state: "reloading", toggle: "pending"},
+			{name: "unknown", state: "unknown", toggle: "disabled"},
+			{name: "empty state", toggle: "disabled"},
+			{name: "unrecognized state", state: "new-state", toggle: "disabled"},
+			{name: "service unavailable", state: "unknown", serviceError: "fixture manager unavailable", toggle: "disabled"},
+			{name: "monitor unavailable", state: "active", active: true, apiError: "fixture controller unavailable", toggle: "on", uptime: true},
+			{name: "read-only running process", state: "active", active: true, unsupported: true, toggle: "disabled", uptime: true},
+			{name: "stale running snapshot", state: "active", active: true, stateUnavailable: true, toggle: "disabled"},
+			{name: "missing time", state: "active", active: true, missingTime: true, toggle: "on"},
+			{name: "future time", state: "active", active: true, futureTime: true, toggle: "on"},
+			{name: "missing process", state: "active", active: true, noPID: true, toggle: "on"},
+			{name: "local start", state: "inactive", action: "start", toggle: "pending"},
+			{name: "local stop", state: "active", active: true, action: "stop", toggle: "pending"},
+			{name: "local restart", state: "active", active: true, action: "restart", toggle: "pending"},
 		} {
 			t.Run(language+"/"+tc.name, func(t *testing.T) {
 				o := dashboardOptions{Locale: i18n.New(language), Now: now, Busy: tc.action != "", CoreAction: tc.action, StateUnavailable: tc.stateUnavailable,
@@ -153,17 +153,15 @@ func TestCoreStatusKeepsFailuresTransitionsAndMissingTimingExplicit(t *testing.T
 				if tc.requestedRunning {
 					o.Snapshot.Desired = app.DesiredState{Known: true, Running: true}
 				}
-				widget := overviewCoreToggle(o)
-				if widget.state != tc.toggle {
-					t.Fatalf("toggle state=%v want %v", widget.state, tc.toggle)
+				if got := coreSwitchPhase(o); got != tc.toggle {
+					t.Fatalf("switch state=%s want %s", got, tc.toggle)
 				}
 				block := overviewCoreCard(o, 72)
 				plain := ansi.Strip(strings.Join(block.lines, "\n"))
 				face, _, _ := headerCoreState(o)
-				action, _ := coreCardTarget(t, block, "core.toggle")
-				beforeFooter := ansi.Strip(strings.Join(block.lines[:action.Y], "\n"))
-				if !strings.Contains(beforeFooter, "Mihomo") || strings.TrimSpace(ansi.Strip(ansi.Cut(block.lines[action.Y], 0, action.X))) != face {
-					t.Fatalf("%s: status and button did not share a row below the identity:\n%s", tc.name, plain)
+				beforeFooter, _, found := strings.Cut(plain, face)
+				if !found || !strings.Contains(beforeFooter, "Mihomo") || hasAction(block.targets, "core.toggle") != (tc.toggle == "on" || tc.toggle == "off") {
+					t.Fatalf("%s: status switch did not show the observation below the identity:\n%s", tc.name, plain)
 				}
 				prefix := "Up for "
 				if language == i18n.Chinese {
@@ -219,7 +217,7 @@ func TestOverviewTitlesKeepSpacingAndNavigationActionsStayInHeading(t *testing.T
 	manage, _ := coreCardTarget(t, body, "core.manage")
 	action, _ := coreCardTarget(t, body, "core.toggle")
 	aboveStatus := ansi.Strip(ansi.Cut(body.lines[action.Y-1], core.X, core.X+core.W))
-	if manage.Y != core.Y+1 || action.Y != core.Y+core.H-2 || manage.X+manage.W != action.X+action.W ||
+	if manage.Y != core.Y+1 || action.Y != core.Y+core.H-2 || action.X != core.X+2 ||
 		strings.TrimSpace(aboveStatus) != "" {
 		t.Fatalf("unexpected status row layout: management=%+v action=%+v card=%+v row above status=%q", manage, action, core, aboveStatus)
 	}
@@ -237,8 +235,8 @@ func TestCoreCardKeepsFailureBeforeWideFooterAndAfterCompactAction(t *testing.T)
 		}}
 		card := overviewCoreCard(o, 56)
 		hit, face := coreCardTarget(t, card, "core.toggle")
-		if strings.TrimSpace(face) != o.Locale.T("dashboard.settings.start") {
-			t.Fatalf("failed service has no Start button: %q", face)
+		if strings.TrimSpace(face) != "! "+o.Locale.T("dashboard.status.failed") {
+			t.Fatalf("failed service lost its failure label on the retry control: %q", face)
 		}
 		before := ansi.Strip(strings.Join(card.lines[:hit.Y], "\n"))
 		after := ansi.Strip(strings.Join(card.lines[hit.Y+1:], "\n"))

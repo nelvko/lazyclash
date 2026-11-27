@@ -40,7 +40,7 @@ func TestSevenPageKeysDoNotEscapeInputs(t *testing.T) {
 			page := m.page
 			for _, character := range "1234567?？" {
 				m, _ = update(m, key(string(character)))
-				if m.page != page || m.keyHints.changed {
+				if m.page != page || m.keyHints.generation != 0 {
 					t.Fatal("printable shortcut escaped the active input")
 				}
 			}

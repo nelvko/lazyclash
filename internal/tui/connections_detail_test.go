@@ -53,7 +53,7 @@ func TestConnectionDetailOverlayKeepsListInPlaceAndOwnsInput(t *testing.T) {
 		m, _ = update(m, msg)
 	}
 	m, _ = update(m, tea.MouseWheelMsg{Button: tea.MouseWheelDown, X: 0, Y: 0})
-	if m.focus != "conn.back" || m.connections.detail == nil || m.connections.closedView || m.connections.paused || m.keyHints.changed || m.scroll != scroll || m.connections.editing || m.connections.search.Value() != "host-" {
+	if m.focus != "conn.back" || m.connections.detail == nil || m.connections.closedView || m.connections.paused || m.keyHints.generation != 0 || m.scroll != scroll || m.connections.editing || m.connections.search.Value() != "host-" {
 		t.Fatal("detail window leaked a shortcut, paste or wheel to the list")
 	}
 	m, _ = update(m, tea.MouseClickMsg{Button: tea.MouseLeft, X: 0, Y: 0})

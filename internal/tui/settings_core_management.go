@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"strings"
 
+	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/downloadnet"
 )
 
@@ -88,6 +89,10 @@ func autostartActionLabel(enabled bool) string {
 	return "dashboard.settings.enableAutostart"
 }
 
+func autostartStateKnown(s app.Snapshot) bool {
+	return s.ServiceError == "" && (s.Service.EnableState == "enabled" || s.Service.EnableState == "disabled")
+}
+
 func settingsAutostart(o dashboardOptions) settingsRow {
 	tr, s := o.Locale.T, o.Snapshot
 	label := tr("settings.autostart")
@@ -100,8 +105,8 @@ func settingsAutostart(o dashboardOptions) settingsRow {
 			note = tr("dashboard.settings.lingerDisabled")
 		}
 	}
-	if s.ServiceError == "" && (s.Service.EnableState == "enabled" || s.Service.EnableState == "disabled") {
-		row := settingsSwitchRow(autostartToggleTarget, label, s.Service.Enabled, !o.Busy)
+	if autostartStateKnown(s) {
+		row := o.switchRow(autostartToggleTarget, label)
 		row.note = note
 		if s.Desired.Known && s.Desired.Autostart != s.Service.Enabled {
 			row.note = strings.TrimSpace(note + "\n" + tr("diagnostic.snapshot.autostartDrift"))
@@ -109,6 +114,5 @@ func settingsAutostart(o dashboardOptions) settingsRow {
 		}
 		return row
 	}
-	return settingsRow{label: label, note: note, value: tr("dashboard.status.unknown"), control: settingsTrailing,
-		actions: []overviewControlButton{{id: autostartToggleTarget, label: tr(autostartActionLabel(s.Service.Enabled)), enabled: !o.Busy}}}
+	return settingsRow{label: label, note: note, value: tr("dashboard.status.unknown"), control: settingsReadOnly, rightAlign: true}
 }

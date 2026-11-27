@@ -92,14 +92,14 @@ func TestLocalizedCoreControlsPreserveStateAndSelection(t *testing.T) {
 	o := dashboardOptions{Locale: i18n.New("zh-Hans"), Snapshot: app.Snapshot{Installed: true, Service: service.Status{Active: true, State: "active"}}}
 	block := overviewCoreCard(o, 56)
 	plain := ansi.Strip(strings.Join(block.lines, "\n"))
-	if !hasAction(block.targets, "core.toggle") || strings.Count(plain, "运行中") != 1 || !strings.Contains(plain, "停止") || strings.Contains(plain, "启动") || strings.Contains(plain, "已开启") {
+	if !hasAction(block.targets, "core.toggle") || strings.Count(plain, "运行中") != 1 || strings.Contains(plain, "停止") || strings.Contains(plain, "启动") || strings.Contains(plain, "已开启") {
 		t.Fatal("core toggle lost its localized running state or stop affordance")
 	}
 	o.Snapshot.Service.Active = false
 	o.Snapshot.Service.State = "unknown"
 	block = overviewCoreCard(o, 56)
 	plain = ansi.Strip(strings.Join(block.lines, "\n"))
-	if !hasAction(block.targets, "core.toggle") || !strings.Contains(plain, "? 未知") || strings.Contains(plain, "运行中") || strings.Contains(plain, "已开启") || strings.Contains(plain, "启动") || strings.Contains(plain, "停止") {
-		t.Fatal("unknown core toggle invented a confirmed state or lost focusability")
+	if hasAction(block.targets, "core.toggle") || !strings.Contains(plain, "? 未知") || strings.Contains(plain, "运行中") || strings.Contains(plain, "已开启") || strings.Contains(plain, "启动") || strings.Contains(plain, "停止") {
+		t.Fatal("unknown core toggle invented a confirmed state or action")
 	}
 }

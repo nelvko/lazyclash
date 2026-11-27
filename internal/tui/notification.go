@@ -382,8 +382,12 @@ func (m *Model) dashboardOptions() dashboardOptions {
 		}
 	}
 	o := dashboardOptions{settingsTab: m.settingsTab, Locale: m.locale, Width: m.width, Height: m.height, Page: m.page, Busy: m.busy, PlainButtons: m.buttonPlain(), Dim: m.dashboardDimmed(), SidebarOpen: m.sidebarOpen, HideKeyHints: m.keyHints.hidden || m.wizard.open || m.wizard.networkOpen, GuideSkipped: m.guideSkipped, Notifications: items, Spinner: m.spinner.View(), LogoFrame: m.logoFrame, LogoIntroFrame: m.logoIntro.frame, InlineInstall: m.page == "overview" && m.inlineInstallVisible(), BodyRange: m.page == "proxies" && m.proxiesReady() && !m.proxiesDirect() && m.hasExpandedProxyGroups()}
+	o.KeyHintsPending = m.keyHints.pending
+	if m.busy {
+		o.PendingOperation = m.notification.operation.Key
+	}
 	o.Now = time.Now()
-	o.geoMaintenanceBusy = m.busy && m.notification.operation.Key == geoMaintenanceID
+	o.geoMaintenanceBusy = o.PendingOperation == geoMaintenanceID
 	if m.coreNumber.id != "" {
 		o.coreNumber = &m.coreNumber
 	}
@@ -398,8 +402,8 @@ func (m *Model) dashboardOptions() dashboardOptions {
 	if m.menu.open && m.menu.dropdown != nil {
 		o.OpenDropdown = m.menu.anchor.ID
 	}
-	if m.busy && strings.HasPrefix(m.notification.operation.Key, "service.") {
-		o.CoreAction = strings.TrimPrefix(m.notification.operation.Key, "service.")
+	if strings.HasPrefix(o.PendingOperation, "service.") {
+		o.CoreAction = strings.TrimPrefix(o.PendingOperation, "service.")
 	}
 	if len(o.TrafficHistory) > 0 {
 		o.TrafficScale = m.runtime.chartScale.current

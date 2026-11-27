@@ -114,9 +114,9 @@ func (m *Model) returnToNavigation() {
 func (m *Model) navigationOptions() dashboardOptions {
 	o := m.dashboardOptions()
 	o.Snapshot, o.Focus, o.Hover = m.snapshot, m.focus, m.hover
+	o.StateUnavailable = !m.snapshotReady || m.snapshotStale
 	o.GuideDismissed = m.snapshot.GuideDismissed
 	o.Runtime, o.RuntimeReceived, o.RuntimePending = m.runtime.snapshot, m.runtime.received, m.runtime.pending
-	o.StateUnavailable = !m.snapshotReady
 	return o
 }
 
@@ -132,7 +132,7 @@ func (m *Model) contentTargets() []hitRegion {
 			return targets
 		}
 		body := overviewLayout(o, width)
-		return append(body.cards, body.targets...)
+		return body.overviewFocusRegions()
 	case "settings":
 		_, targets := settingsContent(o, width)
 		return targets
@@ -612,7 +612,8 @@ func (m *Model) repairPageFocus() {
 	}
 	state := m.pageViews[m.page]
 	if !m.busy && m.focus != "content" && m.focus != "menu" && !strings.HasPrefix(m.focus, "nav.") && !strings.HasPrefix(m.focus, "notification.") {
-		valid := m.pageHeader().enabled(m.focus)
+		// A preference save disables activation while the originating control keeps focus.
+		valid := m.pageHeader().enabled(m.focus) || m.page == "settings" && m.focus == "key-hints.toggle" && m.keyHints.pending
 		switch {
 		case m.page == "proxies" && listTarget(m.focus):
 			valid = m.proxyListFocusValid()

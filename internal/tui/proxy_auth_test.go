@@ -226,7 +226,7 @@ func TestProxyAddressClipboardSelectsOnlyOnExplicitRequest(t *testing.T) {
 			}
 			m, _ = update(m, special(tea.KeyEscape))
 			m, _ = update(m, special(tea.KeyF1))
-			if m.tooltip.open != copyButton.ID || m.keyHints.changed || reads != 0 {
+			if m.tooltip.open != copyButton.ID || m.keyHints.generation != 0 || reads != 0 {
 				t.Fatal("focused copy control lost its contextual help")
 			}
 			m, _ = update(m, special(tea.KeyEscape))

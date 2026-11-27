@@ -207,7 +207,7 @@ func TestProxyProviderPanelOwnsInputAndRestoresUnderlyingPage(t *testing.T) {
 	for _, input := range []tea.KeyPressMsg{key("1"), key("2"), key("r"), key("?"), key("？"), special(tea.KeyLeft)} {
 		m, _ = update(m, input)
 	}
-	if m.page != page || m.scroll != scroll || m.focus != focus || !m.providers.open || m.keyHints.changed || m.busy {
+	if m.page != page || m.scroll != scroll || m.focus != focus || !m.providers.open || m.keyHints.generation != 0 || m.busy {
 		t.Fatal("provider modal leaked navigation or service controls to its page")
 	}
 	m.focusProvidersSearch()

@@ -62,11 +62,13 @@ type dashboardOptions struct {
 	OverlayOwnsKeys                 bool
 	tooltips                        *tooltipState
 	HideKeyHints                    bool
+	KeyHintsPending                 bool
 	SidebarOpen                     bool
 	Sidebar                         *sidebarState
 	LogoFrame                       int
 	LogoIntroFrame                  int
 	Busy                            bool
+	PendingOperation                string
 	CoreAction                      string
 	geoMaintenanceBusy              bool
 	Now                             time.Time

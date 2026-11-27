@@ -45,7 +45,8 @@ func TestSettingsPointerFocus(t *testing.T) {
 	t.Run("switch and Tab", func(t *testing.T) {
 		m := newSettings(t)
 		const id = "key-hints.toggle"
-		m, _ = click(m, findTarget(t, m, id))
+		m, save := click(m, findTarget(t, m, id))
+		m = finishKeyHintsSave(t, m, save)
 		if !m.keyHints.hidden {
 			t.Fatal("switch did not hide the footer")
 		}

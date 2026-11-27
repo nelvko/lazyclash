@@ -6,6 +6,22 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
+// Wrapped controls contribute a mouse region per painted line. Keyboard
+// navigation uses the bounding box to reveal the whole control as one stop.
+func (b dashboardBlock) overviewFocusRegions() []hitRegion {
+	stops := b.cards
+	for _, hit := range b.targets {
+		if n := len(stops); n > 0 && stops[n-1].ID == hit.ID {
+			stop := &stops[n-1]
+			stop.W = max(stop.W, hit.W)
+			stop.H = hit.Y + hit.H - stop.Y
+			continue
+		}
+		stops = append(stops, hit)
+	}
+	return stops
+}
+
 func (m *Model) overviewModeNavigation(key string) bool {
 	if m.page != "overview" || m.sidebarOpen || !strings.HasPrefix(m.focus, "mode.") {
 		return false
