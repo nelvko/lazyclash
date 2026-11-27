@@ -55,7 +55,7 @@ func TestOverviewIPHeaderShowsSuccessfulAgeOutsideRefreshTarget(t *testing.T) {
 			}
 			hit := card.targets[0]
 			action := strings.TrimSpace(ansi.Strip(ansi.Cut(card.lines[hit.Y], hit.X, hit.X+hit.W)))
-			if hit.ID != "ip.refresh" || action != o.Locale.T("header.refresh") || hit.X+hit.W != width-2 {
+			if hit.ID != "ip.refresh" || action != "↻" || hit.X+hit.W != width-2 {
 				t.Fatalf("%s, width %d: incorrect refresh hit area %q at %+v", lang, width, action, hit)
 			}
 			roomOnTitleRow := width >= 66 || lang == i18n.Chinese && width >= 44
@@ -94,6 +94,13 @@ func TestOverviewIPCardReflectsLookupState(t *testing.T) {
 			}
 			card := overviewIPCard(o, 44)
 			view := ansi.Strip(strings.Join(card.lines, "\n"))
+			icon := "↻"
+			if tc.loading {
+				icon = "…"
+			}
+			if !strings.HasSuffix(strings.TrimSpace(ansi.Strip(card.lines[1])), icon) {
+				t.Fatalf("missing %s icon in header %q", icon, ansi.Strip(card.lines[1]))
+			}
 			if !strings.Contains(view, o.Locale.T(tc.message)) || strings.Contains(view, "198.51.100.7") || hasAction(card.targets, "ip.refresh") != tc.target {
 				t.Fatalf("incorrect lookup state or action in %s", view)
 			}

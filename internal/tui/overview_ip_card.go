@@ -47,9 +47,9 @@ func overviewIPCard(o dashboardOptions, width int) dashboardBlock {
 	default:
 		lines = []string{themed(tr("dashboard.ip.waiting"), muted, panel, o.Dim)}
 	}
-	refresh := overviewControlButton{id: "ip.refresh", label: tr("header.refresh"), enabled: available && !o.Busy}
+	refresh := overviewControlButton{id: "ip.refresh", label: "↻", enabled: available && !o.Busy}
 	if available && state.loading {
-		refresh.label = tr("model.refreshing")
+		refresh.label = "…"
 		// Preserve the focus of a manually refreshed card while its request finishes.
 		refresh.enabled = refresh.enabled && o.Focus == refresh.id
 	}
@@ -59,7 +59,7 @@ func overviewIPCard(o dashboardOptions, width int) dashboardBlock {
 
 func overviewIPHeading(o dashboardOptions, width int, updated string, refresh overviewControlButton) dashboardBlock {
 	title := overviewHeading(o, o.Locale.T("dashboard.overview.ipInfo"))
-	face := overviewButton(o, refresh, buttonText)
+	face := overviewButton(o, refresh, buttonIcon)
 	id := ""
 	if refresh.enabled {
 		id = refresh.id

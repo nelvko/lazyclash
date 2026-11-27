@@ -451,7 +451,7 @@ def assert_fixture_ip(terminal, words):
     title_y = text_point(terminal, words["dashboard.overview.ipInfo"])[1]
     age = re.escape(words["profiles.updated_minutes"]).replace("%d", r"\d+")
     stamp = re.escape(words["profiles.updated_time"]).replace("%s", "(?:" + re.escape(words["profiles.just_updated"]) + "|" + age + ")")
-    assert any(re.search(stamp, row) and words["header.refresh"] in row
+    assert any(re.search(stamp, row) and "↻" in row
                for row in screen.splitlines()[title_y:title_y+2]), \
         "IP heading omitted its update time or refresh action"
 
@@ -636,12 +636,12 @@ def exercise(preview, binary, output, language, profile, scenario, args):
             assert words["dashboard.footer.quit"] in terminal.screen.text().splitlines()[-1], "Quit hint left the footer"
 
         if scenario == "running":
-            refresh = words["header.refresh"]
+            refresh = "↻"
             focus_control(terminal, refresh)
             terminal.key(b"\r")
             terminal.wait(words["dashboard.ip.failed"])
             assert focused(terminal, refresh), "failed IP lookup lost the refresh control"
-            terminal.key(b"\r")
+            terminal.click_text(refresh)
             terminal.wait("203.0.113.18")
             assert focused(terminal, refresh), "successful IP retry lost the refresh control"
             preview.capture(terminal, output, "ipInfo-refreshed", args)
