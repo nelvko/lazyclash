@@ -21,6 +21,8 @@ for argument in "$@"; do
 done
 root=$(cd "$(dirname "$0")/.." && pwd)
 [[ -f "$artifact" && ! -L "$artifact" ]]
+artifact=$(cd "$(dirname "$artifact")" && pwd)/$(basename "$artifact")
+stage=
 work=$(orb -m "$vm" mktemp -d /tmp/lazyclash-scopes.XXXXXX)
 mkdir -p "$root/.test-artifacts"
 log_file="$root/.test-artifacts/service-scopes-e2e.log"
@@ -32,6 +34,7 @@ fi
 cleanup_host() {
   result=$?
   trap - EXIT
+  if [[ -n $stage ]]; then rm -rf -- "$stage"; fi
   for dimensions in 120x36 80x24; do
     if orb -m "$vm" test -f "$work/pty-root-tun-$dimensions.txt"; then
       orb -m "$vm" cat "$work/pty-root-tun-$dimensions.txt" > "$root/.test-artifacts/pty-root-tun-$dimensions.txt" || result=1
@@ -46,6 +49,21 @@ cleanup_host() {
   exit "$result"
 }
 trap cleanup_host EXIT
+stage=$(mktemp -d "${TMPDIR:-/tmp}/lazyclash-scopes-build.XXXXXX")
+# Exercise the packaged root instance at its real default. A second test build
+# supplies a competing root service without exposing an instance flag to users.
+case $(orb -m "$vm" uname -m) in
+  aarch64|arm64) arch=arm64 ;;
+  x86_64) arch=amd64 ;;
+  *) echo "Unsupported VM architecture" >&2; exit 2 ;;
+esac
+cd "$root"
+other_name="lazyclash-scopes-$(python3 -c 'import uuid; print(uuid.uuid4().hex[:12])')"
+CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build \
+  -ldflags "-X github.com/nelvko/lazyclash/internal/app.DefaultService=$other_name" \
+  -o "$stage/lazyclash-other" .
+CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -o "$stage/lazyclash-fixture" ./scripts/fixture
+COPYFILE_DISABLE=1 tar --no-xattrs -C "$stage" -cf - lazyclash-other lazyclash-fixture | orb -m "$vm" tar -xf - -C "$work"
 COPYFILE_DISABLE=1 tar --no-xattrs -C "$(dirname "$artifact")" -cf - "$(basename "$artifact")" | orb -m "$vm" tar -xf - -C "$work"
 if [[ $(basename "$artifact") != lazyclash ]]; then
   orb -m "$vm" mv "$work/$(basename "$artifact")" "$work/lazyclash"
@@ -59,7 +77,7 @@ if [[ -n $scenario_flag ]]; then
 else
   set --
 fi
-if orb -m "$vm" python3 "$work/service-scopes-e2e.py" --work "$work" "$@" > "$log_file" 2>&1; then
+if orb -m "$vm" python3 "$work/service-scopes-e2e.py" --work "$work" --other-name "$other_name" "$@" > "$log_file" 2>&1; then
   cat "$log_file"
 else
   result=$?

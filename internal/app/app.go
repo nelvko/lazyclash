@@ -17,7 +17,8 @@ import (
 	"github.com/nelvko/lazyclash/internal/diagnostic"
 )
 
-const DefaultService = "lazyclash-mihomo"
+// DefaultService is overridden at link time only by the competing system instance in scope tests.
+var DefaultService = "lazyclash-mihomo"
 
 type Services interface {
 	Check(context.Context) error

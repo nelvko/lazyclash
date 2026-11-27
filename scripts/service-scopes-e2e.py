@@ -165,13 +165,13 @@ os.rmdir(d)
 
 
 class Instance:
-    def __init__(self, work, name, root=False, home=None):
+    def __init__(self, work, name, root=False, home=None, binary="lazyclash"):
         self.root = root
         self.name = name
         self.home = Path(home) if home else Path("/var/lib/lazyclash") / name
-        self.command = (["sudo", "-n"] if root else []) + [str(work / "lazyclash"), "--lang", "en", "--service-name", name]
-        if home:
-            self.command += ["--home", str(home)]
+        prefix = ["sudo", "-n"] if root else ["env", f"LAZYCLASH_HOME={self.home}", f"LAZYCLASH_SERVICE={name}"]
+        self.command = prefix + [str(work / binary), "--lang", "en"]
+        self.fixture = prefix + [str(work / "lazyclash-fixture"), "--home", str(self.home), "--service-name", name]
         self.owned = False
         self.account = "lc-" + hashlib.sha256(name.encode()).hexdigest()[:12] if root else None
         self.unit = (Path("/etc/systemd/system") if root else Path.home() / ".config/systemd/user") / (name + ".service")
@@ -179,8 +179,11 @@ class Instance:
     def cli(self, *args, success=True):
         return run(self.command + list(args), success=success)
 
+    def use_case(self, *args, success=True):
+        return run(self.fixture + list(args), success=success)
+
     def status(self):
-        return json.loads(self.cli("status").stdout)
+        return json.loads(self.cli("status", "--json").stdout)
 
     def ctl(self, *args):
         return run((["sudo", "-n"] if self.root else []) + ["systemctl"] + ([] if self.root else ["--user"]) + list(args))
@@ -188,15 +191,18 @@ class Instance:
     def install(self, binary):
         assert self.ctl("show", self.name, "--property=LoadState", "--value").stdout.strip() == b"not-found"
         assert run(["sudo", "-n", "test", "-e", self.unit], success=False).returncode != 0
+        for path in (self.home, self.unit):
+            run(["sudo", "-n", "test", "-L", path], success=False)
         run(["sudo", "-n", "test", "-e", self.home], success=False)
         if self.root:
             run(["getent", "passwd", self.account], success=False)
+            run(["getent", "group", self.account], success=False)
         self.owned = True
         self.cli("install", "--bin", binary)
 
     def ports(self, mixed=None, controller=None):
         mixed, controller = mixed or available_port(), controller or available_port()
-        self.cli("settings", "ports", "--mixed-port", str(mixed), "--controller-port", str(controller))
+        self.use_case("settings", "ports", "--mixed-port", str(mixed), "--controller-port", str(controller))
         return mixed, controller
 
     def process(self):
@@ -292,9 +298,9 @@ def root_tun_ui_smoke(root, terminal_class, work):
         finally:
             terminal.cleanup()
             if root.status()["TUN"]:
-                root.cli("tun", "off")
+                root.use_case("tun", "off")
                 assert_tun_released(root)
-                print("CLI disabled TUN after PTY confirmation and released all owned network resources", flush=True)
+                print("Disabled TUN after PTY confirmation and released all owned network resources", flush=True)
 
 
 def main():
@@ -303,6 +309,7 @@ def main():
     signal.signal(signal.SIGTERM, interrupted)
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--work", type=Path, required=True)
+    parser.add_argument("--other-name", required=True)
     parser.add_argument("--proxy-only", action="store_true")
     parser.add_argument("--ui-tun-only", action="store_true")
     args = parser.parse_args()
@@ -311,8 +318,9 @@ def main():
     run(["sudo", "-n", "true"])
     token = uuid.uuid4().hex[:12]
     user = Instance(work, "lazyclash-scopes-" + token + "-user", home=work / "user-home")
-    root = Instance(work, "lazyclash-scopes-" + token + "-root", root=True)
-    other = Instance(work, "lazyclash-scopes-" + token + "-other", root=True)
+    assert re.fullmatch(r"lazyclash-scopes-[0-9a-f]{12}", args.other_name)
+    root = Instance(work, "lazyclash-mihomo", root=True)
+    other = Instance(work, args.other_name, root=True, binary="lazyclash-other")
     environment = OrbStackServiceDefaults(token)
     foreign_tun = "lcf" + token[:10]
     foreign_owned = False
@@ -337,15 +345,15 @@ def main():
         user_ports = user.ports()
         root_ports = root.ports()
         other.ports()
-        user.cli("service", "start")
+        user.cli("start")
         assert user.status()["Capabilities"]["scope"] == "user"
         assert root.status()["Capabilities"]["scope"] == "system"
         assert not user.status()["Capabilities"]["tun"]["supported"]
-        user.cli("tun", "on", "--scope", "host", "--confirm-host", success=False)
+        user.use_case("tun", "on", "--scope", "host", "--confirm-host", success=False)
         # Occupied ports must be rejected without stopping the existing owner.
-        root.cli("settings", "ports", "--mixed-port", str(user_ports[0]), success=False)
+        root.use_case("settings", "ports", "--mixed-port", str(user_ports[0]), success=False)
         assert user.status()["Service"]["Active"]
-        root.cli("service", "start")
+        root.cli("start")
         _, uid, caps = root.process()
         assert uid != 0 and caps == 0, (uid, caps)
         _, uid, caps = user.process()
@@ -356,13 +364,13 @@ def main():
             assert connection.getresponse().read() == b"lazyclash-scope-fixture\n"
             connection.close()
         print("Concurrent proxy instances, occupied-port refusal and non-root core identities verified", flush=True)
-        # Explicit root service selection plus inherited user environment must use
+        # A root invocation with an inherited user environment must use
         # root's default data tree, not the invoking user's installation.
         env = dict(os.environ, LAZYCLASH_HOME=str(user.home), LAZYCLASH_SERVICE=user.name,
                    XDG_DATA_HOME=str(work / "inherited-xdg"))
         result = run(["sudo", "-n", "env", "LAZYCLASH_HOME=" + str(user.home),
                       "LAZYCLASH_SERVICE=" + user.name, "XDG_DATA_HOME=" + str(work / "inherited-xdg"),
-                      work / "lazyclash", "--service-name", root.name, "status"], env=env)
+                      work / "lazyclash", "status", "--json"], env=env)
         assert json.loads(result.stdout)["Controller"] == root.status()["Controller"]
         print("sudo selects the root system instance without copying or adopting user state", flush=True)
         # Root TUI must be reachable with the same packaged executable.
@@ -390,27 +398,27 @@ def main():
             root_tun_ui_smoke(root, module.Terminal, work)
             print("All packaged root TUI TUN scenarios passed", flush=True)
             return
-        root.cli("tun", "on", success=False)
+        root.use_case("tun", "on", success=False)
         run(["sudo", "-n", "/usr/sbin/ip", "tuntap", "add", "dev", foreign_tun, "mode", "tun"])
         foreign_owned = True
-        conflict = root.cli("tun", "on", "--scope", "host", "--confirm-host", success=False)
+        conflict = root.use_case("tun", "on", "--scope", "host", "--confirm-host", success=False)
         assert foreign_tun.encode() in conflict.stderr
         run(["sudo", "-n", "/usr/sbin/ip", "link", "delete", "dev", foreign_tun])
         foreign_owned = False
         profile = work / "fixture.yaml"
         profile.write_text("dns:\n  enable: true\n  enhanced-mode: redir-host\n  nameserver: [udp://%s:%d]\nproxies:\n  - name: fixture\n    type: http\n    server: %s\n    port: %d\nproxy-groups:\n  - name: PROXY\n    type: select\n    proxies: [fixture]\nrules: [\"MATCH,PROXY\"]\n" %
                            (address, dns.server_address[1], address, fixture.server_address[1]))
-        root.cli("profile", "add", profile, "--name", "scope-fixture")
-        profiles = json.loads(root.cli("profile", "list").stdout)
+        root.use_case("profile", "add", profile, "--name", "scope-fixture")
+        profiles = json.loads(root.use_case("profile", "list").stdout)
         profile_id = next(p["id"] for p in profiles if p["name"] == "scope-fixture")
-        root.cli("profile", "apply", profile_id)
+        root.use_case("profile", "apply", profile_id)
         print("Starting explicitly confirmed host TUN in dedicated test VM", flush=True)
-        root.cli("tun", "on", "--scope", "host", "--confirm-host")
+        root.use_case("tun", "on", "--scope", "host", "--confirm-host")
         status = root.status()
         assert status["TUN"] and status["TUNActual"] and status["Service"]["Active"], {key:status[key] for key in ("TUN","TUNActual","TUNError","Service","ServiceError","APIError")}
         pid, uid, caps = root.process()
         assert uid != 0 and caps == (1 << 12) | (1 << 13), (uid, caps)
-        conflict = other.cli("tun", "on", "--scope", "host", "--confirm-host", success=False)
+        conflict = other.use_case("tun", "on", "--scope", "host", "--confirm-host", success=False)
         assert root.name.encode() in conflict.stderr
         connection = http.client.HTTPConnection("203.0.113.77", 80, timeout=10)
         connection.request("GET", "/through-tun")
@@ -427,7 +435,7 @@ def main():
         assert dns.queries > 0
         print("Host TUN HTTP traffic and DNS hijack traverse controlled local fixtures; competing root instance refused", flush=True)
         # A changed profile must retain TUN and its owned capabilities.
-        root.cli("profile", "apply", profile_id)
+        root.use_case("profile", "apply", profile_id)
         reapplied = root.status()
         assert reapplied["TUNActual"], {key:reapplied[key] for key in ("TUN","TUNActual","TUNError","Service","ServiceError","APIError","Mode")}
         pid, _, _ = root.process()
@@ -441,25 +449,25 @@ def main():
         original_config = run(["sudo", "-n", "cat", config_path]).stdout
         try:
             replace_private_bytes(config_path, original_config + b"\ninvalid: [\n")
-            root.cli("service", "stop", success=False)
+            root.cli("stop", success=False)
             assert int(root.ctl("show", root.name, "--property=MainPID", "--value").stdout) == 0
             assert_tun_released(root)
         finally:
             replace_private_bytes(config_path, original_config)
         assert not root.status()["Service"]["Active"]
         print("Corrupt current configuration reports inspection error while Stop still releases TUN resources", flush=True)
-        root.cli("tun", "off")
-        root.cli("service", "start")
+        root.use_case("tun", "off")
+        root.cli("start")
         _, uid, caps = root.process()
         assert uid != 0 and caps == 0
         print("Stop releases ownership and routes; disabling TUN removes network capabilities", flush=True)
         # Clean handoff requires an explicit subsequent administrator action.
-        other.cli("tun", "on", "--scope", "host", "--confirm-host")
-        other.cli("service", "start")
+        other.use_case("tun", "on", "--scope", "host", "--confirm-host")
+        other.cli("start")
         assert other.status()["TUNActual"]
-        other.cli("service", "stop")
+        other.cli("stop")
         assert_tun_released(other)
-        other.cli("tun", "off")
+        other.use_case("tun", "off")
         print("Explicit TUN handoff to the other root instance succeeded", flush=True)
     except BaseException as error:
         failure = error
