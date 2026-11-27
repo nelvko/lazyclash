@@ -21,7 +21,8 @@ func TestOverviewGroupSelectionShowsObservedRoute(t *testing.T) {
 		groups []mihomo.Group
 		want   string
 	}{
-		{"prefer selector", []mihomo.Group{global, auto, work}, "Work ▾ → 自动 → 香港"},
+		{"first group is automatic", []mihomo.Group{global, auto, work}, "自动 ▾ → 香港"},
+		{"first group references another group", []mihomo.Group{global, work, auto}, "Work ▾ → 自动 → 香港"},
 		{"automatic group", []mihomo.Group{global, auto}, "自动 → 香港"},
 		{"only GLOBAL", []mihomo.Group{global}, o.Locale.T("dashboard.groups.empty")},
 		{"empty choice", []mihomo.Group{{Name: "Work", Type: "Selector"}}, o.Locale.T("proxies.no_selection")},

@@ -366,10 +366,21 @@ func TestNewWizardClearsPreviousFailureAndNetworkPreviewIsActual(t *testing.T) {
 	}
 }
 
-func TestOverviewReflectsSelectedGroupAndPrefersPROXY(t *testing.T) {
-	snapshot := app.Snapshot{Installed: true, Mode: app.ModeStatus{Desired: "rule", Actual: "rule", Running: true}, Groups: []mihomo.Group{{Name: "GLOBAL", Type: "Selector", Now: "global-node"}, {Name: "PROXY", Type: "Selector", Now: "proxy-node"}, {Name: "Work", Type: "Selector", Now: "work-node"}}}
+func TestOverviewFollowsGroupOrderAndSelection(t *testing.T) {
+	snapshot := app.Snapshot{Installed: true, Mode: app.ModeStatus{Desired: "rule", Actual: "rule", Running: true}, Groups: []mihomo.Group{
+		{Name: "GLOBAL", Type: "Selector", Now: "global-node"},
+		{Name: "Media", Type: "Selector", Now: "media-node"},
+		{Name: "PROXY", Type: "Selector", Now: "proxy-node"},
+		{Name: "Work", Type: "Selector", Now: "work-node"},
+	}}
 	snapshot.Service.Active = true
-	for _, tc := range []struct{ selected, want string }{{"", "PROXY ▾ → proxy-node"}, {"Work", "Work ▾ → work-node"}, {"GLOBAL", "PROXY ▾ → proxy-node"}, {"missing", "PROXY ▾ → proxy-node"}} {
+	for _, tc := range []struct{ selected, want string }{
+		{"", "Media ▾ → media-node"},
+		{"PROXY", "PROXY ▾ → proxy-node"},
+		{"Work", "Work ▾ → work-node"},
+		{"GLOBAL", "Media ▾ → media-node"},
+		{"missing", "Media ▾ → media-node"},
+	} {
 		card := overviewModeCard(dashboardOptions{Snapshot: snapshot, SelectedGroup: tc.selected}, 80)
 		value := ansi.Strip(strings.Join(card.lines, "\n"))
 		if !strings.Contains(value, tc.want) {

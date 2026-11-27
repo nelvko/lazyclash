@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"cmp"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -82,10 +81,8 @@ func overviewModeCard(o dashboardOptions, width int) dashboardBlock {
 	return panelWith(content)
 }
 
-// Rule mode can route through many groups. Show the group being browsed, or
-// the preferred rule group, while reserving GLOBAL for the global mode.
+// Rule mode follows the group directory order until the user chooses a group.
 func overviewRouteGroup(groups []mihomo.Group, mode, selected string) (group *mihomo.Group, canChoose bool) {
-	var requested, proxy, selector, first *mihomo.Group
 	count := 0
 	for i := range groups {
 		g := &groups[i]
@@ -96,20 +93,11 @@ func overviewRouteGroup(groups []mihomo.Group, mode, selected string) (group *mi
 			return g, false
 		}
 		count++
-		if g.Name == selected {
-			requested = g
-		}
-		if g.Name == "PROXY" {
-			proxy = g
-		}
-		if selector == nil && g.Type == "Selector" {
-			selector = g
-		}
-		if first == nil {
-			first = g
+		if group == nil || g.Name == selected {
+			group = g
 		}
 	}
-	return cmp.Or(requested, proxy, selector, first), count > 1
+	return group, count > 1
 }
 
 // Wrap between hops so each arrow stays with its destination. The card centers

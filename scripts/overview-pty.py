@@ -412,7 +412,7 @@ def inspect_row_cards(preview, terminal, output, width, height, words, profile, 
             x, y = outline["x"] + 1, outline["y"] + 1
             right, bottom = x + outline["width"] - 2, y + outline["height"] - 2
             lines = ["".join(row[x:right]).strip() for row in terminal.screen.cells[y:bottom]]
-            path = {"running": "PROXY ▾ → 香港 01 · 日常线路", "pending": "PROXY → 香港 01 · 日常线路",
+            path = {"running": "AUTO ▾ → 新加坡 02", "pending": "PROXY → 香港 01 · 日常线路",
                     "drift": "GLOBAL → PROXY → 香港 01 · 日常线路"}.get(scenario)
             if path:
                 assert path in " ".join(" ".join(lines).split()), "incorrect routing path: " + repr(lines)
@@ -476,17 +476,22 @@ def inspect_route_picker(preview, terminal, output, words, args):
     for width, height in ((160, 45), (40, 16)):
         terminal.resize(width, height)
         terminal.settle()
-        focus_control(terminal, "PROXY")
+        focus_control(terminal, "AUTO")
         terminal.key(b"\r")
         terminal.wait("负载均衡")
         assert "GLOBAL" not in terminal.screen.text(), "global group offered in Rule mode"
         preview.capture(terminal, output, f"group-menu-{width}x{height}", args)
-        terminal.key(b"\x1b[B")
+        terminal.key(b"\x1b[B")  # PROXY follows AUTO in the Rule-mode menu.
         terminal.key(b"\r")
+        terminal.wait_absent("负载均衡")
+        terminal.wait("香港 01")
+        terminal.click_text("▾")
+        terminal.wait("办公")
+        terminal.click_text("办公")
         terminal.wait_absent("负载均衡")
         terminal.wait("新加坡 02")
         screen = terminal.screen.text()
-        assert re.search(r"办公\s*▾\s*→\s*自动选择\s*→\s*新加坡 02", screen), screen
+        assert re.search(r"办公\s*▾\s*→\s*AUTO\s*→\s*新加坡 02", screen), screen
         preview.capture(terminal, output, f"group-path-{width}x{height}", args)
 
         terminal.click_text("▾")
@@ -495,9 +500,9 @@ def inspect_route_picker(preview, terminal, output, words, args):
         terminal.wait(words["proxies.distributed"])
         terminal.key(b"\r")
         terminal.wait("办公")
-        terminal.click_text("PROXY")
+        terminal.click_text("AUTO")
         terminal.wait_absent("负载均衡")
-        terminal.wait("香港 01")
+        terminal.wait("新加坡 02")
     terminal.resize(160, 45)
     terminal.settle()
 
@@ -514,7 +519,7 @@ def exercise(preview, binary, output, language, profile, scenario, args):
         screen = terminal.screen.text()
         lifecycle = assert_core_affordance(terminal, words, scenario, profile)
         if scenario in ("running", "pending"):
-            for value in ("香港 01", "日常订阅"):
+            for value in ("新加坡 02" if scenario == "running" else "香港 01", "日常订阅"):
                 assert value in screen, "missing initial observation: " + value
             assert "4242" not in screen, "core status retained diagnostic PID"
         elif scenario == "drift":

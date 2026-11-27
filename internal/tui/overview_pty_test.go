@@ -85,14 +85,14 @@ func newOverviewPTYBackend(scenario string) *overviewPTYBackend {
 	}
 	switch scenario {
 	case "running":
-		additional := []mihomo.Group{
-			{Name: "办公", Type: "Selector", Now: "自动选择", All: []string{"自动选择", "DIRECT"}},
-			{Name: "自动选择", Type: "URLTest", Now: "新加坡 02", All: []string{"新加坡 02"}},
-			{Name: "负载均衡", Type: "LoadBalance", All: []string{"新加坡 02", groups[0].Now}},
+		s.Groups = []mihomo.Group{
+			{Name: "AUTO", Type: "URLTest", Now: "新加坡 02", All: []string{"新加坡 02"}},
 			{Name: "GLOBAL", Type: "Selector", Now: "PROXY", All: []string{"PROXY", "DIRECT"}},
+			groups[0],
+			{Name: "办公", Type: "Selector", Now: "AUTO", All: []string{"AUTO", "DIRECT"}},
+			{Name: "负载均衡", Type: "LoadBalance", All: []string{"新加坡 02", groups[0].Now}},
 		}
-		s.Groups = append(s.Groups, additional...)
-		for _, group := range additional {
+		for _, group := range s.Groups {
 			s.Proxies[group.Name] = mihomo.Proxy{Name: group.Name, Type: group.Type, Now: group.Now, All: group.All}
 		}
 		s.Proxies["新加坡 02"] = mihomo.Proxy{Name: "新加坡 02", Type: "Trojan"}

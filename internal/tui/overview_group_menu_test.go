@@ -97,7 +97,7 @@ func TestOverviewRuleGroupMenuReconcilesSnapshots(t *testing.T) {
 	m, _ = update(m, special(tea.KeyEnter))
 	m.snapshot.Applied = "other-profile"
 	refresh()
-	if m.menu.open || m.overviewGroup != "" || m.navigationOptions().overviewRuleGroupDropdown().Value != "PROXY" {
+	if m.menu.open || m.overviewGroup != "" || m.navigationOptions().overviewRuleGroupDropdown().Value != "CHAIN" {
 		t.Fatal("switching profile retained the previous profile's group or open menu")
 	}
 	m.overviewGroup = "AUTO"
