@@ -29,6 +29,7 @@ type Backend interface {
 	AddWebsite(context.Context, app.Website) ([]app.Website, error)
 	UpdateWebsite(context.Context, app.Website, app.Website) ([]app.Website, error)
 	MoveWebsite(context.Context, app.Website, int) ([]app.Website, error)
+	RelocateWebsite(context.Context, app.Website, app.Website, bool) ([]app.Website, error)
 	RemoveWebsite(context.Context, app.Website) ([]app.Website, error)
 	TestWebsite(context.Context, app.Website) (app.WebsiteTestResult, error)
 	ReadPreferences(context.Context) (app.Preferences, error)
@@ -398,6 +399,14 @@ func (m *Model) cancelTask(quit bool) {
 	}
 }
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.form == "website-manager" {
+		if mouse, ok := msg.(tea.MouseMsg); ok {
+			if handled, cmd := m.siteDragMouse(mouse); handled {
+				m.layout()
+				return m, cmd
+			}
+		}
+	}
 	if motion, ok := msg.(tea.MouseMotionMsg); ok {
 		if handled, cmd := m.updateDashboardHover(motion); handled {
 			return m, cmd
@@ -422,6 +431,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmd = m.acceptWebsiteList(v)
 	case websiteMoveMsg:
 		cmd = m.acceptWebsiteMove(v)
+	case *siteDragScrollMsg:
+		cmd = m.scrollSiteDrag(v)
 	case profileEditorOpenedMsg:
 		cmd = m.acceptProfileEditor(v)
 	case profileEditorExitedMsg:
@@ -582,6 +593,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 	case tea.WindowSizeMsg:
+		m.cancelSiteDrag()
 		if m.page == "settings" || m.tooltip.pointer.ID != "" {
 			m.hover = ""
 		}
@@ -854,7 +866,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.resetLogsView()
 		}
 	case tea.KeyPressMsg:
-		if m.page == "settings" || m.tooltip.pointer.ID != "" {
+		if m.page == "settings" || m.form == "website-manager" || m.tooltip.pointer.ID != "" {
 			m.hover = ""
 		}
 		key := v.String()

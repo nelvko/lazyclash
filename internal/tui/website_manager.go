@@ -13,6 +13,7 @@ import (
 type siteManagerState struct {
 	selected, offset int
 	err              string
+	drag             siteDragState
 }
 
 type websiteMoveMsg struct {
@@ -38,16 +39,16 @@ func (m *Model) selectManagerSite(i int) {
 func (m *Model) siteManagerButtons() []profileButton {
 	var buttons []profileButton
 	for _, item := range []struct {
-		id      string
-		enabled bool
+		id, label string
+		enabled   bool
 	}{
-		{"websiteManager.add", true},
-		{"websiteManager.edit", len(m.websites) > 0},
-		{"websiteManager.up", m.siteManager.selected > 0},
-		{"websiteManager.down", m.siteManager.selected+1 < len(m.websites)},
-		{"websiteManager.close", true},
+		{"websiteManager.add", m.tr("websiteManager.add"), true},
+		{"websiteManager.edit", m.tr("websiteManager.edit"), len(m.websites) > 0},
+		{"websiteManager.up", "↑", m.siteManager.selected > 0},
+		{"websiteManager.down", "↓", m.siteManager.selected+1 < len(m.websites)},
+		{"websiteManager.close", m.tr("websiteManager.close"), true},
 	} {
-		button := profileButton{label: m.tr(item.id)}
+		button := profileButton{label: item.label}
 		if item.enabled {
 			button.id = item.id
 		}
@@ -58,6 +59,12 @@ func (m *Model) siteManagerButtons() []profileButton {
 
 func (m *Model) siteManagerKey(k tea.KeyPressMsg) tea.Cmd {
 	key := k.String()
+	if m.siteManager.drag.active() {
+		m.cancelSiteDrag()
+		if key == "esc" {
+			return nil
+		}
+	}
 	if m.busy || m.quitting {
 		if key == "esc" && m.job == "website-move" && !m.quitting {
 			m.cancelTask(false)
@@ -106,7 +113,7 @@ func (m *Model) siteManagerWheel(mouse tea.Mouse) {
 		return
 	}
 	for _, target := range m.targets {
-		if strings.HasPrefix(target.ID, "websiteManager.site.") &&
+		if (strings.HasPrefix(target.ID, "websiteManager.site.") || strings.HasPrefix(target.ID, "websiteManager.drag.")) &&
 			regionsOverlap(target, hitRegion{X: mouse.X, Y: mouse.Y, W: 1, H: 1}) {
 			delta := 1
 			if mouse.Button == tea.MouseWheelUp {
@@ -151,15 +158,32 @@ func (m *Model) siteManagerAction(id string) tea.Cmd {
 			return nil
 		}
 		site := m.websites[selected]
-		ctx := m.newJob("website-move")
-		backend, request := m.backend, m.id
-		m.siteManager.err = ""
-		return func() tea.Msg {
-			sites, err := backend.MoveWebsite(ctx, site, delta)
-			return websiteMoveMsg{id: request, site: site, sites: sites, err: err}
-		}
+		backend := m.backend
+		return m.startWebsiteMove(site, func(ctx context.Context) ([]app.Website, error) {
+			return backend.MoveWebsite(ctx, site, delta)
+		})
 	}
 	return nil
+}
+
+func (m *Model) relocateManagerSite(site, neighbor app.Website, after bool) tea.Cmd {
+	if site == neighbor || m.busy || m.quitting || m.form != "website-manager" {
+		return nil
+	}
+	backend := m.backend
+	return m.startWebsiteMove(site, func(ctx context.Context) ([]app.Website, error) {
+		return backend.RelocateWebsite(ctx, site, neighbor, after)
+	})
+}
+
+func (m *Model) startWebsiteMove(site app.Website, save func(context.Context) ([]app.Website, error)) tea.Cmd {
+	ctx := m.newJob("website-move")
+	request := m.id
+	m.siteManager.err = ""
+	return func() tea.Msg {
+		sites, err := save(ctx)
+		return websiteMoveMsg{id: request, site: site, sites: sites, err: err}
+	}
 }
 
 func (m *Model) acceptWebsiteMove(msg websiteMoveMsg) tea.Cmd {

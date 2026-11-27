@@ -224,3 +224,74 @@ func TestConcurrentWebsiteEditsPreserveOtherSessions(t *testing.T) {
 		t.Fatal(after, err)
 	}
 }
+
+func TestRelocateWebsiteKeepsOrderAcrossConcurrentChanges(t *testing.T) {
+	a, _ := testApp(t)
+	b, err := New(a.Home, a.Name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	initial := DefaultWebsites()
+	one, two, three := initial[0], initial[1], initial[2]
+	four, five := Website{"D", "https://four.example/"}, Website{"E", "https://five.example/"}
+	for _, site := range []Website{four, five} {
+		if _, err := b.AddWebsite(t.Context(), site); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, step := range []struct {
+		site, anchor Website
+		after        bool
+		want         []Website
+	}{
+		{one, four, false, []Website{two, three, one, four, five}},
+		{five, two, true, []Website{two, five, three, one, four}},
+		{two, four, true, []Website{five, three, one, four, two}},
+		{four, five, false, []Website{four, five, three, one, two}},
+		{three, three, true, []Website{four, five, three, one, two}},
+	} {
+		got, err := a.RelocateWebsite(t.Context(), step.site, step.anchor, step.after)
+		if err != nil || !slices.Equal(got, step.want) {
+			t.Fatal(step, got, err)
+		}
+		prefs, err := b.ReadPreferences(t.Context())
+		if err != nil || !slices.Equal(prefs.WebsitesForTesting(), step.want) {
+			t.Fatal("relocation was not persisted", prefs.Websites, err)
+		}
+	}
+}
+
+func TestRelocateWebsiteRejectsStaleSourceAndNeighbor(t *testing.T) {
+	initial := DefaultWebsites()
+	source, anchor := initial[0], initial[2]
+	for _, stale := range []Website{source, anchor} {
+		for _, change := range []string{"rename", "change URL", "delete"} {
+			t.Run(stale.Name+"/"+change, func(t *testing.T) {
+				a, _ := testApp(t)
+				b, err := New(a.Home, a.Name)
+				if err != nil {
+					t.Fatal(err)
+				}
+				var current []Website
+				switch change {
+				case "rename":
+					current, err = b.UpdateWebsite(t.Context(), stale, Website{"Renamed", stale.URL})
+				case "change URL":
+					current, err = b.UpdateWebsite(t.Context(), stale, Website{stale.Name, "changed.example"})
+				case "delete":
+					current, err = b.RemoveWebsite(t.Context(), stale)
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got, err := a.RelocateWebsite(t.Context(), source, anchor, true); err != errWebsiteMissing || !slices.Equal(got, current) {
+					t.Fatal("stale drag did not return the current list", got, err)
+				}
+				prefs, err := b.ReadPreferences(t.Context())
+				if err != nil || !slices.Equal(current, prefs.WebsitesForTesting()) {
+					t.Fatal("stale drag overwrote another session", prefs.Websites, err)
+				}
+			})
+		}
+	}
+}

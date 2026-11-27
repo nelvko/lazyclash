@@ -44,23 +44,34 @@ func (m *Model) renderSiteManager(base string) (string, []hitRegion) {
 	count := len(m.websites)
 	listHeight := min(max(1, count), 12, available-gap)
 	selected := max(0, min(m.siteManager.selected, count-1))
+	positionIndex := selected
 	var rows []string
 	for i, site := range m.websites {
 		rows = append(rows, m.siteManagerRow(site, i == selected, inner))
+		if site == m.siteManager.drag.neighbor {
+			positionIndex = i
+		}
 	}
 	if count == 0 {
 		rows = []string{themed(m.tr("dashboard.website.empty"), muted, modalBackground, false)}
 	}
 	list := viewport.New(viewport.WithWidth(inner), viewport.WithHeight(listHeight))
 	list.SetContentLines(rows)
-	list.SetYOffset(max(selected-listHeight+1, min(m.siteManager.offset, selected)))
+	offset := m.siteManager.offset
+	if !m.siteManager.drag.active() {
+		offset = max(selected-listHeight+1, min(offset, selected))
+	}
+	list.SetYOffset(offset)
 	m.siteManager.offset = list.YOffset()
 
 	var body dashboardBlock
 	body.lines = strings.Split(list.View(), "\n")
 	for row := 0; row < listHeight && row+m.siteManager.offset < count; row++ {
 		site := m.websites[row+m.siteManager.offset]
-		body.targets = append(body.targets, hitRegion{ID: "websiteManager.site." + site.URL, Y: row, W: inner, H: 1})
+		if count > 1 {
+			body.targets = append(body.targets, hitRegion{ID: siteDragGrip + site.URL, Y: row, W: 2, H: 1})
+		}
+		body.targets = append(body.targets, hitRegion{ID: siteManagerRowID + site.URL, X: 2, Y: row, W: inner - 2, H: 1})
 	}
 	if gap > 0 {
 		body.blank()
@@ -71,7 +82,7 @@ func (m *Model) renderSiteManager(base string) (string, []hitRegion) {
 	body.append(footer)
 	position := ""
 	if count > listHeight {
-		position = fmt.Sprintf("%d/%d", selected+1, count)
+		position = fmt.Sprintf("%d/%d", positionIndex+1, count)
 	}
 	surface := m.newModalSurface(width, 4+len(body.lines))
 	surface.accessHeader(m.tr("dashboard.website.manage"), position, modalPaddingX)
@@ -91,21 +102,34 @@ func (m *Model) renderSiteManager(base string) (string, []hitRegion) {
 
 func (m *Model) siteManagerRow(site app.Website, selected bool, width int) string {
 	marker, markerColor, surface := "  ", muted, modalBackground
+	grip, gripColor := "  ", muted
+	if len(m.websites) > 1 {
+		grip = "⠿ "
+	}
+	d := m.siteManager.drag
 	if selected {
 		marker, surface = "› ", selectionBackground
 		if m.focus == "websiteManager.list" {
 			markerColor = focus
 		}
-	} else if m.hover == "websiteManager.site."+site.URL {
+	} else if d.active() && site == d.neighbor {
+		marker, markerColor, surface = "↑ ", focus, hoverBackground
+		if d.after {
+			marker = "↓ "
+		}
+	} else if m.hover == siteManagerRowID+site.URL {
 		surface = hoverBackground
 	}
-	nameWidth := width - 2
+	if m.hover == siteDragGrip+site.URL || d.source == site {
+		gripColor = focus
+	}
+	nameWidth := width - 4
 	if width >= 40 {
 		nameWidth = min(28, width/3)
 	}
-	row := themed(marker, markerColor, surface, false) + themed(cellPad(clean(site.Name), nameWidth), text, surface, false)
+	row := themed(grip, gripColor, surface, false) + themed(marker, markerColor, surface, false) + themed(cellPad(clean(site.Name), nameWidth), text, surface, false)
 	if width >= 40 {
-		row += themed("  "+cellPad(clean(site.URL), width-4-nameWidth), muted, surface, false)
+		row += themed("  "+cellPad(clean(site.URL), width-6-nameWidth), muted, surface, false)
 	}
 	return row
 }

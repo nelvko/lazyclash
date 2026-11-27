@@ -600,12 +600,22 @@ def manager_heading(terminal, words):
                 if y + 1 < terminal.screen.rows and terminal.screen.cells[y + 1][x] == "─")
 
 
-def click_manager_button(terminal, words, action):
+def manager_button_point(terminal, words, action):
     x, y = manager_heading(terminal, words)
-    label = words["websiteManager." + action]
-    point = next((cx, cy) for cx, cy in text_points(terminal, label)
-                 if cy > y and x <= cx < terminal.screen.columns - x)
-    click_point(terminal, point)
+    # The modal footer can wrap. Its Add and Close buttons bracket the arrows;
+    # the same arrow glyphs also occur in row markers and terminal key hints.
+    def positions(label):
+        return ((cx, cy) for cx, cy in text_points(terminal, label)
+                if y < cy < terminal.screen.rows - 1 and x <= cx < terminal.screen.columns - x)
+
+    top = next(positions(words["websiteManager.add"]))[1]
+    bottom = next(cy for _, cy in positions(words["websiteManager.close"]) if cy >= top)
+    label = {"up": "↑", "down": "↓"}.get(action, words["websiteManager." + action])
+    return next((cx, cy) for cx, cy in positions(label) if top <= cy <= bottom)
+
+
+def click_manager_button(terminal, words, action):
+    click_point(terminal, manager_button_point(terminal, words, action))
 
 
 def manager_rows(terminal, words, names):
@@ -615,9 +625,10 @@ def manager_rows(terminal, words, names):
     points = []
     for i, name in enumerate(names):
         row = y + 2 + i
-        line = "".join(terminal.screen.cells[row][x+2:])
+        assert terminal.screen.cells[row][x] == "⠿", terminal.screen.text()
+        line = "".join(terminal.screen.cells[row][x+4:])
         assert line.startswith(name + " "), (names, name, line, terminal.screen.text())
-        points.append((x + 2, row))
+        points.append((x + 4, row))
     return points
 
 
@@ -652,6 +663,35 @@ def confirm_website_removal(terminal, words):
     terminal.key(b"\t\r")
     terminal.wait_absent(words["websiteEditor.removeTitle"])
     terminal.wait(words["dashboard.website.manage"])
+
+
+def exercise_manager_drag(preview, terminal, output, words, names, args):
+    def mouse(button, point, final):
+        x, y = point
+        terminal.key(f"\x1b[<{button};{x+1};{y+1}{final}".encode())
+
+    # Move Status API across two rows to the top, then cancel a drag back to the bottom.
+    for target, marker, cancel in ((0, "↑", False), (len(names)-1, "↓", True)):
+        rows = manager_rows(terminal, words, names)
+        source = names.index("Status API")
+        x, y = rows[source]
+        mouse(0, (x - 4, y), "M")  # Press the grip, away from the clickable name.
+        step = 1 if target > source else -1
+        for i in range(source + step, target + step, step):
+            mouse(32, rows[i], "M")  # SGR left-button motion over a site name.
+        manager_rows(terminal, words, names)
+        x, y = rows[target]
+        assert terminal.screen.cells[y][x - 2] == marker, terminal.screen.text()
+        if cancel:
+            terminal.key(b"\x1b")
+            terminal.settle()
+        else:
+            preview.capture(terminal, output, "website-manager-drag-160x45", args)
+        mouse(0, rows[target], "m")
+        if not cancel:
+            names.insert(target, names.pop(source))
+        x, y = manager_rows(terminal, words, names)[names.index("Status API")]
+        assert terminal.screen.cells[y][x - 2] == "›", terminal.screen.text()
 
 
 def prepare_custom_website(preview, terminal, output, words, args):
@@ -691,21 +731,27 @@ def prepare_custom_website(preview, terminal, output, words, args):
         click_manager_button(terminal, words, button)
         manager_rows(terminal, words, names)
     for button in ("up", "down", "up"):
-        click_manager_button(terminal, words, button)
+        x, y = manager_button_point(terminal, words, button)
+        terminal.key(f"\x1b[<35;{x+1};{y+1}M".encode())
+        terminal.settle()
+        assert words["websiteManager." + button] % "Status API" in terminal.screen.text().splitlines()[-1]
+        click_point(terminal, (x, y))
         names[2], names[3] = names[3], names[2]
         selected_x, selected_y = manager_rows(terminal, words, names)[names.index("Status API")]
         assert terminal.screen.cells[selected_y][selected_x - 2] == "›", terminal.screen.text()
+    exercise_manager_drag(preview, terminal, output, words, names, args)
     preview.capture(terminal, output, "website-manager-160x45", args)
     click_manager_button(terminal, words, "close")
     terminal.exit()
 
 
 def verify_custom_website(preview, terminal, output, words, report, args):
-    names = ["GitHub", "Google", "Status API", "YouTube"]
+    names = ["Status API", "GitHub", "Google", "YouTube"]
     terminal.wait("203.0.113.17")
     open_website_manager(terminal, words)
     manager_rows(terminal, words, names)
     terminal.key(b"\x1b")
+    terminal.wait_absent("⠿")
     terminal.settle()
     assert text_point(terminal, "Status API")[1] == text_point(terminal, "GitHub")[1]
     assert text_point(terminal, "YouTube")[1] > text_point(terminal, "Status API")[1]
@@ -747,7 +793,7 @@ def verify_custom_website(preview, terminal, output, words, report, args):
     assert [calls[key] for key in ("website_github", "website_google", "website_youtube", "website_custom")] == [1, 1, 1, 2], calls
     prefs = json.loads((output / "settings" / "preferences.json").read_text())
     assert [site["Name"] for site in prefs["Websites"]] == ["GitHub", "Google", "YouTube"], prefs
-    print("PASS custom websites: cancel edits, update in place, reorder, restart, test the saved URL, confirm removal", flush=True)
+    print("PASS custom websites: edit, arrow and drag sorting, cancel a drag, restart, test the saved URL, remove", flush=True)
 
 
 def exercise(preview, binary, output, language, profile, scenario, args):

@@ -161,25 +161,50 @@ func (a *App) MoveWebsite(ctx context.Context, original Website, direction int) 
 	})
 }
 
+// RelocateWebsite resolves both ends of a drag against the same saved list.
+func (a *App) RelocateWebsite(ctx context.Context, site, neighbor Website, after bool) ([]Website, error) {
+	return a.editWebsiteAt(ctx, site, func(sites []Website, from int) ([]Website, error) {
+		to := slices.Index(sites, neighbor)
+		if to < 0 {
+			return nil, errWebsiteMissing
+		}
+		if to == from {
+			return sites, nil
+		}
+		others := slices.Delete(sites, from, from+1)
+		if from < to {
+			to--
+		}
+		if after {
+			to++
+		}
+		return slices.Insert(others, to, site), nil
+	})
+}
+
+var errWebsiteMissing = diagnostic.New("diagnostic.website.missing", "This website has changed or was removed")
+
 func (a *App) editWebsiteAt(ctx context.Context, original Website, edit func([]Website, int) ([]Website, error)) ([]Website, error) {
-	var updated, currentOnConflict []Website
+	var current, updated []Website
 	err := a.editPreferences(ctx, func(p *Preferences) error {
-		sites := p.WebsitesForTesting()
-		i := slices.Index(sites, original)
+		current = p.WebsitesForTesting()
+		i := slices.Index(current, original)
 		if i < 0 {
-			currentOnConflict = sites
-			return diagnostic.New("diagnostic.website.missing", "This website has changed or was removed")
+			return errWebsiteMissing
 		}
 		var err error
-		updated, err = edit(sites, i)
+		updated, err = edit(current, i)
 		if err != nil {
 			return err
 		}
 		p.Websites = updated
 		return nil
 	})
+	if err == errWebsiteMissing {
+		return current, err
+	}
 	if err != nil {
-		return currentOnConflict, err
+		return nil, err
 	}
 	return updated, nil
 }

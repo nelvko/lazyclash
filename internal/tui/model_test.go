@@ -32,6 +32,7 @@ type fakeBackend struct {
 	addWebsite          func(context.Context, app.Website) ([]app.Website, error)
 	updateWebsite       func(context.Context, app.Website, app.Website) ([]app.Website, error)
 	moveWebsite         func(context.Context, app.Website, int) ([]app.Website, error)
+	relocateWebsite     func(context.Context, app.Website, app.Website, bool) ([]app.Website, error)
 	removeWebsite       func(context.Context, app.Website) ([]app.Website, error)
 	testWebsite         func(context.Context, app.Website) (app.WebsiteTestResult, error)
 	prefs               app.Preferences
@@ -171,6 +172,12 @@ func (f *fakeBackend) MoveWebsite(ctx context.Context, site app.Website, directi
 		return f.moveWebsite(ctx, site, direction)
 	}
 	return nil, errors.New("missing move website fixture")
+}
+func (f *fakeBackend) RelocateWebsite(ctx context.Context, site, neighbor app.Website, after bool) ([]app.Website, error) {
+	if f.relocateWebsite != nil {
+		return f.relocateWebsite(ctx, site, neighbor, after)
+	}
+	return nil, errors.New("missing relocate website fixture")
 }
 func (f *fakeBackend) TestWebsite(ctx context.Context, site app.Website) (app.WebsiteTestResult, error) {
 	if f.testWebsite != nil {
