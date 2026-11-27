@@ -1,0 +1,5 @@
+{
+  "diagnostic.geo.requireRunning": "start the managed service before updating active GEO data",
+  "diagnostic.geo.updateCoreChanged": "the managed service changed during the GEO update",
+  "diagnostic.geo.updateWaitStopped": "stopped waiting for the GEO update, Mihomo may continue updating: %w"
+}

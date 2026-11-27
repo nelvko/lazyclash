@@ -149,7 +149,7 @@ func TestCoreSettingsTabsHaveEqualHeightAndExposeOnlyTheirControls(t *testing.T)
 			want := [][]string{
 				{"runtime-settings", "settings.allowLAN", "settings.bindAddress", "settings.accessRules", "settings.proxyAuth", "settings.externalControl"},
 				{"settings.ipv6", "settings.tcpConcurrent", "settings.tcpKeepAlive", "settings.keepAliveIdle", "settings.keepAliveInterval", "settings.unifiedDelay", "settings.logLevel", "settings.findProcessMode"},
-				{"settings.geoAutoUpdate", "settings.geodataLoader", "settings.etagSupport", "settings.storeFakeIP"},
+				{"settings.geoAutoUpdate", "settings.geodataLoader", geoMaintenanceID, "settings.etagSupport", "settings.storeFakeIP"},
 			}
 			height := 0
 			for tab, id := range coreSettingsTabs {

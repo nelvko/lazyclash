@@ -34,7 +34,7 @@ func DefaultGeneralSettings() GeneralSettings {
 		IPv6: "on", UnifiedDelay: "off", LogLevel: "info",
 		TCPConcurrent: "off", DisableKeepAlive: "off", FindProcessMode: "strict", ETagSupport: "on",
 		KeepAliveIdle: "default", KeepAliveInterval: "default",
-		GeoAutoUpdate: "off", GeoUpdateInterval: "24", GeodataLoader: "memconservative", StoreFakeIP: "off",
+		GeoAutoUpdate: "off", GeoUpdateInterval: "24", GeodataLoader: "inherit", StoreFakeIP: "off",
 	}
 }
 
@@ -163,7 +163,12 @@ func (s GeneralSettings) validate() error {
 			return invalidGeneralSetting()
 		}
 	}
-	if !positiveDuration(s.GeoUpdateInterval, time.Hour) || s.GeodataLoader != "memconservative" && s.GeodataLoader != "standard" {
+	switch s.GeodataLoader {
+	case "inherit", "memconservative", "standard":
+	default:
+		return invalidGeneralSetting()
+	}
+	if !positiveDuration(s.GeoUpdateInterval, time.Hour) {
 		return invalidGeneralSetting()
 	}
 	switch s.FindProcessMode {
@@ -206,6 +211,25 @@ func WithGeneralSettings(raw []byte, s GeneralSettings, tun bool) ([]byte, error
 	return yaml.Marshal(cfg)
 }
 
+// WithProfileGeodataLoader restores the pinned profile's value or omission
+// without rolling back other live settings edited after that profile was applied.
+func WithProfileGeodataLoader(deployed, profile []byte) ([]byte, error) {
+	cfg, err := decodeConfig(deployed)
+	if err != nil {
+		return nil, err
+	}
+	inherited, err := decodeConfig(profile)
+	if err != nil {
+		return nil, err
+	}
+	if loader, exists := inherited["geodata-loader"]; exists {
+		cfg["geodata-loader"] = loader
+	} else {
+		delete(cfg, "geodata-loader")
+	}
+	return yaml.Marshal(cfg)
+}
+
 func (s GeneralSettings) apply(cfg map[string]any, tun bool) error {
 	if err := s.validate(); err != nil {
 		return err
@@ -226,7 +250,9 @@ func (s GeneralSettings) apply(cfg map[string]any, tun bool) error {
 	}
 	cfg["geo-auto-update"] = s.GeoAutoUpdate == "on"
 	cfg["geo-update-interval"], _ = strconv.Atoi(s.GeoUpdateInterval)
-	cfg["geodata-loader"] = s.GeodataLoader
+	if s.GeodataLoader != "inherit" {
+		cfg["geodata-loader"] = s.GeodataLoader
+	}
 	profile, ok := cfg["profile"].(map[string]any)
 	if !ok {
 		if cfg["profile"] != nil {

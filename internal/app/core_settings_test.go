@@ -17,6 +17,7 @@ import (
 
 	"github.com/nelvko/lazyclash/internal/mihomo"
 	"github.com/nelvko/lazyclash/internal/service"
+	"github.com/nelvko/lazyclash/internal/store"
 	"gopkg.in/yaml.v3"
 )
 
@@ -129,6 +130,114 @@ rules: ['MATCH,DIRECT']
 	}
 }
 
+func TestInheritedGeodataLoaderRestoresOnlyThePinnedField(t *testing.T) {
+	a, _ := installedApp(t)
+	ctx := t.Context()
+	if got := appliedConfigFields(t, a)["geodata-loader"]; got != nil {
+		t.Fatalf("fresh install materialized a loader: %v", got)
+	}
+	path := filepath.Join(t.TempDir(), "source.yaml")
+	source := []byte("geodata-loader: standard\nrules: ['MATCH,DIRECT']\n")
+	write(t, path, source)
+	if err := a.Add(ctx, "source", path); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.Apply(ctx, "source"); err != nil {
+		t.Fatal(err)
+	}
+	if got := appliedConfigFields(t, a)["geodata-loader"]; got != "standard" {
+		t.Fatalf("subscription loader = %v", got)
+	}
+	if err := a.SetProfileOverrides(ctx, "source", []byte("set: {geodata-loader: memc}\n")); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.SetCoreSetting(ctx, "geodata-loader", "standard"); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.SetMode(ctx, "global"); err != nil {
+		t.Fatal(err)
+	}
+	// The library can have a newer source after a refresh failed to reload.
+	// This must use the generation's pinned recipe, including its override.
+	lib, old, err := a.library().Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	record := lib.Profiles["source"]
+	record.Spec.Revision, err = a.library().Put([]byte("geodata-loader: memconservative\nrules: ['MATCH,REJECT']\n"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	record.Spec.Overrides = ""
+	lib.Profiles["source"] = record
+	if err := a.library().Save(lib, old); err != nil {
+		t.Fatal(err)
+	}
+	m, target, err := a.load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Preserve effective runtime fields that the recipe does not own.
+	want := appliedConfigFields(t, a)
+	want["tcp-fast-open"] = true
+	cfg, err := yaml.Marshal(want)
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := filepath.Join(a.Home, "installation")
+	next, err := a.writeGeneration(base, m, cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Switch(filepath.Join(base, "current"), next, target); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.SetCoreSetting(ctx, "geodata-loader", "inherit"); err != nil {
+		t.Fatal(err)
+	}
+	want["geodata-loader"] = "memc"
+	if got := appliedConfigFields(t, a); !reflect.DeepEqual(got, want) {
+		t.Fatalf("switch to inherited loader changed other settings or used a newer source: %+v", got)
+	}
+	if err := a.DeactivateProfile(ctx, "source"); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.SetCoreSetting(ctx, "geodata-loader", "standard"); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.SetCoreSetting(ctx, "geodata-loader", "inherit"); err != nil {
+		t.Fatal(err)
+	}
+	if _, exists := appliedConfigFields(t, a)["geodata-loader"]; exists {
+		t.Fatal("profile omitted loader, but former override was retained")
+	}
+}
+
+func TestInheritedGeodataLoaderRequiresItsPinnedRecipe(t *testing.T) {
+	a, _ := installedApp(t)
+	addFixtureProfile(t, a, "source")
+	if err := a.Apply(t.Context(), "source"); err != nil {
+		t.Fatal(err)
+	}
+	if err := a.SetCoreSetting(t.Context(), "geodata-loader", "standard"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(savedSourcePath(t, a, "source")); err != nil {
+		t.Fatal(err)
+	}
+	_, before, err := a.load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := a.SetCoreSetting(t.Context(), "geodata-loader", "inherit"); err == nil {
+		t.Fatal("silently erased a loader without a pinned input")
+	}
+	m, current, err := a.load()
+	if err != nil || current != before || m.CoreSettings.GeodataLoader != "standard" || appliedConfigFields(t, a)["geodata-loader"] != "standard" {
+		t.Fatalf("failed loader edit changed state, current = %s, err = %v", current, err)
+	}
+}
+
 func TestCoreSettingsChangeOnRunningServiceCommitsOnlyAfterReload(t *testing.T) {
 	for _, reject := range []bool{false, true} {
 		a, svc := installedApp(t)
@@ -210,9 +319,12 @@ func assertInstanceSettings(t *testing.T, a *App, want mihomo.GeneralSettings) {
 	if profile["store-fake-ip"] != (want.StoreFakeIP == "on") || profile["store-selected"] != true {
 		t.Fatal("unexpected profile cache settings", profile)
 	}
+	if want.GeodataLoader != "inherit" && cfg["geodata-loader"] != want.GeodataLoader {
+		t.Fatalf("effective loader = %v, want %s", cfg["geodata-loader"], want.GeodataLoader)
+	}
 	interval, _ := strconv.Atoi(want.GeoUpdateInterval)
 	for key, value := range map[string]any{
-		"geo-auto-update": want.GeoAutoUpdate == "on", "geo-update-interval": interval, "geodata-loader": want.GeodataLoader,
+		"geo-auto-update": want.GeoAutoUpdate == "on", "geo-update-interval": interval,
 		"ipv6": m.TUN || want.IPv6 == "on", "unified-delay": want.UnifiedDelay == "on", "log-level": want.LogLevel,
 		"tcp-concurrent": want.TCPConcurrent == "on", "disable-keep-alive": want.DisableKeepAlive == "on",
 		"find-process-mode": want.FindProcessMode, "etag-support": want.ETagSupport == "on",
@@ -226,6 +338,8 @@ func assertInstanceSettings(t *testing.T, a *App, want mihomo.GeneralSettings) {
 func TestUnsetCoreSettingsUseDeployedGenerationUntilNextWrite(t *testing.T) {
 	omitted := mihomo.DefaultGeneralSettings()
 	omitted.LogLevel = "warning"
+	alias := omitted
+	alias.GeodataLoader = "memconservative"
 	pinned := mihomo.GeneralSettings{
 		IPv6: "off", UnifiedDelay: "on", LogLevel: "debug",
 		TCPConcurrent: "on", DisableKeepAlive: "on", FindProcessMode: "always", ETagSupport: "off",
@@ -243,7 +357,7 @@ func TestUnsetCoreSettingsUseDeployedGenerationUntilNextWrite(t *testing.T) {
 		want    mihomo.GeneralSettings
 	}{
 		{"omitted fields", nil, map[string]any{"log-level": "warning"}, omitted},
-		{"applied loader alias and inactive schedule", nil, map[string]any{"log-level": "warning", "geodata-loader": "memc", "geo-auto-update": true, "geo-update-interval": 0}, omitted},
+		{"applied loader alias and inactive schedule", nil, map[string]any{"log-level": "warning", "geodata-loader": "memc", "geo-auto-update": true, "geo-update-interval": 0}, alias},
 		{"partly pinned", map[string]string{"log_level": "debug"}, applied, pinned},
 		{"three saved fields", map[string]string{"ipv6": "off", "unified_delay": "on", "log_level": "debug"}, applied, pinned},
 	} {

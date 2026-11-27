@@ -37,9 +37,9 @@ cleanup_host() {
   result=$?
   trap - EXIT
   if [[ -n $stage ]]; then rm -rf -- "$stage"; fi
-  for dimensions in 120x36 80x24; do
-    if orb -m "$vm" test -f "$work/pty-root-tun-$dimensions.txt"; then
-      orb -m "$vm" cat "$work/pty-root-tun-$dimensions.txt" > "$root/.test-artifacts/pty-root-tun-$dimensions.txt" || result=1
+  for screen in pty-root-tun-120x36 pty-root-tun-80x24 pty-geo-{running,stopped}-{160x45,80x24}; do
+    if orb -m "$vm" test -f "$work/$screen.txt"; then
+      orb -m "$vm" cat "$work/$screen.txt" > "$root/.test-artifacts/$screen.txt" || result=1
     fi
   done
   if orb -m "$vm" test -f "$work/cleanup-complete" || ! orb -m "$vm" test -f "$work/resources-started"; then

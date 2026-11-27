@@ -6,6 +6,8 @@
 
 Debian/arm64 与真实 Mihomo v1.19.33 已验证未选中订阅的校验不会写入活动目录、来源不可用时保留原进程、显式切换以及同一订阅刷新换源后的路由结果。两种 scope 都在候选配置和数据库发布后占用测试控制端口，验证就绪失败时同时恢复配置与数据库。随后在同一阶段用 SIGKILL 终止管理进程，确认下一次管理操作可在旧源离线时恢复服务及原路由。测试会核对数据库权限，并清理专用 unit、账号和文件。[双作用域验收记录](../.test-artifacts/service-scopes-geodata-e2e.log)
 
+在两种作用域下，通过真实 TUI 的「设置 → 资源与缓存」更新同一 URL 的 GeoSite 后，Mihomo 保持原 PID，并立即按新库匹配域名。测试延迟第二次下载，点击「停止等待」后才释放响应，确认内核自行完成更新。停止服务后，TUI 通过本地镜像只下载国家 MMDB、GeoSite 和各自的 SHA-256，再次执行产生零个下载请求。手动启动后的域名和 IP 请求分别命中预置的 GEOSITE 与 GEOIP 规则。[运行中 160×45](../.test-artifacts/geodata-final/pty-geo-running-160x45.png) · [停止时 80×24](../.test-artifacts/geodata-final/pty-geo-stopped-80x24.png)
+
 ## 概览卡片布局与出口 IP（2026-11-27）
 
 在原生终端窗口中运行 Linux/arm64 TUI，以固定示例数据截图。160×48 时，路由模式与 IP 信息的底色在右栏连续，IP 信息与左栏运行环境对齐，实时流量在最下方占满两列。80×32 时，卡片依次纵向排列，滚动即可查看下方的流量图。[160×48 宽屏](../.test-artifacts/overview-route-ip/native/overview-160x48.png) · [80×32 窄屏](../.test-artifacts/overview-route-ip/native/overview-80x32.png)

@@ -20,6 +20,8 @@ import (
 type fakeBackend struct {
 	getDocument  func(context.Context, string, app.ProfileDocumentKind) (app.ProfileDocument, error)
 	saveDocument func(context.Context, app.ProfileDocument, []byte) error
+	updateGeo    func(context.Context) error
+	prepareGeo   func(context.Context, downloadnet.Config, func(mihomo.Progress)) (app.GeoPreparation, error)
 
 	deleteAndSwitch     func(context.Context, string, string) error
 	checkUpdate         func(context.Context, mihomo.Channel, downloadnet.Config) (app.CoreUpdateCheck, error)
@@ -68,6 +70,20 @@ type fakeBackend struct {
 
 func (f *fakeBackend) BindAddressOptions(context.Context) []app.BindAddressOption {
 	return f.bindAddresses
+}
+
+func (f *fakeBackend) UpdateActiveGeo(ctx context.Context) error {
+	if f.updateGeo != nil {
+		return f.updateGeo(ctx)
+	}
+	return ctx.Err()
+}
+
+func (f *fakeBackend) PrepareDefaultGeo(ctx context.Context, cfg downloadnet.Config, p func(mihomo.Progress)) (app.GeoPreparation, error) {
+	if f.prepareGeo != nil {
+		return f.prepareGeo(ctx, cfg, p)
+	}
+	return app.GeoPreparation{}, ctx.Err()
 }
 
 func (f *fakeBackend) GetRuntimeSettings(ctx context.Context) (app.RuntimeSettings, error) {

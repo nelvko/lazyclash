@@ -68,6 +68,7 @@ type dashboardOptions struct {
 	LogoIntroFrame                  int
 	Busy                            bool
 	CoreAction                      string
+	geoMaintenanceBusy              bool
 	Now                             time.Time
 	PlainButtons                    bool
 	Monochrome                      bool

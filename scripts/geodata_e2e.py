@@ -1,8 +1,10 @@
 """GeoData transactions exercised through real Mihomo and both systemd scopes."""
 import errno
+import hashlib
 import http.client
 import os
 from pathlib import Path
+import runpy
 import socket
 import subprocess
 import threading
@@ -28,6 +30,11 @@ def local_sources():
         def do_GET(self):
             data = self.server.content.get(self.path)
             self.server.requests.append(self.path)
+            if self.path == self.server.held:
+                self.server.entered.set()
+                if not self.server.release.wait(25):
+                    self.send_error(504)
+                    return
             if data is None:
                 self.send_error(503)
                 return
@@ -42,11 +49,15 @@ def local_sources():
     with ThreadingHTTPServer(('127.0.0.1', 0), Handler) as server:
         server.content = {'/routed': b'geodata-e2e-origin'}
         server.requests = []
+        server.held = None
+        server.entered = threading.Event()
+        server.release = threading.Event()
         worker = threading.Thread(target=server.serve_forever, daemon=True)
         worker.start()
         try:
             yield server
         finally:
+            server.release.set()
             server.shutdown()
             worker.join()
 
@@ -84,7 +95,144 @@ def capture_controller(port):
         raise
 
 
+@contextmanager
+def resources_terminal(svc, terminal_class):
+    terminal = terminal_class(svc.command)
+    try:
+        terminal.wait('Overview')
+        terminal.wait_absent('Loading state')
+        terminal.resize(160, 45)
+        terminal.settle()
+        terminal.key(b'7')
+        terminal.wait('Core Settings')
+        terminal.click_text('Resources & cache')
+        yield terminal
+        terminal.exit()
+    finally:
+        terminal.cleanup()
+
+
+def wait_for_action_row(terminal, label):
+    # Result notifications above the card can also contain its previous label.
+    deadline = time.monotonic() + 15
+    while time.monotonic() < deadline:
+        terminal.read()
+        if any(label in line and line.rstrip().endswith('❯')
+               for line in terminal.screen.text().splitlines()):
+            return
+    raise AssertionError(f'Action row did not return to {label}\n{terminal.screen.text()}')
+
+
+def capture_action(terminal, work, state, action):
+    for columns, rows in ((160, 45), (80, 24), (160, 45)):
+        terminal.resize(columns, rows)
+        terminal.settle()
+        for _ in range(12):
+            if action in terminal.screen.text():
+                break
+            terminal.key(b'\t')
+            terminal.settle()
+        terminal.wait(action)
+        (work / f'pty-geo-{state}-{columns}x{rows}.txt').write_text(terminal.screen.text())
+
+
+def running_update(svc, terminal_class, source, databases, expect_live, read_database, work, wait):
+    pid = svc.process()[0]
+    source.content['/db-a'] = databases['b']
+    offset = len(source.requests)
+    with resources_terminal(svc, terminal_class) as terminal:
+        terminal.wait('Update active GeoData')
+        if not svc.root:
+            capture_action(terminal, work, 'running', 'Update active GeoData')
+        terminal.click_text('Update active GeoData')
+        wait(lambda: read_database() == databases['b'])
+        wait_for_action_row(terminal, 'Update active GeoData')
+        terminal.wait('completed')
+        assert source.requests[offset:] == ['/db-a'], 'Mihomo must update only the active GeoSite from its configured URL'
+        expect_live('b')
+    # Open a fresh page without the first result notification over the row.
+    with resources_terminal(svc, terminal_class) as terminal:
+        source.content['/db-a'] = databases['a']
+        source.held = '/db-a'
+        try:
+            terminal.click_text('Update active GeoData')
+            assert source.entered.wait(8), 'Mihomo never requested the held GeoSite update'
+            terminal.click_text('Stop waiting')
+            wait_for_action_row(terminal, 'Update active GeoData')
+        finally:
+            source.release.set()
+        wait(lambda: read_database() == databases['a'])
+        expect_live('a')
+    assert svc.process()[0] == pid, 'running GeoData update restarted Mihomo'
+
+
+def click_preparation(svc, terminal):
+    # Make even a no-download check observable before the result is displayed.
+    # Hold only this isolated instance's lock, then let the real action run.
+    command = (['sudo', '-n'] if svc.root else []) + [
+        'flock', '-x', str(svc.home / '.lock'), 'sh', '-c', 'echo ready; read release']
+    with subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE) as holder:
+        try:
+            assert holder.stdout.readline() == b'ready\n'
+            terminal.click_text('Prepare default GeoData')
+            terminal.wait('Cancel preparation')
+        finally:
+            holder.communicate(b'release\n', timeout=5)
+    wait_for_action_row(terminal, 'Prepare default GeoData')
+
+
+def stopped_preparation(svc, terminal_class, source, url, databases, uid, read, work, mixed):
+    svc.cli('stop')
+    svc.use_case('profile', 'deactivate')
+    svc.use_case('settings', 'download-prefix', url)
+    prefix = '/https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/'
+    assets = {'geoip.metadb': svc.use_case('country-mmdb-fixture').stdout,
+              'geosite.dat': databases['a']}
+    paths = []
+    for filename, data in assets.items():
+        path = prefix + filename
+        source.content[path] = data
+        source.content[path + '.sha256sum'] = f'{hashlib.sha256(data).hexdigest()}  {filename}\n'.encode()
+        paths.extend((path, path + '.sha256sum'))
+    offset = len(source.requests)
+    with resources_terminal(svc, terminal_class) as terminal:
+        terminal.wait('Prepare default GeoData')
+        if not svc.root:
+            capture_action(terminal, work, 'stopped', 'Prepare default GeoData')
+        click_preparation(svc, terminal)
+        terminal.wait('Prepared')
+        assert sorted(source.requests[offset:]) == sorted(paths), f'expected two assets and both checksums, observed {source.requests[offset:]}'
+    runtime = svc.home / 'installation/runtime'
+    for filename, data in assets.items():
+        destination = runtime / ('GeoSite.dat' if filename == 'geosite.dat' else filename)
+        assert read('cat', destination).stdout == data
+        owner, mode = read('stat', '-c', '%u %a', destination).stdout.split()
+        assert int(owner) == uid and int(mode, 8) == 0o600
+    for filename in ('GeoIP.dat', 'ASN.mmdb'):
+        read('test', '-e', runtime / filename, success=False)
+    # A fresh TUI cannot match the previous notification and also proves that
+    # provenance survives reopening and valid files need no request.
+    offset = len(source.requests)
+    with resources_terminal(svc, terminal_class) as terminal:
+        click_preparation(svc, terminal)
+        terminal.wait('Already')
+    assert source.requests[offset:] == []
+    assert not svc.status()['Service']['Active']
+    # The domain can only pass through GEOSITE. The IP literal can only pass
+    # through GEOIP. Both checks use the two files prepared by the TUI.
+    source.content['/prepared-profile'] = (
+        b'hosts: {"a.fixture.invalid": 127.0.0.1}\n'
+        b'rules: ["GEOSITE,cn,DIRECT", "DOMAIN,a.fixture.invalid,REJECT", '
+        b'"GEOIP,cn,DIRECT,no-resolve", "MATCH,REJECT"]\n')
+    svc.use_case('profile', 'add', url + '/prepared-profile', '--name', 'prepared')
+    svc.use_case('profile', 'apply', 'prepared')
+    svc.cli('start')
+    assert accepted(mixed, source.server_port, 'a.fixture.invalid')
+    assert accepted(mixed, source.server_port, '127.0.0.1')
+
+
 def verify_geodata(instances, work, run, wait):
+    terminal_class = runpy.run_path(str(work / "pty-smoke.py"))["Terminal"]
     binary = work / 'mihomo'
     print(run([binary, '-v']).stdout.decode().splitlines()[0], flush=True)
     active = []
@@ -106,7 +254,9 @@ def verify_geodata(instances, work, run, wait):
             def yaml(key):
                 return (f'geox-url: {{geosite: "{url}/db-{key}"}}\n'
                         'hosts: {"a.fixture.invalid": 127.0.0.1, "b.fixture.invalid": 127.0.0.1}\n'
-                        'rules: ["GEOSITE,cn,DIRECT", "MATCH,REJECT"]\n').encode()
+                        # HTTPVehicle is an INNER connection. External proxy
+                        # requests must still match the tested GeoSite rule.
+                        'rules: ["IN-TYPE,INNER,DIRECT", "GEOSITE,cn,DIRECT", "MATCH,REJECT"]\n').encode()
 
             def read(*args, success=True):
                 return run((['sudo', '-n'] if svc.root else []) + list(args), success=success)
@@ -194,6 +344,13 @@ def verify_geodata(instances, work, run, wait):
                 read('test', '-e', svc.home / 'apply-pending.json', success=False)
                 expect_live('a')
                 print(f'{scope}: {"SIGKILL and next-invocation recovery" if crash else "real failed API readiness and rollback"} restored old config, exact database and routing with old source offline', flush=True)
+            active_config = read('cat', svc.home / 'installation/current/config.yaml').stdout
+            assert (url + '/db-a').encode() in active_config, 'recovery selected the wrong GeoSite source'
+            running_update(svc, terminal_class, source, databases, expect_live,
+                           lambda: read('cat', database()).stdout, work, wait)
+            print(f'{scope}: real 160x45 Settings PTY updated the active GeoSite, kept the PID and continued the held update after Stop waiting', flush=True)
+            stopped_preparation(svc, terminal_class, source, url, databases, uid, read, work, mixed)
+            print(f'{scope}: stopped Settings PTY prepared exactly MMDB and GeoSite and repeated with zero requests; after explicit start both databases routed traffic', flush=True)
             active.append((svc, generation(), svc.process()[0]))
     for svc, expected, pid in active:
         current = (['sudo', '-n'] if svc.root else []) + ['readlink', svc.home / 'installation/current']

@@ -41,7 +41,18 @@ func (a *App) SetCoreSetting(ctx context.Context, key, value string) error {
 		}
 		previous := m.CoreSettings
 		m.CoreSettings = next
-		cfg, err := mihomo.WithGeneralSettings(deployed, next, m.TUN)
+		var cfg []byte
+		if key == "geodata-loader" && value == "inherit" {
+			// The deployed YAML contains the explicit override. Recover this one
+			// field from the generation's immutable source and profile overrides.
+			pinned, buildErr := a.buildAppliedRecipe(m)
+			if buildErr != nil {
+				return buildErr
+			}
+			cfg, err = mihomo.WithProfileGeodataLoader(deployed, pinned)
+		} else {
+			cfg, err = mihomo.WithGeneralSettings(deployed, next, m.TUN)
+		}
 		if err != nil {
 			return err
 		}

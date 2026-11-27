@@ -1,0 +1,9 @@
+{
+  "geo.loader.inherit": "Follow profile",
+  "geo.action.prepare": "Prepare default GeoData",
+  "geo.action.update": "Update active GeoData",
+  "geo.action.cancelPreparation": "Cancel preparation",
+  "geo.action.stopWaiting": "Stop waiting",
+  "geo.result.checked": "Mihomo completed the GeoData update check",
+  "geo.result.stoppedWaiting": "Stopped waiting. Mihomo may still be updating GeoData."
+}

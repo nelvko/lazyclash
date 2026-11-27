@@ -36,6 +36,8 @@ type Backend interface {
 	SaveKeyHintsPreference(context.Context, bool) error
 	SetAutostart(context.Context, bool) error
 	SetCoreSetting(context.Context, string, string) error
+	UpdateActiveGeo(context.Context) error
+	PrepareDefaultGeo(context.Context, downloadnet.Config, func(mihomo.Progress)) (app.GeoPreparation, error)
 	SetMode(context.Context, string) error
 	SetTUN(context.Context, bool) error
 	CheckUpdate(context.Context, mihomo.Channel, downloadnet.Config) (app.CoreUpdateCheck, error)
@@ -1015,6 +1017,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			break
 		}
 		if m.busy {
+			if m.focus == geoMaintenanceID && (key == "enter" || key == "space" || key == " ") {
+				cmd = m.manageGeo()
+				break
+			}
 			if (key == "enter" || key == "space" || key == " ") && m.focus == "key-hints.toggle" {
 				cmd = m.toggleKeyHints()
 				break
@@ -1441,6 +1447,8 @@ func (m *Model) activate(id string) tea.Cmd {
 		return m.openCoreNumber(id)
 	case "settings.geoAutoUpdate":
 		return m.toggleCoreSetting(id, "geo-auto-update", m.snapshot.CoreSettings.GeoAutoUpdate)
+	case geoMaintenanceID:
+		return m.manageGeo()
 	case "settings.storeFakeIP":
 		return m.toggleCoreSetting(id, "profile.store-fake-ip", m.snapshot.CoreSettings.StoreFakeIP)
 	case "settings.language", "settings.startPage", "settings.theme", "settings.logLevel", "settings.findProcessMode", "settings.geodataLoader":
@@ -1778,6 +1786,9 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 				}
 				if m.notificationAction(r.ID) {
 					return nil
+				}
+				if r.ID == geoMaintenanceID && m.busy {
+					return m.manageGeo()
 				}
 				if strings.HasPrefix(r.ID, "setup.") {
 					m.focus = r.ID

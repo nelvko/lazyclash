@@ -65,6 +65,7 @@ func (o dashboardOptions) settingsDropdown(id string) dropdown {
 		return dropdown{Items: coreLogLevelItems, Value: o.Snapshot.CoreSettings.LogLevel}
 	case "settings.geodataLoader":
 		return dropdown{Value: o.Snapshot.CoreSettings.GeodataLoader, Items: []menuItem{
+			{ID: "inherit", Label: o.Locale.T("geo.loader.inherit")},
 			{ID: "memconservative", Label: o.Locale.T("settings.loaderMemory")},
 			{ID: "standard", Label: o.Locale.T("settings.loaderStandard")},
 		}}

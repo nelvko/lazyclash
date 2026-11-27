@@ -1,0 +1,5 @@
+{
+  "diagnostic.geo.requireRunning": "请先启动托管服务，再更新活动 GEO 数据",
+  "diagnostic.geo.updateCoreChanged": "GEO 更新期间托管服务已变更",
+  "diagnostic.geo.updateWaitStopped": "已停止等待 GEO 更新，Mihomo 可能仍在更新：%w"
+}

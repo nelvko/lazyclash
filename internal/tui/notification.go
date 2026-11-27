@@ -136,7 +136,7 @@ func (m *Model) syncNotification() {
 	if source.busy && n.retainDialog {
 		item.Critical = true
 	}
-	item.Silent = !item.Critical && (kind == "info" || kind == "done" && !op.announcesSuccess(m.page))
+	item.Silent = !item.Critical && (kind == "info" && op.Key != geoMaintenanceID || kind == "done" && !op.announcesSuccess(m.page))
 	if kind == "working" && !item.Critical {
 		item.showAfter = time.Now().Add(500 * time.Millisecond)
 		if index >= 0 && n.items[index].Kind == "working" {
@@ -383,6 +383,7 @@ func (m *Model) dashboardOptions() dashboardOptions {
 	}
 	o := dashboardOptions{settingsTab: m.settingsTab, Locale: m.locale, Width: m.width, Height: m.height, Page: m.page, Busy: m.busy, PlainButtons: m.buttonPlain(), Dim: m.dashboardDimmed(), SidebarOpen: m.sidebarOpen, HideKeyHints: m.keyHints.hidden || m.wizard.open || m.wizard.networkOpen, GuideSkipped: m.guideSkipped, Notifications: items, Spinner: m.spinner.View(), LogoFrame: m.logoFrame, LogoIntroFrame: m.logoIntro.frame, InlineInstall: m.page == "overview" && m.inlineInstallVisible(), BodyRange: m.page == "proxies" && m.proxiesReady() && !m.proxiesDirect() && m.hasExpandedProxyGroups()}
 	o.Now = time.Now()
+	o.geoMaintenanceBusy = m.busy && m.notification.operation.Key == geoMaintenanceID
 	if m.coreNumber.id != "" {
 		o.coreNumber = &m.coreNumber
 	}

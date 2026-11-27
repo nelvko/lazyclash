@@ -17,7 +17,9 @@ import (
 	"time"
 
 	"github.com/nelvko/lazyclash/internal/app"
+	"github.com/nelvko/lazyclash/internal/downloadnet"
 	"github.com/nelvko/lazyclash/internal/mihomo"
+	"github.com/nelvko/lazyclash/internal/testfixture"
 	"github.com/spf13/pflag"
 )
 
@@ -57,6 +59,9 @@ func output[T any](v T, err error) error {
 
 func run(ctx context.Context, a *app.App, args []string) error {
 	switch args[0] {
+	case "country-mmdb-fixture":
+		_, err := os.Stdout.Write(testfixture.CountryMMDB())
+		return err
 	case "nodes":
 		s, err := a.Snapshot(ctx)
 		if err != nil {
@@ -108,6 +113,9 @@ func run(ctx context.Context, a *app.App, args []string) error {
 			return profile(ctx, a, args[1:])
 		}
 	case "settings":
+		if len(args) == 3 && args[1] == "download-prefix" {
+			return a.SaveNetworkPreferences(ctx, downloadnet.Config{Method: downloadnet.MethodAccelerated, Prefix: args[2]})
+		}
 		if len(args) == 2 && args[1] == "show" {
 			return output(a.GetRuntimeSettings(ctx))
 		}

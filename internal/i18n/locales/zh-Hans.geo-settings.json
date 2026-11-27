@@ -1,0 +1,9 @@
+{
+  "geo.loader.inherit": "跟随配置",
+  "geo.action.prepare": "补齐默认 GeoData",
+  "geo.action.update": "更新使用中的 GeoData",
+  "geo.action.cancelPreparation": "取消准备",
+  "geo.action.stopWaiting": "停止等待",
+  "geo.result.checked": "Mihomo 已完成 GeoData 更新检查",
+  "geo.result.stoppedWaiting": "已停止等待，Mihomo 可能仍在更新 GeoData。"
+}

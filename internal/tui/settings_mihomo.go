@@ -232,7 +232,8 @@ func coreSettingsRows(o dashboardOptions, tab coreSettingsTab) []settingsRow {
 	case resourcesTab:
 		rows = append(rows, group("settings.geoGroup"), toggle("settings.geoAutoUpdate", p.GeoAutoUpdate == "on"),
 			number("settings.geoUpdateInterval", p.GeoUpdateInterval, "settings.hours", p.GeoAutoUpdate == "on"),
-			selectRow("settings.geodataLoader"), group("settings.downloadGroup"), toggle("settings.etagSupport", p.ETagSupport == "on"),
+			selectRow("settings.geodataLoader"), geoMaintenanceRow(o),
+			group("settings.downloadGroup"), toggle("settings.etagSupport", p.ETagSupport == "on"),
 			toggle("settings.storeFakeIP", p.StoreFakeIP == "on"))
 	}
 	for i, row := range rows {
