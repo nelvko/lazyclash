@@ -6,6 +6,7 @@ import (
 	bubbleskey "charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/nelvko/lazyclash/internal/app"
 )
 
 type menuItem struct {
@@ -194,7 +195,9 @@ func (item menuItem) label() string {
 }
 
 func (m *Model) renderMenu(base string, contentBottom int) string {
-	return m.menu.render(base, m.width, m.height, contentBottom, m.monochrome())
+	// Mist's ANSI16 palette gives the highlighted and ordinary options the same background.
+	visibleCursor := m.monochrome() || m.lowColor() && m.effectiveTheme() == app.ThemeLight
+	return m.menu.render(base, m.width, m.height, contentBottom, visibleCursor)
 }
 
 func (m *actionMenu) render(base string, width, height, contentBottom int, monochrome bool) string {

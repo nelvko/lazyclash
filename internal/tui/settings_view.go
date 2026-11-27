@@ -173,7 +173,7 @@ const settingsRowHighlight = "#353d45"
 // control itself has no visible focus indicator.
 func (o dashboardOptions) settingsControlAppearance() dashboardOptions {
 	o.Hover = ""
-	if o.settingsPointerFocus {
+	if o.settingsPointerFocus || o.Monochrome && o.OpenDropdown == o.Focus {
 		o.Focus = ""
 	}
 	return o
