@@ -46,5 +46,10 @@ func probeWebsite(ctx context.Context, client *http.Client, endpoint string) (We
 		return WebsiteTestResult{}, errors.New("website request through Mihomo failed")
 	}
 	defer resp.Body.Close()
+	// A forward proxy can challenge a plain HTTP request before contacting
+	// the website. For HTTPS this challenge already fails the CONNECT tunnel.
+	if req.URL.Scheme == "http" && resp.StatusCode == http.StatusProxyAuthRequired {
+		return WebsiteTestResult{}, errors.New("proxy authentication required for website test")
+	}
 	return WebsiteTestResult{StatusCode: resp.StatusCode, Duration: time.Since(started)}, nil
 }

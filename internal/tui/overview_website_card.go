@@ -1,10 +1,7 @@
 package tui
 
 import (
-	"context"
-	"errors"
 	"fmt"
-	"net/http"
 	"slices"
 	"strings"
 
@@ -86,37 +83,17 @@ func (o dashboardOptions) websiteTestLines(site string, width int) []string {
 	tr := o.Locale.T
 	row := o.websiteTests.rows[site]
 	color, status := muted, tr("dashboard.website.untested")
-	code := row.result.StatusCode
 	switch {
 	case o.StateUnavailable || !overviewProxyAvailable(o.Snapshot):
-		color, status = muted, tr("dashboard.status.unavailable")
+		status = tr("dashboard.status.unavailable")
 	case row.queued:
-		color, status = muted, tr("dashboard.website.queued")
+		status = tr("dashboard.website.queued")
 	case row.pending():
 		color, status = accent, tr("dashboard.website.running")
-	case errors.Is(row.err, context.DeadlineExceeded):
-		color, status = warning, tr("dashboard.website.timeout")
+	case row.result.StatusCode > 0:
+		color, status = success, fmt.Sprintf("%d ms", max(1, row.result.Duration.Milliseconds()))
 	case row.err != nil:
-		color, status = errorColor, tr("dashboard.website.failed")
-	case code >= 200 && code < 300:
-		color, status = success, tr("dashboard.website.reachable")
-	case code == http.StatusForbidden:
-		color, status = warning, tr("dashboard.website.forbidden")
-	case code != 0:
-		color, status = warning, fmt.Sprintf("HTTP %d", code)
+		color, status = warning, tr("dashboard.website.timeout")
 	}
-	value := themed(status, color, panel, o.Dim)
-	lines := []string{value}
-	if o.StateUnavailable || !overviewProxyAvailable(o.Snapshot) || row.pending() {
-		return overviewTextBlock(lines, width).lines
-	}
-	if code != 0 && row.err == nil {
-		duration := fmt.Sprintf("%d ms", row.result.Duration.Milliseconds())
-		if ansi.StringWidth(value)+3+len(duration) <= width {
-			lines[0] += themed(" · "+duration, muted, panel, o.Dim)
-		} else {
-			lines = append(lines, themed(duration, muted, panel, o.Dim))
-		}
-	}
-	return overviewTextBlock(lines, width).lines
+	return overviewTextBlock([]string{themed(status, color, panel, o.Dim)}, width).lines
 }

@@ -546,7 +546,10 @@ def exercise_websites(preview, terminal, output, words, report, args):
     assert terminal.screen.text().count(untested) == 2, terminal.screen.text()
 
     terminal.click_text(test_all)
-    terminal.wait("403")
+    terminal.wait("212 ms")  # Google fixture returns HTTP 403 with a measured response time.
+    google_x, google_y = sites[1]
+    google_result = "".join(terminal.screen.cells[google_y + 1][google_x:sites[2][0] - 2]).strip()
+    assert google_result == "212 ms", google_result
     terminal.wait(words["dashboard.website.timeout"])
     assert untested not in terminal.screen.text()
     terminal.click_text("YouTube")

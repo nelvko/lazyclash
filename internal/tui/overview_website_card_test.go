@@ -67,50 +67,41 @@ func TestWebsiteCardShowsPerSiteResultAndActions(t *testing.T) {
 				}
 			}
 			if width == 24 || width == 72 {
-				statuses := [][]string{
-					{o.Locale.T("dashboard.website.reachable"), "123 ms"},
-					{o.Locale.T("dashboard.website.forbidden"), "37 ms"},
-					{o.Locale.T("dashboard.website.timeout")},
-				}
-				for i, hit := range buttons {
-					right, bottom := width, len(card.lines)
-					if i+1 < len(buttons) {
-						if next := buttons[i+1]; next.Y == hit.Y {
-							right = next.X
-						} else {
-							bottom = next.Y
-						}
+				for i, want := range []string{"123 ms", "37 ms", o.Locale.T("dashboard.website.timeout")} {
+					hit := buttons[i]
+					right := width
+					if next := i + 1; next < len(buttons) && buttons[next].Y == hit.Y {
+						right = buttons[next].X
 					}
-					var result strings.Builder
-					for _, line := range card.lines[hit.Y+1 : bottom] {
-						result.WriteString(strings.Join(strings.Fields(ansi.Strip(ansi.Cut(line, hit.X, right))), ""))
-					}
-					for _, label := range statuses[i] {
-						if !strings.Contains(result.String(), strings.Join(strings.Fields(label), "")) {
-							t.Fatalf("%s width %d: %s did not display %q under its button: %s", language, width, sites[i].Name, label, ansi.Strip(view))
-						}
+					got := strings.TrimSpace(ansi.Strip(ansi.Cut(card.lines[hit.Y+1], hit.X, right)))
+					if got != want {
+						t.Fatalf("%s width %d: %s displays %q, want %q", language, width, sites[i].Name, got, want)
 					}
 				}
 			}
 		}
 
 		o.websiteTests.rows[sites[0].URL] = websiteTestRow{err: errors.New("private diagnostic")}
-		o.websiteTests.rows[sites[1].URL] = websiteTestRow{result: app.WebsiteTestResult{StatusCode: 503}}
+		o.websiteTests.rows[sites[1].URL] = websiteTestRow{result: app.WebsiteTestResult{StatusCode: 503, Duration: 260 * time.Microsecond}}
 		delete(o.websiteTests.rows, sites[2].URL)
 		card := overviewWebsiteCard(o, 70)
 		view := ansi.Strip(strings.Join(card.lines, "\n"))
-		for _, want := range []string{o.Locale.T("dashboard.website.failed"), "HTTP 503", o.Locale.T("dashboard.website.untested")} {
+		for _, want := range []string{o.Locale.T("dashboard.website.timeout"), "1 ms", o.Locale.T("dashboard.website.untested")} {
 			if !strings.Contains(view, want) {
 				t.Fatalf("missing %s in %s", want, view)
 			}
 		}
-		if strings.Contains(view, "private diagnostic") {
-			t.Fatal("website row exposed raw diagnostics")
+		if strings.Contains(view, "private diagnostic") || strings.Contains(view, "503") {
+			t.Fatal("website row exposed a diagnostic or HTTP status")
+		}
+		o.websiteTests.rows[sites[0].URL] = websiteTestRow{result: app.WebsiteTestResult{StatusCode: 302, Duration: 8 * time.Millisecond}}
+		if got := ansi.Strip(strings.Join(o.websiteTestLines(sites[0].URL, 20), "\n")); got != "8 ms" {
+			t.Fatalf("redirect displayed %q", got)
 		}
 		o.Snapshot.Service.Active = false
 		card = overviewWebsiteCard(o, 70)
 		view = ansi.Strip(strings.Join(card.lines, "\n"))
-		if len(card.targets) != 1 || !hasAction(card.targets, "website.manage") || strings.Contains(view, "HTTP 503") || strings.Count(view, o.Locale.T("dashboard.status.unavailable")) != 3 {
+		if len(card.targets) != 1 || !hasAction(card.targets, "website.manage") || strings.Contains(view, " ms") || strings.Count(view, o.Locale.T("dashboard.status.unavailable")) != 3 {
 			t.Fatalf("stopped proxy retained website actions or results: %s", view)
 		}
 	}
