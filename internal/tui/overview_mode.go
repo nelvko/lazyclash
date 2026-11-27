@@ -69,9 +69,9 @@ func overviewModeCard(o dashboardOptions, width int) dashboardBlock {
 	case s.Mode.Actual == "direct":
 		add(tr("dashboard.overview.modeDirect"), muted)
 	default:
-		group, canChoose := overviewRouteGroup(s.Groups, s.Mode.Actual, o.SelectedGroup)
-		if group != nil {
-			content.append(overviewGroupSelection(o, *group, canChoose && !o.Busy, inner))
+		index, canChoose := o.overviewRouteGroup()
+		if index >= 0 {
+			content.append(overviewGroupSelection(o, s.Groups[index], canChoose && !o.Busy, inner))
 		} else if s.Mode.Actual == "global" {
 			add(tr("dashboard.overview.selectionUnavailable"), muted)
 		} else {
@@ -81,23 +81,38 @@ func overviewModeCard(o dashboardOptions, width int) dashboardBlock {
 	return panelWith(content)
 }
 
-// Rule mode follows the group directory order until the user chooses a group.
-func overviewRouteGroup(groups []mihomo.Group, mode, selected string) (group *mihomo.Group, canChoose bool) {
+// Resolve the same observed group for the card, its picker and its Proxies link.
+func (o dashboardOptions) overviewRouteGroup() (index int, canChoose bool) {
+	s := o.Snapshot
+	if o.StateUnavailable || !s.Installed || !s.Service.Active || s.ServiceError != "" ||
+		s.APIError != "" || s.Mode.Error != "" || (s.Mode.Actual != "rule" && s.Mode.Actual != "global") {
+		return -1, false
+	}
+	index = -1
 	count := 0
-	for i := range groups {
-		g := &groups[i]
-		if (g.Name == "GLOBAL") != (mode == "global") {
+	for i, g := range s.Groups {
+		if (g.Name == "GLOBAL") != (s.Mode.Actual == "global") {
 			continue
 		}
-		if mode == "global" {
-			return g, false
-		}
 		count++
-		if group == nil || g.Name == selected {
-			group = g
+		if index < 0 || g.Name == o.SelectedGroup {
+			index = i
 		}
 	}
-	return group, count > 1
+	return index, s.Mode.Actual == "rule" && count > 1
+}
+
+func (m *Model) openOverviewProxies() {
+	index, _ := m.navigationOptions().overviewRouteGroup()
+	if index < 0 || !m.proxiesReady() {
+		m.navigate("proxies")
+		return
+	}
+	m.browsePage("proxies")
+	m.closeProxySearch()
+	// A link from Overview starts a fresh visit to this group.
+	m.proxies.history = nil
+	m.locateProxyGroup(index)
 }
 
 // Wrap between hops so each arrow stays with its destination. The card centers

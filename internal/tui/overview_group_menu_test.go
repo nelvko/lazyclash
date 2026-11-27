@@ -206,3 +206,75 @@ func TestOverviewRuleGroupPopupCentersOnItsExpandedTrigger(t *testing.T) {
 		})
 	}
 }
+
+func TestOverviewProxyLinkOpensTheDisplayedSourceGroup(t *testing.T) {
+	for _, width := range []int{40, 160} {
+		for _, tc := range []struct {
+			name, mode, selected, group, member string
+		}{
+			{"nested selection", "rule", "ChatGPT", "ChatGPT", "Japan"},
+			{"default directory group", "rule", "", "AUTO", "HK 02"},
+			{"global selection", "global", "ChatGPT", "GLOBAL", "PROXY"},
+		} {
+			t.Run(fmt.Sprintf("%s/%d", tc.name, width), func(t *testing.T) {
+				m, backend := proxiesModel(t, width, 32)
+				defer m.stopRuntime()
+				m.navigate("overview")
+				m.snapshot.Mode.Actual, m.overviewGroup = tc.mode, tc.selected
+				m.syncProxies()
+				// The first rule group in directory order is deliberately not PROXY.
+				m.snapshot.Groups = slices.Clone(m.snapshot.Groups)
+				m.snapshot.Groups[0], m.snapshot.Groups[1] = m.snapshot.Groups[1], m.snapshot.Groups[0]
+				setProxyTestGroup(&m, "")
+				m.focus = "card.proxies"
+				m.revealContentFocus()
+				m.layout()
+				if width == 40 {
+					m, _ = click(m, findTarget(t, m, "card.proxies"))
+				} else {
+					m, _ = update(m, special(tea.KeyEnter))
+				}
+				_, group, member, ok := m.proxyAtFocus()
+				if m.page != "proxies" || !ok || group.Name != tc.group || member != tc.member || !m.proxyGroupExpanded(tc.group) {
+					t.Fatalf("link opened %q/%q at %q, want %q/%q", group.Name, member, m.focus, tc.group, tc.member)
+				}
+				findTarget(t, m, m.focus)
+				if m.busy || backend.selections != 0 || backend.modes != 0 || group.Now != tc.member {
+					t.Fatal("opening the group changed the observed selection or started a write")
+				}
+			})
+		}
+	}
+}
+
+func TestOverviewGroupContextOnlyAppliesToItsLinkWithAnObservedGroup(t *testing.T) {
+	for _, tc := range []struct{ name, mode, entry string }{
+		{"proxy page shortcut", "rule", "shortcut"},
+		{"unobserved routing mode", "", "link"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m, backend := proxiesModel(t, 160, 45)
+			defer m.stopRuntime()
+			m.snapshot.Mode.Actual = tc.mode
+			m.syncProxies()
+			// Remember a member distinct from both the displayed group and PROXY.Now.
+			setProxyTestGroup(&m, "PROXY")
+			m.focus = "node.0.1"
+			m.layout()
+			m.navigate("overview")
+			m.overviewGroup = "ChatGPT"
+			if tc.entry == "shortcut" {
+				m, _ = update(m, key("2"))
+			} else {
+				m.focus = "card.proxies"
+				m.revealContentFocus()
+				m.layout()
+				m, _ = update(m, special(tea.KeyEnter))
+			}
+			_, group, member, ok := m.proxyAtFocus()
+			if m.page != "proxies" || !ok || group.Name != "PROXY" || member != "HK 01" || m.busy || backend.selections != 0 || backend.modes != 0 {
+				t.Fatalf("ordinary navigation lost the remembered member: group %q, member %q, focus %q", group.Name, member, m.focus)
+			}
+		})
+	}
+}

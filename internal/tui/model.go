@@ -1477,7 +1477,7 @@ func (m *Model) activateControl(id string, key *tea.KeyPressMsg) tea.Cmd {
 		m.openTerminalActivation()
 		return nil
 	case "card.proxies":
-		m.navigate("proxies")
+		m.openOverviewProxies()
 		return nil
 	case overviewRouteGroupTarget:
 		d := m.navigationOptions().overviewRuleGroupDropdown()

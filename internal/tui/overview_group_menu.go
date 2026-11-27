@@ -3,17 +3,12 @@ package tui
 const overviewRouteGroupTarget = "overview.routeGroup"
 
 func (o dashboardOptions) overviewRuleGroupDropdown() dropdown {
-	s := o.Snapshot
-	if o.StateUnavailable || !s.Installed || !s.Service.Active || s.ServiceError != "" ||
-		s.APIError != "" || s.Mode.Error != "" || s.Mode.Actual != "rule" {
-		return dropdown{}
-	}
-	current, canChoose := overviewRouteGroup(s.Groups, s.Mode.Actual, o.SelectedGroup)
+	index, canChoose := o.overviewRouteGroup()
 	if !canChoose {
 		return dropdown{}
 	}
-	d := dropdown{Value: current.Name, CenterPopup: true, ShowCursor: true}
-	for _, group := range s.Groups {
+	d := dropdown{Value: o.Snapshot.Groups[index].Name, CenterPopup: true, ShowCursor: true}
+	for _, group := range o.Snapshot.Groups {
 		if group.Name != "GLOBAL" {
 			d.Items = append(d.Items, menuItem{ID: group.Name, Label: group.Name})
 		}
