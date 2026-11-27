@@ -92,7 +92,7 @@ func TestProxyAuthModalReviewsAccountChangesAndPreservesPasswords(t *testing.T) 
 		want := []app.ProxyAuthUser{
 			{OriginalUsername: "alice", Username: "alice-work"}, {OriginalUsername: "bob", Username: "bob", Password: newPassword}, {Username: "dana", Password: newPassword},
 		}
-		if !slices.Equal(users, want) || applies != 0 || m.ports.step != "review" || m.ports.focus != "ports.apply" {
+		if !slices.Equal(users, want) || applies != 0 || m.ports.step != "review" || m.ports.focus != "ports.cancel" {
 			t.Fatal("review did not keep the multi-user proposal separate from apply")
 		}
 		doc, _, _ := m.portsDocument(74)

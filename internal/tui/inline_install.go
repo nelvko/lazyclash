@@ -96,6 +96,8 @@ func (m *Model) handleInlineWizardResult(v wizardMsg) tea.Cmd {
 		case "prepare":
 			if m.job == "install" {
 				m.focus = "setup.cancel"
+			} else if m.wizard.step == stepConfirm && m.wizard.focus == "back" {
+				m.focus = "setup.later"
 			}
 		}
 		if m.wizard.err != "" && (previous == "setup.install" || previous == "setup.resolve") && (v.kind == "install-check" || v.kind == "resolve" || v.kind == "prepare") {
@@ -448,7 +450,7 @@ func (m *Model) inlineInstallBody(width int) (string, []hitRegion) {
 				d.line(m.tr("wizard.failed_stage")+": "+m.wizardFailedStage(w.failedStage), muted)
 			}
 			d.space()
-			d.buttons(wizardButton{"retry", m.tr("wizard.retry")}, wizardButton{"done", m.tr("wizard.overview")})
+			d.buttons(wizardButton{"done", m.tr("wizard.overview")}, wizardButton{"retry", m.tr("wizard.retry")})
 			d.control("network", m.tr("dashboard.setup.downloadMethod"))
 		} else {
 			d.line(m.tr("dashboard.setup.installed", w.result.InstalledVersion), success)
@@ -457,19 +459,20 @@ func (m *Model) inlineInstallBody(width int) (string, []hitRegion) {
 			}
 			d.line(m.tr("dashboard.setup.startHint"), muted)
 			d.space()
-			d.buttons(wizardButton{"start", m.tr("dashboard.action.start")}, wizardButton{"done", m.tr("wizard.overview")})
+			d.buttons(wizardButton{"done", m.tr("wizard.overview")}, wizardButton{"start", m.tr("dashboard.action.start")})
 		}
 	case stepConfirm:
 		// An external installation can appear after the initial snapshot. Its
 		// replacement still requires the same reviewed plan as core management.
+		buttons := []wizardButton{{"later", m.tr("dashboard.guide.later")}}
 		if w.plan.BlockedReason != "" {
 			d.line(clean(m.locale.Diagnostic(w.plan.BlockedReason, w.plan.BlockedDiagnostic)), errorColor)
 		} else {
 			d.line(m.tr("wizard.replace_summary"), warning)
 			d.line(w.plan.ExistingVersion+" → "+w.plan.Release.Version, text)
-			d.buttons(wizardButton{"install", m.tr("wizard.install")})
+			buttons = append(buttons, wizardButton{"install", m.tr("wizard.install")})
 		}
-		d.control("later", m.tr("dashboard.guide.later"))
+		d.buttons(buttons...)
 	default:
 		d.line(m.tr("dashboard.setup.description"), text)
 		version := m.tr("wizard.version.pending")
@@ -510,7 +513,7 @@ func (m *Model) inlineInstallBody(width int) (string, []hitRegion) {
 		if w.localMode {
 			install = m.tr("wizard.install")
 		}
-		d.buttons(wizardButton{"install", install}, wizardButton{"later", m.tr("dashboard.guide.later")})
+		d.buttons(wizardButton{"later", m.tr("dashboard.guide.later")}, wizardButton{"install", install})
 		d.space()
 		d.control("more", m.tr(map[bool]string{false: "dashboard.setup.more", true: "dashboard.setup.less"}[w.more]))
 		if w.more {

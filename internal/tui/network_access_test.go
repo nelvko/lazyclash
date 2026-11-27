@@ -68,6 +68,33 @@ func TestAccessRulesReviewOnlyChangedNetworksAndKeepDraftOnResize(t *testing.T) 
 	}
 }
 
+func TestAccessRulesFooterActionsFollowReadingOrder(t *testing.T) {
+	var current app.RuntimeSettings
+	current.LANAllowedIPs = mihomo.DefaultLANAllowedIPs
+	m := openNetworkAccessForm(t, "settings.accessRules", current)
+	m.ports.textarea(deniedNetworksID).SetValue("192.168.1.7")
+	for _, width := range []int{160, 40} {
+		m, _ = update(m, tea.WindowSizeMsg{Width: width, Height: 16})
+		previous := findTarget(t, m, "ports.cancel")
+		m.ports.focus = "ports.cancel"
+		for _, id := range []string{"ports.rulesReset", "ports.review"} {
+			button := findTarget(t, m, id)
+			if button.Y < previous.Y || button.Y == previous.Y && button.X < previous.X+previous.W {
+				t.Fatalf("at width %d, %s does not follow %s", width, id, previous.ID)
+			}
+			m, _ = update(m, special(tea.KeyTab))
+			if m.ports.focus != id {
+				t.Fatalf("at width %d, Tab focused %s, want %s", width, m.ports.focus, id)
+			}
+			previous = button
+		}
+		m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
+		if m.ports.focus != "ports.rulesReset" {
+			t.Fatal("Shift+Tab from Review did not select Restore defaults")
+		}
+	}
+}
+
 func TestAccessRulesSummary(t *testing.T) {
 	for _, tc := range []struct{ config, zh, en string }{
 		{"{}", "❯", "❯"},

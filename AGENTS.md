@@ -48,6 +48,8 @@ Use isolated data directories and dedicated service names for runtime experiment
 
 Prefer suitable Charm Bubbles components for TUI work; implement and encapsulate custom components only when none fits.
 
+Follow the [TUI action order](docs/tui-modals.md#操作按钮顺序) in pages and dialogs. Keep Tab navigation in visual order and focus a safe exit when opening a dangerous confirmation.
+
 遵循 karpathy-guidelines，但需注意：
 
 1. 架构设计优先考虑正确性、可维护性和明确的扩展需求。

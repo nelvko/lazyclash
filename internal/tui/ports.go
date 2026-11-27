@@ -47,6 +47,13 @@ type portsMsg struct {
 	refreshError error
 }
 
+func (p *portsState) reviewExit() string {
+	if p.accessEditor() {
+		return "ports.cancel"
+	}
+	return "ports.back"
+}
+
 func newPortsState() portsState {
 	input := textinput.New()
 	input.SetVirtualCursor(false)
@@ -244,6 +251,9 @@ func (m *Model) acceptPorts(msg portsMsg) {
 			p.err = m.tr("access.unchanged")
 		} else if msg.err == nil {
 			p.plan, p.step, p.focus = msg.plan, "review", "ports.apply"
+			if p.plan.Changed && p.plan.Active {
+				p.focus = p.reviewExit()
+			}
 			p.viewport.GotoTop()
 		}
 	case "apply":
@@ -488,8 +498,8 @@ func (m *Model) portsKey(k tea.KeyPressMsg) tea.Cmd {
 	}
 	switch key {
 	case "esc":
-		if p.step == "review" && !p.accessEditor() {
-			return m.portsActivate("ports.back")
+		if p.step == "review" {
+			return m.portsActivate(p.reviewExit())
 		}
 		m.closePorts()
 	case "tab", "shift+tab":
@@ -600,7 +610,7 @@ func (m *Model) portsDocument(width int) (wizardDocument, []wizardButton, string
 			}
 			m.accessEdit(&d)
 			if p.kind == "rules" {
-				buttons = append([]wizardButton{{"ports.rulesReset", m.tr("access.rulesReset")}}, buttons...)
+				buttons = append(buttons, wizardButton{"ports.rulesReset", m.tr("access.rulesReset")})
 			}
 			buttons = append(buttons, wizardButton{"ports.review", m.tr("ports.review")})
 			break
@@ -760,7 +770,7 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 	leadingWidth := 0
 	leadingID := "ports.back"
 	if p.kind == "rules" && p.step == "edit" {
-		leadingID = "ports.rulesReset"
+		leadingID = "ports.cancel"
 	}
 	line := ""
 	for _, button := range buttons {
@@ -772,7 +782,7 @@ func (m *Model) renderPorts(base string) (string, []hitRegion) {
 		kind := buttonSecondary
 		if primary {
 			kind = buttonPrimary
-		} else if access && button.ID == leadingID {
+		} else if access && (button.ID == "ports.back" || button.ID == "ports.rulesReset") {
 			kind = buttonText
 		}
 		minWidth := 0

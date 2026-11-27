@@ -47,8 +47,21 @@ func TestProfileFormsShareFieldAndActionLayout(t *testing.T) {
 				}
 				save := findTarget(t, m, "profile-create.save")
 				cancel := findTarget(t, m, "profile-create.cancel")
-				if save.Y != cancel.Y || cancel.X+cancel.W != save.X || save.X+save.W != right {
-					t.Fatalf("Cancel and the primary action should align to the right: %+v / %+v", cancel, save)
+				if save.Y != cancel.Y || save.X+save.W != right {
+					t.Fatalf("primary action did not end the footer row: %+v / %+v", cancel, save)
+				}
+				previous = cancel
+				if form == "profile-settings" {
+					for _, id := range []string{"profile-settings.overrides", "profile-settings.deactivate"} {
+						action := findTarget(t, m, id)
+						if action.Y != cancel.Y || previous.X+previous.W > action.X {
+							t.Fatalf("misplaced settings action: %+v after %+v", action, previous)
+						}
+						previous = action
+					}
+				}
+				if previous.X+previous.W != save.X {
+					t.Fatalf("unexpected button before submit: %+v / %+v", previous, save)
 				}
 
 				view, _ := m.renderProfileForm("")

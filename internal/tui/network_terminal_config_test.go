@@ -8,6 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
+	"github.com/nelvko/lazyclash/internal/service"
 	"github.com/nelvko/lazyclash/internal/shellintegration"
 )
 
@@ -43,6 +44,20 @@ func TestTerminalConfigReviewsOnlySharedPort(t *testing.T) {
 	m, _ = update(m, special(tea.KeyEscape))
 	if m.ports.open || m.page != "overview" || m.focus != "network.primaryConfig" {
 		t.Fatal("cancel did not return to the overview configuration button")
+	}
+}
+
+func TestTerminalPortRestartReviewDefaultsToBack(t *testing.T) {
+	m := terminalConfigModel(t, &fakeBackend{snapshot: app.Snapshot{Installed: true, Service: service.Status{Active: true}}})
+	m.ports.mixed.SetValue("18080")
+	m, cmd := update(m, special(tea.KeyEnter))
+	m, _ = update(m, actionCmd(t, cmd)())
+	if m.ports.step != "review" || m.ports.focus != "ports.back" {
+		t.Fatal("terminal port restart review did not focus Back")
+	}
+	m, _ = update(m, special(tea.KeyEnter))
+	if !m.ports.open || m.busy || m.ports.step != "edit" || m.ports.mixed.Value() != "18080" {
+		t.Fatal("Enter did not return to the draft without a restart")
 	}
 }
 

@@ -96,20 +96,46 @@ func TestProfileEditorRetainsWorkOnSaveFailureAndRetry(t *testing.T) {
 		if m.form != "profile-document" || !strings.Contains(m.failure, "rejected") {
 			t.Fatal("failed save dismissed recovery dialog", m.failure)
 		}
+		if m.profileEditor.action != editorRecoveryEdit {
+			t.Fatal("recovery should open on Continue editing to preserve the draft")
+		}
 		m, _ = update(m, special(tea.KeyEscape))
+		if m.form != "profile-document" || m.profileEditor.action != editorRecoveryClose {
+			t.Fatal("Escape should focus the exit without discarding edits")
+		}
+		m, _ = update(m, tea.WindowSizeMsg{Width: 8, Height: 4})
+		m, _ = update(m, special(tea.KeyEnter))
 		if m.form != "profile-document" {
-			t.Fatal("escape discarded user edits")
+			t.Fatal("an invisible exit button discarded edits")
 		}
 		for _, size := range [][2]int{{160, 40}, {60, 20}, {40, 16}, {20, 7}} {
 			m, _ = update(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
 			assertCanvas(t, m.screen, size[0], size[1])
 			assertRegions(t, m.targets, size[0], size[1])
+			previous := hitRegion{Y: -1}
+			for _, id := range []string{"profile-editor.close", "profile-editor.edit", "profile-editor.retry"} {
+				hit := findTarget(t, m, id)
+				if hit.Y < previous.Y || hit.Y == previous.Y && hit.X < previous.X+previous.W {
+					t.Fatalf("%dx%d: %s should follow %s", m.width, m.height, id, previous.ID)
+				}
+				previous = hit
+			}
 		}
 		m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 32})
 		if view := ansi.Strip(m.screen); !strings.Contains(view, "Continue editing") || !strings.Contains(view, "Retry save") {
 			t.Fatalf("missing recovery controls: %s", view)
 		}
-		retry := m.profileEditorActivate("profile-editor.retry")
+		for _, action := range []int{editorRecoveryEdit, editorRecoveryRetry, editorRecoveryClose} {
+			m, _ = update(m, special(tea.KeyTab))
+			if m.profileEditor.action != action {
+				t.Fatalf("Tab should focus %s", profileEditorActions[action].id)
+			}
+		}
+		m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
+		if m.profileEditor.action != editorRecoveryRetry {
+			t.Fatal("Shift+Tab from exit should wrap to Retry save")
+		}
+		retry := m.formKey(special(tea.KeyEnter))
 		save = m.finishProfileEditor(retry().(profileEditorExitedMsg))
 		m = finishProfileJob(t, m, save)
 		if calls != 2 || m.form != "" || m.failure != "" {

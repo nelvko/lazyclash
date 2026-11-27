@@ -72,8 +72,15 @@ func TestProfileSettingsNarrowLayoutKeepsEditorsAndActionsReachable(t *testing.T
 	}
 	m, _ = update(m, tea.WindowSizeMsg{Width: 40, Height: 16})
 	var actions []hitRegion
-	for _, id := range []string{"profile-settings.overrides", "profile-settings.deactivate", "profile-create.save", "profile-create.cancel"} {
-		actions = append(actions, findTarget(t, m, id))
+	for _, id := range []string{"profile-create.cancel", "profile-settings.overrides", "profile-settings.deactivate", "profile-create.save"} {
+		action := findTarget(t, m, id)
+		if len(actions) > 0 {
+			prev := actions[len(actions)-1]
+			if action.Y < prev.Y || action.Y == prev.Y && action.X < prev.X+prev.W {
+				t.Fatalf("buttons wrapped out of order: %+v after %+v", action, prev)
+			}
+		}
+		actions = append(actions, action)
 	}
 	// Move to the first editor, then page away from it before typing.
 	for range 2 {
@@ -96,11 +103,17 @@ func TestProfileSettingsNarrowLayoutKeepsEditorsAndActionsReachable(t *testing.T
 		}
 		m, _ = update(m, special(tea.KeyTab))
 	}
-	for _, field := range []int{profileSettingsImport, profileSettingsDeactivate, profileCreateCancel, profileCreateSave} {
-		if m.focus != profileCreateFieldID(field) {
-			t.Fatalf("action focus = %s, want %s", m.focus, profileCreateFieldID(field))
+	for _, action := range actions {
+		if m.focus != action.ID {
+			t.Fatalf("action focus = %s, want %s", m.focus, action.ID)
 		}
 		m, _ = update(m, special(tea.KeyTab))
+	}
+	for i := len(actions) - 1; i >= 0; i-- {
+		m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
+		if m.focus != actions[i].ID {
+			t.Fatalf("reverse action focus = %s, want %s", m.focus, actions[i].ID)
+		}
 	}
 	m, _ = update(m, special(tea.KeyPgDown))
 	for _, action := range actions {

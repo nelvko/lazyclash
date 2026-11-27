@@ -284,8 +284,23 @@ func TestInstalledCoreManualReplacementStillReviewsThePlan(t *testing.T) {
 	m, cmd := activateWizard(m, "install")
 	m, _ = update(m, actionCmd(t, cmd)())
 	_, buttons, _ := m.wizardDocument(80)
-	if installs != 0 || m.busy || m.wizard.step != stepConfirm || m.wizard.plan.ExistingVersion != "v1.20.0" || !hasWizardButton(buttons, "install") {
+	if installs != 0 || m.busy || m.wizard.step != stepConfirm || m.wizard.plan.ExistingVersion != "v1.20.0" || !hasWizardButton(buttons, "install") || m.wizard.focus != "back" {
 		t.Fatal("manual replacement of an installed core skipped its impact review")
+	}
+	m, _ = update(m, special(tea.KeyEnter))
+	if m.wizard.step != stepVersion || m.busy || installs != 0 {
+		t.Fatal("Enter on the default replacement action did not return to version selection")
+	}
+	m, cmd = activateWizard(m, "install")
+	m, _ = update(m, actionCmd(t, cmd)())
+	m, _ = update(m, special(tea.KeyTab))
+	if m.wizard.focus != "install" {
+		t.Fatalf("Tab from Back focused %q, want Install", m.wizard.focus)
+	}
+	m, cmd = update(m, special(tea.KeyEnter))
+	m, _ = update(m, actionCmd(t, cmd)())
+	if installs != 1 || m.wizard.step != stepResult {
+		t.Fatal("explicit confirmation did not replace the core")
 	}
 }
 

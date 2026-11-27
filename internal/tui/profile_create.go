@@ -118,13 +118,28 @@ func (m *Model) profileFieldOrder() []int {
 		order = append(order, profileCreateUserAgent)
 	}
 	order = append(order, profileCreateName, profileCreateDescription)
+	for _, action := range m.profileFormActions() {
+		order = append(order, action.field)
+	}
+	return order
+}
+
+type profileFormAction struct {
+	field int
+	label string
+}
+
+func (m *Model) profileFormActions() []profileFormAction {
+	actions := []profileFormAction{{profileCreateCancel, "profiles.create_cancel"}}
+	submit := "profiles.create_save"
 	if m.form == "profile-settings" {
-		order = append(order, profileSettingsImport)
+		submit = "profile_settings.save"
+		actions = append(actions, profileFormAction{profileSettingsImport, "profile_settings.import"})
 		if m.canUseDefaultFrom(m.name) {
-			order = append(order, profileSettingsDeactivate)
+			actions = append(actions, profileFormAction{profileSettingsDeactivate, "profile_settings.deactivate"})
 		}
 	}
-	return append(order, profileCreateCancel, profileCreateSave)
+	return append(actions, profileFormAction{profileCreateSave, submit})
 }
 
 func (p *profileCreateState) scrollBy(rows int) {

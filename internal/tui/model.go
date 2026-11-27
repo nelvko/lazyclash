@@ -904,6 +904,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.portsKey(v)
 			break
 		}
+		// A size notice replaces the dialog controls. Keep Escape available
+		// without letting an invisible button receive focus or activation.
+		if (m.wizard.open || m.wizard.networkOpen || m.form != "") && len(m.targets) == 0 && key != "esc" {
+			break
+		}
 		if m.wizard.open || m.wizard.networkOpen {
 			cmd = m.wizardKey(v)
 			break

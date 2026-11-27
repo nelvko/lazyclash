@@ -271,9 +271,9 @@ def main():
             terminal.key(b"\t")  # display name -> description
             paste(terminal, memo)
             terminal.key(b"\t")
-            terminal.wait("› Import overrides…")
-            terminal.key(b"\t")
             terminal.wait("›[Cancel]")
+            terminal.key(b"\t")
+            terminal.wait("› Import overrides…")
             terminal.key(b"\t")
             terminal.wait("›[Save]")
             terminal.click_text("[Save]")

@@ -55,7 +55,7 @@ def exercise(preview, binary, output, language, profile, args):
             else:
                 raise AssertionError("upgrade confirmation became inaccessible after resize\n" + terminal.screen.text())
             preview.capture(terminal, output, "check-%dx%d" % (width, height), args)
-        terminal.key(b"\r")
+        terminal.key(b"\t\t\r")  # Back, Check Mihomo updates, Confirm upgrade.
         terminal.wait("Fixture transfer")
         terminal.key(b"\x1b")
         terminal.wait(failed)

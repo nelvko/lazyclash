@@ -36,7 +36,7 @@ type profileEditorExitedMsg struct {
 }
 
 func prepareEditorFile(doc app.ProfileDocument) (profileEditorState, error) {
-	state := profileEditorState{document: doc, path: doc.LocalPath}
+	state := profileEditorState{document: doc, path: doc.LocalPath, action: editorRecoveryEdit}
 	if doc.LocalPath != "" {
 		return state, nil
 	}
@@ -175,7 +175,20 @@ func (m *Model) closeProfileEditor() {
 	m.focusProfileByID(id)
 }
 
-var profileEditorActions = []string{"profile-editor.edit", "profile-editor.retry", "profile-editor.close"}
+const (
+	editorRecoveryClose = iota
+	editorRecoveryEdit
+	editorRecoveryRetry
+)
+
+var profileEditorActions = [...]struct {
+	id, labelKey string
+	kind         buttonKind
+}{
+	editorRecoveryClose: {"profile-editor.close", "profiles.close", buttonSecondary},
+	editorRecoveryEdit:  {"profile-editor.edit", "profile_editor.continue", buttonSecondary},
+	editorRecoveryRetry: {"profile-editor.retry", "profile_editor.retry", buttonPrimary},
+}
 
 func (m *Model) profileEditorActivate(id string) tea.Cmd {
 	if m.busy || m.quitting {
@@ -210,9 +223,9 @@ func (m *Model) profileEditorKey(k tea.KeyPressMsg) tea.Cmd {
 	case "esc":
 		// Select the explicit close/discard action; a stray Escape never
 		// deletes a private working copy after an unsuccessful save.
-		m.profileEditor.action = len(profileEditorActions) - 1
+		m.profileEditor.action = editorRecoveryClose
 	case "enter":
-		return m.profileEditorActivate(profileEditorActions[m.profileEditor.action])
+		return m.profileEditorActivate(profileEditorActions[m.profileEditor.action].id)
 	}
 	return nil
 }
@@ -237,15 +250,15 @@ func (m *Model) renderProfileEditor(base string) (string, []hitRegion) {
 			lines = append(lines, themed(cellCrop(line, inner), muted, modalBackground, false))
 		}
 	}
-	labels := []string{m.tr("profile_editor.continue"), m.tr("profile_editor.retry"), m.tr("profiles.close")}
-	if m.profileEditor.tempDir != "" {
-		labels[2] = m.tr("profile_editor.discard")
-	}
 	var buttons dashboardBlock
 	if !m.busy {
 		x := 0
-		for i, id := range profileEditorActions {
-			b := renderButton(labels[i], buttonOptions{Surface: modalBackground, Focused: i == m.profileEditor.action, Hovered: m.hover == id, Plain: m.buttonPlain()})
+		for i, action := range profileEditorActions {
+			if i == editorRecoveryClose && m.profileEditor.tempDir != "" {
+				action.labelKey, action.kind = "profile_editor.discard", buttonDanger
+			}
+			b := renderButton(m.tr(action.labelKey), buttonOptions{Kind: action.kind, Surface: modalBackground,
+				Focused: i == m.profileEditor.action, Hovered: m.hover == action.id, Plain: m.buttonPlain()})
 			size := min(inner, ansi.StringWidth(b))
 			if i == 0 || x+size > inner {
 				buttons.lines = append(buttons.lines, "")
@@ -253,7 +266,7 @@ func (m *Model) renderProfileEditor(base string) (string, []hitRegion) {
 			}
 			y := len(buttons.lines) - 1
 			buttons.lines[y] += cellCrop(b, size)
-			buttons.targets = append(buttons.targets, hitRegion{ID: id, X: x, Y: y, W: size, H: 1})
+			buttons.targets = append(buttons.targets, hitRegion{ID: action.id, X: x, Y: y, W: size, H: 1})
 			x += size
 		}
 	}

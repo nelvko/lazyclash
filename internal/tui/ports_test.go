@@ -113,8 +113,12 @@ func TestRuntimePortsRequireReviewBeforeApplyAndRefreshDashboard(t *testing.T) {
 				return app.RuntimeSettingsResult{Settings: p.Proposed, Controller: b.snapshot.Controller, Restarted: active, Changed: true}, nil
 			}
 			m := reviewPorts(t, portsModel(t, b))
-			if applies != 0 || m.ports.focus != "ports.apply" {
-				t.Fatal("preflight applied a change without a separate confirmation")
+			wantFocus := "ports.apply"
+			if active {
+				wantFocus = "ports.cancel"
+			}
+			if applies != 0 || m.ports.focus != wantFocus {
+				t.Fatalf("after review: applies %d, focus %q, want %q", applies, m.ports.focus, wantFocus)
 			}
 			plain := ansi.Strip(m.screen)
 			impact := m.tr("ports.stopped_boundary")
@@ -126,7 +130,18 @@ func TestRuntimePortsRequireReviewBeforeApplyAndRefreshDashboard(t *testing.T) {
 					t.Fatalf("review omitted part of the service impact: %q", line)
 				}
 			}
-			m, cmd := click(m, findTarget(t, m, "ports.apply"))
+			if active {
+				m, _ = update(m, special(tea.KeyEnter))
+				if m.ports.open || m.busy || applies != 0 {
+					t.Fatal("pressing Enter on a restart review did not cancel")
+				}
+				m = reviewPorts(t, portsModel(t, b))
+				m, _ = update(m, special(tea.KeyTab))
+				if m.ports.focus != "ports.apply" {
+					t.Fatal("Tab from Cancel did not select Apply & restart")
+				}
+			}
+			m, cmd := update(m, special(tea.KeyEnter))
 			m, duplicate := update(m, special(tea.KeyEnter))
 			if duplicate != nil || !m.busy || m.ports.step != "applying" {
 				t.Fatal("duplicate Apply started a second task")

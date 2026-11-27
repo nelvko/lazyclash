@@ -102,7 +102,7 @@ func TestProfileSettingsKeyboardResizeAndExternalChanges(t *testing.T) {
 	m = openSettingsForTest(t, m, "gamma")
 	for _, size := range [][2]int{{80, 24}, {60, 20}, {40, 16}, {160, 40}} {
 		m, _ = update(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
-		for _, field := range []int{profileCreateDescription, profileSettingsImport, profileCreateCancel, profileCreateSave, profileCreateSource, profileCreateName} {
+		for _, field := range []int{profileCreateDescription, profileCreateCancel, profileSettingsImport, profileCreateSave, profileCreateSource, profileCreateName} {
 			m, _ = update(m, special(tea.KeyTab))
 			if m.focus != profileCreateFieldID(field) {
 				t.Fatalf("focus %s at %v", m.focus, size)

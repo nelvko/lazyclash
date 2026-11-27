@@ -125,9 +125,13 @@ func (m *Model) profileButtonView(b profileButton, surface string) string {
 	} else if strings.HasPrefix(b.id, "profiles.delete.") {
 		kind = buttonDanger
 	}
-	return renderButton(b.label, buttonOptions{Kind: kind, Surface: surface,
+	options := buttonOptions{Kind: kind, Surface: surface,
 		Focused: m.focus == b.id && b.id != "", Hovered: m.hover == b.id && b.id != "",
-		Disabled: b.id == "" || m.busy || m.quitting, Plain: b.id != "" && m.buttonPlain()})
+		Disabled: b.id == "" || m.busy || m.quitting, Plain: b.id != "" && m.buttonPlain()}
+	if b.id == "profile-create.save" {
+		options.Busy, options.Disabled = m.busy, m.quitting
+	}
+	return renderButton(b.label, options)
 }
 
 func (m *Model) profileButtons(buttons []profileButton, width int, surface string) dashboardBlock {

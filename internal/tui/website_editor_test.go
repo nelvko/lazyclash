@@ -126,6 +126,47 @@ func TestWebsiteEditorRemovalRequiresConfirmationAndSupportsLastSite(t *testing.
 
 }
 
+func TestWebsiteEditorCancelPrecedesSubmit(t *testing.T) {
+	site := app.DefaultWebsites()[0]
+	for _, operation := range []string{"add", "edit", "remove"} {
+		t.Run(operation, func(t *testing.T) {
+			m := ready(&fakeBackend{snapshot: settingsTestSnapshot()})
+			directionCleanup(t, &m)
+			m.width, m.height = 40, 16
+			submit := "websiteEditor.save"
+			switch operation {
+			case "add":
+				m.beginWebsiteEdit(app.Website{})
+			case "edit":
+				m.beginWebsiteEdit(site)
+			case "remove":
+				m.beginWebsiteRemoval(site)
+				submit = "websiteEditor.confirm"
+			}
+			m.layout()
+			cancel, action := findTarget(t, m, "websiteEditor.cancel"), findTarget(t, m, submit)
+			if cancel.Y != action.Y || cancel.X+cancel.W > action.X {
+				t.Fatalf("expected Cancel to the left of the submit button: %+v, %+v", cancel, action)
+			}
+			if operation != "remove" {
+				m, _ = update(m, special(tea.KeyTab)) // Address to name.
+				m, _ = update(m, special(tea.KeyTab))
+			}
+			if m.focus != cancel.ID {
+				t.Fatalf("first footer focus = %q, want %q", m.focus, cancel.ID)
+			}
+			m, _ = update(m, special(tea.KeyTab))
+			if m.focus != submit {
+				t.Fatalf("Tab from Cancel focused %q, want %q", m.focus, submit)
+			}
+			m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
+			if m.focus != cancel.ID {
+				t.Fatalf("Shift+Tab from submit focused %q, want %q", m.focus, cancel.ID)
+			}
+		})
+	}
+}
+
 func TestWebsiteEditorStaleSiteRestoresCurrentList(t *testing.T) {
 	initial := app.DefaultWebsites()
 	current := initial[1:]

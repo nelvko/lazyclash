@@ -264,7 +264,7 @@ func (m *Model) handleWizardResult(v wizardMsg) tea.Cmd {
 		w.updateCheck = v.updateCheck
 		w.focus = "check-update"
 		if v.updateCheck.Status == mihomo.UpdateAvailable && v.updateCheck.Channel == mihomo.ChannelStable {
-			w.focus = "upgrade"
+			w.focus = "back"
 		}
 		m.message = m.tr("core_update.checked")
 	case "upgrade":
@@ -292,7 +292,7 @@ func (m *Model) handleWizardResult(v wizardMsg) tea.Cmd {
 		w.installRequested = false
 		w.step = stepConfirm
 		w.focus = "install"
-		if v.plan.BlockedReason != "" {
+		if v.plan.BlockedReason != "" || v.plan.ExistingVersion != "" && v.plan.Operation != "use existing" {
 			w.focus = "back"
 		}
 		w.scroll = 0

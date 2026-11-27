@@ -287,6 +287,75 @@ func TestInlineSkipCancelsLookupAndRejectsLateResults(t *testing.T) {
 	}
 }
 
+func TestInlineReplacementDefaultsToLaterEvenAfterLeavingOverview(t *testing.T) {
+	for _, background := range []bool{false, true} {
+		t.Run(fmt.Sprint("background=", background), func(t *testing.T) {
+			m := ready(&fakeBackend{prepare: func(_ context.Context, r mihomo.Release, _ string, _ bool) (app.InstallPlan, error) {
+				return app.InstallPlan{Release: r, ExistingVersion: "v1.20.0", Operation: "update"}, nil
+			}})
+			m.width, m.height = 120, 32
+			m.layout()
+			m, cmd := update(m, special(tea.KeyEnter))
+			m, cmd = update(m, inlineOperationMsg(t, cmd))
+			if m.job != "prepare" {
+				t.Fatalf("expected replacement preflight, got %q", m.job)
+			}
+			if background {
+				m, _ = update(m, key("7"))
+			}
+			m, _ = update(m, inlineOperationMsg(t, cmd))
+			if m.wizard.step != stepConfirm || m.busy {
+				t.Fatal("replacement preflight did not wait for confirmation")
+			}
+			if background {
+				if m.page != "settings" {
+					t.Fatal("replacement preflight moved the active page")
+				}
+				m, _ = update(m, key("1"))
+			}
+			if m.focus != "setup.later" {
+				t.Fatalf("review initially focused %q", m.focus)
+			}
+			m, _ = update(m, special(tea.KeyEnter))
+			if m.busy || !m.guideSkipped || m.inlineInstallVisible() {
+				t.Fatal("default Enter did not leave the existing core alone")
+			}
+		})
+	}
+}
+
+func TestInlineActionOrderMatchesTabTraversal(t *testing.T) {
+	for _, tc := range []struct {
+		name, first, second string
+		step                wizardStep
+		err                 string
+	}{
+		{"install", "setup.later", "setup.install", stepVersion, ""},
+		{"replace", "setup.later", "setup.install", stepConfirm, ""},
+		{"success", "setup.done", "setup.start", stepResult, ""},
+		{"failure", "setup.done", "setup.retry", stepResult, "offline"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := ready(&fakeBackend{})
+			m.width, m.height = 120, 32
+			m.wizard.step, m.wizard.err, m.focus = tc.step, tc.err, tc.first
+			m.layout()
+			first, second := findTarget(t, m, tc.first), findTarget(t, m, tc.second)
+			if first.Y != second.Y || first.X+first.W > second.X {
+				t.Fatalf("expected adjacent actions in reading order: %+v, %+v", first, second)
+			}
+			m, _ = update(m, special(tea.KeyTab))
+			if m.focus != tc.second {
+				t.Fatalf("Tab from %s landed on %s", tc.first, m.focus)
+			}
+			m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
+			if m.focus != tc.first {
+				t.Fatalf("Shift+Tab from %s landed on %s", tc.second, m.focus)
+			}
+		})
+	}
+}
+
 func TestInlineInputsOwnPrintableKeysAndPreserveDraftAcrossPages(t *testing.T) {
 	m := ready(&fakeBackend{})
 	m, _ = activateWizard(m, "more")
@@ -470,8 +539,9 @@ func TestInlineInstallTextUsesAvailableWidthAndControlsStayCompact(t *testing.T)
 			m.layout()
 			input := findTarget(t, m, "setup.local")
 			install := findTarget(t, m, "setup.install")
-			if input.W != min(60, tc.textWidth) || input.X != tc.textX || install.X != tc.textX {
-				t.Fatalf("local input %+v and install button %+v do not fit the left-aligned form", input, install)
+			later := findTarget(t, m, "setup.later")
+			if input.W != min(60, tc.textWidth) || input.X != tc.textX || later.X != tc.textX || install.X != later.X+later.W {
+				t.Fatalf("local input %+v and buttons %+v %+v do not fit the left-aligned form", input, later, install)
 			}
 
 			// An unbroken path or diagnostic can use the complete row. Check

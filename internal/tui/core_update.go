@@ -73,11 +73,11 @@ func (m *Model) coreUpdateDocument(d wizardDocument) (wizardDocument, []wizardBu
 	if !compact {
 		d.label(m.tr("core_update.review"))
 	}
-	buttons := []wizardButton{{"back", m.tr("wizard.back")}}
 	if m.busy {
 		d.line(m.spinner.View() + " " + m.tr("core_update.checking"))
 		return d, []wizardButton{{"cancel", m.tr("wizard.cancel")}}, m.tr("core_update.title")
 	}
+	buttons := []wizardButton{{"back", m.tr("wizard.back")}, {"check-update", m.tr("core_update.check")}}
 	c := w.updateCheck
 	if !c.CheckedAt.IsZero() {
 		installed := c.InstalledVersion
@@ -121,7 +121,6 @@ func (m *Model) coreUpdateDocument(d wizardDocument) (wizardDocument, []wizardBu
 	d.space()
 	d.control("network", m.tr("wizard.network.title"), w.focus)
 	d.line(m.tr("core_update.read_only"))
-	buttons = append(buttons, wizardButton{"check-update", m.tr("core_update.check")})
 	return d, buttons, m.tr("core_update.title")
 }
 

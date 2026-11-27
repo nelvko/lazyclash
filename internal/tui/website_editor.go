@@ -104,7 +104,7 @@ func (m *Model) websiteEditorKey(key tea.KeyPressMsg) tea.Cmd {
 	case "tab", "shift+tab":
 		controls := []string{"websiteEditor.cancel", "websiteEditor.confirm"}
 		if !m.websiteEditor.confirmRemove {
-			controls = []string{"websiteEditor.address", "websiteEditor.name", "websiteEditor.save", "websiteEditor.cancel"}
+			controls = []string{"websiteEditor.address", "websiteEditor.name", "websiteEditor.cancel", "websiteEditor.save"}
 		}
 		i := slices.Index(controls, m.focus)
 		delta := 1

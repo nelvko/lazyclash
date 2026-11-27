@@ -95,10 +95,17 @@ func TestCoreUpdateRequiresManualCheckAndConfirmation(t *testing.T) {
 	}
 	m, _ = update(m, actionCmd(t, cmd)())
 	_, buttons, _ := m.wizardDocument(90)
-	if checks != 1 || upgrades != 0 || !hasWizardButton(buttons, "upgrade") {
-		t.Fatal("check upgraded or did not expose confirmation")
+	if checks != 1 || upgrades != 0 || m.wizard.focus != "back" || len(buttons) != 3 ||
+		buttons[0].ID != "back" || buttons[1].ID != "check-update" || buttons[2].ID != "upgrade" {
+		t.Fatal("upgrade review must start on Back and end with the explicit upgrade action")
 	}
-	m, cmd = activateWizard(m, "upgrade")
+	for _, want := range []string{"check-update", "upgrade"} {
+		m, _ = update(m, special(tea.KeyTab))
+		if m.wizard.focus != want {
+			t.Fatalf("Tab focused %q, want %q", m.wizard.focus, want)
+		}
+	}
+	m, cmd = update(m, special(tea.KeyEnter))
 	if !m.busy || !m.wizard.upgrading || m.wizard.step != stepInstalling {
 		t.Fatal("upgrade did not reuse installation progress")
 	}
@@ -132,6 +139,35 @@ func TestCoreUpdateStatusesDoNotAuthorizeUncertainOrDowngradeTargets(t *testing.
 	}
 }
 
+func TestCoreUpdateHiddenByResizeCannotActivateOrMoveFocus(t *testing.T) {
+	m := ready(&fakeBackend{snapshot: settingsTestSnapshot()})
+	m.openManagementWizard(false)
+	m, _ = update(m, tea.WindowSizeMsg{Width: 120, Height: 32})
+	m, cmd := click(m, findTarget(t, m, "check-update"))
+	m, _ = update(m, actionCmd(t, cmd)())
+	m, _ = update(m, special(tea.KeyTab))
+	m, _ = update(m, special(tea.KeyTab))
+	findTarget(t, m, "upgrade")
+	if m.wizard.focus != "upgrade" {
+		t.Fatalf("failed to focus the visible confirmation: %q", m.wizard.focus)
+	}
+
+	m, _ = update(m, tea.WindowSizeMsg{Width: 24, Height: 8})
+	if hasAction(m.targets, "upgrade") {
+		t.Fatal("the undersized window still shows the upgrade button")
+	}
+	for _, key := range []tea.KeyPressMsg{special(tea.KeyEnter), special(tea.KeyTab), {Code: tea.KeyTab, Mod: tea.ModShift}} {
+		m, _ = update(m, key)
+		if m.busy || m.wizard.step != stepUpdate || m.wizard.focus != "upgrade" {
+			t.Fatalf("%s activated or navigated a hidden upgrade action", key.String())
+		}
+	}
+	m, _ = update(m, special(tea.KeyEscape))
+	if m.busy || m.wizard.step != stepCore {
+		t.Fatal("Escape from the resize notice did not return to core management")
+	}
+}
+
 func TestCoreUpdateCancellationWaitsForRecoveryAndIgnoresLateChecks(t *testing.T) {
 	m := ready(&fakeBackend{snapshot: app.Snapshot{Installed: true, Version: "v1.19.32"}})
 	m.openWizard(false)
@@ -161,10 +197,10 @@ func TestSettingsCoreUpdateReturnsToItsTrigger(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
 		pending bool
-		escape  bool
+		key     rune
 	}{
-		{"back", false, false}, {"escape", false, true},
-		{"cancel", true, false}, {"escape while checking", true, true},
+		{"back", false, 0}, {"enter on default", false, tea.KeyEnter}, {"escape", false, tea.KeyEscape},
+		{"cancel", true, 0}, {"escape while checking", true, tea.KeyEscape},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			m := ready(&fakeBackend{snapshot: settingsTestSnapshot()})
@@ -183,14 +219,14 @@ func TestSettingsCoreUpdateReturnsToItsTrigger(t *testing.T) {
 			button := "cancel"
 			if !tc.pending {
 				m, _ = update(m, result)
-				if m.wizard.focus != "upgrade" || m.busy {
-					t.Fatal("available update did not wait for confirmation")
+				if m.wizard.focus != "back" || m.busy {
+					t.Fatal("available update did not default to Back")
 				}
 				button = "back"
 			}
 			m, _ = update(m, tea.WindowSizeMsg{Width: 40, Height: 16})
-			if tc.escape {
-				m, _ = update(m, special(tea.KeyEscape))
+			if tc.key != 0 {
+				m, _ = update(m, special(tc.key))
 			} else {
 				m, _ = click(m, findTarget(t, m, button))
 			}

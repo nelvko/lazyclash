@@ -224,8 +224,13 @@ func (m *Model) enterContent() {
 	m.sidebarOpen = false
 	targets := m.contentTargets()
 	remembered := m.restoredContentFocus(m.pageViews[m.page])
-	if m.page == "overview" && m.inlineInstallVisible() && m.wizard.step == stepVersion && m.wizard.err != "" && remembered == "setup.install" {
-		remembered = "setup.resolve"
+	if m.page == "overview" && m.inlineInstallVisible() {
+		if m.wizard.step == stepConfirm && m.wizard.focus == "back" {
+			// Preflight may have discovered an existing core while the user was away.
+			remembered = "setup.later"
+		} else if m.wizard.step == stepVersion && m.wizard.err != "" && remembered == "setup.install" {
+			remembered = "setup.resolve"
+		}
 	}
 	chosen := ""
 	if remembered == "content" {

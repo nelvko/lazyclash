@@ -541,7 +541,7 @@ func getStarted(o dashboardOptions, width int) dashboardBlock {
 	buttons := []struct {
 		id, label string
 		primary   bool
-	}{{"install", tr("dashboard.guide.install"), true}, {"guide.later", tr("dashboard.guide.later"), false}}
+	}{{"guide.later", tr("dashboard.guide.later"), false}, {"install", tr("dashboard.guide.install"), true}}
 	x := 0
 	buttonLine := ""
 	for _, button := range buttons {

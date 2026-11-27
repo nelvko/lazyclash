@@ -62,10 +62,10 @@ func TestActionButtonGroupsKeepOneCellBeforeFocusAndNoneAfter(t *testing.T) {
 					m.wizard.failedStage = "extract"
 					return m.renderWizard("")
 				}},
-				{"inline-install", "setup.done", "setup.later", func(m *Model) (string, []hitRegion) {
-					m.focus = "setup.later"
+				{"inline-install", "setup.done", "setup.retry", func(m *Model) (string, []hitRegion) {
+					m.focus = "setup.retry"
 					d := inlineInstallDocument{model: m, width: 120}
-					d.buttons(wizardButton{"done", m.tr("wizard.done")}, wizardButton{"later", m.tr("dashboard.guide.later")})
+					d.buttons(wizardButton{"done", m.tr("wizard.overview")}, wizardButton{"retry", m.tr("wizard.retry")})
 					return strings.Join(d.lines, "\n"), d.targets
 				}},
 				{"notification", "notification.details.1", "notification.close.1", func(m *Model) (string, []hitRegion) {
@@ -74,8 +74,8 @@ func TestActionButtonGroupsKeepOneCellBeforeFocusAndNoneAfter(t *testing.T) {
 					card := notificationCard(item, o, 54, 1, true)
 					return card.Content, card.Targets
 				}},
-				{"get-started", "install", "guide.later", func(m *Model) (string, []hitRegion) {
-					m.focus = "guide.later"
+				{"get-started", "guide.later", "install", func(m *Model) (string, []hitRegion) {
+					m.focus = "install"
 					b := getStarted(m.navigationOptions(), 120)
 					return strings.Join(b.lines, "\n"), b.targets
 				}},

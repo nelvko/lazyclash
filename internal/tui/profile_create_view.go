@@ -2,6 +2,7 @@ package tui
 
 import (
 	"slices"
+	"strings"
 
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
@@ -152,17 +153,6 @@ func (m *Model) profileFormBody(width, height int) (dashboardBlock, bool) {
 }
 
 func (m *Model) profileFormFooter(width int) dashboardBlock {
-	settings := m.form == "profile-settings"
-	save := m.tr("profiles.create_save")
-	if settings {
-		save = m.tr("profile_settings.save")
-	}
-	saveButton := renderButton(save, buttonOptions{Kind: buttonPrimary, Surface: modalBackground,
-		Focused: m.focus == "profile-create.save", Hovered: m.hover == "profile-create.save",
-		Busy: m.busy, Disabled: m.quitting, Plain: m.buttonPlain()})
-	cancelButton := renderButton(m.tr("profiles.create_cancel"), buttonOptions{Surface: modalBackground,
-		Focused: m.focus == "profile-create.cancel", Hovered: m.hover == "profile-create.cancel",
-		Disabled: m.busy || m.quitting, Plain: m.buttonPlain()})
 	var footer dashboardBlock
 	if m.failure != "" {
 		footer.lines = append(footer.lines, themed(cellCrop(m.failure, width), errorColor, modalBackground, false))
@@ -170,26 +160,20 @@ func (m *Model) profileFormFooter(width int) dashboardBlock {
 		footer.lines = append(footer.lines, themed(cellCrop(m.spinner.View()+" "+m.message, width), accent, modalBackground, false))
 	}
 
-	actions := dashboardBlock{lines: []string{""}}
-	if settings {
-		extra := []profileButton{{"profile-settings.overrides", m.tr("profile_settings.import"), false}}
-		if m.canUseDefaultFrom(m.name) {
-			extra = append(extra, profileButton{"profile-settings.deactivate", m.tr("profile_settings.deactivate"), false})
+	var buttons []profileButton
+	for _, action := range m.profileFormActions() {
+		buttons = append(buttons, profileButton{
+			id: profileCreateFieldID(action.field), label: m.tr(action.label), primary: action.field == profileCreateSave,
+		})
+	}
+	actions := m.profileButtons(buttons, width, modalBackground)
+	last := len(actions.lines) - 1
+	padding := width - ansi.StringWidth(actions.lines[last])
+	actions.lines[last] = strings.Repeat(" ", padding) + actions.lines[last]
+	for i := range actions.targets {
+		if actions.targets[i].Y == last {
+			actions.targets[i].X += padding
 		}
-		actions = m.profileButtons(extra, width, modalBackground)
-	}
-	saveW, cancelW := ansi.StringWidth(saveButton), ansi.StringWidth(cancelButton)
-	saveX := width - saveW
-	cancelX := saveX - cancelW
-	if len(actions.lines) > 1 || ansi.StringWidth(actions.lines[0])+2 > cancelX {
-		actions.blank()
-	}
-	buttonY := len(actions.lines) - 1
-	actions.lines[buttonY] = cellPad(actions.lines[buttonY], cancelX) + cancelButton + saveButton
-	if !m.busy && !m.quitting {
-		actions.targets = append(actions.targets,
-			hitRegion{ID: "profile-create.cancel", X: cancelX, Y: buttonY, W: cancelW, H: 1},
-			hitRegion{ID: "profile-create.save", X: saveX, Y: buttonY, W: saveW, H: 1})
 	}
 	footer.append(actions)
 	return footer
