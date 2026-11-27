@@ -69,12 +69,14 @@ func (o dashboardOptions) websiteCell(site app.Website, width int) dashboardBloc
 	name := ansi.Truncate(clean(site.Name), max(1, width-3), "…")
 	face := cellCrop(renderButton(name, opts), width)
 	b := dashboardBlock{lines: []string{cellPad(face, width)}}
-	if !opts.Disabled {
-		b.targets = []hitRegion{{ID: id, W: ansi.StringWidth(face), H: 1}}
-	}
+	hitWidth := ansi.StringWidth(face)
 	indent := min(2, max(0, width-12))
 	for _, line := range o.websiteTestLines(site.URL, max(1, width-indent)) {
 		b.lines = append(b.lines, strings.Repeat(" ", indent)+line)
+		hitWidth = max(hitWidth, indent+ansi.StringWidth(line))
+	}
+	if !opts.Disabled {
+		b.targets = []hitRegion{{ID: id, W: hitWidth, H: len(b.lines)}}
 	}
 	return b
 }

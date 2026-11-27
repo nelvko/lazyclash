@@ -130,3 +130,29 @@ func TestWebsiteCardScrollsFocusedTestIntoCompactViewport(t *testing.T) {
 		}
 	}
 }
+
+func TestWebsiteNameAndResultShareOneTarget(t *testing.T) {
+	site := app.Website{Name: "X", URL: "https://example.org/"}
+	o := dashboardOptions{Locale: i18n.New(i18n.English), Snapshot: app.Snapshot{
+		Installed: true, MixedPort: 7890, Service: service.Status{Active: true, State: "active"},
+	}}
+	for _, width := range []int{6, 24} {
+		cell := o.websiteCell(site, width)
+		if len(cell.targets) != 1 || cell.targets[0].ID != websiteActionID(site) {
+			t.Fatalf("width %d: expected one website action, got %+v", width, cell.targets)
+		}
+		hit := cell.targets[0]
+		if hit.H != len(cell.lines) || hit.H < 2 {
+			t.Fatalf("width %d: target does not cover all result lines: %+v", width, hit)
+		}
+		for _, line := range cell.lines {
+			end := ansi.StringWidth(strings.TrimRight(ansi.Strip(line), " "))
+			if end > hit.W {
+				t.Fatalf("width %d: target width %d misses the end of %q", width, hit.W, line)
+			}
+		}
+		if width == 24 && hit.W >= width {
+			t.Fatal("empty space at the end of the cell should remain outside the target")
+		}
+	}
+}

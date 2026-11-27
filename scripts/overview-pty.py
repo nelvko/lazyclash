@@ -544,6 +544,10 @@ def exercise_websites(preview, terminal, output, words, report, args):
     terminal.key(b"\r")
     terminal.wait("173 ms")
     assert terminal.screen.text().count(untested) == 2, terminal.screen.text()
+    terminal.click_text("173 ms")
+    terminal.settle()
+    assert words["dashboard.website.testSite"] % "GitHub" in terminal.screen.text().splitlines()[-1]
+    assert terminal.screen.text().count(untested) == 2, terminal.screen.text()
 
     terminal.click_text(test_all)
     terminal.wait("212 ms")  # Google fixture returns HTTP 403 with a measured response time.
@@ -552,6 +556,9 @@ def exercise_websites(preview, terminal, output, words, report, args):
     assert google_result == "212 ms", google_result
     terminal.wait(words["dashboard.website.timeout"])
     assert untested not in terminal.screen.text()
+    terminal.click_text(words["dashboard.website.timeout"])
+    terminal.settle()
+    assert words["dashboard.website.testSite"] % "YouTube" in terminal.screen.text().splitlines()[-1]
     terminal.click_text("YouTube")
     terminal.settle()
     assert words["dashboard.website.testSite"] % "YouTube" in terminal.screen.text().splitlines()[-1]
@@ -571,8 +578,9 @@ def exercise_websites(preview, terminal, output, words, report, args):
     preview.capture(terminal, output, "website-tests-80x24", args)
     terminal.exit()
     calls = json.loads(report.read_text())
-    assert (calls["website_github"], calls["website_google"], calls["website_youtube"]) == (3, 2, 4), calls
-    print("PASS website tests: single site by keyboard, all sites by mouse, wide and narrow layouts", flush=True)
+    # Two batches include Google. Only GitHub and YouTube receive additional single-site tests.
+    assert (calls["website_github"], calls["website_google"], calls["website_youtube"]) == (4, 2, 5), calls
+    print("PASS website tests: keyboard, site name, latency, timeout, and all-sites actions", flush=True)
 
 
 def add_custom_website(terminal, words):
