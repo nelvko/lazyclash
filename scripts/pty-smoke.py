@@ -522,17 +522,18 @@ def main():
                 completed = subprocess.run(instance.command(*arguments), stdout=subprocess.PIPE,
                                            stderr=subprocess.PIPE, timeout=60)
                 if completed.returncode:
-                    raise AssertionError("Dedicated settings-test CLI action failed: " + " ".join(arguments[:2]))
+                    raise AssertionError("Dedicated settings test invocation failed: " + " ".join(arguments[:2]))
                 return completed.stdout
 
             initial = json.loads(cli("settings", "show"))
             initial_status = json.loads(cli("status", "--json"))
             initial_pointer = os.readlink(home / "installation" / "current")
 
-            def open_editor(row, title, first_field):
+            def open_editor(row, title, first_field, value):
                 terminal.click_text(row)
                 terminal.wait(title)
                 terminal.wait(first_field)
+                terminal.click_text(str(value))
                 terminal.settle()
 
             def replace_input(value):
@@ -544,15 +545,16 @@ def main():
                 terminal.wait("active connections will be interrupted")
                 if json.loads(cli("settings", "show")) != before:
                     raise AssertionError("Review applied the draft before confirmation")
-                terminal.key(b"\r")
+                terminal.click_text("Apply & restart")
                 terminal.wait("Runtime settings applied")
-                terminal.key(b"\r")
+                terminal.click_text("Back to Settings")
                 terminal.wait_absent("Back to Settings")
 
+            terminal.resize(160, 45)
             terminal.key(b"7")
-            terminal.wait(str(initial["mixed_port"]) + " ›")
+            terminal.wait("Proxy ports")
             terminal.settle()
-            open_editor("Proxy ports", "Edit proxy ports", "Mixed port")
+            open_editor("Proxy ports", "Edit proxy ports", "Mixed port", initial["mixed_port"])
             replace_input("123q7")
             terminal.wait("123q7")
             terminal.key(b"\x1b")
@@ -560,7 +562,7 @@ def main():
             if json.loads(cli("settings", "show")) != initial or os.readlink(home / "installation" / "current") != initial_pointer:
                 raise AssertionError("Canceling a proxy draft changed the installation")
 
-            open_editor("Proxy ports", "Edit proxy ports", "Mixed port")
+            open_editor("Proxy ports", "Edit proxy ports", "Mixed port", initial["mixed_port"])
             replace_input(args.conflict_port)
             terminal.key(b"\r")
             terminal.wait("unavailable")
@@ -580,7 +582,7 @@ def main():
             if json.loads(cli("settings", "show")) != proxy_applied:
                 raise AssertionError("Applying proxy ports also changed the controller")
 
-            open_editor("External control", "Edit external control", "HTTP listen address")
+            open_editor("External control", "Edit external control", "HTTP listen address", f"127.0.0.1:{initial['controller_port']}")
             replace_input("127.0.0.1:%d" % args.controller_port)
             review_then_apply(proxy_applied)
             expected = dict(proxy_applied, controller_port=args.controller_port)

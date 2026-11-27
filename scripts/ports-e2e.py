@@ -133,12 +133,13 @@ def main():
                    "--controller-port", str(controller), *extra, success=success)
 
     initial = settings()
-    if initial != {"mixed_port": 7897, "controller_port": 9097}:
+    if (initial["mixed_port"], initial["controller_port"]) != (7897, 9097):
         raise AssertionError("Unexpected baseline settings in the dedicated test home")
     baseline_manifest = manifest()
     config_path = args.home / "installation" / "current" / "config.yaml"
     baseline_config = config_path.read_bytes()
     baseline_other = without_ports(baseline_config)
+    original_other = baseline_other
     profile = args.home / "configuration" / "library.json"
     saved_profile = profile.read_bytes()
     fixture_id = json.loads(cli("profile", "show", "fixture"))["id"]
@@ -179,16 +180,19 @@ def main():
         if os.readlink(args.home / "installation" / "current") != pointer or status()["Service"]["PID"] != pid:
             raise AssertionError("Dry run or missing restart acknowledgment changed the core")
 
-        # A saved profile may differ from the currently applied generation.
-        # Runtime settings must preserve the running generation's other keys.
+        # Editing the selected profile hot-reloads it. The following port moves
+        # must preserve both the live rule and the saved profile.
         override_file.write_text("prepend-rules: ['DOMAIN,pending-config.invalid,REJECT']\n")
         override_file.chmod(0o600)
         cli("profile", "override", "fixture", str(override_file))
         edited_profile = profile.read_bytes()
-        if edited_profile == saved_profile or not status()["ProfilePending"]:
-            raise AssertionError("Fixture cannot exercise unapplied profile-override preservation")
+        if edited_profile == saved_profile or status()["ProfilePending"] or status()["Service"]["PID"] != pid:
+            raise AssertionError("Editing a selected profile did not hot reload it in place")
+        if api("/rules")["rules"][0]["payload"] != "pending-config.invalid":
+            raise AssertionError("The live controller did not observe the saved override")
+        baseline_other = without_ports(config_path.read_bytes())
         change(mixed_a, control_a, "--restart")
-        if settings() != {"mixed_port": mixed_a, "controller_port": control_a} or not status()["Service"]["Active"]:
+        if settings() != dict(initial, mixed_port=mixed_a, controller_port=control_a) or not status()["Service"]["Active"]:
             raise AssertionError("Running port move did not commit and restart successfully")
         if status()["Service"]["PID"] == pid:
             raise AssertionError("Running port move did not replace the old process")
@@ -201,7 +205,7 @@ def main():
         exports = cli("shell", "env").decode()
         if str(mixed_a) not in exports or "7897" in exports:
             raise AssertionError("Shell exports did not use the committed proxy port")
-        print("Running CLI port move preserved effective YAML, identity, secret, unit and saved-profile edits")
+        print("Port change through the shared application use case preserved effective YAML, identity, secret, unit and saved-profile edits")
 
         change(control_a, mixed_a, "--restart")  # Both desired TCP endpoints belonged to this core.
         invariant(edited_profile)
@@ -216,7 +220,7 @@ def main():
                         "--mode", "runtime-settings", "--mixed-port", str(mixed_b),
                         "--controller-port", str(control_b), "--fixture-port", str(args.fixture_port),
                         "--conflict-port", str(tcp_conflict), "--output", str(args.output)], check=True)
-        if settings() != {"mixed_port": mixed_b, "controller_port": control_b} or not status()["Service"]["Active"]:
+        if settings() != dict(initial, mixed_port=mixed_b, controller_port=control_b) or not status()["Service"]["Active"]:
             raise AssertionError("Real TUI port move did not commit or preserve active service state")
         invariant(edited_profile)
         api("/version")
@@ -234,8 +238,9 @@ def main():
         override_file.write_text(saved_overrides)
         cli("profile", "override", "fixture", str(override_file))
         cli("profile", "apply", "fixture")
-        if settings() != {"mixed_port": mixed_a, "controller_port": control_a} or status()["Service"]["Active"]:
+        if settings() != dict(initial, mixed_port=mixed_a, controller_port=control_a) or status()["Service"]["Active"]:
             raise AssertionError("Profile application discarded the new ports or started the stopped core")
+        baseline_other = original_other
         invariant(saved_profile)
         cli("start")
         api("/version")
