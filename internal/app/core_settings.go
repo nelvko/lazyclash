@@ -45,10 +45,14 @@ func (a *App) SetCoreSetting(ctx context.Context, key, value string) error {
 		if err != nil {
 			return err
 		}
+		var candidate *geoCandidate
 		if digest(cfg) != m.SHA {
-			if err := a.validateConfig(ctx, m, cfg); err != nil {
+			bin, _, _ := a.paths()
+			candidate, err = a.prepareGeoCandidate(ctx, bin, m, cfg)
+			if err != nil {
 				return err
 			}
+			defer candidate.Close()
 		}
 		if previous.GeoAutoUpdate != next.GeoAutoUpdate || previous.GeoUpdateInterval != next.GeoUpdateInterval {
 			status, err := a.profileServiceStatus(ctx)
@@ -61,8 +65,8 @@ func (a *App) SetCoreSetting(ctx context.Context, key, value string) error {
 			if !m.GeoScheduleAtStart.pending(status, next) {
 				m.GeoScheduleAtStart = nil
 			}
-			return a.publishProfileGeneration(ctx, target, m, cfg, status, true)
+			return a.publishProfileGeneration(ctx, target, m, cfg, status, true, candidate)
 		}
-		return a.publishProfileRefresh(ctx, target, m, cfg)
+		return a.publishProfileRefreshCandidate(ctx, target, m, cfg, candidate)
 	})
 }

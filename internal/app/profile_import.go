@@ -145,13 +145,17 @@ func (a *App) updateProfile(ctx context.Context, reference, address string, chan
 			return err
 		}
 		var cfg []byte
+		var candidate *geoCandidate
 		if m.Applied == id {
-			cfg, err = a.prepareSelectedRefresh(ctx, &lib, id, &m)
+			cfg, candidate, err = a.prepareSelectedRefresh(ctx, &lib, id, &m)
 		} else {
 			err = a.validateProfile(ctx, &lib, id, m, target != "")
 		}
 		if err != nil {
 			return err
+		}
+		if candidate != nil {
+			defer candidate.Close()
 		}
 		if err := ctx.Err(); err != nil {
 			return err
@@ -160,7 +164,7 @@ func (a *App) updateProfile(ctx context.Context, reference, address string, chan
 			return err
 		}
 		if cfg != nil {
-			if err := a.publishProfileRefresh(ctx, target, m, cfg); err != nil {
+			if err := a.publishProfileRefreshCandidate(ctx, target, m, cfg, candidate); err != nil {
 				return diagnostic.New("diagnostic.profile.refreshNotApplied", "subscription saved; refresh again to retry the runtime update: %w", err)
 			}
 		}
@@ -210,28 +214,30 @@ func (a *App) readProfileSource(ctx context.Context, lib *configuration.Library,
 
 // A failed runtime reload can leave a newer source in the library. Compare
 // against the deployed recipe so retrying that same download still reloads.
-func (a *App) prepareSelectedRefresh(ctx context.Context, lib *configuration.Library, id string, m *manifest) ([]byte, error) {
+func (a *App) prepareSelectedRefresh(ctx context.Context, lib *configuration.Library, id string, m *manifest) ([]byte, *geoCandidate, error) {
 	if m.Build == nil || m.Build.Profile != id || m.Build.Recipe == nil || m.Build.Recipe.Core != "mihomo" {
-		return nil, diagnostic.New("diagnostic.profile.pinnedRecipeMissing", "could not identify the applied profile recipe")
+		return nil, nil, diagnostic.New("diagnostic.profile.pinnedRecipeMissing", "could not identify the applied profile recipe")
 	}
 	entry := lib.Profiles[id]
 	entry.Validated = true
 	lib.Profiles[id] = entry
 	if entry.Spec == *m.Build.Recipe {
-		return nil, nil
+		return nil, nil, nil
 	}
 	next := buildRecord{Profile: id, Recipe: &entry.Spec}
 	cfg, err := a.buildRecipe(next, *m)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
+	var candidate *geoCandidate
 	if digest(cfg) != m.SHA {
-		if err := a.validateRecipe(ctx, id, *m, cfg); err != nil {
-			return nil, err
+		candidate, err = a.prepareProfileCandidate(ctx, id, *m, cfg)
+		if err != nil {
+			return nil, nil, err
 		}
 	}
 	m.Build = &next
-	return cfg, nil
+	return cfg, candidate, nil
 }
 
 type ProfileRefreshSummary struct {

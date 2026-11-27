@@ -193,6 +193,10 @@ func (a *App) stageFreshInstallation(ctx context.Context, m manifest, local stri
 	if err != nil {
 		return stagedInstallation{}, err
 	}
+	m.GeoSources, err = mihomo.GeoSources(cfg)
+	if err != nil {
+		return stagedInstallation{}, err
+	}
 	target, err := a.writeGeneration(stage, m, cfg)
 	if err != nil {
 		return stagedInstallation{}, err

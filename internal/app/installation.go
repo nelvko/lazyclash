@@ -38,6 +38,7 @@ type manifest struct {
 	proxyUsers         []string               // Read from the verified config; never duplicate passwords in the manifest.
 	CoreSettings       mihomo.GeneralSettings `json:"core_settings"`
 	GeoScheduleAtStart *runningGeoSchedule    `json:"geo_schedule_at_start,omitempty"`
+	GeoSources         map[string]string      `json:"geo_sources,omitempty"`
 	SHA                string                 `json:"config_sha256"`
 	BinarySHA          string                 `json:"binary_sha256"`
 }
@@ -92,14 +93,22 @@ func (a *App) load() (manifest, string, error) {
 	if _, err := os.Lstat(dir); err != nil {
 		return manifest{}, "", err
 	}
+
+	target, err := os.Readlink(filepath.Join(dir, "current"))
+	if err != nil {
+		return manifest{}, "", diagnostic.New("diagnostic.installation.noGeneration", "installation has no valid current generation; refusing to modify")
+	}
+	return a.loadGeneration(target)
+}
+
+// During a GEO switch current deliberately cannot be used as a directory.
+// Recovery may load only the guarded old generation named by its journal.
+func (a *App) loadGeneration(target string) (manifest, string, error) {
+	dir := filepath.Join(a.Home, "installation")
 	for _, p := range []string{dir, filepath.Join(dir, "generations"), filepath.Join(dir, "runtime")} {
 		if err := existingDir(p); err != nil {
 			return manifest{}, "", diagnostic.New("diagnostic.installation.incomplete", "installation is incomplete or unsafe: %v", err)
 		}
-	}
-	target, err := os.Readlink(filepath.Join(dir, "current"))
-	if err != nil {
-		return manifest{}, "", diagnostic.New("diagnostic.installation.noGeneration", "installation has no valid current generation; refusing to modify")
 	}
 	if !generationName.MatchString(target) {
 		return manifest{}, "", diagnostic.New("diagnostic.installation.generationTarget", "invalid current generation target")

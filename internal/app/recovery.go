@@ -24,6 +24,7 @@ type reloadProcess struct {
 	Started uint64 `json:"started"`
 }
 type pending struct {
+	Geo                *geoTransition `json:"geo,omitempty"`
 	Reloading          *reloadProcess `json:"reloading,omitempty"`
 	HotReload          bool           `json:"hot_reload,omitempty"`
 	TUNChange          *tunTransition `json:"tun_change,omitempty"`
@@ -69,7 +70,11 @@ func (a *App) recoverGenerations(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if target != p.Old && target != p.New {
+	if p.Geo != nil && (!p.Geo.valid() || p.HotReload || p.TUNChange != nil || p.OldGuard == "" || p.NewGuard == "") {
+		return errors.New("invalid GEO recovery journal")
+	}
+	barrier := p.Geo != nil && target == geoBarrier(p.Old)
+	if !barrier && target != p.Old && target != p.New {
 		return diagnostic.New("diagnostic.recovery.targetChanged", "recovery target changed; refusing to modify")
 	}
 	if p.Reloading != nil && (!p.HotReload || p.Reloading.PID < 0) {
@@ -85,7 +90,13 @@ func (a *App) recoverGenerations(ctx context.Context) error {
 		if len(p.OldGuard) != 64 || len(p.NewGuard) != 64 || p.Old == p.New {
 			return diagnostic.New("diagnostic.recovery.guardedJournal", "invalid guarded recovery journal; manual inspection required")
 		}
-		if _, _, err := a.load(); err != nil {
+		// The startup barrier cannot be traversed. Check the exact guarded
+		// generation and binary that recovery will restore in that case.
+		loaded := target
+		if barrier {
+			loaded = p.Old
+		}
+		if _, _, err := a.loadGeneration(loaded); err != nil {
 			return diagnostic.New("diagnostic.recovery.installationChanged", "recovery installation changed; preserving files and journal: %w", err)
 		}
 		for target, expected := range map[string]string{p.Old: p.OldGuard, p.New: p.NewGuard} {
@@ -114,6 +125,18 @@ func (a *App) recoverGenerations(ctx context.Context) error {
 			}
 		}
 	}
+	if p.Geo != nil {
+		if p.Geo.Committed {
+			if target != p.New {
+				return errors.New("committed GEO configuration was modified")
+			}
+			return a.finishGeoJournal(p, raw)
+		}
+		if err := a.restoreGeo(ctx, p, current, target); err != nil {
+			return err
+		}
+		target = p.Old
+	}
 	if target == p.New {
 		if err := store.Switch(current, p.Old, p.New); err != nil {
 			return err
@@ -138,9 +161,29 @@ func (a *App) recoverGenerations(ctx context.Context) error {
 			return err
 		}
 	} else if stopped == nil && p.Active && (!intent.Desired.Known || intent.Desired.Running) {
-		if err := a.restartReady(ctx, m); err != nil {
-			return diagnostic.New("diagnostic.recovery.serviceFailed", "configuration restored but service recovery failed: %w", err)
+		readyErr := a.restartReady(ctx, m)
+		if readyErr != nil && p.Geo != nil {
+			// A boot attempt while the pointer was fenced can exhaust the start
+			// limit. Only a failed, loaded unit needs reset-failed.
+			status, inspectErr := a.Service.Inspect(ctx)
+			if inspectErr == nil && status.State == "failed" && status.Result == "start-limit-hit" {
+				if s, ok := a.Service.(interface {
+					ResetFailedOwned(context.Context, string, string, string) error
+				}); ok {
+					bin, config, data := a.paths()
+					if err := s.ResetFailedOwned(ctx, bin, config, data); err != nil {
+						return errors.Join(readyErr, err)
+					}
+					readyErr = a.restartReady(ctx, m)
+				}
+			}
 		}
+		if readyErr != nil {
+			return diagnostic.New("diagnostic.recovery.serviceFailed", "configuration restored but service recovery failed: %w", readyErr)
+		}
+	}
+	if p.Geo != nil {
+		return a.finishGeoJournal(p, raw)
 	}
 	return store.Remove(path, raw)
 }

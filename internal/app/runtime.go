@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"maps"
 	"net"
 	"strconv"
 	"time"
@@ -152,7 +153,7 @@ func (a *App) Control(ctx context.Context, action string) error {
 	if err := a.recover(ctx); err != nil {
 		return err
 	}
-	m, _, err := a.load()
+	m, target, err := a.load()
 	if err != nil {
 		return err
 	}
@@ -176,9 +177,11 @@ func (a *App) Control(ctx context.Context, action string) error {
 	if err != nil {
 		return err
 	}
-	if err := a.validateConfig(ctx, m, configBytes); err != nil {
+	candidate, err := a.prepareGeoCandidate(ctx, bin, m, configBytes)
+	if err != nil {
 		return err
 	}
+	defer candidate.Close()
 	status, err = a.Service.Inspect(ctx)
 	if err != nil {
 		return err
@@ -209,13 +212,25 @@ func (a *App) Control(ctx context.Context, action string) error {
 	if err := a.clearStop(); err != nil {
 		return a.finishOperation(r, raw, err)
 	}
-	if err := a.Service.Action(ctx, action); err != nil {
-		return a.finishOperation(r, raw, err)
+	published := geoCandidateNeedsPublication(candidate, m)
+	if published {
+		if err := a.publishPreparedGeo(ctx, target, m, configBytes, status, candidate); err != nil {
+			return a.finishOperation(r, raw, err)
+		}
+	}
+	if !published || !status.Active {
+		if err := a.Service.Action(ctx, action); err != nil {
+			return a.finishOperation(r, raw, err)
+		}
 	}
 	if err := a.waitReady(ctx, m); err != nil {
 		return a.finishOperation(r, raw, err)
 	}
 	return a.finishOperation(r, raw, a.markHasRunLocked(ctx))
+}
+
+func geoCandidateNeedsPublication(c *geoCandidate, m manifest) bool {
+	return !maps.Equal(c.Before, c.After) || !maps.Equal(c.Sources, m.GeoSources)
 }
 func (a *App) Select(ctx context.Context, group, node string) error {
 	return a.locked(ctx, func() error {

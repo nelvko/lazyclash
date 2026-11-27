@@ -1,0 +1,8 @@
+{
+  "diagnostic.geo.sources": "GEO 数据源配置无效。",
+  "diagnostic.geo.copy": "无法将运行资源复制到隔离的配置校验目录。",
+  "diagnostic.geo.changed": "校验期间 GEO 数据发生变化，请重试。",
+  "diagnostic.geo.assetLink": "运行资源包含无法在隔离校验目录中解析的符号链接。",
+  "diagnostic.geo.file": "GEO 资源必须是普通文件，且不能是符号链接或硬链接。",
+  "diagnostic.geo.mmdb": "GEO MaxMind 数据库无效或超出大小限制。"
+}

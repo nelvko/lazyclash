@@ -1,0 +1,4 @@
+{
+  "diagnostic.config.geoURLs": "geox-url must be a mapping of GEO download URLs",
+  "diagnostic.geo.runningRepair": "the replacement core needs different GEO files; stop the service before replacing it without a restart"
+}

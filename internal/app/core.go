@@ -352,10 +352,31 @@ func (a *App) replaceCoreLocked(ctx context.Context, newBin, version string, res
 	if err != nil {
 		return err
 	}
-	// The replacement core must resolve providers and local assets in the same
-	// stable home as the running service, just like ordinary configuration apply.
-	if err := a.validateBinaryConfig(ctx, newBin, config, data); err != nil {
+	candidate, err := a.prepareGeoCandidate(ctx, newBin, m, cfg)
+	if err != nil {
 		return err
+	}
+	defer candidate.Close()
+	if geoCandidateNeedsPublication(candidate, m) {
+		status, err := a.profileServiceStatus(ctx)
+		if err != nil {
+			return err
+		}
+		if status.Active && !restart {
+			return diagnostic.New("diagnostic.geo.runningRepair", "the replacement core needs different GEO files; stop the service before replacing it without a restart")
+		}
+		// Repair the deployed generation first. Its old binary must also accept
+		// these exact files, since the binary replacement may still roll back.
+		if err := a.validateBinaryConfig(ctx, bin, config, candidate.Data); err != nil {
+			return err
+		}
+		if err := a.publishPreparedGeo(ctx, old, m, cfg, status, candidate); err != nil {
+			return err
+		}
+		m, old, err = a.load()
+		if err != nil {
+			return err
+		}
 	}
 	oldSHA := m.BinarySHA
 	m.BinarySHA, err = fileDigest(newBin)

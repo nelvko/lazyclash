@@ -43,6 +43,9 @@ func Build(opts BuildOptions) ([]byte, error) {
 	if err := opts.General.apply(cfg, opts.TUN); err != nil {
 		return nil, err
 	}
+	if err := applyGeoDefaults(cfg); err != nil {
+		return nil, err
+	}
 	if err := validateContainers(cfg); err != nil {
 		return nil, err
 	}
@@ -70,6 +73,28 @@ func Build(opts BuildOptions) ([]byte, error) {
 		return WithTUN(out, true, opts.ServiceName)
 	}
 	return out, nil
+}
+
+// On reload Mihomo defaults an omitted mode to the previous process value.
+// Materialize the cold-start default so validation, reload and restart agree.
+func applyGeoDefaults(cfg map[string]any) error {
+	if cfg["geodata-mode"] == nil {
+		cfg["geodata-mode"] = false
+	}
+	urls, ok := cfg["geox-url"].(map[string]any)
+	if !ok {
+		if cfg["geox-url"] != nil {
+			return diagnostic.New("diagnostic.config.geoURLs", "geox-url must be a mapping of GEO download URLs")
+		}
+		urls = make(map[string]any)
+		cfg["geox-url"] = urls
+	}
+	for kind, source := range DefaultGeoURLs() {
+		if urls[kind] == nil {
+			urls[kind] = source
+		}
+	}
+	return nil
 }
 
 // ValidateSource checks that a downloaded document contains Mihomo fields.

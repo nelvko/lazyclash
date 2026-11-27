@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"maps"
 	"os"
 	"path/filepath"
 	"time"
@@ -16,10 +17,14 @@ import (
 // The caller holds the instance lock. m contains the updated recipe, and SHA
 // still identifies the previously published effective configuration.
 func (a *App) publishProfileRefresh(ctx context.Context, old string, m manifest, cfg []byte) error {
+	return a.publishProfileRefreshCandidate(ctx, old, m, cfg, nil)
+}
+
+func (a *App) publishProfileRefreshCandidate(ctx context.Context, old string, m manifest, cfg []byte, candidate *geoCandidate) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if digest(cfg) == m.SHA {
+	if digest(cfg) == m.SHA && (candidate == nil || !geoCandidateNeedsPublication(candidate, m)) {
 		// A new source revision can build to exactly the same YAML. Pin the
 		// revision on disk without contacting the service or its controller.
 		base := filepath.Join(a.Home, "installation")
@@ -33,10 +38,28 @@ func (a *App) publishProfileRefresh(ctx context.Context, old string, m manifest,
 	if err != nil {
 		return err
 	}
-	return a.publishProfileGeneration(ctx, old, m, cfg, status, true)
+	return a.publishProfileGeneration(ctx, old, m, cfg, status, true, candidate)
 }
 
-func (a *App) publishProfileGeneration(ctx context.Context, old string, m manifest, cfg []byte, status service.Status, hot bool) error {
+func (a *App) publishProfileGeneration(ctx context.Context, old string, m manifest, cfg []byte, status service.Status, hot bool, candidate *geoCandidate) error {
+	var change *geoTransition
+	if candidate != nil {
+		// A candidate may have been checked by a replacement binary or seeded
+		// with specific assets. Do not silently rebuild it using the live core.
+		_, _, data := a.paths()
+		currentFiles, err := hashGeoFiles(ctx, data)
+		if err != nil {
+			return err
+		}
+		if !maps.Equal(currentFiles, candidate.Before) {
+			return diagnostic.New("diagnostic.geo.changed", "GEO data changed during validation; retry the operation")
+		}
+		change = planGeoTransition(m.GeoSources, candidate)
+		m.GeoSources = candidate.Sources
+		if change != nil {
+			hot = false
+		}
+	}
 	base := filepath.Join(a.Home, "installation")
 	current := filepath.Join(base, "current")
 	next, err := a.writeGeneration(base, m, cfg)
@@ -49,7 +72,7 @@ func (a *App) publishProfileGeneration(ctx context.Context, old string, m manife
 			_ = os.RemoveAll(filepath.Join(base, next))
 		}
 	}()
-	p := pending{Old: old, New: next, Active: status.Active, HotReload: hot}
+	p := pending{Old: old, New: next, Active: status.Active, HotReload: hot, Geo: change}
 	if p.OldGuard, err = a.generationGuard(old); err != nil {
 		return err
 	}
@@ -58,6 +81,11 @@ func (a *App) publishProfileGeneration(ctx context.Context, old string, m manife
 	}
 	if err := a.checkProfileProcess(ctx, status); err != nil {
 		return err
+	}
+	if p.Geo != nil {
+		if _, err := os.Lstat(a.geoUndoDirectory(p)); !errors.Is(err, os.ErrNotExist) {
+			return errors.New("GEO rollback directory already exists or cannot be inspected")
+		}
 	}
 	raw, _ := json.Marshal(p)
 	journal := filepath.Join(a.Home, "apply-pending.json")
@@ -101,7 +129,14 @@ func (a *App) publishProfileGeneration(ctx context.Context, old string, m manife
 		}
 		return diagnostic.New("diagnostic.profile.reloadRestored", "previous configuration restored: %w", cause)
 	}
-	if err := store.Switch(current, next, old); err != nil {
+	previous := old
+	if change != nil {
+		if err := a.installGeoCandidate(ctx, current, &p, &raw, candidate); err != nil {
+			return rollback(err)
+		}
+		previous = geoBarrier(p.Old)
+	}
+	if err := store.Switch(current, next, previous); err != nil {
 		return rollback(err)
 	}
 	if status.Active {
@@ -118,6 +153,14 @@ func (a *App) publishProfileGeneration(ctx context.Context, old string, m manife
 	}
 	if err := ctx.Err(); err != nil {
 		return rollback(err)
+	}
+	if change != nil {
+		// Once readiness is confirmed, cleanup is retryable without the undo files.
+		change.Committed = true
+		if err := a.saveGeoJournal(&p, &raw); err != nil {
+			return err
+		}
+		return a.finishGeoJournal(p, raw)
 	}
 	if err := store.Remove(journal, raw); err != nil {
 		return rollback(err)

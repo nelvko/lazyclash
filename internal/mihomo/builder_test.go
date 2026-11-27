@@ -26,6 +26,26 @@ func builtConfig(t *testing.T, opts BuildOptions) map[string]any {
 	return cfg
 }
 
+func TestGeoDefaultsFillOnlyMissingProfileFields(t *testing.T) {
+	opts := buildOptions("geox-url: {geosite: https://rules.invalid/private}\nrules: ['MATCH,DIRECT']")
+	cfg := builtConfig(t, opts)
+	urls := cfg["geox-url"].(map[string]any)
+	if cfg["geodata-mode"] != false || urls["geosite"] != "https://rules.invalid/private" || len(urls) != 4 {
+		t.Fatal("missing cold-start mode, incomplete URL resolution or lost custom source")
+	}
+	for _, kind := range []string{"mmdb", "geoip", "asn"} {
+		if urls[kind] != DefaultGeoURLs()[kind] {
+			t.Fatalf("unexpected %s source", kind)
+		}
+	}
+	opts.Overrides = []byte("set: {geodata-mode: true, geox-url: {mmdb: https://rules.invalid/override}}")
+	cfg = builtConfig(t, opts)
+	urls = cfg["geox-url"].(map[string]any)
+	if cfg["geodata-mode"] != true || urls["mmdb"] != "https://rules.invalid/override" || urls["geosite"] != DefaultGeoURLs()["geosite"] {
+		t.Fatal("defaults did not follow the profile override")
+	}
+}
+
 func TestBuildFullProfileSeparatesUserRoutingAndApplicationSettings(t *testing.T) {
 	opts := buildOptions(`external-controller: 0.0.0.0:9999
 secret: subscription-secret

@@ -312,6 +312,7 @@ def main():
     parser.add_argument("--other-name", required=True)
     parser.add_argument("--proxy-only", action="store_true")
     parser.add_argument("--ui-tun-only", action="store_true")
+    parser.add_argument("--geodata-only", action="store_true")
     args = parser.parse_args()
     work = args.work
     assert os.geteuid() != 0 and work.is_absolute() and re.fullmatch(r"lazyclash-scopes\.[A-Za-z0-9]+", work.name)
@@ -336,6 +337,12 @@ def main():
     failure = None
     try:
         environment.suspend()
+        if args.geodata_only:
+            from geodata_e2e import verify_geodata
+            (work / "resources-started").touch()
+            # This scenario never needs a host TUN or the default system instance.
+            verify_geodata((user, other), work, run, wait)
+            return
         links = json.loads(run(["/usr/sbin/ip", "-j", "-d", "link", "show"]).stdout)
         assert not any(link.get("linkinfo", {}).get("info_kind") == "tun" for link in links), "Dedicated VM already has a TUN owner; no existing service was stopped"
         print("Packaged executable: root/system and ordinary-user/user installation", flush=True)

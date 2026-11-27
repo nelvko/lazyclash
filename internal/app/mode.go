@@ -94,8 +94,14 @@ func (a *App) SetMode(ctx context.Context, mode string) error {
 		if err != nil {
 			return err
 		}
-		if err := a.validateConfig(ctx, m, nextConfig); err != nil {
+		candidate, err := a.prepareGeoCandidate(ctx, bin, m, nextConfig)
+		if err != nil {
 			return err
+		}
+		defer candidate.Close()
+		if geoCandidateNeedsPublication(candidate, m) {
+			m.Mode = mode
+			return a.publishPreparedGeo(ctx, old, m, nextConfig, status, candidate)
 		}
 		if m.Mode == mode && string(raw) == string(nextConfig) {
 			if status.Active {

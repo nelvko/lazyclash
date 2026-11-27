@@ -91,6 +91,9 @@ func (a *App) locked(ctx context.Context, fn func() error) error {
 			return err
 		}
 	}
+	if err := a.cleanGeoCandidates(); err != nil {
+		return err
+	}
 	if err := a.recover(ctx); err != nil {
 		return err
 	}

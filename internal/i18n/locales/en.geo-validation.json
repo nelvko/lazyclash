@@ -1,0 +1,8 @@
+{
+  "diagnostic.geo.changed": "GEO data changed during validation; retry the operation",
+  "diagnostic.geo.assetLink": "a runtime asset link cannot be resolved inside the isolated validation directory",
+  "diagnostic.geo.mmdb": "invalid or oversized GEO MaxMind database",
+  "diagnostic.geo.file": "GEO assets must be regular files without links",
+  "diagnostic.geo.sources": "invalid GEO data sources",
+  "diagnostic.geo.copy": "could not copy runtime assets for isolated configuration validation"
+}

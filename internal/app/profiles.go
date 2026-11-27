@@ -49,13 +49,18 @@ func (a *App) applyProfileLocked(ctx context.Context, lib configuration.Library,
 	if err != nil {
 		return err
 	}
-	cfg, inputs, err := a.buildProfile(ctx, lib, name, m, true)
+	cfg, inputs, err := a.buildProfile(ctx, lib, name, m, false)
 	if err != nil {
 		return err
 	}
+	candidate, err := a.prepareProfileCandidate(ctx, name, m, cfg)
+	if err != nil {
+		return err
+	}
+	defer candidate.Close()
 	m.Build = &inputs
 	m.Applied = name
-	if err := a.publishProfileGeneration(ctx, old, m, cfg, status, false); err != nil {
+	if err := a.publishProfileGeneration(ctx, old, m, cfg, status, false, candidate); err != nil {
 		return err
 	}
 	if err := a.markProfileValidated(name); err != nil {

@@ -2,7 +2,7 @@
 # Exercise a packaged Linux executable in an existing dedicated OrbStack VM.
 set -euo pipefail
 if [[ $# -lt 3 || $# -gt 4 ]]; then
-  printf 'Usage: %s ORBSTACK_VM PACKAGED_LAZYCLASH VM_MIHOMO_EXECUTABLE [--proxy-only|--ui-tun-only]\n' "$0" >&2
+  printf 'Usage: %s ORBSTACK_VM PACKAGED_LAZYCLASH VM_MIHOMO_EXECUTABLE [--proxy-only|--ui-tun-only|--geodata-only]\n' "$0" >&2
   exit 2
 fi
 vm=$1
@@ -12,7 +12,7 @@ mihomo=$3
 shift 3
 scenario_flag=
 for argument in "$@"; do
-  if [[ $argument == --proxy-only || $argument == --ui-tun-only ]]; then
+  if [[ $argument == --proxy-only || $argument == --ui-tun-only || $argument == --geodata-only ]]; then
     scenario_flag=$argument
   else
     printf 'Expected an absolute VM Mihomo path or a scope scenario flag\n' >&2
@@ -30,6 +30,8 @@ if [[ $scenario_flag == --proxy-only ]]; then
   log_file="$root/.test-artifacts/service-scopes-proxy-e2e.log"
 elif [[ $scenario_flag == --ui-tun-only ]]; then
   log_file="$root/.test-artifacts/service-scopes-ui-e2e.log"
+elif [[ $scenario_flag == --geodata-only ]]; then
+  log_file="$root/.test-artifacts/service-scopes-geodata-e2e.log"
 fi
 cleanup_host() {
   result=$?
@@ -68,7 +70,7 @@ COPYFILE_DISABLE=1 tar --no-xattrs -C "$(dirname "$artifact")" -cf - "$(basename
 if [[ $(basename "$artifact") != lazyclash ]]; then
   orb -m "$vm" mv "$work/$(basename "$artifact")" "$work/lazyclash"
 fi
-COPYFILE_DISABLE=1 tar --no-xattrs -C "$root/scripts" -cf - service-scopes-e2e.py pty-smoke.py | orb -m "$vm" tar -xf - -C "$work"
+COPYFILE_DISABLE=1 tar --no-xattrs -C "$root/scripts" -cf - service-scopes-e2e.py geodata_e2e.py pty-smoke.py | orb -m "$vm" tar -xf - -C "$work"
 # Copy only the explicitly selected executable, never profiles or credentials.
 orb -m "$vm" sudo -n cp -- "$mihomo" "$work/mihomo"
 orb -m "$vm" sudo -n chmod 0755 "$work/mihomo"

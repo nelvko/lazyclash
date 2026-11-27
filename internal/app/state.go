@@ -126,6 +126,18 @@ func (a *App) stopLocked(ctx context.Context) error {
 	}
 	markerErr := a.rememberStop()
 	m, _, stateErr := a.load()
+	if stateErr != nil && markerErr == nil {
+		// A GEO transaction temporarily makes current/config.yaml unreachable.
+		// Recovery checks the journal and both generations before restoring it.
+		current, _ := os.Readlink(filepath.Join(a.Home, "installation", "current"))
+		if generationName.MatchString(filepath.Dir(current)) && current == geoBarrier(filepath.Dir(current)) {
+			if err := a.recover(ctx); err == nil {
+				m, _, stateErr = a.load()
+			} else {
+				stateErr = err
+			}
+		}
+	}
 	var r runtimeRecord
 	var raw []byte
 	if stateErr == nil {

@@ -37,10 +37,13 @@ func (a *App) saveProfileEdit(ctx context.Context, lib configuration.Library, ol
 		return err
 	}
 	selected := target != "" && m.Applied == id
+	var candidate *geoCandidate
 	if target != "" && (!selected || digest(cfg) != m.SHA) {
-		if err := a.validateRecipe(ctx, id, m, cfg); err != nil {
+		candidate, err = a.prepareProfileCandidate(ctx, id, m, cfg)
+		if err != nil {
 			return err
 		}
+		defer candidate.Close()
 	}
 	if err := ctx.Err(); err != nil {
 		return err
@@ -71,7 +74,7 @@ func (a *App) saveProfileEdit(ctx context.Context, lib configuration.Library, ol
 		return errors.Join(err, a.recoverProfileEdit())
 	}
 	m.Build = &recipe
-	if err = a.publishProfileRefresh(ctx, target, m, cfg); err != nil {
+	if err = a.publishProfileRefreshCandidate(ctx, target, m, cfg, candidate); err != nil {
 		// If generation recovery itself failed it must finish first. Every normal
 		// invocation settles it before attempting to restore the library entry.
 		if _, journalErr := os.Lstat(filepath.Join(a.Home, "apply-pending.json")); !errors.Is(journalErr, os.ErrNotExist) {

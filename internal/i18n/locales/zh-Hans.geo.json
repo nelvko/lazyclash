@@ -1,0 +1,4 @@
+{
+  "diagnostic.config.geoURLs": "geox-url 必须是 GEO 下载地址的映射",
+  "diagnostic.geo.runningRepair": "待安装内核需要更换 GEO 文件，请先停止服务再执行免重启替换"
+}

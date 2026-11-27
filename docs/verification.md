@@ -1,5 +1,11 @@
 # 验证入口
 
+## GeoData 校验、订阅换源与恢复
+
+在专用 OrbStack Linux VM 上运行 `./scripts/service-scopes-e2e.sh "$VM" /absolute/linux/lazyclash /absolute/vm/mihomo --geodata-only`。脚本为普通用户和系统各建一个随机命名的实例，使用本地 HTTP 服务提供两份同名 GeoSite 库。两份库的 `cn` 分类匹配不同的测试域名，实际代理请求能够识别内核使用了哪一份。
+
+Debian/arm64 与真实 Mihomo v1.19.33 已验证未选中订阅的校验不会写入活动目录、来源不可用时保留原进程、显式切换以及同一订阅刷新换源后的路由结果。两种 scope 都在候选配置和数据库发布后占用测试控制端口，验证就绪失败时同时恢复配置与数据库。随后在同一阶段用 SIGKILL 终止管理进程，确认下一次管理操作可在旧源离线时恢复服务及原路由。测试会核对数据库权限，并清理专用 unit、账号和文件。[双作用域验收记录](../.test-artifacts/service-scopes-geodata-e2e.log)
+
 ## 概览卡片布局与出口 IP（2026-11-27）
 
 在原生终端窗口中运行 Linux/arm64 TUI，以固定示例数据截图。160×48 时，路由模式与 IP 信息的底色在右栏连续，IP 信息与左栏运行环境对齐，实时流量在最下方占满两列。80×32 时，卡片依次纵向排列，滚动即可查看下方的流量图。[160×48 宽屏](../.test-artifacts/overview-route-ip/native/overview-160x48.png) · [80×32 窄屏](../.test-artifacts/overview-route-ip/native/overview-80x32.png)

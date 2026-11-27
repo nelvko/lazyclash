@@ -10,6 +10,7 @@ require (
 	github.com/charmbracelet/x/term v0.2.2
 	github.com/coder/websocket v1.8.15
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510
+	github.com/oschwald/maxminddb-golang v1.12.0
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/sys v0.50.0
 	gopkg.in/yaml.v3 v3.0.1

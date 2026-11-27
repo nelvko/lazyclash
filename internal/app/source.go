@@ -4,7 +4,6 @@ import (
 	"context"
 	"io"
 	"net/http"
-	"os"
 	"path/filepath"
 	"time"
 
@@ -78,23 +77,11 @@ func (a *App) downloadSource(ctx context.Context, source, userAgent string) (dow
 	return downloadedSource{Raw: raw}, nil
 }
 func (a *App) validateConfig(ctx context.Context, m manifest, config []byte) error {
-	bin, _, data := a.paths()
-	// Runtime belongs to the unprivileged service in system scope. Keep root's
-	// staging writes in the protected installation directory instead.
-	stage, err := os.MkdirTemp(filepath.Dir(bin), ".validate-*")
+	bin, _, _ := a.paths()
+	candidate, err := a.prepareGeoCandidate(ctx, bin, m, config)
 	if err != nil {
 		return err
 	}
-	defer os.RemoveAll(stage)
-	path := filepath.Join(stage, "config.yaml")
-	if err := store.Replace(path, config, nil, 0600); err != nil {
-		return err
-	}
-	if err := a.systemDirectory(stage); err != nil {
-		return err
-	}
-	if err := a.systemFile(path, 0640); err != nil {
-		return err
-	}
-	return a.validateBinaryConfig(ctx, bin, path, data)
+	candidate.Close()
+	return nil
 }
