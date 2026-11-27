@@ -18,9 +18,9 @@ def exercise(preview, binary, output, language, profile, args):
     output.mkdir(parents=True, exist_ok=True)
     report = output / "calls.json"
     words = {
-        "en": ("Overview", "Loading state", "Check updates", "Review core update",
+        "en": ("Overview", "Loading state", "Check Mihomo updates", "Review core update",
                "A newer stable version is available", "Confirm upgrade", "Mihomo upgrade failed", "Done"),
-        "zh-Hans": ("概览", "正在读取状态", "检查更新", "审阅内核更新",
+        "zh-Hans": ("概览", "正在读取状态", "检查 Mihomo 更新", "审阅内核更新",
                     "有新的正式版可升级", "确认升级", "Mihomo 升级失败", "完成"),
     }[language]
     overview, loading, check, review, available, upgrade, failed, done = words

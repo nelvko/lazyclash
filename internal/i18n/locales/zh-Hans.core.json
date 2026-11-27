@@ -67,7 +67,7 @@
   "runtime.status.partial": "部分数据可用",
   "runtime.status.live": "实时",
   "core_update.title": "Mihomo 内核更新",
-  "core_update.check": "检查更新",
+  "core_update.check": "检查 Mihomo 更新",
   "core_update.checking": "正在读取本地版本并查询官方 version.txt…",
   "core_update.checked": "版本检查完成",
   "core_update.review": "审阅内核更新",

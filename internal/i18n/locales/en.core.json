@@ -67,7 +67,7 @@
   "runtime.status.partial": "Partially available",
   "runtime.status.live": "Live",
   "core_update.title": "Mihomo updates",
-  "core_update.check": "Check updates",
+  "core_update.check": "Check Mihomo updates",
   "core_update.checking": "Checking the installed version and official version.txt…",
   "core_update.checked": "Version check completed",
   "core_update.review": "Review core update",
