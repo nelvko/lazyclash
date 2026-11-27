@@ -92,6 +92,9 @@ func newInstallCommand(backend func() *app.App) *cobra.Command {
 		if err != nil {
 			return err
 		}
+		if geo := result.GeoData; geo != nil {
+			fmt.Fprintln(cmd.ErrOrStderr(), geo.Summary(locale))
+		}
 		return writeJSON(cmd, result)
 	}
 	return cmd

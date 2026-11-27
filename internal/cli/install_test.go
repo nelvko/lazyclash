@@ -3,6 +3,7 @@ package cli
 import (
 	"bytes"
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,7 +15,7 @@ import (
 	"github.com/nelvko/lazyclash/internal/service"
 )
 
-type installService struct{ installs, actions int }
+type installService struct{ installs, actions, starts int }
 
 func (s *installService) Check(ctx context.Context) error     { return ctx.Err() }
 func (s *installService) Available(ctx context.Context) error { return ctx.Err() }
@@ -27,7 +28,13 @@ func (s *installService) Install(ctx context.Context, _, _, _ string) error {
 }
 func (s *installService) Verify(ctx context.Context, _, _, _ string) error      { return ctx.Err() }
 func (s *installService) RemoveOwned(ctx context.Context, _, _, _ string) error { return ctx.Err() }
-func (s *installService) Action(ctx context.Context, _ string) error            { s.actions++; return ctx.Err() }
+func (s *installService) Action(ctx context.Context, action string) error {
+	s.actions++
+	if action == "start" || action == "restart" {
+		s.starts++
+	}
+	return ctx.Err()
+}
 
 func installBackend(t *testing.T) (*app.App, *installService) {
 	t.Helper()
@@ -43,6 +50,9 @@ func installBackend(t *testing.T) (*app.App, *installService) {
 	a.Validate = func(ctx context.Context, _, _, _ string) error { return ctx.Err() }
 	a.DownloadRelease = func(ctx context.Context, dest string, r mihomo.Release, cfg downloadnet.Config, p func(mihomo.Progress)) error {
 		return os.WriteFile(dest, []byte("fixture core"), 0700)
+	}
+	a.DownloadGeo = func(context.Context, string, string, downloadnet.Config, func(mihomo.Progress)) error {
+		return errors.New("offline test fixture")
 	}
 	return a, s
 }

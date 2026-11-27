@@ -15,6 +15,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/nelvko/lazyclash/internal/downloadnet"
 	"github.com/nelvko/lazyclash/internal/mihomo"
 	"github.com/nelvko/lazyclash/internal/service"
 	"github.com/nelvko/lazyclash/internal/store"
@@ -117,6 +118,9 @@ func testApp(t *testing.T) (*App, *fakeService) {
 	}
 	a.Version = func(ctx context.Context, bin string) (string, error) { return testMihomoVersion, ctx.Err() }
 	a.Validate = func(ctx context.Context, bin, config, data string) error { return ctx.Err() }
+	a.DownloadGeo = func(context.Context, string, string, downloadnet.Config, func(mihomo.Progress)) error {
+		return errors.New("offline GEO fixture")
+	}
 	a.HTTP = &http.Client{Transport: fixtureTransport(func(r *http.Request) (*http.Response, error) {
 		body := `{"version":"v1.19.33","meta":true}`
 		if r.URL.Path == "/proxies" {

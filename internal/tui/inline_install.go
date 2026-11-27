@@ -416,7 +416,7 @@ func (m *Model) inlineInstallBody(width int) (string, []hitRegion) {
 		d.line(m.spinner.View()+" "+label, text)
 		d.line(w.plan.Release.Version, muted)
 		d.line(m.tr("dashboard.setup.method", m.wizardSourceName(w.cfg)), muted)
-		if w.progress.Stage == "download" {
+		if w.progress.Stage == "download" || w.progress.Stage == "geodata" {
 			summary := m.wizardByteSize(w.progress.Downloaded)
 			if w.progress.Total > 0 {
 				fraction := min(1, float64(w.progress.Downloaded)/float64(w.progress.Total))
@@ -428,6 +428,9 @@ func (m *Model) inlineInstallBody(width int) (string, []hitRegion) {
 		}
 		if w.progress.Detail != "" {
 			d.line(clean(m.localizeDetail(w.progress.Detail)), muted)
+		}
+		if w.progress.Stage == "geodata" {
+			d.line(m.tr("geo.install.cancelHint"), muted)
 		}
 		d.space()
 		d.buttons(wizardButton{"cancel", m.tr("wizard.cancel")})
@@ -449,6 +452,9 @@ func (m *Model) inlineInstallBody(width int) (string, []hitRegion) {
 			d.control("network", m.tr("dashboard.setup.downloadMethod"))
 		} else {
 			d.line(m.tr("dashboard.setup.installed", w.result.InstalledVersion), success)
+			if geo := w.result.GeoData; geo != nil {
+				d.line(geo.Summary(m.locale), text)
+			}
 			d.line(m.tr("dashboard.setup.startHint"), muted)
 			d.space()
 			d.buttons(wizardButton{"start", m.tr("dashboard.action.start")}, wizardButton{"done", m.tr("wizard.overview")})

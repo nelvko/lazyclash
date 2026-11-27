@@ -1,0 +1,5 @@
+{
+  "diagnostic.geo.prepareIncomplete": "default GEO data preparation is incomplete",
+  "diagnostic.geo.requireStopped": "stop the service before preparing default GEO data",
+  "diagnostic.geo.assetFailed": "could not prepare default GEO data for %s"
+}

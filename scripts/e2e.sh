@@ -264,6 +264,14 @@ printf 'Explicit download method: %s\n' "$download_method"
 owned=yes
 lp install --core-version v1.19.32 --download-method "$download_method"
 audit_phase pinned-remote-install
+# CONNECT counts establish the selected transport. Check actual installed
+# assets separately: TLS intentionally hides request paths from the observer.
+geo_runtime="$e2e_home/installation/runtime"
+(
+  cd "$geo_runtime"
+  [[ -s geoip.metadb && -s GeoSite.dat && ! -e GeoIP.dat && ! -e ASN.mmdb ]]
+  sha256sum geoip.metadb GeoSite.dat > "$work/prepared-geo.sha256"
+)
 lp status --json > "$work/status.json"
 python3 - "$work/status.json" <<'PY'
 import json, sys
@@ -308,6 +316,7 @@ for ((attempt=0; attempt<50; attempt++)); do
 done
 [[ -f "$work/default-ports-blocked" ]]
 python3 "$work/pty-smoke.py" --binary "$app" --home "$local_home" --service-name "$local_name" --mode install-local --mihomo-bin "$e2e_home/installation/mihomo" --output "$work/pty-install-local.txt"
+[[ ! -e "$local_home/installation/runtime/geoip.metadb" && ! -e "$local_home/installation/runtime/GeoSite.dat" ]]
 if LAZYCLASH_HOME="$local_home" LAZYCLASH_SERVICE="$local_name" "$app" start > "$work/blocked-start.log" 2>&1; then
   printf 'Stopped local service unexpectedly started on occupied default ports\n' >&2
   exit 1
@@ -379,6 +388,7 @@ audit_phase installed-version-check
 [[ $(systemctl --user show "$service_name.service" --property=MainPID --value) == "$old_pid" ]]
 lp upgrade --yes --download-method "$download_method" > "$work/core-upgrade.json"
 audit_phase confirmed-remote-upgrade
+(cd "$geo_runtime" && sha256sum --check "$work/prepared-geo.sha256")
 lp status --json > "$work/core-upgraded-status.json"
 python3 - "$work/core-check.json" "$work/core-upgrade.json" "$work/core-upgraded-status.json" "$old_pid" "$e2e_home/installation/current/config.yaml" "$config_hash" <<'PY'
 import hashlib, json, sys

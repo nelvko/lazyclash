@@ -206,7 +206,7 @@ func (m *Model) wizardOperation(operation string) string {
 
 func (m *Model) stageLabel(stage string) string {
 	switch stage {
-	case "query", "download", "extract", "verify", "deploy", "restart", "rollback", "done":
+	case "query", "download", "extract", "verify", "deploy", "geodata", "restart", "rollback", "done":
 		return m.tr("wizard.stage." + stage)
 	default:
 		return clean(stage)
@@ -491,7 +491,7 @@ func (m *Model) wizardDocument(width int) (wizardDocument, []wizardButton, strin
 			d.pair(m.tr("wizard.step.version"), w.plan.Release.Version)
 			d.pair(m.tr("wizard.asset"), w.plan.Release.Asset)
 		}
-		if w.progress.Stage == "download" {
+		if w.progress.Stage == "download" || w.progress.Stage == "geodata" {
 			summary := m.wizardByteSize(w.progress.Downloaded)
 			if w.progress.Total > 0 {
 				summary += " / " + m.wizardByteSize(w.progress.Total) + fmt.Sprintf("  %.1f%%", min(100, float64(w.progress.Downloaded)*100/float64(w.progress.Total)))
@@ -510,7 +510,11 @@ func (m *Model) wizardDocument(width int) (wizardDocument, []wizardButton, strin
 		}
 		d.space()
 		d.line(clean(m.localizeDetail(w.progress.Detail)))
-		d.line(m.tr("wizard.cancel_boundary"))
+		if w.progress.Stage == "geodata" {
+			d.line(m.tr("geo.install.cancelHint"))
+		} else {
+			d.line(m.tr("wizard.cancel_boundary"))
+		}
 		d.control("details", map[bool]string{false: m.tr("wizard.details_show"), true: m.tr("wizard.details_hide")}[w.details], w.focus)
 		if w.details {
 			d.space()
@@ -539,6 +543,9 @@ func (m *Model) wizardDocument(width int) (wizardDocument, []wizardButton, strin
 			return d, []wizardButton{{"done", m.tr("wizard.overview")}, {"retry", m.tr("wizard.retry")}}, title
 		}
 		d.line(themed(m.tr("wizard.installed"), success, modalBackground, false))
+		if geo := w.result.GeoData; geo != nil {
+			d.line(geo.Summary(m.locale))
+		}
 		d.pair(m.tr("wizard.installed_version"), w.result.InstalledVersion)
 		d.pair(m.tr("wizard.install_path"), w.result.ActualPath)
 		d.pair(m.tr("wizard.operation"), m.wizardOperation(w.result.Operation))

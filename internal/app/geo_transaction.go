@@ -167,7 +167,7 @@ func (a *App) installGeoCandidate(ctx context.Context, current string, p *pendin
 	}
 	// A stop job also drains a start/automatic restart already queued before
 	// the barrier was published. It does not change the user's desired state.
-	if err := a.Service.Action(ctx, "stop"); err != nil {
+	if err := a.stopGeoService(ctx); err != nil {
 		return err
 	}
 	_, _, runtime := a.paths()
@@ -291,6 +291,19 @@ func copyGeoForSwitch(ctx context.Context, srcDir, stageDir, dstDir, name, wantH
 	return os.Rename(tmp.Name(), filepath.Join(dstDir, name))
 }
 
+// Once the invalid -f pointer is durable, a future start cannot see the old
+// configuration. Only an already running or transitioning unit needs a stop job.
+func (a *App) stopGeoService(ctx context.Context) error {
+	status, err := a.Service.Inspect(ctx)
+	if err != nil {
+		return err
+	}
+	if !status.Active && status.PID == 0 && (status.State == "inactive" || status.State == "failed") {
+		return nil
+	}
+	return a.Service.Action(ctx, "stop")
+}
+
 // Called only after both configuration generations and the loaded unit have
 // been verified. Rollback remains repeatable until the original pointer is
 // durable; ready=false means the forward operation never touched a database.
@@ -307,7 +320,7 @@ func (a *App) restoreGeo(ctx context.Context, p pending, current, target string)
 			return err
 		}
 	}
-	if err := a.Service.Action(ctx, "stop"); err != nil {
+	if err := a.stopGeoService(ctx); err != nil {
 		return err
 	}
 	if p.Geo.Ready {

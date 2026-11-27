@@ -1,0 +1,5 @@
+{
+  "diagnostic.geo.prepareIncomplete": "默认 GeoData 准备未完成。",
+  "diagnostic.geo.requireStopped": "请先停止服务，再补齐默认 GeoData。",
+  "diagnostic.geo.assetFailed": "未能补齐 %s。"
+}

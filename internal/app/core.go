@@ -41,6 +41,7 @@ type InstallResult struct {
 	Operation        string
 	ActualPath       string
 	RestartRequired  bool
+	GeoData          *GeoPreparation `json:",omitempty"`
 }
 
 func (a *App) ResolveRelease(ctx context.Context, selection string, cfg downloadnet.Config) (mihomo.Release, error) {
@@ -240,6 +241,16 @@ func (a *App) InstallCore(ctx context.Context, plan InstallPlan, cfg downloadnet
 			return errors.New(fresh.BlockedReason)
 		}
 		result, err = a.installCoreLocked(ctx, fresh, cfg, progress, false)
+		if err == nil && fresh.Operation == "install" && fresh.Local == "" {
+			// Core and unit are already committed. Optional resource failures
+			// have a distinct result, including cancellation after this point.
+			preparation, prepErr := a.prepareDefaultGeoLocked(ctx, cfg, progress)
+			preparation.setWarning(prepErr)
+			result.GeoData = &preparation
+			if progress != nil {
+				progress(mihomo.Progress{Stage: "done", Detail: "Mihomo binary installation complete"})
+			}
+		}
 		return err
 	})
 	return result, err
@@ -323,7 +334,9 @@ func (a *App) installCoreLocked(ctx context.Context, fresh InstallPlan, cfg down
 	if restart {
 		result.RunningVersion = version
 	}
-	report("done", "Mihomo binary installation complete")
+	if fresh.Operation != "install" || fresh.Local != "" {
+		report("done", "Mihomo binary installation complete")
+	}
 	return result, nil
 }
 

@@ -45,6 +45,7 @@ type App struct {
 	Resolve         func(context.Context, string, downloadnet.Config) (mihomo.Release, error)
 	QueryLatest     func(context.Context, mihomo.Channel, downloadnet.Config) (string, error)
 	DownloadRelease func(context.Context, string, mihomo.Release, downloadnet.Config, func(mihomo.Progress)) error
+	DownloadGeo     func(context.Context, string, string, downloadnet.Config, func(mihomo.Progress)) error
 	TestFile        func(context.Context, mihomo.Release, downloadnet.Config) error
 	DiskSpace       func(string) (uint64, error)
 }

@@ -1,0 +1,10 @@
+{
+  "diagnostic.geo.seedKind": "不支持此默认 GEO 文件类型",
+  "diagnostic.geo.seedChecksum": "默认 GEO 的官方校验和文件无效",
+  "diagnostic.geo.seedSize": "默认 GEO 文件超过 64 MiB",
+  "diagnostic.geo.seedMismatch": "下载的 GEO 数据与官方校验和不一致",
+  "diagnostic.geo.seedRequest": "无法构造 GEO 资源下载请求",
+  "diagnostic.geo.seedCountry": "默认 GEO 国家数据库无效",
+  "diagnostic.geo.seedSite": "默认 GeoSite 数据库无效，或缺少 CN 域名分类",
+  "diagnostic.network.operation.geoDownload": "GEO 数据下载"
+}

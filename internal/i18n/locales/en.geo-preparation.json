@@ -1,0 +1,9 @@
+{
+  "wizard.stage.geodata": "Preparing GeoData",
+  "geo.install.cancelHint": "Mihomo is installed. Cancel to stop preparing the default databases.",
+  "geo.preparation.cancelled": "GeoData preparation cancelled",
+  "geo.preparation.ready": "Prepared %s",
+  "geo.preparation.present": "Already available: %s",
+  "geo.preparation.skipped": "Skipped custom source: %s",
+  "geo.preparation.failed": "Could not prepare %s"
+}

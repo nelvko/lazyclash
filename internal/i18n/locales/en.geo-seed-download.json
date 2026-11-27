@@ -1,0 +1,10 @@
+{
+  "diagnostic.geo.seedKind": "unsupported default GEO asset",
+  "diagnostic.geo.seedChecksum": "invalid official GEO checksum file",
+  "diagnostic.geo.seedSize": "default GEO file exceeds 64 MiB",
+  "diagnostic.geo.seedMismatch": "downloaded GEO data differs from the official checksum",
+  "diagnostic.geo.seedRequest": "cannot construct GEO asset request",
+  "diagnostic.geo.seedCountry": "invalid default GEO country database",
+  "diagnostic.geo.seedSite": "invalid default GeoSite database or missing CN domains",
+  "diagnostic.network.operation.geoDownload": "GEO data download"
+}

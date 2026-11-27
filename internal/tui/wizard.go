@@ -303,6 +303,9 @@ func (m *Model) handleWizardResult(v wizardMsg) tea.Cmd {
 		w.focus = "done"
 		w.cancelling = false
 		m.message = m.tr("wizard.installed")
+		if geo := v.result.GeoData; geo != nil && (geo.Cancelled || len(geo.Failed) > 0 || geo.Warning != "") {
+			m.message += " · " + geo.Summary(m.locale)
+		}
 	case "save-network":
 		return m.applyNetwork()
 	}
@@ -818,6 +821,8 @@ func stageLabel(stage string) string {
 		return "Checking executable"
 	case "deploy":
 		return "Deploying"
+	case "geodata":
+		return "Preparing GeoData"
 	case "done":
 		return "Completed"
 	default:

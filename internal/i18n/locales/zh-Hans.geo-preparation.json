@@ -1,0 +1,9 @@
+{
+  "wizard.stage.geodata": "正在准备 GeoData",
+  "geo.install.cancelHint": "Mihomo 已安装。取消可停止准备默认数据库。",
+  "geo.preparation.cancelled": "已取消 GeoData 准备",
+  "geo.preparation.ready": "已补齐 %s",
+  "geo.preparation.present": "%s 已就绪",
+  "geo.preparation.skipped": "%s 使用自定义来源，已跳过",
+  "geo.preparation.failed": "未能补齐 %s"
+}

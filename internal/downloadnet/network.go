@@ -221,6 +221,8 @@ func networkDiagnosticLabel(value string) error {
 		return diagnostic.New("diagnostic.network.operation.versionResponse", "official version response")
 	case "release-file connection test":
 		return diagnostic.New("diagnostic.network.operation.fileTest", "release-file connection test")
+	case "GEO data download":
+		return diagnostic.New("diagnostic.network.operation.geoDownload", "GEO data download")
 	case "release-file download":
 		return diagnostic.New("diagnostic.network.operation.download", "release-file download")
 	case "canceled":

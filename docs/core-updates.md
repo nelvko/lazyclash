@@ -21,6 +21,12 @@ lazyclash upgrade --yes --download-method environment
 
 原 `install --core-version ...`、本地安装和显式重装仍只发布文件，保留当前进程；它们可用于用户明确选择的版本更换。该行为与“升级并验证运行状态”的 `upgrade` 不同。
 
+### 在线首装的 GeoData
+
+首次在线安装会先提交内核与 systemd 服务，再沿用本次下载方式并行准备官方的 `geoip.metadb`（国家库）和 `GeoSite.dat`（域名分类库）。每项单独验证上游 SHA-256 和文件格式，成功后即可使用。安装结果分别列出已准备、已有、跳过和失败的文件；取消准备仍会保留已安装的内核和已完成的文件。
+
+本地 `install --bin` 可以离线安装。同版本复用、重装和升级均保留现有 GEO 数据。`GeoIP.dat`（DAT 模式）和 `ASN.mmdb` 由 Mihomo 根据实际规则获取。订阅中的自定义来源保持原值，客户端仅对自己的公开下载地址应用 GitHub 加速前缀。
+
 ## 查询与比较
 
 检查请求以下官方文本地址，统一使用直连、使用环境代理或 GitHub 加速中的一种。加速方式为版本文本和安装包的完整 URL 添加同一个 HTTP(S) 前缀；直连与加速均忽略环境代理，没有静默回退。安装和升级也不请求 GitHub Release API。

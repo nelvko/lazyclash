@@ -46,6 +46,7 @@ func DownloadRelease(ctx context.Context, dest string, release Release, cfg down
 
 type downloadWriter struct {
 	writer            io.Writer
+	stage, detail     string
 	report            func(Progress)
 	downloaded, total int64
 	started, last     time.Time
@@ -57,7 +58,7 @@ func (w *downloadWriter) Write(p []byte) (int, error) {
 	now := time.Now()
 	if now.Sub(w.last) >= 100*time.Millisecond {
 		w.last = now
-		w.report(Progress{Stage: "download", Downloaded: w.downloaded, Total: w.total, BytesPerSecond: float64(w.downloaded) / now.Sub(w.started).Seconds(), Detail: "Downloading Mihomo release bytes"})
+		w.report(Progress{Stage: w.stage, Downloaded: w.downloaded, Total: w.total, BytesPerSecond: float64(w.downloaded) / now.Sub(w.started).Seconds(), Detail: w.detail})
 	}
 	return n, err
 }
@@ -110,7 +111,7 @@ func transfer(ctx context.Context, dest string, source string, expectedSize int6
 		total = resp.ContentLength
 	}
 	started := time.Now()
-	writer := &downloadWriter{writer: archive, report: report, total: total, started: started, last: started}
+	writer := &downloadWriter{writer: archive, report: report, stage: "download", detail: "Downloading Mihomo release bytes", total: total, started: started, last: started}
 	report(Progress{Stage: "download", Total: total, Detail: "Downloading Mihomo release bytes"})
 	n, err := io.Copy(writer, io.LimitReader(resp.Body, MaxArchiveSize+1))
 	if ctx.Err() != nil {
