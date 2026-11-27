@@ -28,8 +28,8 @@ func TestOverviewPairedLayoutAlignsBothEdgesAndKeepsActionOwnership(t *testing.T
 		Capabilities: app.Capabilities{Scope: "system", Runtime: app.Capability{Supported: true}, TUN: app.Capability{Supported: true}},
 	}
 	owners := map[string]string{
-		"core.toggle": "dashboard.control.core",
-		"mode.rule":   "dashboard.control.routingMode", "mode.global": "dashboard.control.routingMode", "mode.direct": "dashboard.control.routingMode", "card.proxies": "dashboard.control.routingMode",
+		"core.manage": "dashboard.control.core", "core.toggle": "dashboard.control.core",
+		"mode.rule": "dashboard.control.routingMode", "mode.global": "dashboard.control.routingMode", "mode.direct": "dashboard.control.routingMode", "card.proxies": "dashboard.control.routingMode",
 		"card.profiles": "dashboard.profile.title", "tun.enable": "dashboard.overview.network", "network.primaryConfig": "dashboard.overview.network",
 	}
 	renders := map[string]func(dashboardOptions, int) dashboardBlock{
@@ -224,8 +224,8 @@ func TestOverviewOutlineFollowsCardFocusWithoutMovingContents(t *testing.T) {
 			assertOverviewCardPerimeters(t, m, m.focus)
 			assertGeometry()
 			m, _ = update(m, special(tea.KeyEnter))
-			if m.focus != "core.toggle" || m.busy {
-				t.Fatal("entering the core controls did not safely focus Stop")
+			if m.focus != "core.manage" || m.wizard.open || m.busy {
+				t.Fatal("entering the core controls did not safely focus Manage")
 			}
 			assertOverviewCardPerimeters(t, m, "")
 			assertGeometry()

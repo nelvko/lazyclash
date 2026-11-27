@@ -181,6 +181,7 @@
   "tun.saved": "Host TUN setting saved",
   "tun.saved_state": "Saved: %s",
   "dashboard.overview.service": "Core Status",
+  "dashboard.core.manageAction": "Manage ›",
   "dashboard.core.start": "Start",
   "dashboard.core.stop": "Stop",
   "dashboard.core.uptimeUnderMinute": "Up for <1m",

@@ -55,12 +55,15 @@ def wait_sidebar_clock(terminal, lower, upper):
     raise AssertionError('sidebar clock did not reach the expected process age\n' + terminal.screen.text())
 
 
-def heading_action(terminal, label):
+def state_action(terminal, label):
+    state = "○ Stopped" if label == "Start" else "● Running"
+    button = re.compile(re.escape(label) + r'(?=\s|\]|$)')
     for y, row in enumerate(terminal.screen.cells):
-        if 'Core Status' not in ''.join(row):
+        if state not in ''.join(row):
             continue
         for x, cell in enumerate(row):
-            if cell and ''.join(row[x:]).startswith(label):
+            # Match the button in the status row, including its plain-text brackets.
+            if cell and button.match(''.join(row[x:])):
                 return x, y
     return None
 
@@ -101,7 +104,7 @@ def main():
             terminal=SMOKE.Terminal([sys.executable,'-c',wrapper,json.dumps(env),*argv])
             terminal.wait('○ Stopped');terminal.settle()
             assert not status()['Active']
-            assert heading_action(terminal, 'Start') is not None
+            assert state_action(terminal, 'Start') is not None
             assert 'Up for ' not in terminal.screen.text()
             assert sidebar_seconds(terminal) is None
             capture(terminal,output,'stopped')
@@ -109,12 +112,12 @@ def main():
 
             # All queued repeats arrive while the first lifecycle operation is
             # pending. Their state changes must not create a second operation.
-            x, y = heading_action(terminal, 'Start')
+            x, y = state_action(terminal, 'Start')
             terminal.send(f'\x1b[<0;{x+1};{y+1}M\x1b[<0;{x+1};{y+1}m'.encode()+b'\r \r')
             terminal.wait('● Running');wait_sidebar_clock(terminal, 0, 60);terminal.settle()
             active=status();assert active['Active'] and active['PID']>0,active
             first_pid=active['PID']
-            assert heading_action(terminal, 'Stop') is not None
+            assert state_action(terminal, 'Stop') is not None
             capture(terminal,output,'toggle-started')
             results['toggle_start_and_pending_dedup']=True
 
@@ -131,14 +134,15 @@ def main():
             with socket.socket() as blocker:
                 blocker.bind(('127.0.0.1',mixed));blocker.listen()
                 terminal.send(b' ')
-                terminal.wait('other service was stopped');terminal.settle()
+                terminal.wait(f'127.0.0.1:{mixed}');terminal.settle()
+                assert 'unavailable' in terminal.screen.text(), terminal.screen.text()
                 capture(terminal,output,'failed-start-error')
-                # Dismiss the Toast before checking the heading action below it.
+                # Dismiss the Toast before checking the lifecycle action below it.
                 for _ in range(4):
                     if '×' not in terminal.screen.text(): break
                     terminal.click_text('×');terminal.settle()
                 terminal.wait('○ Stopped')
-                assert heading_action(terminal, 'Start') is not None
+                assert state_action(terminal, 'Start') is not None
                 assert not status()['Active']
                 capture(terminal,output,'failed-start-actual-off')
             results['start_failure_rereads_off']=True
@@ -176,7 +180,7 @@ def main():
             for columns,rows in ((80,24),(60,20),(40,16),(120,40)):
                 terminal.resize(columns,rows);terminal.settle()
                 terminal.wait('○ Stopped')
-                assert heading_action(terminal, 'Start') is not None
+                assert state_action(terminal, 'Start') is not None
                 capture(terminal,output,f'stopped-{columns}x{rows}')
             results['narrow_layout_and_recovery']=True
             results['saw_starting_frame']='◌ Starting' in terminal.text()

@@ -94,6 +94,7 @@ func TestPageNavigationOverviewStartsAtCardBeforeItsControls(t *testing.T) {
 
 func TestOverviewHeadingActionsRequireExplicitActivationAfterEnteringCard(t *testing.T) {
 	for _, action := range []struct{ card, id string }{
+		{"dashboard.control.core", "core.manage"},
 		{"dashboard.profile.title", "card.profiles"},
 		{"dashboard.overview.network", "network.primaryConfig"},
 		{"dashboard.control.routingMode", "card.proxies"},
@@ -121,19 +122,38 @@ func TestOverviewHeadingActionsRequireExplicitActivationAfterEnteringCard(t *tes
 	}
 }
 
-func TestPageNavigationInstalledKernelManagementStaysInSettings(t *testing.T) {
+func TestPageNavigationInstalledCoreManagementReturnsToItsOrigin(t *testing.T) {
 	m := pageNavigationModel()
 	m.snapshot = onboardingDefaultSnapshot()
 	m.focus = "overview.card.dashboard.control.core"
 	m.layout()
 	id := m.id
 	m, _ = update(m, special(tea.KeyEnter))
-	if m.focus != "core.toggle" || m.wizard.open || m.busy || m.id != id {
-		t.Fatal("entering the core card did not focus its first control without activating it")
+	if m.focus != "core.manage" || m.wizard.open || m.busy || m.id != id {
+		t.Fatalf("entering the core card did not safely focus Manage: %s", m.focus)
 	}
-	if hasAction(m.contentTargets(), "card.install") {
-		t.Fatal("overview retained its permanent core management action")
+	m, _ = update(m, special(tea.KeyTab))
+	if m.focus != "core.toggle" || m.busy {
+		t.Fatalf("Tab did not focus the service control: %s", m.focus)
 	}
+	checkManagement := func(open tea.KeyPressMsg, page, focus string) {
+		t.Helper()
+		m, _ = update(m, open)
+		if !m.wizard.open || m.wizard.inline || m.wizard.step != stepCore || m.wizard.focus != "check-update" || m.busy || m.id != id {
+			t.Fatalf("%s from %s did not open installed-core management without a lookup", open, focus)
+		}
+		m, _ = update(m, special(tea.KeyEscape))
+		if m.wizard.open || m.page != page || m.focus != focus {
+			t.Fatalf("closing management should restore %s/%s, got %s/%s", page, focus, m.page, m.focus)
+		}
+	}
+	checkManagement(key("i"), "overview", "core.toggle")
+	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
+	if m.focus != "core.manage" || m.contextHelp() != m.controlActionHelp(m.tr("navigation.controls.manageCore")) {
+		t.Fatalf("Shift+Tab did not restore Manage and its action hint: %s / %s", m.focus, m.contextHelp())
+	}
+	checkManagement(special(tea.KeyEnter), "overview", "core.manage")
+	checkManagement(special(tea.KeySpace), "overview", "core.manage")
 	m, _ = update(m, key("7"))
 	for range len(m.focusTargets()) {
 		if m.focus == "install" {
@@ -144,9 +164,27 @@ func TestPageNavigationInstalledKernelManagementStaysInSettings(t *testing.T) {
 	if m.page != "settings" || m.focus != "install" || m.wizard.open || m.busy || m.id != id {
 		t.Fatal("Settings did not retain explicit core management")
 	}
-	m, _ = update(m, special(tea.KeyEnter))
-	if !m.wizard.open || m.wizard.inline || m.wizard.step != stepCore || m.busy || m.id != id {
-		t.Fatal("explicit Manage activation did not open installed-core management without a lookup")
+	checkManagement(special(tea.KeyEnter), "settings", "install")
+}
+
+func TestOverviewManageIgnoresStaleActivation(t *testing.T) {
+	for _, tc := range []struct {
+		name                             string
+		ready, installed, busy, quitting bool
+	}{
+		{name: "missing snapshot", installed: true},
+		{name: "uninstalled", ready: true},
+		{name: "busy", ready: true, installed: true, busy: true},
+		{name: "quitting", ready: true, installed: true, quitting: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m := ready(&fakeBackend{snapshot: onboardingDefaultSnapshot()})
+			m.focus = "core.manage"
+			m.snapshotReady, m.snapshot.Installed, m.busy, m.quitting = tc.ready, tc.installed, tc.busy, tc.quitting
+			if cmd := m.activate(m.focus); cmd != nil || m.wizard.open || m.wizard.inline || strings.Contains(m.contextHelp(), "Enter") {
+				t.Fatal("stale Manage focus exposed installation or management")
+			}
+		})
 	}
 }
 

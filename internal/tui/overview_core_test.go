@@ -160,9 +160,10 @@ func TestCoreStatusKeepsFailuresTransitionsAndMissingTimingExplicit(t *testing.T
 				block := overviewCoreCard(o, 72)
 				plain := ansi.Strip(strings.Join(block.lines, "\n"))
 				face, _, _ := headerCoreState(o)
-				action, _ := coreCardAction(t, block)
-				if identity, state := strings.TrimSpace(ansi.Strip(block.lines[action.Y+2])), strings.TrimSpace(ansi.Strip(block.lines[action.Y+3])); identity != "Mihomo" || state != face {
-					t.Fatalf("%s: expected identity followed by the current state, got %q and %q", tc.name, identity, state)
+				action, _ := coreCardTarget(t, block, "core.toggle")
+				beforeFooter := ansi.Strip(strings.Join(block.lines[:action.Y], "\n"))
+				if !strings.Contains(beforeFooter, "Mihomo") || strings.TrimSpace(ansi.Strip(ansi.Cut(block.lines[action.Y], 0, action.X))) != face {
+					t.Fatalf("%s: status and button did not share a row below the identity:\n%s", tc.name, plain)
 				}
 				prefix := "Up for "
 				if language == i18n.Chinese {
@@ -198,9 +199,9 @@ func TestCoreStatusKeepsFailuresTransitionsAndMissingTimingExplicit(t *testing.T
 }
 
 func TestOverviewTitlesKeepSpacingAndNavigationActionsStayInHeading(t *testing.T) {
-	o := dashboardOptions{Height: 45, Snapshot: app.Snapshot{
+	o := dashboardOptions{Width: 160, Height: 45, Snapshot: app.Snapshot{
 		Installed: true, Version: "v1.19.33", Service: service.Status{Active: true, State: "active"}, ConfigReady: true, Applied: "work", Profiles: []string{"default", "work"},
-		ProfileDetails: []app.ProfileInfo{{ID: "work", Name: "Work", Origin: "example.invalid", Kind: "remote", Validated: true, HasOverrides: true}},
+		ProfileDetails: []app.ProfileInfo{{ID: "work", Name: strings.Repeat("A long profile name ", 12), Origin: "example.invalid", Kind: "remote", Validated: true, HasOverrides: true}},
 	}}
 	body := overviewLayout(o, 135)
 	core, profile := body.cards[0], body.cards[1]
@@ -212,14 +213,42 @@ func TestOverviewTitlesKeepSpacingAndNavigationActionsStayInHeading(t *testing.T
 			t.Fatalf("card title lost spacing: %s", card.ID)
 		}
 	}
+	if core.H <= len(overviewCoreCard(o, core.W).lines) {
+		t.Fatal("fixture must stretch the core card to match its taller neighbor")
+	}
+	manage, _ := coreCardTarget(t, body, "core.manage")
+	action, _ := coreCardTarget(t, body, "core.toggle")
+	aboveStatus := ansi.Strip(ansi.Cut(body.lines[action.Y-1], core.X, core.X+core.W))
+	if manage.Y != core.Y+1 || action.Y != core.Y+core.H-2 || manage.X+manage.W != action.X+action.W ||
+		strings.TrimSpace(aboveStatus) != "" {
+		t.Fatalf("unexpected status row layout: management=%+v action=%+v card=%+v row above status=%q", manage, action, core, aboveStatus)
+	}
 	for _, hit := range body.targets {
-		if hit.ID == "core.toggle" {
-			if hit.Y != core.Y+1 || hit.X+hit.W != core.X+core.W-2 {
-				t.Fatalf("core action not at heading's right edge: %+v / %+v", hit, core)
-			}
-		}
 		if hit.ID == "card.profiles" && hit.Y != profile.Y+1 {
 			t.Fatalf("profile navigation not in heading: %+v", hit)
+		}
+	}
+}
+
+func TestCoreCardKeepsFailureBeforeWideFooterAndAfterCompactAction(t *testing.T) {
+	for _, width := range []int{80, 160} {
+		o := dashboardOptions{Width: width, Height: 45, Snapshot: app.Snapshot{
+			Installed: true, Service: service.Status{State: "failed", Result: "exit-code", ExitCode: 7},
+		}}
+		card := overviewCoreCard(o, 56)
+		hit, face := coreCardTarget(t, card, "core.toggle")
+		if strings.TrimSpace(face) != o.Locale.T("dashboard.settings.start") {
+			t.Fatalf("failed service has no Start button: %q", face)
+		}
+		before := ansi.Strip(strings.Join(card.lines[:hit.Y], "\n"))
+		after := ansi.Strip(strings.Join(card.lines[hit.Y+1:], "\n"))
+		for _, detail := range []string{o.Locale.T("dashboard.core.serviceResult", "exit-code", 7), "lazyclash doctor"} {
+			if strings.Contains(before, detail) != (width == 160) || strings.Contains(after, detail) != (width == 80) {
+				t.Fatalf("%d columns: %q not in expected position relative to lifecycle action:\n%s", width, detail, ansi.Strip(strings.Join(card.lines, "\n")))
+			}
+		}
+		if width == 160 && strings.TrimSpace(ansi.Strip(card.lines[hit.Y-1])) != "" {
+			t.Fatal("expected a blank row between diagnostics and status")
 		}
 	}
 }

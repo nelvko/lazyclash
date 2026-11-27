@@ -1,5 +1,13 @@
 # 验证入口
 
+## 概览内核卡的管理与启停（2026-11-27）
+
+150×48 的中文真彩色终端中，内核卡底部的状态和启停按钮上方保留一行空白。由真实 PTY 字符格重绘的卡片截图与确认稿逐像素相同（671×200 像素）。80×24 的紧凑卡片与上版截图也逐像素相同，运行时长仍在状态行下方。调整留白后，另用概览 PTY 脚本完整复验了中文真彩运行、中文 256 色版本不一致及英文无色服务状态未知三组场景。[150×48 内核卡](../.test-artifacts/core-no-divider/core-150x48.png) · [80×24 内核卡](../.test-artifacts/core-no-divider/core-80x24.png) · [宽屏像素比较](../.test-artifacts/core-no-divider/comparison-150x48.json)
+
+管理与启停的布局在 macOS 真实 PTY 中覆盖中英文、真彩色、256 色和无色终端，共 36 组。夹具包含运行、停止、服务状态未知、版本不一致、订阅更新未生效和直连模式。160×45 和 120×32 下，启停按钮的底色或方括号与「管理 ›」右缘对齐。80×24、60×20、40×16 下，状态行紧跟 Mihomo。运行中的 120×10 矮窗也显示卡内时长。[36 组 PTY 结果](../.test-artifacts/core-trailing-action/core-pty-matrix.log)
+
+用键盘在宽屏打开「管理 ›」，再用鼠标在窄屏打开同一入口。两处均可读取已安装版本并看到「检查更新」。按 Esc 返回管理入口，随后按 Tab 聚焦同卡的启停操作。Linux/arm64 专用 VM 使用独立 systemd 用户服务和实际 Mihomo，验证了点击新位置启动、键盘停止、端口被占用时的失败回读，以及外部启停、重启后的计时归零和窄屏跨分钟更新。运行结束后已清理临时服务。[Linux 服务结果](../.test-artifacts/core-trailing-action/linux-service-final/result.json)
+
 ## 策略组类型的悬停反馈（2026-11-27）
 
 在 160×45 和 80×32 的真实 PTY 中，将鼠标依次移到五种英文类型名上。逐格比较悬停前后的文字和底色，只有当前组头的背景提亮。截图中鼠标停在 AUTO 的 URLTest 上，键盘焦点仍在 PROXY。另用鼠标点击类型所在的字符格，验证宽屏可折叠已展开的组，窄屏可打开该组成员。[160×45 宽屏](../.test-artifacts/proxy-hover-type-removal/pty/zh-Hans/truecolor/group-type-hover-160x45.png) · [80×32 窄屏](../.test-artifacts/proxy-hover-type-removal/pty/zh-Hans/truecolor/group-type-hover-80x32.png)

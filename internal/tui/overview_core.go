@@ -16,42 +16,38 @@ func overviewCoreCard(o dashboardOptions, width int) dashboardBlock {
 	style := func(value, color string) string { return themed(clean(value), color, panel, o.Dim) }
 	state, _, color := headerCoreState(o)
 	inner := overviewInnerWidth(width)
-	lines := []string{overviewHeading(o, "Mihomo"), style(cellCrop(state, inner), color)}
+	name, status := overviewHeading(o, "Mihomo"), style(cellCrop(state, inner), color)
+	var diagnostics []string
 	control := overviewCoreToggle(o)
 	transition := control.state == togglePending
 	if !o.StateUnavailable && !transition {
 		failedResult := s.Service.Result != "" && s.Service.Result != "success"
 		if failedResult {
-			lines = append(lines, style(tr("dashboard.core.serviceResult", clean(s.Service.Result), s.Service.ExitCode), warning))
+			diagnostics = append(diagnostics, style(tr("dashboard.core.serviceResult", clean(s.Service.Result), s.Service.ExitCode), warning))
 		}
 		if s.ServiceError != "" {
-			lines = append(lines, style(o.Locale.Diagnostic(s.ServiceError, s.ServiceDiagnostic), warning))
+			diagnostics = append(diagnostics, style(o.Locale.Diagnostic(s.ServiceError, s.ServiceDiagnostic), warning))
 		}
 		if failedResult || s.Service.State == "failed" || s.ServiceError != "" {
-			lines = append(lines, style(tr("dashboard.core.doctorHint"), muted))
+			diagnostics = append(diagnostics, style(tr("dashboard.core.doctorHint"), muted))
 		}
 	}
 	if !s.Installed && !o.StateUnavailable {
+		lines := append([]string{name, status}, diagnostics...)
 		return overviewControlPanel(o, width, tr("dashboard.overview.service"), lines, []overviewControlButton{
 			{id: "core.install", label: tr("dashboard.action.install"), enabled: !o.Busy},
 		})
 	}
 	running := !o.StateUnavailable && s.Service.Active && s.ServiceError == ""
-	showCardUptime := !sidebarGeometry(o, false).hasClockRow()
-	if showCardUptime {
-		if elapsed, ok := o.coreUptime(); ok {
-			lines = append(lines, style(coreUptimeLabel(elapsed, o.Locale), muted))
-		}
-	}
 	if running && s.RunningVersion != "" && s.Version != "" && s.RunningVersion != s.Version {
-		lines = append(lines, style(tr("dashboard.kernel.running", clean(s.RunningVersion)), warning),
+		diagnostics = append(diagnostics, style(tr("dashboard.kernel.running", clean(s.RunningVersion)), warning),
 			style(tr("dashboard.kernel.installed", clean(s.Version)), warning), style(tr("dashboard.core.restartVersion"), warning))
 	}
 	if !o.StateUnavailable && s.ServiceError == "" && (s.Service.Active || s.Service.PID != 0) && s.Desired.Known && !s.Desired.Running && !transition {
-		lines = append(lines, style(tr("dashboard.core.stopRequested"), warning))
+		diagnostics = append(diagnostics, style(tr("dashboard.core.stopRequested"), warning))
 	}
 	if s.Service.State == "inactive" && s.Desired.Known && s.Desired.Running && !transition {
-		lines = append(lines, style(tr("dashboard.core.exitHint"), warning))
+		diagnostics = append(diagnostics, style(tr("dashboard.core.exitHint"), warning))
 	}
 	monitorUnavailable := s.APIError != ""
 	if o.RuntimeReceived && o.Runtime.State == "ready" {
@@ -61,24 +57,53 @@ func overviewCoreCard(o dashboardOptions, width int) dashboardBlock {
 		monitorUnavailable = monitorUnavailable || o.Runtime.Error != "" || o.Runtime.TrafficError != "" || o.Runtime.MemoryError != "" || o.Runtime.ConnectionsError != ""
 	}
 	if running && monitorUnavailable {
-		lines = append(lines, style(tr("dashboard.core.monitorUnavailable"), warning))
+		diagnostics = append(diagnostics, style(tr("dashboard.core.monitorUnavailable"), warning))
 	} else if control.state == toggleUnknown {
-		lines = append(lines, style(tr("dashboard.core.unknownHint"), muted))
+		diagnostics = append(diagnostics, style(tr("dashboard.core.unknownHint"), muted))
 	}
 	if issue := runtimeStopIssue(s, o.Locale); !o.StateUnavailable && issue != "" {
-		lines = append(lines, style(issue, muted))
+		diagnostics = append(diagnostics, style(issue, muted))
 	}
-	content := overviewTextBlock(lines, inner)
-	if showCardUptime {
-		// Keep the narrow card steady when the clock starts or changes units.
+	content := overviewTextBlock([]string{name}, inner)
+	// Choose the row using the pending label too, so a click cannot move the
+	// same button onto a second line while systemd is starting or stopping.
+	pendingWidth := 2 + max(ansi.StringWidth(tr("dashboard.status.starting")), ansi.StringWidth(tr("dashboard.status.stopping")))
+	status = cellPad(status, min(inner, max(ansi.StringWidth(status), pendingWidth)))
+	statusRow := overviewLabelSlot(o, inner, status, coreActionFace(o, control), "core.toggle", true)
+	details := overviewTextBlock(diagnostics, inner)
+	if sidebarGeometry(o, false).hasClockRow() {
+		content.append(details)
+		// Keep the status row at the bottom when the neighboring card is taller.
+		content.blank()
+		content.footerY = len(content.lines)
+		content.append(statusRow)
+	} else {
+		content.append(statusRow)
 		longestUptime := coreUptimeLabel(time.Duration(1<<63-1), o.Locale)
-		minRows := 3 + strings.Count(wrapText(longestUptime, inner), "\n")
+		minRows := len(content.lines) + 1 + strings.Count(wrapText(longestUptime, inner), "\n")
+		if elapsed, ok := o.coreUptime(); ok {
+			content.append(overviewTextBlock([]string{style(coreUptimeLabel(elapsed, o.Locale), muted)}, inner))
+		}
+		content.append(details)
 		for len(content.lines) < minRows {
 			content.blank()
 		}
 	}
-	heading := overviewLabelSlot(o, inner, overviewHeading(o, tr("dashboard.overview.service")), coreActionFace(o, control), "core.toggle")
-	return overviewPanel(o, width, heading, content, nil)
+
+	return overviewPanel(o, width, coreManagementHeading(o, inner), content, nil)
+}
+
+func coreManagementHeading(o dashboardOptions, inner int) dashboardBlock {
+	manage := dashboardButtonOptions("core.manage", o, false, panel)
+	manage.Kind, manage.Disabled = buttonText, !o.Snapshot.Installed || o.StateUnavailable || o.Busy
+	id := "core.manage"
+	if manage.Disabled {
+		id = ""
+	}
+	face := renderButton(o.Locale.T("dashboard.core.manageAction"), manage)
+	// End the link at its chevron so it lines up with the gray button's edge.
+	face = ansi.Cut(face, 0, ansi.StringWidth(face)-1)
+	return overviewLabelSlot(o, inner, overviewHeading(o, o.Locale.T("dashboard.overview.service")), face, id, true)
 }
 
 func coreActionFace(o dashboardOptions, control toggleModel) string {

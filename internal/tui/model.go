@@ -1393,6 +1393,11 @@ func (m *Model) activate(id string) tea.Cmd {
 		return m.toggleKeyHints()
 	case "runtime-settings":
 		return m.openNetworkConfig("proxy")
+	case "core.manage":
+		if !m.snapshotReady || !m.snapshot.Installed {
+			return nil
+		}
+		return m.openWizard(false)
 	case "core.checkUpdate":
 		if !m.snapshotReady || !m.snapshot.Installed || m.busy || m.quitting {
 			return nil

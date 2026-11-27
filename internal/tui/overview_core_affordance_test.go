@@ -14,19 +14,24 @@ import (
 	"github.com/nelvko/lazyclash/internal/service"
 )
 
-func coreCardAction(t *testing.T, block dashboardBlock) (hitRegion, string) {
+func coreCardTarget(t *testing.T, block dashboardBlock, id string) (hitRegion, string) {
 	t.Helper()
-	if len(block.targets) != 1 || block.targets[0].ID != "core.toggle" || block.targets[0].H != 1 {
-		t.Fatalf("expected one single-row core action, got %+v", block.targets)
+	for _, hit := range block.targets {
+		if hit.ID == id {
+			if hit.H != 1 {
+				t.Fatalf("%s should occupy a single row: %+v", id, hit)
+			}
+			return hit, ansi.Strip(ansi.Cut(block.lines[hit.Y], hit.X, hit.X+hit.W))
+		}
 	}
-	hit := block.targets[0]
-	return hit, ansi.Strip(ansi.Cut(block.lines[hit.Y], hit.X, hit.X+hit.W))
+	t.Fatalf("missing %s: %+v", id, block.targets)
+	return hitRegion{}, ""
 }
 
-func TestCoreCardPlacesActionInHeadingAndGroupsReadOnlyDetails(t *testing.T) {
+func TestCoreCardSeparatesManagementFromRightAlignedLifecycleButton(t *testing.T) {
 	now := time.Now()
 	for _, language := range []string{i18n.English, i18n.Chinese} {
-		for _, width := range []int{16, 30, 72} {
+		for _, width := range []int{16, 36, 72} {
 			for _, plain := range []bool{false, true} {
 				t.Run(fmt.Sprintf("%s/%d/plain=%t", language, width, plain), func(t *testing.T) {
 					o := dashboardOptions{Locale: i18n.New(language), PlainButtons: plain, Now: now, Snapshot: app.Snapshot{
@@ -36,36 +41,39 @@ func TestCoreCardPlacesActionInHeadingAndGroupsReadOnlyDetails(t *testing.T) {
 					block := overviewCoreCard(o, width)
 					assertCanvas(t, strings.Join(block.lines, "\n"), width, len(block.lines))
 					assertRegions(t, block.targets, width, len(block.lines))
-					hit, face := coreCardAction(t, block)
-					if strings.Trim(face, " []") != o.Locale.T("dashboard.settings.stop") {
-						t.Fatalf("click target misses Stop: %q", face)
+					manage, link := coreCardTarget(t, block, "core.manage")
+					hit, face := coreCardTarget(t, block, "core.toggle")
+					label := o.Locale.T("dashboard.settings.stop")
+					if len(block.targets) != 2 || strings.TrimLeft(link, " ") != o.Locale.T("dashboard.core.manageAction") || strings.Trim(face, " []") != label || hit.X+hit.W != width-2 {
+						t.Fatalf("expected management link and right-aligned stop button: %+v %q %q", block.targets, link, face)
+					}
+					if plain && !strings.Contains(face, "[") {
+						t.Fatalf("monochrome stop lost button boundary: %q", face)
+					}
+					if !plain {
+						painted := ansi.Cut(block.lines[hit.Y], hit.X+2, hit.X+hit.W)
+						if !strings.Contains(painted, themed(ansi.Strip(painted), text, buttonSecondaryBackground, false)) {
+							t.Fatalf("stop lost its neutral action background: %q", painted)
+						}
 					}
 					title := o.Locale.T("dashboard.overview.service")
+					state, _, _ := headerCoreState(o)
 					if width == 16 {
-						if hit.Y != 2 || strings.TrimSpace(ansi.Strip(block.lines[hit.Y-1])) != title {
-							t.Fatalf("narrow heading failed to move the complete action below %q: %+v", title, hit)
+						if manage.X+manage.W != width-2 || hit.Y <= manage.Y || strings.Contains(ansi.Strip(block.lines[hit.Y]), state) ||
+							!strings.Contains(ansi.Strip(strings.Join(block.lines[manage.Y+1:hit.Y], "\n")), state) {
+							t.Fatalf("wrapped button is not below the complete state:\n%s", ansi.Strip(strings.Join(block.lines, "\n")))
 						}
 						return
 					}
-					if !strings.Contains(ansi.Strip(ansi.Cut(block.lines[hit.Y], 0, hit.X)), title) || hit.X+hit.W != width-2 {
-						t.Fatalf("heading action not at the right edge: %+v / %q", hit, ansi.Strip(block.lines[hit.Y]))
+					if !strings.Contains(ansi.Strip(block.lines[manage.Y]), title) || manage.X+manage.W != hit.X+hit.W {
+						t.Fatalf("right action edges differ: management=%+v stop=%+v", manage, hit)
 					}
-					full, _, _ := headerCoreState(o)
-					want := []string{"Mihomo", full, o.Locale.T("dashboard.core.uptimeHours", 1)}
-					var body []string
-					for _, line := range block.lines[hit.Y+1:] {
-						line = strings.TrimRight(ansi.Strip(line), " ")
-						if line != "" {
-							body = append(body, line)
-						}
+					if !strings.Contains(ansi.Strip(strings.Join(block.lines[manage.Y+1:hit.Y], "\n")), "Mihomo") ||
+						strings.TrimSpace(ansi.Strip(ansi.Cut(block.lines[hit.Y], 0, hit.X))) != state {
+						t.Fatalf("missing identity or state to the left of Stop:\n%s", ansi.Strip(strings.Join(block.lines, "\n")))
 					}
-					if len(body) != len(want) {
-						t.Fatalf("unexpected card body: %q", body)
-					}
-					for i, value := range want {
-						if body[i] != "  "+value {
-							t.Fatalf("body row %d = %q, want left-aligned %q", i, body[i], value)
-						}
+					if got := strings.TrimSpace(ansi.Strip(block.lines[hit.Y+1])); got != o.Locale.T("dashboard.core.uptimeHours", 1) {
+						t.Fatalf("fallback uptime is not below the state: %q", got)
 					}
 				})
 			}
@@ -99,24 +107,24 @@ func TestCoreCardActionsKeepTheirSizeAndFocusAcrossLifecycle(t *testing.T) {
 						value = o.Locale.T("dashboard.settings." + tc.want)
 					}
 					idle := overviewCoreCard(o, 72)
-					hit, face := coreCardAction(t, idle)
+					hit, face := coreCardTarget(t, idle, "core.toggle")
 					if strings.Trim(face, " []") != value {
 						t.Fatalf("%s action = %q, want %q", tc.state, face, value)
 					}
 					if slot.ID == "" {
 						slot = hit
-					} else if hit != slot {
+					} else if hit.X != slot.X || hit.W != slot.W {
 						t.Fatalf("%s moved the action: %+v, want %+v", tc.state, hit, slot)
 					}
 					o.Focus = "core.toggle"
-					focusedHit, focused := coreCardAction(t, overviewCoreCard(o, 72))
+					focusedHit, focused := coreCardTarget(t, overviewCoreCard(o, 72), "core.toggle")
 					if focusedHit != hit || !strings.Contains(focused, "›") || strings.Trim(focused, " []›") != value {
 						t.Fatalf("%s lost its visible focus or action: %q / %+v", tc.state, focused, focusedHit)
 					}
 
 					o.Focus, o.Hover = "", "core.toggle"
 					hover := overviewCoreCard(o, 72)
-					hoverHit, hoverFace := coreCardAction(t, hover)
+					hoverHit, hoverFace := coreCardTarget(t, hover, "core.toggle")
 					if hoverHit != hit || hoverFace != face {
 						t.Fatalf("%s hover changed action text or target", tc.state)
 					}
@@ -162,9 +170,6 @@ func TestCoreCardMouseOnlyActivatesTheStartStopButton(t *testing.T) {
 				for _, field := range fields {
 					found := false
 					for y, row := range strings.Split(m.screen, "\n") {
-						if y <= hit.Y {
-							continue
-						}
 						body := ansi.Strip(ansi.Cut(row, g.x, hit.X))
 						prefix, _, ok := strings.Cut(body, field)
 						if !ok {

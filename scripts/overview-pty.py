@@ -48,9 +48,14 @@ def focused(terminal, label):
 def assert_core_affordance(terminal, words, scenario, profile, expect_focus=False):
     title = words["dashboard.overview.service"]
     x, y = text_point(terminal, title)
-    neighbor = text_point(terminal, words["dashboard.profile.title"])
-    right = neighbor[0] if neighbor and neighbor[1] == y else terminal.screen.columns
-    heading = "".join(terminal.screen.cells[y][x:right]).removeprefix(title)
+    cells = terminal.screen.cells
+    manage = words["dashboard.core.manageAction"]
+    manage_x, manage_y = text_point(terminal, manage)
+    assert manage_y == y and manage_x > x, "Manage is not beside the core heading"
+    right = cells[y].index("›", manage_x) + 1
+    heading = "".join(cells[y][x:right]).removeprefix(title).strip()
+    expected = (r"›\s+" if expect_focus else "") + re.escape(manage)
+    assert re.fullmatch(expected, heading), "incorrect heading: " + repr(heading)
     if scenario == "unavailable":
         action = "—"
         status = "! " + words["dashboard.status.unknown"]
@@ -60,33 +65,66 @@ def assert_core_affordance(terminal, words, scenario, profile, expect_focus=Fals
     else:
         action = words["dashboard.settings.stop"]
         status = "● " + words["dashboard.status.running"]
-    face = re.escape(action)
+
+    assert "".join(cells[y + 2][x:right]).strip() == "Mihomo", "missing core identity below heading"
+    status_y = next((r for r in range(y + 3, len(cells)) if "".join(cells[r][x:right]).startswith(status)), None)
+    assert status_y is not None, "missing core state: " + status
+    action_text = "".join(cells[status_y][x:right]).removeprefix(status).strip()
     if profile == "no-color" and scenario != "unavailable":
-        face = r"\[\s*" + face + r"\s*\]"
-    marker = "›" if expect_focus else ""
-    assert re.fullmatch(r"\s*" + marker + r"\s*" + face + r"[\s│]*", heading), \
-        "incorrect heading action or focus: " + repr(heading)
-    cells = terminal.screen.cells
-    body = ["".join(row[x:right]).strip(" │") for row in cells[y + 1:y + 8]]
-    assert body[1:3] == ["Mihomo", status], "incorrect core name or observation: " + repr(body)
-    uptime = words["dashboard.core.uptimeHoursMinutes"]
+        assert re.fullmatch(r"\[\s*" + re.escape(action) + r"\s*\]", action_text), action_text
+        assert cells[status_y][right - 1] == "]", "button edge and Manage chevron are misaligned"
+    else:
+        assert action_text == action, (action_text, action)
+        if scenario != "unavailable":
+            backgrounds = [style[1] for style in terminal.screen.styles[status_y]]
+            assert backgrounds[right - 1] != backgrounds[right] and backgrounds[right] == backgrounds[x], \
+                "button background and Manage chevron are misaligned"
+
     size = (terminal.screen.columns, terminal.screen.rows)
+    # With key hints shown the sidebar needs eleven rows for its menu and clock.
+    spacious = sidebar_visible(*size) and terminal.screen.rows >= 11
+    if spacious:
+        assert all(cell == " " for cell in cells[status_y - 1][x:right]), "expected a blank row above the core state"
+    else:
+        assert status_y == y + 3, "compact state did not follow the core identity"
+    if scenario in ("drift", "unavailable") and spacious:
+        diagnostic = words["dashboard.core.restartVersion"] if scenario == "drift" else words["dashboard.core.doctorHint"]
+        assert any(diagnostic in "".join(row[x:right]) for row in cells[y + 3:status_y - 1]), \
+            "missing diagnostic above the state row: " + diagnostic
+
+    uptime = words["dashboard.core.uptimeHoursMinutes"]
     clock_visible = sidebar_visible(*size) and any(
         re.fullmatch(r"[0-9]{2,}:[0-5][0-9]:[0-5][0-9]", "".join(row[:20]).strip()) for row in cells)
     running = scenario not in ("stopped", "unavailable")
-    if running and size in ((160, 45), (120, 32)):
-        assert clock_visible, "wide sidebar omitted the running process clock"
-    if size == (120, 10):
-        assert not clock_visible, "short sidebar retained the clock ahead of the navigation"
+    assert clock_visible == (running and spacious), "unexpected sidebar clock for %s at %s" % (scenario, size)
+    body = ["".join(row[x:right]).strip() for row in cells[y + 1:status_y + 2]]
     if not running or clock_visible:
         prefix = uptime.split("%d", 1)[0].rstrip()
         assert all(prefix not in line for line in body), "core card displayed an unavailable or duplicate uptime"
     else:
         # The fixture starts at 2:18:34 and can cross a minute during resizing.
-        assert body[3] in (uptime % (2, 18), uptime % (2, 19)), "incorrect fallback uptime: " + repr(body)
+        assert body[-1] in (uptime % (2, 18), uptime % (2, 19)), "incorrect fallback uptime: " + repr(body)
     if scenario != "drift":
         assert all("v1.19.33" not in line for line in body), "core card exposed a version without a mismatch"
     return action
+
+
+def inspect_core_management(preview, terminal, output, words, scenario, args, mouse):
+    manage, title = words["dashboard.core.manageAction"], words["wizard.manage.title"]
+    if mouse:
+        terminal.click_text(manage)
+    else:
+        assert focused(terminal, manage), "keyboard focus did not enter Manage"
+        terminal.key(b"\r")
+    terminal.wait(title)
+    terminal.wait(words["core_update.check"])
+    terminal.wait(words["wizard.installed_version"])
+    terminal.wait("v1.20.0" if scenario == "drift" else "v1.19.33")
+    preview.capture(terminal, output, "core-management-%dx%d" % (terminal.screen.columns, terminal.screen.rows), args)
+    terminal.key(b"\x1b")
+    terminal.wait_absent(title)
+    terminal.settle()
+    assert focused(terminal, manage), "Esc did not restore the Manage control"
 
 
 def tab_controls(terminal, expected):
@@ -180,6 +218,7 @@ def check_network_modal(terminal, title, profile):
     margins = left, len(cells[top])-1-right, top, len(cells)-1-bottom
     assert min(margins[:2]) >= 2 and min(margins[2:]) >= 1, (title, margins)
     assert abs(margins[0]-margins[1]) <= 1 and abs(margins[2]-margins[3]) <= 1, (title, margins)
+    return left, top, right, bottom
 
 
 def inspect_network_editors(preview, terminal, output, words, profile, scenario, args):
@@ -226,9 +265,13 @@ def inspect_network_editors(preview, terminal, output, words, profile, scenario,
             terminal.click_text("[x]")
             terminal.wait("[ ]")
         if section == "tun":
-            terminal.click_text(cancel)
+            # The backdrop can contain the same Chinese word in a status label.
+            left, top, right, bottom = check_network_modal(terminal, title, profile)
+            point = next((x, y) for x, y in text_points(terminal, cancel) if left < x < right and top < y < bottom)
+            click_point(terminal, point)
         else:
             terminal.key(b"\x1b")
+        terminal.wait_absent(title)
         terminal.settle()
         # Keyboard activation reopens the editor that the mouse entered.
         terminal.key(b"\r")
@@ -476,7 +519,9 @@ def exercise(preview, binary, output, language, profile, scenario, args):
         assert_borderless(terminal)
         preview.capture(terminal, output, "control-focus", args)
 
-        expected = [lifecycle, words["dashboard.overview.profilesAction"], words["dashboard.network.configure"], words["dashboard.overview.proxiesAction"]]
+        inspect_core_management(preview, terminal, output, words, scenario, args, mouse=False)
+
+        expected = [words["dashboard.core.manageAction"], lifecycle, words["dashboard.overview.profilesAction"], words["dashboard.network.configure"], words["dashboard.overview.proxiesAction"]]
         if scenario != "unavailable":
             expected.extend([words["dashboard.mode." + mode] for mode in ("rule", "global", "direct")])
 
@@ -512,6 +557,11 @@ def exercise(preview, binary, output, language, profile, scenario, args):
             assert_borderless(terminal)
             assert_core_affordance(terminal, words, scenario, profile, expect_focus=True)
             preview.capture(terminal, output, "control-focus-%dx%d" % (width, height), args)
+            if width == 80:
+                inspect_core_management(preview, terminal, output, words, scenario, args, mouse=True)
+            terminal.key(b"\t")
+            terminal.settle()
+            assert focused(terminal, lifecycle), "Tab from Manage did not focus the lifecycle action"
             tab_controls(terminal, expected)
             preview.capture(terminal, output, "tab-revealed-%dx%d" % (width, height), args)
             assert words["dashboard.footer.quit"] in terminal.screen.text().splitlines()[-1], "Quit hint left the footer"
@@ -546,7 +596,7 @@ def exercise(preview, binary, output, language, profile, scenario, args):
         assert calls["runtime_queries"] > 0, calls
         check_profile(preview, terminal, profile)
         (output / "pty.raw").write_bytes(terminal.raw)
-        print("PASS %s/%s/%s: responsive Overview, centered terminal and TUN editors, keyboard and mouse, draft cancellation; %s" %
+        print("PASS %s/%s/%s: responsive Overview, core management and focus, terminal and TUN editors, draft cancellation; %s" %
               (language, profile, scenario, json.dumps(calls)), flush=True)
     except Exception:
         (output / "failed.txt").write_text(terminal.screen.text() + "\n")

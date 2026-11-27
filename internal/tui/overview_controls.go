@@ -52,10 +52,10 @@ func overviewLabelControl(o dashboardOptions, width int, label string, button ov
 	if button.enabled {
 		id = button.id
 	}
-	return overviewLabelSlot(o, width, label, overviewButton(o, button, kind), id)
+	return overviewLabelSlot(o, width, label, overviewButton(o, button, kind), id, false)
 }
 
-func overviewLabelSlot(o dashboardOptions, width int, label, face, id string) dashboardBlock {
+func overviewLabelSlot(o dashboardOptions, width int, label, face, id string, rightAlignWrapped bool) dashboardBlock {
 	width = max(1, width)
 	value := cellCrop(face, width)
 	buttonWidth := ansi.StringWidth(value)
@@ -65,7 +65,10 @@ func overviewLabelSlot(o dashboardOptions, width int, label, face, id string) da
 		x, y = width-buttonWidth, 0
 		b.lines[0] = label + themed(strings.Repeat(" ", gap), text, panel, o.Dim) + value
 	} else {
-		b.lines = append(b.lines, value)
+		if rightAlignWrapped {
+			x = width - buttonWidth
+		}
+		b.lines = append(b.lines, strings.Repeat(" ", x)+value)
 	}
 	if id != "" && buttonWidth > 0 {
 		b.targets = append(b.targets, hitRegion{ID: id, X: x, Y: y, W: buttonWidth, H: 1})
@@ -143,6 +146,9 @@ func overviewPanel(o dashboardOptions, width int, b, content dashboardBlock, but
 		left, top = 0, 0
 	}
 	b.blank()
+	if content.footerY > 0 {
+		b.footerY = top + len(b.lines) + content.footerY
+	}
 	b.append(content)
 	if len(buttons) > 0 {
 		b.blank()

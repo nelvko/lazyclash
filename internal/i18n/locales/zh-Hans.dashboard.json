@@ -181,6 +181,7 @@
   "tun.saved": "主机 TUN 设置已保存",
   "tun.saved_state": "已保存：%s",
   "dashboard.overview.service": "内核状态",
+  "dashboard.core.manageAction": "管理 ›",
   "dashboard.core.start": "启动",
   "dashboard.core.stop": "停止",
   "dashboard.core.uptimeUnderMinute": "已运行不到 1 分钟",

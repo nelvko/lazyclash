@@ -106,7 +106,7 @@ func TestOverviewControlStatesRemainExplicit(t *testing.T) {
 	}
 	o.Busy = true
 	core := overviewCoreCard(o, 56)
-	if len(core.targets) != 1 || core.targets[0].ID != "core.toggle" {
+	if !hasAction(core.targets, "core.toggle") {
 		t.Fatal("busy core toggle lost its stable focus target")
 	}
 	if block := overviewModeCard(o, 56); len(block.targets) != 0 {

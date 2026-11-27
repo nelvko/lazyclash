@@ -265,14 +265,12 @@ func TestOverviewCoreToggleCardHasStableCompactLayoutAcrossLifecycle(t *testing.
 						}
 					}
 					if width >= 40 {
-						if len(card.targets) != 1 || card.targets[0].ID != "core.toggle" {
-							t.Fatalf("single focusable toggle lost: %+v", card.targets)
-						}
+						hit, _ := coreCardTarget(t, card, "core.toggle")
 						if height < 0 {
-							height, y = len(card.lines), card.targets[0].Y
+							height, y = len(card.lines), hit.Y
 						}
-						if len(card.lines) != height || card.targets[0].Y != y {
-							t.Fatalf("lifecycle changed card geometry: %s/%s h=%d/y=%d want %d/%d", tc.state, tc.action, len(card.lines), card.targets[0].Y, height, y)
+						if len(card.lines) != height || hit.Y != y {
+							t.Fatalf("lifecycle changed card geometry: %s/%s h=%d/y=%d want %d/%d", tc.state, tc.action, len(card.lines), hit.Y, height, y)
 						}
 					}
 				}
@@ -328,7 +326,7 @@ func TestOverviewCoreUptimeKeepsActionInPlace(t *testing.T) {
 	now := time.Date(2026, time.November, 15, 12, 0, 0, 0, time.UTC)
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		// Include narrow cards where translated headings and uptimes wrap.
-		for _, width := range []int{5, 8, 10, 20, 30, 33, 34, 40} {
+		for _, width := range []int{5, 8, 10, 20, 22, 23, 24, 25, 30, 33, 34, 40} {
 			t.Run(fmt.Sprintf("%s/%d", language, width), func(t *testing.T) {
 				o := dashboardOptions{Locale: i18n.New(language), Now: now, Snapshot: app.Snapshot{
 					Installed: true, Version: "v1.19.33", RunningVersion: "v1.19.33",
@@ -361,14 +359,12 @@ func TestOverviewCoreUptimeKeepsActionInPlace(t *testing.T) {
 						card := overviewCoreCard(o, width)
 						assertCanvas(t, strings.Join(card.lines, "\n"), width, len(card.lines))
 						assertRegions(t, card.targets, width, len(card.lines))
-						if len(card.targets) != 1 || card.targets[0].ID != "core.toggle" {
-							t.Fatalf("missing single lifecycle control: %+v", card.targets)
-						}
+						hit, _ := coreCardTarget(t, card, "core.toggle")
 						if height < 0 {
-							height, target = len(card.lines), card.targets[0]
+							height, target = len(card.lines), hit
 						}
-						if (width >= 30 && len(card.lines) != height) || card.targets[0] != target {
-							t.Fatalf("%s/%s moved core toggle: height=%d target=%+v, want height=%d target=%+v", sample.elapsed, phase, len(card.lines), card.targets[0], height, target)
+						if (width >= 30 && len(card.lines) != height) || hit != target {
+							t.Fatalf("%s/%s moved core toggle: height=%d target=%+v, want height=%d target=%+v", sample.elapsed, phase, len(card.lines), hit, height, target)
 						}
 						if phase == "on" && width >= 30 && !strings.Contains(strings.Join(card.lines, "\n"), sample.want) {
 							t.Fatalf("uptime was dropped or truncated: %s", sample.elapsed)

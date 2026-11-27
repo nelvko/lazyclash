@@ -43,15 +43,17 @@ func (m *Model) focusTargets() []hitRegion {
 		}
 	}
 	body := m.contentTargets()
-	var networkCard, settingsStrip hitRegion
+	var groupedCards []hitRegion
+	var settingsStrip hitRegion
 	for _, target := range body {
 		target.X += g.x
 		target.Y += g.y
 		if strings.HasPrefix(target.ID, "settings.tab.") {
 			settingsStrip = target
 		}
-		if target.ID == "overview.card.dashboard.overview.network" {
-			networkCard = target
+		switch target.ID {
+		case "overview.card.dashboard.control.core", "overview.card.dashboard.overview.network":
+			groupedCards = append(groupedCards, target)
 		}
 		if listTarget(target.ID) || strings.HasPrefix(target.ID, "proxies.delay.") || strings.HasPrefix(target.ID, "overview.card.") || target.ID == "logs.list" {
 			list = append(list, target)
@@ -83,10 +85,14 @@ func (m *Model) focusTargets() []hitRegion {
 		if settingsStrip.W > 0 && (r.ID == "runtime-settings" || strings.HasPrefix(r.ID, "settings.") && r.ID != "settings.language" && r.ID != "settings.startPage" && r.ID != "settings.theme") {
 			return settingsStrip.Y, settingsStrip.X
 		}
-		// Treat the network card as one group in the page order. Its renderer
-		// supplies the controls of each section together at either width.
-		if networkCard.W > 0 && r.ID != networkCard.ID && !strings.HasPrefix(r.ID, "notification.") && regionsOverlap(r, networkCard) {
-			return networkCard.Y + 1, networkCard.X
+		// Visit each core or network card's controls in renderer order, before
+		// moving to the neighboring column.
+		if !strings.HasPrefix(r.ID, "notification.") {
+			for _, card := range groupedCards {
+				if r.ID != card.ID && regionsOverlap(r, card) {
+					return card.Y + 1, card.X
+				}
+			}
 		}
 		// Read framed searches at their text row, alongside scope controls,
 		// rather than placing the frame's top before controls to its left.

@@ -70,6 +70,12 @@ func (m *Model) overviewContextHelp() string {
 		}
 		return m.tr("navigation.overview.readOnlyCard")
 	}
+	if m.focus == "core.manage" {
+		if !m.snapshotReady || !m.snapshot.Installed || m.quitting {
+			return m.tr("navigation.controls.browse")
+		}
+		return m.controlActionHelp(m.tr("navigation.controls.manageCore"))
+	}
 	if m.focus == "core.toggle" {
 		control := overviewCoreToggle(m.navigationOptions())
 		if m.busy || !control.canToggle() {
