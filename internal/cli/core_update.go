@@ -64,6 +64,9 @@ func newUpgradeCommand(backend func() *app.App) *cobra.Command {
 		}
 		locale := commandLocale(cmd)
 		fmt.Fprintln(cmd.ErrOrStderr(), locale.T("cli.core_update.target", safe(check.InstalledVersion), safe(check.LatestVersion), safe(string(check.Status))))
+		if check.Channel == mihomo.ChannelStable && check.Status == mihomo.UpdateCurrent {
+			return writeJSON(cmd, app.CoreUpgradeResult{InstalledVersion: check.InstalledVersion, PreviousVersion: check.InstalledVersion})
+		}
 		if !yes && check.Status == mihomo.UpdateAvailable && check.Channel == mihomo.ChannelStable {
 			fmt.Fprint(cmd.ErrOrStderr(), locale.T("cli.core_update.prompt"))
 			confirmed, err := confirmUpgrade(cmd.Context(), cmd.InOrStdin())

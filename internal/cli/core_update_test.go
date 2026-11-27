@@ -161,6 +161,15 @@ func TestCoreUpgradeCLIUsesReviewedVersionAndSharedUpdater(t *testing.T) {
 	if svc.actions != 0 || !strings.Contains(stderr.String(), "fixture download") {
 		t.Fatal("inactive service was restarted or progress was not emitted")
 	}
+	// Re-running the same upgrade is successful without another deployment.
+	out.Reset()
+	stderr.Reset()
+	if err := cmd.ExecuteContext(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(out.Bytes(), &upgraded); err != nil || upgraded.PreviousVersion != "v1.21.0" || upgraded.InstalledVersion != "v1.21.0" || upgraded.Restarted || svc.actions != 0 || strings.Contains(stderr.String(), "fixture download") {
+		t.Fatalf("repeated upgrade: result=%+v progress=%q err=%v", upgraded, stderr.String(), err)
+	}
 }
 
 func TestUpgradeConfirmationAcceptsOnlyAffirmativeResponsesAndCanBeInterrupted(t *testing.T) {
