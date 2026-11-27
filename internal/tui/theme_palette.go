@@ -81,6 +81,7 @@ var interfaceSwatches = func() map[color.RGBA]themeSwatches {
 	add(border, 244, 8, "#889aa8", 246, 8)
 	add(divider, 238, 8, mistLine, 252, 8)
 	add(accent, 110, 14, mistBlue, 24, 4)
+	add(overviewAddressColor, 211, 13, "#883965", 89, 5)
 	add(focus, 215, 11, mistAmber, 94, 3)
 	add(selectionBackground, 240, 4, mistSelection, 153, 7)
 	add(hoverBackground, 238, 0, "#d9e4eb", 253, 7)

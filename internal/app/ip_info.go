@@ -18,11 +18,11 @@ import (
 )
 
 type IPInfo struct {
-	IP, Country, Region, City        string
-	ISP, Organization, ASN, Timezone string
+	IP, Country, Region, City string
+	ISP, ASN                  string
 }
 
-const ipInfoEndpoint = "https://ipwho.is/?fields=success,ip,country,region,city,connection.isp,connection.org,connection.asn,timezone.id"
+const ipInfoEndpoint = "https://ipwho.is/?fields=success,ip,country,region,city,connection.isp,connection.asn"
 
 // LookupIPInfo observes the exit used by the current Mihomo rules for ipwho.is.
 func (a *App) LookupIPInfo(ctx context.Context) (IPInfo, error) {
@@ -109,10 +109,9 @@ func fetchIPInfo(ctx context.Context, client *http.Client) (IPInfo, error) {
 		Success                   bool
 		IP, Country, Region, City string
 		Connection                struct {
-			ASN      uint32
-			ISP, Org string
+			ASN uint32
+			ISP string
 		}
-		Timezone struct{ ID string }
 	}
 	if err != nil || len(raw) > limit || json.Unmarshal(raw, &result) != nil || !result.Success {
 		return IPInfo{}, errors.New("invalid IP lookup response")
@@ -128,7 +127,7 @@ func fetchIPInfo(ctx context.Context, client *http.Client) (IPInfo, error) {
 		return strings.TrimSpace(s)
 	}
 	info := IPInfo{IP: ip.String(), Country: field(result.Country), Region: field(result.Region), City: field(result.City),
-		ISP: field(result.Connection.ISP), Organization: field(result.Connection.Org), Timezone: field(result.Timezone.ID)}
+		ISP: field(result.Connection.ISP)}
 	if result.Connection.ASN > 0 {
 		info.ASN = "AS" + strconv.FormatUint(uint64(result.Connection.ASN), 10)
 	}

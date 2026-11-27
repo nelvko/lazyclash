@@ -72,13 +72,12 @@ def return_navigation(terminal, words):
 
 
 def show_traffic(terminal, words):
-    # The six semantic cards are Core, Profile, Route, Access, Traffic, Environment.
+    # End focuses the full-width traffic card at the bottom of the overview.
     return_navigation(terminal, words)
     terminal.key(b"\t")
     terminal.settle()
-    for _ in range(4):
-        terminal.key(b"\x1b[B")
-        terminal.settle()
+    terminal.key(b"\x1b[F")
+    terminal.settle()
     title = words["dashboard.overview.traffic"]
     # A card taller than a short viewport is revealed at its lower edge. Scroll
     # within the body to inspect the plot, keeping the same semantic focus.

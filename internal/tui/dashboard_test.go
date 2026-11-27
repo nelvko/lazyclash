@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"testing"
 
@@ -272,32 +273,17 @@ func TestOverviewRowsSizeIndependentlyAndEmptyMetricsStayClear(t *testing.T) {
 	if strings.Contains(plain, o.Locale.T("dashboard.field.connections")) || strings.Contains(plain, "You can explore") {
 		t.Fatal("empty cards retained unavailable metric rows or setup filler")
 	}
-	// Traffic diagnostics enlarge only the full-width card and move the
-	// environment below it; earlier paired controls keep their natural geometry.
+	// Traffic diagnostics grow the last card independently of the pairs above it.
 	_, _, shortHeight := renderDashboard(o)
 	o.Runtime = app.RuntimeSnapshot{State: "unavailable", Error: strings.Repeat("runtime diagnostic ", 50)}
 	_, _, tallHeight := renderDashboard(o)
 	if tallHeight <= shortHeight {
 		t.Fatal("long diagnostic was not retained in the scrollable card")
 	}
-	card := func(value dashboardBlock, id string) hitRegion {
-		for _, region := range value.cards {
-			if region.ID == id {
-				return region
-			}
-		}
-		t.Fatalf("missing card %s", id)
-		return hitRegion{}
-	}
 	short := overviewLayout(dashboardOptions{Height: 45, GuideDismissed: true}, 112)
 	tall := overviewLayout(o, 112)
-	for _, id := range []string{"overview.card.dashboard.control.core", "overview.card.dashboard.profile.title", "overview.card.dashboard.control.routingMode", "overview.card.dashboard.overview.network"} {
-		if card(short, id) != card(tall, id) {
-			t.Fatalf("traffic diagnostic changed an earlier control card: %s", id)
-		}
-	}
-	if card(tall, "overview.card.dashboard.system.title").Y <= card(short, "overview.card.dashboard.system.title").Y {
-		t.Fatal("long traffic diagnostics did not move the environment below the traffic card")
+	if !slices.Equal(short.cards[:len(short.cards)-1], tall.cards[:len(tall.cards)-1]) {
+		t.Fatal("traffic diagnostic changed an earlier card")
 	}
 }
 
@@ -429,8 +415,8 @@ func TestDashboardMouseCoordinatesFollowScrolling(t *testing.T) {
 	if scrolledAway == 0 || hasAction(regions, "core.install") {
 		t.Fatal("fixture did not scroll away the initial core action")
 	}
-	if !strings.Contains(ansi.Strip(value), o.Locale.T("dashboard.overview.environment")) {
-		t.Fatal("bottom card is not reachable by scrolling")
+	if !strings.Contains(ansi.Strip(value), o.Locale.T("dashboard.overview.traffic")) {
+		t.Fatal("traffic card is not reachable at the bottom of the overview")
 	}
 	if !hasAction(regions, "menu") {
 		t.Fatal("narrow navigation missing")

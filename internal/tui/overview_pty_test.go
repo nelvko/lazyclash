@@ -150,7 +150,7 @@ func (b *overviewPTYBackend) LookupIPInfo(ctx context.Context) (app.IPInfo, erro
 	}
 	return app.IPInfo{
 		IP: ip, Country: "Japan", Region: "Tokyo", City: "Tokyo",
-		ISP: "Example ISP", Organization: "Example Net", ASN: "AS64496", Timezone: "Asia/Tokyo",
+		ISP: "Example ISP", ASN: "AS64496",
 	}, ctx.Err()
 }
 

@@ -117,7 +117,7 @@ func overviewTrafficReadings(o dashboardOptions, ready bool, width int) []string
 				rows = append(rows, "")
 			}
 		}
-		rows = append(rows, overviewFieldRow(o, cells, cellWidth)...)
+		rows = append(rows, overviewFieldRow(cells, cellWidth, themed("  ", text, panel, o.Dim))...)
 	}
 	return rows
 }

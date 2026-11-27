@@ -27,7 +27,7 @@ func overviewProfileCard(o dashboardOptions, width int) dashboardBlock {
 		if now.IsZero() {
 			now = time.Now()
 		}
-		for _, row := range profileCardDetails(*info, now, o.Locale, inner, panel, "") {
+		for _, row := range profileCardDetails(*info, now, o.Locale, inner, panel, overviewAddressColor, "") {
 			if ansi.StringWidth(row) > 0 {
 				content.lines = append(content.lines, row)
 			}

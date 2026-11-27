@@ -1,39 +1,45 @@
 package tui
 
 import (
+	"cmp"
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
-type overviewField struct{ label, value string }
+type overviewField struct{ label, value, color string }
 
-func overviewFieldGrid(o dashboardOptions, fields []overviewField, width, columns int) []string {
+func overviewFieldGrid(o dashboardOptions, fields []overviewField, width, columns int, divided bool) []string {
 	if len(fields) == 0 {
 		return nil
 	}
 	columns = max(1, min(columns, len(fields)))
-	cellWidth := max(1, (width-2*(columns-1))/columns)
+	gap := themed("  ", text, panel, o.Dim)
+	if divided {
+		gap = themed(" │ ", divider, panel, o.Dim)
+	}
+	cellWidth := max(1, (width-ansi.StringWidth(gap)*(columns-1))/columns)
 	var lines []string
 	for i := 0; i < len(fields); i += columns {
-		cells := make([][]string, min(columns, len(fields)-i))
-		for j := range cells {
-			field := fields[i+j]
+		cells := make([][]string, columns)
+		for j, field := range fields[i:min(i+columns, len(fields))] {
 			label := themed(field.label, muted, panel, o.Dim)
-			value := themed(lipgloss.NewStyle().Bold(true).Render(clean(field.value)), text, panel, o.Dim)
+			value := themed(lipgloss.NewStyle().Bold(true).Render(clean(field.value)), cmp.Or(field.color, text), panel, o.Dim)
 			valueRows := strings.Split(wrapText(value, cellWidth), "\n")
-			cells[j] = append(strings.Split(wrapText(label, cellWidth), "\n"), valueRows...)
+			if i > 0 {
+				cells[j] = append(cells[j], "")
+			}
+			cells[j] = append(cells[j], strings.Split(wrapText(label, cellWidth), "\n")...)
+			cells[j] = append(cells[j], valueRows...)
 		}
-		if i > 0 {
-			lines = append(lines, "")
-		}
-		lines = append(lines, overviewFieldRow(o, cells, cellWidth)...)
+		lines = append(lines, overviewFieldRow(cells, cellWidth, gap)...)
 	}
 	return lines
 }
 
 // Align text blocks by their first row, preserving each group's display width.
-func overviewFieldRow(o dashboardOptions, cells [][]string, cellWidth int) []string {
+func overviewFieldRow(cells [][]string, cellWidth int, gap string) []string {
 	height := 0
 	for _, cell := range cells {
 		height = max(height, len(cell))
@@ -48,7 +54,7 @@ func overviewFieldRow(o dashboardOptions, cells [][]string, cellWidth int) []str
 			}
 			row = append(row, cellPad(value, cellWidth))
 		}
-		lines = append(lines, strings.Join(row, themed("  ", text, panel, o.Dim)))
+		lines = append(lines, strings.Join(row, gap))
 	}
 	return lines
 }

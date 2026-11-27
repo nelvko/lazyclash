@@ -9,6 +9,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
 	"github.com/nelvko/lazyclash/internal/buildinfo"
@@ -75,7 +76,7 @@ func TestOverviewPairedLayoutAlignsBothEdgesAndKeepsActionOwnership(t *testing.T
 					}
 					if width >= 90 {
 						y := 0
-						for first := 0; first < 4; first += 2 {
+						for first := 0; first < 6; first += 2 {
 							left, right := body.cards[first], body.cards[first+1]
 							wantHeight := max(len(renders[strings.TrimPrefix(left.ID, "overview.card.")](o, left.W).lines),
 								len(renders[strings.TrimPrefix(right.ID, "overview.card.")](o, right.W).lines))
@@ -84,21 +85,28 @@ func TestOverviewPairedLayoutAlignsBothEdgesAndKeepsActionOwnership(t *testing.T
 							}
 							y += max(left.H, right.H) + 1
 						}
-						traffic, environment, ip := body.cards[4], body.cards[5], body.cards[6]
-						if traffic.X != 0 || traffic.W != width || traffic.Y != y {
+						traffic := cards["overview.card.dashboard.traffic.title"]
+						if traffic.X != 0 || traffic.W != width || traffic.Y != y || traffic.Y+traffic.H != len(body.lines) {
 							t.Fatalf("full-width traffic card lost its row: %+v at y=%d", traffic, y)
 						}
-						if environment.X != body.cards[0].X || environment.W != body.cards[0].W || environment.Y != y+traffic.H+1 {
-							t.Fatalf("environment card must occupy one left column after traffic: %+v", environment)
-						}
-						if ip.X != body.cards[1].X || ip.W != environment.W || ip.Y != environment.Y || ip.H != environment.H {
-							t.Fatalf("IP information card does not mirror the environment card: %+v / %+v", environment, ip)
+						ip := cards["overview.card.dashboard.overview.ipInfo"]
+						gap := uv.NewScreenBuffer(width, 1)
+						uv.NewStyledString(body.lines[ip.Y-1]).Draw(gap, gap.Bounds())
+						for x := range width {
+							want := bg
+							if x >= ip.X && x < ip.X+ip.W {
+								want = panel
+							}
+							expectThemeColor(t, "route/IP row gap", gap.CellAt(x, 0).Style.Bg, want)
 						}
 					} else {
 						y := 0
 						for _, card := range body.cards {
 							if card.X != 0 || card.W != width || card.Y != y {
 								t.Fatalf("compact layout lost content order or natural spacing: %+v at y=%d", card, y)
+							}
+							if y > 0 && body.lines[y-1] != "" {
+								t.Fatal("stacked cards lost their page gutter")
 							}
 							y += card.H + 1
 						}
@@ -151,6 +159,17 @@ func TestOverviewEnvironmentReportsObservedServiceSettings(t *testing.T) {
 				if len(card.targets) != 0 {
 					t.Fatal("environment card must be informational")
 				}
+				if strings.Contains(ansi.Strip(strings.Join(card.lines, "\n")), "│") {
+					t.Fatal("single-column environment has a column divider")
+				}
+				wide := overviewSystemCard(o, 66)
+				// All field rows, including the spacer and an unmatched second column,
+				// share the same divider as the two network sections above them.
+				for _, row := range wide.lines[3 : len(wide.lines)-1] {
+					if ansi.Strip(ansi.Cut(row, 32, 33)) != "│" {
+						t.Fatalf("wide environment column divider interrupted: %q", ansi.Strip(row))
+					}
+				}
 				tr := o.Locale.T
 				rows := make([]string, len(card.lines))
 				for i, line := range card.lines {
@@ -200,6 +219,23 @@ func TestOverviewEnvironmentPositionsClientVersion(t *testing.T) {
 				t.Fatalf("narrow card lost the client version: %q", ansi.Strip(body))
 			}
 		})
+	}
+}
+
+func TestOverviewRouteAndIPFocusIndependently(t *testing.T) {
+	m := themeSample("overview-running")
+	m.width, m.height, m.snapshot.MixedPort = 160, 45, 7890
+	for _, tc := range []struct{ card, action string }{
+		{"overview.card.dashboard.control.routingMode", "card.proxies"},
+		{"overview.card.dashboard.overview.ipInfo", "ip.refresh"},
+	} {
+		m.focus = tc.card
+		m.revealContentFocus()
+		m.layout()
+		assertOverviewCardPerimeters(t, m, tc.card)
+		if !m.contentNavigationKey(special(tea.KeyEnter)) || m.focus != tc.action {
+			t.Fatalf("entering %s focused %s, want %s", tc.card, m.focus, tc.action)
+		}
 	}
 }
 

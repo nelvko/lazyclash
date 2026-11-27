@@ -239,7 +239,7 @@ func (m *Model) paintProfileCard(name string, index, width int, compact bool) da
 		title += control
 	}
 	status := profileWarning(info, &m.snapshot, m.locale)
-	lines := append([]string{title}, profileCardDetails(info, time.Now(), m.locale, inner, surface, status)...)
+	lines := append([]string{title}, profileCardDetails(info, time.Now(), m.locale, inner, surface, muted, status)...)
 	picture := profileCardSurface(lines, width, surface, selected, compact)
 	parent := hitRegion{ID: id, W: width, H: len(picture)}
 	return dashboardBlock{lines: picture, targets: m.profileCardTargets(parent, controls, widths, compact)}

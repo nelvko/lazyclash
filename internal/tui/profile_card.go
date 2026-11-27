@@ -13,11 +13,14 @@ import (
 
 // The subscription grid reserves all three detail rows. The overview uses the
 // same rows when populated and places its status directly below the name.
-func profileCardDetails(info app.ProfileInfo, now time.Time, locale i18n.Localizer, inner int, surface, status string) []string {
+func profileCardDetails(info app.ProfileInfo, now time.Time, locale i18n.Localizer, inner int, surface, originColor, status string) []string {
 	age := profileAge(info.UpdatedAt, now, locale)
 	subtitle := strings.TrimSpace(clean(info.Description))
 	if subtitle == "" {
 		subtitle = profileOrigin(info, locale)
+		if subtitle != "" && info.Kind == "remote" && originColor != muted {
+			subtitle = themed(subtitle, originColor, surface, false)
+		}
 	}
 	metadata := profileCardPair(subtitle, age, inner)
 	quota, expiresAt := profileAllowance(info)

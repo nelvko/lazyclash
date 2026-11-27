@@ -27,6 +27,7 @@ const (
 	border                  = "#647382"
 	divider                 = "#444c54"
 	accent                  = "#85b3e0"
+	overviewAddressColor    = "#ed96c5"
 	focus                   = "#f9ae58"
 	selectionBackground     = "#4c5864"
 	selectionForeground     = text

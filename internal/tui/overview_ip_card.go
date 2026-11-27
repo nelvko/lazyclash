@@ -1,8 +1,11 @@
 package tui
 
 import (
+	"cmp"
 	"slices"
 	"strings"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
 func overviewIPCard(o dashboardOptions, width int) dashboardBlock {
@@ -11,6 +14,7 @@ func overviewIPCard(o dashboardOptions, width int) dashboardBlock {
 	available := !o.StateUnavailable && overviewIPAvailable(o.Snapshot)
 	state := o.ipInfo
 	info := state.info
+	var updated string
 	var lines []string
 	switch {
 	case !available:
@@ -25,16 +29,19 @@ func overviewIPCard(o dashboardOptions, width int) dashboardBlock {
 			}
 		}
 		fields := []overviewField{
-			{tr("dashboard.ip.address"), info.IP}, {tr("dashboard.ip.location"), strings.Join(location, " · ")},
-			{tr("dashboard.ip.isp"), info.ISP}, {tr("dashboard.ip.organization"), info.Organization},
-			{tr("dashboard.ip.asn"), info.ASN}, {tr("dashboard.ip.timezone"), info.Timezone},
+			{label: tr("dashboard.ip.address"), value: info.IP, color: overviewAddressColor},
+			{label: tr("dashboard.ip.location"), value: cmp.Or(strings.Join(location, " · "), "—")},
+			{label: tr("dashboard.ip.isp"), value: cmp.Or(info.ISP, "—")},
+			{label: tr("dashboard.ip.asn"), value: cmp.Or(info.ASN, "—")},
 		}
-		fields = slices.DeleteFunc(fields, func(f overviewField) bool { return f.value == "" })
 		columns := 1
 		if width >= 44 {
 			columns = 2
 		}
-		lines = overviewFieldGrid(o, fields, inner, columns)
+		lines = overviewFieldGrid(o, fields, inner, columns, false)
+		if age := profileAge(state.checkedAt, o.Now, o.Locale); age != "" && !state.failed {
+			updated = tr("profiles.updated_time", age)
+		}
 	case state.loading:
 		lines = []string{themed(tr("dashboard.ip.loading"), muted, panel, o.Dim)}
 	default:
@@ -46,5 +53,32 @@ func overviewIPCard(o dashboardOptions, width int) dashboardBlock {
 		// Preserve the focus of a manually refreshed card while its request finishes.
 		refresh.enabled = refresh.enabled && o.Focus == refresh.id
 	}
-	return overviewActionPanel(o, width, tr("dashboard.overview.ipInfo"), overviewTextBlock(lines, inner), refresh)
+	heading := overviewIPHeading(o, inner, updated, refresh)
+	return overviewPanel(o, width, heading, overviewTextBlock(lines, inner), nil)
+}
+
+func overviewIPHeading(o dashboardOptions, width int, updated string, refresh overviewControlButton) dashboardBlock {
+	title := overviewHeading(o, o.Locale.T("dashboard.overview.ipInfo"))
+	face := overviewButton(o, refresh, buttonText)
+	id := ""
+	if refresh.enabled {
+		id = refresh.id
+	}
+	if updated == "" {
+		return overviewLabelSlot(o, width, title, face, id, true)
+	}
+	stamp := themed(updated, muted, panel, o.Dim)
+	right := stamp + themed(" │", divider, panel, o.Dim) + face
+	if ansi.StringWidth(right) > width {
+		b := overviewLabelSlot(o, width, title, face, id, true)
+		b.append(overviewTextBlock([]string{stamp}, width))
+		return b
+	}
+	// Right-align the timestamp and refresh as a group, but only the button is clickable.
+	b := overviewLabelSlot(o, width, title, right, "", true)
+	if refresh.enabled {
+		w := ansi.StringWidth(face)
+		b.targets = append(b.targets, hitRegion{ID: id, X: width - w, Y: len(b.lines) - 1, W: w, H: 1})
+	}
+	return b
 }

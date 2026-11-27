@@ -173,9 +173,9 @@ def check_profile(preview, terminal, profile):
 
 def assert_borderless(terminal):
     assert not any(value in terminal.screen.text() for value in "┌┐└┘"), "inactive card retained an outer border"
-    # The network card can have one internal vertical divider.
-    edges = {x for row in terminal.screen.cells for x, value in enumerate(row) if value == "│"}
-    assert len(edges) <= 1, "inactive card retained outer sides"
+    # The network and environment cards each have one internal divider.
+    for row in terminal.screen.cells:
+        assert row.count("│") <= 1, "inactive card retained outer sides"
 
 
 def return_navigation(terminal, words):
@@ -382,10 +382,20 @@ def inspect_network_card(terminal, outline, words, scenario):
 
 
 def inspect_row_cards(preview, terminal, output, width, height, words, profile, scenario, args):
-    names = ("service", "profile", "network", "route", "traffic", "environment", "ipInfo")
+    names = ("service", "profile", "network", "route", "environment", "ipInfo", "traffic")
     titles = [words["dashboard.profile.title"] if name == "profile" else
               words["dashboard.overview." + name] for name in names]
     initial_positions = [text_point(terminal, title) for title in titles]
+    if profile != "no-color" and all(initial_positions[i] for i in (2, 3, 5)):
+        network_x, network_y = initial_positions[2]
+        route_x, route_y = initial_positions[3]
+        ip_y = initial_positions[5][1]
+        backgrounds = terminal.screen.styles
+        panel = backgrounds[route_y][route_x][1]
+        assert all(backgrounds[row][route_x][1] == panel for row in range(route_y, ip_y + 1)), \
+            "routing and IP panels have a break in their background"
+        assert any(backgrounds[row][network_x][1] != panel for row in range(network_y, ip_y)), \
+            "network and environment panels lost their separation"
     geometry = []
     for index, (name, title) in enumerate(zip(names, titles)):
         outline = assert_card_outline(terminal, profile)
@@ -423,39 +433,43 @@ def inspect_row_cards(preview, terminal, output, width, height, words, profile, 
             if scenario in ("stopped", "unavailable"):
                 assert words["dashboard.ip.unavailable"] in terminal.screen.text(), "missing unavailable IP state"
             else:
-                assert_fixture_ip(terminal)
+                assert_fixture_ip(terminal, words)
         preview.capture(terminal, output, "%s-card-%dx%d" % (name, width, height), args)
         if index + 1 < len(names):
             terminal.key(b"\x1b[B")
             terminal.settle()
-    for first in (0, 2, 5):
+    for first in (0, 2, 4):
         assert geometry[first]["width"] == geometry[first + 1]["width"], "paired cards have unequal column widths"
         assert geometry[first]["height"] == geometry[first + 1]["height"], "paired cards have unequal heights"
         left, right = initial_positions[first:first + 2]
         if left is not None and right is not None:
             assert left[1] == right[1], "paired card titles do not start on the same row"
-    for first in (2, 4):
+    for first in (2, 4, 6):
         before, current = initial_positions[first - 2], initial_positions[first]
         if before is not None and current is not None:
             expected = before[1] + max(geometry[first - 2]["height"], geometry[first - 1]["height"]) + 1
             assert current[1] == expected, "next card row does not follow the taller card and one blank row"
-    left, right, traffic, environment = geometry[0], geometry[1], geometry[4], geometry[5]
+    left, right, environment, ip, traffic = geometry[0], geometry[1], *geometry[4:]
     paired_width = right["x"] + right["width"] - left["x"]
     assert traffic["x"] == left["x"] and traffic["width"] in (paired_width, paired_width + 1), "traffic card does not span the paired columns"
     assert environment["x"] == left["x"] and environment["width"] == left["width"], "environment card does not align with the left column"
-    assert geometry[6]["x"] == right["x"] and geometry[6]["y"] == environment["y"], "IP card does not align with the right column beside the environment"
-    if initial_positions[4] is not None and initial_positions[5] is not None:
-        assert initial_positions[5][1] == initial_positions[4][1] + geometry[4]["height"] + 1, "environment does not follow the fullwidth traffic card"
+    assert ip["x"] == right["x"] and ip["y"] == environment["y"], "IP card does not align with the right column beside the environment"
     (output / ("card-geometry-%dx%d.json" % (width, height))).write_text(json.dumps(dict(zip(names, geometry)), indent=2) + "\n")
     return_navigation(terminal, words)
     terminal.key(b"\t")
     terminal.settle()
 
 
-def assert_fixture_ip(terminal):
+def assert_fixture_ip(terminal, words):
     screen = terminal.screen.text()
-    for value in ("203.0.113.17", "Japan", "Tokyo", "Example ISP", "Example Net", "AS64496", "Asia/Tokyo"):
+    for value in ("203.0.113.17", "Japan", "Tokyo", "Example ISP", "AS64496"):
         assert value in screen, "missing IP information: " + value
+    title_y = text_point(terminal, words["dashboard.overview.ipInfo"])[1]
+    age = re.escape(words["profiles.updated_minutes"]).replace("%d", r"\d+")
+    stamp = re.escape(words["profiles.updated_time"]).replace("%s", "(?:" + re.escape(words["profiles.just_updated"]) + "|" + age + ")")
+    assert any(re.search(stamp, row) and words["header.refresh"] in row
+               for row in screen.splitlines()[title_y:title_y+2]), \
+        "IP heading omitted its update time or refresh action"
 
 
 def inspect_route_picker(preview, terminal, output, words, args):
@@ -577,15 +591,16 @@ def exercise(preview, binary, output, language, profile, scenario, args):
                 inspect_network_card(terminal, outline, words, scenario)
                 preview.capture(terminal, output, "network-card-%dx%d" % (width, height), args)
                 if width == 80 and scenario == "running":
-                    for name in ("route", "traffic", "environment", "ipInfo"):
+                    for name in ("route", "environment", "ipInfo", "traffic"):
                         terminal.key(b"\x1b[B")
                         terminal.settle()
                         x, y = text_point(terminal, words["dashboard.overview." + name])
                         card = assert_card_outline(terminal, profile)
                         assert card["y"] < y < card["y"] + card["height"] and card["x"] < x, name
                         assert (card["x"], card["width"]) == (outline["x"], outline["width"]), name
-                    assert_fixture_ip(terminal)
-                    preview.capture(terminal, output, "ipInfo-card-%dx%d" % (width, height), args)
+                        if name == "ipInfo":
+                            assert_fixture_ip(terminal, words)
+                            preview.capture(terminal, output, "ipInfo-card-%dx%d" % (width, height), args)
                 return_navigation(terminal, words)
                 terminal.key(b"\t")
                 terminal.settle()

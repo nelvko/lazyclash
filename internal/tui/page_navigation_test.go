@@ -522,7 +522,7 @@ func TestPageNavigationOverviewCardIDsRemainUniqueAndStableAcrossResize(t *testi
 					wantIDs = []string{
 						"overview.card.dashboard.control.core", "overview.card.dashboard.profile.title",
 						"overview.card.dashboard.overview.network", "overview.card.dashboard.control.routingMode",
-						"overview.card.dashboard.traffic.title", "overview.card.dashboard.system.title", "overview.card.dashboard.overview.ipInfo",
+						"overview.card.dashboard.system.title", "overview.card.dashboard.overview.ipInfo", "overview.card.dashboard.traffic.title",
 					}
 				}
 				for _, width := range []int{20, 30, 60, 120, 240, 20} {

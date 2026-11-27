@@ -1,5 +1,11 @@
 # 验证入口
 
+## 概览卡片布局与出口 IP（2026-11-27）
+
+在原生终端窗口中运行 Linux/arm64 TUI，以固定示例数据截图。160×48 时，路由模式与 IP 信息的底色在右栏连续，IP 信息与左栏运行环境对齐，实时流量在最下方占满两列。80×32 时，卡片依次纵向排列，滚动即可查看下方的流量图。[160×48 宽屏](../.test-artifacts/overview-route-ip/native/overview-160x48.png) · [80×32 窄屏](../.test-artifacts/overview-route-ip/native/overview-80x32.png)
+
+中文真彩和英文无色 PTY 都验证了路由和 IP 卡各自的焦点、进入卡片、刷新失败与重试。中文真彩 PTY 还覆盖从 160×45 缩到 40×16 后再恢复的流量卡。`make check` 和专用 Linux/arm64 虚拟机全包测试均通过。[Linux 测试记录](../.test-artifacts/overview-layout-linux-final.log)
+
 ## 概览出口 IP 信息卡（2026-11-27）
 
 概览 PTY 使用示例地址和组织名称。160×45 和 120×32 下，「IP 信息」与左侧「运行环境」的宽度、高度和顶边一致。80×24 下，两卡按上下顺序获得键盘焦点。中文真彩和英文无色终端中，首次自动查询后按 Enter 刷新，模拟服务返回失败时焦点保留在「刷新」，再次按 Enter 后显示新的示例地址。内核停止场景记录到零次 IP 查询。专用 Debian 12/arm64 虚拟机通过全包测试。另用启用代理鉴权的临时 Mihomo 实例实际查询 `ipwho.is`，成功读回 IP、国家、地区、城市、服务商、组织、ASN 和时区。[160×45 双列截图](../.test-artifacts/ip-information/screens/overview-160x45-cards.png) · [80×32 单列截图](../.test-artifacts/ip-information/screens/overview-80x32-cards.png)

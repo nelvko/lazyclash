@@ -115,7 +115,7 @@ func TestFetchIPInfoValidatesResponse(t *testing.T) {
 		want IPInfo
 	}{
 		{"full", 200, `{"success":true,"ip":"203.0.113.7","country":"Japan","city":"Tokyo","region":"Tokyo","connection":{"asn":64500,"isp":"Example ISP","org":"Example"},"timezone":{"id":"Asia/Tokyo"}}`,
-			IPInfo{IP: "203.0.113.7", Country: "Japan", City: "Tokyo", Region: "Tokyo", ISP: "Example ISP", Organization: "Example", ASN: "AS64500", Timezone: "Asia/Tokyo"}},
+			IPInfo{IP: "203.0.113.7", Country: "Japan", City: "Tokyo", Region: "Tokyo", ISP: "Example ISP", ASN: "AS64500"}},
 		{"partial IPv6", 200, `{"success":true,"ip":"2001:db8::1","region":"\u001b[2Jprivate"}`, IPInfo{IP: "2001:db8::1"}},
 		{"rate limited", 429, "private", IPInfo{}},
 		{"provider error", 200, `{"success":false,"ip":"203.0.113.7","message":"private"}`, IPInfo{}},

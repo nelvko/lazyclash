@@ -3,6 +3,7 @@ package tui
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
@@ -17,10 +18,10 @@ func TestOverviewIPCardShowsExitDetailsAndWrapsIPv6(t *testing.T) {
 		}}
 		ip := "2001:db8:1020:3040:5060:7080:90ab:cdef"
 		o.ipInfo.info = app.IPInfo{IP: ip, Country: "Japan", Region: "Tokyo", City: "Tokyo",
-			ISP: "Example ISP", Organization: "Example Org", ASN: "AS64500", Timezone: "Asia/Tokyo"}
+			ISP: "Example ISP", ASN: "AS64500"}
 		card := overviewIPCard(o, 82)
 		view := ansi.Strip(strings.Join(card.lines, "\n"))
-		for _, value := range []string{ip, "Japan · Tokyo", "Example ISP", "Example Org", "AS64500", "Asia/Tokyo", o.Locale.T("dashboard.overview.ipInfo")} {
+		for _, value := range []string{ip, "Japan · Tokyo", "Example ISP", "AS64500", o.Locale.T("dashboard.overview.ipInfo")} {
 			if !strings.Contains(view, value) {
 				t.Fatalf("%s: missing %s in %s", language, value, view)
 			}
@@ -34,6 +35,38 @@ func TestOverviewIPCardShowsExitDetailsAndWrapsIPv6(t *testing.T) {
 		compact := strings.Join(strings.Fields(ansi.Strip(strings.Join(narrow.lines, "\n"))), "")
 		if !strings.Contains(compact, ip) {
 			t.Fatalf("narrow card truncated IPv6: %s", compact)
+		}
+	}
+}
+
+func TestOverviewIPHeaderShowsSuccessfulAgeOutsideRefreshTarget(t *testing.T) {
+	for _, lang := range []string{i18n.English, i18n.Chinese} {
+		o := dashboardOptions{Locale: i18n.New(lang), Now: time.Now(), Snapshot: app.Snapshot{
+			Installed: true, MixedPort: 7890, Service: service.Status{Active: true, State: "active"},
+		}}
+		o.ipInfo = overviewIPState{info: app.IPInfo{IP: "198.51.100.1"}, checkedAt: o.Now.Add(-3 * time.Minute)}
+		updated := o.Locale.T("profiles.updated_time", o.Locale.T("profiles.updated_minutes", 3))
+		for _, width := range []int{66, 44, 30, 18} {
+			card := overviewIPCard(o, width)
+			view := strings.Join(card.lines, "\n")
+			assertCanvas(t, view, width, len(card.lines))
+			if !strings.Contains(ansi.Strip(view), updated) || len(card.targets) != 1 {
+				t.Fatalf("%s, width %d: missing time or refresh target in %s", lang, width, ansi.Strip(view))
+			}
+			hit := card.targets[0]
+			action := strings.TrimSpace(ansi.Strip(ansi.Cut(card.lines[hit.Y], hit.X, hit.X+hit.W)))
+			if hit.ID != "ip.refresh" || action != o.Locale.T("header.refresh") || hit.X+hit.W != width-2 {
+				t.Fatalf("%s, width %d: incorrect refresh hit area %q at %+v", lang, width, action, hit)
+			}
+			roomOnTitleRow := width >= 66 || lang == i18n.Chinese && width >= 44
+			if roomOnTitleRow && (!strings.Contains(ansi.Strip(card.lines[1]), updated) || hit.Y != 1) {
+				t.Fatalf("timestamp and refresh should fit together on the title row at width %d", width)
+			}
+		}
+		o.ipInfo.checkedAt, o.ipInfo.failed = o.Now, true
+		failure := overviewIPCard(o, 66)
+		if strings.Contains(ansi.Strip(strings.Join(failure.lines, "\n")), o.Locale.T("profiles.updated_time", o.Locale.T("profiles.just_updated"))) {
+			t.Fatal("a failed lookup claimed a successful update")
 		}
 	}
 }
