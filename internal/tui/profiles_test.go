@@ -111,6 +111,42 @@ func TestProfileCreateFormSubmitsRemoteMetadataAndClosesOnSuccess(t *testing.T) 
 	}
 }
 
+func TestProfileToolbarImportOncePreservesFailedDraftAndResetsAfterSuccess(t *testing.T) {
+	const source = "/tmp/example.yaml"
+	var drafts []app.ProfileDraft
+	m := profileInteractionsModel(&fakeBackend{createProfile: func(_ context.Context, draft app.ProfileDraft) error {
+		drafts = append(drafts, draft)
+		if len(drafts) == 1 {
+			return errors.New("read failed")
+		}
+		return nil
+	}}, 80, 24)
+	m.activate("profiles.url")
+	m, _ = update(m, tea.PasteMsg{Content: source})
+	m, _ = click(m, findTarget(t, m, "profiles.import-once"))
+	if !strings.Contains(ansi.Strip(m.View().Content), "[x] Import once") {
+		t.Fatal("click did not select a one-time import")
+	}
+	for attempt := 1; attempt <= 2; attempt++ {
+		var cmd tea.Cmd
+		m, cmd = click(m, findTarget(t, m, "profiles.add"))
+		m = finishProfileJob(t, m, cmd)
+		if attempt == 1 && (!m.profilesUI.importOnce || m.profilesUI.url.Value() != source) {
+			t.Fatal("failed import lost the source or changed the retry to a remembered import")
+		}
+	}
+	if m.profilesUI.importOnce || m.profilesUI.url.Value() != "" || hasAction(m.targets, "profiles.import-once") {
+		t.Fatal("successful import left a stale source or one-time option")
+	}
+	m.activate("profiles.url")
+	m, _ = update(m, tea.PasteMsg{Content: source})
+	m, cmd := update(m, special(tea.KeyEnter))
+	finishProfileJob(t, m, cmd)
+	if len(drafts) != 3 || drafts[0].RememberSource || drafts[1].RememberSource || !drafts[2].RememberSource {
+		t.Fatalf("unexpected submitted drafts: %+v", drafts)
+	}
+}
+
 func TestProfileCreateFormRetainsDraftAfterFailure(t *testing.T) {
 	m := ready(&fakeBackend{createProfile: func(context.Context, app.ProfileDraft) error {
 		return errors.New("create failed")

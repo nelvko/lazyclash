@@ -28,6 +28,7 @@ type profilesState struct {
 	pasteUnavailable  bool
 	editing           bool
 	importing         bool
+	importOnce        bool
 	menuProfile       string
 	deleteFocus       string
 	deleteCurrent     bool
@@ -184,7 +185,7 @@ func (m *Model) beginProfileURLImport() tea.Cmd {
 	m.profilesUI.url.Blur()
 	m.profilesUI.importing = true
 	m.focus = "profiles.add"
-	return m.beginProfileImport(app.ProfileDraft{Address: source, RememberSource: true}, "profile.add", m.tr("profiles.fetching"))
+	return m.beginProfileImport(app.ProfileDraft{Address: source, RememberSource: !m.profilesUI.importOnce}, "profile.add", m.tr("profiles.fetching"))
 }
 
 func validateProfileSource(source string) error {
@@ -226,8 +227,11 @@ func (m *Model) focusProfileControl(id string) {
 // library order. A stale numeric focus must never apply a different profile.
 func (m *Model) reconcileProfiles() {
 	m.reconcileProfileValidation()
-	if m.page == "profiles" && m.focus == "profiles.add" && m.profilesUI.importSource() == "" {
-		m.focus = "profiles.create"
+	if m.profilesUI.importSource() == "" {
+		m.profilesUI.importOnce = false
+		if m.page == "profiles" && (m.focus == "profiles.add" || m.focus == "profiles.import-once") {
+			m.focus = "profiles.create"
+		}
 	}
 	if !m.profilesUI.pasteDeadline.IsZero() {
 		if _, id, active := m.activeInputField(); !active || id != "profiles.url" {
@@ -302,6 +306,10 @@ func (m *Model) profileAction(id string) (bool, tea.Cmd) {
 		return true, m.openProfileSettings(m.profiles()[index])
 	}
 	switch id {
+	case "profiles.import-once":
+		m.focus = id
+		m.profilesUI.importOnce = !m.profilesUI.importOnce
+		return true, nil
 	case "profiles.create":
 		return true, m.openProfileCreate()
 	case "subscription.add":

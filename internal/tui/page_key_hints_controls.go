@@ -33,6 +33,8 @@ func (m *Model) profilesContextHelp() string {
 		action = m.tr("profiles.paste")
 	case "profiles.add":
 		action = m.tr("profiles.add")
+	case "profiles.import-once":
+		return m.tr("profiles.toggle_option") + " · " + base
 	case "profiles.create":
 		action = m.tr("profiles.create")
 	case "profiles.update-all":

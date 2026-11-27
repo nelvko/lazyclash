@@ -19,7 +19,7 @@ func TestProfileCreateKeyboardReachesActionsWithoutEditingHiddenInput(t *testing
 	if m.focus != "profile-create.source" || !m.profileCreate.source.Focused() {
 		t.Fatalf("initial focus = %s, want editable source", m.focus)
 	}
-	for _, want := range []int{profileCreateUserAgent, profileCreateName, profileCreateDescription, profileCreateCancel, profileCreateSave, profileCreateSource} {
+	for _, want := range []int{profileCreateUserAgent, profileCreateName, profileCreateDescription, profileCreateImportOnce, profileCreateCancel, profileCreateSave, profileCreateSource} {
 		m, _ = update(m, special(tea.KeyTab))
 		if m.profileCreate.field != want || m.focus != profileCreateFieldID(want) {
 			t.Fatalf("Tab focus = %s, want %s", m.focus, profileCreateFieldID(want))
@@ -97,6 +97,38 @@ func TestProfileCreateValidationFocusesSource(t *testing.T) {
 			m.profileCreate.source.Value() != address || m.profileCreate.name.Value() != "My profile" {
 			t.Fatalf("validation for %q failed to restore the editable draft", address)
 		}
+	}
+}
+
+func TestProfileCreateImportOnceUsesRemoteMetadataForThisRequest(t *testing.T) {
+	var got app.ProfileDraft
+	m := profileInteractionsModel(&fakeBackend{createProfile: func(_ context.Context, draft app.ProfileDraft) error {
+		got = draft
+		return nil
+	}}, 60, 20)
+	m.openProfileCreate()
+	m.profileCreate.source.SetValue("https://example.invalid/feed")
+	m.profileCreate.userAgent.SetValue("Fixture/1.0")
+	m.profileCreate.name.SetValue("Work")
+	m.profileCreate.description.SetValue("Test profile")
+	m.profileCreateSetField(profileCreateDescription)
+	m, _ = update(m, special(tea.KeyTab))
+	if m.profileCreate.field != profileCreateImportOnce {
+		t.Fatal("Tab did not reach the import option")
+	}
+	m, _ = update(m, special(tea.KeySpace))
+	if !strings.Contains(ansi.Strip(m.View().Content), "[x] Import once") {
+		t.Fatal("space did not visibly select a one-time import")
+	}
+	m, cmd := click(m, findTarget(t, m, "profile-create.save"))
+	m = finishProfileJob(t, m, cmd)
+	want := app.ProfileDraft{Address: "https://example.invalid/feed", UserAgent: "Fixture/1.0", Name: "Work", Description: "Test profile"}
+	if got != want {
+		t.Fatalf("one-time profile draft = %+v, want %+v", got, want)
+	}
+	m.openProfileCreate()
+	if m.profileCreate.importOnce {
+		t.Fatal("the next profile inherited the previous import option")
 	}
 }
 

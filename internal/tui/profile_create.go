@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 
+	bubbleskey "charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"github.com/nelvko/lazyclash/internal/app"
@@ -16,6 +17,7 @@ const (
 	profileCreateDescription
 	profileCreateSource
 	profileCreateUserAgent
+	profileCreateImportOnce
 	profileCreateSave
 	profileCreateCancel
 	profileSettingsImport
@@ -29,6 +31,7 @@ type profileCreateState struct {
 	userAgent    textinput.Model
 	field        int
 	submitting   bool
+	importOnce   bool
 	settings     *app.ProfileSettings
 	firstRow     int
 	pageRows     int
@@ -118,6 +121,9 @@ func (m *Model) profileFieldOrder() []int {
 		order = append(order, profileCreateUserAgent)
 	}
 	order = append(order, profileCreateName, profileCreateDescription)
+	if m.form == "profile-create" {
+		order = append(order, profileCreateImportOnce)
+	}
 	if m.form == "profile-settings" {
 		order = append(order, profileSettingsImport)
 		if m.canUseDefaultFrom(m.name) {
@@ -163,6 +169,8 @@ func profileCreateFieldID(field int) string {
 		return "profile-create.source"
 	case profileCreateUserAgent:
 		return "profile-create.user-agent"
+	case profileCreateImportOnce:
+		return "profile-create.import-once"
 	case profileCreateSave:
 		return "profile-create.save"
 	case profileCreateCancel:
@@ -183,6 +191,12 @@ func (m *Model) profileCreateKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 	if m.busy || m.quitting {
 		if k.String() == "esc" && m.busy {
 			m.cancelTask(false)
+		}
+		return true, nil
+	}
+	if m.profileCreate.field == profileCreateImportOnce && bubbleskey.Matches(k, toggleActivateKey) {
+		if !k.IsRepeat {
+			m.profileCreate.importOnce = !m.profileCreate.importOnce
 		}
 		return true, nil
 	}
@@ -299,7 +313,7 @@ func (m *Model) submitProfileCreate() tea.Cmd {
 		Description:    strings.TrimSpace(m.profileCreate.description.Value()),
 		Address:        strings.TrimSpace(m.profileCreate.source.Value()),
 		UserAgent:      m.profileCreate.effectiveUserAgent(),
-		RememberSource: true,
+		RememberSource: !m.profileCreate.importOnce,
 	}
 	source, err := resolveLocalPath(draft.Address)
 	if err == nil {
@@ -333,6 +347,9 @@ func (m *Model) profileCreateMouse(id string) tea.Cmd {
 		m.profileCreateSetField(profileCreateSource)
 	case "profile-create.user-agent":
 		m.profileCreateSetField(profileCreateUserAgent)
+	case "profile-create.import-once":
+		m.profileCreateSetField(profileCreateImportOnce)
+		m.profileCreate.importOnce = !m.profileCreate.importOnce
 	case "profile-settings.overrides":
 		return m.profileSettingsAction(profileSettingsImport)
 	case "profile-settings.deactivate":

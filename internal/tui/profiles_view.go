@@ -106,7 +106,30 @@ func (m *Model) profilesToolbar(width int) dashboardBlock {
 	if !inline {
 		body.append(m.profileButtons(buttons, width, bg))
 	}
+	if importID != "" {
+		body.append(m.profileImportOnceControl("profiles.import-once", m.profilesUI.importOnce, width, bg))
+	}
 	return body
+}
+
+func (m *Model) profileImportOnceControl(id string, checked bool, width int, surface string) dashboardBlock {
+	mark := "[ ] "
+	if checked {
+		mark = "[x] "
+	}
+	disabled := m.busy || m.quitting
+	label := m.tr("profiles.import_once")
+	if ansi.StringWidth(mark+label)+3 > width {
+		label = m.tr("profiles.import_once_short")
+	}
+	face := renderButton(mark+label, buttonOptions{Kind: buttonText, TextColor: text, Compact: true,
+		Surface: surface, Focused: m.focus == id, Hovered: m.hover == id, Disabled: disabled})
+	line := cellCrop(face, width)
+	row := dashboardBlock{lines: []string{line}}
+	if !disabled {
+		row.targets = []hitRegion{{ID: id, W: ansi.StringWidth(line), H: 1}}
+	}
+	return row
 }
 
 type profileButton struct {
