@@ -262,7 +262,7 @@ func TestOnboardingPresentationHasOnePreparationStepAcrossLanguagesAndSizes(t *t
 				if cards := overviewLayout(o, dashboardBodyWidth(o)).cards; len(cards) > 1 {
 					t.Fatal("unavailable dashboard cards distract from the initial installation panel")
 				}
-				for _, label := range []string{locale.T("dashboard.control.routingMode"), locale.T("dashboard.traffic.title")} {
+				for _, label := range []string{locale.T("dashboard.overview.route"), locale.T("dashboard.traffic.title")} {
 					if strings.Contains(plain, label) {
 						t.Fatalf("unavailable dashboard card distracts from initial installation: %q", label)
 					}

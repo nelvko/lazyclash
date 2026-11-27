@@ -200,7 +200,7 @@
   "dashboard.core.serviceResult": "Last service result: %s (exit %d)",
   "dashboard.core.unknownHint": "Process state could not be confirmed",
   "dashboard.core.logs": "View logs",
-  "dashboard.overview.route": "Routing Mode",
+  "dashboard.overview.route": "Routing Policy",
   "dashboard.overview.traffic": "Live Traffic",
   "dashboard.overview.environment": "Runtime Environment",
   "dashboard.overview.ipInfo": "IP Information",

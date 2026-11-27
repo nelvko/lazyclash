@@ -200,7 +200,7 @@
   "dashboard.core.serviceResult": "最近服务结果：%s（退出码 %d）",
   "dashboard.core.unknownHint": "尚无法确认内核进程状态",
   "dashboard.core.logs": "查看日志",
-  "dashboard.overview.route": "路由模式",
+  "dashboard.overview.route": "路由策略",
   "dashboard.overview.traffic": "实时流量",
   "dashboard.overview.environment": "运行环境",
   "dashboard.overview.ipInfo": "IP 信息",
