@@ -96,6 +96,7 @@ func TestLightThemeRolesAndTerminalProfiles(t *testing.T) {
 		{proxyNodeSelectedLink, proxyNodeSelectedBackground, mistBlue, mistSelection},
 		{routingFocus, routingSelectedBackground, mistBlue, mistSelection},
 		{success, panel, "#3d713e", "#e2e8ee"},
+		{websiteSlowLatency, hoverBackground, "#756019", "#d9e4eb"},
 		{warning, panel, "#8d641a", "#e2e8ee"},
 		{errorColor, panel, "#a84a4a", "#e2e8ee"},
 	}

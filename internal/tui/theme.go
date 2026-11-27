@@ -28,6 +28,7 @@ const (
 	divider                 = "#444c54"
 	accent                  = "#85b3e0"
 	overviewAddressColor    = "#ed96c5"
+	websiteSlowLatency      = "#e9cf76"
 	focus                   = "#f9ae58"
 	selectionBackground     = "#4c5864"
 	selectionForeground     = text

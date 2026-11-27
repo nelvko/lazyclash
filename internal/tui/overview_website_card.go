@@ -203,7 +203,12 @@ func (o dashboardOptions) websiteTestStatus(site string) (string, string) {
 	case row.pending():
 		return tr("dashboard.website.running"), accent
 	case row.result.StatusCode > 0:
-		return fmt.Sprintf("%d ms", max(1, row.result.Duration.Milliseconds())), success
+		ms := max(1, row.result.Duration.Milliseconds())
+		color := success
+		if ms >= 500 {
+			color = websiteSlowLatency
+		}
+		return fmt.Sprintf("%d ms", ms), color
 	case row.err != nil:
 		return tr("dashboard.website.timeout"), warning
 	default:

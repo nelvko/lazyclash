@@ -198,7 +198,9 @@ func TestWebsiteResultHoverPreservesSemanticColors(t *testing.T) {
 		unavailable  bool
 	}{
 		{label: "测速", color: accent},
-		{label: "173 ms", color: success, row: websiteTestRow{result: app.WebsiteTestResult{StatusCode: 200, Duration: 173 * time.Millisecond}}},
+		{label: "499 ms", color: success, row: websiteTestRow{result: app.WebsiteTestResult{StatusCode: 200, Duration: 500*time.Millisecond - time.Nanosecond}}},
+		{label: "500 ms", color: websiteSlowLatency, row: websiteTestRow{result: app.WebsiteTestResult{StatusCode: 200, Duration: 500 * time.Millisecond}}},
+		{label: "501 ms", color: websiteSlowLatency, row: websiteTestRow{result: app.WebsiteTestResult{StatusCode: 403, Duration: 501 * time.Millisecond}}},
 		{label: "超时", color: warning, row: websiteTestRow{err: context.DeadlineExceeded}},
 		{label: "测试中", row: websiteTestRow{cancel: func() {}}},
 		{label: "不可用", unavailable: true},

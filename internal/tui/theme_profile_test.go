@@ -107,6 +107,7 @@ func TestMarianaTrueColorAnd256Contrast(t *testing.T) {
 		{"hovered node metadata", proxyNodeEmphasizedMeta, raised},
 		{"hovered node fast delay", proxyNodeEmphasizedFast, raised},
 		{"hovered node slow delay", proxyNodeEmphasizedSlow, raised},
+		{"hovered website slow delay", websiteSlowLatency, hoverBackground},
 		{"routing mode idle", routingIdleText, routingIdleBackground},
 		{"routing mode selected", routingSelectedText, routingSelectedBackground},
 		{"routing mode selected hover", routingSelectedText, routingSelectedHoverBackground},
