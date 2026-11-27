@@ -88,6 +88,14 @@ Go 用例覆盖 114 与 115 列的切换边界、极窄正文中节点名的显�
 
 在专用 Debian/arm64 VM 中另用产品二进制、Mihomo v1.19.33、独立 systemd 服务和非默认端口，先后选用两个本地订阅。服务停止时，两次通知均提示下次启动生效，PID 保持 0，生成配置与清单一致。服务运行时，两次通知均显示“内核运行中”，随后从控制 API 读到各自订阅的规则。测试结束后已清理服务和临时目录。完整安装 E2E 通过了空实例与下载网络的 PTY 检查，在下载官方发布包时超时。[停止时验收](../.test-artifacts/notification-refactor/linux-stopped-profile-switch.json) · [运行时验收](../.test-artifacts/notification-refactor/linux-running-profile-switch.json)
 
+## 下拉框交互（2026-11-27）
+
+中文真实 PTY 使用隔离的测试后端。120×32 的 Mist 浅色 16 色终端可看到候选游标，无色终端展开时游标从语言字段移入列表，Esc 后回到字段。两种情况下取消的语言保存次数均为零。[浅色 16 色](../.test-artifacts/dropdown-polish/dropdown-focus/ansi16/language-pending.png) · [无色展开](../.test-artifacts/dropdown-polish/dropdown-focus/no-color/language-pending.png)
+
+在删除订阅的接替者菜单中，160×45 能同时看到两个长名称末尾的「上海」和「南京」。42×24 会展开高亮项的全文，36×16 可用 PgDn 翻到「杭州终点」，点击该行能选中对应配置。另一次运行中，列表刷新移除了正在浏览的 Beta，紧接着按 Enter 再次打开时，游标和勾选均在原先选定的 Gamma，两次运行的删除调用均为零。[42×24 长名称](../.test-artifacts/dropdown-polish/long/narrow-42x24.png) · [36×16 名称末尾](../.test-artifacts/dropdown-polish/long/tail-36x16.png) · [刷新后重开](../.test-artifacts/dropdown-polish/3-reopened-gamma.png)
+
+绑定地址的 PTY 场景由 `scripts/settings-pty.py` 的 `--bind-only` 参数选择。160×45 下，指针在弹窗外滚动后按 Enter，输入框保留 `*`。40×24 下，滚动 IPv6 的续行后按 Enter，会填入完整地址，之后仍需审阅和应用。
+
 ## 统一下拉框（2026-11-25）
 
 设置页的语言、主题与 Mihomo 日志等级，日志页筛选、代理组排序以及删除当前配置时的替代配置，都经过真实 PTY 验证。终端截图按 PTY 字符格和颜色重绘。中文真彩用底色标出游标，英文无色用行首 `›`，两者都在当前值行尾显示 `✓`。[真彩语言菜单](../.test-artifacts/unified-dropdown/language-menu-pending.png) · [无色语言菜单](../.test-artifacts/unified-dropdown/language-menu-monochrome.png)
