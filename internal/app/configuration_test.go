@@ -92,6 +92,10 @@ func TestFullProfilePinsAppliedContentAndCustomRules(t *testing.T) {
 	if err != nil || applied == old || m.Build == nil || m.Build.Recipe == nil || m.Build.Recipe.Revision == "" {
 		t.Fatal("applied generation did not pin its profile and content revision", err)
 	}
+	before, err := a.Snapshot(t.Context())
+	if err != nil || before.AppliedRecipeHash != m.Build.fingerprint() {
+		t.Fatal("snapshot did not identify the applied routing inputs", err)
+	}
 	cfg := generatedDocument(t, a)
 	nodes := cfg["proxies"].([]any)
 	if len(nodes) != 1 || nodes[0].(map[string]any)["name"] != "node-one" {
@@ -116,6 +120,10 @@ func TestFullProfilePinsAppliedContentAndCustomRules(t *testing.T) {
 	nextManifest, current, err := a.load()
 	if err != nil || current == applied || nextManifest.Build.Recipe.Revision != lib.Profiles["saved"].Spec.Revision || !strings.Contains(string(read(t, appliedPath)), "updated.invalid") || len(svc.actions) != 0 {
 		t.Fatal("stopped refresh failed to commit the next-start configuration", err)
+	}
+	after, err := a.Snapshot(t.Context())
+	if err != nil || after.AppliedRecipeHash == before.AppliedRecipeHash {
+		t.Fatal("a changed endpoint with the same group and node names should change the snapshot's routing inputs", err)
 	}
 	changed := []byte("prepend-rules: ['DOMAIN,new-rule.invalid,DIRECT']")
 	if err := a.SetProfileOverrides(t.Context(), "saved", changed); err != nil {

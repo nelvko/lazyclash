@@ -57,6 +57,7 @@ type overviewPTYBackend struct {
 	tunChanges, terminalChanges                 atomic.Int64
 	settingsReads, settingsWrites               atomic.Int64
 	ipLookups                                   atomic.Int64
+	confirmedMode                               atomic.Value // string, set by the IP route scenario
 }
 
 func newOverviewPTYBackend(scenario string) *overviewPTYBackend {
@@ -84,7 +85,7 @@ func newOverviewPTYBackend(scenario string) *overviewPTYBackend {
 		Capabilities: app.Capabilities{Scope: "user", Runtime: app.Capability{Supported: true}},
 	}
 	switch scenario {
-	case "running":
+	case "running", "ip-route":
 		s.Groups = []mihomo.Group{
 			{Name: "AUTO", Type: "URLTest", Now: "新加坡 02", All: []string{"新加坡 02"}},
 			{Name: "GLOBAL", Type: "Selector", Now: "PROXY", All: []string{"PROXY", "DIRECT"}},
@@ -141,6 +142,11 @@ func (b *overviewPTYBackend) Runtime(ctx context.Context) (app.RuntimeSnapshot, 
 
 func (b *overviewPTYBackend) LookupIPInfo(ctx context.Context) (app.IPInfo, error) {
 	call := b.ipLookups.Add(1)
+	if b.scenario == "ip-route" && call == 2 {
+		// Simulate a superseded provider that still reports success on cancellation.
+		<-ctx.Done()
+		return app.IPInfo{IP: "203.0.113.99"}, nil
+	}
 	if b.scenario == "running" && call == 2 {
 		return app.IPInfo{}, errors.New("fixture IP lookup failed")
 	}
@@ -159,8 +165,19 @@ func (b *overviewPTYBackend) Control(ctx context.Context, _ string) error {
 	return ctx.Err()
 }
 
-func (b *overviewPTYBackend) SetMode(ctx context.Context, _ string) error {
+func (b *overviewPTYBackend) Snapshot(ctx context.Context) (app.Snapshot, error) {
+	s, err := b.fakeBackend.Snapshot(ctx)
+	if mode, ok := b.confirmedMode.Load().(string); ok {
+		s.Mode.Actual, s.Mode.Desired = mode, mode
+	}
+	return s, err
+}
+
+func (b *overviewPTYBackend) SetMode(ctx context.Context, mode string) error {
 	b.modes.Add(1)
+	if b.scenario == "ip-route" && ctx.Err() == nil {
+		b.confirmedMode.Store(mode)
+	}
 	return ctx.Err()
 }
 

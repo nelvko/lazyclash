@@ -503,12 +503,39 @@ def inspect_route_picker(preview, terminal, output, words, args):
     terminal.settle()
 
 
+def exercise_ip_route(preview, terminal, output, words, report, args):
+    terminal.wait("203.0.113.17")
+    terminal.key(b"2")
+    terminal.wait(words["providers.title.proxies"])
+    terminal.click_text(words["dashboard.mode.direct"])
+    terminal.wait(words["proxies.direct.description"])
+    terminal.click_text(words["dashboard.mode.global"])
+    terminal.wait("GLOBAL")
+
+    # The return to Overview starts one lookup for Global. Change the actual
+    # mode again while that response is held back by the fixture.
+    terminal.key(b"1")
+    terminal.wait(words["dashboard.ip.loading"])
+    terminal.click_text(words["dashboard.mode.direct"])
+    terminal.wait("203.0.113.18")
+    terminal.settle()
+    assert "203.0.113.18" in terminal.screen.text() and "203.0.113.99" not in terminal.screen.text(), terminal.screen.text()
+    preview.capture(terminal, output, "ip-latest-route", args)
+    terminal.exit()
+    calls = json.loads(report.read_text())
+    assert calls["ip_lookups"] == 3 and calls["modes"] == 3 and calls["selections"] == 0, calls
+    print("PASS IP route changes: one initial lookup, deferred off Overview, latest selection displayed", flush=True)
+
+
 def exercise(preview, binary, output, language, profile, scenario, args):
     output.mkdir(parents=True)
     words = labels(language)
     report = output / "calls.json"
     terminal = fixture_terminal(preview, binary, report, language, profile, scenario)
     try:
+        if scenario == "ip-route":
+            exercise_ip_route(preview, terminal, output, words, report, args)
+            return
         terminal.wait("subscription.example")
         terminal.settle()
         preview.capture(terminal, output, "overview-initial", args)
@@ -658,7 +685,9 @@ def exercise(preview, binary, output, language, profile, scenario, args):
         if scenario in ("stopped", "unavailable"):
             assert calls["ip_lookups"] == 0, calls
         elif scenario == "running":
-            assert calls["ip_lookups"] >= 3, calls
+            assert calls["ip_lookups"] == 3, calls
+        else:
+            assert calls["ip_lookups"] == 1, calls
         check_profile(preview, terminal, profile)
         (output / "pty.raw").write_bytes(terminal.raw)
         print("PASS %s/%s/%s: responsive Overview, core management and focus, terminal and TUN editors, draft cancellation; %s" %
@@ -679,7 +708,7 @@ def main():
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--lang", choices=["en", "zh-Hans"], action="append")
     parser.add_argument("--profile", choices=["truecolor", "256", "no-color"], action="append")
-    parser.add_argument("--scenario", choices=["running", "stopped", "unavailable", "drift", "pending", "direct"], action="append")
+    parser.add_argument("--scenario", choices=["running", "stopped", "unavailable", "drift", "pending", "direct", "ip-route"], action="append")
     sys.dont_write_bytecode = True
     spec = importlib.util.spec_from_file_location("overview_pty_preview", Path(__file__).with_name("onboarding-pty.py"))
     preview = importlib.util.module_from_spec(spec)

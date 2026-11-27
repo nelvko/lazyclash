@@ -38,6 +38,7 @@ type Snapshot struct {
 	ProfilePending      bool
 	Generation          string
 	Applied             string
+	AppliedRecipeHash   string `json:"-"`
 	AppliedName         string
 	Profiles            []string
 	ProfileDetails      []ProfileInfo
@@ -78,6 +79,9 @@ func (a *App) Snapshot(ctx context.Context) (Snapshot, error) {
 			out.RuntimeSettings = manifestSettings(m)
 			out.CoreSettings = m.CoreSettings
 			out.Applied = m.selectedProfile()
+			if m.Build != nil {
+				out.AppliedRecipeHash = m.Build.fingerprint()
+			}
 			out.Generation = generation
 			r, _, err := a.loadRuntimeRecord(m)
 			if err != nil {

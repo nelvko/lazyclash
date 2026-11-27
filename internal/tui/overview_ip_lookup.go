@@ -10,10 +10,9 @@ import (
 	"github.com/nelvko/lazyclash/internal/mihomo"
 )
 
-const ipRefreshInterval = 5 * time.Minute
-
 type overviewIPState struct {
 	info            app.IPInfo
+	route           overviewIPRoute
 	loading, failed bool
 	checkedAt       time.Time
 	pid             int
@@ -33,12 +32,37 @@ func overviewIPAvailable(s app.Snapshot) bool {
 		(s.MixedPort > 0 || s.RuntimeSettings.HTTPPort > 0 || s.RuntimeSettings.SOCKSPort > 0)
 }
 
-// A selector can switch nodes without publishing a new config generation.
-func ipRouteChanged(before, after app.Snapshot) bool {
-	return before.Generation != after.Generation || before.Mode.Actual != after.Mode.Actual ||
-		!slices.EqualFunc(before.Groups, after.Groups, func(a, b mihomo.Group) bool {
+type overviewIPRoute struct {
+	profile, recipe, mode string
+	groups                []mihomo.Group
+	groupsKnown           bool
+}
+
+// The pinned profile, mode and proxy groups come from independent reads.
+func (s *overviewIPState) observeRoute(snapshot app.Snapshot) {
+	if !overviewIPAvailable(snapshot) {
+		return
+	}
+	r := &s.route
+	changed := r.profile != snapshot.Applied || r.recipe != snapshot.AppliedRecipeHash
+	if changed {
+		*r = overviewIPRoute{profile: snapshot.Applied, recipe: snapshot.AppliedRecipeHash}
+	}
+	if mode := snapshot.Mode.Actual; mode != "" && snapshot.Mode.Error == "" {
+		changed = changed || (r.mode != "" && r.mode != mode)
+		r.mode = mode
+	}
+	if snapshot.APIError == "" || snapshot.Groups != nil {
+		if r.groupsKnown && !slices.EqualFunc(r.groups, snapshot.Groups, func(a, b mihomo.Group) bool {
 			return a.Name == b.Name && a.Now == b.Now
-		})
+		}) {
+			changed = true
+		}
+		r.groups, r.groupsKnown = snapshot.Groups, true
+	}
+	if changed {
+		s.clearResult()
+	}
 }
 
 func (s *overviewIPState) stop() {
@@ -49,28 +73,27 @@ func (s *overviewIPState) stop() {
 	s.loading = false
 }
 
-func (s *overviewIPState) reset() {
+func (s *overviewIPState) clearResult() {
 	s.stop()
-	*s = overviewIPState{request: s.request}
+	s.info, s.checkedAt, s.failed = app.IPInfo{}, time.Time{}, false
 }
 
-// The runtime heartbeat already wakes the overview every second.
 func (m *Model) syncIPInfo(force bool) tea.Cmd {
 	s := &m.ipInfo
 	process := m.snapshot.Service
 	if !m.snapshotReady || !overviewIPAvailable(m.snapshot) {
-		s.reset()
+		s.clearResult()
 		return nil
 	}
 	if s.pid != process.PID || s.started != process.StartTimestampMonotonic {
-		s.reset()
+		s.clearResult()
 		s.pid, s.started = process.PID, process.StartTimestampMonotonic
 	}
 	if m.page != "overview" || m.quitting || m.ctx.Err() != nil || m.inlineInstallVisible() {
 		s.stop()
 		return nil
 	}
-	if m.busy || s.loading || (!force && time.Since(s.checkedAt) < ipRefreshInterval) {
+	if m.busy || s.loading || (!force && !s.checkedAt.IsZero()) {
 		return nil
 	}
 	ctx, cancel := context.WithCancel(m.ctx)
