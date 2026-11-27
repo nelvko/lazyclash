@@ -17,6 +17,8 @@ import time
 import unicodedata
 import uuid
 
+from e2e_instance import UserInstance
+
 
 HERE = Path(__file__).resolve().parent
 SPEC = importlib.util.spec_from_file_location("lazyclash_logo_demo", HERE / "logo-demo.py")
@@ -122,8 +124,8 @@ class ColorScreen(SMOKE.Screen):
 def spawn(binary, size, home, profile):
     DEMO.prepare_home(home)
     columns, rows = size
-    command = [sys.executable, "-c", WRAPPER, str(columns), str(rows), profile, str(binary),
-               "--home", str(home), "--service-name", "lazyclash-logo-intro-" + uuid.uuid4().hex[:12]]
+    command = [sys.executable, "-c", WRAPPER, str(columns), str(rows), profile,
+               *UserInstance(binary, home, "lazyclash-logo-intro-" + uuid.uuid4().hex[:12]).product()]
     terminal = SMOKE.Terminal(command)
     # The wrapper sets the actual window before exec, so startup is never
     # accidentally observed at Terminal's usual 120x40 default.

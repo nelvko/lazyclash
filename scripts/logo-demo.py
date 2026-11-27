@@ -15,6 +15,8 @@ import tempfile
 import time
 import uuid
 
+from e2e_instance import UserInstance
+
 from tui_layout import SIDEBAR_MIN_HEIGHT, SIDEBAR_MIN_WIDTH, sidebar_visible
 
 
@@ -102,7 +104,7 @@ def capture(binary, output, size, frames=None):
         home = Path(temporary) / "home"
         prepare_home(home)
         service = "lazyclash-logo-demo-" + uuid.uuid4().hex[:12]
-        command = [sys.executable, "-c", WRAPPER, str(binary), "--home", str(home), "--service-name", service]
+        command = [sys.executable, "-c", WRAPPER, *UserInstance(binary, home, service).product()]
         terminal = SMOKE.Terminal(command)
         try:
             terminal.wait("Overview")

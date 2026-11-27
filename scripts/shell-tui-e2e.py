@@ -21,6 +21,8 @@ import tempfile
 import termios
 import time
 
+from e2e_instance import UserInstance
+
 
 def load(name, filename):
     spec = importlib.util.spec_from_file_location(name, Path(__file__).with_name(filename))
@@ -104,7 +106,8 @@ def main():
         env.update(LAZYCLASH_LANG='en', LANG='C.UTF-8', LC_ALL='C.UTF-8', TERM='xterm-256color')
         name = 'lazyclash-shell-'+os.urandom(5).hex()
         home = str(root/'data')
-        argv = [binary, '--home', home, '--service-name', name, '--lang', 'en']
+        instance = UserInstance(binary, home, name)
+        argv = instance.product('--lang', 'en')
         unit = Path(env['XDG_CONFIG_HOME'])/'systemd/user'/(name+'.service')
         actual_config = Path(os.environ.get('XDG_CONFIG_HOME', str(Path.home()/'.config')))
         link = actual_config/'systemd/user'/(name+'.service')
@@ -118,8 +121,8 @@ def main():
             run(argv+['install', '--bin', str(Path(args.mihomo).resolve())])
             run(['systemctl', '--user', 'daemon-reload'])
             mixed, controller = port(), port()
-            run(argv+['settings', 'ports', '--mixed-port', str(mixed), '--controller-port', str(controller)])
-            run(argv+['service', 'start'])
+            run(instance.fixture('settings', 'ports', '--mixed-port', str(mixed), '--controller-port', str(controller)))
+            run(argv+['start'])
             shell = Terminal('bash', env, output)
             shell.command("export http_proxy='original-lower' HTTP_PROXY='original-upper'; unset https_proxy HTTPS_PROXY all_proxy ALL_PROXY no_proxy NO_PROXY")
             command = shlex.join(argv)
@@ -149,7 +152,7 @@ def main():
             assert 'CONNECT github.com:443' in curl and re.search(r'HTTP/[12](?:\.\d)? 200', curl), curl
             result['curl_github_via_mihomo'] = True
             newer = port()
-            shell.command(shlex.join(argv+['settings','ports','--mixed-port',str(newer),'--restart']),timeout=40)
+            shell.command(shlex.join(instance.fixture('settings','ports','--mixed-port',str(newer),'--restart')),timeout=40)
             shell.command(f'test "$http_proxy" = http://127.0.0.1:{newer}')
             result['committed_port_sync'] = True
             shell.toggle(command, 'Disable')
@@ -182,7 +185,7 @@ def main():
                 (output/'terminal.ansi').write_bytes(shell.transcript)
                 (output/'terminal.txt').write_text(shell.screen.text())
                 shell.close()
-            subprocess.run(argv+['service','stop'],env=env,capture_output=True,timeout=30)
+            subprocess.run(argv+['stop'],env=env,capture_output=True,timeout=30)
             # The random unit is ours even if the app's verification reports a
             # test failure; ensure no test process survives cleanup.
             subprocess.run(['systemctl','--user','stop',name+'.service'],capture_output=True,timeout=30)

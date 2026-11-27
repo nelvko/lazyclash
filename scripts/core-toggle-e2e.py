@@ -17,6 +17,8 @@ import sys
 import tempfile
 import time
 
+from e2e_instance import UserInstance
+
 
 SPEC = importlib.util.spec_from_file_location('core_toggle_smoke', Path(__file__).with_name('pty-smoke.py'))
 SMOKE = importlib.util.module_from_spec(SPEC)
@@ -84,7 +86,8 @@ def main():
         env.update(HOME=str(root),XDG_CONFIG_HOME=str(config),XDG_CACHE_HOME=str(root/'cache'),XDG_DATA_HOME=str(root/'data'),LAZYCLASH_LANG='en',LC_ALL='C.UTF-8')
         name='lazyclash-toggle-'+os.urandom(5).hex()
         home=root/'managed'
-        argv=[str(binary),'--home',str(home),'--service-name',name,'--lang','en']
+        instance = UserInstance(binary, home, name)
+        argv = instance.product('--lang', 'en')
         unit=config/'systemd/user'/(name+'.service')
         terminal=None;unit_bytes=None
         def run(parts):
@@ -93,13 +96,13 @@ def main():
                 raise AssertionError(str(parts)+'\n'+completed.stdout+completed.stderr)
             return completed.stdout
         def status():
-            return json.loads(run(argv+['status']))['Service']
+            return json.loads(run(argv+['status', '--json']))['Service']
         try:
             run(argv+['install','--bin',str(args.mihomo.resolve())])
             unit_bytes=unit.read_bytes()
             mixed,controller=free_port(),free_port()
             while controller==mixed: controller=free_port()
-            run(argv+['settings','ports','--mixed-port',str(mixed),'--controller-port',str(controller)])
+            run(instance.fixture('settings','ports','--mixed-port',str(mixed),'--controller-port',str(controller)))
             wrapper='import json,os,sys; os.environ.update(json.loads(sys.argv[1])); os.execv(sys.argv[2],sys.argv[2:])'
             terminal=SMOKE.Terminal([sys.executable,'-c',wrapper,json.dumps(env),*argv])
             terminal.wait('○ Stopped');terminal.settle()
@@ -147,7 +150,7 @@ def main():
                 capture(terminal,output,'failed-start-actual-off')
             results['start_failure_rereads_off']=True
 
-            run(argv+['service','start'])
+            run(argv+['start'])
             terminal.wait('● Running');initial = wait_sidebar_clock(terminal, 0, 60);terminal.settle()
             external=status();assert external['Active'],external
             capture(terminal,output,'external-start')
@@ -163,7 +166,7 @@ def main():
             wait_sidebar_clock(terminal, 60, 120)
             results['uptime_updates']=True
             old_pid=external['PID']
-            run(argv+['service','restart'])
+            run(argv+['restart'])
             restarted=status();assert restarted['Active'] and restarted['PID']!=old_pid,restarted
             wait_sidebar_clock(terminal, 0, 60)
             capture(terminal,output,'external-restart')
@@ -172,7 +175,7 @@ def main():
             assert status()['PID']==restarted['PID'],'Overview retained a restart shortcut'
             results['overview_restart_shortcut_removed']=True
 
-            run(argv+['service','stop'])
+            run(argv+['stop'])
             terminal.wait('○ Stopped');terminal.settle()
             assert not status()['Active']
             capture(terminal,output,'external-stop')
@@ -192,7 +195,7 @@ def main():
             if terminal:
                 capture(terminal,output,'final')
                 terminal.cleanup()
-            subprocess.run(argv+['service','stop'],env=env,capture_output=True,timeout=30)
+            subprocess.run(argv+['stop'],env=env,capture_output=True,timeout=30)
             subprocess.run(['systemctl','--user','stop',name+'.service'],capture_output=True,timeout=30)
             subprocess.run(argv+['uninstall'],env=env,capture_output=True,timeout=30)
             if unit.exists():

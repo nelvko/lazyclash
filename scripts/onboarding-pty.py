@@ -22,6 +22,8 @@ import time
 import unicodedata
 import uuid
 
+from e2e_instance import UserInstance
+
 from tui_layout import sidebar_visible
 
 
@@ -366,14 +368,16 @@ def run(binary, output, language, profile, sizes, args, scenario):
         home = Path(temporary) / "home"
         for columns, rows in sizes:
             name = "%s-%s-%sx%s-%s" % (language, profile, columns, rows, scenario)
-            arguments = ["--lang", language, "--home", str(home), "--service-name", "lazyclash-onboarding-" + uuid.uuid4().hex[:12]]
             report = output / (name + "-calls.json")
             wrapper = WRAPPER
             if args.test_binary:
                 environment = {"LAZYCLASH_INSTALL_PTY_REPORT": str(report), "LAZYCLASH_INSTALL_PTY_SCENARIO": scenario}
                 wrapper = WRAPPER.replace("os.execv(sys.argv[5], sys.argv[5:])", "os.environ.update(" + repr(environment) + "); os.environ['LAZYCLASH_INSTALL_PTY_LANGUAGE']=sys.argv[4]; os.execv(sys.argv[5], sys.argv[5:])")
-                arguments = ["-test.run=^TestInstallFlowPTYFixture$", "-test.count=1"]
-            command = [sys.executable, "-c", wrapper, str(columns), str(rows), profile, language, str(binary), *arguments]
+                arguments = [str(binary), "-test.run=^TestInstallFlowPTYFixture$", "-test.count=1"]
+            else:
+                instance = UserInstance(binary, home, "lazyclash-onboarding-" + uuid.uuid4().hex[:12])
+                arguments = instance.product("--lang", language)
+            command = [sys.executable, "-c", wrapper, str(columns), str(rows), profile, language, *arguments]
             terminal = SMOKE.Terminal(command)
             terminal.screen = StyledScreen(columns, rows)
             expected = {"checks": 1, "resolves": 0, "prepares": 0, "installs": 0, "starts": 0}

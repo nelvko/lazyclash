@@ -12,6 +12,7 @@ from pathlib import Path
 import tempfile
 import time
 
+from e2e_instance import UserInstance
 from tui_layout import dropdown_option, dropdown_trigger
 
 
@@ -78,8 +79,8 @@ def cancel_initial_lookup(terminal, title, network_choice):
 def run(binary, output):
     Terminal = load_terminal()
     with tempfile.TemporaryDirectory(prefix="lazyclash-i18n-pty-") as home:
-        base = ["/usr/bin/env", "LAZYCLASH_LANG=", "LC_ALL=C", str(binary),
-                "--home", home, "--service-name", "lazyclash-i18n-" + str(os.getpid())]
+        command = UserInstance(binary, home, "lazyclash-i18n-" + str(os.getpid())).product()
+        base = ["/usr/bin/env", "LAZYCLASH_LANG=", "LC_ALL=C", *command]
         terminal = Terminal(base + ["--lang", "en"])
         try:
             terminal.wait("Overview")

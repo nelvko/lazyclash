@@ -15,6 +15,8 @@ from threading import Thread
 import time
 import uuid
 
+from e2e_instance import UserInstance
+
 
 @contextmanager
 def subscription(path):
@@ -54,16 +56,16 @@ def main():
     if not re.fullmatch(r'lazyclash-e2e-[a-f0-9]{12}', args.service_name):
         parser.error('requires e2e.sh\'s dedicated service namespace')
     assert os.geteuid() != 0, 'configuration checks require the ordinary test user'
-    command = [str(args.binary), '--home', str(args.home), '--service-name', args.service_name]
+    instance = UserInstance(args.binary, args.home, args.service_name)
 
     def cli(*words, success=True):
-        result = subprocess.run(command + list(words), capture_output=True, timeout=60)
+        result = subprocess.run(instance.command(*words), capture_output=True, timeout=60)
         if (result.returncode == 0) != success:
             raise AssertionError('Configuration command returned unexpected status: ' + ' '.join(words[:2]))
         return result.stdout
 
     def status():
-        value = json.loads(cli('status'))
+        value = json.loads(cli('status', '--json'))
         assert value['Service']['Active'] and not value['APIError'], 'dedicated core is not ready'
         assert value['Service']['PID'] > 1, 'dedicated core has no running process'
         return value
@@ -83,7 +85,8 @@ def main():
     full_profile, second_profile = 'full-' + suffix, 'second-' + suffix
     current = args.home / 'installation' / 'current'
     initial = status()
-    assert initial['Applied'] == 'fixture', 'configuration checks require the fixture profile'
+    fixture_id = json.loads(cli('profile', 'show', 'fixture'))['id']
+    assert initial['Applied'] == fixture_id, 'configuration checks require the fixture profile'
     initial_generation = generation()
 
     def record(profile_id):
@@ -156,6 +159,7 @@ def main():
         write(full_path, full(1))
         write(override_path, "prepend-rules: ['DOMAIN,user-custom.invalid,REJECT']\n")
         cli('profile', 'add', source, '--name', full_profile, '--remember-source')
+        full_profile = json.loads(cli('profile', 'show', full_profile))['id']
         cli('profile', 'override', full_profile, str(override_path))
         first_revision = snapshot(full_profile, full(1).encode())
         assert record(full_profile)['address'] == source, 'remembered profile lost its refresh address'
@@ -213,7 +217,7 @@ def main():
         # while its controller cannot acknowledge the new configuration.
         old_generation = generation()
         write(full_path, full(3))
-        with subprocess.Popen(command + ['profile', 'refresh', full_profile],
+        with subprocess.Popen(instance.fixture('profile', 'refresh', full_profile),
                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) as refresh:
             with paused(same['Service']['PID']):
                 wait_pointer(lambda link: link != old_generation, refresh, 'timed-out refresh did not switch to the candidate')
@@ -236,7 +240,7 @@ def main():
         old_library, old_generation = library.read_bytes(), generation()
         retry_input = "prepend-rules: ['DOMAIN,retry-edit.invalid,DIRECT']\n"
         write(override_path, retry_input)
-        with subprocess.Popen(command + ['profile', 'override', full_profile, str(override_path)],
+        with subprocess.Popen(instance.fixture('profile', 'override', full_profile, str(override_path)),
                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) as edit:
             with paused(recovered_pid):
                 wait_pointer(lambda link: link != old_generation, edit, 'timed-out edit did not reach the candidate')
@@ -272,6 +276,7 @@ def main():
         second_rules = [('Domain', 'second-profile.invalid', 'REJECT'), ('Match', '', 'SECOND-E2E')]
         write(second_path, second)
         cli('profile', 'add', str(second_path), '--name', second_profile)
+        second_profile = json.loads(cli('profile', 'show', second_profile))['id']
         imported_revision = snapshot(second_profile, second.encode())
         assert 'address' not in record(second_profile), 'one-time local import retained a private path'
         assert generation() == saved_generation and status()['Service']['PID'] == saved_pid, 'saving another full profile applied it'
@@ -297,7 +302,7 @@ def main():
         assert switched['Service']['PID'] != saved_pid, 'explicit profile switch did not restart the running core'
         cli('select', 'SECOND-E2E', 'REJECT')
         selected = status()
-        cli('service', 'restart')
+        cli('restart')
         restarted = runtime(second_profile, imported_revision, second_rules)
         assert restarted['Service']['PID'] != selected['Service']['PID'], 'explicit restart did not replace the process'
         assert any(item['name'] == 'SECOND-E2E' and item['now'] == 'REJECT' for item in restarted['Groups']), 'selected node did not survive restart'
@@ -318,15 +323,15 @@ def main():
         reset_test_start_count()
         cli('profile', 'delete', second_profile, '--use', full_profile)
         runtime(full_profile, other_revision, expected_full(3))
-        cli('service', 'stop')
+        cli('stop')
         write(full_path, full(4))
         cli('profile', 'refresh', full_profile)
         write(override_path, "prepend-rules: ['DOMAIN,stopped-edit.invalid,REJECT']\n")
         cli('profile', 'override', full_profile, str(override_path))
         stopped_revision = snapshot(full_profile, full(4).encode())
-        stopped = json.loads(cli('status'))
+        stopped = json.loads(cli('status', '--json'))
         assert stopped['Applied'] == full_profile and not stopped['Service']['Active'] and not stopped['ProfilePending']
-        cli('service', 'start')
+        cli('start')
         runtime(full_profile, stopped_revision, expected_full(4, "stopped-edit.invalid"))
         print('Refreshing another subscription kept the selected core unchanged; a stopped core loaded the updated rules only on explicit start')
         cli('profile', 'delete', full_profile, '--no-profile')
@@ -339,7 +344,7 @@ def main():
         for revision in (first_revision, second_revision, imported_revision):
             blob = args.home / 'configuration' / 'snapshots' / (revision + '.yaml')
             assert hashlib.sha256(blob.read_bytes()).hexdigest() == revision, 'deleting a profile destroyed a historical runtime input'
-        assert status()['Applied'] == 'fixture' and not status()['ProfilePending']
+        assert status()['Applied'] == fixture_id and not status()['ProfilePending']
         reset_test_start_count()
         print('Snapshot/manifest/live-rule checks and deletion guards passed; fixture restored')
 

@@ -17,6 +17,8 @@ import threading
 import time
 import uuid
 
+from e2e_instance import UserInstance
+
 
 def wait_until(terminal, predicate, label, timeout=15):
     end = time.monotonic() + timeout
@@ -158,7 +160,8 @@ def main():
             (home / "preferences.json").write_text(json.dumps({
                 "HasRun": True, "GuideDismissed": True, "StartPage": "profiles",
             }))
-            command = [str(binary), "--lang", "en", "--home", str(home), "--service-name", "lazyclash-profiles-pty-" + uuid.uuid4().hex[:12]]
+            instance = UserInstance(binary, home, "lazyclash-profiles-pty-" + uuid.uuid4().hex[:12])
+            command = instance.product("--lang", "en")
             library_path = home / "configuration" / "library.json"
 
             def library():
@@ -553,7 +556,7 @@ def main():
 
             # CLI copy import remains supported independently of the new form.
             # Copies without a retained source have no Update action.
-            subprocess.run(command + ["profile", "add", str(local), "--name", "pty-snapshot"], check=True, capture_output=True, timeout=15)
+            subprocess.run(instance.fixture("profile", "add", str(local), "--name", "pty-snapshot"), check=True, capture_output=True, timeout=15)
             snapshot_id = profile_id("pty-snapshot")
             assert snapshot_id and "address" not in library()["profiles"][snapshot_id], "copy import unexpectedly retained its source"
 

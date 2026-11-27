@@ -20,6 +20,8 @@ import tempfile
 import time
 import uuid
 
+from e2e_instance import UserInstance
+
 
 HERE = Path(__file__).resolve().parent
 SPEC = importlib.util.spec_from_file_location("lazyclash_pty_preview", HERE / "onboarding-pty.py")
@@ -485,7 +487,8 @@ def exercise(binary, output, profile, notifications_only, colors_only):
     with tempfile.TemporaryDirectory(prefix="lazyclash-theme-pty-") as temporary:
         home = Path(temporary) / "home"
         service = "lazyclash-theme-" + uuid.uuid4().hex[:12]
-        product = [str(binary), "--home", str(home), "--service-name", service]
+        instance = UserInstance(binary, home, service)
+        product = instance.product()
         command = [sys.executable, "-c", WRAPPER, profile, *product]
         try:
             terminal = SMOKE.Terminal(command)
@@ -504,7 +507,7 @@ def exercise(binary, output, profile, notifications_only, colors_only):
                 check_overview_colors(terminal.screen, profile)
             else:
                 exercise_notifications(terminal, output, profile)
-                exercise_profile_updates(terminal, output, profile, product, Path(temporary))
+                exercise_profile_updates(terminal, output, profile, instance.fixture(), Path(temporary))
                 if not notifications_only:
                     exercise_network(terminal, output, profile)
             terminal.exit()

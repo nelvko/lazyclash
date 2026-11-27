@@ -15,6 +15,8 @@ import subprocess
 from http.client import HTTPConnection
 from urllib.request import ProxyHandler, Request, build_opener
 
+from e2e_instance import UserInstance
+
 
 def digest(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -41,10 +43,10 @@ def main():
         parser.error("requires e2e.sh's randomized dedicated service namespace")
     if args.unit.is_symlink() or str(args.home / "installation" / "mihomo") not in args.unit.read_text():
         parser.error("dedicated test service ownership could not be established")
-    command = [str(args.binary), "--home", str(args.home), "--service-name", args.service_name]
+    instance = UserInstance(args.binary, args.home, args.service_name)
 
     def cli(*arguments, success=True):
-        result = subprocess.run(command + list(arguments), stdout=subprocess.PIPE,
+        result = subprocess.run(instance.command(*arguments), stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE, timeout=60)
         if (result.returncode == 0) != success:
             raise AssertionError("Dedicated port-test command returned unexpected status: " + " ".join(arguments[:2]))
@@ -54,7 +56,7 @@ def main():
         return json.loads(cli("settings", "show"))
 
     def status():
-        return json.loads(cli("status"))
+        return json.loads(cli("status", "--json"))
 
     def manifest():
         return json.loads((args.home / "installation" / "current" / "manifest.json").read_text())
@@ -139,7 +141,8 @@ def main():
     baseline_other = without_ports(baseline_config)
     profile = args.home / "configuration" / "library.json"
     saved_profile = profile.read_bytes()
-    saved_overrides = json.loads(saved_profile)["profiles"]["fixture"]["spec"].get("overrides", "")
+    fixture_id = json.loads(cli("profile", "show", "fixture"))["id"]
+    saved_overrides = json.loads(saved_profile)["profiles"][fixture_id]["spec"].get("overrides", "")
     override_file = args.home.parent / "ports-overrides.yaml"
     unit_hash = digest(args.unit)
     pointer = os.readlink(args.home / "installation" / "current")
@@ -195,7 +198,7 @@ def main():
         proxy_request(mixed_a)
         free_after_move(7897)
         free_after_move(9097)
-        exports = cli("env").decode()
+        exports = cli("shell", "env").decode()
         if str(mixed_a) not in exports or "7897" in exports:
             raise AssertionError("Shell exports did not use the committed proxy port")
         print("Running CLI port move preserved effective YAML, identity, secret, unit and saved-profile edits")
@@ -221,7 +224,7 @@ def main():
         free_after_move(mixed_a)
         free_after_move(control_a)
 
-        cli("service", "stop")
+        cli("stop")
         change(mixed_a, control_a)
         if status()["Service"]["Active"]:
             raise AssertionError("Changing stopped-core settings started the service")
@@ -234,7 +237,7 @@ def main():
         if settings() != {"mixed_port": mixed_a, "controller_port": control_a} or status()["Service"]["Active"]:
             raise AssertionError("Profile application discarded the new ports or started the stopped core")
         invariant(saved_profile)
-        cli("service", "start")
+        cli("start")
         api("/version")
         proxy_request(mixed_a)
         change(7897, 9097, "--restart")

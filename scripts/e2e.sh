@@ -45,8 +45,9 @@ if [[ ${1:-} != --linux ]]; then
   trap cleanup_host EXIT
   linux_stage=$(orb -m "$vm" mktemp -d /tmp/lazyclash-e2e.XXXXXX)
   CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" go build -o "$host_stage/lazyclash" .
-  cp scripts/e2e.sh scripts/pty-smoke.py scripts/download-audit.py scripts/ports-e2e.py scripts/lifecycle-e2e.py scripts/configuration-e2e.py "$host_stage/"
-  COPYFILE_DISABLE=1 tar --no-xattrs -C "$host_stage" -cf - lazyclash e2e.sh pty-smoke.py download-audit.py ports-e2e.py lifecycle-e2e.py configuration-e2e.py | orb -m "$vm" tar -xf - -C "$linux_stage"
+  CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" go build -o "$host_stage/lazyclash-fixture" ./scripts/fixture
+  cp scripts/e2e_instance.py scripts/e2e.sh scripts/pty-smoke.py scripts/download-audit.py scripts/ports-e2e.py scripts/lifecycle-e2e.py scripts/configuration-e2e.py "$host_stage/"
+  COPYFILE_DISABLE=1 tar --no-xattrs -C "$host_stage" -cf - lazyclash lazyclash-fixture e2e_instance.py e2e.sh pty-smoke.py download-audit.py ports-e2e.py lifecycle-e2e.py configuration-e2e.py | orb -m "$vm" tar -xf - -C "$linux_stage"
   # Captured output deliberately excludes raw configuration, journal and URLs.
   if orb -m "$vm" bash "$linux_stage/e2e.sh" --linux "$linux_stage" "$download_method" > .test-artifacts/e2e.log 2>&1; then
     sed '/^download: [0-9]/d' .test-artifacts/e2e.log
@@ -184,7 +185,13 @@ print("Port and unit conflict preflight passed")
 PY
 trap cleanup_linux EXIT
 touch "$work/.resources-started"
-lp() { "$app" --home "$e2e_home" --service-name "$service_name" "$@"; }
+export LAZYCLASH_HOME="$e2e_home" LAZYCLASH_SERVICE="$service_name"
+lp() { "$app" "$@"; }
+fixture() { "$work/lazyclash-fixture" --home "$e2e_home" --service-name "$service_name" "$@"; }
+
+non_tty_exit=0
+lp </dev/null > "$work/non-tty.out" 2>"$work/non-tty.err" || non_tty_exit=$?
+[[ $non_tty_exit == 2 && ! -s "$work/non-tty.out" && -s "$work/non-tty.err" ]]
 
 # The environment route keeps the VM's existing explicit HTTPS proxy upstream.
 # This isolated CONNECT observer cannot decrypt TLS and refuses GitHub API
@@ -231,7 +238,7 @@ audit_phase tui-connection-test
 
 # The separate read-only check must not create storage. Dry-run may create its
 # normal lock directory, but must never stage a binary or register a service.
-"$app" --home "$work/remote-check-home" --service-name "$service_name-check" install check --download-method "$download_method" > "$work/uninstalled-core-check.json"
+LAZYCLASH_HOME="$work/remote-check-home" LAZYCLASH_SERVICE="$service_name-check" "$app" upgrade --check --download-method "$download_method" > "$work/uninstalled-core-check.json"
 [[ ! -e "$work/remote-check-home" ]]
 python3 - "$work/uninstalled-core-check.json" <<'PY'
 import json, re, sys
@@ -257,7 +264,7 @@ printf 'Explicit download method: %s\n' "$download_method"
 owned=yes
 lp install --core-version v1.19.32 --download-method "$download_method"
 audit_phase pinned-remote-install
-lp status > "$work/status.json"
+lp status --json > "$work/status.json"
 python3 - "$work/status.json" <<'PY'
 import json, sys
 s = json.load(open(sys.argv[1]))
@@ -301,7 +308,7 @@ for ((attempt=0; attempt<50; attempt++)); do
 done
 [[ -f "$work/default-ports-blocked" ]]
 python3 "$work/pty-smoke.py" --binary "$app" --home "$local_home" --service-name "$local_name" --mode install-local --mihomo-bin "$e2e_home/installation/mihomo" --output "$work/pty-install-local.txt"
-if "$app" --home "$local_home" --service-name "$local_name" service start > "$work/blocked-start.log" 2>&1; then
+if LAZYCLASH_HOME="$local_home" LAZYCLASH_SERVICE="$local_name" "$app" start > "$work/blocked-start.log" 2>&1; then
   printf 'Stopped local service unexpectedly started on occupied default ports\n' >&2
   exit 1
 fi
@@ -310,20 +317,20 @@ kill "$port_blocker_pid"
 wait "$port_blocker_pid" 2>/dev/null || true
 port_blocker_pid=
 printf 'First installation accepted occupied defaults; explicit start rejected the conflict\n'
-"$app" --home "$local_home" --service-name "$local_name" install --bin "$e2e_home/installation/mihomo" > "$work/local-result.json"
+LAZYCLASH_HOME="$local_home" LAZYCLASH_SERVICE="$local_name" "$app" install --bin "$e2e_home/installation/mihomo" > "$work/local-result.json"
 python3 - "$work/local-result.json" <<'PY'
 import json, sys
 assert json.load(open(sys.argv[1]))["Operation"] == "use existing"
 print("TUI local installation and CLI same-version reuse passed")
 PY
-"$app" --home "$local_home" --service-name "$local_name" uninstall
+LAZYCLASH_HOME="$local_home" LAZYCLASH_SERVICE="$local_name" "$app" uninstall
 [[ ! -d "$local_home/installation" ]]
 local_owned=no
 [[ $(systemctl --user show "$local_name.service" --property=LoadState --value) == not-found ]]
 printf 'Local --bin installation passed and dedicated unit cleaned\n'
 
-lp service start
-lp nodes > "$work/nodes.json"
+lp start
+fixture nodes > "$work/nodes.json"
 python3 - "$work/nodes.json" <<'PY'
 import json, sys
 groups = json.load(open(sys.argv[1]))
@@ -344,7 +351,7 @@ PY
 lp install --core-version v1.19.33 --download-method "$download_method" > "$work/update-result.json"
 audit_phase pinned-remote-update
 [[ $(systemctl --user show "$service_name.service" --property=MainPID --value) == "$old_pid" ]]
-lp status > "$work/update-status.json"
+lp status --json > "$work/update-status.json"
 python3 - "$work/update-result.json" "$work/update-status.json" "$e2e_home/installation/current/config.yaml" "$config_hash" <<'PY'
 import hashlib, json, sys
 r=json.load(open(sys.argv[1])); s=json.load(open(sys.argv[2]))
@@ -367,12 +374,12 @@ PY
 # version.txt, release files and real systemd. Restore the fixture's old disk
 # binary explicitly; the still-running process already uses that version.
 lp install --bin "$work/mihomo-old" > "$work/restore-old-result.json"
-lp install check --download-method "$download_method" > "$work/core-check.json"
+lp upgrade --check --download-method "$download_method" > "$work/core-check.json"
 audit_phase installed-version-check
 [[ $(systemctl --user show "$service_name.service" --property=MainPID --value) == "$old_pid" ]]
-lp install upgrade --yes --download-method "$download_method" > "$work/core-upgrade.json"
+lp upgrade --yes --download-method "$download_method" > "$work/core-upgrade.json"
 audit_phase confirmed-remote-upgrade
-lp status > "$work/core-upgraded-status.json"
+lp status --json > "$work/core-upgraded-status.json"
 python3 - "$work/core-check.json" "$work/core-upgrade.json" "$work/core-upgraded-status.json" "$old_pid" "$e2e_home/installation/current/config.yaml" "$config_hash" <<'PY'
 import hashlib, json, sys
 check, result, status = (json.load(open(path)) for path in sys.argv[1:4])
@@ -430,13 +437,13 @@ for ((attempt=0; attempt<50; attempt++)); do
   sleep 0.1
 done
 fixture_port=$(cat "$work/fixture-port")
-lp profile add --name fixture --remember-source "http://127.0.0.1:$fixture_port/config?token=fixture-private-token"
+fixture profile add --name fixture --remember-source "http://127.0.0.1:$fixture_port/config?token=fixture-private-token"
 before=$(readlink "$e2e_home/installation/current")
-if lp profile add --name invalid "http://127.0.0.1:$fixture_port/invalid?token=fixture-private-token" > "$work/invalid.log" 2>&1; then
+if fixture profile add --name invalid "http://127.0.0.1:$fixture_port/invalid?token=fixture-private-token" > "$work/invalid.log" 2>&1; then
   printf 'Invalid YAML was accepted\n' >&2
   exit 1
 fi
-lp profile list > "$work/profiles-after-invalid.json"
+fixture profile list > "$work/profiles-after-invalid.json"
 python3 - "$work/profiles-after-invalid.json" <<'PY'
 import json, sys
 assert all(profile["name"] != "invalid" for profile in json.load(open(sys.argv[1]))), "rejected profile entered the library"
@@ -447,23 +454,23 @@ if grep -Fq fixture-private-token "$work/invalid.log"; then
   exit 1
 fi
 refresh_pid=$(systemctl --user show "$service_name.service" --property=MainPID --value)
-lp profile refresh fixture
+fixture profile refresh fixture
 [[ $(readlink "$e2e_home/installation/current") == "$before" ]]
 [[ $(systemctl --user show "$service_name.service" --property=MainPID --value) == "$refresh_pid" ]]
-lp profile apply fixture
-lp select PROXY REJECT
-lp nodes > "$work/nodes.json"
+fixture profile apply fixture
+fixture select PROXY REJECT
+fixture nodes > "$work/nodes.json"
 python3 - "$work/nodes.json" <<'PY'
 import json, sys
 assert any(g["name"] == "PROXY" and g["now"] == "REJECT" for g in json.load(open(sys.argv[1])))
 print("Subscription validate/save/apply and real API node selection passed")
 PY
-lp select PROXY DIRECT
+fixture select PROXY DIRECT
 python3 "$work/configuration-e2e.py" --binary "$app" --home "$e2e_home" --service-name "$service_name"
 
 # Read the core's actual ordered rules, then exercise the read-only page in a
 # controlling terminal. The domains are reserved fixtures and are never fetched.
-lp rules > "$work/rules.json"
+fixture rules > "$work/rules.json"
 python3 - "$work/rules.json" <<'PY'
 import json, sys
 rules = json.load(open(sys.argv[1]))
@@ -487,10 +494,10 @@ assert hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest() == sys.argv[2]
 print("Rule inspection left configuration bytes unchanged")
 PY
 
-# Collect real live logs through the shared CLI use case. The selected fixture
+# Collect real live logs through the shared application use case. The selected fixture
 # profile enables info events only for this private installation; the product's
 # default log level and service stdout policy are left unchanged.
-python3 - "$app" "$e2e_home" "$service_name" "$fixture_port" <<'PY'
+python3 - "$work/lazyclash-fixture" "$e2e_home" "$service_name" "$fixture_port" <<'PY'
 from http.client import HTTPConnection
 import json, subprocess, sys, time
 command = [sys.argv[1], "--home", sys.argv[2], "--service-name", sys.argv[3],
@@ -510,13 +517,13 @@ try:
             connection.close()
         time.sleep(.15)
     output, error = process.communicate(timeout=10)
-    assert process.returncode == 0, "live-log CLI observation failed"
+    assert process.returncode == 0, "live-log fixture observation failed"
     entries = json.loads(output)
     assert 0 < len(entries) <= 3, "bounded live-log observation was empty or exceeded its limit"
     assert any("[TCP]" in entry["message"] for entry in entries), "actual Mihomo traffic event was not captured"
     assert all(entry["time"] and entry["level"] and len(entry["message"].encode()) < 4200 for entry in entries)
     assert b"fixture-private-token" not in output, "subscription credential appeared in logs"
-    print("Real live-log CLI collected bounded, timestamped Mihomo events")
+    print("Real live-log fixture collected bounded, timestamped Mihomo events")
 finally:
     if process.poll() is None:
         process.kill()
@@ -530,8 +537,8 @@ print("Log inspection left configuration bytes unchanged")
 PY
 
 # Generate actual proxy traffic against our own loopback fixture. Two active
-# connections prove that both CLI and TUI close only their requested UUID.
-lp stats > "$work/stats-before.json"
+# connections prove that the shared use case and TUI each close only their requested UUID.
+fixture stats > "$work/stats-before.json"
 cat > "$work/traffic.py" <<'PY'
 from http.client import HTTPConnection, IncompleteRead
 from pathlib import Path
@@ -586,8 +593,8 @@ for ((attempt=0; attempt<200; attempt++)); do
   sleep 0.1
 done
 [[ -f "$work/traffic-ready.json" ]]
-lp connections > "$work/connections-before.json"
-lp stats > "$work/stats-live.json"
+fixture connections > "$work/connections-before.json"
+fixture stats > "$work/stats-live.json"
 python3 - "$work/traffic-ready.json" "$work/connections-before.json" "$work/stats-before.json" "$work/stats-live.json" "$work/connection-ids" <<'PY'
 import json, sys
 ports = json.load(open(sys.argv[1]))
@@ -608,18 +615,18 @@ with open(sys.argv[5], "w") as output:
 print("Real runtime API reports positive traffic rates, cumulative bytes and RSS")
 PY
 mapfile -t connection_ids < "$work/connection-ids"
-lp connections close "${connection_ids[0]}"
-lp connections > "$work/connections-after-cli.json"
-python3 - "$work/connections-after-cli.json" "${connection_ids[0]}" "${connection_ids[1]}" <<'PY'
+fixture connections close "${connection_ids[0]}"
+fixture connections > "$work/connections-after-close.json"
+python3 - "$work/connections-after-close.json" "${connection_ids[0]}" "${connection_ids[1]}" <<'PY'
 import json, sys
 ids = {c["id"] for c in json.load(open(sys.argv[1]))["connections"]}
-assert sys.argv[2] not in ids and sys.argv[3] in ids, "CLI did not close exactly the selected connection"
+assert sys.argv[2] not in ids and sys.argv[3] in ids, "shared use case did not close exactly the selected connection"
 print("CLI closed exactly one requested connection")
 PY
 python3 "$work/pty-smoke.py" --binary "$app" --home "$e2e_home" --service-name "$service_name" --mode runtime --connection-id "${connection_ids[1]}" --output "$work/pty-runtime.txt"
 wait "$traffic_pid"
 traffic_pid=
-lp stats > "$work/stats-restarted.json"
+fixture stats > "$work/stats-restarted.json"
 python3 - "$work/stats-restarted.json" <<'PY'
 import json, sys
 sample = json.load(open(sys.argv[1]))
@@ -630,12 +637,12 @@ PY
 python3 "$work/ports-e2e.py" --binary "$app" --home "$e2e_home" --service-name "$service_name" \
   --unit "$unit" --fixture-port "$fixture_port" --pty-script "$work/pty-smoke.py" \
   --output "$work/pty-runtime-settings.txt"
-lp service restart
-lp service stop
-lp service status
-lp profile deactivate
-lp service start
-lp rules > "$work/default-rules.json"
+lp restart
+lp stop
+lp status
+fixture profile deactivate
+lp start
+fixture rules > "$work/default-rules.json"
 python3 - "$work/default-rules.json" <<'PY'
 import json, sys
 rules = json.load(open(sys.argv[1]))
@@ -643,6 +650,6 @@ assert len(rules) == 1 and rules[0]["index"] == 0 and rules[0]["type"] == "Match
 print("Built-in configuration exposes rules without a subscription")
 PY
 lp doctor
-lp service stop
+lp stop
 python3 "$work/lifecycle-e2e.py" --binary "$app" --home "$e2e_home" --service-name "$service_name"
 printf 'Real Mihomo + systemd + PTY end-to-end scenarios passed\n'

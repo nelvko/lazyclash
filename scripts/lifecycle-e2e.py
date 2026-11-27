@@ -7,16 +7,18 @@ import signal
 import subprocess
 import time
 
+from e2e_instance import UserInstance
+
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--binary', required=True)
 parser.add_argument('--home', required=True)
 parser.add_argument('--service-name', required=True)
 args = parser.parse_args()
-command = [args.binary, '--home', args.home, '--service-name', args.service_name]
+instance = UserInstance(args.binary, args.home, args.service_name)
 
 
 def lp(*words, success=True):
-    result = subprocess.run(command + list(words), capture_output=True, timeout=30)
+    result = subprocess.run(instance.command(*words), capture_output=True, timeout=30)
     if success and result.returncode:
         raise AssertionError('lifecycle command failed: ' + ' '.join(words))
     if not success:
@@ -25,7 +27,7 @@ def lp(*words, success=True):
 
 
 def status():
-    return json.loads(lp('status'))
+    return json.loads(lp('status', '--json'))
 
 
 def ready(previous_pid=None, selected=None):
@@ -42,7 +44,7 @@ def ready(previous_pid=None, selected=None):
 
 
 assert os.geteuid() != 0, 'privilege checks must run as the ordinary test user'
-lp('service', 'start')
+lp('start')
 initial = ready()
 assert initial['Service']['LingerKnown'] and initial['Service']['Linger']
 assert initial['Desired']['running'] and initial['Capabilities']['scope'] == 'user'
@@ -53,7 +55,8 @@ lp('tun', 'on', success=False)
 # terminal hangup must not kill the process in systemd's service cgroup.
 pid, terminal = os.forkpty()
 if pid == 0:
-    os.execv(args.binary, command)
+    command = instance.product()
+    os.execv(command[0], command)
 try:
     time.sleep(1)
     os.kill(pid, signal.SIGHUP)
@@ -69,7 +72,7 @@ changed = ready(selected='REJECT')
 assert changed['Service']['PID'] == initial['Service']['PID'], 'dynamic mode restarted Mihomo'
 assert changed['Mode']['actual'] == changed['Mode']['desired'] == 'direct'
 lp('profile', 'deactivate')
-lp('service', 'restart')
+lp('restart')
 changed = ready(selected='REJECT')
 assert changed['Mode']['actual'] == changed['Mode']['desired'] == 'direct'
 assert any(g['name'] == 'PROXY' and g['now'] == 'REJECT' for g in changed['Groups'])
@@ -86,11 +89,11 @@ assert any(g['name'] == 'PROXY' and g['now'] == 'REJECT' for g in recovered['Gro
 print('Real SIGKILL triggered systemd recovery with the persisted mode and selector')
 
 running_pid = recovered['Service']['PID']
-lp('service', 'enable')
+lp('autostart', 'enable')
 assert ready()['Service']['Enabled'] and ready()['Service']['PID'] == running_pid
-lp('service', 'disable')
+lp('autostart', 'disable')
 assert not ready()['Service']['Enabled'] and ready()['Service']['PID'] == running_pid
-lp('service', 'stop')
+lp('stop')
 time.sleep(3)  # exceeds RestartSec; an explicit stop must suppress restart
 stopped = status()
 assert not stopped['Service']['Active'] and stopped['Service']['PID'] == 0

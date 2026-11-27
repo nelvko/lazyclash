@@ -345,15 +345,16 @@ class Terminal:
         self.send(key)
         self.wait_exit()
 
-    def wait_exit(self):
+    def wait_exit(self, expected=0):
         end = time.monotonic() + 15
         while time.monotonic() < end:
             self.read()
             got, status = os.waitpid(self.pid, os.WNOHANG)
             if got:
                 self.status = status
-                if os.waitstatus_to_exitcode(status) != 0:
-                    raise AssertionError("TUI exited unsuccessfully")
+                code = os.waitstatus_to_exitcode(status)
+                if code != expected:
+                    raise AssertionError(f"TUI exited with {code}, expected {expected}")
                 return
         raise AssertionError("TUI failed to exit and clean up within 15 seconds")
 
@@ -373,6 +374,8 @@ class Terminal:
 
 
 def main():
+    from e2e_instance import UserInstance
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", required=True)
     parser.add_argument("--home", required=True)
@@ -391,7 +394,8 @@ def main():
     home = Path(args.home)
     if not home.is_absolute():
         parser.error("--home must be an absolute, dedicated temporary path")
-    command = [args.binary, "--home", args.home, "--service-name", args.service_name]
+    instance = UserInstance(args.binary, home, args.service_name)
+    command = instance.product()
     terminal = Terminal(command)
     terminals = [terminal]
     try:
@@ -429,7 +433,7 @@ def main():
             terminal.wait("Subscription URL or local YAML path")
             terminal.key(os.fsencode(config) + b"\r")
             terminal.wait("Profile created: “preimport”")
-            imported = subprocess.run(command + ["profile", "show", "preimport"],
+            imported = subprocess.run(instance.fixture("profile", "show", "preimport"),
                                       check=True, capture_output=True, timeout=15)
             saved = json.loads(imported.stdout)
             if saved["name"] != "preimport" or saved["validated"]:
@@ -471,7 +475,7 @@ def main():
             signal_terminal.key(b"\r")
             signal_terminal.wait("Checking executable")
             os.kill(signal_terminal.pid, signal.SIGTERM)
-            signal_terminal.wait_exit()
+            signal_terminal.wait_exit(expected=143)
             if (home / "installation").exists() or list(home.glob(".install-*")) or list(home.glob(".core-stage-*")):
                 raise AssertionError("SIGTERM left a half installation or staging directory")
             slow.unlink()
@@ -515,14 +519,14 @@ def main():
                 parser.error("runtime-settings requires explicit unprivileged test/fixture ports")
 
             def cli(*arguments):
-                completed = subprocess.run(command + list(arguments), stdout=subprocess.PIPE,
+                completed = subprocess.run(instance.command(*arguments), stdout=subprocess.PIPE,
                                            stderr=subprocess.PIPE, timeout=60)
                 if completed.returncode:
                     raise AssertionError("Dedicated settings-test CLI action failed: " + " ".join(arguments[:2]))
                 return completed.stdout
 
             initial = json.loads(cli("settings", "show"))
-            initial_status = json.loads(cli("status"))
+            initial_status = json.loads(cli("status", "--json"))
             initial_pointer = os.readlink(home / "installation" / "current")
 
             def open_editor(row, title, first_field):
@@ -560,7 +564,7 @@ def main():
             replace_input(args.conflict_port)
             terminal.key(b"\r")
             terminal.wait("unavailable")
-            if json.loads(cli("status"))["Service"]["PID"] != initial_status["Service"]["PID"]:
+            if json.loads(cli("status", "--json"))["Service"]["PID"] != initial_status["Service"]["PID"]:
                 raise AssertionError("Checking an occupied port stopped the running core")
             if json.loads(cli("settings", "show")) != initial:
                 raise AssertionError("Checking an occupied port changed the configuration")
@@ -616,7 +620,7 @@ def main():
             terminal.exit()
         elif args.mode == "rules":
             def cli(*arguments, success=True):
-                completed = subprocess.run(command + list(arguments), stdout=subprocess.PIPE,
+                completed = subprocess.run(instance.command(*arguments), stdout=subprocess.PIPE,
                                            stderr=subprocess.PIPE, timeout=20)
                 if (completed.returncode == 0) != success:
                     raise AssertionError("Dedicated rule-test CLI action returned unexpected status: " + " ".join(arguments[:2]))
@@ -648,12 +652,12 @@ def main():
             terminal.key(b"\x05\x15")  # Ctrl+E, Ctrl+U
             terminal.key(b"\r")
             terminal.wait("needle.example.invalid")
-            cli("service", "stop")
+            cli("stop")
             cli("rules", success=False)
             terminal.key(b"g")
             terminal.wait("Core stopped")
             terminal.wait_absent("needle.example.invalid")
-            cli("service", "start")
+            cli("start")
             terminal.key(b"g")
             terminal.wait("Rules loaded")
             terminal.wait("needle.example.invalid")
@@ -663,7 +667,7 @@ def main():
                 parser.error("--fixture-port must be the dedicated loopback fixture's unprivileged port")
 
             def cli(*arguments, success=True):
-                completed = subprocess.run(command + list(arguments), stdout=subprocess.PIPE,
+                completed = subprocess.run(instance.command(*arguments), stdout=subprocess.PIPE,
                                            stderr=subprocess.PIPE, timeout=20)
                 if (completed.returncode == 0) != success:
                     raise AssertionError("Dedicated log-test CLI action returned unexpected status: " + " ".join(arguments[:2]))
@@ -730,14 +734,14 @@ def main():
             if re.search(r"\bGAP\b", terminal.screen.text()):
                 raise AssertionError("Display resume invented a GAP log entry")
 
-            cli("service", "stop")
+            cli("stop")
             cli("logs", "--lines", "1", "--duration", "1s", success=False)
             terminal.wait("Capture unavailable")
-            stopped = json.loads(cli("status"))["Service"]
+            stopped = json.loads(cli("status", "--json"))["Service"]
             if stopped["Active"] or stopped["State"] != "inactive":
                 raise AssertionError("Log capture ended without the dedicated service stopping")
-            cli("service", "start")
-            started = json.loads(cli("status"))["Service"]
+            cli("start")
+            started = json.loads(cli("status", "--json"))["Service"]
             if not started["Active"] or started["State"] != "active":
                 raise AssertionError("Dedicated log-test service did not restart")
             recovered_source = None
@@ -756,7 +760,7 @@ def main():
                 parser.error("--connection-id is required for runtime mode")
 
             def cli(*arguments):
-                completed = subprocess.run(command + list(arguments), stdout=subprocess.PIPE,
+                completed = subprocess.run(instance.command(*arguments), stdout=subprocess.PIPE,
                                            stderr=subprocess.PIPE, timeout=20)
                 if completed.returncode:
                     raise AssertionError("Dedicated test CLI action failed: " + " ".join(arguments[:2]))
@@ -794,19 +798,19 @@ def main():
             terminal.wait_absent("Connection details")
             terminal.key(b"1")
             terminal.wait("Live Traffic")
-            cli("service", "stop")
+            cli("stop")
             terminal.wait("Stopped")
             stopped = json.loads(cli("stats"))
             if stopped["State"] != "stopped" or stopped["Traffic"] is not None:
                 raise AssertionError("Stopped core retained live telemetry")
-            cli("service", "start")
+            cli("start")
             terminal.wait("● Running")
             terminal.wait("↑ Upload")
             terminal.wait("Session upload")
             terminal.exit()
         else:
             def cli(*arguments):
-                result = subprocess.run(command + list(arguments), check=True,
+                result = subprocess.run(instance.command(*arguments), check=True,
                                         capture_output=True, timeout=20)
                 return json.loads(result.stdout)
 
@@ -856,11 +860,11 @@ def main():
             check_proxy_selection("REJECT")
 
             # On this page r refreshes observations; it must not restart Mihomo.
-            pid = cli("status")["Service"]["PID"]
+            pid = cli("status", "--json")["Service"]["PID"]
             terminal.key(b"r")
             terminal.wait_absent("Refreshing")
             terminal.wait_selected_proxy("REJECT")
-            if cli("status")["Service"]["PID"] != pid:
+            if cli("status", "--json")["Service"]["PID"] != pid:
                 raise AssertionError("Proxies refresh restarted the running core")
             terminal.key(b"3")
             terminal.wait("Subscription URL or local file path")
