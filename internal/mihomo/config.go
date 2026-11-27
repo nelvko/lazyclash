@@ -18,16 +18,9 @@ import (
 const MaxConfigSize = 8 << 20
 
 // DefaultProfile is the built-in routing configuration for a fresh instance.
-const DefaultProfile = `mode: rule
-proxies: []
-proxy-groups:
-  - name: PROXY
-    type: select
-    proxies: [DIRECT, REJECT]
-rules: ["MATCH,PROXY"]
-`
+const DefaultProfile = "mode: rule\n"
 
-// Default needs no subscription or geodata files and still exposes a useful group.
+// Default routes directly in rule mode without a subscription or geodata files.
 func Default(controller, secret string, mixedPort int) ([]byte, error) {
 	if err := loopbackAddress(controller); err != nil {
 		return nil, err

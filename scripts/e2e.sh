@@ -27,7 +27,7 @@ if [[ ${1:-} != --linux ]]; then
     result=$?
     trap - EXIT
     if [[ -n $linux_stage ]]; then
-    for file in pty-empty.txt pty-download-network.txt pty-install-local.txt pty-installed.txt pty-runtime.txt pty-rules.txt pty-logs.txt pty-runtime-settings.txt uninstalled-core-check.json pinned-dry-run.json update-result.json core-check.json core-upgrade.json download-audit.json cleanup.txt; do
+    for file in pty-empty.txt pty-download-network.txt pty-install-local.txt pty-no-profile.txt pty-installed.txt pty-runtime.txt pty-rules.txt pty-logs.txt pty-runtime-settings.txt uninstalled-core-check.json pinned-dry-run.json update-result.json core-check.json core-upgrade.json download-audit.json cleanup.txt; do
       if orb -m "$vm" test -f "$linux_stage/$file"; then
         orb -m "$vm" cat "$linux_stage/$file" > ".test-artifacts/$file" || result=1
       fi
@@ -343,10 +343,10 @@ fixture nodes > "$work/nodes.json"
 python3 - "$work/nodes.json" <<'PY'
 import json, sys
 groups = json.load(open(sys.argv[1]))
-assert any(g["name"] == "PROXY" and "DIRECT" in g["all"] for g in groups), groups
-print("Real default API exposes PROXY and DIRECT/REJECT")
+assert all(g["name"] == "GLOBAL" for g in groups), groups
+print("No profile-defined groups before activating a subscription")
 PY
-python3 "$work/pty-smoke.py" --binary "$app" --home "$e2e_home" --service-name "$service_name" --mode installed --output "$work/pty-installed.txt"
+python3 "$work/pty-smoke.py" --binary "$app" --home "$e2e_home" --service-name "$service_name" --mode no-profile --output "$work/pty-no-profile.txt"
 
 # Update the installed path while the old inode remains an actual running
 # Mihomo process. Installation must leave its PID, API version and config alone.
@@ -468,6 +468,7 @@ fixture profile refresh fixture
 [[ $(readlink "$e2e_home/installation/current") == "$before" ]]
 [[ $(systemctl --user show "$service_name.service" --property=MainPID --value) == "$refresh_pid" ]]
 fixture profile apply fixture
+python3 "$work/pty-smoke.py" --binary "$app" --home "$e2e_home" --service-name "$service_name" --mode installed --output "$work/pty-installed.txt"
 fixture select PROXY REJECT
 fixture nodes > "$work/nodes.json"
 python3 - "$work/nodes.json" <<'PY'
@@ -656,8 +657,8 @@ fixture rules > "$work/default-rules.json"
 python3 - "$work/default-rules.json" <<'PY'
 import json, sys
 rules = json.load(open(sys.argv[1]))
-assert len(rules) == 1 and rules[0]["index"] == 0 and rules[0]["type"] == "Match" and rules[0]["payload"] == "" and rules[0]["proxy"] == "PROXY", "default configuration did not expose its actual MATCH rule"
-print("Built-in configuration exposes rules without a subscription")
+assert rules == [], "deactivating the subscription left routing rules in the core"
+print("Deactivating the subscription cleared its routing rules")
 PY
 lp doctor
 lp stop

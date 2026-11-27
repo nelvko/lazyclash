@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -103,6 +104,40 @@ rules: ["MATCH,PROXY"]
 	t.Cleanup(transport.CloseIdleConnections)
 	httpClient := &http.Client{Transport: transport, Timeout: 2 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}
 	client := Client{BaseURL: "http://" + controller, Secret: secret, HTTP: httpClient}
+	stopDefault := startIntegrationCore(t, ctx, bin, home, paths["default"], client)
+	if cfg, err := client.Configuration(ctx); err != nil || cfg.Mode != "rule" {
+		t.Fatalf("fresh core mode: %q, error %v", cfg.Mode, err)
+	}
+	groups, err := client.Groups(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, group := range groups {
+		if group.Name != "GLOBAL" {
+			t.Fatalf("fresh core exposed an unexpected group %q", group.Name)
+		}
+	}
+	rules, err := client.Rules(ctx)
+	if err != nil || len(rules) != 0 {
+		t.Fatalf("fresh core rules: %v, error %v", rules, err)
+	}
+	origin := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	t.Cleanup(origin.Close)
+	proxy := &url.URL{Scheme: "http", Host: net.JoinHostPort("127.0.0.1", strconv.Itoa(mixedPort))}
+	proxyTransport := &http.Transport{Proxy: http.ProxyURL(proxy)}
+	t.Cleanup(proxyTransport.CloseIdleConnections)
+	throughCore := &http.Client{Transport: proxyTransport, Timeout: 2 * time.Second}
+	resp, err := throughCore.Get(origin.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusNoContent {
+		t.Fatalf("fresh core could not reach the local origin: HTTP %d", resp.StatusCode)
+	}
+	stopDefault()
 	stop := startIntegrationCore(t, ctx, bin, home, paths["full"], client)
 	configuration, err := client.Configuration(ctx)
 	if err != nil || configuration.Mode != "rule" || configuration.TUN {

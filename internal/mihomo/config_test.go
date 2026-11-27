@@ -113,7 +113,7 @@ func TestEffectiveRejectsIndependentTUNListener(t *testing.T) {
 }
 
 func TestConfigModePreservesOtherSettings(t *testing.T) {
-	raw, err := Default("127.0.0.1:19090", "managed-secret", 17890)
+	raw, err := Effective([]byte("rules: [\"DOMAIN,example.invalid,REJECT\"]"), "127.0.0.1:19090", "managed-secret", 17890)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -123,7 +123,7 @@ func TestConfigModePreservesOtherSettings(t *testing.T) {
 			t.Fatal(err)
 		}
 		actual, err := ConfigMode(next)
-		if err != nil || actual != mode || !strings.Contains(string(next), "MATCH,PROXY") || !strings.Contains(string(next), "store-selected: true") {
+		if err != nil || actual != mode || !strings.Contains(string(next), "DOMAIN,example.invalid,REJECT") || !strings.Contains(string(next), "store-selected: true") {
 			t.Fatalf("mode mutation changed unrelated settings: %s %v", next, err)
 		}
 	}
@@ -135,22 +135,21 @@ func TestConfigModePreservesOtherSettings(t *testing.T) {
 	}
 }
 
-func TestDefaultContainsOneValidMatchRule(t *testing.T) {
+func TestDefaultRoutesDirectlyInRuleModeWithoutProxies(t *testing.T) {
 	out, err := Default("127.0.0.1:19090", "managed-secret", 17890)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var cfg struct {
-		Rules  []string `yaml:"rules"`
-		Groups []struct {
-			Name    string   `yaml:"name"`
-			Proxies []string `yaml:"proxies"`
-		} `yaml:"proxy-groups"`
+		Mode    string           `yaml:"mode"`
+		Rules   []string         `yaml:"rules"`
+		Proxies []map[string]any `yaml:"proxies"`
+		Groups  []map[string]any `yaml:"proxy-groups"`
 	}
 	if err = yaml.Unmarshal(out, &cfg); err != nil {
 		t.Fatal(err)
 	}
-	if len(cfg.Rules) != 1 || cfg.Rules[0] != "MATCH,PROXY" || len(cfg.Groups) != 1 || len(cfg.Groups[0].Proxies) != 2 {
+	if cfg.Mode != "rule" || len(cfg.Rules) != 0 || len(cfg.Groups) != 0 || len(cfg.Proxies) != 0 {
 		t.Fatalf("invalid default: %+v", cfg)
 	}
 }

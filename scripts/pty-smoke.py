@@ -261,9 +261,10 @@ class Terminal:
         os.write(self.fd, data)
 
     def wait(self, needle, timeout=20, after=0):
+        pattern = re.compile(re.escape(needle)) if isinstance(needle, str) else needle
         end = time.monotonic() + timeout
         while time.monotonic() < end:
-            if not self.screen.synchronized and needle in self.screen.text() and (not after or len(self.text()) > after):
+            if not self.screen.synchronized and pattern.search(self.screen.text()) and (not after or len(self.text()) > after):
                 return
             self.read()
             if self.closed:
@@ -380,7 +381,7 @@ def main():
     parser.add_argument("--binary", required=True)
     parser.add_argument("--home", required=True)
     parser.add_argument("--service-name", required=True)
-    parser.add_argument("--mode", choices=["empty", "download-network", "installed", "install-local", "runtime", "rules", "logs", "runtime-settings"], required=True)
+    parser.add_argument("--mode", choices=["empty", "download-network", "installed", "install-local", "no-profile", "runtime", "rules", "logs", "runtime-settings"], required=True)
     parser.add_argument("--download-method", choices=["direct", "environment"], default="direct",
                         help="Explicit real download route for download-network mode; never retries another route")
     parser.add_argument("--mihomo-bin")
@@ -512,6 +513,11 @@ def main():
             terminal.wait("is installed and verified", after=mark)
             terminal.wait("start the core without a subscription")
             terminal.wait("Start core")
+            terminal.exit()
+        elif args.mode == "no-profile":
+            terminal.wait("Running")
+            terminal.key(b"2")
+            terminal.wait("The core returned no proxy groups for this mode.")
             terminal.exit()
         elif args.mode == "runtime-settings":
             if not all(value and 1024 <= value <= 65535 for value in
@@ -827,6 +833,11 @@ def main():
                     raise AssertionError("TUI selection was not confirmed by the real API")
 
             terminal.wait("Running")
+            # Exercise selection after the overview receives its first live traffic sample.
+            terminal.resize(160, 60)
+            terminal.wait(re.compile(r"Upload[ \t]+[0-9.]+ [KMGT]?i?B/s"))
+            terminal.resize(120, 40)
+            terminal.settle()
             # Locate the sidebar entry so mouse coverage follows its spacing.
             terminal.wait("Settings")
             proxies_row = next(row for row, line in enumerate(terminal.screen.text().splitlines(), 1)
@@ -834,22 +845,21 @@ def main():
             terminal.key(f"\x1b[<0;5;{proxies_row}M\x1b[<0;5;{proxies_row}m".encode("ascii"))
             terminal.wait("Proxy providers")
             terminal.wait("PROXY")
-            # The initial group snapshot may already expand PROXY. Open its
-            # header only once the actual group row and disclosure are visible.
-            terminal.wait("Select")
-            terminal.settle()
-            group_row = next(line for line in terminal.screen.text().splitlines() if "PROXY" in line and "Select" in line)
-            if "▸" in group_row:
-                terminal.click_text("PROXY")
+            # Enter the page from the sidebar, then open the focused group
+            # and move to its current member regardless of disclosure state.
+            terminal.wait("Enter Content")
+            terminal.key(b"\r")
+            terminal.wait("Enter Expand")
+            terminal.key(b"\x1b[C")
             terminal.wait_selected_proxy("DIRECT")
             terminal.wait("REJECT")
             terminal.settle()
             for name in ("DIRECT", "REJECT"):
-                unmeasured = re.compile(r"(?<!\S)" + re.escape(name) + r"[ \t]+—(?:[ \t]|$)")
+                unmeasured = re.compile(r"(?<!\w)" + re.escape(name) + r"[ \t]+—(?:[ \t]|$)")
                 if not any(unmeasured.search(line) for line in terminal.screen.text().splitlines()):
                     raise AssertionError("Missing unmeasured latency for " + name + "\n" + terminal.screen.text())
-            terminal.key(b"\x1b[B")  # DIRECT
             terminal.key(b"\x1b[C")  # REJECT in the second column
+            terminal.wait("Enter Select")
             terminal.key(b"\r")
             terminal.wait_selected_proxy("REJECT")
             if "Node selected" in terminal.screen.text():
@@ -861,6 +871,7 @@ def main():
             terminal.wait_selected_proxy("DIRECT")
             check_proxy_selection("DIRECT")
             terminal.key(b"\x1b[C")
+            terminal.wait("Enter Select")
             terminal.key(b"\r")
             terminal.wait_selected_proxy("REJECT")
             check_proxy_selection("REJECT")

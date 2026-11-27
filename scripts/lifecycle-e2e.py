@@ -44,6 +44,7 @@ def ready(previous_pid=None, selected=None):
 
 
 assert os.geteuid() != 0, 'privilege checks must run as the ordinary test user'
+lp('profile', 'apply', 'fixture')
 lp('start')
 initial = ready()
 assert initial['Service']['LingerKnown'] and initial['Service']['Linger']
@@ -71,7 +72,7 @@ lp('mode', 'direct')
 changed = ready(selected='REJECT')
 assert changed['Service']['PID'] == initial['Service']['PID'], 'dynamic mode restarted Mihomo'
 assert changed['Mode']['actual'] == changed['Mode']['desired'] == 'direct'
-lp('profile', 'deactivate')
+lp('profile', 'apply', 'fixture')
 lp('restart')
 changed = ready(selected='REJECT')
 assert changed['Mode']['actual'] == changed['Mode']['desired'] == 'direct'

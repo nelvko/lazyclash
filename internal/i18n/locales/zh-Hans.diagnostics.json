@@ -246,7 +246,7 @@
   "diagnostic.progress.deploy": "正在校验配置并提交暂存安装",
   "diagnostic.progress.installed": "Mihomo 二进制安装完成",
   "diagnostic.progress.service": "正在安装 systemd 用户服务…",
-  "diagnostic.progress.startHint": "Mihomo 已安装。启动服务后可查看 PROXY 节点。",
+  "diagnostic.progress.startHint": "Mihomo 已安装。",
   "diagnostic.progress.copyValidate": "正在复制并验证本地 Mihomo 二进制文件…",
   "diagnostic.progress.defaultConfig": "正在校验运行配置…",
   "diagnostic.warning.diskUnknown": "无法确定可用磁盘空间",

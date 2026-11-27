@@ -112,7 +112,7 @@ func (a *App) installFreshLocked(ctx context.Context, local string, progress fun
 	}
 	installed = true
 	if progress != nil {
-		progress("Mihomo installed. Start the service to view PROXY nodes.")
+		progress("Mihomo installed.")
 	}
 	return nil
 }

@@ -246,7 +246,7 @@
   "diagnostic.progress.deploy": "Validating configuration and committing the staged installation",
   "diagnostic.progress.installed": "Mihomo binary installation complete",
   "diagnostic.progress.service": "Installing systemd user service…",
-  "diagnostic.progress.startHint": "Mihomo installed. Start the service to view PROXY nodes.",
+  "diagnostic.progress.startHint": "Mihomo installed.",
   "diagnostic.progress.copyValidate": "Copying and validating local Mihomo binary…",
   "diagnostic.progress.defaultConfig": "Validating runtime configuration…",
   "diagnostic.warning.diskUnknown": "Free disk space could not be determined",
