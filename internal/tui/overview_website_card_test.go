@@ -352,14 +352,14 @@ func TestWebsiteDragMarkersPointIntoTheTargetWithoutMovingControls(t *testing.T)
 	}{
 		{"pressed name", 72, 2, 2, ""},
 		{"right toward GitHub", 52, 2, 3, "→"},
-		{"left toward YouTube", 52, 3, 2, "←"},
+		{"left toward Cloudflare", 52, 3, 2, "←"},
 		{"left toward clipped Chinese name", 52, 1, 0, "←"},
 		{"down to next row", 72, 1, 4, "↓"},
 		{"up to previous row", 72, 4, 1, "↑"},
-		{"down and left from YouTube to Google under gpt", 72, 2, 4, "↙"},
+		{"down and left from Cloudflare to Google under gpt", 72, 2, 4, "↙"},
 		{"down and right to Google", 72, 0, 4, "↘"},
 		{"up and left to clipped Chinese name", 72, 4, 0, "↖"},
-		{"up and right to YouTube", 72, 4, 2, "↗"},
+		{"up and right to Cloudflare", 72, 4, 2, "↗"},
 		{"up past a compact result", 10, 1, 0, "↑"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {

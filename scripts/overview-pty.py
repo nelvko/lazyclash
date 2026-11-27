@@ -416,7 +416,7 @@ def inspect_row_cards(preview, terminal, output, width, height, words, profile, 
             x, y = outline["x"], outline["y"]
             right, bottom = x + outline["width"], y + outline["height"]
             card_text = "\n".join("".join(row[x:right]) for row in terminal.screen.cells[y:bottom])
-            for label in ("GitHub", "Google", "YouTube", "⚡︎"):
+            for label in ("GitHub", "Google", "Cloudflare", "⚡︎"):
                 assert label in card_text, "website card omitted " + label
         if name == "ipInfo":
             if scenario in ("stopped", "unavailable"):
@@ -536,12 +536,13 @@ def exercise_websites(preview, terminal, output, words, report, profile, args):
     terminal.wait(title)
     terminal.settle()
     assert "⠿" not in terminal.screen.text(), terminal.screen.text()
-    for name in ("GitHub", "Google", "YouTube"):
+    for name in ("GitHub", "Google", "Cloudflare"):
         website_status_point(terminal, name, test)
-    sites = [text_point(terminal, name) for name in ("GitHub", "Google", "YouTube")]
+    sites = [text_point(terminal, name) for name in ("GitHub", "Google", "Cloudflare")]
     assert sites[0][1] == sites[1][1] == sites[2][1] and sites[0][0] < sites[1][0] < sites[2][0], sites
     heading, icon = text_point(terminal, title), text_point(terminal, test_all)
     assert icon[0] > sites[-1][0] and icon[1] == heading[1]
+    preview.capture(terminal, output, "website-defaults-160x45", args)
 
     return_navigation(terminal, words)
     terminal.key(b"\r")
@@ -563,45 +564,45 @@ def exercise_websites(preview, terminal, output, words, report, profile, args):
     terminal.key(b"\r")
     terminal.wait("173 ms")
     website_status_point(terminal, "Google", test)
-    website_status_point(terminal, "YouTube", test)
+    website_status_point(terminal, "Cloudflare", test)
     hover_website_grip(preview, terminal, "GitHub")
     hover_website_result(preview, terminal, "GitHub", "173 ms", profile, focused=True)
     terminal.click_text("173 ms")
     terminal.settle()
     assert words["dashboard.website.clickTest"] % "GitHub" in terminal.screen.text().splitlines()[-1]
     website_status_point(terminal, "Google", test)
-    website_status_point(terminal, "YouTube", test)
+    website_status_point(terminal, "Cloudflare", test)
 
     terminal.click_text(test_all)
     terminal.wait("212 ms")  # Google fixture returns HTTP 403 with a measured response time.
     website_status_point(terminal, "Google", "212 ms")
     terminal.wait(words["dashboard.website.timeout"])
-    hover_website_grip(preview, terminal, "YouTube")
-    hover_website_result(preview, terminal, "YouTube", words["dashboard.website.timeout"], profile, focused=False)
+    hover_website_grip(preview, terminal, "Cloudflare")
+    hover_website_result(preview, terminal, "Cloudflare", words["dashboard.website.timeout"], profile, focused=False)
     terminal.click_text(words["dashboard.website.timeout"])
     terminal.settle()
-    assert words["dashboard.website.clickTest"] % "YouTube" in terminal.screen.text().splitlines()[-1]
-    terminal.click_text("YouTube")
+    assert words["dashboard.website.clickTest"] % "Cloudflare" in terminal.screen.text().splitlines()[-1]
+    terminal.click_text("Cloudflare")
     terminal.settle()
-    website_status_point(terminal, "YouTube", words["dashboard.website.timeout"])
+    website_status_point(terminal, "Cloudflare", words["dashboard.website.timeout"])
     preview.capture(terminal, output, "website-tests-160x45", args)
     terminal.resize(80, 24)
     terminal.settle()
     focus_control(terminal, test_all)
     terminal.key(b"\r")
-    terminal.wait("YouTube")
+    terminal.wait("Cloudflare")
     terminal.wait(words["dashboard.website.timeout"])
     for _ in range(3):
         terminal.key(b"\t")
         terminal.settle()
-    assert words["dashboard.website.testSite"] % "YouTube" in terminal.screen.text().splitlines()[-1]
+    assert words["dashboard.website.testSite"] % "Cloudflare" in terminal.screen.text().splitlines()[-1]
     terminal.key(b"\r")
     terminal.wait(words["dashboard.website.timeout"])
     preview.capture(terminal, output, "website-tests-80x24", args)
     terminal.exit()
     calls = json.loads(report.read_text())
-    # Two batches include Google. Only GitHub and YouTube receive additional single-site tests.
-    assert (calls["website_github"], calls["website_google"], calls["website_youtube"]) == (4, 2, 4), calls
+    # Two batches include Google. Only GitHub and Cloudflare receive additional single-site tests.
+    assert (calls["website_github"], calls["website_google"], calls["website_cloudflare"]) == (4, 2, 4), calls
     print("PASS website tests: keyboard, latency, timeout, and all-sites actions; clicking a name leaves probes idle", flush=True)
 
 
@@ -728,9 +729,9 @@ def exercise_overview_drag(preview, terminal, output, words, names, args):
     click_point(terminal, website_status_point(terminal, "Status API", test))
     terminal.wait("91 ms")
 
-    # On the last drag GitHub starts immediately to the right of YouTube.
+    # On the last drag GitHub starts immediately to the right of Cloudflare.
     for source, target, direction in (("GitHub", "Status API", "↓"), ("Google", "Status API", "→"),
-                                      ("GitHub", "Status API", "↗"), ("GitHub", "YouTube", "←")):
+                                      ("GitHub", "Status API", "↗"), ("GitHub", "Cloudflare", "←")):
         start = text_point(terminal, source)
         end = website_status_point(terminal, target, "91 ms") if direction == "↗" else text_point(terminal, target)
         if direction == "←":
@@ -798,7 +799,7 @@ def prepare_custom_website(preview, terminal, output, words, report, args):
 
     add_custom_website(terminal, words, "status.example/health")
     add_custom_website(terminal, words, "tail.example")
-    names = ["GitHub", "Google", "YouTube", "status.example", "tail.example"]
+    names = ["GitHub", "Google", "Cloudflare", "status.example", "tail.example"]
     for address, name, save in (("status.example/discard", "Unsent", False),
                                 ("status.example/ready", "Status API", True)):
         choose_website_action(terminal, words, "status.example", "dashboard.website.edit", keyboard=save)
@@ -834,18 +835,18 @@ def prepare_custom_website(preview, terminal, output, words, report, args):
     exercise_overview_drag(preview, terminal, output, words, names, args)
     terminal.exit()
     calls = json.loads(report.read_text())
-    assert [calls[key] for key in ("website_github", "website_google", "website_youtube", "website_custom")] == [0, 0, 0, 1], calls
+    assert [calls[key] for key in ("website_github", "website_google", "website_cloudflare", "website_custom")] == [0, 0, 0, 1], calls
 
 
 def verify_custom_website(preview, terminal, output, words, report, args):
-    names = ["GitHub", "YouTube", "Status API", "Google"]
+    names = ["GitHub", "Cloudflare", "Status API", "Google"]
     terminal.wait("203.0.113.17")
     assert website_order(terminal, names) == names, terminal.screen.text()
     assert "tail.example" not in terminal.screen.text(), terminal.screen.text()
     test = words["dashboard.website.test"]
     click_point(terminal, website_status_point(terminal, "Status API", test))
     terminal.wait("91 ms")  # Only the saved https://status.example/ready returns this value.
-    for name in ("GitHub", "YouTube", "Google"):
+    for name in ("GitHub", "Cloudflare", "Google"):
         website_status_point(terminal, name, test)
     terminal.click_text("⚡︎")
     terminal.wait("173 ms")
@@ -877,7 +878,7 @@ def verify_custom_website(preview, terminal, output, words, report, args):
     assert website_order(terminal, names) == names, terminal.screen.text()
     terminal.exit()
     calls = json.loads(report.read_text())
-    assert [calls[key] for key in ("website_github", "website_google", "website_youtube", "website_custom")] == [1, 1, 1, 2], calls
+    assert [calls[key] for key in ("website_github", "website_google", "website_cloudflare", "website_custom")] == [1, 1, 1, 2], calls
     prefs = json.loads((output / "settings" / "preferences.json").read_text())
     assert [site["Name"] for site in prefs["Websites"]] == names, prefs
     print("PASS custom websites: add, right-click and keyboard menus, edit, sort across columns and rows, restart, test, remove", flush=True)
@@ -1105,7 +1106,7 @@ def exercise(preview, binary, output, language, profile, scenario, args):
             terminal.settle()
         terminal.exit()
         calls = json.loads(report.read_text())
-        assert calls["website_github"] == calls["website_google"] == calls["website_youtube"] == 0, calls
+        assert calls["website_github"] == calls["website_google"] == calls["website_cloudflare"] == 0, calls
         assert calls["service_changes"] == calls["modes"] == calls["selections"] == 0, calls
         assert calls["tun_changes"] == calls["terminal_changes"] == 0, calls
         assert calls["settings_reads"] == 2 and calls["settings_writes"] == 0, calls

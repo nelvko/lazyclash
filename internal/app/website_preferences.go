@@ -23,7 +23,7 @@ func DefaultWebsites() []Website {
 	return []Website{
 		{"GitHub", "https://github.com/"},
 		{"Google", "https://www.google.com/"},
-		{"YouTube", "https://www.youtube.com/"},
+		{"Cloudflare", "https://www.cloudflare.com/"},
 	}
 }
 

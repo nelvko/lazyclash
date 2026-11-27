@@ -36,7 +36,7 @@ func TestWebsiteTargetsUseConfiguredProxy(t *testing.T) {
 	svc.active = true
 	serveConfigReadback(a, fmt.Sprintf(`{"mixed-port":%d}`, settings.MixedPort))
 	sites := append(DefaultWebsites(), Website{URL: "example.net:8443/health"}, Website{URL: "http://example.net/health"})
-	wantRequests := []string{"CONNECT github.com:443", "CONNECT www.google.com:443", "CONNECT www.youtube.com:443", "CONNECT example.net:8443", "GET example.net"}
+	wantRequests := []string{"CONNECT github.com:443", "CONNECT www.google.com:443", "CONNECT www.cloudflare.com:443", "CONNECT example.net:8443", "GET example.net"}
 	for i, site := range sites {
 		if result, err := a.TestWebsite(t.Context(), site); err == nil || result != (WebsiteTestResult{}) {
 			t.Fatal("website test reported a measurement after proxy rejection")

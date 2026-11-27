@@ -146,12 +146,12 @@ func TestOverviewWebsiteDragDropsOnNameOrResultWithoutTesting(t *testing.T) {
 		{"up-left onto name", 4, 0, overviewWebsiteDragID, "↖"},
 		{"up-right onto result", 3, 1, websiteActionID, "↗"},
 		{"down-right onto name", 0, 4, overviewWebsiteDragID, "↘"},
-		{"YouTube down-left onto Google", 2, 4, websiteActionID, "↙"},
+		{"Cloudflare down-left onto Google", 2, 4, websiteActionID, "↙"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			m, b := overviewWebsiteDragModel(t, 6)
 			original := slices.Clone(m.websites)
-			// Place Google diagonally below and to the left of YouTube.
+			// Place Google diagonally below and to the left of Cloudflare.
 			original[1], original[4] = original[4], original[1]
 			m.setWebsites(original)
 			source, target := original[tc.from], original[tc.to]

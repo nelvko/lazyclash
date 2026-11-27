@@ -17,7 +17,7 @@ func TestOverviewWebsiteSingleAndBatch(t *testing.T) {
 	calls := make(map[string]int)
 	b := &fakeBackend{testWebsite: func(_ context.Context, site app.Website) (app.WebsiteTestResult, error) {
 		calls[site.Name]++
-		if site.Name == "YouTube" {
+		if site.Name == "Cloudflare" {
 			return app.WebsiteTestResult{}, context.DeadlineExceeded
 		}
 		return app.WebsiteTestResult{StatusCode: 200, Duration: 73 * time.Millisecond}, nil
@@ -35,8 +35,8 @@ func TestOverviewWebsiteSingleAndBatch(t *testing.T) {
 		t.Fatalf("batch issued %d new requests, want 2", len(cmds))
 	}
 	m.acceptWebsiteTest(cmds[1]().(websiteTestMsg))
-	yt := m.websiteTests.rows[app.DefaultWebsites()[2].URL]
-	if yt.pending() || !errors.Is(yt.err, context.DeadlineExceeded) ||
+	cloudflare := m.websiteTests.rows[app.DefaultWebsites()[2].URL]
+	if cloudflare.pending() || !errors.Is(cloudflare.err, context.DeadlineExceeded) ||
 		!m.websiteTests.rows[app.DefaultWebsites()[0].URL].pending() || m.activate("website.all") != nil {
 		t.Fatal("a timeout should update just its own row while the batch is running")
 	}
@@ -52,7 +52,7 @@ func TestOverviewWebsiteSingleAndBatch(t *testing.T) {
 		if calls[site.Name] != 1 || row.pending() {
 			t.Fatalf("%s row after batch = %+v, calls = %d", site, row, calls[site.Name])
 		}
-		if site.Name != "YouTube" && (row.err != nil || row.result.StatusCode != 200 || row.result.Duration != 73*time.Millisecond) {
+		if site.Name != "Cloudflare" && (row.err != nil || row.result.StatusCode != 200 || row.result.Duration != 73*time.Millisecond) {
 			t.Fatalf("%s result = %+v", site, row)
 		}
 	}

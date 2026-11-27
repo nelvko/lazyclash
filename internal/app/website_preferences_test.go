@@ -15,7 +15,7 @@ func TestWebsitePreferencesPersistDefaultsEditsAndAnEmptyList(t *testing.T) {
 	path := filepath.Join(a.Home, "preferences.json")
 	write(t, path, []byte(`{"Language":"zh-Hans"}`))
 	p, err := a.LoadPreferences(t.Context())
-	defaults := []Website{{"GitHub", "https://github.com/"}, {"Google", "https://www.google.com/"}, {"YouTube", "https://www.youtube.com/"}}
+	defaults := []Website{{"GitHub", "https://github.com/"}, {"Google", "https://www.google.com/"}, {"Cloudflare", "https://www.cloudflare.com/"}}
 	if err != nil || !slices.Equal(p.WebsitesForTesting(), defaults) {
 		t.Fatal(p.WebsitesForTesting(), err)
 	}
@@ -57,6 +57,16 @@ func TestWebsitePreferencesPersistDefaultsEditsAndAnEmptyList(t *testing.T) {
 	}
 	if current, err := a.RemoveWebsite(t.Context(), want); err == nil || current == nil || len(current) > 0 {
 		t.Fatal("stale removal did not return an explicitly empty list", current, err)
+	}
+}
+
+func TestWebsitePreferencesKeepSavedSitesAndOrder(t *testing.T) {
+	a, _ := testApp(t)
+	write(t, filepath.Join(a.Home, "preferences.json"), []byte(`{"Websites":[{"Name":"YouTube","URL":"https://www.youtube.com/"},{"Name":"GitHub","URL":"https://github.com/"}]}`))
+	prefs, err := a.LoadPreferences(t.Context())
+	want := []Website{{"YouTube", "https://www.youtube.com/"}, {"GitHub", "https://github.com/"}}
+	if err != nil || !slices.Equal(prefs.WebsitesForTesting(), want) {
+		t.Fatalf("saved websites = %v, want %v, err = %v", prefs.WebsitesForTesting(), want, err)
 	}
 }
 
