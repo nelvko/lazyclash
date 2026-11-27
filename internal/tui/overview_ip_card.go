@@ -39,8 +39,8 @@ func overviewIPCard(o dashboardOptions, width int) dashboardBlock {
 			columns = 2
 		}
 		lines = overviewFieldGrid(o, fields, inner, columns, false)
-		if age := profileAge(state.checkedAt, o.Now, o.Locale); age != "" && !state.failed {
-			updated = tr("profiles.updated_time", age)
+		if !state.failed {
+			updated = profileAge(state.checkedAt, o.Now, o.Locale)
 		}
 	case state.loading:
 		lines = []string{themed(tr("dashboard.ip.loading"), muted, panel, o.Dim)}
@@ -68,7 +68,7 @@ func overviewIPHeading(o dashboardOptions, width int, updated string, refresh ov
 		return overviewLabelSlot(o, width, title, face, id, true)
 	}
 	stamp := themed(updated, muted, panel, o.Dim)
-	right := stamp + themed(" │", divider, panel, o.Dim) + face
+	right := stamp + face
 	if ansi.StringWidth(right) > width {
 		b := overviewLabelSlot(o, width, title, face, id, true)
 		b.append(overviewTextBlock([]string{stamp}, width))

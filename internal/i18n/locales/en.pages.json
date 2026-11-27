@@ -74,7 +74,6 @@
   "profiles.updated_minutes": "%dm ago",
   "profiles.updated_hours": "%dh ago",
   "profiles.updated_days": "%dd ago",
-  "profiles.updated_time": "Updated %s",
   "profiles.remaining": "Remaining / total",
   "profiles.expires": "Expiry date",
   "profiles.expired": "Expired",

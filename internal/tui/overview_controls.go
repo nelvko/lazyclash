@@ -42,6 +42,7 @@ func overviewButton(o dashboardOptions, button overviewControlButton, kind butto
 	}
 	options.Disabled, options.Selected = !button.enabled, button.selected
 	options.Selectable = button.selectable()
+	options.Compact = kind == buttonIcon
 	return renderButton(button.label, options)
 }
 

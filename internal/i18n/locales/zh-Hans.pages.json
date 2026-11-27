@@ -74,7 +74,6 @@
   "profiles.updated_minutes": "%d 分钟前",
   "profiles.updated_hours": "%d 小时前",
   "profiles.updated_days": "%d 天前",
-  "profiles.updated_time": "%s更新",
   "profiles.remaining": "剩余流量 / 总量",
   "profiles.expires": "到期日期",
   "profiles.expired": "已过期",

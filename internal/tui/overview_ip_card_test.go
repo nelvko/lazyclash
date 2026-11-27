@@ -45,7 +45,7 @@ func TestOverviewIPHeaderShowsSuccessfulAgeOutsideRefreshTarget(t *testing.T) {
 			Installed: true, MixedPort: 7890, Service: service.Status{Active: true, State: "active"},
 		}}
 		o.ipInfo = overviewIPState{info: app.IPInfo{IP: "198.51.100.1"}, checkedAt: o.Now.Add(-3 * time.Minute)}
-		updated := o.Locale.T("profiles.updated_time", o.Locale.T("profiles.updated_minutes", 3))
+		updated := o.Locale.T("profiles.updated_minutes", 3)
 		for _, width := range []int{66, 44, 30, 18} {
 			card := overviewIPCard(o, width)
 			view := strings.Join(card.lines, "\n")
@@ -58,14 +58,18 @@ func TestOverviewIPHeaderShowsSuccessfulAgeOutsideRefreshTarget(t *testing.T) {
 			if hit.ID != "ip.refresh" || action != "↻" || hit.X+hit.W != width-2 {
 				t.Fatalf("%s, width %d: incorrect refresh hit area %q at %+v", lang, width, action, hit)
 			}
-			roomOnTitleRow := width >= 66 || lang == i18n.Chinese && width >= 44
-			if roomOnTitleRow && (!strings.Contains(ansi.Strip(card.lines[1]), updated) || hit.Y != 1) {
-				t.Fatalf("timestamp and refresh should fit together on the title row at width %d", width)
+			line := ansi.Strip(card.lines[hit.Y])
+			title := o.Locale.T("dashboard.overview.ipInfo")
+			if width >= 44 && (hit.Y != 1 || !strings.HasPrefix(strings.TrimSpace(line), title)) {
+				t.Fatalf("expected the time and icon beside the title at width %d: %q", width, line)
+			}
+			if group := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), title)); group != updated+"  ↻" {
+				t.Fatalf("%s, width %d: unexpected time and refresh icon %q", lang, width, group)
 			}
 		}
 		o.ipInfo.checkedAt, o.ipInfo.failed = o.Now, true
 		failure := overviewIPCard(o, 66)
-		if strings.Contains(ansi.Strip(strings.Join(failure.lines, "\n")), o.Locale.T("profiles.updated_time", o.Locale.T("profiles.just_updated"))) {
+		if strings.Contains(ansi.Strip(strings.Join(failure.lines, "\n")), o.Locale.T("profiles.just_updated")) {
 			t.Fatal("a failed lookup claimed a successful update")
 		}
 	}

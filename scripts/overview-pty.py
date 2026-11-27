@@ -162,7 +162,7 @@ def check_profile(preview, terminal, profile):
 
 def assert_borderless(terminal):
     assert not any(value in terminal.screen.text() for value in "┌┐└┘"), "inactive card retained an outer border"
-    # The environment card retains an internal divider.
+    # Allow a divider inside the card content.
     for row in terminal.screen.cells:
         assert row.count("│") <= 1, "inactive card retained outer sides"
 
@@ -450,8 +450,8 @@ def assert_fixture_ip(terminal, words):
         assert value in screen, "missing IP information: " + value
     title_y = text_point(terminal, words["dashboard.overview.ipInfo"])[1]
     age = re.escape(words["profiles.updated_minutes"]).replace("%d", r"\d+")
-    stamp = re.escape(words["profiles.updated_time"]).replace("%s", "(?:" + re.escape(words["profiles.just_updated"]) + "|" + age + ")")
-    assert any(re.search(stamp, row) and "↻" in row
+    stamp = rf"(?:{re.escape(words['profiles.just_updated'])}|{age})  ↻"
+    assert any(re.search(stamp, row)
                for row in screen.splitlines()[title_y:title_y+2]), \
         "IP heading omitted its update time or refresh action"
 
