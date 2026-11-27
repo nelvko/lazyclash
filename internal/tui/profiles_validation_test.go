@@ -45,7 +45,7 @@ func TestProfileAddressValidationStaysWithEditableInput(t *testing.T) {
 		for _, source := range []string{"1243", "ftp://example.com/sub", "https://", "https://example.com/%zz"} {
 			t.Run(language+"/"+source, func(t *testing.T) {
 				calls := 0
-				m := profileInteractionsModel(&fakeBackend{addSubscription: func(context.Context, string, string) error {
+				m := profileInteractionsModel(&fakeBackend{add: func(context.Context, string, string) error {
 					calls++
 					return nil
 				}}, 120, 32)

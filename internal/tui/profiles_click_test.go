@@ -46,7 +46,7 @@ func profileClickModel(t *testing.T, installed, active, current, pending bool) (
 		Profiles: []string{id},
 		ProfileDetails: []app.ProfileInfo{
 			{ID: "default", Name: "default", Validated: installed},
-			{ID: id, Name: "Office display name", Validated: installed, Pending: pending, Refreshable: true},
+			{ID: id, Name: "Office display name", Validated: installed, Pending: pending},
 		},
 	}}}
 	m := profileInteractionsModel(b.fakeBackend, 160, 40)

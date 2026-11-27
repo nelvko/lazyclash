@@ -77,7 +77,6 @@
   "diagnostic.profile.missing": "配置不存在",
   "diagnostic.profile.emptyName": "配置名称不能为空",
   "diagnostic.profile.chooseUpdate": "请选择已保存的配置进行更新",
-  "diagnostic.profile.noAddress": "此配置未保存来源地址；请设置 URL 或导入新配置",
   "diagnostic.profile.updateFailures": "%d 个配置无法更新：%w",
   "diagnostic.profile.namedError": "%s：%w",
   "diagnostic.profile.unsupportedCore": "此配置需要尚不支持的内核",

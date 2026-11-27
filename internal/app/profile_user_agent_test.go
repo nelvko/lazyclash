@@ -33,7 +33,7 @@ func TestSubscriptionUserAgentFollowsItsProfileThroughRefreshAndSourceChanges(t 
 	defer server.Close()
 	a.HTTP = server.Client()
 	ctx := t.Context()
-	if err := a.CreateProfile(ctx, ProfileDraft{Name: "custom", Address: server.URL + "/custom", UserAgent: "  " + agent + " ", RememberSource: true}); err != nil {
+	if err := a.CreateProfile(ctx, ProfileDraft{Name: "custom", Address: server.URL + "/custom", UserAgent: "  " + agent + " "}); err != nil {
 		t.Fatal(err)
 	}
 	if err := a.AddSubscription(ctx, "standard", server.URL+"/default"); err != nil {
@@ -56,12 +56,6 @@ func TestSubscriptionUserAgentFollowsItsProfileThroughRefreshAndSourceChanges(t 
 	if err := a.UpdateProfileAddress(ctx, "custom", server.URL+"/default"); err != nil {
 		t.Fatal(err)
 	}
-	if err := a.CreateProfile(ctx, ProfileDraft{Name: "copy", Address: server.URL + "/custom", UserAgent: agent}); err != nil {
-		t.Fatal(err)
-	}
-	if settings, err := a.GetProfileSettings(ctx, "copy"); err != nil || settings.Address != "" || settings.UserAgent != "" {
-		t.Fatal("one-time import retained request settings", err)
-	}
 }
 
 func TestChangingSubscriptionUserAgentValidatesTheResponseBeforeSaving(t *testing.T) {
@@ -82,7 +76,7 @@ func TestChangingSubscriptionUserAgentValidatesTheResponseBeforeSaving(t *testin
 	defer server.Close()
 	a.HTTP = server.Client()
 	ctx := t.Context()
-	draft := ProfileDraft{Name: "work", Address: server.URL, UserAgent: "private-token\r\n", RememberSource: true}
+	draft := ProfileDraft{Name: "work", Address: server.URL, UserAgent: "private-token\r\n"}
 	if err := a.CreateProfile(ctx, draft); err == nil || strings.Contains(err.Error(), "private-token") || requests.Load() != 0 {
 		t.Fatal("malformed User-Agent was sent or exposed", err)
 	}

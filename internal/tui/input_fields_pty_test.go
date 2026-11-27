@@ -68,10 +68,9 @@ func inputFieldsScenario(t *testing.T, scenario, language string) (Model, string
 		Version: "v1.19.33", Profiles: []string{"input-fixture"}, ProfileDetails: profileFixtures("input-fixture"),
 		Service: service.Status{State: "inactive"}, Capabilities: app.Capabilities{Scope: "user", Runtime: app.Capability{Supported: true}}},
 		control: write, refresh: write, deleteProfile: write,
-		add:             func(context.Context, string, string) error { writes.Add(1); return nil },
-		addSubscription: func(context.Context, string, string) error { writes.Add(1); return nil },
-		createProfile:   func(context.Context, app.ProfileDraft) error { writes.Add(1); return nil },
-		save:            func(context.Context, downloadnet.Config) error { writes.Add(1); return nil },
+		add:           func(context.Context, string, string) error { writes.Add(1); return nil },
+		createProfile: func(context.Context, app.ProfileDraft) error { writes.Add(1); return nil },
+		save:          func(context.Context, downloadnet.Config) error { writes.Add(1); return nil },
 		applySettings: func(context.Context, app.RuntimeSettingsPlan) (app.RuntimeSettingsResult, error) {
 			writes.Add(1)
 			return app.RuntimeSettingsResult{}, nil

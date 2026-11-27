@@ -16,7 +16,7 @@ Debian/arm64 与真实 Mihomo v1.19.33 已验证未选中订阅的校验不会�
 
 概览 PTY 使用示例地址和组织名称。160×45 和 120×32 下，「IP 信息」与左侧「运行环境」的宽度、高度和顶边一致。80×24 下，两卡按上下顺序获得键盘焦点。中文真彩和英文无色终端中，首次自动查询后按 Enter 刷新，模拟服务返回失败时焦点保留在「刷新」，再次按 Enter 后显示新的示例地址。内核停止场景记录到零次 IP 查询。专用 Debian 12/arm64 虚拟机通过全包测试。另用启用代理鉴权的临时 Mihomo 实例实际查询 `ipwho.is`，成功读回 IP、国家、地区、城市、服务商、组织、ASN 和时区。[160×45 双列截图](../.test-artifacts/ip-information/screens/overview-160x45-cards.png) · [80×32 单列截图](../.test-artifacts/ip-information/screens/overview-80x32-cards.png)
 
-## 首版 CLI、Shell 集成与一次性导入（2026-11-27）
+## 首版 CLI 与 Shell 集成（2026-11-27）
 
 Linux/arm64 使用真实 Mihomo 和 systemd。普通终端以裸命令打开 TUI，重定向输入或输出时返回 2。`status` 默认输出本地化摘要，`status --json` 仍可由脚本读取。真实 PTY 中拒绝升级返回 1 并保留 v1.19.33，确认后升级至 v1.19.34，原本停止的服务保持停止，再次升级返回 0。进程收到 SIGINT、SIGTERM 后完成清理，分别返回 130、143。[交互升级结果](../.test-artifacts/cli-release/upgrade-terminal.log)
 
@@ -25,8 +25,6 @@ Linux/arm64 使用真实 Mihomo 和 systemd。普通终端以裸命令打开 TUI
 发行包在 Bash、Zsh、Fish 的七种启动配置中加载成功。三个 Shell 都验证了双会话隔离、首次激活、变更端口、关闭时精确恢复原变量，以及在已接管的终端卸载后移除初始化引用。[启动测试](../.test-artifacts/cli-release/shell-nf9j8gtx/startup/summary.json) · [卸载结果](../.test-artifacts/cli-release/shell-nf9j8gtx/active-uninstall.json)
 
 双作用域验收使用隔离 VM 和实际发行二进制。普通用户以环境变量隔离测试实例，root 使用发行默认实例。测试前确认数据、unit 和账号不存在。另一个仅用于竞争场景的测试构建使用独立默认服务名。验收覆盖资源归属、内核异常退出后的重启、TUN 与 DNS、配置损坏时的停止及资源释放。root TUI 在 120×36 和 80×24 下均默认取消开启主机 TUN。[完整作用域验收](../.test-artifacts/service-scopes-e2e.log) · [TUN 确认测试](../.test-artifacts/service-scopes-ui-e2e.log)
-
-订阅页的快捷导入和新建表单在真实中文 PTY 中验证。一次性导入保留配置内容、名称及描述，不保存来源或 User-Agent。下一次导入仍默认保存来源。[120×32 快捷导入](../.test-artifacts/profile-import-once/toolbar-120x32.png) · [80×24 新建](../.test-artifacts/profile-import-once/new-80x24.png) · [40×16 新建](../.test-artifacts/profile-import-once/new-40x16.png)
 
 ## 概览内核卡的管理与启停（2026-11-27）
 

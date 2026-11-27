@@ -77,7 +77,6 @@
   "diagnostic.profile.missing": "profile does not exist",
   "diagnostic.profile.emptyName": "profile name must not be empty",
   "diagnostic.profile.chooseUpdate": "choose a saved profile to update",
-  "diagnostic.profile.noAddress": "this profile has no remembered address; set a URL or import a new configuration",
   "diagnostic.profile.updateFailures": "%d profiles could not be updated: %w",
   "diagnostic.profile.namedError": "%s: %w",
   "diagnostic.profile.unsupportedCore": "this profile requires an unsupported core",

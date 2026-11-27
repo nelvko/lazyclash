@@ -268,7 +268,7 @@ func TestProfileURLInputOwnsTextPasteAndFocusKeys(t *testing.T) {
 
 func TestProfileURLImportUsesAutomaticNameWithoutModalOrApply(t *testing.T) {
 	addedName, addedURL := "not called", ""
-	b := &fakeBackend{addSubscription: func(_ context.Context, name, source string) error {
+	b := &fakeBackend{add: func(_ context.Context, name, source string) error {
 		addedName, addedURL = name, source
 		return nil
 	}}
@@ -289,7 +289,7 @@ func TestProfileURLImportUsesAutomaticNameWithoutModalOrApply(t *testing.T) {
 
 func TestProfileFailedImportRetainsURLForRetry(t *testing.T) {
 	attempts := 0
-	b := &fakeBackend{addSubscription: func(context.Context, string, string) error {
+	b := &fakeBackend{add: func(context.Context, string, string) error {
 		attempts++
 		if attempts == 1 {
 			return errors.New("subscription download failed")
@@ -325,7 +325,7 @@ func TestProfileRefreshControlsKeepTheCurrentSelection(t *testing.T) {
 	refreshes, all := 0, 0
 	b := &fakeBackend{
 		snapshot: app.Snapshot{Installed: true, Applied: "default", Profiles: []string{"work"},
-			ProfileDetails: []app.ProfileInfo{{ID: "default", Name: "default", Validated: true}, {ID: "work", Name: "work", Refreshable: true, Validated: true}}},
+			ProfileDetails: []app.ProfileInfo{{ID: "default", Name: "default", Validated: true}, {ID: "work", Name: "work", Validated: true}}},
 		refresh: func(_ context.Context, name string) error { refreshed = name; refreshes++; return nil },
 		refreshAllProfiles: func(context.Context) (app.ProfileRefreshSummary, error) {
 			all++
@@ -396,7 +396,7 @@ func TestSelectedProfileWarnsOnlyOnRuntimeErrors(t *testing.T) {
 }
 
 func TestProfileRefreshBatchShowsCommittedCountAndFailedDetails(t *testing.T) {
-	b := &fakeBackend{snapshot: app.Snapshot{Installed: true, Profiles: []string{"work"}, ProfileDetails: []app.ProfileInfo{{ID: "work", Name: "Work", Refreshable: true}}},
+	b := &fakeBackend{snapshot: app.Snapshot{Installed: true, Profiles: []string{"work"}, ProfileDetails: []app.ProfileInfo{{ID: "work", Name: "Work"}}},
 		refreshAllProfiles: func(context.Context) (app.ProfileRefreshSummary, error) {
 			return app.ProfileRefreshSummary{Updated: 2, Failed: 1}, errors.New("Work: download unavailable")
 		}}
@@ -423,7 +423,7 @@ func TestProfileRefreshCancellationOnlySilencesUncommittedWork(t *testing.T) {
 		{"recovery failed", "error", errors.Join(context.Canceled, errors.New("service recovery failed")), 1},
 	} {
 		t.Run(tt.label, func(t *testing.T) {
-			b := &fakeBackend{snapshot: app.Snapshot{Installed: true, Profiles: []string{"work"}, ProfileDetails: []app.ProfileInfo{{ID: "work", Name: "Work", Refreshable: true}}},
+			b := &fakeBackend{snapshot: app.Snapshot{Installed: true, Profiles: []string{"work"}, ProfileDetails: []app.ProfileInfo{{ID: "work", Name: "Work"}}},
 				refreshAllProfiles: func(context.Context) (app.ProfileRefreshSummary, error) {
 					return app.ProfileRefreshSummary{Failed: tt.failed}, tt.err
 				}}

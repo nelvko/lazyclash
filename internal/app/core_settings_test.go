@@ -51,7 +51,7 @@ rules: ['MATCH,DIRECT']
 `)
 	write(t, first, source)
 	write(t, second, []byte("ipv6: false\nlog-level: info\nrules: ['MATCH,REJECT']\n"))
-	if err := a.Add(ctx, "one", first); err != nil {
+	if err := a.AddSubscription(ctx, "one", first); err != nil {
 		t.Fatal(err)
 	}
 	if err := a.AddSubscription(ctx, "two", second); err != nil {
@@ -167,7 +167,7 @@ func TestCoreSettingEditsDeployedConfigWithMissingProfileSource(t *testing.T) {
 	a, _ := installedApp(t)
 	source := filepath.Join(t.TempDir(), "source.yaml")
 	write(t, source, []byte("keep-alive-idle: 30\nkeep-alive-interval: 10\nrules: ['MATCH,DIRECT']\n"))
-	if err := a.Add(t.Context(), "source", source); err != nil {
+	if err := a.AddSubscription(t.Context(), "source", source); err != nil {
 		t.Fatal(err)
 	}
 	if err := a.Apply(t.Context(), "source"); err != nil {

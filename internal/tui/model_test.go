@@ -38,7 +38,6 @@ type fakeBackend struct {
 	install             func(context.Context, app.InstallPlan, downloadnet.Config, func(mihomo.Progress)) (app.InstallResult, error)
 	save                func(context.Context, downloadnet.Config) error
 	add                 func(context.Context, string, string) error
-	addSubscription     func(context.Context, string, string) error
 	createProfile       func(context.Context, app.ProfileDraft) error
 	getProfileSettings  func(context.Context, string) (app.ProfileSettings, error)
 	saveProfileSettings func(context.Context, app.ProfileSettings) error
@@ -223,9 +222,7 @@ func (f *fakeBackend) ImportProfile(ctx context.Context, draft app.ProfileDraft)
 	switch {
 	case f.createProfile != nil:
 		return name, f.createProfile(ctx, draft)
-	case draft.RememberSource && f.addSubscription != nil:
-		return name, f.addSubscription(ctx, draft.Name, draft.Address)
-	case !draft.RememberSource && f.add != nil:
+	case f.add != nil:
 		return name, f.add(ctx, draft.Name, draft.Address)
 	default:
 		return name, ctx.Err()

@@ -30,7 +30,7 @@ func (m *Model) profileGridKey(k tea.KeyPressMsg) bool {
 	if !ok {
 		if key == "down" || key == "j" {
 			switch m.focus {
-			case "profiles.url", "profiles.add", "profiles.create", "profiles.import-once", "add", "profiles.update-all":
+			case "profiles.url", "profiles.add", "profiles.create", "add", "profiles.update-all":
 				card := layout.card(0)
 				m.focus = card.ID
 				m.revealBodyTarget(card)

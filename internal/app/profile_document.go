@@ -85,8 +85,8 @@ func (a *App) GetProfileDocument(ctx context.Context, id string, kind ProfileDoc
 		doc = ProfileDocument{ID: id, Kind: kind, reviewed: documentToken(id, kind, entry)}
 		switch kind {
 		case ProfileConfiguration:
-			doc.Remote = entry.Address != "" && !filepath.IsAbs(entry.Address)
-			if filepath.IsAbs(entry.Address) {
+			doc.Remote = configuration.IsRemoteSource(entry.Address)
+			if !doc.Remote {
 				if err := a.editableOriginal(entry.Address); err != nil {
 					return err
 				}

@@ -87,7 +87,7 @@ func profileWarning(info app.ProfileInfo, snapshot *app.Snapshot, locale i18n.Lo
 	switch {
 	case info.ID == snapshot.Applied && (snapshot.ServiceError != "" || (snapshot.Service.Active && snapshot.APIError != "")):
 		return locale.T("profiles.selected_unavailable")
-	case info.Refreshable && (info.Pending || (info.ID == snapshot.Applied && snapshot.ProfilePending)):
+	case info.Pending || (info.ID == snapshot.Applied && snapshot.ProfilePending):
 		return locale.T("profiles.refresh_failed")
 	case !info.Validated:
 		return locale.T("profiles.validation_pending")
@@ -114,12 +114,8 @@ func profileAge(updated, now time.Time, locale i18n.Localizer) string {
 }
 
 func profileOrigin(info app.ProfileInfo, locale i18n.Localizer) string {
-	switch info.Kind {
-	case "local":
+	if info.Kind == "local" {
 		return locale.T("profiles.create_local")
-	case "imported":
-		return locale.T("profiles.imported_origin")
-	default:
-		return strings.TrimSpace(clean(info.Origin))
 	}
+	return strings.TrimSpace(clean(info.Origin))
 }

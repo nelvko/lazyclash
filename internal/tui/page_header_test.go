@@ -29,7 +29,6 @@ func (b *headerProviderBackend) UpdateProxyProvider(context.Context, string) err
 
 func headerModel(page string, width, height int) Model {
 	profiles := profileFixtures("default", "alpha", "beta", "gamma", "delta", "epsilon")
-	profiles[1].Refreshable = true
 	m := ready(&fakeBackend{snapshot: app.Snapshot{
 		Installed: true, Applied: "default", Profiles: []string{"alpha", "beta", "gamma", "delta", "epsilon"},
 		ProfileDetails: profiles,
@@ -180,16 +179,17 @@ func TestProfilesHeaderUpdateUsesSharedUseCaseWithoutApplying(t *testing.T) {
 	}
 }
 
-func TestProfilesHeaderUpdateIsDisabledWithoutRefreshableProfiles(t *testing.T) {
+func TestProfilesHeaderUpdateIsDisabledWithoutProfiles(t *testing.T) {
 	m := headerModel("profiles", 120, 32)
-	m.snapshot.ProfileDetails[1].Refreshable = false
+	m.snapshot.Profiles = nil
+	m.snapshot.ProfileDetails = nil
 	m.layout()
 	if !strings.Contains(headerText(m), "Update all") {
 		t.Fatal("disabled Update all disappeared from the page header")
 	}
 	for _, hit := range m.targets {
 		if hit.ID == "profiles.update-all" {
-			t.Fatal("Update all remained actionable without a refreshable profile")
+			t.Fatal("Update all remained actionable with an empty library")
 		}
 	}
 }

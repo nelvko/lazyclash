@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
@@ -48,34 +47,19 @@ func finishProfileJob(t *testing.T, m Model, cmd tea.Cmd) Model {
 	return m
 }
 
-func submitImport(t *testing.T, m Model, source string) (Model, tea.Cmd) {
-	t.Helper()
-	if m.form != "source" || m.input.EchoMode != textinput.EchoNormal {
-		t.Fatal("source input is not editable as visible text")
-	}
-	m.input.SetValue(source)
-	m.layout()
-	if !strings.Contains(ansi.Strip(m.View().Content), source) {
-		t.Fatal("source address is not visible in the import dialog")
-	}
-	return update(m, special(tea.KeyEnter))
-}
-
 func TestProfileSourceInputScrollsLongPathOnOneLine(t *testing.T) {
-	for _, action := range []string{"add", "subscription.add"} {
-		for _, width := range []int{160, 80, 60, 40} {
-			m := ready(&fakeBackend{})
-			m.width, m.height = width, 24
-			m.page = "profiles"
-			m.activate(action)
-			m.input.SetValue("/tmp/" + strings.Repeat("long-directory/", 20) + "config-visible.yaml")
-			m.layout()
-			view := ansi.Strip(m.View().Content)
-			if !strings.Contains(view, "config-visible.yaml") {
-				t.Fatalf("%s at width %d wrapped or hid the path tail:\n%s", action, width, view)
-			}
-			assertCanvas(t, m.View().Content, width, 24)
+	for _, width := range []int{160, 80, 60, 40} {
+		m := ready(&fakeBackend{})
+		m.width, m.height = width, 24
+		m.page = "profiles"
+		m.activate("add")
+		m.input.SetValue("/tmp/" + strings.Repeat("long-directory/", 20) + "config-visible.yaml")
+		m.layout()
+		view := ansi.Strip(m.View().Content)
+		if !strings.Contains(view, "config-visible.yaml") {
+			t.Fatalf("width %d wrapped or hid the path tail:\n%s", width, view)
 		}
+		assertCanvas(t, m.View().Content, width, 24)
 	}
 }
 
@@ -103,7 +87,7 @@ func TestProfileCreateFormSubmitsRemoteMetadataAndClosesOnSuccess(t *testing.T) 
 	m.profileCreate.source.Focus()
 	m, cmd := update(m, special(tea.KeyEnter))
 	m = finishProfileJob(t, m, cmd)
-	if got.Name != "Travel" || got.Description != "personal route" || got.Address != "https://example.com/profile.yaml" || !got.RememberSource {
+	if got.Name != "Travel" || got.Description != "personal route" || got.Address != "https://example.com/profile.yaml" {
 		t.Fatalf("unexpected profile draft: %+v", got)
 	}
 	if m.form != "" {
@@ -111,7 +95,7 @@ func TestProfileCreateFormSubmitsRemoteMetadataAndClosesOnSuccess(t *testing.T) 
 	}
 }
 
-func TestProfileToolbarImportOncePreservesFailedDraftAndResetsAfterSuccess(t *testing.T) {
+func TestProfileToolbarKeepsSourceForRetryAndClearsItAfterSuccess(t *testing.T) {
 	const source = "/tmp/example.yaml"
 	var drafts []app.ProfileDraft
 	m := profileInteractionsModel(&fakeBackend{createProfile: func(_ context.Context, draft app.ProfileDraft) error {
@@ -123,26 +107,18 @@ func TestProfileToolbarImportOncePreservesFailedDraftAndResetsAfterSuccess(t *te
 	}}, 80, 24)
 	m.activate("profiles.url")
 	m, _ = update(m, tea.PasteMsg{Content: source})
-	m, _ = click(m, findTarget(t, m, "profiles.import-once"))
-	if !strings.Contains(ansi.Strip(m.View().Content), "[x] Import once") {
-		t.Fatal("click did not select a one-time import")
-	}
 	for attempt := 1; attempt <= 2; attempt++ {
 		var cmd tea.Cmd
 		m, cmd = click(m, findTarget(t, m, "profiles.add"))
 		m = finishProfileJob(t, m, cmd)
-		if attempt == 1 && (!m.profilesUI.importOnce || m.profilesUI.url.Value() != source) {
-			t.Fatal("failed import lost the source or changed the retry to a remembered import")
+		if attempt == 1 && m.profilesUI.url.Value() != source {
+			t.Fatal("failed import lost the source")
 		}
 	}
-	if m.profilesUI.importOnce || m.profilesUI.url.Value() != "" || hasAction(m.targets, "profiles.import-once") {
-		t.Fatal("successful import left a stale source or one-time option")
+	if m.profilesUI.url.Value() != "" {
+		t.Fatal("successful import left a stale source")
 	}
-	m.activate("profiles.url")
-	m, _ = update(m, tea.PasteMsg{Content: source})
-	m, cmd := update(m, special(tea.KeyEnter))
-	finishProfileJob(t, m, cmd)
-	if len(drafts) != 3 || drafts[0].RememberSource || drafts[1].RememberSource || !drafts[2].RememberSource {
+	if len(drafts) != 2 || drafts[0].Address != source || drafts[0] != drafts[1] {
 		t.Fatalf("unexpected submitted drafts: %+v", drafts)
 	}
 }
@@ -179,49 +155,6 @@ func TestProfileCreateFormButtonsUseModalHitTargets(t *testing.T) {
 	m = finishProfileJob(t, m, cmd)
 	if !called || m.form != "" {
 		t.Fatal("modal Save target did not submit and close the form")
-	}
-}
-
-func TestProfileImportExplicitlyRemembersOnlySubscriptionAction(t *testing.T) {
-	imports, remembered := 0, 0
-	b := &fakeBackend{
-		add: func(_ context.Context, name, source string) error {
-			imports++
-			if name != "" || source != "https://example.com/private-token" {
-				t.Fatal("one-time import arguments changed")
-			}
-			return nil
-		},
-		addSubscription: func(_ context.Context, name, source string) error {
-			remembered++
-			if name != "" || source != "https://example.com/private-token" {
-				t.Fatal("remembered import arguments changed")
-			}
-			return nil
-		},
-	}
-	m := ready(b)
-	m.page = "profiles"
-	m.activate("subscription.add")
-	m.layout()
-	if !m.rememberSource || !strings.Contains(ansi.Strip(m.View().Content), "private source URL/path will be saved") {
-		t.Fatal("remembered import did not disclose private source persistence")
-	}
-	m, cmd := submitImport(t, m, "https://example.com/private-token")
-	m = finishProfileJob(t, m, cmd)
-	if remembered != 1 || imports != 0 || m.rememberSource || m.form != "" || m.input.Value() != "" {
-		t.Fatal("remembered import was not submitted and cleared")
-	}
-	m.activate("subscription.add")
-	m, _ = update(m, special(tea.KeyEsc))
-	if m.rememberSource {
-		t.Fatal("cancel retained remember-source state")
-	}
-	m.activate("add")
-	m, cmd = submitImport(t, m, "https://example.com/private-token")
-	m = finishProfileJob(t, m, cmd)
-	if remembered != 1 || imports != 1 || m.failure != "" {
-		t.Fatal("one-time import inherited remember-source behavior", m.failure)
 	}
 }
 
@@ -303,7 +236,7 @@ func TestProfileOverridesRejectSymlinkAndOversizedFiles(t *testing.T) {
 func TestProfilePageShowsFailedUpdateAndAccurateActionRows(t *testing.T) {
 	m := ready(&fakeBackend{snapshot: app.Snapshot{
 		Installed: true, Profiles: []string{"work"}, Applied: "work", ProfilePending: true,
-		ProfileDetails: []app.ProfileInfo{{ID: "default", Name: "default", Validated: true}, {ID: "work", Name: "work", Refreshable: true, Validated: true, Pending: true}},
+		ProfileDetails: []app.ProfileInfo{{ID: "default", Name: "default", Validated: true}, {ID: "work", Name: "work", Validated: true, Pending: true}},
 	}})
 	m.page = "profiles"
 	body, _ := m.pageBody(150)

@@ -41,7 +41,7 @@ type ProfileRecord struct {
 	NameSource  string    `json:"name_source"`
 	NameBase    string    `json:"name_base"`
 	Description string    `json:"description,omitempty"`
-	Address     string    `json:"address,omitempty"`
+	Address     string    `json:"address"`
 	UserAgent   string    `json:"user_agent,omitempty"`
 	UpdatedAt   time.Time `json:"updated_at"`
 
@@ -103,6 +103,9 @@ func (l Library) validate() error {
 			return invalid
 		}
 		if record.Name == "" || record.NameBase == "" || record.Name != CleanName(record.Name) || record.NameBase != CleanName(record.NameBase) || record.Description != CleanDescription(record.Description) || used[NameKey(record.Name)] {
+			return invalid
+		}
+		if !IsRemoteSource(record.Address) && !filepath.IsAbs(record.Address) {
 			return invalid
 		}
 		if ua, err := SourceUserAgent(record.Address, record.UserAgent); err != nil || ua != record.UserAgent {

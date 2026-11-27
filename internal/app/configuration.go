@@ -118,7 +118,6 @@ type ProfileInfo struct {
 	NameSource   string    `json:"name_source"`
 	NameBase     string    `json:"name_base"`
 	Core         string    `json:"core"`
-	Refreshable  bool      `json:"refreshable"`
 	Kind         string    `json:"kind"`
 	Origin       string    `json:"origin"`
 	UpdatedAt    time.Time `json:"updated_at"`
@@ -141,18 +140,15 @@ func (a *App) profileInfo(lib configuration.Library, name string, m manifest, in
 	info := ProfileInfo{
 		ID: name, Name: entry.Name, Description: entry.Description,
 		NameSource: entry.NameSource, NameBase: entry.NameBase,
-		Core: entry.Spec.Core, Refreshable: entry.Address != "", UpdatedAt: entry.UpdatedAt,
-		Kind: "imported", Origin: "Imported file", Validated: entry.Validated,
+		Core: entry.Spec.Core, UpdatedAt: entry.UpdatedAt,
+		Kind: "local", Origin: "Local file", Validated: entry.Validated,
 		HasOverrides: entry.Spec.Overrides != "",
 	}
 	if quota := entry.Quota; quota != (configuration.SubscriptionQuota{}) {
 		info.Quota = &quota
 	}
-	if info.Refreshable {
-		info.Kind, info.Origin = "local", "Local file"
-		if address, err := url.Parse(entry.Address); err == nil && (address.Scheme == "http" || address.Scheme == "https") {
-			info.Kind, info.Origin = "remote", address.Hostname()
-		}
+	if address, err := url.Parse(entry.Address); err == nil && (address.Scheme == "http" || address.Scheme == "https") {
+		info.Kind, info.Origin = "remote", address.Hostname()
 	}
 	info.Pending = installed && m.Applied == name && (m.Build == nil || m.Build.fingerprint() != record.fingerprint())
 	return info, nil

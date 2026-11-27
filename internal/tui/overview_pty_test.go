@@ -68,7 +68,7 @@ func newOverviewPTYBackend(scenario string) *overviewPTYBackend {
 		TerminalProxy: shellintegration.Status{Shell: "bash", State: "off", Loaded: true, Installed: true},
 		Profiles:      []string{"default", "overview-preview", "travel"},
 		ProfileDetails: []app.ProfileInfo{{ID: "overview-preview", Name: "日常订阅 · 工作与生活.yaml",
-			Core: "mihomo", Kind: "remote", Origin: "subscription.example", Refreshable: true, Validated: true,
+			Core: "mihomo", Kind: "remote", Origin: "subscription.example", Validated: true,
 			UpdatedAt: time.Now().Add(-2 * time.Hour),
 			Quota: &configuration.SubscriptionQuota{UsedBytes: 3 << 30, TotalBytes: 10 << 30,
 				ExpiresAt: time.Now().AddDate(0, 1, 0).Unix()}}},

@@ -158,7 +158,6 @@ type Model struct {
 	keyHints              keyHintsState
 	pageViews             map[string]pageViewState
 	form, name            string
-	rememberSource        bool
 	profilesUI            profilesState
 	proxies               proxiesState
 	overviewGroup         string
@@ -1276,7 +1275,6 @@ func (m *Model) openManagementWizard(local bool) tea.Cmd {
 	return nil
 }
 func (m *Model) openForm() tea.Cmd {
-	m.rememberSource = false
 	m.form = "source"
 	m.name = ""
 	m.input.Reset()
@@ -1322,7 +1320,6 @@ func (m *Model) formKey(k tea.KeyPressMsg) tea.Cmd {
 	}
 	key := k.String()
 	if key == "esc" {
-		m.rememberSource = false
 		m.form = ""
 		m.input.Reset()
 		m.input.Blur()
@@ -1344,12 +1341,10 @@ func (m *Model) formKey(k tea.KeyPressMsg) tea.Cmd {
 			m.failure = m.localizeError(err)
 			return nil
 		}
-		remember := m.rememberSource
-		m.rememberSource = false
 		m.form = ""
 		m.input.Reset()
 		m.input.Blur()
-		return m.beginProfileImport(app.ProfileDraft{Address: source, RememberSource: remember}, "profile.add", m.tr("model.fetch_config"))
+		return m.beginProfileImport(app.ProfileDraft{Address: source}, "profile.add", m.tr("model.fetch_config"))
 	}
 	var cmd tea.Cmd
 	before := m.input.Value()

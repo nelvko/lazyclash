@@ -11,7 +11,7 @@ import (
 func testMenuItems() []menuItem {
 	return []menuItem{
 		{ID: "apply", Label: "Use profile"},
-		{ID: "update", Label: "Update", DisabledReason: "No saved address"},
+		{ID: "update", Label: "Update", DisabledReason: "Update in progress"},
 		{ID: "rename", Label: "Rename"},
 		{ID: "delete", Label: "Delete", Danger: true},
 	}

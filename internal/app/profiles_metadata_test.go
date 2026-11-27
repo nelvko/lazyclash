@@ -29,15 +29,12 @@ func TestProfileSnapshotProvidesSafeCardMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	address.User = url.UserPassword("private-user-token", "private-password-token")
-	if err := a.CreateProfile(t.Context(), ProfileDraft{Name: "remote", Address: address.String(), UserAgent: "private-agent-token", RememberSource: true}); err != nil {
+	if err := a.CreateProfile(t.Context(), ProfileDraft{Name: "remote", Address: address.String(), UserAgent: "private-agent-token"}); err != nil {
 		t.Fatal(err)
 	}
 	local := filepath.Join(t.TempDir(), "private-local-token.yaml")
 	write(t, local, []byte("rules: ['MATCH,DIRECT']\n"))
 	if err := a.AddSubscription(t.Context(), "local", local); err != nil {
-		t.Fatal(err)
-	}
-	if err := a.Add(t.Context(), "copied", local); err != nil {
 		t.Fatal(err)
 	}
 	if err := a.Apply(t.Context(), "remote"); err != nil {
@@ -54,8 +51,8 @@ func TestProfileSnapshotProvidesSafeCardMetadata(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(snapshot.ProfileDetails, profiles) {
 		t.Fatal("snapshot and profile listing disagree", err)
 	}
-	if len(profiles) != 3 || len(profiles) != len(snapshot.Profiles) {
-		t.Fatal("expected exactly the three saved profiles")
+	if len(profiles) != 2 || len(profiles) != len(snapshot.Profiles) {
+		t.Fatal("expected exactly the two saved profiles")
 	}
 	for i, profile := range profiles {
 		if profile.ID != snapshot.Profiles[i] {
@@ -68,16 +65,12 @@ func TestProfileSnapshotProvidesSafeCardMetadata(t *testing.T) {
 	for _, profile := range profiles {
 		switch profile.ID {
 		case "remote":
-			if profile.Kind != "remote" || profile.Origin != address.Hostname() || !profile.Refreshable {
+			if profile.Kind != "remote" || profile.Origin != address.Hostname() {
 				t.Fatal("remote card metadata is inaccurate", profile)
 			}
 		case "local":
-			if profile.Kind != "local" || profile.Origin != "Local file" || !profile.Refreshable {
+			if profile.Kind != "local" || profile.Origin != "Local file" {
 				t.Fatal("local card metadata is inaccurate", profile)
-			}
-		case "copied":
-			if profile.Kind != "imported" || profile.Origin != "Imported file" || profile.Refreshable {
-				t.Fatal("one-time import card metadata is inaccurate", profile)
 			}
 		}
 	}
@@ -117,7 +110,7 @@ func TestRefreshAllProfilesPreservesIndependentSuccessesAndReloadsOnlyTheCurrent
 	}
 	local := filepath.Join(t.TempDir(), "private-local-token.yaml")
 	write(t, local, []byte(current.Load().(response).Content))
-	if err := a.Add(t.Context(), "copy", local); err != nil {
+	if err := a.AddSubscription(t.Context(), "local", local); err != nil {
 		t.Fatal(err)
 	}
 	if err := a.Apply(t.Context(), "z-updated"); err != nil {
@@ -132,7 +125,7 @@ func TestRefreshAllProfilesPreservesIndependentSuccessesAndReloadsOnlyTheCurrent
 	current.Store(response{Content: good, BadStatus: http.StatusServiceUnavailable})
 	write(t, local, []byte(good))
 	summary, err := a.RefreshAllProfiles(t.Context())
-	if summary.Updated != 1 || summary.Failed != 1 {
+	if summary.Updated != 2 || summary.Failed != 1 {
 		t.Fatal("batch summary", summary)
 	}
 	if err == nil || !strings.Contains(err.Error(), "a-broken") || strings.Contains(err.Error(), "private-token") || strings.Contains(err.Error(), server.URL) {
@@ -142,10 +135,11 @@ func TestRefreshAllProfilesPreservesIndependentSuccessesAndReloadsOnlyTheCurrent
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, name := range []string{"a-broken", "copy"} {
-		if after.Profiles[name].Spec.Revision != before.Profiles[name].Spec.Revision {
-			t.Fatal("batch refresh replaced a failed source or a one-time import", name)
-		}
+	if after.Profiles["a-broken"].Spec.Revision != before.Profiles["a-broken"].Spec.Revision {
+		t.Fatal("batch refresh replaced a failed source")
+	}
+	if after.Profiles["local"].Spec.Revision != digest([]byte(good)) {
+		t.Fatal("batch refresh did not reread the local file")
 	}
 	if after.Profiles["z-updated"].Spec.Revision != digest([]byte(good)) {
 		t.Fatal("failure in an earlier source prevented an independent successful update")
@@ -254,14 +248,11 @@ func TestRefreshAllProfilesSkipsDeletedProfilesAndLeavesNoSourceRecords(t *testi
 	}
 }
 
-func TestRefreshHandlesRememberedAndOneTimeProfiles(t *testing.T) {
+func TestRefreshingLocalProfileKeepsRuntimeUnchanged(t *testing.T) {
 	a, svc := installedApp(t)
 	local := filepath.Join(t.TempDir(), "profile.yaml")
 	write(t, local, []byte("rules: ['MATCH,DIRECT']\n"))
 	if err := a.AddSubscription(t.Context(), "saved", local); err != nil {
-		t.Fatal(err)
-	}
-	if err := a.Add(t.Context(), "copied", local); err != nil {
 		t.Fatal(err)
 	}
 	beforeTree, err := installationTree(filepath.Join(a.Home, "installation"))
@@ -277,9 +268,9 @@ func TestRefreshHandlesRememberedAndOneTimeProfiles(t *testing.T) {
 	if err != nil || lib.Profiles["saved"].Spec.Revision != digest(updated) {
 		t.Fatal("remembered profile was not refreshed", err)
 	}
-	for _, name := range []string{"default", "copied", "absent"} {
+	for _, name := range []string{"default", "absent"} {
 		if err := a.Refresh(t.Context(), name); err == nil {
-			t.Fatal("unrefreshable or missing profile was accepted", name)
+			t.Fatal("internal or missing profile was accepted", name)
 		}
 	}
 	_, after, err := a.library().Load()

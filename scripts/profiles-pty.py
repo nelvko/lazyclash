@@ -554,15 +554,14 @@ def main():
                 assert remote_agents[before_remote:] == [remote_agent], "refresh did not reuse the saved User-Agent"
             terminal.exit()
 
-            # Seed a one-time copy through the fixture and inspect it in the TUI.
-            # Copies without a retained source have no Update action.
-            subprocess.run(instance.fixture("profile", "add", str(local), "--name", "pty-snapshot"), check=True, capture_output=True, timeout=15)
-            snapshot_id = profile_id("pty-snapshot")
-            assert snapshot_id and "address" not in library()["profiles"][snapshot_id], "copy import unexpectedly retained its source"
+            # Use a separate local profile to exercise menu actions after reopening.
+            subprocess.run(instance.fixture("profile", "add", str(local), "--name", "pty-delete"), check=True, capture_output=True, timeout=15)
+            delete_id = profile_id("pty-delete")
+            assert delete_id and library()["profiles"][delete_id]["address"] == str(local), "local profile lost its source"
 
             terminal = smoke.Terminal(command)
             terminals.append(terminal)
-            terminal.wait("pty-snapshot")
+            terminal.wait("pty-delete")
             terminal.resize(160, 40)
             terminal.wait("My Airport")
             terminal.wait("My Airport (1)")
@@ -578,30 +577,30 @@ def main():
             assert not (home / "installation").exists()
             (output / "profiles-reopened.txt").write_text(terminal.screen.text())
             before = len(requests)
-            mouse_text(terminal, "pty-snapshot", button=2)
+            mouse_text(terminal, "pty-delete", button=2)
             terminal.wait("Settings…")
             menu = terminal.screen.text().split("[Update all]", 1)[-1]
-            assert "Update" not in menu and "Reload from file" not in menu, "copy import offered a source update"
-            assert len(requests) == before, "opening the copy-import menu sent a download request"
+            assert "Reload from file" in menu, "local profile omitted its reload action"
+            assert len(requests) == before, "opening the local profile menu sent a download request"
             assert not (home / "installation").exists(), "menu applied runtime state"
             terminal.key(b"\x1b")
             terminal.wait_absent("Settings…")
-            mouse_text(terminal, "pty-snapshot", button=2)
+            mouse_text(terminal, "pty-delete", button=2)
             mouse_text(terminal, "Delete…")
             terminal.wait("Delete profile")
             terminal.wait("›[Cancel]")
             terminal.key(b"\r")
             terminal.wait_absent("Delete profile")
-            assert profile_id("pty-snapshot") == snapshot_id, "default Enter deleted a profile instead of canceling"
+            assert profile_id("pty-delete") == delete_id, "default Enter deleted a profile instead of canceling"
 
-            mouse_text(terminal, "pty-snapshot", button=2)
+            mouse_text(terminal, "pty-delete", button=2)
             mouse_text(terminal, "Delete…")
             terminal.wait("›[Cancel]")
             # A confirmation has no name field. Typed or pasted text must not
             # activate deletion or leak into an invisible input.
             terminal.key(b"q3")
             paste(terminal, "ignored-name")
-            assert profile_id("pty-snapshot") == snapshot_id, "typing activated deletion"
+            assert profile_id("pty-delete") == delete_id, "typing activated deletion"
             terminal.wait_absent("ignored-name")
             for columns, rows in [(120, 32), (60, 20), (40, 16), (24, 7)]:
                 terminal.resize(columns, rows)
@@ -613,7 +612,7 @@ def main():
             terminal.key(b"\t")
             terminal.wait("›[Confirm delete]")
             terminal.click_text("[Confirm delete]")
-            wait_until(terminal, lambda: profile_id("pty-snapshot") is None, "confirmed deletion did not remove the selected profile")
+            wait_until(terminal, lambda: profile_id("pty-delete") is None, "confirmed deletion did not remove the selected profile")
             terminal.wait_absent("Deleting profile")
             assert len(requests) == before, "deletion requested a subscription download"
             (output / "profiles-delete-confirmed.txt").write_text(terminal.screen.text())
@@ -621,8 +620,8 @@ def main():
             result = {
                 "passed": True,
                 "usage_scenarios": ["bare remaining and total bytes with bare future date", "card becomes Expired at cutoff without input", "Settings labels the balance and expiry date", "missing header clears old usage and expiry"],
-                "scenarios": ["empty library has no built-in card or count summary", "first card is the first saved profile", "visible URL bracketed paste", "automatic Import without naming modal or Apply", "two-column arrows", "Enter opens Settings", "provider name update retains ID", "Settings protects provider names on description-only edits", "failed source validation retains all settings and form input", "changing the source and manual name together retains the stable ID", "menu Update", "Update all", "New profile local file with optional metadata omitted", "live directory and file matches", "arrow selection and Tab completion without creating", "Unicode and spaced directories with an extensionless configuration", "New remote profile with a custom name, description and User-Agent reused on refresh", "Tab and Shift+Tab reach Create and Cancel", "busy form ignores editing and duplicate submission", "one download per new remote profile", "retained local source refresh", "saved one-time copy import", "60x20 resize and Escape", "fixed header while scrolled", "header mouse update without Apply", "20x12 compact header", "page-specific controls", "duplicate imports retain distinct IDs", "repeated updates preserve duplicate suffix", "exit and reopen metadata and source persistence"],
-                "menu_scenarios": ["right-click card without Apply", "right-click update icon opens containing card menu", "left-click menu button", "menu owns q, page digits and pasted text", "outside click closes without opening the underlying creation form", "keyboard m and Escape focus restoration", "menu Settings edits metadata atomically", "menu edge avoidance through resize", "retained local file Update rereads the source without HTTP", "copy-import Update is hidden"],
+                "scenarios": ["empty library has no built-in card or count summary", "first card is the first saved profile", "visible URL bracketed paste", "automatic Import without naming modal or Apply", "two-column arrows", "Enter opens Settings", "provider name update retains ID", "Settings protects provider names on description-only edits", "failed source validation retains all settings and form input", "changing the source and manual name together retains the stable ID", "menu Update", "Update all", "New profile local file with optional metadata omitted", "live directory and file matches", "arrow selection and Tab completion without creating", "Unicode and spaced directories with an extensionless configuration", "New remote profile with a custom name, description and User-Agent reused on refresh", "Tab and Shift+Tab reach Create and Cancel", "busy form ignores editing and duplicate submission", "one download per new remote profile", "retained local source refresh", "60x20 resize and Escape", "fixed header while scrolled", "header mouse update without Apply", "20x12 compact header", "page-specific controls", "duplicate imports retain distinct IDs", "repeated updates preserve duplicate suffix", "exit and reopen metadata and source persistence"],
+                "menu_scenarios": ["right-click card without Apply", "right-click update icon opens containing card menu", "left-click menu button", "menu owns q, page digits and pasted text", "outside click closes without opening the underlying creation form", "keyboard m and Escape focus restoration", "menu Settings edits metadata atomically", "menu edge avoidance through resize", "retained local file Update rereads the source without HTTP", "local reload available after reopening"],
                 "menu_dimensions": [[160, 40], [60, 20], [40, 16], [20, 12]],
                 "delete_scenarios": ["default Enter cancels", "no name input or validation", "confirmation owns typed and pasted text", "confirmation stays visible from 120x32 to 24x7", "explicit mouse confirmation deletes once"],
                 "http_requests": len(requests),
