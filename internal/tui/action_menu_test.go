@@ -22,7 +22,7 @@ func menuMouse(m actionMenu, row int, button tea.MouseButton) tea.MouseClickMsg 
 	if m.framed {
 		padding = 1
 	}
-	return tea.MouseClickMsg{X: m.bounds.X + padding, Y: m.bounds.Y + padding + row, Button: button}
+	return tea.MouseClickMsg{X: m.bounds.X + padding, Y: m.optionY + row, Button: button}
 }
 
 func TestActionMenuKeyboardSkipsDisabledItemsAndReturnsAction(t *testing.T) {

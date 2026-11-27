@@ -48,7 +48,7 @@ func TestDropdownTriggerAndPopupShareGeometry(t *testing.T) {
 				strings.Contains(plain, "›") == expanded || strings.Contains(plain, "▴") != expanded {
 				t.Fatalf("unexpected trigger for %s, expanded=%v: %q", language.ID, expanded, plain)
 			}
-			x, w := d.popupGeometry(hit, 80)
+			x, w, _ := d.popupGeometry(hit, 80)
 			if x != 2 || w != 14 || x+w != hit.X+hit.W {
 				t.Fatalf("popup [%d,%d) and trigger face differ: %+v", x, x+w, hit)
 			}
@@ -56,7 +56,7 @@ func TestDropdownTriggerAndPopupShareGeometry(t *testing.T) {
 	}
 	for _, right := range []bool{false, true} {
 		hit := hitRegion{X: 24, W: 8, DropdownRight: right}
-		x, w := d.popupGeometry(hit, 80)
+		x, w, _ := d.popupGeometry(hit, 80)
 		if right && x+w != hit.X+hit.W || !right && x != hit.X+dropdownGutter {
 			t.Fatalf("popup missed clipped trigger: right=%v x=%d w=%d", right, x, w)
 		}

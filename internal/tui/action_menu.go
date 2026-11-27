@@ -22,14 +22,16 @@ type menuResult struct {
 // actionMenu owns presentation and input only. Its caller resolves action IDs
 // against the current application state before performing an operation.
 type actionMenu struct {
-	open             bool
-	items            []menuItem
-	selected, offset int
-	x, y             int
-	bounds           hitRegion
-	framed           bool
-	anchor           hitRegion
-	dropdown         *dropdown
+	open                 bool
+	items                []menuItem
+	selected, offset     int
+	x, y                 int
+	bounds               hitRegion
+	framed               bool
+	anchor               hitRegion
+	dropdown             *dropdown
+	detail               dropdownDetail
+	optionY, optionCount int
 }
 
 var menuKeys = struct{ up, down, first, last, activate, close bubbleskey.Binding }{
@@ -133,6 +135,10 @@ func (m *actionMenu) key(msg tea.KeyPressMsg) menuResult {
 		m.move(-1)
 	case bubbleskey.Matches(msg, menuKeys.activate):
 		return m.choose()
+	case msg.String() == "pgdown":
+		m.detail.scroll(len(m.detail.lines))
+	case msg.String() == "pgup":
+		m.detail.scroll(-len(m.detail.lines))
 	}
 	return menuResult{}
 }
@@ -154,6 +160,18 @@ func (m *actionMenu) mouse(msg tea.MouseMsg) menuResult {
 		return menuResult{}
 	}
 	if _, wheel := msg.(tea.MouseWheelMsg); wheel {
+		if m.detail.contains(mouse.Y) && m.detail.maxOffset > 0 {
+			before := m.detail.offset
+			switch mouse.Button {
+			case tea.MouseWheelUp:
+				m.detail.scroll(-1)
+			case tea.MouseWheelDown:
+				m.detail.scroll(1)
+			}
+			if !m.detail.inline || m.detail.offset != before {
+				return menuResult{}
+			}
+		}
 		switch mouse.Button {
 		case tea.MouseWheelUp:
 			m.move(-1)
@@ -166,9 +184,15 @@ func (m *actionMenu) mouse(msg tea.MouseMsg) menuResult {
 	if m.framed {
 		padding = 1
 	}
-	row := mouse.Y - b.Y - padding
+	if m.detail.contains(mouse.Y) {
+		if _, click := msg.(tea.MouseClickMsg); click && mouse.Button == tea.MouseLeft && mouse.X >= b.X+padding && mouse.X < b.X+b.W-padding {
+			return m.choose()
+		}
+		return menuResult{}
+	}
+	row := mouse.Y - m.optionY
 	index := m.offset + row
-	if mouse.X < b.X+padding || mouse.X >= b.X+b.W-padding || row < 0 || row >= b.H-2*padding || index >= len(m.items) {
+	if mouse.X < b.X+padding || mouse.X >= b.X+b.W-padding || row < 0 || row >= m.optionCount || index >= len(m.items) {
 		return menuResult{}
 	}
 	if m.items[index].DisabledReason != "" {
@@ -200,7 +224,7 @@ func (m *Model) renderMenu(base string, contentBottom int) string {
 	return m.menu.render(base, m.width, m.height, contentBottom, visibleCursor)
 }
 
-func (m *actionMenu) render(base string, width, height, contentBottom int, monochrome bool) string {
+func (m *actionMenu) render(base string, width, height, contentBottom int, showCursor bool) string {
 	if !m.open {
 		return base
 	}
@@ -213,9 +237,9 @@ func (m *actionMenu) render(base string, width, height, contentBottom int, monoc
 		m.bounds = hitRegion{}
 		return base
 	}
-	x, menuWidth := m.x, 0
+	x, menuWidth, longest := m.x, 0, 0
 	if m.dropdown != nil {
-		x, menuWidth = m.dropdown.popupGeometry(m.anchor, width)
+		x, menuWidth, longest = m.dropdown.popupGeometry(m.anchor, width)
 	} else {
 		for _, item := range m.items {
 			menuWidth = max(menuWidth, ansi.StringWidth(item.label())+4)
@@ -232,6 +256,11 @@ func (m *actionMenu) render(base string, width, height, contentBottom int, monoc
 		if menuWidth >= 4 {
 			desired += 2
 		}
+		// Pick the opening direction for the longest option. Moving the
+		// cursor between short and long values must not flip the popup.
+		if inner := max(1, menuWidth-2); longest > m.dropdown.labelColumns(inner) {
+			desired += 1 + (longest+inner-1)/inner
+		}
 		if below >= desired {
 			space = below
 		} else if anchorTop >= desired || anchorTop > below {
@@ -246,12 +275,18 @@ func (m *actionMenu) render(base string, width, height, contentBottom int, monoc
 		}
 	}
 	m.framed = menuWidth >= 4 && space >= 3
+	if m.dropdown != nil && longest > m.dropdown.labelColumns(menuWidth-2) && (space < 5 || menuWidth < 6) {
+		m.framed = false // Keep the scarce cells for reading the name.
+	}
 	padding := 0
 	if m.framed {
 		padding = 1
 	}
-	visible := min(len(m.items), space-2*padding)
-	menuHeight := visible + 2*padding
+	inner := menuWidth - 2*padding
+	contentRows := space - 2*padding
+	visible := m.layoutDetail(inner, contentRows, longest)
+	detailLines := m.detail.block(inner, above)
+	menuHeight := visible + 2*padding + len(detailLines)
 	m.offset = min(m.offset, max(0, len(m.items)-visible))
 	if m.selected >= 0 {
 		m.offset = min(m.offset, m.selected)
@@ -265,19 +300,46 @@ func (m *actionMenu) render(base string, width, height, contentBottom int, monoc
 		}
 	}
 	m.bounds = hitRegion{X: max(0, min(x, width-menuWidth)), Y: max(0, min(y, available-menuHeight)), W: menuWidth, H: menuHeight}
+	m.optionY = m.bounds.Y + padding
+	m.optionCount = visible
+	m.detail.y = m.optionY
+	if above {
+		m.optionY += len(detailLines)
+	} else if !m.detail.inline {
+		m.detail.y += visible
+		if m.detail.divider {
+			m.detail.y++
+		}
+	}
+	body := make([]string, 0, menuHeight)
+	if above {
+		body = append(body, detailLines...)
+	}
+	for i := m.offset; i < m.offset+visible; i++ {
+		item := m.items[i]
+		var line string
+		if m.dropdown != nil {
+			if m.detail.inline && i == m.selected {
+				item.Label = m.detail.lines[0]
+				if m.dropdown.labelColumns(inner) < 2 {
+					body = append(body, themed(cellPad(item.Label, inner), text, selectionBackground, false))
+					continue
+				}
+			}
+			line = m.dropdown.row(item, inner, i == m.selected, showCursor, 0)
+		} else {
+			line = actionMenuRow(item, inner, i == m.selected)
+		}
+		body = append(body, line)
+	}
+	if !above {
+		body = append(body, detailLines...)
+	}
 	lines := make([]string, 0, menuHeight)
 	if m.framed {
 		lines = append(lines, m.edge(menuWidth, true, m.offset > 0))
 	}
-	for i := m.offset; i < m.offset+visible; i++ {
-		item := m.items[i]
-		inner := menuWidth - 2*padding
-		var line string
-		if m.dropdown != nil {
-			line = m.dropdown.row(item, inner, i == m.selected, monochrome, 0)
-		} else {
-			line = actionMenuRow(item, inner, i == m.selected)
-		}
+	for _, line := range body {
 		if m.framed {
 			line = themed("│", border, raised, false) + line + themed("│", border, raised, false)
 		}

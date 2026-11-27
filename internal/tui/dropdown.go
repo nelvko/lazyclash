@@ -33,14 +33,27 @@ func (d dropdown) label() string {
 // Both faces reserve two columns on each side, a gap, and the chevron/check.
 // The trigger's external keyboard-focus gutter is separate.
 func (d dropdown) width() int {
-	w := max(ansi.StringWidth(clean(d.Placeholder)), ansi.StringWidth(d.label()))
-	for _, item := range d.Items {
-		w = max(w, ansi.StringWidth(item.label()))
-	}
+	return min(48, d.naturalWidth(d.longestLabelWidth()))
+}
+
+func (d dropdown) naturalWidth(w int) int {
 	if d.ShowCursor {
 		w++ // A space separates the visible cursor from the option label.
 	}
-	return min(48, w+6)
+	return w + 6
+}
+
+func (d dropdown) longestLabelWidth() int {
+	w := ansi.StringWidth(clean(d.Placeholder))
+	found := false
+	for _, item := range d.Items {
+		w = max(w, ansi.StringWidth(item.label()))
+		found = found || item.ID == d.Value
+	}
+	if !found && d.Placeholder == "" {
+		w = max(w, ansi.StringWidth(clean(d.Value)))
+	}
+	return w
 }
 
 func (d dropdown) render(id string, o buttonOptions, expanded bool, width int) (string, hitRegion) {
@@ -100,8 +113,9 @@ func (m actionMenu) dropdownOpen(id string) bool {
 	return m.open && m.dropdown != nil && m.anchor.ID == id
 }
 
-func (d dropdown) popupGeometry(anchor hitRegion, screenWidth int) (x, width int) {
-	width = min(screenWidth, d.width())
+func (d dropdown) popupGeometry(anchor hitRegion, screenWidth int) (x, width, longest int) {
+	longest = d.longestLabelWidth()
+	width = min(screenWidth, d.naturalWidth(longest))
 	// Regular trigger hits include a two-cell gutter. For a cropped trigger
 	// leave at least one visible cell as the point of attachment.
 	x = anchor.X + min(dropdownGutter, max(0, anchor.W-1))
@@ -110,11 +124,104 @@ func (d dropdown) popupGeometry(anchor hitRegion, screenWidth int) (x, width int
 	} else if anchor.DropdownRight {
 		x = anchor.X + anchor.W - width
 	}
-	return max(0, min(x, screenWidth-width)), width
+	return max(0, min(x, screenWidth-width)), width, longest
+}
+
+// Long values have a separate reading area. The option list keeps one physical
+// row per item, so hovering a long value never inserts rows under the pointer.
+type dropdownDetail struct {
+	id                string
+	offset, maxOffset int
+	y                 int
+	lines             []string
+	inline, divider   bool
+}
+
+func (p *dropdownDetail) scroll(delta int) {
+	p.offset = max(0, min(p.maxOffset, p.offset+delta))
+}
+
+func (p *dropdownDetail) contains(y int) bool {
+	return y >= p.y && y < p.y+len(p.lines)
+}
+
+func (d dropdown) labelColumns(inner int) int {
+	padding := 2
+	if inner >= 8 {
+		padding = 4
+	}
+	if d.ShowCursor && inner >= 4 {
+		padding++
+	}
+	return max(0, inner-padding)
+}
+
+// Cap the reserved reading area to about half the menu when there are many
+// choices. A short option needs no reading area, but keeps its list position.
+func (m *actionMenu) layoutDetail(inner, height, longest int) int {
+	listRows := min(len(m.items), height)
+	if m.dropdown == nil || longest <= m.dropdown.labelColumns(inner) || m.selected < 0 {
+		m.detail = dropdownDetail{}
+		return listRows
+	}
+	width := max(1, inner)
+	longestLines := (longest + width - 1) / width
+	listRows = min(listRows, max(1, height/2, height-longestLines-1))
+	item := m.items[m.selected]
+	label := item.label()
+	if ansi.StringWidth(label) <= m.dropdown.labelColumns(inner) {
+		m.detail = dropdownDetail{}
+		return listRows
+	}
+	if m.detail.id != item.ID {
+		m.detail = dropdownDetail{id: item.ID}
+	}
+	m.detail.inline = listRows == height
+	if m.detail.inline && m.dropdown.labelColumns(inner) >= 2 {
+		width = m.dropdown.labelColumns(inner)
+	}
+	lines := strings.Split(ansi.Hardwrap(label, width, true), "\n")
+	// With one usable row, page through the full name in the selected row.
+	room := max(1, height-listRows)
+	m.detail.divider = room > 1
+	if m.detail.divider {
+		room--
+	}
+	visible := min(len(lines), room)
+	m.detail.maxOffset = len(lines) - visible
+	m.detail.scroll(0)
+	m.detail.lines = lines[m.detail.offset : m.detail.offset+visible]
+	return listRows
+}
+
+// The list stays on the anchor side of the separator when the popup flips above.
+func (p dropdownDetail) block(inner int, above bool) []string {
+	if p.inline || len(p.lines) == 0 {
+		return nil
+	}
+	var rows []string
+	divider := ""
+	if p.divider {
+		legend := ""
+		if p.maxOffset > 0 && inner >= 11 {
+			legend = " PgUp/PgDn "
+		}
+		divider = themed(legend+strings.Repeat("─", inner-len(legend)), border, raised, false)
+		if !above {
+			rows = append(rows, divider)
+		}
+	}
+	for _, line := range p.lines {
+		rows = append(rows, themed(cellPad(line, inner), text, raised, false))
+	}
+	if above && p.divider {
+		rows = append(rows, divider)
+	}
+	return rows
 }
 
 // Wrapped options share one highlight, with cursor and checkmark on their first line.
-func (d dropdown) row(item menuItem, width int, active, monochrome bool, line int) string {
+func (d dropdown) row(item menuItem, width int, active, showCursor bool, line int) string {
 	foreground, background := text, raised
 	cursor := " "
 	if item.DisabledReason != "" {
@@ -123,7 +230,7 @@ func (d dropdown) row(item menuItem, width int, active, monochrome bool, line in
 		background = selectionBackground
 		if line == 0 && d.ShowCursor {
 			cursor = themed("›", focus, background, false)
-		} else if line == 0 && monochrome {
+		} else if line == 0 && showCursor {
 			cursor = "›"
 		}
 	}
@@ -139,10 +246,10 @@ func (d dropdown) row(item menuItem, width int, active, monochrome bool, line in
 	var row string
 	switch {
 	case width >= 8:
-		row = cursor + gap + cellPad(item.label(), width-4-len(gap)) + " " + check + " "
+		row = cursor + gap + cellPad(item.label(), d.labelColumns(width)) + " " + check + " "
 	case width >= 2:
-		row = cursor + gap + cellPad(item.label(), width-2-len(gap)) + check
-	case active && (d.ShowCursor || monochrome):
+		row = cursor + gap + cellPad(item.label(), d.labelColumns(width)) + check
+	case active && (d.ShowCursor || showCursor):
 		row = cursor
 	case item.Checked:
 		row = check
