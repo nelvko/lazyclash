@@ -95,10 +95,13 @@ func TestMarianaTrueColorAnd256Contrast(t *testing.T) {
 		{"muted on modal", muted, raised},
 		{"selection", selectionForeground, selectionBackground},
 		{"button", primaryButtonForeground, primaryButtonBackground},
+		{"secondary button", text, buttonSecondaryBackground},
+		{"secondary button hover", text, buttonSecondaryHoverBackground},
 		{"button hover", text, buttonHoverBackground},
 		{"button selected", text, buttonSelectedBackground},
 		{"button selected hover", text, buttonSelectedHoverBackground},
 		{"selected node metadata", proxyNodeEmphasizedMeta, proxyNodeSelectedBackground},
+		{"selected node link", proxyNodeSelectedLink, proxyNodeSelectedBackground},
 		{"selected node fast delay", proxyNodeEmphasizedFast, proxyNodeSelectedBackground},
 		{"selected node slow delay", proxyNodeEmphasizedSlow, proxyNodeSelectedBackground},
 		{"hovered node metadata", proxyNodeEmphasizedMeta, raised},
@@ -136,7 +139,7 @@ func TestMarianaTrueColorAnd256Contrast(t *testing.T) {
 
 func TestButtonTerminalFallbacksKeepHoverAndSelectionDistinct(t *testing.T) {
 	for _, profile := range []colorprofile.Profile{colorprofile.TrueColor, colorprofile.ANSI256} {
-		colors := []string{raised, buttonHoverBackground, buttonSelectedBackground, buttonSelectedHoverBackground}
+		colors := []string{buttonSecondaryBackground, buttonSecondaryHoverBackground, buttonSelectedBackground, buttonSelectedHoverBackground}
 		seen := map[color.Color]bool{}
 		for _, value := range colors {
 			c := terminalColor(lipgloss.Color(value), profile)

@@ -73,7 +73,7 @@ def exercise(preview, args, output, language, profile):
         initial = [position(terminal, label) for label in words]
         if profile == "truecolor":
             assert background(terminal, initial[1]) == "#425d78", "selected mode lost its background"
-            assert background(terminal, initial[4]) == "#3a424a", "secondary button has the wrong background"
+            assert background(terminal, initial[4]) == "#414c57", "secondary button has the wrong background"
             x, y = initial[1]
             selected_bg = background(terminal, (x, y))
             while x > 0 and background(terminal, (x - 1, y)) == selected_bg:
@@ -94,7 +94,7 @@ def exercise(preview, args, output, language, profile):
         hover(terminal, initial[4])
         terminal.wait("hover=restart")
         if profile == "truecolor":
-            assert background(terminal, initial[4]) == "#46515c", "secondary hover is not visible"
+            assert background(terminal, initial[4]) == "#4f5f6d", "secondary hover is not visible"
             assert background(terminal, initial[1]) == "#425d78", "hover changed the selected mode"
         preview.capture(terminal, output, "hover-secondary", args)
         hover(terminal, initial[1])

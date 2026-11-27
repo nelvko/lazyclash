@@ -40,12 +40,14 @@ const (
 
 	// Buttons keep their own interaction colors so changing an action does not
 	// also restyle list rows, navigation or other selected surfaces.
-	buttonHoverBackground         = "#46515c"
-	buttonSelectedBackground      = "#425d78"
-	buttonSelectedHoverBackground = "#46617b"
-	buttonPrimaryHoverBackground  = "#6aa4df"
-	buttonDangerForeground        = "#f5a3a8"
-	buttonDangerHoverBackground   = "#493940"
+	buttonSecondaryBackground      = "#414c57"
+	buttonSecondaryHoverBackground = "#4f5f6d"
+	buttonHoverBackground          = "#46515c"
+	buttonSelectedBackground       = "#425d78"
+	buttonSelectedHoverBackground  = "#46617b"
+	buttonPrimaryHoverBackground   = "#6aa4df"
+	buttonDangerForeground         = "#f5a3a8"
+	buttonDangerHoverBackground    = "#493940"
 
 	routingIdleText                = "#c7cdd5"
 	routingIdleBackground          = "#373f48"
@@ -55,6 +57,7 @@ const (
 	routingFocus                   = "#ffcc83"
 
 	proxyNodeSelectedBackground = "#3d546b"
+	proxyNodeSelectedLink       = "#b8cfec"
 	proxyNodeEmphasizedMeta     = "#cfd5df"
 	proxyNodeEmphasizedFast     = "#b8dfb3"
 	proxyNodeEmphasizedSlow     = routingFocus

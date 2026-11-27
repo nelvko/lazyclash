@@ -47,9 +47,9 @@ func TestButtonRolesAndSurfacesRemainSeparate(t *testing.T) {
 		name, label, foreground, background string
 		options                             buttonOptions
 	}{
-		{"page", "Edit", text, raised, buttonOptions{}},
-		{"card", "Edit", text, raised, buttonOptions{Surface: panel}},
-		{"modal", "Edit", text, panel, buttonOptions{Surface: raised}},
+		{"page", "Edit", text, buttonSecondaryBackground, buttonOptions{}},
+		{"card", "Edit", text, buttonSecondaryBackground, buttonOptions{Surface: panel}},
+		{"modal", "Edit", text, buttonSecondaryBackground, buttonOptions{Surface: raised}},
 		{"primary", "Apply", primaryButtonForeground, primaryButtonBackground, buttonOptions{Kind: buttonPrimary}},
 		{"selected", "Rule", text, buttonSelectedBackground, buttonOptions{Selected: true, Selectable: true}},
 		{"danger", "Delete", buttonDangerForeground, raised, buttonOptions{Kind: buttonDanger}},
@@ -141,7 +141,7 @@ func TestButtonHoverKeepsItsSemanticRole(t *testing.T) {
 		foreground string
 		background string
 	}{
-		{buttonSecondary, false, text, buttonHoverBackground},
+		{buttonSecondary, false, text, buttonSecondaryHoverBackground},
 		{buttonSecondary, true, text, buttonSelectedHoverBackground},
 		{buttonPrimary, false, primaryButtonForeground, buttonPrimaryHoverBackground},
 		{buttonDanger, false, buttonDangerForeground, buttonDangerHoverBackground},

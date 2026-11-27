@@ -445,6 +445,9 @@ func (m *Model) proxyNode(gi, ni, width int) dashboardBlock {
 	if reference && valueWidth > 0 {
 		options := dashboardButtonOptions(referenceID, m.navigationOptions(), false, surface)
 		options.Kind, options.Compact, options.Disabled = buttonText, true, m.busy || m.quitting
+		if selected {
+			options.TextColor = proxyNodeSelectedLink
+		}
 		options.Width = max(0, valueWidth-3) // one focus cell and two face padding cells
 		button := renderButton(m.tr("proxies.enter"), options)
 		meta = cellPad(meta, actionX) + cellCrop(button, valueWidth)

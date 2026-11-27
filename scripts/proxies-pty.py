@@ -632,6 +632,10 @@ def exercise(preview, binary, output, language, profile, args):
         assert group_fields(terminal, "PROXY", "Selector", "HK 02", False) == closed_fields, "expansion moved the group columns"
         ref_x, ref_y = candidate_position(terminal, "AUTO")
         assert "".join(terminal.screen.cells[ref_y + 1][ref_x:]).startswith("URLTest · HK 02"), "reference metadata lost the target group type"
+        if profile != "no-color":
+            row = terminal.screen.cells[ref_y + 1]
+            link_x = cell_offset(row, "".join(row).index(words["proxies.enter"]))
+            assert terminal.screen.styles[ref_y + 1][link_x][0] == terminal_color(preview, profile, "b8cfec", 153), "selected reference link lost its contrast"
         assert not re.search(r"\d+–\d+ / 8", terminal.screen.text()), "all members fit, but the page shows a visible range"
         assert "0/0" not in terminal.screen.text(), "idle measurement progress is visible"
         preview.capture(terminal, output, "groups-wide", args)

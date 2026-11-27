@@ -49,6 +49,8 @@ func renderButton(label string, o buttonOptions) string {
 	foreground, background := text, neutral
 	bold, underline := false, false
 	switch o.Kind {
+	case buttonSecondary:
+		background = buttonSecondaryBackground
 	case buttonPrimary:
 		foreground, background, bold = primaryButtonForeground, primaryButtonBackground, true
 	case buttonText:
@@ -73,6 +75,8 @@ func renderButton(label string, o buttonOptions) string {
 		switch {
 		case selected:
 			background = selectedHover
+		case o.Kind == buttonSecondary:
+			background = buttonSecondaryHoverBackground
 		case o.Kind == buttonText:
 			underline = true
 		case o.Kind == buttonPrimary:

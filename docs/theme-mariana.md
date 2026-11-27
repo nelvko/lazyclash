@@ -160,8 +160,8 @@ Original、Thick、Smooth 对比仅存在于测试二进制：Original 保留原
 | 用途 | 表现 |
 | --- | --- |
 | 主操作 | `primaryButtonBackground` 蓝底、`primaryButtonForeground` 深色文字、加粗 |
-| 次操作 | 正文色与 `raised` 底色；所在容器已是 `raised` 时改用 `panel`，保持边界可辨识 |
-| 文字操作 | 沿用所在容器背景、`accent` 文字，悬停时加下划线 |
+| 次操作 | 深色主题使用 `#414C57` 底色和正文色，悬停时底色提亮到 `#4F5F6D`。下拉框触发按钮使用同一配色 |
+| 文字操作 | 沿用所在容器背景，使用 `accent` 文字，悬停时加下划线。深色主题中已选节点卡片的「进入 →」使用浅蓝 `#B8CFEC` |
 | 危险操作入口 | `buttonDangerForeground` 文字、中性表面；悬停使用 `buttonDangerHoverBackground` |
 | 最终危险确认 | `errorColor` 底色、深色文字、加粗 |
 | 已选择项 | `buttonSelectedBackground`、正文色与加粗；悬停使用 `buttonSelectedHoverBackground`，不添加勾号 |
@@ -197,7 +197,9 @@ Original、Thick、Smooth 对比仅存在于测试二进制：Original 保留原
 | 说明 `#a9afbc` / raised `#3a424a` | 4.64:1 |
 | 选中文字 `#d8dee9` / 选区 `#4c5864` | 5.38:1 |
 | 主按钮字 `#1d2227` / 按钮 `#5c99d6` | 5.33:1 |
-| 按钮正文 `#d8dee9` / 悬停 `#46515c` | 6.00:1 |
+| 次按钮正文 `#d8dee9` / 普通 `#414c57` | 6.49:1 |
+| 次按钮正文 `#d8dee9` / 悬停 `#4f5f6d` | 4.87:1 |
+| 「进入 →」`#b8cfec` / 已选节点 `#3d546b` | 4.92:1 |
 | 按钮正文 `#d8dee9` / 已选 `#425d78` | 5.07:1 |
 | 按钮正文 `#d8dee9` / 已选悬停 `#46617b` | 4.77:1 |
 | 危险按钮字 `#f5a3a8` / raised `#3a424a` | 5.19:1 |
