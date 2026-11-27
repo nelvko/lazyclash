@@ -15,20 +15,20 @@ import (
 	"github.com/nelvko/lazyclash/internal/i18n"
 )
 
-func finishWebsiteEdit(t *testing.T, m Model, cmd tea.Cmd) Model {
+func finishWebsiteAction(t *testing.T, m Model, cmd tea.Cmd) Model {
 	t.Helper()
 	for cmd != nil {
 		switch msg := cmd().(type) {
-		case websiteListSavedMsg:
+		case websiteListSavedMsg, websiteChangeMsg:
 			m, _ = update(m, msg)
 			return m
 		case tea.BatchMsg:
 			cmd = msg[0]
 		default:
-			t.Fatalf("unexpected website save message %T", msg)
+			t.Fatalf("unexpected website action message %T", msg)
 		}
 	}
-	t.Fatal("website editor did not submit")
+	t.Fatal("website action did not submit")
 	return m
 }
 
@@ -76,88 +76,44 @@ func TestWebsiteEditorKeepsFailedDraftAndFocusesAddedSite(t *testing.T) {
 		m, _ = update(m, tea.PasteMsg{Content: got.Name})
 		var cmd tea.Cmd
 		m, cmd = click(m, findTarget(t, m, "websiteEditor.save"))
-		m = finishWebsiteEdit(t, m, cmd)
+		m = finishWebsiteAction(t, m, cmd)
 		if m.form != "website-editor" || !strings.Contains(ansi.Strip(m.screen), "save failed") ||
 			m.websiteEditor.address.Value() != got.URL || m.websiteEditor.name.Value() != got.Name || !slices.Equal(m.websites, app.DefaultWebsites()) {
 			t.Fatal("failed save lost the draft or changed the website list")
 		}
 		m, cmd = click(m, findTarget(t, m, "websiteEditor.save"))
-		m = finishWebsiteEdit(t, m, cmd)
+		m = finishWebsiteAction(t, m, cmd)
 		if m.form != "" || m.focus != websiteActionID(added) || !slices.Contains(m.websites, added) {
 			t.Fatalf("new website did not receive focus on its overview page: %s/%s", m.form, m.focus)
 		}
 	}
 }
 
-func TestWebsiteEditorRemovalRequiresConfirmationAndSupportsLastSite(t *testing.T) {
-	initial := app.DefaultWebsites()[:1]
-	calls := 0
-	b := &fakeBackend{snapshot: settingsTestSnapshot(), removeWebsite: func(_ context.Context, site app.Website) ([]app.Website, error) {
-		if site != initial[0] {
-			t.Fatalf("removed unexpected site %+v", site)
-		}
-		calls++
-		return []app.Website{}, nil
-	}}
-	m := ready(b)
-	directionCleanup(t, &m)
-	m.width, m.height = 40, 16
-	m.setWebsites(initial)
-	for _, confirm := range []bool{false, true} {
-		m.beginWebsiteRemoval(initial[0])
-		m.layout()
-		if !m.websiteEditor.confirmRemove || m.focus != "websiteEditor.cancel" || !strings.Contains(ansi.Strip(m.screen), initial[0].URL) {
-			t.Fatal("removal did not identify the saved website and default to cancel")
-		}
-		if confirm {
-			m, _ = update(m, special(tea.KeyTab))
-		}
-		var cmd tea.Cmd
-		m, cmd = update(m, special(tea.KeyEnter))
-		if confirm {
-			m = finishWebsiteEdit(t, m, cmd)
-		} else if m.form != "" || m.focus != websiteActionID(initial[0]) || !slices.Equal(m.websites, initial) || calls != 0 {
-			t.Fatal("canceling removal did not return to the original website")
-		}
-	}
-	if m.form != "" || m.focus != "website.add" || m.websites == nil || len(m.websites) != 0 || calls != 1 {
-		t.Fatal("removing last website did not leave a manageable empty list")
-	}
-
-}
-
 func TestWebsiteEditorCancelPrecedesSubmit(t *testing.T) {
 	site := app.DefaultWebsites()[0]
-	for _, operation := range []string{"add", "edit", "remove"} {
+	for _, operation := range []string{"add", "edit"} {
 		t.Run(operation, func(t *testing.T) {
 			m := ready(&fakeBackend{snapshot: settingsTestSnapshot()})
 			directionCleanup(t, &m)
 			m.width, m.height = 40, 16
-			submit := "websiteEditor.save"
-			switch operation {
-			case "add":
+			if operation == "add" {
 				m.beginWebsiteEdit(app.Website{})
-			case "edit":
+			} else {
 				m.beginWebsiteEdit(site)
-			case "remove":
-				m.beginWebsiteRemoval(site)
-				submit = "websiteEditor.confirm"
 			}
 			m.layout()
-			cancel, action := findTarget(t, m, "websiteEditor.cancel"), findTarget(t, m, submit)
+			cancel, action := findTarget(t, m, "websiteEditor.cancel"), findTarget(t, m, "websiteEditor.save")
 			if cancel.Y != action.Y || cancel.X+cancel.W > action.X {
 				t.Fatalf("expected Cancel to the left of the submit button: %+v, %+v", cancel, action)
 			}
-			if operation != "remove" {
-				m, _ = update(m, special(tea.KeyTab)) // Address to name.
-				m, _ = update(m, special(tea.KeyTab))
-			}
+			m, _ = update(m, special(tea.KeyTab)) // Address to name.
+			m, _ = update(m, special(tea.KeyTab))
 			if m.focus != cancel.ID {
 				t.Fatalf("first footer focus = %q, want %q", m.focus, cancel.ID)
 			}
 			m, _ = update(m, special(tea.KeyTab))
-			if m.focus != submit {
-				t.Fatalf("Tab from Cancel focused %q, want %q", m.focus, submit)
+			if m.focus != action.ID {
+				t.Fatalf("Tab from Cancel focused %q, want %q", m.focus, action.ID)
 			}
 			m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
 			if m.focus != cancel.ID {
@@ -171,33 +127,21 @@ func TestWebsiteEditorStaleSiteRestoresCurrentList(t *testing.T) {
 	initial := app.DefaultWebsites()
 	current := initial[1:]
 	stale := diagnostic.New("diagnostic.website.missing", "website was removed")
-	for _, operation := range []string{"save", "remove"} {
-		t.Run(operation, func(t *testing.T) {
-			b := &fakeBackend{snapshot: settingsTestSnapshot(),
-				removeWebsite: func(context.Context, app.Website) ([]app.Website, error) { return current, stale },
-				updateWebsite: func(context.Context, app.Website, app.Website) ([]app.Website, error) { return current, stale },
-			}
-			m := ready(b)
-			m.locale = i18n.New(i18n.Chinese)
-			directionCleanup(t, &m)
-			var cmd tea.Cmd
-			if operation == "remove" {
-				m.beginWebsiteRemoval(initial[0])
-				m.layout()
-				m, cmd = click(m, findTarget(t, m, "websiteEditor.confirm"))
-			} else {
-				m.beginWebsiteEdit(initial[0])
-				m.layout()
-				m, cmd = click(m, findTarget(t, m, "websiteEditor.save"))
-			}
-			m = finishWebsiteEdit(t, m, cmd)
-			if m.form != "" || m.focus != websiteActionID(current[0]) || !slices.Equal(m.websites, current) {
-				t.Fatal("stale operation did not restore the current list and focus")
-			}
-			if len(m.notification.items) == 0 || m.notification.items[0].Message != m.tr("diagnostic.website.missing") || m.notification.items[0].Kind != "warning" {
-				t.Fatal("stale operation did not explain the changed list")
-			}
-		})
+	b := &fakeBackend{snapshot: settingsTestSnapshot(),
+		updateWebsite: func(context.Context, app.Website, app.Website) ([]app.Website, error) { return current, stale },
+	}
+	m := ready(b)
+	m.locale = i18n.New(i18n.Chinese)
+	directionCleanup(t, &m)
+	m.beginWebsiteEdit(initial[0])
+	m.layout()
+	m, cmd := click(m, findTarget(t, m, "websiteEditor.save"))
+	m = finishWebsiteAction(t, m, cmd)
+	if m.form != "" || m.focus != websiteActionID(current[0]) || !slices.Equal(m.websites, current) {
+		t.Fatal("stale edit did not restore the current list and focus")
+	}
+	if len(m.notification.items) == 0 || m.notification.items[0].Message != m.tr("diagnostic.website.missing") || m.notification.items[0].Kind != "warning" {
+		t.Fatal("stale edit did not explain the changed list")
 	}
 }
 
@@ -235,7 +179,7 @@ func TestWebsiteEditorUpdatesExistingNameAndURL(t *testing.T) {
 		} else {
 			var cmd tea.Cmd
 			m, cmd = update(m, special(tea.KeyEnter))
-			m = finishWebsiteEdit(t, m, cmd)
+			m = finishWebsiteAction(t, m, cmd)
 			if calls != 1 || len(m.websites) != 3 || m.websites[2] != changed || m.form != "" || m.focus != websiteActionID(changed) {
 				t.Fatal("edit did not focus the published website at its current position")
 			}

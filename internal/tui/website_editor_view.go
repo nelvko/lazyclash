@@ -15,29 +15,23 @@ func (m *Model) renderWebsiteEditor(base string) (string, []hitRegion) {
 	e := &m.websiteEditor
 	title := m.tr("websiteEditor.add")
 	var body dashboardBlock
-	buttons := []profileButton{{id: "websiteEditor.cancel", label: m.tr("websiteEditor.cancel")}}
-	if !e.confirmRemove {
-		if e.original.URL != "" {
-			title = m.tr("websiteEditor.edit")
-		}
-		for _, field := range []struct {
-			id    string
-			input *textinput.Model
-		}{{"websiteEditor.address", &e.address}, {"websiteEditor.name", &e.name}} {
-			body.lines = append(body.lines, themed(m.tr(field.id), muted, modalBackground, false))
-			*field.input = prepareInputField(*field.input, inputFieldTextWidth(inner, 0, true), modalBackground, false)
-			body.append(renderInputField(*field.input, inputFieldOptions{ID: field.id, ClearID: field.id + ".clear",
-				Width: inner, Surface: modalBackground, Focused: m.focus == field.id, Hovered: m.hover == field.id,
-				ClearHovered: m.hover == field.id+".clear", Disabled: m.busy, Compact: m.height < 17}))
-		}
-		buttons = append(buttons, profileButton{id: "websiteEditor.save", label: m.tr("websiteEditor.save"), primary: true})
-	} else {
-		title = m.tr("websiteEditor.removeTitle")
-		body.lines = append(body.lines, themed(cellCrop(clean(e.original.Name), inner), text, modalBackground, false))
-		body.lines = append(body.lines, themed(cellCrop(clean(e.original.URL), inner), muted, modalBackground, false))
-		buttons = append(buttons, profileButton{id: "websiteEditor.confirm", label: m.tr("websiteEditor.confirm")})
+	if e.original.URL != "" {
+		title = m.tr("websiteEditor.edit")
 	}
-	footer := m.profileButtons(buttons, inner, modalBackground)
+	for _, field := range []struct {
+		id    string
+		input *textinput.Model
+	}{{"websiteEditor.address", &e.address}, {"websiteEditor.name", &e.name}} {
+		body.lines = append(body.lines, themed(m.tr(field.id), muted, modalBackground, false))
+		*field.input = prepareInputField(*field.input, inputFieldTextWidth(inner, 0, true), modalBackground, false)
+		body.append(renderInputField(*field.input, inputFieldOptions{ID: field.id, ClearID: field.id + ".clear",
+			Width: inner, Surface: modalBackground, Focused: m.focus == field.id, Hovered: m.hover == field.id,
+			ClearHovered: m.hover == field.id+".clear", Disabled: m.busy, Compact: m.height < 17}))
+	}
+	footer := m.profileButtons([]profileButton{
+		{id: "websiteEditor.cancel", label: m.tr("websiteEditor.cancel")},
+		{id: "websiteEditor.save", label: m.tr("websiteEditor.save"), primary: true},
+	}, inner, modalBackground)
 	if e.err != "" || e.canceled || m.busy {
 		message, color := e.err, errorColor
 		if e.canceled && e.err == "" {

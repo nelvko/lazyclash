@@ -47,7 +47,7 @@ func (m *Model) openWebsiteMenu(anchor hitRegion) {
 	m.focus, m.hover = websiteActionID(m.websiteMenu), ""
 	options := dropdown{ShowCursor: true, Items: []menuItem{
 		{ID: "edit", Label: m.tr("dashboard.website.edit")},
-		{ID: "remove", Label: m.tr("websiteEditor.confirm"), Danger: true},
+		{ID: "remove", Label: m.tr("dashboard.website.remove"), Danger: true},
 	}}
 	options.show(&m.menu, anchor)
 }
@@ -70,7 +70,7 @@ func (m *Model) websiteMenuResult(result menuResult) tea.Cmd {
 	case "edit":
 		return m.beginWebsiteEdit(site)
 	case "remove":
-		return m.beginWebsiteRemoval(site)
+		return m.removeWebsite(site)
 	}
 	return nil
 }
@@ -85,11 +85,20 @@ func (m *Model) focusWebsiteAt(index int) {
 	m.revealContentFocus()
 }
 
-type websiteMoveMsg struct {
+type websiteChangeMsg struct {
 	id    uint64
 	site  app.Website
 	sites []app.Website
 	err   error
+}
+
+func (m *Model) removeWebsite(site app.Website) tea.Cmd {
+	ctx := m.newJob("website-remove")
+	backend, request := m.backend, m.id
+	return func() tea.Msg {
+		sites, err := backend.RemoveWebsite(ctx, site)
+		return websiteChangeMsg{id: request, site: site, sites: sites, err: err}
+	}
 }
 
 func (m *Model) relocateWebsite(site, neighbor app.Website, after bool) tea.Cmd {
@@ -101,23 +110,28 @@ func (m *Model) relocateWebsite(site, neighbor app.Website, after bool) tea.Cmd 
 	request := m.id
 	return func() tea.Msg {
 		sites, err := backend.RelocateWebsite(ctx, site, neighbor, after)
-		return websiteMoveMsg{id: request, site: site, sites: sites, err: err}
+		return websiteChangeMsg{id: request, site: site, sites: sites, err: err}
 	}
 }
 
-func (m *Model) acceptWebsiteMove(msg websiteMoveMsg) tea.Cmd {
-	if m.id != msg.id || m.job != "website-move" {
+func (m *Model) acceptWebsiteChange(msg websiteChangeMsg) tea.Cmd {
+	job := m.job
+	if m.id != msg.id || (job != "website-move" && job != "website-remove") {
 		return nil
 	}
 	m.abortLookup()
 	if msg.sites != nil {
+		index := slices.IndexFunc(msg.sites, func(s app.Website) bool { return s.URL == msg.site.URL })
+		if job == "website-remove" && index < 0 {
+			index = slices.Index(m.websites, msg.site)
+		}
 		m.setWebsites(msg.sites)
 		if m.pageSelectionMenuAvailable("overview") {
-			m.focusWebsiteAt(slices.Index(msg.sites, msg.site))
+			m.focusWebsiteAt(index)
 		}
 	}
 	if msg.err != nil {
-		m.prepareNotification("website-move", m.tr("dashboard.website.title"))
+		m.prepareNotification(job, m.tr("dashboard.website.title"))
 		m.message, m.notification.warning = m.localizeError(msg.err), true
 	}
 	if m.quitting && !m.keyHints.pending {

@@ -613,10 +613,10 @@ def open_website_menu(terminal, words, name, keyboard=False):
     else:
         mouse_event(terminal, 2, point, "M")
         mouse_event(terminal, 2, point, "m")
-    terminal.wait(words["websiteEditor.confirm"])
+    terminal.wait(words["dashboard.website.remove"])
     terminal.settle()
     # Remove uniquely locates this two-action menu, even on a crowded overview.
-    x, y = text_point(terminal, words["websiteEditor.confirm"])
+    x, y = text_point(terminal, words["dashboard.website.remove"])
     edit = words["dashboard.website.edit"]
     assert y > 0 and "".join(terminal.screen.cells[y-1][x:]).startswith(edit), terminal.screen.text()
     return x, y-1, y
@@ -821,16 +821,16 @@ def prepare_custom_website(preview, terminal, output, words, report, args):
     # A fifth site after the edited entry makes a delete-and-append implementation observable.
     names[3] = "Status API"
     assert website_order(terminal, names) == names, terminal.screen.text()
-    choose_website_action(terminal, words, "tail.example", "websiteEditor.confirm")
-    terminal.wait(words["websiteEditor.removeTitle"])
-    terminal.key(b"\t\r")
+    choose_website_action(terminal, words, "tail.example", "dashboard.website.remove")
     terminal.wait_absent("tail.example")
     names.pop()
 
+    terminal.wait("Status API")
     open_website_menu(terminal, words, "Status API", keyboard=True)
     preview.capture(terminal, output, "website-menu-160x45", args)
-    terminal.key(b"\x1b")
-    terminal.wait_absent(words["websiteEditor.confirm"])
+    terminal.key(b"\x1b[B\x1b")  # Escape the highlighted Remove action.
+    terminal.wait_absent(words["dashboard.website.remove"])
+    assert website_order(terminal, names) == names, terminal.screen.text()
     exercise_overview_drag(preview, terminal, output, words, names, args)
     terminal.exit()
     calls = json.loads(report.read_text())
@@ -841,6 +841,7 @@ def verify_custom_website(preview, terminal, output, words, report, args):
     names = ["GitHub", "YouTube", "Status API", "Google"]
     terminal.wait("203.0.113.17")
     assert website_order(terminal, names) == names, terminal.screen.text()
+    assert "tail.example" not in terminal.screen.text(), terminal.screen.text()
     test = words["dashboard.website.test"]
     click_point(terminal, website_status_point(terminal, "Status API", test))
     terminal.wait("91 ms")  # Only the saved https://status.example/ready returns this value.
@@ -861,25 +862,20 @@ def verify_custom_website(preview, terminal, output, words, report, args):
     open_website_menu(terminal, words, "Google")
     preview.capture(terminal, output, "website-menu-40x16", args)
     terminal.key(b"\x1b")
-    terminal.wait_absent(words["websiteEditor.confirm"])
+    terminal.wait_absent(words["dashboard.website.remove"])
     terminal.resize(160, 45)
     terminal.settle()
 
-    choose_website_action(terminal, words, "Status API", "websiteEditor.confirm")
-    terminal.wait(words["websiteEditor.removeTitle"])
-    terminal.wait("https://status.example/ready")
-    terminal.key(b"\r")  # Cancel is focused by default.
-    terminal.wait_absent(words["websiteEditor.removeTitle"])
-    assert website_order(terminal, names) == names, terminal.screen.text()
-    choose_website_action(terminal, words, "Status API", "websiteEditor.confirm", keyboard=True)
-    terminal.wait(words["websiteEditor.removeTitle"])
-    terminal.key(b"\t\r")
+    open_website_menu(terminal, words, "Status API", keyboard=True)
+    terminal.key(b"\x1b[B\r")  # Select Remove and activate it directly.
     terminal.wait_absent("Status API")
+    names.remove("Status API")
+    assert website_order(terminal, names) == names, terminal.screen.text()
     terminal.exit()
     calls = json.loads(report.read_text())
     assert [calls[key] for key in ("website_github", "website_google", "website_youtube", "website_custom")] == [1, 1, 1, 2], calls
     prefs = json.loads((output / "settings" / "preferences.json").read_text())
-    assert [site["Name"] for site in prefs["Websites"]] == ["GitHub", "YouTube", "Google"], prefs
+    assert [site["Name"] for site in prefs["Websites"]] == names, prefs
     print("PASS custom websites: add, right-click and keyboard menus, edit, sort across columns and rows, restart, test, remove", flush=True)
 
 

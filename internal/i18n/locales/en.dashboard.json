@@ -200,6 +200,7 @@
   "dashboard.website.all": "Test all",
   "dashboard.website.add": "Add website",
   "dashboard.website.edit": "Edit",
+  "dashboard.website.remove": "Remove",
   "dashboard.website.dragName": "Drag to reorder",
   "dashboard.website.contextMenu": "Right-click Site menu",
   "dashboard.website.menuKey": "m Site menu",

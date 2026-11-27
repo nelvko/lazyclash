@@ -438,8 +438,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case websiteListSavedMsg:
 		cmd = m.acceptWebsiteList(v)
-	case websiteMoveMsg:
-		cmd = m.acceptWebsiteMove(v)
+	case websiteChangeMsg:
+		cmd = m.acceptWebsiteChange(v)
 	case profileEditorOpenedMsg:
 		cmd = m.acceptProfileEditor(v)
 	case profileEditorExitedMsg:

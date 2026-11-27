@@ -14,7 +14,6 @@ import (
 type websiteEditorState struct {
 	address, name textinput.Model
 	original      app.Website
-	confirmRemove bool
 	err           string
 	canceled      bool
 }
@@ -35,12 +34,6 @@ func (m *Model) beginWebsiteEdit(original app.Website) tea.Cmd {
 	return m.focusWebsiteEditor("websiteEditor.address")
 }
 
-func (m *Model) beginWebsiteRemoval(site app.Website) tea.Cmd {
-	m.websiteEditor = websiteEditorState{original: site, confirmRemove: true}
-	m.form, m.focus, m.hover = "website-editor", "websiteEditor.cancel", ""
-	return nil
-}
-
 func (m *Model) closeWebsiteEditor(index int) {
 	m.websiteEditor, m.form, m.hover = websiteEditorState{}, "", ""
 	m.focusWebsiteAt(index)
@@ -51,7 +44,7 @@ func (e *websiteEditorState) draft() app.Website {
 }
 
 func (m *Model) websiteEditorInput() *textinput.Model {
-	if m.form == "website-editor" && !m.websiteEditor.confirmRemove {
+	if m.form == "website-editor" {
 		switch m.focus {
 		case "websiteEditor.address":
 			return &m.websiteEditor.address
@@ -102,10 +95,7 @@ func (m *Model) websiteEditorKey(key tea.KeyPressMsg) tea.Cmd {
 	}
 	switch key.String() {
 	case "tab", "shift+tab":
-		controls := []string{"websiteEditor.cancel", "websiteEditor.confirm"}
-		if !m.websiteEditor.confirmRemove {
-			controls = []string{"websiteEditor.address", "websiteEditor.name", "websiteEditor.cancel", "websiteEditor.save"}
-		}
+		controls := []string{"websiteEditor.address", "websiteEditor.name", "websiteEditor.cancel", "websiteEditor.save"}
 		i := slices.Index(controls, m.focus)
 		delta := 1
 		if key.String() == "shift+tab" {
@@ -147,19 +137,12 @@ func (m *Model) websiteEditorAction(id string) tea.Cmd {
 	case "websiteEditor.cancel":
 		m.closeWebsiteEditor(slices.Index(m.websites, e.original))
 		return nil
-	case "websiteEditor.save", "websiteEditor.confirm":
+	case "websiteEditor.save":
 		original := e.original
-		remove := e.confirmRemove
-		if remove != (id == "websiteEditor.confirm") {
-			return nil
-		}
-		var site app.Website
-		if !remove {
-			site = e.draft()
-			if site.URL == "" {
-				e.err = m.tr("websiteEditor.required")
-				return m.focusWebsiteEditor("websiteEditor.address")
-			}
+		site := e.draft()
+		if site.URL == "" {
+			e.err = m.tr("websiteEditor.required")
+			return m.focusWebsiteEditor("websiteEditor.address")
 		}
 		ctx := m.newJob("website-editor")
 		backend, request := m.backend, m.id
@@ -167,12 +150,9 @@ func (m *Model) websiteEditorAction(id string) tea.Cmd {
 		return func() tea.Msg {
 			var sites []app.Website
 			var err error
-			switch {
-			case remove:
-				sites, err = backend.RemoveWebsite(ctx, original)
-			case original.URL != "":
+			if original.URL != "" {
 				sites, err = backend.UpdateWebsite(ctx, original, site)
-			default:
+			} else {
 				sites, err = backend.AddWebsite(ctx, site)
 			}
 			return websiteListSavedMsg{id: request, sites: sites, err: err}
@@ -190,16 +170,14 @@ func (m *Model) acceptWebsiteList(msg websiteListSavedMsg) tea.Cmd {
 	case msg.err == nil || msg.sites != nil:
 		e := &m.websiteEditor
 		index := slices.Index(m.websites, e.original)
-		if msg.err == nil && !e.confirmRemove {
+		if msg.err == nil {
 			// Editing a canonical address or moving the site in another session
 			// can change both its identity and position while the form is open.
 			if saved, err := e.draft().Normalized(); err == nil {
 				index = slices.Index(msg.sites, saved)
 			}
-		} else if msg.err != nil {
-			if current := slices.IndexFunc(msg.sites, func(s app.Website) bool { return s.URL == e.original.URL }); current >= 0 {
-				index = current
-			}
+		} else if current := slices.IndexFunc(msg.sites, func(s app.Website) bool { return s.URL == e.original.URL }); current >= 0 {
+			index = current
 		}
 		m.setWebsites(msg.sites)
 		m.closeWebsiteEditor(index)
