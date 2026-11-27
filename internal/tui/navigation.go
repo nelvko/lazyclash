@@ -176,6 +176,15 @@ func (m *Model) revealBodyTarget(hit hitRegion) {
 }
 
 func (m *Model) contextHelp() string {
+	if m.form == "website-editor" {
+		if m.busy {
+			if m.opCtx.Err() != nil {
+				return m.tr("model.canceling")
+			}
+			return m.tr("websiteEditor.cancelSave")
+		}
+		return m.tr("websiteEditor.keys")
+	}
 	if m.coreNumber.id != "" {
 		if m.coreNumber.invalid {
 			return m.tr("settings.numberInvalid")

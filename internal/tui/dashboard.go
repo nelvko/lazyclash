@@ -83,6 +83,8 @@ type dashboardOptions struct {
 	TrafficScale                    trafficChartScale
 	ipInfo                          overviewIPState
 	websiteTests                    websiteTestState
+	websites                        []app.Website
+	websiteOffset                   int
 	// Body and its targets are relative to the first content row beneath the
 	// page header. They are used by the Proxies, Profiles, Connections, Rules and Logs pages.
 	Body          string

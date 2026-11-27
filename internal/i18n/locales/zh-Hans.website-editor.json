@@ -1,0 +1,16 @@
+{
+  "websiteEditor.add": "添加网站",
+  "websiteEditor.removeSite": "删除 %s",
+  "websiteEditor.removeTitle": "删除网站",
+  "websiteEditor.address": "网址",
+  "websiteEditor.name": "名称（选填）",
+  "websiteEditor.hostname": "默认使用主机名",
+  "websiteEditor.required": "请输入域名或 HTTP(S) 网址。",
+  "websiteEditor.confirm": "删除",
+  "websiteEditor.save": "保存",
+  "websiteEditor.saving": "正在保存…",
+  "websiteEditor.cancel": "取消",
+  "websiteEditor.cancelSave": "Esc 取消保存",
+  "websiteEditor.notSaved": "已取消保存。",
+  "websiteEditor.keys": "Tab 切换 · Enter 确认 · Esc 取消"
+}

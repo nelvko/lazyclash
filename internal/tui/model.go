@@ -26,7 +26,9 @@ import (
 type Backend interface {
 	Snapshot(context.Context) (app.Snapshot, error)
 	LookupIPInfo(context.Context) (app.IPInfo, error)
-	TestWebsite(context.Context, string) (app.WebsiteTestResult, error)
+	AddWebsite(context.Context, app.Website) ([]app.Website, error)
+	RemoveWebsite(context.Context, app.Website) ([]app.Website, error)
+	TestWebsite(context.Context, app.Website) (app.WebsiteTestResult, error)
 	ReadPreferences(context.Context) (app.Preferences, error)
 	SaveNetworkPreferences(context.Context, downloadnet.Config) error
 	SetGuideDismissed(context.Context, bool) error
@@ -124,6 +126,7 @@ type networkMsg struct {
 // Bubble Tea receives a Model value at each update boundary. Internal helpers
 // use pointer receivers to avoid copying all the page and input states again.
 type Model struct {
+	websiteEditor         websiteEditorState
 	coreNumber            coreNumberEditor
 	locale                i18n.Localizer
 	languageOverride      string
@@ -183,6 +186,8 @@ type Model struct {
 	ipInfo                overviewIPState
 	overviewRoute         overviewProxyRoute
 	websiteTests          websiteTestState
+	websites              []app.Website
+	websiteOffset         int
 	connections           connectionsState
 	rules                 rulesState
 	providers             providerPanelState
@@ -211,6 +216,7 @@ func New(ctx context.Context, backend Backend, languages ...string) Model {
 		m.initialPreferencesErr = err
 		prefs = app.Preferences{}
 	}
+	m.websites = prefs.WebsitesForTesting()
 	m.startPage = cmp.Or(prefs.StartPage, app.StartPageOverview)
 	m.page = m.startPage
 	if m.page == app.StartPageOverview {
@@ -409,6 +415,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.renderLayout()
 		return m, m.syncNotificationTimers(time.Now())
+	case websiteListSavedMsg:
+		cmd = m.acceptWebsiteList(v)
 	case profileEditorOpenedMsg:
 		cmd = m.acceptProfileEditor(v)
 	case profileEditorExitedMsg:
@@ -544,7 +552,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ipInfoResultMsg:
 		m.acceptIPInfo(v)
 	case websiteTestMsg:
-		m.websiteTests.accept(v)
+		cmd = m.acceptWebsiteTest(v)
 	case logRecoveryExpiredMsg:
 		if m.logs.recoveryUntil == v.until {
 			m.logs.recoveryUntil = time.Time{}
@@ -583,6 +591,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.logoIntro.sized = true
 		m.sidebar.reveal = true
 		m.width, m.height = max(1, v.Width), max(1, v.Height)
+		if strings.HasPrefix(m.focus, "website.site.") {
+			for i, site := range m.websites {
+				if websiteActionID(site) == m.focus {
+					m.websiteOffset = i
+					break
+				}
+			}
+		}
 		if m.page == "connections" {
 			m.resizeConnectionSortFocus()
 		}
@@ -789,6 +805,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.updateWizardInput(v)
 		} else if m.inlineInputActive() {
 			cmd = m.updateInlineInput(v)
+		} else if m.form == "website-editor" {
+			cmd = m.updateWebsiteEditorInput(v)
 		} else if m.form == "tun-confirm" || m.form == "profile-delete" || m.form == "profile-document" || m.form == "profile-overrides" && m.busy {
 			break
 		} else if m.form != "" {
@@ -1177,6 +1195,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.updateWizardInput(msg)
 		} else if m.inlineInputActive() {
 			cmd = m.updateInlineInput(msg)
+		} else if m.form == "website-editor" {
+			cmd = m.updateWebsiteEditorInput(msg)
 		} else if m.form == "tun-confirm" || m.form == "profile-delete" || m.form == "profile-document" || m.form == "profile-overrides" && m.busy {
 			break
 		} else if m.form != "" {
@@ -1296,6 +1316,9 @@ func (m *Model) openForm() tea.Cmd {
 	return textinput.Blink
 }
 func (m *Model) formKey(k tea.KeyPressMsg) tea.Cmd {
+	if m.form == "website-editor" {
+		return m.websiteEditorKey(k)
+	}
 	if m.form == "profile-document" {
 		return m.profileEditorKey(k)
 	}
@@ -1414,8 +1437,18 @@ func (m *Model) activateControl(id string, key *tea.KeyPressMsg) tea.Cmd {
 	if handled, cmd := m.profileAction(id); handled {
 		return cmd
 	}
-	if site, ok := strings.CutPrefix(id, "website."); ok {
-		return m.testWebsites(site)
+	switch id {
+	case "website.manage":
+		if m.page == "overview" && !m.busy && !m.quitting {
+			return m.openWebsiteManager()
+		}
+		return nil
+	case "website.prev", "website.next":
+		m.turnWebsitePage(id)
+		return nil
+	}
+	if id == "website.all" || strings.HasPrefix(id, "website.site.") {
+		return m.testWebsites(id)
 	}
 	switch id {
 	case "ip.refresh":
@@ -1743,6 +1776,9 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 					return m.wizardActivate(r.ID)
 				}
 				if m.form != "" {
+					if m.form == "website-editor" {
+						return m.websiteEditorAction(r.ID)
+					}
 					if m.form == "tun-confirm" {
 						return m.tunConfirmationAction(r.ID)
 					}
@@ -1961,6 +1997,8 @@ func (m *Model) renderLayout() {
 		}
 	} else if m.wizard.open || m.wizard.networkOpen {
 		m.screen, m.targets = m.renderWizard(base)
+	} else if m.form == "website-editor" {
+		m.screen, m.targets = m.renderWebsiteEditor(base)
 	} else if m.form == "tun-confirm" {
 		m.screen, m.targets = m.renderTUNConfirmation(base)
 	} else if m.form != "" {

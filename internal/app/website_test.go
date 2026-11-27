@@ -7,7 +7,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"slices"
 	"testing"
 	"time"
 )
@@ -36,11 +35,8 @@ func TestWebsiteTargetsUseConfiguredProxy(t *testing.T) {
 	t.Setenv("NO_PROXY", "*")
 	svc.active = true
 	serveConfigReadback(a, fmt.Sprintf(`{"mixed-port":%d}`, settings.MixedPort))
-	sites := WebsiteTestSites()
-	if !slices.Equal(sites, []string{"GitHub", "Google", "YouTube"}) {
-		t.Fatalf("unexpected website choices: %v", sites)
-	}
-	tunnels := []string{"CONNECT github.com:443", "CONNECT www.google.com:443", "CONNECT www.youtube.com:443"}
+	sites := append(DefaultWebsites(), Website{URL: "example.net:8443/health"})
+	tunnels := []string{"CONNECT github.com:443", "CONNECT www.google.com:443", "CONNECT www.youtube.com:443", "CONNECT example.net:8443"}
 	for i, site := range sites {
 		if _, err := a.TestWebsite(t.Context(), site); err == nil {
 			t.Fatal("website test bypassed proxy rejection")
@@ -51,11 +47,11 @@ func TestWebsiteTargetsUseConfiguredProxy(t *testing.T) {
 				t.Fatal(request)
 			}
 		default:
-			t.Fatalf("no proxy request for %s", site)
+			t.Fatalf("no proxy request for %s", site.Name)
 		}
 	}
-	if _, err := a.TestWebsite(t.Context(), "https://example.org"); err == nil || len(requests) != 0 {
-		t.Fatal("expected unknown target to be rejected before sending requests")
+	if _, err := a.TestWebsite(t.Context(), Website{URL: "file:///private"}); err == nil || len(requests) != 0 {
+		t.Fatal("expected invalid target to be rejected before sending requests")
 	}
 }
 

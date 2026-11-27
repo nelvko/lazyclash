@@ -50,6 +50,12 @@ func (m *Model) activeInputField() (textinput.Model, string, bool) {
 		}
 		return textinput.Model{}, "", false
 	}
+	if m.form == "website-editor" {
+		if input := m.websiteEditorInput(); input != nil {
+			return *input, m.focus, true
+		}
+		return textinput.Model{}, "", false
+	}
 	if m.form != "" {
 		if m.profileFieldsForm() {
 			if input := m.profileCreateActive(); input != nil && input.Focused() {

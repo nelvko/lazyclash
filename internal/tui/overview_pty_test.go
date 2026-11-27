@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -28,6 +29,9 @@ func TestOverviewPTYFixture(t *testing.T) {
 		scenario = "running"
 	}
 	b := newOverviewPTYBackend(scenario)
+	if scenario == "manage-websites" {
+		b.websitePrefs = &app.App{Home: filepath.Join(filepath.Dir(report), "settings")}
+	}
 	language := os.Getenv("LAZYCLASH_OVERVIEW_PTY_LANGUAGE")
 	if language == "" {
 		language = "en"
@@ -40,7 +44,8 @@ func TestOverviewPTYFixture(t *testing.T) {
 		"selections": b.selections.Load(), "runtime_queries": b.runtimeQueries.Load(),
 		"ip_lookups":     b.ipLookups.Load(),
 		"website_github": b.websiteGitHub.Load(), "website_google": b.websiteGoogle.Load(), "website_youtube": b.websiteYouTube.Load(),
-		"tun_changes": b.tunChanges.Load(), "terminal_changes": b.terminalChanges.Load(),
+		"website_custom": b.websiteCustom.Load(),
+		"tun_changes":    b.tunChanges.Load(), "terminal_changes": b.terminalChanges.Load(),
 		"settings_reads": b.settingsReads.Load(), "settings_writes": b.settingsWrites.Load(),
 	})
 	if err != nil {
@@ -59,6 +64,8 @@ type overviewPTYBackend struct {
 	settingsReads, settingsWrites                atomic.Int64
 	ipLookups                                    atomic.Int64
 	websiteGitHub, websiteGoogle, websiteYouTube atomic.Int64
+	websiteCustom                                atomic.Int64
+	websitePrefs                                 *app.App
 	confirmedMode                                atomic.Value // string, set by the IP route scenario
 }
 
@@ -162,8 +169,29 @@ func (b *overviewPTYBackend) LookupIPInfo(ctx context.Context) (app.IPInfo, erro
 	}, ctx.Err()
 }
 
-func (b *overviewPTYBackend) TestWebsite(ctx context.Context, site string) (app.WebsiteTestResult, error) {
-	switch site {
+func (b *overviewPTYBackend) ReadPreferences(ctx context.Context) (app.Preferences, error) {
+	if b.websitePrefs != nil {
+		return b.websitePrefs.ReadPreferences(ctx)
+	}
+	return b.fakeBackend.ReadPreferences(ctx)
+}
+
+func (b *overviewPTYBackend) AddWebsite(ctx context.Context, site app.Website) ([]app.Website, error) {
+	if b.websitePrefs == nil {
+		return nil, errors.New("website editing is unavailable in this fixture")
+	}
+	return b.websitePrefs.AddWebsite(ctx, site)
+}
+
+func (b *overviewPTYBackend) RemoveWebsite(ctx context.Context, site app.Website) ([]app.Website, error) {
+	if b.websitePrefs == nil {
+		return nil, errors.New("website editing is unavailable in this fixture")
+	}
+	return b.websitePrefs.RemoveWebsite(ctx, site)
+}
+
+func (b *overviewPTYBackend) TestWebsite(ctx context.Context, site app.Website) (app.WebsiteTestResult, error) {
+	switch site.Name {
 	case "GitHub":
 		b.websiteGitHub.Add(1)
 		return app.WebsiteTestResult{StatusCode: 200, Duration: 173 * time.Millisecond}, ctx.Err()
@@ -173,6 +201,12 @@ func (b *overviewPTYBackend) TestWebsite(ctx context.Context, site string) (app.
 	case "YouTube":
 		b.websiteYouTube.Add(1)
 		return app.WebsiteTestResult{}, context.DeadlineExceeded
+	case "status.example":
+		if site.URL == "https://status.example/health" {
+			b.websiteCustom.Add(1)
+			return app.WebsiteTestResult{StatusCode: 204, Duration: 91 * time.Millisecond}, ctx.Err()
+		}
+		return app.WebsiteTestResult{}, errors.New("unexpected custom URL")
 	default:
 		return app.WebsiteTestResult{}, errors.New("unexpected website")
 	}

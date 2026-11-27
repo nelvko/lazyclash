@@ -34,11 +34,12 @@ type Preferences struct {
 	Network        downloadnet.Config
 	GuideDismissed bool
 	HasRun         bool
-	Language       string `json:",omitempty"`
-	Theme          string `json:",omitempty"`
-	StartPage      string `json:",omitempty"`
-	Editor         string `json:",omitempty"`
-	HideKeyHints   bool   `json:",omitempty"`
+	Language       string    `json:",omitempty"`
+	Theme          string    `json:",omitempty"`
+	StartPage      string    `json:",omitempty"`
+	Editor         string    `json:",omitempty"`
+	HideKeyHints   bool      `json:",omitempty"`
+	Websites       []Website `json:",omitzero"`
 }
 
 func defaultPreferences() Preferences {
@@ -67,6 +68,16 @@ func (a *App) loadPreferencesLocked() (Preferences, []byte, error) {
 	p.Network = p.Network.Normalized()
 	if err := rememberableNetwork(p.Network); err != nil {
 		return p, nil, diagnostic.New("diagnostic.preferences.networkInvalid", "stored download settings are invalid or contain credentials; file preserved")
+	}
+	for i, site := range p.Websites {
+		normalized, err := site.normalized()
+		if err != nil {
+			return Preferences{}, nil, err
+		}
+		if err := uniqueWebsite(p.Websites[:i], normalized); err != nil {
+			return Preferences{}, nil, err
+		}
+		p.Websites[i] = normalized
 	}
 	return p, raw, nil
 }

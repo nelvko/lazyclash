@@ -186,7 +186,7 @@ func renderInputField(input textinput.Model, o inputFieldOptions) dashboardBlock
 
 // Join complete controls so each editor, clear action and cursor keeps the
 // same horizontal offset as its frame.
-func joinFormFields(gap int, fields ...dashboardBlock) dashboardBlock {
+func joinDashboardBlocks(gap int, fields ...dashboardBlock) dashboardBlock {
 	var row dashboardBlock
 	var parts []string
 	x := 0

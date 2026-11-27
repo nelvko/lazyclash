@@ -31,8 +31,10 @@ func TestOverviewPairedLayoutAlignsBothEdgesAndKeepsActionOwnership(t *testing.T
 		"mode.rule": "dashboard.control.routingMode", "mode.global": "dashboard.control.routingMode", "mode.direct": "dashboard.control.routingMode", "card.proxies": "dashboard.control.routingMode",
 		"card.profiles": "dashboard.profile.title", "tun.toggle": "dashboard.overview.network", "network.primaryConfig": "dashboard.overview.network",
 		"ip.refresh":  "dashboard.overview.ipInfo",
-		"website.all": "dashboard.website.title", "website.GitHub": "dashboard.website.title",
-		"website.Google": "dashboard.website.title", "website.YouTube": "dashboard.website.title",
+		"website.all": "dashboard.website.title", "website.manage": "dashboard.website.title",
+	}
+	for _, site := range app.DefaultWebsites() {
+		owners[websiteActionID(site)] = "dashboard.website.title"
 	}
 	renders := map[string]func(dashboardOptions, int) dashboardBlock{
 		"dashboard.control.core": overviewCoreCard, "dashboard.traffic.title": overviewTrafficCard,
@@ -44,7 +46,7 @@ func TestOverviewPairedLayoutAlignsBothEdgesAndKeepsActionOwnership(t *testing.T
 		for _, width := range []int{16, 40, 72, 89, 90, 91, 112, 180} {
 			for _, height := range []int{19, 20, 45} {
 				t.Run(fmt.Sprintf("%s/%dx%d", language, width, height), func(t *testing.T) {
-					o := dashboardOptions{Locale: i18n.New(language), Snapshot: snapshot, Runtime: liveRuntime(), RuntimeReceived: true, Height: height}
+					o := dashboardOptions{websites: app.DefaultWebsites(), Locale: i18n.New(language), Snapshot: snapshot, Runtime: liveRuntime(), RuntimeReceived: true, Height: height}
 					body := overviewLayout(o, width)
 					assertCanvas(t, strings.Join(body.lines, "\n"), width, len(body.lines))
 					assertRegions(t, body.targets, width, len(body.lines))

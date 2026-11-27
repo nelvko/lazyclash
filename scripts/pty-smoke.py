@@ -26,9 +26,14 @@ import unicodedata
 ANSI = re.compile(r"\x1b\][^\x07]*(?:\x07|\x1b\\)|\x1b\[[0-?]*[ -/]*[@-~]|\x1b[@-_]")
 
 
+def char_width(char):
+    if unicodedata.combining(char) or char in "\ufe0e\ufe0f\u200d":
+        return 0
+    return 2 if unicodedata.east_asian_width(char) in ("W", "F") else 1
+
+
 def cell_width(text):
-    return sum(2 if unicodedata.east_asian_width(char) in ("W", "F") else 1
-               for char in text if not unicodedata.combining(char) and char not in "\ufe0f\u200d")
+    return sum(char_width(char) for char in text)
 
 
 class Screen:
@@ -138,11 +143,14 @@ class Screen:
             elif char == "\t":
                 self.x = min(self.columns - 1, (self.x // 8 + 1) * 8)
             elif ord(char) >= 32 and char != "\x7f":
-                if unicodedata.combining(char) or char in "\ufe0f\u200d":
+                width = char_width(char)
+                if width == 0:
                     if self.x > 0:
-                        self.cells[self.y][min(self.x - 1, self.columns - 1)] += char
+                        pos = min(self.x - 1, self.columns - 1)
+                        if pos > 0 and self.cells[self.y][pos] == "":
+                            pos -= 1
+                        self.cells[self.y][pos] += char
                     continue
-                width = 2 if unicodedata.east_asian_width(char) in ("W", "F") else 1
                 if self.x + width > self.columns:
                     self.x = 0
                     self.newline()

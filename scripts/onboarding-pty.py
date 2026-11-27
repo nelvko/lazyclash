@@ -73,11 +73,9 @@ class StyledScreen(SMOKE.Screen):
 
     def feed(self, chunk):
         for char in self.style_decoder.decode(chunk):
-            printable = (self.state == "text" and ord(char) >= 32 and char != "\x7f"
-                         and not unicodedata.combining(char) and char not in "\ufe0f\u200d")
+            width = SMOKE.char_width(char) if self.state == "text" and ord(char) >= 32 and char != "\x7f" else 0
             super().feed(char.encode("utf-8"))
-            if printable:
-                width = 2 if unicodedata.east_asian_width(char) in "WF" else 1
+            if width:
                 self.styles[self.y][self.x - width:self.x] = [self.style] * width
 
     def csi(self, final, sequence):
@@ -241,7 +239,9 @@ def png(screen, path, font_path, cjk_path, size):
             elif text == "▌":
                 draw.rectangle((left, top, left + max(1, round(cell_w / 2)) - 1, top + cell_h - 1), fill=fg)
             else:
-                draw.text((left, top + 1), text, font=chosen, fill=fg)
+                # The selected font already paints the text glyph. Some Pillow
+                # backends otherwise draw VS15 itself as a missing glyph.
+                draw.text((left, top + 1), text.replace("\ufe0e", ""), font=chosen, fill=fg)
             if underline and text != " ":
                 draw.line((left, top + ascent + 2, left + cells * cell_w - 1, top + ascent + 2), fill=fg)
     image.save(path)

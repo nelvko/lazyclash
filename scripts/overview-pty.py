@@ -411,7 +411,7 @@ def inspect_row_cards(preview, terminal, output, width, height, words, profile, 
             x, y = outline["x"], outline["y"]
             right, bottom = x + outline["width"], y + outline["height"]
             card_text = "\n".join("".join(row[x:right]) for row in terminal.screen.cells[y:bottom])
-            for label in ("GitHub", "Google", "YouTube", words["dashboard.website.all"]):
+            for label in ("GitHub", "Google", "YouTube", "⚡︎"):
                 assert label in card_text, "website card omitted " + label
         if name == "ipInfo":
             if scenario in ("stopped", "unavailable"):
@@ -517,11 +517,15 @@ def exercise_ip_route(preview, terminal, output, words, report, args):
 
 def exercise_websites(preview, terminal, output, words, report, args):
     title = words["dashboard.website.title"]
-    test_all = words["dashboard.website.all"]
+    test_all = "⚡︎"
     untested = words["dashboard.website.untested"]
     terminal.wait("203.0.113.17")
     terminal.wait(title)
     assert terminal.screen.text().count(untested) == 3
+    sites = [text_point(terminal, name) for name in ("GitHub", "Google", "YouTube")]
+    assert sites[0][1] == sites[1][1] == sites[2][1] and sites[0][0] < sites[1][0] < sites[2][0], sites
+    heading, icon = text_point(terminal, title), text_point(terminal, test_all)
+    assert icon[0] > sites[-1][0] and icon[1] == heading[1]
 
     return_navigation(terminal, words)
     terminal.key(b"\r")
@@ -545,6 +549,9 @@ def exercise_websites(preview, terminal, output, words, report, args):
     terminal.wait("403")
     terminal.wait(words["dashboard.website.timeout"])
     assert untested not in terminal.screen.text()
+    terminal.click_text("YouTube")
+    terminal.settle()
+    assert words["dashboard.website.testSite"] % "YouTube" in terminal.screen.text().splitlines()[-1]
     preview.capture(terminal, output, "website-tests-160x45", args)
     terminal.resize(80, 24)
     terminal.settle()
@@ -561,8 +568,59 @@ def exercise_websites(preview, terminal, output, words, report, args):
     preview.capture(terminal, output, "website-tests-80x24", args)
     terminal.exit()
     calls = json.loads(report.read_text())
-    assert (calls["website_github"], calls["website_google"], calls["website_youtube"]) == (3, 2, 3), calls
+    assert (calls["website_github"], calls["website_google"], calls["website_youtube"]) == (3, 2, 4), calls
     print("PASS website tests: single site by keyboard, all sites by mouse, wide and narrow layouts", flush=True)
+
+
+def add_custom_website(terminal, words):
+    terminal.wait("203.0.113.17")
+    terminal.click_text(words["dashboard.website.manage"])
+    terminal.wait(words["websiteEditor.add"])
+    terminal.key(b"\r")
+    terminal.wait(words["websiteEditor.address"])
+    terminal.key(b"status.example/health")
+    terminal.key(b"\r")
+    terminal.key(b"\r")
+    terminal.wait_absent(words["websiteEditor.address"])
+    terminal.exit()
+
+
+def verify_custom_website(preview, terminal, output, words, report, args):
+    terminal.wait("203.0.113.17")
+    terminal.click_text("⚡︎")
+    terminal.wait("173 ms")
+    terminal.wait("91 ms")
+    assert text_point(terminal, "status.")[1] > text_point(terminal, "GitHub")[1]
+    preview.capture(terminal, output, "website-custom-grid-160x45", args)
+
+    terminal.resize(40, 16)
+    terminal.settle()
+    focus_control(terminal, words["dashboard.website.next"])
+    terminal.key(b"\r")
+    terminal.wait("status.example")
+    terminal.wait("91 ms")
+    preview.capture(terminal, output, "website-custom-second-page", args)
+    terminal.resize(160, 45)
+    terminal.settle()
+
+    remove = words["websiteEditor.removeSite"] % "status.example"
+    for confirm in (False, True):
+        terminal.click_text(words["dashboard.website.manage"])
+        terminal.wait(remove)
+        terminal.click_text(remove)
+        terminal.wait(words["websiteEditor.removeTitle"])
+        if confirm:
+            terminal.key(b"\t")
+        terminal.key(b"\r")
+        terminal.wait_absent(words["websiteEditor.removeTitle"])
+    terminal.wait("GitHub")
+    terminal.wait_absent("status.")
+    terminal.exit()
+    calls = json.loads(report.read_text())
+    assert all(calls[key] == 1 for key in ("website_github", "website_google", "website_youtube", "website_custom")), calls
+    prefs = json.loads((output / "settings" / "preferences.json").read_text())
+    assert "status.example" not in json.dumps(prefs)
+    print("PASS custom websites: add, restart, test across pages, cancel deletion, remove", flush=True)
 
 
 def exercise(preview, binary, output, language, profile, scenario, args):
@@ -571,6 +629,12 @@ def exercise(preview, binary, output, language, profile, scenario, args):
     report = output / "calls.json"
     terminal = fixture_terminal(preview, binary, report, language, profile, scenario)
     try:
+        if scenario == "manage-websites":
+            add_custom_website(terminal, words)
+            terminal.cleanup()
+            terminal = fixture_terminal(preview, binary, report, language, profile, scenario)
+            verify_custom_website(preview, terminal, output, words, report, args)
+            return
         if scenario == "ip-route":
             exercise_ip_route(preview, terminal, output, words, report, args)
             return
@@ -753,7 +817,7 @@ def main():
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--lang", choices=["en", "zh-Hans"], action="append")
     parser.add_argument("--profile", choices=["truecolor", "256", "no-color"], action="append")
-    parser.add_argument("--scenario", choices=["running", "stopped", "unavailable", "drift", "pending", "direct", "ip-route", "websites"], action="append")
+    parser.add_argument("--scenario", choices=["running", "stopped", "unavailable", "drift", "pending", "direct", "ip-route", "websites", "manage-websites"], action="append")
     sys.dont_write_bytecode = True
     spec = importlib.util.spec_from_file_location("overview_pty_preview", Path(__file__).with_name("onboarding-pty.py"))
     preview = importlib.util.module_from_spec(spec)

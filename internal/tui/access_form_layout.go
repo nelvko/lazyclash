@@ -48,7 +48,7 @@ func (m *Model) accessFieldBlock(id, label string, width int) dashboardBlock {
 }
 
 func appendAccessFields(d *wizardDocument, gap int, fields ...dashboardBlock) {
-	row := joinFormFields(gap, fields...)
+	row := joinDashboardBlocks(gap, fields...)
 	for _, hit := range row.targets {
 		hit.Y += len(d.lines)
 		d.targets = append(d.targets, hit)

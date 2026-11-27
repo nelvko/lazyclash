@@ -14,7 +14,6 @@ from pathlib import Path
 import sys
 import tempfile
 import time
-import unicodedata
 import uuid
 
 from e2e_instance import UserInstance
@@ -59,11 +58,9 @@ class ColorScreen(SMOKE.Screen):
 
     def feed(self, chunk):
         for char in self.color_decoder.decode(chunk):
-            printable = (self.state == "text" and ord(char) >= 32 and char != "\x7f"
-                         and not unicodedata.combining(char) and char not in "\ufe0f\u200d")
+            width = SMOKE.char_width(char) if self.state == "text" and ord(char) >= 32 and char != "\x7f" else 0
             super().feed(char.encode("utf-8"))
-            if printable:
-                width = 2 if unicodedata.east_asian_width(char) in ("W", "F") else 1
+            if width:
                 self.colors[self.y][self.x - width:self.x] = [self.foreground] * width
 
     def csi(self, final, sequence):

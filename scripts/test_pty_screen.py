@@ -10,6 +10,12 @@ Screen = module.Screen
 
 
 class ScreenTests(unittest.TestCase):
+    def test_lightning_text_selector_shares_its_wide_cell(self):
+        screen = Screen(6, 1)
+        screen.feed("⚡︎X".encode())
+        self.assertEqual(screen.cells[0][:3], ["⚡︎", "", "X"])
+        self.assertEqual(module.cell_width("⚡︎X"), 3)
+
     def populated(self):
         screen = Screen(8, 6)
         screen.feed(b"\x1b[Hheader")

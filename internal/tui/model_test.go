@@ -29,7 +29,9 @@ type fakeBackend struct {
 	snapshot            app.Snapshot
 	snapshotErr         error
 	lookupIPInfo        func(context.Context) (app.IPInfo, error)
-	testWebsite         func(context.Context, string) (app.WebsiteTestResult, error)
+	addWebsite          func(context.Context, app.Website) ([]app.Website, error)
+	removeWebsite       func(context.Context, app.Website) ([]app.Website, error)
+	testWebsite         func(context.Context, app.Website) (app.WebsiteTestResult, error)
 	prefs               app.Preferences
 	prefsErr            error
 	saveLanguage        func(context.Context, string) error
@@ -144,7 +146,19 @@ func (f *fakeBackend) LookupIPInfo(ctx context.Context) (app.IPInfo, error) {
 	}
 	return app.IPInfo{}, errors.New("missing IP info fixture")
 }
-func (f *fakeBackend) TestWebsite(ctx context.Context, site string) (app.WebsiteTestResult, error) {
+func (f *fakeBackend) AddWebsite(ctx context.Context, site app.Website) ([]app.Website, error) {
+	if f.addWebsite != nil {
+		return f.addWebsite(ctx, site)
+	}
+	return nil, errors.New("missing add website fixture")
+}
+func (f *fakeBackend) RemoveWebsite(ctx context.Context, site app.Website) ([]app.Website, error) {
+	if f.removeWebsite != nil {
+		return f.removeWebsite(ctx, site)
+	}
+	return nil, errors.New("missing remove website fixture")
+}
+func (f *fakeBackend) TestWebsite(ctx context.Context, site app.Website) (app.WebsiteTestResult, error) {
 	if f.testWebsite != nil {
 		return f.testWebsite(ctx, site)
 	}

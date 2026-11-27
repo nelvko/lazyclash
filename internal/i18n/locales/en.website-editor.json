@@ -1,0 +1,16 @@
+{
+  "websiteEditor.add": "Add website",
+  "websiteEditor.removeSite": "Remove %s",
+  "websiteEditor.removeTitle": "Remove website",
+  "websiteEditor.address": "Website address",
+  "websiteEditor.name": "Name (optional)",
+  "websiteEditor.hostname": "Use hostname",
+  "websiteEditor.required": "Enter a domain or an HTTP(S) URL.",
+  "websiteEditor.confirm": "Remove",
+  "websiteEditor.save": "Save",
+  "websiteEditor.saving": "Saving…",
+  "websiteEditor.cancel": "Cancel",
+  "websiteEditor.cancelSave": "Esc Cancel save",
+  "websiteEditor.notSaved": "Save canceled.",
+  "websiteEditor.keys": "Tab Move · Enter Confirm · Esc Cancel"
+}

@@ -61,15 +61,22 @@ func (m *Model) profilesContextHelp() string {
 }
 
 func (m *Model) overviewContextHelp() string {
-	if site, found := strings.CutPrefix(m.focus, "website."); found {
-		o := m.navigationOptions()
-		if !o.websiteTestsAvailable() || !o.websiteTests.enabled(site) {
-			return m.tr("navigation.controls.browse")
+	if strings.HasPrefix(m.focus, "website.") {
+		switch m.focus {
+		case "website.manage", "website.prev", "website.next":
+			return m.controlActionHelp(m.tr("dashboard." + m.focus))
 		}
-		if site == "all" {
-			return m.controlActionHelp(m.tr("dashboard.website.all"))
+		if m.navigationOptions().websiteTestsAvailable() {
+			if m.focus == "website.all" && m.websiteTests.canTestAll(m.websites) {
+				return m.controlActionHelp(m.tr("dashboard.website.all"))
+			}
+			for _, site := range m.websites {
+				if m.focus == websiteActionID(site) && !m.websiteTests.rows[site.URL].pending() {
+					return m.controlActionHelp(m.tr("dashboard.website.testSite", clean(site.Name)))
+				}
+			}
 		}
-		return m.controlActionHelp(m.tr("dashboard.website.testSite", site))
+		return m.tr("navigation.controls.browse")
 	}
 	if m.focus == "ip.refresh" {
 		if m.busy || m.ipInfo.loading || !m.snapshotReady || !overviewProxyAvailable(m.snapshot) {

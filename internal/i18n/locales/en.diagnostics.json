@@ -1,4 +1,8 @@
 {
+  "diagnostic.website.url": "Enter a hostname or HTTP(S) URL without credentials, query or fragment",
+  "diagnostic.website.name": "Enter a website name without control characters",
+  "diagnostic.website.duplicate": "A website with this name or address already exists",
+  "diagnostic.website.missing": "This website has changed or was removed",
   "diagnostic.settings.proxyAuthConfig": "could not read proxy authentication settings",
   "diagnostic.settings.proxyAuthUsername": "enter a username of up to 255 bytes without colons or control characters",
   "diagnostic.settings.proxyAuthPassword": "enter a nonempty password of up to 255 bytes without control characters",
