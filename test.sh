@@ -3,7 +3,7 @@
 # Example: PROXY=http://127.0.0.1:7899 CYCLES=1 ./test.sh
 set -eu
 
-# Honor the HTTPS/SOCKS settings exported by lazyclash env.
+# Honor the HTTPS/SOCKS settings exported by lazyclash shell env.
 PROXY=${PROXY:-${https_proxy:-${HTTPS_PROXY:-${all_proxy:-${ALL_PROXY:-http://127.0.0.1:7897}}}}}
 BASE_URL=${BASE_URL:-https://speed.cloudflare.com}
 CYCLES=${CYCLES:-4}

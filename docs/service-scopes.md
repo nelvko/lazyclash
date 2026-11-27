@@ -21,27 +21,25 @@ lazyclash 在 Linux/systemd 上提供两个独立作用域：普通用户管理�
 
 管理器预检只确认当前 scope 的 systemd 可访问，`SystemState=degraded` 不会阻止安装。属性查询读取带名称的输出，不依赖 `--value`；服务名必须明确返回 `LoadState=not-found` 才视为空闲。系统管理器连接失败不会提示用户会话或 `XDG_RUNTIME_DIR`。这些查询已修正旧版工具的选项问题，但 systemd 219 的完整安装、unit 与生命周期尚未实测，版本范围及实际验证见 [验证说明](verification.md)。
 
-普通用户可用 `--home` / `LAZYCLASH_HOME` 和 `--service-name` / `LAZYCLASH_SERVICE` 隔离实例。root 忽略这两个用户环境变量，也不根据 `SUDO_USER` 选择数据；使用显式 `--home` 和 `--service-name`。root 的每个服务名有独立默认目录。自定义系统路径必须位于受保护、服务账号可遍历的目录下，祖先须 root 所有且不可由其他账号改写。`/tmp`、`/var/tmp`、`/home`、`/root`、`/run/user` 及其子目录会被 unit 文件系统沙箱隐藏，因此明确禁止；请使用 `/var/lib/lazyclash` 下的独立目录。符号链接或不安全的现存文件也会被拒绝。
+普通用户可用 `LAZYCLASH_HOME` 和 `LAZYCLASH_SERVICE` 隔离实例。root 忽略这两个用户环境变量，也不根据 `SUDO_USER` 选择数据。发行程序的系统实例使用 `/var/lib/lazyclash/lazyclash-mihomo`。自定义系统路径必须位于受保护、服务账号可遍历的目录下，祖先须 root 所有且不可由其他账号改写。`/tmp`、`/var/tmp`、`/home`、`/root`、`/run/user` 及其子目录会被 unit 文件系统沙箱隐藏，因此明确禁止；请使用 `/var/lib/lazyclash` 下的独立目录。符号链接或不安全的现存文件也会被拒绝。
 
 ## 日常操作
 
-安装只发布内核、默认配置和 unit，不启动、不 enable、不修改 linger。普通用户先明确配置 linger，再使用 `service start`；root 的系统实例不做 linger 检查。`service enable/disable` 只改变自启动，`service stop` 只改变当前运行意图。退出 TUI、断开终端和 CLI 返回均不停止已托管的 Mihomo。
+安装只发布内核、默认配置和 unit，不启动、不 enable、不修改 linger。普通用户先明确配置 linger，再使用 `start`；root 的系统实例不做 linger 检查。设置页的开机自启开关只改变自启动，`stop` 只改变当前运行意图。退出 TUI、断开终端和 CLI 返回均不停止已托管的 Mihomo。
 
 ```sh
 # 普通用户的本机代理
 lazyclash install --core-version latest
 loginctl enable-linger "$(id -un)"  # 由用户或管理员明确执行
-lazyclash service start
+lazyclash start
 
 # 管理员已将可信发行版安装到受保护的位置；这些命令操作 root 实例
 sudo /usr/local/bin/lazyclash install --core-version latest
 sudo /usr/local/bin/lazyclash status
-sudo /usr/local/bin/lazyclash tun on --scope host --confirm-host
-sudo /usr/local/bin/lazyclash service start
-sudo /usr/local/bin/lazyclash tun off
+sudo /usr/local/bin/lazyclash start
 ```
 
-TUI 的系统环境卡显示 system scope、已保存 TUN 状态和主机范围。开启弹窗说明路由、DNS 及其他用户和服务的影响，默认选择取消。CLI 的 `--scope host` 只确认流量范围，不用于选择服务 manager。普通用户请求开启会返回权限边界说明，不启动授权或复制流程。
+TUI 的系统环境卡显示 system scope、已保存 TUN 状态和主机范围。开启弹窗说明路由、DNS 及其他用户和服务的影响，默认选择取消。普通用户请求开启会返回权限边界说明，不启动授权或复制流程。
 
 ## 系统部署与执行权限
 

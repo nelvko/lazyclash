@@ -10,7 +10,7 @@ TUI、CLI 和 Mihomo 使用当前用户权限，数据保存在 XDG 用户目录
 
 ## 系统实例
 
-root 默认数据目录为 `/var/lib/lazyclash/<service-name>`，忽略用户的 `LAZYCLASH_HOME`、`LAZYCLASH_SERVICE` 和 XDG 数据目录。显式 `--home` 仍须通过 root 所有权、真实目录、可写权限和服务账号遍历检查，祖先目录也属于校验范围。系统数据禁止位于 `/tmp`、`/var/tmp`、`/home`、`/root`、`/run/user` 及其子目录，因为 unit 文件系统沙箱会隐藏这些位置；隔离测试也应使用 `/var/lib/lazyclash` 下受保护的专用目录。
+root 默认数据目录为 `/var/lib/lazyclash/<service-name>`，忽略用户的 `LAZYCLASH_HOME`、`LAZYCLASH_SERVICE` 和 XDG 数据目录。系统数据目录须通过 root 所有权、真实目录、可写权限和服务账号遍历检查，祖先目录也属于校验范围。系统数据禁止位于 `/tmp`、`/var/tmp`、`/home`、`/root`、`/run/user` 及其子目录，因为 unit 文件系统沙箱会隐藏这些位置；隔离测试也应使用 `/var/lib/lazyclash` 下受保护的专用目录。
 
 每个系统服务有专用的非登录、非 root 账号。root 持有二进制、配置代际、manifest、journal 和受保护的 `installation/lazyclash` 生命周期副本；服务账号只能读取配置、执行内核并写入独立 runtime 缓存。root 管理命令的版本探测和配置校验同样降至该账号，清空附加组并使用最小环境，不以 root 执行候选 Mihomo。
 
@@ -20,7 +20,7 @@ root 运行的 lazyclash 本身承担下载、配置和部署管理的 root 信�
 
 ## host TUN 与资源归属
 
-CLI 开启要求 root 与 `--scope host --confirm-host`；TUI 使用默认取消的确认弹窗，说明整台主机、其他用户和服务的流量及 DNS 影响。TUN 控制权不从实例归属推断，订阅也不能授权开启。首版不提供 UID 范围、任意 namespace、普通用户 TUN 或自动实例交接。
+root 在 TUI 开启时使用默认取消的确认弹窗，说明整台主机、其他用户和服务的流量及 DNS 影响。TUN 控制权不从实例归属推断，订阅也不能授权开启。首版不提供 UID 范围、任意 namespace、普通用户 TUN 或自动实例交接。
 
 TUN 配置启用受管 IPv4/IPv6 自动路由和 TUN 内 DNS 劫持，显式禁用对系统 resolver 的修改。`CAP_NET_ADMIN` 和 `CAP_NET_RAW` 具有主机级权限，不能视为某个设备的细粒度沙箱。设备可读写也不等于能够创建 TUN，真实建链、路由和 DNS 必须运行验证。[Linux TUN/TAP](https://www.kernel.org/doc/html/latest/networking/tuntap.html)
 

@@ -21,25 +21,13 @@
 
 提交后刷新 Dashboard、代理组及控制 API 地址。监控、Rules 和 Logs 在恢复可见时连接新地址，旧异步任务的迟到结果不会覆盖新状态。
 
-TUI 不能修改父 Shell 中已经导出的代理变量。改端口后，`lazyclash env` 会输出新地址；需要父 Shell 同步时，明确执行 `eval "$(lazyclash env)"`，或重新调用已配置的 Shell helper。LazyClash 不会自动编辑 Shell 配置。
+TUI 不能修改父 Shell 中已经导出的代理变量。改端口后，`lazyclash shell env` 会输出新地址；需要父 Shell 同步时，明确执行 `eval "$(lazyclash shell env)"`，或重新调用已配置的 Shell helper。LazyClash 不会自动编辑 Shell 配置。
 
-## CLI
-
-CLI 与 TUI 直接调用同一组读取、预检查和事务应用用例：
-
-```sh
-lazyclash settings
-lazyclash settings show
-lazyclash settings ports --mixed-port 17897 --controller-port 19097 --dry-run
-lazyclash settings ports --mixed-port 17897 --controller-port 19097 --restart
-```
-
-任一端口参数可以省略并保留当前值，至少提供一个参数。`--dry-run` 只输出脱敏的审阅计划。服务正在运行且配置确有变化时，需要 `--restart` 明确接受连接中断；停止状态不需要该标志，提交也不会隐式启动。完全相同的设置作为无变更操作处理。
 
 ## 验证入口
 
 - `make check`、`make race`、`make build`：普通测试和构建，不创建 VM、不安装服务。
 - `scripts/verify-linux.sh VM`：在显式选择的 Linux VM 中执行测试二进制。
-- `scripts/e2e.sh VM --proxy-mode environment`：使用独立临时目录和随机服务，验证真实 Mihomo 与 systemd，包含 runtime-settings PTY 场景；所有监听先检查冲突，结束后清理。
+- `scripts/e2e.sh VM --download-method environment`：使用独立临时目录和随机服务，验证真实 Mihomo 与 systemd，包含 runtime-settings PTY 场景；所有监听先检查冲突，结束后清理。
 
 新增端口 E2E 会动态寻找并跟踪测试端口，分别验证 TCP/UDP 冲突、运行与停止状态、原始 profile 和控制密钥保留、profile 应用、Shell 导出及 TUI 各主要控制 API 页面的重新连接。该入口不读取开发者现有代理配置。

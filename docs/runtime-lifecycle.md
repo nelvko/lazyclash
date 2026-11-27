@@ -10,16 +10,16 @@ Linux/systemd 支持普通用户的 user 代理和 root 的独立 system 实例�
 # 普通用户，在真实 Linux 登录会话中执行
 lazyclash install --core-version latest
 loginctl enable-linger "$(id -un)"  # 用户或管理员明确授权
-lazyclash service start
+lazyclash start
 lazyclash status
 
 # 管理员已安装到受保护路径：独立的 root system 实例
 sudo /usr/local/bin/lazyclash install --core-version latest
-sudo /usr/local/bin/lazyclash service start
+sudo /usr/local/bin/lazyclash start
 sudo /usr/local/bin/lazyclash status
 ```
 
-安装只发布内核、默认配置与 unit，保持停止，不 enable、不修改 linger。普通用户的 Start/Restart/Enable 要求 user manager 可用且 linger 已明确启用；root 通过系统 manager 操作，不依赖用户 bus 或 linger。`service enable/disable` 只改变当前 unit 的自启动，不启动或停止现有进程。
+安装只发布内核、默认配置与 unit，保持停止，不 enable、不修改 linger。普通用户的 Start/Restart/Enable 要求 user manager 可用且 linger 已明确启用；root 通过系统 manager 操作，不依赖用户 bus 或 linger。设置页的开机自启开关只改变当前 unit 的自启动，不启动或停止现有进程。
 
 手动 Stop 保持当前服务停止，直到显式 Start 或已启用的服务在下次 manager/机器启动时运行；希望开机后也停止时同时 Disable。用户实例使用 `$XDG_DATA_HOME/lazyclash` 或 `~/.local/share/lazyclash`，root 默认 `/var/lib/lazyclash/<service-name>`。自定义实例需同时隔离数据、unit 与端口，不能通过同名或 sudo 推断其他实例归属。[loginctl](https://www.freedesktop.org/software/systemd/man/latest/loginctl.html)
 
@@ -37,10 +37,7 @@ unit 使用 `Restart=on-failure`、两秒重试、60 秒内最多五次启动、
 
 ## TUN 的启动与退出
 
-```sh
-sudo /usr/local/bin/lazyclash tun on --scope host --confirm-host
-sudo /usr/local/bin/lazyclash tun off
-```
+在受保护的系统安装上运行 `sudo /usr/local/bin/lazyclash`，在概览的网络设置中开关主机 TUN。
 
 开启前明确确认整台主机的路由、DNS 以及其他用户和服务影响。停止时只保存下次启动策略，保持停止且不提前修改网络；运行时先停旧进程，再发布 unit 能力和配置并重启。普通系统代理无额外 capabilities；TUN 才授予专用服务账号 `CAP_NET_ADMIN CAP_NET_RAW`，停用后移除。
 
@@ -50,23 +47,11 @@ system unit 的 `ExecStartPre`、`ExecStartPost`、`ExecStopPost` 调用受保�
 
 ## 模式、Profile 与缓存
 
-`mode [rule|global|direct]` 在运行时 PATCH 并读回，配置代际同时保存；停止时仅保存。显式模式和 TUN 策略在 Profile 应用后保留。节点选择检查目标并读回，生成配置启用 `profile.store-selected: true`，稳定的 `installation/runtime` 承载 Mihomo 原生缓存。读回只确认当前运行值，不等于所有断电场景均已刷盘。[Mihomo cache](https://wiki.metacubex.one/en/config/general/#cache)
+代理页的路由模式切换在运行时 PATCH 并读回，配置代际同时保存；停止时仅保存。显式模式和 TUN 策略在 Profile 应用后保留。节点选择检查目标并读回，生成配置启用 `profile.store-selected: true`，稳定的 `installation/runtime` 承载 Mihomo 原生缓存。读回只确认当前运行值，不等于所有断电场景均已刷盘。[Mihomo cache](https://wiki.metacubex.one/en/config/general/#cache)
 
-```sh
-lazyclash mode direct
-lazyclash select PROXY DIRECT
-lazyclash profile add 'https://example.invalid/subscription' --name office --remember-source
-lazyclash profile refresh office  # 校验并保存草稿，不 apply、不重启
-lazyclash profile apply office
-lazyclash service enable
-lazyclash service disable
-lazyclash service stop
-lazyclash uninstall               # 要求停止且禁用；保留 Profile、来源和偏好
-```
+在订阅页导入、更新或选用 Profile。更新当前订阅时，有效配置发生变化会自动重载，失败会保留原有内容和运行配置。卸载前在内核管理中关闭开机自启，再运行 `lazyclash stop` 和 `lazyclash uninstall`。卸载会保留用户订阅和偏好。
 
-订阅与来源按 Profile 私密保存。Refresh 下载、构建并校验后原子提交草稿，失败保留旧内容和运行配置；明确 Apply 才加载。没有后台订阅调度。卸载仅删除经归属验证的安装与运行状态，保留用户数据；外来文件或归属变化会阻止删除，部分失败会说明手工清理范围。卸载没有崩溃自动续跑承诺。
-
-系统代理与内核生命周期分开：`env` / `init` 只输出用户明确应用的 Shell 环境，不能修改父 Shell；Stop 不自动清理父 Shell，可执行 `eval "$(lazyclash env --unset)"`。
+通过 `shell env` 手动导出的变量由父 Shell 管理。如需在停止内核后清理，可执行 `eval "$(lazyclash shell env --unset)"`。
 
 ## 可重复验收
 
@@ -75,7 +60,7 @@ make check
 make race
 make package VERSION=dev
 ./scripts/verify-linux.sh YOUR_DEDICATED_VM
-./scripts/e2e.sh YOUR_DEDICATED_VM --proxy-mode environment
+./scripts/e2e.sh YOUR_DEDICATED_VM --download-method environment
 ./scripts/service-scopes-e2e.sh YOUR_DEDICATED_VM /absolute/packaged/lazyclash /absolute/vm/mihomo
 ```
 

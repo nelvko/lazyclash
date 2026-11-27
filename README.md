@@ -1,6 +1,6 @@
 # lazyclash
 
-以 TUI 为主要交互的 Mihomo 终端代理管理工具。Go module：`github.com/nelvko/lazyclash`。
+在终端运行 `lazyclash`，即可安装 Mihomo、导入订阅、选择节点并启动代理。Go module：`github.com/nelvko/lazyclash`。
 
 Linux/systemd 同时支持普通用户的 user 实例和 root 的独立 system 实例；两者均可运行本机 HTTP/SOCKS 代理，root 可明确确认后启用整台主机的 TUN。`sudo lazyclash` 操作 root 自己的配置和服务，不复制用户数据或切换原用户实例。普通代理可在端口不冲突时并存，同一网络命名空间内的 TUN 管理权独占。首发范围见 [服务 scope](docs/service-scopes.md)；项目未发行，不提供旧数据格式、unit 或命令行为兼容层。
 
@@ -91,13 +91,13 @@ Rules 主列表只读展示内核加载的规则并保留匹配顺序，支持�
 
 ## Profiles 与实时日志
 
-Proxies 使用全部可用正文宽度。宽屏组头在同一行依次显示组名、策略组类型和当前最终节点。少于 115 列时分两行，首行显示组名，次行显示「类型 · 当前最终节点」。成员数与折叠箭头在首行右侧。类型始终沿用 Mihomo 控制 API 的英文名称，如 `Selector` 和 `URLTest`，操作与状态提示随界面语言显示。宽屏支持多个组原地展开，也可全部收起。正常高度的宽窗口保留三行完整的组头悬停高亮，窄屏和短窗口使用紧凑组头。节点卡片随正文宽度排成一至四列，多列时每张至少宽 29 格。150 列终端可显示四列，窄屏成员页也能按宽度分列。少量成员保持相同列宽，缩放时保留节点焦点。卡片首行显示名称和右对齐的延迟，次行显示协议、UDP 支持或引用摘要。宽且高的真彩色或 256 色窗口里，首排卡片紧接组头，两行文字上下各留半行，相邻两排卡片之间露出一行背景。低色和无色终端的宽窗口在排间空一行，窄屏和矮窗连续排列。已选节点以蓝色卡面和左侧竖条标识。延迟低于 150 ms 时显示绿色，达到 150 ms 时显示黄色。点击延迟数值或状态可单独重测该节点并就地更新结果。页头右侧将规则、全局、直连并排为三个连续等宽、可独立操作的分段，与代理集合入口相隔四格。切换模式时按钮保持原位，窄屏可分行并固定在列表上方。有多个匹配成员的展开组在组头提供「排序」，可测速的组就地显示「测速」、进度和取消操作。成员连续滚动，部分成员在屏幕外时显示可见范围。多个展开组的结果合并计数，显示「跨 2 组 · 1–29 / 49」等范围。窄窗口采用组目录、成员两级浏览。方向键优先访问同排相邻节点，右边界的引用组可继续进入，也可直接使用卡片的「进入 →」；宽屏就地跳转，返回恢复焦点与滚动位置。在 Selector 中可点击节点或按 Enter 改选，点击自动组的节点只移动焦点。DIRECT、REJECT 也属于有效选择。支持各组独立排序和可取消的当前组测速，应用配置或切换模式后自动同步代理组。按 `/` 或点击底栏的「/ 搜索」可在列表上方打开搜索框，按组名、组类型（如「自动选择」或 `url-test`）、节点名和协议筛选。窗口高度不超过 24 行时，搜索框占一行。按 Enter 定位首个结果，按 Esc 收起搜索框并恢复原来的浏览位置。内核确认 Direct 模式后隐藏策略组及节点操作，正文仅居中显示「所有流量均直接连接。」；切回原模式恢复展开、排序与浏览位置。代理集合与规则集合复用管理面板，支持查看来源、单项或批量更新；集合更新后自动同步主列表，Inline/Compatible 来源只读。操作与数据边界见 [代理组与节点](docs/proxies.md)。Profiles 统一管理远程订阅和本地 YAML。每个 Profile 自己保存地址与内容版本，不需要另行管理来源。现有 CLI `nodes`、`profile` 等业务命令保留原有职责。
+Proxies 使用全部可用正文宽度。宽屏组头在同一行依次显示组名、策略组类型和当前最终节点。少于 115 列时分两行，首行显示组名，次行显示「类型 · 当前最终节点」。成员数与折叠箭头在首行右侧。类型始终沿用 Mihomo 控制 API 的英文名称，如 `Selector` 和 `URLTest`，操作与状态提示随界面语言显示。宽屏支持多个组原地展开，也可全部收起。正常高度的宽窗口保留三行完整的组头悬停高亮，窄屏和短窗口使用紧凑组头。节点卡片随正文宽度排成一至四列，多列时每张至少宽 29 格。150 列终端可显示四列，窄屏成员页也能按宽度分列。少量成员保持相同列宽，缩放时保留节点焦点。卡片首行显示名称和右对齐的延迟，次行显示协议、UDP 支持或引用摘要。宽且高的真彩色或 256 色窗口里，首排卡片紧接组头，两行文字上下各留半行，相邻两排卡片之间露出一行背景。低色和无色终端的宽窗口在排间空一行，窄屏和矮窗连续排列。已选节点以蓝色卡面和左侧竖条标识。延迟低于 150 ms 时显示绿色，达到 150 ms 时显示黄色。点击延迟数值或状态可单独重测该节点并就地更新结果。页头右侧将规则、全局、直连并排为三个连续等宽、可独立操作的分段，与代理集合入口相隔四格。切换模式时按钮保持原位，窄屏可分行并固定在列表上方。有多个匹配成员的展开组在组头提供「排序」，可测速的组就地显示「测速」、进度和取消操作。成员连续滚动，部分成员在屏幕外时显示可见范围。多个展开组的结果合并计数，显示「跨 2 组 · 1–29 / 49」等范围。窄窗口采用组目录、成员两级浏览。方向键优先访问同排相邻节点，右边界的引用组可继续进入，也可直接使用卡片的「进入 →」；宽屏就地跳转，返回恢复焦点与滚动位置。在 Selector 中可点击节点或按 Enter 改选，点击自动组的节点只移动焦点。DIRECT、REJECT 也属于有效选择。支持各组独立排序和可取消的当前组测速，应用配置或切换模式后自动同步代理组。按 `/` 或点击底栏的「/ 搜索」可在列表上方打开搜索框，按组名、组类型（如「自动选择」或 `url-test`）、节点名和协议筛选。窗口高度不超过 24 行时，搜索框占一行。按 Enter 定位首个结果，按 Esc 收起搜索框并恢复原来的浏览位置。内核确认 Direct 模式后隐藏策略组及节点操作，正文仅居中显示「所有流量均直接连接。」；切回原模式恢复展开、排序与浏览位置。代理集合与规则集合复用管理面板，支持查看来源、单项或批量更新；集合更新后自动同步主列表，Inline/Compatible 来源只读。操作与数据边界见 [代理组与节点](docs/proxies.md)。Profiles 统一管理远程订阅和本地 YAML。每个 Profile 自己保存地址与内容版本，不需要另行管理来源。
 
 概览的「当前订阅」显示所选条目的名称、描述或来源、更新时间，以及服务商提供的流量余额和到期信息。尚未应用、更新未生效或等待校验时，名称下方会显示相应提示。未选用订阅时显示「未使用订阅」。通过「订阅 ›」可进入订阅页管理条目。
 
 订阅页（Profiles）只列出用户保存的远程订阅和本地配置。空库时，点击输入框或按 `a` 输入订阅链接或本地 YAML 路径。停用当前订阅会保留它的卡片和来源。删除当前订阅时，可在同一个确认框内选择接替配置，或选择不使用订阅。后者会移除运行中的订阅节点和规则，流量可能直连。内核已停止时，选择在下次启动生效。
 
-订阅页输入链接或本地文件路径后，「导入」按钮点亮，导入的配置会自动命名。「导入」和「新建」都会保存来源，之后可通过「全部更新」重新获取。来源和本地路径在编辑时正常显示，方便检查和修改；卡片第二行优先显示单行描述，未填写时显示域名或文件类型，右侧显示更新时间。配置以响应式卡片展示额度和校验状态；网格按正文宽度排一至四列，在 98、148、198 个字符格时依次增加一列。同一窗口下，增删订阅时卡宽保持一致。左键点击其他卡片会切换配置，点击当前项保持现状。未安装内核时打开该配置的设置；内核停止时切换配置仍保持停止。`a` 聚焦来源输入，方向键或 `hjkl` 按卡片位置移动，`Enter` 打开此订阅的设置。`Tab` 可访问并滚动到所有操作，`Esc` 关闭设置。点击更新会重新读取来源。当前订阅生成的运行配置有变化时自动热重载，失败时回退；刷新其他订阅只更新本地副本。内核已停止时，新配置留待下次启动。保存当前订阅的覆写也会自动加载有效变化。卡片将最近一次成功获取的时间靠右显示。订阅响应提供流量额度时，卡片显示剩余量和总量；进度条越短，剩余额度越少。到期日按服务商提供的时间单独展示。
+订阅页输入链接或本地文件路径后，「导入」按钮点亮，导入的配置会自动命名。「导入」和「新建」默认保存来源，之后可通过「全部更新」重新获取。勾选「仅导入一次」时只保存本次配置副本。来源和本地路径在编辑时正常显示，方便检查和修改；卡片第二行优先显示单行描述，未填写时显示域名或文件类型，右侧显示更新时间。配置以响应式卡片展示额度和校验状态；网格按正文宽度排一至四列，在 98、148、198 个字符格时依次增加一列。同一窗口下，增删订阅时卡宽保持一致。左键点击其他卡片会切换配置，点击当前项保持现状。未安装内核时打开该配置的设置；内核停止时切换配置仍保持停止。`a` 聚焦来源输入，方向键或 `hjkl` 按卡片位置移动，`Enter` 打开此订阅的设置。`Tab` 可访问并滚动到所有操作，`Esc` 关闭设置。点击更新会重新读取来源。当前订阅生成的运行配置有变化时自动热重载，失败时回退；刷新其他订阅只更新本地副本。内核已停止时，新配置留待下次启动。保存当前订阅的覆写也会自动加载有效变化。卡片将最近一次成功获取的时间靠右显示。订阅响应提供流量额度时，卡片显示剩余量和总量；进度条越短，剩余额度越少。到期日按服务商提供的时间单独展示。
 
 「新建」默认聚焦来源。粘贴订阅链接后按 `Enter` 可直接创建，也可按 `Tab` 填写可选的 User-Agent、名称和描述。远程订阅会在首次下载和后续更新时使用自己的 User-Agent，留空使用默认值。本地文件支持绝对路径、`~/` 和相对路径。输入本地路径时实时列出当前目录中匹配的文件与文件夹，`↑↓` 选择、`Tab` 补全、`Enter` 提交；目录只继续浏览，不提交为配置。普通文件不限制扩展名，创建配置会保存来源副本，不修改原文件或自动应用。路径属于 lazyclash 进程运行环境，SSH 中指远程主机的文件。
 
@@ -113,13 +113,13 @@ Profiles 卡片用底色与间距分组，已选配置用左侧竖条标记，�
 
 Logs 通过当前 Mihomo 的认证本机控制 API 获取实时事件，默认只在内存保留最近 200 条脱敏记录，不启用原始 journal、不落盘保存日志。`f` 暂停/继续，向上滚动或搜索会暂停采集，`End` 恢复跟随，`g` 重连。暂停、离页期间的事件不会补回，重新采集显示间隔提示。需要内核运行且 API 可用；没有历史启动日志。
 
-CLI 使用同一日志用例，例如 `lazyclash logs --lines 50 --duration 5s`，在有界时间内采集最多指定条数并输出 JSON。日志来源、容量、取消和脱敏边界见 [日志查看](docs/logs.md)。
+日志来源、容量、取消和脱敏边界见 [日志查看](docs/logs.md)。
 
 ## 运行端口设置
 
 安装 Mihomo 后，在 **设置 → 内核设置 → 端口与访问** 可管理代理端口、代理身份验证、局域网访问和外部控制。「代理身份验证」支持为 HTTP(S)、SOCKS 和 Mixed 端口添加多个账号。点击「代理端口」「代理身份验证」或「外部控制」可在弹窗中编辑和审阅变更。运行中应用会重启内核，已停止的实例保留停止状态。其余两个标签管理连接、运行与资源缓存偏好，选择会随实例保存。[设置页](docs/settings.md)
 
-CLI 使用同一事务用例：`lazyclash settings show` 查看，`lazyclash settings ports --mixed-port 17897 --controller-port 19097 --dry-run` 预检查；运行中应用需显式加 `--restart`。失败或取消执行回滚；恢复失败则保留恢复记录并报告。API 密钥、原始 profile 和其他配置保留。父 Shell 已导出的代理变量需重新求值 `lazyclash env`。详细操作与恢复边界见 [运行端口设置](docs/runtime-settings.md)。
+可在设置页审阅端口变更，并确认重启运行中的内核。失败或取消执行回滚；恢复失败则保留恢复记录并报告。API 密钥、原始 profile 和其他配置保留。父 Shell 已导出的代理变量需重新求值 `lazyclash shell env`。详细操作与恢复边界见 [运行端口设置](docs/runtime-settings.md)。
 
 ## 版本与安装
 
@@ -159,56 +159,44 @@ CLI 使用同一事务用例：`lazyclash settings show` 查看，`lazyclash set
 
 ## 持久运行与权限
 
-普通用户通过 systemd user service 运行，Start/Restart/Enable 要求已明确启用 linger；root 通过 systemd system service 运行，不依赖登录会话或 linger。安装不启动、不 enable、不修改 linger，TUI 退出或终端挂断不发送 Stop。运行意图、模式、TUN 策略、节点缓存和显式订阅来源持久保存。`service enable/disable` 独立控制开机自启；多步管理事务中断后，遗留 journal 在下一次应用调用时恢复，没有后台 daemon 或独立事务执行器代跑。详细行为见 [持久运行](docs/runtime-lifecycle.md)。
+普通用户通过 systemd user service 运行，Start/Restart/Enable 要求已明确启用 linger；root 通过 systemd system service 运行，不依赖登录会话或 linger。安装不启动、不 enable、不修改 linger，TUI 退出或终端挂断不发送 Stop。运行意图、模式、TUN 策略、节点缓存和显式订阅来源持久保存。在「设置 → 内核管理」独立控制开机自启；多步管理事务中断后，遗留 journal 在下一次应用调用时恢复，没有后台 daemon 或独立事务执行器代跑。详细行为见 [持久运行](docs/runtime-lifecycle.md)。
 
-system Mihomo 使用专用非 root 账号；普通代理无额外 capabilities，明确开启 TUN 才授予 `CAP_NET_ADMIN CAP_NET_RAW`。TUI 默认取消的弹窗和 CLI `tun on --scope host --confirm-host` 均说明整台主机、其他用户和服务的流量及 DNS 影响。停止时开启仅保存策略；运行时切换会重启内核。启动及退出由同一受保护 lazyclash 程序的有限 unit 钩子检查冲突、记录并清理自有接口/路由，不自动抢占其他实例或 VPN。TUN 的 DNS 劫持不修改系统 resolver；系统代理自动设置、普通用户 TUN 和 UID 筛选不在首发范围。权限细节与限制见 [权限管理](docs/permissions.md)。
+system Mihomo 使用专用非 root 账号；普通代理无额外 capabilities，明确开启 TUN 才授予 `CAP_NET_ADMIN CAP_NET_RAW`。TUI 确认弹窗默认选中取消，并说明整台主机、其他用户和服务的流量及 DNS 影响。停止时开启仅保存策略；运行时切换会重启内核。启动及退出由同一受保护 lazyclash 程序的有限 unit 钩子检查冲突、记录并清理自有接口/路由，不自动抢占其他实例或 VPN。TUN 的 DNS 劫持不修改系统 resolver；系统代理自动设置、普通用户 TUN 和 UID 筛选不在首发范围。权限细节与限制见 [权限管理](docs/permissions.md)。
 
 ```sh
 # 已安装到受保护路径；始终操作独立 root 实例
 sudo /usr/local/bin/lazyclash
-sudo /usr/local/bin/lazyclash tun on --scope host --confirm-host
-sudo /usr/local/bin/lazyclash tun off
 ```
 
 ## CLI 与 Shell
 
-CLI 和 TUI 共享 `ResolveRelease → PrepareInstall → InstallCore`，以及网络客户端、预检查、配置验证、原子部署与恢复。TUI 不启动自身 CLI，安装业务不在 shell 脚本中。
+直接运行 `lazyclash` 打开 TUI。首次安装、订阅导入、节点选择、主机 TUN 和开机自启均可在界面中操作。脚本可用以下命令管理当前身份的 Mihomo 实例。
 
-```sh
-lazyclash install --core-version latest
-lazyclash install --core-version v1.19.33 --dry-run
-lazyclash install --bin /absolute/mihomo
-lazyclash install --core-version v1.19.33 --reinstall
-lazyclash install check                         # 只读检查，不下载内核或重启
-lazyclash install check --channel alpha         # Alpha hash 不同显示无法比较
-lazyclash install upgrade --yes                 # 检查并确认正式版升级，必要时重启
-lazyclash install --download-method accelerated \
-  --acceleration-prefix https://accelerator.example.invalid/
-lazyclash profile add /absolute/config.yaml --name local
-lazyclash profile apply local
-lazyclash profile add https://example.invalid/sub --remember-source  # 自动命名
-lazyclash profile add https://example.invalid/sub --name '我的机场' --remember-source
-lazyclash profile list                 # 查看 id、name、name_source
-lazyclash profile rename PROFILE_ID '新名称'
-lazyclash profile url PROFILE_ID https://example.invalid/new-sub
-lazyclash service start
-lazyclash service stop
-lazyclash service restart
-lazyclash nodes
-lazyclash select PROXY DIRECT
-lazyclash stats                  # 单次采样；停止/未安装时输出明确 State 和 null 指标
-lazyclash connections            # 运行中的活动连接 JSON
-lazyclash connections close ID   # 明确请求关闭一条连接
-lazyclash rules                  # 当前内核规则，JSON 按原顺序输出
-lazyclash status
-lazyclash doctor
-```
+| 命令 | 用途 |
+| --- | --- |
+| `start`、`stop`、`restart` | 启动、停止或重启当前实例 |
+| `status` | 输出可读的安装与运行摘要。用 `status --json` 取得结构化快照 |
+| `doctor` | 输出服务和控制 API 的诊断及处理建议 |
+| `install` | 安装 Mihomo。支持 `--bin /绝对路径`、`--core-version`、`--reinstall`、`--dry-run` |
+| `upgrade` | 检查并升级 Mihomo。终端中审阅并确认，脚本用 `--check` 只查版本或 `--yes` 确认升级 |
+| `uninstall` | 卸载已停止且关闭自启的内核及服务，保留订阅和偏好 |
+| `shell` | 安装、检查或卸载当前 Shell 的集成，也可手动输出代理环境变量 |
 
-网络 flags：`--download-method direct|environment|accelerated`、`--acceleration-prefix URL`、`--remember-download-settings`。未指定的设置复用已保存偏好。
+安装和升级可用 `--download-method direct|environment|accelerated` 和 `--acceleration-prefix URL` 覆盖本次下载设置。长期偏好保存在 TUI 的下载设置中。运行中的 Mihomo 升级后会重启并验证，已停止的保持停止。更新 lazyclash 客户端请使用新版发行包，普通用户可运行包内的 `install.sh`，并用 `lazyclash --version` 核对客户端版本。
+
+标准输入或输出重定向时，命令不打开 TUI、不询问确认。输出格式由参数决定，例如 `lazyclash status > status.txt` 写入可读摘要。结果写到标准输出，错误和进度写到标准错误。
+
+| 退出码 | 含义 |
+| --- | --- |
+| 0 | 请求成功。正常停止、未安装都可由 `status` 成功报告，`upgrade --check` 查到新版也成功 |
+| 1 | 操作失败、诊断发现故障或用户拒绝升级 |
+| 2 | 命令、参数或交互条件有误，例如无终端运行裸命令或升级缺少确认 |
+| 130、143 | 收到 SIGINT、SIGTERM，完成必要清理后退出 |
 
 概览 → 网络设置 → **终端代理**控制当前交互式 Shell。点击「终端代理」下的开关切换状态，点同组的「配置」查看当前 Shell、代理地址或编辑该实例共用的混合端口。变更运行中的端口需审阅并确认重启。已加载集成的终端在退出 TUI 时自动应用开关。直接使用二进制时，首次开启会补装集成。只有当前终端尚未加载脚本且有开启请求时，退出后才提示在同一终端执行一次 `source`；执行后立即生效。关闭会恢复接管前的原始变量。
 
 ```sh
+lazyclash shell install          # 为当前 Shell 安装集成
 lazyclash shell status           # 当前 Shell、安装/加载/回执与代理状态
 lazyclash shell status --json
 lazyclash shell uninstall        # 当前 Shell 恢复后移除自己的初始化引用
@@ -216,16 +204,16 @@ lazyclash shell uninstall        # 当前 Shell 恢复后移除自己的初始�
 
 第一阶段支持 Linux 的 Bash、Zsh、Fish 交互会话；每个终端独立，不包装 `lazyclash` 命令。安装脚本位于 `$XDG_CONFIG_HOME/lazyclash/shell`，状态位于 `$XDG_CACHE_HOME/lazyclash/shell`。当前 Shell 未加载时显示“待激活”，也可在卡片中查看激活命令。详见 [Shell Integration](docs/shell-integration.md)。
 
-手动输出 POSIX exports 的 `env` 仍可用于自动化；它不会保存或恢复原始变量，也不属于上述会话集成。旧 `init`、`lazyclash_on`、`lazyclash_off` 已移除。
+手动输出 POSIX exports 的 `shell env` 仍可用于自动化；它不会保存或恢复原始变量，也不属于上述会话集成。旧 `init`、`lazyclash_on`、`lazyclash_off` 已移除。
 
 ```sh
-eval "$(lazyclash env)"
-eval "$(lazyclash env --unset)" # 手动清理；配置损坏时仍可输出
+eval "$(lazyclash shell env)"
+eval "$(lazyclash shell env --unset)" # 手动清理；配置损坏时仍可输出
 ```
 
 默认服务名为 `lazyclash-mihomo.service`，user/system manager 各自管理，不共享配置或安装记录。API 默认 `127.0.0.1:9097`、mixed 默认 `127.0.0.1:7897`；并存实例须调整端口，冲突时不会停止其他服务腾位置。API 密钥自动生成和注入，状态不输出密钥。服务 stdout/stderr 丢弃，避免 provider URL 凭据进入 journal；退出原因通过 systemd Result、退出状态和重启计数查询。
 
-普通用户默认数据目录为 `$XDG_DATA_HOME/lazyclash`（或 `~/.local/share/lazyclash`），可用 `--home ABS` / `LAZYCLASH_HOME` 和 `--service-name lazyclash-NAME` / `LAZYCLASH_SERVICE` 隔离实例。root 默认 `/var/lib/lazyclash/<service-name>`，忽略这两个用户环境变量及 XDG 数据目录，按显式 flags 选择独立路径和服务。系统数据及祖先必须受 root 保护，且不能位于 unit 沙箱隐藏的 `/tmp`、`/var/tmp`、`/home`、`/root`、`/run/user` 下；仅运行缓存由专用服务账号写入。配置、原始订阅、偏好与恢复记录按必要权限私密保存。进程锁等待可取消，锁文件不删除；检测到外来文件、unit/drop-in 或归属变化时保留现场并报错。
+普通用户默认数据目录为 `$XDG_DATA_HOME/lazyclash`（或 `~/.local/share/lazyclash`），可用 `LAZYCLASH_HOME` 和 `LAZYCLASH_SERVICE` 隔离实例。root 使用独立的 `/var/lib/lazyclash/lazyclash-mihomo`，忽略这两个用户环境变量及 XDG 数据目录。系统数据及祖先必须受 root 保护，且不能位于 unit 沙箱隐藏的 `/tmp`、`/var/tmp`、`/home`、`/root`、`/run/user` 下；仅运行缓存由专用服务账号写入。配置、原始订阅、偏好与恢复记录按必要权限私密保存。进程锁等待可取消，锁文件不删除；检测到外来文件、unit/drop-in 或归属变化时保留现场并报错。
 
 ## 开发与验证
 
@@ -247,6 +235,6 @@ orb list
 
 `third_party/ultraviolet` 保存固定的上游源码与中文行重绘补丁，`go.mod` 指向仓库内副本，构建时需要保留该目录。上述 `make test/check/race` 和 Linux 验证入口包含该依赖的原有测试，补丁维护方式见 [说明](third_party/ultraviolet/LAZYCLASH.md)。
 
-程序入口为根目录 `main.go`。`internal/cli` 保留 Cobra 子命令与 Shell 集成，`internal/tui` 负责交互与响应式渲染；二者直接调用 `internal/app` 的共用用例，包括运行采样和单连接关闭。`internal/downloadnet` 负责来源与连接，`internal/mihomo` 负责发布、下载、降权校验、TUN 配置和控制 API，`internal/service` 负责 systemd user/system 服务及有限 TUN 生命周期，`internal/store` 负责作用域数据路径、原子文件与进程锁。具体边界见 [代码结构](docs/architecture.md)。
+程序入口为根目录 `main.go`。`internal/cli` 保留 Cobra 子命令与 Shell 集成，`internal/tui` 负责交互与响应式渲染；二者直接调用 `internal/app` 的共用用例，包括安装、升级和服务控制。`internal/downloadnet` 负责来源与连接，`internal/mihomo` 负责发布、下载、降权校验、TUN 配置和控制 API，`internal/service` 负责 systemd user/system 服务及有限 TUN 生命周期，`internal/store` 负责作用域数据路径、原子文件与进程锁。具体边界见 [代码结构](docs/architecture.md)。
 
 [路线图](docs/roadmap.md)。参考旧项目仅用于只读研究，不读取旧运行配置，不继承历史、提供旧别名或实现迁移层。

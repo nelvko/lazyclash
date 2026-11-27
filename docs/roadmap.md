@@ -4,13 +4,13 @@
 
 已完成第二轮：响应式 Overview、统一安装向导、稳定版解析、独立下载来源/代理与连接测试、安装预检查和真实进度、运行中原子更新、偏好与引导历史、Charm v2 适配。
 
-已完成运行监控与连接：实际速率、本次内核累计、连接数与 RSS；Connections 搜索、详情和确认关闭指定连接；可取消的自动刷新、部分不可用反馈与重连，CLI 共享采样和关闭用例。跨内核重启的流量历史暂不实现。
+已完成运行监控与连接：实际速率、本次内核累计、连接数与 RSS；Connections 搜索、详情和确认关闭指定连接；可取消的自动刷新、部分不可用反馈与重连。跨内核重启的流量历史暂不实现。
 
-已完成只读规则查看：按内核顺序展示、搜索和详情，独立异步刷新、取消与重试，CLI 共享读取用例。操作见 [规则查看](rules.md)。
+已完成只读规则查看：按内核顺序展示、搜索和详情，独立异步刷新、取消与重试。操作见 [规则查看](rules.md)。
 
-已完成七页导航与实时日志：Overview、Proxies、Profiles、Connections、Rules、Logs、Settings；紧凑分组侧栏、随焦点变化的底部提示栏和独立焦点组。日志为容量有界、可取消和脱敏的当前会话实时观察，CLI/TUI 共享用例；不提供历史回放，不将原始日志落盘。默认的 Dark 主题沿用 Mariana 配色，设置页支持保存 Light、Dark 或 Auto。
+已完成七页导航与实时日志：Overview、Proxies、Profiles、Connections、Rules、Logs、Settings；紧凑分组侧栏、随焦点变化的底部提示栏和独立焦点组。日志为容量有界、可取消和脱敏的当前会话实时观察；不提供历史回放，不将原始日志落盘。默认的 Dark 主题沿用 Mariana 配色，设置页支持保存 Light、Dark 或 Auto。
 
-已完成运行端口设置：Settings 内审阅并修改本机代理与控制 API 端口，检查 TCP/UDP 冲突，运行中明确确认重启，停止时保持停止；取消或失败恢复旧配置和服务状态，保留原始 profile 与 API 密钥。CLI 共享用例，操作见 [运行端口设置](runtime-settings.md)。
+已完成运行端口设置：Settings 内审阅并修改本机代理与控制 API 端口，检查 TCP/UDP 冲突，运行中明确确认重启，停止时保持停止；取消或失败恢复旧配置和服务状态，保留原始 profile 与 API 密钥。操作见 [运行端口设置](runtime-settings.md)。
 
 Linux 首发服务 scope 与权限实现及 Linux/arm64 双作用域、TUN 端到端验收已完成，平台范围及限制以 [验证记录](verification.md) 为准。范围见 [服务 scope](service-scopes.md)：
 

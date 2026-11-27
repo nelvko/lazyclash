@@ -70,4 +70,4 @@ HTTP 集合可更新，File 集合可重新读取；Inline、Compatible 及未�
 
 更新通过内核的 `GET /providers/proxies` 与 `PUT /providers/proxies/{name}` 执行，不编辑 Profile、运行 YAML 或服务。完成后自动读取完整快照，使代理组和节点同步；部分更新完成后关闭面板、取消或不确定的失败也重新观察当前内核。类型、请求、Profile、generation 和 PID 的旧结果不能写回新面板或新实例。后端请求不持有应用文件锁，慢下载不阻塞停止服务。接口对应 [Mihomo Provider 路由](https://github.com/MetaCubeX/mihomo/blob/Meta/hub/route/provider.go)。
 
-CLI 的 `nodes`、`select` 继续使用共享应用与 API 用例。TUI 不启动 CLI 子进程，也不改变服务安装或 TUN 的权限边界。
+TUI 不启动 CLI 子进程，也不改变服务安装或 TUN 的权限边界。
