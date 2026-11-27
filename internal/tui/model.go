@@ -191,7 +191,7 @@ type Model struct {
 	websiteTests          websiteTestState
 	websiteDrag           overviewWebsiteDragState
 	websites              []app.Website
-	websiteOffset         int
+	websiteList           *websiteListState
 	connections           connectionsState
 	rules                 rulesState
 	providers             providerPanelState
@@ -399,7 +399,7 @@ func (m *Model) cancelTask(quit bool) {
 	}
 }
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	if mouse, ok := msg.(tea.MouseMsg); ok && m.page == "overview" && m.form == "" {
+	if mouse, ok := msg.(tea.MouseMsg); ok && m.page == "overview" && (m.form == "" || m.form == "website-list") {
 		wasDragging := m.websiteDrag.active()
 		if handled, cmd := m.overviewWebsiteDragMouse(mouse); handled {
 			m.layout()
@@ -615,13 +615,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.logoIntro.sized = true
 		m.sidebar.reveal = true
 		m.width, m.height = max(1, v.Width), max(1, v.Height)
-		if strings.HasPrefix(m.focus, "website.site.") {
-			for i, site := range m.websites {
-				if websiteActionID(site) == m.focus {
-					m.websiteOffset = i
-					break
-				}
-			}
+		if m.form == "website-list" {
+			m.websiteList.reveal = true
+		} else if m.page == "overview" && m.form == "" {
+			m.normalizeWebsiteCardFocus()
 		}
 		if m.page == "connections" {
 			m.resizeConnectionSortFocus()
@@ -831,7 +828,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.updateInlineInput(v)
 		} else if m.form == "website-editor" {
 			cmd = m.updateWebsiteEditorInput(v)
-		} else if m.form == "tun-confirm" || m.form == "profile-delete" || m.form == "profile-document" || m.form == "profile-overrides" && m.busy {
+		} else if m.form == "website-list" || m.form == "tun-confirm" || m.form == "profile-delete" || m.form == "profile-document" || m.form == "profile-overrides" && m.busy {
 			break
 		} else if m.form != "" {
 			if m.profileFieldsForm() {
@@ -1235,7 +1232,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.updateInlineInput(msg)
 		} else if m.form == "website-editor" {
 			cmd = m.updateWebsiteEditorInput(msg)
-		} else if m.form == "tun-confirm" || m.form == "profile-delete" || m.form == "profile-document" || m.form == "profile-overrides" && m.busy {
+		} else if m.form == "website-list" || m.form == "tun-confirm" || m.form == "profile-delete" || m.form == "profile-document" || m.form == "profile-overrides" && m.busy {
 			break
 		} else if m.form != "" {
 			if m.profileFieldsForm() {
@@ -1292,7 +1289,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.stopLogoIntro()
 		m.tooltip.dismiss()
 	}
-	if m.websiteDrag.active() && (!m.pageSelectionMenuAvailable("overview") || m.menu.open) {
+	if m.websiteDrag.active() && (!m.websiteInteractionsAvailable() || m.menu.open) {
 		m.cancelOverviewWebsiteDrag()
 	}
 	m.layout()
@@ -1357,6 +1354,9 @@ func (m *Model) openForm() tea.Cmd {
 	return textinput.Blink
 }
 func (m *Model) formKey(k tea.KeyPressMsg) tea.Cmd {
+	if m.form == "website-list" {
+		return m.websiteListKey(k.String())
+	}
 	if m.form == "website-editor" {
 		return m.websiteEditorKey(k)
 	}
@@ -1484,8 +1484,8 @@ func (m *Model) activateControl(id string, key *tea.KeyPressMsg) tea.Cmd {
 			return m.beginWebsiteEdit(app.Website{})
 		}
 		return nil
-	case "website.prev", "website.next":
-		m.turnWebsitePage(id)
+	case "website.viewAll":
+		m.openWebsiteList()
 		return nil
 	}
 	if id == "website.all" || strings.HasPrefix(id, "website.site.") {
@@ -1765,6 +1765,10 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 	if _, wheel := event.(tea.MouseWheelMsg); wheel && m.notification.covers(k.X, k.Y) {
 		return nil
 	}
+	if wheel, ok := event.(tea.MouseWheelMsg); ok && m.form == "website-list" {
+		m.websiteListWheel(wheel)
+		return nil
+	}
 	if wheel, ok := event.(tea.MouseWheelMsg); ok && m.sidebarWheel(wheel) {
 		return nil
 	}
@@ -1821,6 +1825,9 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 					return m.wizardActivate(r.ID)
 				}
 				if m.form != "" {
+					if m.form == "website-list" {
+						return m.websiteListAction(r.ID)
+					}
 					if m.form == "website-editor" {
 						return m.websiteEditorAction(r.ID)
 					}
@@ -2042,6 +2049,12 @@ func (m *Model) renderLayout() {
 		}
 	} else if m.wizard.open || m.wizard.networkOpen {
 		m.screen, m.targets = m.renderWizard(base)
+	} else if m.form == "website-list" {
+		m.screen, m.targets = m.renderWebsiteList(base)
+		if m.menu.open {
+			m.anchorPageSelectionMenu(m.targets)
+			m.screen = m.renderMenu(m.screen, m.height)
+		}
 	} else if m.form == "website-editor" {
 		m.screen, m.targets = m.renderWebsiteEditor(base)
 	} else if m.form == "tun-confirm" {

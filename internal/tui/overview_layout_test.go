@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -26,16 +27,12 @@ func TestOverviewPairedLayoutAlignsBothEdgesAndKeepsActionOwnership(t *testing.T
 		Groups:       []mihomo.Group{{Name: "PROXY", Type: "Selector", Now: "DIRECT"}},
 		Capabilities: app.Capabilities{Scope: "system", Runtime: app.Capability{Supported: true}, TUN: app.Capability{Supported: true}},
 	}
-	owners := map[string]string{
+	commonOwners := map[string]string{
 		"core.manage": "dashboard.control.core", "core.toggle": "dashboard.control.core",
 		"mode.rule": "dashboard.control.routingMode", "mode.global": "dashboard.control.routingMode", "mode.direct": "dashboard.control.routingMode", "card.proxies": "dashboard.control.routingMode",
 		"card.profiles": "dashboard.profile.title", "tun.toggle": "dashboard.overview.network", "network.primaryConfig": "dashboard.overview.network",
 		"ip.refresh":  "dashboard.overview.ipInfo",
 		"website.all": "dashboard.website.title", "website.add": "dashboard.website.title",
-	}
-	for _, site := range app.DefaultWebsites() {
-		owners[overviewWebsiteDragID(site)] = "dashboard.website.title"
-		owners[websiteActionID(site)] = "dashboard.website.title"
 	}
 	renders := map[string]func(dashboardOptions, int) dashboardBlock{
 		"dashboard.control.core": overviewCoreCard, "dashboard.traffic.title": overviewTrafficCard,
@@ -113,6 +110,15 @@ func TestOverviewPairedLayoutAlignsBothEdgesAndKeepsActionOwnership(t *testing.T
 							}
 							y += card.H + 1
 						}
+					}
+					owners := maps.Clone(commonOwners)
+					capacity := websiteCapacity(overviewInnerWidth(cards["overview.card.dashboard.website.title"].W))
+					for _, site := range o.websites[:min(capacity, len(o.websites))] {
+						owners[overviewWebsiteDragID(site)] = "dashboard.website.title"
+						owners[websiteActionID(site)] = "dashboard.website.title"
+					}
+					if capacity < len(o.websites) {
+						owners["website.viewAll"] = "dashboard.website.title"
 					}
 					for id, owner := range owners {
 						found := false

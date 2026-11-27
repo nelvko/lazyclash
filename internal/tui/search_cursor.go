@@ -61,7 +61,7 @@ func (m *Model) activeInputField() (textinput.Model, string, bool) {
 			if input := m.profileCreateActive(); input != nil && input.Focused() {
 				return *input, profileCreateFieldID(m.profileCreate.field), true
 			}
-		} else if m.form != "tun-confirm" && m.input.Focused() {
+		} else if m.form != "tun-confirm" && m.form != "website-list" && m.input.Focused() {
 			return m.input, "import-input", true
 		}
 		return textinput.Model{}, "", false

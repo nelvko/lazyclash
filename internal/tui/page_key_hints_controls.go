@@ -73,7 +73,7 @@ func (m *Model) overviewWebsiteHelp() string {
 	}
 	for _, id := range []string{m.hover, m.focus} {
 		switch id {
-		case "website.add", "website.prev", "website.next":
+		case "website.add", "website.viewAll":
 			return m.controlActionHelp(m.tr("dashboard." + id))
 		case "website.all":
 			if m.navigationOptions().websiteTestsAvailable() && m.websiteTests.canTestAll(m.websites) {

@@ -176,6 +176,12 @@ func (m *Model) revealBodyTarget(hit hitRegion) {
 }
 
 func (m *Model) contextHelp() string {
+	if m.form == "website-list" && !m.menu.open {
+		if m.websiteDrag.active() || m.overviewWebsiteIndex(m.hover) >= 0 || m.hover == "" && m.overviewWebsiteIndex(m.focus) >= 0 {
+			return m.overviewWebsiteHelp()
+		}
+		return m.tr("dashboard.website.listKeys")
+	}
 	if m.form == "website-editor" {
 		if m.busy {
 			if m.opCtx.Err() != nil {

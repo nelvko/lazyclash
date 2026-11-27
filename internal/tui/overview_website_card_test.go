@@ -57,7 +57,8 @@ func TestWebsiteCardShowsPerSiteResultAndActions(t *testing.T) {
 					buttons = append(buttons, hit)
 				}
 			}
-			if len(buttons) != len(sites) {
+			visible := min(len(sites), websiteCapacity(overviewInnerWidth(width)))
+			if len(buttons) != visible || hasAction(card.targets, "website.viewAll") != (visible < len(sites)) {
 				t.Fatalf("width %d: got %d website buttons", width, len(buttons))
 			}
 			for i, hit := range buttons {
@@ -69,23 +70,25 @@ func TestWebsiteCardShowsPerSiteResultAndActions(t *testing.T) {
 					t.Fatalf("width %d: draggable name %q at %+v, test action %+v", width, label, name, hit)
 				}
 			}
-			a, b, c := buttons[0], buttons[1], buttons[2]
+			a, b := buttons[0], buttons[1]
 			switch width {
 			case 72:
+				c := buttons[2]
 				if a.Y != b.Y || b.Y != c.Y || !(a.X < b.X && b.X < c.X) {
 					t.Fatalf("wide card should fit all three sites in one row: %+v", buttons)
 				}
 			case 52:
+				c := buttons[2]
 				if a.Y != b.Y || c.Y <= a.Y || a.X >= b.X || c.X != a.X {
 					t.Fatalf("medium card should flow into two columns: %+v", buttons)
 				}
 			case 24, 16:
-				if !(a.Y < b.Y && b.Y < c.Y) || a.X != b.X || b.X != c.X {
+				if a.Y >= b.Y || a.X != b.X {
 					t.Fatalf("narrow card should stack sites: %+v", buttons)
 				}
 			}
 			if width == 24 || width == 72 {
-				for i, want := range []string{"123 ms", "37 ms", o.Locale.T("dashboard.website.timeout")} {
+				for i, want := range []string{"123 ms", "37 ms", o.Locale.T("dashboard.website.timeout")}[:visible] {
 					hit := buttons[i]
 					right := width
 					if next := i + 1; next < len(buttons) && buttons[next].Y == hit.Y {
@@ -130,6 +133,30 @@ func TestWebsiteCardShowsPerSiteResultAndActions(t *testing.T) {
 	}
 }
 
+func TestWebsitePreviewHeightIsIndependentOfOverflow(t *testing.T) {
+	m, _ := overviewWebsiteDragModel(t, 12)
+	for _, lang := range []string{i18n.Chinese, i18n.English} {
+		for _, width := range []int{16, 24, 40, 44, 65, 66, 72} {
+			o := m.navigationOptions()
+			o.Locale = i18n.New(lang)
+			height := len(overviewWebsiteCard(o, width).lines)
+			for n := 0; n <= len(m.websites); n++ {
+				o.websites = m.websites[:n]
+				card := overviewWebsiteCard(o, width)
+				capacity := websiteCapacity(overviewInnerWidth(width))
+				if len(card.lines) != height || hasAction(card.targets, "website.viewAll") != (n > capacity) {
+					t.Fatalf("%s width %d count %d: changed footprint or invalid overflow action", lang, width, n)
+				}
+				for i, site := range o.websites {
+					if hasAction(card.targets, websiteActionID(site)) != (i < capacity) {
+						t.Fatalf("wrong visibility for site %d", i)
+					}
+				}
+			}
+		}
+	}
+}
+
 func TestWebsiteCardScrollsFocusedTestIntoCompactViewport(t *testing.T) {
 	for _, lang := range []string{i18n.English, i18n.Chinese} {
 		m := themeSample("overview-running")
@@ -141,9 +168,9 @@ func TestWebsiteCardScrollsFocusedTestIntoCompactViewport(t *testing.T) {
 		m.focus = "overview.card.dashboard.website.title"
 		m.revealContentFocus()
 		m.layout()
-		for _, id := range []string{"website.add", "website.all", websiteActionID(app.DefaultWebsites()[0]), websiteActionID(app.DefaultWebsites()[1]), websiteActionID(app.DefaultWebsites()[2])} {
+		for _, id := range []string{"website.viewAll", "website.add", "website.all", websiteActionID(app.DefaultWebsites()[0]), websiteActionID(app.DefaultWebsites()[1])} {
 			k := special(tea.KeyTab)
-			if id == "website.add" {
+			if id == "website.viewAll" {
 				k = special(tea.KeyEnter)
 			}
 			m, _ = update(m, k)
@@ -162,14 +189,14 @@ func TestWebsiteResultIsOnlyKeyboardActionAndNeverOverlapsName(t *testing.T) {
 	}}
 	for _, width := range []int{6, 24} {
 		o.websites, o.Focus, o.Hover = []app.Website{site}, "", overviewWebsiteDragID(site)
-		cell := o.websiteCell(site, width)
+		cell := o.websiteCell(site, width, panel)
 		if len(cell.targets) != 2 || cell.targets[0].ID != overviewWebsiteDragID(site) || cell.targets[1].ID != websiteActionID(site) || cell.targets[1].Y != 1 ||
 			strings.Contains(ansi.Strip(cell.lines[0]), "⠿") {
 			t.Fatalf("width %d: a lone site name must have a separate context-menu target: %+v", width, cell)
 		}
 		o.websites = []app.Website{site, other}
 		o.Focus, o.Hover = websiteActionID(site), ""
-		cell = o.websiteCell(site, width)
+		cell = o.websiteCell(site, width, panel)
 		name, result := cell.targets[0], cell.targets[1]
 		if name.ID != overviewWebsiteDragID(site) || result.ID != o.Focus || regionsOverlap(name, result) || strings.Contains(cell.lines[0], "⠿") ||
 			!strings.Contains(ansi.Strip(cell.lines[result.Y]), "› Test") {
@@ -182,7 +209,7 @@ func TestWebsiteResultIsOnlyKeyboardActionAndNeverOverlapsName(t *testing.T) {
 			t.Fatal("unused cell space was made interactive")
 		}
 		o.Focus, o.Hover = "", result.ID
-		if hovered := o.websiteCell(site, width); hovered.lines[0] != cell.lines[0] ||
+		if hovered := o.websiteCell(site, width, panel); hovered.lines[0] != cell.lines[0] ||
 			hovered.lines[result.Y] == cell.lines[result.Y] || strings.Contains(ansi.Strip(hovered.lines[result.Y]), "›") {
 			t.Fatal("hovering a result changed the name or imitated keyboard focus")
 		}
@@ -213,7 +240,7 @@ func TestWebsiteResultHoverPreservesSemanticColors(t *testing.T) {
 					Snapshot:         app.Snapshot{Installed: true, MixedPort: 7890, Service: service.Status{Active: true, State: "active"}},
 					StateUnavailable: state.unavailable}
 				o.websiteTests.rows = map[string]websiteTestRow{site.URL: state.row}
-				line := o.websiteCell(site, 24).lines[1]
+				line := o.websiteCell(site, 24, panel).lines[1]
 				plain := ansi.Strip(line)
 				if strings.Contains(plain, "›") != (interaction.focus == id) || strings.Trim(plain, " ›") != state.label {
 					t.Fatalf("wrong result text or focus marker: %q", plain)
@@ -247,10 +274,10 @@ func TestWebsiteNameHoverExtendsItsMouseTargetToTheGrip(t *testing.T) {
 	sites := app.DefaultWebsites()
 	for _, profile := range []colorprofile.Profile{colorprofile.TrueColor, colorprofile.ASCII} {
 		o := dashboardOptions{websites: sites, Locale: i18n.New(i18n.Chinese), Monochrome: profile == colorprofile.ASCII}
-		idle := o.websiteCell(sites[0], 24)
+		idle := o.websiteCell(sites[0], 24, panel)
 		name, result := idle.targets[0], idle.targets[1]
 		o.Hover = name.ID
-		hovered := o.websiteCell(sites[0], 24)
+		hovered := o.websiteCell(sites[0], 24, panel)
 		hit := findTarget(t, Model{targets: hovered.targets}, name.ID)
 		line := terminalTheme(hovered.lines[0], profile)
 		if hit.X != name.X-2 || hit.X+hit.W != name.X+name.W || hit.Y != name.Y || hit.H != name.H ||
@@ -275,7 +302,7 @@ func TestWebsiteNameHoverExtendsItsMouseTargetToTheGrip(t *testing.T) {
 			t.Fatal("hovering the name changed its keyboard stop or test result")
 		}
 		o.Busy = true
-		busy := o.websiteCell(sites[0], 24)
+		busy := o.websiteCell(sites[0], 24, panel)
 		if strings.Contains(busy.lines[0], "⠿") || hasAction(busy.targets, name.ID) {
 			t.Fatal("a busy card offered drag interaction")
 		}
@@ -333,12 +360,10 @@ func TestWebsiteDragMarkersPointIntoTheTargetWithoutMovingControls(t *testing.T)
 		{"down and right to Google", 72, 0, 4, "↘"},
 		{"up and left to clipped Chinese name", 72, 4, 0, "↖"},
 		{"up and right to YouTube", 72, 4, 2, "↗"},
-		{"up past a wrapped result", 10, 1, 0, "↑"},
-		{"down onto first row of next page", 24, 2, 3, "↓"},
-		{"up onto last row of previous page", 24, 3, 2, "↑"},
+		{"up past a compact result", 10, 1, 0, "↑"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			o := dashboardOptions{Locale: i18n.New(i18n.Chinese), websites: sites, websiteOffset: tc.to}
+			o := dashboardOptions{Locale: i18n.New(i18n.Chinese), websites: sites}
 			idle := overviewWebsiteCard(o, tc.width)
 			source, target := sites[tc.from], sites[tc.to]
 			o.Hover = overviewWebsiteDragID(sites[1])
@@ -462,7 +487,7 @@ func TestWebsiteNamesAndResultsShowTheirOwnFooterActions(t *testing.T) {
 			t.Fatal("inactive proxy offered a website test")
 		}
 		m.websiteDrag.source = site
-		m.hover, m.focus = "website.next", "website.next"
+		m.hover, m.focus = "website.viewAll", "website.viewAll"
 		m.layout()
 		check(strings.Split(m.tr("dashboard.website.dragging"), " · ")...)
 		m.websiteDrag.neighbor, m.websiteDrag.after = neighbor, true

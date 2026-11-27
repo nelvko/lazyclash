@@ -270,64 +270,43 @@ func TestOverviewWebsiteDragCancellationKeepsMeasurementIdle(t *testing.T) {
 	}
 }
 
-func TestOverviewWebsiteDragPagesOnlyOnEntry(t *testing.T) {
-	for _, cancel := range []bool{false, true} {
-		t.Run(fmt.Sprintf("cancel=%t", cancel), func(t *testing.T) {
-			m, b := overviewWebsiteDragModel(t, 13)
-			sites := slices.Clone(m.websites)
-			source := sites[0]
-			m, _ = update(m, tea.MouseClickMsg(websitePointer(t, m, overviewWebsiteDragID(source))))
-			turn := websitePointer(t, m, "website.next")
-			m, _ = update(m, tea.MouseMotionMsg(turn))
-			m, _ = update(m, tea.MouseMotionMsg(turn))
-			if m.websiteOffset != 6 || m.websiteDrag.neighbor.URL != "" || m.websiteDrag.direction != "" {
-				t.Fatalf("hovering on Next should advance exactly one page: offset=%d", m.websiteOffset)
-			}
-			m, _ = update(m, tea.MouseMotionMsg(websitePointer(t, m, websiteActionID(sites[7]))))
-			if m.websiteDrag.direction != "↓" {
-				t.Fatal("a drop on a later page should point down even in a different column")
-			}
-			turn = websitePointer(t, m, "website.next")
-			m, _ = update(m, tea.MouseMotionMsg(turn))
-			if m.websiteOffset != 12 {
-				t.Fatal("reentering Next did not advance to the final page")
-			}
-			if cancel {
-				m, _ = update(m, tea.MouseReleaseMsg(turn))
-				if m.websiteDrag.active() || m.busy || !slices.Equal(m.websites, sites) || len(m.websiteTests.running) != 0 {
-					t.Fatal("releasing over the original page button must cancel")
-				}
-				return
-			}
-			target := sites[12]
-			b.relocateWebsite = func(_ context.Context, s, neighbor app.Website, after bool) ([]app.Website, error) {
-				if s != source || neighbor != target || !after {
-					t.Fatal("drag lost its source or relative position across pages")
-				}
-				return append(slices.Clone(sites[1:]), source), nil
-			}
-			drop := websitePointer(t, m, overviewWebsiteDragID(target))
-			m, cmd := update(m, tea.MouseReleaseMsg(drop))
-			if cmd == nil {
-				t.Fatal("cross-page drop did not save")
-			}
-			m, _ = update(m, cmd())
-			if m.websites[12] != source || !hasAction(m.targets, websiteActionID(source)) || m.focus != websiteActionID(source) {
-				t.Fatal("moved site lost its page or focus")
-			}
-		})
-	}
-}
-
-func TestOverviewWebsiteDraggingToEarlierPagePointsUp(t *testing.T) {
-	m, _ := overviewWebsiteDragModel(t, 8)
-	m.turnWebsitePage("website.next")
+func TestWebsiteListDragAcrossScrolledRows(t *testing.T) {
+	m, b := overviewWebsiteDragModel(t, 15)
+	m, _ = update(m, tea.WindowSizeMsg{Width: 80, Height: 15})
+	m.activate("website.viewAll")
 	m.layout()
-	source, target := m.websites[7], m.websites[2]
+	sites := slices.Clone(m.websites)
+	source, target := sites[0], sites[14]
+	b.relocateWebsite = func(_ context.Context, s, neighbor app.Website, after bool) ([]app.Website, error) {
+		if s != source || neighbor != target || !after {
+			t.Fatal("wrong move across rows")
+		}
+		return append(slices.Clone(sites[1:]), source), nil
+	}
 	m, _ = update(m, tea.MouseClickMsg(websitePointer(t, m, overviewWebsiteDragID(source))))
-	m, _ = update(m, tea.MouseMotionMsg(websitePointer(t, m, "website.prev")))
-	m, _ = update(m, tea.MouseMotionMsg(websitePointer(t, m, overviewWebsiteDragID(target))))
-	if m.websiteDrag.neighbor != target || m.websiteDrag.direction != "↑" {
-		t.Fatal("dragging to an earlier page should point up even when the target is to the right")
+	box := m.websiteList.gridBounds
+	for range 4 {
+		m, _ = update(m, tea.MouseWheelMsg{X: box.X, Y: box.Y, Button: tea.MouseWheelDown})
+	}
+	if !m.websiteDrag.active() || m.websiteList.viewport.YOffset() == 0 {
+		t.Fatal("wheel lost the drag")
+	}
+	drop := websitePointer(t, m, overviewWebsiteDragID(target))
+	m, _ = update(m, tea.MouseMotionMsg(drop))
+	if m.websiteDrag.direction != "↘" {
+		t.Fatalf("wrong drag direction %q", m.websiteDrag.direction)
+	}
+	m, cmd := update(m, tea.MouseReleaseMsg(drop))
+	if cmd == nil {
+		t.Fatal("drop did not save")
+	}
+	m, _ = update(m, cmd())
+	if m.form != "website-list" || m.websites[14] != source || !hasAction(m.targets, websiteActionID(source)) || len(m.websiteTests.running) != 0 {
+		t.Fatal("drop lost the list, focus, or issued a measurement")
+	}
+	m.websiteListAction("website.back")
+	m.layout()
+	if m.form != "" || m.focus != "website.viewAll" || hasAction(m.contentTargets(), websiteActionID(source)) {
+		t.Fatal("overview did not reflect saved order")
 	}
 }

@@ -151,7 +151,7 @@ func TestOverviewWebsiteBatchRevealsResults(t *testing.T) {
 	}
 }
 
-func TestWebsiteBatchBoundsRequestsAcrossPages(t *testing.T) {
+func TestWebsiteBatchBoundsRequestsIncludingHiddenSites(t *testing.T) {
 	sites := app.DefaultWebsites()
 	for i := 4; i <= 8; i++ {
 		sites = append(sites, app.Website{Name: fmt.Sprintf("Site %d", i), URL: fmt.Sprintf("https://s%d.example/", i)})
@@ -223,32 +223,21 @@ func TestWebsiteBatchBoundsRequestsAcrossPages(t *testing.T) {
 	}
 }
 
-func TestWebsitePaginationPreservesFocusedSiteAcrossResize(t *testing.T) {
-	sites := app.DefaultWebsites()
-	for i := 4; i <= 8; i++ {
-		sites = append(sites, app.Website{Name: fmt.Sprintf("site %d", i), URL: fmt.Sprintf("https://s%d.example/", i)})
-	}
-	b := newOverviewPTYBackend("running")
-	b.prefs.Websites = sites
-	m := New(t.Context(), b, "en")
-	m.busy = false
-	m.adoptSnapshot(b.snapshot)
-	m.width, m.height, m.focus = 160, 45, "website.next"
-	m.layout()
-	m.activate(m.focus)
-	if m.focus != "website.prev" || !hasAction(m.contentTargets(), websiteActionID(sites[7])) {
-		t.Fatal("next page lost pager focus or site")
-	}
-	m.focus = websiteActionID(sites[7])
-	for _, size := range [][2]int{{40, 20}, {120, 32}, {160, 45}} {
+func TestWebsiteListKeepsFocusedResultVisibleAcrossResize(t *testing.T) {
+	m, _ := overviewWebsiteDragModel(t, 8)
+	m.activate("website.viewAll")
+	m.focusWebsiteAt(7)
+	for _, size := range [][2]int{{40, 16}, {120, 32}, {160, 45}} {
 		m, _ = update(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
-		if m.focus != websiteActionID(sites[7]) || !hasAction(m.targets, m.focus) {
-			t.Fatalf("resize to %v lost visible focused site %q", size, m.focus)
+		if m.form != "website-list" || m.focus != websiteActionID(m.websites[7]) || !hasAction(m.targets, m.focus) {
+			t.Fatalf("resize to %v lost visible result %q", size, m.focus)
 		}
 	}
-	m.setWebsites(sites[:2])
-	if m.websiteOffset >= 2 || !hasAction(m.contentTargets(), websiteActionID(sites[1])) || hasAction(m.contentTargets(), "website.prev") {
-		t.Fatal("deletion left stale pagination")
+	m.setWebsites(m.websites[:2])
+	m.websiteListAction("website.back")
+	m.layout()
+	if m.form != "" || m.focus != "website.add" || hasAction(m.contentTargets(), "website.viewAll") {
+		t.Fatal("return left an unreachable overflow action")
 	}
 }
 

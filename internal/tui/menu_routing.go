@@ -53,7 +53,7 @@ func (m *Model) applyMenuResult(result menuResult) tea.Cmd {
 func (m *Model) reconcileMenu() {
 	switch {
 	case m.websiteMenu.URL != "":
-		if !m.menu.open || !slices.Contains(m.websites, m.websiteMenu) || !m.pageSelectionMenuAvailable("overview") {
+		if !m.menu.open || !slices.Contains(m.websites, m.websiteMenu) || !m.websiteInteractionsAvailable() {
 			m.dismissWebsiteMenu()
 		}
 	case m.form == "profile-delete":

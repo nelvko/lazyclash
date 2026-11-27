@@ -12,7 +12,6 @@ import (
 type overviewWebsiteDragState struct {
 	source, neighbor app.Website
 	after            bool
-	pager            hitRegion
 	direction        string
 }
 
@@ -23,6 +22,9 @@ func (m *Model) cancelOverviewWebsiteDrag() { m.websiteDrag = overviewWebsiteDra
 func (m *Model) overviewWebsiteDragMouse(event tea.MouseMsg) (bool, tea.Cmd) {
 	d := &m.websiteDrag
 	p := event.Mouse()
+	if _, wheel := event.(tea.MouseWheelMsg); wheel && m.form == "website-list" {
+		return false, nil
+	}
 	_, press := event.(tea.MouseClickMsg)
 	if press || p.Button != tea.MouseLeft {
 		// A new press or a free-moving pointer recovers a lost release.
@@ -31,7 +33,7 @@ func (m *Model) overviewWebsiteDragMouse(event tea.MouseMsg) (bool, tea.Cmd) {
 	if p.Button != tea.MouseLeft || !press && !d.active() {
 		return false, nil
 	}
-	if !m.pageSelectionMenuAvailable("overview") || m.menu.open {
+	if !m.websiteInteractionsAvailable() || m.menu.open {
 		m.cancelOverviewWebsiteDrag()
 		return false, nil
 	}
@@ -69,21 +71,10 @@ func (m *Model) overviewWebsiteDragMouse(event tea.MouseMsg) (bool, tea.Cmd) {
 	if release {
 		defer m.cancelOverviewWebsiteDrag()
 	}
-	// A shorter last page can move an unrelated control under the stationary
-	// pointer. The old button stays inert until the pointer leaves it.
-	if d.pager.ID != "" && (d.pager.ID == hit.ID || regionsOverlap(point, d.pager)) {
-		return true, nil
-	}
 	if release {
 		m.hover = hit.ID
 	}
-	d.pager, d.direction = hitRegion{}, ""
-	if !release && (hit.ID == "website.prev" || hit.ID == "website.next") {
-		d.neighbor, d.after, d.pager = app.Website{}, false, hit
-		m.focus = hit.ID
-		m.turnWebsitePage(hit.ID)
-		return true, nil
-	}
+	d.direction = ""
 	to := m.overviewWebsiteIndex(hit.ID)
 	d.neighbor, d.after = app.Website{}, false
 	if to < 0 {
@@ -107,13 +98,11 @@ func (m *Model) overviewWebsiteDragMouse(event tea.MouseMsg) (bool, tea.Cmd) {
 
 func (m *Model) websiteDragDirection(from, to int) string {
 	width := m.websiteCardInnerWidth()
-	perPage := websitePager(width, m.websiteOffset, len(m.websites)).PerPage
-	dx, dy := 0, cmp.Compare(to/perPage, from/perPage)
-	if dy == 0 {
-		cols := websiteColumns(width)
-		from, to = from%perPage, to%perPage
-		dx, dy = cmp.Compare(to%cols, from%cols), cmp.Compare(to/cols, from/cols)
+	if m.form == "website-list" {
+		width = m.websiteListInnerWidth()
 	}
+	cols := websiteColumns(width)
+	dx, dy := cmp.Compare(to%cols, from%cols), cmp.Compare(to/cols, from/cols)
 	arrows := [3][3]string{
 		{"↖", "↑", "↗"},
 		{"←", "", "→"},

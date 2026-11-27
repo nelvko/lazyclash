@@ -22,7 +22,7 @@ func (m *Model) openWebsiteMenuAt(x, y int) {
 }
 
 func (m *Model) websiteMenuKey(key string) bool {
-	if key != "m" && key != "menu" && key != "shift+f10" || !m.pageSelectionMenuAvailable("overview") {
+	if key != "m" && key != "menu" && key != "shift+f10" || !m.websiteInteractionsAvailable() {
 		return false
 	}
 	i := m.overviewWebsiteIndex(m.focus)
@@ -40,7 +40,7 @@ func (m *Model) websiteMenuKey(key string) bool {
 
 func (m *Model) openWebsiteMenu(anchor hitRegion) {
 	i := m.overviewWebsiteIndex(anchor.ID)
-	if i < 0 || m.menu.open || !m.pageSelectionMenuAvailable("overview") {
+	if i < 0 || m.menu.open || !m.websiteInteractionsAvailable() {
 		return
 	}
 	m.websiteMenu = m.websites[i]
@@ -63,7 +63,7 @@ func (m *Model) websiteMenuResult(result menuResult) tea.Cmd {
 	}
 	site := m.websiteMenu
 	m.dismissWebsiteMenu()
-	if !slices.Contains(m.websites, site) || !m.pageSelectionMenuAvailable("overview") {
+	if !slices.Contains(m.websites, site) || !m.websiteInteractionsAvailable() {
 		return nil
 	}
 	switch result.Action {
@@ -78,11 +78,21 @@ func (m *Model) websiteMenuResult(result menuResult) tea.Cmd {
 func (m *Model) focusWebsiteAt(index int) {
 	if len(m.websites) == 0 || index < 0 {
 		m.focus = "website.add"
+		if m.form == "website-list" {
+			m.focus = "website.back"
+		}
 	} else {
-		m.websiteOffset = min(index, len(m.websites)-1)
-		m.focus = websiteActionID(m.websites[m.websiteOffset])
+		index = min(index, len(m.websites)-1)
+		if m.form == "" && index >= websiteCapacity(m.websiteCardInnerWidth()) {
+			m.openWebsiteList()
+		}
+		m.focus = websiteActionID(m.websites[index])
 	}
-	m.revealContentFocus()
+	if m.form == "website-list" {
+		m.websiteList.reveal = true
+	} else {
+		m.revealContentFocus()
+	}
 }
 
 type websiteChangeMsg struct {
@@ -102,7 +112,7 @@ func (m *Model) removeWebsite(site app.Website) tea.Cmd {
 }
 
 func (m *Model) relocateWebsite(site, neighbor app.Website, after bool) tea.Cmd {
-	if site == neighbor || !m.pageSelectionMenuAvailable("overview") {
+	if site == neighbor || !m.websiteInteractionsAvailable() {
 		return nil
 	}
 	backend := m.backend
@@ -126,7 +136,7 @@ func (m *Model) acceptWebsiteChange(msg websiteChangeMsg) tea.Cmd {
 			index = slices.Index(m.websites, msg.site)
 		}
 		m.setWebsites(msg.sites)
-		if m.pageSelectionMenuAvailable("overview") {
+		if m.websiteInteractionsAvailable() {
 			m.focusWebsiteAt(index)
 		}
 	}

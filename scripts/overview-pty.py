@@ -854,15 +854,19 @@ def verify_custom_website(preview, terminal, output, words, report, args):
 
     terminal.resize(40, 16)
     terminal.settle()
-    focus_control(terminal, words["dashboard.website.next"])
+    focus_control(terminal, words["dashboard.website.viewAll"])
     terminal.key(b"\r")
+    terminal.wait(words["dashboard.website.listTitle"])
+    terminal.key(b"\x1b[F")  # End reveals the last site in the compact dialog.
     terminal.wait("Google")
     terminal.wait("212 ms")
-    preview.capture(terminal, output, "website-custom-second-page", args)
+    preview.capture(terminal, output, "website-custom-full-list", args)
     open_website_menu(terminal, words, "Google")
     preview.capture(terminal, output, "website-menu-40x16", args)
     terminal.key(b"\x1b")
     terminal.wait_absent(words["dashboard.website.remove"])
+    terminal.key(b"\x1b")
+    terminal.wait_absent(words["dashboard.website.listTitle"])
     terminal.resize(160, 45)
     terminal.settle()
 
@@ -879,13 +883,58 @@ def verify_custom_website(preview, terminal, output, words, report, args):
     print("PASS custom websites: add, right-click and keyboard menus, edit, sort across columns and rows, restart, test, remove", flush=True)
 
 
+def exercise_website_list(preview, terminal, output, words, report, args):
+    more = words["dashboard.website.viewAll"]
+    title = words["dashboard.website.listTitle"]
+    terminal.wait("203.0.113.17")
+    terminal.wait(more)
+    terminal.settle()
+    assert "Google" not in terminal.screen.text(), terminal.screen.text()
+    before_ip = text_point(terminal, "203.0.113.17")
+    before_chart = text_point(terminal, words["dashboard.overview.traffic"])
+    preview.capture(terminal, output, "website-overview-160x45", args)
+    terminal.click_text(more)
+    terminal.wait(title)
+    terminal.wait("Google")
+    terminal.settle()
+    assert focused(terminal, words["dashboard.website.back"]), terminal.screen.text()
+    source = text_point(terminal, "Google")
+    click_point(terminal, (source[0], source[1]+1))
+    terminal.wait("212 ms")
+    terminal.click_text(words["dashboard.website.all"])
+    terminal.wait("173 ms")
+    terminal.settle()
+    preview.capture(terminal, output, "website-list-160x45", args)
+    # The first row of the dialog and the dimmed card may contain the same name.
+    title_x, title_y = text_point(terminal, title)
+    target = next((x, y) for x, y in text_points(terminal, "GitHub")
+                  if x == title_x+2 and y == title_y+3)
+    mouse_event(terminal, 0, source, "M")
+    mouse_event(terminal, 32, target, "M")
+    terminal.settle()
+    mouse_event(terminal, 0, target, "m")
+    terminal.settle()
+    terminal.key(b"\x1b")
+    terminal.wait_absent(title)
+    terminal.wait("Google")
+    assert website_order(terminal, ["Google", "GitHub"]) == ["Google", "GitHub"], terminal.screen.text()
+    assert before_ip == text_point(terminal, "203.0.113.17")
+    assert before_chart == text_point(terminal, words["dashboard.overview.traffic"])
+    terminal.exit()
+    calls = json.loads(report.read_text())
+    assert calls["website_google"] == 2 and calls["website_github"] == 1, calls
+    print("PASS fixed website grid, full-list single and batch tests, drag to overview, stable surrounding cards", flush=True)
+
+
 def exercise(preview, binary, output, language, profile, scenario, args):
     output.mkdir(parents=True)
     words = labels(language)
     report = output / "calls.json"
     fixture = scenario
-    if scenario == "website-diagonal":
+    if scenario in ("website-diagonal", "website-list"):
         names = ["京东", "gpt", "YouTube", "claude", "Google", "GitHub"]
+        if scenario == "website-list":
+            names = ["GitHub", "YouTube", "Wikipedia", "Cloudflare", "GitLab", "Apple", "Mozilla", "Google", "Codeberg"]
         settings = output / "settings"
         settings.mkdir(mode=0o700)
         sites = [{"Name": name, "URL": f"https://site{i}.example/"} for i, name in enumerate(names)]
@@ -893,6 +942,9 @@ def exercise(preview, binary, output, language, profile, scenario, args):
         fixture = "manage-websites"  # Use the isolated, persistent website backend.
     terminal = fixture_terminal(preview, binary, report, language, profile, fixture)
     try:
+        if scenario == "website-list":
+            exercise_website_list(preview, terminal, output, words, report, args)
+            return
         if scenario == "website-diagonal":
             exercise_website_diagonal(preview, terminal, output, names, words, profile, args)
             return
@@ -1084,7 +1136,7 @@ def main():
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--lang", choices=["en", "zh-Hans"], action="append")
     parser.add_argument("--profile", choices=["truecolor", "256", "no-color"], action="append")
-    parser.add_argument("--scenario", choices=["running", "stopped", "unavailable", "drift", "pending", "direct", "ip-route", "websites", "manage-websites", "website-diagonal"], action="append")
+    parser.add_argument("--scenario", choices=["running", "stopped", "unavailable", "drift", "pending", "direct", "ip-route", "websites", "manage-websites", "website-diagonal", "website-list"], action="append")
     sys.dont_write_bytecode = True
     spec = importlib.util.spec_from_file_location("overview_pty_preview", Path(__file__).with_name("onboarding-pty.py"))
     preview = importlib.util.module_from_spec(spec)

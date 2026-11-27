@@ -3,7 +3,6 @@ package tui
 import (
 	"context"
 
-	"charm.land/bubbles/v2/paginator"
 	tea "charm.land/bubbletea/v2"
 	"github.com/nelvko/lazyclash/internal/app"
 )
@@ -23,14 +22,7 @@ func websiteColumns(inner int) int {
 	}
 }
 
-func websitePager(inner, offset, count int) paginator.Model {
-	cols := websiteColumns(inner)
-	perPage := max(3, cols*2)
-	p := paginator.Model{PerPage: perPage, TotalPages: 1, ArabicFormat: "%d/%d"}
-	p.SetTotalPages(count)
-	p.Page = min(p.TotalPages-1, offset/perPage)
-	return p
-}
+func websiteCapacity(inner int) int { return 2 * websiteColumns(inner) }
 
 type websiteTestState struct {
 	rows    map[string]websiteTestRow // keyed by normalized URL
@@ -82,7 +74,6 @@ func (m *Model) setWebsites(sites []app.Website) {
 		}
 	}
 	m.websites = sites
-	m.websiteOffset = min(m.websiteOffset, max(0, len(sites)-1))
 	m.websiteTests.finishBatch()
 }
 
@@ -92,31 +83,6 @@ func (m *Model) websiteCardInnerWidth() int {
 		width = (width - 2) / 2
 	}
 	return overviewInnerWidth(width)
-}
-
-func (m *Model) turnWebsitePage(id string) {
-	if m.page != "overview" || m.quitting {
-		return
-	}
-	p := websitePager(m.websiteCardInnerWidth(), m.websiteOffset, len(m.websites))
-	old := p.Page
-	if id == "website.prev" {
-		p.PrevPage()
-	} else {
-		p.NextPage()
-	}
-	if old != p.Page {
-		m.websiteOffset = p.Page * p.PerPage
-		// The newly selected page may no longer have an enabled Next or Previous.
-		// Stay in the pager when an arrow reaches its boundary.
-		if m.focus == "website.next" && p.OnLastPage() {
-			m.focus = "website.prev"
-		} else if m.focus == "website.prev" && p.OnFirstPage() {
-			m.focus = "website.next"
-		}
-		m.revealWebsiteCard()
-		m.revealContentFocus()
-	}
 }
 
 func (m *Model) revealWebsiteCard() {
@@ -145,7 +111,9 @@ func (m *Model) testWebsites(target string) tea.Cmd {
 	}
 	if target == "website.all" {
 		s.batch = true
-		m.revealWebsiteCard()
+		if m.form == "" {
+			m.revealWebsiteCard()
+		}
 	}
 	return m.nextWebsiteTests()
 }

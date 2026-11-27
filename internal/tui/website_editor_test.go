@@ -83,8 +83,8 @@ func TestWebsiteEditorKeepsFailedDraftAndFocusesAddedSite(t *testing.T) {
 		}
 		m, cmd = click(m, findTarget(t, m, "websiteEditor.save"))
 		m = finishWebsiteAction(t, m, cmd)
-		if m.form != "" || m.focus != websiteActionID(added) || !slices.Contains(m.websites, added) {
-			t.Fatalf("new website did not receive focus on its overview page: %s/%s", m.form, m.focus)
+		if m.form != "website-list" || m.focus != websiteActionID(added) || !hasAction(m.targets, m.focus) || !slices.Contains(m.websites, added) {
+			t.Fatalf("new website did not receive focus in the full list: %s/%s", m.form, m.focus)
 		}
 	}
 }
@@ -180,7 +180,7 @@ func TestWebsiteEditorUpdatesExistingNameAndURL(t *testing.T) {
 			var cmd tea.Cmd
 			m, cmd = update(m, special(tea.KeyEnter))
 			m = finishWebsiteAction(t, m, cmd)
-			if calls != 1 || len(m.websites) != 3 || m.websites[2] != changed || m.form != "" || m.focus != websiteActionID(changed) {
+			if calls != 1 || len(m.websites) != 3 || m.websites[2] != changed || m.form != "website-list" || m.focus != websiteActionID(changed) || !hasAction(m.targets, m.focus) {
 				t.Fatal("edit did not focus the published website at its current position")
 			}
 		}

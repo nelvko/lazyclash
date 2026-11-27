@@ -36,6 +36,9 @@ func (m *Model) beginWebsiteEdit(original app.Website) tea.Cmd {
 
 func (m *Model) closeWebsiteEditor(index int) {
 	m.websiteEditor, m.form, m.hover = websiteEditorState{}, "", ""
+	if m.websiteList != nil {
+		m.form = "website-list"
+	}
 	m.focusWebsiteAt(index)
 }
 

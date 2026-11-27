@@ -18,44 +18,40 @@ const (
 func overviewWebsiteDragID(site app.Website) string { return overviewWebsiteDragPrefix + site.URL }
 
 func overviewWebsiteCard(o dashboardOptions, width int) dashboardBlock {
-	tr := o.Locale.T
 	inner := overviewInnerWidth(width)
-	title := overviewWebsiteHeading(o, inner)
+	visible := o.websites[:min(len(o.websites), websiteCapacity(inner))]
+	content := o.websiteGrid(visible, inner, panel)
+	for len(content.lines) < 5 {
+		content.blank()
+	}
+	card := overviewPanel(o, width, overviewWebsiteHeading(o, inner), content, nil)
+	o.paintWebsiteDropArrow(&card, width, panel)
+	return card
+}
+
+func (o dashboardOptions) websiteGrid(sites []app.Website, inner int, surface string) dashboardBlock {
 	var content dashboardBlock
-	page := websitePager(inner, o.websiteOffset, len(o.websites))
-	start, end := page.GetSliceBounds(len(o.websites))
-	visible := o.websites[start:end]
 	cols := websiteColumns(inner)
 	cellWidth := (inner - 2*(cols-1)) / cols
-	for sites := range slices.Chunk(visible, cols) {
+	for row := range slices.Chunk(sites, cols) {
 		if len(content.lines) > 0 {
 			content.blank()
 		}
 		var cells []dashboardBlock
-		for _, site := range sites {
-			cells = append(cells, o.websiteCell(site, cellWidth))
+		for _, site := range row {
+			cells = append(cells, o.websiteCell(site, cellWidth, surface))
 		}
 		content.append(joinDashboardBlocks(2, cells...))
 	}
-	if len(visible) == 0 {
-		content.append(overviewTextBlock([]string{themed(tr("dashboard.website.empty"), muted, panel, o.Dim)}, inner))
+	if len(sites) == 0 {
+		content.append(overviewTextBlock([]string{themed(o.Locale.T("dashboard.website.empty"), muted, surface, o.Dim)}, inner))
 	}
-	if page.TotalPages > 1 {
-		content.blank()
-		content.append(overviewTextBlock([]string{themed(page.View(), muted, panel, o.Dim)}, inner))
-		content.append(overviewButtons(o, inner, []overviewControlButton{
-			{id: "website.prev", label: tr("dashboard.website.prev"), enabled: !page.OnFirstPage()},
-			{id: "website.next", label: tr("dashboard.website.next"), enabled: !page.OnLastPage()},
-		}))
-	}
-	card := overviewPanel(o, width, title, content, nil)
-	o.paintWebsiteDropArrow(&card, width)
-	return card
+	return content
 }
 
 // Paint in the existing gap on the incoming side, after wrapping and column
 // layout have established the actual name and result positions.
-func (o dashboardOptions) paintWebsiteDropArrow(card *dashboardBlock, width int) {
+func (o dashboardOptions) paintWebsiteDropArrow(card *dashboardBlock, width int, surface string) {
 	drag := o.websiteDrag
 	if drag.direction == "" {
 		return
@@ -106,7 +102,7 @@ func (o dashboardOptions) paintWebsiteDropArrow(card *dashboardBlock, width int)
 		return
 	}
 	line := card.lines[drop.Y]
-	card.lines[drop.Y] = ansi.Cut(line, 0, drop.X) + themed(mark, focus, panel, o.Dim) + ansi.Cut(line, drop.X+drop.W, width)
+	card.lines[drop.Y] = ansi.Cut(line, 0, drop.X) + themed(mark, focus, surface, o.Dim) + ansi.Cut(line, drop.X+drop.W, width)
 	if diagonal {
 		// A pointer can approach a corner horizontally or vertically first.
 		// Keep the two columns straddling the name edge active up to the arrow.
@@ -123,20 +119,54 @@ func overviewWebsiteHeading(o dashboardOptions, width int) dashboardBlock {
 	add := overviewControlButton{id: "website.add", label: "＋", enabled: !o.Busy}
 	all := overviewControlButton{id: "website.all", label: "⚡︎"}
 	all.enabled = o.websiteTestsAvailable() && len(o.websites) > 0 && (o.websiteTests.canTestAll(o.websites) || o.Focus == all.id)
-	left, right := overviewButton(o, add, buttonIcon), overviewButton(o, all, buttonIcon)
-	leftW, rightW := ansi.StringWidth(left), ansi.StringWidth(right)
-	if leftW+rightW > width {
-		b := overviewLabelControl(o, width, title, add, buttonIcon)
-		b.append(overviewLabelControl(o, width, "", all, buttonIcon))
-		return b
+	// Reserve the overflow action's space even when hidden. Crossing the
+	// two-row limit must not move the neighboring cards on compact terminals.
+	more := overviewControlButton{id: "website.viewAll", label: o.Locale.T("dashboard.website.viewAll"), enabled: !o.Busy}
+	overflow := len(o.websites) > websiteCapacity(width)
+	moreFace := overviewButton(o, more, buttonIcon)
+	addFace, allFace := overviewButton(o, add, buttonIcon), overviewButton(o, all, buttonIcon)
+	counted := more
+	counted.label = fmt.Sprintf("%s %d", more.label, len(o.websites))
+	if face := overviewButton(o, counted, buttonIcon); ansi.StringWidth(title+face+addFace+allFace)+2 <= width {
+		moreFace = face
 	}
-	b := overviewLabelSlot(o, width, title, left+right, "", true)
-	y := len(b.lines) - 1
-	if add.enabled {
-		b.targets = append(b.targets, hitRegion{ID: add.id, X: width - leftW - rightW, Y: y, W: leftW, H: 1})
+	if !overflow {
+		moreFace = strings.Repeat(" ", ansi.StringWidth(moreFace))
+		more.enabled = false
 	}
-	if all.enabled {
-		b.targets = append(b.targets, hitRegion{ID: all.id, X: width - rightW, Y: y, W: rightW, H: 1})
+
+	// Group actions from the right so Add and Test all stay adjacent when wrapping.
+	type slot struct {
+		control overviewControlButton
+		face    string
+	}
+	slots := []slot{{more, moreFace}, {add, addFace}, {all, allFace}}
+	var rows []dashboardBlock
+	for end := len(slots); end > 0; {
+		start := end - 1
+		face := cellCrop(slots[start].face, width)
+		for start > 0 && ansi.StringWidth(slots[start-1].face+face) <= width {
+			start--
+			face = slots[start].face + face
+		}
+		x := width - ansi.StringWidth(face)
+		row := dashboardBlock{lines: []string{strings.Repeat(" ", x) + face}}
+		if start == 0 {
+			row = overviewLabelSlot(o, width, title, face, "", true)
+		}
+		for _, action := range slots[start:end] {
+			w := min(width, ansi.StringWidth(action.face))
+			if action.control.enabled {
+				row.targets = append(row.targets, hitRegion{ID: action.control.id, X: x, Y: len(row.lines) - 1, W: w, H: 1})
+			}
+			x += w
+		}
+		rows = append(rows, row)
+		end = start
+	}
+	var b dashboardBlock
+	for _, row := range slices.Backward(rows) {
+		b.append(row)
 	}
 	return b
 }
@@ -145,20 +175,20 @@ func (o dashboardOptions) websiteTestsAvailable() bool {
 	return !o.StateUnavailable && !o.Busy && overviewProxyAvailable(o.Snapshot)
 }
 
-func (o dashboardOptions) websiteCell(site app.Website, width int) dashboardBlock {
+func (o dashboardOptions) websiteCell(site app.Website, width int, background string) dashboardBlock {
 	dragID := overviewWebsiteDragID(site)
 	// The two rows share the compact button's focus gutter and left padding.
 	inset := min(2, max(0, width-1))
-	surface, style := panel, lipgloss.NewStyle()
+	surface, style := background, lipgloss.NewStyle()
 	marker := ""
 	switch {
 	case o.websiteDrag.source == site:
 		surface, style = selectionBackground, style.Bold(true)
-		marker = themed("⠿", accent, panel, o.Dim)
+		marker = themed("⠿", accent, background, o.Dim)
 	case o.websiteDrag.neighbor == site:
 		surface, style = hoverBackground, style.Underline(true)
 	case !o.websiteDrag.active() && !o.Busy && o.Hover == dragID && len(o.websites) > 1:
-		marker = themed("⠿", muted, panel, o.Dim)
+		marker = themed("⠿", muted, background, o.Dim)
 	}
 	name := ansi.Truncate(clean(site.Name), max(1, width-inset), "…")
 	face := cellPad(marker, inset) + themed(style.Render(name), text, surface, o.Dim)
@@ -172,7 +202,7 @@ func (o dashboardOptions) websiteCell(site app.Website, width int) dashboardBloc
 	}
 
 	id := websiteActionID(site)
-	opts := dashboardButtonOptions(id, o, false, panel)
+	opts := dashboardButtonOptions(id, o, false, background)
 	opts.Kind, opts.Compact = buttonText, true
 	opts.TextHoverBackground = hoverBackground
 	opts.Busy = o.websiteTests.rows[site.URL].pending()
@@ -181,14 +211,11 @@ func (o dashboardOptions) websiteCell(site app.Website, width int) dashboardBloc
 	opts.Disabled = !canTest && !opts.Focused
 	status, color := o.websiteTestStatus(site.URL)
 	opts.TextColor = color
-	for _, line := range strings.Split(wrapText(status, max(1, width-2)), "\n") {
-		// At the narrowest width only the button's trailing padding is clipped.
-		value := ansi.Truncate(renderButton(line, opts), width, "")
-		if !o.Busy {
-			b.targets = append(b.targets, hitRegion{ID: id, Y: len(b.lines), W: ansi.StringWidth(value), H: 1})
-		}
-		b.lines = append(b.lines, value)
+	value := ansi.Truncate(renderButton(ansi.Truncate(status, max(1, width-2), "…"), opts), width, "")
+	if !o.Busy {
+		b.targets = append(b.targets, hitRegion{ID: id, Y: 1, W: ansi.StringWidth(value), H: 1})
 	}
+	b.lines = append(b.lines, value)
 	return b
 }
 
