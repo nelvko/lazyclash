@@ -210,7 +210,7 @@ func (o dashboardOptions) websiteTestStatus(site string) (string, string) {
 		}
 		return fmt.Sprintf("%d ms", ms), color
 	case row.err != nil:
-		return tr("dashboard.website.timeout"), warning
+		return tr("dashboard.website.timeout"), errorColor
 	default:
 		return tr("dashboard.website.test"), accent
 	}

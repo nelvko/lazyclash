@@ -201,7 +201,7 @@ func TestWebsiteResultHoverPreservesSemanticColors(t *testing.T) {
 		{label: "499 ms", color: success, row: websiteTestRow{result: app.WebsiteTestResult{StatusCode: 200, Duration: 500*time.Millisecond - time.Nanosecond}}},
 		{label: "500 ms", color: websiteSlowLatency, row: websiteTestRow{result: app.WebsiteTestResult{StatusCode: 200, Duration: 500 * time.Millisecond}}},
 		{label: "501 ms", color: websiteSlowLatency, row: websiteTestRow{result: app.WebsiteTestResult{StatusCode: 403, Duration: 501 * time.Millisecond}}},
-		{label: "超时", color: warning, row: websiteTestRow{err: context.DeadlineExceeded}},
+		{label: "超时", color: errorColor, row: websiteTestRow{err: context.DeadlineExceeded}},
 		{label: "测试中", row: websiteTestRow{cancel: func() {}}},
 		{label: "不可用", unavailable: true},
 	} {
@@ -263,6 +263,9 @@ func TestWebsiteNameHoverExtendsItsMouseTargetToTheGrip(t *testing.T) {
 		screen := uv.NewScreenBuffer(24, 2)
 		uv.NewStyledString(terminalTheme(idle.lines[0], profile)+"\n"+line).Draw(screen, screen.Bounds())
 		for x := name.X; x < name.X+name.W; x++ {
+			if screen.CellAt(x, 0).Style.Attrs&uv.AttrBold != 0 {
+				t.Fatalf("%v: idle site name is bold at column %d", profile, x)
+			}
 			if !screen.CellAt(x, 0).Equal(screen.CellAt(x, 1)) {
 				t.Fatalf("%v: hovering changed the site name at column %d", profile, x)
 			}
@@ -287,6 +290,8 @@ func TestWebsiteDragPreviewAndDropTargetsIncludeUnavailableResults(t *testing.T)
 	for _, after := range []bool{false, true} {
 		o.websiteDrag.after = after
 		card := overviewWebsiteCard(o, 48)
+		screen := uv.NewScreenBuffer(48, len(card.lines))
+		uv.NewStyledString(strings.Join(card.lines, "\n")).Draw(screen, screen.Bounds())
 		for i, site := range sites {
 			name := findTarget(t, Model{targets: neutral.targets}, overviewWebsiteDragID(site))
 			result := findTarget(t, Model{targets: card.targets}, websiteActionID(site))
@@ -296,6 +301,9 @@ func TestWebsiteDragPreviewAndDropTargetsIncludeUnavailableResults(t *testing.T)
 			}
 			plainName := ansi.Cut(neutral.lines[name.Y], name.X, name.X+name.W)
 			dragName := ansi.Cut(card.lines[name.Y], name.X, name.X+name.W)
+			if bold := screen.CellAt(name.X, name.Y).Style.Attrs&uv.AttrBold != 0; bold != (site == o.websiteDrag.source) {
+				t.Fatalf("drag preview for %s: bold=%t", site.Name, bold)
+			}
 			if (plainName != dragName) != (i < 2) {
 				t.Fatalf("incorrect drag emphasis for %s", site.Name)
 			}
