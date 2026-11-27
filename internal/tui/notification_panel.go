@@ -269,7 +269,7 @@ func (p *notificationPanel) render(items []notificationItem, width, height int, 
 	options := dashboardOptions{Locale: locale, PlainButtons: len(plain) > 0 && plain[0]}
 	if w < 20 || maxHeight < 5 {
 		options.Focus = p.backAction()
-		button := notificationButton(options.Focus, "‹", w, options)
+		button := notificationButton(options.Focus, "‹", buttonIcon, w, options)
 		if w < 5 {
 			button = themed("‹", text, raised, false)
 		}
@@ -370,7 +370,7 @@ func (p *notificationPanel) renderDetail(item notificationItem, locale i18n.Loca
 	}
 	prefixWidth := ansi.StringWidth(prefix)
 	id := fmt.Sprintf("notification.panel.dismiss.%d", item.ID)
-	close := paint.button(id, "×", p.bounds.W, options)
+	close := paint.button(id, "×", buttonIcon, p.bounds.W, options)
 	closeWidth := ansi.StringWidth(close)
 	w := min(p.bounds.W, max(minNotificationWidth, 4+prefixWidth+max(lipgloss.Width(body), lipgloss.Width(extra))+closeWidth))
 	p.bounds.X += p.bounds.W - w

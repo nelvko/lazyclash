@@ -162,6 +162,7 @@ Original、Thick、Smooth 对比仅存在于测试二进制：Original 保留原
 | 主操作 | `primaryButtonBackground` 蓝底、`primaryButtonForeground` 深色文字、加粗 |
 | 次操作 | 深色主题使用 `#414C57` 底色和正文色，悬停时底色提亮到 `#4F5F6D`。下拉框触发按钮使用同一配色 |
 | 文字操作 | 沿用所在容器背景，使用 `accent` 文字，悬停时加下划线。深色主题中已选节点卡片的「进入 →」使用浅蓝 `#B8CFEC` |
+| 纯图标操作 | 悬停时，图标使用正文色 `text`，图标和两侧留白使用 `buttonHoverBackground`。ANSI16 与 `NO_COLOR` 悬停时在原位显示 `[图标]`。键盘焦点显示左侧的 `›` |
 | 危险操作入口 | `buttonDangerForeground` 文字、中性表面；悬停使用 `buttonDangerHoverBackground` |
 | 最终危险确认 | `errorColor` 底色、深色文字、加粗 |
 | 已选择项 | `buttonSelectedBackground`、正文色与加粗；悬停使用 `buttonSelectedHoverBackground`，不添加勾号 |

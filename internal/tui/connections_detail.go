@@ -180,7 +180,7 @@ func (m *Model) renderConnectionDetail(base string) (string, []hitRegion) {
 		return renderButton(label, buttonOptions{Kind: kind, Surface: inspectorBackground, Compact: true,
 			Focused: m.focus == id, Hovered: m.hover == id, Plain: m.buttonPlain()})
 	}
-	closeButton := button("conn.back", "×", buttonText)
+	closeButton := button("conn.back", "×", buttonIcon)
 	closeWidth := ansi.StringWidth(closeButton)
 	heading := cellPad(m.tr("connections.details"), inner-closeWidth) + closeButton
 	surface.put(modalPaddingX, 1, heading)

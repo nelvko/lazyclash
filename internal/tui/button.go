@@ -14,6 +14,7 @@ const (
 	buttonSecondary buttonKind = iota
 	buttonPrimary
 	buttonText
+	buttonIcon
 	buttonDanger
 	buttonDangerConfirm
 	buttonSegment
@@ -53,7 +54,7 @@ func renderButton(label string, o buttonOptions) string {
 		background = buttonSecondaryBackground
 	case buttonPrimary:
 		foreground, background, bold = primaryButtonForeground, primaryButtonBackground, true
-	case buttonText:
+	case buttonText, buttonIcon:
 		foreground, background = cmp.Or(o.TextColor, accent), o.Surface
 	case buttonDanger:
 		foreground = buttonDangerForeground
@@ -71,7 +72,8 @@ func renderButton(label string, o buttonOptions) string {
 	if selected {
 		foreground, background, bold = selectedText, selectedBG, true
 	}
-	if o.Hovered && !o.Disabled && !o.Busy {
+	hovered := o.Hovered && !o.Disabled && !o.Busy
+	if hovered {
 		switch {
 		case selected:
 			background = selectedHover
@@ -79,6 +81,8 @@ func renderButton(label string, o buttonOptions) string {
 			background = buttonSecondaryHoverBackground
 		case o.Kind == buttonText:
 			underline = true
+		case o.Kind == buttonIcon:
+			foreground, background = text, buttonHoverBackground
 		case o.Kind == buttonPrimary:
 			background = buttonPrimaryHoverBackground
 		case o.Kind == buttonDanger:
@@ -89,9 +93,10 @@ func renderButton(label string, o buttonOptions) string {
 			background = buttonHoverBackground
 		}
 	}
+	flat := o.Kind == buttonText || o.Kind == buttonIcon
 	if (o.Disabled || o.Busy) && !selected {
 		foreground, background, bold = muted, neutral, false
-		if o.Kind == buttonText {
+		if flat {
 			background = o.Surface
 		}
 		if o.Disabled {
@@ -118,7 +123,7 @@ func renderButton(label string, o buttonOptions) string {
 		return themed(left+lipgloss.NewStyle().Bold(bold).Render(label)+right, foreground, background, o.Dim)
 	}
 	face := " " + label + " "
-	if o.Plain && (o.Kind != buttonText || o.Selectable) {
+	if o.Plain && (!flat || o.Selectable || (o.Kind == buttonIcon && hovered)) {
 		face = "[" + label + "]"
 		if selected {
 			face = "<" + label + ">"

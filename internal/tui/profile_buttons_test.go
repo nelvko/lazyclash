@@ -25,16 +25,19 @@ func TestProfileCardControlsKeepGeometryAcrossFocusAndColor(t *testing.T) {
 					if !strings.HasPrefix(target.ID, "profiles.") {
 						continue
 					}
-					m.focus = target.ID
+					m.focus, m.hover = target.ID, target.ID
 					after := m.profileCard(0, width)
 					for i, hit := range before.targets {
 						if hit != after.targets[i] {
-							t.Fatalf("focus moved a control: before=%+v after=%+v", hit, after.targets[i])
+							t.Fatalf("focus or hover moved a control: before=%+v after=%+v", hit, after.targets[i])
 						}
 					}
 					painted := ansi.Strip(ansi.Cut(after.lines[target.Y], target.X, target.X+target.W))
 					if !strings.HasPrefix(painted, " ›") || target.X+target.W > width {
 						t.Fatalf("control hit does not match focused button: %+v %q", target, painted)
+					}
+					if m.buttonPlain() && !strings.HasPrefix(painted, " ›[") {
+						t.Fatalf("hovered icon lacks a visible boundary: %q", painted)
 					}
 				}
 			})

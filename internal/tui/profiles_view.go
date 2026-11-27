@@ -72,7 +72,7 @@ func (m *Model) profilesToolbar(width int) dashboardBlock {
 	invalid := m.profilesUI.urlError != "" && m.profilesUI.urlErrorValue == input.Value()
 	const pasteID = "profiles.url.paste"
 	disabled := m.busy || m.quitting
-	paste := renderButton("⎘", buttonOptions{Kind: buttonText, Surface: bg, Compact: true,
+	paste := renderButton("⎘", buttonOptions{Kind: buttonIcon, Surface: bg, Compact: true, Plain: m.buttonPlain(),
 		Hovered: m.hover == pasteID, Focused: m.focus == pasteID, Disabled: disabled})
 	var trailing dashboardBlock
 	if pasteWidth := ansi.StringWidth(paste); pasteWidth <= fieldWidth {
@@ -118,7 +118,9 @@ func (m *Model) profileButtonView(b profileButton, surface string) string {
 	kind := buttonSecondary
 	if b.primary {
 		kind = buttonPrimary
-	} else if strings.HasPrefix(b.id, "profiles.refresh.") || strings.HasPrefix(b.id, "profiles.menu.") || strings.HasPrefix(b.id, "profile-settings.") {
+	} else if strings.HasPrefix(b.id, "profiles.refresh.") || strings.HasPrefix(b.id, "profiles.menu.") {
+		kind = buttonIcon
+	} else if strings.HasPrefix(b.id, "profile-settings.") {
 		kind = buttonText
 	} else if strings.HasPrefix(b.id, "profiles.delete.") {
 		kind = buttonDanger

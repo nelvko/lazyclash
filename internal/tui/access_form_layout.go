@@ -30,7 +30,7 @@ func (m *Model) accessInputBlock(id string, width int, compact bool) dashboardBl
 		if p.access.bindMenu.open {
 			arrow = "▴"
 		}
-		trigger := renderButton(arrow, buttonOptions{Kind: buttonText, Compact: true, Focused: p.focus == bindMenuID, Surface: modalBackground, Plain: m.buttonPlain()})
+		trigger := renderButton(arrow, buttonOptions{Kind: buttonIcon, Compact: true, Focused: p.focus == bindMenuID, Surface: modalBackground, Plain: m.buttonPlain()})
 		trailingWidth = ansi.StringWidth(trigger)
 		options.Trailing = dashboardBlock{
 			lines:   []string{trigger},

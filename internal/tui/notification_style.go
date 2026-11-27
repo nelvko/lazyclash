@@ -31,10 +31,10 @@ func notificationPaint(kind string) noticePaint {
 	}
 }
 
-func (p noticePaint) button(id, label string, width int, o dashboardOptions) string {
+func (p noticePaint) button(id, label string, kind buttonKind, width int, o dashboardOptions) string {
 	label = cellCrop(strings.Trim(label, "[] "), max(1, width-4))
 	return cellCrop(renderButton(label, buttonOptions{
-		Kind: buttonText, Surface: p.background, TextColor: p.foreground,
+		Kind: kind, Surface: p.background, TextColor: p.foreground,
 		Focused: o.Focus == id, Hovered: o.Hover == id, Plain: o.PlainButtons,
 	}), width)
 }

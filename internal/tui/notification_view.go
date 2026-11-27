@@ -195,7 +195,7 @@ func notificationLayout(o dashboardOptions, headerActions ...hitRegion) []notifi
 			overflow = notificationCard(items[0], o, width, 1, true)
 		} else {
 			const action = "notification.expand"
-			label := notificationButton(action, notificationOverflowCaption(items[:remaining], width, o), width, o)
+			label := notificationButton(action, notificationOverflowCaption(items[:remaining], width, o), buttonText, width, o)
 			overflow = notificationOverlay{
 				Content: label,
 				Bounds:  hitRegion{ID: "notification", W: ansi.StringWidth(label), H: 1},
@@ -280,8 +280,8 @@ func notificationInputs(o dashboardOptions, g dashboardLayout) []hitRegion {
 	return targets
 }
 
-func notificationButton(id, label string, width int, o dashboardOptions) string {
-	return noticePaint{background: raised, foreground: accent}.button(id, label, width, o)
+func notificationButton(id, label string, kind buttonKind, width int, o dashboardOptions) string {
+	return noticePaint{background: raised, foreground: accent}.button(id, label, kind, width, o)
 }
 
 func notificationCard(item notificationItem, o dashboardOptions, maxWidth, maxHeight int, compact bool) notificationOverlay {
@@ -343,7 +343,7 @@ func notificationCardWithControls(item notificationItem, o dashboardOptions, max
 		prefix = themed(paint.marker+" ", paint.signal, paint.background, false)
 	}
 	beforeBody := leading + ansi.StringWidth(prefix)
-	close := paint.button(closeID, "×", maxWidth, o)
+	close := paint.button(closeID, "×", buttonIcon, maxWidth, o)
 	closeWidth := ansi.StringWidth(close)
 	body := notificationBody(item, o.Locale, o.Spinner)
 	if extra := notificationExtra(item); extra != "" {
@@ -353,7 +353,7 @@ func notificationCardWithControls(item notificationItem, o dashboardOptions, max
 	cancel := ""
 	bodyRows := maxHeight
 	if item.Kind == "working" && o.Busy {
-		cancel = paint.button(cancelID, o.Locale.T("notification.cancel"), maxWidth-leading-trailing, o)
+		cancel = paint.button(cancelID, o.Locale.T("notification.cancel"), buttonText, maxWidth-leading-trailing, o)
 		bodyRows--
 	}
 	bodyRows = max(1, bodyRows)
@@ -369,9 +369,9 @@ func notificationCardWithControls(item notificationItem, o dashboardOptions, max
 	truncated := len(preview) > bodyRows
 	details := ""
 	if truncated {
-		details = paint.button(detailsID, o.Locale.T("notification.details"), maxWidth, o)
+		details = paint.button(detailsID, o.Locale.T("notification.details"), buttonText, maxWidth, o)
 		if ansi.StringWidth(details) > (maxBodyWidth-closeWidth)/2 {
-			details = paint.button(detailsID, "⋯", maxWidth, o)
+			details = paint.button(detailsID, "⋯", buttonIcon, maxWidth, o)
 		}
 		width = min(maxWidth, max(width, desiredFirst+ansi.StringWidth(details)))
 		bodyWidth = width - beforeBody - trailing

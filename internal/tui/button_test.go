@@ -12,13 +12,14 @@ import (
 
 func TestButtonFocusAndColorFallbackPreserveGeometry(t *testing.T) {
 	for _, label := range []string{"Apply", "应用配置", "⋯", "↻"} {
-		for _, kind := range []buttonKind{buttonSecondary, buttonPrimary, buttonText, buttonDanger, buttonDangerConfirm} {
+		for _, kind := range []buttonKind{buttonSecondary, buttonPrimary, buttonText, buttonIcon, buttonDanger, buttonDangerConfirm} {
 			for _, profile := range []colorprofile.Profile{colorprofile.TrueColor, colorprofile.ANSI256, colorprofile.ANSI, colorprofile.ASCII} {
 				t.Run(fmt.Sprintf("%s/%d/%s", label, kind, profile), func(t *testing.T) {
 					o := buttonOptions{Kind: kind, Surface: panel, Plain: profile <= colorprofile.ANSI}
 					idle := renderButton(label, o)
 					for _, state := range []string{"focus", "hover", "disabled", "working"} {
-						o.Focused, o.Hovered, o.Disabled, o.Busy = state == "focus", state == "hover", state == "disabled", state == "working"
+						o.Focused, o.Disabled, o.Busy = state == "focus", state == "disabled", state == "working"
+						o.Hovered = state == "hover" || o.Disabled || o.Busy
 						value := renderButton(label, o)
 						if ansi.StringWidth(value) != ansi.StringWidth(idle) {
 							t.Fatalf("%s moved adjacent controls", state)
@@ -32,8 +33,11 @@ func TestButtonFocusAndColorFallbackPreserveGeometry(t *testing.T) {
 						if state == "focus" && !strings.HasPrefix(plain, " ›") {
 							t.Fatal("focus marker does not own its fixed gutter")
 						}
-						if o.Plain && kind != buttonText && !strings.Contains(plain, "["+label+"]") {
-							t.Fatal("low-color button lost its textual boundary")
+						if o.Plain {
+							wantBoundary := kind != buttonText && (kind != buttonIcon || state == "hover")
+							if strings.Contains(plain, "["+label+"]") != wantBoundary {
+								t.Fatalf("unexpected low-color button boundary: %q", plain)
+							}
 						}
 					}
 				})
@@ -55,6 +59,7 @@ func TestButtonRolesAndSurfacesRemainSeparate(t *testing.T) {
 		{"danger", "Delete", buttonDangerForeground, raised, buttonOptions{Kind: buttonDanger}},
 		{"confirmation", "Delete", primaryButtonForeground, errorColor, buttonOptions{Kind: buttonDangerConfirm}},
 		{"text", "More", accent, panel, buttonOptions{Kind: buttonText, Surface: panel}},
+		{"icon", "↻", accent, panel, buttonOptions{Kind: buttonIcon, Surface: panel}},
 	} {
 		t.Run(sample.name, func(t *testing.T) {
 			label := sample.label
@@ -144,6 +149,7 @@ func TestButtonHoverKeepsItsSemanticRole(t *testing.T) {
 		{buttonSecondary, false, text, buttonSecondaryHoverBackground},
 		{buttonSecondary, true, text, buttonSelectedHoverBackground},
 		{buttonPrimary, false, primaryButtonForeground, buttonPrimaryHoverBackground},
+		{buttonIcon, false, text, buttonHoverBackground},
 		{buttonDanger, false, buttonDangerForeground, buttonDangerHoverBackground},
 		{buttonDangerConfirm, false, primaryButtonForeground, buttonDangerForeground},
 	} {

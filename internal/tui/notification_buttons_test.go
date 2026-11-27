@@ -73,7 +73,12 @@ func TestNotificationButtonsKeepTheirBoundsAndMessageWhenFocused(t *testing.T) {
 							if hit.ID == target.ID {
 								marker = " ›"
 							}
-							if !strings.HasPrefix(painted, marker) || !strings.HasSuffix(painted, " ") || strings.Trim(painted, "› ") == "" {
+							face := strings.TrimPrefix(painted, marker)
+							padded := strings.HasSuffix(face, " ")
+							if plain && o.Hover == hit.ID && (strings.Contains(face, "×") || strings.Contains(face, "⋯")) {
+								padded = face == "[×]" || face == "[⋯]"
+							}
+							if !strings.HasPrefix(painted, marker) || !padded || strings.TrimSpace(face) == "" {
 								t.Fatalf("toast button hit lost its marker, label, or padding: %q", painted)
 							}
 						}
@@ -85,6 +90,30 @@ func TestNotificationButtonsKeepTheirBoundsAndMessageWhenFocused(t *testing.T) {
 					}
 				})
 			}
+		}
+	}
+}
+
+func TestNotificationDetailsUsesIconHoverOnlyForCompactLabel(t *testing.T) {
+	item := notificationItem{ID: 1, Kind: "done", Message: strings.Repeat("Long message. ", 16)}
+	for _, tc := range []struct {
+		width int
+		want  string
+	}{
+		{54, "Details"},
+		{16, "[⋯]"},
+	} {
+		o := dashboardOptions{Locale: i18n.New(i18n.English), PlainButtons: true, Hover: "notification.details.1"}
+		card := notificationCard(item, o, tc.width, 2, true)
+		var face string
+		for _, hit := range card.Targets {
+			if hit.ID == o.Hover {
+				row := strings.Split(card.Content, "\n")[hit.Y]
+				face = strings.TrimSpace(ansi.Strip(ansi.Cut(row, hit.X, hit.X+hit.W)))
+			}
+		}
+		if face != tc.want {
+			t.Fatalf("hovered Details at width %d rendered %q, want %q", tc.width, face, tc.want)
 		}
 	}
 }
