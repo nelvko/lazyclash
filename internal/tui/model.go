@@ -145,6 +145,7 @@ type Model struct {
 	tooltip               tooltipState
 	settingsTab           coreSettingsTab
 	settingsPointerFocus  bool
+	settingsFromOverview  bool
 	tunFocus              string
 	guideSkipped          bool
 	scroll, total         int
@@ -979,6 +980,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.navigate(navPages()[int(key[0]-'1')])
 			break
 		}
+		if key == "esc" && m.settingsFromOverview && !m.sidebarOpen {
+			m.navigate("overview")
+			break
+		}
 		if strings.HasPrefix(m.focus, "nav.") {
 			switch key {
 			case "enter", "space", " ", "tab", "shift+tab":
@@ -1394,10 +1399,10 @@ func (m *Model) activate(id string) tea.Cmd {
 	case "runtime-settings":
 		return m.openNetworkConfig("proxy")
 	case "core.manage":
-		if !m.snapshotReady || !m.snapshot.Installed {
-			return nil
+		if m.page == "overview" && m.snapshotReady && m.snapshot.Installed && !m.busy && !m.quitting {
+			m.openCoreSettings()
 		}
-		return m.openWizard(false)
+		return nil
 	case "core.checkUpdate":
 		if !m.snapshotReady || !m.snapshot.Installed || m.busy || m.quitting {
 			return nil

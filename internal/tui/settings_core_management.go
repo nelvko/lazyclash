@@ -7,6 +7,25 @@ import (
 	"github.com/nelvko/lazyclash/internal/downloadnet"
 )
 
+func (m *Model) openCoreSettings() {
+	m.browsePage("settings")
+	m.settingsFromOverview = true
+	m.settingsPointerFocus = false
+	m.focus = "install" // The installed version row opens version details.
+
+	o := m.navigationOptions()
+	left, _, _ := settingsColumns(o, dashboardBodyWidth(o))
+	for _, card := range left.cards {
+		if card.ID == "settings.core" {
+			// Reveal the section from its heading if it is taller than the viewport.
+			card.H = min(card.H, max(1, dashboardGeometry(o).height))
+			m.revealBodyTarget(card)
+			break
+		}
+	}
+	m.revealContentFocus()
+}
+
 func settingsCore(o dashboardOptions, width int) dashboardBlock {
 	tr, s := o.Locale.T, o.Snapshot
 	title := tr("settings.core")
@@ -55,7 +74,9 @@ func settingsCore(o dashboardOptions, width int) dashboardBlock {
 		restart.note, restart.color = tr("settings.geoRestart"), warning
 	}
 	rows = append(rows, restart)
-	return settingsSection(o, width, title, "", rows)
+	card := settingsSection(o, width, title, "", rows)
+	card.cards = []hitRegion{{ID: "settings.core", W: width, H: len(card.lines)}}
+	return card
 }
 
 const autostartToggleTarget = "autostart.toggle"

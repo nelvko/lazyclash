@@ -122,10 +122,10 @@ func TestOverviewHeadingActionsRequireExplicitActivationAfterEnteringCard(t *tes
 	}
 }
 
-func TestPageNavigationInstalledCoreManagementReturnsToItsOrigin(t *testing.T) {
-	m := pageNavigationModel()
-	m.snapshot = onboardingDefaultSnapshot()
-	m.focus = "overview.card.dashboard.control.core"
+func TestPageNavigationCoreCardControlsAndManagementShortcut(t *testing.T) {
+	m := ready(&fakeBackend{snapshot: settingsTestSnapshot()})
+	directionCleanup(t, &m)
+	m.width, m.height, m.focus = 120, 32, "overview.card.dashboard.control.core"
 	m.layout()
 	id := m.id
 	m, _ = update(m, special(tea.KeyEnter))
@@ -136,35 +136,121 @@ func TestPageNavigationInstalledCoreManagementReturnsToItsOrigin(t *testing.T) {
 	if m.focus != "core.toggle" || m.busy {
 		t.Fatalf("Tab did not focus the service control: %s", m.focus)
 	}
-	checkManagement := func(open tea.KeyPressMsg, page, focus string) {
-		t.Helper()
-		m, _ = update(m, open)
-		if !m.wizard.open || m.wizard.inline || m.wizard.step != stepCore || m.wizard.focus != "check-update" || m.busy || m.id != id {
-			t.Fatalf("%s from %s did not open installed-core management without a lookup", open, focus)
-		}
-		m, _ = update(m, special(tea.KeyEscape))
-		if m.wizard.open || m.page != page || m.focus != focus {
-			t.Fatalf("closing management should restore %s/%s, got %s/%s", page, focus, m.page, m.focus)
-		}
+	m, _ = update(m, key("i"))
+	if m.page != "overview" || !m.wizard.open || m.wizard.step != stepCore || m.wizard.focus != "check-update" || m.busy || m.id != id {
+		t.Fatal("the independent i shortcut did not open version details directly")
 	}
-	checkManagement(key("i"), "overview", "core.toggle")
+	m, _ = update(m, special(tea.KeyEscape))
+	if m.wizard.open || m.page != "overview" || m.focus != "core.toggle" {
+		t.Fatal("closing shortcut-opened details lost the original core control")
+	}
 	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
 	if m.focus != "core.manage" || m.contextHelp() != m.controlActionHelp(m.tr("navigation.controls.manageCore")) {
 		t.Fatalf("Shift+Tab did not restore Manage and its action hint: %s / %s", m.focus, m.contextHelp())
 	}
-	checkManagement(special(tea.KeyEnter), "overview", "core.manage")
-	checkManagement(special(tea.KeySpace), "overview", "core.manage")
-	m, _ = update(m, key("7"))
-	for range len(m.focusTargets()) {
-		if m.focus == "install" {
-			break
-		}
-		m, _ = update(m, special(tea.KeyTab))
+}
+
+func TestPageNavigationOverviewManageRevealsInstalledVersionAndReturns(t *testing.T) {
+	for _, tc := range []struct {
+		entry, language string
+		width, height   int
+		openDetails     bool
+	}{
+		{"enter", i18n.English, 160, 45, true},
+		{"space", i18n.Chinese, 80, 24, false},
+		{"click", i18n.Chinese, 40, 16, true},
+	} {
+		t.Run(tc.entry, func(t *testing.T) {
+			m := ready(&fakeBackend{snapshot: settingsTestSnapshot()})
+			directionCleanup(t, &m)
+			m.locale, m.width, m.height = i18n.New(tc.language), tc.width, tc.height
+			m.focus = "overview.card.dashboard.control.core"
+			if tc.entry == "click" {
+				m.scroll = 1 // The link remains visible in the partially scrolled card.
+				m.pageViews["settings"] = pageViewState{focus: "restart", scroll: 200}
+			}
+			m.layout()
+			id, scroll := m.id, m.scroll
+			if tc.entry == "click" {
+				m, _ = click(m, findTarget(t, m, "core.manage"))
+			} else {
+				m, _ = update(m, special(tea.KeyEnter))
+				if m.focus != "core.manage" || m.page != "overview" {
+					t.Fatalf("entering the card focused %s/%s", m.page, m.focus)
+				}
+				activate := special(tea.KeyEnter)
+				if tc.entry == "space" {
+					activate = special(tea.KeySpace)
+				}
+				m, _ = update(m, activate)
+			}
+			if m.page != "settings" || m.focus != "install" || m.wizard.open || m.busy || m.id != id {
+				t.Fatalf("Manage should navigate to the installed-version row: page=%s focus=%s details=%t busy=%t", m.page, m.focus, m.wizard.open, m.busy)
+			}
+			row := settingsPaintedTarget(t, m.screen, m.targets, "install")
+			if !strings.HasPrefix(row, "›") || !strings.Contains(row, m.snapshot.Version) {
+				t.Fatalf("installed version and focus should both be visible: %q", row)
+			}
+			if tc.width == 40 {
+				g := dashboardGeometry(m.navigationOptions())
+				hit := findTarget(t, m, "install")
+				before := strings.Split(m.screen, "\n")[g.y:hit.Y]
+				if m.scroll == 0 || !strings.Contains(ansi.Strip(strings.Join(before, "\n")), m.tr("settings.core")) {
+					t.Fatal("narrow settings did not reveal the core management title above the focused version")
+				}
+			}
+			m, _ = update(m, special(tea.KeyTab))
+			if m.focus != "core.checkUpdate" || !hasAction(m.targets, m.focus) || m.wizard.open || m.busy || m.id != id {
+				t.Fatalf("Tab from the installed version should focus Check for updates: focus=%s", m.focus)
+			}
+			m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
+			if m.focus != "install" || !hasAction(m.targets, m.focus) {
+				t.Fatalf("Shift+Tab from Check for updates should focus the installed version: focus=%s", m.focus)
+			}
+			if tc.openDetails {
+				m, _ = update(m, special(tea.KeyEnter))
+				if !m.wizard.open || m.wizard.step != stepCore || m.wizard.focus != "check-update" || m.busy || m.id != id {
+					t.Fatal("activating the installed version did not open its details")
+				}
+				m, _ = update(m, special(tea.KeyEscape))
+				if m.wizard.open || m.page != "settings" || m.focus != "install" || !hasAction(m.targets, m.focus) {
+					t.Fatalf("Esc from details should restore the visible version row: %s/%s", m.page, m.focus)
+				}
+			}
+			m, _ = update(m, special(tea.KeyEscape))
+			if m.page != "overview" || m.focus != "core.manage" || !hasAction(m.targets, m.focus) || m.scroll != scroll {
+				t.Fatalf("Esc from settings should restore the Manage link: page=%s focus=%s scroll=%d", m.page, m.focus, m.scroll)
+			}
+		})
 	}
-	if m.page != "settings" || m.focus != "install" || m.wizard.open || m.busy || m.id != id {
-		t.Fatal("Settings did not retain explicit core management")
+}
+
+func TestPageNavigationOrdinarySettingsKeepsItsOwnBackAction(t *testing.T) {
+	for _, entry := range []string{"after leaving settings", "same-page digit", "same-page sidebar"} {
+		t.Run(entry, func(t *testing.T) {
+			m := ready(&fakeBackend{snapshot: settingsTestSnapshot()})
+			directionCleanup(t, &m)
+			m.width, m.height = 160, 45
+			m.layout()
+			m, _ = click(m, findTarget(t, m, "core.manage"))
+			if m.page != "settings" {
+				t.Fatal("Manage did not open Settings")
+			}
+			if entry == "after leaving settings" {
+				m, _ = update(m, key("6"))
+			}
+			if entry == "same-page sidebar" {
+				m, _ = click(m, findTarget(t, m, "nav.settings"))
+				m, _ = update(m, special(tea.KeyEnter))
+			} else {
+				m, _ = update(m, key("7"))
+			}
+			m, _ = update(m, special(tea.KeyEscape))
+			if m.page != "settings" || m.focus != "nav.settings" {
+				t.Fatalf("opening Settings from navigation inherited a previous Manage link: %s/%s", m.page, m.focus)
+			}
+		})
 	}
-	checkManagement(special(tea.KeyEnter), "settings", "install")
 }
 
 func TestOverviewManageIgnoresStaleActivation(t *testing.T) {
@@ -181,7 +267,7 @@ func TestOverviewManageIgnoresStaleActivation(t *testing.T) {
 			m := ready(&fakeBackend{snapshot: onboardingDefaultSnapshot()})
 			m.focus = "core.manage"
 			m.snapshotReady, m.snapshot.Installed, m.busy, m.quitting = tc.ready, tc.installed, tc.busy, tc.quitting
-			if cmd := m.activate(m.focus); cmd != nil || m.wizard.open || m.wizard.inline || strings.Contains(m.contextHelp(), "Enter") {
+			if cmd := m.activate(m.focus); cmd != nil || m.page != "overview" || m.wizard.open || m.wizard.inline || strings.Contains(m.contextHelp(), "Enter") {
 				t.Fatal("stale Manage focus exposed installation or management")
 			}
 		})

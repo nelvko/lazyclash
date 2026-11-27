@@ -51,6 +51,7 @@ func (m *Model) rememberPageView() {
 
 // Browsing changes the page while retaining ownership of the navigation keys.
 func (m *Model) browsePage(page string) {
+	m.settingsFromOverview = false
 	if m.providers.open {
 		m.providersActivate("providers.back")
 	}

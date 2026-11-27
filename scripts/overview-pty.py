@@ -110,19 +110,34 @@ def assert_core_affordance(terminal, words, scenario, profile, expect_focus=Fals
 
 
 def inspect_core_management(preview, terminal, output, words, scenario, args, mouse):
-    manage, title = words["dashboard.core.manageAction"], words["wizard.manage.title"]
+    manage = words["dashboard.core.manageAction"]
+    installed = words["wizard.installed_version"]
+    version = "v1.20.0" if scenario == "drift" else "v1.19.33"
     if mouse:
         terminal.click_text(manage)
     else:
         assert focused(terminal, manage), "keyboard focus did not enter Manage"
         terminal.key(b"\r")
-    terminal.wait(title)
-    terminal.wait(words["core_update.check"])
-    terminal.wait(words["wizard.installed_version"])
-    terminal.wait("v1.20.0" if scenario == "drift" else "v1.19.33")
+    terminal.wait(version + " ❯")
+    terminal.settle()
+    screen = terminal.screen.text()
+    heading = text_point(terminal, words["settings.core"])
+    field = text_point(terminal, installed)
+    assert heading and field and heading[1] < field[1], "Core Management heading and installed version must be visible"
+    row = screen.splitlines()[field[1]]
+    assert version + " ❯" in row, "missing version link in Settings: " + row
+    assert re.search(r"›\s*" + re.escape(installed), row), "Settings did not focus the installed version: " + row
+    assert words["wizard.manage.title"] not in screen, "Manage opened version details before the row was activated"
     preview.capture(terminal, output, "core-management-%dx%d" % (terminal.screen.columns, terminal.screen.rows), args)
+    if not mouse:
+        terminal.key(b"\r")
+        terminal.wait(words["wizard.manage.title"])
+        terminal.wait(words["core_update.check"])
+        terminal.key(b"\x1b")
+        terminal.wait_absent(words["wizard.manage.title"])
+        assert focused(terminal, installed), "Closing version details did not return to the installed version"
     terminal.key(b"\x1b")
-    terminal.wait_absent(title)
+    terminal.wait(manage)
     terminal.settle()
     assert focused(terminal, manage), "Esc did not restore the Manage control"
 
