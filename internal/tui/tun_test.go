@@ -107,16 +107,11 @@ func TestHostTUNConfirmationOwnsMouseAndFitsBothLanguages(t *testing.T) {
 	}
 }
 
-func TestSystemEnvironmentShowsScopeAndHostTUNWhileUserControlsStayUnavailable(t *testing.T) {
+func TestOverviewShowsHostTUNWhileUserControlsStayUnavailable(t *testing.T) {
 	b := hostTUNBackend()
 	o := dashboardOptions{Snapshot: b.snapshot}
-	block := overviewSystemCard(o, 64)
+	block := overviewNetworkCard(o, 64)
 	plain := ansi.Strip(strings.Join(block.lines, "\n"))
-	if !strings.Contains(plain, "systemd system") || len(block.targets) != 0 {
-		t.Fatal("system environment omitted its scope or retained duplicate TUN controls")
-	}
-	block = overviewNetworkCard(o, 64)
-	plain = ansi.Strip(strings.Join(block.lines, "\n"))
 	if !strings.Contains(plain, "Host TUN") || !hasAction(block.targets, "tun.toggle") {
 		t.Fatal("access card omitted host TUN scope or control")
 	}

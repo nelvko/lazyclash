@@ -366,8 +366,9 @@ def inspect_network_card(terminal, outline, words, scenario):
 
 
 def inspect_row_cards(preview, terminal, output, width, height, words, profile, scenario, args):
-    names = ("service", "profile", "network", "route", "environment", "ipInfo", "traffic")
+    names = ("service", "profile", "network", "route", "websites", "ipInfo", "traffic")
     titles = [words["dashboard.profile.title"] if name == "profile" else
+              words["dashboard.website.title"] if name == "websites" else
               words["dashboard.overview." + name] for name in names]
     initial_positions = [text_point(terminal, title) for title in titles]
     if profile != "no-color" and all(initial_positions[i] for i in (2, 3, 5)):
@@ -379,7 +380,7 @@ def inspect_row_cards(preview, terminal, output, width, height, words, profile, 
         assert all(backgrounds[row][route_x][1] == panel for row in range(route_y, ip_y + 1)), \
             "routing and IP panels have a break in their background"
         assert any(backgrounds[row][network_x][1] != panel for row in range(network_y, ip_y)), \
-            "network and environment panels lost their separation"
+            "network and website panels lost their separation"
     geometry = []
     for index, (name, title) in enumerate(zip(names, titles)):
         outline = assert_card_outline(terminal, profile)
@@ -406,13 +407,12 @@ def inspect_row_cards(preview, terminal, output, width, height, words, profile, 
                         "expected a blank line and the path directly beneath the modes: " + repr(lines)
             else:
                 assert all("香港 01" not in line for line in lines), "unobserved member in routing card"
-        if name == "environment":
+        if name == "websites":
             x, y = outline["x"], outline["y"]
             right, bottom = x + outline["width"], y + outline["height"]
             card_text = "\n".join("".join(row[x:right]) for row in terminal.screen.cells[y:bottom])
-            for key in ("dashboard.field.platform", "dashboard.overview.serviceLabel", "settings.autostart"):
-                assert words[key] in card_text, "environment card omitted " + words[key]
-            assert (words["dashboard.overview.linger"] in card_text) == (scenario != "pending"), "environment card showed the wrong linger fields for its scope"
+            for label in ("GitHub", "Google", "YouTube", words["dashboard.website.all"]):
+                assert label in card_text, "website card omitted " + label
         if name == "ipInfo":
             if scenario in ("stopped", "unavailable"):
                 assert words["dashboard.ip.unavailable"] in terminal.screen.text(), "missing unavailable IP state"
@@ -433,11 +433,11 @@ def inspect_row_cards(preview, terminal, output, width, height, words, profile, 
         if before is not None and current is not None:
             expected = before[1] + max(geometry[first - 2]["height"], geometry[first - 1]["height"]) + 1
             assert current[1] == expected, "next card row does not follow the taller card and one blank row"
-    left, right, environment, ip, traffic = geometry[0], geometry[1], *geometry[4:]
+    left, right, websites, ip, traffic = geometry[0], geometry[1], *geometry[4:]
     paired_width = right["x"] + right["width"] - left["x"]
     assert traffic["x"] == left["x"] and traffic["width"] in (paired_width, paired_width + 1), "traffic card does not span the paired columns"
-    assert environment["x"] == left["x"] and environment["width"] == left["width"], "environment card does not align with the left column"
-    assert ip["x"] == right["x"] and ip["y"] == environment["y"], "IP card does not align with the right column beside the environment"
+    assert websites["x"] == left["x"] and websites["width"] == left["width"], "website card does not align with the left column"
+    assert ip["x"] == right["x"] and ip["y"] == websites["y"], "IP card does not align with the website card"
     (output / ("card-geometry-%dx%d.json" % (width, height))).write_text(json.dumps(dict(zip(names, geometry)), indent=2) + "\n")
     return_navigation(terminal, words)
     terminal.key(b"\t")
@@ -515,6 +515,56 @@ def exercise_ip_route(preview, terminal, output, words, report, args):
     print("PASS IP route changes: one initial lookup, deferred off Overview, latest selection displayed", flush=True)
 
 
+def exercise_websites(preview, terminal, output, words, report, args):
+    title = words["dashboard.website.title"]
+    test_all = words["dashboard.website.all"]
+    untested = words["dashboard.website.untested"]
+    terminal.wait("203.0.113.17")
+    terminal.wait(title)
+    assert terminal.screen.text().count(untested) == 3
+
+    return_navigation(terminal, words)
+    terminal.key(b"\r")
+    for _ in range(4):
+        terminal.key(b"\x1b[B")
+    terminal.key(b"\r")
+    terminal.settle()
+    assert focused(terminal, test_all), terminal.screen.text()
+    for _ in range(4):
+        terminal.key(b"\t")
+        terminal.settle()
+        if words["dashboard.website.testSite"] % "GitHub" in terminal.screen.text().splitlines()[-1]:
+            break
+    else:
+        raise AssertionError("Tab did not reach the GitHub test\n" + terminal.screen.text())
+    terminal.key(b"\r")
+    terminal.wait("173 ms")
+    assert terminal.screen.text().count(untested) == 2, terminal.screen.text()
+
+    terminal.click_text(test_all)
+    terminal.wait("403")
+    terminal.wait(words["dashboard.website.timeout"])
+    assert untested not in terminal.screen.text()
+    preview.capture(terminal, output, "website-tests-160x45", args)
+    terminal.resize(80, 24)
+    terminal.settle()
+    focus_control(terminal, test_all)
+    terminal.key(b"\r")
+    terminal.wait("YouTube")
+    terminal.wait(words["dashboard.website.timeout"])
+    for _ in range(3):
+        terminal.key(b"\t")
+        terminal.settle()
+    assert words["dashboard.website.testSite"] % "YouTube" in terminal.screen.text().splitlines()[-1]
+    terminal.key(b"\r")
+    terminal.wait(words["dashboard.website.timeout"])
+    preview.capture(terminal, output, "website-tests-80x24", args)
+    terminal.exit()
+    calls = json.loads(report.read_text())
+    assert (calls["website_github"], calls["website_google"], calls["website_youtube"]) == (3, 2, 3), calls
+    print("PASS website tests: single site by keyboard, all sites by mouse, wide and narrow layouts", flush=True)
+
+
 def exercise(preview, binary, output, language, profile, scenario, args):
     output.mkdir(parents=True)
     words = labels(language)
@@ -523,6 +573,9 @@ def exercise(preview, binary, output, language, profile, scenario, args):
     try:
         if scenario == "ip-route":
             exercise_ip_route(preview, terminal, output, words, report, args)
+            return
+        if scenario == "websites":
+            exercise_websites(preview, terminal, output, words, report, args)
             return
         terminal.wait("subscription.example")
         terminal.settle()
@@ -607,10 +660,11 @@ def exercise(preview, binary, output, language, profile, scenario, args):
                 inspect_network_card(terminal, outline, words, scenario)
                 preview.capture(terminal, output, "network-card-%dx%d" % (width, height), args)
                 if width == 80 and scenario == "running":
-                    for name in ("route", "environment", "ipInfo", "traffic"):
+                    for name in ("route", "websites", "ipInfo", "traffic"):
                         terminal.key(b"\x1b[B")
                         terminal.settle()
-                        x, y = text_point(terminal, words["dashboard.overview." + name])
+                        title = "dashboard.website.title" if name == "websites" else "dashboard.overview." + name
+                        x, y = text_point(terminal, words[title])
                         card = assert_card_outline(terminal, profile)
                         assert card["y"] < y < card["y"] + card["height"] and card["x"] < x, name
                         assert (card["x"], card["width"]) == (outline["x"], outline["width"]), name
@@ -668,6 +722,7 @@ def exercise(preview, binary, output, language, profile, scenario, args):
             terminal.settle()
         terminal.exit()
         calls = json.loads(report.read_text())
+        assert calls["website_github"] == calls["website_google"] == calls["website_youtube"] == 0, calls
         assert calls["service_changes"] == calls["modes"] == calls["selections"] == 0, calls
         assert calls["tun_changes"] == calls["terminal_changes"] == 0, calls
         assert calls["settings_reads"] == 2 and calls["settings_writes"] == 0, calls
@@ -698,7 +753,7 @@ def main():
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--lang", choices=["en", "zh-Hans"], action="append")
     parser.add_argument("--profile", choices=["truecolor", "256", "no-color"], action="append")
-    parser.add_argument("--scenario", choices=["running", "stopped", "unavailable", "drift", "pending", "direct", "ip-route"], action="append")
+    parser.add_argument("--scenario", choices=["running", "stopped", "unavailable", "drift", "pending", "direct", "ip-route", "websites"], action="append")
     sys.dont_write_bytecode = True
     spec = importlib.util.spec_from_file_location("overview_pty_preview", Path(__file__).with_name("onboarding-pty.py"))
     preview = importlib.util.module_from_spec(spec)

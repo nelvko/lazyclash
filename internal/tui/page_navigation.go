@@ -590,6 +590,7 @@ func (m *Model) decorateContentFocus(g dashboardLayout, overlays []notificationO
 func (m *Model) requestQuit() tea.Cmd {
 	m.dismissMenu()
 	m.ipInfo.stop()
+	m.websiteTests.clear()
 	m.stopProviders()
 	m.stopProxyTests()
 	m.stopRuntime()

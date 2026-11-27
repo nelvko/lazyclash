@@ -81,7 +81,7 @@ func TestLookupIPInfoUsesConfirmedProxyAndCredentials(t *testing.T) {
 	}
 }
 
-func TestIPInfoProxySelectsEnabledListener(t *testing.T) {
+func TestRuntimeProxyURLSelectsEnabledListener(t *testing.T) {
 	for _, tc := range []struct {
 		mixed, http, socks int
 		want               string
@@ -96,7 +96,7 @@ func TestIPInfoProxySelectsEnabledListener(t *testing.T) {
 			AllowLAN: true, BindAddress: "[::]", HTTPPort: tc.http, SOCKSPort: tc.socks,
 		}}
 		serveConfigReadback(a, fmt.Sprintf(`{"mixed-port":%d,"port":%d,"socks-port":%d}`, tc.mixed, tc.http, tc.socks))
-		proxy, err := ipInfoProxy(t.Context(), m, a.client(m))
+		proxy, err := runtimeProxyURL(t.Context(), m, a.client(m))
 		if tc.want == "" {
 			if err == nil || proxy != nil {
 				t.Fatal("lookup accepted disabled proxy listeners")

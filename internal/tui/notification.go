@@ -398,6 +398,7 @@ func (m *Model) dashboardOptions() dashboardOptions {
 	o.DownloadMethod = m.wizard.cfg.Method
 	o.TrafficHistory, o.TrafficNow = m.runtime.history.points, o.Now
 	o.ipInfo = m.ipInfo
+	o.websiteTests = m.websiteTests
 	o.Monochrome = m.monochrome()
 	if m.menu.open && m.menu.dropdown != nil {
 		o.OpenDropdown = m.menu.anchor.ID

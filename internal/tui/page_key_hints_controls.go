@@ -61,8 +61,18 @@ func (m *Model) profilesContextHelp() string {
 }
 
 func (m *Model) overviewContextHelp() string {
+	if site, found := strings.CutPrefix(m.focus, "website."); found {
+		o := m.navigationOptions()
+		if !o.websiteTestsAvailable() || !o.websiteTests.enabled(site) {
+			return m.tr("navigation.controls.browse")
+		}
+		if site == "all" {
+			return m.controlActionHelp(m.tr("dashboard.website.all"))
+		}
+		return m.controlActionHelp(m.tr("dashboard.website.testSite", site))
+	}
 	if m.focus == "ip.refresh" {
-		if m.busy || m.ipInfo.loading || !m.snapshotReady || !overviewIPAvailable(m.snapshot) {
+		if m.busy || m.ipInfo.loading || !m.snapshotReady || !overviewProxyAvailable(m.snapshot) {
 			return m.tr("navigation.controls.browse")
 		}
 		return m.controlActionHelp(m.tr("header.refresh"))
@@ -117,6 +127,8 @@ func (m *Model) overviewCardHasControls() bool {
 		render = overviewNetworkCard
 	case "overview.card.dashboard.control.routingMode":
 		render = overviewModeCard
+	case "overview.card.dashboard.website.title":
+		render = overviewWebsiteCard
 	case "overview.card.dashboard.overview.ipInfo":
 		render = overviewIPCard
 	case "overview.card.dashboard.guide.title":

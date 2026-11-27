@@ -29,6 +29,7 @@ type fakeBackend struct {
 	snapshot            app.Snapshot
 	snapshotErr         error
 	lookupIPInfo        func(context.Context) (app.IPInfo, error)
+	testWebsite         func(context.Context, string) (app.WebsiteTestResult, error)
 	prefs               app.Preferences
 	prefsErr            error
 	saveLanguage        func(context.Context, string) error
@@ -142,6 +143,12 @@ func (f *fakeBackend) LookupIPInfo(ctx context.Context) (app.IPInfo, error) {
 		return f.lookupIPInfo(ctx)
 	}
 	return app.IPInfo{}, errors.New("missing IP info fixture")
+}
+func (f *fakeBackend) TestWebsite(ctx context.Context, site string) (app.WebsiteTestResult, error) {
+	if f.testWebsite != nil {
+		return f.testWebsite(ctx, site)
+	}
+	return app.WebsiteTestResult{}, errors.New("missing website test fixture")
 }
 func (f *fakeBackend) ReadPreferences(context.Context) (app.Preferences, error) {
 	return f.prefs, f.prefsErr

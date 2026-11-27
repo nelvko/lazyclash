@@ -46,7 +46,7 @@ func TestOverviewHintsHideActionsOnReadOnlyCardsAndUnavailableToggle(t *testing.
 		for _, width := range []int{80, 160} {
 			m := ready(&fakeBackend{snapshot: settingsTestSnapshot()})
 			m.locale, m.page, m.width, m.height = i18n.New(language), "overview", width, 45
-			for _, card := range []string{"dashboard.traffic.title", "dashboard.system.title"} {
+			for _, card := range []string{"dashboard.traffic.title", "dashboard.website.title"} {
 				m.focus = "overview.card." + card
 				m.layout()
 				if strings.Contains(m.contextHelp(), "Enter") {

@@ -20,7 +20,7 @@ func overviewLayout(o dashboardOptions, width int) dashboardBlock {
 		{"dashboard.profile.title", overviewProfileCard},
 		{"dashboard.overview.network", overviewNetworkCard},
 		{"dashboard.control.routingMode", overviewModeCard},
-		{"dashboard.system.title", overviewSystemCard},
+		{"dashboard.website.title", overviewWebsiteCard},
 		{"dashboard.overview.ipInfo", overviewIPCard},
 		{"dashboard.traffic.title", overviewTrafficCard},
 	}
@@ -30,7 +30,7 @@ func overviewLayout(o dashboardOptions, width int) dashboardBlock {
 	for index := 0; index < len(cards); {
 		if index > 0 {
 			gap := ""
-			if paired && cards[index].id == "dashboard.system.title" {
+			if paired && cards[index].id == "dashboard.website.title" {
 				// Join the route and IP surfaces across the gap without extending either focus region.
 				right := themed(strings.Repeat(" ", columnWidth), text, panel, o.Dim)
 				gap = themed(cellPad(strings.Repeat(" ", columnWidth+2)+right, width), text, bg, o.Dim)

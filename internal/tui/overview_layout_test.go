@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -12,7 +11,6 @@ import (
 	uv "github.com/charmbracelet/ultraviolet"
 	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
-	"github.com/nelvko/lazyclash/internal/buildinfo"
 	"github.com/nelvko/lazyclash/internal/configuration"
 	"github.com/nelvko/lazyclash/internal/i18n"
 	"github.com/nelvko/lazyclash/internal/mihomo"
@@ -32,12 +30,14 @@ func TestOverviewPairedLayoutAlignsBothEdgesAndKeepsActionOwnership(t *testing.T
 		"core.manage": "dashboard.control.core", "core.toggle": "dashboard.control.core",
 		"mode.rule": "dashboard.control.routingMode", "mode.global": "dashboard.control.routingMode", "mode.direct": "dashboard.control.routingMode", "card.proxies": "dashboard.control.routingMode",
 		"card.profiles": "dashboard.profile.title", "tun.toggle": "dashboard.overview.network", "network.primaryConfig": "dashboard.overview.network",
-		"ip.refresh": "dashboard.overview.ipInfo",
+		"ip.refresh":  "dashboard.overview.ipInfo",
+		"website.all": "dashboard.website.title", "website.GitHub": "dashboard.website.title",
+		"website.Google": "dashboard.website.title", "website.YouTube": "dashboard.website.title",
 	}
 	renders := map[string]func(dashboardOptions, int) dashboardBlock{
 		"dashboard.control.core": overviewCoreCard, "dashboard.traffic.title": overviewTrafficCard,
 		"dashboard.control.routingMode": overviewModeCard, "dashboard.profile.title": overviewProfileCard,
-		"dashboard.overview.network": overviewNetworkCard, "dashboard.system.title": overviewSystemCard,
+		"dashboard.overview.network": overviewNetworkCard, "dashboard.website.title": overviewWebsiteCard,
 		"dashboard.overview.ipInfo": overviewIPCard,
 	}
 	for _, language := range []string{i18n.English, i18n.Chinese} {
@@ -133,92 +133,6 @@ func TestOverviewPairedLayoutAlignsBothEdgesAndKeepsActionOwnership(t *testing.T
 				})
 			}
 		}
-	}
-}
-
-func TestOverviewEnvironmentReportsObservedServiceSettings(t *testing.T) {
-	for _, tc := range []struct {
-		name, scope, serviceError, autostart, linger string
-		supported, lingerKnown, lingerEnabled        bool
-	}{
-		{name: "user enabled", scope: "user", autostart: "disabled", linger: "enabled", supported: true, lingerKnown: true, lingerEnabled: true},
-		{name: "user disabled", scope: "user", autostart: "disabled", linger: "disabled", supported: true, lingerKnown: true},
-		{name: "user unknown", scope: "user", autostart: "disabled", linger: "unknown", supported: true},
-		{name: "service error", scope: "user", serviceError: "service observation failed", autostart: "unknown", linger: "unknown", supported: true, lingerKnown: true, lingerEnabled: true},
-		{name: "system", scope: "system", autostart: "disabled", supported: true},
-		{name: "unsupported", scope: "user", autostart: "unknown"},
-	} {
-		for _, language := range []string{i18n.English, i18n.Chinese} {
-			t.Run(tc.name+"/"+language, func(t *testing.T) {
-				o := dashboardOptions{Locale: i18n.New(language), Snapshot: app.Snapshot{
-					Capabilities: app.Capabilities{Scope: tc.scope, Runtime: app.Capability{Supported: tc.supported}},
-					Service:      service.Status{EnableState: "disabled", LingerKnown: tc.lingerKnown, Linger: tc.lingerEnabled},
-					ServiceError: tc.serviceError,
-				}}
-				card := overviewSystemCard(o, 38)
-				if len(card.targets) != 0 {
-					t.Fatal("environment card must be informational")
-				}
-				if strings.Contains(ansi.Strip(strings.Join(card.lines, "\n")), "│") {
-					t.Fatal("single-column environment has a column divider")
-				}
-				wide := overviewSystemCard(o, 66)
-				// All field rows, including the spacer and an unmatched second column,
-				// share the same divider as the two network sections above them.
-				for _, row := range wide.lines[3 : len(wide.lines)-1] {
-					if ansi.Strip(ansi.Cut(row, 32, 33)) != "│" {
-						t.Fatalf("wide environment column divider interrupted: %q", ansi.Strip(row))
-					}
-				}
-				tr := o.Locale.T
-				rows := make([]string, len(card.lines))
-				for i, line := range card.lines {
-					rows[i] = strings.TrimSpace(ansi.Strip(line))
-				}
-				check := func(label, value string) {
-					t.Helper()
-					i := slices.Index(rows, label)
-					if i < 0 || i+1 >= len(rows) || rows[i+1] != value {
-						t.Fatalf("expected %q followed by %q, got %q", label, value, rows)
-					}
-				}
-				check(tr("dashboard.field.platform"), runtime.GOOS+" / "+runtime.GOARCH)
-				manager := tr("dashboard.system.manager")
-				if tc.scope == "system" {
-					manager = tr("dashboard.system.systemManager")
-				} else if !tc.supported {
-					manager = tr("dashboard.system.user") + " · " + tr("dashboard.status.unavailable")
-				}
-				check(tr("dashboard.overview.serviceLabel"), manager)
-				check(tr("settings.autostart"), tr("dashboard.status."+tc.autostart))
-				label := tr("dashboard.overview.linger")
-				if tc.linger != "" {
-					check(label, tr("dashboard.status."+tc.linger))
-				} else if slices.Contains(rows, label) {
-					t.Fatal("showed user linger where it does not apply")
-				}
-			})
-		}
-	}
-}
-
-func TestOverviewEnvironmentPositionsClientVersion(t *testing.T) {
-	for _, language := range []string{i18n.English, i18n.Chinese} {
-		t.Run(language, func(t *testing.T) {
-			o := dashboardOptions{Locale: i18n.New(language)}
-			const width = 36
-			card := overviewSystemCard(o, width)
-			heading := ansi.Strip(card.lines[1])
-			if !strings.HasPrefix(heading, "  "+o.Locale.T("dashboard.overview.environment")) || !strings.HasSuffix(heading, buildinfo.Version+"  ") {
-				t.Fatalf("client version is not at the heading's right edge: %q", heading)
-			}
-			narrow := overviewSystemCard(o, 21)
-			body := strings.Join(narrow.lines, "\n")
-			assertCanvas(t, body, 21, len(narrow.lines))
-			if !strings.Contains(ansi.Strip(body), buildinfo.Version) {
-				t.Fatalf("narrow card lost the client version: %q", ansi.Strip(body))
-			}
-		})
 	}
 }
 

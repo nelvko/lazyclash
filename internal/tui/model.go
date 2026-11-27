@@ -26,6 +26,7 @@ import (
 type Backend interface {
 	Snapshot(context.Context) (app.Snapshot, error)
 	LookupIPInfo(context.Context) (app.IPInfo, error)
+	TestWebsite(context.Context, string) (app.WebsiteTestResult, error)
 	ReadPreferences(context.Context) (app.Preferences, error)
 	SaveNetworkPreferences(context.Context, downloadnet.Config) error
 	SetGuideDismissed(context.Context, bool) error
@@ -180,6 +181,8 @@ type Model struct {
 	wizard                wizardState
 	runtime               runtimeState
 	ipInfo                overviewIPState
+	overviewRoute         overviewProxyRoute
+	websiteTests          websiteTestState
 	connections           connectionsState
 	rules                 rulesState
 	providers             providerPanelState
@@ -540,6 +543,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		cmd = m.acceptRuntime(v)
 	case ipInfoResultMsg:
 		m.acceptIPInfo(v)
+	case websiteTestMsg:
+		m.websiteTests.accept(v)
 	case logRecoveryExpiredMsg:
 		if m.logs.recoveryUntil == v.until {
 			m.logs.recoveryUntil = time.Time{}
@@ -552,6 +557,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case parentCanceledMsg:
 		m.ipInfo.stop()
+		m.websiteTests.clear()
 		m.stopProxyTests()
 		m.stopRuntime()
 		m.stopRules()
@@ -1407,6 +1413,9 @@ func (m *Model) activateControl(id string, key *tea.KeyPressMsg) tea.Cmd {
 	}
 	if handled, cmd := m.profileAction(id); handled {
 		return cmd
+	}
+	if site, ok := strings.CutPrefix(id, "website."); ok {
+		return m.testWebsites(site)
 	}
 	switch id {
 	case "ip.refresh":

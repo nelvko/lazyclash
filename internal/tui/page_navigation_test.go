@@ -274,15 +274,15 @@ func TestOverviewManageIgnoresStaleActivation(t *testing.T) {
 	}
 }
 
-func TestPageNavigationEnvironmentFocusSurvivesInstallationStateChanges(t *testing.T) {
+func TestPageNavigationWebsiteFocusSurvivesInstallationStateChanges(t *testing.T) {
 	m := pageNavigationModel()
 	m.snapshot.GuideDismissed = true
-	m.focus = "overview.card.dashboard.system.title"
+	m.focus = "overview.card.dashboard.website.title"
 	for _, installed := range []bool{true, false, true} {
 		m.snapshot.Installed = installed
 		m.layout()
-		if m.focus != "overview.card.dashboard.system.title" || !hasAction(m.contentTargets(), m.focus) {
-			t.Fatalf("installed=%v: adding or removing kernel information lost environment focus: %s", installed, m.focus)
+		if m.focus != "overview.card.dashboard.website.title" || !hasAction(m.contentTargets(), m.focus) {
+			t.Fatalf("installed=%v: lost website card focus: %s", installed, m.focus)
 		}
 	}
 }
@@ -522,7 +522,7 @@ func TestPageNavigationOverviewCardIDsRemainUniqueAndStableAcrossResize(t *testi
 					wantIDs = []string{
 						"overview.card.dashboard.control.core", "overview.card.dashboard.profile.title",
 						"overview.card.dashboard.overview.network", "overview.card.dashboard.control.routingMode",
-						"overview.card.dashboard.system.title", "overview.card.dashboard.overview.ipInfo", "overview.card.dashboard.traffic.title",
+						"overview.card.dashboard.website.title", "overview.card.dashboard.overview.ipInfo", "overview.card.dashboard.traffic.title",
 					}
 				}
 				for _, width := range []int{20, 30, 60, 120, 240, 20} {

@@ -38,7 +38,8 @@ func TestOverviewPTYFixture(t *testing.T) {
 	raw, err := json.Marshal(map[string]int64{
 		"service_changes": b.controls.Load(), "modes": b.modes.Load(),
 		"selections": b.selections.Load(), "runtime_queries": b.runtimeQueries.Load(),
-		"ip_lookups":  b.ipLookups.Load(),
+		"ip_lookups":     b.ipLookups.Load(),
+		"website_github": b.websiteGitHub.Load(), "website_google": b.websiteGoogle.Load(), "website_youtube": b.websiteYouTube.Load(),
 		"tun_changes": b.tunChanges.Load(), "terminal_changes": b.terminalChanges.Load(),
 		"settings_reads": b.settingsReads.Load(), "settings_writes": b.settingsWrites.Load(),
 	})
@@ -52,12 +53,13 @@ func TestOverviewPTYFixture(t *testing.T) {
 
 type overviewPTYBackend struct {
 	*fakeBackend
-	scenario                                    string
-	controls, modes, selections, runtimeQueries atomic.Int64
-	tunChanges, terminalChanges                 atomic.Int64
-	settingsReads, settingsWrites               atomic.Int64
-	ipLookups                                   atomic.Int64
-	confirmedMode                               atomic.Value // string, set by the IP route scenario
+	scenario                                     string
+	controls, modes, selections, runtimeQueries  atomic.Int64
+	tunChanges, terminalChanges                  atomic.Int64
+	settingsReads, settingsWrites                atomic.Int64
+	ipLookups                                    atomic.Int64
+	websiteGitHub, websiteGoogle, websiteYouTube atomic.Int64
+	confirmedMode                                atomic.Value // string, set by the IP route scenario
 }
 
 func newOverviewPTYBackend(scenario string) *overviewPTYBackend {
@@ -158,6 +160,22 @@ func (b *overviewPTYBackend) LookupIPInfo(ctx context.Context) (app.IPInfo, erro
 		IP: ip, Country: "Japan", Region: "Tokyo", City: "Tokyo",
 		ISP: "Example ISP", ASN: "AS64496",
 	}, ctx.Err()
+}
+
+func (b *overviewPTYBackend) TestWebsite(ctx context.Context, site string) (app.WebsiteTestResult, error) {
+	switch site {
+	case "GitHub":
+		b.websiteGitHub.Add(1)
+		return app.WebsiteTestResult{StatusCode: 200, Duration: 173 * time.Millisecond}, ctx.Err()
+	case "Google":
+		b.websiteGoogle.Add(1)
+		return app.WebsiteTestResult{StatusCode: 403, Duration: 212 * time.Millisecond}, ctx.Err()
+	case "YouTube":
+		b.websiteYouTube.Add(1)
+		return app.WebsiteTestResult{}, context.DeadlineExceeded
+	default:
+		return app.WebsiteTestResult{}, errors.New("unexpected website")
+	}
 }
 
 func (b *overviewPTYBackend) Control(ctx context.Context, _ string) error {

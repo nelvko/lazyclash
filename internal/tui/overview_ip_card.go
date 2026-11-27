@@ -11,7 +11,7 @@ import (
 func overviewIPCard(o dashboardOptions, width int) dashboardBlock {
 	tr := o.Locale.T
 	inner := overviewInnerWidth(width)
-	available := !o.StateUnavailable && overviewIPAvailable(o.Snapshot)
+	available := !o.StateUnavailable && overviewProxyAvailable(o.Snapshot)
 	state := o.ipInfo
 	info := state.info
 	var updated string
@@ -38,7 +38,7 @@ func overviewIPCard(o dashboardOptions, width int) dashboardBlock {
 		if width >= 44 {
 			columns = 2
 		}
-		lines = overviewFieldGrid(o, fields, inner, columns, false)
+		lines = overviewFieldGrid(o, fields, inner, columns)
 		if !state.failed {
 			updated = profileAge(state.checkedAt, o.Now, o.Locale)
 		}

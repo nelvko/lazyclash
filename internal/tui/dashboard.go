@@ -82,6 +82,7 @@ type dashboardOptions struct {
 	TrafficNow                      time.Time
 	TrafficScale                    trafficChartScale
 	ipInfo                          overviewIPState
+	websiteTests                    websiteTestState
 	// Body and its targets are relative to the first content row beneath the
 	// page header. They are used by the Proxies, Profiles, Connections, Rules and Logs pages.
 	Body          string

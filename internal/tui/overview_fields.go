@@ -10,15 +10,12 @@ import (
 
 type overviewField struct{ label, value, color string }
 
-func overviewFieldGrid(o dashboardOptions, fields []overviewField, width, columns int, divided bool) []string {
+func overviewFieldGrid(o dashboardOptions, fields []overviewField, width, columns int) []string {
 	if len(fields) == 0 {
 		return nil
 	}
 	columns = max(1, min(columns, len(fields)))
 	gap := themed("  ", text, panel, o.Dim)
-	if divided {
-		gap = themed(" │ ", divider, panel, o.Dim)
-	}
 	cellWidth := max(1, (width-ansi.StringWidth(gap)*(columns-1))/columns)
 	var lines []string
 	for i := 0; i < len(fields); i += columns {

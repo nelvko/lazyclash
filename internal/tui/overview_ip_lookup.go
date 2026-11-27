@@ -12,11 +12,8 @@ import (
 
 type overviewIPState struct {
 	info            app.IPInfo
-	route           overviewIPRoute
 	loading, failed bool
 	checkedAt       time.Time
-	pid             int
-	started         uint64
 	request         uint64
 	cancel          context.CancelFunc
 }
@@ -27,26 +24,28 @@ type ipInfoResultMsg struct {
 	err     error
 }
 
-func overviewIPAvailable(s app.Snapshot) bool {
+func overviewProxyAvailable(s app.Snapshot) bool {
 	return s.Installed && s.Service.Active && s.Service.State == "active" && s.ServiceError == "" &&
 		(s.MixedPort > 0 || s.RuntimeSettings.HTTPPort > 0 || s.RuntimeSettings.SOCKSPort > 0)
 }
 
-type overviewIPRoute struct {
+type overviewProxyRoute struct {
+	pid                   int
+	started               uint64
 	profile, recipe, mode string
 	groups                []mihomo.Group
 	groupsKnown           bool
 }
 
 // The pinned profile, mode and proxy groups come from independent reads.
-func (s *overviewIPState) observeRoute(snapshot app.Snapshot) {
-	if !overviewIPAvailable(snapshot) {
-		return
+func (r *overviewProxyRoute) observeRoute(snapshot app.Snapshot) bool {
+	if !overviewProxyAvailable(snapshot) {
+		return false
 	}
-	r := &s.route
 	changed := r.profile != snapshot.Applied || r.recipe != snapshot.AppliedRecipeHash
 	if changed {
-		*r = overviewIPRoute{profile: snapshot.Applied, recipe: snapshot.AppliedRecipeHash}
+		r.profile, r.recipe = snapshot.Applied, snapshot.AppliedRecipeHash
+		r.mode, r.groups, r.groupsKnown = "", nil, false
 	}
 	if mode := snapshot.Mode.Actual; mode != "" && snapshot.Mode.Error == "" {
 		changed = changed || (r.mode != "" && r.mode != mode)
@@ -60,9 +59,7 @@ func (s *overviewIPState) observeRoute(snapshot app.Snapshot) {
 		}
 		r.groups, r.groupsKnown = snapshot.Groups, true
 	}
-	if changed {
-		s.clearResult()
-	}
+	return changed
 }
 
 func (s *overviewIPState) stop() {
@@ -78,16 +75,25 @@ func (s *overviewIPState) clearResult() {
 	s.info, s.checkedAt, s.failed = app.IPInfo{}, time.Time{}, false
 }
 
-func (m *Model) syncIPInfo(force bool) tea.Cmd {
-	s := &m.ipInfo
-	process := m.snapshot.Service
-	if !m.snapshotReady || !overviewIPAvailable(m.snapshot) {
-		s.clearResult()
-		return nil
+func (m *Model) clearOverviewLookups() {
+	m.ipInfo.clearResult()
+	m.websiteTests.clear()
+}
+
+// Both exit IP and website reachability are observations of the current proxy.
+func (m *Model) observeOverviewProxy(snapshot app.Snapshot) {
+	service := snapshot.Service
+	if !overviewProxyAvailable(snapshot) || m.overviewRoute.pid != service.PID || m.overviewRoute.started != service.StartTimestampMonotonic {
+		m.clearOverviewLookups()
+		m.overviewRoute = overviewProxyRoute{pid: service.PID, started: service.StartTimestampMonotonic}
 	}
-	if s.pid != process.PID || s.started != process.StartTimestampMonotonic {
-		s.clearResult()
-		s.pid, s.started = process.PID, process.StartTimestampMonotonic
+}
+
+func (m *Model) syncIPInfo(force bool) tea.Cmd {
+	m.observeOverviewProxy(m.snapshot)
+	s := &m.ipInfo
+	if !m.snapshotReady || !overviewProxyAvailable(m.snapshot) {
+		return nil
 	}
 	if m.page != "overview" || m.quitting || m.ctx.Err() != nil || m.inlineInstallVisible() {
 		s.stop()
