@@ -1,5 +1,17 @@
 # 验证入口
 
+## 首版 CLI、Shell 集成与一次性导入（2026-11-27）
+
+Linux/arm64 使用真实 Mihomo 和 systemd。普通终端以裸命令打开 TUI，重定向输入或输出时返回 2。`status` 默认输出本地化摘要，`status --json` 仍可由脚本读取。真实 PTY 中拒绝升级返回 1 并保留 v1.19.33，确认后升级至 v1.19.34，原本停止的服务保持停止，再次升级返回 0。进程收到 SIGINT、SIGTERM 后完成清理，分别返回 130、143。[交互升级结果](../.test-artifacts/cli-release/upgrade-terminal.log)
+
+完整端到端测试还覆盖了正在运行的服务。`upgrade --check` 保留原 PID，`upgrade --yes` 重启至审阅过的版本并恢复控制 API。订阅应用与回滚、节点选择、规则、日志、连接和端口设置均通过，退出后确认专用 unit 已移除，测试端口已释放。Linux amd64 和 arm64 发行包均已构建并核对 SHA256，实际 Linux 运行验证使用 arm64。[端到端结果](../.test-artifacts/e2e.log) · [清理回执](../.test-artifacts/cleanup.txt) · [Linux 测试](../.test-artifacts/cli-final-linux.log)
+
+发行包在 Bash、Zsh、Fish 的七种启动配置中加载成功。三个 Shell 都验证了双会话隔离、首次激活、变更端口、关闭时精确恢复原变量，以及在已接管的终端卸载后移除初始化引用。[启动测试](../.test-artifacts/cli-release/shell-nf9j8gtx/startup/summary.json) · [卸载结果](../.test-artifacts/cli-release/shell-nf9j8gtx/active-uninstall.json)
+
+双作用域验收使用隔离 VM 和实际发行二进制。普通用户以环境变量隔离测试实例，root 使用发行默认实例。测试前确认数据、unit 和账号不存在。另一个仅用于竞争场景的测试构建使用独立默认服务名。验收覆盖资源归属、内核异常退出后的重启、TUN 与 DNS、配置损坏时的停止及资源释放。root TUI 在 120×36 和 80×24 下均默认取消开启主机 TUN。[完整作用域验收](../.test-artifacts/service-scopes-e2e.log) · [TUN 确认测试](../.test-artifacts/service-scopes-ui-e2e.log)
+
+订阅页的快捷导入和新建表单在真实中文 PTY 中验证。一次性导入保留配置内容、名称及描述，不保存来源或 User-Agent。下一次导入仍默认保存来源。[120×32 快捷导入](../.test-artifacts/profile-import-once/toolbar-120x32.png) · [80×24 新建](../.test-artifacts/profile-import-once/new-80x24.png) · [40×16 新建](../.test-artifacts/profile-import-once/new-40x16.png)
+
 ## 概览内核卡的管理与启停（2026-11-27）
 
 160×45 中文真彩色 PTY 中，用键盘激活概览「管理 ›」，设置页显示内核管理卡并聚焦「已安装版本」。按 Enter 打开版本详情，按 Esc 返回版本行，再按 Esc 回到概览的「管理 ›」。80×24 下，鼠标点击同一入口即可看到内核管理标题、当前版本和「检查更新」，按一次 Esc 返回概览入口。完整概览脚本另通过英文无色的服务状态未知场景及中文 256 色的版本不一致场景。[宽屏键盘跳转](../.test-artifacts/core-manage-settings/core-management-160x45.png) · [窄屏鼠标跳转](../.test-artifacts/core-manage-settings/core-management-80x24.png) · [窄屏返回概览](../.test-artifacts/core-manage-settings/overview-return-80x24.png)
