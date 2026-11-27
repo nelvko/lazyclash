@@ -1,0 +1,20 @@
+{
+  "cli.status.user": "当前用户",
+  "cli.status.system": "系统",
+  "cli.status.instance": "实例",
+  "cli.status.core": "Mihomo",
+  "cli.status.installHint": "未安装。运行 lazyclash install 或打开 TUI 安装。",
+  "cli.status.runningVersion": "运行版本",
+  "cli.status.proxy": "代理入口",
+  "cli.status.api": "控制 API",
+  "cli.status.apiIdle": "未运行",
+  "cli.status.available": "可用",
+  "cli.status.profile": "当前配置",
+  "cli.status.mode": "路由模式",
+  "cli.status.autostart": "开机自启",
+  "cli.status.doctorHint": "运行 lazyclash doctor 查看故障详情。",
+  "cli.status.healthy": "服务运行正常，控制 API 可用。",
+  "cli.status.startHint": "Mihomo 已停止，可运行 lazyclash start 启动。",
+  "cli.status.observe": "服务状态：%s。可运行 lazyclash status 再次查看。",
+  "diagnostic.cli.api_unavailable": "Mihomo 正在运行，但控制 API 不可用：%s。请在设置中检查控制器地址和端口。"
+}

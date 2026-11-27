@@ -1,0 +1,20 @@
+{
+  "cli.status.user": "User",
+  "cli.status.system": "System",
+  "cli.status.instance": "Instance",
+  "cli.status.core": "Mihomo",
+  "cli.status.installHint": "Not installed. Run lazyclash install or open the TUI.",
+  "cli.status.runningVersion": "Running version",
+  "cli.status.proxy": "Configured proxy",
+  "cli.status.api": "Control API",
+  "cli.status.apiIdle": "Idle",
+  "cli.status.available": "Available",
+  "cli.status.profile": "Profile",
+  "cli.status.mode": "Routing mode",
+  "cli.status.autostart": "Autostart",
+  "cli.status.doctorHint": "Run lazyclash doctor for details.",
+  "cli.status.healthy": "The service is running and the control API is available.",
+  "cli.status.startHint": "Mihomo is stopped. Run lazyclash start to start it.",
+  "cli.status.observe": "Service state: %s. Run lazyclash status to check again.",
+  "diagnostic.cli.api_unavailable": "Mihomo is running but the control API is unavailable: %s. Check the controller address and port in Settings."
+}
