@@ -200,8 +200,6 @@
   "dashboard.website.all": "全部测试",
   "dashboard.website.add": "添加网站",
   "dashboard.website.edit": "编辑",
-  "dashboard.website.moveUp": "↑ 上移",
-  "dashboard.website.moveDown": "↓ 下移",
   "dashboard.website.dragName": "拖动排序",
   "dashboard.website.contextMenu": "右键 站点菜单",
   "dashboard.website.menuKey": "m 站点菜单",

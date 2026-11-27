@@ -190,13 +190,6 @@ func (b *overviewPTYBackend) UpdateWebsite(ctx context.Context, original, replac
 	return b.websitePrefs.UpdateWebsite(ctx, original, replacement)
 }
 
-func (b *overviewPTYBackend) MoveWebsite(ctx context.Context, site app.Website, direction int) ([]app.Website, error) {
-	if b.websitePrefs == nil {
-		return nil, errors.New("website editing is unavailable in this fixture")
-	}
-	return b.websitePrefs.MoveWebsite(ctx, site, direction)
-}
-
 func (b *overviewPTYBackend) RelocateWebsite(ctx context.Context, site, neighbor app.Website, after bool) ([]app.Website, error) {
 	if b.websitePrefs == nil {
 		return nil, errors.New("website editing is unavailable in this fixture")

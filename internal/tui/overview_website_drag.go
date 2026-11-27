@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"cmp"
 	"slices"
 	"strings"
 
@@ -12,6 +13,7 @@ type overviewWebsiteDragState struct {
 	source, neighbor app.Website
 	after            bool
 	pager            hitRegion
+	direction        string
 }
 
 func (d overviewWebsiteDragState) active() bool { return d.source.URL != "" }
@@ -45,6 +47,10 @@ func (m *Model) overviewWebsiteDragMouse(event tea.MouseMsg) (bool, tea.Cmd) {
 	}
 	_, release := event.(tea.MouseReleaseMsg)
 	if press {
+		if strings.HasPrefix(hit.ID, overviewWebsiteDropPrefix) {
+			// Ignore a fresh press on the previous gesture's transient arrow.
+			return true, nil
+		}
 		if !strings.HasPrefix(hit.ID, overviewWebsiteDragPrefix) {
 			return false, nil
 		}
@@ -68,7 +74,10 @@ func (m *Model) overviewWebsiteDragMouse(event tea.MouseMsg) (bool, tea.Cmd) {
 	if d.pager.ID != "" && (d.pager.ID == hit.ID || regionsOverlap(point, d.pager)) {
 		return true, nil
 	}
-	d.pager = hitRegion{}
+	if release {
+		m.hover = hit.ID
+	}
+	d.pager, d.direction = hitRegion{}, ""
 	if !release && (hit.ID == "website.prev" || hit.ID == "website.next") {
 		d.neighbor, d.after, d.pager = app.Website{}, false, hit
 		m.focus = hit.ID
@@ -87,19 +96,37 @@ func (m *Model) overviewWebsiteDragMouse(event tea.MouseMsg) (bool, tea.Cmd) {
 		return true, nil
 	}
 	d.after = to > from
+	d.direction = m.websiteDragDirection(from, to)
 	if release && to != from {
+		// Saving changes which site will be under the pointer.
+		m.hover = ""
 		return true, m.relocateWebsite(d.source, d.neighbor, d.after)
 	}
 	return true, nil
 }
 
+func (m *Model) websiteDragDirection(from, to int) string {
+	width := m.websiteCardInnerWidth()
+	perPage := websitePager(width, m.websiteOffset, len(m.websites)).PerPage
+	dx, dy := 0, cmp.Compare(to/perPage, from/perPage)
+	if dy == 0 {
+		cols := websiteColumns(width)
+		from, to = from%perPage, to%perPage
+		dx, dy = cmp.Compare(to%cols, from%cols), cmp.Compare(to/cols, from/cols)
+	}
+	arrows := [3][3]string{
+		{"↖", "↑", "↗"},
+		{"←", "", "→"},
+		{"↙", "↓", "↘"},
+	}
+	return arrows[dy+1][dx+1]
+}
+
 func (m *Model) overviewWebsiteIndex(id string) int {
-	url, ok := strings.CutPrefix(id, overviewWebsiteDragPrefix)
-	if !ok {
-		url, ok = strings.CutPrefix(id, "website.site.")
+	for _, prefix := range []string{overviewWebsiteDragPrefix, overviewWebsiteDropPrefix, "website.site."} {
+		if url, ok := strings.CutPrefix(id, prefix); ok {
+			return slices.IndexFunc(m.websites, func(site app.Website) bool { return site.URL == url })
+		}
 	}
-	if !ok {
-		return -1
-	}
-	return slices.IndexFunc(m.websites, func(site app.Website) bool { return site.URL == url })
+	return -1
 }

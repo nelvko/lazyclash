@@ -528,7 +528,7 @@ def website_status_point(terminal, name, status):
     raise AssertionError(f"{name} did not display {status!r}\n" + terminal.screen.text())
 
 
-def exercise_websites(preview, terminal, output, words, report, args):
+def exercise_websites(preview, terminal, output, words, report, profile, args):
     title = words["dashboard.website.title"]
     test_all = "⚡︎"
     test = words["dashboard.website.test"]
@@ -564,6 +564,8 @@ def exercise_websites(preview, terminal, output, words, report, args):
     terminal.wait("173 ms")
     website_status_point(terminal, "Google", test)
     website_status_point(terminal, "YouTube", test)
+    hover_website_grip(preview, terminal, "GitHub")
+    hover_website_result(preview, terminal, "GitHub", "173 ms", profile, focused=True)
     terminal.click_text("173 ms")
     terminal.settle()
     assert words["dashboard.website.clickTest"] % "GitHub" in terminal.screen.text().splitlines()[-1]
@@ -574,6 +576,8 @@ def exercise_websites(preview, terminal, output, words, report, args):
     terminal.wait("212 ms")  # Google fixture returns HTTP 403 with a measured response time.
     website_status_point(terminal, "Google", "212 ms")
     terminal.wait(words["dashboard.website.timeout"])
+    hover_website_grip(preview, terminal, "YouTube")
+    hover_website_result(preview, terminal, "YouTube", words["dashboard.website.timeout"], profile, focused=False)
     terminal.click_text(words["dashboard.website.timeout"])
     terminal.settle()
     assert words["dashboard.website.clickTest"] % "YouTube" in terminal.screen.text().splitlines()[-1]
@@ -611,14 +615,11 @@ def open_website_menu(terminal, words, name, keyboard=False):
         mouse_event(terminal, 2, point, "m")
     terminal.wait(words["websiteEditor.confirm"])
     terminal.settle()
-    # Other overview cards may also have an Edit link; actions are consecutive
-    # in the menu and its last entry (Remove) uniquely locates the column.
+    # Remove uniquely locates this two-action menu, even on a crowded overview.
     x, y = text_point(terminal, words["websiteEditor.confirm"])
     edit = words["dashboard.website.edit"]
-    for row in range(max(0, y-3), y):
-        if "".join(terminal.screen.cells[row][x:]).startswith(edit):
-            return x, row, y
-    raise AssertionError("Missing site menu edit action\n" + terminal.screen.text())
+    assert y > 0 and "".join(terminal.screen.cells[y-1][x:]).startswith(edit), terminal.screen.text()
+    return x, y-1, y
 
 
 def choose_website_action(terminal, words, name, action, keyboard=False):
@@ -644,6 +645,77 @@ def website_order(terminal, names):
     return sorted(names, key=lambda name: text_point(terminal, name)[::-1])
 
 
+def website_marker(terminal, name):
+    x, y = text_point(terminal, name)
+    return "".join(terminal.screen.cells[y][x-2:x]).strip()
+
+
+def assert_website_grip(terminal, name):
+    assert website_marker(terminal, name) == "⠿" and terminal.screen.text().count("⠿") == 1, terminal.screen.text()
+
+
+def hover_website_grip(preview, terminal, name):
+    x, y = text_point(terminal, name)
+    width = preview.SMOKE.cell_width(name)
+    idle = terminal.screen.styles[y][x:x+width]
+    # Traverse the name, one-cell gap, and handle with no mouse button down.
+    for offset in (0, -1, -2):
+        mouse_event(terminal, 35, (x+offset, y), "M")
+        terminal.settle()
+        assert_website_grip(terminal, name)
+        assert terminal.screen.styles[y][x:x+width] == idle, (name, offset, "name style changed")
+        assert terminal.screen.styles[y][x-2][1] == idle[0][1], (name, offset, "grip highlighted")
+    return x-2, y
+
+
+def hover_website_result(preview, terminal, name, status, profile, focused):
+    x, y = website_status_point(terminal, name, status)
+    width = preview.SMOKE.cell_width(status)
+    screen = terminal.screen
+    before = screen.styles[y][x:x+width]
+    gutter = x-2
+    marker = "›" if focused else " "
+    assert screen.cells[y][gutter] == marker, screen.text()
+    gutter_style = screen.styles[y][gutter]
+    mouse_event(terminal, 35, (x, y), "M")
+    terminal.settle()
+    assert "⠿" not in screen.text(), screen.text()
+    assert screen.cells[y][gutter] == marker and screen.styles[y][gutter] == gutter_style, screen.text()
+    for old, new in zip(before, screen.styles[y][x:x+width]):
+        assert new[0] == old[0] and not new[3], (name, status, old, new)
+        if profile == "truecolor":
+            assert old[1] != new[1] == (60, 68, 76), (name, status, old, new)
+
+
+def website_drop_arrow(preview, terminal, source, target, direction):
+    sx, sy = text_point(terminal, source)
+    tx, ty = text_point(terminal, target)
+    target_width = preview.SMOKE.cell_width(target)
+    if direction == "→":
+        spot = (tx-2, ty)
+        assert sy == ty and sx+preview.SMOKE.cell_width(source) <= spot[0]
+    elif direction == "←":
+        spot = (tx+target_width+1, ty)
+        assert sy == ty and spot[0] < sx
+    else:
+        row = ty-1 if direction in ("↓", "↙", "↘") else ty+2
+        assert min(sy, ty) < row < max(sy, ty)
+        if direction in ("↙", "↖"):
+            assert sx > tx
+            spot = (tx+target_width, row)
+        elif direction in ("↘", "↗"):
+            assert sx < tx
+            spot = (tx-1, row)
+        else:
+            assert sx == tx
+            marks = [(x, row) for x in range(tx, tx+target_width) if terminal.screen.cells[row][x] == direction]
+            assert len(marks) == 1, terminal.screen.text()
+            spot = marks[0]
+    x, y = spot
+    assert terminal.screen.cells[y][x] == direction, terminal.screen.text()
+    return spot
+
+
 def exercise_overview_drag(preview, terminal, output, words, names, args):
     test = words["dashboard.website.test"]
     points = [text_point(terminal, name) for name in names]
@@ -656,22 +728,64 @@ def exercise_overview_drag(preview, terminal, output, words, names, args):
     click_point(terminal, website_status_point(terminal, "Status API", test))
     terminal.wait("91 ms")
 
-    # First drag the measured site left onto Google's name, then drag from the
-    # lower row onto that measured site's latency. Neither drop starts a probe.
-    for source, target in (("Status API", "Google"), ("YouTube", "Status API")):
+    # On the last drag GitHub starts immediately to the right of YouTube.
+    for source, target, direction in (("GitHub", "Status API", "↓"), ("Google", "Status API", "→"),
+                                      ("GitHub", "Status API", "↗"), ("GitHub", "YouTube", "←")):
         start = text_point(terminal, source)
-        end = text_point(terminal, target) if source == "Status API" else website_status_point(terminal, target, "91 ms")
+        end = website_status_point(terminal, target, "91 ms") if direction == "↗" else text_point(terminal, target)
+        if direction == "←":
+            start = hover_website_grip(preview, terminal, source)
+            preview.capture(terminal, output, "website-overview-hover-160x45", args)
         mouse_event(terminal, 0, start, "M")
         mouse_event(terminal, 32, end, "M")
         terminal.settle()
-        assert "⠿" not in terminal.screen.text(), terminal.screen.text()
-        if source == "YouTube":
+        arrow = website_drop_arrow(preview, terminal, source, target, direction)
+        assert_website_grip(terminal, source)
+        if direction == "←":
             preview.capture(terminal, output, "website-overview-drag-160x45", args)
-        mouse_event(terminal, 0, end, "m")
-        names.insert(names.index(target), names.pop(names.index(source)))
+        mouse_event(terminal, 32, arrow, "M")
+        terminal.settle()
+        assert website_drop_arrow(preview, terminal, source, target, direction) == arrow
+        mouse_event(terminal, 0, arrow, "m")
+        index = names.index(target)
+        names.insert(index, names.pop(names.index(source)))
         assert website_order(terminal, names) == names, terminal.screen.text()
+        assert terminal.screen.cells[arrow[1]][arrow[0]] != direction, terminal.screen.text()
         for name in names:
             website_status_point(terminal, name, "91 ms" if name == "Status API" else test)
+
+
+def exercise_website_diagonal(preview, terminal, output, names, words, profile, args):
+    terminal.wait("203.0.113.17")
+    assert website_order(terminal, names) == names
+    hover_website_grip(preview, terminal, "YouTube")
+    preview.capture(terminal, output, "youtube-hover-160x45", args)
+    test = words["dashboard.website.test"]
+    hover_website_result(preview, terminal, "YouTube", test, profile, focused=False)
+    click_point(terminal, text_point(terminal, "YouTube"))
+    hover_website_grip(preview, terminal, "YouTube")
+    hover_website_result(preview, terminal, "YouTube", test, profile, focused=True)
+    preview.capture(terminal, output, "youtube-result-160x45", args)
+    for source_index, target_index, direction in ((2, 4, "↙"), (0, 4, "↘"), (4, 2, "↗"), (4, 0, "↖"),
+                                                  (4, 1, "↑"), (1, 4, "↓"), (0, 2, "→"), (2, 0, "←")):
+        source, target = names[source_index], names[target_index]
+        start = hover_website_grip(preview, terminal, source) if direction == "↙" else text_point(terminal, source)
+        mouse_event(terminal, 0, start, "M")
+        mouse_event(terminal, 32, text_point(terminal, target), "M")
+        terminal.settle()
+        assert_website_grip(terminal, source)
+        arrow = website_drop_arrow(preview, terminal, source, target, direction)
+        if direction == "↙":
+            preview.capture(terminal, output, "youtube-to-google-160x45", args)
+        mouse_event(terminal, 32, arrow, "M")
+        terminal.settle()
+        assert website_drop_arrow(preview, terminal, source, target, direction) == arrow
+        mouse_event(terminal, 0, arrow, "m")
+        names.insert(target_index, names.pop(source_index))
+        assert website_order(terminal, names) == names, terminal.screen.text()
+        assert terminal.screen.cells[arrow[1]][arrow[0]] != direction, terminal.screen.text()
+    terminal.exit()
+    print("PASS website hover grips and drag-to-arrow ordering in all eight directions", flush=True)
 
 
 def prepare_custom_website(preview, terminal, output, words, report, args):
@@ -713,13 +827,10 @@ def prepare_custom_website(preview, terminal, output, words, report, args):
     terminal.wait_absent("tail.example")
     names.pop()
 
-    # The same menu offers keyboard-accessible ordering.
     open_website_menu(terminal, words, "Status API", keyboard=True)
     preview.capture(terminal, output, "website-menu-160x45", args)
-    terminal.key(b"\x1b[B\r")  # Move up follows Edit. Move down is unavailable at the end.
+    terminal.key(b"\x1b")
     terminal.wait_absent(words["websiteEditor.confirm"])
-    names[2], names[3] = names[3], names[2]
-    assert website_order(terminal, names) == names, terminal.screen.text()
     exercise_overview_drag(preview, terminal, output, words, names, args)
     terminal.exit()
     calls = json.loads(report.read_text())
@@ -776,8 +887,19 @@ def exercise(preview, binary, output, language, profile, scenario, args):
     output.mkdir(parents=True)
     words = labels(language)
     report = output / "calls.json"
-    terminal = fixture_terminal(preview, binary, report, language, profile, scenario)
+    fixture = scenario
+    if scenario == "website-diagonal":
+        names = ["京东", "gpt", "YouTube", "claude", "Google", "GitHub"]
+        settings = output / "settings"
+        settings.mkdir(mode=0o700)
+        sites = [{"Name": name, "URL": f"https://site{i}.example/"} for i, name in enumerate(names)]
+        (settings / "preferences.json").write_text(json.dumps({"Network": {"method": "direct"}, "Websites": sites}))
+        fixture = "manage-websites"  # Use the isolated, persistent website backend.
+    terminal = fixture_terminal(preview, binary, report, language, profile, fixture)
     try:
+        if scenario == "website-diagonal":
+            exercise_website_diagonal(preview, terminal, output, names, words, profile, args)
+            return
         if scenario == "manage-websites":
             prepare_custom_website(preview, terminal, output, words, report, args)
             terminal.cleanup()
@@ -788,7 +910,7 @@ def exercise(preview, binary, output, language, profile, scenario, args):
             exercise_ip_route(preview, terminal, output, words, report, args)
             return
         if scenario == "websites":
-            exercise_websites(preview, terminal, output, words, report, args)
+            exercise_websites(preview, terminal, output, words, report, profile, args)
             return
         terminal.wait("subscription.example")
         terminal.settle()
@@ -966,7 +1088,7 @@ def main():
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--lang", choices=["en", "zh-Hans"], action="append")
     parser.add_argument("--profile", choices=["truecolor", "256", "no-color"], action="append")
-    parser.add_argument("--scenario", choices=["running", "stopped", "unavailable", "drift", "pending", "direct", "ip-route", "websites", "manage-websites"], action="append")
+    parser.add_argument("--scenario", choices=["running", "stopped", "unavailable", "drift", "pending", "direct", "ip-route", "websites", "manage-websites", "website-diagonal"], action="append")
     sys.dont_write_bytecode = True
     spec = importlib.util.spec_from_file_location("overview_pty_preview", Path(__file__).with_name("onboarding-pty.py"))
     preview = importlib.util.module_from_spec(spec)

@@ -25,6 +25,7 @@ type buttonOptions struct {
 	Kind                 buttonKind
 	Surface              string
 	TextColor            string // Optional foreground for text actions on colored surfaces.
+	TextHoverBackground  string // Text buttons can highlight their face on hover in place of an underline.
 	Focused, Hovered     bool
 	Disabled, Busy       bool
 	Selected, Selectable bool
@@ -80,7 +81,8 @@ func renderButton(label string, o buttonOptions) string {
 		case o.Kind == buttonSecondary:
 			background = buttonSecondaryHoverBackground
 		case o.Kind == buttonText:
-			underline = true
+			background = cmp.Or(o.TextHoverBackground, o.Surface)
+			underline = o.TextHoverBackground == ""
 		case o.Kind == buttonIcon:
 			foreground, background = text, buttonHoverBackground
 		case o.Kind == buttonPrimary:

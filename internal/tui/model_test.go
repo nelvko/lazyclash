@@ -31,7 +31,6 @@ type fakeBackend struct {
 	lookupIPInfo        func(context.Context) (app.IPInfo, error)
 	addWebsite          func(context.Context, app.Website) ([]app.Website, error)
 	updateWebsite       func(context.Context, app.Website, app.Website) ([]app.Website, error)
-	moveWebsite         func(context.Context, app.Website, int) ([]app.Website, error)
 	relocateWebsite     func(context.Context, app.Website, app.Website, bool) ([]app.Website, error)
 	removeWebsite       func(context.Context, app.Website) ([]app.Website, error)
 	testWebsite         func(context.Context, app.Website) (app.WebsiteTestResult, error)
@@ -166,12 +165,6 @@ func (f *fakeBackend) UpdateWebsite(ctx context.Context, original, replacement a
 		return f.updateWebsite(ctx, original, replacement)
 	}
 	return nil, errors.New("missing update website fixture")
-}
-func (f *fakeBackend) MoveWebsite(ctx context.Context, site app.Website, direction int) ([]app.Website, error) {
-	if f.moveWebsite != nil {
-		return f.moveWebsite(ctx, site, direction)
-	}
-	return nil, errors.New("missing move website fixture")
 }
 func (f *fakeBackend) RelocateWebsite(ctx context.Context, site, neighbor app.Website, after bool) ([]app.Website, error) {
 	if f.relocateWebsite != nil {

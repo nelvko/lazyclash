@@ -11,7 +11,7 @@ func TestOverviewWebsiteMenuUsesNameAndWorksWithStoppedCore(t *testing.T) {
 	m, _ := overviewWebsiteDragModel(t, 3)
 	m.snapshot.Service.Active, m.snapshot.Service.State = false, "inactive"
 	m.layout()
-	site := m.websites[0]
+	site := m.websites[1]
 	right := websitePointer(t, m, websiteActionID(site))
 	right.Button = tea.MouseRight
 	m, _ = update(m, tea.MouseClickMsg(right))
@@ -28,8 +28,8 @@ func TestOverviewWebsiteMenuUsesNameAndWorksWithStoppedCore(t *testing.T) {
 	for _, item := range m.menu.items {
 		actions = append(actions, item.ID)
 	}
-	if !slices.Equal(actions, []string{"edit", "down", "remove"}) {
-		t.Fatalf("first website actions = %v", actions)
+	if !slices.Equal(actions, []string{"edit", "remove"}) {
+		t.Fatalf("website actions = %v, want edit and remove", actions)
 	}
 	m, _ = update(m, special(tea.KeyEscape))
 	m, _ = update(m, key("m"))
@@ -45,19 +45,15 @@ func TestOverviewWebsiteMenuDismissesOnStaleSelection(t *testing.T) {
 	m.focus = websiteActionID(site)
 	m, _ = update(m, key("m"))
 	m, _ = update(m, special(tea.KeyDown))
-	if !m.menu.open || m.menu.items[m.menu.selected].ID != "up" {
-		t.Fatal("expected the selected site to be movable up")
+	if !m.menu.open || m.menu.items[m.menu.selected].ID != "remove" {
+		t.Fatal("Remove should follow Edit in the site menu")
 	}
 	sites := slices.Clone(m.websites)
 	sites[0], sites[1] = sites[1], sites[0]
 	m.setWebsites(sites)
 	m.reconcileMenu()
-	if m.menu.open || m.websiteMenu.URL != "" {
-		t.Fatal("a disappearing action must dismiss the menu and release its target")
-	}
-	m, _ = update(m, key("m"))
-	if !m.menu.open {
-		t.Fatal("failed to reopen the moved site's menu")
+	if !m.menu.open || m.websiteMenu != site || m.menu.items[m.menu.selected].ID != "remove" {
+		t.Fatal("reordering sites should preserve the selected menu action for the same site")
 	}
 	sites = slices.Clone(sites)
 	sites[0].Name = "New name"

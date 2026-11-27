@@ -1,25 +1,12 @@
 package tui
 
 import (
-	"context"
 	"slices"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/nelvko/lazyclash/internal/app"
 )
-
-func (m *Model) websiteMenuItems(index int) dropdown {
-	items := []menuItem{{ID: "edit", Label: m.tr("dashboard.website.edit")}}
-	if index > 0 {
-		items = append(items, menuItem{ID: "up", Label: m.tr("dashboard.website.moveUp")})
-	}
-	if index+1 < len(m.websites) {
-		items = append(items, menuItem{ID: "down", Label: m.tr("dashboard.website.moveDown")})
-	}
-	items = append(items, menuItem{ID: "remove", Label: m.tr("websiteEditor.confirm"), Danger: true})
-	return dropdown{Items: items, ShowCursor: true}
-}
 
 func (m *Model) openWebsiteMenuAt(x, y int) {
 	if m.notification.covers(x, y) {
@@ -58,7 +45,11 @@ func (m *Model) openWebsiteMenu(anchor hitRegion) {
 	}
 	m.websiteMenu = m.websites[i]
 	m.focus, m.hover = websiteActionID(m.websiteMenu), ""
-	m.websiteMenuItems(i).show(&m.menu, anchor)
+	options := dropdown{ShowCursor: true, Items: []menuItem{
+		{ID: "edit", Label: m.tr("dashboard.website.edit")},
+		{ID: "remove", Label: m.tr("websiteEditor.confirm"), Danger: true},
+	}}
+	options.show(&m.menu, anchor)
 }
 
 func (m *Model) dismissWebsiteMenu() {
@@ -72,8 +63,7 @@ func (m *Model) websiteMenuResult(result menuResult) tea.Cmd {
 	}
 	site := m.websiteMenu
 	m.dismissWebsiteMenu()
-	i := slices.Index(m.websites, site)
-	if i < 0 || !m.pageSelectionMenuAvailable("overview") {
+	if !slices.Contains(m.websites, site) || !m.pageSelectionMenuAvailable("overview") {
 		return nil
 	}
 	switch result.Action {
@@ -81,17 +71,6 @@ func (m *Model) websiteMenuResult(result menuResult) tea.Cmd {
 		return m.beginWebsiteEdit(site)
 	case "remove":
 		return m.beginWebsiteRemoval(site)
-	case "up", "down":
-		direction := 1
-		if result.Action == "up" {
-			direction = -1
-		}
-		if i+direction >= 0 && i+direction < len(m.websites) {
-			backend := m.backend
-			return m.startWebsiteMove(site, func(ctx context.Context) ([]app.Website, error) {
-				return backend.MoveWebsite(ctx, site, direction)
-			})
-		}
 	}
 	return nil
 }
@@ -118,16 +97,10 @@ func (m *Model) relocateWebsite(site, neighbor app.Website, after bool) tea.Cmd 
 		return nil
 	}
 	backend := m.backend
-	return m.startWebsiteMove(site, func(ctx context.Context) ([]app.Website, error) {
-		return backend.RelocateWebsite(ctx, site, neighbor, after)
-	})
-}
-
-func (m *Model) startWebsiteMove(site app.Website, save func(context.Context) ([]app.Website, error)) tea.Cmd {
 	ctx := m.newJob("website-move")
 	request := m.id
 	return func() tea.Msg {
-		sites, err := save(ctx)
+		sites, err := backend.RelocateWebsite(ctx, site, neighbor, after)
 		return websiteMoveMsg{id: request, site: site, sites: sites, err: err}
 	}
 }

@@ -86,15 +86,19 @@ func (m *Model) setWebsites(sites []app.Website) {
 	m.websiteTests.finishBatch()
 }
 
-func (m *Model) turnWebsitePage(id string) {
-	if m.page != "overview" || m.quitting {
-		return
-	}
+func (m *Model) websiteCardInnerWidth() int {
 	width := dashboardBodyWidth(m.dashboardOptions())
 	if width >= 90 {
 		width = (width - 2) / 2
 	}
-	p := websitePager(overviewInnerWidth(width), m.websiteOffset, len(m.websites))
+	return overviewInnerWidth(width)
+}
+
+func (m *Model) turnWebsitePage(id string) {
+	if m.page != "overview" || m.quitting {
+		return
+	}
+	p := websitePager(m.websiteCardInnerWidth(), m.websiteOffset, len(m.websites))
 	old := p.Page
 	if id == "website.prev" {
 		p.PrevPage()

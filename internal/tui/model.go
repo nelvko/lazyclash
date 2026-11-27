@@ -28,7 +28,6 @@ type Backend interface {
 	LookupIPInfo(context.Context) (app.IPInfo, error)
 	AddWebsite(context.Context, app.Website) ([]app.Website, error)
 	UpdateWebsite(context.Context, app.Website, app.Website) ([]app.Website, error)
-	MoveWebsite(context.Context, app.Website, int) ([]app.Website, error)
 	RelocateWebsite(context.Context, app.Website, app.Website, bool) ([]app.Website, error)
 	RemoveWebsite(context.Context, app.Website) ([]app.Website, error)
 	TestWebsite(context.Context, app.Website) (app.WebsiteTestResult, error)
@@ -401,9 +400,15 @@ func (m *Model) cancelTask(quit bool) {
 }
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if mouse, ok := msg.(tea.MouseMsg); ok && m.page == "overview" && m.form == "" {
+		wasDragging := m.websiteDrag.active()
 		if handled, cmd := m.overviewWebsiteDragMouse(mouse); handled {
 			m.layout()
 			return m, cmd
+		}
+		if wasDragging && !m.websiteDrag.active() {
+			// A lost release may be followed by a hover on empty space.
+			// Repaint the cleared gesture even when hover itself stays empty.
+			m.layout()
 		}
 	}
 	if motion, ok := msg.(tea.MouseMotionMsg); ok {
@@ -426,6 +431,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.renderLayout()
 		return m, m.syncNotificationTimers(time.Now())
+	case tea.BlurMsg:
+		m.cancelOverviewWebsiteDrag()
+		if strings.HasPrefix(m.hover, overviewWebsiteDragPrefix) {
+			m.hover = ""
+		}
 	case websiteListSavedMsg:
 		cmd = m.acceptWebsiteList(v)
 	case websiteMoveMsg:
@@ -591,7 +601,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case tea.WindowSizeMsg:
 		m.cancelOverviewWebsiteDrag()
-		if m.page == "settings" || m.tooltip.pointer.ID != "" {
+		if m.page == "settings" || m.tooltip.pointer.ID != "" || strings.HasPrefix(m.hover, overviewWebsiteDragPrefix) {
 			m.hover = ""
 		}
 		if m.page == "proxies" && !m.proxiesNarrow() && max(1, v.Width) < sidebarMinWidth {
@@ -1276,6 +1286,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.page != previousPage {
 		m.stopLogoIntro()
 		m.tooltip.dismiss()
+	}
+	if m.websiteDrag.active() && (!m.pageSelectionMenuAvailable("overview") || m.menu.open) {
+		m.cancelOverviewWebsiteDrag()
 	}
 	m.layout()
 	intro := m.syncLogoIntro()
