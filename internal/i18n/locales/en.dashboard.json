@@ -198,6 +198,7 @@
   "dashboard.overview.traffic": "Live Traffic",
   "dashboard.website.title": "Website Tests",
   "dashboard.website.all": "Test all",
+  "dashboard.website.manageShort": "Manage",
   "dashboard.website.manage": "Manage sites",
   "dashboard.website.prev": "Previous",
   "dashboard.website.next": "Next",

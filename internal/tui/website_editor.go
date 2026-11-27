@@ -13,7 +13,8 @@ import (
 
 type websiteEditorState struct {
 	address, name textinput.Model
-	remove        app.Website
+	original      app.Website
+	confirmRemove bool
 	err           string
 	canceled      bool
 }
@@ -24,49 +25,23 @@ type websiteListSavedMsg struct {
 	err   error
 }
 
-func (m *Model) websiteManagerMenu() dropdown {
-	d := dropdown{ShowCursor: true, CenterPopup: true, Items: []menuItem{{ID: "add", Label: m.tr("websiteEditor.add")}}}
-	for _, site := range m.websites {
-		d.Items = append(d.Items, menuItem{ID: site.URL, Label: m.tr("websiteEditor.removeSite", clean(site.Name)), Danger: true})
-	}
-	return d
-}
-
-func (m *Model) openWebsiteManager() tea.Cmd {
-	m.openPageSelectionMenu("overview", "website.manage", m.websiteManagerMenu())
-	return nil
-}
-
-func (m *Model) websiteManagerChoice(result menuResult) tea.Cmd {
-	if !result.Closed || result.Action == "" || !m.pageSelectionMenuAvailable("overview") {
-		return nil
-	}
-	m.hover = ""
-	if result.Action == "add" {
-		m.websiteEditor = websiteEditorState{address: textinput.New(), name: textinput.New()}
-		m.websiteEditor.address.Placeholder = "example.com"
-		m.websiteEditor.name.Placeholder = m.tr("websiteEditor.hostname")
-		m.form = "website-editor"
-		return m.focusWebsiteEditor("websiteEditor.address")
-	}
-	for _, site := range m.websites {
-		if site.URL == result.Action {
-			m.websiteEditor = websiteEditorState{remove: site}
-			m.form, m.focus = "website-editor", "websiteEditor.cancel"
-			break
-		}
-	}
-	return nil
+func (m *Model) beginWebsiteEdit(original app.Website) tea.Cmd {
+	e := websiteEditorState{original: original, address: textinput.New(), name: textinput.New()}
+	e.address.Placeholder = "example.com"
+	e.name.Placeholder = m.tr("websiteEditor.hostname")
+	e.address.SetValue(original.URL)
+	e.name.SetValue(original.Name)
+	m.websiteEditor, m.form = e, "website-editor"
+	return m.focusWebsiteEditor("websiteEditor.address")
 }
 
 func (m *Model) closeWebsiteEditor() {
 	m.websiteEditor = websiteEditorState{}
-	m.form, m.hover, m.focus = "", "", "website.manage"
-	m.revealContentFocus()
+	m.returnToSiteManager()
 }
 
 func (m *Model) websiteEditorInput() *textinput.Model {
-	if m.form == "website-editor" && m.websiteEditor.remove.URL == "" {
+	if m.form == "website-editor" && !m.websiteEditor.confirmRemove {
 		switch m.focus {
 		case "websiteEditor.address":
 			return &m.websiteEditor.address
@@ -110,8 +85,7 @@ func (m *Model) websiteEditorKey(key tea.KeyPressMsg) tea.Cmd {
 		return nil
 	}
 	if key.String() == "esc" {
-		m.closeWebsiteEditor()
-		return nil
+		return m.websiteEditorAction("websiteEditor.cancel")
 	}
 	if len(m.targets) == 0 {
 		return nil
@@ -119,8 +93,11 @@ func (m *Model) websiteEditorKey(key tea.KeyPressMsg) tea.Cmd {
 	switch key.String() {
 	case "tab", "shift+tab":
 		controls := []string{"websiteEditor.cancel", "websiteEditor.confirm"}
-		if m.websiteEditor.remove.URL == "" {
+		if !m.websiteEditor.confirmRemove {
 			controls = []string{"websiteEditor.address", "websiteEditor.name", "websiteEditor.save", "websiteEditor.cancel"}
+			if m.websiteEditor.original.URL != "" {
+				controls = append(controls, "websiteEditor.remove")
+			}
 		}
 		i := slices.Index(controls, m.focus)
 		delta := 1
@@ -161,14 +138,25 @@ func (m *Model) websiteEditorAction(id string) tea.Cmd {
 	case "websiteEditor.address", "websiteEditor.name":
 		return m.focusWebsiteEditor(id)
 	case "websiteEditor.cancel":
+		if e.confirmRemove {
+			e.confirmRemove, e.err, e.canceled = false, "", false
+			return m.focusWebsiteEditor("websiteEditor.remove")
+		}
 		m.closeWebsiteEditor()
 		return nil
+	case "websiteEditor.remove":
+		if e.original.URL != "" && !e.confirmRemove {
+			m.focusWebsiteEditor("websiteEditor.cancel")
+			e.confirmRemove, e.err, e.canceled = true, "", false
+		}
+		return nil
 	case "websiteEditor.save", "websiteEditor.confirm":
-		site := e.remove
-		remove := site.URL != ""
+		original := e.original
+		remove := e.confirmRemove
 		if remove != (id == "websiteEditor.confirm") {
 			return nil
 		}
+		var site app.Website
 		if !remove {
 			site = app.Website{Name: strings.TrimSpace(e.name.Value()), URL: strings.TrimSpace(e.address.Value())}
 			if site.URL == "" {
@@ -182,9 +170,12 @@ func (m *Model) websiteEditorAction(id string) tea.Cmd {
 		return func() tea.Msg {
 			var sites []app.Website
 			var err error
-			if remove {
-				sites, err = backend.RemoveWebsite(ctx, site)
-			} else {
+			switch {
+			case remove:
+				sites, err = backend.RemoveWebsite(ctx, original)
+			case original.URL != "":
+				sites, err = backend.UpdateWebsite(ctx, original, site)
+			default:
 				sites, err = backend.AddWebsite(ctx, site)
 			}
 			return websiteListSavedMsg{id: request, sites: sites, err: err}
@@ -202,13 +193,15 @@ func (m *Model) acceptWebsiteList(msg websiteListSavedMsg) tea.Cmd {
 	case msg.err == nil:
 		// The store can finish publishing just before cancellation arrives.
 		m.setWebsites(msg.sites)
+		if m.websiteEditor.original.URL == "" {
+			m.siteManager.selected = len(msg.sites) - 1
+		}
 		m.closeWebsiteEditor()
 	case msg.sites != nil:
-		// A stale deletion includes the authoritative list read under the store lock.
+		// A concurrent edit or removal returns the current list from the store.
 		m.setWebsites(msg.sites)
 		m.closeWebsiteEditor()
-		m.prepareNotification("website-editor", m.tr("websiteEditor.removeTitle"))
-		m.message, m.notification.warning = m.localizeError(msg.err), true
+		m.siteManager.err = m.localizeError(msg.err)
 	case errors.Is(msg.err, context.Canceled):
 		m.websiteEditor.canceled = true
 	default:

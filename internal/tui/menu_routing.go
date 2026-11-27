@@ -6,8 +6,6 @@ import tea "charm.land/bubbletea/v2"
 // against current page state before applying an action or selection.
 func (m *Model) applyMenuResult(result menuResult) tea.Cmd {
 	switch {
-	case m.menu.anchor.ID == "website.manage" && m.form == "":
-		return m.websiteManagerChoice(result)
 	case m.form == "profile-delete":
 		if result.Closed && result.Action != "" && !m.busy && !m.quitting {
 			m.profilesUI.deleteReplacement = result.Action
@@ -54,12 +52,6 @@ func (m *Model) reconcileMenu() {
 		}
 	case m.logs.levelMenu:
 		m.reconcileLogsLevelMenu()
-	case m.menu.dropdownOpen("website.manage"):
-		if m.pageSelectionMenuAvailable("overview") {
-			m.websiteManagerMenu().sync(&m.menu)
-		} else {
-			m.menu.dismiss()
-		}
 	case m.menu.dropdownOpen(overviewRouteGroupTarget):
 		m.reconcileOverviewGroupMenu()
 	case m.page == "settings":
@@ -81,7 +73,7 @@ func (m *Model) reconcileMenu() {
 }
 
 func (m *Model) dismissMenu() {
-	if m.form == "profile-delete" || m.page == "settings" || m.menu.dropdownOpen(overviewRouteGroupTarget) || m.menu.dropdownOpen("website.manage") {
+	if m.form == "profile-delete" || m.page == "settings" || m.menu.dropdownOpen(overviewRouteGroupTarget) {
 		m.menu.dismiss()
 		return
 	}

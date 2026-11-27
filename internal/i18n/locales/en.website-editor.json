@@ -1,6 +1,7 @@
 {
   "websiteEditor.add": "Add website",
-  "websiteEditor.removeSite": "Remove %s",
+  "websiteEditor.edit": "Edit website",
+  "websiteEditor.remove": "Remove",
   "websiteEditor.removeTitle": "Remove website",
   "websiteEditor.address": "Website address",
   "websiteEditor.name": "Name (optional)",

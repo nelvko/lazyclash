@@ -36,6 +36,18 @@ func TestWebsiteCardShowsPerSiteResultAndActions(t *testing.T) {
 			if strings.Count(view, "⚡︎") != 1 {
 				t.Fatalf("width %d: expected one test-all icon", width)
 			}
+			var manage, all hitRegion
+			for _, hit := range card.targets {
+				switch hit.ID {
+				case "website.manage":
+					manage = hit
+				case "website.all":
+					all = hit
+				}
+			}
+			if width >= 24 && (manage.Y != all.Y || manage.X+manage.W != all.X || all.X+all.W != width-2) {
+				t.Fatalf("width %d: manage and test all are not adjacent at the right edge of the header", width)
+			}
 			var buttons []hitRegion
 			for _, hit := range card.targets {
 				if strings.HasPrefix(hit.ID, "website.site.") {
@@ -118,9 +130,9 @@ func TestWebsiteCardScrollsFocusedTestIntoCompactViewport(t *testing.T) {
 		m.focus = "overview.card.dashboard.website.title"
 		m.revealContentFocus()
 		m.layout()
-		for _, id := range []string{"website.all", websiteActionID(app.DefaultWebsites()[0]), websiteActionID(app.DefaultWebsites()[1]), websiteActionID(app.DefaultWebsites()[2])} {
+		for _, id := range []string{"website.manage", "website.all", websiteActionID(app.DefaultWebsites()[0]), websiteActionID(app.DefaultWebsites()[1]), websiteActionID(app.DefaultWebsites()[2])} {
 			k := special(tea.KeyTab)
-			if id == "website.all" {
+			if id == "website.manage" {
 				k = special(tea.KeyEnter)
 			}
 			m, _ = update(m, k)

@@ -12,13 +12,7 @@ import (
 func overviewWebsiteCard(o dashboardOptions, width int) dashboardBlock {
 	tr := o.Locale.T
 	inner := overviewInnerWidth(width)
-	all := overviewControlButton{id: "website.all", label: "⚡︎"}
-	all.enabled = o.websiteTestsAvailable() && len(o.websites) > 0 && (o.websiteTests.canTestAll(o.websites) || o.Focus == all.id)
-	id := ""
-	if all.enabled {
-		id = all.id
-	}
-	title := overviewLabelSlot(o, inner, overviewHeading(o, tr("dashboard.website.title")), overviewButton(o, all, buttonIcon), id, true)
+	title := overviewWebsiteHeading(o, inner)
 	var content dashboardBlock
 	page := websitePager(inner, o.websiteOffset, len(o.websites))
 	start, end := page.GetSliceBounds(len(o.websites))
@@ -38,21 +32,38 @@ func overviewWebsiteCard(o dashboardOptions, width int) dashboardBlock {
 	if len(visible) == 0 {
 		content.append(overviewTextBlock([]string{themed(tr("dashboard.website.empty"), muted, panel, o.Dim)}, inner))
 	}
-	content.blank()
-	pageLabel := ""
 	if page.TotalPages > 1 {
-		pageLabel = themed(page.View(), muted, panel, o.Dim)
-	}
-	content.append(overviewLabelControl(o, inner, pageLabel, overviewControlButton{
-		id: "website.manage", label: tr("dashboard.website.manage"), enabled: !o.Busy,
-	}, buttonText))
-	if page.TotalPages > 1 {
+		content.blank()
+		content.append(overviewTextBlock([]string{themed(page.View(), muted, panel, o.Dim)}, inner))
 		content.append(overviewButtons(o, inner, []overviewControlButton{
 			{id: "website.prev", label: tr("dashboard.website.prev"), enabled: !page.OnFirstPage()},
 			{id: "website.next", label: tr("dashboard.website.next"), enabled: !page.OnLastPage()},
 		}))
 	}
 	return overviewPanel(o, width, title, content, nil)
+}
+
+func overviewWebsiteHeading(o dashboardOptions, width int) dashboardBlock {
+	title := overviewHeading(o, o.Locale.T("dashboard.website.title"))
+	manage := overviewControlButton{id: "website.manage", label: o.Locale.T("dashboard.website.manageShort"), enabled: !o.Busy}
+	all := overviewControlButton{id: "website.all", label: "⚡︎"}
+	all.enabled = o.websiteTestsAvailable() && len(o.websites) > 0 && (o.websiteTests.canTestAll(o.websites) || o.Focus == all.id)
+	left, right := overviewButton(o, manage, buttonText), overviewButton(o, all, buttonIcon)
+	leftW, rightW := ansi.StringWidth(left), ansi.StringWidth(right)
+	if leftW+rightW > width {
+		b := overviewLabelControl(o, width, title, manage, buttonText)
+		b.append(overviewLabelControl(o, width, "", all, buttonIcon))
+		return b
+	}
+	b := overviewLabelSlot(o, width, title, left+right, "", true)
+	y := len(b.lines) - 1
+	if manage.enabled {
+		b.targets = append(b.targets, hitRegion{ID: manage.id, X: width - leftW - rightW, Y: y, W: leftW, H: 1})
+	}
+	if all.enabled {
+		b.targets = append(b.targets, hitRegion{ID: all.id, X: width - rightW, Y: y, W: rightW, H: 1})
+	}
+	return b
 }
 
 func (o dashboardOptions) websiteTestsAvailable() bool {

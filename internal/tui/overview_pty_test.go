@@ -183,6 +183,20 @@ func (b *overviewPTYBackend) AddWebsite(ctx context.Context, site app.Website) (
 	return b.websitePrefs.AddWebsite(ctx, site)
 }
 
+func (b *overviewPTYBackend) UpdateWebsite(ctx context.Context, original, replacement app.Website) ([]app.Website, error) {
+	if b.websitePrefs == nil {
+		return nil, errors.New("website editing is unavailable in this fixture")
+	}
+	return b.websitePrefs.UpdateWebsite(ctx, original, replacement)
+}
+
+func (b *overviewPTYBackend) MoveWebsite(ctx context.Context, site app.Website, direction int) ([]app.Website, error) {
+	if b.websitePrefs == nil {
+		return nil, errors.New("website editing is unavailable in this fixture")
+	}
+	return b.websitePrefs.MoveWebsite(ctx, site, direction)
+}
+
 func (b *overviewPTYBackend) RemoveWebsite(ctx context.Context, site app.Website) ([]app.Website, error) {
 	if b.websitePrefs == nil {
 		return nil, errors.New("website editing is unavailable in this fixture")
@@ -201,8 +215,8 @@ func (b *overviewPTYBackend) TestWebsite(ctx context.Context, site app.Website) 
 	case "YouTube":
 		b.websiteYouTube.Add(1)
 		return app.WebsiteTestResult{}, context.DeadlineExceeded
-	case "status.example":
-		if site.URL == "https://status.example/health" {
+	case "Status API":
+		if site.URL == "https://status.example/ready" {
 			b.websiteCustom.Add(1)
 			return app.WebsiteTestResult{StatusCode: 204, Duration: 91 * time.Millisecond}, ctx.Err()
 		}

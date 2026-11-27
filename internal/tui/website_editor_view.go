@@ -16,7 +16,10 @@ func (m *Model) renderWebsiteEditor(base string) (string, []hitRegion) {
 	title := m.tr("websiteEditor.add")
 	var body dashboardBlock
 	buttons := []profileButton{{id: "websiteEditor.cancel", label: m.tr("websiteEditor.cancel")}}
-	if e.remove.URL == "" {
+	if !e.confirmRemove {
+		if e.original.URL != "" {
+			title = m.tr("websiteEditor.edit")
+		}
 		for _, field := range []struct {
 			id    string
 			input *textinput.Model
@@ -27,11 +30,14 @@ func (m *Model) renderWebsiteEditor(base string) (string, []hitRegion) {
 				Width: inner, Surface: modalBackground, Focused: m.focus == field.id, Hovered: m.hover == field.id,
 				ClearHovered: m.hover == field.id+".clear", Disabled: m.busy, Compact: m.height < 17}))
 		}
-		buttons = append(buttons, profileButton{id: "websiteEditor.save", label: m.tr("websiteEditor.save"), primary: true})
+		buttons = append([]profileButton{{id: "websiteEditor.save", label: m.tr("websiteEditor.save"), primary: true}}, buttons...)
+		if e.original.URL != "" {
+			buttons = append(buttons, profileButton{id: "websiteEditor.remove", label: m.tr("websiteEditor.remove")})
+		}
 	} else {
 		title = m.tr("websiteEditor.removeTitle")
-		body.lines = append(body.lines, themed(cellCrop(clean(e.remove.Name), inner), text, modalBackground, false))
-		body.lines = append(body.lines, themed(cellCrop(clean(e.remove.URL), inner), muted, modalBackground, false))
+		body.lines = append(body.lines, themed(cellCrop(clean(e.original.Name), inner), text, modalBackground, false))
+		body.lines = append(body.lines, themed(cellCrop(clean(e.original.URL), inner), muted, modalBackground, false))
 		buttons = append(buttons, profileButton{id: "websiteEditor.confirm", label: m.tr("websiteEditor.confirm")})
 	}
 	footer := m.profileButtons(buttons, inner, modalBackground)

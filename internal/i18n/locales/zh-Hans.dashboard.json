@@ -198,6 +198,7 @@
   "dashboard.overview.traffic": "实时流量",
   "dashboard.website.title": "网站测试",
   "dashboard.website.all": "全部测试",
+  "dashboard.website.manageShort": "管理",
   "dashboard.website.manage": "管理网站",
   "dashboard.website.prev": "上一页",
   "dashboard.website.next": "下一页",

@@ -176,6 +176,9 @@ func (m *Model) revealBodyTarget(hit hitRegion) {
 }
 
 func (m *Model) contextHelp() string {
+	if m.form == "website-manager" {
+		return m.tr("websiteManager.keys")
+	}
 	if m.form == "website-editor" {
 		if m.busy {
 			if m.opCtx.Err() != nil {

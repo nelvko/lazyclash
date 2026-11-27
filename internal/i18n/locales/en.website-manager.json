@@ -1,0 +1,8 @@
+{
+  "websiteManager.add": "Add",
+  "websiteManager.edit": "Edit",
+  "websiteManager.up": "Move up",
+  "websiteManager.down": "Move down",
+  "websiteManager.close": "Close",
+  "websiteManager.keys": "↑↓ Select · Shift+↑↓ Move · Tab Actions · Enter Confirm · Esc Close"
+}

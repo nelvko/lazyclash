@@ -68,12 +68,12 @@ func (s websiteTestState) canTestAll(sites []app.Website) bool {
 }
 
 func (m *Model) setWebsites(sites []app.Website) {
-	kept := make(map[app.Website]bool, len(sites))
+	kept := make(map[string]bool, len(sites))
 	for _, site := range sites {
-		kept[site] = true
+		kept[site.URL] = true
 	}
 	for _, site := range m.websites {
-		if !kept[site] {
+		if !kept[site.URL] {
 			row := m.websiteTests.rows[site.URL]
 			if row.cancel != nil {
 				row.cancel()

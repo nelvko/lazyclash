@@ -27,6 +27,8 @@ type Backend interface {
 	Snapshot(context.Context) (app.Snapshot, error)
 	LookupIPInfo(context.Context) (app.IPInfo, error)
 	AddWebsite(context.Context, app.Website) ([]app.Website, error)
+	UpdateWebsite(context.Context, app.Website, app.Website) ([]app.Website, error)
+	MoveWebsite(context.Context, app.Website, int) ([]app.Website, error)
 	RemoveWebsite(context.Context, app.Website) ([]app.Website, error)
 	TestWebsite(context.Context, app.Website) (app.WebsiteTestResult, error)
 	ReadPreferences(context.Context) (app.Preferences, error)
@@ -126,6 +128,7 @@ type networkMsg struct {
 // Bubble Tea receives a Model value at each update boundary. Internal helpers
 // use pointer receivers to avoid copying all the page and input states again.
 type Model struct {
+	siteManager           siteManagerState
 	websiteEditor         websiteEditorState
 	coreNumber            coreNumberEditor
 	locale                i18n.Localizer
@@ -417,6 +420,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.syncNotificationTimers(time.Now())
 	case websiteListSavedMsg:
 		cmd = m.acceptWebsiteList(v)
+	case websiteMoveMsg:
+		cmd = m.acceptWebsiteMove(v)
 	case profileEditorOpenedMsg:
 		cmd = m.acceptProfileEditor(v)
 	case profileEditorExitedMsg:
@@ -807,6 +812,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.updateInlineInput(v)
 		} else if m.form == "website-editor" {
 			cmd = m.updateWebsiteEditorInput(v)
+		} else if m.form == "website-manager" {
+			break
 		} else if m.form == "tun-confirm" || m.form == "profile-delete" || m.form == "profile-document" || m.form == "profile-overrides" && m.busy {
 			break
 		} else if m.form != "" {
@@ -1197,6 +1204,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.updateInlineInput(msg)
 		} else if m.form == "website-editor" {
 			cmd = m.updateWebsiteEditorInput(msg)
+		} else if m.form == "website-manager" {
+			break
 		} else if m.form == "tun-confirm" || m.form == "profile-delete" || m.form == "profile-document" || m.form == "profile-overrides" && m.busy {
 			break
 		} else if m.form != "" {
@@ -1316,6 +1325,9 @@ func (m *Model) openForm() tea.Cmd {
 	return textinput.Blink
 }
 func (m *Model) formKey(k tea.KeyPressMsg) tea.Cmd {
+	if m.form == "website-manager" {
+		return m.siteManagerKey(k)
+	}
 	if m.form == "website-editor" {
 		return m.websiteEditorKey(k)
 	}
@@ -1439,8 +1451,9 @@ func (m *Model) activateControl(id string, key *tea.KeyPressMsg) tea.Cmd {
 	}
 	switch id {
 	case "website.manage":
-		if m.page == "overview" && !m.busy && !m.quitting {
-			return m.openWebsiteManager()
+		if m.pageSelectionMenuAvailable("overview") {
+			m.siteManager = siteManagerState{}
+			m.returnToSiteManager()
 		}
 		return nil
 	case "website.prev", "website.next":
@@ -1738,6 +1751,10 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 		return nil
 	}
 	if _, wheel := event.(tea.MouseWheelMsg); wheel {
+		if m.form == "website-manager" {
+			m.siteManagerWheel(k)
+			return nil
+		}
 		if m.page == "settings" {
 			m.hover = ""
 		}
@@ -1776,6 +1793,9 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 					return m.wizardActivate(r.ID)
 				}
 				if m.form != "" {
+					if m.form == "website-manager" {
+						return m.siteManagerAction(r.ID)
+					}
 					if m.form == "website-editor" {
 						return m.websiteEditorAction(r.ID)
 					}
@@ -1999,6 +2019,8 @@ func (m *Model) renderLayout() {
 		m.screen, m.targets = m.renderWizard(base)
 	} else if m.form == "website-editor" {
 		m.screen, m.targets = m.renderWebsiteEditor(base)
+	} else if m.form == "website-manager" {
+		m.screen, m.targets = m.renderSiteManager(base)
 	} else if m.form == "tun-confirm" {
 		m.screen, m.targets = m.renderTUNConfirmation(base)
 	} else if m.form != "" {

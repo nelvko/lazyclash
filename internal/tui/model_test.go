@@ -30,6 +30,8 @@ type fakeBackend struct {
 	snapshotErr         error
 	lookupIPInfo        func(context.Context) (app.IPInfo, error)
 	addWebsite          func(context.Context, app.Website) ([]app.Website, error)
+	updateWebsite       func(context.Context, app.Website, app.Website) ([]app.Website, error)
+	moveWebsite         func(context.Context, app.Website, int) ([]app.Website, error)
 	removeWebsite       func(context.Context, app.Website) ([]app.Website, error)
 	testWebsite         func(context.Context, app.Website) (app.WebsiteTestResult, error)
 	prefs               app.Preferences
@@ -157,6 +159,18 @@ func (f *fakeBackend) RemoveWebsite(ctx context.Context, site app.Website) ([]ap
 		return f.removeWebsite(ctx, site)
 	}
 	return nil, errors.New("missing remove website fixture")
+}
+func (f *fakeBackend) UpdateWebsite(ctx context.Context, original, replacement app.Website) ([]app.Website, error) {
+	if f.updateWebsite != nil {
+		return f.updateWebsite(ctx, original, replacement)
+	}
+	return nil, errors.New("missing update website fixture")
+}
+func (f *fakeBackend) MoveWebsite(ctx context.Context, site app.Website, direction int) ([]app.Website, error) {
+	if f.moveWebsite != nil {
+		return f.moveWebsite(ctx, site, direction)
+	}
+	return nil, errors.New("missing move website fixture")
 }
 func (f *fakeBackend) TestWebsite(ctx context.Context, site app.Website) (app.WebsiteTestResult, error) {
 	if f.testWebsite != nil {
