@@ -25,6 +25,7 @@ import (
 
 type Backend interface {
 	Snapshot(context.Context) (app.Snapshot, error)
+	LookupIPInfo(context.Context) (app.IPInfo, error)
 	ReadPreferences(context.Context) (app.Preferences, error)
 	SaveNetworkPreferences(context.Context, downloadnet.Config) error
 	SetGuideDismissed(context.Context, bool) error
@@ -176,6 +177,7 @@ type Model struct {
 	statusCancel          context.CancelFunc
 	wizard                wizardState
 	runtime               runtimeState
+	ipInfo                overviewIPState
 	connections           connectionsState
 	rules                 rulesState
 	providers             providerPanelState
@@ -534,6 +536,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case runtimeResultMsg:
 		cmd = m.acceptRuntime(v)
+	case ipInfoResultMsg:
+		m.acceptIPInfo(v)
 	case logRecoveryExpiredMsg:
 		if m.logs.recoveryUntil == v.until {
 			m.logs.recoveryUntil = time.Time{}
@@ -545,6 +549,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = m.syncRuntime()
 		}
 	case parentCanceledMsg:
+		m.ipInfo.stop()
 		m.stopProxyTests()
 		m.stopRuntime()
 		m.stopRules()
@@ -1207,6 +1212,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.paths.reset()
 	}
 	next := m.syncRuntime()
+	if lookup := m.syncIPInfo(false); lookup != nil {
+		cmd = tea.Batch(cmd, lookup)
+	}
 	nextRules := m.syncRules()
 	nextRuleProviders := m.syncProviders()
 	if expiry := m.syncProfileExpiry(msg, previousPage); expiry != nil {
@@ -1394,6 +1402,8 @@ func (m *Model) activate(id string) tea.Cmd {
 		return cmd
 	}
 	switch id {
+	case "ip.refresh":
+		return m.syncIPInfo(true)
 	case "key-hints.toggle":
 		return m.toggleKeyHints()
 	case "runtime-settings":

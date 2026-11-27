@@ -22,6 +22,7 @@ func overviewLayout(o dashboardOptions, width int) dashboardBlock {
 		{"dashboard.control.routingMode", overviewModeCard},
 		{"dashboard.traffic.title", overviewTrafficCard},
 		{"dashboard.system.title", overviewSystemCard},
+		{"dashboard.overview.ipInfo", overviewIPCard},
 	}
 	paired := width >= 90
 	columnWidth := (width - 2) / 2
@@ -34,7 +35,7 @@ func overviewLayout(o dashboardOptions, width int) dashboardBlock {
 			card := cards[index]
 			return overviewNamedCard(card.id, card.render(o, w), w)
 		}
-		if paired && index < 4 {
+		if paired && cards[index].id != "dashboard.traffic.title" {
 			row := overviewColumns(o, render(index, columnWidth), render(index+1, columnWidth), columnWidth)
 			// An odd spare cell stays outside the cards, preserving equal widths.
 			if 2*columnWidth+2 < width {
@@ -45,18 +46,7 @@ func overviewLayout(o dashboardOptions, width int) dashboardBlock {
 			body.append(row)
 			index += 2
 		} else {
-			cardWidth := width
-			if paired && cards[index].id == "dashboard.system.title" {
-				cardWidth = columnWidth
-			}
-			card := render(index, cardWidth)
-			if cardWidth < width {
-				margin := themed(strings.Repeat(" ", width-cardWidth), text, bg, o.Dim)
-				for y := range card.lines {
-					card.lines[y] += margin
-				}
-			}
-			body.append(card)
+			body.append(render(index, width))
 			index++
 		}
 	}

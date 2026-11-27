@@ -1,5 +1,9 @@
 # 验证入口
 
+## 概览出口 IP 信息卡（2026-11-27）
+
+概览 PTY 使用示例地址和组织名称。160×45 和 120×32 下，「IP 信息」与左侧「运行环境」的宽度、高度和顶边一致。80×24 下，两卡按上下顺序获得键盘焦点。中文真彩和英文无色终端中，首次自动查询后按 Enter 刷新，模拟服务返回失败时焦点保留在「刷新」，再次按 Enter 后显示新的示例地址。内核停止场景记录到零次 IP 查询。专用 Debian 12/arm64 虚拟机通过全包测试。另用启用代理鉴权的临时 Mihomo 实例实际查询 `ipwho.is`，成功读回 IP、国家、地区、城市、服务商、组织、ASN 和时区。[160×45 双列截图](../.test-artifacts/ip-information/screens/overview-160x45-cards.png) · [80×32 单列截图](../.test-artifacts/ip-information/screens/overview-80x32-cards.png)
+
 ## 首版 CLI、Shell 集成与一次性导入（2026-11-27）
 
 Linux/arm64 使用真实 Mihomo 和 systemd。普通终端以裸命令打开 TUI，重定向输入或输出时返回 2。`status` 默认输出本地化摘要，`status --json` 仍可由脚本读取。真实 PTY 中拒绝升级返回 1 并保留 v1.19.33，确认后升级至 v1.19.34，原本停止的服务保持停止，再次升级返回 0。进程收到 SIGINT、SIGTERM 后完成清理，分别返回 130、143。[交互升级结果](../.test-artifacts/cli-release/upgrade-terminal.log)

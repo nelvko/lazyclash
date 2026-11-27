@@ -20,7 +20,7 @@ import (
 
 func TestOverviewPairedLayoutAlignsBothEdgesAndKeepsActionOwnership(t *testing.T) {
 	snapshot := app.Snapshot{
-		Installed: true, ConfigReady: true, HasRun: true,
+		Installed: true, ConfigReady: true, HasRun: true, MixedPort: 7890,
 		Version: "v1.19.33", RunningVersion: "v1.19.33",
 		Service:      service.Status{Active: true, State: "active", PID: 456},
 		Mode:         app.ModeStatus{Desired: "rule", Actual: "rule", Running: true},
@@ -31,11 +31,13 @@ func TestOverviewPairedLayoutAlignsBothEdgesAndKeepsActionOwnership(t *testing.T
 		"core.manage": "dashboard.control.core", "core.toggle": "dashboard.control.core",
 		"mode.rule": "dashboard.control.routingMode", "mode.global": "dashboard.control.routingMode", "mode.direct": "dashboard.control.routingMode", "card.proxies": "dashboard.control.routingMode",
 		"card.profiles": "dashboard.profile.title", "tun.enable": "dashboard.overview.network", "network.primaryConfig": "dashboard.overview.network",
+		"ip.refresh": "dashboard.overview.ipInfo",
 	}
 	renders := map[string]func(dashboardOptions, int) dashboardBlock{
 		"dashboard.control.core": overviewCoreCard, "dashboard.traffic.title": overviewTrafficCard,
 		"dashboard.control.routingMode": overviewModeCard, "dashboard.profile.title": overviewProfileCard,
 		"dashboard.overview.network": overviewNetworkCard, "dashboard.system.title": overviewSystemCard,
+		"dashboard.overview.ipInfo": overviewIPCard,
 	}
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		for _, width := range []int{16, 40, 72, 89, 90, 91, 112, 180} {
@@ -68,8 +70,8 @@ func TestOverviewPairedLayoutAlignsBothEdgesAndKeepsActionOwnership(t *testing.T
 							}
 						}
 					}
-					if len(cards) != 6 {
-						t.Fatalf("got %d cards, want six", len(cards))
+					if len(cards) != 7 {
+						t.Fatalf("got %d cards, want seven", len(cards))
 					}
 					if width >= 90 {
 						y := 0
@@ -82,12 +84,15 @@ func TestOverviewPairedLayoutAlignsBothEdgesAndKeepsActionOwnership(t *testing.T
 							}
 							y += max(left.H, right.H) + 1
 						}
-						traffic, environment := body.cards[4], body.cards[5]
+						traffic, environment, ip := body.cards[4], body.cards[5], body.cards[6]
 						if traffic.X != 0 || traffic.W != width || traffic.Y != y {
 							t.Fatalf("full-width traffic card lost its row: %+v at y=%d", traffic, y)
 						}
 						if environment.X != body.cards[0].X || environment.W != body.cards[0].W || environment.Y != y+traffic.H+1 {
 							t.Fatalf("environment card must occupy one left column after traffic: %+v", environment)
+						}
+						if ip.X != body.cards[1].X || ip.W != environment.W || ip.Y != environment.Y || ip.H != environment.H {
+							t.Fatalf("IP information card does not mirror the environment card: %+v / %+v", environment, ip)
 						}
 					} else {
 						y := 0

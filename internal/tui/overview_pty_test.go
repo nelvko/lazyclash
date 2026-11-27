@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"sync/atomic"
 	"testing"
@@ -37,6 +38,7 @@ func TestOverviewPTYFixture(t *testing.T) {
 	raw, err := json.Marshal(map[string]int64{
 		"service_changes": b.controls.Load(), "modes": b.modes.Load(),
 		"selections": b.selections.Load(), "runtime_queries": b.runtimeQueries.Load(),
+		"ip_lookups":  b.ipLookups.Load(),
 		"tun_changes": b.tunChanges.Load(), "terminal_changes": b.terminalChanges.Load(),
 		"settings_reads": b.settingsReads.Load(), "settings_writes": b.settingsWrites.Load(),
 	})
@@ -54,6 +56,7 @@ type overviewPTYBackend struct {
 	controls, modes, selections, runtimeQueries atomic.Int64
 	tunChanges, terminalChanges                 atomic.Int64
 	settingsReads, settingsWrites               atomic.Int64
+	ipLookups                                   atomic.Int64
 }
 
 func newOverviewPTYBackend(scenario string) *overviewPTYBackend {
@@ -134,6 +137,21 @@ func (b *overviewPTYBackend) Runtime(ctx context.Context) (app.RuntimeSnapshot, 
 		result.Connections.Connections = []mihomo.Connection{{ID: "overview-1"}, {ID: "overview-2"}, {ID: "overview-3"}}
 	}
 	return result, ctx.Err()
+}
+
+func (b *overviewPTYBackend) LookupIPInfo(ctx context.Context) (app.IPInfo, error) {
+	call := b.ipLookups.Add(1)
+	if b.scenario == "running" && call == 2 {
+		return app.IPInfo{}, errors.New("fixture IP lookup failed")
+	}
+	ip := "203.0.113.17"
+	if call > 1 {
+		ip = "203.0.113.18"
+	}
+	return app.IPInfo{
+		IP: ip, Country: "Japan", Region: "Tokyo", City: "Tokyo",
+		ISP: "Example ISP", Organization: "Example Net", ASN: "AS64496", Timezone: "Asia/Tokyo",
+	}, ctx.Err()
 }
 
 func (b *overviewPTYBackend) Control(ctx context.Context, _ string) error {

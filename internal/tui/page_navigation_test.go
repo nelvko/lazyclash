@@ -512,7 +512,7 @@ func TestPageNavigationOverviewCardIDsRemainUniqueAndStableAcrossResize(t *testi
 				m.locale = i18n.New(language)
 				m.snapshot.Installed, m.snapshot.GuideDismissed = state.installed, state.guideDismissed
 				setup := !state.installed && !state.guideDismissed
-				m.focus = "overview.card.dashboard.system.title"
+				m.focus = "overview.card.dashboard.overview.ipInfo"
 				if setup {
 					m.focus = "setup.install"
 				}
@@ -522,9 +522,8 @@ func TestPageNavigationOverviewCardIDsRemainUniqueAndStableAcrossResize(t *testi
 					wantIDs = []string{
 						"overview.card.dashboard.control.core", "overview.card.dashboard.profile.title",
 						"overview.card.dashboard.overview.network", "overview.card.dashboard.control.routingMode",
-						"overview.card.dashboard.traffic.title",
+						"overview.card.dashboard.traffic.title", "overview.card.dashboard.system.title", "overview.card.dashboard.overview.ipInfo",
 					}
-					wantIDs = append(wantIDs, "overview.card.dashboard.system.title")
 				}
 				for _, width := range []int{20, 30, 60, 120, 240, 20} {
 					m.width = width
@@ -549,7 +548,7 @@ func TestPageNavigationOverviewCardIDsRemainUniqueAndStableAcrossResize(t *testi
 						t.Fatalf("width %d: consolidated card IDs changed: got %v, want %v", width, ids, wantIDs)
 					}
 					if m.focus != wantFocus {
-						t.Fatalf("width %d: resizing moved the system card focus to %s", width, m.focus)
+						t.Fatalf("width %d: resizing moved focus from %s to %s", width, wantFocus, m.focus)
 					}
 				}
 			})

@@ -63,6 +63,12 @@ func (m *Model) profilesContextHelp() string {
 }
 
 func (m *Model) overviewContextHelp() string {
+	if m.focus == "ip.refresh" {
+		if m.busy || m.ipInfo.loading || !m.snapshotReady || !overviewIPAvailable(m.snapshot) {
+			return m.tr("navigation.controls.browse")
+		}
+		return m.controlActionHelp(m.tr("header.refresh"))
+	}
 	if strings.HasPrefix(m.focus, "mode.") {
 		return m.tr("navigation.overview.modeChoice")
 	}
@@ -106,6 +112,8 @@ func (m *Model) overviewCardHasControls() bool {
 		render = overviewNetworkCard
 	case "overview.card.dashboard.control.routingMode":
 		render = overviewModeCard
+	case "overview.card.dashboard.overview.ipInfo":
+		render = overviewIPCard
 	case "overview.card.dashboard.guide.title":
 		render, paired = getStarted, false
 	default:

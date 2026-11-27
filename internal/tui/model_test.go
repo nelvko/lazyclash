@@ -26,6 +26,7 @@ type fakeBackend struct {
 	upgradeCore         func(context.Context, app.CoreUpdateCheck, downloadnet.Config, func(mihomo.Progress)) (app.CoreUpgradeResult, error)
 	snapshot            app.Snapshot
 	snapshotErr         error
+	lookupIPInfo        func(context.Context) (app.IPInfo, error)
 	prefs               app.Preferences
 	prefsErr            error
 	saveLanguage        func(context.Context, string) error
@@ -120,6 +121,12 @@ func (f *fakeBackend) StreamLogs(ctx context.Context, emit func(mihomo.LogEntry)
 
 func (f *fakeBackend) Snapshot(context.Context) (app.Snapshot, error) {
 	return f.snapshot, f.snapshotErr
+}
+func (f *fakeBackend) LookupIPInfo(ctx context.Context) (app.IPInfo, error) {
+	if f.lookupIPInfo != nil {
+		return f.lookupIPInfo(ctx)
+	}
+	return app.IPInfo{}, errors.New("missing IP info fixture")
 }
 func (f *fakeBackend) ReadPreferences(context.Context) (app.Preferences, error) {
 	return f.prefs, f.prefsErr
