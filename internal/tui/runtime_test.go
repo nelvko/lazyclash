@@ -33,6 +33,79 @@ func liveRuntime() app.RuntimeSnapshot {
 	return app.RuntimeSnapshot{State: "ready", Service: service.Status{Active: true, State: "active"}, RunningVersion: "v1.19.33", ObservedAt: time.Now(), Traffic: &mihomo.Traffic{Up: 2048, Down: 4096, UpTotal: 1 << 20, DownTotal: 2 << 20}, Connections: &mihomo.ConnectionSnapshot{UploadTotal: 1 << 20, DownloadTotal: 2 << 20, Connections: []mihomo.Connection{}}, Memory: &memory}
 }
 
+func TestFirstRuntimeHeartbeatPreservesObservedVersionAndProxyFocus(t *testing.T) {
+	m, _ := proxiesModel(t, 160, 40)
+	m.snapshot.Service.StartTimestampMonotonic = 12345
+	m.syncProxies()
+	m, _ = update(m, key("l"))
+	wantFocus, wantVersion := m.focus, m.snapshot.RunningVersion
+	if !strings.HasPrefix(wantFocus, "node.") || wantVersion == "" {
+		t.Fatalf("expected an observed core and a focused proxy member, got %q and %q", wantVersion, wantFocus)
+	}
+	// The service watcher reports readiness before the independent version query completes.
+	sample := app.RuntimeSnapshot{State: "ready", Service: m.snapshot.Service}
+	for _, source := range []app.RuntimeSource{app.RuntimeStatus, app.RuntimeVersion} {
+		if source == app.RuntimeVersion {
+			sample.RunningVersion = wantVersion
+		}
+		event := app.RuntimeEvent{Source: source, Instance: 1, Snapshot: sample}
+		m, _ = update(m, runtimeResultMsg{generation: m.runtime.generation, events: []app.RuntimeEvent{event}})
+		if !m.proxyGroupExpanded("PROXY") || m.focus != wantFocus || !m.proxyListFocusValid() {
+			t.Fatalf("%s disrupted browsing: expanded=%v focus=%q, want %q", source, m.proxyGroupExpanded("PROXY"), m.focus, wantFocus)
+		}
+		if m.snapshot.RunningVersion != wantVersion || m.runtime.snapshot.RunningVersion != wantVersion {
+			t.Fatalf("%s lost version %q: snapshot=%q stream=%q", source, wantVersion, m.snapshot.RunningVersion, m.runtime.snapshot.RunningVersion)
+		}
+	}
+}
+
+func TestFirstRuntimeHeartbeatDoesNotCarryVersionToAnotherProcess(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		previousStart uint64
+		nextStart     uint64
+		pidChange     int
+		nextRestarts  uint64
+	}{
+		{name: "different PID", previousStart: 12345, nextStart: 12345, pidChange: 1},
+		{name: "reused PID", previousStart: 12345, nextStart: 12346},
+		{name: "restart counter changed with unavailable start time", nextRestarts: 1},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			m, _ := proxiesModel(t, 160, 40)
+			m.snapshot.Service.StartTimestampMonotonic = tc.previousStart
+			process := m.snapshot.Service
+			process.PID += tc.pidChange
+			process.StartTimestampMonotonic = tc.nextStart
+			process.Restarts = tc.nextRestarts
+			event := app.RuntimeEvent{Source: app.RuntimeStatus, Instance: 1, Snapshot: app.RuntimeSnapshot{State: "ready", Service: process}}
+			m, _ = update(m, runtimeResultMsg{generation: m.runtime.generation, events: []app.RuntimeEvent{event}})
+			if m.snapshot.RunningVersion != "" || m.runtime.snapshot.RunningVersion != "" {
+				t.Fatalf("new process inherited a version: snapshot=%q stream=%q", m.snapshot.RunningVersion, m.runtime.snapshot.RunningVersion)
+			}
+		})
+	}
+}
+
+func TestRuntimeBatchDiscardsProxyExpansionWhenPIDIsReused(t *testing.T) {
+	m, _ := proxiesModel(t, 160, 40)
+	m.snapshot.Service.StartTimestampMonotonic = 12345
+	m.syncProxies()
+	m, _ = update(m, key("l"))
+	if !m.proxyGroupExpanded("PROXY") {
+		t.Fatal("expected expanded members before the restart")
+	}
+	next := app.RuntimeSnapshot{State: "ready", Service: m.snapshot.Service}
+	next.Service.StartTimestampMonotonic++
+	events := []app.RuntimeEvent{{Source: app.RuntimeStatus, Instance: 1, Snapshot: next}}
+	next.RunningVersion = m.snapshot.RunningVersion
+	events = append(events, app.RuntimeEvent{Source: app.RuntimeVersion, Instance: 1, Snapshot: next})
+	m, _ = update(m, runtimeResultMsg{generation: m.runtime.generation, events: events})
+	if m.proxyGroupExpanded("PROXY") {
+		t.Fatal("new process with the same PID and version inherited an expanded group")
+	}
+}
+
 func TestRuntimeSharedSessionSurvivesPagesResizeOverlaysAndForegroundJobs(t *testing.T) {
 	m := runtimeModel(t, &fakeBackend{})
 	if m.syncRuntime() == nil || !m.runtime.active || !m.runtime.pending || m.syncRuntime() != nil {
@@ -264,5 +337,18 @@ func TestNewerLiveStatusSurvivesAnOlderFullSnapshotWithoutClearingHistory(t *tes
 	m.syncRuntime()
 	if m.snapshot.Service.PID != 43 || len(m.runtime.history.points) != 1 || m.snapshot.Applied != "fresh-profile-metadata" {
 		t.Fatal("old full status replaced current process, discarded history or lost profile metadata")
+	}
+}
+
+func TestNewerLiveStatusAcceptsVersionFromSameProcessSnapshot(t *testing.T) {
+	m := runtimeModel(t, &fakeBackend{})
+	process := service.Status{Active: true, State: "active", PID: 42, StartTimestampMonotonic: 12345}
+	observed := time.Now().Add(-time.Second)
+	m.acceptRuntimeEvent(app.RuntimeEvent{Source: app.RuntimeStatus, Instance: 1, ObservedAt: observed,
+		Snapshot: app.RuntimeSnapshot{State: "ready", Service: process}})
+	full := app.Snapshot{Service: process, ServiceObservedAt: observed.Add(-time.Second), RunningVersion: "v1.19.33"}
+	m.adoptSnapshot(full)
+	if m.snapshot.RunningVersion != full.RunningVersion || m.runtime.snapshot.RunningVersion != full.RunningVersion {
+		t.Fatalf("full snapshot version was discarded: snapshot=%q stream=%q", m.snapshot.RunningVersion, m.runtime.snapshot.RunningVersion)
 	}
 }

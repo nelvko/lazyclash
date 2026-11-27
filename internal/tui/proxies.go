@@ -792,7 +792,8 @@ func (m *Model) syncProxies() tea.Cmd {
 		m.proxies.editing = false
 		m.proxies.search.Blur()
 	}
-	scope := fmt.Sprintf("%s\x00%d\x00%s", m.snapshot.Applied, m.snapshot.Service.PID, m.snapshot.RunningVersion)
+	process := m.snapshot.Service
+	scope := fmt.Sprintf("%s\x00%d\x00%d\x00%s", m.snapshot.Applied, process.PID, process.StartTimestampMonotonic, m.snapshot.RunningVersion)
 	source := m.snapshot.Generation + "\x00" + scope
 	modeChanged := m.snapshot.Mode.Actual != m.proxies.mode
 	sourceChanged := source != m.proxies.source

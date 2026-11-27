@@ -261,10 +261,9 @@ class Terminal:
         os.write(self.fd, data)
 
     def wait(self, needle, timeout=20, after=0):
-        pattern = re.compile(re.escape(needle)) if isinstance(needle, str) else needle
         end = time.monotonic() + timeout
         while time.monotonic() < end:
-            if not self.screen.synchronized and pattern.search(self.screen.text()) and (not after or len(self.text()) > after):
+            if not self.screen.synchronized and needle in self.screen.text() and (not after or len(self.text()) > after):
                 return
             self.read()
             if self.closed:
@@ -833,11 +832,6 @@ def main():
                     raise AssertionError("TUI selection was not confirmed by the real API")
 
             terminal.wait("Running")
-            # Exercise selection after the overview receives its first live traffic sample.
-            terminal.resize(160, 60)
-            terminal.wait(re.compile(r"Upload[ \t]+[0-9.]+ [KMGT]?i?B/s"))
-            terminal.resize(120, 40)
-            terminal.settle()
             # Locate the sidebar entry so mouse coverage follows its spacing.
             terminal.wait("Settings")
             proxies_row = next(row for row, line in enumerate(terminal.screen.text().splitlines(), 1)
@@ -853,7 +847,17 @@ def main():
             terminal.key(b"\x1b[C")
             terminal.wait_selected_proxy("DIRECT")
             terminal.wait("REJECT")
-            terminal.settle()
+            # Leave the freshly opened group untouched across the one-second
+            # runtime observations and their follow-up core status refresh.
+            deadline = time.monotonic() + 2
+            while time.monotonic() < deadline:
+                terminal.read()
+                if terminal.closed:
+                    raise AssertionError("The TUI exited with the proxy group open")
+                if terminal.screen.synchronized or terminal.screen.state != "text":
+                    continue
+                if any("PROXY" in line and line.endswith("▸") for line in terminal.screen.text().splitlines()):
+                    raise AssertionError("Startup refresh collapsed the open proxy group\n" + terminal.screen.text())
             for name in ("DIRECT", "REJECT"):
                 unmeasured = re.compile(r"(?<!\w)" + re.escape(name) + r"[ \t]+—(?:[ \t]|$)")
                 if not any(unmeasured.search(line) for line in terminal.screen.text().splitlines()):

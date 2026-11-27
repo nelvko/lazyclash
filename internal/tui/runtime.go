@@ -289,6 +289,7 @@ func (m *Model) acceptRuntimeEvent(event app.RuntimeEvent) bool {
 		if event.Err != nil {
 			current = app.RuntimeSnapshot{State: "unavailable", Error: event.Err.Error(), Diagnostic: event.Err}
 		}
+		retainRunningVersion(&current, &m.snapshot)
 		changed := event.Instance != m.runtime.instance
 		if changed {
 			m.logs.recoveryUntil = time.Time{}

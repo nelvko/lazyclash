@@ -63,12 +63,25 @@ func (m *Model) observeCoreState(state string) tea.Cmd {
 	return nil
 }
 
+// The service watcher can report a ready process before its version query returns.
+func retainRunningVersion(runtime *app.RuntimeSnapshot, observed *app.Snapshot) {
+	if runtime.State != "ready" || runtime.RunningVersion != "" {
+		return
+	}
+	current, previous := runtime.Service, observed.Service
+	if previous.Active && current.PID > 0 && current.PID == previous.PID &&
+		current.StartTimestampMonotonic == previous.StartTimestampMonotonic && current.Restarts == previous.Restarts {
+		runtime.RunningVersion = observed.RunningVersion
+	}
+}
+
 // A full settings/profile read can finish after a newer live ownership check.
 // Merge that newer process observation while keeping the read's profile data.
 func (m *Model) adoptSnapshot(snapshot app.Snapshot) {
 	latest := m.runtime.observed[app.RuntimeStatus]
 	if !snapshot.ServiceObservedAt.IsZero() && latest.After(snapshot.ServiceObservedAt) {
-		runtime := m.runtime.snapshot
+		runtime := &m.runtime.snapshot
+		retainRunningVersion(runtime, &snapshot)
 		if runtime.Service.State != "" {
 			snapshot.Service = runtime.Service
 			snapshot.ServiceError, snapshot.ServiceDiagnostic = "", nil
