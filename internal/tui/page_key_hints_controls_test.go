@@ -31,7 +31,7 @@ func TestProfilesHintsFollowInputAndDetailActions(t *testing.T) {
 			t.Fatal("profile card did not advertise settings and menu")
 		}
 		m = openSettingsForTest(t, m, "work")
-		if m.contextHelp() != m.tr("profile_settings.footer") {
+		if m.contextHelp() != m.tr("profiles.create_footer") {
 			t.Fatal("settings advertised card shortcuts")
 		}
 		m, _ = update(m, special(tea.KeyEscape))

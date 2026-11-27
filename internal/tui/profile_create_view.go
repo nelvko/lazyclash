@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"slices"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -11,48 +12,50 @@ func (m *Model) renderProfileCreateForm(base string) (string, []hitRegion) {
 	settings := m.form == "profile-settings"
 	width, height := min(inputFieldMaxWidth+2*modalPaddingX, m.width-4), m.height-2
 	if settings {
-		width, height = min(inputImportMaxWidth+2*modalPaddingX, m.width), min(32, height)
+		width = min(inputImportMaxWidth+2*modalPaddingX, m.width)
 	}
 	if width < 26 || height < 12 {
 		return m.renderModalNotice(m.tr("profiles.enlarge"))
 	}
 	inner := width - 2*modalPaddingX
-	title := m.tr("profiles.create_title")
+	title, detail := m.tr("profiles.create_title"), m.tr("profiles.create_hint")
 	if settings {
-		title = m.tr("profile_settings.title", clean(m.profileInfo(m.name).Name))
+		title = m.tr("profile_settings.title")
+		detail = m.profileSourceKind()
 	}
 	header := themed(lipgloss.NewStyle().Bold(true).Render(cellCrop(title, inner)), text, modalBackground, false)
+	if detail != "" && ansi.StringWidth(header)+2+ansi.StringWidth(detail) <= inner {
+		header = cellPad(header, inner-ansi.StringWidth(detail)) + themed(detail, muted, modalBackground, false)
+	}
 	bodyY := 2
-	if !settings {
-		hint := m.tr("profiles.create_hint")
-		if ansi.StringWidth(header)+2+ansi.StringWidth(hint) <= inner {
-			header = cellPad(header, inner-ansi.StringWidth(hint)) + themed(hint, muted, modalBackground, false)
-		}
-		if height >= 18 {
-			bodyY++
-		}
+	if height >= 18 {
+		bodyY++
 	}
 	footer := m.profileFormFooter(inner)
-	// Keep one row of space above and below the footer.
 	bodyH := height - bodyY - len(footer.lines) - 2
-	body, scroll := m.profileFormBody(inner, bodyH)
-	if !settings {
+	body, overflow := m.profileFormBody(inner, bodyH)
+	if !settings || !overflow {
 		bodyH = len(body.lines)
-		height = bodyY + bodyH + len(footer.lines) + 2
 	}
+	height = bodyY + bodyH + len(footer.lines) + 2
 	surface := m.newModalSurface(width, height)
 	put := func(row int, line string) { surface.put(modalPaddingX, row, cellCrop(line, inner)) }
 	put(1, header)
-	for i, line := range body.lines[scroll:min(scroll+bodyH, len(body.lines))] {
+	for i, line := range body.lines {
 		put(bodyY+i, line)
+	}
+	if settings {
+		surface.divider(bodyY + bodyH)
+		if overflow {
+			indicator := " " + m.tr("profile_settings.scroll")
+			surface.put(width-modalPaddingX-ansi.StringWidth(indicator), bodyY+bodyH, themed(indicator, muted, modalBackground, false))
+		}
 	}
 	var targets []hitRegion
 	for _, hit := range body.targets {
-		if hit, ok := clipRegion(hit, 0, scroll, inner, bodyH); ok {
-			hit.X += modalPaddingX
-			hit.Y += bodyY - scroll
-			targets = append(targets, surface.screen(hit))
-		}
+		hit.X += modalPaddingX
+		hit.Y += bodyY
+		targets = append(targets, surface.screen(hit))
 	}
 	footerY := bodyY + bodyH + 1
 	for i, line := range footer.lines {
@@ -66,14 +69,21 @@ func (m *Model) renderProfileCreateForm(base string) (string, []hitRegion) {
 	return surface.render(base), targets
 }
 
+func (m *Model) profileSourceKind() string {
+	if strings.TrimSpace(m.profileCreate.source.Value()) == "" {
+		return ""
+	}
+	if m.profileCreate.remoteSource() {
+		return m.tr("profiles.create_remote")
+	}
+	return m.tr("profiles.create_local")
+}
+
 func (m *Model) profileFormField(field, width int) dashboardBlock {
 	label := ""
 	switch field {
 	case profileCreateSource:
 		label = "profiles.create_source_label"
-		if m.form == "profile-settings" {
-			label = "profiles.create_source"
-		}
 	case profileCreateUserAgent:
 		label = "profiles.user_agent"
 	case profileCreateName:
@@ -90,12 +100,8 @@ func (m *Model) profileFormField(field, width int) dashboardBlock {
 		color = text
 	}
 	heading := themed(m.tr(label), color, modalBackground, false)
-	if m.form == "profile-create" && field == profileCreateSource && strings.TrimSpace(m.profileCreate.source.Value()) != "" {
-		kind := m.tr("profiles.create_local")
-		if m.profileCreate.remoteSource() {
-			kind = m.tr("profiles.create_remote")
-		}
-		if ansi.StringWidth(heading)+2+ansi.StringWidth(kind) <= width {
+	if m.form == "profile-create" && field == profileCreateSource {
+		if kind := m.profileSourceKind(); kind != "" && ansi.StringWidth(heading)+2+ansi.StringWidth(kind) <= width {
 			heading = cellPad(heading, width-ansi.StringWidth(kind)) + themed(kind, muted, modalBackground, false)
 		}
 	}
@@ -108,29 +114,38 @@ func (m *Model) profileFormField(field, width int) dashboardBlock {
 	return block
 }
 
-func (m *Model) profileFormBody(width, height int) (dashboardBlock, int) {
+func (m *Model) profileFormBody(width, height int) (dashboardBlock, bool) {
 	settings := m.form == "profile-settings"
 	var rows []dashboardBlock
-	for _, field := range m.profileFieldOrder() {
+	order := m.profileFieldOrder()
+	if settings && width >= 58 {
+		// Leave room for a filename and a short description on the same row.
+		const gap = 2
+		left := (width - gap) / 2
+		rows = append(rows, joinFormFields(gap,
+			m.profileFormField(profileCreateName, left),
+			m.profileFormField(profileCreateDescription, width-left-gap)))
+		order = order[2:]
+	}
+	for _, field := range order {
 		if field == profileCreateSave {
 			break
 		}
-		fieldWidth := width
-		if settings && field != profileCreateSource {
-			fieldWidth = min(width, inputFieldMaxWidth)
-		}
-		row := m.profileFormField(field, fieldWidth)
+		row := m.profileFormField(field, width)
 		if field == profileCreateSource && m.profileCreate.field == field {
 			row.lines = append(row.lines, m.paths.view(width, min(4, height-len(row.lines)), m.locale)...)
 		}
 		rows = append(rows, row)
 	}
 	if settings {
-		return m.profileSettingsBody(rows, width, height)
+		meta := m.profileSettingsMetadata(m.profileInfo(m.name), width)
+		for lines := range slices.Chunk(meta.lines, height) {
+			rows = append(rows, dashboardBlock{lines: lines})
+		}
 	}
 
-	// Show complete rows around the focused editor. A candidate list is part
-	// of its source row, so it cannot be stranded on the far side of a scroll.
+	// A row contains a whole editor (including its path candidates), a pair
+	// of editors, or the subscription metadata. Scroll between complete rows.
 	active, total := len(rows)-1, 0
 	for i, row := range rows {
 		total += len(row.lines)
@@ -144,14 +159,22 @@ func (m *Model) profileFormBody(width, height int) (dashboardBlock, int) {
 	if total+len(rows)-1 <= height {
 		gap = 1
 	}
+	if settings && m.profileCreate.manualScroll {
+		active = len(rows) - 1
+	}
 	first, used := active, len(rows[active].lines)
 	for first > 0 && used+gap+len(rows[first-1].lines) <= height {
 		first--
 		used += len(rows[first].lines) + gap
 	}
+	if settings && m.profileCreate.manualScroll {
+		// Stop at the first row of the last page, even after a resize.
+		first = min(m.profileCreate.firstRow, first)
+	}
 	var body dashboardBlock
+	visible := 0
 	for _, row := range rows[first:] {
-		if len(body.lines) > 0 {
+		if visible > 0 {
 			if len(body.lines)+gap+len(row.lines) > height {
 				break
 			}
@@ -160,48 +183,19 @@ func (m *Model) profileFormBody(width, height int) (dashboardBlock, int) {
 			}
 		}
 		body.append(row)
+		visible++
 	}
-	return body, 0
-}
-
-func (m *Model) profileSettingsBody(rows []dashboardBlock, width, height int) (dashboardBlock, int) {
-	var body dashboardBlock
-	focusEnd := 0
-	for i, row := range rows {
-		if i > 0 {
-			body.blank()
-		}
-		body.append(row)
-		for _, hit := range row.targets {
-			if hit.ID == m.focus {
-				focusEnd = len(body.lines)
-			}
-		}
+	if settings {
+		m.profileCreate.firstRow, m.profileCreate.pageRows = first, visible
 	}
-	for _, line := range m.settingsInfoLines(m.profileInfo(m.name)) {
-		body.lines = append(body.lines, themed(cellCrop(line, width), muted, modalBackground, false))
-	}
-	buttons := []profileButton{{"profile-settings.overrides", m.tr("profile_settings.import"), false}}
-	if m.canUseDefaultFrom(m.name) {
-		buttons = append(buttons, profileButton{"profile-settings.deactivate", m.tr("profile_settings.deactivate"), false})
-	}
-	body.append(m.profileButtons(buttons, width, modalBackground))
-	if focusEnd == 0 {
-		focusEnd = len(body.lines)
-	}
-	scroll := max(0, focusEnd-height)
-	if m.profileCreate.manualScroll {
-		scroll = min(m.profileCreate.scroll, max(0, len(body.lines)-height))
-	}
-	m.profileCreate.scroll = scroll
-	return body, scroll
+	return body, visible < len(rows)
 }
 
 func (m *Model) profileFormFooter(width int) dashboardBlock {
 	settings := m.form == "profile-settings"
 	save, hint := m.tr("profiles.create_save"), m.tr("profiles.create_footer")
 	if settings {
-		save, hint = m.tr("profile_settings.save"), m.tr("profile_settings.footer")
+		save = m.tr("profile_settings.save")
 	} else if m.profileCreate.field == profileCreateSource && m.paths.active {
 		hint = m.tr("profiles.create_path_keys")
 	} else if m.profileCreate.field == profileCreateSource {
@@ -220,29 +214,35 @@ func (m *Model) profileFormFooter(width int) dashboardBlock {
 		feedback = themed(m.spinner.View()+" "+m.message, accent, modalBackground, false)
 	}
 
-	var footer dashboardBlock
-	saveW, cancelW := ansi.StringWidth(saveButton), ansi.StringWidth(cancelButton)
-	saveX, cancelX, buttonY := cancelW, 0, 0
+	var footer, leading dashboardBlock
 	if settings {
-		footer.lines = []string{cancelButton + saveButton, themed(hint, muted, modalBackground, false), feedback}
-	} else {
-		saveX = width - saveW - cancelW
-		cancelX = saveX + saveW
-		prompt := themed(cellCrop(hint, width), muted, modalBackground, false)
+		actions := []profileButton{{"profile-settings.overrides", m.tr("profile_settings.import"), false}}
+		if m.canUseDefaultFrom(m.name) {
+			actions = append(actions, profileButton{"profile-settings.deactivate", m.tr("profile_settings.deactivate"), false})
+		}
+		leading = m.profileButtons(actions, width, modalBackground)
 		if feedback != "" {
-			prompt = cellCrop(feedback, width)
+			footer.lines = append(footer.lines, cellCrop(feedback, width))
 		}
-		if ansi.StringWidth(prompt)+2 > saveX {
-			footer.lines = append(footer.lines, prompt)
-			buttonY, prompt = 1, ""
+	} else {
+		prompt := themed(hint, muted, modalBackground, false)
+		if feedback != "" {
+			prompt = feedback
 		}
-		footer.lines = append(footer.lines, cellPad(prompt, saveX)+saveButton+cancelButton)
+		leading.lines = []string{cellCrop(prompt, width)}
 	}
+	saveW, cancelW := ansi.StringWidth(saveButton), ansi.StringWidth(cancelButton)
+	saveX := width - saveW - cancelW
+	footer.append(leading)
+	if len(leading.lines) > 1 || ansi.StringWidth(leading.lines[0])+2 > saveX {
+		footer.blank()
+	}
+	buttonY := len(footer.lines) - 1
+	footer.lines[buttonY] = cellPad(footer.lines[buttonY], saveX) + saveButton + cancelButton
 	if !m.busy && !m.quitting {
-		footer.targets = []hitRegion{
-			{ID: "profile-create.save", X: saveX, Y: buttonY, W: saveW, H: 1},
-			{ID: "profile-create.cancel", X: cancelX, Y: buttonY, W: cancelW, H: 1},
-		}
+		footer.targets = append(footer.targets,
+			hitRegion{ID: "profile-create.save", X: saveX, Y: buttonY, W: saveW, H: 1},
+			hitRegion{ID: "profile-create.cancel", X: saveX + saveW, Y: buttonY, W: cancelW, H: 1})
 	}
 	return footer
 }

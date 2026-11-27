@@ -6,6 +6,7 @@ import (
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/x/ansi"
 )
 
@@ -181,4 +182,27 @@ func renderInputField(input textinput.Model, o inputFieldOptions) dashboardBlock
 		}
 	}
 	return b
+}
+
+// Join complete controls so each editor, clear action and cursor keeps the
+// same horizontal offset as its frame.
+func joinFormFields(gap int, fields ...dashboardBlock) dashboardBlock {
+	var row dashboardBlock
+	var parts []string
+	x := 0
+	for i, field := range fields {
+		if i > 0 {
+			parts = append(parts, strings.Repeat(" ", gap))
+			x += gap
+		}
+		for _, hit := range field.targets {
+			hit.X += x
+			row.targets = append(row.targets, hit)
+		}
+		s := strings.Join(field.lines, "\n")
+		parts = append(parts, s)
+		x += lipgloss.Width(s)
+	}
+	row.lines = strings.Split(lipgloss.JoinHorizontal(lipgloss.Top, parts...), "\n")
+	return row
 }

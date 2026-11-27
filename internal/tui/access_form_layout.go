@@ -47,26 +47,13 @@ func (m *Model) accessFieldBlock(id, label string, width int) dashboardBlock {
 	return field
 }
 
-// Place full field blocks on one row. The clear button and native cursor
-// follow the same column offset as the input's visible frame.
 func appendAccessFields(d *wizardDocument, gap int, fields ...dashboardBlock) {
-	var parts []string
-	x, y := 0, len(d.lines)
-	for i, field := range fields {
-		if i > 0 {
-			parts = append(parts, strings.Repeat(" ", gap))
-			x += gap
-		}
-		for _, hit := range field.targets {
-			hit.X += x
-			hit.Y += y
-			d.targets = append(d.targets, hit)
-		}
-		s := strings.Join(field.lines, "\n")
-		parts = append(parts, s)
-		x += lipgloss.Width(s)
+	row := joinFormFields(gap, fields...)
+	for _, hit := range row.targets {
+		hit.Y += len(d.lines)
+		d.targets = append(d.targets, hit)
 	}
-	d.lines = append(d.lines, strings.Split(lipgloss.JoinHorizontal(lipgloss.Top, parts...), "\n")...)
+	d.lines = append(d.lines, row.lines...)
 }
 
 func (m *Model) accessEdit(d *wizardDocument) {

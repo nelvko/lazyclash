@@ -168,8 +168,8 @@ func TestProfileCardShowsRemainingFractionAndOptionalExpiry(t *testing.T) {
 	info.Pending = true
 	info.Quota = &configuration.SubscriptionQuota{TotalBytes: 100, UsedBytes: 50, ExpiresAt: date.Unix()}
 	for _, lang := range []struct{ id, balance, expiry string }{
-		{i18n.English, "50 B / 100 B left", "Expiry date"},
-		{i18n.Chinese, "剩余 50 B / 100 B", "到期日期"},
+		{i18n.English, "Remaining / total", "Expiry date"},
+		{i18n.Chinese, "剩余流量 / 总量", "到期日期"},
 	} {
 		m.locale = i18n.New(lang.id)
 		for _, width := range []int{25, 31} {
@@ -186,8 +186,51 @@ func TestProfileCardShowsRemainingFractionAndOptionalExpiry(t *testing.T) {
 				t.Errorf("%s at width %d: missing pending status", lang.id, width)
 			}
 		}
-		if p := ansi.Strip(strings.Join(m.settingsInfoLines(*info), "\n")); !strings.Contains(p, lang.expiry) || !strings.Contains(p, dateText) || !strings.Contains(p, lang.balance) {
+		if p := ansi.Strip(strings.Join(m.profileSettingsMetadata(*info, 72).lines, "\n")); !strings.Contains(p, lang.expiry) || !strings.Contains(p, dateText) || !strings.Contains(p, lang.balance) || !strings.Contains(p, "50 B / 100 B") {
 			t.Fatal("detail lost quota metadata", p)
+		}
+	}
+}
+
+func TestProfileSettingsMetadataFitsWideAndNarrowForms(t *testing.T) {
+	updated := time.Date(2025, 10, 30, 17, 6, 3, 0, time.Local)
+	info := app.ProfileInfo{UpdatedAt: updated, Quota: &configuration.SubscriptionQuota{
+		UsedBytes: 50, TotalBytes: 100, ExpiresAt: updated.AddDate(1, 0, 0).Unix(),
+	}}
+	for _, language := range []string{i18n.English, i18n.Chinese} {
+		m := profilesPreview(false)
+		m.locale = i18n.New(language)
+		labels := []string{m.tr("profiles.updated_date"), m.tr("profiles.remaining"), m.tr("profiles.expires")}
+		values := []string{"2025-10-30 17:06:03", "50 B / 100 B", "2026-10-30"}
+		rows := func(width, wantRows int) []string {
+			t.Helper()
+			lines := m.profileSettingsMetadata(info, width).lines
+			if len(lines) != wantRows {
+				t.Fatalf("%s at %d cells: got %d metadata rows, want %d", language, width, len(lines), wantRows)
+			}
+			for i, line := range lines {
+				if ansi.StringWidth(line) > width {
+					t.Fatalf("%s: metadata exceeded %d cells: %q", language, width, ansi.Strip(line))
+				}
+				lines[i] = ansi.Strip(line)
+			}
+			return lines
+		}
+		wide, narrow, stacked := rows(72, 2), rows(38, 3), rows(22, 6)
+		for i, label := range labels {
+			left, _, ok := strings.Cut(wide[0], label)
+			if !ok || !strings.HasPrefix(ansi.Cut(wide[1], ansi.StringWidth(left), 72), values[i]) {
+				t.Fatalf("%s: %q was not aligned below %q: %q", language, values[i], label, wide)
+			}
+			if !strings.HasPrefix(narrow[i], label) || !strings.HasSuffix(narrow[i], values[i]) {
+				t.Fatalf("%s: metadata did not fit beside its label: %q", language, narrow)
+			}
+			if stacked[2*i] != label || stacked[2*i+1] != values[i] {
+				t.Fatalf("%s: stacked metadata lost %q or %q: %q", language, label, values[i], stacked)
+			}
+		}
+		if lines := m.profileSettingsMetadata(app.ProfileInfo{}, 72).lines; len(lines) != 0 {
+			t.Fatalf("empty metadata rendered %q", lines)
 		}
 	}
 }
@@ -278,7 +321,7 @@ func TestExpiredProfileCardKeepsActualDateInDetails(t *testing.T) {
 		if !strings.Contains(card, language.expired) || strings.Contains(card, "2001-03-04") {
 			t.Errorf("%s card lost expired status: %s", language.name, card)
 		}
-		detail := ansi.Strip(strings.Join(m.settingsInfoLines(*info), "\n"))
+		detail := ansi.Strip(strings.Join(m.profileSettingsMetadata(*info, 72).lines, "\n"))
 		if !strings.Contains(detail, language.label) || !strings.Contains(detail, "2001-03-04") {
 			t.Errorf("%s details lost actual expiry date: %s", language.name, detail)
 		}

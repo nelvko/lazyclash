@@ -118,7 +118,7 @@ func (m *Model) profileButtonView(b profileButton, surface string) string {
 	kind := buttonSecondary
 	if b.primary {
 		kind = buttonPrimary
-	} else if strings.HasPrefix(b.id, "profiles.refresh.") || strings.HasPrefix(b.id, "profiles.menu.") {
+	} else if strings.HasPrefix(b.id, "profiles.refresh.") || strings.HasPrefix(b.id, "profiles.menu.") || strings.HasPrefix(b.id, "profile-settings.") {
 		kind = buttonText
 	} else if strings.HasPrefix(b.id, "profiles.delete.") {
 		kind = buttonDanger

@@ -56,6 +56,15 @@ def assert_saved_cards(terminal, count):
         assert label not in screen, "unexpected default card or summary\n" + screen
 
 
+def assert_settings_allowance(terminal, quota, expiry):
+    terminal.wait("Remaining / total")
+    rows = terminal.screen.text().splitlines()
+    y = next(i for i, row in enumerate(rows) if "Remaining / total" in row)
+    for label, value in [("Remaining / total", quota), ("Expiry date", expiry)]:
+        column = rows[y].index(label)
+        assert rows[y + 1].startswith(value, column), f"settings value misaligned below {label}"
+
+
 def header_row(terminal, label):
     needle = "[" + label.strip("[] ") + "]"
 
@@ -129,7 +138,11 @@ def main():
         with tempfile.TemporaryDirectory(prefix="lazyclash-profiles-pty-") as workspace:
             base = Path(workspace)
             home = base / "home"
-            command = [str(binary), "--home", str(home), "--service-name", "lazyclash-profiles-pty-" + uuid.uuid4().hex[:12]]
+            home.mkdir(mode=0o700)
+            (home / "preferences.json").write_text(json.dumps({
+                "HasRun": True, "GuideDismissed": True, "StartPage": "profiles",
+            }))
+            command = [str(binary), "--lang", "en", "--home", str(home), "--service-name", "lazyclash-profiles-pty-" + uuid.uuid4().hex[:12]]
             library_path = home / "configuration" / "library.json"
 
             def library():
@@ -149,12 +162,8 @@ def main():
 
             terminal = smoke.Terminal(command)
             terminals.append(terminal)
-            terminal.wait("Overview")
-            terminal.wait_absent("Loading state")
-            terminal.resize(160, 40)
-            terminal.key(b"3")
             terminal.wait("No saved profiles")
-            terminal.wait("Enter New")  # The startup version check can still own input.
+            terminal.resize(160, 40)
             assert_saved_cards(terminal, 0)
             header_row(terminal, "Update all")
             (output / "profiles-empty.txt").write_text(terminal.screen.text())
@@ -233,9 +242,8 @@ def main():
             # Enter on the card opens the same Settings panel as its menu.
             terminal.key(b"\x1b[B")
             terminal.key(b"\r")
-            terminal.wait("Settings for pty-airport")
-            terminal.wait("7.0 GiB / 10.0 GiB left")
-            terminal.wait("Expiry date " + future_date)
+            terminal.wait("Profile settings")
+            assert_settings_allowance(terminal, "7.0 GiB / 10.0 GiB", future_date)
             terminal.wait(secret)  # address is populated only after the private settings read
             assert "Deactivate" not in terminal.screen.text()
             assert not (home / "installation").exists(), "opening Settings applied a profile"
@@ -244,7 +252,7 @@ def main():
             paste(terminal, memo)
             terminal.click_text("[Save]")
             wait_until(terminal, lambda: primary_profile().get("description") == memo, "settings did not save description")
-            terminal.wait_absent("Settings for pty-airport")
+            terminal.wait_absent("Profile settings")
             assert primary_profile()["name_source"] == "provider" and len(requests) == before
             terminal.wait(memo)
             memo_row = next(line for line in terminal.screen.text().splitlines() if memo in line)
@@ -274,9 +282,8 @@ def main():
 
             mouse_text(terminal, "pty-updated", button=2)
             mouse_text(terminal, "Settings…")
-            terminal.wait("Settings for pty-updated")
-            terminal.wait("4.0 GiB / 10.0 GiB left")
-            terminal.wait("Expiry date " + cutoff_date)
+            terminal.wait("Profile settings")
+            assert_settings_allowance(terminal, "4.0 GiB / 10.0 GiB", cutoff_date)
             terminal.wait(memo)
             # A malformed replacement must preserve both the record and the draft.
             prior = primary_profile()
@@ -291,7 +298,7 @@ def main():
             terminal.key(b"\r")
             wait_until(terminal, lambda: "/invalid-configuration" in requests, "invalid source was not checked")
             terminal.wait("invalid Mihomo YAML")
-            terminal.wait("Settings for pty-updated")
+            terminal.wait("Profile settings")
             terminal.wait(new_memo)
             terminal.wait("My Airport")
             terminal.wait("/invalid-configuration")
@@ -302,7 +309,7 @@ def main():
             paste(terminal, replacement_address)
             terminal.key(b"\r")
             wait_until(terminal, lambda: primary_profile()["address"] == replacement_address, "fixed source was not committed")
-            terminal.wait_absent("Settings for pty-updated")
+            terminal.wait_absent("Profile settings")
             assert profile_id("My Airport") == primary_id[0] and primary_profile()["name_source"] == "custom"
             assert primary_profile()["description"] == new_memo
             terminal.wait_absent(secret)
@@ -310,11 +317,11 @@ def main():
             terminal.resize(60, 20)
             mouse_text(terminal, "My Airport", button=2)
             mouse_text(terminal, "Settings…")
-            terminal.wait("Settings for My Airport")
+            terminal.wait("Profile settings")
             terminal.settle()
             (output / "profiles-settings-60x20.txt").write_text(terminal.screen.text())
             terminal.key(b"\x1b")
-            terminal.wait_absent("Settings for My Airport")
+            terminal.wait_absent("Profile settings")
             terminal.key(b"m")
             terminal.wait("Settings…")
             for columns, rows in [(60, 20), (40, 16), (20, 12)]:
@@ -395,9 +402,11 @@ def main():
             terminal.key(b"\x1b[B")
             terminal.key(b"\x1b[C")
             terminal.key(b"\r")
-            terminal.wait("Settings for " + right_name)
+            terminal.wait("Profile settings")
+            wait_until(terminal, lambda: any("│ " + right_name in line for line in terminal.screen.text().splitlines()),
+                       "settings opened for a different card")
             terminal.key(b"\x1b")
-            terminal.wait_absent("Settings for " + right_name)
+            terminal.wait_absent("Profile settings")
 
             before = len(requests)
             local.write_text("rules: ['DOMAIN,local.invalid,REJECT', 'MATCH,DIRECT']\n")
@@ -483,9 +492,11 @@ def main():
             proxy_header = "\n".join(terminal.screen.text().splitlines()[:3])
             assert "Proxies" in proxy_header, "proxy header lost its page title"
             assert "Refresh" not in proxy_header and "↻" not in proxy_header, "proxy header retained a refresh action"
-            for key, action in [(b"4", "[Pause]"), (b"5", "[Rule providers]"), (b"6", "[Clear]"), (b"7", "[Download method]")]:
+            for key, action in [(b"4", "[Pause]"), (b"5", "[Rule providers]"), (b"6", "[Clear]")]:
                 terminal.key(key)
                 header_row(terminal, action)
+            terminal.key(b"7")
+            terminal.wait("Download settings")
             terminal.key(b"1")
             terminal.wait("Not installed")
             terminal.key(b"3")
@@ -498,9 +509,8 @@ def main():
             duplicate_id = profile_id("My Airport (1)")
             assert duplicate_id != primary_id[0], "duplicate import reused the existing profile ID"
             # A saved record precedes the TUI receiving the action result.
-            # Wait for the new card and actionable footer before clicking the header.
+            # Wait for the new card before clicking the header.
             terminal.wait("My Airport (1)")
-            terminal.wait("Enter New")
             for _ in range(2):
                 before = len(requests)
                 before_remote = len(remote_agents)
@@ -525,16 +535,12 @@ def main():
 
             terminal = smoke.Terminal(command)
             terminals.append(terminal)
-            terminal.wait("Overview")
-            terminal.wait_absent("Loading state")
+            terminal.wait("pty-snapshot")
             terminal.resize(160, 40)
-            terminal.key(b"3")
             terminal.wait("My Airport")
             terminal.wait("My Airport (1)")
             terminal.wait("pty-local")
             terminal.wait(remote_name)
-            terminal.wait("pty-snapshot")
-            terminal.wait("↑↓←→ Select")  # Wait for the initial version check to release menu input.
             assert_saved_cards(terminal, 5)
             assert profile_id(remote_name) == remote_id and profile_id("pty-local") == local_id
             reopened_remote = library()["profiles"][remote_id]

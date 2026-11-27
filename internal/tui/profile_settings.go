@@ -9,6 +9,7 @@ import (
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/nelvko/lazyclash/internal/app"
 )
 
@@ -135,22 +136,63 @@ func (m *Model) profileSettingsAction(field int) tea.Cmd {
 	return nil
 }
 
-func (m *Model) settingsInfoLines(info app.ProfileInfo) []string {
-	var lines []string
+func (m *Model) profileSettingsMetadata(info app.ProfileInfo, width int) dashboardBlock {
+	type metadataField struct{ label, value string }
+	var fields []metadataField
+	add := func(label, value string) {
+		fields = append(fields, metadataField{m.tr(label), value})
+	}
 	if !info.UpdatedAt.IsZero() {
-		lines = append(lines, m.tr("profiles.updated_date", info.UpdatedAt.Local().Format(time.DateTime)))
+		add("profiles.updated_date", info.UpdatedAt.Local().Format(time.DateTime))
 	}
 	quota, expiresAt := profileAllowance(info)
 	if quota != "" {
-		lines = append(lines, m.tr("profiles.remaining", quota))
+		add("profiles.remaining", quota)
 	}
 	if expiresAt > 0 {
-		lines = append(lines, m.tr("profiles.expires", time.Unix(expiresAt, 0).Format(time.DateOnly)))
+		add("profiles.expires", time.Unix(expiresAt, 0).Format(time.DateOnly))
 	}
-	return lines
+	var block dashboardBlock
+	if len(fields) == 0 {
+		return block
+	}
+
+	const gutter = 2
+	var labelWidth, valueWidth, columnsWidth int
+	for _, field := range fields {
+		labelWidth = max(labelWidth, ansi.StringWidth(field.label))
+		valueWidth = max(valueWidth, ansi.StringWidth(field.value))
+		columnsWidth += max(ansi.StringWidth(field.label), ansi.StringWidth(field.value))
+	}
+	if spare := width - columnsWidth - gutter*(len(fields)-1); spare >= 0 {
+		gap := strings.Repeat(" ", gutter+spare/len(fields))
+		var labels, values []string
+		for _, field := range fields {
+			column := max(ansi.StringWidth(field.label), ansi.StringWidth(field.value))
+			labels = append(labels, cellPad(field.label, column))
+			values = append(values, cellPad(field.value, column))
+		}
+		block.lines = []string{
+			themed(strings.Join(labels, gap), muted, modalBackground, false),
+			themed(strings.Join(values, gap), text, modalBackground, false),
+		}
+		return block
+	}
+	for _, field := range fields {
+		label := themed(field.label, muted, modalBackground, false)
+		if labelWidth+gutter+valueWidth <= width {
+			block.lines = append(block.lines, cellPad(label, labelWidth+gutter)+themed(field.value, text, modalBackground, false))
+			continue
+		}
+		block.lines = append(block.lines, label)
+		for _, line := range strings.Split(wrapText(field.value, width), "\n") {
+			block.lines = append(block.lines, themed(line, text, modalBackground, false))
+		}
+	}
+	return block
 }
 
 func (m *Model) scrollProfileSettings(delta int) {
-	m.profileCreate.scroll = max(0, m.profileCreate.scroll+delta)
+	m.profileCreate.firstRow = max(0, m.profileCreate.firstRow+delta)
 	m.profileCreate.manualScroll = true
 }

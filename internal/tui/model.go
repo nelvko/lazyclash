@@ -783,6 +783,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if m.busy || m.quitting || input == nil {
 					break
 				}
+				m.profileCreate.manualScroll = false
 				before := input.Value()
 				*input, cmd = input.Update(v)
 				if before != input.Value() {
@@ -1708,7 +1709,7 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 		} else if m.page == "logs" && m.form == "" {
 			m.logsScroll(d)
 		} else if m.form == "profile-settings" {
-			m.scrollProfileSettings(d)
+			m.scrollProfileSettings(cmp.Compare(d, 0))
 		} else if m.form == "" {
 			m.scroll = max(0, m.scroll+d)
 		}

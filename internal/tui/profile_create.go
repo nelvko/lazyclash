@@ -30,7 +30,8 @@ type profileCreateState struct {
 	field        int
 	submitting   bool
 	settings     *app.ProfileSettings
-	scroll       int
+	firstRow     int
+	pageRows     int
 	manualScroll bool
 }
 
@@ -192,7 +193,7 @@ func (m *Model) profileCreateKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 	switch k.String() {
 	case "pgup", "pgdown":
 		if m.form == "profile-settings" {
-			step := max(1, min(32, m.height)-8)
+			step := max(1, m.profileCreate.pageRows)
 			if k.String() == "pgup" {
 				step = -step
 			}
@@ -254,6 +255,7 @@ func (m *Model) profileCreateKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 	if input == nil {
 		return true, nil
 	}
+	m.profileCreate.manualScroll = false
 	before := input.Value()
 	*input, cmd = input.Update(k)
 	if before != input.Value() {

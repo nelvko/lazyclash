@@ -180,7 +180,7 @@ func (m *Model) contextHelp() string {
 		return m.notification.panel.contextHelp(m.locale)
 	}
 	if m.form == "profile-settings" {
-		return m.tr("profile_settings.footer")
+		return m.tr("profiles.create_footer")
 	}
 	if m.providers.open {
 		return m.providersContextHelp()
