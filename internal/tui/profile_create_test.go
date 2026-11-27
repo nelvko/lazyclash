@@ -19,15 +19,20 @@ func TestProfileCreateKeyboardReachesActionsWithoutEditingHiddenInput(t *testing
 	if m.focus != "profile-create.source" || !m.profileCreate.source.Focused() {
 		t.Fatalf("initial focus = %s, want editable source", m.focus)
 	}
-	for _, want := range []int{profileCreateUserAgent, profileCreateName, profileCreateDescription, profileCreateSave, profileCreateCancel, profileCreateSource} {
+	for _, want := range []int{profileCreateUserAgent, profileCreateName, profileCreateDescription, profileCreateCancel, profileCreateSave, profileCreateSource} {
 		m, _ = update(m, special(tea.KeyTab))
 		if m.profileCreate.field != want || m.focus != profileCreateFieldID(want) {
 			t.Fatalf("Tab focus = %s, want %s", m.focus, profileCreateFieldID(want))
 		}
 	}
-	m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
-	if m.profileCreate.field != profileCreateCancel || m.profileCreateActive() != nil {
-		t.Fatal("Shift+Tab did not focus Cancel")
+	for _, want := range []int{profileCreateSave, profileCreateCancel} {
+		m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
+		if m.profileCreate.field != want {
+			t.Fatalf("Shift+Tab focus = %s, want %s", m.focus, profileCreateFieldID(want))
+		}
+	}
+	if m.profileCreateActive() != nil {
+		t.Fatal("Cancel still has an active editor")
 	}
 	m, _ = update(m, tea.PasteMsg{Content: "must not enter the name"})
 	if m.profileCreate.name.Value() != "" {

@@ -62,23 +62,22 @@ func (p *profileCreateState) effectiveUserAgent() string {
 }
 
 func (m *Model) openProfileCreate() tea.Cmd {
-	m.openProfileFields("profile-create")
+	m.openProfileFields("profile-create", profileCreateSource)
+	m.profileCreate.name.Placeholder = m.tr("profiles.create_name_placeholder")
 	return textinput.Blink
 }
 
-func (m *Model) openProfileFields(form string) {
+func (m *Model) openProfileFields(form string, initialField int) {
 	m.form = form
 	m.failure = ""
 	m.profileCreate = newProfileCreateState()
-	m.profileCreate.name.Placeholder = m.tr("profiles.create_name_placeholder")
-	m.profileCreate.description.Placeholder = m.tr("profiles.create_description_placeholder")
 	m.profileCreate.source.Placeholder = m.tr("profiles.create_source_placeholder")
 	m.profileCreate.userAgent.Placeholder = m.tr("profiles.user_agent_placeholder")
 	styleInput(&m.profileCreate.name, inputBackground, false)
 	styleInput(&m.profileCreate.description, inputBackground, false)
 	styleInput(&m.profileCreate.source, inputBackground, false)
 	styleInput(&m.profileCreate.userAgent, inputBackground, false)
-	m.profileCreateSetField(m.profileFieldOrder()[0])
+	m.profileCreateSetField(initialField)
 }
 
 func (m *Model) closeProfileCreate() {
@@ -114,26 +113,23 @@ func (p *profileCreateState) input(field int) *textinput.Model {
 }
 
 func (m *Model) profileFieldOrder() []int {
-	settings := m.form == "profile-settings"
-	order := make([]int, 0, 8)
-	if settings {
-		order = append(order, profileCreateName, profileCreateDescription)
-	}
-	order = append(order, profileCreateSource)
-	if m.profileCreate.remoteSource() || (!settings && strings.TrimSpace(m.profileCreate.source.Value()) == "") {
+	order := []int{profileCreateSource}
+	if m.profileCreate.remoteSource() || (m.form == "profile-create" && strings.TrimSpace(m.profileCreate.source.Value()) == "") {
 		order = append(order, profileCreateUserAgent)
 	}
-	if !settings {
-		order = append(order, profileCreateName, profileCreateDescription)
-	}
-	order = append(order, profileCreateSave, profileCreateCancel)
-	if settings {
+	order = append(order, profileCreateName, profileCreateDescription)
+	if m.form == "profile-settings" {
 		order = append(order, profileSettingsImport)
 		if m.canUseDefaultFrom(m.name) {
 			order = append(order, profileSettingsDeactivate)
 		}
 	}
-	return order
+	return append(order, profileCreateCancel, profileCreateSave)
+}
+
+func (p *profileCreateState) scrollBy(rows int) {
+	p.firstRow = max(0, p.firstRow+rows)
+	p.manualScroll = true
 }
 
 func (m *Model) moveProfileField(delta int) {
@@ -192,14 +188,12 @@ func (m *Model) profileCreateKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 	}
 	switch k.String() {
 	case "pgup", "pgdown":
-		if m.form == "profile-settings" {
-			step := max(1, m.profileCreate.pageRows)
-			if k.String() == "pgup" {
-				step = -step
-			}
-			m.scrollProfileSettings(step)
-			return true, nil
+		step := max(1, m.profileCreate.pageRows)
+		if k.String() == "pgup" {
+			step = -step
 		}
+		m.profileCreate.scrollBy(step)
+		return true, nil
 	case "esc":
 		m.closeProfileCreate()
 		m.message = ""
@@ -241,7 +235,10 @@ func (m *Model) profileCreateKey(k tea.KeyPressMsg) (bool, tea.Cmd) {
 		case profileCreateCancel:
 			m.closeProfileCreate()
 			return true, nil
-		case profileCreateName, profileCreateDescription, profileCreateUserAgent:
+		case profileCreateDescription:
+			m.profileCreateSetField(profileCreateSave)
+			return true, nil
+		case profileCreateName, profileCreateUserAgent:
 			m.moveProfileField(1)
 			return true, textinput.Blink
 		}

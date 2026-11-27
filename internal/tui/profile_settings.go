@@ -27,8 +27,7 @@ func (m *Model) profileFieldsForm() bool {
 
 func (m *Model) openProfileSettings(id string) tea.Cmd {
 	m.name = id
-	m.openProfileFields("profile-settings")
-	m.profileCreate.name.Placeholder = m.tr("profiles.display_name")
+	m.openProfileFields("profile-settings", profileCreateName)
 	m.message = m.tr("profile_settings.loading")
 	ctx := m.newJob("profile.settings.load", m.profileNotification("settings.load", m.tr("dashboard.page.settings"), id))
 	request, backend := m.id, m.backend
@@ -190,9 +189,4 @@ func (m *Model) profileSettingsMetadata(info app.ProfileInfo, width int) dashboa
 		}
 	}
 	return block
-}
-
-func (m *Model) scrollProfileSettings(delta int) {
-	m.profileCreate.firstRow = max(0, m.profileCreate.firstRow+delta)
-	m.profileCreate.manualScroll = true
 }

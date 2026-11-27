@@ -10,7 +10,7 @@ import (
 	"github.com/nelvko/lazyclash/internal/i18n"
 )
 
-func TestProfileSettingsWideLayoutFitsItsFields(t *testing.T) {
+func TestProfileSettingsFitsLocalAndRemoteEditors(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		t.Run(language, func(t *testing.T) {
 			m := profilesPreview(true)
@@ -19,30 +19,16 @@ func TestProfileSettingsWideLayoutFitsItsFields(t *testing.T) {
 			m.profileCreate.description.SetValue("工作")
 			m.layout()
 
-			name := findTarget(t, m, "profile-create.name")
 			description := findTarget(t, m, "profile-create.description")
 			source := findTarget(t, m, "profile-create.source")
 			agent := findTarget(t, m, "profile-create.user-agent")
-			right := description.X + description.W
-			if name.Y != description.Y || name.X+name.W >= description.X ||
-				name.W-description.W > 1 || description.W-name.W > 1 {
-				t.Fatalf("name and description should share a row: %+v / %+v", name, description)
-			}
-			if source.X != name.X || source.X+source.W != right || source.Y < name.Y+name.H ||
-				agent.X != source.X || agent.W != source.W || agent.Y < source.Y+source.H {
-				t.Fatalf("long fields should span both columns: %+v / %+v", source, agent)
-			}
-			save, cancel := findTarget(t, m, "profile-create.save"), findTarget(t, m, "profile-create.cancel")
-			if save.Y != cancel.Y || max(save.X+save.W, cancel.X+cancel.W) != right {
-				t.Fatalf("form actions should align to the right edge: %+v / %+v", save, cancel)
-			}
-
+			save := findTarget(t, m, "profile-create.save")
 			m, _ = click(m, description)
 			m, _ = update(m, special(tea.KeyLeft))
 			assertSearchCursorCell(t, m, "作")
 			m, _ = click(m, findTarget(t, m, "profile-create.description.clear"))
 			if m.focus != description.ID || m.profileCreate.description.Value() != "" || m.profileCreate.name.Value() == "" {
-				t.Fatal("clicking clear in the second column did not clear just its editor")
+				t.Fatal("clicking the description's clear button should clear only that editor")
 			}
 
 			m.profileCreate.source.SetValue("/configs/home.yaml")
@@ -52,8 +38,8 @@ func TestProfileSettingsWideLayoutFitsItsFields(t *testing.T) {
 					t.Fatal("local profile still exposes a User-Agent editor")
 				}
 			}
-			localName, localSave := findTarget(t, m, name.ID), findTarget(t, m, save.ID)
-			if localSave.Y-localName.Y >= save.Y-name.Y {
+			localSource, localSave := findTarget(t, m, source.ID), findTarget(t, m, save.ID)
+			if localSave.Y-localSource.Y >= save.Y-source.Y {
 				t.Fatal("hiding User-Agent should shorten the form")
 			}
 			m.profileCreateSetField(profileCreateSource)
@@ -76,36 +62,43 @@ func TestProfileSettingsNarrowLayoutKeepsEditorsAndActionsReachable(t *testing.T
 		t.Fatalf("narrow name and description should stack: %+v / %+v", name, description)
 	}
 
-	// A normal 24-line terminal fits the entire remote form, including its
-	// metadata values and the actions for the active subscription.
 	m.snapshot.ProfileDetails[1].Quota = &configuration.SubscriptionQuota{TotalBytes: 100, UsedBytes: 50, ExpiresAt: 1800000000}
 	m, _ = update(m, tea.WindowSizeMsg{Width: 80, Height: 24})
-	if !strings.Contains(ansi.Strip(m.screen), "50 B / 100 B") || strings.Contains(m.screen, "PgUp/PgDn") {
-		t.Fatal("the complete subscription should fit at 80×24")
+	save := findTarget(t, m, "profile-create.save")
+	m, _ = update(m, special(tea.KeyPgDown))
+	view, _ := m.renderProfileForm("")
+	if !strings.Contains(ansi.Strip(view), "50 B / 100 B") || findTarget(t, m, save.ID).Y != save.Y {
+		t.Fatal("paging through the form should expose subscription metadata and keep Save in place at 80×24")
 	}
-	findTarget(t, m, "profile-create.user-agent")
 	m, _ = update(m, tea.WindowSizeMsg{Width: 40, Height: 16})
 	var actions []hitRegion
 	for _, id := range []string{"profile-settings.overrides", "profile-settings.deactivate", "profile-create.save", "profile-create.cancel"} {
 		actions = append(actions, findTarget(t, m, id))
 	}
-	m, _ = update(m, special(tea.KeyPgDown))
-	for _, hit := range m.targets {
-		if hit.ID == name.ID {
-			t.Fatal("paging down should move the first editor out of view")
-		}
+	// Move to the first editor, then page away from it before typing.
+	for range 2 {
+		m, _ = update(m, tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift})
 	}
-	// Typing after scrolling away from an editor must reveal the editor.
-	m, _ = update(m, tea.PasteMsg{Content: "日"})
-	if m.View().Cursor == nil || !strings.Contains(m.profileCreate.name.Value(), "日") {
+	m, _ = update(m, special(tea.KeyPgDown))
+	if hasAction(m.targets, "profile-create.source") {
+		t.Fatal("paging down should move the first editor out of view")
+	}
+	m, _ = update(m, tea.PasteMsg{Content: "q"})
+	if m.View().Cursor == nil || !strings.HasSuffix(m.profileCreate.source.Value(), "q") {
 		t.Fatal("typing into the focused editor should bring it back into view")
 	}
-	for _, id := range []string{name.ID, description.ID, "profile-create.source", "profile-create.user-agent"} {
+	for _, id := range []string{"profile-create.source", "profile-create.user-agent", name.ID, description.ID} {
 		field := findTarget(t, m, id)
 		cursor := m.View().Cursor
 		if m.focus != id || cursor == nil || cursor.X < field.X || cursor.X >= field.X+field.W ||
 			cursor.Y < field.Y || cursor.Y >= field.Y+field.H {
 			t.Fatalf("Tab should reveal the active editor and its cursor: %+v, focus=%s, cursor=%+v", field, m.focus, cursor)
+		}
+		m, _ = update(m, special(tea.KeyTab))
+	}
+	for _, field := range []int{profileSettingsImport, profileSettingsDeactivate, profileCreateCancel, profileCreateSave} {
+		if m.focus != profileCreateFieldID(field) {
+			t.Fatalf("action focus = %s, want %s", m.focus, profileCreateFieldID(field))
 		}
 		m, _ = update(m, special(tea.KeyTab))
 	}

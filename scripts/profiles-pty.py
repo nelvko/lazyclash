@@ -65,6 +65,22 @@ def assert_settings_allowance(terminal, quota, expiry):
         assert rows[y + 1].startswith(value, column), f"settings value misaligned below {label}"
 
 
+def assert_stacked_profile_fields(terminal):
+    terminal.wait("Description (optional)")
+    rows = terminal.screen.text().splitlines()
+    first_frame = None
+    previous = -1
+    for label in ("Subscription URL or local path", "User-Agent (optional)", "Display name", "Description (optional)"):
+        y = next(i for i, row in enumerate(rows) if label in row)
+        x = rows[y].index(label)
+        frame = (x, rows[y + 1].index("╮", x))
+        assert y > previous and rows[y + 1][x] == "╭", f"field did not stack below its label: {label}"
+        if first_frame is None:
+            first_frame = frame
+        assert frame == first_frame, f"field edges differ from the source field: {label}"
+        previous = y
+
+
 def header_row(terminal, label):
     needle = "[" + label.strip("[] ") + "]"
 
@@ -245,11 +261,18 @@ def main():
             terminal.wait("Profile settings")
             assert_settings_allowance(terminal, "7.0 GiB / 10.0 GiB", future_date)
             terminal.wait(secret)  # address is populated only after the private settings read
+            assert_stacked_profile_fields(terminal)
             assert "Deactivate" not in terminal.screen.text()
             assert not (home / "installation").exists(), "opening Settings applied a profile"
             memo = "Description only"
             terminal.key(b"\t")  # display name -> description
             paste(terminal, memo)
+            terminal.key(b"\t")
+            terminal.wait("› Import overrides…")
+            terminal.key(b"\t")
+            terminal.wait("›[Cancel]")
+            terminal.key(b"\t")
+            terminal.wait("›[Save]")
             terminal.click_text("[Save]")
             wait_until(terminal, lambda: primary_profile().get("description") == memo, "settings did not save description")
             terminal.wait_absent("Profile settings")
@@ -293,7 +316,7 @@ def main():
             paste(terminal, "My Airport")
             terminal.key(b"\t\x15")
             paste(terminal, new_memo)
-            terminal.key(b"\t\x15")
+            terminal.key(b"\x1b[Z" * 3 + b"\x15")  # description -> name -> User-Agent -> source
             paste(terminal, invalid_address)
             terminal.key(b"\r")
             wait_until(terminal, lambda: "/invalid-configuration" in requests, "invalid source was not checked")
@@ -357,7 +380,6 @@ def main():
             (local_dir / "pty-other.yaml").write_text("rules: ['MATCH,DIRECT']\n")
             terminal.click_text("[New]")
             terminal.wait("New profile")
-            terminal.wait("User-Agent")
             paste(terminal, str(base) + "/配")
             terminal.wait_absent("User-Agent")
             terminal.wait("› 配置 files/")
@@ -428,19 +450,21 @@ def main():
             remote_agent = "PTY-Subscription/1.0"
             remote_address = "http://127.0.0.1:%d/new-profile" % server.server_port
             terminal.click_text("[New]")
-            terminal.wait("User-Agent")
+            terminal.wait("New profile")
             paste(terminal, remote_address)
+            terminal.wait("User-Agent")
+            assert_stacked_profile_fields(terminal)
             terminal.key(b"\t")
             paste(terminal, remote_agent)
             terminal.key(b"\t")
             paste(terminal, remote_name)
             terminal.key(b"\t")
             paste(terminal, remote_description)
-            terminal.key(b"\t")
+            terminal.key(b"\r")  # description -> primary action without submitting
             terminal.wait("›[Create]")
-            terminal.key(b"\t")
+            terminal.key(b"\x1b[Z")
             terminal.wait("›[Cancel]")
-            terminal.key(b"\x1b[Z")  # Cancel -> Create
+            terminal.key(b"\t")
             terminal.wait("›[Create]")
             before = len(requests)
             terminal.key(b"\r")

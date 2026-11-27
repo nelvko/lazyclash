@@ -179,7 +179,18 @@ func (m *Model) contextHelp() string {
 	if m.notification.panel.open {
 		return m.notification.panel.contextHelp(m.locale)
 	}
-	if m.form == "profile-settings" {
+	if m.profileFieldsForm() {
+		if m.busy || m.quitting {
+			return m.tr("navigation.hints.busy")
+		}
+		if m.profileCreate.field == profileCreateSource {
+			if _, ok := m.paths.selectedPath(); ok {
+				return m.tr("profiles.create_path_keys")
+			}
+			if m.form == "profile-create" && strings.TrimSpace(m.profileCreate.source.Value()) != "" {
+				return m.tr("profiles.create_source_keys")
+			}
+		}
 		return m.tr("profiles.create_footer")
 	}
 	if m.providers.open {

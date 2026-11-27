@@ -1708,8 +1708,8 @@ func (m *Model) mouse(event tea.MouseMsg) tea.Cmd {
 			m.wizard.scroll = max(0, m.wizard.scroll+d)
 		} else if m.page == "logs" && m.form == "" {
 			m.logsScroll(d)
-		} else if m.form == "profile-settings" {
-			m.scrollProfileSettings(cmp.Compare(d, 0))
+		} else if m.profileFieldsForm() {
+			m.profileCreate.scrollBy(cmp.Compare(d, 0))
 		} else if m.form == "" {
 			m.scroll = max(0, m.scroll+d)
 		}

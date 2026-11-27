@@ -478,7 +478,7 @@ func (m *Model) renderProfileForm(base string) (string, []hitRegion) {
 		return m.renderProfileEditor(base)
 	}
 	if m.profileFieldsForm() {
-		return m.renderProfileCreateForm(base)
+		return m.renderProfileFieldsForm(base)
 	}
 	if m.form == "profile-delete" {
 		return m.renderProfileDeleteForm(base)

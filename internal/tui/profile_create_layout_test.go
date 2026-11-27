@@ -12,78 +12,81 @@ import (
 	"github.com/nelvko/lazyclash/internal/i18n"
 )
 
-func TestProfileCreateAlignsFieldsAndPaintsModalSurface(t *testing.T) {
+func TestProfileFormsShareFieldAndActionLayout(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
-		m := profilesPreview(false)
-		m.locale, m.width, m.height = i18n.New(language), 160, 45
-		m.openProfileCreate()
-		m.layout()
-		source := findTarget(t, m, "profile-create.source")
-		last := source
-		for _, id := range []string{"profile-create.user-agent", "profile-create.name", "profile-create.description"} {
-			field := findTarget(t, m, id)
-			if field.X != source.X || field.W != source.W || field.Y < last.Y+last.H {
-				t.Fatalf("%s: %s is not aligned below %s: %+v / %+v", language, id, last.ID, field, last)
-			}
-			last = field
-		}
-		save, cancel := findTarget(t, m, "profile-create.save"), findTarget(t, m, "profile-create.cancel")
-		if gap := save.Y - (last.Y + last.H); gap < 0 || gap > 1 ||
-			cancel.Y != save.Y || save.X+save.W != cancel.X || cancel.X+cancel.W != source.X+source.W {
-			t.Fatalf("%s: unexpected footer below %+v: %+v / %+v", language, last, save, cancel)
-		}
-		screen := uv.NewScreenBuffer(m.width, m.height)
-		view := m.View().Content
-		uv.NewStyledString(view).Draw(screen, screen.Bounds())
-		plain := ansi.Strip(view)
-		title := strings.Index(plain, m.tr("profiles.create_title"))
-		if title < 0 {
-			t.Fatalf("%s: missing dialog title", language)
-		}
-		titleY := strings.Count(plain[:title], "\n")
-		for y := titleY; y <= save.Y; y++ {
-			for x := source.X; x < source.X+source.W; x++ {
-				if y == save.Y && x >= save.X {
-					continue // The button faces have their own colors.
+		t.Run(language, func(t *testing.T) {
+			var createWidth int
+			for _, form := range []string{"profile-create", "profile-settings"} {
+				t.Logf("checking %s", form)
+				m := profilesPreview(false)
+				m.locale, m.width, m.height = i18n.New(language), 160, 45
+				title := m.tr("profiles.create_title")
+				if form == "profile-create" {
+					m.openProfileCreate()
+				} else {
+					m = openSettingsForTest(t, m, "Everyday")
+					title = m.tr("profile_settings.title")
 				}
-				cell := screen.CellAt(x, y)
-				if cell.Content == " " {
-					want := cell.Style
-					want.Bg = lipgloss.Color(modalBackground)
-					if !cell.Style.Equal(&want) {
-						t.Fatalf("%s: blank cell at %d,%d lost the modal surface", language, x, y)
+				m.profileCreate.source.SetValue("https://example.invalid/sub")
+				m.layout()
+				source := findTarget(t, m, "profile-create.source")
+				description := findTarget(t, m, "profile-create.description")
+				right := source.X + source.W
+				previous := source
+				for _, id := range []string{"profile-create.user-agent", "profile-create.name", description.ID} {
+					field := findTarget(t, m, id)
+					if field.X != source.X || field.W != source.W || field.Y < previous.Y+previous.H {
+						t.Fatalf("each editor should occupy a full row below the previous one: %+v / %+v", previous, field)
+					}
+					previous = field
+				}
+				if form == "profile-create" {
+					createWidth = source.W
+				} else if source.W != createWidth {
+					t.Fatalf("settings field width %d differs from creation width %d", source.W, createWidth)
+				}
+				save := findTarget(t, m, "profile-create.save")
+				cancel := findTarget(t, m, "profile-create.cancel")
+				if save.Y != cancel.Y || cancel.X+cancel.W != save.X || save.X+save.W != right {
+					t.Fatalf("Cancel and the primary action should align to the right: %+v / %+v", cancel, save)
+				}
+
+				view, _ := m.renderProfileForm("")
+				rows := strings.Split(ansi.Strip(view), "\n")
+				titleY := slices.IndexFunc(rows, func(row string) bool { return strings.TrimSpace(row) == title })
+				if titleY < 0 || strings.TrimSpace(rows[source.Y-1]) != m.tr("profiles.create_source_label") {
+					t.Fatalf("title and source label should stand alone:\n%s", ansi.Strip(view))
+				}
+				if strings.Contains(view, "Tab") || strings.Contains(view, "Esc") {
+					t.Fatal("dialog repeats keyboard shortcuts from the global hint bar")
+				}
+				if !strings.Contains(rows[save.Y-1], "──") {
+					t.Fatal("missing separator above the action bar")
+				}
+				screen := uv.NewScreenBuffer(m.width, m.height)
+				uv.NewStyledString(m.View().Content).Draw(screen, screen.Bounds())
+				for y := titleY; y < save.Y; y++ {
+					for x := source.X; x < right; x++ {
+						cell := screen.CellAt(x, y)
+						if cell.Content == " " {
+							want := cell.Style
+							want.Bg = lipgloss.Color(modalBackground)
+							if !cell.Style.Equal(&want) {
+								t.Fatalf("blank cell at %d,%d lost the modal surface", x, y)
+							}
+						}
 					}
 				}
+				m, _ = click(m, description)
+				if m.focus != description.ID {
+					t.Fatalf("clicking description focused %q", m.focus)
+				}
+				m, _ = click(m, cancel)
+				if m.form != "" || m.busy {
+					t.Fatal("clicking Cancel should dismiss the draft")
+				}
 			}
-		}
-		m, _ = click(m, last)
-		if m.focus != last.ID {
-			t.Fatalf("%s: clicking the description field focused %q", language, m.focus)
-		}
-	}
-}
-
-func TestProfileCreateShowsSourceTypeBesideItsLabel(t *testing.T) {
-	for _, language := range []string{i18n.English, i18n.Chinese} {
-		m := profilesPreview(false)
-		m.locale, m.width, m.height = i18n.New(language), 160, 45
-		m.openProfileCreate()
-		for _, sample := range []struct{ address, kind string }{
-			{"", ""},
-			{"https://example.invalid/profile", m.tr("profiles.create_remote")},
-			{"~/profile.yaml", m.tr("profiles.create_local")},
-			{"", ""},
-		} {
-			m.profileCreate.source.SetValue(sample.address)
-			m.layout()
-			source := findTarget(t, m, "profile-create.source")
-			rows := strings.Split(ansi.Strip(m.screen), "\n")
-			line := strings.TrimSpace(ansi.Cut(rows[source.Y-1], source.X, source.X+source.W))
-			label := m.tr("profiles.create_source_label")
-			if !strings.HasPrefix(line, label) || strings.TrimSpace(strings.TrimPrefix(line, label)) != sample.kind {
-				t.Fatalf("%s: source %q has label row %q, want %q with type %q", language, sample.address, line, label, sample.kind)
-			}
-		}
+		})
 	}
 }
 
@@ -129,6 +132,12 @@ func TestProfileCreateNarrowWindowStacksCompleteFields(t *testing.T) {
 	}
 
 	m, _ = update(m, tea.WindowSizeMsg{Width: 36, Height: 14})
+	save := findTarget(t, m, "profile-create.save")
+	m, _ = update(m, special(tea.KeyPgDown))
+	if hasAction(m.targets, source.ID) || findTarget(t, m, save.ID).Y != save.Y {
+		t.Fatal("paging down should move the fields while keeping the action bar in place")
+	}
+	m, _ = update(m, special(tea.KeyPgUp))
 	for _, id := range fields {
 		focused := findTarget(t, m, id)
 		if m.focus != id || m.View().Cursor == nil {

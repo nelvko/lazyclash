@@ -79,7 +79,12 @@ func TestProfileSettingsSaveTogetherAndRetainFailedEdits(t *testing.T) {
 	}
 	m, _ = update(m, tea.KeyPressMsg{Code: 'u', Mod: tea.ModCtrl})
 	m, _ = update(m, tea.PasteMsg{Content: "Updated/2.0"})
-	m, _ = update(m, special(tea.KeyTab))
+	for _, want := range []int{profileCreateName, profileCreateDescription, profileCreateSave} {
+		m, _ = update(m, special(tea.KeyEnter))
+		if m.focus != profileCreateFieldID(want) || m.busy {
+			t.Fatalf("Enter focused %s, want %s before saving", m.focus, profileCreateFieldID(want))
+		}
+	}
 	m, cmd = update(m, special(tea.KeyEnter))
 	m = finishProfileJob(t, m, cmd)
 	if len(saved) != 2 || saved[1].ID != original.ID || saved[1].Address != original.Address || saved[1].Description != "" || saved[1].Name != "new name" || saved[1].UserAgent != "Updated/2.0" || m.form != "" || m.focus != "profile.0" {
@@ -95,7 +100,7 @@ func TestProfileSettingsKeyboardResizeAndExternalChanges(t *testing.T) {
 	m = openSettingsForTest(t, m, "gamma")
 	for _, size := range [][2]int{{80, 24}, {60, 20}, {40, 16}, {160, 40}} {
 		m, _ = update(m, tea.WindowSizeMsg{Width: size[0], Height: size[1]})
-		for _, field := range []int{profileCreateDescription, profileCreateSource, profileCreateSave, profileCreateCancel, profileSettingsImport, profileCreateName} {
+		for _, field := range []int{profileCreateDescription, profileSettingsImport, profileCreateCancel, profileCreateSave, profileCreateSource, profileCreateName} {
 			m, _ = update(m, special(tea.KeyTab))
 			if m.focus != profileCreateFieldID(field) {
 				t.Fatalf("focus %s at %v", m.focus, size)
