@@ -25,9 +25,9 @@ func profilesPreview(detail bool) Model {
 		Profiles: []string{"Everyday", "Home", "Travel"},
 		ProfileDetails: []app.ProfileInfo{
 			{ID: "default", Name: "default", Core: "mihomo", Validated: true},
-			{ID: "Everyday", Name: "Everyday", Core: "mihomo", Refreshable: true, Kind: "remote", Origin: "subscription.example", UpdatedAt: now.Add(-2 * time.Hour), Validated: true, Pending: true, HasOverrides: true},
-			{ID: "Home", Name: "Home", Core: "mihomo", Refreshable: true, Kind: "local", Origin: "Local file", UpdatedAt: now.Add(-3 * 24 * time.Hour), Validated: true},
-			{ID: "Travel", Name: "Travel", Core: "mihomo", Kind: "imported", Origin: "Imported file", UpdatedAt: now.Add(-20 * time.Minute), Validated: true},
+			{ID: "Everyday", Name: "Everyday", Core: "mihomo", Kind: "remote", Origin: "subscription.example", UpdatedAt: now.Add(-2 * time.Hour), Validated: true, Pending: true, HasOverrides: true},
+			{ID: "Home", Name: "Home", Core: "mihomo", Kind: "local", Origin: "Local file", UpdatedAt: now.Add(-3 * 24 * time.Hour), Validated: true},
+			{ID: "Travel", Name: "Travel", Core: "mihomo", Kind: "remote", Origin: "travel.example", UpdatedAt: now.Add(-20 * time.Minute), Validated: true},
 		},
 	}
 	m := ready(&fakeBackend{snapshot: snapshot})

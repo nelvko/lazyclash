@@ -28,7 +28,7 @@ func TestStoppedModePersistsAcrossAppAndProfileChanges(t *testing.T) {
 	write(t, cache, []byte("engine-owned-persistent-cache"))
 	profile := filepath.Join(t.TempDir(), "subscription.yaml")
 	write(t, profile, []byte("mode: direct\nproxies: []\nrules: [MATCH,DIRECT]\n"))
-	if err := a.Add(t.Context(), "saved", profile); err != nil {
+	if err := a.AddSubscription(t.Context(), "saved", profile); err != nil {
 		t.Fatal(err)
 	}
 	if err := a.Apply(t.Context(), "saved"); err != nil {
@@ -140,7 +140,7 @@ func TestUserServiceTUNBoundary(t *testing.T) {
 	}
 	profile := filepath.Join(t.TempDir(), "tun.yaml")
 	write(t, profile, []byte("mixed-port: 7899\ntun: {enable: true, device: foreign}\nrules: ['MATCH,DIRECT']\n"))
-	if err := a.Add(t.Context(), "tun", profile); err != nil {
+	if err := a.AddSubscription(t.Context(), "tun", profile); err != nil {
 		t.Fatal(err)
 	}
 	if err := a.Apply(t.Context(), "tun"); err != nil {

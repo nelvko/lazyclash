@@ -14,7 +14,7 @@ import (
 )
 
 func TestDocumentSourceEditingUsesOriginalOrPrivateRevision(t *testing.T) {
-	for _, kind := range []string{"local", "remote", "copy"} {
+	for _, kind := range []string{"local", "remote"} {
 		t.Run(kind, func(t *testing.T) {
 			a, svc := testApp(t)
 			const source = "rules: ['MATCH,DIRECT']\n"
@@ -28,7 +28,7 @@ func TestDocumentSourceEditingUsesOriginalOrPrivateRevision(t *testing.T) {
 				a.HTTP = server.Client()
 				addr = server.URL + "/private?token=secret"
 			}
-			if err := a.CreateProfile(t.Context(), ProfileDraft{Name: "work", Address: addr, RememberSource: kind != "copy"}); err != nil {
+			if err := a.CreateProfile(t.Context(), ProfileDraft{Name: "work", Address: addr}); err != nil {
 				t.Fatal(err)
 			}
 			if kind == "local" {
@@ -121,7 +121,7 @@ func TestDocumentEffectiveEqualityDoesNotContactService(t *testing.T) {
 	a, svc := installedApp(t)
 	path := filepath.Join(t.TempDir(), "src.yaml")
 	write(t, path, []byte("rules: ['MATCH,DIRECT']\n"))
-	if err := a.Add(t.Context(), "work", path); err != nil {
+	if err := a.AddSubscription(t.Context(), "work", path); err != nil {
 		t.Fatal(err)
 	}
 	if err := a.Apply(t.Context(), "work"); err != nil {
@@ -137,6 +137,7 @@ func TestDocumentEffectiveEqualityDoesNotContactService(t *testing.T) {
 		return nil
 	}
 	raw := append([]byte("mixed-port: 7899\n# different source\n"), doc.Bytes...)
+	write(t, path, raw)
 	if err := a.SaveProfileDocument(t.Context(), doc, raw); err != nil {
 		t.Fatal(err)
 	}
@@ -327,7 +328,7 @@ func TestProfileEditRejectsUnreadableUndoRecordBeforePublishing(t *testing.T) {
 		t.Fatal(err)
 	}
 	previous := lib.Profiles["work"]
-	previous.Address = "x"
+	previous.Address = "https://example.invalid/"
 	lib.Profiles["work"] = previous
 	raw, err := json.MarshalIndent(lib, "", "  ")
 	if err != nil {
@@ -343,7 +344,7 @@ func TestProfileEditRejectsUnreadableUndoRecordBeforePublishing(t *testing.T) {
 		t.Fatal(err)
 	}
 	next := previous
-	next.Address = ""
+	next.Address = "https://example.invalid/new"
 	next.Spec.Overrides = "set: {log-level: debug}"
 	lib.Profiles["work"] = next
 	_, before, err := a.load()

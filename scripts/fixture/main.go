@@ -137,15 +137,11 @@ func profile(ctx context.Context, a *app.App, args []string) error {
 	case "add":
 		flags := pflag.NewFlagSet("add", pflag.ContinueOnError)
 		name := flags.String("name", "", "")
-		remember := flags.Bool("remember-source", false, "")
 		if err := flags.Parse(args[1:]); err != nil {
 			return err
 		}
 		if flags.NArg() == 1 {
-			if *remember {
-				return a.AddSubscription(ctx, *name, flags.Arg(0))
-			}
-			return a.Add(ctx, *name, flags.Arg(0))
+			return a.AddSubscription(ctx, *name, flags.Arg(0))
 		}
 	case "show":
 		if len(args) == 2 {

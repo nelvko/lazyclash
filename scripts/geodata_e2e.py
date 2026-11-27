@@ -280,7 +280,7 @@ def verify_geodata(instances, work, run, wait):
 
             def add(name, key):
                 source.content['/' + name] = yaml(key)
-                svc.use_case('profile', 'add', url + '/' + name, '--name', name, '--remember-source')
+                svc.use_case('profile', 'add', url + '/' + name, '--name', name)
 
             default_pid = svc.process()[0]
             add('alpha', 'a')

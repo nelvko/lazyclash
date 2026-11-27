@@ -106,30 +106,7 @@ func (m *Model) profilesToolbar(width int) dashboardBlock {
 	if !inline {
 		body.append(m.profileButtons(buttons, width, bg))
 	}
-	if importID != "" {
-		body.append(m.profileImportOnceControl("profiles.import-once", m.profilesUI.importOnce, width, bg))
-	}
 	return body
-}
-
-func (m *Model) profileImportOnceControl(id string, checked bool, width int, surface string) dashboardBlock {
-	mark := "[ ] "
-	if checked {
-		mark = "[x] "
-	}
-	disabled := m.busy || m.quitting
-	label := m.tr("profiles.import_once")
-	if ansi.StringWidth(mark+label)+3 > width {
-		label = m.tr("profiles.import_once_short")
-	}
-	face := renderButton(mark+label, buttonOptions{Kind: buttonText, TextColor: text, Compact: true,
-		Surface: surface, Focused: m.focus == id, Hovered: m.hover == id, Disabled: disabled})
-	line := cellCrop(face, width)
-	row := dashboardBlock{lines: []string{line}}
-	if !disabled {
-		row.targets = []hitRegion{{ID: id, W: ansi.StringWidth(line), H: 1}}
-	}
-	return row
 }
 
 type profileButton struct {
@@ -223,7 +200,7 @@ func (m *Model) paintProfileCard(name string, index, width int, compact bool) da
 	if m.focus == id {
 		prefix = "› "
 	}
-	controls := profileCardControls(refreshID, menuID, width, info.Refreshable)
+	controls := profileCardControls(refreshID, menuID, width)
 	controlViews := make([]string, len(controls))
 	controlsWidth := 0
 	widths := make(map[string]int, len(controls))
@@ -245,9 +222,9 @@ func (m *Model) paintProfileCard(name string, index, width int, compact bool) da
 	return dashboardBlock{lines: picture, targets: m.profileCardTargets(parent, controls, widths, compact)}
 }
 
-func profileCardControls(refreshID, menuID string, width int, refreshable bool) []profileButton {
+func profileCardControls(refreshID, menuID string, width int) []profileButton {
 	var controls []profileButton
-	if refreshable && width >= 16 {
+	if width >= 16 {
 		controls = append(controls, profileButton{id: refreshID, label: "↻"})
 	}
 	if width >= 12 {

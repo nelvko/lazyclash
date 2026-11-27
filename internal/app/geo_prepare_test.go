@@ -113,7 +113,7 @@ func TestPrepareDefaultGeoRepairsAliasAndRespectsCustomSource(t *testing.T) {
 	a, svc := installedApp(t)
 	p := filepath.Join(t.TempDir(), "custom.yaml")
 	write(t, p, []byte("mode: rule\ngeox-url:\n  geosite: https://example.invalid/own.dat\nrules: ['MATCH,DIRECT']\n"))
-	if err := a.Add(t.Context(), "custom", p); err != nil {
+	if err := a.AddSubscription(t.Context(), "custom", p); err != nil {
 		t.Fatal(err)
 	}
 	if err := a.Apply(t.Context(), "custom"); err != nil {

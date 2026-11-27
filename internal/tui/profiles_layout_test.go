@@ -349,12 +349,9 @@ func TestProfileCardsLocalizeSourceType(t *testing.T) {
 	for _, language := range []string{i18n.English, i18n.Chinese} {
 		m := profilesPreview(false)
 		m.locale = i18n.New(language)
-		for _, source := range []struct{ kind, key string }{{"local", "profiles.create_local"}, {"imported", "profiles.imported_origin"}} {
-			m.snapshot.ProfileDetails[2].Kind = source.kind
-			card := ansi.Strip(strings.Join(m.profileCard(1, 55).lines, "\n"))
-			if !strings.Contains(card, m.tr(source.key)) {
-				t.Fatalf("%s source label did not follow %s: %s", source.kind, language, card)
-			}
+		card := ansi.Strip(strings.Join(m.profileCard(1, 55).lines, "\n"))
+		if !strings.Contains(card, m.tr("profiles.create_local")) {
+			t.Fatalf("local source label did not follow %s: %s", language, card)
 		}
 	}
 }

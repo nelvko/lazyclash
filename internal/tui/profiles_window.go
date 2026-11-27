@@ -88,20 +88,14 @@ func (m *Model) paintProfiles(l profileGridLayout, start, end int) dashboardBloc
 func (m *Model) profilesTargets(width int) []hitRegion {
 	l := m.layoutProfiles(width)
 	targets := append([]hitRegion(nil), l.intro.targets...)
-	refreshable := make(map[string]bool)
-	for _, info := range m.snapshot.ProfileDetails {
-		if info.Refreshable {
-			refreshable[info.ID] = true
-		}
-	}
 	widths := make(map[string]int, 2)
-	for _, button := range profileCardControls("profiles.refresh.", "profiles.menu.", l.cardWidth, true) {
+	for _, button := range profileCardControls("profiles.refresh.", "profiles.menu.", l.cardWidth) {
 		widths[button.label] = ansi.StringWidth(m.profileButtonView(button, panel))
 	}
-	for i, name := range l.names {
+	for i := range l.names {
 		card := l.card(i)
 		index := strconv.Itoa(i)
-		controls := profileCardControls("profiles.refresh."+index, "profiles.menu."+index, card.W, refreshable[name])
+		controls := profileCardControls("profiles.refresh."+index, "profiles.menu."+index, card.W)
 		targets = append(targets, m.profileCardTargets(card, controls, widths, l.compact)...)
 
 	}

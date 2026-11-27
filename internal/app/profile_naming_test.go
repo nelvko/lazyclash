@@ -102,9 +102,6 @@ func TestAutomaticProfileNamesShareTheDownloadResponse(t *testing.T) {
 			if requests.Load() != 1 || len(svc.actions) != 0 || svc.installs != 0 {
 				t.Fatal("name discovery downloaded twice or changed core lifecycle")
 			}
-			if !profile.Refreshable {
-				t.Fatal("remembered profile is not refreshable")
-			}
 			path := savedSourcePath(t, a, profile.ID)
 			if filepath.Base(path) != configuration.Hash([]byte(body))+".yaml" || !bytes.Equal(read(t, path), []byte(body)) {
 				t.Fatal("provider filename changed the content-addressed source path or bytes")

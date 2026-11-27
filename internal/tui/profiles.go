@@ -28,7 +28,6 @@ type profilesState struct {
 	pasteUnavailable  bool
 	editing           bool
 	importing         bool
-	importOnce        bool
 	menuProfile       string
 	deleteFocus       string
 	deleteCurrent     bool
@@ -185,7 +184,7 @@ func (m *Model) beginProfileURLImport() tea.Cmd {
 	m.profilesUI.url.Blur()
 	m.profilesUI.importing = true
 	m.focus = "profiles.add"
-	return m.beginProfileImport(app.ProfileDraft{Address: source, RememberSource: !m.profilesUI.importOnce}, "profile.add", m.tr("profiles.fetching"))
+	return m.beginProfileImport(app.ProfileDraft{Address: source}, "profile.add", m.tr("profiles.fetching"))
 }
 
 func validateProfileSource(source string) error {
@@ -228,8 +227,7 @@ func (m *Model) focusProfileControl(id string) {
 func (m *Model) reconcileProfiles() {
 	m.reconcileProfileValidation()
 	if m.profilesUI.importSource() == "" {
-		m.profilesUI.importOnce = false
-		if m.page == "profiles" && (m.focus == "profiles.add" || m.focus == "profiles.import-once") {
+		if m.page == "profiles" && m.focus == "profiles.add" {
 			m.focus = "profiles.create"
 		}
 	}
@@ -279,7 +277,7 @@ func (m *Model) profileCardClick(id string) (bool, tea.Cmd) {
 // not recreate schema or active-profile validation.
 func (m *Model) profileAction(id string) (bool, tea.Cmd) {
 	index, card := profileActionIndex(id, "profile.", len(m.profiles()))
-	if !card && id != "subscription.add" && !strings.HasPrefix(id, "profiles.") &&
+	if !card && !strings.HasPrefix(id, "profiles.") &&
 		!strings.HasPrefix(id, "profile.overrides.") && !strings.HasPrefix(id, "profile.delete.") {
 		return false, nil
 	}
@@ -306,19 +304,10 @@ func (m *Model) profileAction(id string) (bool, tea.Cmd) {
 		return true, m.openProfileSettings(m.profiles()[index])
 	}
 	switch id {
-	case "profiles.import-once":
-		m.focus = id
-		m.profilesUI.importOnce = !m.profilesUI.importOnce
-		return true, nil
 	case "profiles.create":
 		return true, m.openProfileCreate()
-	case "subscription.add":
-		cmd := m.openForm()
-		m.rememberSource = true
-		m.failure = ""
-		return true, cmd
 	case "profiles.update-all":
-		if !m.hasRefreshableProfiles() {
+		if len(m.profiles()) == 0 {
 			return true, nil
 		}
 		label := m.tr("profiles.updating_all")
@@ -382,7 +371,7 @@ func (m *Model) profileEditForm() bool {
 }
 
 func (m *Model) openProfileEdit(form, name string) tea.Cmd {
-	m.form, m.name, m.rememberSource = form, name, false
+	m.form, m.name = form, name
 	m.failure = ""
 	m.input.Reset()
 	m.paths.reset()
@@ -400,7 +389,7 @@ func (m *Model) openProfileEdit(form, name string) tea.Cmd {
 }
 
 func (m *Model) closeProfileForm() {
-	m.form, m.name, m.rememberSource = "", "", false
+	m.form, m.name = "", ""
 	m.profilesUI.deleteFocus, m.profilesUI.deleteReplacement, m.profilesUI.deleteCurrent = "", "", false
 	m.input.Reset()
 	m.input.Blur()
@@ -503,9 +492,6 @@ func (m *Model) renderProfileForm(base string) (string, []hitRegion) {
 		return m.renderModalNotice(m.tr("profiles.enlarge"))
 	}
 	title, label, hint := m.tr("profiles.add_subscription"), m.tr("profiles.source_label"), m.tr("profiles.source_hint")
-	if m.form == "source" && !m.rememberSource {
-		title, hint = m.tr("profiles.import_title"), m.tr("profiles.import_hint")
-	}
 	if m.form == "profile-overrides" {
 		title, label = m.tr("profiles.overrides_title", clean(m.profileInfo(m.name).Name)), m.tr("profiles.overrides_path")
 		hint = m.tr("profiles.overrides_hint")

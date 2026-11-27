@@ -338,7 +338,7 @@ def exercise_profile_updates(terminal, output, profile, command, directory):
         path.write_text('rules: ["MATCH,DIRECT"]\n')
     for i in range(1, 19):
         path = few if i <= 3 else source
-        subprocess.run([*command, "profile", "add", str(path), "--remember-source", "--name", f"Lab-{i:02d}"],
+        subprocess.run([*command, "profile", "add", str(path), "--name", f"Lab-{i:02d}"],
                        check=True, capture_output=True, timeout=10)
     terminal.key(b"g")
     terminal.key(b"3")

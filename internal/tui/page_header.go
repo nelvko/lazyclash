@@ -50,15 +50,6 @@ func (h pageHeader) enabled(id string) bool {
 	return false
 }
 
-func (m *Model) hasRefreshableProfiles() bool {
-	for _, profile := range m.snapshot.ProfileDetails {
-		if profile.Refreshable {
-			return true
-		}
-	}
-	return false
-}
-
 func (m *Model) pageHeader() pageHeader {
 	tr := m.tr
 	h := pageHeader{}
@@ -72,7 +63,7 @@ func (m *Model) pageHeader() pageHeader {
 		}
 		h.actions = append(h.actions, headerAction{"proxies.providers", tr("providers.title.proxies"), "≡", m.providersSupported(providerProxies)})
 	case "profiles":
-		h.actions = []headerAction{{"profiles.update-all", tr("header.updateAll"), "↻", m.hasRefreshableProfiles()}}
+		h.actions = []headerAction{{"profiles.update-all", tr("header.updateAll"), "↻", len(m.profiles()) > 0}}
 	case "connections":
 		h.summary, h.compactSummary = m.connectionTotals(false), m.connectionTotals(true)
 		pause, compact := tr("connections.pause"), "Ⅱ"

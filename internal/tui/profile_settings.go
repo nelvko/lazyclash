@@ -85,7 +85,7 @@ func (m *Model) saveProfileSettings() tea.Cmd {
 	values.Description = m.profileCreate.description.Value()
 	values.UserAgent = m.profileCreate.effectiveUserAgent()
 	address := strings.TrimSpace(m.profileCreate.source.Value())
-	if address != values.Address && address != "" {
+	if address != values.Address {
 		normalized, err := resolveLocalPath(address)
 		if err == nil {
 			err = validateProfileSource(normalized)

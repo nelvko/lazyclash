@@ -39,7 +39,7 @@ func TestRepositoryStaleEditCannotReplaceNewerProfiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	latest.Profiles["secondary"] = ProfileRecord{Spec: Profile{Core: "mihomo", Revision: latest.Profiles["primary"].Spec.Revision}, Name: "Secondary", NameSource: NameCustom, NameBase: "Secondary"}
+	latest.Profiles["secondary"] = ProfileRecord{Spec: Profile{Core: "mihomo", Revision: latest.Profiles["primary"].Spec.Revision}, Name: "Secondary", NameSource: NameCustom, NameBase: "Secondary", Address: "/tmp/secondary.yaml"}
 	if err := r.Save(latest, expected); err != nil {
 		t.Fatal(err)
 	}
@@ -134,6 +134,7 @@ func TestRepositoryRejectsInvalidProfileMetadataBeforePublishing(t *testing.T) {
 		name string
 		edit func(*ProfileRecord)
 	}{
+		{"missing-source", func(record *ProfileRecord) { record.Address = "" }},
 		{"missing-core", func(record *ProfileRecord) { record.Spec.Core = "" }},
 		{"missing-revision", func(record *ProfileRecord) { record.Spec.Revision = "" }},
 		{"invalid-revision", func(record *ProfileRecord) { record.Spec.Revision = "../private-token" }},

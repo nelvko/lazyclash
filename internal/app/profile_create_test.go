@@ -39,13 +39,13 @@ func TestCreateHTTPSProfileKeepsMetadataAndRunningGenerationSeparate(t *testing.
 			a.HTTP = server.Client()
 			address := server.URL + "/download.yaml?token=private-fixture-token"
 			if name, err := a.ImportProfile(t.Context(), ProfileDraft{
-				Name: tc.explicit, Description: "  日常\n路由\t说明  ", Address: address, RememberSource: true,
+				Name: tc.explicit, Description: "  日常\n路由\t说明  ", Address: address,
 			}); err != nil || name != tc.want {
 				t.Fatal("import returned the wrong committed display name", name, err)
 			}
 			profile := namedProfile(t, a, tc.want)
 			requireProfileName(t, a, profile.ID, tc.want, tc.source, tc.want)
-			if profile.Description != "日常 路由 说明" || profile.Kind != "remote" || !profile.Refreshable || !profile.Validated || profile.Pending {
+			if profile.Description != "日常 路由 说明" || profile.Kind != "remote" || !profile.Validated || profile.Pending {
 				t.Fatalf("remote profile metadata is incomplete: %+v", profile)
 			}
 			lib, _, err := a.library().Load()
@@ -69,12 +69,12 @@ func TestCreateLocalProfileAutomaticallyNamesLiteralFileBeforeInstallation(t *te
 	body := []byte("rules: ['MATCH,DIRECT']\n")
 	write(t, path, body)
 	if err := a.CreateProfile(t.Context(), ProfileDraft{
-		Description: "  本地\t配置  ", Address: path, RememberSource: true,
+		Description: "  本地\t配置  ", Address: path,
 	}); err != nil {
 		t.Fatal(err)
 	}
 	profile := namedProfile(t, a, "配置 #1? literal%20")
-	if profile.NameSource != configuration.NameURL || profile.NameBase != profile.Name || profile.Description != "本地 配置" || profile.Kind != "local" || !profile.Refreshable || profile.Validated {
+	if profile.NameSource != configuration.NameURL || profile.NameBase != profile.Name || profile.Description != "本地 配置" || profile.Kind != "local" || profile.Validated {
 		t.Fatalf("local profile metadata is incorrect: %+v", profile)
 	}
 	lib, _, err := a.library().Load()
@@ -131,7 +131,7 @@ func TestFailedProfileCreationPublishesNeitherMetadataNorRuntime(t *testing.T) {
 				a.Validate = func(context.Context, string, string, string) error { cancel(); return context.Canceled }
 			}
 			err = a.CreateProfile(ctx, ProfileDraft{
-				Description: "Unpublished description", Address: server.URL + "/config?token=private-fixture-token", RememberSource: true,
+				Description: "Unpublished description", Address: server.URL + "/config?token=private-fixture-token",
 			})
 			if err == nil || strings.Contains(err.Error(), "private-fixture-token") || strings.Contains(err.Error(), server.URL) {
 				t.Fatalf("failed creation succeeded or exposed its address: %v", err)
@@ -151,7 +151,7 @@ func TestClearingProfileDescriptionPreservesIdentityRecipeAndRunningGeneration(t
 	a, svc := installedApp(t)
 	path := filepath.Join(t.TempDir(), "work.yaml")
 	write(t, path, []byte("rules: ['MATCH,DIRECT']\n"))
-	if err := a.CreateProfile(t.Context(), ProfileDraft{Name: "Work", Description: "Office routing", Address: path, RememberSource: true}); err != nil {
+	if err := a.CreateProfile(t.Context(), ProfileDraft{Name: "Work", Description: "Office routing", Address: path}); err != nil {
 		t.Fatal(err)
 	}
 	if err := a.Apply(t.Context(), "Work"); err != nil {

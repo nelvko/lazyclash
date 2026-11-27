@@ -170,15 +170,13 @@ func (m *Model) profileFormFooter(width int) dashboardBlock {
 		footer.lines = append(footer.lines, themed(cellCrop(m.spinner.View()+" "+m.message, width), accent, modalBackground, false))
 	}
 
-	var actions dashboardBlock
+	actions := dashboardBlock{lines: []string{""}}
 	if settings {
 		extra := []profileButton{{"profile-settings.overrides", m.tr("profile_settings.import"), false}}
 		if m.canUseDefaultFrom(m.name) {
 			extra = append(extra, profileButton{"profile-settings.deactivate", m.tr("profile_settings.deactivate"), false})
 		}
 		actions = m.profileButtons(extra, width, modalBackground)
-	} else {
-		actions = m.profileImportOnceControl(profileCreateFieldID(profileCreateImportOnce), m.profileCreate.importOnce, width, modalBackground)
 	}
 	saveW, cancelW := ansi.StringWidth(saveButton), ansi.StringWidth(cancelButton)
 	saveX := width - saveW

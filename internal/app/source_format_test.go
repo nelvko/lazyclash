@@ -55,7 +55,7 @@ func TestSubscriptionErrorResponsesNeverReplacePublishedInputsOrRuntime(t *testi
 			content.Store([]byte(response.raw))
 			operations := []func() error{
 				func() error { return a.Refresh(t.Context(), "saved") },
-				func() error { return a.Add(t.Context(), "rejected-profile", address) },
+				func() error { return a.AddSubscription(t.Context(), "rejected-profile", address) },
 				func() error { return a.AddSubscription(t.Context(), "rejected-subscription", address) },
 			}
 			for _, operation := range operations {

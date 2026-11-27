@@ -27,13 +27,11 @@ func (m *Model) profileMenuItems(id string) []menuItem {
 		menuItem{ID: "edit-config", Label: m.tr("profile_menu.edit_config")},
 		menuItem{ID: "edit-overrides", Label: m.tr("profile_menu.edit_overrides")},
 	)
-	if info.Refreshable {
-		label := m.tr("profile_menu.update")
-		if info.Kind == "local" {
-			label = m.tr("profile_menu.reload_file")
-		}
-		items = append(items, menuItem{ID: "refresh", Label: label})
+	label := m.tr("profile_menu.update")
+	if info.Kind == "local" {
+		label = m.tr("profile_menu.reload_file")
 	}
+	items = append(items, menuItem{ID: "refresh", Label: label})
 	return append(items,
 		menuItem{ID: "settings", Label: m.tr("profile_menu.settings")},
 		menuItem{ID: "delete", Label: m.tr("profile_menu.delete"), Danger: true},

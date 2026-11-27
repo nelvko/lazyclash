@@ -184,7 +184,7 @@ func addFixtureProfile(t *testing.T, a *App, name string) {
 	t.Helper()
 	p := filepath.Join(t.TempDir(), "subscription.yaml")
 	write(t, p, []byte("mode: rule\nproxies: []\nproxy-groups:\n  - name: custom\n    type: select\n    proxies: [DIRECT, REJECT]\nrules: ['MATCH,custom']\n"))
-	if err := a.Add(t.Context(), name, p); err != nil {
+	if err := a.AddSubscription(t.Context(), name, p); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -310,7 +310,7 @@ func TestHTTPAddValidatesBeforeSavingAndDoesNotApply(t *testing.T) {
 		}
 		return ctx.Err()
 	}
-	if err := a.Add(t.Context(), "good", server.URL+"/private-token"); err != nil {
+	if err := a.AddSubscription(t.Context(), "good", server.URL+"/private-token"); err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(read(t, savedSourcePath(t, a, "good")), valid) {
@@ -320,19 +320,19 @@ func TestHTTPAddValidatesBeforeSavingAndDoesNotApply(t *testing.T) {
 		t.Fatal("add implicitly applied subscription")
 	}
 	fixture.Store([]byte("private-token: ["))
-	if err := a.Add(t.Context(), "bad-yaml", server.URL); err == nil || strings.Contains(err.Error(), "private-token") {
+	if err := a.AddSubscription(t.Context(), "bad-yaml", server.URL); err == nil || strings.Contains(err.Error(), "private-token") {
 		t.Fatalf("unsafe invalid YAML error: %v", err)
 	}
 	assertLibraryEntryMissing(t, a, "bad-yaml")
 	fixture.Store([]byte("mode: reject-engine\n"))
-	if err := a.Add(t.Context(), "bad-engine", server.URL); err == nil {
+	if err := a.AddSubscription(t.Context(), "bad-engine", server.URL); err == nil {
 		t.Fatal("invalid engine configuration saved")
 	}
 	assertLibraryEntryMissing(t, a, "bad-engine")
 	if validations != 2 {
 		t.Fatalf("validator count=%d", validations)
 	}
-	if err := a.Add(t.Context(), "good", server.URL); err == nil {
+	if err := a.AddSubscription(t.Context(), "good", server.URL); err == nil {
 		t.Fatal("existing profile overwritten")
 	}
 }
@@ -351,7 +351,7 @@ func TestAddCancellationAfterResponseHeadersIsPreserved(t *testing.T) {
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	done := make(chan error, 1)
-	go func() { done <- a.Add(ctx, "cancelled", server.URL) }()
+	go func() { done <- a.AddSubscription(ctx, "cancelled", server.URL) }()
 	<-headers
 	cancel()
 	if err := <-done; !errors.Is(err, context.Canceled) {

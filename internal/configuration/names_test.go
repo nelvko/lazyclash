@@ -148,7 +148,7 @@ func TestProfileMetadataRoundTripKeepsIDsBlobsAndCAS(t *testing.T) {
 	}
 	lib := Library{Version: LibraryVersion,
 		Profiles: map[string]ProfileRecord{
-			"stable-id": {Spec: Profile{Core: "mihomo", Revision: revision}, Name: "机场 A (1)", NameSource: NameProvider, NameBase: "机场 A"},
+			"stable-id": {Spec: Profile{Core: "mihomo", Revision: revision}, Name: "机场 A (1)", NameSource: NameProvider, NameBase: "机场 A", Address: "https://example.invalid/feed"},
 		},
 	}
 	if err := r.Save(lib, nil); err != nil {

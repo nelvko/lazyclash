@@ -417,7 +417,6 @@ func TestOverviewSubscriptionShowsAppliedCardMetadata(t *testing.T) {
 			for _, source := range []struct{ kind, origin, want string }{
 				{"remote", "travel.example", "travel.example"},
 				{"local", "/private/profile-source.yaml", m.tr("profiles.create_local")},
-				{"imported", "/private/profile-source.yaml", m.tr("profiles.imported_origin")},
 			} {
 				info.Kind, info.Origin = source.kind, source.origin
 				view := card()

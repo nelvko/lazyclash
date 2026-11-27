@@ -158,7 +158,7 @@ def main():
 
         write(full_path, full(1))
         write(override_path, "prepend-rules: ['DOMAIN,user-custom.invalid,REJECT']\n")
-        cli('profile', 'add', source, '--name', full_profile, '--remember-source')
+        cli('profile', 'add', source, '--name', full_profile)
         full_profile = json.loads(cli('profile', 'show', full_profile))['id']
         cli('profile', 'override', full_profile, str(override_path))
         first_revision = snapshot(full_profile, full(1).encode())
@@ -277,12 +277,14 @@ def main():
         write(second_path, second)
         cli('profile', 'add', str(second_path), '--name', second_profile)
         second_profile = json.loads(cli('profile', 'show', second_profile))['id']
-        imported_revision = snapshot(second_profile, second.encode())
-        assert 'address' not in record(second_profile), 'one-time local import retained a private path'
+        assert record(second_profile)['address'] == str(second_path), 'local import lost its source path'
         assert generation() == saved_generation and status()['Service']['PID'] == saved_pid, 'saving another full profile applied it'
+        second += '# refreshed local file\n'
+        write(second_path, second)
+        cli('profile', 'refresh', second_profile)
+        imported_revision = snapshot(second_profile, second.encode())
+        assert generation() == saved_generation and status()['Service']['PID'] == saved_pid, 'refreshing another profile changed the running generation'
         saved_library = library.read_bytes()
-        cli('profile', 'refresh', second_profile, success=False)
-        assert library.read_bytes() == saved_library, 'one-time import unexpectedly became refreshable'
 
         # Corrupt only this inactive profile's blob, then restore it in finally.
         # This tests Apply's input-integrity rejection, not restart rollback.

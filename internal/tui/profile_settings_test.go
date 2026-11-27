@@ -61,10 +61,12 @@ func TestProfileSettingsSaveTogetherAndRetainFailedEdits(t *testing.T) {
 	m.profileCreate.name.SetValue("new name")
 	m.profileCreate.description.SetValue("")
 	m.profileCreateSetField(profileCreateSource)
-	m.profileCreate.source.SetValue("https://")
-	m, _ = update(m, special(tea.KeyEnter))
-	if m.busy || m.failure == "" || m.form != "profile-settings" {
-		t.Fatal("malformed source escaped form validation")
+	for _, invalid := range []string{"", "https://"} {
+		m.profileCreate.source.SetValue(invalid)
+		m, _ = update(m, special(tea.KeyEnter))
+		if m.busy || m.failure == "" || m.form != "profile-settings" || len(saved) != 0 {
+			t.Fatal("missing or malformed source escaped form validation")
+		}
 	}
 	m.profileCreate.source.SetValue("https://example.invalid/new")
 	m, cmd := update(m, special(tea.KeyEnter))

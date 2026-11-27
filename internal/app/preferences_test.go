@@ -142,11 +142,11 @@ func TestImportBeforeInstallationIsPrivateAndNotAutomaticallyApplied(t *testing.
 	a, _ := testApp(t)
 	source := filepath.Join(t.TempDir(), "import.yaml")
 	write(t, source, []byte("proxies: []\nrules: ['MATCH,DIRECT']\n"))
-	if err := a.Add(t.Context(), "imported", source); err != nil {
+	if err := a.AddSubscription(t.Context(), "imported", source); err != nil {
 		t.Fatal(err)
 	}
 	write(t, source, []byte("proxies: private-token-scalar\n"))
-	if err := a.Add(t.Context(), "bad-structure", source); err == nil || strings.Contains(err.Error(), "private-token") {
+	if err := a.AddSubscription(t.Context(), "bad-structure", source); err == nil || strings.Contains(err.Error(), "private-token") {
 		t.Fatalf("invalid Mihomo structure accepted or echoed: %v", err)
 	}
 	write(t, source, []byte("proxies: []\nrules: ['MATCH,DIRECT']\n"))
@@ -174,7 +174,7 @@ func TestImportBeforeInstallationIsPrivateAndNotAutomaticallyApplied(t *testing.
 		t.Fatalf("permissions=%v err=%v", info, err)
 	}
 	write(t, source, []byte("secret-token: [malformed"))
-	if err := a.Add(t.Context(), "invalid", source); err == nil || strings.Contains(err.Error(), "secret-token") {
+	if err := a.AddSubscription(t.Context(), "invalid", source); err == nil || strings.Contains(err.Error(), "secret-token") {
 		t.Fatalf("invalid import: %v", err)
 	}
 }

@@ -116,22 +116,6 @@ func TestRememberedSubscriptionRefreshLoadsNewSourceWithAppliedOverrides(t *test
 	}
 }
 
-func TestOneTimeImportDoesNotRememberAddress(t *testing.T) {
-	a, _ := installedApp(t)
-	source := filepath.Join(t.TempDir(), "source.yaml")
-	write(t, source, []byte("rules: ['MATCH,DIRECT']\n"))
-	if err := a.Add(t.Context(), "local", source); err != nil {
-		t.Fatal(err)
-	}
-	lib, _, _ := a.library().Load()
-	if lib.Profiles["local"].Address != "" {
-		t.Fatal("address remembered without opt-in")
-	}
-	if err := a.Refresh(t.Context(), "local"); err == nil || !strings.Contains(err.Error(), "remembered") {
-		t.Fatal("refresh assumed a source", err)
-	}
-}
-
 func TestRefreshFailureNeverCommitsCandidateIndexOrControlsService(t *testing.T) {
 	for _, scenario := range []string{"corrupt-snapshot", "invalid-yaml", "validation-failure", "concurrent-index-edit", "cancel-validation", "override-reference"} {
 		t.Run(scenario, func(t *testing.T) {

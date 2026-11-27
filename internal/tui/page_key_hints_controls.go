@@ -33,12 +33,10 @@ func (m *Model) profilesContextHelp() string {
 		action = m.tr("profiles.paste")
 	case "profiles.add":
 		action = m.tr("profiles.add")
-	case "profiles.import-once":
-		return m.tr("profiles.toggle_option") + " · " + base
 	case "profiles.create":
 		action = m.tr("profiles.create")
 	case "profiles.update-all":
-		if m.hasRefreshableProfiles() {
+		if len(m.profiles()) > 0 {
 			return m.tr("navigation.updateProfiles")
 		}
 	case "page.refresh":
@@ -195,7 +193,7 @@ func (m *Model) settingsContextHelp() string {
 		if m.snapshot.Installed {
 			label = "navigation.controls.manageCore"
 		}
-	case "import", "add", "subscription.add":
+	case "import", "add":
 		label = "navigation.controls.importProfile"
 	case "start", "card.start", "core.start":
 		label = "dashboard.settings.start"

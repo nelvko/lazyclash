@@ -26,14 +26,14 @@ func TestCreateProfileStoresDescriptionWithoutChangingRuntimeRecipe(t *testing.T
 	a, _ := installedApp(t)
 	path := filepath.Join(t.TempDir(), "remote-like.yaml")
 	write(t, path, []byte("rules: ['MATCH,DIRECT']\n"))
-	if err := a.CreateProfile(t.Context(), ProfileDraft{Name: "Work", Description: "  office\nroute  ", Address: path, RememberSource: true}); err != nil {
+	if err := a.CreateProfile(t.Context(), ProfileDraft{Name: "Work", Description: "  office\nroute  ", Address: path}); err != nil {
 		t.Fatal(err)
 	}
 	info, err := a.ProfileDetails(t.Context(), "Work")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Description != "office route" || !info.Refreshable {
+	if info.Description != "office route" {
 		t.Fatalf("unexpected profile metadata: %+v", info)
 	}
 	lib, _, err := a.library().Load()
@@ -78,7 +78,7 @@ func TestFullProfilePinsAppliedContentAndCustomRules(t *testing.T) {
 		t.Fatal(err)
 	}
 	info, err := a.ProfileDetails(t.Context(), "saved")
-	if err != nil || !info.Refreshable || !info.Validated || info.Pending {
+	if err != nil || !info.Validated || info.Pending {
 		t.Fatalf("unexpected saved profile: %+v %v", info, err)
 	}
 	m, old, err := a.load()

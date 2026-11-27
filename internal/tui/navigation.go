@@ -189,9 +189,6 @@ func (m *Model) contextHelp() string {
 		if m.busy || m.quitting {
 			return m.tr("navigation.hints.busy")
 		}
-		if m.profileCreate.field == profileCreateImportOnce {
-			return m.tr("profiles.toggle_option") + " · " + m.tr("profiles.create_footer")
-		}
 		if m.profileCreate.field == profileCreateSource {
 			if _, ok := m.paths.selectedPath(); ok {
 				return m.tr("profiles.create_path_keys")

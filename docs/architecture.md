@@ -63,7 +63,7 @@ TUI 卡片的固定英文标题使用 Title Case，例如 `Core Status` 和 `Ser
 
 ## 内核文件与服务注册
 
-`configuration` 以 Profile 为唯一配置管理对象，保存稳定 ID、显示名称、描述、可选私密地址、更新时间、原文 revision 与覆写。不存在独立来源实体、共享引用或 Managed 配方。原文按内容摘要寻址，`library.json` 原子提交完整 Profile。`names.go` 负责名称解析、清理和去重，`app/profile_names.go` 负责改名和描述，下载更新直接复用同一次 HTTP 响应头。Mihomo Builder 负责完整配置覆写、受管字段和引用校验；`app` 负责内核验证及运行代提交。运行 generation 固定 Profile revision 与覆写，后续下载或编辑不改变已应用配置。领域模型和业务流程见 [配置设计](subscription-design.md)，执行结果见 [验证记录](subscription-verification.md)。
+`configuration` 以 Profile 为唯一配置管理对象，保存稳定 ID、显示名称、描述、私密来源地址、更新时间、原文 revision 与覆写。不存在独立来源实体、共享引用或 Managed 配方。原文按内容摘要寻址，`library.json` 原子提交完整 Profile。`names.go` 负责名称解析、清理和去重，`app/profile_names.go` 负责改名和描述，下载更新直接复用同一次 HTTP 响应头。Mihomo Builder 负责完整配置覆写、受管字段和引用校验；`app` 负责内核验证及运行代提交。运行 generation 固定 Profile revision 与覆写，后续下载或编辑不改变已应用配置。领域模型和业务流程见 [配置设计](subscription-design.md)，执行结果见 [验证记录](subscription-verification.md)。
 
 首次安装分为文件准备、发布和服务注册。文件准备生成默认配置并完成 Mihomo 验证；系统实例先准备专用非 root 身份，将版本探测和校验降权执行，发布目录和程序仍由 root 持有，只有独立 runtime 缓存可写。应用用例在同一个进程锁和恢复日志保护下发布文件，再注册指向已发布路径的服务，最后提交安装记录。注册失败或取消时执行所属关系检查与恢复，不删除后来出现的外来文件。普通安装/重装继续原子发布并保持旧运行进程；独立升级用例则在原服务运行时重启，通过就绪和运行版本验证后才提交，否则恢复旧文件和运行状态。检查更新保持只读，详见 [内核更新](core-updates.md)。
 

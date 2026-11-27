@@ -94,16 +94,15 @@ func TestProfileMenuOwnsPasteAndPageShortcuts(t *testing.T) {
 
 func TestProfileMenuOnlyOffersSupportedActions(t *testing.T) {
 	for _, tc := range []struct {
-		name                            string
-		installed, current, refreshable bool
+		name               string
+		installed, current bool
 	}{
-		{"uninstalled", false, false, true},
-		{"current", true, true, true},
-		{"one-time import", true, false, false},
+		{"uninstalled", false, false},
+		{"current", true, true},
+		{"available", true, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			m, b := profileClickModel(t, tc.installed, false, tc.current, false)
-			m.snapshot.ProfileDetails[1].Refreshable = tc.refreshable
 			m.layout()
 			m = profileMenuRightClick(t, m, "profile.0")
 			present := map[string]bool{}
@@ -120,7 +119,7 @@ func TestProfileMenuOnlyOffersSupportedActions(t *testing.T) {
 					}
 				}
 			}
-			if present["apply"] == tc.current || present["refresh"] != tc.refreshable {
+			if present["apply"] == tc.current || !present["refresh"] {
 				t.Fatalf("unexpected available actions: %v", present)
 			}
 		})
@@ -172,7 +171,7 @@ func TestProfileMenuSurvivesReorderAndClosesWhenTargetDisappears(t *testing.T) {
 			m = profileMenuRightClick(t, m, "profile.0")
 			next := m.snapshot
 			next.Profiles = []string{"new-profile", "p-stable-profile-id"}
-			next.ProfileDetails = append([]app.ProfileInfo{{ID: "new-profile", Name: "New profile", Refreshable: true}}, next.ProfileDetails...)
+			next.ProfileDetails = append([]app.ProfileInfo{{ID: "new-profile", Name: "New profile"}}, next.ProfileDetails...)
 			if removed {
 				next.Profiles = []string{"new-profile"}
 				next.ProfileDetails = next.ProfileDetails[:1]

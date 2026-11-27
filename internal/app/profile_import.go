@@ -13,14 +13,12 @@ import (
 )
 
 // ProfileDraft contains the user-facing metadata for a new complete profile.
-// Address may be an HTTP(S) URL or an absolute local file path. The source is
-// kept when RememberSource is true so the profile can be refreshed later.
+// Address may be an HTTP(S) URL or an absolute local file path. The address is saved for refresh.
 type ProfileDraft struct {
-	Name           string
-	Description    string
-	Address        string
-	UserAgent      string
-	RememberSource bool
+	Name        string
+	Description string
+	Address     string
+	UserAgent   string
 }
 
 // CreateProfile downloads or reads a source, validates it, and publishes one
@@ -67,12 +65,10 @@ func (a *App) ImportProfile(ctx context.Context, draft ProfileDraft) (string, er
 		entry := configuration.ProfileRecord{
 			Spec:        configuration.Profile{Core: "mihomo", Revision: revision},
 			Description: draft.Description,
+			Address:     draft.Address,
+			UserAgent:   userAgent,
 			UpdatedAt:   time.Now().UTC(),
 			Quota:       configuration.ParseSubscriptionQuota(download.Headers),
-		}
-		if draft.RememberSource {
-			entry.Address = draft.Address
-			entry.UserAgent = userAgent
 		}
 		lib.Profiles[id] = entry
 		nameProfile(&lib, id, configuration.ResolveName(draft.Name, download.Headers, draft.Address))
@@ -95,14 +91,8 @@ func (a *App) ImportProfile(ctx context.Context, draft ProfileDraft) (string, er
 	return displayName, err
 }
 
-// Add imports a private copy. AddSubscription also remembers the address for
-// updates. Both create a complete profile without selecting or starting it.
-func (a *App) Add(ctx context.Context, name, address string) error {
-	return a.CreateProfile(ctx, ProfileDraft{Name: name, Address: address})
-}
-
 func (a *App) AddSubscription(ctx context.Context, name, address string) error {
-	return a.CreateProfile(ctx, ProfileDraft{Name: name, Address: address, RememberSource: true})
+	return a.CreateProfile(ctx, ProfileDraft{Name: name, Address: address})
 }
 
 // Refresh updates the saved source. A selected profile also picks up the new
@@ -176,9 +166,6 @@ func (a *App) updateProfile(ctx context.Context, reference, address string, chan
 // validate the resulting recipe before committing any metadata to the index.
 func (a *App) readProfileSource(ctx context.Context, lib *configuration.Library, id, address string, changeAddress bool) error {
 	entry := lib.Profiles[id]
-	if address == "" {
-		return diagnostic.New("diagnostic.profile.noAddress", "this profile has no remembered address; set a URL or import a new configuration")
-	}
 	if _, err := a.library().Read(entry.Spec.Revision); err != nil {
 		return err
 	}
@@ -257,9 +244,6 @@ func (a *App) RefreshAllProfiles(ctx context.Context) (ProfileRefreshSummary, er
 	for _, profile := range profiles {
 		if err := ctx.Err(); err != nil {
 			return summary, errors.Join(append(failures, err)...)
-		}
-		if !profile.Refreshable {
-			continue
 		}
 		if err := a.Refresh(ctx, profile.ID); err != nil {
 			if ctx.Err() != nil && diagnostic.CancellationOnly(err) {
