@@ -74,6 +74,12 @@ func (m *actionMenu) setItems(items []menuItem) {
 		}
 	}
 	if m.selected < 0 || m.items[m.selected].DisabledReason != "" {
+		if m.dropdown != nil && id != "" {
+			// Enter after a refresh must never confirm a different option.
+			m.selected = -1
+			m.dismiss()
+			return
+		}
 		m.move(1)
 	}
 }

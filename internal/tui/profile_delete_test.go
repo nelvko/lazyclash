@@ -98,6 +98,30 @@ func TestReplacementSelectorKeepsIdentityAndMakesChoiceExplicit(t *testing.T) {
 	}
 }
 
+func TestReplacementDropdownClosesWhenPendingOptionDisappears(t *testing.T) {
+	m, _ := profileClickModel(t, true, true, true, false)
+	m.snapshot.Profiles = append(m.snapshot.Profiles, "alpha", "beta", "gamma")
+	m.openProfileEdit("profile-delete", "p-stable-profile-id")
+	m.profilesUI.deleteReplacement = "gamma"
+	m.layout()
+	m, _ = click(m, findTarget(t, m, deleteChoice))
+	m, _ = update(m, special(tea.KeyUp))
+	if !m.menu.open || m.menu.items[m.menu.selected].ID != "beta" {
+		t.Fatal("expected to be browsing beta with gamma still chosen")
+	}
+
+	refreshed := m.snapshot
+	refreshed.Profiles = []string{"p-stable-profile-id", "alpha", "gamma"}
+	m, _ = update(m, coreStatusMsg{generation: m.statusGeneration, snapshot: refreshed})
+	if m.menu.open || m.profilesUI.deleteReplacement != "gamma" || m.profilesUI.deleteFocus != deleteChoice {
+		t.Fatal("refresh must close the chooser and preserve the previous choice and trigger focus")
+	}
+	m, _ = update(m, special(tea.KeyEnter))
+	if !m.menu.open || m.menu.items[m.menu.selected].ID != "gamma" || m.profilesUI.deleteReplacement != "gamma" || m.busy {
+		t.Fatal("Enter after refresh must reopen on the previously confirmed choice")
+	}
+}
+
 func TestStaleProfileDeletionCannotSwitchToAnotherProfile(t *testing.T) {
 	m, _ := profileClickModel(t, true, true, true, false)
 	m.snapshot.Profiles = append(m.snapshot.Profiles, "only-alternative")
