@@ -30,6 +30,11 @@ func (op notificationOperation) announcesSuccess(page string) bool {
 func (m *Model) controlCompletion(s app.Snapshot, message string) (string, bool) {
 	key := m.notification.operation.Key
 	switch {
+	case strings.HasPrefix(key, "profile.add:"), strings.HasPrefix(key, "profile.create:"):
+		if !s.Installed {
+			return m.tr("feedback.profile_install_to_use", message), false
+		}
+		return m.tr("feedback.profile_ready_to_use", message), false
 	case key == "terminal-proxy" && pendingActivationCommand(s.TerminalProxy) != "":
 		return m.tr("terminal.savedActivation"), true
 	case key == "tun":

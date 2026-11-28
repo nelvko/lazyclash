@@ -123,6 +123,27 @@ func TestProfileToolbarKeepsSourceForRetryAndClearsItAfterSuccess(t *testing.T) 
 	}
 }
 
+func TestProfileImportFeedbackUsesObservedInstallation(t *testing.T) {
+	for _, installed := range []bool{false, true} {
+		b := &fakeBackend{snapshot: app.Snapshot{Installed: !installed}}
+		m := ready(b)
+		m.page = "profiles"
+		b.createProfile = func(context.Context, app.ProfileDraft) error {
+			b.snapshot.Installed = installed
+			return nil
+		}
+		cmd := m.beginProfileImport(app.ProfileDraft{Name: "Work", Address: "/tmp/work.yaml"}, "profile.add", m.tr("profiles.fetching"))
+		m = finishProfileJob(t, m, cmd)
+		key := "feedback.profile_install_to_use"
+		if installed {
+			key = "feedback.profile_ready_to_use"
+		}
+		if want := m.tr(key, m.tr("feedback.profile_created", "Work")); m.message != want {
+			t.Errorf("installed=%t: import message = %q, want %q", installed, m.message, want)
+		}
+	}
+}
+
 func TestProfileCreateFormRetainsDraftAfterFailure(t *testing.T) {
 	m := ready(&fakeBackend{createProfile: func(context.Context, app.ProfileDraft) error {
 		return errors.New("create failed")
