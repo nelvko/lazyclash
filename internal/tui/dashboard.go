@@ -37,6 +37,7 @@ type dashboardOptions struct {
 	settingsPointerFocus bool
 
 	Locale                          i18n.Localizer
+	LanguagePreference              string
 	Theme, EffectiveTheme           string
 	StartPage                       string
 	EditorCommand                   string

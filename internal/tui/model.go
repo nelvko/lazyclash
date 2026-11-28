@@ -226,7 +226,8 @@ func New(ctx context.Context, backend Backend, languages ...string) Model {
 	if m.page == app.StartPageOverview {
 		m.focus = "install"
 	}
-	m.savedLanguage = prefs.Language
+	m.savedLanguage, _ = i18n.Normalize(prefs.Language)
+	m.savedLanguage = cmp.Or(m.savedLanguage, i18n.Auto)
 	m.locale = i18n.New(i18n.Resolve(m.languageOverride, m.savedLanguage, os.Getenv))
 	m.theme = cmp.Or(prefs.Theme, app.ThemeDark)
 	m.editorPreference = prefs.Editor
@@ -517,9 +518,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.failure = m.tr("language.save_failed", m.localizeError(v.err))
 			m.message = ""
 		} else {
-			m.locale = i18n.New(v.language)
-			m.languageOverride = v.language
 			m.savedLanguage = v.language
+			language := v.language
+			if language == i18n.Auto {
+				language = i18n.Resolve(m.languageOverride, i18n.Auto, os.Getenv)
+			}
+			m.locale = i18n.New(language)
 			m.message, m.failure = m.tr("language.saved"), ""
 			m.notification.operation.Context = m.tr("dashboard.language.title")
 			m.refreshLocalizedInputs()

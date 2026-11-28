@@ -13,10 +13,10 @@ func (m *Model) changeLanguage(language string) tea.Cmd {
 	if m.busy || m.quitting || m.page != "settings" {
 		return nil
 	}
-	if language != i18n.English && language != i18n.Chinese {
+	if language != i18n.Auto && language != i18n.English && language != i18n.Chinese {
 		return nil
 	}
-	if language == m.locale.Language() && language == m.savedLanguage {
+	if language == m.savedLanguage && (language == i18n.Auto || language == m.locale.Language()) {
 		return nil
 	}
 	ctx := m.newJob("language", notificationOperation{Key: "language." + language, Context: m.tr("dashboard.language.title")})

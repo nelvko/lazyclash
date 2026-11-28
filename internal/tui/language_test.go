@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -24,6 +25,7 @@ func languageModel(t *testing.T, b *fakeBackend) Model {
 
 func chooseChineseLanguage(m Model) (Model, tea.Cmd) {
 	m, _ = update(m, special(tea.KeyEnter))
+	m, _ = update(m, special(tea.KeyDown))
 	m, _ = update(m, special(tea.KeyDown))
 	return update(m, special(tea.KeyEnter))
 }
@@ -63,10 +65,10 @@ func TestSettingsLanguageSwitchPersistsBeforeChangingVisibleLanguage(t *testing.
 		t.Fatal("input placeholders did not follow locale")
 	}
 	m, _ = click(m, findTarget(t, m, "settings.language"))
-	if !m.menu.open || m.menu.selected != 1 || !m.menu.items[1].Checked {
+	if !m.menu.open || m.menu.selected != 2 || !m.menu.items[2].Checked {
 		t.Fatal("reopening the language menu did not select the saved Chinese preference")
 	}
-	m, cmd = update(m, menuMouse(m.menu, 0, tea.MouseLeft))
+	m, cmd = update(m, menuMouse(m.menu, 1, tea.MouseLeft))
 	m, _ = update(m, languageSaveResult(t, cmd))
 	if m.locale.Language() != i18n.English || b.prefs.Language != i18n.English || !strings.Contains(ansi.Strip(m.screen), "Settings") {
 		t.Fatalf("switch back to English failed: language=%s stored=%s busy=%t", m.locale.Language(), b.prefs.Language, m.busy)
@@ -78,12 +80,12 @@ func TestLanguageMenuCancelAndReselectSavedLanguage(t *testing.T) {
 	m := languageModel(t, b)
 	id := m.id
 	m, _ = update(m, special(tea.KeyEnter))
-	want := []menuItem{{ID: i18n.English, Label: "English", Checked: true}, {ID: i18n.Chinese, Label: "简体中文"}}
-	if !m.menu.open || len(m.menu.items) != len(want) || m.menu.items[0] != want[0] || m.menu.items[1] != want[1] {
+	want := []menuItem{{ID: i18n.Auto, Label: "Auto"}, {ID: i18n.English, Label: "English", Checked: true}, {ID: i18n.Chinese, Label: "简体中文"}}
+	if !m.menu.open || !slices.Equal(m.menu.items, want) {
 		t.Fatalf("unexpected options for English locale: %+v", m.menu.items)
 	}
 	m, _ = update(m, special(tea.KeyDown))
-	if m.menu.selected != 1 || !m.menu.items[0].Checked || m.locale.Language() != i18n.English {
+	if m.menu.selected != 2 || !m.menu.items[1].Checked || m.locale.Language() != i18n.English {
 		t.Fatal("moving the menu cursor altered the current language")
 	}
 	m, _ = update(m, special(tea.KeyEscape))
@@ -101,6 +103,7 @@ func TestLanguageMenuCanPersistDisplayedLanguageOverride(t *testing.T) {
 	b := &fakeBackend{prefs: app.Preferences{Language: i18n.Chinese}}
 	m := languageModel(t, b) // ready starts the model with an explicit English override.
 	m, _ = update(m, special(tea.KeyEnter))
+	m, _ = update(m, special(tea.KeyUp)) // Select English in place of the saved Chinese preference.
 	m, cmd := update(m, special(tea.KeyEnter))
 	if !m.busy || m.locale.Language() != i18n.English || b.prefs.Language != i18n.Chinese {
 		t.Fatal("confirming the displayed override did not start a save")
@@ -108,6 +111,34 @@ func TestLanguageMenuCanPersistDisplayedLanguageOverride(t *testing.T) {
 	m, _ = update(m, languageSaveResult(t, cmd))
 	if m.busy || b.prefs.Language != i18n.English {
 		t.Fatal("displayed English override was not saved")
+	}
+}
+
+func TestAutomaticLanguageIsDefaultAndResolvesAgainAfterRestart(t *testing.T) {
+	t.Setenv("LAZYCLASH_LANG", "")
+	t.Setenv("LC_ALL", "zh_CN.UTF-8")
+	b := &fakeBackend{}
+	m := New(t.Context(), b)
+	d := m.dashboardOptions().settingsDropdown("settings.language")
+	if m.locale.Language() != i18n.Chinese || d.Value != i18n.Auto || d.label() != "自动" {
+		t.Fatalf("unexpected default: locale=%s dropdown=%+v", m.locale.Language(), d)
+	}
+	b.prefs.Language = i18n.English
+	m = New(t.Context(), b)
+	m.busy, m.page, m.focus = false, "settings", "settings.language"
+	m.layout()
+	m, _ = update(m, special(tea.KeyEnter))
+	m, _ = update(m, special(tea.KeyUp))
+	m, cmd := update(m, special(tea.KeyEnter))
+	m, _ = update(m, languageSaveResult(t, cmd))
+	if m.locale.Language() != i18n.Chinese || b.prefs.Language != i18n.Auto {
+		t.Fatalf("auto did not restore the environment language: locale=%s stored=%s", m.locale.Language(), b.prefs.Language)
+	}
+	t.Setenv("LC_ALL", "C")
+	m = New(t.Context(), b)
+	d = m.dashboardOptions().settingsDropdown("settings.language")
+	if m.locale.Language() != i18n.English || d.Value != i18n.Auto || d.label() != "Auto" {
+		t.Fatalf("unexpected preference after restart: locale=%s dropdown=%+v", m.locale.Language(), d)
 	}
 }
 

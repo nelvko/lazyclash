@@ -176,8 +176,8 @@ func (a *App) SaveEditorPreference(ctx context.Context, command string) error {
 
 // SaveLanguagePreference changes presentation only and preserves other preferences.
 func (a *App) SaveLanguagePreference(ctx context.Context, language string) error {
-	if language != "en" && language != "zh-Hans" {
-		return diagnostic.New("language.unsupported", "Language must be en or zh-Hans")
+	if language != "auto" && language != "en" && language != "zh-Hans" {
+		return diagnostic.New("language.unsupported", "Language must be auto, en or zh-Hans")
 	}
 	return a.editPreferences(ctx, func(p *Preferences) error { p.Language = language; return nil })
 }

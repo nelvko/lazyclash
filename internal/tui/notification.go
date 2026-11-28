@@ -392,6 +392,7 @@ func (m *Model) dashboardOptions() dashboardOptions {
 		o.coreNumber = &m.coreNumber
 	}
 	o.SelectedGroup = cmp.Or(m.overviewGroup, m.proxies.activeGroup)
+	o.LanguagePreference = m.savedLanguage
 	o.Theme, o.EffectiveTheme = m.theme, m.effectiveTheme()
 	o.StartPage = m.startPage
 	o.EditorCommand = m.editorPreference

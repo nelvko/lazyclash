@@ -40,6 +40,7 @@ func TestSettingsPTYFixture(t *testing.T) {
 	if language == "" {
 		language = "en"
 	}
+	b.preferences.Language = language
 	if err := Run(context.Background(), b, language); err != nil {
 		t.Fatal(err)
 	}

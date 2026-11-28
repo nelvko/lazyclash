@@ -9,8 +9,8 @@ import (
 // Normalize accepts the two supported languages and common POSIX locale forms.
 func Normalize(value string) (string, bool) {
 	value = strings.TrimSpace(value)
-	if value == "" || strings.EqualFold(value, "auto") {
-		return "auto", true
+	if value == "" || strings.EqualFold(value, Auto) {
+		return Auto, true
 	}
 	value, _, _ = strings.Cut(value, ".")
 	value, _, _ = strings.Cut(value, "@")
@@ -35,13 +35,13 @@ func Normalize(value string) (string, bool) {
 // Resolve gives explicit choices precedence over a saved preference and the OS.
 func Resolve(explicit, preference string, getenv func(string) string) string {
 	for _, value := range []string{explicit, getenv("LAZYCLASH_LANG"), preference} {
-		if normalized, ok := Normalize(value); ok && normalized != "auto" {
+		if normalized, ok := Normalize(value); ok && normalized != Auto {
 			return normalized
 		}
 	}
 	for _, key := range []string{"LC_ALL", "LC_MESSAGES", "LANG"} {
 		if value := getenv(key); value != "" {
-			if normalized, ok := Normalize(value); ok && normalized != "auto" {
+			if normalized, ok := Normalize(value); ok && normalized != Auto {
 				return normalized
 			}
 			return English

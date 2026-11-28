@@ -80,8 +80,8 @@ def run(binary, output):
     Terminal = load_terminal()
     with tempfile.TemporaryDirectory(prefix="lazyclash-i18n-pty-") as home:
         command = UserInstance(binary, home, "lazyclash-i18n-" + str(os.getpid())).product()
-        base = ["/usr/bin/env", "LAZYCLASH_LANG=", "LC_ALL=C", *command]
-        terminal = Terminal(base + ["--lang", "en"])
+        env = ["/usr/bin/env", "LAZYCLASH_LANG="]
+        terminal = Terminal([*env, "LC_ALL=C", *command])
         try:
             terminal.wait("Overview")
             cancel_initial_lookup(terminal, "Install the Mihomo Core", "Use environment proxy")
@@ -91,8 +91,9 @@ def run(binary, output):
             terminal.wait("Use environment proxy")
             terminal.key(b"\x1b")
             terminal.wait_absent("Use environment proxy")
-            click(terminal, dropdown_trigger(terminal, "English"))
-            dropdown_option(terminal, "English", checked=True)
+            click(terminal, dropdown_trigger(terminal, "Auto"))
+            dropdown_option(terminal, "Auto", checked=True)
+            dropdown_option(terminal, "English")
             click(terminal, dropdown_option(terminal, "简体中文"))
             terminal.wait("常规")
             dropdown_trigger(terminal, "简体中文")
@@ -115,7 +116,7 @@ def run(binary, output):
             terminal.cleanup()
 
         # An ordinary new invocation must pick up both saved preferences.
-        terminal = Terminal(base)
+        terminal = Terminal([*env, "LC_ALL=C", *command])
         try:
             terminal.wait("概览")
             cancel_initial_lookup(terminal, "安装 Mihomo 内核", "使用环境代理")
@@ -143,10 +144,28 @@ def run(binary, output):
             terminal.wait("General")
             dropdown_trigger(terminal, "English")
             capture(terminal, output, "settings-en")
+            assert json.loads((Path(home) / "preferences.json").read_text())["Language"] == "en"
+            click(terminal, dropdown_trigger(terminal, "English"))
+            click(terminal, dropdown_option(terminal, "Auto"))
+            dropdown_trigger(terminal, "Auto")
             terminal.exit()
         finally:
             terminal.cleanup()
-        assert json.loads((Path(home) / "preferences.json").read_text())["Language"] == "en"
+        assert json.loads((Path(home) / "preferences.json").read_text())["Language"] == "auto"
+        # Reopen the same home in a Chinese locale after saving Auto in English.
+        terminal = Terminal([*env, "LC_ALL=zh_CN.UTF-8", *command])
+        try:
+            terminal.wait("概览")
+            cancel_initial_lookup(terminal, "安装 Mihomo 内核", "使用环境代理")
+            terminal.key(b"7")
+            terminal.wait("语言")
+            click(terminal, dropdown_trigger(terminal, "自动"))
+            dropdown_option(terminal, "自动", checked=True)
+            capture(terminal, output, "settings-zh-auto")
+            terminal.key(b"\x1b")
+            terminal.exit()
+        finally:
+            terminal.cleanup()
         assert not (Path(home) / "installation").exists(), "smoke test installed a core"
     print("PASS: language switching, CJK mouse targets, footer toggle and persistence, network form and resize")
 

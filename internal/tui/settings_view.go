@@ -36,11 +36,6 @@ type settingsRow struct {
 	rightAlign         bool // Keep the current value at the trailing edge when the label wraps.
 }
 
-var languageMenuItems = []menuItem{
-	{ID: i18n.English, Label: "English"},
-	{ID: i18n.Chinese, Label: "简体中文"},
-}
-
 func themeMenuItems(locale i18n.Localizer) []menuItem {
 	return []menuItem{
 		{ID: app.ThemeAuto, Label: locale.T("settings.theme.auto")},
@@ -52,7 +47,11 @@ func themeMenuItems(locale i18n.Localizer) []menuItem {
 func (o dashboardOptions) settingsDropdown(id string) dropdown {
 	switch id {
 	case "settings.language":
-		return dropdown{Items: languageMenuItems, Value: o.Locale.Language()}
+		return dropdown{Value: cmp.Or(o.LanguagePreference, i18n.Auto), Items: []menuItem{
+			{ID: i18n.Auto, Label: o.Locale.T("language.auto")},
+			{ID: i18n.English, Label: "English"},
+			{ID: i18n.Chinese, Label: "简体中文"},
+		}}
 	case "settings.startPage":
 		pages := navPages()
 		items := make([]menuItem, len(pages))

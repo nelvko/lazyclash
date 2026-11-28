@@ -27,7 +27,7 @@ make run
 
 ## 界面语言
 
-在 **Settings / 设置 → Language / 语言** 的下拉框中选择 **English** 或 **简体中文**。可直接点击选项，也可用 Tab 聚焦下拉框，按 Enter 打开，再用 ↑/↓ 和 Enter 确认。保存成功后界面立即切换，偏好保存在当前数据目录的 `preferences.json`。保存失败时保留原语言。未安装内核时也可切换语言。
+在 **Settings / 设置 → Language / 语言** 的下拉框中，默认选中 **自动 / Auto**，按启动环境选择语言。也可以固定为 **English** 或 **简体中文**。可直接点击选项，也可用 Tab 聚焦下拉框，按 Enter 打开，再用 ↑/↓ 和 Enter 确认。保存成功后界面立即切换，偏好保存在当前数据目录的 `preferences.json`。保存失败时保留原语言。未安装内核时也可切换语言。
 
 启动语言优先级为 `--lang` → `LAZYCLASH_LANG` → 已保存偏好 → `LC_ALL` / `LC_MESSAGES` / `LANG` → 英文。支持 `en`、`zh-Hans`、`auto`，兼容 `zh-CN` 和 `zh_CN.UTF-8` 等常见语言标签；`C` / `POSIX` 使用英文。
 

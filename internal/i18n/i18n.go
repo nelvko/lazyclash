@@ -17,6 +17,7 @@ import (
 )
 
 const (
+	Auto    = "auto"
 	English = "en"
 	Chinese = "zh-Hans"
 )
@@ -79,7 +80,7 @@ type Localizer struct{ lang string }
 
 func New(lang string) Localizer {
 	normalized, ok := Normalize(lang)
-	if !ok || normalized == "auto" {
+	if !ok || normalized == Auto {
 		normalized = English
 	}
 	return Localizer{lang: normalized}

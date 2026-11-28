@@ -52,7 +52,7 @@ func TestLocalizedDashboardPreservesCanvasAndActions(t *testing.T) {
 func TestLanguageDropdownUsesCurrentNativeNameAndDisplayCellHit(t *testing.T) {
 	for language, label := range map[string]string{i18n.English: "English ▾", i18n.Chinese: "简体中文 ▾"} {
 		for _, width := range []int{20, 30, 56, 80} {
-			o := dashboardOptions{Locale: i18n.New(language), PlainButtons: true}
+			o := dashboardOptions{Locale: i18n.New(language), LanguagePreference: language, PlainButtons: true}
 			block := settingsInterface(o, width)
 			assertCanvas(t, strings.Join(block.lines, "\n"), width, len(block.lines))
 			assertRegions(t, block.targets, width, len(block.lines))

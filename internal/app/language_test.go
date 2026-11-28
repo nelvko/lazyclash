@@ -19,7 +19,7 @@ func TestLanguagePreferencePersistsAndPreservesOtherPreferences(t *testing.T) {
 	if err := a.SetGuideDismissed(t.Context(), true); err != nil {
 		t.Fatal(err)
 	}
-	for _, language := range []string{"zh-Hans", "en"} {
+	for _, language := range []string{"zh-Hans", "auto", "en"} {
 		if err := a.SaveLanguagePreference(t.Context(), language); err != nil {
 			t.Fatal(err)
 		}

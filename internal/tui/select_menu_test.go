@@ -38,8 +38,8 @@ func TestSelectMenuKeepsCurrentCheckIndependentFromPendingChoice(t *testing.T) {
 }
 
 func TestDropdownTriggerAndPopupShareGeometry(t *testing.T) {
-	d := dropdown{Items: languageMenuItems}
-	for _, language := range languageMenuItems {
+	d := (dashboardOptions{}).settingsDropdown("settings.language")
+	for _, language := range d.Items {
 		d.Value = language.ID
 		for _, expanded := range []bool{false, true} {
 			value, hit := d.render("language", buttonOptions{Focused: true, Surface: panel}, expanded, 0)
