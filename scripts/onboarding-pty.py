@@ -253,7 +253,10 @@ def capture(terminal, output, name, args):
     # terminals where synchronized output has not been negotiated.
     settle(terminal)
     (output / (name + ".txt")).write_text(terminal.screen.text() + "\n")
-    (output / (name + ".ansi")).write_bytes(bytes(terminal.raw))
+    # Each checkpoint already has its rendered screen. Keep the cumulative
+    # transcript once, at the end of the session or on failure.
+    if name in ("failed", "final"):
+        (output / (name + ".ansi")).write_bytes(terminal.raw)
     if args.png:
         png(terminal.screen, output / (name + ".png"), args.font, args.cjk_font, args.font_size)
 
@@ -493,16 +496,20 @@ def configure_fonts(parser, args):
 
 
 def main():
+    import test_artifacts
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, required=True)
     parser.add_argument("--test-binary", action="store_true", help="Use an opt-in TUI test binary with in-memory install/check fixture; no real network, core or service")
-    parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--lang", choices=["en", "zh-Hans"], action="append", help="Repeat to select languages; default: both")
     parser.add_argument("--profile", choices=["truecolor", "256", "no-color"], action="append", help="Repeat to select capabilities; default: all")
     parser.add_argument("--size", action="append", help="Repeat COLSxROWS; default: 160x45,120x32,80x24,60x20,120x18")
     parser.add_argument("--scenario", choices=["cancel", "success", "check-retry", "options"], action="append", help="Fixture cases; default: cancel. Success/check-retry/options require --test-binary")
     capture_arguments(parser)
-    args = parser.parse_args()
+    test_artifacts.run_pty(parser, run_suite)
+
+
+def run_suite(args, parser):
     sizes = []
     for value in args.size or []:
         try:
@@ -524,7 +531,6 @@ def main():
         for profile in args.profile or ["truecolor", "256", "no-color"]:
             for scenario in args.scenario or ["cancel"]:
                 run(binary, output, language, profile, sizes or SIZES, args, scenario)
-    print("Evidence:", output)
 
 
 if __name__ == "__main__":

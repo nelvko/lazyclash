@@ -34,10 +34,9 @@ Mihomo 接口只返回活跃连接数组，没有已关闭数量、历史查询�
 验证入口：
 
 ```sh
-go test ./internal/tui -run 'TestConnection|TestLiveConnections' -count=1
-go test -race ./internal/tui -run 'TestConnection|TestLiveConnections|TestRuntime' -count=1
-go test -c ./internal/tui -o bin/connections-tui.test
-python3 scripts/connections-pty.py --binary bin/connections-tui.test \
+./scripts/project-go test ./internal/tui -run 'TestConnection|TestLiveConnections' -count=1
+./scripts/project-go test -race ./internal/tui -run 'TestConnection|TestLiveConnections|TestRuntime' -count=1
+python3 scripts/connections-pty.py --keep-artifacts \
   --output .test-artifacts/connections-redesign/pty \
   --profile truecolor --profile 256 --profile no-color --png
 ```

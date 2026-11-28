@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Verify global core status through a real controlling PTY.
 
-Uses the existing Overview and Logs in-memory fixtures in an explicit Go test
-binary. No managed data, core, network or system service is touched. Optional
+Uses the Overview and Logs in-memory test fixtures. No managed data, core, network or system service is touched. Optional
 PNGs redraw actual PTY cells and colors, not a native terminal screenshot.
 """
 import argparse
@@ -234,13 +233,17 @@ def main():
     preview = module("sidebar_status_preview", "onboarding-pty.py")
     overview = module("sidebar_status_overview", "overview-pty.py")
     logs = module("sidebar_status_logs", "logs-pty.py")
+    import test_artifacts
+
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--binary", required=True, type=Path)
-    parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--binary", type=Path, help="Use an existing TUI test binary (default: build a temporary one)")
     parser.add_argument("--lang", choices=["en", "zh-Hans"], action="append")
     parser.add_argument("--profile", choices=["truecolor", "no-color"], action="append")
     preview.capture_arguments(parser)
-    args = parser.parse_args()
+    test_artifacts.run_pty(parser, run_suite, logs, overview, preview)
+
+
+def run_suite(args, parser, logs, overview, preview):
     preview.configure_fonts(parser, args)
     output = args.output.resolve() / (time.strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6])
     for language in args.lang or ("en", "zh-Hans"):
@@ -248,7 +251,6 @@ def main():
             exercise_overview(preview, overview, args.binary, output / language / profile / "navigation", language, profile, args)
             exercise_logs(preview, overview, logs, args.binary, output / language / profile / "logs", language, profile, args)
             exercise_inactive(preview, overview, args.binary, output / language / profile, language, profile, args)
-    print("Evidence:", output)
 
 
 if __name__ == "__main__":

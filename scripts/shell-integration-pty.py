@@ -95,11 +95,15 @@ def env_for(root, binary):
 
 
 def main():
+    import test_artifacts
+
     parser = argparse.ArgumentParser()
     parser.add_argument("--binary", required=True, type=pathlib.Path)
     parser.add_argument("--helper", required=True, type=pathlib.Path)
-    parser.add_argument("--output", type=pathlib.Path)
-    args = parser.parse_args()
+    test_artifacts.run_pty(parser, run_suite)
+
+
+def run_suite(args, parser):
     binary, helper = args.binary.resolve(), args.helper.resolve()
     results = []
     for name in ("bash", "zsh", "fish"):

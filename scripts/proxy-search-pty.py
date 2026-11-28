@@ -140,15 +140,19 @@ def expanded_restoration(terminal, proxy, preview, output, words, args):
 
 
 def main():
+    import test_artifacts
+
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--binary", type=Path, required=True)
-    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--binary", type=Path, help="Use an existing TUI test binary (default: build a temporary one)")
     parser.add_argument("--lang", action="append", choices=("en", "zh-Hans"))
     sys.dont_write_bytecode = True
     proxy = load("proxy_search_fixture", "proxies-pty.py")
     preview = load("proxy_search_preview", "onboarding-pty.py")
     preview.capture_arguments(parser)
-    args = parser.parse_args()
+    test_artifacts.run_pty(parser, run_suite, preview, proxy)
+
+
+def run_suite(args, parser, preview, proxy):
     preview.configure_fonts(parser, args)
     for language in args.lang or ("en", "zh-Hans"):
         output = args.output.resolve() / language

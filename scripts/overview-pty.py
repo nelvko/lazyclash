@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Verify Overview through a real controlling PTY with an in-memory backend.
 
-Build with `go test -c ./internal/tui -o bin/overview-tui.test`. No real core,
+No real core,
 managed data, network or service is used. Optional PNGs redraw captured VT
 cells and colors; they are not native terminal-app screenshots.
 """
@@ -1132,9 +1132,10 @@ def exercise(preview, binary, output, language, profile, scenario, args):
 
 
 def main():
+    import test_artifacts
+
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--binary", required=True, type=Path)
-    parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--binary", type=Path, help="Use an existing TUI test binary (default: build a temporary one)")
     parser.add_argument("--lang", choices=["en", "zh-Hans"], action="append")
     parser.add_argument("--profile", choices=["truecolor", "256", "no-color"], action="append")
     parser.add_argument("--scenario", choices=["running", "stopped", "unavailable", "drift", "pending", "direct", "ip-route", "websites", "manage-websites", "website-diagonal", "website-list"], action="append")
@@ -1143,14 +1144,16 @@ def main():
     preview = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(preview)
     preview.capture_arguments(parser)
-    args = parser.parse_args()
+    test_artifacts.run_pty(parser, run_suite, preview)
+
+
+def run_suite(args, parser, preview):
     preview.configure_fonts(parser, args)
     output = args.output.resolve() / (time.strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6])
     for language in args.lang or ("en", "zh-Hans"):
         for profile in args.profile or ("truecolor", "256", "no-color"):
             for scenario in args.scenario or ("running",):
                 exercise(preview, args.binary, output / language / profile / scenario, language, profile, scenario, args)
-    print("Evidence:", output)
 
 
 if __name__ == "__main__":

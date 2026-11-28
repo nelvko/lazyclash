@@ -152,10 +152,14 @@ def run(binary, output):
 
 
 def main():
+    import test_artifacts
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("binary", type=Path)
-    parser.add_argument("--output", type=Path, help="Optional directory for terminal text captures")
-    args = parser.parse_args()
+    test_artifacts.run_pty(parser, run_suite)
+
+
+def run_suite(args, parser):
     run(args.binary.resolve(), args.output)
 
 

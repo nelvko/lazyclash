@@ -9,6 +9,10 @@ vm=$1
 artifact=$2
 mihomo=$3
 [[ $mihomo == /* ]] || { printf 'Expected an absolute VM Mihomo path\n' >&2; exit 2; }
+root=$(cd "$(dirname "$0")/.." && pwd)
+if [[ -z ${LAZYCLASH_TEST_OUTPUT:-} ]]; then
+  exec python3 "$root/scripts/test_artifacts.py" service-scopes-e2e -- "$0" "$@"
+fi
 shift 3
 scenario_flag=
 for argument in "$@"; do
@@ -19,27 +23,18 @@ for argument in "$@"; do
     exit 2
   fi
 done
-root=$(cd "$(dirname "$0")/.." && pwd)
 [[ -f "$artifact" && ! -L "$artifact" ]]
 artifact=$(cd "$(dirname "$artifact")" && pwd)/$(basename "$artifact")
 stage=
 work=$(orb -m "$vm" mktemp -d /tmp/lazyclash-scopes.XXXXXX)
-mkdir -p "$root/.test-artifacts"
-log_file="$root/.test-artifacts/service-scopes-e2e.log"
-if [[ $scenario_flag == --proxy-only ]]; then
-  log_file="$root/.test-artifacts/service-scopes-proxy-e2e.log"
-elif [[ $scenario_flag == --ui-tun-only ]]; then
-  log_file="$root/.test-artifacts/service-scopes-ui-e2e.log"
-elif [[ $scenario_flag == --geodata-only ]]; then
-  log_file="$root/.test-artifacts/service-scopes-geodata-e2e.log"
-fi
+log_file="$LAZYCLASH_TEST_OUTPUT/service-scopes-e2e.log"
 cleanup_host() {
   result=$?
   trap - EXIT
   if [[ -n $stage ]]; then rm -rf -- "$stage"; fi
   for screen in pty-root-tun-120x36 pty-root-tun-80x24 pty-geo-{running,stopped}-{160x45,80x24}; do
     if orb -m "$vm" test -f "$work/$screen.txt"; then
-      orb -m "$vm" cat "$work/$screen.txt" > "$root/.test-artifacts/$screen.txt" || result=1
+      orb -m "$vm" cat "$work/$screen.txt" > "$LAZYCLASH_TEST_OUTPUT/$screen.txt" || result=1
     fi
   done
   if orb -m "$vm" test -f "$work/cleanup-complete" || ! orb -m "$vm" test -f "$work/resources-started"; then

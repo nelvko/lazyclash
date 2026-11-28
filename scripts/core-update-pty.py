@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Exercise manual version checks and upgrade cancellation through a real PTY.
 
-Requires a Go TUI test binary (go test -c ./internal/tui -o PATH). Its opt-in
+The opt-in
 fixture uses no network, managed storage, real core executable or system service.
 The report counts calls so opening the management UI cannot silently auto-check.
 """
@@ -78,9 +78,10 @@ def exercise(preview, binary, output, language, profile, args):
 
 
 def main():
+    import test_artifacts
+
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--binary", required=True, type=Path)
-    parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--binary", type=Path, help="Use an existing TUI test binary (default: build a temporary one)")
     sys.dont_write_bytecode = True
     spec = importlib.util.spec_from_file_location("onboarding_pty", Path(__file__).with_name("onboarding-pty.py"))
     preview = importlib.util.module_from_spec(spec)
@@ -88,7 +89,10 @@ def main():
     parser.add_argument("--lang", choices=["en", "zh-Hans"], action="append", help="Repeat to select languages; default: both")
     parser.add_argument("--profile", choices=["truecolor", "256", "no-color"], action="append", help="Repeat to select color capabilities; default: all")
     preview.capture_arguments(parser)
-    args = parser.parse_args()
+    test_artifacts.run_pty(parser, run_suite, preview)
+
+
+def run_suite(args, parser, preview):
     preview.configure_fonts(parser, args)
     for language in args.lang or ("en", "zh-Hans"):
         for profile in args.profile or ("truecolor", "256", "no-color"):

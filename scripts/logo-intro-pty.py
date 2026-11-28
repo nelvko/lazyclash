@@ -2,8 +2,8 @@
 """Verify the one-time sleepy logo entrance and click story in a real color PTY.
 
 Uses disposable homes with startup guidance dismissed and random service names.
-No core, service, or user configuration is installed or changed. Every invocation
-creates a new output subdirectory so earlier verification evidence remains intact.
+No core, service, or user configuration is installed or changed. Use --keep-artifacts with
+--output to export the recording and requested screenshots.
 """
 import argparse
 import codecs
@@ -378,14 +378,18 @@ def verify_compact_start(binary, output, baseline, profile):
 
 
 def main():
+    import test_artifacts
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, required=True)
-    parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--size", type=DEMO.size_arg, action="append")
     parser.add_argument("--profile", action="append", choices=("truecolor", "ansi256", "no-color"),
                         help="Repeat for a profile matrix; defaults to True Color")
     parser.add_argument("--png", action="store_true", help="Redraw actual PTY wordmark cells with Pillow/Menlo on macOS")
-    args = parser.parse_args()
+    test_artifacts.run_pty(parser, run_suite)
+
+
+def run_suite(args, parser):
     binary = args.binary.resolve()
     if not binary.is_file():
         parser.error("--binary must point to an executable")
@@ -400,7 +404,6 @@ def main():
             print("verified %s %dx%d gradient, entrance, no replay, and click story" % (profile, *size), flush=True)
         verify_compact_start(binary, profile_output / "80x24-start", baseline, profile)
         print("verified %s 80x24 startup skips entrance and expanding does not replay" % profile, flush=True)
-    print("Evidence: " + str(output), flush=True)
 
 
 if __name__ == "__main__":

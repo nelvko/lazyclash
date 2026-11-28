@@ -7,6 +7,9 @@ if [[ $# != 1 ]]; then
 fi
 vm=$1
 root=$(cd "$(dirname "$0")/.." && pwd)
+if [[ -z ${LAZYCLASH_TEST_OUTPUT:-} ]]; then
+  exec python3 "$root/scripts/test_artifacts.py" verify-linux -- "$0" "$@"
+fi
 cd "$root"
 command -v orb >/dev/null
 orb -m "$vm" sh -c 'test "$(uname -s)" = Linux; test "$(id -u)" != 0; command -v python3 >/dev/null'
@@ -18,8 +21,6 @@ case "$machine_arch" in
 esac
 host_stage=$(mktemp -d "${TMPDIR:-/tmp}/lazyclash-linux.XXXXXX")
 linux_stage=
-mkdir -p .test-artifacts
-exec > >(tee .test-artifacts/linux-tests.log) 2>&1
 cleanup() {
   result=$?
   trap - EXIT

@@ -172,10 +172,14 @@ def run_scenario(name, shell_name, login_file, installer, output):
 
 
 def main():
+    import test_artifacts
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--installer", type=pathlib.Path, required=True, help="install.sh from an unpacked Linux release")
-    parser.add_argument("--output", type=pathlib.Path, required=True)
-    args = parser.parse_args()
+    test_artifacts.run_pty(parser, run_suite)
+
+
+def run_suite(args, parser):
     if not sys.platform.startswith("linux"):
         parser.error("Linux controlling-PTY tests must run on Linux")
     installer = args.installer.resolve()

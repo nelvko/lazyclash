@@ -1,5 +1,11 @@
 # 验证入口
 
+## 测试记录与空间占用
+
+`make test`、`make check`、`make race`、Linux 验证和 PTY 测试在 `.test-artifacts/managed/summaries/` 为每个测试入口保留最近一次的摘要。`make check` 分别记录测试和 vet 结果。通过后回收本次运行的日志、录制和截图。失败记录集中存放在 `.test-artifacts/managed/failures/`，总预算为 2 GB，优先保留最近结束的运行。运行中的测试可暂时使用更多空间。
+
+例如，`python3 scripts/overview-pty.py --lang en --profile truecolor` 会临时构建 TUI 测试程序，结束后自动回收。已有测试程序可通过 `--binary` 复用。需要交付截图时，加上 `--png --keep-artifacts --output 目标目录`，成功后将证据导出到指定目录；单独传入 `--output` 只导出摘要。手动导出的材料和旧版脚本的历史记录由使用者保管。
+
 ## GeoData 校验、订阅换源与恢复
 
 在专用 OrbStack Linux VM 上运行 `./scripts/service-scopes-e2e.sh "$VM" /absolute/linux/lazyclash /absolute/vm/mihomo --geodata-only`。脚本为普通用户和系统各建一个随机命名的实例，使用本地 HTTP 服务提供两份同名 GeoSite 库。两份库的 `cn` 分类匹配不同的测试域名，实际代理请求能够识别内核使用了哪一份。
@@ -629,10 +635,9 @@ Mihomo `/connections` 仅返回活跃数组，无已关闭数量或历史查询�
 复验入口：
 
 ```sh
-go test ./internal/tui -run 'TestTraffic|TestRuntime|TestOverviewTraffic' -count=1
+./scripts/project-go test ./internal/tui -run 'TestTraffic|TestRuntime|TestOverviewTraffic' -count=1
 make check build
-go test -c ./internal/tui -o bin/traffic-chart.test
-python3 scripts/traffic-chart-preview.py --binary bin/traffic-chart.test \
+python3 scripts/traffic-chart-preview.py \
   --output .test-artifacts/traffic-chart-optimization/experiments --png
 ./scripts/verify-linux.sh lazyclash-e2e
 ```
@@ -699,8 +704,7 @@ go test ./internal/mihomo -run '^TestMihomoWebSocketIntegration$' -count=1 -v
 证据位于 `.test-artifacts/input-unification/`：`final-clear-first-check-build.log`、`final-clear-first-race.log`、`final-isolated-linux.log`、`clear-first-tests.log`、`final-clear-first-linux.log`、`python-tests.log`，PTY 为 `final-pty/`、`final-forms-pty/`、`final-glyph-pty/`、`final-hover-pty/`、`final-hover-clean-pty/`、`final-clear-hover-pty/`、`final-clear-first-pty/`。隔离源码及文件归属清单位于 `isolated-source/` 与 `task-files.json`。复验入口：
 
 ```sh
-go test -c ./internal/tui -o bin/input-fields-tui.test
-python3 scripts/input-fields-pty.py --binary "$PWD/bin/input-fields-tui.test" \
+python3 scripts/input-fields-pty.py --keep-artifacts \
   --output .test-artifacts/input-unification/pty --png
 ```
 
@@ -717,13 +721,12 @@ python3 scripts/input-fields-pty.py --binary "$PWD/bin/input-fields-tui.test" \
 证据位于 `.test-artifacts/traffic-chart/`：`check-build.log`、`race.log`、`linux.log`、`python.log`；最终六组为 `pty-final/20261108-020005-a3d344/`，缺测/重启为 `pty-edges-final/20261108-020005-43d155/`，原概览为 `overview-final/20261108-020005-66977d/`，真实 60 秒预览为 `pty-60-seconds/20261108-015815-9d7190/`。早期 Esc 解码与测试脚本同步失败记录保留，最终脚本在导航页脚已显示时不重复发送 Esc，否则等待页脚状态转换，避免 Esc+Tab 被解析成组合键。复验入口：
 
 ```sh
-go test -c ./internal/tui -o bin/traffic-tui.test
-python3 scripts/traffic-pty.py --binary bin/traffic-tui.test \
+python3 scripts/traffic-pty.py --keep-artifacts \
   --output .test-artifacts/traffic-chart/pty --png
-python3 scripts/traffic-pty.py --binary bin/traffic-tui.test \
+python3 scripts/traffic-pty.py --keep-artifacts \
   --output .test-artifacts/traffic-chart/edges --png \
   --lang zh-Hans --profile truecolor --scenario gap --scenario restart
-python3 scripts/traffic-pty.py --binary bin/traffic-tui.test \
+python3 scripts/traffic-pty.py --keep-artifacts \
   --output .test-artifacts/traffic-chart/full-minute --png \
   --lang zh-Hans --profile truecolor --samples 60
 ```
@@ -741,10 +744,9 @@ python3 scripts/traffic-pty.py --binary bin/traffic-tui.test \
 宿主与 Linux/Python 日志为 `.test-artifacts/overview-equal-rows/{check-build,linux,python}.log`。最终 PTY 证据位于 `.test-artifacts/overview-six-cards/pty-final/20261108-012336-3c8592/` 和 `pty-edges-final/20261108-012336-262073/`，含 PNG/ANSI/TXT、原始输出与操作计数。复验入口：
 
 ```sh
-go test -c ./internal/tui -o bin/overview-tui.test
-python3 scripts/overview-pty.py --binary bin/overview-tui.test \
+python3 scripts/overview-pty.py --keep-artifacts \
   --output .test-artifacts/overview-six-cards/pty --png
-python3 scripts/overview-pty.py --binary bin/overview-tui.test \
+python3 scripts/overview-pty.py --keep-artifacts \
   --output .test-artifacts/overview-six-cards/pty-edges --png \
   --lang zh-Hans --profile truecolor --scenario stopped \
   --scenario unavailable --scenario drift --scenario pending
@@ -771,8 +773,7 @@ python3 scripts/overview-pty.py --binary bin/overview-tui.test \
 日志为 `.test-artifacts/overview-borderless/{check-build,linux,python}.log`；最终 PTY 证据为 `.test-artifacts/overview-borderless/pty/20261107-210854-df56d4/`，包含 PNG/ANSI/TXT、原始 PTY 输出与操作计数。PNG 从实际终端字符格和颜色重绘，后端为隔离内存 fixture；没有操作真实 Mihomo/systemd/TUN，也未运行其完整生命周期 E2E 或 race。复验命令：
 
 ```sh
-go test -c ./internal/tui -o bin/overview-borderless-tui.test
-python3 scripts/overview-pty.py --binary bin/overview-borderless-tui.test \
+python3 scripts/overview-pty.py --keep-artifacts \
   --output .test-artifacts/overview-borderless/pty --png
 ```
 
@@ -790,11 +791,10 @@ python3 scripts/overview-pty.py --binary bin/overview-borderless-tui.test \
 
 ```sh
 make check build
-go test -race ./internal/tui -run 'Test(Button|SelectableButton|ActionButtonGroups|BusyToolbarButtons|NarrowRulesFilters|SelectionGroups|ProxyModeSelection|BusyModeControls|MarianaTrueColor|MarianaTerminal|WizardFooter|WizardCancelling|HeaderButton)' -count=1
+./scripts/project-go test -race ./internal/tui -run 'Test(Button|SelectableButton|ActionButtonGroups|BusyToolbarButtons|NarrowRulesFilters|SelectionGroups|ProxyModeSelection|BusyModeControls|MarianaTrueColor|MarianaTerminal|WizardFooter|WizardCancelling|HeaderButton)' -count=1
 python3 -m unittest discover -s scripts -p 'test_*.py'
-go test -c ./internal/tui -o bin/buttons-tui.test
 # --png requires a Python environment with Pillow and the existing fonts.
-python3 scripts/buttons-pty.py --binary bin/buttons-tui.test \
+python3 scripts/buttons-pty.py --keep-artifacts \
   --output .test-artifacts/buttons/pty --png
 ```
 
@@ -809,10 +809,9 @@ python3 scripts/buttons-pty.py --binary bin/buttons-tui.test \
 最终证据为 `.test-artifacts/overview-check-build-verified.log`、`overview-linux-verified.log`、`overview-python-verified.log`，以及 `.test-artifacts/overview-redesign/pty-final/20261106-222456-8b3868/` 与 `pty-edges-final/20261106-222456-760304/` 中的 PNG/ANSI/TXT、原始 PTY 输出和操作计数。首次沙箱端口限制与旧夹具失败日志保留，不作为最终通过依据。复验入口：
 
 ```sh
-go test -c ./internal/tui -o bin/overview-tui.test
-python3 scripts/overview-pty.py --binary bin/overview-tui.test \
+python3 scripts/overview-pty.py --keep-artifacts \
   --output .test-artifacts/overview-redesign/pty --png
-python3 scripts/overview-pty.py --binary bin/overview-tui.test \
+python3 scripts/overview-pty.py --keep-artifacts \
   --output .test-artifacts/overview-redesign/pty-edges --png \
   --lang zh-Hans --profile truecolor \
   --scenario stopped --scenario unavailable --scenario drift
@@ -831,8 +830,7 @@ python3 scripts/overview-pty.py --binary bin/overview-tui.test \
 证据位于忽略目录 `.test-artifacts/logs-session/`，包含 `check-build-status-final.log`、`race-status-final.log`、`linux-final.log`、`linux-log-session-final.log`、前后台隔离修复前后的定向日志，以及 `pty/20261106-171835-e7a06f/verification.json` 和 PNG/ANSI/TXT。初次旧夹具阻塞与旧断言失败记录保留在 `first-pass/`；不作为最终通过依据。PNG 按真实 PTY 字符格与颜色重绘，PTY 使用内存实时事件；本轮没有操作真实 Mihomo 或 systemd 服务，也未重跑其完整生命周期 E2E。既有真实内核日志 PTY 脚本已按持续采集、暂停显示和自动恢复语义更新。复验入口：
 
 ```sh
-go test -c ./internal/tui -o bin/logs-tui.test
-python3 scripts/logs-pty.py --binary bin/logs-tui.test \
+python3 scripts/logs-pty.py --keep-artifacts \
   --output .test-artifacts/logs-session/pty \
   --profile truecolor --profile 256 --profile no-color
 ```
@@ -913,8 +911,7 @@ Rules、RuleProviders、PageHeaders、KeyHints 和 i18n 定向回归通过（TUI
 make check build
 python3 -m unittest discover -s scripts -p 'test_*.py'
 ./scripts/verify-linux.sh lazyclash-e2e
-go test -c ./internal/tui -o bin/tui-layout-pty.test
-python3 scripts/rules-pty.py --binary bin/tui-layout-pty.test \
+python3 scripts/rules-pty.py --keep-artifacts \
   --output .test-artifacts/tui-layout/recheck --png
 ```
 
@@ -934,11 +931,10 @@ Linux 首次并行运行及随后单独运行均触及原脚本的三分钟整�
 
 ```sh
 make check build
-go test -race ./internal/tui -run 'TestCustomRules|TestRulesProviders|TestRulesInline|TestRulesSelection' -count=1
+./scripts/project-go test -race ./internal/tui -run 'TestCustomRules|TestRulesProviders|TestRulesInline|TestRulesSelection' -count=1
 python3 -m unittest discover -s scripts -p 'test_*.py'
 ./scripts/verify-linux.sh lazyclash-e2e
-go test -c ./internal/tui -o bin/rules-management-tui.test
-python3 scripts/rules-management-pty.py --binary bin/rules-management-tui.test \
+python3 scripts/rules-management-pty.py --keep-artifacts \
   --output .test-artifacts/rule-management/recheck \
   --profile truecolor --profile 256 --profile no-color
 ```
@@ -985,8 +981,7 @@ python3 scripts/rules-management-pty.py --binary bin/rules-management-tui.test \
 证据位于忽略目录 `.test-artifacts/logs-redesign/`，包含 `staged-check-build.log`、`staged-race.log`、`staged-linux.log`、`python-tests.log` 及 `pty/20261105-213219-6ca703/`。PNG 按实际 PTY 字符格与颜色重绘；本轮没有连接真实 Mihomo、操作系统服务或重跑 Mihomo/systemd/TUN 生命周期 E2E。复验入口：
 
 ```sh
-go test -c ./internal/tui -o bin/logs-tui.test
-python3 scripts/logs-pty.py --binary bin/logs-tui.test \
+python3 scripts/logs-pty.py --keep-artifacts \
   --output .test-artifacts/logs-redesign/pty \
   --profile truecolor --profile 256 --profile no-color
 ```
@@ -1006,8 +1001,7 @@ Apple M4 Pro 本机无通知正常页面的 `Update + View` 量级诊断：160×
 验证快照只包含本轮 Rules 改动，不包含同时进行的连接、日志和设置页重构；后者的未提交内容及暂存状态保留原状。PTY 使用内存后端，PNG 为实际字符格与颜色重绘，本轮未操作实际 Mihomo/systemd/TUN 服务。滚动探针复验：
 
 ```sh
-go test -c ./internal/tui -o bin/rules-tui.test
-python3 scripts/rules-pty.py --binary bin/rules-tui.test \
+python3 scripts/rules-pty.py --keep-artifacts \
   --output .test-artifacts/rules-scroll/recheck --scenario scroll \
   --count 670 --count 2000 --require-wheel-hover
 ```
@@ -1023,8 +1017,7 @@ python3 scripts/rules-pty.py --binary bin/rules-tui.test \
 证据位于忽略目录 `.test-artifacts/rules-redesign/`，Linux 运行日志为 `linux-tests.log`，最终 PTY 记录为 `pty/20261105-203324-c22e55/`。PNG 按实际 PTY 字符格与颜色重绘；PTY 使用隔离内存后端，未访问实际 Mihomo 或操作系统服务，本轮未重跑 Mihomo/systemd/TUN 生命周期 E2E。复验入口：
 
 ```sh
-go test -c ./internal/tui -o bin/rules-tui.test
-python3 scripts/rules-pty.py --binary bin/rules-tui.test \
+python3 scripts/rules-pty.py --keep-artifacts \
   --output .test-artifacts/rules-redesign/pty \
   --profile truecolor --profile 256 --profile no-color
 ```

@@ -4,7 +4,7 @@
 Requires an already built --binary (absolute path). It does not build, create a
 VM, install a core/service or change system network settings. First-run
 guidance may perform its automatic read-only stable-version check.
---output stores per-profile raw PTY captures and current-screen text snapshots.
+Use --keep-artifacts with --output to export per-profile PTY captures and screen snapshots.
 Pass --notifications-only to exercise feedback, compact layouts and cancellation.
 Pass --colors-only to check the startup palette on the Overview screen.
 """
@@ -537,14 +537,18 @@ def exercise(binary, output, profile, notifications_only, colors_only):
 
 
 def main():
+    import test_artifacts
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--binary", type=Path, required=True, help="Absolute path to an already built lazyclash")
-    parser.add_argument("--output", type=Path, required=True, help="Directory for isolated PTY evidence")
     parser.add_argument("--profile", choices=("all", "truecolor", "termius", "256", "no-color"), default="all")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--notifications-only", action="store_true", help="Run just the notification checks through the product TUI")
     group.add_argument("--colors-only", action="store_true", help="Check the startup palette without exercising notification or network controls")
-    args = parser.parse_args()
+    test_artifacts.run_pty(parser, run_suite)
+
+
+def run_suite(args, parser):
     if not args.binary.is_absolute() or not args.binary.is_file() or not os.access(args.binary, os.X_OK):
         parser.error("--binary must be an absolute path to an executable file")
     args.output.mkdir(parents=True, exist_ok=True)

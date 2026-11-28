@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Exercise unified Bubbles inputs through an actual controlling PTY.
 
-Build: go test -c ./internal/tui -o bin/input-fields-tui.test
 The opt-in test fixture uses memory backends and isolated report files. It
 does not install a core, access a real service, or change proxy settings.
 Optional PNGs redraw actual PTY cells and styles, not a native app window.
@@ -296,9 +295,10 @@ def exercise(preview, args, output, language, profile, scenario):
 
 
 def main():
+    import test_artifacts
+
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--binary", type=Path, required=True, help="Already built opt-in Go test binary")
-    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--binary", type=Path, help="Use an existing TUI test binary (default: build a temporary one)")
     parser.add_argument("--lang", choices=("en", "zh-Hans"), action="append")
     parser.add_argument("--profile", choices=("truecolor", "no-color"), action="append")
     parser.add_argument("--scenario", choices=SCENARIOS, action="append")
@@ -307,7 +307,10 @@ def main():
     preview = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(preview)
     preview.capture_arguments(parser)
-    args = parser.parse_args()
+    test_artifacts.run_pty(parser, run_suite, preview)
+
+
+def run_suite(args, parser, preview):
     if not args.binary.is_absolute() or not args.binary.is_file():
         parser.error("--binary must be an absolute path to an existing Go test binary")
     try:

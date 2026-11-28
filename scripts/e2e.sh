@@ -13,6 +13,9 @@ if [[ ${1:-} != --linux ]]; then
     download_method=$3
   fi
   root=$(cd "$(dirname "$0")/.." && pwd)
+  if [[ -z ${LAZYCLASH_TEST_OUTPUT:-} ]]; then
+    exec python3 "$root/scripts/test_artifacts.py" e2e -- "$0" "$@"
+  fi
   cd "$root"
   arch=$(orb -m "$vm" uname -m)
   case "$arch" in
@@ -22,14 +25,14 @@ if [[ ${1:-} != --linux ]]; then
   esac
   host_stage=$(mktemp -d "${TMPDIR:-/tmp}/lazyclash-e2e.XXXXXX")
   linux_stage=
-  mkdir -p .test-artifacts
+  log_file="$LAZYCLASH_TEST_OUTPUT/e2e.log"
   cleanup_host() {
     result=$?
     trap - EXIT
     if [[ -n $linux_stage ]]; then
     for file in pty-empty.txt pty-download-network.txt pty-install-local.txt pty-no-profile.txt pty-installed.txt pty-runtime.txt pty-rules.txt pty-logs.txt pty-runtime-settings.txt uninstalled-core-check.json pinned-dry-run.json update-result.json core-check.json core-upgrade.json download-audit.json cleanup.txt; do
       if orb -m "$vm" test -f "$linux_stage/$file"; then
-        orb -m "$vm" cat "$linux_stage/$file" > ".test-artifacts/$file" || result=1
+        orb -m "$vm" cat "$linux_stage/$file" > "$LAZYCLASH_TEST_OUTPUT/$file" || result=1
       fi
     done
     if orb -m "$vm" test -f "$linux_stage/.resources-started" && ! orb -m "$vm" test -f "$linux_stage/.cleanup-complete"; then
@@ -49,11 +52,11 @@ if [[ ${1:-} != --linux ]]; then
   cp scripts/e2e_instance.py scripts/e2e.sh scripts/pty-smoke.py scripts/download-audit.py scripts/ports-e2e.py scripts/lifecycle-e2e.py scripts/configuration-e2e.py "$host_stage/"
   COPYFILE_DISABLE=1 tar --no-xattrs -C "$host_stage" -cf - lazyclash lazyclash-fixture e2e_instance.py e2e.sh pty-smoke.py download-audit.py ports-e2e.py lifecycle-e2e.py configuration-e2e.py | orb -m "$vm" tar -xf - -C "$linux_stage"
   # Captured output deliberately excludes raw configuration, journal and URLs.
-  if orb -m "$vm" bash "$linux_stage/e2e.sh" --linux "$linux_stage" "$download_method" > .test-artifacts/e2e.log 2>&1; then
-    sed '/^download: [0-9]/d' .test-artifacts/e2e.log
+  if orb -m "$vm" bash "$linux_stage/e2e.sh" --linux "$linux_stage" "$download_method" > "$log_file" 2>&1; then
+    sed '/^download: [0-9]/d' "$log_file"
   else
     result=$?
-    sed '/^download: [0-9]/d' .test-artifacts/e2e.log >&2
+    sed '/^download: [0-9]/d' "$log_file" >&2
     exit "$result"
   fi
   exit 0

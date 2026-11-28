@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Exercise rule providers in a real controlling PTY.
 
-Build with `go test -c ./internal/tui -o bin/rules-management-tui.test`.
 The opt-in fixture has isolated memory state and never contacts a core,
 managed storage, network or service. Optional PNGs redraw captured VT cells.
 """
@@ -219,20 +218,23 @@ def exercise(preview, binary, output, language, profile, args):
 
 
 def main():
+    import test_artifacts
+
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--binary", required=True, type=Path)
-    parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--binary", type=Path, help="Use an existing TUI test binary (default: build a temporary one)")
     parser.add_argument("--lang", choices=["en", "zh-Hans"], action="append")
     parser.add_argument("--profile", choices=["truecolor", "256", "no-color"], action="append")
     preview = load_module("rule_management_preview", Path(__file__).with_name("onboarding-pty.py"))
     preview.capture_arguments(parser)
-    args = parser.parse_args()
+    test_artifacts.run_pty(parser, run_suite, preview)
+
+
+def run_suite(args, parser, preview):
     preview.configure_fonts(parser, args)
     output = args.output.resolve() / (time.strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6])
     for language in args.lang or ("en", "zh-Hans"):
         for profile in args.profile or ("truecolor",):
             exercise(preview, args.binary, output / language / profile, language, profile, args)
-    print("Evidence:", output)
 
 
 if __name__ == "__main__":

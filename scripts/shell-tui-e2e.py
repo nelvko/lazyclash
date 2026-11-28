@@ -84,12 +84,16 @@ def port():
 
 
 def main():
+    import test_artifacts
+
     parser = argparse.ArgumentParser()
     parser.add_argument('--binary', required=True)
     parser.add_argument('--mihomo', required=True)
-    parser.add_argument('--output', required=True)
     parser.add_argument('--missing-reference', action='store_true', help='Start with a valid Bash hook and a missing .bashrc loading block')
-    args = parser.parse_args()
+    test_artifacts.run_pty(parser, run_suite)
+
+
+def run_suite(args, parser):
     binary = str(Path(args.binary).resolve())
     output = Path(args.output).resolve()
     output.mkdir(parents=True, exist_ok=True)

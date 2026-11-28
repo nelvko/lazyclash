@@ -1,17 +1,19 @@
 .PHONY: build run test check race i18n-check package
+record = python3 scripts/test_artifacts.py
+packages = ./... github.com/charmbracelet/ultraviolet/...
+
 build:
 	./scripts/project-go build -o bin/lazyclash .
 run: build
 	./bin/lazyclash
 test:
-	./scripts/project-go test ./... github.com/charmbracelet/ultraviolet/...
-check:
-	./scripts/project-go test ./... github.com/charmbracelet/ultraviolet/...
-	./scripts/project-go vet ./... github.com/charmbracelet/ultraviolet/...
+	$(record) test -- ./scripts/project-go test $(packages)
+check: test
+	$(record) vet -- ./scripts/project-go vet $(packages)
 race:
-	./scripts/project-go test -race ./... github.com/charmbracelet/ultraviolet/...
+	$(record) race -- ./scripts/project-go test -race $(packages)
 i18n-check:
-	./scripts/project-go test ./internal/i18n
+	$(record) i18n-check -- ./scripts/project-go test ./internal/i18n
 
 package:
 	./scripts/package.sh "$(or $(VERSION),dev)"

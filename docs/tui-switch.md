@@ -38,9 +38,8 @@ face := control.View(switchOptions{Surface: panel, Focused: focused})
 ## 验证
 
 ```sh
-go test ./internal/tui -run 'Test(Switch|SettingsSwitch|OverviewCoreToggle|KeyHints)' -count=1
-go test -c ./internal/tui -o bin/switch-tui.test
-python3 scripts/switch-pty.py --binary bin/switch-tui.test --output .test-artifacts/switch/pty --png
+./scripts/project-go test ./internal/tui -run 'Test(Switch|SettingsSwitch|OverviewCoreToggle|KeyHints)' -count=1
+python3 scripts/switch-pty.py --keep-artifacts --output .test-artifacts/switch/pty --png
 ```
 
 PTY 夹具同时展示滑块与状态文字，覆盖键盘、鼠标、失败回读、重复输入、过期结果以及不同终端宽度与颜色模式。[真实终端测试](../scripts/switch-pty.py)

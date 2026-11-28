@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Verify Connections using a real controlling PTY and an opt-in memory backend.
 
-Build with `go test -c ./internal/tui -o bin/connections-tui.test`. This fixture
+This fixture
 never contacts a core, network or system service. Optional PNGs redraw captured
 VT cells and colors, rather than photographing a native terminal application.
 """
@@ -869,9 +869,10 @@ def exercise(preview, binary, output, language, profile, args):
 
 
 def main():
+    import test_artifacts
+
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--binary", required=True, type=Path)
-    parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--binary", type=Path, help="Use an existing TUI test binary (default: build a temporary one)")
     parser.add_argument("--lang", choices=["en", "zh-Hans"], action="append")
     parser.add_argument("--profile", choices=["truecolor", "256", "no-color"], action="append")
     parser.add_argument("--sort-boundary", action="store_true", help="Check all sort labels at the English/Chinese wrap breakpoint")
@@ -880,13 +881,15 @@ def main():
     preview = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(preview)
     preview.capture_arguments(parser)
-    args = parser.parse_args()
+    test_artifacts.run_pty(parser, run_suite, preview)
+
+
+def run_suite(args, parser, preview):
     preview.configure_fonts(parser, args)
     output = args.output.resolve() / (time.strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6])
     for language in args.lang or ("en", "zh-Hans"):
         for profile in args.profile or ("truecolor",):
             exercise(preview, args.binary, output / language / profile, language, profile, args)
-    print("Evidence:", output)
 
 
 if __name__ == "__main__":

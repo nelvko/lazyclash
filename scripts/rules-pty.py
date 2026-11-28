@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Verify Rules in a real controlling PTY using an opt-in memory backend.
 
-Build with `go test -c ./internal/tui -o bin/rules-tui.test`. No core, network,
+No core, network,
 managed data or service is used. Optional PNGs redraw captured VT cells and
 colors; they are not native terminal-app screenshots.
 """
@@ -479,9 +479,10 @@ def exercise_scroll(preview, binary, output, count, args):
 
 
 def main():
+    import test_artifacts
+
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--binary", required=True, type=Path)
-    parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--binary", type=Path, help="Use an existing TUI test binary (default: build a temporary one)")
     parser.add_argument("--lang", choices=["en", "zh-Hans"], action="append")
     parser.add_argument("--profile", choices=["truecolor", "256", "no-color"], action="append")
     parser.add_argument("--scenario", choices=["main", "scroll"], action="append", help="Default: main. Scroll runs fixed Chinese/TrueColor 160x45 event batches")
@@ -493,7 +494,10 @@ def main():
     preview = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(preview)
     preview.capture_arguments(parser)
-    args = parser.parse_args()
+    test_artifacts.run_pty(parser, run_suite, preview)
+
+
+def run_suite(args, parser, preview):
     if args.event_count < 2 or args.event_count % 2:
         parser.error("--event-count must be an even integer of at least 2")
     if any(count < max(60, args.event_count // 2 + 15) for count in args.count or []):
@@ -507,7 +511,6 @@ def main():
     if "scroll" in (args.scenario or ()):
         for count in args.count or (670, 2000):
             exercise_scroll(preview, args.binary, output / ("scroll-%d" % count), count, args)
-    print("Evidence:", output)
 
 
 if __name__ == "__main__":

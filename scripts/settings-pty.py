@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Verify Settings in a real controlling PTY with an opt-in memory backend.
 
-Build: go test -c ./internal/tui -o bin/settings-tui.test
 No core, network, managed files or service is used. Optional PNGs redraw actual
 PTY cells and colors; they are not native terminal-app screenshots.
 """
@@ -1215,6 +1214,8 @@ def exercise(preview, binary, output, language, profile, args):
 
 
 def main():
+    import test_artifacts
+
     parser = argparse.ArgumentParser(description=__doc__)
     scenario = parser.add_mutually_exclusive_group()
     scenario.add_argument("--switches-only", action="store_true", help="Verify pending, failed and confirmed slider actions")
@@ -1222,8 +1223,7 @@ def main():
     scenario.add_argument("--auth-only", action="store_true", help="Verify and capture the proxy authentication editor")
     scenario.add_argument("--bind-only", action="store_true", help="Verify bind address choices, manual fallback and access rule summaries")
     scenario.add_argument("--modals-only", action="store_true", help="Verify and capture all three port and access dialogs")
-    parser.add_argument("--binary", required=True, type=Path)
-    parser.add_argument("--output", required=True, type=Path)
+    parser.add_argument("--binary", type=Path, help="Use an existing TUI test binary (default: build a temporary one)")
     parser.add_argument("--lang", choices=["en", "zh-Hans"], action="append")
     parser.add_argument("--profile", choices=["truecolor", "256", "no-color"], action="append")
     sys.dont_write_bytecode = True
@@ -1231,13 +1231,15 @@ def main():
     preview = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(preview)
     preview.capture_arguments(parser)
-    args = parser.parse_args()
+    test_artifacts.run_pty(parser, run_suite, preview)
+
+
+def run_suite(args, parser, preview):
     preview.configure_fonts(parser, args)
     output = args.output.resolve() / (time.strftime("%Y%m%d-%H%M%S") + "-" + uuid.uuid4().hex[:6])
     for language in args.lang or ("en", "zh-Hans"):
         for profile in args.profile or ("truecolor", "256", "no-color"):
             exercise(preview, args.binary, output / language / profile, language, profile, args)
-    print("Evidence:", output)
 
 
 if __name__ == "__main__":

@@ -109,9 +109,8 @@ Shell 集成仅发布本机的混合端口。若本机需要用户验证，可�
 设置页在 160×45 终端中按双列显示。40×16 终端中可用键盘滚动到「下载设置」，按 Enter 打开弹窗、按 Esc 返回原行。 [160×45 设置页](../.test-artifacts/settings-management/final/settings-wide.png) · [40×16 下载设置行](../.test-artifacts/settings-management/final/settings-narrow.png)
 
 ```sh
-go test ./internal/tui -run 'TestSettings|TestCoreSettings|TestCoreNumber|TestRuntimePorts|TestAccess|TestProxyAuth' -count=1
-go test -c ./internal/tui -o bin/settings-tui.test
-python3 scripts/settings-pty.py --binary bin/settings-tui.test \
+./scripts/project-go test ./internal/tui -run 'TestSettings|TestCoreSettings|TestCoreNumber|TestRuntimePorts|TestAccess|TestProxyAuth' -count=1
+python3 scripts/settings-pty.py --keep-artifacts \
   --output .test-artifacts/settings-redesign/pty \
   --profile truecolor --profile 256 --profile no-color
 ```

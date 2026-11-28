@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Export reproducible Original/Thick/Smooth ANSI and Braille cell previews.
 
-Build `go test -c ./internal/tui -o bin/traffic-chart.test`, then run this
-script with --binary bin/traffic-chart.test --output DIRECTORY --png.
+Run this script with --output DIRECTORY --png to export the previews.
 Alternative paths exist only in the test binary. PNGs redraw the actual ANSI
 cell state with the existing terminal parser; they are not SVG illustrations
 or screenshots of a particular native terminal font. The .ansi files can be
@@ -29,21 +28,27 @@ def load_preview():
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--binary", required=True, type=Path, help="Already built TUI test binary")
+    parser.add_argument("--binary", type=Path, help="Use an existing TUI test binary")
     parser.add_argument("--output", required=True, type=Path)
     preview = load_preview()
     preview.capture_arguments(parser)
     args = parser.parse_args()
     preview.configure_fonts(parser, args)
-    binary = args.binary.resolve()
-    if not binary.is_file() or not os.access(binary, os.X_OK):
-        parser.error("--binary must identify an executable test binary")
+    root = Path(__file__).resolve().parents[1]
+    if args.binary:
+        binary = args.binary.resolve()
+        if not binary.is_file() or not os.access(binary, os.X_OK):
+            parser.error("--binary must identify an executable test binary")
+        command = [str(binary), "-test.run=^TestTrafficChartRenderExperiments$", "-test.count=1"]
+    else:
+        command = [str(root / "scripts/project-go"), "test", "./internal/tui",
+                   "-run=^TestTrafficChartRenderExperiments$", "-count=1"]
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     environment = os.environ.copy()
     environment["LAZYCLASH_TRAFFIC_CHART_EXPERIMENTS"] = str(output)
-    result = subprocess.run([str(binary), "-test.run=^TestTrafficChartRenderExperiments$", "-test.count=1"],
-                            env=environment, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    result = subprocess.run(command, cwd=root, env=environment, text=True, stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT)
     (output / "generation.log").write_text(result.stdout)
     if result.returncode:
         print(result.stdout, file=sys.stderr)
