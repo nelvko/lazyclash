@@ -61,10 +61,10 @@ case $(orb -m "$vm" uname -m) in
 esac
 cd "$root"
 other_name="lazyclash-scopes-$(python3 -c 'import uuid; print(uuid.uuid4().hex[:12])')"
-CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build \
+CGO_ENABLED=0 GOOS=linux GOARCH="$arch" ./scripts/project-go build \
   -ldflags "-X github.com/nelvko/lazyclash/internal/app.DefaultService=$other_name" \
   -o "$stage/lazyclash-other" .
-CGO_ENABLED=0 GOOS=linux GOARCH="$arch" go build -o "$stage/lazyclash-fixture" ./scripts/fixture
+CGO_ENABLED=0 GOOS=linux GOARCH="$arch" ./scripts/project-go build -o "$stage/lazyclash-fixture" ./scripts/fixture
 COPYFILE_DISABLE=1 tar --no-xattrs -C "$stage" -cf - lazyclash-other lazyclash-fixture | orb -m "$vm" tar -xf - -C "$work"
 COPYFILE_DISABLE=1 tar --no-xattrs -C "$(dirname "$artifact")" -cf - "$(basename "$artifact")" | orb -m "$vm" tar -xf - -C "$work"
 if [[ $(basename "$artifact") != lazyclash ]]; then

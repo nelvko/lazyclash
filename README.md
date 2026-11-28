@@ -6,14 +6,16 @@ Linux/systemd 同时支持普通用户的 user 实例和 root 的独立 system �
 
 ## 构建与使用
 
-需要 **Go 1.26+**。固定稳定依赖：Bubble Tea **2.1.1**、Bubbles **2.2.1**、Lip Gloss **2.0.6**，统一使用 `charm.land/*/v2`；Cobra **1.10.2**。完整版本与校验记录在 go.mod/go.sum。
+需要 **Go 1.26+**，项目构建脚本还需要 Python 3。固定稳定依赖：Bubble Tea **2.1.1**、Bubbles **2.2.1**、Lip Gloss **2.0.6**，统一使用 `charm.land/*/v2`；Cobra **1.10.2**。完整版本与校验记录在 go.mod/go.sum。
 
 ```sh
 make build
 ./bin/lazyclash
 # 或在源码根目录直接运行
-go run .
+make run
 ```
+
+`make` 和开发脚本使用项目专属 Go 构建缓存。最后一个并行 Go 命令退出时，若缓存超过 10 GB，脚本会清空它。手动执行 Go 子命令时可用同一入口，例如 `./scripts/project-go test ./internal/tui`。直接调用系统的 `go` 会沿用你的 Go 环境设置。
 
 服务与内核安装支持 **Linux/systemd 的 user/system 服务、arm64 与 amd64**。macOS 可构建、运行 TUI、配置下载网络及查询 Linux 发布信息，但预检查会明确阻止安装和服务管理，没有 macOS 空后端。
 

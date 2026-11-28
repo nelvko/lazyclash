@@ -82,7 +82,7 @@ output_dir="$root/bin/linux-$goarch"
 stage=$(mktemp "$output_dir/.lazyclash-build.XXXXXX")
 trap 'rm -f -- "$stage"' EXIT
 printf 'Building lazyclash for Linux/%s…\n' "$goarch" >&2
-(cd "$root" && CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" go build -o "$stage" .)
+(cd "$root" && CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" ./scripts/project-go build -o "$stage" .)
 chmod 755 "$stage"
 mv -f -- "$stage" "$output_dir/lazyclash"
 BUILD

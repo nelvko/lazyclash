@@ -44,8 +44,8 @@ if [[ ${1:-} != --linux ]]; then
   }
   trap cleanup_host EXIT
   linux_stage=$(orb -m "$vm" mktemp -d /tmp/lazyclash-e2e.XXXXXX)
-  CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" go build -o "$host_stage/lazyclash" .
-  CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" go build -o "$host_stage/lazyclash-fixture" ./scripts/fixture
+  CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" ./scripts/project-go build -o "$host_stage/lazyclash" .
+  CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" ./scripts/project-go build -o "$host_stage/lazyclash-fixture" ./scripts/fixture
   cp scripts/e2e_instance.py scripts/e2e.sh scripts/pty-smoke.py scripts/download-audit.py scripts/ports-e2e.py scripts/lifecycle-e2e.py scripts/configuration-e2e.py "$host_stage/"
   COPYFILE_DISABLE=1 tar --no-xattrs -C "$host_stage" -cf - lazyclash lazyclash-fixture e2e_instance.py e2e.sh pty-smoke.py download-audit.py ports-e2e.py lifecycle-e2e.py configuration-e2e.py | orb -m "$vm" tar -xf - -C "$linux_stage"
   # Captured output deliberately excludes raw configuration, journal and URLs.

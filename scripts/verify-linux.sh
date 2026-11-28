@@ -32,12 +32,12 @@ cleanup() {
 trap cleanup EXIT
 linux_stage=$(orb -m "$vm" mktemp -d /tmp/lazyclash-linux.XXXXXX)
 index=0
-go list ./... github.com/charmbracelet/ultraviolet/... > "$host_stage/packages"
+./scripts/project-go list ./... github.com/charmbracelet/ultraviolet/... > "$host_stage/packages"
 while IFS= read -r package <&3; do
   index=$((index + 1))
   testbin="$host_stage/$index.test"
   printf 'Build Linux/%s tests: %s\n' "$goarch" "$package"
-  CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" go test -c -o "$testbin" "$package"
+  CGO_ENABLED=0 GOOS=linux GOARCH="$goarch" ./scripts/project-go test -c -o "$testbin" "$package"
   if [[ -f "$testbin" ]]; then
     orb -m "$vm" sh -c 'umask 077; cat > "$1"; chmod 700 "$1"' sh "$linux_stage/$index.test" < "$testbin"
     printf 'Run in Linux VM: %s\n' "$package"

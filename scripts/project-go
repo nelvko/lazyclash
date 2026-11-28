@@ -1,0 +1,49 @@
+#!/usr/bin/env python3
+"""Run Go with lazyclash's own build cache and prune it when the last build exits."""
+
+import fcntl
+import os
+from pathlib import Path
+import subprocess
+import sys
+
+
+CACHE_LIMIT = 10_000_000_000
+
+
+def main():
+    default_root = Path.home() / ("Library/Caches" if sys.platform == "darwin" else ".cache")
+    cache_root = Path(os.environ.get("XDG_CACHE_HOME") or default_root)
+    if not cache_root.is_absolute():
+        cache_root = default_root
+    project = cache_root / "lazyclash"
+    if project.is_symlink():
+        sys.exit(f"Refusing to manage a symbolic link as the project cache: {project}")
+    project.mkdir(mode=0o700, parents=True, exist_ok=True)
+    cache = project / "go-build"
+    if cache.is_symlink():
+        sys.exit(f"Refusing to manage a symbolic link as the Go build cache: {cache}")
+    cache.mkdir(mode=0o700, exist_ok=True)
+    env = {**os.environ, "GOCACHE": str(cache)}
+
+    # The lock stays outside GOCACHE so go clean never replaces its inode.
+    with (project / "go-build.lock").open("ab") as lock:
+        fcntl.flock(lock, fcntl.LOCK_SH)
+        # Keep the lease alive if the wrapper exits before the Go process.
+        status = subprocess.run(["go", *sys.argv[1:]], env=env, pass_fds=(lock.fileno(),)).returncode
+        fcntl.flock(lock, fcntl.LOCK_UN)
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return status
+        blocks = subprocess.check_output(["du", "-sk", str(cache)]).split()[0]
+        if int(blocks) * 1024 > CACHE_LIMIT:
+            print("Cleaning lazyclash Go build cache (over 10 GB)", file=sys.stderr)
+            clean = subprocess.run(["go", "clean", "-cache"], env=env, pass_fds=(lock.fileno(),))
+            return status or clean.returncode
+        return status
+
+
+if __name__ == "__main__":
+    result = main()
+    sys.exit(result if result >= 0 else 128 - result)

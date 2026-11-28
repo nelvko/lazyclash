@@ -123,7 +123,7 @@ def main():
     root = Path(__file__).resolve().parent.parent
     output = args.output.resolve()
     env = {**os.environ, "LAZYCLASH_THEME_PREVIEW_DIR": str(output)}
-    subprocess.run(["go", "test", "./internal/tui", "-run", "^TestExportMarianaViews$", "-count=1"],
+    subprocess.run([root / "scripts/project-go", "test", "./internal/tui", "-run", "^TestExportMarianaViews$", "-count=1"],
                    cwd=root, env=env, check=True)
     for source in sorted(output.glob("*.ansi")):
         render(source, font, args.font_size)
